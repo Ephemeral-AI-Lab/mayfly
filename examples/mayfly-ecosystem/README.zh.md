@@ -1,0 +1,10 @@
+# Mayfly 生态示例 Bundle
+
+这是一个 opt-in composition bundle：安装共享用户 Kit，并通过五条普通 Cordis
+row 激活五个可运行示例。
+
+```sh
+dsh plugin --profile mayfly-examples add @mayfly-example/ecosystem
+```
+
+请先在同一 profile 安装 Mayfly。本验证 bundle 不进入 Mayfly 默认产品组合或发布集。

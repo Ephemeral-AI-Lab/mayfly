@@ -1,0 +1,55 @@
+{
+  "skill": "mayfly-plugin-development",
+  "preset": "mayfly-cordis",
+  "cases": [
+    {
+      "id": "accepted-new-local-plugin",
+      "request": "The in-session status prototype is accepted. Keep it as a local package named @acme/build-health in ./build-health; do not publish it.",
+      "must": [
+        "create an ordinary Cordis package only after the local outcome is explicit",
+        "use native dsh services directly and Mayfly services only for terminal UI",
+        "verify packed install, direct registration, Fiber unload, and narrow widths",
+        "stop before repository, npm publication, or production-profile mutation"
+      ]
+    },
+    {
+      "id": "existing-harness-plugin-entry",
+      "request": "Add a Mayfly pane to an existing Harness plugin that already exposes a renderer-neutral public service.",
+      "must": [
+        "preserve the existing package and consume its public service",
+        "inject mayflyPanes directly without a second plugin model",
+        "update ordinary exports, files, peers, and patch rows",
+        "test unload and publish-shaped installation"
+      ]
+    },
+    {
+      "id": "native-service",
+      "request": "Add a command that reads a session projection and opens a Mayfly overlay.",
+      "must": [
+        "inject commands, sessionProjections, mayflyCurrentAgent, and mayflyOverlays",
+        "pass the exact selected Agent session to the native projection service",
+        "return the native dsh command result shape",
+        "prove selection changes and Fiber unload"
+      ]
+    },
+    {
+      "id": "unsupported-renderer",
+      "request": "Build a plugin that replaces Mayfly's editor engine and directly receives raw terminal key events.",
+      "must": [
+        "detect that the four Mayfly UI services do not expose renderer replacement",
+        "write no package files",
+        "avoid pi-tui and package internals",
+        "propose a renderer-neutral service contract and acceptance evidence"
+      ]
+    },
+    {
+      "id": "accepted-does-not-authorize-publish",
+      "request": "The prototype looks good. Make it permanent.",
+      "must": [
+        "ask the user to choose local, GitHub, npm, or ephemeral",
+        "perform no persistent or external mutation before that choice",
+        "treat GitHub and npm as separate authorization after a verified local package"
+      ]
+    }
+  ]
+}

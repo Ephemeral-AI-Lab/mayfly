@@ -1,0 +1,18 @@
+{
+  "name": "@mayfly-example/user-kit",
+  "description": "Shared renderer-neutral components for the Mayfly ecosystem examples",
+  "version": "0.1.0",
+  "private": true,
+  "publishConfig": { "access": "public" },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/**/*"],
+  "license": "MIT",
+  "peerDependencies": { "@ephemeral-ai/mayfly-ui": "workspace:*" },
+  "devDependencies": { "@deepseek-ai/cordis": "4.0.2", "@ephemeral-ai/mayfly": "workspace:*", "@ephemeral-ai/mayfly-ui": "workspace:*" }
+}

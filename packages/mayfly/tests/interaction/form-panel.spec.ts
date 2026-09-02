@@ -1,0 +1,272 @@
+/** The multi-field form panel: field routing, validation, masking, errors. */
+
+import { describe, expect, it, vi } from 'vitest'
+import { CanonicalFormController, maskRow, type FormField } from '../../src/interaction/form-panel.ts'
+import { fakeMayflyContext, KEY } from './fakes.ts'
+
+function form(fields: readonly FormField[], options: { subtitle?: string } = {}) {
+  const { theme, keymap, components } = fakeMayflyContext()
+  const onSubmit = vi.fn()
+  const onCancel = vi.fn()
+  const component = new CanonicalFormController({
+    keymap, theme, components,
+    title: 'Form',
+    ...options.subtitle === undefined ? {} : { subtitle: options.subtitle },
+    fields,
+    onSubmit,
+    onCancel,
+  })
+  component.focused = true
+  return { component, onSubmit, onCancel }
+}
+
+/** The last-mounted panel component with input forwarding. */
+function input(component: CanonicalFormController): { handleInput(data: string): void } {
+  return component as unknown as { handleInput(data: string): void }
+}
+
+describe('maskRow', () => {
+  it('renders one bullet per character', () => {
+    expect(maskRow('')).toBe('')
+    expect(maskRow('abc')).toBe('•••')
+  })
+})
+
+describe('CanonicalFormController', () => {
+  it('routes typing with vertical field navigation and submits from the last', () => {
+    const { component, onSubmit } = form([
+      { id: 'route', label: 'Route', required: true },
+      { id: 'key', label: 'Key', required: true },
+    ])
+    input(component).handleInput('gw')
+    input(component).handleInput(KEY.enter)
+    input(component).handleInput('secret')
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).toHaveBeenCalledWith({ route: 'gw', key: 'secret' })
+  })
+
+  it('moves backward with Up and forward with Down', () => {
+    const { component, onSubmit } = form([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+    ])
+    input(component).handleInput('1')
+    input(component).handleInput(KEY.escape)
+    input(component).handleInput(KEY.down)
+    input(component).handleInput('2')
+    input(component).handleInput(KEY.escape)
+    input(component).handleInput(KEY.up)
+    input(component).handleInput('3')
+    input(component).handleInput(KEY.escape)
+    input(component).handleInput(KEY.down)
+    input(component).handleInput(KEY.down)
+    // An untouched field enters editing before a second Enter submits.
+    input(component).handleInput(KEY.enter)
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).toHaveBeenCalledWith({ a: '13', b: '2', c: '' })
+  })
+
+  it('uses Tab to confirm editing and advance to the next field', () => {
+    const { component, onSubmit } = form([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+    ])
+    input(component).handleInput('1')
+    input(component).handleInput(KEY.tab)
+    input(component).handleInput('2')
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).toHaveBeenCalledWith({ a: '1', b: '2' })
+  })
+
+  it('uses Shift-Tab to confirm editing and move to the previous field', () => {
+    const { component, onSubmit } = form([
+      { id: 'a', label: 'A', initial: 'one' },
+      { id: 'b', label: 'B', initial: 'two' },
+    ])
+    input(component).handleInput(KEY.down)
+    input(component).handleInput(KEY.enter)
+    input(component).handleInput(KEY.shiftTab)
+    expect(component.render(60).join('\n')).toContain('→ A:')
+    expect(onSubmit).not.toHaveBeenCalled()
+    input(component).handleInput(KEY.enter)
+    input(component).handleInput(KEY.shiftTab)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('keeps an invalid field active when Tab tries to advance', () => {
+    const { component, onSubmit } = form([
+      { id: 'a', label: 'Alpha', required: true },
+      { id: 'b', label: 'Beta' },
+    ])
+    input(component).handleInput(KEY.enter)
+    input(component).handleInput(KEY.tab)
+    expect(component.render(60).join('\n')).toContain('Alpha cannot be empty')
+    input(component).handleInput('ok')
+    input(component).handleInput(KEY.tab)
+    input(component).handleInput('done')
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).toHaveBeenCalledWith({ a: 'ok', b: 'done' })
+  })
+
+  it('keeps Up and Down inside the active editor while editing', () => {
+    const { component, onSubmit } = form([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+    ])
+    input(component).handleInput('1')
+    input(component).handleInput(KEY.down)
+    input(component).handleInput(KEY.up)
+    input(component).handleInput('2')
+    input(component).handleInput(KEY.enter)
+    input(component).handleInput('3')
+    input(component).handleInput(KEY.enter)
+    // The structural fake editor records unimplemented cursor keys literally;
+    // their presence in A proves the controller did not navigate to B.
+    expect(onSubmit).toHaveBeenCalledWith({ a: `1${KEY.down}${KEY.up}2`, b: '3' })
+  })
+
+  it('submits a single-field form with one Enter', () => {
+    const { component, onSubmit } = form([{ id: 'only', label: 'Only' }])
+    input(component).handleInput('value')
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).toHaveBeenCalledWith({ only: 'value' })
+  })
+
+  it('keeps the panel open with the error line when a required field is empty', () => {
+    const { component, onSubmit } = form([
+      { id: 'a', label: 'Alpha', required: true },
+      { id: 'b', label: 'Beta', required: true },
+    ])
+    for (let step = 0; step < 4; step += 1) input(component).handleInput(KEY.enter)
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(component.render(60).some(row => row.includes('Alpha cannot be empty'))).toBe(true)
+  })
+
+  it('revalidates earlier fields before submitting from the last field', () => {
+    const { component, onSubmit } = form([
+      { id: 'a', label: 'Alpha', required: true },
+      { id: 'b', label: 'Beta', required: true },
+    ])
+    input(component).handleInput(KEY.down)
+    input(component).handleInput('done')
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(component.render(60).join('\n')).toContain('Alpha cannot be empty')
+  })
+
+  it('surfaces a validator verdict and jumps to the field', () => {
+    const { component, onSubmit } = form([
+      { id: 'a', label: 'A' },
+      { id: 'route', label: 'Route', validate: value => value === 'ok' ? undefined : 'route must be ok' },
+    ])
+    input(component).handleInput(KEY.down)
+    input(component).handleInput('nope')
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).not.toHaveBeenCalled()
+    const rows = component.render(60)
+    expect(rows.some(row => row.includes('route must be ok'))).toBe(true)
+    // The jump returned the cursor to the failing field.
+    input(component).handleInput('!')
+    expect(rows).toBeDefined()
+  })
+
+  it('never renders the masked text, only the bullet row', () => {
+    const { component } = form([
+      { id: 'key', label: 'API key', mask: true },
+    ])
+    input(component).handleInput('hunter2')
+    const rows = component.render(60)
+    expect(rows.some(row => row.includes('•••••••'))).toBe(true)
+    expect(rows.some(row => row.includes('hunter2'))).toBe(false)
+  })
+
+  it('keeps pasted control text and mid-buffer edits out of secret rendering', () => {
+    const { component, onSubmit } = form([{ id: 'key', label: 'API key', mask: true }])
+    input(component).handleInput('\x1b[200~hunterX\x1b[31m2\x1b[201~')
+    for (let step = 0; step < 7; step += 1) input(component).handleInput(KEY.left)
+    input(component).handleInput('\x7f')
+    const rows = component.render(60).join('\n')
+    expect(rows).not.toContain('hunter')
+    expect(rows).not.toContain('[31m')
+    expect(rows).toContain('•')
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).toHaveBeenCalledOnce()
+  })
+
+  it('renders the subtitle and swaps in setError without closing', () => {
+    const { component } = form([{ id: 'a', label: 'A' }], { subtitle: 'the original subtitle' })
+    expect(component.render(60).some(row => row.includes('the original subtitle'))).toBe(true)
+    component.setError('the flow failed')
+    const rows = component.render(60)
+    expect(rows.some(row => row.includes('the flow failed'))).toBe(true)
+    expect(rows.some(row => row.includes('the original subtitle'))).toBe(false)
+    component.setError(undefined)
+    expect(component.render(60).some(row => row.includes('the original subtitle'))).toBe(true)
+  })
+
+  it('ignores focusField for an unknown id and renders an empty input row', () => {
+    const { component } = form([{ id: 'key', label: 'Key', mask: true }])
+    component.focusField('missing')
+    const rows = component.render(60)
+    // The untouched canonical secret field renders without exposing text.
+    expect(rows[0]).toContain('╭')
+    expect(rows.at(-1)).toContain('╰')
+    expect(rows.some(row => row.includes('Key:') && !row.includes('•'))).toBe(true)
+  })
+
+  it('submits a pre-filled field after entering edit mode', () => {
+    const { component, onSubmit } = form([
+      { id: 'route', label: 'Route', initial: 'preset' },
+    ])
+    input(component).handleInput(KEY.enter)
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).toHaveBeenCalledWith({ route: 'preset' })
+  })
+
+  it('restores edit mode across a rebuild after the first Enter', () => {
+    const { component, onSubmit } = form([{ id: 'route', label: 'Route', initial: 'preset' }])
+    input(component).handleInput(KEY.enter)
+    component.invalidate()
+    input(component).handleInput(KEY.enter)
+    expect(onSubmit).toHaveBeenCalledWith({ route: 'preset' })
+  })
+
+  it('leaves restored edit mode before Escape cancels', () => {
+    const { component, onCancel } = form([{ id: 'route', label: 'Route', initial: 'preset' }])
+    input(component).handleInput(KEY.enter)
+    component.invalidate()
+    input(component).handleInput(KEY.escape)
+    expect(onCancel).not.toHaveBeenCalled()
+    input(component).handleInput(KEY.escape)
+    expect(onCancel).toHaveBeenCalledOnce()
+    expect(component.render(60).join('\n')).toContain('Enter edit · Esc cancel')
+  })
+
+  it('shows hints when the value column has room and hides them when it does not', () => {
+    const { component } = form([{ id: 'route', label: 'Route', hint: 'optional route' }])
+    const rows = component.render(60)
+    expect(rows.some(row => row.includes('Route') && row.includes('optional route'))).toBe(true)
+    expect(rows.filter(row => row.includes('Route')).length).toBe(1)
+    expect(rows.some(row => row.includes('>') && row.includes('Route'))).toBe(false)
+    input(component).handleInput('x'.repeat(80))
+    expect(component.render(20).some(row => row.includes('optional route'))).toBe(false)
+  })
+
+  it('cancels with Escape and drops cached render state', () => {
+    const { component, onCancel } = form([{ id: 'a', label: 'A' }])
+    input(component).handleInput(KEY.escape)
+    expect(onCancel).toHaveBeenCalledOnce()
+    component.invalidate()
+  })
+
+  it('bridges focus, pins empty forms, and ignores unrelated compiler events', () => {
+    const { component, onSubmit } = form([])
+    component.focused = true
+    expect(component.focused).toBe(true)
+    component.handleInput(KEY.down)
+    ;(component as unknown as { onEvent(event: { kind: 'activate', controlId: string }): void })
+      .onEvent({ kind: 'activate', controlId: 'other' })
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+})

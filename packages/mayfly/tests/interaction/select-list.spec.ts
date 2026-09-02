@@ -1,0 +1,464 @@
+/**
+ * Unit tests for the shared canonical single-select controller and the list
+ * geometry helpers, over the fake keymap, theme, and components.
+ */
+
+import { describe, expect, it, vi } from 'vitest'
+import {
+  MAX_LIST_VISIBLE,
+  CanonicalSelectController,
+  counterRow,
+  oneLine,
+} from '../../src/interaction/select-list.ts'
+import type { SelectRow } from '../../src/interaction/select-list.ts'
+import { FakeMayflyComponents, FakeKeymap, FakeTheme, KEY } from './fakes.ts'
+
+describe('counterRow', () => {
+  it('appears only beyond the window', () => {
+    expect(counterRow(0, 8, 8)).toBeUndefined()
+    expect(counterRow(0, 9, 8)).toBe('  (1/9)')
+    expect(counterRow(4, 9, 8)).toBe('  (5/9)')
+  })
+})
+
+describe('oneLine', () => {
+  it('collapses line breaks and trims', () => {
+    expect(oneLine('a\nb\r\nc ')).toBe('a b c')
+  })
+})
+
+function rows(count: number): SelectRow[] {
+  return Array.from({ length: count }, (_, index) => ({
+    value: `v${index}`,
+    label: `Item ${index}`,
+  }))
+}
+
+function mount(options: {
+  rows?: readonly SelectRow[] | ((query: string) => readonly SelectRow[])
+  title?: string
+  footer?: string
+  initialValue?: string
+  filter?: boolean
+  onSelect?: (row: SelectRow) => void
+  onBlockedSelect?: (row: SelectRow) => void
+  onToggle?: (row: SelectRow) => void
+  onCancel?: () => void
+} = {}): {
+  panel: CanonicalSelectController
+  onSelect: ReturnType<typeof vi.fn>
+  onBlockedSelect: ReturnType<typeof vi.fn>
+  onCancel: ReturnType<typeof vi.fn>
+} {
+  const onSelect = vi.fn()
+  const onBlockedSelect = vi.fn()
+  const onCancel = vi.fn()
+  const panel = new CanonicalSelectController({
+    keymap: new FakeKeymap(),
+    theme: new FakeTheme(),
+    components: new FakeMayflyComponents(),
+    rows: options.rows ?? rows(3),
+    title: options.title,
+    footer: options.footer,
+    initialValue: options.initialValue,
+    filter: options.filter === true ? true : undefined,
+    onSelect: options.onSelect ?? onSelect,
+    onBlockedSelect: options.onBlockedSelect ?? onBlockedSelect,
+    ...(options.onToggle === undefined ? {} : { onToggle: options.onToggle }),
+    onCancel: options.onCancel ?? onCancel,
+  })
+  panel.focused = true
+  return { panel, onSelect, onBlockedSelect, onCancel }
+}
+
+describe('CanonicalSelectController navigation', () => {
+  it('maps compiler events, bridges focus, and rejects malformed selections', () => {
+    const { panel, onSelect, onBlockedSelect } = mount({ rows: [
+      { value: 'v0', label: 'Enabled' },
+      { value: 'blocked', label: 'Blocked', disabled: true },
+    ] })
+    panel.focused = true
+    expect(panel.focused).toBe(true)
+    ;(panel as unknown as { adapter: { handleInput(data: string): void } }).adapter.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'v0' }))
+    const events = panel as unknown as { onEvent(event: { kind: string, controlId: string, value?: unknown }): void }
+    events.onEvent({ kind: 'activate', controlId: 'other' })
+    events.onEvent({ kind: 'selection-change', controlId: 'select-list', value: 'missing' })
+    events.onEvent({ kind: 'selection-change', controlId: 'select-list', value: 'blocked' })
+    expect(onSelect).toHaveBeenCalledOnce()
+    expect(onBlockedSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'blocked' }))
+  })
+
+  it('hydrates rows without losing a valid cursor or crashing on an empty view', () => {
+    const { panel } = mount({ initialValue: 'v1' })
+    panel.setRows([{ value: 'other', label: 'Other' }])
+    expect(panel.render(60).some(line => line.includes('Other'))).toBe(true)
+    panel.setRows([])
+    panel.setRows([{ value: 'fresh', label: 'Fresh' }])
+    expect(panel.render(60).some(line => line.includes('Fresh'))).toBe(true)
+  })
+
+  it('stops the cursor at both ends', () => {
+    const { panel, onSelect } = mount()
+    panel.handleInput(KEY.up)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'v0' }))
+    panel.handleInput(KEY.down)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v1' }))
+    panel.handleInput(KEY.down)
+    panel.handleInput(KEY.down)
+    panel.handleInput(KEY.down)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v2' }))
+    panel.handleInput(KEY.up)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v1' }))
+  })
+
+  it('navigates a 100,000-row logical list while exposing only one render window', () => {
+    const { panel, onSelect } = mount({ rows: rows(100_000) })
+    const first = panel.currentNode()
+    expect(first.kind === 'surface' && first.child.kind === 'list' ? first.child.items : []).toHaveLength(MAX_LIST_VISIBLE)
+    panel.handleInput('\x1b[H')
+    panel.handleInput('\x1b[6~')
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v8' }))
+    panel.handleInput('\x1b[5~')
+
+    panel.handleInput('\x1b[F')
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v99999' }))
+    const last = panel.currentNode()
+    const lastItems = last.kind === 'surface' && last.child.kind === 'list' ? last.child.items : []
+    expect(lastItems).toHaveLength(MAX_LIST_VISIBLE)
+    expect(lastItems.at(-1)).toMatchObject({ id: 'v99999' })
+
+    panel.handleInput('\x1b[H')
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v0' }))
+  })
+
+  it('moves the focus background together with the selected marker', () => {
+    const { panel } = mount()
+    const before = panel.render(60)
+    expect(before.find(row => row.includes('Item 0'))).toContain('{')
+
+    panel.handleInput(KEY.down)
+    const after = panel.render(60)
+    expect(after.find(row => row.includes('Item 0'))).not.toContain('{')
+    expect(after.find(row => row.includes('Item 1'))).toContain('{')
+  })
+
+  it('seeds the cursor on the initial value and falls back to the head', () => {
+    const seeded = mount({ initialValue: 'v1' })
+    seeded.panel.handleInput(KEY.enter)
+    expect(seeded.onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'v1' }))
+    const unknown = mount({ initialValue: 'nope' })
+    unknown.panel.handleInput(KEY.enter)
+    expect(unknown.onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'v0' }))
+  })
+
+  it('skips a disabled row during navigation', () => {
+    const disabled: SelectRow[] = [
+      { value: 'ok', label: 'Pickable' },
+      { value: 'custom', label: 'Custom', disabled: true },
+    ]
+    const { panel, onSelect, onBlockedSelect } = mount({ rows: disabled })
+    panel.handleInput(KEY.down)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'ok' }))
+    expect(onBlockedSelect).not.toHaveBeenCalled()
+  })
+
+  it('ignores Enter on a disabled row when no blocked handler is set', () => {
+    const panel = new CanonicalSelectController({
+      keymap: new FakeKeymap(),
+      theme: new FakeTheme(),
+      components: new FakeMayflyComponents(),
+      rows: [{ value: 'custom', label: 'Custom', disabled: true }],
+      onSelect: () => {},
+      onCancel: () => {},
+    })
+    panel.handleInput(KEY.enter)
+    panel.handleInput('\x1b[H')
+    panel.handleInput('\x1b[F')
+    // No throw and no selection: the press is swallowed.
+  })
+
+  it('ignores submit and unbound keys on an empty list', () => {
+    const { panel, onSelect, onCancel } = mount({ rows: [] })
+    panel.handleInput(KEY.enter)
+    panel.handleInput(KEY.up)
+    panel.handleInput(KEY.down)
+    panel.handleInput('x')
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(onCancel).not.toHaveBeenCalled()
+    panel.invalidate()
+  })
+
+  it('calls onCancel on Escape', () => {
+    const { panel, onSelect, onCancel } = mount()
+    panel.handleInput(KEY.escape)
+    expect(onCancel).toHaveBeenCalledOnce()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('toggles the focused row with Space and re-anchors dynamic rows', () => {
+    let expanded = false
+    const onToggle = vi.fn(() => { expanded = !expanded })
+    const { panel } = mount({
+      rows: () => expanded
+        ? [{ value: 'root', label: 'Root' }, { value: 'child', label: 'Child' }]
+        : [{ value: 'root', label: 'Root' }],
+      onToggle,
+    })
+    panel.handleInput(KEY.space)
+    expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ value: 'root' }))
+    panel.handleInput(KEY.enter)
+    expect(panel.render(40).some(row => row.includes('Child'))).toBe(true)
+  })
+
+  it('uses the canonical Space label when the keymap has no toggle binding', () => {
+    const keymap = new FakeKeymap()
+    vi.spyOn(keymap, 'getKeys').mockReturnValue([])
+    const panel = new CanonicalSelectController({
+      keymap,
+      theme: new FakeTheme(),
+      components: new FakeMayflyComponents(),
+      rows: [{ value: 'root', label: 'Root' }],
+      onSelect: () => {},
+      onToggle: () => {},
+      onCancel: () => {},
+    })
+    panel.focused = true
+    expect(panel.render(60).join('\n')).toContain('Space toggle')
+  })
+
+  it('swallows a tree toggle on an empty view and falls back when a toggle removes the row', () => {
+    const emptyToggle = vi.fn()
+    const empty = mount({ rows: [], onToggle: emptyToggle })
+    empty.panel.handleInput(KEY.space)
+    expect(emptyToggle).not.toHaveBeenCalled()
+
+    let rowsAfterToggle: readonly SelectRow[] = [{ value: 'root', label: 'Root' }]
+    const changed = mount({
+      rows: () => rowsAfterToggle,
+      onToggle: () => { rowsAfterToggle = [{ value: 'next', label: 'Next' }] },
+    })
+    changed.panel.handleInput(KEY.space)
+    changed.panel.handleInput(KEY.enter)
+    expect(changed.onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'next' }))
+  })
+})
+
+describe('CanonicalSelectController rendering', () => {
+  it('frames the dialog with contextual operations, badge, and muted description', () => {
+    const { panel } = mount({
+      rows: [
+        { value: 'a', label: 'Alpha', description: 'first\nchoice', badge: '← current' },
+        { value: 'b', label: 'Beta' },
+      ],
+    })
+    expect(panel.currentNode()).toMatchObject({
+      kind: 'surface', title: 'Select', chrome: 'overlay',
+      child: { kind: 'list', selectedIds: ['a'], items: [{ id: 'a', detail: 'first choice', badge: '← current' }, { id: 'b' }] },
+    })
+    expect(panel.render(60).join('\n')).toContain('↑↓←→ options · Enter choose · Esc close')
+  })
+
+  it('defaults the title and omits the hint row', () => {
+    const { panel } = mount({ title: 'Sessions' })
+    expect(panel.currentNode()).toMatchObject({ title: 'Sessions' })
+  })
+
+  it('drops the description when the row is too narrow', () => {
+    const { panel } = mount({ rows: [{ value: 'a', label: 'Alpha', description: 'first' }] })
+    expect(panel.render(10).every(row => new FakeMayflyComponents().visibleWidth(row) <= 10)).toBe(true)
+  })
+
+  it('truncates long labels to the row width', () => {
+    const { panel } = mount({ rows: [{ value: 'a', label: 'A very long label indeed' }] })
+    expect(panel.render(14).every(row => new FakeMayflyComponents().visibleWidth(row) <= 14)).toBe(true)
+  })
+
+  it('windows a long list behind a scroll position row', () => {
+    const { panel } = mount({ rows: rows(12) })
+    const lines = panel.render(40)
+    expect(lines.some(line => line.includes('(1/12)'))).toBe(true)
+    expect(lines.some(line => line.includes('Item 8'))).toBe(false)
+    for (let i = 0; i < 10; i += 1) panel.handleInput(KEY.down)
+    const scrolled = panel.render(40)
+    expect(scrolled.some(line => line.includes('(11/12)'))).toBe(true)
+    expect(scrolled.some(line => line.includes('Item 0'))).toBe(false)
+  })
+
+  it('renders the visible window size the migration preserved', () => {
+    expect(MAX_LIST_VISIBLE).toBe(8)
+  })
+})
+
+describe('CanonicalSelectController type-to-filter (S30②)', () => {
+  it('swallows printable bytes when the filter is off (the other consumers)', () => {
+    const { panel, onSelect, onCancel } = mount()
+    panel.handleInput('x')
+    panel.handleInput('\x7f')
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(onCancel).not.toHaveBeenCalled()
+    expect(panel.currentNode()).not.toHaveProperty('child.filter')
+  })
+
+  it('grows the query on printables, narrows the rows, and paints the Search row', () => {
+    const { panel } = mount({
+      filter: true,
+      rows: [...rows(2), { value: 'xy', label: 'Xylophone' }],
+    })
+    // The fake matcher is a case-sensitive subsequence (the real one folds
+    // case; ordering semantics are pinned by the core spec) — so the
+    // queries here use the labels' own casing.
+    for (const char of 'Item') panel.handleInput(char)
+    const lines = panel.render(40)
+    expect(panel.currentNode()).toMatchObject({ child: { filter: 'Item' } })
+    expect(lines.some(line => line.includes('Item 0'))).toBe(true)
+    expect(lines.some(line => line.includes('Xylophone'))).toBe(false)
+  })
+
+  it('keeps Space as a query character after tree search starts', () => {
+    const onToggle = vi.fn()
+    const { panel } = mount({
+      filter: true,
+      rows: [{ value: 'ab', label: 'Alpha Beta' }],
+      onToggle,
+    })
+    for (const char of 'Alpha Beta') panel.handleInput(char)
+    expect(onToggle).not.toHaveBeenCalled()
+    expect(panel.render(40).some(row => row.includes('Alpha Beta'))).toBe(true)
+  })
+
+  it('carries the type-to-search hint fragment only while the query is empty', () => {
+    const withHint = mount({ filter: true })
+    expect(withHint.panel.render(80).join('\n')).toContain('Type to search')
+    withHint.panel.handleInput('i')
+    expect(withHint.panel.render(80).join('\n')).not.toContain('Type to search')
+  })
+
+  it('shrinks the query on Backspace and clamps at empty', () => {
+    const { panel } = mount({ filter: true, rows: [...rows(2), { value: 'xy', label: 'Xylophone' }] })
+    for (const char of 'Ite') panel.handleInput(char)
+    expect(panel.render(40).some(line => line.includes('Xylophone'))).toBe(false)
+    panel.handleInput('\x7f')
+    // 'It' still matches only the Item rows.
+    expect(panel.render(40).some(line => line.includes('Xylophone'))).toBe(false)
+    // The raw bytes match singles only: a multi-char escape sequence (no
+    // keymap action claims it) falls through untouched.
+    panel.handleInput('\x1b[Z')
+    panel.handleInput('\x7f')
+    panel.handleInput('\x7f')
+    expect(panel.render(40).some(line => line.includes('Xylophone'))).toBe(true)
+    panel.handleInput('\x7f')
+    expect(panel.render(80).join('\n')).toContain('Type to search')
+  })
+
+  it('leaves filtering on Escape, preserves the query, and clears it explicitly', () => {
+    const { panel, onCancel } = mount({ filter: true, footer: 'Choose a row' })
+    panel.handleInput('i')
+    panel.handleInput(KEY.escape)
+    expect(onCancel).not.toHaveBeenCalled()
+    expect(panel.currentNode()).toMatchObject({ child: { filter: 'i' } })
+    expect(panel.render(80).join('\n')).toContain('Clear filter')
+    expect(panel.render(80).join('\n')).toContain('Choose a row')
+    panel.handleInput(KEY.enter)
+    expect(panel.render(80).join('\n')).toContain('Type to search')
+    panel.handleInput(KEY.escape)
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('clears a dynamic filter even when the refreshed source is empty', () => {
+    let empty = false
+    const { panel } = mount({ filter: true, rows: () => empty ? [] : [{ value: 'a', label: 'Alpha' }] })
+    panel.handleInput('a')
+    panel.handleInput(KEY.escape)
+    empty = true
+    panel.handleInput(KEY.enter)
+    expect(panel.currentNode()).not.toMatchObject({ child: { filter: expect.any(String) } })
+  })
+
+  it('renders a muted no-matches row and swallows Enter on the empty view', () => {
+    const { panel, onSelect } = mount({ filter: true })
+    for (const char of 'zzz') panel.handleInput(char)
+    expect(panel.render(40).some(line => line.includes('no matches'))).toBe(true)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('counts and windows the filtered view, not the full list', () => {
+    const { panel } = mount({ filter: true, rows: rows(12) })
+    // 'Item 1' subsequence-matches Item 1, Item 10, and Item 11 — below
+    // the window, so no counter; clearing the query shows the full (1/12).
+    for (const char of 'Item 1') panel.handleInput(char)
+    const narrowed = panel.render(40)
+    expect(narrowed.some(line => line.includes('/12)'))).toBe(false)
+    expect(narrowed.some(line => line.includes('Item 1'))).toBe(true)
+    expect(narrowed.some(line => line.includes('Item 2 '))).toBe(false)
+    for (let i = 0; i < 6; i += 1) panel.handleInput('\x7f')
+    expect(panel.render(40).some(line => line.includes('(1/12)'))).toBe(true)
+  })
+
+  it('reseeds the cursor on the initial value, else the head of the view', () => {
+    const { panel, onSelect } = mount({ filter: true, rows: rows(3), initialValue: 'v2' })
+    // 'Item 2' keeps v2 in the view: Enter picks it straight away.
+    for (const char of 'Item 2') panel.handleInput(char)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'v2' }))
+    // 'Item 0' filters v2 out: the cursor falls to the head.
+    for (let i = 0; i < 6; i += 1) panel.handleInput('\x7f')
+    for (const char of 'Item 0') panel.handleInput(char)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v0' }))
+  })
+
+  it('keeps Up/Down bounded within the filtered view', () => {
+    const { panel, onSelect } = mount({
+      filter: true,
+      rows: [{ value: 'a', label: 'Alpha' }, { value: 'b', label: 'Beta' }, { value: 'xy', label: 'Xylophone' }],
+    })
+    panel.handleInput('A')
+    // Up from the filtered head stays at the head and never reaches the hidden row.
+    panel.handleInput(KEY.up)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'a' }))
+  })
+
+  it('skips a disabled row under the filter', () => {
+    const { panel, onSelect, onBlockedSelect } = mount({
+      filter: true,
+      rows: [
+        { value: 'ok', label: 'Alpha ok' },
+        { value: 'no', label: 'Alpha custom', disabled: true },
+      ],
+    })
+    panel.handleInput('A')
+    panel.handleInput(KEY.down)
+    panel.handleInput(KEY.up)
+    panel.handleInput(KEY.enter)
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: 'ok' }))
+    expect(onBlockedSelect).not.toHaveBeenCalled()
+  })
+
+  it('matches filterText in place of the label when provided', () => {
+    const { panel } = mount({
+      filter: true,
+      rows: [{ value: 'a', label: 'Alpha', filterText: 'hidden gem' }],
+    })
+    // A query hitting only the filterText keeps the row.
+    for (const char of 'gem') panel.handleInput(char)
+    expect(panel.render(40).some(line => line.includes('Alpha'))).toBe(true)
+    // A query hitting only the label drops it: the override replaces, not
+    // extends, the match text.
+    panel.handleInput('\x7f')
+    panel.handleInput('\x7f')
+    panel.handleInput('\x7f')
+    for (const char of 'alpha') panel.handleInput(char)
+    expect(panel.render(40).some(line => line.includes('no matches'))).toBe(true)
+  })
+})

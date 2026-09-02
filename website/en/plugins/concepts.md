@@ -1,0 +1,43 @@
+# Core concepts
+
+## One Cordis graph
+
+Mayfly does not create a nested plugin system. External plugins, official Mayfly
+rows, and native dsh services are members of one Cordis tree. `inject` is both
+an activation dependency and a reload boundary.
+
+## Fiber is lifecycle
+
+Command, pane, status, overlay, and editor-extension registrations belong to
+the caller's Fiber. They disappear on unload. Bind other subscriptions, timers,
+and external listeners through `ctx.effect()` or an explicit disposer.
+
+## Native domain, Mayfly UI
+
+Reuse dsh behavior directly. Mayfly does not copy command, tool, projection,
+setting, or Agent APIs. Mayfly seams exist only for terminal UI.
+
+Inject `mayflyCurrentAgent` when native Agent-scoped behavior needs the current
+selection:
+
+```ts
+const agent = ctx.mayflyCurrentAgent.current()
+if (agent !== null) {
+  const snapshot = ctx.sessionProjections.snapshot(agent.session, ['myProjection'])
+}
+```
+
+Do not retain Agent or Session across selection revisions.
+
+## Renderer-neutral
+
+UI contributions return `MayflyUiNode`. Plugins do not import pi-tui, assemble
+ANSI, or read terminal width. Core owns validation, layout, theme, focus, and
+terminal safety.
+
+## Failure semantics
+
+Native dsh services keep their own result and exception behavior. Mayfly
+registries throw for invalid ids, missing callbacks, and duplicate ids.
+Registration handles expose `refresh()/dispose()`; overlays also expose
+`close()`.
