@@ -1,0 +1,163 @@
+# Publish verified tarballs to a candidate channel, exercise exact registry
+# installs, then promote dist-tags. Every transition is safely rerunnable.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact Mayfly version to release (for example 0.1.1-rc.1)'
+        required: true
+        type: string
+      promote_only:
+        description: 'Skip build/publish/verification and promote an existing candidate artifact'
+        required: false
+        default: false
+        type: boolean
+      source_run_id:
+        description: 'Workflow run ID containing the npm-tarballs artifact (required for promote-only)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+
+jobs:
+  candidate:
+    name: gate + publish candidate
+    if: ${{ inputs.promote_only != true }}
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: guard tag, version, and main ancestry
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          MANIFEST=$(node -p "require('./packages/mayfly/package.json').version")
+          test "$VERSION" = "$MANIFEST" || { echo "tag $VERSION != manifest $MANIFEST" >&2; exit 1; }
+          # Test packages are intentionally published from their acceptance
+          # branch before merge; stable/rc tags remain main-only.
+          if [[ "$VERSION" != *-test.* ]]; then
+            git fetch origin main
+            git merge-base --is-ancestor HEAD origin/main || { echo 'release tag commit is not on main' >&2; exit 1; }
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm diagrams:check
+      - run: pnpm build
+      - run: pnpm check:lib
+      - name: full coverage gate (正式 rc/stable)
+        if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
+        run: pnpm test:coverage
+      - name: test-package contract smoke
+        if: ${{ contains(inputs.version || github.ref_name, '-test.') }}
+        run: pnpm vitest run packages/ui/tests/ui.spec.ts packages/ui/tests/provider.spec.ts packages/cli/tests/main.spec.ts packages/mayfly/tests/interaction/commands-plugin.spec.ts
+      - run: pnpm check:pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: |
+            .artifacts/pack/*.tgz
+            .artifacts/pack/index.json
+          if-no-files-found: error
+      # OIDC migration replaces this isolated auth step only. Candidate and
+      # promotion behavior deliberately know nothing about credential source.
+      - name: verify npm publisher identity
+        run: npm whoami --registry=https://registry.npmjs.org
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: node script/release-packages.mjs publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  registry-install:
+    name: registry install (${{ matrix.os }}, node ${{ matrix.node }})
+    needs: candidate
+    if: ${{ inputs.promote_only != true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['22', '24']
+    runs-on: ${{ matrix.os }}
+    env:
+      DSH_HOME: ${{ github.workspace }}/.mayfly-candidate-home
+      # Skip first-run credential onboarding in the isolated PTY smoke. This
+      # value never reaches a model request; the smoke exits immediately.
+      DEEPSEEK_API_KEY: mayfly-release-smoke-key
+      # Exact candidate versions are intentionally younger than pnpm 11's
+      # policy window. This exception exists only in the release verifier.
+      PNPM_CONFIG_MINIMUM_RELEASE_AGE: '0'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          registry-url: https://registry.npmjs.org
+      - name: install exact candidate CLI
+        shell: bash
+        run: npm install -g "@ephemeral-ai/mayfly-cli@${RELEASE_VERSION#v}"
+      - name: verify exact CLI version
+        shell: bash
+        run: test "$(mayfly -V | awk '{print $2}')" = "${RELEASE_VERSION#v}"
+      - name: materialize and execute bundled Harness host
+        shell: bash
+        run: mayfly plugin --help
+      - name: calibrate exact bundle and compose profile
+        if: runner.os == 'Linux' && matrix.node == '24'
+        run: mayfly --dump-config
+      - name: verify installed Mayfly set
+        if: runner.os == 'Linux' && matrix.node == '24'
+        shell: bash
+        run: node script/verify-installed-mayfly.mjs "${RELEASE_VERSION#v}"
+      - name: real PTY boot and clean exit
+        if: runner.os == 'Linux' && matrix.node == '24'
+        shell: bash
+        run: |
+          (sleep 10; printf '/quit\r'; sleep 3) | timeout 90 script -qec mayfly "$RUNNER_TEMP/mayfly-candidate.typescript"
+          grep -q $'\033\[?2004h' "$RUNNER_TEMP/mayfly-candidate.typescript"
+          grep -q $'\033\[?2004l' "$RUNNER_TEMP/mayfly-candidate.typescript"
+
+  promote:
+    name: promote release channel
+    needs: [candidate, registry-install]
+    if: ${{ always() && !contains(inputs.version || github.ref_name, '-test.') && (inputs.promote_only == true || needs.registry-install.result == 'success') }}
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: .artifacts/pack
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id || github.run_id }}
+      - run: node script/release-packages.mjs promote
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,11 @@
+- insert:
+    - id: '@mayfly-example/header'
+      name: '@mayfly-example/header'
+    - id: '@mayfly-example/right-inspector'
+      name: '@mayfly-example/right-inspector'
+    - id: '@mayfly-example/bottom-log'
+      name: '@mayfly-example/bottom-log'
+    - id: '@mayfly-example/overlay'
+      name: '@mayfly-example/overlay'
+    - id: '@mayfly-example/ui-gallery'
+      name: '@mayfly-example/ui-gallery'

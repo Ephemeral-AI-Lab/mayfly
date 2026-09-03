@@ -1,0 +1,378 @@
+/**
+ * The width-scan contract for the transcript components (D48): the crash
+ * family (#14/#15/#18) all lived here, so every content-rendering component
+ * renders each adversarial fixture at each scan width and must honor the
+ * `MayflyComponent` contract — every output line's visible width within the
+ * width it was given. A red row here is a latent pi-tui width-guard crash
+ * (before the D48 exit clamp) or a mayfly-overflow.log entry (after it);
+ * either way the component gets fixed, not the harness.
+ */
+
+import { homedir } from 'node:os'
+import { describe, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import type { GoalProjection } from '@deepseek-ai/dsh-goal'
+import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { MayflyStatusService } from '../../../ui/src/provider.ts'
+import type { MayflySemanticColors } from '../../src/core/index.ts'
+import {
+  AssistantMessageComponent,
+  ErrorMessageComponent,
+  InterruptedMarkerComponent,
+  StepSummaryComponent,
+  ToolCallComponent,
+  UserMessageComponent,
+} from '../../src/transcript/components.ts'
+import { AgentGroupComponent } from '../../src/transcript/agent-group.ts'
+import { ReadGroupComponent } from '../../src/transcript/read-group.ts'
+import { SearchGroupComponent } from '../../src/transcript/search-group.ts'
+import { ThinkingComponent } from '../../src/transcript/thinking.ts'
+import * as agentsPane from '../../src/transcript/pane-agents.ts'
+import * as todoPane from '../../src/transcript/pane-todo.ts'
+import { workflowNode, type WorkflowRunState } from '../../src/transcript/pane-workflow.ts'
+import { goalStatusText } from '../../src/transcript/status-goal.ts'
+import { createTranscriptModel, TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
+import { StatusFooterComponent } from '../../src/transcript/status-model.ts'
+import { bannerLayout, composeBannerLines, shortenHome } from '../../src/transcript/banner.ts'
+import type { TranscriptToolItem } from '../../src/transcript/types.ts'
+import { fakeMayflyComponents } from './helpers.ts'
+import { bootPanePlugin } from './pane-fakes.ts'
+import { COLORS, fakeAgent } from './status-fakes.ts'
+import { event, subagentCallEvent } from './helpers.ts'
+import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import {
+  interpolateLocaleMessage,
+  type MayflyLocaleCatalog,
+  type MayflyLocaleId,
+  type MayflyTranslate,
+} from '../../src/frontend/locale.ts'
+import { BANNER_LOCALE, TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'
+
+/** Identity colors satisfy MayflySemanticColors where consumed. */
+const colors = COLORS as MayflySemanticColors
+
+/** Bind a catalog directly so width scans cover both shipped languages. */
+function translator(catalog: MayflyLocaleCatalog, locale: MayflyLocaleId): MayflyTranslate {
+  return (key, values) => interpolateLocaleMessage(catalog[locale][key] ?? catalog.en[key] ?? key, values)
+}
+
+/** A bash tool item carrying the fixture text as its command. */
+function bashItem(text: string): TranscriptToolItem {
+  return {
+    kind: 'tool',
+    seq: 1,
+    turn: 1,
+    callId: 'c1',
+    name: 'bash',
+    arguments: '{}',
+    parsedArguments: { command: text, run_in_background: true },
+  } as TranscriptToolItem
+}
+
+/** A subagent tool item whose description is the fixture text. */
+function subagentItem(text: string): TranscriptToolItem {
+  return {
+    kind: 'tool',
+    seq: 1,
+    turn: 1,
+    callId: 'c2',
+    name: 'subagent',
+    arguments: '{}',
+    parsedArguments: { description: text, prompt: text },
+  } as TranscriptToolItem
+}
+
+/** Compile one public wire node through the renderer used by mounted panes. */
+function renderNode(node: MayflyUiNode, width: number): string[] {
+  const compiled = compileMayflyUiNode(node, {
+    components: fakeMayflyComponents(),
+    colors,
+    getViewport: () => ({ columns: width, rows: 24 }),
+    screenMode: 'main',
+  })
+  return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width)
+}
+
+describe('transcript width-scan', () => {
+  for (const locale of ['en', 'zh'] as const) {
+    it(`localized transcript chrome survives every width in ${locale}`, () => {
+      const components = fakeMayflyComponents()
+      const transcriptT = translator(TRANSCRIPT_LOCALE, locale)
+      const longUser = new UserMessageComponent({
+        kind: 'user', seq: 1, turn: 1,
+        text: Array.from({ length: 12 }, (_, index) => `line ${String(index)} 界🙂`).join('\n'),
+        images: [{ attachmentId: 'image', mediaType: 'image/png', bytes: 1, width: 1, height: 1 }],
+      }, colors, components, {
+        loadImage: () => new Promise(() => {}),
+        t: transcriptT,
+      })
+      const interrupted = new InterruptedMarkerComponent(colors, components, transcriptT)
+      const bannerDeps = {
+        colors,
+        strong: (text: string) => components.strong(text),
+        truncate: (text: string, width: number) => components.truncateToWidth(text, width),
+        visibleWidth: (text: string) => components.visibleWidth(text),
+        t: translator(BANNER_LOCALE, locale),
+      }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`UserMessage/${locale}`, longUser.render(width), width)
+        expectLinesFit(`Interrupted/${locale}`, interrupted.render(width), width)
+        if (bannerLayout(width) !== null) {
+          expectLinesFit(`Banner/${locale}`, composeBannerLines(bannerDeps, {
+            version: '0.1.1-rc.2', model: 'deepseek-chat', provider: 'deepseek', cwd: '~/界🙂',
+          }, width), width)
+        }
+      }
+    })
+  }
+
+  for (const { name, text } of ADVERSARIAL) {
+    it(`UserMessageComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const item = { kind: 'user', seq: 1, turn: 1, text, images: [] }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`UserMessage/${name}`, new UserMessageComponent(item, colors, components).render(width), width)
+      }
+    })
+
+    it(`AssistantMessageComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const item = { kind: 'assistant', seq: 1, turn: 1, step: 1, text }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`Assistant/${name}`, new AssistantMessageComponent(item, colors, components).render(width), width)
+      }
+    })
+
+    it(`ToolCallComponent (bash fallback, the #18 seat) survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`ToolCall/${name}`, new ToolCallComponent(bashItem(text), colors, components).render(width), width)
+      }
+    })
+
+    it(`ReadGroupComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const model = {
+        kind: 'transcript-read-group' as const,
+        id: 'read-group:r1',
+        seq: 1,
+        turn: 1,
+        step: 0,
+        reads: [
+          { callId: 'r1', seq: 1, turn: 1, step: 0, path: text, range: { first: 1, last: 9 }, totalLines: 99, state: 'ok' as const, previewLines: [{ number: 4, text }, { number: 5, text }] },
+          { callId: 'r2', seq: 2, turn: 1, step: 0, path: text, requestedRange: { first: 10, last: 19 }, state: 'pending' as const },
+          { callId: 'r3', seq: 3, turn: 1, step: 0, path: text, state: 'error' as const, error: text },
+        ],
+      }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`ReadGroup/${name}`, new ReadGroupComponent(model, colors, components).render(width), width)
+        const expanded = new ReadGroupComponent(model, colors, components)
+        expanded.setExpanded(true)
+        expectLinesFit(`ReadGroupExpanded/${name}`, expanded.render(width), width)
+      }
+    })
+
+    it(`SearchGroupComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const model = {
+        kind: 'transcript-search-group' as const,
+        id: 'search-group:s1',
+        seq: 1,
+        turn: 1,
+        step: 0,
+        searches: [
+          { callId: 's1', seq: 1, turn: 1, step: 0, pattern: text, shape: 'matches' as const, files: [{ path: text, count: 2, previews: [{ lineNumber: 4, line: text }] }], truncated: true, total: 9, state: 'ok' as const },
+          { callId: 's2', seq: 2, turn: 1, step: 0, pattern: text, shape: 'paths' as const, paths: [text], pathsTotal: 9, total: 9, state: 'ok' as const },
+          { callId: 's3', seq: 3, turn: 1, step: 0, pattern: text, state: 'pending' as const },
+          { callId: 's4', seq: 4, turn: 1, step: 0, pattern: text, state: 'error' as const, error: text },
+        ],
+      }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`SearchGroup/${name}`, new SearchGroupComponent(model, colors, components).render(width), width)
+        const expanded = new SearchGroupComponent(model, colors, components)
+        expanded.setExpanded(true)
+        expectLinesFit(`SearchGroupExpanded/${name}`, expanded.render(width), width)
+      }
+    })
+
+    it(`ErrorMessageComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const item = { kind: 'error', seq: 1, turn: 1, message: text }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`Error/${name}`, new ErrorMessageComponent(item, colors, components).render(width), width)
+      }
+    })
+
+    it(`InterruptedMarkerComponent survives ${name}`, () => {
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`Interrupted/${name}`, new InterruptedMarkerComponent(colors, fakeMayflyComponents()).render(width), width)
+      }
+    })
+
+    it(`StepSummaryComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const item = { kind: 'step-summary', seq: 1, turn: 1, step: 1, toolNames: [text, text], thinking: 1 }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`StepSummary/${name}`, new StepSummaryComponent(item, colors, components).render(width), width)
+      }
+    })
+
+    it(`ThinkingComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const item = { kind: 'thinking', seq: 1, turn: 1, step: 1, text, streaming: false }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`Thinking/${name}`, new ThinkingComponent(item, colors, components).render(width), width)
+      }
+    })
+
+    it(`TranscriptModelComponent semantic bridge survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const model = createTranscriptModel('width-scan', [
+        { kind: 'transcript-user', id: 'user', seq: 1, turn: 1, text, images: [] },
+        { kind: 'transcript-assistant', id: 'assistant', seq: 2, turn: 1, step: 0, text, streaming: false },
+        { kind: 'transcript-thinking', id: 'thinking', seq: 3, turn: 1, step: 0, text, streaming: false },
+        {
+          kind: 'transcript-tool', id: 'tool', seq: 4, turn: 1, step: 0, callId: 'call', name: 'custom',
+          arguments: '{}', startedAt: 1, result: { text, fullText: text, isError: false, endedAt: 2 },
+        },
+        {
+          kind: 'transcript-tool', id: 'presented', seq: 5, turn: 1, step: 0, callId: 'presented', name: 'custom',
+          arguments: '{}', startedAt: 1, presentation: { kind: 'tool', id: 'presented', name: 'custom', result: { kind: 'text', content: text } },
+        },
+        { kind: 'transcript-error', id: 'error', seq: 6, turn: 1, message: text },
+        { kind: 'transcript-interrupted', id: 'interrupted', seq: 7, turn: 1 },
+      ])
+      const component = new TranscriptModelComponent(() => model, {
+        colors,
+        components,
+        images: () => ({}),
+        requestRender: () => undefined,
+      })
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`TranscriptModel/${name}`, component.render(width), width)
+      }
+      component.dispose()
+    })
+
+    it(`AgentGroupComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`AgentGroup/${name}`, new AgentGroupComponent(subagentItem(text), colors, components).render(width), width)
+      }
+    })
+
+    it(`workflow pane survives ${name}`, () => {
+      const run = {
+        id: 'width-run',
+        name: text,
+        phases: [{ title: text }],
+        phasesSeen: [text],
+        currentPhase: text,
+        agents: [{ seq: 1, label: text, phase: text, childId: 'child' }],
+        startedAt: 0,
+        stopReason: undefined,
+        endedAt: undefined,
+        agentsStarted: undefined,
+        attributed: true,
+      } satisfies WorkflowRunState
+      const node = workflowNode([run], 1_000)
+      if (node === null) throw new Error('workflow width fixture did not render')
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`WorkflowPane/${name}`, renderNode(node, width), width)
+      }
+    })
+
+    it(`agents pane survives ${name}`, async () => {
+      agentsPane.setPaneAgentsClock(() => 2_000)
+      const harness = await bootPanePlugin(agentsPane, fakeAgent([
+        subagentCallEvent(1, 1, 'width-agent', 'subagent', text, text, { time: 1_000 }),
+      ]))
+      try {
+        for (const width of SCAN_WIDTHS) {
+          expectLinesFit(`AgentsPane/${name}`, harness.screen.paneLines(width), width)
+        }
+      } finally {
+        await harness.dispose()
+        agentsPane.setPaneAgentsClock(undefined)
+      }
+    })
+
+    it(`goal badge survives ${name}`, async () => {
+      const harness = await bootPanePlugin(todoPane, fakeAgent([
+        event('todo/write', { todos: [{ content: 'next', status: 'pending' }] }),
+      ]))
+      harness.facts.setGoal({
+        goal: {
+          id: 'width-goal',
+          revision: 1,
+          objective: text,
+          phase: 'blocked',
+          blockedReason: { code: 'width', message: text },
+          maxGoalRounds: 8,
+        },
+        roundsStarted: 2,
+        createdAt: 1,
+        updatedAt: 2,
+      } as GoalProjection)
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`GoalBadge/${name}`, harness.screen.paneLines(width), width)
+      }
+      await harness.dispose()
+    })
+
+    it(`banner (composeBannerLines) survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const content = {
+        version: text,
+        model: text,
+        provider: 'p',
+        cwd: shortenHome(text, homedir()),
+      }
+      const deps = {
+        colors,
+        strong: (value: string) => components.strong(value),
+        truncate: (t: string, target: number) => components.truncateToWidth(t, target),
+        visibleWidth: (t: string) => components.visibleWidth(t),
+      }
+      for (const width of SCAN_WIDTHS) {
+        if (bannerLayout(width) === null) continue
+        expectLinesFit(`Banner/${name}`, composeBannerLines(deps, content, width), width)
+      }
+    })
+  }
+
+  it('StatusFooterComponent survives truncating long models at every width', () => {
+    for (const { name, text } of ADVERSARIAL) {
+      const components = fakeMayflyComponents()
+      const status = new MayflyStatusService(new Context())
+      const footer = new StatusFooterComponent(status, components, colors)
+      status.register({ id: 'scan-title', priority: 90, visible: true, band: 'right', node: { kind: 'text', content: text } })
+      status.register({ id: 'scan-left', priority: 10, visible: true, node: { kind: 'text', content: text } })
+      status.register({
+        id: 'scan-goal',
+        priority: 2,
+        visible: true,
+        overflow: 'hide',
+        node: {
+          kind: 'text',
+          content: goalStatusText({
+            id: 'goal-width' as never,
+            revision: 1,
+            objective: text,
+            phase: 'active',
+            maxGoalRounds: 256,
+            roundsStarted: 128,
+            createdAt: 1,
+            updatedAt: 2,
+            activation: 'armed',
+          }),
+        },
+      })
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`FooterShell/${name}`, footer.render(width), width)
+      }
+    }
+  })
+
+})

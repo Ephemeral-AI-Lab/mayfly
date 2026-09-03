@@ -1,0 +1,3 @@
+- insert:
+    - id: '@mayfly-example/bottom-log'
+      name: '@mayfly-example/bottom-log'

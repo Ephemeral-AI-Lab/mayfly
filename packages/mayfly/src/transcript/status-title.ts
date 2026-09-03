@@ -1,0 +1,43 @@
+/**
+ * `mayfly-status-title` plugin: the session-title footer entry — the folded
+ * title right-aligned on the footer's first band (priority 30, the muted
+ * tier: ambient identity, not primary status — the slot the rotating tips
+ * occupied before they retired to the activity pane). The title is generated
+ * upstream by the harness session-title service and exposed through its
+ * official `title` session projection. This entry reads that projection via
+ * `mayflySessionFacts`; it never folds or subscribes to Harness events. An
+ * untitled session renders '' and occupies nothing, so a fresh
+ * session shows no empty slot and the second band keeps only the context
+ * bar; a thin host without the title projection behaves the same.
+ *
+ * @module @ephemeral-ai/mayfly/transcript/status-title
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
+import type { SessionFactsService } from './session-facts.ts'
+
+/** Stable Cordis plugin name. */
+export const name = 'mayfly-status-title'
+
+/** Services required before the title entry can register. */
+export const inject = ['mayflyStatus', 'mayflySessionFacts']
+
+/**
+ * Register the title entry over the official title projection.
+ * @param ctx - plugin context.
+ */
+export function apply(ctx: Context): void {
+  const facts = ctx.get('mayflySessionFacts') as SessionFactsService
+  let text = facts.currentTitle ?? ''
+  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'muted' }
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.title', priority: 30, band: 'right' }, node())
+  const offTitle = facts.subscribeTitle((title) => {
+    const next = title ?? ''
+    if (next === text) return
+    text = next
+    status.set(node())
+  })
+  ctx.effect(() => () => offTitle())
+
+}

@@ -1,0 +1,48 @@
+{
+  "name": "@ephemeral-ai/mayfly-ui",
+  "description": "Renderer-neutral contracts, builders, and UI contribution services for Mayfly",
+  "version": "0.1.0-alpha.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./provider": {
+      "types": "./lib/types/provider.d.ts",
+      "default": "./lib/provider.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*"
+  ],
+  "license": "MIT",
+  "homepage": "https://may-fly.dev",
+  "bugs": {
+    "url": "https://github.com/Ephemeral-AI-Lab/mayfly/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ephemeral-AI-Lab/mayfly.git",
+    "directory": "packages/ui"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/cordis-plugin-include": "^1.0.7",
+    "@deepseek-ai/cordis-plugin-loader": "^1.0.3"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/cordis-plugin-include": "1.0.7",
+    "@deepseek-ai/cordis-plugin-loader": "1.0.3"
+  }
+}

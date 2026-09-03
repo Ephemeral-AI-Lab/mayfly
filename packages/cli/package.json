@@ -1,0 +1,48 @@
+{
+  "name": "@ephemeral-ai/mayfly-cli",
+  "description": "The Mayfly launcher with a prepacked, pinned dsh runtime",
+  "version": "0.1.0-alpha.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "mayfly": "lib/bin.js"
+  },
+  "files": [
+    "lib/bin.js",
+    "runtime-*.tgz",
+    "README.md",
+    "README.zh.md"
+  ],
+  "license": "MIT",
+  "homepage": "https://may-fly.dev",
+  "bugs": {
+    "url": "https://github.com/Ephemeral-AI-Lab/mayfly/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ephemeral-AI-Lab/mayfly.git",
+    "directory": "packages/cli"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "devDependencies": {
+    "tar": "7.5.22"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "mayfly",
+    "cli",
+    "terminal-ui",
+    "coding-agent",
+    "ai-agent",
+    "command-line"
+  ]
+}

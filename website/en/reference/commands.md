@@ -1,0 +1,70 @@
+# Slash commands reference
+
+Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/en/features/editor)); the `/help` overlay lists registered commands live — if anything differs, trust `/help`.
+
+## Built-in commands
+
+| Command | Aliases | Arguments | Description | Source |
+| --- | --- | --- | --- | --- |
+| `/quit` | `/q` `/exit` | — | Exit Mayfly | `mayfly-commands` |
+| `/new` | `/clear` | — | Start a new session | `mayfly-commands` |
+| `/fork` | — | — | Fork the current session into a new one | `mayfly-commands` |
+| `/rewind` | — | — | Create a safe branch from an earlier user turn | `mayfly-commands` |
+| `/sessions` | `/resume` | `[<session-id>]` | List persisted sessions as a lineage tree and switch; an id resumes directly | `mayfly-commands` |
+| `/btw` | — | `<question>` | Side question: fork the live session and ask | `mayfly-pane-btw` (transcript) |
+| `/help` | — | — | Show available commands and key bindings | `mayfly-commands` |
+| `/model` | — | `[id]` | Switch the session model (no argument opens the picker) | `mayfly-commands` (model-commands) |
+| `/effort` | `/thinking` | `[level]` | Switch the thinking effort (no argument opens the selector) | `mayfly-commands` (model-commands) |
+| `/provider` | — | `[list \| switch <name> \| add]` | List providers, switch the route, or add one | `mayfly-commands` (model-commands) |
+| `/preset` | — | `[name]` | List agent presets or switch (blank sessions only) | `mayfly-commands` (preset-commands) |
+| `/permission` | — | `[name]` | A bare line is intercepted at the input layer and opens the permission-preset panel; with an argument the line passes through to the host command | `mayfly-input` intercepts the bare form; the command is registered by `dsh-permission-presets` |
+| `/tools` | — | — | List the tools visible to the current session | `mayfly-commands` (tools-commands) |
+| `/mcp` | — | — | Browse the MCP servers the host connects to and their tools | `mayfly-commands` (mcp-commands, S34) |
+| `/skills` | — | — | List available skills (the `#` prompt invokes one) | `mayfly-commands` (skills-command) |
+| `/theme` | see [Theming](/en/guide/theme) | | List or switch themes | `mayfly-commands` (theme-switch) |
+| `/init` | — | — | Analyze the codebase and write `AGENTS.md` | `mayfly-commands` (session-init) |
+| `/status` | — | — | Show the session header, model, and context status | `mayfly-commands` (session-commands) |
+| `/context` | — | — | Show token usage and the context window | `mayfly-commands` (session-commands) |
+| `/version` | — | — | Show the Mayfly and harness versions and the live model | `mayfly-commands` (session-commands) |
+| `/changelog` | — | — | Show the release changelog (what's new, one section per release, the running version badged `· current`) | `mayfly-commands` (session-commands) |
+| `/trace` | — | `[copy <seq> \| copy all]` | Inspect the current session's execution timeline; copy one item or the full trace | `mayfly-commands` (trace-command) |
+| `/update` | — | `[version]` | Safely update Mayfly (pre-flight, snapshot, boot smoke, automatic rollback; a bare call is a read-only check) | `mayfly-commands` (update-command, D52) |
+| `/settings` | — | — | Edit user settings by namespace (two-level panel, every change writes through; see [Configuration](/en/guide/config)) | `mayfly-commands` (settings-command) |
+| `/export` | — | `[path]` | Export the current session as a Markdown file | `mayfly-commands` (session-export) |
+| `/copy` | — | — | Copy the last assistant message to the clipboard | `mayfly-commands` (session-export) |
+
+## Sessions and models
+
+- **`/resume <session-id>`** — the alias of `/sessions`: with an id it resumes directly; without one it opens the same lineage tree (`parentSession` defines nesting, siblings are newest first, and the current session is badged `← current`; its ancestor path opens automatically without sibling branches, while **Space toggles** other branches). The list is scoped to the current working directory, rows show session titles, and **typing filters live** across collapsed descendants. `Esc` ends filtering but preserves the query; the focused `Clear filter` action clears it, after which layered Escape cancels.
+- **`/fork`** — returns `cannot fork while the agent is running` while the agent is not idle.
+- **`/rewind`** — lists the current session's direct user turns in one level. Selecting a turn creates an ordinary child session from the complete boundary before it; the parent is never truncated or deleted and remains resumable through `/sessions`. A running agent is refused.
+- **`/model` / `/effort`** — no argument opens the model picker or horizontal effort selector. Non-wrapping `←` `→` moves provider/effort tabs, `Enter` descends, and content-level Tab reaches actions. Choose **`Set as default`** to switch and persist, or **`Use for this session`** to change only the live session. With an argument they switch directly and persist. The panel-free shortcut **`Alt+M`** cycles through the current provider's models (session-only, draft preserved; see the [key reference](/en/reference/keys)).
+- **`/provider`** — three subcommands: `list` shows providers and the current route; `switch <name>` switches; `add` starts the add-provider flow.
+- **`/preset`** — switches the agent composition over the thin-host roster (upstream `standard` / `minimal` / `ptc` / `cordis`, plus Mayfly `mayfly-cordis`): a session's tool surface, persona, and plan mode come from its preset. There is no `code` alias. Switching is allowed only on **blank sessions** — a started one returns `cannot switch presets: this session has already started (blank sessions only)`.
+
+## Modes and approval
+
+- **`Shift+Tab` mode cycle** — normal → plan → yolo only orchestrates native dsh commands: `/plan`, `/plan off`, `/permission danger-full-access`, and `/permission workspace-write` (see [Session modes](/en/features/modes)). Mayfly does not register `/yolo` or `/yes`.
+- **`/permission`** — lists/switches permission presets (named bundles of sandbox mode + approval policy). Same single-select panel shape as `/preset`; a danger preset requires a typed `y`. A bare `/permission` is intercepted by the input layer to open the panel; the command itself is registered by the upstream `dsh-permission-presets` (both completion and `/help` list it), and an argumented call passes through to the host command.
+- **`/mcp`** — a three-level panel browsing the MCP servers the host connects to: server picker → server panel (a config pseudo-row + raw tool rows) → detail (config status / redacted connection / policy, or a tool's schema). Read-only — servers are added via profile patch (see [dsh/mcp](/en/dsh/mcp)); the empty state points the way.
+- **`/init`** — the agent analyzes the codebase and writes `AGENTS.md` in the project root: if one exists it is read first, still-accurate content carries forward, and the file is rewritten into one coherent, up-to-date document (not appended), in the language the project's own docs mainly use.
+
+## Info and export
+
+- **`/export [path]`** — exports the current session as Markdown; without a path it writes the default filename `mayfly-export-{id8}-{YYYYMMDD-HHMMSS}.md`.
+- **`/copy`** — the last assistant message's text goes to the clipboard: OSC 52 first (the escape sequence travels over stdout to the local terminal emulator, so **SSH sessions still reach the local clipboard**), with a fallback pipeline behind it.
+- **`/trace`** — reads the current execution timeline through the harness's official session query; Up/Down selects an item, Enter opens full JSON, PageUp/PageDown scrolls details, `c` copies one item, and `a` copies the complete trace.
+- **`/theme`** — full usage `usage: /theme [dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]`, see [Theming](/en/guide/theme).
+- **`/quit`** — before the agent attaches it shows `no active session` (see the [FAQ](/en/guide/faq)).
+
+Commands never enter a model turn — success/error text flashes on the editor hint line. Commands registered by downstream plugins through `ctx.commands` appear automatically in the completion menu and `/help`; aliases are not registered as commands — the input layer rewrites them to the canonical name before dispatch (the kimi `aliases` port). `/permission` is a different case: the command is registered by the upstream `dsh-permission-presets` (so both completion and `/help` list it), but Mayfly's input layer intercepts the **bare invocation** before dispatch and opens the preset selector directly.
+
+## Parked commands
+
+These commands exist in the reference products (kimi/Claude Code); Mayfly **deliberately parks** them — waiting on upstream primitives or real demand (the full rulings live in the repository roadmap's parked ledger):
+
+- `/reload` `/tasks` — deferred (task management goes through profile/config files)
+- `/archive` `/delete` — upstream persistence has no delete/archive primitive yet
+- `/import` — session-format version strictness undecided
+- `/diff` (uncommitted-changes panel) and the full-screen approval diff preview — re-evaluated with dogfood feedback after release
+- `/debug` — needs an upstream diagnostics-export surface

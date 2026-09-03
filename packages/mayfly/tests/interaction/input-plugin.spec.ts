@@ -1,0 +1,1362 @@
+/**
+ * Tests for the `mayfly-input` plugin over the real session store and command
+ * runtime with the fake component factory: slash-command dispatch,
+ * follow-up submission, slash hints, the shared editor reference, and
+ * mount/dispose behavior.
+ */
+
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { MayflyComponent, MayflyFocusable } from '../../src/core/index.ts'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import CommandRuntime, { type CommandResult } from '@deepseek-ai/dsh-commands'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { SkillSummary } from '@deepseek-ai/dsh-skill'
+import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { MayflyEditorSubmitRequest, MayflyEditorSubmitValue } from '@ephemeral-ai/mayfly-ui'
+import * as inputPlugin from '../../src/interaction/input-plugin.ts'
+import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
+import * as paneQueuePlugin from '../../src/interaction/pane-queue.ts'
+import {
+  getSharedEditor,
+} from '../../src/interaction/editor-instance.ts'
+import { mountEditorReplacement } from '../../src/interaction/editor-panel-controller.ts'
+import { setExternalEditorLauncher } from '../../src/interaction/external-editor.ts'
+import { EditorDockHost } from '../../src/interaction/editor-dock-host.ts'
+import { fakeMayflyContext, KEY, type FakeMayflyComponents, type FakeMayflyEditor, type FakeScreen } from './fakes.ts'
+
+/** One settled-skill double for the catalog seam. */
+function skillOf(name: string): SkillSummary {
+  return {
+    name,
+    description: `The ${name} skill`,
+    invocation: { modelInvocable: true, userInvocable: true },
+    source: 'custom',
+    provider: 'spec',
+  }
+}
+
+/** In-memory inbox double with a stubbed, recordable removal. */
+function fakeInbox(options: {
+  nextTurn?: UserMessage[]
+  nextStep?: UserMessage[]
+  remove?: (id: string) => boolean
+} = {}) {
+  const nextTurn = options.nextTurn ?? []
+  const nextStep = options.nextStep ?? []
+  return {
+    nextTurn,
+    nextStep,
+    remove: vi.fn(options.remove ?? (() => true)),
+    get hasPending(): boolean {
+      return nextTurn.length > 0 || nextStep.length > 0
+    },
+  }
+}
+
+function queued(text: string): UserMessage {
+  return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+}
+
+function installEditorTransform(
+  ctx: Context,
+  transform: (
+    request: MayflyEditorSubmitRequest,
+    signal?: AbortSignal,
+  ) => MayflyEditorSubmitValue | Promise<MayflyEditorSubmitValue>,
+): void {
+  ctx.mayflyEditorExtensions.register({
+    id: 'spec.input-transform',
+    transformSubmit: (request, context) => transform(request, context.signal),
+  })
+}
+
+function imageRef(id: string): ImageAttachmentRef {
+  return {
+    attachmentId: AttachmentId(id),
+    mediaType: 'image/png',
+    bytes: 12,
+    width: 2,
+    height: 2,
+  }
+}
+
+async function mount(options: {
+  withAgent?: boolean
+  running?: boolean
+  appExit?: (code: number) => void
+  inbox?: ReturnType<typeof fakeInbox>
+  modelRef?: unknown
+  retract?: (messageId: string) => boolean
+} = {}): Promise<{
+  ctx: Context
+  screen: FakeScreen
+  editor: FakeMayflyEditor
+  editorRoot: MayflyFocusable & MayflyComponent
+  hint: MayflyComponent
+  agent: Agent
+  followup: ReturnType<typeof vi.fn>
+  cancel: ReturnType<typeof vi.fn>
+  steer: ReturnType<typeof vi.fn>
+  fiber: { dispose(): Promise<void> }
+}> {
+  const { ctx, screen, components } = fakeMayflyContext()
+  // This suite exercises only the editor slot. The shared fake now owns the
+  // transcript dock service's stable empty bottom root; remove that unrelated
+  // fixture root so the existing slot assertions stay local to mayfly-input.
+  for (const child of screen.children) screen.removeChild(child)
+  await ctx.plugin(SessionStore)
+  await ctx.plugin(CommandRuntime)
+  const session = ctx.sessions.create(SessionId('input-spec'))
+  const followup = vi.fn()
+  const cancel = vi.fn()
+  const steer = vi.fn()
+  const agent = {
+    id: session.id,
+    session,
+    ctx: new Context(),
+    status: options.running === true ? 'running' : 'idle',
+    followup,
+    cancel,
+    steer,
+    inbox: options.inbox ?? fakeInbox(),
+  } as unknown as Agent
+  ctx.provide('testSession', { current: options.withAgent === false ? null : agent, modelRef: options.modelRef ?? undefined })
+  if (options.retract !== undefined) {
+    ctx.set('mayflyRetractions', { tryRetract: options.retract })
+  }
+  if (options.appExit !== undefined) ctx.provide('appExit', options.appExit)
+  const fiber = await ctx.plugin(inputPlugin)
+  const editor = components.editors.at(-1)!
+  const editorRoot = screen.children[0] as MayflyFocusable & MayflyComponent
+  const dock = screen.slotTargets.get('editor.prompt') as EditorDockHost
+  const hint: MayflyComponent = { render: width => dock.renderHint(width), invalidate: () => dock.invalidate() }
+  // The terminal paints one frame before it can deliver focused input. The
+  // shell compiler synchronizes its nested editor focus during that frame.
+  editorRoot.render(screen.columns)
+  return { ctx, screen, editor, editorRoot, hint, agent, followup, cancel, steer, fiber }
+}
+
+function type(editor: FakeMayflyEditor, text: string): void {
+  for (const char of text) editor.handleInput(char)
+}
+
+describe('mayfly-input plugin', () => {
+  it('declares every direct service used by request, retraction, and extension paths', () => {
+    expect(inputPlugin.inject).toContain('sessionProjections')
+    expect(inputPlugin.inject).toContain('mayflyRequests')
+    expect(inputPlugin.inject).toContain('mayflyRetractions')
+    expect(inputPlugin.inject).toContain('mayflyEditorExtensions')
+  })
+
+  it('mounts the editor and hint line focused at the bottom of the tree', async () => {
+    const { ctx, screen, editor, editorRoot, hint } = await mount()
+    expect(screen.children).toEqual([editorRoot])
+    expect(screen.focused).toBe(editorRoot)
+    expect(editor.focused).toBe(true)
+    // The editor mounts with the rounded-box chrome's prerequisites — the
+    // prompt symbol and the padding that reserves its columns — and the hint
+    // row renders nothing at rest (the persistent tier retired with S15).
+    expect(editor.promptSymbol).toBe('>')
+    expect((ctx.mayflyComponents as FakeMayflyComponents).editorOptions[0]).toEqual({ paddingX: 4 })
+    expect(hint.render(80)).toEqual([])
+    hint.invalidate()
+  })
+
+  it('stays pinned below transcript content mounted after it', async () => {
+    const { screen, editorRoot } = await mount()
+    // Transcript components only mount once a session exists — long after
+    // the editor — yet must render above it.
+    const transcriptRow: Parameters<FakeScreen['addChild']>[0] = { render: () => ['transcript'], invalidate: () => {} }
+    screen.addChild(transcriptRow)
+    expect(screen.children).toEqual([transcriptRow, editorRoot])
+  })
+
+  it('pauses tail-follow, advertises new messages, and resumes on End', async () => {
+    const { ctx, screen, editor, editorRoot, hint, fiber } = await mount()
+    screen.contentScrollResult = true
+    screen.contentPaused = true
+    ctx.emit('mayfly/transcript-content-changed', screen.contentChanged())
+    expect(hint.render(80)).toEqual(['~new messages available · press End to follow~'])
+
+    type(editor, 'draft')
+    expect(screen.sendContentInput('\x1b[5~')).toBe(true)
+    expect(screen.sendContentInput('\x1b[6~')).toBe(true)
+    expect(screen.sendContentInput(KEY.up)).toBe(false)
+    expect(screen.sendContentInput(KEY.down)).toBe(false)
+    expect(screen.contentScrolls).toEqual([
+      { direction: 'up', amount: 20 },
+      { direction: 'down', amount: 20 },
+    ])
+    expect(screen.sendContentInput('\x1b[F')).toBe(false)
+    editor.setText('')
+    expect(screen.sendContentInput('\x1b[F')).toBe(true)
+    expect(screen.followCount).toBe(1)
+    expect(screen.contentPaused).toBe(false)
+    expect(hint.render(80)).toEqual([])
+
+    screen.setFocus(null)
+    expect(screen.sendContentInput('x')).toBe(false)
+    screen.setFocus(editorRoot)
+    expect(screen.sendContentInput('x')).toBe(false)
+
+    await fiber.dispose()
+    expect(screen.sendContentInput('\x1b[F')).toBe(false)
+  })
+
+  it('publishes the editor and submit router through the shared reference', async () => {
+    const { ctx, editor } = await mount()
+    const shared = getSharedEditor(ctx)
+    expect(shared?.editor).toBe(editor)
+    expect(shared?.submitPrompt).toBeTypeOf('function')
+    type(editor, 'clear me')
+    shared?.abortPrompt?.()
+    expect(editor.getText()).toBe('')
+  })
+
+  it('clears a navigation notice when the session switch settles', async () => {
+    const { ctx, hint, agent } = await mount()
+    getSharedEditor(ctx)?.notice?.('creating rewind branch...')
+    expect(hint.render(80)).toEqual(['~creating rewind branch...~'])
+    ctx.emit('test/session-changed', agent)
+    expect(hint.render(80)).toEqual([])
+    ;(ctx.get('testSession') as { current: Agent | null }).current = null
+    ctx.emit('test/session-changed', null)
+  })
+
+  it('submits plain text as a user follow-up message, records history, and clears the buffer', async () => {
+    const { editor, followup } = await mount()
+    type(editor, 'hello there')
+    editor.handleInput(KEY.enter)
+    expect(followup).toHaveBeenCalledOnce()
+    const message = followup.mock.calls[0]?.[0] as {
+      role: string
+      content: Array<{ type: string; text: string }>
+      source: { kind: string }
+    }
+    expect(message.role).toBe('user')
+    expect(message.content).toEqual([{ type: 'text', text: 'hello there' }])
+    expect(message.source).toEqual({ kind: 'user' })
+    expect(editor.getText()).toBe('')
+    expect(editor.history).toEqual(['hello there'])
+  })
+
+  it('ignores whitespace-only submissions', async () => {
+    const { editor, followup } = await mount()
+    type(editor, '   ')
+    editor.handleInput(KEY.enter)
+    expect(followup).not.toHaveBeenCalled()
+    expect(editor.history).toEqual([])
+  })
+
+  it('restores the action failure notice when a follow-up is rejected', async () => {
+    const { editor, hint, followup } = await mount()
+    followup.mockImplementationOnce(() => { throw new Error('follow-up rejected') })
+    type(editor, 'cannot send')
+    editor.handleInput(KEY.enter)
+    expect(followup).toHaveBeenCalledOnce()
+    expect(hint.render(80)).toEqual(['~!follow-up rejected!~'])
+
+    followup.mockImplementationOnce(() => { throw 'bare follow-up rejection' })
+    type(editor, 'still cannot send')
+    editor.handleInput(KEY.enter)
+    expect(hint.render(80)).toEqual(['~!bare follow-up rejection!~'])
+  })
+
+  it('restores transformed image attachments when the follow-up is rejected', async () => {
+    const { ctx, editor, hint, followup } = await mount()
+    const ref = imageRef('rejected-extension-image')
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', ref)
+    installEditorTransform(ctx, request => ({ text: `extended:${request.text}` }))
+    followup.mockImplementationOnce(() => { throw new Error('extension follow-up rejected') })
+
+    type(editor, '[image #1] caption')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(hint.render(80)).toEqual(['~!extension follow-up rejected!~']))
+    expect(followup).toHaveBeenCalledOnce()
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
+  })
+
+  it('routes an editor extension failure notice through the hint line', async () => {
+    const { ctx, editor, hint, followup } = await mount()
+    installEditorTransform(ctx, () => { throw new Error('extension transform rejected') })
+
+    type(editor, 'keep this draft')
+    editor.handleInput(KEY.enter)
+
+    await vi.waitFor(() => expect(hint.render(80)).toEqual(['~extension transform rejected~']))
+    expect(editor.getText()).toBe('keep this draft')
+    expect(followup).not.toHaveBeenCalled()
+  })
+
+  it('restores transformed image attachments after a safe retraction', async () => {
+    const retract = vi.fn(() => true)
+    const { ctx, editor, followup } = await mount({ running: true, retract })
+    const ref = imageRef('retracted-extension-image')
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', ref)
+    installEditorTransform(ctx, request => ({ text: `extended:${request.text}` }))
+
+    type(editor, '[image #1] caption')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(followup).toHaveBeenCalledOnce())
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.has('[image #1]')).toBe(false)
+    const message = followup.mock.calls[0]?.[0] as { readonly content: readonly { readonly type: string, readonly text?: string }[] }
+    expect(message.content.map(block => block.type === 'text' ? block.text : block.type)).toEqual(['extended:caption', 'image'])
+
+    expect(editor.onKey?.(KEY.escape)).toBe(true)
+    expect(retract).toHaveBeenCalledOnce()
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
+    expect(editor.getText()).toBe('[image #1] caption')
+  })
+
+  it('rewrites #skill tokens on the follow-up path while history keeps the original', async () => {
+    const { ctx, editor, followup } = await mount()
+    __setCatalogForTest(ctx, [skillOf('deploy-check')])
+    type(editor, 'run #deploy-check now')
+    editor.handleInput(KEY.enter)
+    expect(followup).toHaveBeenCalledOnce()
+    const message = followup.mock.calls[0]?.[0] as {
+      content: Array<{ type: string; text: string }>
+    }
+    // The gesture form reaches the model; the history entry keeps the
+    // `#name` the user typed (Up-recall edits what was typed).
+    expect(message.content).toEqual([{ type: 'text', text: 'run /deploy-check now' }])
+    expect(editor.history).toEqual(['run #deploy-check now'])
+  })
+
+  it('passes unknown #tags through untouched on the follow-up path', async () => {
+    const { ctx, editor, followup } = await mount()
+    __setCatalogForTest(ctx, [skillOf('deploy-check')])
+    // The unknown tag stays; the trailing period breaks the recognized
+    // token's end boundary, so it stays too.
+    type(editor, 'see #unknown-tag and #deploy-check.')
+    editor.handleInput(KEY.enter)
+    const message = followup.mock.calls[0]?.[0] as { content: Array<{ type: string; text: string }> }
+    expect(message.content).toEqual([{ type: 'text', text: 'see #unknown-tag and #deploy-check.' }])
+  })
+
+  it('notices instead of submitting without an attached session', async () => {
+    const { screen, editor, hint } = await mount({ withAgent: false })
+    type(editor, 'hello')
+    editor.handleInput(KEY.enter)
+    expect(hint.render(80)).toEqual(['~no active session~'])
+    expect(screen.renderRequests).toBeGreaterThan(0)
+  })
+
+  it('dispatches slash commands through the real registry and logs lifecycle events', async () => {
+    const { ctx, editor, hint, agent, followup } = await mount()
+    ctx.commands.register({
+      name: 'poke',
+      description: 'Poke the test',
+      handler: () => ({ kind: 'success', text: 'poked' }),
+    })
+    type(editor, '/poke now')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(hint.render(80)).toEqual(['~poked~'])
+    })
+    expect(followup).not.toHaveBeenCalled()
+    const events = agent.session.snapshotEvents().filter(event => event.type === 'command/run' || event.type === 'command/done')
+    expect(events.map(event => event.type)).toEqual(['command/run', 'command/done'])
+    expect(ctx.commands.find(agent, 'poke')).toBeDefined()
+    expect(editor.history).toEqual(['/poke now'])
+  })
+
+  it('rewrites an alias line to its canonical command before dispatch', async () => {
+    const { ctx, editor, hint } = await mount()
+    ctx.commands.register({
+      name: 'quit',
+      description: 'Exit Mayfly',
+      handler: (invocation) => ({ kind: 'success', text: `bye${invocation.rawInput}` }),
+    })
+    const clear = ctx.mayflyInteractionState.aliases.register('quit', ['q', 'exit'])
+    try {
+      // `/q now` reaches the `/quit` handler with its raw input intact — the
+      // kimi resolution: the alias is not a registered command, the rewrite
+      // happens before `ctx.commands.execute`.
+      type(editor, '/q now')
+      editor.handleInput(KEY.enter)
+      await vi.waitFor(() => {
+        expect(hint.render(80)).toEqual(['~bye now~'])
+      })
+    } finally {
+      clear()
+    }
+  })
+
+  it('notices unknown commands', async () => {
+    const { editor, hint } = await mount()
+    type(editor, '/missing')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(hint.render(80)).toEqual(['~unknown command: /missing~'])
+    })
+  })
+
+  it('renders no command catalog for slash input — the dropdown owns discovery (D43)', async () => {
+    const { ctx, editor, hint } = await mount()
+    ctx.commands.register({
+      name: 'poke',
+      description: 'Poke the agent',
+      handler: () => ({ kind: 'success' as const, text: 'poked' }),
+    })
+    ctx.commands.register({ name: 'plain', description: 'Plain command', handler: () => ({ kind: 'success' }) })
+    // A match (bare slash or a prefix) renders nothing whether the dropdown
+    // is up or closed — the S34 dogfood verdict retired the discovery tier
+    // that double-rendered the catalog next to it; only the empty-result
+    // notice below survives from the S14 tier.
+    type(editor, '/')
+    expect(hint.render(80)).toEqual([])
+    editor.showingAutocomplete = true
+    expect(hint.render(80)).toEqual([])
+    editor.showingAutocomplete = false
+    type(editor, 'po')
+    expect(hint.render(80)).toEqual([])
+    editor.setText('/plain')
+    expect(hint.render(80)).toEqual([])
+    hint.invalidate()
+  })
+
+  it('opens the permission picker on a bare /permission instead of dispatching', async () => {
+    const { ctx, screen, editor, editorRoot, hint } = await mount()
+    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'should not run' }))
+    ctx.commands.register({ name: 'permission', description: 'spy standing in for the upstream command', handler })
+    ctx.provide('permissionPresets', {
+      names: ['read-only', 'workspace-write'],
+      current: () => 'workspace-write',
+      resolve: name => ({ sandbox: `${name}-sandbox`, approval: 'ask' }),
+      optionOf: name => ({ value: name, name }),
+    })
+    type(editor, '/permission')
+    editor.handleInput(KEY.enter)
+    // The picker replaces the editor in its dock slot (the real D30
+    // machinery the plugin installs); the upstream command never runs and
+    // no notice lands (the panel owns the interaction).
+    await vi.waitFor(() => { expect(screen.children).toHaveLength(1) })
+    const panel = screen.children[0] as MayflyFocusable
+    const frame = (panel as { render(width: number): string[] }).render(80).join('\n')
+    expect(frame).toContain('Permissions')
+    expect(frame).toContain('← current')
+    expect(handler).not.toHaveBeenCalled()
+    expect(hint.render(80)).toEqual([])
+    // Esc closes back to the editor, still without a dispatch.
+    panel.handleInput(KEY.escape)
+    expect(handler).not.toHaveBeenCalled()
+    expect(screen.children).toEqual([editorRoot])
+    expect(screen.focused).toBe(editorRoot)
+  })
+
+  it('passes a with-argument /permission line through to the command', async () => {
+    const { ctx, editor, hint, screen } = await mount()
+    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'preset read-only' }))
+    ctx.commands.register({ name: 'permission', description: 'spy standing in for the upstream command', handler })
+    ctx.provide('permissionPresets', {
+      names: ['read-only'],
+      current: () => 'read-only',
+      resolve: name => ({ sandbox: name, approval: 'ask' }),
+      optionOf: name => ({ value: name, name }),
+    })
+    type(editor, '/permission read-only')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(hint.render(80)).toEqual(['~preset read-only~']) })
+    expect(handler).toHaveBeenCalledOnce()
+    // No panel ever took the editor slot.
+    expect(screen.children).toHaveLength(1)
+  })
+
+  it('falls through a bare /permission to unknown-command without the preset service', async () => {
+    const { editor, hint } = await mount()
+    type(editor, '/permission')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(hint.render(80)).toEqual(['~unknown command: /permission~'])
+    })
+  })
+
+  it('notices command error results and handler rejections', async () => {
+    const { ctx, editor, hint } = await mount()
+    ctx.commands.register({
+      name: 'fail',
+      description: 'Fail by result',
+      handler: () => ({ kind: 'error', text: 'broken' }),
+    })
+    type(editor, '/fail')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(hint.render(80)).toEqual(['~!broken!~'])
+    })
+    ctx.commands.register({
+      name: 'throw',
+      description: 'Fail by throwing',
+      handler: () => {
+        throw new Error('boom')
+      },
+    })
+    type(editor, '/throw')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(hint.render(80)).toEqual(['~!boom!~'])
+    })
+  })
+
+  it('preserves and wraps a multi-line command result', async () => {
+    const { ctx, editor, hint } = await mount()
+    ctx.commands.register({
+      name: 'multiline',
+      description: 'Return a structured status notice',
+      handler: () => ({
+        kind: 'success',
+        text: 'Goal created\r\nStatus: active\n\n  Activation: armed',
+      }),
+    })
+    type(editor, '/multiline')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(hint.render(120)).toEqual(['~Goal created~', '~Status: active~', '~~', '~Activation: armed~'])
+    })
+    expect(hint.render(120)).toHaveLength(4)
+  })
+
+  it('keeps successful goal output in Todo/footer surfaces while preserving errors', async () => {
+    const { ctx, editor, hint, agent } = await mount()
+    ctx.commands.register({
+      name: 'goal',
+      description: 'Manage the current goal',
+      handler: invocation => invocation.rawInput === ' fail'
+        ? { kind: 'error', text: 'goal failed' }
+        : {
+            kind: 'success',
+            text: 'Goal created\nStatus: active\nObjective: harmless test\nRounds: 0/256\nActivation: armed',
+          },
+    })
+    type(editor, '/goal create')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(agent.session.snapshotEvents().some(event => event.type === 'command/done')).toBe(true)
+    })
+    expect(hint.render(120)).toEqual([])
+
+    type(editor, '/goal fail')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(hint.render(120)).toEqual(['~!goal failed!~'])
+    })
+  })
+
+  it('drops the result notice when the fiber unloads before the command settles', async () => {
+    const { ctx, screen, editor, hint, agent, fiber } = await mount()
+    // A handler gate the test settles by hand, so the unload can land while
+    // execute() is still in flight — the /theme crash shape.
+    const gate = Promise.withResolvers<CommandResult>()
+    ctx.commands.register({
+      name: 'slow',
+      description: 'Settle late',
+      handler: () => gate.promise,
+    })
+    type(editor, '/slow')
+    editor.handleInput(KEY.enter)
+    await fiber.dispose()
+    const renderRequests = screen.renderRequests
+    gate.resolve({ kind: 'success', text: 'late' })
+    await vi.waitFor(() => {
+      expect(agent.session.snapshotEvents().some(event => event.type === 'command/done')).toBe(true)
+    })
+    // The continuation saw the unloaded fiber: no notice lands — the row
+    // stays empty — no re-render, and no throw
+    // through the dead context.
+    expect(hint.render(80)).toEqual([])
+    expect(screen.renderRequests).toBe(renderRequests)
+  })
+
+  it('drops the error notice when the fiber unloads before the command rejects', async () => {
+    const { ctx, screen, editor, hint, agent, fiber } = await mount()
+    const gate = Promise.withResolvers<CommandResult>()
+    ctx.commands.register({
+      name: 'late-fail',
+      description: 'Reject late',
+      handler: () => gate.promise,
+    })
+    type(editor, '/late-fail')
+    editor.handleInput(KEY.enter)
+    await fiber.dispose()
+    const renderRequests = screen.renderRequests
+    gate.reject(new Error('late boom'))
+    await vi.waitFor(() => {
+      expect(agent.session.snapshotEvents().some(event => event.type === 'command/done')).toBe(true)
+    })
+    expect(hint.render(80)).toEqual([])
+    expect(screen.renderRequests).toBe(renderRequests)
+  })
+
+  it('keeps only the empty-result notice for slash-prefixed input', async () => {
+    const { ctx, editor, hint } = await mount()
+    ctx.commands.register({ name: 'resume', description: 'Resume a previous session', handler: () => ({ kind: 'success' }) })
+    ctx.commands.register({ name: 'restart', description: 'Restart everything', handler: () => ({ kind: 'success' }) })
+    // A match renders nothing (D43: the dropdown owns discovery); the empty
+    // result keeps its notice — the dropdown closes itself on an empty
+    // match, so the notice is the only feedback.
+    type(editor, '/res')
+    expect(hint.render(80)).toEqual([])
+    type(editor, 'x')
+    expect(hint.render(80)).toEqual(['~no matching command: /resx~'])
+    editor.setText('/res')
+    expect(hint.render(80)).toEqual([])
+  })
+
+  it('renders no hint row without an attached session', async () => {
+    const { editor, hint } = await mount({ withAgent: false })
+    type(editor, '/res')
+    // No agent means no slash feedback, and nothing else owns the row.
+    expect(hint.render(80)).toEqual([])
+  })
+
+  it('renders no hint row when the slash line is not a command', async () => {
+    const { editor, hint } = await mount()
+    type(editor, '/1')
+    expect(hint.render(80)).toEqual([])
+  })
+
+  it('wraps an over-wide hint to the viewport width', async () => {
+    const { editor, hint } = await mount({ withAgent: false })
+    type(editor, 'hello')
+    editor.handleInput(KEY.enter)
+    expect(hint.render(10)).toEqual(['~no active~', '~session~'])
+  })
+
+  it('renders no hint row when a command succeeds without text', async () => {
+    const { ctx, editor, hint, agent } = await mount()
+    ctx.commands.register({
+      name: 'quiet',
+      description: 'Succeed silently',
+      handler: () => ({ kind: 'success' }),
+    })
+    type(editor, '/quiet')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(agent.session.snapshotEvents().some(event => event.type === 'command/done')).toBe(true)
+    })
+    expect(hint.render(80)).toEqual([])
+  })
+
+  it('folds a long multi-line notice into the hint row', async () => {
+    const { ctx, hint } = await mount()
+    getSharedEditor(ctx)?.notice?.(Array.from({ length: 10 }, (_, index) => index === 0 ? '' : `notice ${String(index)}`).join('\n'))
+    const rows = hint.render(80)
+    expect(rows).toHaveLength(8)
+    expect(rows.at(-1)).toBe('~... more~')
+  })
+
+  it('renders no persistent row in any state — the footer tips teach the affordances', async () => {
+    // The S15 dogfood verdict retired the persistent key-affordance tier:
+    // idle, running, and with every enhancement attached, the hint row
+    // stays empty unless a notice or slash feedback owns it.
+    const idle = await mount()
+    expect(idle.hint.render(80)).toEqual([])
+    await idle.fiber.dispose()
+
+    const running = await mount({ running: true })
+    expect(running.hint.render(80)).toEqual([])
+    await running.fiber.dispose()
+  })
+
+  it('highlights the frame in primary for slash input and restores the neutral border', async () => {
+    const { editor } = await mount()
+    type(editor, '/th')
+    expect(editor.borderColor('x')).toBe('^x^')
+    editor.setText('plain')
+    expect(editor.borderColor('x')).toBe('x')
+  })
+
+  it('unmounts the editor, clears the shared reference, and releases focus on dispose', async () => {
+    const { ctx, screen, fiber } = await mount()
+    expect(screen.children).toHaveLength(1)
+    expect(getSharedEditor(ctx)).toBeDefined()
+    await fiber.dispose()
+    expect(screen.children).toHaveLength(0)
+    expect(screen.focused).toBeNull()
+    expect(getSharedEditor(ctx)).toBeUndefined()
+  })
+
+  it('restores the prompt history across the theme-swap reload', async () => {
+    // `/theme <name>` rebuilds this fiber as its own effect: the editor
+    // component (and pi-tui's in-component history) dies with it. The
+    // stash mirrors the history at submit time and the remount replays it.
+    const first = await mount()
+    type(first.editor, 'hello')
+    first.editor.handleInput(KEY.enter)
+    type(first.editor, '/theme dark')
+    first.editor.handleInput(KEY.enter)
+    expect(first.editor.history).toEqual(['/theme dark', 'hello'])
+    await first.fiber.dispose()
+    await first.ctx.plugin(inputPlugin)
+    const second = (first.ctx.mayflyComponents as FakeMayflyComponents).editors.at(-1)!
+    expect(second.history).toEqual(['/theme dark', 'hello'])
+  })
+
+  describe('editor-slot swap (D30 dialog mount)', () => {
+    /** A minimal focusable panel for slot tests. */
+    function panel(name: string): MayflyFocusable & MayflyComponent {
+      return {
+        name,
+        focused: false,
+        handleInput: vi.fn(),
+        invalidate: vi.fn(),
+        render: () => [name],
+      }
+    }
+
+    it('hides the editor for the panel and restores it with focus on dispose', async () => {
+      const { ctx, screen, editorRoot, hint } = await mount()
+      const first = panel('first')
+      const restore = mountEditorReplacement(ctx, first)
+      // The editor and hint left the dock; the panel took the slot and
+      // the focus.
+      expect(screen.children).toEqual([editorRoot])
+      expect(editorRoot.render(80)).toEqual(['first'])
+      expect(first.focused).toBe(true)
+      expect(screen.focused).toBe(editorRoot)
+      restore()
+      expect(screen.children).toEqual([editorRoot])
+      expect(hint.render(80)).toEqual([])
+      expect(screen.focused).toBe(editorRoot)
+    })
+
+    it('stacks nested panels: disposing the top refocuses the one beneath', async () => {
+      const { ctx, screen, editorRoot } = await mount()
+      const outer = panel('outer')
+      const inner = panel('inner')
+      const restoreOuter = mountEditorReplacement(ctx, outer)
+      const restoreInner = mountEditorReplacement(ctx, inner)
+      expect(screen.children).toEqual([editorRoot])
+      expect(editorRoot.render(80)).toEqual(['inner'])
+      restoreInner()
+      // The outer panel stays mounted and regains focus.
+      expect(screen.children).toEqual([editorRoot])
+      expect(editorRoot.render(80)).toEqual(['outer'])
+      expect(outer.focused).toBe(true)
+      restoreOuter()
+      expect(screen.children).toEqual([editorRoot])
+      expect(screen.focused).toBe(editorRoot)
+    })
+
+    it('keeps the editor hidden when the bottom panel of a stack disposes first', async () => {
+      const { ctx, screen, editorRoot } = await mount()
+      const outer = panel('outer')
+      const inner = panel('inner')
+      const restoreOuter = mountEditorReplacement(ctx, outer)
+      const restoreInner = mountEditorReplacement(ctx, inner)
+      // Out-of-order: the first-mounted panel goes while the top stays.
+      restoreOuter()
+      expect(screen.children).toEqual([editorRoot])
+      expect(editorRoot.render(80)).toEqual(['inner'])
+      expect(inner.focused).toBe(true)
+      restoreInner()
+      expect(screen.focused).toBe(editorRoot)
+    })
+
+    it('unmounts an open panel with the fiber and turns its disposer into a no-op', async () => {
+      const { ctx, screen, fiber } = await mount()
+      const open = panel('open')
+      const restore = mountEditorReplacement(ctx, open)
+      await fiber.dispose()
+      // The teardown unmounted the panel; the late disposer must not
+      // resurrect the editor against the disposed fiber's screen handle.
+      expect(screen.children).toEqual([])
+      expect(() => restore()).not.toThrow()
+      expect(() => restore()).not.toThrow()
+      expect(screen.children).toEqual([])
+      expect(screen.focused).toBeNull()
+    })
+
+    it('keeps the editor buffer across a swap round-trip', async () => {
+      const { ctx, editor } = await mount()
+      type(editor, 'draft survives')
+      const restore = mountEditorReplacement(ctx, panel('modal'))
+      restore()
+      expect(editor.getText()).toBe('draft survives')
+    })
+
+    it('emits mayfly/editor-slot-swapped on occupancy transitions only', async () => {
+      const { ctx, fiber } = await mount()
+      const swaps: boolean[] = []
+      ctx.on('mayfly/editor-slot-swapped', occupied => swaps.push(occupied))
+
+      const restoreOuter = mountEditorReplacement(ctx, panel('outer'))
+      // A nested panel does not re-emit: the slot stayed occupied.
+      const restoreInner = mountEditorReplacement(ctx, panel('inner'))
+      restoreInner()
+      expect(swaps).toEqual([true])
+      restoreOuter()
+      expect(swaps).toEqual([true, false])
+
+      // Unloading with a panel open releases the occupancy too.
+      mountEditorReplacement(ctx, panel('gone'))
+      expect(swaps).toEqual([true, false, true])
+      await fiber.dispose()
+      expect(swaps).toEqual([true, false, true, false])
+    })
+  })
+
+  describe('editor-context keys', () => {
+    it('clears the buffer on Escape when text is present', async () => {
+      const { editor, cancel } = await mount({ running: true })
+      type(editor, 'draft')
+      editor.handleInput(KEY.escape)
+      expect(editor.getText()).toBe('')
+      expect(cancel).not.toHaveBeenCalled()
+    })
+
+    it('interrupts a running agent on Escape with an empty buffer', async () => {
+      const { editor, cancel } = await mount({ running: true })
+      expect(editor.onKey?.(KEY.escape)).toBe(true)
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+    })
+
+    it('restores the submitted message and removes its history entry after a safe Escape retraction', async () => {
+      const retract = vi.fn(() => true)
+      const { ctx, editor, followup, cancel } = await mount({ running: true, retract })
+      type(editor, 'revise this prompt')
+      editor.handleInput(KEY.enter)
+      const message = followup.mock.calls[0]?.[0] as { id: string }
+      expect(editor.getText()).toBe('')
+      expect(editor.history).toEqual(['revise this prompt'])
+
+      // Status, command, and mode updates republish the same session. They
+      // are not session switches and must not discard the receipt.
+      ctx.emit('test/session-changed')
+      expect(editor.onKey?.(KEY.escape)).toBe(true)
+      expect(retract).toHaveBeenCalledWith(String(message.id))
+      expect(editor.getText()).toBe('revise this prompt')
+      expect(editor.history).toEqual([])
+      expect(cancel).not.toHaveBeenCalled()
+    })
+
+    it('passes Escape through with an empty buffer and an idle agent', async () => {
+      const { editor, cancel } = await mount()
+      expect(editor.onKey?.(KEY.escape)).toBe(false)
+      expect(cancel).not.toHaveBeenCalled()
+    })
+
+    it('passes Escape through with an empty buffer and no session', async () => {
+      const { editor } = await mount({ withAgent: false })
+      expect(editor.onKey?.(KEY.escape)).toBe(false)
+    })
+
+    it('lets the editor close an open autocomplete dropdown on Escape', async () => {
+      const { editor, cancel } = await mount({ running: true })
+      editor.showingAutocomplete = true
+      type(editor, 'draft')
+      expect(editor.onKey?.(KEY.escape)).toBe(false)
+      expect(editor.getText()).toBe('draft')
+      expect(cancel).not.toHaveBeenCalled()
+    })
+
+    it('interrupts before clearing and preserves a next-message draft on Ctrl-C', async () => {
+      const { editor, cancel } = await mount({ running: true })
+      type(editor, 'draft')
+      editor.handleInput(KEY.ctrlC)
+      expect(editor.getText()).toBe('draft')
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+    })
+
+    it('interrupts a running agent on Ctrl-C with an empty buffer', async () => {
+      const { editor, cancel } = await mount({ running: true })
+      expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+    })
+
+    it('never retracts the submitted message on Ctrl-C', async () => {
+      const retract = vi.fn(() => true)
+      const { editor, followup, cancel } = await mount({ running: true, retract })
+      type(editor, 'interrupt without retracting')
+      editor.handleInput(KEY.enter)
+      expect(followup).toHaveBeenCalledOnce()
+
+      expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+      expect(retract).not.toHaveBeenCalled()
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(editor.getText()).toBe('')
+      expect(editor.history).toEqual(['interrupt without retracting'])
+    })
+
+    it('still clears an idle draft when there is no work to interrupt', async () => {
+      const { editor, cancel } = await mount()
+      type(editor, 'idle draft')
+      editor.handleInput(KEY.ctrlC)
+      expect(editor.getText()).toBe('')
+      expect(cancel).not.toHaveBeenCalled()
+    })
+
+    it('flashes the exit hint on the first idle Ctrl-C', async () => {
+      const { editor, hint } = await mount()
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(1_000_000)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+        expect(hint.render(80)).toEqual(['~press ctrl+c again to exit~'])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('exits through the launcher hook on a second idle Ctrl-C within the window', async () => {
+      const exit = vi.fn()
+      const { editor, cancel } = await mount({ appExit: exit })
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(2_000_000)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+        expect(exit).not.toHaveBeenCalled()
+        vi.setSystemTime(2_000_500)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+        expect(exit).toHaveBeenCalledWith(0)
+        expect(cancel).not.toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('re-arms the hint when the double-press window expires', async () => {
+      const exit = vi.fn()
+      const { editor, hint } = await mount({ appExit: exit })
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(3_000_000)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+        vi.setSystemTime(3_002_000)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+        expect(exit).not.toHaveBeenCalled()
+        expect(hint.render(80)).toEqual(['~press ctrl+c again to exit~'])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('consumes the double press when the launcher provided no appExit hook', async () => {
+      const { editor } = await mount()
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(4_000_000)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+        vi.setSystemTime(4_000_500)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('steers the current turn with the draft on Ctrl-S and clears the buffer', async () => {
+      const { editor, steer } = await mount()
+      type(editor, 'steer this')
+      editor.handleInput(KEY.ctrlS)
+      expect(steer).toHaveBeenCalledOnce()
+      const message = steer.mock.calls[0]?.[0] as {
+        role: string
+        content: Array<{ type: string, text: string }>
+        source: { kind: string }
+      }
+      expect(message.role).toBe('user')
+      expect(message.content).toEqual([{ type: 'text', text: 'steer this' }])
+      expect(message.source).toEqual({ kind: 'user' })
+      expect(editor.getText()).toBe('')
+    })
+
+    it('rewrites #skill tokens on the Ctrl-S steer path too', async () => {
+      const { ctx, editor, steer } = await mount()
+      __setCatalogForTest(ctx, [skillOf('deploy-check')])
+      type(editor, 'steer #deploy-check')
+      editor.handleInput(KEY.ctrlS)
+      expect(steer).toHaveBeenCalledOnce()
+      const message = steer.mock.calls[0]?.[0] as { content: Array<{ type: string, text: string }> }
+      expect(message.content).toEqual([{ type: 'text', text: 'steer /deploy-check' }])
+    })
+
+    it('keeps the draft when the structured steer action is rejected', async () => {
+      const { editor, hint, steer } = await mount()
+      steer.mockImplementationOnce(() => { throw new Error('steer rejected') })
+      type(editor, 'keep this')
+      expect(editor.onKey?.(KEY.ctrlS)).toBe(true)
+      expect(editor.getText()).toBe('keep this')
+      expect(steer).toHaveBeenCalledOnce()
+
+      steer.mockImplementationOnce(() => { throw 'bare steer rejection' })
+      expect(editor.onKey?.(KEY.ctrlS)).toBe(true)
+      expect(hint.render(80)).toEqual(['~!bare steer rejection!~'])
+    })
+
+    it('dispatches Shift+Tab through the native plan command', async () => {
+      const { ctx, editor } = await mount()
+      const plan = vi.fn(() => ({ kind: 'success' as const, text: 'plan enabled' }))
+      ctx.commands.register({ name: 'plan', description: 'Toggle plan mode', handler: plan })
+      vi.spyOn(ctx.sessionProjections, 'snapshot').mockReturnValue({
+        asOfSeq: -1,
+        values: { plan: { active: false, pending: false } },
+      })
+      expect(editor.onKey?.(KEY.shiftTab)).toBe(true)
+      await vi.waitFor(() => expect(plan).toHaveBeenCalledOnce())
+    })
+
+    it('passes Ctrl-S through with an empty buffer', async () => {
+      const { editor, steer } = await mount()
+      expect(editor.onKey?.(KEY.ctrlS)).toBe(false)
+      expect(steer).not.toHaveBeenCalled()
+    })
+
+    it('passes Ctrl-S through without a session', async () => {
+      const { editor } = await mount({ withAgent: false })
+      type(editor, 'draft')
+      expect(editor.onKey?.(KEY.ctrlS)).toBe(false)
+      expect(editor.getText()).toBe('draft')
+    })
+  })
+
+  describe('external editor (Ctrl-G, S31)', () => {
+    const savedVisual = process.env.VISUAL
+    const savedEditor = process.env.EDITOR
+
+    beforeEach(() => {
+      process.env.VISUAL = 'mayfly-spec-editor'
+    })
+
+    afterEach(() => {
+      process.env.VISUAL = savedVisual
+      process.env.EDITOR = savedEditor
+      setExternalEditorLauncher(undefined)
+    })
+
+    /** Install a recording launcher; `impl` decides each call's outcome. */
+    function fakeLauncher(impl: (seed: string) => Promise<string | undefined>): string[] {
+      const seeds: string[] = []
+      setExternalEditorLauncher((seed, command) => {
+        seeds.push(`${command}: ${seed}`)
+        return impl(seed)
+      })
+      return seeds
+    }
+
+    /** Let the async flow settle past its final await chain. */
+    async function settle(): Promise<void> {
+      await new Promise<void>(resolve => {
+        setImmediate(resolve)
+      })
+    }
+
+    it('hands the draft over, suspends once, and writes the edit back with the mirrors synced', async () => {
+      const { ctx, editor, screen } = await mount()
+      const seeds = fakeLauncher(() => Promise.resolve('edited\r\n\r\n'))
+      type(editor, 'draft here')
+      editor.handleInput(KEY.ctrlG)
+      await vi.waitFor(() => {
+        expect(editor.getText()).toBe('edited\n')
+      })
+      // The seed is the expanded draft and the command is the resolved
+      // $VISUAL; the CRLF pair collapses and one trailing newline drops.
+      expect(seeds).toEqual(['mayfly-spec-editor: draft here'])
+      expect(screen.suspends).toBe(1)
+      expect(ctx.mayflyInteractionState.draft.getStashedDraft()).toBe('edited\n')
+    })
+
+    it('keeps the draft untouched on a nonzero editor exit (:cq)', async () => {
+      const { ctx, editor, screen, hint } = await mount()
+      fakeLauncher(() => Promise.resolve(undefined))
+      type(editor, 'keep me')
+      editor.handleInput(KEY.ctrlG)
+      await vi.waitFor(() => {
+        expect(screen.suspends).toBe(1)
+      })
+      await settle()
+      expect(editor.getText()).toBe('keep me')
+      expect(ctx.mayflyInteractionState.draft.getStashedDraft()).toBe('keep me')
+      expect(hint.render(80)).toEqual([])
+    })
+
+    it('notices instead of suspending when no editor is configured', async () => {
+      process.env.VISUAL = ''
+      process.env.EDITOR = ''
+      const { editor, screen, hint } = await mount()
+      expect(editor.onKey?.(KEY.ctrlG)).toBe(true)
+      expect(screen.suspends).toBe(0)
+      expect(hint.render(80)).toEqual(['~set $VISUAL or $EDITOR to edit drafts externally~'])
+    })
+
+    it('notices a launcher failure and re-arms for the next press', async () => {
+      const { editor, screen, hint } = await mount()
+      let outcome: Promise<string | undefined> = Promise.reject(new Error('editor gone'))
+      fakeLauncher(() => outcome)
+      editor.handleInput(KEY.ctrlG)
+      await vi.waitFor(() => {
+        expect(hint.render(80)).toEqual(['~!editor gone!~'])
+      })
+      expect(screen.suspends).toBe(1)
+      // A non-Error rejection stringifies into the notice.
+      outcome = Promise.reject('plain failure')
+      editor.handleInput(KEY.ctrlG)
+      await vi.waitFor(() => {
+        expect(hint.render(80)).toEqual(['~!plain failure!~'])
+      })
+      expect(screen.suspends).toBe(2)
+      outcome = Promise.resolve('second try')
+      editor.handleInput(KEY.ctrlG)
+      await vi.waitFor(() => {
+        expect(editor.getText()).toBe('second try')
+      })
+      expect(screen.suspends).toBe(3)
+    })
+
+    it('consumes a second Ctrl-G while a session is in flight and re-arms after', async () => {
+      const { editor, screen } = await mount()
+      const gate = Promise.withResolvers<string | undefined>()
+      fakeLauncher(() => gate.promise)
+      editor.handleInput(KEY.ctrlG)
+      expect(editor.onKey?.(KEY.ctrlG)).toBe(true)
+      expect(screen.suspends).toBe(1)
+      gate.resolve('late edit')
+      await vi.waitFor(() => {
+        expect(editor.getText()).toBe('late edit')
+      })
+      expect(screen.suspends).toBe(1)
+      editor.handleInput(KEY.ctrlG)
+      await vi.waitFor(() => {
+        expect(screen.suspends).toBe(2)
+      })
+    })
+
+    it('leaves the draft alone when the fiber unloads mid-session', async () => {
+      const { editor, screen, fiber } = await mount()
+      const gate = Promise.withResolvers<string | undefined>()
+      fakeLauncher(() => gate.promise)
+      type(editor, 'draft survives')
+      editor.handleInput(KEY.ctrlG)
+      await fiber.dispose()
+      gate.resolve('must not land')
+      await settle()
+      expect(editor.getText()).toBe('draft survives')
+      expect(screen.suspends).toBe(1)
+    })
+
+    it('drops the failure notice when the fiber unloads before the launcher rejects', async () => {
+      const { editor, hint, fiber } = await mount()
+      const gate = Promise.withResolvers<string | undefined>()
+      fakeLauncher(() => gate.promise)
+      editor.handleInput(KEY.ctrlG)
+      await fiber.dispose()
+      gate.reject(new Error('late boom'))
+      await settle()
+      expect(hint.render(80)).toEqual([])
+    })
+  })
+
+  describe('queued-message pane key ownership', () => {
+    it('leaves Up/Down to editor history even while queued messages are visible', async () => {
+      const inbox = fakeInbox({ nextTurn: [queued('queued draft')] })
+      const { ctx, editor } = await mount({ inbox })
+      await ctx.plugin(paneQueuePlugin)
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(editor.onKey?.(KEY.down)).toBe(false)
+      expect(inbox.remove).not.toHaveBeenCalled()
+      expect(editor.getText()).toBe('')
+    })
+  })
+
+  describe('side-question pane routing (S13)', () => {
+    it('mirrors the connected flag onto the editor and splices its corners', async () => {
+      const { ctx, editor } = await mount()
+      ctx.emit('mayfly/editor-connected-above', true)
+      expect(editor.connectedAbove).toBe(true)
+      ctx.emit('mayfly/editor-connected-above', false)
+      expect(editor.connectedAbove).toBe(false)
+    })
+
+    it('closes the pane on Escape before clearing the draft', async () => {
+      const { ctx, editor, cancel } = await mount({ running: true })
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      ctx.emit('mayfly/editor-connected-above', true)
+      type(editor, 'draft')
+      expect(editor.onKey?.(KEY.escape)).toBe(true)
+      expect(command).toHaveBeenCalledWith('close')
+      // The draft survives the close; the interrupt chain is not reached.
+      expect(editor.getText()).toBe('draft')
+      expect(cancel).not.toHaveBeenCalled()
+    })
+
+    it('lets an open autocomplete dropdown own Escape while the pane is up', async () => {
+      const { ctx, editor } = await mount({ running: true })
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      ctx.emit('mayfly/editor-connected-above', true)
+      editor.showingAutocomplete = true
+      expect(editor.onKey?.(KEY.escape)).toBe(false)
+      expect(command).not.toHaveBeenCalled()
+    })
+
+    it('keeps the clear/interrupt chain when no pane is connected', async () => {
+      const { ctx, editor } = await mount({ running: true })
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      type(editor, 'draft')
+      editor.handleInput(KEY.escape)
+      expect(editor.getText()).toBe('')
+      expect(command).not.toHaveBeenCalled()
+    })
+
+    it('keeps arrows on editor history and routes page keys and wheel to the pane', async () => {
+      const { ctx, editor, screen } = await mount()
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      ctx.emit('mayfly/editor-connected-above', true)
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(editor.onKey?.(KEY.down)).toBe(false)
+      expect(screen.sendContentInput('\x1b[5~')).toBe(true)
+      expect(screen.sendContentInput('\x1b[6~')).toBe(true)
+      expect(screen.sendContentInput('\x1b[<64;1;1M')).toBe(true)
+      expect(command.mock.calls).toEqual([
+        ['scroll-up', undefined, 20],
+        ['scroll-down', undefined, 20],
+        ['scroll-up', undefined, 3],
+      ])
+    })
+
+    it('passes arrows through to the editor when the pane is up but the buffer is not empty', async () => {
+      const { ctx, editor } = await mount()
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      ctx.emit('mayfly/editor-connected-above', true)
+      type(editor, 'draft')
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(command).not.toHaveBeenCalled()
+    })
+
+    it('does not let the queue pane take Up when no BTW pane is connected', async () => {
+      const inbox = fakeInbox({ nextTurn: [queued('queued draft')] })
+      const { ctx, editor } = await mount({ inbox })
+      await ctx.plugin(paneQueuePlugin)
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(editor.getText()).toBe('')
+      expect(inbox.remove).not.toHaveBeenCalled()
+      expect(command).not.toHaveBeenCalled()
+    })
+
+    it('submits the draft to the side conversation on Enter while connected', async () => {
+      const { ctx, editor, followup } = await mount({ withAgent: true })
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      ctx.emit('mayfly/editor-connected-above', true, false)
+      type(editor, 'and then?')
+      editor.handleInput(KEY.enter)
+      expect(command).toHaveBeenCalledWith('submit', 'and then?')
+      // The buffer clears and the main agent never sees the text.
+      expect(editor.getText()).toBe('')
+      expect(followup).not.toHaveBeenCalled()
+    })
+
+    it('refuses the submit and restores the draft while the side agent is busy', async () => {
+      const { ctx, editor } = await mount()
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      ctx.emit('mayfly/editor-connected-above', true, true)
+      type(editor, 'wait for me')
+      editor.handleInput(KEY.enter)
+      // The draft survives, the notice flashes, and no command is emitted.
+      expect(editor.getText()).toBe('wait for me')
+      expect(command).not.toHaveBeenCalled()
+    })
+
+    it('clears the buffer without submitting when connected and the draft is blank', async () => {
+      const { ctx, editor } = await mount()
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      ctx.emit('mayfly/editor-connected-above', true, false)
+      type(editor, '   ')
+      editor.handleInput(KEY.enter)
+      expect(editor.getText()).toBe('')
+      expect(command).not.toHaveBeenCalled()
+    })
+
+    it('keeps the main-agent submit path when no pane is connected', async () => {
+      const { ctx, editor, followup } = await mount({ withAgent: true })
+      const command = vi.fn()
+      ctx.on('mayfly/btw-command', command)
+      type(editor, 'plain')
+      editor.handleInput(KEY.enter)
+      expect(followup).toHaveBeenCalledOnce()
+      expect(command).not.toHaveBeenCalled()
+    })
+
+    it('fences a pending main transform when the side pane connects but not on a busy-only refresh', async () => {
+      const { ctx, editor, followup } = await mount({ withAgent: true })
+      const command = vi.fn()
+      const gate = Promise.withResolvers<MayflyEditorSubmitValue>()
+      let signal: AbortSignal | undefined
+      ctx.on('mayfly/btw-command', command)
+      installEditorTransform(ctx, (_request, currentSignal) => {
+        signal = currentSignal
+        return gate.promise
+      })
+
+      type(editor, 'route-sensitive draft')
+      editor.handleInput(KEY.enter)
+      await vi.waitFor(() => expect(signal).toBeDefined())
+
+      ctx.emit('mayfly/editor-connected-above', false, true)
+      expect(signal?.aborted).toBe(false)
+
+      ctx.emit('mayfly/editor-connected-above', true, true)
+      expect(signal?.aborted).toBe(true)
+      expect(editor.getText()).toBe('route-sensitive draft')
+
+      gate.resolve({ text: 'late transformed draft' })
+      await gate.promise
+      await Promise.resolve()
+      expect(editor.getText()).toBe('route-sensitive draft')
+      expect(followup).not.toHaveBeenCalled()
+      expect(command).not.toHaveBeenCalled()
+    })
+  })
+})
+
+describe('the Alt+M model cycle key', () => {
+  /** Capture the shared editor's notice channel for assertions. */
+  function captureNotices(ctx: Context): string[] {
+    const notices: string[] = []
+    const shared = getSharedEditor(ctx) as { notice?: (text: string) => void } | undefined
+    expect(shared).toBeDefined()
+    shared!.notice = (text: string) => { notices.push(text) }
+    return notices
+  }
+
+  it('switches the session model without touching the draft', async () => {
+    const writes: unknown[] = []
+    const state = { current: { provider: 'mock', model: 'mock' } }
+    const modelRef = {
+      get current() { return state.current },
+      set current(next: unknown) { state.current = next; writes.push(next) },
+    }
+    const { ctx, editor } = await mount({ modelRef })
+    ctx.provide('llm', {
+      listModels: async () => [{ id: 'mock', name: 'Mock' }, { id: 'mock-pro', name: 'Mock Pro' }],
+    } as never)
+    const notices = captureNotices(ctx)
+    type(editor, 'keep this draft')
+    editor.handleInput(KEY.altM)
+    // The press is consumed before the Editor sees it, so the draft
+    // survives byte for byte — the point of the hotkey.
+    expect(editor.getText()).toBe('keep this draft')
+    await vi.waitFor(() => { expect(notices).toHaveLength(1) })
+    expect(notices[0]).toBe('Switched to mock-pro (mock) · session only')
+    expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro' }])
+  })
+
+  it('still consumes the press without a session, flashing the guard notice', async () => {
+    const { ctx, editor } = await mount({ withAgent: false })
+    const notices = captureNotices(ctx)
+    type(editor, 'draft')
+    editor.handleInput(KEY.altM)
+    expect(editor.getText()).toBe('draft')
+    await vi.waitFor(() => { expect(notices).toEqual(['no session is live yet']) })
+  })
+})

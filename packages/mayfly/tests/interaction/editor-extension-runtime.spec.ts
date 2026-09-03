@@ -1,0 +1,1214 @@
+/**
+ * Public editor-extension runtime tests: shell refresh, completion
+ * multiplexing, action serialization, and pre-clear submit transactions.
+ *
+ * @module @ephemeral-ai/mayfly/interaction/tests/editor-extension-runtime
+ */
+
+import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type {
+  MayflyEditorCompletionItem,
+  MayflyEditorCompletionRequest,
+  MayflyEditorDecoration,
+  MayflyEditorExtensionDefinition,
+  MayflyEditorSubmitRequest,
+  MayflyEditorSubmitValue,
+  MayflyUiEvent,
+} from '@ephemeral-ai/mayfly-ui'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyEditorSubmitAttempt } from '../../src/core/index.ts'
+import { describe, expect, it, vi } from 'vitest'
+import { EditorExtensionRuntime } from '../../src/interaction/editor-extension-runtime.ts'
+import {
+  registerEditorAutocompleteSource,
+} from '../../src/interaction/editor-instance.ts'
+import { FakeMayflyEditor, fakeMayflyContext, KEY } from './fakes.ts'
+
+function success<Value>(value: Value): Value { return value }
+
+type TestEditorExtension = MayflyEditorExtensionDefinition & MayflyEditorDecoration
+
+function registerExtensions(
+  ctx: ReturnType<typeof fakeMayflyContext>['ctx'],
+  entries: readonly TestEditorExtension[],
+): () => void {
+  const registrations = entries.map(entry => {
+    const { before, after, hint, diagnostics, actions, ...definition } = entry
+    return ctx.mayflyEditorExtensions.register(definition, {
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+      ...(hint === undefined ? {} : { hint }),
+      ...(diagnostics === undefined ? {} : { diagnostics }),
+      ...(actions === undefined ? {} : { actions }),
+    })
+  })
+  return () => {
+    for (const registration of registrations) registration.dispose()
+  }
+}
+
+function runtimeFixture(entries: readonly TestEditorExtension[] = []): {
+  readonly ctx: ReturnType<typeof fakeMayflyContext>['ctx']
+  readonly editor: FakeMayflyEditor
+  readonly runtime: EditorExtensionRuntime
+  readonly notices: string[]
+  readonly replace: (next: readonly TestEditorExtension[], revision?: number) => void
+} {
+  const { ctx } = fakeMayflyContext()
+  const editor = new FakeMayflyEditor()
+  const notices: string[] = []
+  let unregister = registerExtensions(ctx, entries)
+  const runtime = new EditorExtensionRuntime({
+    ctx,
+    editor,
+    notice: text => notices.push(text),
+    shouldTransformSubmit: () => true,
+  })
+  return {
+    ctx,
+    editor,
+    runtime,
+    notices,
+    replace(next) {
+      unregister()
+      unregister = registerExtensions(ctx, next)
+    },
+  }
+}
+
+function suggestions(provider: MayflyAutocompleteProvider, text: string, force?: boolean) {
+  return provider.getSuggestions([text], 0, text.length, {
+    signal: new AbortController().signal,
+    ...(force === undefined ? {} : { force }),
+  })
+}
+
+function privateSubmit(runtime: EditorExtensionRuntime, attempt: MayflyEditorSubmitAttempt): void {
+  ;(runtime as unknown as { beginSubmit(value: MayflyEditorSubmitAttempt): void }).beginSubmit(attempt)
+}
+
+function privateDispatch(runtime: EditorExtensionRuntime, event: MayflyUiEvent): void {
+  ;(runtime as unknown as { dispatchEvent(value: MayflyUiEvent): void }).dispatchEvent(event)
+}
+
+function imageRefForCoverage(id: string): ImageAttachmentRef {
+  return {
+    attachmentId: AttachmentId(id),
+    mediaType: 'image/png',
+    bytes: 1,
+    width: 1,
+    height: 1,
+  }
+}
+
+describe('editor extension completion multiplexer', () => {
+  it('combines the Mayfly source with /, @, #, and manual extension requests', async () => {
+    const requests: MayflyEditorCompletionRequest[] = []
+    const extension: TestEditorExtension = {
+      id: 'acme.complete',
+      complete: async request => {
+        requests.push(request)
+        return success([{ id: `extension-${request.trigger}`, label: `Extension ${request.query}`, insertText: `insert-${request.trigger}`, detail: 'plugin' }])
+      },
+    }
+    const { ctx, editor, runtime } = runtimeFixture()
+    const baseItem: MayflyAutocompleteItem = { value: 'base-value', label: 'Base' }
+    const baseApply = vi.fn((lines: string[]) => ({ lines: [`base:${lines[0] ?? ''}`], cursorLine: 0, cursorCol: 4 }))
+    const base: MayflyAutocompleteProvider = {
+      triggerCharacters: ['@', '$'],
+      getSuggestions: async () => ({ prefix: 'base-prefix', items: [baseItem] }),
+      applyCompletion: baseApply,
+      shouldTriggerFileCompletion: () => true,
+    }
+    const unregister = registerEditorAutocompleteSource(ctx, 'base', base)
+    const unregisterExtensions = registerExtensions(ctx, [extension])
+
+    const provider = editor.autocompleteProvider!
+    expect(provider.triggerCharacters).toEqual(['@', '$', '/', '#'])
+    const cases = [
+      { text: '/he', trigger: '/', query: 'he' },
+      { text: 'open @fi', trigger: '@', query: 'fi' },
+      { text: 'use #sk', trigger: '#', query: 'sk' },
+      { text: 'plain', trigger: 'manual', query: 'plain', force: true },
+    ] as const
+    for (const test of cases) {
+      const result = await suggestions(provider, test.text, test.force)
+      expect(result?.items.map(item => item.label)).toEqual(['Base', `Extension ${test.query}`])
+      expect(result?.prefix).toBe(test.trigger === '/' ? test.text : test.text.split(' ').at(-1))
+    }
+    expect(requests).toEqual(cases.map(({ trigger, query }) => ({ trigger, query })))
+    expect(provider.shouldTriggerFileCompletion?.(['x'], 0, 1)).toBe(true)
+
+    const result = await suggestions(provider, '#sk')
+    const extensionItem = result!.items[1]!
+    // The aggregate source also returned a base item whose own prefix was
+    // `base-prefix`. A public item must keep its `#sk` prefix even when the
+    // editor supplies that different aggregate/base prefix at acceptance.
+    expect(provider.applyCompletion(['use #sk now'], 0, 7, extensionItem, 'base-prefix')).toEqual({
+      lines: ['use insert-# now'],
+      cursorLine: 0,
+      cursorCol: 12,
+    })
+    expect(provider.applyCompletion(['x'], 0, 1, baseItem, 'x')).toEqual({ lines: ['base:x'], cursorLine: 0, cursorCol: 4 })
+    expect(baseApply).toHaveBeenCalledOnce()
+
+    unregisterExtensions()
+    unregister()
+    runtime.dispose()
+  })
+
+  it('dispatches every completion trigger through the one direct callback', async () => {
+    const complete = vi.fn(async request => success([{
+      id: 'legacy',
+      label: `Legacy ${request.trigger}`,
+      insertText: request.query,
+    }]))
+    const { editor, runtime } = runtimeFixture([
+      { id: 'acme.passive' },
+      { id: 'acme.legacy', complete },
+    ])
+
+    const slash = await suggestions(editor.autocompleteProvider!, '/legacy')
+    expect(slash?.items.map(item => item.label)).toEqual(['Legacy /'])
+    const hash = await suggestions(editor.autocompleteProvider!, '#legacy')
+    expect(hash?.items.map(item => item.label)).toEqual(['Legacy #'])
+    expect(complete).toHaveBeenCalledTimes(2)
+    expect(complete.mock.calls[0]?.[0]).toEqual({ trigger: '/', query: 'legacy' })
+    expect(complete.mock.calls[1]?.[0]).toEqual({ trigger: '#', query: 'legacy' })
+    runtime.dispose()
+  })
+
+  it('rejects late completion after refresh or unload without publishing a notice', async () => {
+    const gates = [Promise.withResolvers<readonly MayflyEditorCompletionItem[]>(), Promise.withResolvers<readonly MayflyEditorCompletionItem[]>()]
+    const signals: AbortSignal[] = []
+    let call = 0
+    const extension: TestEditorExtension = {
+      id: 'acme.slow-complete',
+      complete: (_request, context) => {
+        signals.push(context.signal)
+        return gates[call++]!.promise
+      },
+    }
+    const { editor, runtime, notices, replace } = runtimeFixture([extension])
+    const firstProvider = editor.autocompleteProvider!
+    const first = suggestions(firstProvider, '/old')
+    await vi.waitFor(() => expect(signals).toHaveLength(1))
+    replace([])
+    expect(signals[0]?.aborted).toBe(true)
+    gates[0]!.resolve(success([{ id: 'old', label: 'Old', insertText: '/old' }]))
+    await expect(first).resolves.toBeNull()
+
+    replace([extension], 3)
+    const second = suggestions(editor.autocompleteProvider!, '#late')
+    await vi.waitFor(() => expect(signals).toHaveLength(2))
+    runtime.dispose()
+    expect(signals[1]?.aborted).toBe(true)
+    gates[1]!.resolve([])
+    await expect(second).resolves.toBeNull()
+    expect(notices).toEqual([])
+  })
+
+  it('aborts the current completion on session invalidation and lets a new request complete', async () => {
+    const gate = Promise.withResolvers<readonly MayflyEditorCompletionItem[]>()
+    const signals: AbortSignal[] = []
+    let calls = 0
+    const extension: TestEditorExtension = {
+      id: 'acme.session-complete',
+      complete: (_request, context) => {
+        signals.push(context.signal)
+        calls += 1
+        return calls === 1
+          ? gate.promise
+          : success([{ id: 'current', label: 'Current', insertText: '#current' }])
+      },
+    }
+    const { editor, runtime } = runtimeFixture([extension])
+    const first = suggestions(editor.autocompleteProvider!, '#old')
+    await vi.waitFor(() => expect(signals).toHaveLength(1))
+    runtime.invalidateSession()
+    expect(signals[0]?.aborted).toBe(true)
+    gate.resolve(success([{ id: 'old', label: 'Old', insertText: '#old' }]))
+    await expect(first).resolves.toBeNull()
+
+    const second = await suggestions(editor.autocompleteProvider!, '#cur')
+    expect(second?.items.map(item => item.label)).toEqual(['Current'])
+    expect(signals[1]?.aborted).toBe(false)
+    runtime.dispose()
+  })
+
+  it.each([
+    ['non-array result', null, 'at most 200 items'],
+    ['duplicate ids', success([
+      { id: 'same', label: 'One', insertText: 'one' },
+      { id: 'same', label: 'Two', insertText: 'two' },
+    ]), 'invalid or duplicate id'],
+    ['too many items', success(Array.from({ length: 201 }, (_, index) => ({ id: `item-${String(index)}`, label: 'Item', insertText: 'item' }))), 'at most 200 items'],
+  ])('contains %s without leaking suggestions or a rejection', async (_label, callbackResult, expectedNotice) => {
+    const { editor, runtime, notices } = runtimeFixture([{
+      id: 'acme.invalid-completion',
+      complete: async () => callbackResult as readonly MayflyEditorCompletionItem[],
+    }])
+    await expect(suggestions(editor.autocompleteProvider!, '/bad')).resolves.toBeNull()
+    expect(notices.some(notice => notice.includes(expectedNotice))).toBe(true)
+    runtime.dispose()
+  })
+
+  it.each([
+    ['null item', success([null]), 'must be an object'],
+    ['missing id', success([{ label: 'x', insertText: 'x' }]), 'id must be an own data property'],
+    ['accessor id', success([Object.defineProperty({ label: 'x', insertText: 'x' }, 'id', { get: () => 'x' })]), 'id must be an own data property'],
+    ['empty id', success([{ id: '', label: 'x', insertText: 'x' }]), 'invalid or duplicate id'],
+    ['long id', success([{ id: 'x'.repeat(129), label: 'x', insertText: 'x' }]), 'invalid or duplicate id'],
+    ['invalid label', success([{ id: 'x', label: 3, insertText: 'x' }]), 'invalid label'],
+    ['long label', success([{ id: 'x', label: 'x'.repeat(2_001), insertText: 'x' }]), 'invalid label'],
+    ['invalid insertText', success([{ id: 'x', label: 'x', insertText: 3 }]), 'invalid insertText'],
+    ['long insertText', success([{ id: 'x', label: 'x', insertText: 'x'.repeat(2_001) }]), 'invalid insertText'],
+    ['accessor detail', success([Object.defineProperty({ id: 'x', label: 'x', insertText: 'x' }, 'detail', { get: () => 'detail' })]), 'detail must be an own data property'],
+    ['invalid detail', success([{ id: 'x', label: 'x', insertText: 'x', detail: 3 }]), 'invalid detail'],
+    ['long detail', success([{ id: 'x', label: 'x', insertText: 'x', detail: 'x'.repeat(2_001) }]), 'invalid detail'],
+    ['non-array object', { value: [] }, 'at most 200 items'],
+  ])('contains hostile completion shape: %s', async (_label, result, expectedNotice) => {
+    const { editor, runtime, notices } = runtimeFixture([{
+      id: 'acme.hostile-completion',
+      complete: async () => result as readonly MayflyEditorCompletionItem[],
+    }])
+    await expect(suggestions(editor.autocompleteProvider!, '/hostile')).resolves.toBeNull()
+    expect(notices.some(notice => notice.includes(expectedNotice))).toBe(true)
+    runtime.dispose()
+  })
+
+  it('contains a rejected completion promise', async () => {
+    const { editor, runtime, notices } = runtimeFixture([{
+      id: 'acme.rejected-completion',
+      complete: async () => { throw new Error('rejected completion promise') },
+    }])
+    await expect(suggestions(editor.autocompleteProvider!, '#x')).resolves.toBeNull()
+    expect(notices).toContain('rejected completion promise')
+    runtime.dispose()
+  })
+
+  it('bounds hostile and empty rejected-completion messages', async () => {
+    const hostile = new Proxy({}, {
+      getOwnPropertyDescriptor: () => { throw new Error('message trap') },
+    })
+    const first = runtimeFixture([{
+      id: 'acme.hostile-rejection',
+      complete: async () => { throw hostile },
+    }])
+    await expect(suggestions(first.editor.autocompleteProvider!, '/hostile')).resolves.toBeNull()
+    expect(first.notices).toContain('editor extension completion failed')
+    first.runtime.dispose()
+
+    const second = runtimeFixture([{
+      id: 'acme.empty-rejection',
+      complete: async () => { throw new Error('') },
+    }])
+    await expect(suggestions(second.editor.autocompleteProvider!, '/empty')).resolves.toBeNull()
+    expect(second.notices).toContain('editor extension completion failed')
+    second.runtime.dispose()
+  })
+
+  it('contains a raw completion-admission trap', async () => {
+    const item = new Proxy({}, {
+      getOwnPropertyDescriptor: () => { throw 'raw completion trap' },
+    })
+    const { editor, runtime, notices } = runtimeFixture([{
+      id: 'acme.raw-admission',
+      complete: async () => [item] as never,
+    }])
+    await expect(suggestions(editor.autocompleteProvider!, '/trap')).resolves.toBeNull()
+    expect(notices).toContain('completion result was rejected')
+    runtime.dispose()
+  })
+
+  it('times out and aborts a hung base source while preserving another base source', async () => {
+    vi.useFakeTimers()
+    let hungSignal: AbortSignal | undefined
+    const { ctx, editor, runtime } = runtimeFixture()
+    const unregisterHung = registerEditorAutocompleteSource(ctx, 'hung-base', {
+      getSuggestions: async (_lines, _cursorLine, _cursorCol, options) => {
+        hungSignal = options.signal
+        return new Promise(() => {})
+      },
+      applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+    })
+    const settledItem: MayflyAutocompleteItem = { value: 'settled', label: 'Settled' }
+    const unregisterSettled = registerEditorAutocompleteSource(ctx, 'settled-base', {
+      getSuggestions: async () => ({ items: [settledItem], prefix: 'x' }),
+      applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+    })
+    try {
+      const pending = suggestions(editor.autocompleteProvider!, 'x', true)
+      await vi.advanceTimersByTimeAsync(5_000)
+      await expect(pending).resolves.toEqual({ items: [settledItem], prefix: 'x' })
+      expect(hungSignal?.aborted).toBe(true)
+    } finally {
+      runtime.dispose()
+      unregisterSettled()
+      unregisterHung()
+      vi.useRealTimers()
+    }
+  })
+
+  it('caps combined base and public output and exercises generic application fallbacks', async () => {
+    const extensionItems = Array.from({ length: 100 }, (_, index) => ({ id: `extension-${String(index)}`, label: 'Extension', insertText: 'extension' }))
+    const baseItems = Array.from({ length: 150 }, (_, index): MayflyAutocompleteItem => ({ value: `base-${String(index)}`, label: 'Base' }))
+    const { ctx, editor, runtime } = runtimeFixture([{
+      id: 'acme.completion-cap',
+      complete: async () => success(extensionItems),
+    }])
+    const unregister = registerEditorAutocompleteSource(ctx, 'base-cap', {
+      getSuggestions: async () => ({ items: baseItems, prefix: '' }),
+      applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+      shouldTriggerFileCompletion: () => { throw new Error('file trigger failed') },
+    })
+    const provider = editor.autocompleteProvider!
+    const result = await suggestions(provider, '', true)
+    expect(result?.items).toHaveLength(200)
+    expect(provider.shouldTriggerFileCompletion?.(['x'], 0, 1)).toBe(false)
+    expect(provider.applyCompletion([], 0, 0, { value: 'fallback', label: 'Fallback' }, '')).toEqual({
+      lines: [],
+      cursorLine: 0,
+      cursorCol: 8,
+    })
+    expect(provider.applyCompletion(['one', 'two'], 0, 3, { value: 'fallback', label: 'Fallback' }, 'one')).toEqual({
+      lines: ['fallback', 'two'],
+      cursorLine: 0,
+      cursorCol: 8,
+    })
+    runtime.dispose()
+    unregister()
+  })
+
+  it('caps hostile base output and supplies the terminal prefix fallback', async () => {
+    const { ctx, editor, runtime } = runtimeFixture()
+    const items = Array.from({ length: 201 }, (_, index): MayflyAutocompleteItem => ({ value: String(index), label: String(index) }))
+    const unregister = registerEditorAutocompleteSource(ctx, 'hostile-base-cap', {
+      getSuggestions: async () => ({ items, prefix: undefined as never }),
+      applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+    })
+    const result = await suggestions(editor.autocompleteProvider!, 'plain')
+    expect(result).toMatchObject({ prefix: '', items: expect.any(Array) })
+    expect(result?.items).toHaveLength(200)
+    runtime.dispose()
+    unregister()
+  })
+
+  it('times out a hung extension while retaining settled base suggestions', async () => {
+    vi.useFakeTimers()
+    const hung = new Promise<readonly MayflyEditorCompletionItem[]>(() => {})
+    const { ctx, editor, runtime, notices } = runtimeFixture([{
+      id: 'acme.hung-completion',
+      complete: () => hung,
+    }])
+    const baseItem: MayflyAutocompleteItem = { value: '/base', label: 'Base' }
+    const unregister = registerEditorAutocompleteSource(ctx, 'base-timeout', {
+      getSuggestions: async () => ({ items: [baseItem], prefix: '/b' }),
+      applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+    })
+    try {
+      const pending = suggestions(editor.autocompleteProvider!, '/b')
+      await vi.advanceTimersByTimeAsync(5_000)
+      await expect(pending).resolves.toEqual({ items: [baseItem], prefix: '/b' })
+      expect(notices).toContain('editor extension completion timed out')
+    } finally {
+      runtime.dispose()
+      unregister()
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('editor extension submit barrier', () => {
+  it('keeps the buffer until ordered async transforms settle, then commits once', async () => {
+    const gate = Promise.withResolvers<MayflyEditorSubmitValue>()
+    const requests: MayflyEditorSubmitRequest[] = []
+    const entries: TestEditorExtension[] = [
+      {
+        id: 'acme.first',
+        priority: 10,
+        transformSubmit: async request => {
+          requests.push(request)
+          return gate.promise
+        },
+      },
+      {
+        id: 'acme.second',
+        priority: 20,
+        transformSubmit: request => {
+          requests.push(request)
+          return success({ text: `second:${request.text}` })
+        },
+      },
+    ]
+    const { editor, runtime } = runtimeFixture(entries)
+    const submitted: Array<ReturnType<EditorExtensionRuntime['takePrepared']>> = []
+    editor.onSubmit = source => submitted.push(runtime.takePrepared(source))
+    editor.setText('draft')
+    editor.submit()
+    expect(editor.getText()).toBe('draft')
+    expect(submitted).toEqual([])
+    gate.resolve(success({ text: 'first:draft' }))
+    await vi.waitFor(() => expect(submitted).toHaveLength(1))
+    expect(editor.getText()).toBe('')
+    expect(requests.map(request => request.text)).toEqual(['draft', 'first:draft'])
+    expect(submitted[0]).toEqual({ text: 'second:first:draft' })
+    runtime.dispose()
+  })
+
+  it.each([
+    ['rejection', async () => { throw new Error('blocked') }, 'blocked'],
+    ['raw rejection', async () => { throw 'exploded' }, 'editor extension submit transform failed'],
+    ['non-string rejection message', async () => { throw { message: 7 } }, 'editor extension submit transform failed'],
+    ['empty output', async () => success({ text: '   ' }), 'submit transform produced an empty prompt'],
+  ])('cancels and preserves the editor on %s', async (_label, transform, expectedNotice) => {
+    const { editor, runtime, notices } = runtimeFixture([{ id: 'acme.reject', transformSubmit: transform }])
+    const submit = vi.fn()
+    editor.onSubmit = submit
+    editor.setText('keep me')
+    editor.submit()
+    await vi.waitFor(() => expect(notices).toContain(expectedNotice))
+    expect(editor.getText()).toBe('keep me')
+    expect(submit).not.toHaveBeenCalled()
+    runtime.dispose()
+  })
+
+  it.each([
+    ['null value', async () => success(null as never), 'submit transform must return an object'],
+    ['missing text', async () => success({} as never), 'text must be an own data property'],
+    ['accessor text', async () => success(Object.defineProperty({}, 'text', { get: () => 'x' }) as never), 'text must be an own data property'],
+    ['object without text', async () => ({ code: 'rejected' } as never), 'text must be an own data property'],
+    ['raw thrown value', async () => new Proxy({}, { getOwnPropertyDescriptor: () => { throw 'raw submit trap' } }) as never, 'submit transform was rejected'],
+  ])('contains hostile submit shape: %s', async (_label, transform, expectedNotice) => {
+    const { editor, runtime, notices } = runtimeFixture([{ id: 'acme.hostile-submit', transformSubmit: transform }])
+    editor.setText('hostile draft')
+    editor.submit()
+    await vi.waitFor(() => expect(notices.some(notice => notice.includes(expectedNotice))).toBe(true))
+    expect(editor.getText()).toBe('hostile draft')
+    runtime.dispose()
+  })
+
+  it('covers owner-declined, empty-generation, aborted, failed-commit, and thrown-commit attempts', async () => {
+    const noBinding = runtimeFixture()
+    const noBindingCommit = vi.fn(() => true)
+    privateSubmit(noBinding.runtime, {
+      text: 'plain', signal: new AbortController().signal, revision: 1,
+      commit: noBindingCommit, cancel: vi.fn(),
+    })
+    expect(noBindingCommit).toHaveBeenCalledOnce()
+    noBinding.runtime.dispose()
+
+    const declinedMayfly = fakeMayflyContext()
+    const declinedEditor = new FakeMayflyEditor()
+    const declinedRuntime = new EditorExtensionRuntime({
+      ctx: declinedMayfly.ctx,
+      editor: declinedEditor,
+      notice: () => {},
+      shouldTransformSubmit: () => false,
+    })
+    registerExtensions(declinedMayfly.ctx, [{ id: 'acme.declined', transformSubmit: request => success({ text: request.text }) }])
+    const declinedCommit = vi.fn(() => true)
+    privateSubmit(declinedRuntime, {
+      text: 'declined', signal: new AbortController().signal, revision: 2,
+      commit: declinedCommit, cancel: vi.fn(),
+    })
+    expect(declinedCommit).toHaveBeenCalledOnce()
+    declinedRuntime.dispose()
+
+    const empty = runtimeFixture([{ id: 'acme.mutable', transformSubmit: request => success({ text: request.text }) }])
+    empty.replace([])
+    const emptyCommit = vi.fn(() => true)
+    privateSubmit(empty.runtime, {
+      text: 'empty generation', signal: new AbortController().signal, revision: 3,
+      commit: emptyCommit, cancel: vi.fn(),
+    })
+    expect(emptyCommit).toHaveBeenCalledOnce()
+    empty.runtime.dispose()
+
+    const aborted = runtimeFixture([{ id: 'acme.abort-before-loop', transformSubmit: async request => success({ text: request.text }) }])
+    const abortedCancel = vi.fn()
+    privateSubmit(aborted.runtime, {
+      text: 'aborted', signal: new AbortController().signal, revision: 4,
+      commit: vi.fn(() => true), cancel: abortedCancel,
+    })
+    aborted.runtime.invalidateSession()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(abortedCancel).toHaveBeenCalledOnce()
+    aborted.runtime.dispose()
+
+    const failed = runtimeFixture([{ id: 'acme.failed-commit', transformSubmit: request => success({ text: request.text }) }])
+    privateSubmit(failed.runtime, {
+      text: 'failed commit', signal: new AbortController().signal, revision: 5,
+      commit: () => false, cancel: vi.fn(),
+    })
+    await new Promise(resolve => setImmediate(resolve))
+    expect(failed.runtime.takePrepared('failed commit')).toBeUndefined()
+    failed.runtime.dispose()
+
+    const thrown = runtimeFixture([{ id: 'acme.thrown-commit', transformSubmit: request => success({ text: request.text }) }])
+    const thrownCancel = vi.fn()
+    privateSubmit(thrown.runtime, {
+      text: 'thrown commit', signal: new AbortController().signal, revision: 6,
+      commit: () => { throw 'raw commit failure' }, cancel: thrownCancel,
+    })
+    await vi.waitFor(() => expect(thrown.notices).toContain('submit transform failed'))
+    expect(thrownCancel).toHaveBeenCalledOnce()
+    thrown.runtime.dispose()
+  })
+
+  it('contains an abort raised while capturing text and an aborted commit failure', async () => {
+    const beforeLoop = runtimeFixture([{
+      id: 'acme.abort-during-capture',
+      transformSubmit: request => success({ text: request.text }),
+    }])
+    const captureController = new AbortController()
+    const captureCancel = vi.fn()
+    const hostileText = {
+      replace: () => {
+        captureController.abort()
+        return 'captured'
+      },
+    } as unknown as string
+    privateSubmit(beforeLoop.runtime, {
+      text: hostileText,
+      signal: captureController.signal,
+      revision: 7,
+      commit: vi.fn(() => true),
+      cancel: captureCancel,
+    })
+    await new Promise(resolve => setImmediate(resolve))
+    expect(captureCancel).toHaveBeenCalledOnce()
+    beforeLoop.runtime.dispose()
+
+    const duringCommit = runtimeFixture([{
+      id: 'acme.abort-during-commit',
+      transformSubmit: request => success({ text: request.text }),
+    }])
+    const commitController = new AbortController()
+    const commitCancel = vi.fn()
+    privateSubmit(duringCommit.runtime, {
+      text: 'commit abort',
+      signal: commitController.signal,
+      revision: 8,
+      commit: () => {
+        commitController.abort()
+        throw new Error('commit failed after abort')
+      },
+      cancel: commitCancel,
+    })
+    await vi.waitFor(() => expect(commitCancel).toHaveBeenCalledTimes(2))
+    expect(duringCommit.notices).not.toContain('commit failed after abort')
+    duringCommit.runtime.dispose()
+  })
+
+  it.each([
+    ['null value', async () => null as never, 'submit transform must return an object'],
+    ['invalid value', async () => success({ text: 7 as never }), 'submit transform text exceeds'],
+    ['overlong text', async () => success({ text: 'x'.repeat(20_001) }), 'submit transform text exceeds'],
+  ])('contains malicious %s and keeps the draft', async (_label, transform, expectedNotice) => {
+    const { editor, runtime, notices } = runtimeFixture([{ id: 'acme.invalid-transform', transformSubmit: transform }])
+    const submitted = vi.fn()
+    editor.onSubmit = submitted
+    editor.setText('still here')
+    editor.submit()
+    await vi.waitFor(() => expect(notices.some(notice => notice.includes(expectedNotice))).toBe(true))
+    expect(editor.getText()).toBe('still here')
+    expect(submitted).not.toHaveBeenCalled()
+    runtime.dispose()
+  })
+
+  it('aborts a stale transform when the buffer changes and ignores its late result', async () => {
+    const gate = Promise.withResolvers<MayflyEditorSubmitValue>()
+    let signal: AbortSignal | undefined
+    const { editor, runtime, notices } = runtimeFixture([{
+      id: 'acme.stale',
+      transformSubmit: (_request, context) => {
+        signal = context.signal
+        return gate.promise
+      },
+    }])
+    const submit = vi.fn()
+    editor.onSubmit = submit
+    editor.setText('draft')
+    editor.submit()
+    await vi.waitFor(() => expect(signal).toBeDefined())
+    editor.insertText('!')
+    expect(signal?.aborted).toBe(true)
+    gate.resolve(success({ text: 'late' }))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(editor.getText()).toBe('draft!')
+    expect(submit).not.toHaveBeenCalled()
+    expect(notices).toEqual([])
+    runtime.dispose()
+  })
+
+  it('aborts pending work on extension refresh and accepts a new transaction', async () => {
+    const gate = Promise.withResolvers<MayflyEditorSubmitValue>()
+    let oldSignal: AbortSignal | undefined
+    const { editor, runtime, replace } = runtimeFixture([{
+      id: 'acme.old',
+      transformSubmit: (_request, context) => {
+        oldSignal = context.signal
+        return gate.promise
+      },
+    }])
+    const submitted: string[] = []
+    editor.onSubmit = source => submitted.push(runtime.takePrepared(source)?.text ?? source)
+    editor.setText('old')
+    editor.submit()
+    await vi.waitFor(() => expect(oldSignal).toBeDefined())
+    replace([{ id: 'acme.new', transformSubmit: request => success({ text: `new:${request.text}` }) }])
+    expect(oldSignal?.aborted).toBe(true)
+    gate.resolve(success({ text: 'late-old' }))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(editor.getText()).toBe('old')
+    expect(submitted).toEqual([])
+
+    editor.setText('current')
+    editor.submit()
+    await vi.waitFor(() => expect(submitted).toEqual(['new:current']))
+    runtime.dispose()
+  })
+
+  it('cancels the pending attempt on session invalidation, preserves the draft, and submits again', async () => {
+    const first = Promise.withResolvers<MayflyEditorSubmitValue>()
+    const signals: AbortSignal[] = []
+    let calls = 0
+    const { editor, runtime } = runtimeFixture([{
+      id: 'acme.session-transform',
+      transformSubmit: (request, context) => {
+        signals.push(context.signal)
+        calls += 1
+        return calls === 1 ? first.promise : success({ text: `current:${request.text}` })
+      },
+    }])
+    const submitted: string[] = []
+    editor.onSubmit = source => submitted.push(runtime.takePrepared(source)?.text ?? source)
+    editor.setText('session draft')
+    editor.submit()
+    await vi.waitFor(() => expect(signals).toHaveLength(1))
+    runtime.invalidateSession()
+    expect(signals[0]?.aborted).toBe(true)
+    expect(editor.getText()).toBe('session draft')
+    first.resolve(success({ text: 'late' }))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(submitted).toEqual([])
+
+    editor.submit()
+    await vi.waitFor(() => expect(submitted).toEqual(['current:session draft']))
+    expect(signals[1]?.aborted).toBe(false)
+    runtime.dispose()
+  })
+
+  it('passes a frozen attachment snapshot through every transform and restores consumed images on rollback', async () => {
+    const ref: ImageAttachmentRef = {
+      attachmentId: AttachmentId('extension-image'),
+      mediaType: 'image/png',
+      bytes: 42,
+      width: 3,
+      height: 2,
+      name: 'capture.png',
+    }
+    const requests: MayflyEditorSubmitRequest[] = []
+    const entries: TestEditorExtension[] = [
+      { id: 'acme.one', transformSubmit: request => { requests.push(request); return success({ text: `one:${request.text}` }) } },
+      { id: 'acme.two', transformSubmit: request => { requests.push(request); return success({ text: `two:${request.text}` }) } },
+    ]
+    const { ctx, editor, runtime } = runtimeFixture(entries)
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', ref)
+    let prepared: ReturnType<EditorExtensionRuntime['takePrepared']>
+    editor.onSubmit = source => { prepared = runtime.takePrepared(source) }
+    editor.setText('[image #1] hello')
+    editor.submit()
+    await vi.waitFor(() => expect(prepared).toBeDefined())
+
+    expect(requests.map(request => request.text)).toEqual(['hello', 'one:hello'])
+    expect(requests[0]?.attachments).toEqual([{
+      id: 'extension-image',
+      label: 'capture.png',
+      mediaType: 'image/png',
+      size: 42,
+    }])
+    expect(Object.isFrozen(requests[0])).toBe(true)
+    expect(Object.isFrozen(requests[0]?.attachments)).toBe(true)
+    expect(requests[1]?.attachments).toBe(requests[0]?.attachments)
+    expect(prepared!.transformation?.blocks).toEqual([
+      { type: 'text', text: 'two:one:hello' },
+      { type: 'image', attachment: ref },
+    ])
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.has('[image #1]')).toBe(false)
+    prepared!.transformation?.rollback?.()
+    prepared!.transformation?.rollback?.()
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
+    runtime.dispose()
+  })
+
+  it('does not consume a replaced attachment and does not overwrite a replacement during rollback', async () => {
+    const original = imageRefForCoverage('original-image')
+    const replacement = imageRefForCoverage('replacement-image')
+    const { ctx, editor, runtime } = runtimeFixture([{
+      id: 'acme.attachment-race',
+      transformSubmit: request => success({ text: request.text }),
+    }])
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', original)
+    let raced: ReturnType<EditorExtensionRuntime['takePrepared']>
+    editor.onSubmit = source => {
+      ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', replacement)
+      raced = runtime.takePrepared(source)
+    }
+    editor.setText('[image #1] caption')
+    editor.submit()
+    await vi.waitFor(() => expect(raced).toBeDefined())
+    expect(raced!.transformation?.blocks).toEqual([{ type: 'text', text: 'caption' }])
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(replacement)
+
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', original)
+    let prepared: ReturnType<EditorExtensionRuntime['takePrepared']>
+    editor.onSubmit = source => { prepared = runtime.takePrepared(source) }
+    editor.setText('[image #1] caption')
+    editor.submit()
+    await vi.waitFor(() => expect(prepared).toBeDefined())
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', replacement)
+    prepared!.transformation?.rollback?.()
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(replacement)
+    runtime.dispose()
+  })
+
+  it('allows an image-only transformed submission', async () => {
+    const ref: ImageAttachmentRef = {
+      attachmentId: AttachmentId('image-only'),
+      mediaType: 'image/png',
+      bytes: 9,
+      width: 1,
+      height: 1,
+    }
+    const { ctx, editor, runtime } = runtimeFixture([{
+      id: 'acme.image-only',
+      transformSubmit: request => success({ text: request.text }),
+    }])
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', ref)
+    let prepared: ReturnType<EditorExtensionRuntime['takePrepared']>
+    editor.onSubmit = source => { prepared = runtime.takePrepared(source) }
+    editor.setText('[image #1]')
+    editor.submit()
+    await vi.waitFor(() => expect(prepared).toBeDefined())
+    expect(prepared!.text).toBe('')
+    expect(prepared!.transformation?.blocks).toEqual([{ type: 'image', attachment: ref }])
+    runtime.dispose()
+  })
+
+  it('keeps an unknown image marker as ordinary text', async () => {
+    const requests: MayflyEditorSubmitRequest[] = []
+    const { editor, runtime } = runtimeFixture([{
+      id: 'acme.unknown-marker',
+      transformSubmit: request => {
+        requests.push(request)
+        return success({ text: request.text })
+      },
+    }])
+    let prepared: ReturnType<EditorExtensionRuntime['takePrepared']>
+    editor.onSubmit = source => { prepared = runtime.takePrepared(source) }
+    editor.setText('keep [image #77] literal')
+    editor.submit()
+    await vi.waitFor(() => expect(prepared).toBeDefined())
+    expect(requests).toEqual([{ text: 'keep [image #77] literal', attachments: [] }])
+    expect(prepared).toEqual({ text: 'keep [image #77] literal' })
+    runtime.dispose()
+  })
+
+  it('cancels a pending transform when the runtime disposes', async () => {
+    const gate = Promise.withResolvers<MayflyEditorSubmitValue>()
+    let signal: AbortSignal | undefined
+    const { editor, runtime, notices } = runtimeFixture([{
+      id: 'acme.dispose-transform',
+      transformSubmit: (_request, context) => {
+        signal = context.signal
+        return gate.promise
+      },
+    }])
+    const submitted = vi.fn()
+    editor.onSubmit = submitted
+    editor.setText('survives dispose')
+    editor.submit()
+    await vi.waitFor(() => expect(signal).toBeDefined())
+    runtime.dispose()
+    expect(signal?.aborted).toBe(true)
+    expect(editor.getText()).toBe('survives dispose')
+    gate.resolve(success({ text: 'late' }))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(submitted).not.toHaveBeenCalled()
+    expect(notices).toEqual([])
+
+    // Disposal removed the barrier, so the same editor can submit normally.
+    editor.submit()
+    expect(submitted).toHaveBeenCalledWith('survives dispose')
+  })
+
+  it('times out a hung transform, cancels the attempt, and preserves the draft', async () => {
+    vi.useFakeTimers()
+    const hung = new Promise<MayflyEditorSubmitValue>(() => {})
+    const { editor, runtime, notices } = runtimeFixture([{
+      id: 'acme.hung-transform',
+      transformSubmit: () => hung,
+    }])
+    const submitted = vi.fn()
+    editor.onSubmit = submitted
+    editor.setText('timeout draft')
+    editor.submit()
+    try {
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(editor.getText()).toBe('timeout draft')
+      expect(submitted).not.toHaveBeenCalled()
+      expect(notices).toContain('editor extension submit transform timed out')
+    } finally {
+      runtime.dispose()
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('editor extension shell and actions', () => {
+  it('refreshes the shell around the exact same editor and preserves its draft', () => {
+    const { editor, runtime, replace } = runtimeFixture([{ id: 'acme.first', before: { kind: 'text', content: 'before-one' } }])
+    editor.setText('persistent draft')
+    expect(runtime.render(80).join('\n')).toContain('before-one')
+    replace([{ id: 'acme.second', after: { kind: 'text', content: 'after-two' } }])
+    expect(runtime.render(80).join('\n')).toContain('after-two')
+    expect(editor.getText()).toBe('persistent draft')
+    runtime.focused = true
+    runtime.handleInput('!')
+    expect(editor.getText()).toBe('persistent draft!')
+    runtime.dispose()
+  })
+
+  it('admits recursive passive shell nodes and contains malformed chrome contributions', () => {
+    const accessorTone = Object.defineProperty({ id: 'accessor-tone', message: 'bad tone' }, 'tone', { get: () => 'warning', enumerable: true })
+    const accessorMessage = Object.defineProperty({ id: 'accessor-message' }, 'message', { get: () => 'bad message', enumerable: true })
+    const entries = [{
+      id: 'acme.passive-stack',
+      before: { kind: 'stack' as const, direction: 'column' as const, children: [{ node: { kind: 'text' as const, content: 'stack child' } }] },
+      after: { kind: 'surface' as const, child: { kind: 'text' as const, content: 'surface child' }, footer: { kind: 'divider' as const, label: 'footer' } },
+      hint: 'valid hint',
+      diagnostics: [
+        { id: 'default-tone', message: 'default warning' },
+        { id: 'explicit-tone', message: 'explicit success', tone: 'success' as const },
+        null,
+        accessorTone,
+        accessorMessage,
+        { id: 'invalid-message', message: 7 },
+        { id: 'invalid-tone', message: 'invalid tone', tone: 'loud' },
+      ],
+    }, {
+      id: 'acme.surface-without-footer',
+      before: { kind: 'surface' as const, child: { kind: 'text' as const, content: 'bare surface' } },
+      after: { kind: 'stack' as const, direction: 'column' as const, children: [{ node: { kind: 'text' as const, content: 'after stack' } }] },
+    }, {
+      id: 'acme.rejected-chrome',
+      before: { kind: 'actions', id: 'interactive-before', items: [] },
+      after: { kind: 'unknown' },
+      hint: 'x'.repeat(20_001),
+      actions: [{ id: '', label: 'invalid action' }],
+    }, {
+      id: 'acme.opposite-rejections',
+      before: { kind: 'unknown' },
+      after: { kind: 'actions', id: 'interactive-after', items: [] },
+    }] as unknown as readonly TestEditorExtension[]
+    const { runtime, notices } = runtimeFixture(entries)
+    expect(runtime.render(Infinity).length).toBeGreaterThan(0)
+    const output = runtime.render(80).join('\n')
+    expect(output).toContain('stack child')
+    expect(output).toContain('surface child')
+    expect(output).toContain('default warning')
+    expect(output).toContain('explicit success')
+    expect(notices).toEqual(expect.arrayContaining([
+      'editor extension before must be passive',
+      expect.stringContaining('unknown Mayfly UI kind'),
+      expect.stringContaining('Mayfly UI text exceeds'),
+      expect.stringContaining('tone must be an own data property'),
+      expect.stringContaining('message must be an own data property'),
+    ]))
+    runtime.invalidate()
+    runtime.dispose()
+  })
+
+  it('falls back to the editor when separately valid extension trees exceed the shell quota', () => {
+    const entries = Array.from({ length: 256 }, (_, index): TestEditorExtension => ({
+      id: `acme.quota-${String(index)}`,
+      before: { kind: 'text', content: `row ${String(index)}` },
+    }))
+    const { editor, runtime, notices } = runtimeFixture(entries)
+    expect(runtime.render(80)).toEqual(editor.render(80))
+    expect(notices).toContain('$.children exceeds 200 entries')
+    runtime.dispose()
+  })
+
+  it('contains unknown actions and rejected handlers', async () => {
+    const calls: MayflyUiEvent[] = []
+    const entries: readonly TestEditorExtension[] = [{
+      id: 'acme.action-results',
+      actions: [{ id: 'run', label: 'Run' }],
+      onEvent: async event => {
+        calls.push(event)
+        if (calls.length === 3) throw new Error('rejected action callback')
+        if (calls.length === 4) throw 'raw action rejection'
+      },
+    }, {
+      id: 'acme.no-handler',
+      actions: [{ id: 'idle', label: 'Idle' }],
+    }]
+    const { runtime, notices, replace } = runtimeFixture(entries)
+    privateDispatch(runtime, { kind: 'change', controlId: 'extension-0-0', value: 'ignored' })
+    privateDispatch(runtime, { kind: 'activate', controlId: 'missing' })
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-1-0' })
+    for (let index = 0; index < 5; index += 1) privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    await vi.waitFor(() => expect(calls).toHaveLength(5))
+    expect(notices).toEqual(expect.arrayContaining([
+      'editor extension action failed',
+      'rejected action callback',
+    ]))
+
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    replace([], 3)
+    await new Promise(resolve => setImmediate(resolve))
+    runtime.dispose()
+  })
+
+  it('contains both a queued action rejection and a throwing owner notice', async () => {
+    const { ctx } = fakeMayflyContext()
+    const editor = new FakeMayflyEditor()
+    let calls = 0
+    registerExtensions(ctx, [{
+      id: 'acme.throwing-notice',
+      actions: [{ id: 'run', label: 'Run' }],
+      onEvent: async () => {
+        calls += 1
+        return calls === 1 ? Promise.reject(new Error('first rejection')) : success(undefined)
+      },
+    }])
+    const runtime = new EditorExtensionRuntime({
+      ctx,
+      editor,
+      notice: () => { throw new Error('notice failed') },
+      shouldTransformSubmit: () => true,
+    })
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    await vi.waitFor(() => expect(calls).toBe(2))
+    runtime.dispose()
+  })
+
+  it('serializes repeated actions per extension and drops queued work after unload', async () => {
+    const first = Promise.withResolvers<void>()
+    const calls: string[] = []
+    const signals: AbortSignal[] = []
+    let count = 0
+    const entry: TestEditorExtension = {
+      id: 'acme.actions',
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      onEvent: (event, context) => {
+        calls.push((event as MayflyUiEvent & { controlId: string }).controlId)
+        signals.push(context.signal)
+        count += 1
+        return count === 1 ? first.promise : success(undefined)
+      },
+    }
+    const { runtime, replace } = runtimeFixture([entry])
+    runtime.focused = true
+    runtime.render(80)
+    runtime.handleInput(KEY.tab)
+    runtime.handleInput(KEY.enter)
+    runtime.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(calls).toEqual(['run']))
+    first.resolve(success(undefined))
+    await vi.waitFor(() => expect(calls).toEqual(['run', 'run']))
+
+    const late = Promise.withResolvers<void>()
+    const retiring: TestEditorExtension = {
+      ...entry,
+      onEvent: (_event, context) => {
+        calls.push('late')
+        signals.push(context.signal)
+        return late.promise
+      },
+    }
+    replace([retiring], 3)
+    runtime.render(80)
+    runtime.handleInput(KEY.tab)
+    runtime.handleInput(KEY.enter)
+    runtime.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(calls.at(-1)).toBe('late'))
+    replace([], 4)
+    expect(signals.at(-1)?.aborted).toBe(true)
+    late.resolve()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(calls.filter(call => call === 'late')).toHaveLength(1)
+    runtime.dispose()
+  })
+
+  it('keeps an event-owned decoration update live and aborts an external replacement', async () => {
+    const { ctx } = fakeMayflyContext()
+    const editor = new FakeMayflyEditor()
+    const gate = Promise.withResolvers<void>()
+    let signal: AbortSignal | undefined
+    let registration!: ReturnType<typeof ctx.mayflyEditorExtensions.register>
+    registration = ctx.mayflyEditorExtensions.register({
+      id: 'acme.event-owned',
+      onEvent: (_event, context) => {
+        signal = context.signal
+        registration.set({ actions: [{ id: 'run', label: 'Updated' }] }, { eventRevision: context.revision })
+        return gate.promise
+      },
+    }, { actions: [{ id: 'run', label: 'Run' }] })
+    const runtime = new EditorExtensionRuntime({
+      ctx,
+      editor,
+      notice: () => {},
+      shouldTransformSubmit: () => true,
+    })
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    await vi.waitFor(() => expect(signal).toBeDefined())
+    expect(signal?.aborted).toBe(false)
+    expect(runtime.render(80).join('\n')).toContain('Updated')
+
+    registration.set({ actions: [{ id: 'run', label: 'External' }] })
+    expect(signal?.aborted).toBe(true)
+    gate.resolve()
+    await new Promise(resolve => setImmediate(resolve))
+    runtime.dispose()
+    registration.dispose()
+  })
+
+  it('fences queued action dispatch across session invalidation and starts the new lifecycle immediately', async () => {
+    const hung = Promise.withResolvers<void>()
+    const dispatch = vi.fn()
+      .mockImplementationOnce(() => hung.promise)
+      .mockResolvedValue(undefined)
+    const entry: TestEditorExtension = {
+      id: 'acme.session-action',
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      onEvent: dispatch,
+    }
+    const { ctx } = fakeMayflyContext()
+    const editor = new FakeMayflyEditor()
+    registerExtensions(ctx, [entry])
+    const runtime = new EditorExtensionRuntime({
+      ctx,
+      editor,
+      notice: () => {},
+      shouldTransformSubmit: () => true,
+    })
+
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
+
+    runtime.invalidateSession()
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2))
+    expect(dispatch.mock.calls[1]?.[0]).toEqual({ kind: 'activate', controlId: 'run' })
+
+    hung.resolve()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    runtime.dispose()
+  })
+
+  it('never dispatches a queued action after runtime disposal', async () => {
+    const hung = Promise.withResolvers<void>()
+    const dispatch = vi.fn().mockReturnValue(hung.promise)
+    const entry: TestEditorExtension = {
+      id: 'acme.dispose-action',
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      onEvent: dispatch,
+    }
+    const { ctx } = fakeMayflyContext()
+    const editor = new FakeMayflyEditor()
+    registerExtensions(ctx, [entry])
+    const runtime = new EditorExtensionRuntime({
+      ctx,
+      editor,
+      notice: () => {},
+      shouldTransformSubmit: () => true,
+    })
+
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
+
+    runtime.dispose()
+    hung.resolve()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(dispatch).toHaveBeenCalledOnce()
+  })
+
+  it('lets the same id run in a new generation while the old action remains hung', async () => {
+    vi.useFakeTimers()
+    const old = Promise.withResolvers<void>()
+    let oldSignal: AbortSignal | undefined
+    const calls: string[] = []
+    const { runtime, notices, replace } = runtimeFixture([{
+      id: 'acme.same-action',
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      onEvent: (_event, context) => {
+        calls.push('old')
+        oldSignal = context.signal
+        return old.promise
+      },
+    }])
+    try {
+      runtime.focused = true
+      runtime.render(80)
+      runtime.handleInput(KEY.tab)
+      runtime.handleInput(KEY.enter)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls).toEqual(['old'])
+
+      replace([{
+        id: 'acme.same-action',
+        actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+        onEvent: () => { calls.push('new'); return success(undefined) },
+      }], 2)
+      expect(oldSignal?.aborted).toBe(true)
+      runtime.render(80)
+      runtime.handleInput(KEY.tab)
+      runtime.handleInput(KEY.enter)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls).toEqual(['old', 'new'])
+
+      old.resolve()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(notices).not.toContain('late old failure')
+    } finally {
+      runtime.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  it('releases the per-extension FIFO when a hung action times out', async () => {
+    vi.useFakeTimers()
+    const hung = new Promise<void>(() => {})
+    let calls = 0
+    const { runtime, notices } = runtimeFixture([{
+      id: 'acme.action-timeout',
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      onEvent: () => {
+        calls += 1
+        return calls === 1 ? hung : success(undefined)
+      },
+    }])
+    try {
+      runtime.focused = true
+      runtime.render(80)
+      runtime.handleInput(KEY.tab)
+      runtime.handleInput(KEY.enter)
+      runtime.handleInput(KEY.enter)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls).toBe(1)
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(calls).toBe(2)
+      expect(notices).toContain('editor extension action timed out')
+    } finally {
+      runtime.dispose()
+      vi.useRealTimers()
+    }
+  })
+})

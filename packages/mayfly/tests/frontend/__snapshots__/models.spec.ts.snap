@@ -1,0 +1,71 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderer-neutral model fixture > snapshots canonical nodes without renderer objects 1`] = `
+{
+  "nodes": [
+    {
+      "content": "hello",
+      "kind": "text",
+    },
+    {
+      "kind": "rich-text",
+      "spans": [
+        {
+          "styles": [
+            "strong",
+          ],
+          "text": "strong",
+        },
+      ],
+    },
+    {
+      "kind": "fields",
+      "rows": [
+        {
+          "label": "mode",
+          "value": [
+            {
+              "text": "normal",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      "kind": "sections",
+      "sections": [
+        {
+          "body": {
+            "content": "body",
+            "kind": "text",
+          },
+          "title": "details",
+        },
+      ],
+    },
+    {
+      "id": "fixture",
+      "items": [
+        {
+          "id": "one",
+          "label": "One",
+        },
+      ],
+      "kind": "list",
+      "selectedIds": [
+        "one",
+      ],
+    },
+    {
+      "code": "const x = 1",
+      "kind": "code",
+      "language": "ts",
+    },
+    {
+      "after": "b",
+      "before": "a",
+      "kind": "diff",
+    },
+  ],
+}
+`;

@@ -1,0 +1,175 @@
+# Mayfly is an ordinary Cordis composition over dsh-base. Plugins inherit dsh
+# services directly and opt into terminal UI through mayflyPanes, mayflyStatus,
+# mayflyOverlays, and mayflyEditorExtensions.
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a coding agent. Your working directory is {{cwd}}.
+
+- id: hmr
+  disabled: true
+
+# Move the model-facing agent plane behind dsh agent presets, matching the
+# upstream Web composition. Host registries and controllers remain ordinary
+# root services shared by Mayfly and external Cordis plugins.
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-str-replace-editor
+  disabled: true
+- id: skill-filesystem
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: command-goal
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: plan-mode
+  disabled: true
+- id: compaction-basic
+  disabled: true
+- id: command-compact
+  disabled: true
+- id: tool-result-pruner
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: workflow-worker-thread
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: agent-instructions
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-web
+  disabled: true
+
+- id: session-title-llm
+  disabled: true
+
+- insert:
+    - id: subagent-model-selection-settings
+      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
+
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard
+        roots:
+          - path: !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@ephemeral-ai/mayfly/package.json')), 'presets')"
+            trust: system
+        includeShippedRoot: true
+        includeUserRoot: true
+
+    # Dynamic Cordis plugins enter the same service graph as official Mayfly
+    # code. There is no private realm, service deny-list, or Mayfly host facade.
+    - id: cordis-host-runner
+      name: '@deepseek-ai/dsh-cordis-host-runner'
+
+    - id: workspace
+      name: '@deepseek-ai/dsh-workspace'
+
+    - id: session-controller
+      name: '@deepseek-ai/dsh-api-session-controller'
+
+    - id: session-title-all-prompts-llm
+      name: '@deepseek-ai/dsh-session-title-all-prompts-llm'
+      config:
+        targetWords: 5
+        targetCjkCharacters: 10
+        maxInputBytes: 4096
+        maxOutputTokens: 64
+        timeoutMs: 60000
+
+    # Direct Mayfly UI services. Plugin lifetime is ordinary Cordis Fiber lifetime.
+    - id: mayfly-ui-provider
+      name: '@ephemeral-ai/mayfly-ui/provider'
+
+    - id: mayfly-frontend
+      name: '@ephemeral-ai/mayfly/frontend'
+
+    - id: mayfly-core
+      name: '@ephemeral-ai/mayfly/core'
+
+    - id: mayfly-theme-dark
+      name: '@ephemeral-ai/mayfly/theme-dark'
+
+    - id: mayfly-conversation
+      name: '@ephemeral-ai/mayfly/conversation'
+
+    - id: mayfly-startup
+      name: '@ephemeral-ai/mayfly/startup'
+
+    - id: mayfly-app
+      name: '@ephemeral-ai/mayfly/app'
+      config:
+        task: !!js ctx.mayflyStartup.task
+        resume: !!js ctx.mayflyStartup.resume
+
+    - id: mayfly-banner
+      name: '@ephemeral-ai/mayfly/banner'
+
+    - id: mayfly-transcript
+      name: '@ephemeral-ai/mayfly/transcript'
+
+    - id: mayfly-status-basic
+      name: '@ephemeral-ai/mayfly/status-basic-model'
+    - id: mayfly-status-cwd
+      name: '@ephemeral-ai/mayfly/status-cwd'
+    - id: mayfly-status-git
+      name: '@ephemeral-ai/mayfly/status-git'
+    - id: mayfly-status-title
+      name: '@ephemeral-ai/mayfly/status-title'
+    - id: mayfly-status-context
+      name: '@ephemeral-ai/mayfly/status-context'
+    - id: mayfly-status-mode
+      name: '@ephemeral-ai/mayfly/mode-status'
+    - id: mayfly-status-jobs
+      name: '@ephemeral-ai/mayfly/status-jobs'
+    - id: mayfly-status-goal
+      name: '@ephemeral-ai/mayfly/status-goal'
+
+    - id: mayfly-pane-activity
+      name: '@ephemeral-ai/mayfly/pane-activity'
+    - id: mayfly-pane-queue
+      name: '@ephemeral-ai/mayfly/pane-queue'
+    - id: mayfly-pane-todo
+      name: '@ephemeral-ai/mayfly/pane-todo'
+    - id: mayfly-pane-btw
+      name: '@ephemeral-ai/mayfly/pane-btw'
+    - id: mayfly-pane-agents
+      name: '@ephemeral-ai/mayfly/pane-agents'
+    - id: mayfly-pane-workflow
+      name: '@ephemeral-ai/mayfly/pane-workflow'
+
+    - id: mayfly-attachments
+      name: '@ephemeral-ai/mayfly/attachments'
+    - id: mayfly-paste-image
+      name: '@ephemeral-ai/mayfly/paste-image'
+      config:
+        backend: auto
+    - id: mayfly-jobs
+      name: '@ephemeral-ai/mayfly/jobs'
+    - id: mayfly-agents-command
+      name: '@ephemeral-ai/mayfly/agents-command'
+
+    - id: mayfly-interaction
+      name: '@ephemeral-ai/mayfly/interaction'

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="mayfly — flat mark">
+  <!-- simplified flat two-tone mark -->
+  <g fill="#0B0E14" fill-opacity="0.45">
+    <path d="M136 112 C158 110 182 114 202 126 C198 140 178 152 156 147 C144 143 138 130 136 112 Z"/>
+    <path d="M120 112 C98 110 74 114 54 126 C58 140 78 152 100 147 C112 143 118 130 120 112 Z"/>
+  </g>
+  <g fill="#0B0E14" fill-opacity="0.95">
+    <path d="M138 100 C168 82 198 68 222 50 C214 90 184 126 152 130 C143 130 138 116 138 100 Z"/>
+    <path d="M118 100 C88 82 58 68 34 50 C42 90 72 126 104 130 C113 130 118 116 118 100 Z"/>
+  </g>
+  <g fill="none" stroke="#0B0E14" stroke-linecap="round" stroke-opacity="0.9">
+    <path d="M126 194 C129 214 133 232 146 248" stroke-width="1.8"/>
+    <path d="M130 194 C127 214 123 232 110 248" stroke-width="1.8"/>
+  </g>
+  <path d="M119 112 C116 150 118 182 128 198 C138 182 140 150 137 112 C131 107 125 107 119 112 Z" fill="#0B0E14"/>
+  <path d="M119 128 L137 128 M118 142 L138 142 M120 156 L136 156" fill="none" stroke="#FFFFFF" stroke-opacity="0.32" stroke-width="1.2" stroke-linecap="round"/>
+  <rect x="115" y="80" width="26" height="34" rx="13" fill="#0B0E14"/>
+</svg>

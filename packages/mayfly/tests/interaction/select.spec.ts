@@ -1,0 +1,158 @@
+/** Canonical multi-select and panel adapter behavior. */
+
+import { describe, expect, it, vi } from 'vitest'
+import { CanonicalPanelAdapter } from '../../src/interaction/canonical-panel.ts'
+import { CanonicalMultiSelectController, type MayflySelectItem } from '../../src/interaction/select.ts'
+import { FakeMayflyComponents, FakeKeymap, FakeTheme, KEY } from './fakes.ts'
+
+function items(count: number): MayflySelectItem[] {
+  return Array.from({ length: count }, (_, index) => ({ value: `v${index}`, label: `Item ${String(index)}` }))
+}
+
+function mount(entries: readonly MayflySelectItem[] = items(3)) {
+  const onConfirm = vi.fn()
+  const onCancel = vi.fn()
+  const select = new CanonicalMultiSelectController({ keymap: new FakeKeymap(), theme: new FakeTheme(), components: new FakeMayflyComponents(), items: entries, onConfirm, onCancel })
+  select.focused = true
+  return { select, onConfirm, onCancel }
+}
+
+describe('CanonicalMultiSelectController', () => {
+  it('uses bounded navigation, toggles, confirms, and falls back to the focused row', () => {
+    const value = mount()
+    value.select.handleInput(KEY.up)
+    value.select.handleInput(KEY.space)
+    value.select.handleInput(KEY.down)
+    value.select.handleInput(KEY.space)
+    expect(value.select.currentNode()).toMatchObject({ child: { mode: 'multiple', selectedIds: ['v0', 'v1'] } })
+    value.select.handleInput(KEY.enter)
+    expect(value.onConfirm).toHaveBeenCalledWith([expect.objectContaining({ value: 'v0' }), expect.objectContaining({ value: 'v1' })])
+
+    const fallback = mount()
+    fallback.select.handleInput(KEY.down)
+    fallback.select.handleInput(KEY.enter)
+    expect(fallback.onConfirm).toHaveBeenCalledWith([expect.objectContaining({ value: 'v1' })])
+  })
+
+  it('untoggles, ignores unrelated input, cancels, and tolerates empty data', () => {
+    const value = mount()
+    value.select.handleInput(KEY.space)
+    value.select.handleInput(KEY.space)
+    value.select.handleInput('x')
+    value.select.handleInput(KEY.escape)
+    expect(value.select.currentNode()).toMatchObject({ child: { selectedIds: [] } })
+    expect(value.onCancel).toHaveBeenCalledOnce()
+
+    const empty = mount([])
+    empty.select.handleInput(KEY.space)
+    empty.select.handleInput(KEY.up)
+    empty.select.handleInput(KEY.down)
+    empty.select.handleInput(KEY.enter)
+    expect(empty.onConfirm).toHaveBeenCalledWith([])
+  })
+
+  it('emits a canonical bounded list, descriptions, counter, and key hints', () => {
+    const entries = items(12).map((item, index) => index === 0 ? { ...item, description: 'first\nchoice' } : item)
+    const value = mount(entries)
+    const node = value.select.currentNode()
+    expect(node).toMatchObject({ kind: 'surface', chrome: 'overlay', child: { kind: 'list', mode: 'multiple' } })
+    if (node.kind !== 'surface' || node.child.kind !== 'list') throw new Error('expected canonical select')
+    expect(node.child.items).toHaveLength(12)
+    expect(node.child.items[0]).toMatchObject({ detail: 'first choice' })
+    expect(node.footer).toMatchObject({ content: expect.stringContaining('(1/12)') })
+    expect(value.select.render(40).some(row => row.includes('Item 8'))).toBe(false)
+    expect(value.select.render(14).every(row => new FakeMayflyComponents().visibleWidth(row) <= 14)).toBe(true)
+    value.select.invalidate()
+  })
+
+  it('uses the canonical operation labels independently of keymap descriptions', () => {
+    const select = new CanonicalMultiSelectController({ keymap: new FakeKeymap(false), theme: new FakeTheme(), components: new FakeMayflyComponents(), items: items(1), onConfirm: () => {}, onCancel: () => {} })
+    select.focused = true
+    expect(select.render(200).join('\n')).toContain('Space toggle · Enter confirm · Esc close')
+  })
+
+  it('maps compiler selection events, filters non-string ids, and bridges focus', () => {
+    const value = mount()
+    value.select.focused = true
+    expect(value.select.focused).toBe(true)
+    ;(value.select as unknown as { adapter: { handleInput(data: string): void } }).adapter.handleInput(KEY.space)
+    expect(value.select.currentNode()).toMatchObject({ child: { selectedIds: ['v0'] } })
+    ;(value.select as unknown as { onEvent(event: { kind: 'selection-change', controlId: string, value: unknown }): void })
+      .onEvent({ kind: 'selection-change', controlId: 'mayfly-select', value: ['v1', 2] })
+    expect(value.select.currentNode()).toMatchObject({ child: { selectedIds: ['v1'] } })
+    ;(value.select as unknown as { onEvent(event: { kind: 'activate', controlId: string }): void })
+      .onEvent({ kind: 'activate', controlId: 'other' })
+  })
+})
+
+describe('CanonicalPanelAdapter', () => {
+  it('recompiles at most once when live leaf-window metadata changes', () => {
+    const node = vi.fn(() => ({ kind: 'text' as const, content: 'abcdefgh' }))
+    let metadata = ''
+    let panel!: CanonicalPanelAdapter
+    panel = new CanonicalPanelAdapter({
+      components: new FakeMayflyComponents(), theme: new FakeTheme(), node,
+      onEvent: () => {},
+      maxLeafRows: 2,
+      leafRowWindowPath: '$',
+      leafRowOffset: () => 1,
+      onLeafRowOffset: (offset, totalRows, limit) => {
+        const next = `${String(offset)}/${String(totalRows)}/${String(limit)}`
+        if (next !== metadata) { metadata = next; panel.invalidate() }
+      },
+    })
+    expect(panel.render(2)).toEqual(['cd', 'ef'])
+    expect(node).toHaveBeenCalledTimes(2)
+    expect(panel.render(2)).toEqual(['cd', 'ef'])
+    expect(node).toHaveBeenCalledTimes(2)
+    expect(panel.render(4)).toEqual(['abcd', 'efgh'])
+    expect(node).toHaveBeenCalledTimes(3)
+    expect(panel.render(4)).toEqual(['abcd', 'efgh'])
+    expect(node).toHaveBeenCalledTimes(3)
+  })
+
+  it('compiles a canonical node and forwards focus, input, and passive Escape', () => {
+    const onEvent = vi.fn()
+    const onEscape = vi.fn()
+    const panel = new CanonicalPanelAdapter({
+      components: new FakeMayflyComponents(), theme: new FakeTheme(),
+      node: () => ({ kind: 'actions', id: 'actions', items: [{ id: 'run', label: 'Run', intent: 'primary' }] }),
+      onEvent, onUnhandledEscape: onEscape,
+    })
+    panel.focused = true
+    expect(panel.focused).toBe(true)
+    panel.handleInput(KEY.enter)
+    expect(onEvent).toHaveBeenCalledWith({ kind: 'activate', controlId: 'run' })
+    panel.invalidate()
+    expect(panel.render(40).join('\n')).toContain('Run')
+
+    const passive = new CanonicalPanelAdapter({ components: new FakeMayflyComponents(), theme: new FakeTheme(), node: () => ({ kind: 'text', content: 'passive' }), onEvent, onUnhandledEscape: onEscape })
+    passive.handleInput(KEY.escape)
+    expect(onEscape).toHaveBeenCalledOnce()
+    passive.handleInput('x')
+
+    const invalid = new CanonicalPanelAdapter({
+      components: new FakeMayflyComponents(), theme: new FakeTheme(),
+      node: () => ({ kind: 'invalid' }) as never,
+      onEvent,
+    })
+    invalid.focused = true
+    invalid.handleInput('x')
+    expect(invalid.render(Number.NaN)).toEqual(['!', '!', '!'])
+    invalid.invalidate()
+
+    const throwing = new CanonicalPanelAdapter({
+      components: new FakeMayflyComponents(), theme: new FakeTheme(),
+      node: () => { throw new Error('builder exploded') },
+      onEvent,
+    })
+    expect(throwing.render(40).join('\n')).toContain('dialog unavailable: builder exploded')
+
+    const unknownThrowing = new CanonicalPanelAdapter({
+      components: new FakeMayflyComponents(), theme: new FakeTheme(),
+      node: () => { throw 'builder exploded' },
+      onEvent,
+    })
+    expect(unknownThrowing.render(80).join('\n')).toContain('dialog unavailable: unknown node builder failure')
+  })
+})

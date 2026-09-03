@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/ui" },
+    { "path": "packages/mayfly" },
+    { "path": "packages/cli" },
+    { "path": "examples/mayfly-user-kit" },
+    { "path": "examples/header" },
+    { "path": "examples/right-inspector" },
+    { "path": "examples/bottom-log" },
+    { "path": "examples/overlay" },
+    { "path": "examples/ui-gallery" },
+    { "path": "examples/mayfly-ecosystem" }
+  ]
+}

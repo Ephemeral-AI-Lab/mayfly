@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-label="mayfly — ephemeral agents, enduring works">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"   stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#F4F1FB"/>
+      <stop offset="1"   stop-color="#E9E3F6"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.2" cy="0.5" r="0.5">
+      <stop offset="0"   stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="1"   stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="420" fill="url(#bg)"/>
+  <rect width="1200" height="420" fill="url(#halo)"/>
+
+  <!-- logo (dark BODY = black mark) on light -->
+  <g transform="translate(58,59) scale(1.04)">
+    <g fill="#0B0E14" fill-opacity="0.45">
+      <path d="M136 112 C158 110 182 114 202 126 C198 140 178 152 156 147 C144 143 138 130 136 112 Z"/>
+      <path d="M120 112 C98 110 74 114 54 126 C58 140 78 152 100 147 C112 143 118 130 120 112 Z"/>
+    </g>
+    <g fill="#0B0E14">
+      <path d="M138 100 C168 82 198 68 222 50 C214 90 184 126 152 130 C143 130 138 116 138 100 Z"/>
+      <path d="M118 100 C88 82 58 68 34 50 C42 90 72 126 104 130 C113 130 118 116 118 100 Z"/>
+    </g>
+    <g fill="none" stroke="#0B0E14" stroke-linecap="round" stroke-opacity="0.9">
+      <path d="M126 194 C129 214 133 232 146 248" stroke-width="1.8"/>
+      <path d="M130 194 C127 214 123 232 110 248" stroke-width="1.8"/>
+    </g>
+    <path d="M119 112 C116 150 118 182 128 198 C138 182 140 150 137 112 C131 107 125 107 119 112 Z" fill="#0B0E14"/>
+    <path d="M119 128 L137 128 M118 142 L138 142 M120 156 L136 156" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="1.2" stroke-linecap="round"/>
+    <rect x="115" y="80" width="26" height="34" rx="13" fill="#0B0E14"/>
+  </g>
+
+  <!-- text block: wordmark + tagline share one centre axis -->
+  <text x="714" y="240" text-anchor="middle" font-family="JetBrains Mono, SF Mono, Menlo, Consolas, monospace" font-weight="700" font-size="176" letter-spacing="2" fill="#16112B">mayfly</text>
+  <!-- tagline -->
+  <text x="714" y="312" text-anchor="middle" font-family="JetBrains Mono, SF Mono, Menlo, Consolas, monospace" font-weight="500" font-size="30.6" letter-spacing="1.5" fill="#2FA79A">ephemeral agents, enduring works</text>
+</svg>

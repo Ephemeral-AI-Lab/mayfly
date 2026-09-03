@@ -1,0 +1,3 @@
+- insert:
+    - id: '@mayfly-example/overlay'
+      name: '@mayfly-example/overlay'

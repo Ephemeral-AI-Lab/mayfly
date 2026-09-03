@@ -1,0 +1,16 @@
+flowchart TB
+    BASE["dsh-base"]
+    subgraph GRAPH["flat Cordis sibling graph · 34 inserted rows"]
+        SUPPORT["dsh support · 6 rows<br/>subagent settings · presets · host runner<br/>workspace · session controller · title"]
+        UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
+        RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]
+        PLUGINS["external Cordis plugins"]
+    end
+    NATIVE["native dsh services"]
+
+    BASE --> NATIVE
+    NATIVE --> SUPPORT
+    NATIVE --> RUNTIME
+    NATIVE --> PLUGINS
+    UI --> RUNTIME
+    UI --> PLUGINS
