@@ -73,7 +73,13 @@ function select(index: number, event: MouseEvent) {
                 <span v-if="current.caption" class="bf-caption">{{ current.caption }}</span>
                 <span class="bf-live" />
               </div>
-              <img :src="withBase(current.image)" :alt="current.alt" decoding="async" />
+              <img
+                :src="withBase(current.image)"
+                :alt="current.alt"
+                loading="lazy"
+                decoding="async"
+                fetchpriority="low"
+              />
             </figure>
             <p class="bf-desc">{{ current.details }}</p>
             <a v-if="current.linkText" class="bf-more" :href="withBase(current.link)">{{ current.linkText }}</a>

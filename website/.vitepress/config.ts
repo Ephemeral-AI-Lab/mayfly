@@ -1,5 +1,4 @@
 import { defineConfig } from 'vitepress'
-import { withMermaid } from 'vitepress-plugin-mermaid'
 
 const base = process.env.DOCS_BASE ?? '/'
 
@@ -14,38 +13,6 @@ const SITE_VERSION = '0.1.0-alpha.1'
  * canonical hostname; deployers opt in with DOCS_SITE_URL.
  */
 const siteUrl = process.env.DOCS_SITE_URL?.replace(/\/+$/u, '') || undefined
-
-// ── 入口语言路由（烤进 <head> 内联脚本，整页加载执行；SPA 导航不重跑）──────
-// 原则：localStorage 偏好（theme 钩子在 SPA 导航时写入）> navigator.languages。
-// 中文挂根路径：中文浏览器不跳；英文/其他浏览器落任意中文页（含深链）跳 /en/
-// 等价页。自动跳转不写偏好；手动切换后双向粘性。函数必须自包含（不得引用
-// 任何 import 或外层变量）——它会被 toString() 后内联。
-const langRedirect = (base: string) => {
-  try {
-    const KEY = 'mayfly-docs-lang'
-    let pref: string | null = null
-    try { pref = localStorage.getItem(KEY) } catch {}
-    const langs = navigator.languages && navigator.languages.length
-      ? navigator.languages
-      : [navigator.language || '']
-    const isZh = langs.some((l) => /^zh/i.test(l || ''))
-    const wantEn = pref ? pref === 'en' : !isZh
-    const path = location.pathname
-    if (path.indexOf(base) !== 0) return // 非本站基座（保险）
-    const rest = path.slice(base.length)
-      .replace(/^\/+/, '')
-      .replace(/\.html$/i, '') // cleanUrls 直链兼容
-      .replace(/\/+$/, '')
-    if (/\.(png|jpe?g|gif|svg|webp|ico|css|js|mjs|map|json|xml|txt|woff2?|ttf)$/i.test(rest)) return
-    if (/^(assets|images|icons|files)\//.test(rest)) return
-    const onEn = rest === 'en' || rest.startsWith('en/')
-    if (onEn === wantEn) return
-    const target = onEn
-      ? rest.slice(3).replace(/^\/+/, '') // en/guide → guide；en → ''
-      : rest ? 'en/' + rest : 'en' // guide → en/guide；''（zh 首页）→ en
-    location.replace(target === 'en' ? base + 'en/' : base + target)
-  } catch {}
-}
 
 // ── 双语共享主题配置 ──────────────────────────────────────────────────────
 // 本地搜索：中文文案挂在 locales.root（根路径即中文 locale）；en 用内置英文。
@@ -266,17 +233,6 @@ const config = defineConfig({
   ...(siteUrl === undefined ? {} : { sitemap: { hostname: `${siteUrl}/` } }),
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}favicon.svg` }],
-    // 品牌字体（首页 hero 正典 final/hero.html）：Cinzel / Cormorant Garamond /
-    // Inter / JetBrains Mono，字重与素材保持一致。
-    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
-    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
-    [
-      'link',
-      {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap',
-      },
-    ],
     // 基础 OG/Twitter 卡片；og:image 需要绝对 URL，仅在部署方通过
     // DOCS_SITE_URL 提供站点源时生成。
     ['meta', { property: 'og:type', content: 'website' }],
@@ -288,7 +244,6 @@ const config = defineConfig({
           ['meta', { name: 'twitter:image', content: `${siteUrl}${base}brand/hero-poster.png` }] as [string, Record<string, string>],
         ]
       : []),
-    ['script', {}, `(${langRedirect.toString()})(${JSON.stringify(base)})`],
     [
       'script',
       {
@@ -336,18 +291,18 @@ const config = defineConfig({
     },
   },
   themeConfig: { ...sharedTheme },
+  markdown: {
+    config(md) {
+      const renderFence = md.renderer.rules.fence!
+      md.renderer.rules.fence = (tokens, index, options, env, self) => {
+        const token = tokens[index]
+        if (token.info.trim() === 'mermaid') {
+          return `<MermaidDiagram code="${encodeURIComponent(token.content.trim())}" />\n`
+        }
+        return renderFence(tokens, index, options, env, self)
+      }
+    },
+  },
 })
 
-// ── Mermaid 图表支持 ────────────────────────────────────────────────────────
-// vitepress-plugin-mermaid v2：`mermaid` 键承载 mermaidConfig，仅在明色主题生效
-// ——插件检测 VitePress 挂在 <body> 上的 dark class，切暗色时自动换主题重渲染。
-// 仓库图源约定：docs/diagrams/*.mmd 是唯一正典，各文档（含本站页面）的嵌入块
-// 由 script/sync-diagrams.mjs 生成，CI 用 pnpm run diagrams:check 把关。
-// optimizeDeps：dev 下 mermaid 的 ESM chunk 引 dayjs 等 CJS 依赖，不预打包会
-// 以 /@fs 原始路径伺服并因缺 default 导出抛 SyntaxError（整页白屏），必须整体
-// 预打包交由 esbuild 做 interop（配合 pnpm-workspace.yaml 的 publicHoistPattern）。
-export default withMermaid({
-  ...config,
-  mermaid: { theme: 'neutral' },
-  vite: { optimizeDeps: { include: ['mermaid'] } },
-})
+export default config

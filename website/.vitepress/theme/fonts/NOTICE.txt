@@ -1,0 +1,11 @@
+The bundled font subsets are distributed under the SIL Open Font License 1.1
+in OFL.txt.
+
+Cinzel
+Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)
+
+Cormorant Garamond
+Copyright 2015 the Cormorant Project Authors (https://github.com/CatharsisFonts/Cormorant)
+
+JetBrains Mono
+Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
