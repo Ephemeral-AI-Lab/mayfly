@@ -30,6 +30,7 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 | `/trace` | — | `[copy <seq> \| copy all]` | Inspect the current session's execution timeline; copy one item or the full trace | `mayfly-commands` (trace-command) |
 | `/update` | — | `[version]` | Safely update Mayfly (pre-flight, snapshot, boot smoke, automatic rollback; a bare call is a read-only check) | `mayfly-commands` (update-command, D52) |
 | `/settings` | — | — | Edit user settings by namespace (two-level panel, every change writes through; see [Configuration](/en/guide/config)) | `mayfly-commands` (settings-command) |
+| `/plugin` | — | `[install <id> [--source npm\|github] \| uninstall <id> \| info <id> \| list \| refresh]` | Browse, install, and remove marketplace plugins (official, dsh, and community tiers; cache-first with stale serving offline; see the [marketplace repository](https://github.com/Ephemeral-AI-Lab/dsh-plugins)) | `mayfly-commands` (plugin-commands) |
 | `/export` | — | `[path]` | Export the current session as a Markdown file | `mayfly-commands` (session-export) |
 | `/copy` | — | — | Copy the last assistant message to the clipboard | `mayfly-commands` (session-export) |
 
