@@ -15,13 +15,14 @@ import { Context } from '@deepseek-ai/cordis'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { parse as parseYaml } from 'yaml'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()
 import { updaterInternals, type SpawnOutcome } from '../../src/interaction/updater/io.ts'
 import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import { registerPluginCommand } from '../../src/interaction/plugin-commands.ts'
-import { entryInstallStates, readInstalledPlugins, rowSpec, installEntry, uninstallEntry, entrySupportsSource, MAYFLY_PACKAGE } from '../../src/interaction/plugin-market/installer.ts'
+import { defaultInstallSource, entryInstallStates, readInstalledPlugins, rowSpec, installEntry, uninstallEntry, entrySupportsSource, MAYFLY_PACKAGE } from '../../src/interaction/plugin-market/installer.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
@@ -105,7 +106,7 @@ async function mountWorld(options: {
     private: true,
     dependencies: {
       '@ephemeral-ai/mayfly': '0.1.0-alpha.1',
-      ...(options.profileDependencies ?? {}),
+      ...options.profileDependencies,
     },
     dsh: { profile: { bundles: ['@ephemeral-ai/mayfly'] } },
   }))
@@ -193,6 +194,18 @@ describe('installer unit seams', () => {
     expect(entrySupportsSource({ ...entry(), install: { rows: [{ name: 'x', github: { repo: 'a/b', ref: 'r' } }] } }, 'npm')).toBe(false)
   })
 
+  it('chooses a source only when it covers every install row', () => {
+    const githubOnly = entry({ install: { rows: [{ name: 'a', github: { repo: 'a/b', ref: 'r' } }] } })
+    const mixed = entry({ install: { rows: [
+      { name: 'a', npm: { spec: 'a' } },
+      { name: 'b', github: { repo: 'a/b', ref: 'r' } },
+    ] } })
+    expect(defaultInstallSource(entry())).toBe('npm')
+    expect(defaultInstallSource(githubOnly)).toBe('github')
+    expect(defaultInstallSource(mixed)).toBeUndefined()
+    expect(entrySupportsSource(mixed, 'npm')).toBe(false)
+  })
+
   it('reads installed plugins, skipping Mayfly itself', () => {
     const root = mkdtempTracked('mayfly-installed-')
     writeFileSync(join(root, 'package.json'), JSON.stringify({
@@ -234,12 +247,14 @@ describe('installer unit seams', () => {
     })
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\n')
-    writeFileSync(join(root, 'cordis.patch.yml'), '[]\n')
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\nallowBuilds:\n  node-pty: false\noverrides:\n  keep: true\n')
+    writeFileSync(join(root, 'cordis.patch.yml'), '# User patch layer\n[]\n')
     const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: profilePatch, source: 'npm' })
     expect(outcome.kind).toBe('success')
-    expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toContain('"node-pty": true')
-    expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toContain(`- id: terminal-bash\n  name: "@deepseek-ai/dsh-terminal-bash"`)
+    const workspace = parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '') as Record<string, unknown>
+    expect(workspace).toMatchObject({ allowBuilds: { 'node-pty': true }, overrides: { keep: true } })
+    const patch = parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '') as readonly Record<string, unknown>[]
+    expect(patch).toContainEqual({ id: 'terminal-bash', name: '@deepseek-ai/dsh-terminal-bash' })
   })
 
   it('appending to a non-empty patch layer keeps existing rows, and config renders', async () => {
@@ -269,6 +284,10 @@ describe('installer unit seams', () => {
       "  name: 'pkg-a'",
       '  config:',
       '    x: 1',
+      '- id: user-a',
+      "  name: 'pkg-a'",
+      '  config:',
+      '    keep: true',
       '- id: after',
       "  name: 'pkg-after'",
     ].join('\n') + '\n')
@@ -277,7 +296,9 @@ describe('installer unit seams', () => {
     const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
     expect(patch).toContain('keep-me')
     expect(patch).toContain('pkg-after')
-    expect(patch).not.toContain("'pkg-a'")
+    expect(patch).toContain('user-a')
+    expect(patch).toContain("'pkg-a'")
+    expect(patch).toContain('keep: true')
     expect(patch).not.toContain('x: 1')
   })
 
@@ -318,6 +339,71 @@ describe('installer unit seams', () => {
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\n')
     await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' })
     expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toBe('packages:\n  - .\n')
+  })
+
+  it('refuses malformed workspace mappings before spawning', async () => {
+    const withBuild = entry({ install: { allowBuilds: ['node-pty'], rows: entry().install.rows } })
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    for (const source of ['[]\n', '[\n', 'allowBuilds: []\n']) {
+      const root = mkdtempTracked('mayfly-install-')
+      writeFileSync(join(root, 'pnpm-workspace.yaml'), source)
+      const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: withBuild, source: 'npm' })
+      expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('pnpm-workspace.yaml') })
+    }
+    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
+  })
+
+  it('reports invalid or conflicting patch documents without overwriting them', async () => {
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    const withPatch = entry({ install: { rows: [{ id: 'wanted', name: 'pkg-wanted', activation: 'profile-patch', npm: { spec: 'pkg-wanted' } }] } })
+    for (const source of ['{}\n', '[\n', '- id: wanted\n  name: another-package\n']) {
+      const root = mkdtempTracked('mayfly-install-')
+      writeFileSync(join(root, 'cordis.patch.yml'), source)
+      const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: withPatch, source: 'npm' })
+      expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('cordis.patch.yml') })
+      expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toBe(source)
+    }
+  })
+
+  it('preserves tagged user config and uses the package name when a patch id is absent', async () => {
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    const root = mkdtempTracked('mayfly-install-')
+    writeFileSync(join(root, 'cordis.patch.yml'), '- id: keep\n  name: keep\n  config:\n    value: !!js return 1\n')
+    const noId = entry({ install: { rows: [{ name: 'pkg-no-id', activation: 'profile-patch', npm: { spec: 'pkg-no-id' } }] } })
+    expect((await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
+    expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toContain('!!js return 1')
+    expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
+    expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).not.toContain('pkg-no-id')
+  })
+
+  it('reports invalid patch cleanup and leaves unrelated sequence items intact', async () => {
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    const target = entry({ install: { rows: [{ id: 'target', name: 'pkg-target', activation: 'profile-patch', npm: { spec: 'pkg-target' } }] } })
+    for (const source of ['{}\n', '[\n']) {
+      const root = mkdtempTracked('mayfly-uninstall-')
+      writeFileSync(join(root, 'cordis.patch.yml'), source)
+      const outcome = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: target, source: 'npm' })
+      expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('cordis.patch.yml') })
+    }
+    const root = mkdtempTracked('mayfly-uninstall-')
+    writeFileSync(join(root, 'cordis.patch.yml'), '- scalar\n- name: no-id\n- id: orphan\n- id: target\n  name: pkg-target\n')
+    expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: target, source: 'npm' })).kind).toBe('success')
+    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual(['scalar', { name: 'no-id' }, { id: 'orphan' }])
+  })
+
+  it('reports patch write failures after successful package operations', async () => {
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    const withPatch = entry({ install: { rows: [{ id: 'write', name: 'pkg-write', activation: 'profile-patch', npm: { spec: 'pkg-write' } }] } })
+    const installRoot = mkdtempTracked('mayfly-install-')
+    writeFileSync(join(installRoot, 'cordis.patch.yml'), '[]\n')
+    updaterInternals.writeTextFile = () => { throw new Error('disk full') }
+    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: installRoot, entry: withPatch, source: 'npm' }))
+      .toMatchObject({ kind: 'error', text: expect.stringContaining('activating') })
+
+    const uninstallRoot = mkdtempTracked('mayfly-uninstall-')
+    writeFileSync(join(uninstallRoot, 'cordis.patch.yml'), '- id: write\n  name: pkg-write\n')
+    expect(await uninstallEntry({ dshBin: 'dsh', profile: 'p', root: uninstallRoot, entry: withPatch, source: 'npm' }))
+      .toMatchObject({ kind: 'error', text: expect.stringContaining('cleaning up') })
   })
 })
 
@@ -461,7 +547,7 @@ describe('/plugin argument paths', () => {
   })
 
   it('list groups installed rows by state, including removed-from-market', async () => {
-    const gone = entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'yanked', install: { rows: [{ name: 'gone-pkg' }] } })
+    const gone = entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'yanked', install: { rows: [{ name: 'gone-pkg', npm: { spec: 'gone-pkg' } }] } })
     const updated = entry({ id: 'loop', npm: { 'dsh-loop': { latestVersion: '0.1.5' } } })
     const fresh = entry({ id: 'fresh', displayName: 'Fresh', install: { rows: [{ name: 'dsh-fresh-pkg', npm: { spec: 'dsh-fresh-pkg' } }] } })
     const world = await mountWorld({
@@ -498,6 +584,8 @@ describe('/plugin argument paths', () => {
     const world = await mountWorld({ index: [entry()] })
     expect(await world.run('/plugin install nope')).toMatchObject({ kind: 'error', text: 'unknown plugin: nope' })
     expect(await world.run('/plugin install')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
+    expect(await world.run('/plugin install loop --source')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
+    expect(await world.run('/plugin install loop --source archive')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
     expect(await world.run('/plugin info')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
     expect(await world.run('/plugin dance')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
     world.dispose()
@@ -533,6 +621,51 @@ describe('/plugin key paths', () => {
     await new Promise(resolve => setTimeout(resolve, 5))
     expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
     expect(world.notices).toContain('"Loop" is not installed in this profile')
+    world.dispose()
+  })
+
+  it('handles a mixed-source entry without dropping any package rows', async () => {
+    const mixed = entry({
+      id: 'mixed',
+      displayName: 'Mixed',
+      install: { rows: [
+        { name: 'mixed-a', npm: { spec: 'mixed-a' } },
+        { name: 'mixed-b', github: { repo: 'a/b', ref: 'r' } },
+      ] },
+    })
+    const world = await mountWorld({
+      index: [mixed],
+      profileDependencies: { 'mixed-a': '1.0.0', 'mixed-b': 'github:a/b#r' },
+      installedVersions: { 'mixed-a': '1.0.0', 'mixed-b': '1.0.0' },
+    })
+    expect(await world.run('/plugin install mixed')).toMatchObject({ kind: 'error', text: expect.stringContaining('no common install source') })
+    await world.run('/plugin info mixed')
+    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('add <mixed>')
+    await world.run('/plugin')
+    const panel = world.overlay() as { handleInput(data: string): void }
+    panel.handleInput('i')
+    panel.handleInput('u')
+    await new Promise(resolve => setTimeout(resolve, 5))
+    expect(world.notices).toContain('"Mixed" has no common install source for every package')
+    expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true)
+    expect(await world.run('/plugin uninstall mixed')).toEqual({ kind: 'success' })
+    world.dispose()
+  })
+
+  it('renders a partially installed multi-row entry once', async () => {
+    const multi = entry({
+      id: 'multi',
+      displayName: 'Multi Row',
+      install: { rows: [
+        { name: 'multi-a', npm: { spec: 'multi-a' } },
+        { name: 'multi-b', npm: { spec: 'multi-b' } },
+      ] },
+    })
+    const world = await mountWorld({ index: [multi], profileDependencies: { 'multi-a': '1.0.0' } })
+    await world.run('/plugin list')
+    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    expect(json).toContain('partial')
+    expect(json.match(/Multi Row/gu)).toHaveLength(1)
     world.dispose()
   })
 })
@@ -595,6 +728,8 @@ describe('/plugin coverage corners', () => {
     const githubOnly = entry({ id: 'gh', displayName: 'GH', install: { rows: [{ name: 'gh-pkg', github: { repo: 'a/b', ref: 'r' } }] } })
     const world = await mountWorld({ index: [githubOnly] })
     await world.run('/plugin install gh')
+    expect(world.spawns.some(spawn => spawn.args.includes('github:a/b#r'))).toBe(true)
+    await world.run('/plugin install gh --source npm')
     expect(world.notices.at(-1)).toBe('"GH" has no npm install source')
     world.dispose()
   })
@@ -684,7 +819,9 @@ describe('/plugin coverage corners', () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\nallowBuilds:\n  "node-pty": true\n')
     await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: profilePatch, source: 'npm' })
+    await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: profilePatch, source: 'npm' })
     expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toBe('packages:\n  - .\nallowBuilds:\n  "node-pty": true\n')
+    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([{ id: 't', name: 'pkg-t' }])
   })
 
   it('uninstall tolerates a missing patch file and unquoted names', async () => {
@@ -696,11 +833,34 @@ describe('/plugin coverage corners', () => {
     writeFileSync(join(root, 'cordis.patch.yml'), '- id: u\n  name: bare-pkg\n')
     const outcome = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: unquoted, source: 'npm' })
     expect(outcome.kind).toBe('success')
-    expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toBe('')
+    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([])
   })
 })
 
 describe('/plugin lifecycle and locale', () => {
+  it('does not let a slower earlier load replace a newer refresh', async () => {
+    const world = await mountWorld()
+    let releaseFirst: ((value: string) => void) | undefined
+    const first = new Promise<string>(resolve => {
+      releaseFirst = resolve
+    })
+    let calls = 0
+    updaterInternals.fetchText = vi.fn(async () => {
+      calls += 1
+      return calls === 1 ? first : indexJson([entry({ id: 'newer', displayName: 'Newer' })])
+    })
+    await world.run('/plugin')
+    const panel = world.overlay() as { handleInput(data: string): void, currentNode(): unknown }
+    panel.handleInput('r')
+    await new Promise(resolve => setTimeout(resolve, 5))
+    releaseFirst?.(indexJson([entry({ id: 'older', displayName: 'Older' })]))
+    await new Promise(resolve => setTimeout(resolve, 5))
+    const json = JSON.stringify(panel.currentNode())
+    expect(json).toContain('Newer')
+    expect(json).not.toContain('Older')
+    world.dispose()
+  })
+
   it('stops touching the context after the fiber unloads mid-load', async () => {
     let release: ((value: string) => void) | undefined
     const gate = new Promise<string>(resolve => {
@@ -951,12 +1111,12 @@ describe('badge and patch-shape arms', () => {
     expect(outcome.kind).toBe('success')
     const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
     expect(patch).toContain('keep-me')
-    expect(patch).toContain('"pkg-nl"')
+    expect(parseYaml(patch)).toContainEqual({ id: 'nl', name: 'pkg-nl' })
     // allowBuilds block lands after content lacking a trailing newline too.
     const allowEntry = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'x' } }] } })
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .')
     await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: allowEntry, source: 'npm' })
-    expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toContain('"node-pty": true')
+    expect(parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '')).toMatchObject({ allowBuilds: { 'node-pty': true } })
   })
 })
 
@@ -1002,7 +1162,7 @@ describe('detail-shape arms', () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: allowEntry, source: 'npm' })
     expect(outcome.kind).toBe('success')
-    expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toContain('"node-pty": true')
+    expect(parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '')).toMatchObject({ allowBuilds: { 'node-pty': true } })
 
     // The r-key refresh continuation gates on the fiber unload.
     const rWorld = await mountWorld({})
@@ -1043,7 +1203,7 @@ describe('final arms', () => {
 
   it('falls back to the generic removed note without a statusNote', async () => {
     const world = await mountWorld({
-      index: [entry({ id: 'silent-gone', displayName: 'Silent Gone', status: 'removed', install: { rows: [{ name: 'silent-pkg' }] } })],
+      index: [entry({ id: 'silent-gone', displayName: 'Silent Gone', status: 'removed', install: { rows: [{ name: 'silent-pkg', npm: { spec: 'silent-pkg' } }] } })],
       profileDependencies: { 'silent-pkg': '1.0.0' },
     })
     await world.run('/plugin list')

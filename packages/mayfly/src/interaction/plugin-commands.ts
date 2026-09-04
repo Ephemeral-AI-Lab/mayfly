@@ -25,6 +25,7 @@ import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { currentMayflySettings } from './settings.ts'
 import { DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, type CatalogResult } from './plugin-market/catalog.ts'
 import {
+  defaultInstallSource,
   entryInstallStates,
   entrySupportsSource,
   installEntry,
@@ -55,6 +56,8 @@ export function registerPluginCommand(ctx: Context): () => void {
   })
   /** The loaded catalog; `undefined` until the first load settles. */
   let catalog: CatalogResult | undefined
+  /** Latest load claim; slower earlier requests cannot replace newer data. */
+  let reloadGeneration = 0
   /** Plugins the profile carries; reread after every install or removal. */
   let installed: readonly InstalledPlugin[] = []
   /** One install or removal at a time, like the updater's in-flight guard. */
@@ -72,13 +75,15 @@ export function registerPluginCommand(ctx: Context): () => void {
   const indexUrl = (): string => currentMayflySettings(ctx).marketIndexUrl || DEFAULT_MARKET_INDEX_URL
 
   /** Load (or force-reload) the catalog and refresh derived profile state. */
-  const reload = (force: boolean): Promise<CatalogResult> =>
-    loadMarketCatalog(indexUrl(), force).then(result => {
-      if (unloaded) return result
+  const reload = (force: boolean): Promise<CatalogResult> => {
+    const generation = ++reloadGeneration
+    return loadMarketCatalog(indexUrl(), force).then(result => {
+      if (unloaded || generation !== reloadGeneration) return result
       catalog = result
       installed = readInstalledPlugins(profileRoot(profileNameFromArgv(process.argv)))
       return result
     })
+  }
 
   /** Entries currently on hand (empty while offline or unloaded). */
   const entries = (): readonly MarketEntry[] => {
@@ -170,12 +175,11 @@ export function registerPluginCommand(ctx: Context): () => void {
 
   /** The copyable manual install command for an entry's default source. */
   const installCommand = (entry: MarketEntry): string => {
-    const row = entry.install.rows[0]
-    /* v8 ignore next -- the manifest schema guarantees a first row with a source */
-    if (row === undefined || (row.npm === undefined && row.github === undefined)) {
+    const source = defaultInstallSource(entry)
+    if (source === undefined) {
       return `dsh plugin --profile <name> add <${entry.id}>`
     }
-    return `dsh plugin --profile <name> add ${row.npm?.spec ?? rowSpec(row, 'github')}`
+    return `dsh plugin --profile <name> add ${entry.install.rows.map(row => rowSpec(row, source)).join(' ')}`
   }
 
   /** The read-only detail panel for one entry. */
@@ -278,27 +282,19 @@ export function registerPluginCommand(ctx: Context): () => void {
 
     /** Rows for the installed mode: profile deps joined against the index. */
     const installedItems = (): readonly FrontendPanelItem[] => {
-      const byName = new Map(entries().flatMap(entry => entry.install.rows.map(row => [row.name, entry] as const)))
+      const installedByName = new Map(installed.map(plugin => [plugin.name, plugin]))
+      const indexedNames = new Set(entries().flatMap(entry => entry.install.rows.map(row => row.name)))
       const state = states()
       const rank = { installed: 0, updates: 1, removed: 2 } as const
-      const rows = installed.flatMap((plugin): readonly FrontendPanelItem[] => {
-        const entry = byName.get(plugin.name)
-        if (entry === undefined) {
-          // Not in the index at all: the plugin left the market (or predates it).
-          return [{
-            id: plugin.name,
-            label: plugin.name,
-            detail: plugin.spec,
-            badge: 'removed',
-            group: 'removed',
-          }]
-        }
+      const marketRows = entries().flatMap((entry): readonly FrontendPanelItem[] => {
+        const present = entry.install.rows.filter(row => installedByName.has(row.name))
+        if (present.length === 0) return []
         const entryState = state[entry.id]
         const removed = entry.status === 'removed'
         const update = entryState?.updateAvailable === true
-        const latest = entry.npm?.[plugin.name]?.latestVersion
+        const latest = entry.install.rows.map(row => entry.npm?.[row.name]?.latestVersion).find(version => version != null)
         const pieces = [
-          plugin.version,
+          entryState?.installed === true ? entryState.version : 'partial',
           update && latest !== null && latest !== undefined ? `up ${latest}` : undefined,
           removed ? 'removed' : undefined,
         ].filter((piece): piece is string => piece !== undefined)
@@ -312,6 +308,14 @@ export function registerPluginCommand(ctx: Context): () => void {
           actionLabel: t('Details'),
         }]
       })
+      const removedRows = installed.filter(plugin => !indexedNames.has(plugin.name)).map(plugin => ({
+        id: plugin.name,
+        label: plugin.name,
+        detail: plugin.spec,
+        badge: 'removed',
+        group: 'removed',
+      }))
+      const rows = [...marketRows, ...removedRows]
       /* v8 ignore next -- every row above sets one of the three groups */
       return [...rows].sort((a, b) => (rank[a.group as keyof typeof rank] ?? 0) - (rank[b.group as keyof typeof rank] ?? 0))
     }
@@ -349,7 +353,12 @@ export function registerPluginCommand(ctx: Context): () => void {
       if (action === 'install' && usefulInTui(entry) === false) {
         getSharedEditor(ctx)?.notice?.(t('web-only plugin: it contributes nothing in this terminal frontend'))
       }
-      void operate(entry, action, 'npm').then(() => {
+      const source = defaultInstallSource(entry)
+      if (action === 'install' && source === undefined) {
+        getSharedEditor(ctx)?.notice?.(`"${entry.displayName}" has no common install source for every package`)
+        return
+      }
+      void operate(entry, action, source ?? 'npm').then(() => {
         if (unloaded) return
         panel.invalidate()
         display.screen.requestRender()
@@ -479,18 +488,27 @@ export function registerPluginCommand(ctx: Context): () => void {
           return { kind: 'error', text: `usage: /plugin ${verb} <id> [--source npm|github]` }
         }
         const sourceIndex = tokens.indexOf('--source')
-        const source: InstallSource = sourceIndex !== -1 && tokens[sourceIndex + 1] === 'github' ? 'github' : 'npm'
+        const requestedSource = sourceIndex === -1 ? undefined : tokens[sourceIndex + 1]
+        if (sourceIndex !== -1 && requestedSource !== 'npm' && requestedSource !== 'github') {
+          return { kind: 'error', text: `usage: /plugin ${verb} <id> [--source npm|github]` }
+        }
         if (catalog === undefined) await reload(false)
         if (unloaded) return { kind: 'success' }
         const entry = findEntry(id)
         if (entry === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
+        const source: InstallSource | undefined = requestedSource === 'npm' || requestedSource === 'github'
+          ? requestedSource
+          : defaultInstallSource(entry)
+        if (verb === 'install' && source === undefined) {
+          return { kind: 'error', text: `"${entry.displayName}" has no common install source for every package` }
+        }
         if (verb === 'uninstall' && states()[entry.id]?.installed !== true) {
           return { kind: 'error', text: `"${entry.displayName}" is not installed in this profile` }
         }
         if (verb === 'install' && usefulInTui(entry) === false) {
           getSharedEditor(ctx)?.notice?.(t('web-only plugin: it contributes nothing in this terminal frontend'))
         }
-        await operate(entry, verb, source)
+        await operate(entry, verb, source ?? 'npm')
         return { kind: 'success' }
       }
       return { kind: 'error', text: 'usage: /plugin [install <id> | uninstall <id> | info <id> | list | refresh]' }

@@ -26,6 +26,8 @@ const FETCH_TIMEOUT_MS = 15_000
 /** The cached document plus when it was stored, epoch milliseconds. */
 interface CacheDoc {
   readonly fetchedAt: number
+  readonly indexUrl: string
+  readonly index: MarketIndex
   readonly text: string
 }
 
@@ -67,23 +69,23 @@ async function fetchIndex(indexUrl: string): Promise<MarketIndex> {
 }
 
 /** Read the cache document, `undefined` when absent or unparsable. */
-function readCache(): CacheDoc | undefined {
+function readCache(indexUrl: string): CacheDoc | undefined {
   const text = updaterInternals.readTextFile(marketCachePath())
   if (text === undefined) return undefined
   try {
     const parsed: unknown = JSON.parse(text)
     if (typeof parsed !== 'object' || parsed === null) return undefined
     const doc = parsed as Record<string, unknown>
-    if (typeof doc.fetchedAt !== 'number' || typeof doc.text !== 'string') return undefined
-    return { fetchedAt: doc.fetchedAt, text: doc.text }
+    if (typeof doc.fetchedAt !== 'number' || doc.indexUrl !== indexUrl || typeof doc.text !== 'string') return undefined
+    return { fetchedAt: doc.fetchedAt, indexUrl, index: parseMarketIndex(doc.text), text: doc.text }
   } catch {
     return undefined
   }
 }
 
 /** Persist a fetched document to the cache slot. */
-function writeCache(text: string): void {
-  updaterInternals.writeTextFile(marketCachePath(), `${JSON.stringify({ fetchedAt: updaterInternals.now(), text })}\n`)
+function writeCache(indexUrl: string, text: string): void {
+  updaterInternals.writeTextFile(marketCachePath(), `${JSON.stringify({ fetchedAt: updaterInternals.now(), indexUrl, text })}\n`)
 }
 
 /**
@@ -99,19 +101,19 @@ function writeCache(text: string): void {
  * @returns the catalog outcome.
  */
 export async function loadMarketCatalog(indexUrl: string, force = false): Promise<CatalogResult> {
-  const cached = force ? undefined : readCache()
-  if (cached !== undefined && updaterInternals.now() - cached.fetchedAt < MARKET_CACHE_TTL_MS) {
-    return { status: 'fresh', index: parseMarketIndex(cached.text) }
+  const cached = readCache(indexUrl)
+  if (!force && cached !== undefined && updaterInternals.now() - cached.fetchedAt < MARKET_CACHE_TTL_MS) {
+    return { status: 'fresh', index: cached.index }
   }
   try {
     const index = await fetchIndex(indexUrl)
-    writeCache(JSON.stringify(index))
+    writeCache(indexUrl, JSON.stringify(index))
     return { status: 'fresh', index }
   } catch (error) {
     /* v8 ignore next -- both fetch legs and the parser throw Error instances */
     const message = error instanceof Error ? error.message : String(error)
     if (cached !== undefined) {
-      return { status: 'stale', index: parseMarketIndex(cached.text), message }
+      return { status: 'stale', index: cached.index, message }
     }
     return { status: 'offline', message }
   }

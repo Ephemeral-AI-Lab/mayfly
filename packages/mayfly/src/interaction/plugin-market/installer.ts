@@ -11,6 +11,7 @@
  */
 
 import { join } from 'node:path'
+import { isMap, isSeq, parseDocument, type YAMLMap } from 'yaml'
 import { updaterInternals, type SpawnOutcome } from '../updater/io.ts'
 import type { MarketEntry, MarketInstallRow } from './types.ts'
 
@@ -42,9 +43,16 @@ export function rowSpec(row: MarketInstallRow, source: InstallSource): string | 
   return `github:${github.repo}#${github.ref}${github.subdir === undefined ? '' : `&path:${github.subdir}`}`
 }
 
-/** Whether an entry is installable from the given source at all. */
+/** Whether every row of an entry is installable from the given source. */
 export function entrySupportsSource(entry: MarketEntry, source: InstallSource): boolean {
-  return entry.install.rows.some(row => rowSpec(row, source) !== undefined)
+  return entry.install.rows.length > 0 && entry.install.rows.every(row => rowSpec(row, source) !== undefined)
+}
+
+/** The preferred source that can install every row, npm first. */
+export function defaultInstallSource(entry: MarketEntry): InstallSource | undefined {
+  if (entrySupportsSource(entry, 'npm')) return 'npm'
+  if (entrySupportsSource(entry, 'github')) return 'github'
+  return undefined
 }
 
 /** The pnpm error signature the allowBuilds hint keys on. */
@@ -61,6 +69,12 @@ function describeFailure(target: string, outcome: SpawnOutcome): string {
   return `${target} failed: ${tail}${hint}`
 }
 
+/** Text for filesystem and YAML failures. */
+function errorText(error: unknown): string {
+  /* v8 ignore next -- the default filesystem and YAML seams throw Error instances */
+  return error instanceof Error ? error.message : String(error)
+}
+
 /**
  * Merge the entry's `allowBuilds` names into the profile workspace file so
  * pnpm may run exactly those build scripts (native addons). Idempotent.
@@ -68,76 +82,77 @@ function describeFailure(target: string, outcome: SpawnOutcome): string {
 function ensureAllowBuilds(root: string, names: readonly string[]): void {
   if (names.length === 0) return
   const path = join(root, 'pnpm-workspace.yaml')
-  const existing = updaterInternals.readTextFile(path) ?? ''
-  const missing = names.filter(name =>
-    !new RegExp(`^\\s*"?(?:${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})"?\\s*:\\s*true\\s*$`, 'm').test(existing))
-  if (missing.length === 0) return
-  let block = existing.length > 0 && !existing.endsWith('\n') ? `${existing}\n` : existing
-  if (!/^allowBuilds:/m.test(existing)) block += 'allowBuilds:\n'
-  for (const name of missing) block += `  ${JSON.stringify(name)}: true\n`
-  updaterInternals.writeTextFile(path, block)
+  const existing = updaterInternals.readTextFile(path)
+  const doc = parseDocument(existing?.trim() === '' || existing === undefined ? '{}\n' : existing)
+  if (doc.errors.length > 0 || !isMap(doc.contents)) {
+    throw new Error(`pnpm-workspace.yaml must be a YAML mapping: ${doc.errors[0]?.message ?? 'found another document shape'}`)
+  }
+  const allowBuilds = doc.get('allowBuilds', true)
+  if (allowBuilds !== undefined && !isMap(allowBuilds)) {
+    throw new Error('pnpm-workspace.yaml allowBuilds must be a mapping')
+  }
+  let changed = false
+  for (const name of names) {
+    if (doc.getIn(['allowBuilds', name]) === true) continue
+    doc.setIn(['allowBuilds', name], true)
+    changed = true
+  }
+  if (changed) {
+    doc.contents.flow = false
+    updaterInternals.writeTextFile(path, String(doc))
+  }
 }
 
-/** Render one `- id: … name: …` block for the profile patch. */
-function renderPatchRow(row: MarketInstallRow): string {
-  /* v8 ignore next -- profile-patch rows always carry an id */
-  const id = row.id ?? row.name
-  const config = row.config === undefined ? '' : `  config:\n${Object.entries(row.config)
-    .map(([key, value]) => `    ${key}: ${JSON.stringify(value)}`).join('\n')}\n`
-  return `- id: ${id}\n  name: ${JSON.stringify(row.name)}\n${config}`
+/** A validated user-patch edit, applied only after the package operation. */
+interface PatchEdit {
+  readonly path: string
+  readonly text: string
 }
 
-/**
- * Append the entry's `profile-patch` rows to the profile's user patch layer.
- * The file is a top-level YAML sequence (dsh writes an empty one on profile
- * init), so an `[]` body is replaced and anything else gains blocks at the
- * end.
- */
-function appendProfilePatchRows(root: string, rows: readonly MarketInstallRow[]): void {
-  if (rows.length === 0) return
-  const path = join(root, 'cordis.patch.yml')
-  const existing = updaterInternals.readTextFile(path) ?? ''
-  const body = existing.trim() === '[]' || existing.trim() === ''
-    ? `${existing.replace(/\[\]\s*$/, '').trimEnd()}\n`
-    : existing.endsWith('\n') ? existing : `${existing}\n`
-  updaterInternals.writeTextFile(path, body + rows.map(renderPatchRow).join(''))
-}
-
-/** Strip either YAML quoting style from a scalar so hand-written single
- * quotes and the installer's JSON double quotes compare equal. */
-function unquote(value: string): string {
-  const quoted = /^(["'])(.*)\1$/u.exec(value)
-  return quoted === null ? value : quoted[2]!
-}
-
-/** Remove this entry's `profile-patch` blocks from the user patch layer. */
-function removeProfilePatchRows(root: string, rows: readonly MarketInstallRow[]): void {
-  /* v8 ignore next -- the manifest schema guarantees at least one row */
-  if (rows.length === 0) return
+/** Prepare idempotent `profile-patch` row insertion without writing it yet. */
+function prepareProfilePatchRows(root: string, rows: readonly MarketInstallRow[]): PatchEdit | undefined {
+  if (rows.length === 0) return undefined
   const path = join(root, 'cordis.patch.yml')
   const existing = updaterInternals.readTextFile(path)
-  if (existing === undefined) return
-  const names = new Set(rows.map(row => row.name))
-  // Blocks start at a `- ` line and run to the next one; a block is ours when
-  // any of its lines names one of our packages.
-  const lines = existing.split('\n')
-  const kept: string[] = []
-  let block: string[] = []
-  const flush = (): void => {
-    if (block.length === 0) return
-    const isOurs = block.some(line => {
-      const quoted = line.match(/name:\s*(.+?)\s*$/)?.[1]
-      return quoted !== undefined && names.has(unquote(quoted))
-    })
-    if (!isOurs) kept.push(...block)
-    block = []
+  const doc = parseDocument(existing?.trim() === '' || existing === undefined ? '[]\n' : existing)
+  if (doc.errors.length > 0 || !isSeq(doc.contents)) {
+    throw new Error(`cordis.patch.yml must be a YAML sequence: ${doc.errors[0]?.message ?? 'found another document shape'}`)
   }
-  for (const line of lines) {
-    if (/^-\s/.test(line)) flush()
-    block.push(line)
+  let changed = false
+  for (const row of rows) {
+    const id = row.id ?? row.name
+    const present = doc.contents.items.find(item => isMap(item) && (item.get('id') as unknown) === id) as YAMLMap | undefined
+    if (present !== undefined) {
+      if ((present.get('name') as unknown) === row.name) continue
+      throw new Error(`cordis.patch.yml already has id ${JSON.stringify(id)} for another package`)
+    }
+    doc.add({ id, name: row.name, ...(row.config === undefined ? {} : { config: row.config }) })
+    changed = true
   }
-  flush()
-  updaterInternals.writeTextFile(path, kept.join('\n'))
+  if (changed) {
+    doc.contents.flow = false
+    return { path, text: String(doc) }
+  }
+  return undefined
+}
+
+/** Prepare removal of this entry's exact `id + name` rows without writing. */
+function prepareProfilePatchRemoval(root: string, rows: readonly MarketInstallRow[]): PatchEdit | undefined {
+  /* v8 ignore next -- the manifest schema guarantees at least one row */
+  if (rows.length === 0) return undefined
+  const path = join(root, 'cordis.patch.yml')
+  const existing = updaterInternals.readTextFile(path)
+  if (existing === undefined) return undefined
+  const doc = parseDocument(existing)
+  if (doc.errors.length > 0 || !isSeq(doc.contents)) {
+    throw new Error(`cordis.patch.yml must be a YAML sequence: ${doc.errors[0]?.message ?? 'found another document shape'}`)
+  }
+  const keys = new Set(rows.map(row => `${row.id ?? row.name}\0${row.name}`))
+  const kept = doc.contents.items.filter(item =>
+    !isMap(item) || !keys.has(`${String((item.get('id') as unknown) ?? '')}\0${String((item.get('name') as unknown) ?? '')}`))
+  if (kept.length === doc.contents.items.length) return undefined
+  doc.contents.items = kept
+  return { path, text: String(doc) }
 }
 
 /** The outcome of an install or removal. */
@@ -167,17 +182,27 @@ export interface InstallerInput {
 export async function installEntry(input: InstallerInput): Promise<InstallOutcome> {
   const rows = input.entry.install.rows
   const specs = rows.map(row => rowSpec(row, input.source)).filter((spec): spec is string => spec !== undefined)
-  if (specs.length === 0) {
+  if (specs.length !== rows.length || specs.length === 0) {
     return { kind: 'error', text: `"${input.entry.displayName}" has no ${input.source} install source` }
   }
-  ensureAllowBuilds(input.root, input.entry.install.allowBuilds ?? [])
+  let patchEdit: PatchEdit | undefined
+  try {
+    patchEdit = prepareProfilePatchRows(input.root, rows.filter(row => row.activation === 'profile-patch'))
+    ensureAllowBuilds(input.root, input.entry.install.allowBuilds ?? [])
+  } catch (error) {
+    return { kind: 'error', text: `preparing "${input.entry.displayName}" failed: ${errorText(error)}` }
+  }
   const outcome = await updaterInternals.spawnOnce(input.dshBin,
     ['plugin', '--profile', input.profile, 'add', ...specs],
     { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
   if (outcome.code !== 0) {
     return { kind: 'error', text: describeFailure(`installing "${input.entry.displayName}"`, outcome) }
   }
-  appendProfilePatchRows(input.root, rows.filter(row => row.activation === 'profile-patch'))
+  try {
+    if (patchEdit !== undefined) updaterInternals.writeTextFile(patchEdit.path, patchEdit.text)
+  } catch (error) {
+    return { kind: 'error', text: `packages installed but activating "${input.entry.displayName}" failed: ${errorText(error)}` }
+  }
   return { kind: 'success' }
 }
 
@@ -185,13 +210,23 @@ export async function installEntry(input: InstallerInput): Promise<InstallOutcom
  * installer-written patch rows leave the user layer with it. */
 export async function uninstallEntry(input: InstallerInput): Promise<InstallOutcome> {
   const names = input.entry.install.rows.map(row => row.name)
+  let patchEdit: PatchEdit | undefined
+  try {
+    patchEdit = prepareProfilePatchRemoval(input.root, input.entry.install.rows)
+  } catch (error) {
+    return { kind: 'error', text: `preparing removal of "${input.entry.displayName}" failed: ${errorText(error)}` }
+  }
   const outcome = await updaterInternals.spawnOnce(input.dshBin,
     ['plugin', '--profile', input.profile, 'remove', ...names],
     { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
   if (outcome.code !== 0) {
     return { kind: 'error', text: describeFailure(`removing "${input.entry.displayName}"`, outcome) }
   }
-  removeProfilePatchRows(input.root, input.entry.install.rows)
+  try {
+    if (patchEdit !== undefined) updaterInternals.writeTextFile(patchEdit.path, patchEdit.text)
+  } catch (error) {
+    return { kind: 'error', text: `packages removed but cleaning up "${input.entry.displayName}" failed: ${errorText(error)}` }
+  }
   return { kind: 'success' }
 }
 
