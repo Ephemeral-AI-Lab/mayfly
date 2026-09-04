@@ -26,6 +26,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyInlineSpan, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { ConversationFacts } from '../conversation/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
+import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds } from './agent-presentation.ts'
 import type { AgentLiveLookup } from './agent-group.ts'
 import { trackChildAgentModels } from './child-agent-model.ts'
 import { parseToolArguments } from './present.ts'
@@ -67,15 +68,13 @@ function agentPhase(member: PaneMember, live: AgentLiveLookup | undefined): {
   readonly tone: MayflyTone
 } {
   const phase = live?.(member.item)?.phase
-  if (phase === 'failed' || member.item.result?.isError === true) return { label: 'failed', tone: 'danger' }
-  if (phase === 'waiting') return { label: 'waiting', tone: 'warning' }
-  if (phase === 'running' || member.item.result === undefined) return { label: 'running', tone: 'accent' }
-  return { label: 'done', tone: 'success' }
+  const presentation = agentPhasePresentation(phase === 'completed' ? 'done'
+    : phase ?? (member.item.result === undefined ? 'pending' : member.item.result.isError ? 'failed' : 'done'))
+  return { label: presentation.label, tone: presentation.tone }
 }
 
 function formatElapsed(seconds: number): string {
-  if (seconds < 60) return `${String(seconds)}s`
-  return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
+  return compactElapsedSeconds(seconds)
 }
 
 function memberElapsed(member: PaneMember, live: AgentLiveLookup | undefined): number {
@@ -148,7 +147,7 @@ function agentsNode(members: readonly PaneMember[], live: AgentLiveLookup | unde
       node: {
         kind: 'rich-text',
         spans: [
-          { text: `  ${index === members.length - 1 ? '└─' : '├─'} `, tone: 'muted' },
+          { text: `  ${agentTreeBranch(index === members.length - 1)} `, tone: 'muted' },
           { text: `${phase.label} `, tone: phase.tone, styles: ['strong'] },
           { text: label, tone: 'accent' },
           { text: ` · ${[...(detail === undefined ? [] : [detail]), ...metrics].join(' · ')}`, tone: 'muted' },

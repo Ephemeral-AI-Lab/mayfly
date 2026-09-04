@@ -116,10 +116,11 @@ describe('CanonicalSelectController navigation', () => {
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v1' }))
   })
 
-  it('navigates a 100,000-row logical list while exposing only one render window', () => {
+  it('hands a 100,000-row logical list to the core-owned render window', () => {
     const { panel, onSelect } = mount({ rows: rows(100_000) })
     const first = panel.currentNode()
-    expect(first.kind === 'surface' && first.child.kind === 'list' ? first.child.items : []).toHaveLength(MAX_LIST_VISIBLE)
+    expect(first.kind === 'surface' && first.child.kind === 'list' ? first.child.items : []).toHaveLength(100_000)
+    expect(panel.render(60).filter(line => line.includes('Item ')).length).toBeLessThanOrEqual(MAX_LIST_VISIBLE)
     panel.handleInput('\x1b[H')
     panel.handleInput('\x1b[6~')
     panel.handleInput(KEY.enter)
@@ -131,7 +132,7 @@ describe('CanonicalSelectController navigation', () => {
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'v99999' }))
     const last = panel.currentNode()
     const lastItems = last.kind === 'surface' && last.child.kind === 'list' ? last.child.items : []
-    expect(lastItems).toHaveLength(MAX_LIST_VISIBLE)
+    expect(lastItems).toHaveLength(100_000)
     expect(lastItems.at(-1)).toMatchObject({ id: 'v99999' })
 
     panel.handleInput('\x1b[H')
@@ -195,6 +196,24 @@ describe('CanonicalSelectController navigation', () => {
     expect(onSelect).not.toHaveBeenCalled()
     expect(onCancel).not.toHaveBeenCalled()
     panel.invalidate()
+  })
+
+  it('ignores deletion on an empty list and permits multiple mode without a selected-values reader', () => {
+    const onDelete = vi.fn()
+    const panel = new CanonicalSelectController({
+      keymap: new FakeKeymap(),
+      theme: new FakeTheme(),
+      components: new FakeMayflyComponents(),
+      rows: [],
+      mode: 'multiple',
+      onDelete,
+      onConfirm: vi.fn(),
+      onSelect: () => {},
+      onCancel: () => {},
+    })
+    panel.handleInput('\x04')
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(panel.currentNode()).toMatchObject({ child: { selectedIds: [] } })
   })
 
   it('calls onCancel on Escape', () => {

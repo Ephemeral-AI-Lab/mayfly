@@ -10,7 +10,20 @@ import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { CanonicalPanelAdapter, type CanonicalContextHint, type CanonicalNodeSource } from './canonical-panel.ts'
-import { ACTION_CANCEL, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_TOGGLE } from './keys.ts'
+import {
+  ACTION_BACKSPACE,
+  ACTION_CANCEL,
+  ACTION_DELETE,
+  ACTION_END,
+  ACTION_HOME,
+  ACTION_MOVE_DOWN,
+  ACTION_MOVE_UP,
+  ACTION_PAGE_DOWN,
+  ACTION_PAGE_UP,
+  ACTION_SUBMIT,
+  ACTION_TOGGLE,
+  interactionKeyHint,
+} from './keys.ts'
 
 /** One selectable row of a {@link CanonicalSelectController}. */
 export interface SelectRow {
@@ -31,8 +44,11 @@ export interface SelectListPanelOptions {
   readonly title?: string
   readonly footer?: string
   readonly contextHints?: readonly CanonicalContextHint[]
+  readonly suppressAutomaticContextHints?: boolean
   readonly initialValue?: string
   readonly filter?: boolean
+  readonly mode?: 'single' | 'multiple'
+  readonly selectedValues?: () => readonly string[]
   /** Dynamic translator for package-owned chrome and row copy. */
   readonly t?: MayflyTranslate
   readonly onCursorChanged?: (cursor: number, rows: readonly SelectRow[]) => void
@@ -40,6 +56,8 @@ export interface SelectListPanelOptions {
   readonly onBlockedSelect?: (row: SelectRow) => void
   readonly onHighlight?: (row: SelectRow) => void
   readonly onToggle?: (row: SelectRow) => void
+  readonly onConfirm?: () => void
+  readonly onDelete?: (row: SelectRow) => void
   readonly onCancel: () => void
 }
 
@@ -51,13 +69,6 @@ export function counterRow(cursor: number, count: number, maxVisible: number): s
 
 export function oneLine(text: string): string {
   return text.replace(/[\r\n]+/g, ' ').trim()
-}
-
-function windowStart(cursor: number, count: number): number {
-  return Math.min(
-    Math.max(0, count - MAX_LIST_VISIBLE),
-    Math.max(0, cursor - Math.floor(MAX_LIST_VISIBLE / 2)),
-  )
 }
 
 /** Canonical single-select panel preserving filtering and callback behavior. */
@@ -77,6 +88,7 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: event => this.onEvent(event),
       onUnhandledEscape: options.onCancel,
@@ -84,11 +96,15 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
       ...(options.t === undefined ? {} : { t: options.t }),
       contextHints: () => [
         ...(this.filter && this.query === '' ? [{ id: 'filter', keys: 'Type', label: 'to search', priority: 85 }] : []),
-        ...(this.query.length === 0 && this.options.onToggle !== undefined
-          ? [{ id: 'toggle', keys: this.options.keymap.getKeys(ACTION_TOGGLE)[0] ?? 'Space', label: 'toggle', priority: 95 }]
+        ...(this.query.length === 0 && this.options.onToggle !== undefined && this.options.mode !== 'multiple'
+          ? [{ id: 'toggle', keys: interactionKeyHint(this.options.keymap, ACTION_TOGGLE, 'Space'), label: 'toggle', priority: 95 }]
           : []),
         ...(this.options.contextHints ?? []),
+        ...(this.options.onDelete === undefined
+          ? []
+          : [{ id: 'delete', keys: interactionKeyHint(this.options.keymap, ACTION_DELETE, 'Delete'), label: 'delete', priority: 90 }]),
       ],
+      ...(options.suppressAutomaticContextHints === true ? { suppressAutomaticContextHints: true } : {}),
     })
   }
 
@@ -106,6 +122,16 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
 
   handleInput(data: string): void {
     const view = this.filtered()
+    if (this.options.mode === 'multiple' && this.options.onConfirm !== undefined
+      && this.options.keymap.matches(data, ACTION_SUBMIT)) {
+      this.options.onConfirm()
+      return
+    }
+    if (this.options.onDelete !== undefined && this.options.keymap.matches(data, ACTION_DELETE)) {
+      const row = view[this.cursor]
+      if (row !== undefined) this.options.onDelete(row)
+      return
+    }
     if (this.query.length === 0 && this.options.onToggle !== undefined && this.options.keymap.matches(data, ACTION_TOGGLE)) {
       const row = view[this.cursor]
       if (row === undefined) return
@@ -125,18 +151,18 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
     }
     const movement = this.options.keymap.matches(data, ACTION_MOVE_UP) ? -1
       : this.options.keymap.matches(data, ACTION_MOVE_DOWN) ? 1
-        : data === '\x1b[5~' ? -MAX_LIST_VISIBLE
-          : data === '\x1b[6~' ? MAX_LIST_VISIBLE
-            : data === '\x1b[H' ? -Infinity
-              : data === '\x1b[F' ? Infinity
+        : this.options.keymap.matches(data, ACTION_PAGE_UP) ? -MAX_LIST_VISIBLE
+          : this.options.keymap.matches(data, ACTION_PAGE_DOWN) ? MAX_LIST_VISIBLE
+            : this.options.keymap.matches(data, ACTION_HOME) ? -Infinity
+              : this.options.keymap.matches(data, ACTION_END) ? Infinity
                 : undefined
     if (movement !== undefined) {
       this.moveCursor(view, movement)
       return
     }
     if (!this.filter) { this.adapter.handleInput(data); return }
-    if (data === '\x7f') {
-      this.query = this.query.slice(0, -1)
+    if (this.options.keymap.matches(data, ACTION_BACKSPACE)) {
+      this.query = [...this.query].slice(0, -1).join('')
       this.reseedCursor()
       this.focusCursor()
       return
@@ -155,13 +181,12 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
   invalidate(): void { this.adapter.invalidate() }
   render(width: number): string[] { return this.adapter.render(width) }
   currentFocusIdentity(): MayflyFocusIdentity | undefined { return this.adapter.currentFocusIdentity() }
+  currentRow(): SelectRow | undefined { return this.filtered()[this.cursor] }
 
   currentNode(): MayflyUiNode {
     const t = this.options.t ?? ((value: string) => value)
     const view = this.filtered()
     const selected = view[this.cursor]
-    const start = windowStart(this.cursor, view.length)
-    const visible = view.slice(start, start + MAX_LIST_VISIBLE)
     const footer = [
       this.options.footer === undefined ? undefined : t(this.options.footer),
       counterRow(this.cursor, view.length, MAX_LIST_VISIBLE),
@@ -169,9 +194,12 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
     const list = {
       kind: 'list' as const,
       id: 'select-list',
-      selectedIds: selected === undefined ? [] : [selected.value],
+      ...(this.options.mode === undefined ? {} : { mode: this.options.mode }),
+      selectedIds: this.options.mode === 'multiple'
+        ? [...(this.options.selectedValues?.() ?? [])]
+        : selected === undefined ? [] : [selected.value],
       ...(this.query === '' ? {} : { filter: this.query }),
-      items: visible.map(row => ({
+      items: view.map(row => ({
         id: row.value,
         label: t(row.label),
         ...(row.description === undefined ? {} : { detail: oneLine(t(row.description)) }),

@@ -39,13 +39,12 @@ const approvedWidthMath = new Set([
 ])
 
 const approvedPresentation = new Set([
-  "border:packages/mayfly/src/interaction/attach-view.ts:return colors.border('│') + ' ' + clipped + ' '.repeat(padding) + ' ' + colors.border('│')",
   "border:packages/mayfly/src/interaction/session-tree.ts:visit(child, depth + 1, index === shown.length - 1 ? '└─' : '├─')",
   "border:packages/mayfly/src/transcript/agent-group.ts:const branch = isLast ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/agent-group.ts:const prefix = isLast ? '   ' : '│  '",
   "border:packages/mayfly/src/transcript/pane-agents.ts:children.push({ node: { kind: 'text', content: `  ${index === members.length - 1 ? '   ' : '│  '}    ${phase.label === 'failed' ? `Error: ${detailLine}` : detailLine}`, tone: phase.label === 'failed' ? 'danger' : 'muted' } })",
-  "border:packages/mayfly/src/transcript/pane-agents.ts:{ text: `  ${index === members.length - 1 ? '└─' : '├─'} `, tone: 'muted' },",
-  "border:packages/mayfly/src/transcript/pane-workflow.ts:{ text: `  ${last ? '└─' : '├─'} `, tone: 'muted' },",
+  "border:packages/mayfly/src/transcript/agent-presentation.ts:return last ? '└─' : '├─'",
+  "border:packages/mayfly/src/transcript/agent-presentation.ts:export function agentTreeBranch(last: boolean): '└─' | '├─' {",
   "border:packages/mayfly/src/transcript/read-group.ts:const branch = last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/read-group.ts:const continuation = last ? '   ' : '│  '",
   "border:packages/mayfly/src/transcript/read-group.ts:const windowBranch = windowLast ? '└─' : '├─'",
@@ -54,7 +53,6 @@ const approvedPresentation = new Set([
   "border:packages/mayfly/src/transcript/search-group.ts:const childContinuation = `${String(continuation)}${last ? '   ' : '│  '}`",
   "border:packages/mayfly/src/transcript/search-group.ts:const continuation = last ? '   ' : '│  '",
   "padding:packages/mayfly/src/interaction/agents-command.ts:const indent = '  '.repeat(Math.max(0, entry.depth - 1))",
-  "padding:packages/mayfly/src/interaction/attach-view.ts:return colors.border('│') + ' ' + clipped + ' '.repeat(padding) + ' ' + colors.border('│')",
   "padding:packages/mayfly/src/interaction/session-tree.ts:const prefix = depth === 0 ? '' : `${'  '.repeat(depth - 1)}${branch} `",
   "padding:packages/mayfly/src/interaction/usage.ts:return '█'.repeat(filled) + '░'.repeat(Math.max(0, width - filled))",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
@@ -72,7 +70,6 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/status-model.ts:? ' '.repeat(Math.max(0, width - rightWidth)) + rightText",
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, centerStart - leftWidth))",
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))",
-  "pointer:packages/mayfly/src/interaction/attach-view.ts:prompt: '› ',",
   "pointer:packages/mayfly/src/interaction/update-command.ts:subtitle: [`v${fromVersion} → v${toVersion}`, detail].join(' · ').replace(/ · $/, ''),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} → v${toVersion}` },",
   'pointer:packages/mayfly/src/interaction/updater/swap.ts:message: `updated ${input.fromVersion} → ${input.toVersion} · smoke passed · restart dsh to apply — this session keeps running ${input.fromVersion}`,',

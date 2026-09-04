@@ -7,13 +7,13 @@
  */
 
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyComponents, MayflyFocusable, MayflyTheme } from '../core/index.ts'
+import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import type { AskUserQuestionAnswerItem, AskUserQuestionItem, AskUserQuestionOption } from '@deepseek-ai/dsh-user-questions'
 import { CanonicalPanelAdapter } from './canonical-panel.ts'
 import { oneLine } from './select-list.ts'
+import { ACTION_SUBMIT, ACTION_TOGGLE, interactionKeyHint } from './keys.ts'
 
-const KEY_SPACE = ' '
 const MAX_OPTION_ROWS = 6
 const OTHER_ID = '__other__'
 const QUESTION_TABS_ID = 'questionnaire-questions'
@@ -22,6 +22,7 @@ const QUESTION_TABS_ID = 'questionnaire-questions'
 export interface QuestionnaireOptions {
   readonly theme: MayflyTheme
   readonly components: MayflyComponents
+  readonly keymap: MayflyKeymap
   readonly questions: readonly AskUserQuestionItem[]
   readonly onComplete: (answers: AskUserQuestionAnswerItem[]) => void
   readonly onCancel: () => void
@@ -59,6 +60,7 @@ export class Questionnaire implements MayflyFocusable {
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: event => this.onEvent(event),
       onFocusChange: identity => {
@@ -100,8 +102,10 @@ export class Questionnaire implements MayflyFocusable {
   handleInput(data: string): void {
     const question = this.current()
     const state = this.state()
-    if (!this.editing && this.focusedControlId === 'answer' && (data === '\r' || (data.length === 1 && data >= ' '))) this.editing = true
-    if (!this.editing && this.focusedControlId === 'questionnaire-options' && data === KEY_SPACE) { this.toggle(question, state); return }
+    if (!this.editing && this.focusedControlId === 'answer'
+      && (this.options.keymap.matches(data, ACTION_SUBMIT) || (data.length === 1 && data >= ' '))) this.editing = true
+    if (!this.editing && this.focusedControlId === 'questionnaire-options'
+      && this.options.keymap.matches(data, ACTION_TOGGLE)) { this.toggle(question, state); return }
     if (!this.editing && /^[1-9]$/u.test(data)) {
       const index = Number(data) - 1
       if (index < this.rowCount(state)) { state.cursor = index; this.confirm(question, state) }
@@ -227,7 +231,7 @@ export class Questionnaire implements MayflyFocusable {
     return [
       { id: 'digits', keys: '1-9', label: 'choose', priority: 95 },
       ...(this.current().multiSelect === true
-        ? [{ id: 'toggle', keys: 'Space', label: 'toggle', priority: 96 }]
+        ? [{ id: 'toggle', keys: interactionKeyHint(this.options.keymap, ACTION_TOGGLE, 'Space'), label: 'toggle', priority: 96 }]
         : []),
     ]
   }

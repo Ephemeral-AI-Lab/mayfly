@@ -153,8 +153,8 @@
       name: '@ephemeral-ai/mayfly/pane-queue'
     - id: mayfly-pane-todo
       name: '@ephemeral-ai/mayfly/pane-todo'
-    - id: mayfly-pane-btw
-      name: '@ephemeral-ai/mayfly/pane-btw'
+    - id: mayfly-btw-command
+      name: '@ephemeral-ai/mayfly/btw-command'
     - id: mayfly-pane-agents
       name: '@ephemeral-ai/mayfly/pane-agents'
     - id: mayfly-pane-workflow

@@ -68,20 +68,17 @@ describe('CanonicalMultiSelectController', () => {
   it('uses the canonical operation labels independently of keymap descriptions', () => {
     const select = new CanonicalMultiSelectController({ keymap: new FakeKeymap(false), theme: new FakeTheme(), components: new FakeMayflyComponents(), items: items(1), onConfirm: () => {}, onCancel: () => {} })
     select.focused = true
-    expect(select.render(200).join('\n')).toContain('Space toggle · Enter confirm · Esc close')
+    expect(select.render(200).join('\n')).toContain('Space / Enter toggle / confirm · Esc close')
   })
 
-  it('maps compiler selection events, filters non-string ids, and bridges focus', () => {
+  it('routes public input through the shared list and bridges focus', () => {
     const value = mount()
     value.select.focused = true
     expect(value.select.focused).toBe(true)
-    ;(value.select as unknown as { adapter: { handleInput(data: string): void } }).adapter.handleInput(KEY.space)
+    value.select.handleInput(KEY.space)
     expect(value.select.currentNode()).toMatchObject({ child: { selectedIds: ['v0'] } })
-    ;(value.select as unknown as { onEvent(event: { kind: 'selection-change', controlId: string, value: unknown }): void })
-      .onEvent({ kind: 'selection-change', controlId: 'mayfly-select', value: ['v1', 2] })
-    expect(value.select.currentNode()).toMatchObject({ child: { selectedIds: ['v1'] } })
-    ;(value.select as unknown as { onEvent(event: { kind: 'activate', controlId: string }): void })
-      .onEvent({ kind: 'activate', controlId: 'other' })
+    value.select.focused = false
+    expect(value.select.focused).toBe(false)
   })
 })
 
@@ -91,7 +88,7 @@ describe('CanonicalPanelAdapter', () => {
     let metadata = ''
     let panel!: CanonicalPanelAdapter
     panel = new CanonicalPanelAdapter({
-      components: new FakeMayflyComponents(), theme: new FakeTheme(), node,
+      components: new FakeMayflyComponents(), theme: new FakeTheme(), keymap: new FakeKeymap(), node,
       onEvent: () => {},
       maxLeafRows: 2,
       leafRowWindowPath: '$',
@@ -115,7 +112,7 @@ describe('CanonicalPanelAdapter', () => {
     const onEvent = vi.fn()
     const onEscape = vi.fn()
     const panel = new CanonicalPanelAdapter({
-      components: new FakeMayflyComponents(), theme: new FakeTheme(),
+      components: new FakeMayflyComponents(), theme: new FakeTheme(), keymap: new FakeKeymap(),
       node: () => ({ kind: 'actions', id: 'actions', items: [{ id: 'run', label: 'Run', intent: 'primary' }] }),
       onEvent, onUnhandledEscape: onEscape,
     })
@@ -126,13 +123,13 @@ describe('CanonicalPanelAdapter', () => {
     panel.invalidate()
     expect(panel.render(40).join('\n')).toContain('Run')
 
-    const passive = new CanonicalPanelAdapter({ components: new FakeMayflyComponents(), theme: new FakeTheme(), node: () => ({ kind: 'text', content: 'passive' }), onEvent, onUnhandledEscape: onEscape })
+    const passive = new CanonicalPanelAdapter({ components: new FakeMayflyComponents(), theme: new FakeTheme(), keymap: new FakeKeymap(), node: () => ({ kind: 'text', content: 'passive' }), onEvent, onUnhandledEscape: onEscape })
     passive.handleInput(KEY.escape)
     expect(onEscape).toHaveBeenCalledOnce()
     passive.handleInput('x')
 
     const invalid = new CanonicalPanelAdapter({
-      components: new FakeMayflyComponents(), theme: new FakeTheme(),
+      components: new FakeMayflyComponents(), theme: new FakeTheme(), keymap: new FakeKeymap(),
       node: () => ({ kind: 'invalid' }) as never,
       onEvent,
     })
@@ -142,14 +139,14 @@ describe('CanonicalPanelAdapter', () => {
     invalid.invalidate()
 
     const throwing = new CanonicalPanelAdapter({
-      components: new FakeMayflyComponents(), theme: new FakeTheme(),
+      components: new FakeMayflyComponents(), theme: new FakeTheme(), keymap: new FakeKeymap(),
       node: () => { throw new Error('builder exploded') },
       onEvent,
     })
     expect(throwing.render(40).join('\n')).toContain('dialog unavailable: builder exploded')
 
     const unknownThrowing = new CanonicalPanelAdapter({
-      components: new FakeMayflyComponents(), theme: new FakeTheme(),
+      components: new FakeMayflyComponents(), theme: new FakeTheme(), keymap: new FakeKeymap(),
       node: () => { throw 'builder exploded' },
       onEvent,
     })

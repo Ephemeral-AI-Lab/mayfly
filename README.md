@@ -97,6 +97,12 @@ mayfly
 Set `DEEPSEEK_API_KEY` before first run. `/help` lists the active commands
 and key bindings.
 
+`/agents` browses the current session's subagent tree; Enter opens a child and
+`/agents stop <id>` stops a continuable child. `/btw <question>` opens a
+temporary side Agent. Live auxiliary Agents reuse the complete Mayfly layout
+and editor: press `F7` to switch between main and auxiliary conversations and
+`F8` to close the auxiliary view.
+
 ## Architecture
 
 The public npm surface is deliberately limited to three packages:
@@ -116,7 +122,7 @@ flowchart TB
     ROOT["one dsh process · one Cordis service graph"]
     DSH["native dsh services<br/>commands · sessionProjections · tools · agents"]
     PLUGIN["ordinary Cordis plugins<br/>official Mayfly rows and external siblings"]
-    AGENT["mayflyCurrentAgent<br/>exact selected Agent"]
+    AGENT["mayflyCurrentAgent<br/>primary + one auxiliary slot<br/>exact displayed Agent"]
     UI["direct Mayfly UI services<br/>mayflyPanes · mayflyStatus<br/>mayflyOverlays · mayflyEditorExtensions"]
     CORE["@ephemeral-ai/mayfly core area<br/>only pi-tui and raw-terminal owner"]
     TERM["terminal"]

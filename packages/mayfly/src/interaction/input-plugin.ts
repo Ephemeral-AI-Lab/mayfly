@@ -29,11 +29,9 @@
  * are published through
  * `./editor-instance.ts` so `mayfly-editor-plus` can layer input modes and
  * autocomplete over the same component. The `mayfly-pane-queue` enhancement
- * shows pending messages without taking over editor history. While the side-question pane is docked above the editor
- * (`'mayfly/editor-connected-above'`), Esc closes it — the draft stays intact
- * — wheel and PageUp/PageDown scroll it contextually, and Enter submits the draft to
- * the side conversation instead of the main agent (refused with a notice
- * while the side agent is still answering, the draft restored). The
+ * shows pending messages without taking over editor history. Auxiliary live
+ * Agents use this same editor and transcript; delivery scope follows the
+ * app-owned current-Agent view instead of a pane-specific input path. The
  * unsubmitted draft is mirrored
  * into `./draft-stash.ts`, so a theme-swap reload (the theme provider fiber
  * disposes, Cordis re-runs this `mayflyTheme` dependent) restores the text
@@ -49,6 +47,7 @@
  * @module @ephemeral-ai/mayfly/interaction/input-plugin
  */
 
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
   MayflyComponent,
@@ -56,8 +55,13 @@ import type {
   MayflyScreen,
   MayflySemanticColors,
 } from '../core/index.ts'
+import { normalizeWheelInput } from '../core/terminal.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
+import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent'
+import type {} from '@deepseek-ai/dsh-subagent'
+import { SessionId } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
 // Empty type import carries the `permissionPresets` Context merge the
@@ -76,10 +80,15 @@ import { resolveExternalEditorCommand, runExternalEditor } from './external-edit
 import { currentMayflySettings } from './settings.ts'
 import {
   ACTION_CANCEL,
-  ACTION_CYCLE_MODE,
   ACTION_CYCLE_MODEL,
   ACTION_EXTERNAL_EDITOR,
+  ACTION_END,
   ACTION_INTERRUPT,
+  ACTION_MOVE_DOWN,
+  ACTION_MOVE_UP,
+  ACTION_PAGE_DOWN,
+  ACTION_PAGE_UP,
+  ACTION_SHIFT_TAB,
   ACTION_STEER,
 } from './keys.ts'
 import { createModelListCache, cycleSessionModel } from './model-commands.ts'
@@ -90,9 +99,31 @@ import { filterSlashCommands } from './slash-filter.ts'
 
 /** Window for the double Ctrl-C exit: presses farther apart re-arm the hint. */
 const INTERRUPT_DOUBLE_PRESS_MS = 1000
-const KEY_PAGE_UP = '\x1b[5~'
-const KEY_PAGE_DOWN = '\x1b[6~'
-const KEY_END = '\x1b[F'
+
+interface AttachmentReader {
+  readImage(ref: Extract<ContentBlock, { readonly type: 'image' }>['attachment'], signal?: AbortSignal): Promise<StoredImageAttachment>
+}
+
+/** Convert admitted editor blocks back to the public subagent prompt wire. */
+async function subagentPromptParts(attachments: AttachmentReader | undefined, blocks: readonly ContentBlock[], signal: AbortSignal): Promise<PromptContentPart[]> {
+  const parts: PromptContentPart[] = []
+  for (const block of blocks) {
+    if (block.type === 'text') {
+      parts.push({ type: 'text', text: block.text })
+      continue
+    }
+    if (block.type !== 'image') throw new Error(`unsupported human prompt block: ${block.type}`)
+    if (attachments === undefined) throw new Error('image delivery requires the attachment store')
+    const stored = await attachments.readImage(block.attachment, signal)
+    parts.push({
+      type: 'image',
+      mediaType: stored.ref.mediaType,
+      data: Buffer.from(stored.data).toString('base64'),
+      ...(stored.ref.name === undefined ? {} : { name: stored.ref.name }),
+    })
+  }
+  return parts
+}
 
 /** Command descriptors projected through the app-owned session boundary. */
 function availableCommands(ctx: Context) {
@@ -106,23 +137,10 @@ function availableCommands(ctx: Context) {
   }))
 }
 
-function wheelDirection(data: string): 'up' | 'down' | undefined {
-  /* v8 ignore start -- exercised by real mouse reports */
-  const legacy = data.length === 6 && data.startsWith('\x1b[M')
-  const raw = legacy ? data.charCodeAt(3) - 32 : /^\x1b\[<(\d+);\d+;\d+[Mm]$/.exec(data)?.[1]
-  /* v8 ignore next 4 -- exercised by real mouse reports */
-  if (raw === undefined) return undefined
-  const button = typeof raw === 'number' ? raw : Number.parseInt(raw, 10)
-  /* v8 ignore next */
-  if ((button & 64) === 0) return undefined
-  /* v8 ignore next */
-  return (button & 3) === 0 ? 'up' : (button & 3) === 1 ? 'down' : undefined
-  /* v8 ignore stop */
-}
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-input'
 /** Services required before the editor can mount. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyEditorPanels', 'mayflyPromptSubmissions', 'commands', 'sessionProjections', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyEditorPanels', 'mayflyPromptSubmissions', 'commands', 'sessionProjections', 'subagents', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
 
 /**
  * The single-line hint rendered under the input editor. Only the transient
@@ -193,6 +211,9 @@ class HintLine implements MayflyComponent {
 export function apply(ctx: Context): void {
   const screen = ctx.mayflyScreen
   const colors = ctx.mayflyTheme.colors
+  const currentAgent = ctx.mayflyCurrentAgent
+  const requests = ctx.mayflyRequests
+  const subagents = ctx.subagents
   const aliases = ctx.mayflyInteractionState.aliases
   const draft = ctx.mayflyInteractionState.draft
   const modelListCache = createModelListCache()
@@ -200,19 +221,6 @@ export function apply(ctx: Context): void {
   let notice: string | undefined
   /** Current editor text, captured through `onChange` for the slash hint. */
   let currentText = ''
-  /**
-   * Whether the side-question pane is docked above the editor (mirrors
-   * `'mayfly/editor-connected-above'`). While true, Esc closes the pane,
-   * PageUp/PageDown or the wheel scroll it, and Enter submits to it instead
-   * of clearing the draft or reaching the main agent.
-   */
-  let connectedAbove = false
-  /**
-   * Whether the side agent is still answering (the pane's busy flag). A
-   * submit while busy is refused: the draft is restored and a notice
-   * flashed, the kimi busy path.
-   */
-  let btwBusy = false
   /**
    * Whether an external-editor session (Ctrl-G, S31) currently owns the
    * terminal through `mayflyScreen.suspend`. The flag refuses a second
@@ -236,8 +244,11 @@ export function apply(ctx: Context): void {
    * for services through the dead context.
    */
   let unloaded = false
+  const pendingSubagentPrompts = new Set<AbortController>()
   ctx.effect(() => () => {
     unloaded = true
+    for (const controller of pendingSubagentPrompts) controller.abort()
+    pendingSubagentPrompts.clear()
   })
   const editor = ctx.mayflyComponents.createEditor({ paddingX: 4 })
   // The padding reserves columns 0-3 for the side border, its gap, and the
@@ -249,8 +260,7 @@ export function apply(ctx: Context): void {
     ctx,
     editor,
     notice: text => setNotice(text),
-    shouldTransformSubmit: text => !connectedAbove
-      && ctx.mayflyCurrentAgent.current() !== null
+    shouldTransformSubmit: text => ctx.mayflyCurrentAgent.current() !== null
       && draft.getStashedInputMode() !== 'bash'
       && parseCommand(text.trim()) === undefined,
   })
@@ -289,6 +299,69 @@ export function apply(ctx: Context): void {
     refreshHint()
   }
 
+  /** Restore a subagent submission that never reached its addressed child. */
+  function restoreSubagentSubmission(
+    value: string,
+    historyText: string | undefined,
+    transformed: ReturnType<typeof applyReversibleSubmitTransformers>,
+    error: unknown,
+  ): void {
+    transformed.rollback?.()
+    if (historyText !== undefined) {
+      editor.removeLatestHistory?.(historyText)
+      draft.stashHistory(editor.getHistory())
+    }
+    editor.setText(value)
+    currentText = editor.getText()
+    draft.stashDraft(currentText)
+    setNotice(colors.error(error instanceof Error ? error.message : String(error)))
+    screen.requestRender()
+  }
+
+  /** Deliver one transformed editor submission through the subagent browser API. */
+  function deliverSubagentPrompt(
+    value: string,
+    historyText: string | undefined,
+    transformed: ReturnType<typeof applyReversibleSubmitTransformers>,
+  ): boolean {
+    const view = currentAgent.view()
+    const target = view.displayed === 'auxiliary' ? view.auxiliary : null
+    if (target?.kind !== 'subagent' || target.mode !== 'continuable' || target.access !== 'interactive') {
+      restoreSubagentSubmission(value, historyText, transformed, 'the subagent is no longer available for input')
+      return false
+    }
+    const viewRevision = view.revision
+    const controller = new AbortController()
+    pendingSubagentPrompts.add(controller)
+    const ref = requests.begin('subagent')
+    const attachments = ctx.get('attachments') as AttachmentReader | undefined
+    void subagentPromptParts(attachments, transformed.blocks, controller.signal).then(content => subagents.prompt({
+      requestId: randomUUID() as SubagentPromptRequestId,
+      parentSessionId: SessionId(target.parentSessionId),
+      childSessionId: SessionId(target.sessionId),
+      mode: 'continuable',
+      content,
+    }, controller.signal)).then(receipt => {
+      if (unloaded || controller.signal.aborted || currentAgent.view().revision !== viewRevision) return
+      retractionCandidate = {
+        messageId: String(receipt.messageId),
+        editorText: value,
+        historyText: historyText ?? '',
+        ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
+      }
+    }, error => {
+      requests.transition(ref, 'failed', error instanceof Error ? error.message : String(error))
+      if (unloaded || controller.signal.aborted || currentAgent.view().revision !== viewRevision) {
+        transformed.rollback?.()
+        return
+      }
+      restoreSubagentSubmission(value, historyText, transformed, error)
+    }).finally(() => {
+      pendingSubagentPrompts.delete(controller)
+    })
+    return true
+  }
+
   /**
    * Route one submitted line to the command registry or the agent, record
    * it in the editor history, and clear the buffer.
@@ -297,27 +370,6 @@ export function apply(ctx: Context): void {
   function submitPrompt(value: string): void {
     const line = value.trim()
     retractionCandidate = undefined
-    // The side-question pane owns Enter while it is docked above the
-    // editor: the input continues the side conversation (kimi's
-    // `sendUserInput`). While the side agent is still answering the submit
-    // is refused — the draft is restored and a notice flashed.
-    if (connectedAbove) {
-      if (btwBusy) {
-        editor.setText(value)
-        currentText = value
-        setNotice('the side question is still answering')
-        return
-      }
-      if (line.length > 0) {
-        ctx.emit('mayfly/btw-command', 'submit', line)
-      }
-      notice = undefined
-      editor.setText('')
-      currentText = ''
-      draft.clearDraft()
-      refreshHint()
-      return
-    }
     notice = undefined
     editor.setText('')
     // Re-sync explicitly: whether setText fires onChange is the component's
@@ -350,6 +402,11 @@ export function apply(ctx: Context): void {
               ? { ...block, text: rewriteSkillTokens(ctx, block.text) }
               : block),
           }
+      const view = ctx.mayflyCurrentAgent.view()
+      if (view.displayed === 'auxiliary' && view.auxiliary?.kind === 'subagent') {
+        deliverSubagentPrompt(value, line, transformed)
+        return
+      }
       try {
         const message = createUserMessage({ content: transformed.blocks, source: { kind: 'user' } })
         agent.followup(message)
@@ -364,7 +421,7 @@ export function apply(ctx: Context): void {
         setNotice(colors.error(error instanceof Error ? error.message : String(error)))
         return
       }
-      ctx.mayflyRequests.begin('main')
+      ctx.mayflyRequests.begin(view.displayed === 'auxiliary' && view.auxiliary?.kind === 'btw' ? 'btw' : 'main')
       // The S29 skill pipeline rewrites only model-facing text; the editor
       // candidate and history retain exactly what the user submitted.
       return
@@ -464,7 +521,18 @@ export function apply(ctx: Context): void {
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null || agent.status !== 'running') return false
     ctx.mayflyRequests.interrupt()
-    agent.cancel({ kind: 'user' })
+    const view = ctx.mayflyCurrentAgent.view()
+    if (view.displayed === 'auxiliary'
+      && view.auxiliary?.kind === 'subagent'
+      && view.auxiliary.mode === 'continuable') {
+      ctx.subagents.interruptByParent(
+        SessionId(view.auxiliary.sessionId),
+        SessionId(view.auxiliary.parentSessionId),
+        'continuable',
+      )
+    } else {
+      agent.cancel({ kind: 'user' })
+    }
     setNotice('interrupt requested')
     return true
   }
@@ -507,16 +575,9 @@ export function apply(ctx: Context): void {
   function handleEditorKey(data: string): boolean {
     const keymap = ctx.mayflyKeymap
     // Escape: an open autocomplete dropdown owns the key (the Editor closes
-    // it); then an open side-question pane closes before anything else (the
-    // kimi order — the panel is above the editor, so its Esc wins over the
-    // draft clear, which stays intact); otherwise clear the draft, then
-    // interrupt a running agent.
+    // it); otherwise clear the draft, then interrupt a running agent.
     if (keymap.matches(data, ACTION_CANCEL)) {
       if (editor.isShowingAutocomplete()) return false
-      if (connectedAbove) {
-        ctx.emit('mayfly/btw-command', 'close')
-        return true
-      }
       return escapeClearOrRetract()
     }
     // Ctrl-C never enters Escape's retraction path. It first requests an
@@ -543,24 +604,37 @@ export function apply(ctx: Context): void {
       if (text.length === 0 || agent === null) return false
       // Steered text runs the same `#name` → `/name` skill rewrite as a
       // submitted follow-up: the gesture reaches the model either way.
-      const blocks = applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, text)).blocks
+      const transformed = applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, text))
+      const view = ctx.mayflyCurrentAgent.view()
+      if (view.displayed === 'auxiliary' && view.auxiliary?.kind === 'subagent') {
+        if (deliverSubagentPrompt(text, undefined, transformed)) {
+          editor.setText('')
+          currentText = ''
+          draft.clearDraft()
+          refreshHint()
+        }
+        return true
+      }
       try {
-        agent.steer(createUserMessage({ content: blocks, source: { kind: 'user' } }))
+        agent.steer(createUserMessage({ content: transformed.blocks, source: { kind: 'user' } }))
       } catch (error) {
+        transformed.rollback?.()
         setNotice(colors.error(error instanceof Error ? error.message : String(error)))
         return true
       }
-      ctx.mayflyRequests.begin('main')
+      ctx.mayflyRequests.begin(view.displayed === 'auxiliary' && view.auxiliary?.kind === 'btw' ? 'btw' : 'main')
       editor.setText('')
+      currentText = ''
       // Steered text is consumed too: keep no stashed copy for a reload.
       draft.clearDraft()
+      refreshHint()
       return true
     }
     // Shift+Tab: cycle the session mode (normal → plan → yolo, S24a) through
     // dsh's native plan command and permission presets. The press is always
     // consumed. It fires in bash mode too — the input mode and the session
     // mode are orthogonal axes.
-    if (keymap.matches(data, ACTION_CYCLE_MODE)) {
+    if (keymap.matches(data, ACTION_SHIFT_TAB)) {
       void cycleMode(ctx)
       return true
     }
@@ -623,23 +697,14 @@ export function apply(ctx: Context): void {
     if (nextId !== sessionId) {
       sessionId = nextId
       retractionCandidate = undefined
+      for (const controller of pendingSubagentPrompts) controller.abort()
+      pendingSubagentPrompts.clear()
     }
     extensionRuntime.invalidateSession()
     notice = undefined
     refreshHint()
   })
   ctx.effect(() => sessionRegistration)
-  // The side-question pane docks above the editor; its flag switches the
-  // editor's top corners to the spliced `├┤` and gates the Esc/Enter plus
-  // contextual page/wheel chain; its busy flag refuses a submit while the side agent answers.
-  ctx.on('mayfly/editor-connected-above', (connected, busy) => {
-    if (connected !== connectedAbove) extensionRuntime.invalidateRoute()
-    connectedAbove = connected
-    btwBusy = busy === true
-    editor.setConnectedAbove(connected)
-    screen.requestRender()
-  })
-
   ctx.effect(() => {
     const dock = new EditorDockHost(extensionRuntime, hintLine, occupied => {
       ctx.emit('mayfly/editor-slot-swapped', occupied)
@@ -656,10 +721,7 @@ export function apply(ctx: Context): void {
         const remove = dock.mountPanel(component)
         slot.focus()
         screen.requestRender()
-        let disposed = false
         return () => {
-          if (disposed) return
-          disposed = true
           remove()
           slot.focus()
           screen.requestRender()
@@ -684,32 +746,30 @@ export function apply(ctx: Context): void {
     const dispose = screen.setContentScrollHandler?.(data => {
       if (!extensionRuntime.focused) return false
       /* v8 ignore start -- exercised by the real PTY and mouse path */
-      const wheel = wheelDirection(data)
+      const wheel = normalizeWheelInput(data)
       if (wheel !== undefined) {
-        if (connectedAbove) {
-          ctx.emit('mayfly/btw-command', wheel === 'up' ? 'scroll-up' : 'scroll-down', undefined, 3)
-          return true
-        }
+        const direction = ctx.mayflyKeymap.matches(wheel, ACTION_MOVE_UP)
+          ? 'up'
+          : ctx.mayflyKeymap.matches(wheel, ACTION_MOVE_DOWN) ? 'down' : undefined
+        if (direction === undefined) return false
         // The focused editor owns every wheel report, including the scroll
         // boundary. Consuming the boundary event prevents it from being
         // reinterpreted as editor history navigation; the AltScreen core
         // route remains available when no editor handler is installed.
-        ctx.mayflyScreen.scrollContent(wheel, 3)
+        ctx.mayflyScreen.scrollContent(direction, 3)
         return true
       }
       /* v8 ignore stop */
       /* v8 ignore start -- exercised by the real PTY and mouse path */
-      if (data === KEY_PAGE_UP || data === KEY_PAGE_DOWN) {
-        const direction = data === KEY_PAGE_UP ? 'up' : 'down'
+      const pageUp = ctx.mayflyKeymap.matches(data, ACTION_PAGE_UP)
+      const pageDown = ctx.mayflyKeymap.matches(data, ACTION_PAGE_DOWN)
+      if (pageUp || pageDown) {
+        const direction = pageUp ? 'up' : 'down'
         const amount = Math.max(1, ctx.mayflyScreen.rows - 4)
-        if (connectedAbove) {
-          ctx.emit('mayfly/btw-command', direction === 'up' ? 'scroll-up' : 'scroll-down', undefined, amount)
-          return true
-        }
         return ctx.mayflyScreen.scrollContent(direction, amount)
       }
       if (editor.getText().length > 0) return false
-      if (data === KEY_END) {
+      if (ctx.mayflyKeymap.matches(data, ACTION_END)) {
         ctx.mayflyScreen.followContent()
         setNotice('')
         return true

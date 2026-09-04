@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { Questionnaire } from '../../src/interaction/questionnaire.ts'
-import { FakeMayflyComponents, FakeTheme, KEY } from './fakes.ts'
+import { FakeKeymap, FakeMayflyComponents, FakeTheme, KEY } from './fakes.ts'
 
 function choice(overrides: Partial<AskUserQuestionItem> = {}): AskUserQuestionItem {
   return {
@@ -17,7 +17,7 @@ function make(questions: readonly AskUserQuestionItem[]) {
   const completed = vi.fn()
   const cancelled = vi.fn()
   const questionnaire = new Questionnaire({
-    theme: new FakeTheme(), components: new FakeMayflyComponents(), questions,
+    theme: new FakeTheme(), components: new FakeMayflyComponents(), keymap: new FakeKeymap(), questions,
     onComplete: completed, onCancel: cancelled,
   })
   questionnaire.focused = true

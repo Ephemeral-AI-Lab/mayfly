@@ -28,7 +28,7 @@ import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-questions'
 /** Services required before the provider can register. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyEditorPanels', 'userQuestions']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyEditorPanels', 'userQuestions']
 
 /**
  * Register the overlay-backed user-questions waterfall answerer.
@@ -83,6 +83,7 @@ function askAll(ctx: Context, request: AskUserQuestionRequest): Promise<AskUserQ
       ? new PlanReviewPanel({
         theme: ctx.mayflyTheme,
         components: ctx.mayflyComponents,
+        keymap: ctx.mayflyKeymap,
         question: single,
         choices,
         // The plan window fills the viewport (round-3 ruling) — read live
@@ -98,6 +99,7 @@ function askAll(ctx: Context, request: AskUserQuestionRequest): Promise<AskUserQ
       : new Questionnaire({
         theme: ctx.mayflyTheme,
         components: ctx.mayflyComponents,
+        keymap: ctx.mayflyKeymap,
         questions: request.questions,
         onComplete: (answers) => {
           settle(() => {

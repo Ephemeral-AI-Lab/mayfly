@@ -40,8 +40,8 @@ flowchart TB
 - `mayfly-conversation`, startup, app/current Agent;
 - banner, transcript, and official model;
 - basic/cwd/git/title/context/mode/jobs/goal status;
-- activity/queue/todo/BTW/agents/workflow panes;
-- jobs and agents commands, attachments, paste image, editor-plus, and interaction.
+- activity/queue/todo/agents/workflow panes;
+- BTW, jobs, and agents commands, attachments, paste image, editor-plus, and interaction.
 
 External plugin rows share this service graph. Activation dependencies come
 from `inject`, not YAML position. Every built-in status or pane uses the same

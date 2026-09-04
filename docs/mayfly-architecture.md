@@ -10,7 +10,7 @@ flowchart TB
     ROOT["一个 dsh 进程 · 一张 Cordis service graph"]
     DSH["dsh 原生服务<br/>commands · sessionProjections · tools · agents"]
     PLUGIN["普通 Cordis 插件<br/>Mayfly 官方行与外部 sibling"]
-    AGENT["mayflyCurrentAgent<br/>当前选择的精确 Agent"]
+    AGENT["mayflyCurrentAgent<br/>主会话 + 单辅助槽<br/>当前展示的精确 Agent"]
     UI["Mayfly 直接 UI 服务<br/>mayflyPanes · mayflyStatus<br/>mayflyOverlays · mayflyEditorExtensions"]
     CORE["@ephemeral-ai/mayfly core 区域<br/>唯一 pi-tui 与原始终端 owner"]
     TERM["终端"]
@@ -34,8 +34,10 @@ flowchart TB
 2. Mayfly 只增加终端 UI 所需的四个 service：
    `mayflyPanes`、`mayflyStatus`、`mayflyOverlays`、
    `mayflyEditorExtensions`。
-3. `mayflyCurrentAgent` 只表达当前 Mayfly frontend 选择的精确 Agent。插件拿到
-   Agent 后，仍调用原生 dsh service；该对象不是 renderer model。
+3. `mayflyCurrentAgent` 持有一个主 Agent 与一个辅助会话槽；`current()` 始终返回
+   当前展示的精确 live Agent。插件拿到 Agent 后仍调用原生 dsh service；该对象
+   不是 renderer model。BTW 与 continuable subagent 因而复用同一套 transcript、
+   status、pane、command 与 editor，不建立第二份会话 renderer。
 4. 注册、listener、timer 与异步 continuation 都属于创建它们的 Cordis Fiber。
    Fiber unload 是唯一的插件贡献清理机制。
 5. 只有 `packages/mayfly/src/core/` import pi-tui、处理 ANSI/raw mode、焦点、
@@ -66,12 +68,16 @@ flowchart TB
 
 - Harness 的 Agent、Session、command、tool 与 projection 状态仍由 Harness
   package 持有。
-- app 持有当前 Agent selection；它不重做 Harness command/tool/projection API。
+- app 持有主 Agent selection、单辅助槽与当前显示侧；它不重做 Harness
+  command/tool/projection API。live 辅助会话成为精确 current Agent；one-shot 或
+  cold child 由 core-owned 通用只读 transcript panel 展示。
 - `mayfly-ui` provider 持有当前 UI contribution snapshots，且每项
   registration 随 consumer Fiber 清理。
 - transcript 与 interaction 持有它们自己的 renderer-neutral/TUI product state。
-- interaction 内部把当前 editor/autocomplete、panel host 与 submit transform 分成
-  `mayflyPromptEditor`、`mayflyEditorPanels`、`mayflyPromptSubmissions` 三个 Fiber service。
+- interaction 内部把当前 editor/autocomplete、可跨 host replay 的 panel stack 与
+  submit transform 分成 `mayflyPromptEditor`、`mayflyEditorPanels`、
+  `mayflyPromptSubmissions` 三个 Fiber service。选择器、信息面板与表单只通过共享
+  controller 和 action-id keymap 进入 core compiler。
 - transcript 只有一个 selected-session conversation controller；session generation
   改变时会销毁旧 entry cache。
 - core 持有 named Screen Shell、terminal、focus、layout、form draft、control/scroll、

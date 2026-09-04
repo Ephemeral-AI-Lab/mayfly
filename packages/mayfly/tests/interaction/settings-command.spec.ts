@@ -1112,58 +1112,7 @@ describe('/settings refresh', () => {
   })
 })
 
-describe('/settings re-home', () => {
-  it('re-mounts the same panels on mayfly/input-editor-changed (the theme-swap rebuild)', async () => {
-    const bench = mount({ sections: fullSections() })
-    await bench.command.handler()
-    await openNamespace(bench, 'mayfly')
-    const firstGroups = l1(bench.screen)
-    const firstList = l2(bench.screen)
-    bench.ctx.emit('mayfly/input-editor-changed')
-    await settle()
-    expect(bench.screen.overlays).toHaveLength(4)
-    expect(bench.screen.overlays[0]?.hidden).toBe(true)
-    expect(bench.screen.overlays[1]?.hidden).toBe(true)
-    // The SAME instances re-home: no rebuild, so the lists (and their
-    // highlights) survive the swap.
-    expect(l1(bench.screen)).toBe(firstGroups)
-    expect(l2(bench.screen)).toBe(firstList)
-    expect(settingsPanels(bench)).toHaveLength(1)
-  })
-
-  it('re-homes an open form on top of the re-homed stack', async () => {
-    const bench = mount({ sections: fullSections() })
-    await bench.command.handler()
-    await openNamespace(bench, 'mayfly')
-    changeSetting(bench, 'mayfly.editorCommand', 'auto')
-    const firstForm = form(bench.screen)
-    expect(firstForm).toBeDefined()
-    bench.ctx.emit('mayfly/input-editor-changed')
-    await settle()
-    expect(bench.screen.overlays).toHaveLength(6)
-    expect(form(bench.screen)).toBe(firstForm)
-  })
-
-  it('stays closed when the editor changes after close', async () => {
-    const bench = mount({ sections: fullSections() })
-    await bench.command.handler()
-    await openNamespace(bench, 'mayfly')
-    closeAll(bench)
-    bench.ctx.emit('mayfly/input-editor-changed')
-    await settle()
-    expect(bench.screen.overlays).toHaveLength(2)
-    expect(bench.screen.overlays.every(overlay => overlay.hidden)).toBe(true)
-  })
-
-  it('skips the re-home when the registration disposer ran before the event', async () => {
-    const bench = mount({ sections: fullSections() })
-    await bench.command.handler()
-    bench.dispose()
-    bench.ctx.emit('mayfly/input-editor-changed')
-    await settle()
-    expect(bench.screen.overlays).toHaveLength(1)
-  })
-
+describe('/settings live theme', () => {
   it('reads the palette live across a theme swap', async () => {
     const bench = mount({ sections: fullSections() })
     await bench.command.handler()

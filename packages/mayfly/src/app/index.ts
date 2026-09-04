@@ -11,6 +11,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionController } from '@deepseek-ai/dsh-api-session-controller'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-subagent'
 import type { MayflyRequestLifecycle } from './request-lifecycle.ts'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
@@ -20,7 +21,11 @@ import { createMayflyRequestController } from './request-lifecycle.ts'
 import { installRetractionService } from './retraction.ts'
 import { installSessionTitleCadence } from './title-cadence.ts'
 
-export { MayflyCurrentAgentService } from './current-agent.ts'
+export {
+  MayflyCurrentAgentService,
+  type MayflyAgentViewSnapshot,
+  type MayflyAuxiliaryView,
+} from './current-agent.ts'
 export { createMayflyRequestController, type MayflyRequestController } from './request-lifecycle.ts'
 export type { MayflyRetractionService, MayflyTurnRetraction } from './retraction.ts'
 export type { MayflyRequestLifecycle, MayflyRequestRef, MayflyRequestState } from './request-lifecycle.ts'
@@ -40,7 +45,7 @@ declare module '@deepseek-ai/cordis' {
 export const name = 'mayfly-app'
 
 /** Direct dsh services required by the startup coordinator. */
-export const inject = ['mayflyStartup', 'agents', 'sessionController', 'mayflyScreen']
+export const inject = ['mayflyStartup', 'agents', 'sessionController', 'subagents', 'mayflyScreen']
 
 /** Launch values resolved by the startup provider. */
 export interface Config {
@@ -78,6 +83,13 @@ export function apply(ctx: Context, config: Config): void {
   const current = new MayflyCurrentAgentService(ctx)
   const requests = createMayflyRequestController(ctx)
   const controller = ctx.sessionController
+  let selectedRevision = current.revision()
+  const offSelection = current.subscribe((_agent, revision) => {
+    if (revision === selectedRevision) return
+    selectedRevision = revision
+    requests.commitSession()
+  })
+  ctx.effect(() => offSelection)
 
   const offTitleCadence = installSessionTitleCadence(ctx, () => current.current()?.session)
   ctx.effect(() => offTitleCadence)
@@ -86,6 +98,21 @@ export function apply(ctx: Context, config: Config): void {
     () => current.current(),
     requests,
     message => { io.stderr.write(`dsh: ${message}\n`) },
+    (agent, ref) => {
+      const view = current.view()
+      if (ref.scope === 'subagent'
+        && view.displayed === 'auxiliary'
+        && view.auxiliary?.kind === 'subagent'
+        && view.auxiliary.mode === 'continuable') {
+        ctx.subagents.interruptByParent(
+          SessionId(view.auxiliary.sessionId),
+          SessionId(view.auxiliary.parentSessionId),
+          'continuable',
+        )
+        return
+      }
+      agent.cancel({ kind: 'user' }, { keepInbox: true })
+    },
   )
 
   ctx.on('session/event', (session, event) => {
@@ -120,7 +147,6 @@ export function apply(ctx: Context, config: Config): void {
 
   const select = (agent: Agent): void => {
     current.select(agent)
-    requests.commitSession()
   }
 
   const resolve = async (sessionId: string): Promise<Agent> => {
@@ -153,6 +179,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('mayfly/request-resume', (sessionId) => {
     enqueue(async () => {
+      current.closeAuxiliary()
       try { select(await resolve(sessionId)) }
       catch (error) { io.stderr.write(`dsh: could not resume session ${sessionId}: ${describe(error)}\n`) }
     })
@@ -160,6 +187,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('mayfly/request-new', () => {
     enqueue(async () => {
+      current.closeAuxiliary()
       try { select(await create()) }
       catch (error) { io.stderr.write(`dsh: could not start a new session: ${describe(error)}\n`) }
     })
@@ -167,7 +195,8 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('mayfly/request-fork', () => {
     enqueue(async () => {
-      const agent = current.current()
+      const agent = current.primary()
+      current.closeAuxiliary()
       if (agent === null) {
         io.stderr.write('dsh: no live session to fork\n')
         return
@@ -183,7 +212,8 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('mayfly/request-rewind', (sessionId, atSeq) => {
     enqueue(async () => {
-      const agent = current.current()
+      const agent = current.primary()
+      current.closeAuxiliary()
       if (agent === null || String(agent.id) !== sessionId) {
         io.stderr.write(`dsh: rewind request is stale for session ${sessionId}\n`)
         return

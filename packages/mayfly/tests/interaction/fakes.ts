@@ -68,8 +68,17 @@ const SEQUENCE_BY_KEY_ID: Record<string, string> = {
   down: '\x1b[B',
   left: '\x1b[D',
   right: '\x1b[C',
+  pageUp: '\x1b[5~',
+  pageDown: '\x1b[6~',
+  home: '\x1b[H',
+  end: '\x1b[F',
+  delete: '\x1b[3~',
+  f7: '\x1b[18~',
+  f8: '\x1b[19~',
+  tab: '\t',
   space: ' ',
   'ctrl+c': '\x03',
+  'ctrl+d': '\x04',
   'ctrl+s': '\x13',
   'ctrl+g': '\x07',
   'ctrl+v': '\x16',
@@ -90,6 +99,7 @@ export const KEY = {
   shiftTab: '\x1b[Z',
   space: ' ',
   ctrlC: '\x03',
+  ctrlD: '\x04',
   ctrlS: '\x13',
   ctrlG: '\x07',
   ctrlV: '\x16',
@@ -945,6 +955,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     return value ?? null
   }
   const listeners = new Set<(agent: unknown | null, revision: number) => void>()
+  const viewListeners = new Set<(view: unknown) => void>()
   let revision = 0
   const publishAgent = (): void => {
     revision += 1
@@ -953,12 +964,26 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   }
   ctx.provide('mayflyCurrentAgent', {
     current: active,
+    primary: active,
     revision: () => revision,
+    view: () => ({
+      primarySessionId: (active() as { readonly id?: unknown } | null)?.id === undefined ? null : String((active() as { readonly id: unknown }).id),
+      displayed: 'primary',
+      auxiliary: null,
+      revision,
+    }),
     subscribe(listener: (agent: unknown | null, revision: number) => void) {
       listeners.add(listener)
       listener(active(), revision)
       return ctx.effect(() => () => { listeners.delete(listener) })
     },
+    subscribeView(listener: (view: unknown) => void) {
+      viewListeners.add(listener)
+      listener({ primarySessionId: null, displayed: 'primary', auxiliary: null, revision })
+      return ctx.effect(() => () => { viewListeners.delete(listener) })
+    },
+    toggleAuxiliary: () => false,
+    closeAuxiliary: () => null,
   } as never)
   new MayflyPaneService(ctx)
   new MayflyStatusService(ctx)
@@ -998,6 +1023,11 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     },
   } as never)
   ctx.provide('tools', { schemas: () => [] } as never)
+  ctx.provide('subagents', {
+    prompt: async () => ({ messageId: 'fake-subagent-message' }),
+    interruptByParent: () => ({ accepted: true }),
+    listDescendants: async () => [],
+  } as never)
   let requestEpoch = 0
   let activeRequest: { sessionEpoch: number, requestEpoch: number, scope: 'main' | 'btw' | 'subagent' } | undefined
   ctx.provide('mayflyRequests', {

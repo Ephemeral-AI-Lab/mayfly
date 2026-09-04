@@ -224,6 +224,7 @@ describe('editor extension completion multiplexer', () => {
     const { editor, runtime } = runtimeFixture([extension])
     const first = suggestions(editor.autocompleteProvider!, '#old')
     await vi.waitFor(() => expect(signals).toHaveLength(1))
+    runtime.invalidateRoute()
     runtime.invalidateSession()
     expect(signals[0]?.aborted).toBe(true)
     gate.resolve(success([{ id: 'old', label: 'Old', insertText: '#old' }]))

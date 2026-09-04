@@ -1,15 +1,11 @@
 /**
- * Canonical multi-select and panel adapters for editor-slot overlays.
- * Interaction state stays local while core compiles every public UI node.
- *
+ * Multi-select semantics layered over the shared canonical list controller.
  * @module @ephemeral-ai/mayfly/interaction/select
  */
 
-import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
-import { CanonicalPanelAdapter } from './canonical-panel.ts'
-import { ACTION_SUBMIT } from './keys.ts'
-import { MAX_LIST_VISIBLE, counterRow, oneLine } from './select-list.ts'
+import type { MayflyFocusable, MayflyKeymap, MayflyTheme, MayflyComponents } from '../core/index.ts'
+import { ACTION_SUBMIT, ACTION_TOGGLE, interactionKeyHint } from './keys.ts'
+import { CanonicalSelectController, type SelectRow } from './select-list.ts'
 
 /** One selectable entry. */
 export interface MayflySelectItem { readonly value: string, readonly label: string, readonly description?: string }
@@ -25,76 +21,64 @@ export interface MayflySelectOptions {
   readonly onCancel: () => void
 }
 
-/** Canonical multi-select controller with bounded navigation and fallback confirm. */
+/** Shared-list multi-select retaining only its checked-value state. */
 export class CanonicalMultiSelectController implements MayflyFocusable {
-  private readonly adapter: CanonicalPanelAdapter
-  private cursor = 0
-  private readonly toggled = new Set<string>()
+  private readonly selected = new Set<string>()
+  private readonly list: CanonicalSelectController
 
   constructor(private readonly options: MayflySelectOptions) {
-    this.adapter = new CanonicalPanelAdapter({
-      components: options.components,
+    const confirm = this.confirm.bind(this)
+    const rows: SelectRow[] = options.items.map(item => ({
+      value: item.value,
+      label: item.label,
+      ...(item.description === undefined ? {} : { description: item.description }),
+    }))
+    this.list = new CanonicalSelectController({
+      keymap: options.keymap,
       theme: options.theme,
-      node: () => this.currentNode(),
-      onEvent: event => this.onEvent(event),
-      onFocusChange: identity => {
-        /* v8 ignore next -- core reports only rows from this list. */
-        if (identity.controlId !== 'mayfly-select' || identity.itemId === undefined) return
-        const index = this.options.items.findIndex(item => item.value === identity.itemId)
-        /* v8 ignore next -- core reports a changed, enabled item identity. */
-        if (index < 0 || index === this.cursor) return
-        this.cursor = index
-        this.adapter.focus(identity)
+      components: options.components,
+      rows,
+      title: options.title ?? 'Select',
+      mode: 'multiple',
+      selectedValues: () => [...this.selected],
+      onToggle: row => {
+        if (this.selected.has(row.value)) this.selected.delete(row.value)
+        else this.selected.add(row.value)
       },
-      onUnhandledEscape: options.onCancel,
-      maxLeafRows: MAX_LIST_VISIBLE,
-      suppressAutomaticContextHints: true,
-      contextHints: () => [
-        { id: 'toggle', keys: 'Space', label: 'toggle', priority: 100 },
-        { id: 'confirm', keys: 'Enter', label: 'confirm', priority: 95 },
-        { id: 'dismiss', keys: 'Esc', label: 'close', priority: 90 },
+      onSelect: confirm,
+      onConfirm: confirm,
+      onCancel: options.onCancel,
+      contextHints: [
+        {
+          id: 'activate',
+          keys: `${interactionKeyHint(options.keymap, ACTION_TOGGLE, 'Space')} / ${interactionKeyHint(options.keymap, ACTION_SUBMIT, 'Enter')}`,
+          label: 'toggle / confirm',
+          compact: 'Space/Enter',
+          priority: 100,
+        },
       ],
     })
   }
 
-  get focused(): boolean { return this.adapter.focused }
-  set focused(value: boolean) { this.adapter.focused = value }
+  get focused(): boolean { return this.list.focused }
+  set focused(value: boolean) { this.list.focused = value }
 
   handleInput(data: string): void {
-    if (this.options.keymap.matches(data, ACTION_SUBMIT)) { this.options.onConfirm(this.confirmed()); return }
-    this.adapter.handleInput(data)
+    this.list.handleInput(data)
   }
 
-  invalidate(): void { this.adapter.invalidate() }
-  render(width: number): string[] { return this.adapter.render(width) }
+  invalidate(): void { this.list.invalidate() }
+  render(width: number): string[] { return this.list.render(width) }
+  currentNode() { return this.list.currentNode() }
 
-  /** Current canonical overlay node. */
-  currentNode(): MayflyUiNode {
-    const counter = counterRow(this.cursor, this.options.items.length, MAX_LIST_VISIBLE)
-    return {
-      kind: 'surface', chrome: 'overlay', title: this.options.title ?? 'Select',
-      child: {
-        kind: 'list', id: 'mayfly-select', mode: 'multiple', selectedIds: [...this.toggled],
-        items: this.options.items.map(item => ({
-          id: item.value, label: item.label,
-          ...(item.description === undefined ? {} : { detail: oneLine(item.description) }),
-        })),
-      },
-      ...(counter === undefined ? {} : { footer: { kind: 'text', content: counter, tone: 'muted' } as const }),
+  private confirm(): void {
+    const chosen = this.options.items.filter(item => this.selected.has(item.value))
+    if (chosen.length > 0) {
+      this.options.onConfirm(chosen)
+      return
     }
-  }
-
-  private onEvent(event: MayflyUiEvent): void {
-    if (event.kind !== 'selection-change' || event.controlId !== 'mayfly-select' || !Array.isArray(event.value)) return
-    this.toggled.clear()
-    for (const value of event.value) if (typeof value === 'string') this.toggled.add(value)
-    this.adapter.invalidate()
-  }
-
-  private confirmed(): MayflySelectItem[] {
-    const chosen = this.options.items.filter(item => this.toggled.has(item.value))
-    if (chosen.length > 0) return [...chosen]
-    const focused = this.options.items[this.cursor]
-    return focused === undefined ? [] : [focused]
+    const focused = this.list.currentRow()
+    const fallback = focused === undefined ? undefined : this.options.items.find(item => item.value === focused.value)
+    this.options.onConfirm(fallback === undefined ? [] : [fallback])
   }
 }

@@ -1,6 +1,6 @@
 # Bottom panes
 
-Between the status bar and the input editor sits the **bottom dock**: five passive panes stacked in mount order (activity → queue → todo → btw → agents, editor last). Panes with nothing to say render zero rows — the dock never jumps.
+Between the status bar and the input editor sits the **bottom dock**: five passive panes stacked by priority (activity → queue → todo → agents → workflow, editor last). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they switch the current Agent or use the shared readonly session panel.
 
 ## Activity pane
 
@@ -30,15 +30,20 @@ The session's todo list (whole-list snapshots, last-write-wins) renders under a 
 
 `todo_write` calls never appear in the transcript; this pane is the list's only surface.
 
-## Side-question pane (/btw)
+## Auxiliary conversations (/btw and /agents)
 
-`/btw <question>` forks the current session into a throwaway side agent — seeded with the full event stream, inheriting the parent's provider/model — to ask an "by the way" question without disturbing the main line:
+Mayfly retains one auxiliary conversation slot. `/btw <question>` creates a temporary side Agent seeded from the current session's complete event stream and inheriting its provider, model, reasoning effort, and agent preset. `/agents` opens the primary session's complete descendant tree:
 
-- pane title ` BTW ` + key hints (`Esc close`, plus `PgUp/PgDn or wheel` when the body overflows);
-- a `› question` row + streaming Markdown reply + a thinking line; the line budget adapts to terminal height (re-flowing on resize);
-- while open, the editor's top corner joins the pane with `├┤`; **Esc** closes (draft survives), mouse wheel / **PageUp** / **PageDown** scroll, and **Enter** asks a follow-up on the same side agent;
-- one slot at a time: a new `/btw` disposes the previous side agent first; a bare `/btw` closes the pane.
+- a live BTW or continuable subagent becomes `mayflyCurrentAgent.current()`, switching the existing transcript, status, bottom panes, commands, and complete editor to that Session; images, follow-ups, steer, retraction, and interrupts use the same input pipeline;
+- a one-shot or currently non-resident continuable child does not activate an Agent. It opens a core-owned, full-fidelity readonly transcript panel in the editor slot, reusing the official transcript model, tool presentation, image loading, width containment, and scrolling;
+- the centered status shows `MAIN ⇄ BTW/SUBAGENT` and the active side. `F7` toggles primary/auxiliary; `F8` closes the auxiliary view and returns to main. Closing a normal subagent only detaches it, while closing BTW also disposes its temporary Agent;
+- opening another BTW or child replaces the retained auxiliary. A bare `/btw` closes the current BTW; `/new`, `/resume`, `/fork`, `/rewind`, and the `/agents` browser return to primary first;
+- in `/agents`, `Enter` views a child, `Space` expands a branch, and `Delete`/`Ctrl-D` stops a continuable child after typed-`y` confirmation. `/agents stop <id>` is the exact direct path; one-shot children cannot be stopped.
 
 ## Subagent-group pane (agents)
 
 While the agent's **subagent group** runs, its group card is pinned directly above the editor — the last dock row (the kimi swarm-pane semantics). Like the todo pane's relationship to `todo_write`: spawn-class tool calls are suppressed from the session stream by the step fold, and this pane is the only surface where running subagents appear — you can see who was spawned and what each is doing without digging through tool cards in the transcript.
+
+## Workflow pane
+
+After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. A settled summary remains until the next relevant state replacement; switching primary/auxiliary Agents switches this pane with every other session-scoped surface.

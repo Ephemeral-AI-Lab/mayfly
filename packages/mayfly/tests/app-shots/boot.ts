@@ -181,6 +181,11 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
     list: () => [],
     onJobsChanged: () => () => {},
   } as never)
+  ctx.provide('subagents', {
+    prompt: () => Promise.resolve({ messageId: 'shot-subagent-message' }),
+    interruptByParent: () => ({ accepted: true }),
+    listDescendants: () => Promise.resolve([]),
+  } as never)
   // Non-visual host reads stay fixed-data structural doubles.
   ctx.provide('tools', {
     get: () => undefined,

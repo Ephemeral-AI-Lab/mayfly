@@ -13,6 +13,7 @@ import type {
 } from '@deepseek-ai/dsh-workflow'
 import type { MayflyInlineSpan, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { SessionFactsService } from './session-facts.ts'
+import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds } from './agent-presentation.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-workflow'
@@ -64,8 +65,7 @@ export function setWorkflowPaneTimers(timers: WorkflowPaneTimers | undefined): v
 
 /** Compact workflow elapsed time. */
 export function formatWorkflowElapsed(seconds: number): string {
-  if (seconds < 60) return `${String(seconds)}s`
-  return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
+  return compactElapsedSeconds(seconds)
 }
 
 function phaseSegment(run: WorkflowRunState): string | undefined {
@@ -98,17 +98,16 @@ function runningHeader(run: WorkflowRunState, now: number): MayflyUiNode {
 }
 
 function memberNode(agent: WorkflowAgentRow, last: boolean): MayflyUiNode {
-  const marker = agent.outcome === undefined
-    ? { text: '● ', tone: 'accent' as const, styles: ['strong'] as const }
-    : agent.outcome === 'completed'
-      ? { text: '✓ ', tone: 'success' as const }
-      : agent.outcome === 'failed'
-        ? { text: '✗ ', tone: 'danger' as const }
-        : { text: '⊘ ', tone: 'muted' as const }
+  const phase = agentPhasePresentation(agent.outcome ?? 'running')
+  const marker = {
+    text: `${phase.marker} `,
+    tone: phase.tone,
+    ...(agent.outcome === undefined ? { styles: ['strong'] as const } : {}),
+  }
   return {
     kind: 'rich-text',
     spans: [
-      { text: `  ${last ? '└─' : '├─'} `, tone: 'muted' },
+      { text: `  ${agentTreeBranch(last)} `, tone: 'muted' },
       marker,
       { text: agent.label },
       { text: ` — agent #${String(agent.seq)}`, tone: 'muted' },
