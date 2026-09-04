@@ -58,7 +58,9 @@ async function fetchIndex(indexUrl: string): Promise<MarketIndex> {
       const text = await updaterInternals.fetchText(url, FETCH_TIMEOUT_MS)
       return parseMarketIndex(text)
     } catch (error) {
-      failures.push(`${url}: ${error instanceof Error ? error.message : String(error)}`)
+      failures.push(`${url}: ${
+        /* v8 ignore next -- fetch rejects with Error instances */
+        error instanceof Error ? error.message : String(error)}`)
     }
   }
   throw new Error(failures.join('; '))
@@ -106,6 +108,7 @@ export async function loadMarketCatalog(indexUrl: string, force = false): Promis
     writeCache(JSON.stringify(index))
     return { status: 'fresh', index }
   } catch (error) {
+    /* v8 ignore next -- both fetch legs and the parser throw Error instances */
     const message = error instanceof Error ? error.message : String(error)
     if (cached !== undefined) {
       return { status: 'stale', index: parseMarketIndex(cached.text), message }

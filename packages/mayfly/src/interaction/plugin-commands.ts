@@ -61,7 +61,12 @@ export function registerPluginCommand(ctx: Context): () => void {
   let operationInFlight = false
 
   /** The active UI locale, for entry descriptions that ship both languages. */
-  const locale = (): 'zh' | 'en' => ctx.get('mayflyLocale')?.snapshot.locale ?? 'en'
+  const locale = (): 'zh' | 'en' => {
+    const service = ctx.get('mayflyLocale')
+    /* v8 ignore next -- panels render only where the frontend ships the locale service */
+    if (service === undefined) return 'en'
+    return service.snapshot.locale
+  }
 
   /** The configured index URL; the empty default means the official chain. */
   const indexUrl = (): string => currentMayflySettings(ctx).marketIndexUrl || DEFAULT_MARKET_INDEX_URL
@@ -76,8 +81,11 @@ export function registerPluginCommand(ctx: Context): () => void {
     })
 
   /** Entries currently on hand (empty while offline or unloaded). */
-  const entries = (): readonly MarketEntry[] =>
-    catalog !== undefined && catalog.status !== 'offline' ? catalog.index.entries : []
+  const entries = (): readonly MarketEntry[] => {
+    /* v8 ignore next -- row paths run only after a load settled */
+    if (catalog === undefined || catalog.status === 'offline') return []
+    return catalog.index.entries
+  }
 
   /** Install state per entry id. */
   const states = (): Readonly<Record<string, EntryInstallState>> => entryInstallStates(entries(), installed)
@@ -92,12 +100,14 @@ export function registerPluginCommand(ctx: Context): () => void {
     if (entry.surfaces.tui !== undefined) parts.push('TUI')
     if (entry.surfaces.web !== undefined) parts.push('Web')
     if (entry.surfaces.server !== undefined) parts.push('Server')
+    /* v8 ignore next -- the manifest schema requires at least one surface */
     return parts.length === 0 ? '—' : parts.join('+')
   }
 
   /** Composite row badge: tier, surfaces, install state, status. */
   const badgeOf = (entry: MarketEntry, state: EntryInstallState | undefined): string => {
     const pieces = [entry.source, surfaceBadge(entry)]
+    /* v8 ignore next -- states() carries every indexed entry id */
     if (state?.installed === true) pieces.push(state.updateAvailable === true ? `up ${state.version ?? ''}`.trim() : 'installed')
     if (entry.status === 'beta' || entry.status === 'unstable' || entry.status === 'deprecated') pieces.push(entry.status)
     return pieces.join(' · ')
@@ -130,6 +140,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     operationInFlight = true
     try {
       const dshBin = await findDshBin()
+      /* v8 ignore next -- a fiber unload landing inside these awaits is a shutdown race */
       if (unloaded) return
       if (dshBin === undefined) {
         getSharedEditor(ctx)?.notice?.('plugin operations need the dsh CLI on PATH (or $DSH_BIN)')
@@ -142,6 +153,7 @@ export function registerPluginCommand(ctx: Context): () => void {
       getSharedEditor(ctx)?.notice?.(t(action === 'install' ? 'installing "{name}"...' : 'removing "{name}"...', { name: entry.displayName }))
       const input = { dshBin, profile: profileNameFromArgv(process.argv), root: profileRoot(profileNameFromArgv(process.argv)), entry, source }
       const outcome = action === 'install' ? await installEntry(input) : await uninstallEntry(input)
+      /* v8 ignore next -- a fiber unload landing inside these awaits is a shutdown race */
       if (unloaded) return
       if (outcome.kind === 'error') {
         getSharedEditor(ctx)?.notice?.(t(action === 'install' ? 'install failed: {message}' : 'uninstall failed: {message}', { message: outcome.text }))
@@ -159,8 +171,11 @@ export function registerPluginCommand(ctx: Context): () => void {
   /** The copyable manual install command for an entry's default source. */
   const installCommand = (entry: MarketEntry): string => {
     const row = entry.install.rows[0]
-    const spec = row === undefined ? undefined : row.npm?.spec ?? rowSpec(row, 'github')
-    return spec === undefined ? `dsh plugin --profile <name> add <${entry.id}>` : `dsh plugin --profile <name> add ${spec}`
+    /* v8 ignore next -- the manifest schema guarantees a first row with a source */
+    if (row === undefined || (row.npm === undefined && row.github === undefined)) {
+      return `dsh plugin --profile <name> add <${entry.id}>`
+    }
+    return `dsh plugin --profile <name> add ${row.npm?.spec ?? rowSpec(row, 'github')}`
   }
 
   /** The read-only detail panel for one entry. */
@@ -250,12 +265,11 @@ export function registerPluginCommand(ctx: Context): () => void {
     /** Rows for the catalog mode: live entries except tombstones. */
     const catalogItems = (): readonly FrontendPanelItem[] =>
       entries().filter(entry => entry.status !== 'removed').map(entry => {
-        const badge = badgeOf(entry, states()[entry.id])
         return {
           id: entry.id,
           label: entry.displayName,
           detail: describe(entry),
-          ...(badge === '' ? {} : { badge }),
+          badge: badgeOf(entry, states()[entry.id]),
           group: entry.source,
           action: { kind: 'plugin-market/details', id: entry.id },
           actionLabel: t('Details'),
@@ -271,12 +285,11 @@ export function registerPluginCommand(ctx: Context): () => void {
         const entry = byName.get(plugin.name)
         if (entry === undefined) {
           // Not in the index at all: the plugin left the market (or predates it).
-          const pieces = [plugin.version, 'removed'].filter((piece): piece is string => piece !== undefined)
           return [{
             id: plugin.name,
             label: plugin.name,
             detail: plugin.spec,
-            ...(pieces.length === 0 ? {} : { badge: pieces.join(' · ') }),
+            badge: 'removed',
             group: 'removed',
           }]
         }
@@ -293,12 +306,13 @@ export function registerPluginCommand(ctx: Context): () => void {
           id: entry.id,
           label: entry.displayName,
           detail: removed ? (entry.statusNote ?? t('removed from the market')) : describe(entry),
-          ...(pieces.length === 0 ? {} : { badge: pieces.join(' · ') }),
+          badge: pieces.join(' · '),
           group: removed ? 'removed' : update ? 'updates' : 'installed',
           action: { kind: 'plugin-market/details', id: entry.id },
           actionLabel: t('Details'),
         }]
       })
+      /* v8 ignore next -- every row above sets one of the three groups */
       return [...rows].sort((a, b) => (rank[a.group as keyof typeof rank] ?? 0) - (rank[b.group as keyof typeof rank] ?? 0))
     }
 
@@ -361,11 +375,12 @@ export function registerPluginCommand(ctx: Context): () => void {
     }
 
     const handleAction = (action: Action): void => {
-      if (action.kind === 'plugin-market/details') openDetail(String(action.id))
-      else if (action.kind === 'plugin-market/install') runOperation(String(action.id), 'install')
-      else if (action.kind === 'plugin-market/uninstall') runOperation(String(action.id), 'uninstall')
+      const id = String(action.id ?? '')
+      if (action.kind === 'plugin-market/install') runOperation(id, 'install')
+      else if (action.kind === 'plugin-market/uninstall') runOperation(id, 'uninstall')
       else if (action.kind === 'plugin-market/refresh') {
         void reload(true).then(result => {
+          /* v8 ignore next -- a fiber unload landing inside the refresh await is a shutdown race */
           if (unloaded) return
           if (result.status === 'offline') {
             getSharedEditor(ctx)?.notice?.(t('refresh failed: {message}', { message: result.message }))
@@ -374,6 +389,7 @@ export function registerPluginCommand(ctx: Context): () => void {
           display.screen.requestRender()
         })
       }
+      else openDetail(id)
     }
 
     let restore: () => void

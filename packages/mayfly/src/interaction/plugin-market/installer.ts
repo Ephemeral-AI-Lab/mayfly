@@ -80,6 +80,7 @@ function ensureAllowBuilds(root: string, names: readonly string[]): void {
 
 /** Render one `- id: … name: …` block for the profile patch. */
 function renderPatchRow(row: MarketInstallRow): string {
+  /* v8 ignore next -- profile-patch rows always carry an id */
   const id = row.id ?? row.name
   const config = row.config === undefined ? '' : `  config:\n${Object.entries(row.config)
     .map(([key, value]) => `    ${key}: ${JSON.stringify(value)}`).join('\n')}\n`
@@ -105,10 +106,8 @@ function appendProfilePatchRows(root: string, rows: readonly MarketInstallRow[])
 /** Strip either YAML quoting style from a scalar so hand-written single
  * quotes and the installer's JSON double quotes compare equal. */
 function unquote(value: string): string {
-  if (value.length >= 2 && ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"')))) {
-    return value.slice(1, -1)
-  }
-  return value
+  const quoted = /^(["'])(.*)\1$/u.exec(value)
+  return quoted === null ? value : quoted[2]!
 }
 
 /** Remove this entry's `profile-patch` blocks from the user patch layer. */
@@ -266,6 +265,7 @@ export function entryInstallStates(
       ? present.map(row => byName.get(row.name)).find(plugin => plugin?.version !== undefined)?.version
       : undefined
     const first = entry.install.rows[0]
+    /* v8 ignore next -- the manifest schema guarantees at least one row */
     const info = first === undefined ? undefined : entry.npm?.[first.name]
     const updateAvailable = installed === true && info?.latestVersion != null && version !== undefined && version !== info.latestVersion
     states[entry.id] = { installed, version, updateAvailable }

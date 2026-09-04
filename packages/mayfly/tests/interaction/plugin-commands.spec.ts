@@ -95,6 +95,7 @@ async function mountWorld(options: {
   installedVersions?: Readonly<Record<string, string>>
   spawn?: SpawnScript
   withScreen?: boolean
+  withLocale?: boolean
 } = {}) {
   const home = mkdtempTracked('mayfly-plugin-cmd-')
   const root = join(home, '.dsh', 'profiles', 'mayfly')
@@ -148,7 +149,7 @@ async function mountWorld(options: {
   // still needs one for the settings thunk.
   if (mayfly === undefined) new InteractionStateService(ctx, settingsPlugin.DEFAULT_SETTINGS)
   // The Service constructor registers itself; the fakes ship no locale.
-  if (mayfly !== undefined) new MayflyLocaleService(ctx, { systemLocale: 'en' })
+  if (mayfly !== undefined && options.withLocale !== false) new MayflyLocaleService(ctx, { systemLocale: 'en' })
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('plugin-spec'))
@@ -927,3 +928,127 @@ async function currentAgent(ctx: Context): Promise<never> {
   const session = ctx.sessions.create(SessionId('disposer-spec'))
   return { id: session.id, session, status: 'idle' } as never
 }
+
+describe('badge and patch-shape arms', () => {
+  it('shows the installed badge without an update in catalog mode', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      profileDependencies: { 'dsh-loop': '0.1.4' },
+      installedVersions: { 'dsh-loop': '0.1.4' },
+    })
+    await world.run('/plugin')
+    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    expect(json).toContain('installed')
+    world.dispose()
+  })
+
+  it('appends patch rows to a file without a trailing newline', async () => {
+    const withPatch = entry({ install: { rows: [{ id: 'nl', name: 'pkg-nl', activation: 'profile-patch', npm: { spec: 'pkg-nl' } }] } })
+    const root = mkdtempTracked('mayfly-install-')
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    writeFileSync(join(root, 'cordis.patch.yml'), "- id: keep\n  name: 'keep-me'")
+    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: withPatch, source: 'npm' })
+    expect(outcome.kind).toBe('success')
+    const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
+    expect(patch).toContain('keep-me')
+    expect(patch).toContain('"pkg-nl"')
+    // allowBuilds block lands after content lacking a trailing newline too.
+    const allowEntry = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'x' } }] } })
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .')
+    await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: allowEntry, source: 'npm' })
+    expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toContain('"node-pty": true')
+  })
+})
+
+describe('panel arms without a locale service', () => {
+  it('renders English descriptions when no locale service is mounted', async () => {
+    const world = await mountWorld({ index: [entry()], withLocale: false })
+    await world.run('/plugin')
+    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    expect(json).toContain('Recurring prompts and alarms.')
+    world.dispose()
+  })
+})
+
+describe('detail-shape arms', () => {
+  it('renders installed details, update rows, tools-only and commands-only provides', async () => {
+    const toolsOnly = entry({ id: 'tools-only', displayName: 'Tools Only', provides: { tools: ['a_tool'] } })
+    const commandsOnly = entry({ id: 'commands-only', displayName: 'Commands Only', provides: { commands: ['/cmd'] } })
+    const tuiOnly = entry({ id: 'tui-only', displayName: 'Tui Only', surfaces: { tui: { contributions: ['status'] } }, provides: {} })
+    const webOnly = entry({ id: 'web-only2', displayName: 'Web Only 2', surfaces: { web: { clientModule: true } }, provides: {} })
+    const world = await mountWorld({
+      index: [entry(), toolsOnly, commandsOnly, tuiOnly, webOnly],
+      profileDependencies: { 'dsh-loop': '0.1.3' },
+      installedVersions: { 'dsh-loop': '0.1.3' },
+    })
+    // Installed with an update available: the Version row shows the update.
+    await world.run('/plugin info loop')
+    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('update available')
+    for (const id of ['tools-only', 'commands-only', 'tui-only', 'web-only2']) {
+      await world.run(`/plugin info ${id}`)
+      expect(world.overlay()).toBeDefined()
+    }
+    world.dispose()
+  })
+
+  it('covers bare-context installs, missing workspace files, and the r-unload gate', async () => {
+    const world = await mountWorld({ index: [entry()], withScreen: false })
+    expect(await world.run('/plugin install loop')).toEqual({ kind: 'success' })
+    world.dispose()
+
+    // allowBuilds merge into a profile whose workspace file does not exist yet.
+    const allowEntry = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'x' } }] } })
+    const root = mkdtempTracked('mayfly-install-')
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: allowEntry, source: 'npm' })
+    expect(outcome.kind).toBe('success')
+    expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toContain('"node-pty": true')
+
+    // The r-key refresh continuation gates on the fiber unload.
+    const rWorld = await mountWorld({})
+    let release: ((value: string) => void) | undefined
+    const gate = new Promise<string>(resolve => {
+      release = resolve
+    })
+    const realFetch = updaterInternals.fetchText
+    updaterInternals.fetchText = vi.fn(async (url: string) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url)))
+    await rWorld.run('/plugin')
+    const panel = rWorld.overlay() as { handleInput(data: string): void }
+    panel.handleInput('r')
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await rWorld.dispose()
+    release?.(indexJson([entry()]))
+    await new Promise(resolve => setTimeout(resolve, 10))
+  })
+})
+
+describe('final arms', () => {
+  it('reports uninstall failures and info for github-only and versionless rows', async () => {
+    const githubOnly = entry({ id: 'gh2', displayName: 'GH2', install: { rows: [{ name: 'gh2-pkg', github: { repo: 'a/b', ref: 'r' } }] } })
+    const world = await mountWorld({
+      index: [entry(), githubOnly],
+      profileDependencies: { 'dsh-loop': '0.1.4', 'gh2-pkg': 'github:a/b#r' },
+      spawn: { plugin: () => ({ code: 1, signal: null, stdout: '', stderr: 'boom', timedOut: false }) },
+    })
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('uninstall failed: removing "Loop" failed: boom')
+    // No node_modules version: the Version row falls back to installed.
+    await world.run('/plugin info loop')
+    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('installed')
+    // GitHub-only rows render their github install command.
+    await world.run('/plugin info gh2')
+    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('github:a/b#r')
+    world.dispose()
+  })
+
+  it('falls back to the generic removed note without a statusNote', async () => {
+    const world = await mountWorld({
+      index: [entry({ id: 'silent-gone', displayName: 'Silent Gone', status: 'removed', install: { rows: [{ name: 'silent-pkg' }] } })],
+      profileDependencies: { 'silent-pkg': '1.0.0' },
+    })
+    await world.run('/plugin list')
+    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('removed from the market')
+    world.dispose()
+  })
+
+})

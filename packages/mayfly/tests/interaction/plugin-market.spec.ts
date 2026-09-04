@@ -176,3 +176,31 @@ describe('readCache shape guard', () => {
     expect(result.status).toBe('fresh')
   })
 })
+
+describe('parseMarketIndex generatedAt arm', () => {
+  it('accepts a document without generatedAt', () => {
+    const index = parseMarketIndex('{"schemaVersion":1,"entries":[{"id":"x"}]}')
+    expect(index.entries).toHaveLength(1)
+    expect(index.generatedAt).toBeUndefined()
+  })
+})
+
+describe('readCache field arms', () => {
+  it('treats a non-string cache text as absent', async () => {
+    mountNetwork({ [DEFAULT_MARKET_INDEX_URL]: indexJson() })
+    updaterInternals.writeTextFile(marketCachePath(), JSON.stringify({ fetchedAt: 5, text: 5 }))
+    const result = await loadMarketCatalog(DEFAULT_MARKET_INDEX_URL)
+    expect(result.status).toBe('fresh')
+  })
+})
+
+describe('non-Error rejection arm', () => {
+  it('reports string rejections from the fetch seam', async () => {
+    mountNetwork({})
+    updaterInternals.fetchText = vi.fn(async () => {
+      throw 'plain string failure'
+    })
+    const result = await loadMarketCatalog(DEFAULT_MARKET_INDEX_URL)
+    expect(result).toMatchObject({ status: 'offline', message: expect.stringContaining('plain string failure') })
+  })
+})
