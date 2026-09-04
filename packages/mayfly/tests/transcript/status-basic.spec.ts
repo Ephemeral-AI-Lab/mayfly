@@ -1,9 +1,10 @@
 /**
  * `mayfly-status-basic-model` plugin: the baseline model-name entry. Covers the
- * model-source preference order (request header → options.model →
- * options.provider → 'no model'), the no-session empty render, the `text`
- * color tier, session-change rebinding, and the `session/event`
- * re-derivation that picks up the first request header.
+ * model-source preference order (projected next selection → request header →
+ * options.model → options.provider → 'no model'), the immediate refresh on a
+ * committed `/model` pick and the foreign-session guard, the no-session empty
+ * render, the `text` color tier, session-change rebinding, and the
+ * `session/event` re-derivation that picks up the first request header.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -88,6 +89,30 @@ describe('mayfly-status-basic-model', () => {
     ctx.emit('session/event', agent.session as unknown as Session, userEvent('hi'))
     expect(entry.render(80)).toBe('header-model')
     await dispose()
+  })
+
+  it('flips immediately when a model selection commits, before any request fires', async () => {
+    const agent = fakeAgent([], { model: 'boot-model', headerModel: 'header-model' })
+    const harness = await bootStatusPlugin(basic, agent)
+    expect(harness.entry.render(80)).toBe('header-model')
+    // A committed `/model` pick updates the projection's `next` view without
+    // any request/header event; the row must follow at once.
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'switched-model' } })
+    expect(harness.entry.render(80)).toBe('switched-model')
+    await harness.dispose()
+  })
+
+  it('ignores model-selection commits from other sessions and a null next', async () => {
+    const agent = fakeAgent([], { model: 'boot-model' })
+    const harness = await bootStatusPlugin(basic, agent)
+    const other = fakeAgent([])
+    harness.setModelSelection(other.session, { next: { provider: 'deepseek', model: 'other-model' } })
+    expect(harness.entry.render(80)).toBe('boot-model')
+    // A selection with no `next` (nothing pending or used) falls through the
+    // projection source to the ordinary chain.
+    harness.setModelSelection(agent.session, { next: null })
+    expect(harness.entry.render(80)).toBe('boot-model')
+    await harness.dispose()
   })
 
   it('truncates to the offered width budget', async () => {
