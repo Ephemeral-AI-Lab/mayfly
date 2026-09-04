@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vitepress dev . --host 127.0.0.1 --port 5173",
-    "build": "vitepress build .",
-    "preview": "vitepress preview . --host 127.0.0.1 --port 4173"
+    "build": "node scripts/generate-market.mjs && vitepress build .",
+    "preview": "vitepress preview . --host 127.0.0.1 --port 4173",
+    "build:market": "node scripts/generate-market.mjs"
   },
   "devDependencies": {
     "mermaid": "^11.17.0",

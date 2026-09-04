@@ -17,3 +17,5 @@ npm publish --access public
 
 Publish only after explicit authorization for the exact package, version, and
 tag. GitHub repository creation and npm publication are separate actions.
+
+After publishing, [submit the plugin to the Marketplace](/en/market/submit) so Mayfly users can find it with `/plugin`.
