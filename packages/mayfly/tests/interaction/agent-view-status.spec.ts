@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { MayflyStatusService } from '../../../ui/src/services.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import * as statusPlugin from '../../src/interaction/agent-view-status.ts'
+import { FakeKeymap } from './fakes.ts'
 
 function agent(id: string): Agent { return { id: SessionId(id) } as Agent }
 
@@ -21,6 +22,7 @@ describe('mayfly-agent-view-status', () => {
     const btw = agent('btw')
     const live = new Map([[String(primary.id), primary], [String(child.id), child], [String(btw.id), btw]])
     ctx.reflect.provide('agents', { get: (id: unknown) => live.get(String(id)) })
+    ctx.reflect.provide('mayflyKeymap', new FakeKeymap())
     const current = new MayflyCurrentAgentService(ctx)
     current.select(primary)
     const statuses = new MayflyStatusService(ctx)
@@ -33,10 +35,13 @@ describe('mayfly-agent-view-status', () => {
     })
     expect(entry().definition).toMatchObject({ band: 'center', priority: 0 })
     expect(entry().node).toMatchObject({ kind: 'rich-text' })
-    expect(JSON.stringify(entry().node)).toContain('SUBAGENT · reviewer')
+    expect(JSON.stringify(entry().node)).toContain('SUBAGENT')
+    expect(JSON.stringify(entry().node)).toContain('F7 switch · F8 close')
+    expect(JSON.stringify(entry().node)).toContain('reviewer ⇄ MAIN')
 
     current.toggleAuxiliary()
     expect(JSON.stringify(entry().node)).toContain('MAIN')
+    expect(JSON.stringify(entry().node)).toContain('F7 switch · F8 close')
     live.delete('child')
     ctx.emit('agent/disposed', { agent: child } as never)
     expect(JSON.stringify(entry().node)).toContain('read-only')
@@ -45,7 +50,7 @@ describe('mayfly-agent-view-status', () => {
     current.closeAuxiliary()
     expect(entry().node).toBeNull()
     current.openAuxiliary({ kind: 'btw', sessionId: 'btw', parentSessionId: 'primary', label: 'side' })
-    expect(JSON.stringify(entry().node)).toContain('BTW · side')
+    expect(JSON.stringify(entry().node)).toContain('side ⇄ MAIN')
     await fiber.dispose()
     expect(statuses.list()).toEqual([])
   })

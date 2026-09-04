@@ -53,7 +53,7 @@
 | 计划评审 | `←` / `→` 或 `1`–`3` 选决策，`↑` / `↓` / `PageUp` / `PageDown` 滚动计划，`Enter` 确认 |
 | `/model` 面板 | 唯一 tab 层是 provider：`←` / `→` 不循环切换，`Enter` 进入模型列表；列表中 `↑` / `↓` 选模型，`←` / `→` 调当前模型的思考等级，`Tab` 进入同级提交动作 |
 | `/effort` 面板 | `←` / `→` 在思考等级间不循环移动，`Enter` 下钻；选择 `Set as default` 持久化，或选择 `Use for this session` 仅改当前会话 |
-| `/agents` 浏览器 | ↑↓ 选择、`Space` 展开/折叠、`Enter` 查看；`Delete`/`Ctrl-D` 经 typed-`y` 确认后停止 continuable child |
+| `/agents` 浏览器 | ↑↓ 选择、`Space` 展开/折叠、`Enter` 查看；`Delete`/`Ctrl-D` 经 typed-`y` 确认后停止没有 live 后代的 live continuable child，父节点需先停止叶子 |
 | 只读 subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` 滚动；`Escape` 关闭；全局 `F7`/`F8` 仍生效 |
 | live BTW/subagent | 使用完整主编辑器与同一套 panel 键位；`F7` 切回主会话，`F8` 关闭辅助槽 |
 

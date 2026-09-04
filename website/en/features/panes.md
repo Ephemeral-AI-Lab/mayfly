@@ -36,9 +36,9 @@ Mayfly retains one auxiliary conversation slot. `/btw <question>` creates a temp
 
 - a live BTW or continuable subagent becomes `mayflyCurrentAgent.current()`, switching the existing transcript, status, bottom panes, commands, and complete editor to that Session; images, follow-ups, steer, retraction, and interrupts use the same input pipeline;
 - a one-shot or currently non-resident continuable child does not activate an Agent. It opens a core-owned, full-fidelity readonly transcript panel in the editor slot, reusing the official transcript model, tool presentation, image loading, width containment, and scrolling;
-- the centered status shows `MAIN ⇄ BTW/SUBAGENT` and the active side. `F7` toggles primary/auxiliary; `F8` closes the auxiliary view and returns to main. Closing a normal subagent only detaches it, while closing BTW also disposes its temporary Agent;
+- the centered status explicitly shows the active side and `F7 switch · F8 close`. `F7` toggles primary/auxiliary; `F8` closes the auxiliary view and returns to main. Closing a normal subagent only detaches it, while closing BTW also disposes its temporary Agent;
 - opening another BTW or child replaces the retained auxiliary. A bare `/btw` closes the current BTW; `/new`, `/resume`, `/fork`, `/rewind`, and the `/agents` browser return to primary first;
-- in `/agents`, `Enter` views a child, `Space` expands a branch, and `Delete`/`Ctrl-D` stops a continuable child after typed-`y` confirmation. `/agents stop <id>` is the exact direct path; one-shot children cannot be stopped.
+- in `/agents`, `Enter` views a child, `Space` expands a branch, and `Delete`/`Ctrl-D` stops a live continuable child after typed-`y` confirmation. `/agents stop <id>` is the direct path; one-shot and cold/inactive children cannot be stopped. Harness recursively releases live descendants owned by a destroyed Agent, so Mayfly refuses a target that still owns live descendants and requires leaf-first teardown.
 
 ## Subagent-group pane (agents)
 

@@ -5,6 +5,7 @@ service，并使用 renderer-neutral `MayflyStatusNode`。
 
 | Entry | Priority | 内容 |
 | --- | --- | --- |
+| agent-view | 0（center） | 有辅助会话时显示当前侧、辅助类型/标签，以及 `F7 switch · F8 close` |
 | basic | 0 | 当前 model |
 | mode | 2 | plan/yolo 状态 |
 | cwd | 5 | 当前工作目录 |

@@ -5,7 +5,6 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import type { WorkflowAgentInfo } from '@deepseek-ai/dsh-workflow'
@@ -104,6 +103,40 @@ export function buildAgentRows(
   return rows
 }
 
+/** Count live Agent descendants whose teardown would follow the selected root. */
+export function liveAgentDescendantCount(
+  entries: readonly SubagentDescendantListEntry[],
+  rootId: string,
+  isLive: (entry: Extract<SubagentDescendantListEntry, { readonly kind: 'child' }>) => boolean,
+): number {
+  const byId = new Map(entries.map(entry => [String(entry.id), entry]))
+  let count = 0
+  for (const entry of entries) {
+    if (entry.kind !== 'child' || !isLive(entry) || String(entry.id) === rootId) continue
+    let parentId = String(entry.parentId)
+    const seen = new Set<string>()
+    while (!seen.has(parentId)) {
+      if (parentId === rootId) {
+        count += 1
+        break
+      }
+      seen.add(parentId)
+      const parent = byId.get(parentId)
+      if (parent === undefined) break
+      parentId = String(parent.parentId)
+    }
+  }
+  return count
+}
+
+function descendantStopError(entry: SubagentDescendantListEntry, count: number): AgentCommandResult | undefined {
+  if (count === 0) return undefined
+  return {
+    kind: 'error',
+    text: `subagent ${String(entry.id)} owns ${String(count)} live descendant${count === 1 ? '' : 's'}; stop its live descendants first`,
+  }
+}
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -153,6 +186,9 @@ export function apply(ctx: Context): void {
     if (entry.kind !== 'child' || entry.mode !== 'continuable') {
       return { kind: 'error', text: `subagent ${String(entry.id)} is not continuable` }
     }
+    if (ctx.agents.get(entry.id) === undefined) {
+      return { kind: 'error', text: `subagent ${String(entry.id)} is not live; there is no running Agent to stop` }
+    }
     const directParent = ctx.agents.get(entry.parentId)
     if (directParent === undefined) {
       return { kind: 'error', text: `cannot stop subagent ${String(entry.id)}: its direct parent is not live` }
@@ -166,11 +202,6 @@ export function apply(ctx: Context): void {
     } catch (error) {
       return { kind: 'error', text: `could not stop subagent ${String(entry.id)}: ${describe(error)}` }
     }
-  }
-
-  const findEntry = async (parentId: Agent['id'], id: string, signal: AbortSignal): Promise<SubagentDescendantListEntry | undefined> => {
-    const entries = await ctx.subagents.listDescendants(parentId, signal)
-    return entries.find(entry => entry.kind === 'child' && String(entry.id) === id)
   }
 
   async function showAgents(signal: AbortSignal): Promise<CommandResult> {
@@ -252,6 +283,19 @@ export function apply(ctx: Context): void {
           getSharedEditor(ctx)?.notice?.(display.colors.warning('one-shot subagents cannot be stopped from the browser'))
           return
         }
+        if (ctx.agents.get(entry.id) === undefined) {
+          getSharedEditor(ctx)?.notice?.(display.colors.warning(`subagent ${String(entry.id)} is not live; there is no running Agent to stop`))
+          return
+        }
+        const descendantError = descendantStopError(entry, liveAgentDescendantCount(
+          entries,
+          String(entry.id),
+          candidate => ctx.agents.get(candidate.id) !== undefined,
+        ))
+        if (descendantError !== undefined) {
+          getSharedEditor(ctx)?.notice?.(display.colors.warning(descendantError.text))
+          return
+        }
         restoreConfirm?.()
         const form = new CanonicalFormController({
           keymap: display.keymap,
@@ -300,13 +344,20 @@ export function apply(ctx: Context): void {
       const parent = ctx.mayflyCurrentAgent.primary()
       if (parent === null) return { kind: 'error', text: t('no session is live yet') }
       ctx.mayflyCurrentAgent.closeAuxiliary()
-      let entry: SubagentDescendantListEntry | undefined
+      let entries: readonly SubagentDescendantListEntry[]
       try {
-        entry = await findEntry(parent.id, match[1]!, invocation.signal)
+        entries = await ctx.subagents.listDescendants(parent.id, invocation.signal)
       } catch (error) {
         return { kind: 'error', text: describe(error) }
       }
+      const entry = entries.find(candidate => candidate.kind === 'child' && String(candidate.id) === match[1]!)
       if (entry === undefined) return { kind: 'error', text: `unknown subagent: ${match[1]!}` }
+      const descendantError = descendantStopError(entry, liveAgentDescendantCount(
+        entries,
+        String(entry.id),
+        candidate => ctx.agents.get(candidate.id) !== undefined,
+      ))
+      if (descendantError !== undefined) return descendantError
       return stopEntry(entry)
     },
   })

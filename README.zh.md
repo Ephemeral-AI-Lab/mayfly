@@ -92,8 +92,9 @@ mayfly
 首次运行前设置 `DEEPSEEK_API_KEY`。`/help` 会列出当前有效的命令和键位。
 
 `/agents` 浏览当前会话的 subagent 树；Enter 打开 child，
-`/agents stop <id>` 停止 continuable child。`/btw <question>` 打开临时旁路
-Agent。live 辅助 Agent 复用完整的 Mayfly 布局与编辑器：`F7` 在主/辅助会话间
+`/agents stop <id>` 停止没有 live 后代的 live continuable child；仍有 live 后代的
+父节点会被拒绝，避免一次操作静默销毁整棵子树。`/btw <question>` 打开临时
+旁路 Agent。live 辅助 Agent 复用完整的 Mayfly 布局与编辑器：`F7` 在主/辅助会话间
 切换，`F8` 关闭辅助视图。
 
 ## 架构

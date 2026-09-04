@@ -98,7 +98,9 @@ Set `DEEPSEEK_API_KEY` before first run. `/help` lists the active commands
 and key bindings.
 
 `/agents` browses the current session's subagent tree; Enter opens a child and
-`/agents stop <id>` stops a continuable child. `/btw <question>` opens a
+`/agents stop <id>` stops a live continuable leaf child; a parent with live
+descendants is refused so teardown cannot silently remove a whole subtree.
+`/btw <question>` opens a
 temporary side Agent. Live auxiliary Agents reuse the complete Mayfly layout
 and editor: press `F7` to switch between main and auxiliary conversations and
 `F8` to close the auxiliary view.

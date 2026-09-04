@@ -13,6 +13,7 @@ import {
   agentMetricsText,
   buildAgentRows,
   formatAgentElapsed,
+  liveAgentDescendantCount,
   type MayflySubagentTreeEntry,
 } from '../../src/interaction/agents-command.ts'
 import { PromptEditorController, setSharedEditor } from '../../src/interaction/editor-instance.ts'
@@ -78,6 +79,21 @@ describe('agent tree models', () => {
       child('under', { parentId: SessionId('leaf'), depth: 2 }),
     ], new Set()).map(row => row.value)).toEqual(['leaf'])
   })
+
+  it('counts only live descendants inside the selected subtree', () => {
+    const tree: MayflySubagentTreeEntry[] = [
+      child('branch', { activity: 'running', hasChildren: true }),
+      child('nested-a', { parentId: SessionId('branch'), depth: 2, activity: 'running', hasChildren: true }),
+      child('nested-b', { parentId: SessionId('nested-a'), depth: 3, activity: 'running' }),
+      child('inactive', { parentId: SessionId('branch'), depth: 2 }),
+      child('sibling', { activity: 'running' }),
+    ]
+    const isLive = (entry: ChildEntry): boolean => entry.activity === 'running'
+    expect(liveAgentDescendantCount(tree, 'branch', isLive)).toBe(2)
+    expect(liveAgentDescendantCount(tree, 'nested-a', isLive)).toBe(1)
+    expect(liveAgentDescendantCount(tree, 'nested-b', isLive)).toBe(0)
+    expect(liveAgentDescendantCount(tree, 'missing', isLive)).toBe(0)
+  })
 })
 
 interface CommandHarness {
@@ -90,6 +106,7 @@ interface CommandHarness {
   readonly projectionCalls: string[][]
   readonly opened: unknown[]
   readonly drain: ReturnType<typeof vi.fn>
+  readonly liveAgents: Map<string, Agent>
   readonly switchAgent: (agent: Agent | null) => void
   readonly fiber: { dispose(): Promise<void> }
   tree: readonly SubagentDescendantListEntry[]
@@ -126,6 +143,8 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     id: SessionId('invalid'), header: { cwd: '/tmp', origin: 'subagent', parentSession: parentSession.id },
   } as unknown as Session
   const parent = { id: parentSession.id, session: parentSession, status: 'idle' } as unknown as Agent
+  const childAgent = { id: childSession.id, session: childSession, status: 'idle' } as unknown as Agent
+  const liveAgents = new Map<string, Agent>([[String(parent.id), parent], [String(childAgent.id), childAgent]])
   const sessionState: { current: Agent | null } = { current: options.current === false ? null : parent }
   const listeners = new Set<(agent: Agent | null, revision: number) => void>()
   const opened: unknown[] = []
@@ -162,7 +181,7 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     onChanged: () => () => {},
   } as never)
   ctx.provide('sessions', { list: () => [parentSession, childSession, invalidSession] } as never)
-  ctx.provide('agents', { get: (id: unknown) => String(id) === String(parent.id) ? parent : undefined } as never)
+  ctx.provide('agents', { get: (id: unknown) => liveAgents.get(String(id)) } as never)
   ctx.provide('tools', { get: () => undefined } as never)
   const harness = {
     ctx,
@@ -174,6 +193,7 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     projectionCalls,
     opened,
     drain: vi.fn(async () => {}),
+    liveAgents,
     switchAgent(agent: Agent | null) {
       sessionState.current = agent
       for (const listener of listeners) listener(agent, 1)
@@ -232,6 +252,7 @@ describe('mayfly-agents-command', () => {
     expect(await execute(rig, 'invalid')).toEqual({ kind: 'error', text: 'usage: /agents [stop <id>]' })
 
     rig.tree = [child('orphan', { parentId: SessionId('offline-parent') })]
+    rig.liveAgents.set('orphan', { id: SessionId('orphan') } as Agent)
     expect(await execute(rig, 'stop orphan')).toEqual({
       kind: 'error', text: 'cannot stop subagent orphan: its direct parent is not live',
     })
@@ -262,6 +283,35 @@ describe('mayfly-agents-command', () => {
     const absent = await mountCommand({ current: false })
     expect(await execute(absent, 'stop child')).toEqual({ kind: 'error', text: 'no session is live yet' })
     await absent.fiber.dispose()
+  })
+
+  it('refuses direct teardown while the target owns live descendants', async () => {
+    const rig = await mountCommand()
+    rig.tree = [
+      child('branch', { activity: 'running', hasChildren: true }),
+      child('nested-a', { parentId: SessionId('branch'), depth: 2, activity: 'running', hasChildren: true }),
+      child('nested-b', { parentId: SessionId('nested-a'), depth: 3, activity: 'running' }),
+      child('sibling', { activity: 'running' }),
+    ]
+    rig.liveAgents.set('nested-a', { id: SessionId('nested-a') } as Agent)
+    rig.liveAgents.set('nested-b', { id: SessionId('nested-b') } as Agent)
+    rig.liveAgents.set('sibling', { id: SessionId('sibling') } as Agent)
+    expect(await execute(rig, 'stop branch')).toEqual({
+      kind: 'error', text: 'subagent branch owns 2 live descendants; stop its live descendants first',
+    })
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('does not report a cold continuable child as stopped', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    rig.liveAgents.delete('child')
+    expect(await execute(rig, 'stop child')).toEqual({
+      kind: 'error', text: 'subagent child is not live; there is no running Agent to stop',
+    })
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
   })
 
   it('uses native workflow labels only when one-shot descriptors omit a name', async () => {
@@ -430,6 +480,37 @@ describe('mayfly-agents-command', () => {
     browser.component.handleInput(KEY.ctrlD)
     expect(rig.screen.overlays).toHaveLength(1)
     expect(plain(rig.notices)).toContain('one-shot subagents cannot be stopped from the browser')
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('refuses browser teardown while the target owns a live descendant', async () => {
+    const rig = await mountCommand()
+    rig.tree = [
+      child('branch', { activity: 'running', hasChildren: true }),
+      child('nested', { parentId: SessionId('branch'), depth: 2, activity: 'running' }),
+    ]
+    rig.liveAgents.set('branch', { id: SessionId('branch') } as Agent)
+    rig.liveAgents.set('nested', { id: SessionId('nested') } as Agent)
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    expect(rig.screen.overlays).toHaveLength(1)
+    expect(plain(rig.notices)).toContain('subagent branch owns 1 live descendant; stop its live descendants first')
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('does not open stop confirmation for a cold continuable child', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('cold')]
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    expect(rig.screen.overlays).toHaveLength(1)
+    expect(plain(rig.notices)).toContain('subagent cold is not live; there is no running Agent to stop')
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
