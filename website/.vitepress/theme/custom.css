@@ -483,10 +483,19 @@ html:not(.dark) .brand-home .VPNavBarTitle .VPImage.dark,
   }
 }
 
+.brand-home .bf-media {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 696 / 506;
+  overflow: hidden;
+  background: #08090b;
+}
+
 .brand-home .bf-shot img {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
 }
 
 .brand-home .bf-desc {
