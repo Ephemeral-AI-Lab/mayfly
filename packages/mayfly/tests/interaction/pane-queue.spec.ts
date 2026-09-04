@@ -44,6 +44,7 @@ describe('mayfly-pane-queue', () => {
       kind: 'stack',
       direction: 'column',
       children: [
+        { node: { kind: 'divider' } },
         { node: { kind: 'text', content: 'queued / turn: first turn', tone: 'muted' } },
         { node: { kind: 'text', content: 'queued / turn: second turn', tone: 'muted' } },
         { node: { kind: 'text', content: 'queued / step: steer this', tone: 'muted' } },
@@ -55,7 +56,10 @@ describe('mayfly-pane-queue', () => {
     const image = { content: [{ type: 'image' }] } as unknown as UserMessage
     const world = await mount(true, fakeInbox([image]))
     expect(world.entry()?.node).toMatchObject({
-      children: [{ node: { content: 'queued / turn: ' } }],
+      children: [
+        { node: { kind: 'divider' } },
+        { node: { content: 'queued / turn: ' } },
+      ],
     })
   })
 

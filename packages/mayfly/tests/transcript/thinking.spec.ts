@@ -12,6 +12,7 @@ import {
   THINKING_PREVIEW_LINES,
   type ThinkingTimers,
 } from '../../src/transcript/thinking.ts'
+import { STREAMING_RENDER_MAX_CHARS } from '../../src/transcript/components.ts'
 import type { MayflySemanticColors } from '../../src/core/index.ts'
 import type { TranscriptThinkingItem } from '../../src/transcript/types.ts'
 import { fakeMayflyComponents } from './helpers.ts'
@@ -154,6 +155,14 @@ describe('ThinkingComponent', () => {
       fakeMayflyComponents(),
     )
     expect(empty.render(40)).toEqual(['', '[M]⠋[/M] [M]thinking...[/M]', '  \x1b[3m[M][/M]\x1b[23m'])
+  })
+
+  it('bounds an oversized finalized reasoning render to the retained tail', () => {
+    const item = thinkingItem({ text: `${'x'.repeat(STREAMING_RENDER_MAX_CHARS * 3 + 1)}\n${'x'.repeat(STREAMING_RENDER_MAX_CHARS - 1)}`, streaming: false })
+    const lines = new ThinkingComponent(item, COLORS, fakeMayflyComponents()).render(80)
+    expect(lines.join('')).toContain('earlier characters')
+    expect(lines.length).toBeLessThan(500)
+    new ThinkingComponent(thinkingItem({ text: 'x'.repeat(STREAMING_RENDER_MAX_CHARS * 2), streaming: false }), COLORS, fakeMayflyComponents()).render(80)
   })
 
   it('truncates the expansion hint to the available width', () => {

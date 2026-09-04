@@ -12,6 +12,9 @@ import {
   AssistantMessageComponent,
   ErrorMessageComponent,
   InterruptedMarkerComponent,
+  STREAMING_RENDER_MAX_CHARS,
+  TOOL_EXPANDED_RENDER_LINES,
+  TOOL_PREVIEW_SCAN_MAX_CHARS,
   StepSummaryComponent,
   ToolCallComponent,
   UserMessageComponent,
@@ -133,6 +136,28 @@ describe('UserMessageComponent', () => {
       '',
       '\x1b[1m[R]» [/R]\x1b[22m\x1b[1m[R]hello world[/R]\x1b[22m',
     ])
+  })
+
+  it('keeps image placeholders when no attachment loader is available', () => {
+    const lines = new UserMessageComponent({
+      kind: 'user', seq: 1, text: 'with image', images: [{ id: 'missing' } as never],
+    }, COLORS, setup()).render(80)
+    expect(lines.at(-1)).toContain('[image]')
+  })
+
+  it('accepts an image-free item even when an attachment loader is supplied', () => {
+    const lines = new UserMessageComponent(userItem('plain'), COLORS, setup(), { loadImage: async () => undefined }).render(80)
+    expect(lines).toEqual(['', '\x1b[1m» \x1b[22m\x1b[1mplain\x1b[22m'])
+  })
+
+  it('strips terminal controls from semantic transcript text', () => {
+    const input = 'safe\x1b[2J\x1b]8;;https://invalid.example\x07still'
+    const assistant = new AssistantMessageComponent(assistantItem({ text: input }), COLORS, setup()).render(80).join('\n')
+    const user = new UserMessageComponent(userItem(input), COLORS, setup()).render(80).join('\n')
+    expect(assistant).not.toContain('\x1b[2J')
+    expect(assistant).not.toContain('\x1b]8;;')
+    expect(user).not.toContain('\x1b[2J')
+    expect(user).not.toContain('\x1b]8;;')
   })
 
   it('aligns continuation lines to the bullet\'s visible width', () => {
@@ -325,6 +350,22 @@ describe('AssistantMessageComponent', () => {
     }
   })
 
+  it('bounds synchronous work for long streaming text while retaining the source item', () => {
+    const components = setup()
+    const wrappedLengths: number[] = []
+    const wrap = components.wrapText.bind(components)
+    components.wrapText = (text, width) => {
+      wrappedLengths.push(text.length)
+      return wrap(text, width)
+    }
+    const item = assistantItem({ text: `${'x'.repeat(STREAMING_RENDER_MAX_CHARS * 7 + 1)}\n${'x'.repeat(STREAMING_RENDER_MAX_CHARS - 1)}`, streaming: true })
+    const rendered = new AssistantMessageComponent(item, COLORS, components).render(80)
+    expect(item.text.length).toBe(STREAMING_RENDER_MAX_CHARS * 8 + 1)
+    expect(Math.max(...wrappedLengths)).toBeLessThanOrEqual(STREAMING_RENDER_MAX_CHARS + 64)
+    expect(rendered.join('')).toContain('earlier characters')
+    new AssistantMessageComponent(assistantItem({ text: 'x'.repeat(STREAMING_RENDER_MAX_CHARS * 2), streaming: true }), COLORS, components).render(80)
+  })
+
   it('renders a full-width content row without reserving a cursor column', () => {
     const components = setup()
     // The markdown renders at the content width (viewport minus the
@@ -507,6 +548,35 @@ describe('ToolCallComponent', () => {
     // The hint truncates at this narrow width, but its signature survives.
     expect(lines.at(-1)).toContain('more lines')
     for (const line of lines) expect(components.visibleWidth(line)).toBeLessThanOrEqual(20)
+  })
+
+  it('does not wrap the complete raw result while collapsed', () => {
+    const components = setup()
+    const wrappedLengths: number[] = []
+    const wrap = components.wrapText.bind(components)
+    components.wrapText = (text, width) => {
+      wrappedLengths.push(text.length)
+      return wrap(text, width)
+    }
+    const text = 'line\n'.repeat(TOOL_PREVIEW_SCAN_MAX_CHARS)
+    new ToolCallComponent(toolItem({ result: { text, fullText: text, isError: false, endedAt: 0 } }), COLORS, components).render(80)
+    expect(Math.max(...wrappedLengths)).toBeLessThanOrEqual(TOOL_PREVIEW_SCAN_MAX_CHARS)
+  })
+
+  it('keeps expanded raw results within the synchronous row budget', () => {
+    const components = setup()
+    const wrappedLengths: number[] = []
+    const wrap = components.wrapText.bind(components)
+    components.wrapText = (text, width) => {
+      wrappedLengths.push(text.length)
+      return wrap(text, width)
+    }
+    const text = 'line\n'.repeat(TOOL_PREVIEW_SCAN_MAX_CHARS)
+    const component = new ToolCallComponent(toolItem({ result: { text, fullText: text, isError: false, endedAt: 0 } }), COLORS, components)
+    component.setExpanded(true)
+    const lines = component.render(80)
+    expect(lines.length).toBeLessThanOrEqual(TOOL_EXPANDED_RENDER_LINES + 3)
+    expect(Math.max(...wrappedLengths)).toBeLessThanOrEqual(TOOL_PREVIEW_SCAN_MAX_CHARS)
   })
 
   it('falls back to the text when an expanded result has no fullText', () => {

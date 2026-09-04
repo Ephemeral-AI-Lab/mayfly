@@ -24,7 +24,7 @@ Rules:
 - nodes contain no Agent, Session, terminal width, or renderer object;
 - interaction uses `onEvent(event, context)`; context carries AbortSignal and
   revision;
-- call the registration's `refresh()` after state changes;
+- call the registration's `set(node)` after state changes;
 - Fiber unload removes definitions and invalidates late async output;
 - every visible component stays bounded at 20/40/80/120 columns.
 

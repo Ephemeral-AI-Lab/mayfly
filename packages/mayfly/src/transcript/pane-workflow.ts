@@ -280,7 +280,6 @@ export function apply(ctx: Context): void {
 
   pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.workflow',
-    title: 'Workflow',
     placement: 'bottom',
     priority: WORKFLOW_PRIORITY,
     narrow: 'bottom',

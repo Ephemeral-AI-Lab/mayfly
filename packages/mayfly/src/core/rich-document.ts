@@ -4,11 +4,20 @@
  * @module @ephemeral-ai/mayfly/core/rich-document
  */
 
-import { renderMermaidASCII, type AsciiRenderOptions } from 'beautiful-mermaid'
+import { parseMermaid, renderMermaidASCII, type AsciiRenderOptions } from 'beautiful-mermaid'
 import { visibleWidth } from '@earendil-works/pi-tui'
 
 export const MERMAID_MAX_SOURCE_BYTES = 8 * 1024
 export const MERMAID_MAX_NON_EMPTY_LINES = 100
+/**
+ * The terminal adapter calls beautiful-mermaid synchronously. Keep its ELK
+ * input small enough that a pathological graph cannot monopolize the event
+ * loop; oversized graphs remain available as their original code fence.
+ */
+export const MERMAID_MAX_GRAPH_NODES = 25
+export const MERMAID_MAX_GRAPH_EDGES = 64
+/** A single very wide label can make the layout grid grow without bound. */
+export const MERMAID_MAX_LINE_CHARS = 512
 export const MERMAID_MAX_OUTPUT_LINES = 200
 export const MERMAID_MAX_OUTPUT_CELLS = 20_000
 
@@ -85,13 +94,37 @@ function normalizedRows(output: string): string[] {
   return rows
 }
 
+function compatibleSource(source: string): string {
+  // beautiful-mermaid 1.1.3 documents the standard one-line flowchart form
+  // but rejects a semicolon immediately after the header. Normalize only
+  // that delimiter; all diagram parsing remains library-owned.
+  return source.replace(/^( {0,3}(?:graph|flowchart)[ \t]+(?:TD|TB|LR|BT|RL));[ \t]*/iu, '$1\n')
+}
+
+function graphWithinBudget(source: string): boolean {
+  const firstLine = source.trim().split(/\r?\n/u)[0]!.trim()
+  if (!/^(?:graph|flowchart|stateDiagram(?:-v2)?)\b/iu.test(firstLine)) return true
+  try {
+    const graph = parseMermaid(compatibleSource(source))
+    return graph.nodes.size <= MERMAID_MAX_GRAPH_NODES && graph.edges.length <= MERMAID_MAX_GRAPH_EDGES
+  } catch {
+    // Let the normal renderer decide whether a malformed diagram has a
+    // useful fallback; it is still bounded by the source checks above.
+    return true
+  }
+}
+
+function sourceWithinBudget(source: string): boolean {
+  if (new TextEncoder().encode(source).byteLength > MERMAID_MAX_SOURCE_BYTES) return false
+  const lines = source.split(/\r?\n/u)
+  if (lines.filter(line => line.trim().length > 0).length > MERMAID_MAX_NON_EMPTY_LINES) return false
+  if (lines.some(line => line.length > MERMAID_MAX_LINE_CHARS)) return false
+  return graphWithinBudget(source)
+}
+
 function renderAttempt(source: string, width: number, options: AsciiRenderOptions): string[] | undefined {
   try {
-    // beautiful-mermaid 1.1.3 documents the standard one-line flowchart form
-    // but rejects a semicolon immediately after the header. Normalize only
-    // that delimiter; all diagram parsing remains library-owned.
-    const compatibleSource = source.replace(/^( {0,3}(?:graph|flowchart)[ \t]+(?:TD|TB|LR|BT|RL));[ \t]*/iu, '$1\n')
-    const rows = normalizedRows(renderMermaidASCII(compatibleSource, options))
+    const rows = normalizedRows(renderMermaidASCII(compatibleSource(source), options))
     if (rows.length === 0 || rows.length > MERMAID_MAX_OUTPUT_LINES) return undefined
     let cells = 0
     for (const row of rows) {
@@ -109,8 +142,7 @@ function renderAttempt(source: string, width: number, options: AsciiRenderOption
 /** Render one Mermaid source without ANSI, or return undefined for the source-fence fallback. */
 export function renderMermaidRows(source: string, width: number): string[] | undefined {
   const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-  if (new TextEncoder().encode(source).byteLength > MERMAID_MAX_SOURCE_BYTES) return undefined
-  if (source.split(/\r?\n/u).filter(line => line.trim().length > 0).length > MERMAID_MAX_NON_EMPTY_LINES) return undefined
+  if (!sourceWithinBudget(source)) return undefined
   const plain = renderAttempt(source, safeWidth, { colorMode: 'none' })
   if (plain !== undefined) return plain
   return renderAttempt(source, safeWidth, {

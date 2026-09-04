@@ -266,7 +266,6 @@ export function apply(ctx: Context): void {
 
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.agents',
-    title: 'Agents',
     placement: 'bottom',
     priority: 50,
     narrow: 'bottom',

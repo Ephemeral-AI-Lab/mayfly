@@ -30,9 +30,110 @@ import type {
 } from './contracts.ts'
 
 const ID = /^[a-z0-9][a-z0-9._/-]*$/u
+const PANE_PLACEMENTS = new Set(['header', 'left', 'right', 'bottom'])
+const NARROW_POLICIES = new Set(['bottom', 'overlay', 'hidden'])
+const STATUS_BANDS = new Set(['left', 'center', 'right'])
+const STATUS_OVERFLOW = new Set(['truncate', 'hide'])
+const OVERLAY_ANCHORS = new Set(['center', 'top', 'bottom', 'left', 'right'])
+const PERCENTAGE = /^\d+(?:\.\d+)?%$/u
 
 function assertId(id: string, kind: string): void {
   if (!ID.test(id)) throw new TypeError(`${kind} id "${id}" is invalid`)
+}
+
+function assertRecord(value: unknown, kind: string): asserts value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${kind} definition must be an object`)
+}
+
+function optionalString(value: unknown, path: string): void {
+  if (value !== undefined && typeof value !== 'string') throw new TypeError(`${path} must be a string`)
+}
+
+function optionalBoolean(value: unknown, path: string): void {
+  if (value !== undefined && typeof value !== 'boolean') throw new TypeError(`${path} must be a boolean`)
+}
+
+function optionalNonNegativeInteger(value: unknown, path: string): void {
+  if (value !== undefined && (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)) {
+    throw new TypeError(`${path} must be a non-negative safe integer`)
+  }
+}
+
+function optionalInteger(value: unknown, path: string): void {
+  if (value !== undefined && (typeof value !== 'number' || !Number.isSafeInteger(value))) {
+    throw new TypeError(`${path} must be a safe integer`)
+  }
+}
+
+function optionalCallback(value: unknown, path: string): void {
+  if (value !== undefined && typeof value !== 'function') throw new TypeError(`${path} must be a function`)
+}
+
+function validateSize(value: unknown, path: string): void {
+  if (value === undefined) return
+  assertRecord(value, path)
+  optionalNonNegativeInteger(value.min, `${path}.min`)
+  optionalNonNegativeInteger(value.max, `${path}.max`)
+  if (value.preferred !== undefined && value.preferred !== 'auto') optionalNonNegativeInteger(value.preferred, `${path}.preferred`)
+  const min = value.min as number | undefined
+  const max = value.max as number | undefined
+  const preferred = value.preferred === 'auto' || value.preferred === undefined ? undefined : value.preferred as number
+  if (min !== undefined && max !== undefined && min > max) throw new TypeError(`${path}.min must not exceed max`)
+  if (preferred !== undefined && min !== undefined && preferred < min) throw new TypeError(`${path}.preferred must not be below min`)
+  if (preferred !== undefined && max !== undefined && preferred > max) throw new TypeError(`${path}.preferred must not exceed max`)
+}
+
+function validateSurfaceDefinition(definition: unknown, kind: string): asserts definition is Record<string, unknown> {
+  assertRecord(definition, kind)
+  if (typeof definition.id !== 'string') throw new TypeError(`${kind} id must be a string`)
+  assertId(definition.id, kind)
+}
+
+function validatePaneDefinition(definition: unknown): void {
+  validateSurfaceDefinition(definition, 'pane')
+  if (!PANE_PLACEMENTS.has(definition.placement as string)) throw new TypeError('pane placement is invalid')
+  optionalString(definition.title, 'pane title')
+  optionalInteger(definition.priority, 'pane priority')
+  validateSize(definition.size, 'pane size')
+  if (definition.narrow !== undefined && !NARROW_POLICIES.has(definition.narrow as string)) throw new TypeError('pane narrow policy is invalid')
+  optionalCallback(definition.onEvent, 'pane onEvent')
+}
+
+function validateStatusDefinition(definition: unknown): void {
+  validateSurfaceDefinition(definition, 'status')
+  optionalInteger(definition.priority, 'status priority')
+  if (definition.band !== undefined && !STATUS_BANDS.has(definition.band as string)) throw new TypeError('status band is invalid')
+  if (definition.row !== undefined && (definition.row !== 1 && definition.row !== 2)) throw new TypeError('status row is invalid')
+  if (definition.overflow !== undefined && !STATUS_OVERFLOW.has(definition.overflow as string)) throw new TypeError('status overflow policy is invalid')
+}
+
+function validateOverlaySize(value: unknown, path: string): void {
+  if (value === undefined) return
+  if (typeof value === 'number') {
+    optionalNonNegativeInteger(value, path)
+    return
+  }
+  if (typeof value !== 'string' || !PERCENTAGE.test(value) || Number.parseFloat(value) > 100) throw new TypeError(`${path} must be a safe pixel value or percentage up to 100%`)
+}
+
+function validateOverlayDefinition(definition: unknown): void {
+  validateSurfaceDefinition(definition, 'overlay')
+  optionalString(definition.title, 'overlay title')
+  optionalBoolean(definition.capturing, 'overlay capturing')
+  optionalBoolean(definition.dismissible, 'overlay dismissible')
+  if (definition.anchor !== undefined && !OVERLAY_ANCHORS.has(definition.anchor as string)) throw new TypeError('overlay anchor is invalid')
+  validateOverlaySize(definition.width, 'overlay width')
+  validateOverlaySize(definition.maxHeight, 'overlay maxHeight')
+  optionalNonNegativeInteger(definition.minWidth, 'overlay minWidth')
+  optionalCallback(definition.onEvent, 'overlay onEvent')
+}
+
+function validateEditorExtensionDefinition(definition: unknown): void {
+  validateSurfaceDefinition(definition, 'editor extension')
+  optionalInteger(definition.priority, 'editor extension priority')
+  optionalCallback(definition.onEvent, 'editor extension onEvent')
+  optionalCallback(definition.complete, 'editor extension complete')
+  optionalCallback(definition.transformSubmit, 'editor extension transformSubmit')
 }
 
 abstract class ObservableRegistry<Entry extends { readonly id: string }> extends Service {
@@ -88,7 +189,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
   constructor(ctx: Context) { super(ctx, 'mayflyPanes') }
 
   register(definition: MayflyPaneDefinition, initialNode: MayflyUiNode | null = null): MayflyPaneRegistration {
-    assertId(definition.id, 'pane')
+    validatePaneDefinition(definition)
     if (this.entries.has(definition.id)) throw new Error(`pane "${definition.id}" is already registered`)
     const admittedDefinition = freezeWire(definition)
     const publish = (node: MayflyUiNode | null, revision: number, update?: MayflySnapshotUpdate): void => {
@@ -174,7 +275,7 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
   constructor(ctx: Context) { super(ctx, 'mayflyOverlays') }
 
   open(definition: MayflyOverlayDefinition, initialNode: MayflyUiNode): MayflyOverlayHandle {
-    assertId(definition.id, 'overlay')
+    validateOverlayDefinition(definition)
     if (this.entries.has(definition.id)) throw new Error(`overlay "${definition.id}" is already open`)
     const admittedDefinition = freezeWire(definition)
     let node = freezeWire(initialNode)
@@ -222,7 +323,7 @@ export class MayflyStatusService extends ObservableRegistry<MayflyStatusEntry> i
   constructor(ctx: Context) { super(ctx, 'mayflyStatus') }
 
   register(definition: MayflyStatusDefinition, initialNode: MayflyStatusNode | null = null): MayflyStatusRegistration {
-    assertId(definition.id, 'status')
+    validateStatusDefinition(definition)
     if (this.entries.has(definition.id)) throw new Error(`status "${definition.id}" is already registered`)
     const admittedDefinition = freezeWire(definition)
     const publish = (node: MayflyStatusNode | null, revision: number): void => {
@@ -259,7 +360,7 @@ export class MayflyEditorExtensionService extends ObservableRegistry<MayflyEdito
   constructor(ctx: Context) { super(ctx, 'mayflyEditorExtensions') }
 
   register(definition: MayflyEditorExtensionDefinition, initialDecoration: MayflyEditorDecoration = {}): MayflyEditorExtensionRegistration {
-    assertId(definition.id, 'editor extension')
+    validateEditorExtensionDefinition(definition)
     if (this.entries.has(definition.id)) throw new Error(`editor extension "${definition.id}" is already registered`)
     const admittedDefinition = freezeWire(definition)
     const publish = (decoration: MayflyEditorDecoration, revision: number, update?: MayflySnapshotUpdate): void => {

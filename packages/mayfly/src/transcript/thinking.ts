@@ -17,12 +17,20 @@
  * @module @ephemeral-ai/mayfly/transcript/thinking
  */
 
-import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/index.ts'
+import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from './spinners.ts'
+import { STREAMING_RENDER_MAX_CHARS } from './components.ts'
 import type { TranscriptThinkingItem } from './types.ts'
 
 /** Rendered body lines kept visible when the block folds. */
 export const THINKING_PREVIEW_LINES = 2
+
+function streamingTextWindow(text: string): string {
+  const start = text.length - STREAMING_RENDER_MAX_CHARS
+  const boundary = text.indexOf('\n', start)
+  const visible = sanitizePluginText(text.slice(boundary < 0 ? start : boundary + 1))
+  return `... (${String(text.length - visible.length)} earlier characters)\n${visible}`
+}
 
 /** The finalized block's first-line marker (a muted status bullet). */
 const THINKING_MARKER = '● '
@@ -118,7 +126,10 @@ export class ThinkingComponent implements MayflyComponent {
    * @returns the rendered rows: none for a blank finalized block.
    */
   render(width: number): string[] {
-    const { text, streaming } = this.item
+    const { streaming } = this.item
+    const text = this.item.text.length > STREAMING_RENDER_MAX_CHARS
+      ? streamingTextWindow(this.item.text)
+      : sanitizePluginText(this.item.text)
     const key = `${width}:${streaming}:${this.expanded}:${text}`
     if (this.cache?.key === key) return this.cache.lines
 

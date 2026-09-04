@@ -31,12 +31,14 @@ export function apply(ctx: Context): void {
     return {
       kind: 'stack',
       direction: 'column',
-      children: rows.map(content => ({ node: { kind: 'text', content, tone: 'muted' } })),
+      children: [
+        { node: { kind: 'divider' } },
+        ...rows.map(content => ({ node: { kind: 'text' as const, content, tone: 'muted' as const } })),
+      ],
     }
   }
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.queue',
-    title: 'Queued messages',
     placement: 'bottom',
     priority: 20,
     narrow: 'bottom',

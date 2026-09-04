@@ -390,6 +390,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       interactive: true,
       runtime: record.runtime,
       refreshMode,
+      ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
     })
     if (compiled === null) {
       record.runtime.deactivate()
@@ -612,7 +613,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
         /* v8 ignore next -- host admission and SurfaceManager both enforce global ids. */
         if (seen.has(entry.id)) return []
         seen.add(entry.id)
-        return [{ lane, entry }]
+        return focusTarget(entry) === null ? [] : [{ lane, entry }]
       }),
     )
     if (entries.length === 0) return
@@ -620,17 +621,16 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     const current = entries.findIndex(item => item.entry.id === currentId)
     const next = current < 0 ? (direction > 0 ? 0 : entries.length - 1) : current + direction
     if (next < 0 || next >= entries.length) {
+      /* v8 ignore else -- reaching the boundary after a focused surface always has an id. */
       if (runtime.surfaces.focusedId !== undefined) runtime.releaseSurfaceFocus(runtime.surfaces.focusedId)
       navigationId = undefined
       return
     }
     const selected = entries[next]!
-    const previousFocused = runtime.surfaces.focusedId
-    const target = focusTarget(selected.entry)
-    if (target === null && previousFocused !== undefined) runtime.releaseSurfaceFocus(previousFocused)
+    const target = focusTarget(selected.entry)!
     runtime.surfaces.activate(selected.lane.placement, selected.entry.id)
     navigationId = selected.entry.id
-    if (target !== null) runtime.setFocus(target)
+    runtime.setFocus(target)
   }
   ctx.effect(() => ctx.mayflyKeymap.register([
     { id: 'mayfly.surface.next', keys: 'f6', description: 'Focus the next Mayfly surface', handler: () => navigate(1) },

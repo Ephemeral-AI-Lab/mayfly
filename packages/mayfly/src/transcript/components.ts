@@ -3,8 +3,8 @@
  * the `mayflyComponents` factory (`ctx.mayflyComponents`). None of them imports
  * pi-tui — `render(width)` returns styled ANSI lines within `width` visible
  * columns. The assistant body is a held `MayflyMarkdown` instance (created
- * once, streamed via `setText`, rendered straight through); the remaining
- * components wrap/truncate through the factory's width helpers and cache by
+ * once, streamed via `setText`, with a bounded plain-text tail for oversized
+ * live output); the remaining components wrap/truncate through the factory's width helpers and cache by
  * (source text, width) so the screen's throttled redraws stay cheap while a
  * `TranscriptItem` mutates underneath.
  *
@@ -19,6 +19,7 @@ import type {
   MayflyMarkdown,
   MayflySemanticColors,
 } from '../core/index.ts'
+import { sanitizePluginText } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import { extractKeyArgument, isPlanDecline, KEY_ARG_MAX_CHARS } from './present.ts'
 import { summarizeToolText } from './envelope.ts'
@@ -47,6 +48,15 @@ export const COMMAND_PREVIEW_LINES = 10
 
 /** Collapsed long user-message preview: visual rows kept (the S20 idiom, D46). */
 export const USER_PREVIEW_LINES = 3
+
+/** Maximum source characters formatted synchronously for one live stream. */
+export const STREAMING_RENDER_MAX_CHARS = 32_000
+
+/** Maximum source characters inspected for a collapsed raw tool preview. */
+export const TOOL_PREVIEW_SCAN_MAX_CHARS = 32_000
+
+/** Maximum synchronous rows emitted by an expanded raw result. */
+export const TOOL_EXPANDED_RENDER_LINES = 200
 
 /**
  * Default raw-line count above which a user message folds. Mirrors the
@@ -99,6 +109,33 @@ export interface UserMessageImages {
 interface RenderCache {
   key: string
   lines: string[]
+}
+
+/** Keep live rendering bounded while retaining the complete model for history. */
+function streamingWindow(text: string): string {
+  const start = text.length - STREAMING_RENDER_MAX_CHARS
+  const boundary = text.indexOf('\n', start)
+  const visible = sanitizePluginText(text.slice(boundary < 0 ? start : boundary + 1))
+  return `... (${String(text.length - visible.length)} earlier characters)\n${visible}`
+}
+
+/** Wrap only the prefix needed by a collapsed preview. */
+function boundedPreview(text: string, width: number, rows: number, components: MayflyComponents): { readonly lines: string[], readonly more: boolean, readonly remaining?: number, readonly total?: number } {
+  const sample = text.length > TOOL_PREVIEW_SCAN_MAX_CHARS ? text.slice(0, TOOL_PREVIEW_SCAN_MAX_CHARS) : text
+  const wrapped = components.wrapText(sample, width)
+  const complete = sample.length === text.length
+  return {
+    lines: wrapped.slice(0, rows),
+    more: !complete || wrapped.length > rows,
+    ...(complete && wrapped.length > rows ? { remaining: wrapped.length - rows, total: wrapped.length } : {}),
+  }
+}
+
+function lineCount(text: string): number {
+  if (text.length === 0) return 0
+  let count = 1
+  for (const character of text) if (character === '\n') count += 1
+  return text.endsWith('\n') ? count - 1 : count
 }
 
 /**
@@ -157,7 +194,7 @@ export class UserMessageComponent implements MayflyComponent {
     this.onReady = images.onReady
     this.presentation = images.presentation ?? (() => DEFAULT_TRANSCRIPT_PRESENTATION)
     this.t = images.t ?? interpolateLocaleMessage
-    if (this.loadImage !== undefined && item.images.length > 0) this.requestImages(this.loadImage)
+    if (this.loadImage !== undefined && (item.images ?? []).length > 0) this.requestImages(this.loadImage)
   }
 
   /** Drop the cached lines; the next render rebuilds from the item. */
@@ -184,14 +221,14 @@ export class UserMessageComponent implements MayflyComponent {
 
   /** Kick off all image loads once; each settle stores its outcome. */
   private requestImages(load: UserImageLoader): void {
-    this.item.images.forEach((ref, index) => {
+    for (const [index, ref] of this.item.images.entries()) {
       const settle = (data: Uint8Array | undefined): void => {
         this.resolved.set(index, data === undefined
           ? null
           : this.components.createImage({
             data,
             mediaType: ref.mediaType,
-            ...(ref.name === undefined ? {} : { filename: ref.name }),
+            ...(ref.name === undefined ? {} : { filename: sanitizePluginText(ref.name).replace(/[\r\n]+/gu, ' ') }),
             maxHeightCells: USER_IMAGE_MAX_HEIGHT_CELLS,
           }))
         this.imageVersion += 1
@@ -199,7 +236,7 @@ export class UserMessageComponent implements MayflyComponent {
         this.onReady?.()
       }
       void load(ref).then(settle, () => settle(undefined))
-    })
+    }
   }
 
   /**
@@ -207,12 +244,13 @@ export class UserMessageComponent implements MayflyComponent {
    * @returns the rendered rows.
    */
   render(width: number): string[] {
-    const key = `${this.item.seq}:${width}:${this.imageVersion}:${this.expanded}`
+    const text = sanitizePluginText(this.item.text)
+    const key = `${this.item.seq}:${width}:${this.imageVersion}:${this.expanded}:${text}`
     if (this.cache?.key === key) return this.cache.lines
     const bullet = this.components.strong(this.colors.roleUser(USER_MESSAGE_BULLET))
     const bulletWidth = this.components.visibleWidth(USER_MESSAGE_BULLET)
     const contentWidth = Math.max(1, width - bulletWidth)
-    const wrapped = this.components.wrapText(this.item.text, contentWidth)
+    const wrapped = this.components.wrapText(text, contentWidth)
     const bold = (text: string): string => this.components.strong(this.colors.roleUser(text))
     const indent = ' '.repeat(bulletWidth)
     // The fold gates on `expanded`, never on the wrapped count: a resize
@@ -230,8 +268,9 @@ export class UserMessageComponent implements MayflyComponent {
       })
       lines.push(indent + this.colors.textMuted(this.components.truncateToWidth(hint, contentWidth)))
     }
-    if (this.loadImage !== undefined && this.item.images.length > 0) {
-      for (let index = 0; index < this.item.images.length; index += 1) {
+    const images = this.item.images ?? []
+    if (images.length > 0) {
+      for (let index = 0; index < images.length; index += 1) {
         const image = this.resolved.get(index)
         if (image) lines.push(...image.render(contentWidth).map(line => indent + line))
         else lines.push(`${indent}${this.colors.muted(this.t('[image]'))}`)
@@ -291,15 +330,22 @@ export class AssistantMessageComponent implements MayflyComponent {
    * @returns the rendered rows.
    */
   render(width: number): string[] {
-    const { text } = this.item
-    const key = `${width}:${text}`
+    const streaming = this.item.streaming === true
+    const text = this.item.text.length > STREAMING_RENDER_MAX_CHARS
+      ? streamingWindow(this.item.text)
+      : sanitizePluginText(this.item.text)
+    const key = `${width}:${streaming}:${text}`
     if (this.cache?.key === key) return this.cache.lines
 
     const lines: string[] = ['']
     if (text.trim()) {
-      this.markdown.setText(text)
       const contentWidth = Math.max(1, width - this.components.visibleWidth(STATUS_BULLET))
-      const content = this.markdown.render(contentWidth)
+      const content = this.item.text.length > STREAMING_RENDER_MAX_CHARS
+        ? this.components.wrapText(text, contentWidth)
+        : (() => {
+            this.markdown.setText(text)
+            return this.markdown.render(contentWidth)
+          })()
       lines.push(...content.map((line, index) =>
         (index === 0 ? this.colors.text(STATUS_BULLET) : MESSAGE_INDENT) + line))
     }
@@ -400,14 +446,16 @@ export class ToolCallComponent implements MayflyComponent {
           ? colors.error('✗ ')
           : colors.success('✓ ')
     let header: string
-    if (this.item.name === 'bash') {
+    const toolName = sanitizePluginText(this.item.name)
+    if (toolName === 'bash') {
       const label = result === undefined ? 'Running a command' : 'Ran a command'
       header = `${bullet}${this.components.strong(colors.primary(label))}`
     } else {
       const verb = result === undefined ? 'Using' : 'Used'
-      const name = this.components.strong(colors.primary(this.item.name))
+      const name = this.components.strong(colors.primary(toolName))
       const keyArg = extractKeyArgument(this.item)
-      const argStr = keyArg === undefined ? '' : colors.muted(` (${keyArg})`)
+      const safeKeyArg = keyArg === undefined ? undefined : sanitizePluginText(keyArg).replace(/[\r\n]+/gu, ' ')
+      const argStr = safeKeyArg === undefined ? '' : colors.muted(` (${safeKeyArg})`)
       header = `${bullet}${verb} ${name}${argStr}`
     }
     if (declined) {
@@ -417,8 +465,8 @@ export class ToolCallComponent implements MayflyComponent {
       if (chipText !== undefined) {
         header += result.isError ? colors.error(` · ${chipText}`) : colors.muted(` · ${chipText}`)
       } else {
-        const text = result.fullText ?? result.text
-        const count = text.split('\n').filter(line => line.length > 0).length
+        const text = sanitizePluginText(result.fullText ?? result.text)
+        const count = lineCount(text)
         if (count > 0) {
           const chip = ` · ${count} ${count === 1 ? 'line' : 'lines'}`
           header += result.isError ? colors.error(chip) : colors.muted(chip)
@@ -435,7 +483,7 @@ export class ToolCallComponent implements MayflyComponent {
     if (parsed === undefined || typeof parsed !== 'object' || parsed === null) return undefined
     const command = (parsed as Record<string, unknown>)['command']
     if (typeof command !== 'string' || command === '') return undefined
-    return command.split('\n')
+    return sanitizePluginText(command).split('\n')
   }
 
   /**
@@ -468,10 +516,9 @@ export class ToolCallComponent implements MayflyComponent {
       }
     }
     if (result === undefined) return lines
-    const text = (result.fullText ?? result.text).replace(/\n+$/, '')
+    const text = sanitizePluginText(result.fullText ?? result.text).replace(/\n+$/, '')
     if (text === '') return lines
     const contentWidth = Math.max(1, width - components.visibleWidth(PREVIEW_INDENT))
-    const allLines = components.wrapText(text, contentWidth)
     const paint = (line: string): string => `${PREVIEW_INDENT}${
       isPlanDecline(this.item) ? colors.warning(line)
         : result.isError ? colors.error(line)
@@ -480,16 +527,29 @@ export class ToolCallComponent implements MayflyComponent {
     // A recognized raw shape (XML envelope, incremental job read, or bare
     // JSON payload) collapses to its one summary line while collapsed; the
     // expanded card keeps the raw text as the debug view.
-    const summary = summarizeToolText(text)
-    const shown = this.expanded
-      ? allLines
-      : summary !== text
-        ? components.wrapText(summary, contentWidth)
-        : allLines.slice(0, RESULT_PREVIEW_LINES)
+    const summarySource = text.length > TOOL_PREVIEW_SCAN_MAX_CHARS ? text.slice(0, TOOL_PREVIEW_SCAN_MAX_CHARS) : text
+    const summary = summarizeToolText(summarySource)
+    const preview = this.expanded
+      ? boundedPreview(text, contentWidth, TOOL_EXPANDED_RENDER_LINES, components)
+      : summarySource !== text
+        ? boundedPreview(text, contentWidth, RESULT_PREVIEW_LINES, components)
+        : summary !== text
+          ? (() => {
+              const lines = components.wrapText(summary, contentWidth)
+              const allLines = components.wrapText(text, contentWidth)
+              return {
+                lines,
+                more: lines.length < allLines.length,
+                ...(lines.length < allLines.length ? { remaining: allLines.length - lines.length, total: allLines.length } : {}),
+              }
+            })()
+          : boundedPreview(text, contentWidth, RESULT_PREVIEW_LINES, components)
+    const shown = preview.lines
     lines.push(...shown.map(paint))
-    if (shown.length < allLines.length) {
-      const remaining = allLines.length - shown.length
-      const hint = `... (${remaining} more lines, ${allLines.length} total, ctrl+o to expand)`
+    if (preview.more) {
+      const hint = preview.remaining === undefined || preview.total === undefined
+        ? '... (more output, ctrl+o to expand)'
+        : `... (${preview.remaining} more lines, ${preview.total} total, ctrl+o to expand)`
       lines.push(colors.textMuted(components.truncateToWidth(hint, width)))
     }
     return lines
@@ -501,7 +561,7 @@ export class ToolCallComponent implements MayflyComponent {
    */
   render(width: number): string[] {
     const { result } = this.item
-    const body = result === undefined ? '' : (result.fullText ?? result.text)
+    const body = result === undefined ? '' : sanitizePluginText(result.fullText ?? result.text)
     const key = `${width}:${this.expanded}:${result ? `${result.isError}:${body}` : 'pending'}`
     if (this.cache?.key === key) return this.cache.lines
     const presentedWidth = Math.max(1, width - this.components.visibleWidth(PREVIEW_INDENT))
@@ -548,9 +608,11 @@ export class ErrorMessageComponent implements MayflyComponent {
    * @returns one string per rendered row.
    */
   render(width: number): string[] {
-    const label = this.item.code !== undefined
-      ? `✗ request failed (${this.item.code}): ${this.item.message}`
-      : `✗ request failed: ${this.item.message}`
+    const message = sanitizePluginText(this.item.message)
+    const code = this.item.code === undefined ? undefined : sanitizePluginText(this.item.code)
+    const label = code !== undefined
+      ? `✗ request failed (${code}): ${message}`
+      : `✗ request failed: ${message}`
     return this.components.wrapText(label, width).map((line: string) => this.colors.error(line))
   }
 }

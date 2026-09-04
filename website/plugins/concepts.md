@@ -36,4 +36,4 @@ UI contribution 返回 `MayflyUiNode`。插件不 import pi-tui、不拼 ANSI、
 
 Native dsh service 保留自己的返回值与异常语义。Mayfly registry 对无效 id、
 缺失 callback 或 duplicate id 直接抛错；registration handle 提供
-`refresh()/dispose()`，overlay 另有 `close()`。
+`set()/dispose()`，overlay 另有 `close()`。

@@ -5,12 +5,12 @@ The transcript layer folds the session event stream into items and renders them.
 ## Message items
 
 - **User messages** — `❯` gutter bubbles (`roleUser` color); images render inline where the terminal supports it (12-line cap), otherwise as `[image]` placeholders.
-- **Assistant messages** — rendered as Markdown while streaming (headings, links, inline code, code blocks, quotes, and lists each have dedicated tokens), separated by blank lines, first line bulleted `●`, continuation indented two columns.
+- **Assistant messages** — ordinary-sized output is rendered as Markdown while streaming; oversized output uses a bounded safe tail both live and after close, while the complete raw text remains in the session record. Messages stay separated by blank lines, with the first line bulleted `●` and continuation indented two columns.
 - **Thinking blocks** — reasoning streams as its own block above the body: a braille spinner + `thinking...` label with a rolling tail window while live; after close, folded to a two-line italic preview with `... (N more lines, ctrl+o to expand)`.
 
 ## Tool cards
 
-Tool calls render as the **generic card** by default: a status dot — `○` running (`primary`) or `●` settled (success/error colored) — plus an indented `⎿` one-line summary; Ctrl-O toggles between summary and full output.
+Tool calls render as the **generic card** by default: a status dot — `○` running (`primary`) or `●` settled (success/error colored) — plus an indented `⎿` one-line summary; Ctrl-O toggles between the summary and a bounded debug view, while the complete raw output remains in the session record.
 
 Two **dedicated cards** register through render intents and take over when a tool's presentation view declares `diff` or `terminal`:
 

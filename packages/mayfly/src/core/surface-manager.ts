@@ -5,6 +5,7 @@
  */
 
 import type { MayflyComponent, MayflyFocusable } from './types.ts'
+import { sanitizePluginText } from './plugin-view.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
 
 export type SurfacePlacement = 'header' | 'left' | 'right' | 'bottom'
@@ -125,6 +126,10 @@ function fit(value: string, width: number): string {
   return visibleWidth(value) <= available ? value : sliceByColumn(value, 0, available, true)
 }
 
+function chromeText(value: string): string {
+  return sanitizePluginText(value).replace(/[\r\n]+/gu, ' ')
+}
+
 function contributionFocusTarget(contribution: SurfaceContribution): MayflyFocusable | null {
   if (contribution.focusTarget !== undefined) return contribution.focusTarget
   return typeof (contribution.component as MayflyComponent & { focused?: unknown }).focused === 'boolean'
@@ -139,12 +144,12 @@ export function renderSurfaceTabs(lane: SurfaceLaneLayout, width: number): strin
   const activeId = selectable.some(entry => entry.id === lane.active.id) ? lane.active.id : selectable[0]?.id
   const tokens = selectable.map(entry => ({
     id: entry.id,
-    value: entry.id === activeId ? `[${entry.title ?? entry.id}]` : (entry.title ?? entry.id),
+    value: entry.id === activeId ? `[${chromeText(entry.title ?? entry.id)}]` : chromeText(entry.title ?? entry.id),
   }))
   const complete = tokens.map(token => token.value).join(' ')
   if (visibleWidth(complete) <= available) return complete
 
-  const activeIndex = tokens.findIndex(token => token.id === lane.active.id)
+  const activeIndex = tokens.findIndex(token => token.id === activeId)
   const kept = new Set<number>([activeIndex])
   for (let index = 0; index < tokens.length; index += 1) {
     if (kept.has(index)) continue
@@ -478,6 +483,10 @@ export class SurfaceManager {
 
   private lane(placement: SurfacePlacement, entries: readonly SurfaceLaneEntry[]): SurfaceLaneLayout | undefined {
     if (entries.length === 0) return undefined
+    const selectable = placement === 'bottom'
+      ? entries.filter(entry => contributionFocusTarget(entry) !== null)
+      : entries
+    const activeEntries = selectable.length > 0 ? selectable : entries
     const requested = placement === 'bottom'
       ? [
           this.focusedIdValue,
@@ -487,7 +496,7 @@ export class SurfaceManager {
           this.userStateValue.active.right,
         ]
       : [this.userStateValue.active[placement]]
-    const active = requested.flatMap(id => entries.find(entry => entry.id === id) ?? []).at(0) ?? entries[0]!
+    const active = requested.flatMap(id => activeEntries.find(entry => entry.id === id) ?? []).at(0) ?? activeEntries[0]!
     return { placement, entries, active }
   }
 

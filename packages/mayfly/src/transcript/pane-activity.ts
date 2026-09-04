@@ -188,7 +188,6 @@ export function apply(ctx: Context): void {
     : activityNode(state, t)
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.activity',
-    title: 'Activity',
     placement: 'bottom',
     priority: 10,
     size: { preferred: 1, max: 1 },

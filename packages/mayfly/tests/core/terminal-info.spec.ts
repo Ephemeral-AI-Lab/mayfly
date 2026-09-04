@@ -22,7 +22,7 @@ interface FakeProc {
 }
 
 /** A recording MayflyProbeProcess; `reply` simulates terminal answers. */
-function fakeProc(options?: { rawMode?: boolean }): FakeProc {
+function fakeProc(options?: { rawMode?: boolean, write?: (data: string) => void, throwCleanup?: boolean }): FakeProc {
   const listeners = new Set<(data: Buffer) => void>()
   const rawModes: boolean[] = []
   const written: string[] = []
@@ -32,15 +32,17 @@ function fakeProc(options?: { rawMode?: boolean }): FakeProc {
     },
     removeListener: (_event, listener) => {
       listeners.delete(listener)
+      if (options?.throwCleanup === true) throw new Error('stdin closed')
     },
   }
   if (options?.rawMode !== false) {
     stdin.setRawMode = (raw) => {
       rawModes.push(raw)
+      if (!raw && options?.throwCleanup === true) throw new Error('stdin closed')
     }
   }
   return {
-    proc: { stdin, stdout: { write: data => written.push(data) } },
+    proc: { stdin, stdout: { write: options?.write ?? (data => written.push(data)) } },
     rawModes,
     written,
     reply(data) {
@@ -91,6 +93,20 @@ describe('probeTerminalBackground', () => {
   it('resolves undefined on timeout and restores the terminal state', async () => {
     const fake = fakeProc()
     await expect(probeTerminalBackground(fake.proc, 10)).resolves.toBeUndefined()
+    expect(fake.rawModes).toEqual([true, false])
+    expect(fake.listenerCount()).toBe(0)
+  })
+
+  it('restores raw mode and listeners when the probe write fails', async () => {
+    const fake = fakeProc({ write: () => { throw new Error('terminal closed') } })
+    await expect(probeTerminalBackground(fake.proc, 1000)).resolves.toBeUndefined()
+    expect(fake.rawModes).toEqual([true, false])
+    expect(fake.listenerCount()).toBe(0)
+  })
+
+  it('contains cleanup failures after a probe write failure', async () => {
+    const fake = fakeProc({ throwCleanup: true, write: () => { throw new Error('terminal closed') } })
+    await expect(probeTerminalBackground(fake.proc, 1000)).resolves.toBeUndefined()
     expect(fake.rawModes).toEqual([true, false])
     expect(fake.listenerCount()).toBe(0)
   })

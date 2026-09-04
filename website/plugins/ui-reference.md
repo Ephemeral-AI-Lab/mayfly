@@ -19,7 +19,7 @@ import { ui } from '@ephemeral-ai/mayfly-ui'
 | 绘制 text、tabs、list、form、actions 等节点 | 提供节点数据和业务文案 |
 | 当前 renderer 的主题、宽度降级、焦点和导航 | 保存 `activeId`、`selectedIds`、field value 等受控状态 |
 | 把用户操作转换成 `MayflyUiEvent` | 校验事件并调用所属 domain service/action |
-| 成功事件后的重渲染、abort、stale 和 unload fence | 外部数据变化后调用 pane/overlay handle 的 `refresh()` |
+| 成功事件后的重渲染、abort、stale 和 unload fence | 外部数据变化后调用 pane/overlay handle 的 `set(node)` |
 
 节点不接受 renderer callback、raw key、终端坐标、ANSI 或 focus handle。不要在
 `render()` 中做 I/O，也不要把 Agent、Session 或 mutable renderer object 放进节点。
@@ -255,9 +255,9 @@ ui.diagram(mermaidSource: string)
 
 Markdown 复用 Mayfly 的 pi-tui adapter，支持表格与代码 fence。Mermaid 通过
 `beautiful-mermaid` 渲染为终端 Unicode；assistant 消息中的闭合 `mermaid`
-fence 也走同一路径。解析失败、不支持或超宽的图、源码/输出超过配额，以及 label
-含 CJK、emoji 或其他全宽字符时，会保留原始 Mermaid code fence。图本身绝不
-wrap 或 truncate。
+fence 也走同一路径。解析失败、不支持、结构复杂度/源码/输出超过配额，或图形
+超宽时，会保留原始 Mermaid code fence。这样复杂图不会阻塞终端渲染循环。图本身
+绝不 wrap 或 truncate。
 
 ```ts
 ui.diagram('flowchart TD\n  Request --> Validate\n  Validate --> Result')
