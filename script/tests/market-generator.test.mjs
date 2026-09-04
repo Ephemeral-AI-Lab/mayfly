@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { detailPage, installCommand, readmeBlock, validateMarketIndex } from '../../website/scripts/generate-market.mjs'
+import { detailPage, installCommand, readmeBlock, requiresDedicatedProfile, validateMarketIndex } from '../../website/scripts/generate-market.mjs'
 
 function entry(overrides = {}) {
   return {
@@ -70,4 +70,17 @@ test('install commands include every row and quote shell-sensitive GitHub specs'
     { name: 'b', github: { repo: 'owner/repo', ref: 'main' } },
   ] } })
   assert.equal(installCommand(mixed), 'dsh plugin --profile <name> add <loop>')
+})
+
+test('ACP is documented as a dedicated-profile automation frontend', () => {
+  const acp = entry({
+    id: 'acp',
+    displayName: 'ACP Server',
+    install: { rows: [{ name: '@deepseek-ai/dsh-acp', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
+  })
+  assert.equal(requiresDedicatedProfile(entry()), false)
+  assert.equal(requiresDedicatedProfile(acp), true)
+  assert.equal(installCommand(acp), 'dsh plugin --profile <automation-name> add @deepseek-ai/dsh-acp')
+  assert.match(detailPage(acp, 'en'), /owns stdio.*dedicated profile/su)
+  assert.match(detailPage(acp, 'zh'), /独占 stdio.*独立 profile/su)
 })

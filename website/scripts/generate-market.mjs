@@ -23,6 +23,7 @@ const DEFAULT_INDEX_URL = 'https://raw.githubusercontent.com/Ephemeral-AI-Lab/ds
 const INDEX_URL = process.env.MARKET_INDEX_URL || DEFAULT_INDEX_URL
 const SUPPORTED_SCHEMA = 1
 const README_CAP = 32 * 1024
+const DEDICATED_PROFILE_PACKAGES = new Set(['@deepseek-ai/dsh-acp'])
 
 async function fetchIndex() {
   let response
@@ -43,6 +44,7 @@ const TIER_LABEL = { official: '官方 official', dsh: 'dsh', community: '社区
 const TIER_LABEL_EN = { official: 'official', dsh: 'dsh', community: 'community' }
 
 function surfaces(entry) {
+  if (requiresDedicatedProfile(entry)) return 'Automation'
   const parts = []
   if (entry.surfaces?.tui !== undefined) parts.push('TUI')
   if (entry.surfaces?.web !== undefined) parts.push('Web')
@@ -51,6 +53,11 @@ function surfaces(entry) {
 }
 
 function verdict(entry, locale) {
+  if (requiresDedicatedProfile(entry)) {
+    return locale === 'zh'
+      ? '| ⚠️ | 仅自动化：会独占 stdio，必须使用独立的非 Mayfly profile。 |\n| ⚠️ | 不可加入 dsh Web profile。 |'
+      : '| ⚠️ | Automation only: owns stdio and requires a dedicated non-Mayfly profile. |\n| ⚠️ | Do not add to a dsh Web profile. |'
+  }
   const tui = entry.surfaces?.server !== undefined || entry.surfaces?.tui !== undefined
   const web = entry.surfaces?.web !== undefined || entry.surfaces?.server !== undefined
   if (locale === 'zh') {
@@ -82,7 +89,12 @@ export function installCommand(entry) {
     ? 'npm'
     : rows.every(row => row.github !== undefined) ? 'github' : undefined
   if (source === undefined) return `dsh plugin --profile <name> add <${entry.id}>`
-  return `dsh plugin --profile <name> add ${rows.map(row => shellArg(rowSpec(row, source))).join(' ')}`
+  const profile = requiresDedicatedProfile(entry) ? '<automation-name>' : '<name>'
+  return `dsh plugin --profile ${profile} add ${rows.map(row => shellArg(rowSpec(row, source))).join(' ')}`
+}
+
+export function requiresDedicatedProfile(entry) {
+  return entry.install.rows.some(row => DEDICATED_PROFILE_PACKAGES.has(row.name))
 }
 
 function escapeInertHtml(text) {
@@ -143,6 +155,7 @@ ${description}
 
 ${zh ? `来源：**${TIER_LABEL[entry.source] ?? entry.source}** · 状态：\`${entry.status}\`` : `Source: **${TIER_LABEL_EN[entry.source] ?? entry.source}** · Status: \`${entry.status}\``}
 ${entry.statusNote ? `> ${inlineText(entry.statusNote)}` : ''}
+${requiresDedicatedProfile(entry) ? (zh ? '> [!WARNING]\n> 此条目是独占 stdio 的自动化前端，不能安装进 Mayfly 或 dsh Web profile；请为它创建独立 profile。' : '> [!WARNING]\n> This entry is an automation frontend that owns stdio. Do not install it into a Mayfly or dsh Web profile; give it a dedicated profile.') : ''}
 
 ## ${zh ? '安装' : 'Install'}
 
@@ -249,9 +262,10 @@ async function main() {
       status: entry.status,
       category: entry.category,
       surfaces: {
-        tui: entry.surfaces?.tui !== undefined,
-        web: entry.surfaces?.web !== undefined,
-        server: entry.surfaces?.server !== undefined,
+        tui: !requiresDedicatedProfile(entry) && entry.surfaces?.tui !== undefined,
+        web: !requiresDedicatedProfile(entry) && entry.surfaces?.web !== undefined,
+        server: !requiresDedicatedProfile(entry) && entry.surfaces?.server !== undefined,
+        automation: requiresDedicatedProfile(entry),
       },
       provides: entry.provides ?? {},
       author: entry.author?.name,

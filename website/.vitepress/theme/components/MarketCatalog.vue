@@ -12,6 +12,7 @@ const surfaces = [
   { id: 'tui', label: 'TUI' },
   { id: 'web', label: 'Web' },
   { id: 'server', label: 'Server' },
+  { id: 'automation', label: 'Automation' },
 ]
 const sources = [
   { id: 'all', label: '全部 / all' },
@@ -27,7 +28,7 @@ const describe = entry => (!english.value && entry.descriptionZh) || entry.descr
 const entryLink = entry => withBase(`${english.value ? '/en' : ''}/market/p/${entry.id}/`)
 
 const surfaceBadge = entry =>
-  ['tui', 'web', 'server'].filter(key => entry.surfaces[key]).map(key => key.toUpperCase()).join('+') || '—'
+  ['tui', 'web', 'server', 'automation'].filter(key => entry.surfaces[key]).map(key => key === 'automation' ? 'Automation' : key.toUpperCase()).join('+') || '—'
 
 const filtered = computed(() =>
   catalog.filter(entry => {

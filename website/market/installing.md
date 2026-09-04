@@ -33,6 +33,7 @@ dsh plugin --profile mayfly add 'github:Ephemeral-AI-Lab/dsh-plugins#main&path:p
 
 - 带原生依赖的插件（如 codex-terminal 的 node-pty）会在安装时把 `allowBuilds` 写进 profile 的 `pnpm-workspace.yaml`——这是 pnpm ≥10 运行构建脚本的许可。
 - `profile-patch` 激活的条目（dsh 官方可选插件多为此类）会把组装行写进 profile 的 `cordis.patch.yml`；`/plugin` 自动完成，手动安装时按各插件文档补行。
+- **ACP Server 是例外**：它是会独占 stdin/stdout 的自动化前端。Mayfly 只展示并允许移除，不允许把它安装进当前 TUI profile；ACP 必须使用独立的非 Mayfly profile。
 
 ## 更新与离线
 
