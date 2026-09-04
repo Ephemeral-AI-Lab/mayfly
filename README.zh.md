@@ -12,7 +12,6 @@
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933)](#用法)
 [![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#用法)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Chat](https://img.shields.io/badge/chat-%E9%A3%9E%E4%B9%A6%E7%BE%A4-3370FF)](https://github.com/Ephemeral-AI-Lab/mayfly/issues/106)
 
 [English](README.md) | 中文
 
