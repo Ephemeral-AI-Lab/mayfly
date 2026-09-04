@@ -179,7 +179,11 @@ export function registerPluginCommand(ctx: Context): () => void {
     if (source === undefined) {
       return `dsh plugin --profile <name> add <${entry.id}>`
     }
-    return `dsh plugin --profile <name> add ${entry.install.rows.map(row => rowSpec(row, source)).join(' ')}`
+    const specs = entry.install.rows.map(row => rowSpec(row, source)!)
+    const shellArgs = specs.map(spec => /^[A-Za-z0-9@._/+~-]+$/u.test(spec)
+      ? spec
+      : `'${spec.replaceAll("'", `'\\''`)}'`)
+    return `dsh plugin --profile <name> add ${shellArgs.join(' ')}`
   }
 
   /** The read-only detail panel for one entry. */

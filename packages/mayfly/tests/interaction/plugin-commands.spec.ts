@@ -546,6 +546,15 @@ describe('/plugin argument paths', () => {
     world.dispose()
   })
 
+  it('quotes GitHub specs in the copyable install command', async () => {
+    const githubOnly = entry({ install: { rows: [{ name: 'dsh-loop', github: { repo: 'a/b', ref: 'release-candidate', subdir: 'plugins/loop' } }] } })
+    const world = await mountWorld({ index: [githubOnly] })
+    await world.run('/plugin info loop')
+    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    expect(json).toContain("'github:a/b#release-candidate&path:plugins/loop'")
+    world.dispose()
+  })
+
   it('list groups installed rows by state, including removed-from-market', async () => {
     const gone = entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'yanked', install: { rows: [{ name: 'gone-pkg', npm: { spec: 'gone-pkg' } }] } })
     const updated = entry({ id: 'loop', npm: { 'dsh-loop': { latestVersion: '0.1.5' } } })
