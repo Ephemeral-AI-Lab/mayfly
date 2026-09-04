@@ -532,3 +532,8 @@ html:not(.dark) .brand-home .VPNavBarTitle .VPImage.dark,
     padding: 72px 20px 100px;
   }
 }
+
+.vp-doc .market-readme {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

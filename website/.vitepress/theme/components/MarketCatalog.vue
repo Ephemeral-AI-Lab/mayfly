@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { useData, withBase } from 'vitepress'
 import catalog from '../../../market/catalog.json'
 
 const query = ref('')
@@ -19,9 +20,11 @@ const sources = [
   { id: 'community', label: 'community' },
 ]
 
-const locale = typeof window !== 'undefined' && window.location.pathname.startsWith('/en/') ? 'en' : 'zh'
+const { lang } = useData()
+const english = computed(() => lang.value.toLowerCase().startsWith('en'))
 
-const describe = entry => (locale === 'zh' && entry.descriptionZh) || entry.description
+const describe = entry => (!english.value && entry.descriptionZh) || entry.description
+const entryLink = entry => withBase(`${english.value ? '/en' : ''}/market/p/${entry.id}/`)
 
 const surfaceBadge = entry =>
   ['tui', 'web', 'server'].filter(key => entry.surfaces[key]).map(key => key.toUpperCase()).join('+') || '—'
@@ -60,7 +63,7 @@ const filtered = computed(() =>
     </div>
     <p class="count">{{ filtered.length }} / {{ catalog.length }}</p>
     <div class="cards">
-      <a v-for="entry in filtered" :key="entry.id" :href="entry.link" class="card">
+      <a v-for="entry in filtered" :key="entry.id" :href="entryLink(entry)" class="card">
         <div class="head">
           <strong>{{ entry.displayName }}</strong>
           <span class="badges">
@@ -87,7 +90,7 @@ const filtered = computed(() =>
 .badges { display: inline-flex; gap: 0.35rem; }
 .badge { font-size: 0.7rem; border-radius: 999px; padding: 0.05rem 0.5rem; border: 1px solid var(--vp-c-border, #ddd); color: var(--vp-c-text-2, #888); }
 .badge[data-source='official'] { color: var(--vp-c-brand, #3e8e7e); border-color: var(--vp-c-brand, #3e8e7e); }
-.badge.surface { letter-spacing: 0.03em; }
+.badge.surface { letter-spacing: 0; }
 .badge.status { color: var(--vp-c-warning, #b8860b); border-color: var(--vp-c-warning, #b8860b); }
 .desc { margin: 0.45rem 0 0; font-size: 0.86rem; color: var(--vp-c-text-2, #666); }
 .empty { color: var(--vp-c-text-2, #888); }
