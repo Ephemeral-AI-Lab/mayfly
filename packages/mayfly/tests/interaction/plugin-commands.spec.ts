@@ -254,7 +254,7 @@ describe('installer unit seams', () => {
     const workspace = parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '') as Record<string, unknown>
     expect(workspace).toMatchObject({ allowBuilds: { 'node-pty': true }, overrides: { keep: true } })
     const patch = parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '') as readonly Record<string, unknown>[]
-    expect(patch).toContainEqual({ id: 'terminal-bash', name: '@deepseek-ai/dsh-terminal-bash' })
+    expect(patch).toContainEqual({ insert: [{ id: 'terminal-bash', name: '@deepseek-ai/dsh-terminal-bash' }] })
   })
 
   it('appending to a non-empty patch layer keeps existing rows, and config renders', async () => {
@@ -268,7 +268,9 @@ describe('installer unit seams', () => {
     expect(outcome.kind).toBe('success')
     const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
     expect(patch).toContain('- id: keep')
-    expect(patch).toContain('config:\n    computeMs: 60000')
+    expect(parseYaml(patch)).toContainEqual({
+      insert: [{ id: 'code-runtime', name: '@deepseek-ai/dsh-code-runtime-worker-thread', config: { computeMs: 60000 } }],
+    })
   })
 
   it('uninstalling removes exactly the entry\'s patch blocks', async () => {
@@ -280,16 +282,17 @@ describe('installer unit seams', () => {
     writeFileSync(join(root, 'cordis.patch.yml'), [
       '- id: keep',
       "  name: 'keep-me'",
-      '- id: a',
-      "  name: 'pkg-a'",
-      '  config:',
-      '    x: 1',
-      '- id: user-a',
-      "  name: 'pkg-a'",
-      '  config:',
-      '    keep: true',
-      '- id: after',
-      "  name: 'pkg-after'",
+      '- insert:',
+      '    - id: a',
+      "      name: 'pkg-a'",
+      '      config:',
+      '        x: 1',
+      '    - id: user-a',
+      "      name: 'pkg-a'",
+      '      config:',
+      '        keep: true',
+      '    - id: after',
+      "      name: 'pkg-after'",
     ].join('\n') + '\n')
     const outcome = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: two, source: 'npm' })
     expect(outcome.kind).toBe('success')
@@ -356,7 +359,7 @@ describe('installer unit seams', () => {
   it('reports invalid or conflicting patch documents without overwriting them', async () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const withPatch = entry({ install: { rows: [{ id: 'wanted', name: 'pkg-wanted', activation: 'profile-patch', npm: { spec: 'pkg-wanted' } }] } })
-    for (const source of ['{}\n', '[\n', '- id: wanted\n  name: another-package\n']) {
+    for (const source of ['{}\n', '[\n', '- insert: {}\n', '- insert:\n    - scalar\n', '- insert:\n    - id: wanted\n      name: another-package\n']) {
       const root = mkdtempTracked('mayfly-install-')
       writeFileSync(join(root, 'cordis.patch.yml'), source)
       const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: withPatch, source: 'npm' })
@@ -386,9 +389,13 @@ describe('installer unit seams', () => {
       expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('cordis.patch.yml') })
     }
     const root = mkdtempTracked('mayfly-uninstall-')
-    writeFileSync(join(root, 'cordis.patch.yml'), '- scalar\n- name: no-id\n- id: orphan\n- id: target\n  name: pkg-target\n')
+    writeFileSync(join(root, 'cordis.patch.yml'), '- scalar\n- name: top-level\n- insert:\n    - name: no-id\n    - id: orphan\n    - id: target\n      name: pkg-target\n')
     expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: target, source: 'npm' })).kind).toBe('success')
-    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual(['scalar', { name: 'no-id' }, { id: 'orphan' }])
+    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([
+      'scalar',
+      { name: 'top-level' },
+      { insert: [{ name: 'no-id' }, { id: 'orphan' }] },
+    ])
   })
 
   it('reports patch write failures after successful package operations', async () => {
@@ -401,7 +408,7 @@ describe('installer unit seams', () => {
       .toMatchObject({ kind: 'error', text: expect.stringContaining('activating') })
 
     const uninstallRoot = mkdtempTracked('mayfly-uninstall-')
-    writeFileSync(join(uninstallRoot, 'cordis.patch.yml'), '- id: write\n  name: pkg-write\n')
+    writeFileSync(join(uninstallRoot, 'cordis.patch.yml'), '- insert:\n    - id: write\n      name: pkg-write\n')
     expect(await uninstallEntry({ dshBin: 'dsh', profile: 'p', root: uninstallRoot, entry: withPatch, source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('cleaning up') })
   })
@@ -830,7 +837,7 @@ describe('/plugin coverage corners', () => {
     await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: profilePatch, source: 'npm' })
     await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: profilePatch, source: 'npm' })
     expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toBe('packages:\n  - .\nallowBuilds:\n  "node-pty": true\n')
-    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([{ id: 't', name: 'pkg-t' }])
+    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([{ insert: [{ id: 't', name: 'pkg-t' }] }])
   })
 
   it('uninstall tolerates a missing patch file and unquoted names', async () => {
@@ -839,7 +846,11 @@ describe('/plugin coverage corners', () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const withoutFile = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: unquoted, source: 'npm' })
     expect(withoutFile.kind).toBe('success')
-    writeFileSync(join(root, 'cordis.patch.yml'), '- id: u\n  name: bare-pkg\n')
+    const unrelated = '- insert:\n    - id: other\n      name: other-package\n'
+    writeFileSync(join(root, 'cordis.patch.yml'), unrelated)
+    expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: unquoted, source: 'npm' })).kind).toBe('success')
+    expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toBe(unrelated)
+    writeFileSync(join(root, 'cordis.patch.yml'), '- insert:\n    - id: u\n      name: bare-pkg\n')
     const outcome = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: unquoted, source: 'npm' })
     expect(outcome.kind).toBe('success')
     expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([])
@@ -1120,7 +1131,7 @@ describe('badge and patch-shape arms', () => {
     expect(outcome.kind).toBe('success')
     const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
     expect(patch).toContain('keep-me')
-    expect(parseYaml(patch)).toContainEqual({ id: 'nl', name: 'pkg-nl' })
+    expect(parseYaml(patch)).toContainEqual({ insert: [{ id: 'nl', name: 'pkg-nl' }] })
     // allowBuilds block lands after content lacking a trailing newline too.
     const allowEntry = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'x' } }] } })
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .')

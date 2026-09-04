@@ -109,6 +109,21 @@ interface PatchEdit {
   readonly text: string
 }
 
+/** Collect and validate every row nested under a top-level `insert` patch. */
+function insertionRows(items: readonly unknown[]): YAMLMap[] {
+  const rows: YAMLMap[] = []
+  for (const item of items) {
+    if (!isMap(item) || !item.has('insert')) continue
+    const insert = item.get('insert', true)
+    if (!isSeq(insert)) throw new Error('cordis.patch.yml insert must be a YAML sequence')
+    for (const row of insert.items) {
+      if (!isMap(row)) throw new Error('cordis.patch.yml insert entries must be mappings')
+      rows.push(row as YAMLMap)
+    }
+  }
+  return rows
+}
+
 /** Prepare idempotent `profile-patch` row insertion without writing it yet. */
 function prepareProfilePatchRows(root: string, rows: readonly MarketInstallRow[]): PatchEdit | undefined {
   if (rows.length === 0) return undefined
@@ -118,18 +133,19 @@ function prepareProfilePatchRows(root: string, rows: readonly MarketInstallRow[]
   if (doc.errors.length > 0 || !isSeq(doc.contents)) {
     throw new Error(`cordis.patch.yml must be a YAML sequence: ${doc.errors[0]?.message ?? 'found another document shape'}`)
   }
-  let changed = false
+  const existingRows = insertionRows(doc.contents.items)
+  const added: Array<{ id: string, name: string, config?: Readonly<Record<string, unknown>> }> = []
   for (const row of rows) {
     const id = row.id ?? row.name
-    const present = doc.contents.items.find(item => isMap(item) && (item.get('id') as unknown) === id) as YAMLMap | undefined
+    const present = existingRows.find(item => (item.get('id') as unknown) === id)
     if (present !== undefined) {
       if ((present.get('name') as unknown) === row.name) continue
       throw new Error(`cordis.patch.yml already has id ${JSON.stringify(id)} for another package`)
     }
-    doc.add({ id, name: row.name, ...(row.config === undefined ? {} : { config: row.config }) })
-    changed = true
+    added.push({ id, name: row.name, ...(row.config === undefined ? {} : { config: row.config }) })
   }
-  if (changed) {
+  if (added.length > 0) {
+    doc.add({ insert: added })
     doc.contents.flow = false
     return { path, text: String(doc) }
   }
@@ -148,10 +164,26 @@ function prepareProfilePatchRemoval(root: string, rows: readonly MarketInstallRo
     throw new Error(`cordis.patch.yml must be a YAML sequence: ${doc.errors[0]?.message ?? 'found another document shape'}`)
   }
   const keys = new Set(rows.map(row => `${row.id ?? row.name}\0${row.name}`))
-  const kept = doc.contents.items.filter(item =>
-    !isMap(item) || !keys.has(`${String((item.get('id') as unknown) ?? '')}\0${String((item.get('name') as unknown) ?? '')}`))
-  if (kept.length === doc.contents.items.length) return undefined
-  doc.contents.items = kept
+  insertionRows(doc.contents.items)
+  let changed = false
+  doc.contents.items = doc.contents.items.filter(item => {
+    if (!isMap(item) || !item.has('insert')) return true
+    const insert = item.get('insert', true)
+    /* v8 ignore next -- insertionRows validated this exact node above */
+    if (!isSeq(insert)) return true
+    const kept = insert.items.filter(row => {
+      /* v8 ignore next -- insertionRows validated every nested row above */
+      if (!isMap(row)) return true
+      return !keys.has(`${String((row.get('id') as unknown) ?? '')}\0${String((row.get('name') as unknown) ?? '')}`)
+    })
+    if (kept.length === insert.items.length) return true
+    changed = true
+    insert.items = kept
+    if (kept.length > 0) return true
+    item.delete('insert')
+    return item.items.length > 0
+  })
+  if (!changed) return undefined
   return { path, text: String(doc) }
 }
 
