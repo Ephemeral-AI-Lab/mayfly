@@ -343,6 +343,8 @@ export interface StatusPluginHarness {
   screen: StatusFakeScreen
   entry: StatusEntryView
   models: MayflyStatusService
+  /** Seed one session's `modelSelection` snapshot and fire its change feed. */
+  setModelSelection(session: unknown, value: unknown): void
   dispose(): Promise<void>
 }
 
@@ -371,11 +373,26 @@ export async function bootStatusPlugin(
   statusModels.subscribe(() => screen.requestRender())
   const components = fakeMayflyComponents()
   const facts = new FakeFactsService(ctx, current, options.titleProjection ?? true)
+  // Structural `modelSelection` projection: a snapshot per session plus the
+  // change feed, mirroring the banner spec's projection fake.
+  const projectionListeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
+  const selections = new Map<unknown, unknown>()
+  const setModelSelection = (session: unknown, value: unknown): void => {
+    selections.set(session, value)
+    for (const listener of projectionListeners) listener(session, 'modelSelection', value, 1)
+  }
   const serviceNames: Record<string, unknown> = {
     mayflySessionFacts: facts,
     mayflyScreen: screen,
     mayflyTheme: { colors },
     mayflyComponents: components,
+    sessionProjections: {
+      snapshot: (session: unknown) => ({ asOfSeq: 0, values: { modelSelection: selections.get(session) } }),
+      onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void {
+        projectionListeners.add(listener)
+        return () => { projectionListeners.delete(listener) }
+      },
+    },
     ...options.services,
   }
   for (const [serviceName, value] of Object.entries(serviceNames)) {
@@ -408,6 +425,7 @@ export async function bootStatusPlugin(
     screen,
     entry,
     models: statusModels,
+    setModelSelection,
     dispose: () => fiber.dispose(),
   }
 }
