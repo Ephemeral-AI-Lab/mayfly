@@ -435,6 +435,12 @@ export function registerPluginCommand(ctx: Context): () => void {
         if (data === 'u' || data === 'U') return { kind: 'plugin-market/uninstall', id: selectedId }
         return undefined
       },
+      contextHints: () => [{
+        id: 'plugin-operations',
+        keys: t('i install · u remove · r refresh'),
+        compact: 'i/u/r',
+        priority: 95,
+      }],
     })
     restore = mountEditorReplacement(ctx, panel)
     const offLocale = observeInteractionLocale(ctx, () => {

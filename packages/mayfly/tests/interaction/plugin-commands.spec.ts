@@ -431,9 +431,12 @@ describe('/plugin browse panel', () => {
     expect(result).toEqual({ kind: 'success' })
     const panel = world.overlay()
     expect(panel).toBeDefined()
-    const node = (panel as { currentNode(): { kind: string, child?: { children?: Array<{ node: unknown }> } } }).currentNode()
+    const controller = panel as { currentNode(): { kind: string, child?: { children?: Array<{ node: unknown }> } }, render(width: number): string[] }
+    const node = controller.currentNode()
     expect(JSON.stringify(node)).toContain('Loop')
     expect(JSON.stringify(node)).toContain('official · Web+Server')
+    expect(controller.render(80).join('\n')).toContain('i install · u remove · r refresh')
+    expect(controller.render(36).join('\n')).toContain('i/u/r')
     world.dispose()
   })
 
