@@ -296,11 +296,12 @@ export class TranscriptModelComponent implements MayflyComponent {
         break
       }
       case 'transcript-assistant': {
-        const item = { kind: 'assistant' as const, seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text }
+        const item = { kind: 'assistant' as const, seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming }
         target = new AssistantMessageComponent(item, renderer.colors, renderer.components)
         update = (next): boolean => {
           const assistant = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-assistant' }>
           item.text = assistant.text
+          item.streaming = assistant.streaming
           target.invalidate()
           return true
         }

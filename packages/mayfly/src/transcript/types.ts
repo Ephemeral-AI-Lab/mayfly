@@ -60,6 +60,8 @@ export interface TranscriptAssistantItem {
   readonly step: number
   /** Accumulated visible Markdown text. */
   text: string
+  /** True while assistant chunks are still arriving. */
+  streaming?: boolean
 }
 
 /** The folded outcome of one tool invocation. */

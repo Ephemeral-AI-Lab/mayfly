@@ -496,7 +496,7 @@ export async function startMayflyTerminal(
     if (normalized === undefined) return undefined
     if (!(current instanceof TuiAltScreen)) return { data: normalized }
     const focused = current.getFocusedComponent()
-    return focused !== null && bottomChildren.has(focused as MayflyComponent)
+    return focused !== null && (bottomChildren.has(focused as MayflyComponent) || surfaces.focusedId !== undefined)
       ? { data: normalized }
       : undefined
   })

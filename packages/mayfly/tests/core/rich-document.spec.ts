@@ -1,6 +1,8 @@
 /** Bounded Mermaid parsing and terminal-render fallback behavior. */
 import { describe, expect, it } from 'vitest'
 import {
+  MERMAID_MAX_GRAPH_NODES,
+  MERMAID_MAX_LINE_CHARS,
   MERMAID_MAX_NON_EMPTY_LINES,
   MERMAID_MAX_SOURCE_BYTES,
   renderMermaidRows,
@@ -77,8 +79,22 @@ describe('renderMermaidRows', () => {
 
   it('returns the source fallback signal for invalid, oversized, and too-narrow diagrams', () => {
     expect(renderMermaidRows('not a diagram', 80)).toBeUndefined()
+    expect(renderMermaidRows('graph INVALID\nA --> B', 80)).toBeUndefined()
     expect(renderMermaidRows(`graph LR; A[${'x'.repeat(MERMAID_MAX_SOURCE_BYTES)}]`, 80)).toBeUndefined()
     expect(renderMermaidRows(Array.from({ length: MERMAID_MAX_NON_EMPTY_LINES + 1 }, (_, index) => `A${String(index)} --> B${String(index)}`).join('\n'), 80)).toBeUndefined()
     expect(renderMermaidRows('graph LR; A --> B --> C', 5)).toBeUndefined()
+  })
+
+  it('rejects pathological ELK graph shapes before synchronous layout', () => {
+    const source = [
+      'graph TD',
+      ...Array.from({ length: MERMAID_MAX_GRAPH_NODES }, (_, index) => `N${String(index)} --> N${String(index + 1)}`),
+    ].join('\n')
+    expect(renderMermaidRows(source, 80)).toBeUndefined()
+  })
+
+  it('rejects labels that could expand the layout grid without bound', () => {
+    const source = `graph TD\nA[${'x'.repeat(MERMAID_MAX_LINE_CHARS)}] --> B`
+    expect(renderMermaidRows(source, 80)).toBeUndefined()
   })
 })

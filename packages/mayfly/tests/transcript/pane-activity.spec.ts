@@ -85,7 +85,7 @@ describe('mayfly-pane-activity', () => {
     const { ctx, screen, dispose } = await boot()
     expect(activity.name).toBe('mayfly-pane-activity')
     expect(activity.inject).toEqual(['mayflyPanes', 'mayflySessionFacts'])
-    expect(ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')?.definition.title).toBe('Activity')
+    expect(ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')?.definition.title).toBeUndefined()
     expect(screen.bottomChildren).toHaveLength(1)
     // kimi's Spacer(1): the placeholder row is always present when the
     // spinner is not, so the dock never jumps at the activity edges.

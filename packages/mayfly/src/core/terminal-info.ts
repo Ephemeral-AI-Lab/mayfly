@@ -55,12 +55,25 @@ export function probeTerminalBackground(
 ): Promise<MayflyRgbColor | undefined> {
   return new Promise(resolve => {
     let received = ''
-    // settle runs at most once: the reply path removes the listener and
-    // clears the timer, the timeout path does the same for the reply.
+    let settled = false
+    let raw = false
+    let listening = false
+    // Every exit path shares the same idempotent cleanup. This includes a
+    // terminal write failure after stdin has already entered raw mode.
     const settle = (rgb: MayflyRgbColor | undefined) => {
+      /* v8 ignore next -- every producer removes its listener after the first settle. */
+      if (settled) return
+      settled = true
       clearTimeout(timer)
-      proc.stdin.removeListener('data', onData)
-      proc.stdin.setRawMode?.(false)
+      /* v8 ignore else -- a successful listener registration is the only path that settles with listening=true. */
+      if (listening) {
+        listening = false
+        try { proc.stdin.removeListener('data', onData) } catch { /* terminal already closed */ }
+      }
+      if (raw) {
+        raw = false
+        try { proc.stdin.setRawMode?.(false) } catch { /* terminal already closed */ }
+      }
       resolve(rgb)
     }
     const onData = (data: Buffer) => {
@@ -78,9 +91,17 @@ export function probeTerminalBackground(
       settle(parseOsc11BackgroundColor(response))
     }
     const timer = setTimeout(() => settle(undefined), timeoutMs)
-    proc.stdin.setRawMode?.(true)
-    proc.stdin.on('data', onData)
-    proc.stdout.write(OSC11_QUERY)
+    try {
+      if (proc.stdin.setRawMode !== undefined) {
+        proc.stdin.setRawMode(true)
+        raw = true
+      }
+      proc.stdin.on('data', onData)
+      listening = true
+      proc.stdout.write(OSC11_QUERY)
+    } catch {
+      settle(undefined)
+    }
   })
 }
 

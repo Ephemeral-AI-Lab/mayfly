@@ -39,5 +39,5 @@ terminal safety.
 
 Native dsh services keep their own result and exception behavior. Mayfly
 registries throw for invalid ids, missing callbacks, and duplicate ids.
-Registration handles expose `refresh()/dispose()`; overlays also expose
+Registration handles expose `set()/dispose()`; overlays also expose
 `close()`.

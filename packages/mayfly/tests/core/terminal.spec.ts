@@ -1687,6 +1687,25 @@ describe('input listeners on the stable reference', () => {
     await runtime.stop()
   })
 
+  it('normalizes wheel input for a focused surface pane', async () => {
+    const terminal = new FakeTerminal()
+    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const received: string[] = []
+    const focused: MayflyFocusable & { handleInput(data: string): void } = {
+      focused: false,
+      render: () => ['pane'],
+      invalidate: () => {},
+      handleInput: data => received.push(data),
+    }
+    runtime.surfaces.register({ id: 'focused-pane', placement: 'right', component: focused })
+    runtime.addChild(focused)
+    runtime.setFocus(focused)
+
+    terminal.sendInput('\x1b[<64;1;1M')
+    expect(received).toEqual(['\x1b[A'])
+    await runtime.stop()
+  })
+
   it('runs listeners before focus routing and honors consume/dispose', async () => {
     const terminal = new FakeTerminal()
     const runtime = await startMayflyTerminal(terminal, noProbe)

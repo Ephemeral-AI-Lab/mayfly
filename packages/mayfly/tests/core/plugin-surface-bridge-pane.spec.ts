@@ -14,7 +14,7 @@ import type {
 } from '../../../ui/src/contracts.ts'
 import { ui } from '../../../ui/src/index.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
-import { SurfaceManager, type SurfaceLaneEntry, type SurfaceLayout } from '../../src/core/surface-manager.ts'
+import { renderSurfaceLane, SurfaceManager, type SurfaceLaneEntry, type SurfaceLayout } from '../../src/core/surface-manager.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -227,6 +227,46 @@ describe('direct pane surface renderer', () => {
       f.mount()
       await flush()
       expect(entry(f.runtime.surfaces, 'owned').component.render(40)).toEqual(['owned pane'])
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('frames and wraps panes that arrive together', async () => {
+    const f = await fixture(createRuntime('alternate', 40, 20))
+    try {
+      const queued = 'queued / step: Agent sent a message: Subagent result (read-only; nothing modified). Files read:'
+      f.register({ id: 'queued', title: 'Queued messages', render: () => ui.text(queued) })
+      f.register({ id: 'todo', title: 'Todo', render: () => ui.text('○ Compose rich stream (mermaid, markdown, tables)') })
+      await flush()
+
+      const lane = f.runtime.surfaces.layout(40, 20).bottom!
+      const rows = renderSurfaceLane(lane, 40)
+      expect(rows.some(row => row.includes('Queued messages'))).toBe(true)
+      expect(rows.some(row => row.includes('Todo'))).toBe(true)
+      expect(rows.some(row => row.includes('read-only; nothing'))).toBe(true)
+      expect(rows.every(row => visibleWidth(row) <= 40)).toBe(true)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('keeps an intentionally unframed pane bare across placeholder/live updates', async () => {
+    const f = await fixture(createRuntime('alternate', 40, 20))
+    try {
+      let active = false
+      const handle = f.register({
+        id: 'activity',
+        render: () => active ? ui.text('working') : ui.spacer(),
+      })
+      await flush()
+      expect(entry(f.runtime.surfaces, 'activity').component.render(40)).toEqual([''])
+
+      active = true
+      handle.refresh()
+      await flush()
+      const rows = entry(f.runtime.surfaces, 'activity').component.render(40)
+      expect(rows).toEqual(['working'])
     } finally {
       await f.dispose()
     }
@@ -630,7 +670,10 @@ describe('direct pane surface renderer', () => {
       expect(calls[1]!.context.signal.aborted).toBe(true)
       calls[1]!.result.resolve()
       await flush()
-      expect(entry(f.runtime.surfaces, 'replace').component.render(30)).toEqual(['new pane'])
+      const replacementRows = entry(f.runtime.surfaces, 'replace').component.render(30)
+      expect(replacementRows[0]).toContain('╭ Replacement')
+      expect(replacementRows[1]).toContain('new pane')
+      expect(replacementRows.at(-1)).toContain('╰')
       expect((oldComponent as MayflyFocusable).focused).toBe(false)
       expect(oldComponent.render(30)).toEqual([])
       expect(getLayoutNode(oldComponent)).toMatchObject({ type: 'vstack', entries: [] })
@@ -699,9 +742,6 @@ describe('direct pane surface renderer', () => {
       expect(f.runtime.focused()).toBe(firstFocus)
       f.runtime.setCapturing(false)
       f.keymap.invoke('mayfly.surface.next')
-      expect(f.runtime.surfaces.focusedId).toBeUndefined()
-      expect(f.runtime.focused()).toBe(f.runtime.editor)
-      f.keymap.invoke('mayfly.surface.next')
       expect(f.runtime.surfaces.focusedId).toBe('bottom')
       f.keymap.invoke('mayfly.surface.next')
       expect(f.runtime.focused()).toBe(f.runtime.editor)
@@ -727,7 +767,7 @@ describe('direct pane surface renderer', () => {
       f.keymap.invoke('mayfly.surface.next')
       expect(f.runtime.focused()).toBe(f.runtime.editor)
       f.keymap.invoke('mayfly.surface.next')
-      expect(f.runtime.focused()).toBe(f.runtime.editor)
+      expect(f.runtime.focused()).toBe(focusable)
       passiveRegistration.dispose()
       focusableRegistration.dispose()
     } finally {

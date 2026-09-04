@@ -276,7 +276,6 @@ export function apply(ctx: Context): void {
   let rendered = signature(state)
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.todo',
-    title: 'Todo',
     placement: 'bottom',
     priority: 30,
     narrow: 'bottom',

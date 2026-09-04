@@ -27,7 +27,7 @@
  * @module @ephemeral-ai/mayfly/transcript/agent-group
  */
 
-import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/index.ts'
+import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { ellipsize } from './present.ts'
 import type { TranscriptToolItem } from './types.ts'
 
@@ -317,16 +317,16 @@ export class AgentGroupComponent implements MayflyComponent {
   private bodyRow(snapshot: AgentSnapshot, isLast: boolean, width: number): string {
     const { colors } = this
     const branch = isLast ? '└─' : '├─'
-    const label = colors.primary(snapshot.label)
+    const label = colors.primary(sanitizePluginText(snapshot.label).replace(/[\r\n]+/gu, ' '))
     // kimi's stat order (model, effort, tools, elapsed, tokens) over the
     // live fields; a fold-only member shows elapsed alone.
     const stats: string[] = []
-    if (snapshot.live?.model !== undefined) stats.push(snapshot.live.model)
-    if (snapshot.live?.effort !== undefined) stats.push(snapshot.live.effort)
+    if (snapshot.live?.model !== undefined) stats.push(sanitizePluginText(snapshot.live.model).replace(/[\r\n]+/gu, ' '))
+    if (snapshot.live?.effort !== undefined) stats.push(sanitizePluginText(snapshot.live.effort).replace(/[\r\n]+/gu, ' '))
     if (snapshot.live !== undefined) stats.push(`${snapshot.live.toolCount} tool${snapshot.live.toolCount === 1 ? '' : 's'}`)
     stats.push(formatElapsed(snapshot.elapsedSeconds))
     if (snapshot.live?.tokens !== undefined) stats.push(`${formatTok(snapshot.live.tokens)} tok`)
-    const meta = colors.muted(` · ${snapshot.description} · ${stats.join(' · ')}`)
+    const meta = colors.muted(` · ${sanitizePluginText(snapshot.description).replace(/[\r\n]+/gu, ' ')} · ${stats.join(' · ')}`)
     let tail: string
     if (snapshot.phase === 'done') tail = colors.success(' · ✓ Completed')
     else if (snapshot.phase === 'failed') tail = colors.error(' · ✗ Failed')
@@ -343,12 +343,12 @@ export class AgentGroupComponent implements MayflyComponent {
   private secondLine(snapshot: AgentSnapshot, isLast: boolean, width: number): string | undefined {
     const prefix = isLast ? '   ' : '│  '
     if (snapshot.phase === 'failed') {
-      const errLine = snapshot.errorFirstLine ?? 'Failed'
+      const errLine = snapshot.errorFirstLine === undefined ? 'Failed' : sanitizePluginText(snapshot.errorFirstLine).replace(/[\r\n]+/gu, ' ')
       const err = this.colors.error(`Error: ${errLine}`)
       return this.components.truncateToWidth(`  ${prefix}    ${err}`, width)
     }
     if (snapshot.live?.activity !== undefined) {
-      return this.components.truncateToWidth(`  ${prefix}    ${this.colors.muted(snapshot.live.activity)}`, width)
+      return this.components.truncateToWidth(`  ${prefix}    ${this.colors.muted(sanitizePluginText(snapshot.live.activity).replace(/[\r\n]+/gu, ' '))}`, width)
     }
     return undefined
   }

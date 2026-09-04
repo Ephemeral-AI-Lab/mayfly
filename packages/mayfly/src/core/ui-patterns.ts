@@ -8,6 +8,7 @@
 
 import type { MayflyFormField, MayflyInlineSpan, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
+import { sanitizePluginText } from './plugin-view.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 type SurfaceNode = Extract<MayflyUiNode, { readonly kind: 'surface' }>
@@ -173,7 +174,7 @@ function paintTone(tone: MayflyTone | undefined, value: string, colors: MayflySe
 }
 
 function paintSpan(span: MayflyInlineSpan, colors: MayflySemanticColors): string {
-  const painted = paintTone(span.tone, span.text, colors)
+  const painted = paintTone(span.tone, sanitizePluginText(span.text), colors)
   return (span.styles ?? []).reduce((value, style) => {
     if (style === 'strong') return `\x1b[1m${value}\x1b[22m`
     if (style === 'italic') return `\x1b[3m${value}\x1b[23m`
@@ -207,7 +208,7 @@ function compactTokens(tokens: readonly { readonly value: string, readonly focus
 export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
   const chrome = node.chrome ?? 'none'
-  const title = node.title ?? ''
+  const title = node.title === undefined ? '' : sanitizePluginText(node.title).replace(/[\r\n]+/gu, ' ')
   const rows: string[] = []
   if (chrome === 'none') {
     if (title.length > 0) rows.push(fit(colors.textStrong(title), available))
@@ -224,7 +225,7 @@ export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors
       rows.push(paint(`${heading}${fill}${pair[1]}`))
     }
   }
-  if (node.subtitle !== undefined) rows.push(fit(colors.muted(node.subtitle), available))
+  if (node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
   if (node.badges !== undefined && node.badges.length > 0) {
     rows.push(fit(node.badges.map(span => paintSpan(span, colors)).join(' '), available))
   }

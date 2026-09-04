@@ -471,6 +471,17 @@ describe('OfficialConversationModelSource', () => {
     expect(source.snapshot().streaming).toBe(true)
     expect(published).toEqual(['baseline', 'live'])
 
+    // A changed entry identity cannot use the incremental replacement path;
+    // the mapper falls back to a complete model rebuild.
+    f.emit('mayflyConversation', projection([
+      { kind: 'assistant', id: 'a-3', seq: 7, turn: 0, step: 0, text: 'replacement', streaming: true },
+    ], true), 7)
+    expect(published.at(-1)).toBe('replacement')
+    f.emit('mayflyConversation', projection([
+      { kind: 'user', id: 'u-8', seq: 8, turn: 0, text: 'user replacement', images: [] },
+    ], true), 8)
+    expect(published.at(-1)).toBe('empty')
+
     f.set({ entries: 'bad', streaming: false }, 7)
     source.attach(f.session)
     expect(source.snapshot().entries).toEqual([])

@@ -10,7 +10,7 @@
  * @module @ephemeral-ai/mayfly/transcript/read-group
  */
 
-import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/index.ts'
+import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import type { ReadCallModel, TranscriptReadGroupModel } from '../frontend/index.ts'
 
 /** Tree rows kept in the collapsed card before the expand hint. */
@@ -72,7 +72,7 @@ function windowText(read: ReadCallModel): string {
 
 function shortError(read: ReadCallModel | undefined, deps: RenderDeps): string {
   if (read === undefined) return ''
-  return read.error === undefined ? '' : ` ${deps.colors.error(read.error)}`
+  return read.error === undefined ? '' : ` ${deps.colors.error(sanitizePluginText(read.error).replace(/[\r\n]+/gu, ' '))}`
 }
 
 /**
@@ -151,15 +151,15 @@ export class ReadGroupComponent implements MayflyComponent {
       if (group.reads.length === 1) {
         const read = group.reads[0]!
         const inline = read.state === 'error'
-          ? `  ${String(branch)} ${String(group.path)} ${String(windowMark(read, deps))}${String(shortError(read, deps))}`
-          : `  ${String(branch)} ${String(group.path)} · ${String(windowText(read))} ${String(windowMark(read, deps))}`
+          ? `  ${String(branch)} ${sanitizePluginText(group.path).replace(/[\r\n]+/gu, ' ')} ${String(windowMark(read, deps))}${String(shortError(read, deps))}`
+          : `  ${String(branch)} ${sanitizePluginText(group.path).replace(/[\r\n]+/gu, ' ')} · ${String(windowText(read))} ${String(windowMark(read, deps))}`
         rows.push(cut(inline))
         if (this.expanded && read.state === 'ok') rows.push(...this.renderPreviewRows(read, continuation, cut))
         return
       }
       const errors = group.reads.filter(read => read.state === 'error')
       const pending = group.reads.some(read => read.state === 'pending')
-      let parent = `  ${String(branch)} ${String(group.path)}`
+      let parent = `  ${String(branch)} ${sanitizePluginText(group.path).replace(/[\r\n]+/gu, ' ')}`
       if (errors.length === group.reads.length) parent += ` ${String(windowMark(group.reads[0]!, deps))}${String(shortError(group.reads.find(read => read.error !== undefined), deps))}`
       else if (errors.length > 0) parent += ` ${deps.colors.warning('◐')}${String(shortError(errors[0], deps))}`
       else if (pending) parent += deps.colors.textMuted(' · reading…')
@@ -178,6 +178,6 @@ export class ReadGroupComponent implements MayflyComponent {
 
   private renderPreviewRows(read: ReadCallModel, prefix: string, cut: (row: string) => string): string[] {
     if (read.previewLines === undefined) return []
-    return read.previewLines.map(line => cut(`  ${String(prefix)}${String(line.number)}  ${String(line.text)}`))
+    return read.previewLines.map(line => cut(`  ${String(prefix)}${String(line.number)}  ${sanitizePluginText(line.text).replace(/[\r\n]+/gu, ' ')}`))
   }
 }

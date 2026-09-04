@@ -277,6 +277,25 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
   }
 }
 
+/** Rebuild only one streaming text entry when projection structure is stable. */
+function incrementalStreamingModel(
+  previousProjection: ConversationProjection | undefined,
+  nextRaw: ConversationProjection,
+  previousModel: TranscriptModel,
+  next: ConversationProjection,
+): TranscriptModel | undefined {
+  if (previousProjection === undefined || previousProjection.entries.length !== nextRaw.entries.length || nextRaw.entries.length !== next.entries.length) return undefined
+  const changed = nextRaw.entries.flatMap((entry, index) => previousProjection.entries[index] === entry ? [] : [next.entries[index]!])
+  if (changed.length !== 1) return undefined
+  const entry = changed[0]!
+  if (entry.kind !== 'assistant' && entry.kind !== 'thinking') return undefined
+  const modelIndex = previousModel.entries.findIndex(candidate => candidate.kind === `transcript-${entry.kind}` && 'id' in candidate && candidate.id === entry.id)
+  if (modelIndex < 0) return undefined
+  const entries = [...previousModel.entries]
+  entries[modelIndex] = Object.freeze(entryModel(entry))
+  return Object.freeze({ ...previousModel, entries: Object.freeze(entries), streaming: next.streaming })
+}
+
 /** Convert one validated official whole value to a frozen Mayfly model. */
 export function conversationTranscriptModel(
   projection: ConversationProjection,
@@ -322,6 +341,7 @@ export function conversationTranscriptModel(
 /** Projection-to-model source scoped to one frontend tree and provider Fiber. */
 export class OfficialConversationModelSource {
   private model: TranscriptModel = createTranscriptModel('official-conversation', [], false)
+  private rawProjection: ConversationProjection | undefined
   private session: Session | null = null
   private generation = 0
   private watermark = -1
@@ -338,7 +358,10 @@ export class OfficialConversationModelSource {
       const parsed = conversationProjectionSchema.safeParse(value)
       if (!parsed.success) return
       this.watermark = seq
-      this.model = conversationTranscriptModel(parsed.data, this.tools, this.generation)
+      const raw = value as ConversationProjection
+      this.model = incrementalStreamingModel(this.rawProjection, raw, this.model, parsed.data)
+        ?? conversationTranscriptModel(parsed.data, this.tools, this.generation)
+      this.rawProjection = raw
       this.publish(this.model)
     })
   }
@@ -355,6 +378,7 @@ export class OfficialConversationModelSource {
     this.watermark = -1
     if (session === null) {
       this.model = createTranscriptModel('official-conversation', [], false, this.generation)
+      this.rawProjection = undefined
       this.publish(this.model)
       return
     }
@@ -364,6 +388,7 @@ export class OfficialConversationModelSource {
     this.model = parsed.success
       ? conversationTranscriptModel(parsed.data, this.tools, this.generation)
       : createTranscriptModel('official-conversation', [], false, this.generation)
+    this.rawProjection = parsed.success ? snapshot.values.mayflyConversation as ConversationProjection : undefined
     this.publish(this.model)
   }
 
@@ -373,6 +398,7 @@ export class OfficialConversationModelSource {
     this.disposed = true
     this.offChanged()
     this.session = null
+    this.rawProjection = undefined
     this.model = createTranscriptModel('official-conversation', [], false)
   }
 }

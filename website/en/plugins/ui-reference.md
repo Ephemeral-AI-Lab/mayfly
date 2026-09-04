@@ -21,7 +21,7 @@ import { ui } from '@ephemeral-ai/mayfly-ui'
 | Rendering text, tabs, lists, forms, actions, and the other nodes | Node data and product copy |
 | Theme mapping, width degradation, focus, and navigation in the active renderer | Controlled state such as `activeId`, `selectedIds`, and field values |
 | Converting user input into `MayflyUiEvent` | Validating events and calling the owning domain service/action |
-| Rerender after a successful event plus abort, stale, and unload fencing | Calling the pane/overlay handle's `refresh()` after external data changes |
+| Rerender after a successful event plus abort, stale, and unload fencing | Calling the pane/overlay handle's `set(node)` after external data changes |
 
 Nodes never accept renderer callbacks, raw keys, terminal coordinates, ANSI,
 or focus handles. Do not perform I/O in `render()`, and do not place Agent,
@@ -270,9 +270,11 @@ ui.diagram(mermaidSource: string)
 Markdown reuses Mayfly's pi-tui adapter, including tables and fenced code.
 Mermaid is rendered as terminal Unicode through `beautiful-mermaid`; closed
 `mermaid` fences in assistant messages use the same path. Parse failures,
-unsupported or over-wide diagrams, source/output quota failures, and labels
-containing CJK, emoji, or other full-width characters remain visible as the
-original Mermaid code fence. Diagrams are never wrapped or truncated.
+unsupported or over-wide diagrams, graph/source/output complexity quotas, and
+labels containing CJK, emoji, or other full-width characters remain visible as
+the original Mermaid code fence. The complexity admission keeps large graphs
+from blocking the terminal render loop. Diagrams are never wrapped or
+truncated.
 
 ```ts
 ui.diagram('flowchart TD\n  Request --> Validate\n  Validate --> Result')

@@ -9,7 +9,7 @@
  * @module @ephemeral-ai/mayfly/transcript/search-group
  */
 
-import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/index.ts'
+import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import type { SearchCallModel, TranscriptSearchGroupModel } from '../frontend/index.ts'
 
 /** Tree rows kept in the collapsed card before the expand hint. */
@@ -103,11 +103,11 @@ export class SearchGroupComponent implements MayflyComponent {
       const branch = last ? '└─' : '├─'
       const continuation = last ? '   ' : '│  '
       const label = call.pattern === undefined ? 'search'
-        : call.shape === 'matches' ? `"${String(call.pattern)}"`
-          : String(call.pattern)
+        : call.shape === 'matches' ? `"${sanitizePluginText(call.pattern).replace(/[\r\n]+/gu, ' ')}"`
+          : sanitizePluginText(call.pattern).replace(/[\r\n]+/gu, ' ')
       let row: string
       if (call.state === 'error') {
-        row = `  ${String(branch)} ${String(label)} ${deps.colors.error('✗')}${String(call.error === undefined ? '' : ` ${deps.colors.error(call.error)}`)}`
+        row = `  ${String(branch)} ${String(label)} ${deps.colors.error('✗')}${String(call.error === undefined ? '' : ` ${deps.colors.error(sanitizePluginText(call.error).replace(/[\r\n]+/gu, ' '))}`)}`
       } else if (call.state === 'pending') {
         row = `  ${String(branch)} ${String(label)} ${deps.colors.textMuted('…')}`
       } else if (call.shape === 'matches') {
@@ -138,9 +138,9 @@ export class SearchGroupComponent implements MayflyComponent {
         const last = index === files.length - 1
         const branch = last ? '└─' : '├─'
         const childContinuation = `${String(continuation)}${last ? '   ' : '│  '}`
-        rows.push(cut(`  ${String(continuation)}${String(branch)} ${String(file.path)} · ${String(file.count)}`))
+        rows.push(cut(`  ${String(continuation)}${String(branch)} ${sanitizePluginText(file.path).replace(/[\r\n]+/gu, ' ')} · ${String(file.count)}`))
         for (const preview of file.previews) {
-          rows.push(cut(`  ${String(childContinuation)}${String(preview.lineNumber)}: ${String(preview.line)}`))
+          rows.push(cut(`  ${String(childContinuation)}${String(preview.lineNumber)}: ${sanitizePluginText(preview.line).replace(/[\r\n]+/gu, ' ')}`))
         }
       })
       return rows
@@ -150,7 +150,7 @@ export class SearchGroupComponent implements MayflyComponent {
       paths.forEach((path, index) => {
         const last = index === paths.length - 1
         const branch = last ? '└─' : '├─'
-        rows.push(cut(`  ${String(continuation)}${String(branch)} ${String(path)}`))
+        rows.push(cut(`  ${String(continuation)}${String(branch)} ${sanitizePluginText(path).replace(/[\r\n]+/gu, ' ')}`))
       })
       const total = call.pathsTotal ?? paths.length
       if (total > paths.length) {

@@ -6,6 +6,7 @@ import {
   SurfaceManager,
   renderSurfaceLane,
   renderSurfaceTabs,
+  renderedSurfaceEntries,
   type SurfaceContribution,
   type SurfacePlacement,
 } from '../../src/core/surface-manager.ts'
@@ -90,6 +91,7 @@ describe('SurfaceManager', () => {
     const lane = manager.linearLayout(120, 24).right!
 
     expect(renderSurfaceTabs(lane, 80)).toContain('[面板]')
+    expect(renderSurfaceTabs(lane, 80)).not.toContain('\x1b[31m')
     expect(renderSurfaceTabs(lane, 18)).toContain('+1')
     expect(renderSurfaceTabs(lane, 8)).toContain('+2')
     for (const width of [5, 3, 2, 1]) {
@@ -132,6 +134,32 @@ describe('SurfaceManager', () => {
     expect(manager.activate('bottom', 'second')).toBe(true)
     lane = manager.linearLayout(80, 24).bottom!
     expect(renderSurfaceLane(lane, 80)).toEqual(['First [Second]', 'progress-row', 'second-form'])
+  })
+
+  it('falls back to a selectable active tab when user state names a passive pane', () => {
+    const manager = new SurfaceManager({ userState: { active: { bottom: 'progress' } } })
+    const passive = component('progress')
+    const focusable = { ...component('form'), focused: false }
+    manager.register(contribution('progress', 'bottom', { title: 'Progress' }, passive))
+    manager.register({ ...contribution('form', 'bottom', { title: 'Form' }, focusable), focusTarget: focusable })
+    const lane = manager.linearLayout(80, 24).bottom!
+    expect(lane.active.id).toBe('form')
+    expect(() => renderSurfaceTabs(lane, 8)).not.toThrow()
+  })
+
+  it('repairs a passive active entry when rendering a manually supplied lane', () => {
+    const passive = component('progress')
+    const focusable = { ...component('form'), focused: false }
+    const lane = {
+      placement: 'bottom' as const,
+      entries: [
+        { id: 'progress', placement: 'bottom' as const, priority: 20, pinned: false, component: passive },
+        { id: 'form', placement: 'bottom' as const, priority: 10, pinned: false, component: focusable, focusTarget: focusable },
+      ],
+      active: { id: 'progress', placement: 'bottom' as const, priority: 20, pinned: false, component: passive },
+    }
+    expect(renderSurfaceTabs(lane, 80)).toBe('[form]')
+    expect(renderedSurfaceEntries(lane).map(entry => entry.id)).toEqual(['progress', 'form'])
   })
 
   it('keeps the transcript at 40 columns and reopens sides only with 44 columns of margin', () => {
