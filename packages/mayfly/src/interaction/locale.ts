@@ -216,6 +216,7 @@ const zh: Readonly<Record<string, string>> = {
   'installed; restart Mayfly and start a new session to apply': '已安装；重启 Mayfly 并新建会话后生效',
   'removed; restart Mayfly and start a new session to apply': '已移除；重启 Mayfly 并新建会话后生效',
   'web-only plugin: it contributes nothing in this terminal frontend': '仅 Web 插件：在终端前端无作用',
+  'automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile': '仅自动化使用的 ACP Server 会独占 stdio；请安装到独立的非 Mayfly profile',
   'no plugins installed': '尚未安装插件',
   'Overview': '概览',
   'Surfaces': '前端贡献',

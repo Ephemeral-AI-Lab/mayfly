@@ -25,6 +25,7 @@ import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { currentMayflySettings } from './settings.ts'
 import { DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, type CatalogResult } from './plugin-market/catalog.ts'
 import {
+  currentProfileInstallBlock,
   defaultInstallSource,
   entryInstallStates,
   entrySupportsSource,
@@ -101,6 +102,7 @@ export function registerPluginCommand(ctx: Context): () => void {
 
   /** Which frontends the entry contributes its own UI to. */
   const surfaceBadge = (entry: MarketEntry): string => {
+    if (currentProfileInstallBlock(entry) !== undefined) return 'Automation'
     const parts: string[] = []
     if (entry.surfaces.tui !== undefined) parts.push('TUI')
     if (entry.surfaces.web !== undefined) parts.push('Web')
@@ -120,7 +122,8 @@ export function registerPluginCommand(ctx: Context): () => void {
 
   /** Whether the entry contributes anything to this terminal frontend. */
   const usefulInTui = (entry: MarketEntry): boolean =>
-    entry.surfaces.server !== undefined || entry.surfaces.tui !== undefined
+    currentProfileInstallBlock(entry) === undefined
+      && (entry.surfaces.server !== undefined || entry.surfaces.tui !== undefined)
 
   /** Find an entry by marketplace id or by one of its row package names. */
   const findEntry = (id: string): MarketEntry | undefined =>
@@ -183,15 +186,17 @@ export function registerPluginCommand(ctx: Context): () => void {
     const shellArgs = specs.map(spec => /^[A-Za-z0-9@._/+~-]+$/u.test(spec)
       ? spec
       : `'${spec.replaceAll("'", `'\\''`)}'`)
-    return `dsh plugin --profile <name> add ${shellArgs.join(' ')}`
+    const profile = currentProfileInstallBlock(entry) === undefined ? '<name>' : '<automation-name>'
+    return `dsh plugin --profile ${profile} add ${shellArgs.join(' ')}`
   }
 
   /** The read-only detail panel for one entry. */
   function detailPanel(entry: MarketEntry, state: EntryInstallState | undefined, onClose: () => void): InfoPanel {
     const display = displayServices(ctx)
     const segments = (text: string, style?: InfoSegment['style']): InfoSegment[] => [{ text, ...(style === undefined ? {} : { style }) }]
-    const tuiFull = usefulInTui(entry)
-    const webFull = entry.surfaces.web !== undefined || entry.surfaces.server !== undefined
+    const installBlock = currentProfileInstallBlock(entry)
+    const tuiFull = installBlock === undefined && usefulInTui(entry)
+    const webFull = installBlock === undefined && (entry.surfaces.web !== undefined || entry.surfaces.server !== undefined)
     const sections: InfoSection[] = [
       {
         heading: t('Overview'),
@@ -214,8 +219,8 @@ export function registerPluginCommand(ctx: Context): () => void {
       {
         heading: t('Surfaces'),
         rows: [
-          { label: 'TUI', segments: segments(tuiFull ? t('works here') : t('no contribution in this terminal'), tuiFull ? 'success' : 'warning') },
-          { label: 'Web', segments: segments(webFull ? t('works on dsh Web') : t('no contribution on dsh Web'), webFull ? 'success' : 'warning') },
+          { label: 'TUI', segments: segments(installBlock === undefined ? (tuiFull ? t('works here') : t('no contribution in this terminal')) : t(installBlock), tuiFull ? 'success' : 'warning') },
+          { label: 'Web', segments: segments(installBlock === undefined ? (webFull ? t('works on dsh Web') : t('no contribution on dsh Web')) : t(installBlock), webFull ? 'success' : 'warning') },
         ],
       },
       {
@@ -352,6 +357,11 @@ export function registerPluginCommand(ctx: Context): () => void {
       if (entry === undefined) return
       if (action === 'uninstall' && states()[entry.id]?.installed !== true) {
         getSharedEditor(ctx)?.notice?.(`"${entry.displayName}" is not installed in this profile`)
+        return
+      }
+      const installBlock = action === 'install' ? currentProfileInstallBlock(entry) : undefined
+      if (installBlock !== undefined) {
+        getSharedEditor(ctx)?.notice?.(t(installBlock))
         return
       }
       if (action === 'install' && usefulInTui(entry) === false) {
@@ -500,6 +510,8 @@ export function registerPluginCommand(ctx: Context): () => void {
         if (unloaded) return { kind: 'success' }
         const entry = findEntry(id)
         if (entry === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
+        const installBlock = verb === 'install' ? currentProfileInstallBlock(entry) : undefined
+        if (installBlock !== undefined) return { kind: 'error', text: t(installBlock) }
         const source: InstallSource | undefined = requestedSource === 'npm' || requestedSource === 'github'
           ? requestedSource
           : defaultInstallSource(entry)

@@ -55,6 +55,15 @@ export function defaultInstallSource(entry: MarketEntry): InstallSource | undefi
   return undefined
 }
 
+/** Packages that own a whole automation profile rather than joining a TUI. */
+const DEDICATED_PROFILE_PACKAGES = new Set(['@deepseek-ai/dsh-acp'])
+
+/** Why an entry cannot be activated inside the current Mayfly profile. */
+export function currentProfileInstallBlock(entry: MarketEntry): string | undefined {
+  if (!entry.install.rows.some(row => DEDICATED_PROFILE_PACKAGES.has(row.name))) return undefined
+  return 'automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile'
+}
+
 /** The pnpm error signature the allowBuilds hint keys on. */
 const ALLOW_BUILDS_HINT = 'allowBuilds'
 
@@ -212,6 +221,8 @@ export interface InstallerInput {
  * the `profile-patch` rows into the user patch layer.
  */
 export async function installEntry(input: InstallerInput): Promise<InstallOutcome> {
+  const blocked = currentProfileInstallBlock(input.entry)
+  if (blocked !== undefined) return { kind: 'error', text: blocked }
   const rows = input.entry.install.rows
   const specs = rows.map(row => rowSpec(row, input.source)).filter((spec): spec is string => spec !== undefined)
   if (specs.length !== rows.length || specs.length === 0) {

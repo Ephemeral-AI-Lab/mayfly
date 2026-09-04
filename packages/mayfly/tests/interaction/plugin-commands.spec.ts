@@ -22,7 +22,7 @@ registerTempDirCleanup()
 import { updaterInternals, type SpawnOutcome } from '../../src/interaction/updater/io.ts'
 import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import { registerPluginCommand } from '../../src/interaction/plugin-commands.ts'
-import { defaultInstallSource, entryInstallStates, readInstalledPlugins, rowSpec, installEntry, uninstallEntry, entrySupportsSource, MAYFLY_PACKAGE } from '../../src/interaction/plugin-market/installer.ts'
+import { currentProfileInstallBlock, defaultInstallSource, entryInstallStates, readInstalledPlugins, rowSpec, installEntry, uninstallEntry, entrySupportsSource, MAYFLY_PACKAGE } from '../../src/interaction/plugin-market/installer.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
@@ -204,6 +204,16 @@ describe('installer unit seams', () => {
     expect(defaultInstallSource(githubOnly)).toBe('github')
     expect(defaultInstallSource(mixed)).toBeUndefined()
     expect(entrySupportsSource(mixed, 'npm')).toBe(false)
+  })
+
+  it('blocks automation-only stdio servers from the current TUI profile', async () => {
+    const acp = entry({ install: { rows: [{ id: 'acp', name: '@deepseek-ai/dsh-acp', activation: 'profile-patch', npm: { spec: '@deepseek-ai/dsh-acp' } }] } })
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    expect(currentProfileInstallBlock(entry())).toBeUndefined()
+    expect(currentProfileInstallBlock(acp)).toContain('owns stdio')
+    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: acp, source: 'npm' }))
+      .toMatchObject({ kind: 'error', text: expect.stringContaining('dedicated non-Mayfly profile') })
+    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
   })
 
   it('reads installed plugins, skipping Mayfly itself', () => {
@@ -452,6 +462,27 @@ describe('/plugin browse panel', () => {
 })
 
 describe('/plugin argument paths', () => {
+  it('shows but does not install the dedicated-profile ACP server', async () => {
+    const acp = entry({
+      id: 'acp',
+      displayName: 'ACP Server',
+      install: { rows: [{ id: 'acp', name: '@deepseek-ai/dsh-acp', activation: 'profile-patch', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
+    })
+    const world = await mountWorld({ index: [acp] })
+    expect(await world.run('/plugin install acp')).toMatchObject({ kind: 'error', text: expect.stringContaining('owns stdio') })
+    expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
+    await world.run('/plugin info acp')
+    const detail = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    expect(detail).toContain('dedicated non-Mayfly profile')
+    expect(detail).toContain('dsh plugin --profile <automation-name> add @deepseek-ai/dsh-acp')
+    await world.run('/plugin')
+    const panel = world.overlay() as { handleInput(data: string): void, currentNode(): unknown }
+    expect(JSON.stringify(panel.currentNode())).toContain('Automation')
+    panel.handleInput('i')
+    expect(world.notices).toContain('automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile')
+    world.dispose()
+  })
+
   it('installs via npm by default and reminds about the restart', async () => {
     const world = await mountWorld({ index: [entry()] })
     const result = await world.run('/plugin install loop')
