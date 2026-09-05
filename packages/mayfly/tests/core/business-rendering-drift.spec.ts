@@ -72,7 +72,6 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))",
   "pointer:packages/mayfly/src/interaction/update-command.ts:subtitle: [`v${fromVersion} → v${toVersion}`, detail].join(' · ').replace(/ · $/, ''),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} → v${toVersion}` },",
-  'pointer:packages/mayfly/src/interaction/updater/swap.ts:message: `updated ${input.fromVersion} → ${input.toVersion} · smoke passed · restart dsh to apply — this session keeps running ${input.fromVersion}`,',
 ])
 
 interface Audit {
