@@ -11,7 +11,7 @@
  * @module @ephemeral-ai/mayfly/interaction/clipboard-probe
  */
 
-import { execFile } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
 import { mkdtemp, open, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -89,6 +89,7 @@ export function runTool(command: string, args: readonly string[], options?: Tool
     // exit event never settles this promise. Native helpers have no TERM
     // traps; the kill is a plain TerminateProcess on win32.
     let settled = false
+    let child: ChildProcess | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
     const finish = (result: ToolRun): void => {
       if (settled) return
@@ -97,41 +98,45 @@ export function runTool(command: string, args: readonly string[], options?: Tool
       options?.signal?.removeEventListener('abort', abort)
       resolve(result)
     }
-    const stop = (code: string, killed: boolean): void => {
-      finish({ ok: false, code, killed, stderr: '' })
-      child.kill('SIGKILL')
+    const stop = (code: string | number | undefined, killed: boolean, stderr = ''): void => {
+      finish({ ok: false, code, killed, stderr })
+      child?.kill('SIGKILL')
       // A descendant may retain the pipes after its parent dies. The deadline
       // settles independently of close and releases our pipe handles as well.
-      child.stdin?.destroy()
-      child.stdout?.destroy()
-      child.stderr?.destroy()
+      child?.stdin?.destroy()
+      child?.stdout?.destroy()
+      child?.stderr?.destroy()
     }
     const abort = (): void => stop('ABORT_ERR', false)
-    const child = execFile(command, args, {
-      encoding: 'buffer',
-      killSignal: 'SIGKILL',
-      maxBuffer: options?.maxBuffer ?? 32 * 1024 * 1024,
-      windowsHide: true,
-      ...(options?.env === undefined ? {} : { env: options.env }),
-    }, (error, stdout, stderr) => {
-      if (error === null) {
-        finish({ ok: true, stdout })
-        return
-      }
-      finish({
-        ok: false,
-        // `null` arrives only from a killed run without an exit code; the
-        // detail formatter prints it like any other code.
-        code: error.code ?? undefined,
-        killed: error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? false : error.killed ?? false,
-        stderr: stderr.toString(),
-      })
-    })
-    // A helper may intentionally ignore stdin and still exit successfully.
-    child.stdin?.on('error', () => {})
-    child.stdin?.end(options?.input)
     timer = setTimeout(() => stop('ETIMEDOUT', true), options?.timeoutMs ?? CLIPBOARD_TOOL_TIMEOUT_MS)
     options?.signal?.addEventListener('abort', abort, { once: true })
+    try {
+      child = execFile(command, args, {
+        encoding: 'buffer',
+        killSignal: 'SIGKILL',
+        maxBuffer: options?.maxBuffer ?? 32 * 1024 * 1024,
+        windowsHide: true,
+        ...(options?.env === undefined ? {} : { env: options.env }),
+      }, (error, stdout, stderr) => {
+        if (error === null) {
+          finish({ ok: true, stdout })
+          return
+        }
+        finish({
+          ok: false,
+          code: error.code ?? undefined,
+          killed: error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? false : error.killed ?? false,
+          stderr: stderr.toString(),
+        })
+      })
+      if (settled) return
+      // A helper may intentionally ignore stdin and still exit successfully.
+      child.stdin?.on('error', () => {})
+      child.stdin?.end(options?.input)
+    } catch (error) {
+      const failure = error as NodeJS.ErrnoException
+      stop(failure.code, false, String(error))
+    }
   })
 }
 

@@ -28,7 +28,6 @@
  * @module @ephemeral-ai/mayfly/interaction/paste-image
  */
 
-import { execFile } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { basename } from 'node:path'
@@ -51,6 +50,7 @@ import {
 } from './editor-instance.ts'
 import { registerSubmitTransformer, type SubmitTransformation } from './prompt-submit-pipeline.ts'
 import { ADMITTED_IMAGE_TYPES, EXT_BY_MEDIA_TYPE, sniffImageMediaType } from './attachments.ts'
+import { runTool, type FailedRun } from './clipboard-probe.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-paste-image'
@@ -137,9 +137,6 @@ const CLIPBOARD_TOOLS: Readonly<Record<ClipboardBackend, ClipboardTool>> = {
   },
 }
 
-/** Per-tool timeout; a hung clipboard helper must not wedge the editor. */
-const CLIPBOARD_TOOL_TIMEOUT_MS = 3000
-
 /** A timed-out backend stays skipped briefly, then is retried automatically. */
 const BACKEND_COOLDOWN_MS = 60_000
 
@@ -173,14 +170,6 @@ function clipboardToolsFor(policy: ClipboardBackendPolicy): readonly ClipboardTo
   return [CLIPBOARD_TOOLS.wayland, CLIPBOARD_TOOLS.x11]
 }
 
-/** Outcome of one clipboard tool invocation. */
-type ToolRun =
-  | { ok: true; stdout: Buffer }
-  | { ok: false; code: string | number | undefined; killed: boolean; stderr: string }
-
-/** The failed half of {@link ToolRun}. */
-type FailedRun = Extract<ToolRun, { ok: false }>
-
 /** Every unsuccessful clipboard result. */
 type FailureResult = Exclude<ClipboardImageResult, { kind: 'image' | 'images' }>
 
@@ -201,38 +190,6 @@ const OUTCOME_RANK: Readonly<Record<FailureKind, number>> = {
   failed: 4,
   timeout: 5,
   'missing-tool': 6,
-}
-
-/**
- * Run one clipboard tool to completion. Never rejects; a nonzero exit or a
- * spawn failure resolves as a failed run carrying the exit code, kill flag,
- * and stderr text for classification.
- * @param command - the tool to run.
- * @param args - its arguments.
- * @returns the stdout bytes, or the failure details.
- */
-function runTool(command: string, args: readonly string[]): Promise<ToolRun> {
-  return new Promise(resolve => {
-    // SIGKILL, not the default SIGTERM: wl-clipboard traps TERM for its own
-    // cleanup and, wedged on an unresponsive compositor (GNOME's core-
-    // protocol fallback never gains focus from a background process), never
-    // returns from the handler — a TERM'd tool survives as a zombie and the
-    // exit event never settles this promise.
-    execFile(command, args, { encoding: 'buffer', timeout: CLIPBOARD_TOOL_TIMEOUT_MS, killSignal: 'SIGKILL', maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error === null) {
-        resolve({ ok: true, stdout })
-        return
-      }
-      resolve({
-        ok: false,
-        // `null` arrives only from a killed run without an exit code; the
-        // detail formatter prints it like any other code.
-        code: error.code ?? undefined,
-        killed: error.killed ?? false,
-        stderr: stderr.toString(),
-      })
-    })
-  })
 }
 
 /**
