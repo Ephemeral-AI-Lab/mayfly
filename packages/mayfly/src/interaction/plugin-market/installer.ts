@@ -413,6 +413,8 @@ export interface EntryInstallState {
   readonly version: string | undefined
   /** A newer version is on the registry than the one installed. */
   readonly updateAvailable: boolean
+  /** First row version that is newer than its installed counterpart. */
+  readonly updateVersion: string | undefined
 }
 
 /**
@@ -431,12 +433,14 @@ export function entryInstallStates(
     const version = installed === true
       ? present.map(row => byName.get(row.name)).find(plugin => plugin?.version !== undefined)?.version
       : undefined
-    const first = entry.install.rows[0]
-    /* v8 ignore next -- the manifest schema guarantees at least one row */
-    const info = first === undefined ? undefined : entry.npm?.[first.name]
-    const updateAvailable = installed === true && info?.latestVersion != null && version !== undefined
-      && compareVersions(info.latestVersion, version) > 0
-    states[entry.id] = { installed, version, updateAvailable }
+    const updateVersion = installed === true
+      ? entry.install.rows.map(row => {
+          const current = byName.get(row.name)?.version
+          const latest = entry.npm?.[row.name]?.latestVersion
+          return current !== undefined && latest != null && compareVersions(latest, current) > 0 ? latest : undefined
+        }).find((candidate): candidate is string => candidate !== undefined)
+      : undefined
+    states[entry.id] = { installed, version, updateAvailable: updateVersion !== undefined, updateVersion }
   }
   return states
 }

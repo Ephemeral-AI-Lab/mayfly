@@ -293,10 +293,19 @@ describe('installer unit seams', () => {
       { name: 'dsh-workbench-ui', spec: 'x', version: '0.1.0' },
       { name: 'dsh-loop', spec: 'y', version: '0.1.3' },
     ])
-    expect(states.sidechat).toEqual({ installed: false, version: undefined, updateAvailable: false })
-    expect(states.loop).toEqual({ installed: true, version: '0.1.3', updateAvailable: true })
+    expect(states.sidechat).toEqual({ installed: false, version: undefined, updateAvailable: false, updateVersion: undefined })
+    expect(states.loop).toEqual({ installed: true, version: '0.1.3', updateAvailable: true, updateVersion: '0.1.4' })
     expect(entryInstallStates([entry()], [{ name: 'dsh-loop', spec: 'y', version: '0.1.5' }]).loop)
-      .toEqual({ installed: true, version: '0.1.5', updateAvailable: false })
+      .toEqual({ installed: true, version: '0.1.5', updateAvailable: false, updateVersion: undefined })
+    const multi = entry({
+      id: 'multi-update',
+      install: { rows: [{ name: 'stable-row' }, { name: 'outdated-row' }] },
+      npm: { 'stable-row': { latestVersion: '5.0.0' }, 'outdated-row': { latestVersion: '2.0.0' } },
+    })
+    expect(entryInstallStates([multi], [
+      { name: 'stable-row', spec: 'x', version: '5.0.0' },
+      { name: 'outdated-row', spec: 'y', version: '1.0.0' },
+    ])['multi-update']).toEqual({ installed: true, version: '5.0.0', updateAvailable: true, updateVersion: '2.0.0' })
   })
 
   it('installs: allowBuilds first, one add carrying every spec, then profile-patch rows', async () => {
@@ -1055,8 +1064,8 @@ describe('/plugin coverage corners', () => {
     const states = entryInstallStates([ghOnly, entry({ id: 'unrelated', install: { rows: [{ name: 'zz-pkg', npm: { spec: 'z' } }] } })], [
       { name: 'gh-pkg', spec: 'github:a/b#r', version: undefined },
     ])
-    expect(states.gh).toEqual({ installed: true, version: undefined, updateAvailable: false })
-    expect(states.unrelated).toEqual({ installed: false, version: undefined, updateAvailable: false })
+    expect(states.gh).toEqual({ installed: true, version: undefined, updateAvailable: false, updateVersion: undefined })
+    expect(states.unrelated).toEqual({ installed: false, version: undefined, updateAvailable: false, updateVersion: undefined })
   })
 
   it('rowSpec returns undefined when the requested source is absent', () => {
@@ -1402,7 +1411,7 @@ describe('detail-shape arms', () => {
     })
     // Installed with an update available: the Version row shows the update.
     await world.run('/plugin info loop')
-    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('update available')
+    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('update available: 0.1.4')
     for (const id of ['tools-only', 'commands-only', 'tui-only', 'web-only2']) {
       await world.run(`/plugin info ${id}`)
       expect(world.overlay()).toBeDefined()

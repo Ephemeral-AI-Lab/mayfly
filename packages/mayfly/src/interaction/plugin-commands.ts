@@ -125,8 +125,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     const pieces = [entry.source, surfaceBadge(entry)]
     /* v8 ignore next -- states() carries every indexed entry id */
     if (state?.installed === true) {
-      const latest = entry.install.rows.map(row => entry.npm?.[row.name]?.latestVersion).find(version => version != null)
-      pieces.push(state.updateAvailable === true ? `up ${latest ?? state.version ?? ''}`.trim() : 'installed')
+      pieces.push(state.updateAvailable === true ? `up ${state.updateVersion!}` : 'installed')
     } else if (entry.install.rows.some(row => installed.some(plugin => plugin.name === row.name))) {
       pieces.push('partial')
     }
@@ -252,7 +251,7 @@ export function registerPluginCommand(ctx: Context): () => void {
           { label: t('Source'), segments: segments(entry.source) },
           { label: t('Version'), segments: segments(state?.installed === true ? (state.version ?? 'installed') : (entry.verified?.packages[0]?.version ?? 'unknown')) },
           ...(state?.updateAvailable === true && state.version !== undefined
-            ? [{ label: '', segments: segments(t('update available: {version}', { version: state.version }), 'warning') }]
+            ? [{ label: '', segments: segments(t('update available: {version}', { version: state.updateVersion! }), 'warning') }]
             : []),
           { label: '', segments: segments(describe(entry), 'textMuted') },
         ],
