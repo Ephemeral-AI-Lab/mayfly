@@ -31,7 +31,9 @@ import { CanonicalDocumentController, type FrontendPanelDocument } from './front
 import type { UpdateSettings } from './updater/check.ts'
 import { writeUpdateCheckState } from './updater/check.ts'
 import { updaterInternals } from './updater/io.ts'
-import { backupDir, findDshBin, profileNameFromArgv, profileRoot, readProfileFacts } from './updater/profile.ts'
+import { backupDir, findDshCommand, profileRoot, readProfileFacts } from './updater/profile.ts'
+import { profileNameFromArgv } from '../internal/profile.ts'
+import type { ResolvedCommand } from './updater/io.ts'
 import {
   MAYFLY_PACKAGE,
   fetchPackument,
@@ -181,7 +183,7 @@ async function runSwapPanel(
   input: {
     readonly root: string
     readonly profile: string
-    readonly dshBin: string
+    readonly dshCommand: ResolvedCommand
     readonly fromVersion: string
     readonly toVersion: string
   },
@@ -239,8 +241,8 @@ function updateChannelOf(ctx: Context): string {
 }
 
 /** Probe the installed dsh CLI's version output; `undefined` when unreadable. */
-async function probeHostVersion(dshBin: string): Promise<string | undefined> {
-  const outcome = await updaterInternals.spawnOnce(dshBin, ['--version'], { timeoutMs: 10_000 })
+async function probeHostVersion(dshCommand: ResolvedCommand): Promise<string | undefined> {
+  const outcome = await updaterInternals.spawnOnce(dshCommand.command, [...dshCommand.args, '--version'], { timeoutMs: 10_000 })
   if (outcome.spawnError !== undefined || outcome.code !== 0) return undefined
   return outcome.stdout
 }
@@ -364,12 +366,12 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
   const profile = profileNameFromArgv(process.argv)
   const root = profileRoot(profile)
   const facts = readProfileFacts(root)
-  const dshBin = await findDshBin()
-  if (dshBin === undefined) {
+  const dshCommand = await findDshCommand()
+  if (dshCommand === undefined) {
     return { kind: 'error', text: t('cannot find the dsh CLI — set DSH_BIN or put dsh on PATH') }
   }
   const [hostOutput, cooldownMinutes, release] = await Promise.all([
-    probeHostVersion(dshBin),
+    probeHostVersion(dshCommand),
     probeCooldownMinutes(root),
     releaseFacts(packument, target),
   ])
@@ -406,7 +408,7 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
     return { kind: 'success', text: t('update cancelled') }
   }
 
-  const outcome = await runSwapPanel(ctx, display, { root, profile, dshBin, fromVersion, toVersion: target })
+  const outcome = await runSwapPanel(ctx, display, { root, profile, dshCommand, fromVersion, toVersion: target })
   if (outcome.kind === 'success') {
     // The boot check stops offering what this session just installed.
     writeUpdateCheckState({ lastCheckAt: updaterInternals.now(), lastNotifiedVersion: target })

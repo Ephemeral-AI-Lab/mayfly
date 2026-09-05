@@ -1,11 +1,11 @@
 /** Process-exit epitaph formatting and writer tests. @module mayfly-app/exit-epitaph-tests */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { profileNameFromArgv } from '../../src/internal/profile.ts'
 import {
   armExitEpitaph,
   armedEpitaph,
   epitaphFor,
-  profileFromArgv,
   setExitEpitaphWriter,
   writeArmedEpitaph,
 } from '../../src/app/exit-epitaph.ts'
@@ -38,11 +38,11 @@ describe('exit epitaph', () => {
   })
 
   it('reads both profile flag forms and rejects flag-shaped followers', () => {
-    expect(profileFromArgv(['dsh'])).toBe('mayfly')
-    expect(profileFromArgv(['dsh', '--profile', 'tui', '--resume', 'x'])).toBe('tui')
-    expect(profileFromArgv(['dsh', '--profile=direct'])).toBe('direct')
-    expect(profileFromArgv(['dsh', '--profile', '--resume', 'x'])).toBe('mayfly')
-    expect(profileFromArgv(['dsh', '--profile'])).toBe('mayfly')
+    expect(profileNameFromArgv(['dsh'])).toBe('mayfly')
+    expect(profileNameFromArgv(['dsh', '--profile', 'tui', '--resume', 'x'])).toBe('tui')
+    expect(profileNameFromArgv(['dsh', '--profile=direct'])).toBe('direct')
+    expect(profileNameFromArgv(['dsh', '--profile', '--resume', 'x'])).toBe('mayfly')
+    expect(profileNameFromArgv(['dsh', '--profile'])).toBe('mayfly')
   })
 
   it('places the resume command on its own line', () => {

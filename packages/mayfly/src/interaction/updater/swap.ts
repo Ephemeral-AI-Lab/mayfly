@@ -17,7 +17,7 @@
  */
 
 import { join } from 'node:path'
-import { cleanOutput, updaterInternals, type InteractiveChild, type SpawnOutcome } from './io.ts'
+import { cleanOutput, updaterInternals, type InteractiveChild, type SpawnOutcome, type ResolvedCommand } from './io.ts'
 import { appendUpdateLog, backupDir, readProfileFacts, restoreSnapshot, snapshotProfile } from './profile.ts'
 import { repairRecipe } from './preflight.ts'
 import { compareVersions, VERSION_FLOOR } from './version.ts'
@@ -115,7 +115,7 @@ export interface SwapInput {
   /** The profile name (`dsh plugin --profile <name>`). */
   readonly profile: string
   /** The dsh CLI binary. */
-  readonly dshBin: string
+  readonly dshCommand: ResolvedCommand
   /** The version the profile runs now. */
   readonly fromVersion: string
   /** The version to install. */
@@ -261,8 +261,8 @@ async function quitLadder(child: InteractiveChild, exited: Promise<SpawnOutcome>
  */
 export async function bootSmoke(input: SwapInput): Promise<boolean> {
   const child = updaterInternals.spawnInteractive(
-    input.dshBin,
-    ['--profile', input.profile],
+    input.dshCommand.command,
+    [...input.dshCommand.args, '--profile', input.profile],
     { cwd: input.root, env: { NO_COLOR: '1', COLUMNS: '100', LINES: '30' } },
   )
   const exited = child.exited
@@ -333,8 +333,8 @@ export async function performSwap(input: SwapInput): Promise<SwapOutcome> {
   progress(input, 'install', 'start')
   const installSpecs = [`${MAYFLY_PACKAGE}@${input.toVersion}`]
   const install = await updaterInternals.spawnOnce(
-    input.dshBin,
-    ['plugin', '--profile', input.profile, 'add', ...installSpecs],
+    input.dshCommand.command,
+    [...input.dshCommand.args, 'plugin', '--profile', input.profile, 'add', ...installSpecs],
     { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS },
   )
   logLine(input.root, `$ dsh plugin --profile ${input.profile} add ${installSpecs.join(' ')}\n${install.stdout}${install.stderr}`)
@@ -402,8 +402,8 @@ async function rollback(input: SwapInput, reason: string, logPath: string, pendi
   restoreSnapshot(input.root)
   const specs = [`${MAYFLY_PACKAGE}@${input.fromVersion}`]
   const reinstall = await updaterInternals.spawnOnce(
-    input.dshBin,
-    ['plugin', '--profile', input.profile, 'add', ...specs],
+    input.dshCommand.command,
+    [...input.dshCommand.args, 'plugin', '--profile', input.profile, 'add', ...specs],
     { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS },
   )
   logLine(input.root, `$ dsh plugin --profile ${input.profile} add ${specs.join(' ')}\n${reinstall.stdout}${reinstall.stderr}`)

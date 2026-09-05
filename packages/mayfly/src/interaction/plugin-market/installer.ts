@@ -12,7 +12,7 @@
 
 import { join } from 'node:path'
 import { isMap, isSeq, parseDocument, type YAMLMap } from 'yaml'
-import { updaterInternals, type SpawnOutcome } from '../updater/io.ts'
+import { updaterInternals, type SpawnOutcome, type ResolvedCommand } from '../updater/io.ts'
 import { compareVersions } from '../updater/version.ts'
 import type { MarketEntry, MarketInstallRow } from './types.ts'
 
@@ -252,8 +252,8 @@ export type InstallOutcome =
 
 /** Everything an install or removal needs to run. */
 export interface InstallerInput {
-  /** The dsh CLI binary (`findDshBin()`). */
-  readonly dshBin: string
+  /** The dsh CLI binary (`findDshCommand()`). */
+  readonly dshCommand: ResolvedCommand
   /** The profile name the launcher runs under. */
   readonly profile: string
   /** The profile workspace root. */
@@ -274,8 +274,8 @@ async function rollbackInstall(
   reason: string,
 ): Promise<InstallOutcome> {
   input.onProgress?.('rollback')
-  const removal = await updaterInternals.spawnOnce(input.dshBin,
-    ['plugin', '--profile', input.profile, 'remove', ...names],
+  const removal = await updaterInternals.spawnOnce(input.dshCommand.command,
+    [...input.dshCommand.args, 'plugin', '--profile', input.profile, 'remove', ...names],
     { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
   let restoreError: string | undefined
   try {
@@ -316,8 +316,8 @@ export async function installEntry(input: InstallerInput): Promise<InstallOutcom
   } catch (error) {
     return { kind: 'error', text: `preparing "${input.entry.displayName}" failed: ${errorText(error)}` }
   }
-  const outcome = await updaterInternals.spawnOnce(input.dshBin,
-    ['plugin', '--profile', input.profile, 'add', ...specs],
+  const outcome = await updaterInternals.spawnOnce(input.dshCommand.command,
+    [...input.dshCommand.args, 'plugin', '--profile', input.profile, 'add', ...specs],
     { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
   if (outcome.code !== 0) {
     restoreTransactionFiles(files)
@@ -348,8 +348,8 @@ export async function uninstallEntry(input: InstallerInput): Promise<InstallOutc
   } catch (error) {
     return { kind: 'error', text: `preparing removal of "${input.entry.displayName}" failed: ${errorText(error)}` }
   }
-  const outcome = await updaterInternals.spawnOnce(input.dshBin,
-    ['plugin', '--profile', input.profile, 'remove', ...names],
+  const outcome = await updaterInternals.spawnOnce(input.dshCommand.command,
+    [...input.dshCommand.args, 'plugin', '--profile', input.profile, 'remove', ...names],
     { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
   if (outcome.code !== 0) {
     return { kind: 'error', text: describeFailure(`removing "${input.entry.displayName}"`, outcome) }

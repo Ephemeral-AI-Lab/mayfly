@@ -195,7 +195,7 @@ function swapInput(world: ReturnType<typeof makeWorld>, overrides: Partial<Param
   return {
     root: world.root,
     profile: 'mayfly',
-    dshBin: '/usr/bin/dsh',
+    dshCommand: { command: '/usr/bin/dsh', args: [] },
     fromVersion: '0.1.0-rc.2',
     toVersion: '0.1.0-rc.3',
     bootMarker: 'deepseek-chat marker',
@@ -436,7 +436,7 @@ describe('updater/swap performSwap', () => {
     const outcome = await performSwap({
       root: world.root,
       profile: 'mayfly',
-      dshBin: '/usr/bin/dsh',
+      dshCommand: { command: '/usr/bin/dsh', args: [] },
       fromVersion: '0.1.0-rc.2',
       toVersion: '0.1.0-rc.3',
       bootMarker: 'deepseek-chat marker',

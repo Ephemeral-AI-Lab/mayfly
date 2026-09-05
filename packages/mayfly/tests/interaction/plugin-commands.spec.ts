@@ -241,7 +241,7 @@ describe('installer unit seams', () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     expect(currentProfileInstallBlock(entry())).toBeUndefined()
     expect(currentProfileInstallBlock(acp)).toContain('owns stdio')
-    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: acp, source: 'npm' }))
+    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: acp, source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('dedicated non-Mayfly profile') })
     expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
   })
@@ -249,9 +249,9 @@ describe('installer unit seams', () => {
   it('blocks removed marketplace entries before spawning an install', async () => {
     const removed = entry({ status: 'removed', statusNote: 'security incident' })
     updaterInternals.spawnOnce = vi.fn(async () => ok())
-    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: removed, source: 'npm' }))
+    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: removed, source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('security incident') })
-    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: entry({ status: 'removed', statusNote: undefined }), source: 'npm' }))
+    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: entry({ status: 'removed', statusNote: undefined }), source: 'npm' }))
       .toEqual({ kind: 'error', text: '"Loop" was removed from the marketplace' })
     expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
   })
@@ -260,7 +260,7 @@ describe('installer unit seams', () => {
     const root = mkdtempTracked('mayfly-install-')
     writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.4' } }))
     updaterInternals.spawnOnce = vi.fn(async () => ok())
-    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' }))
+    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('already or partially installed') })
     expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
   })
@@ -319,7 +319,7 @@ describe('installer unit seams', () => {
     const root = mkdtempTracked('mayfly-install-')
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\nallowBuilds:\n  node-pty: false\noverrides:\n  keep: true\n')
     writeFileSync(join(root, 'cordis.patch.yml'), '# User patch layer\n[]\n')
-    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: profilePatch, source: 'npm' })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: profilePatch, source: 'npm' })
     expect(outcome.kind).toBe('success')
     const workspace = parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '') as Record<string, unknown>
     expect(workspace).toMatchObject({ allowBuilds: { 'node-pty': true }, overrides: { keep: true } })
@@ -334,7 +334,7 @@ describe('installer unit seams', () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const root = mkdtempTracked('mayfly-install-')
     writeFileSync(join(root, 'cordis.patch.yml'), '- id: keep\n  name: \'keep-me\'\n')
-    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: withConfig, source: 'npm' })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: withConfig, source: 'npm' })
     expect(outcome.kind).toBe('success')
     const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
     expect(patch).toContain('- id: keep')
@@ -365,7 +365,7 @@ describe('installer unit seams', () => {
       '    - id: after',
       "      name: 'pkg-after'",
     ].join('\n') + '\n')
-    const outcome = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: two, source: 'npm' })
+    const outcome = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: two, source: 'npm' })
     expect(outcome.kind).toBe('success')
     const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
     expect(patch).toContain('keep-me')
@@ -379,7 +379,7 @@ describe('installer unit seams', () => {
   it('refuses an installer-level uninstall when no entry rows are present', async () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const outcome = await uninstallEntry({
-      dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-uninstall-'), entry: entry(), source: 'npm',
+      dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-uninstall-'), entry: entry(), source: 'npm',
     })
     expect(outcome).toEqual({ kind: 'error', text: '"Loop" is not installed in this profile' })
     expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
@@ -390,30 +390,30 @@ describe('installer unit seams', () => {
     const root = mkdtempTracked('mayfly-install-')
     const realSpawn = updaterInternals.spawnOnce
     updaterInternals.spawnOnce = async () => ({ code: 1, signal: null, stdout: '', stderr: 'ERR_PNPM_IGNORED_BUILDS add the package to "allowBuilds"', timedOut: false })
-    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: failing, source: 'npm' })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: failing, source: 'npm' })
     updaterInternals.spawnOnce = realSpawn
     expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('allowBuilds in the profile pnpm-workspace.yaml') })
   })
 
   it('reports spawn errors and timeouts distinctly', async () => {
     const root = mkdtempTracked('mayfly-install-')
-    const enoent = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' }).catch(() => undefined)
+    const enoent = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' }).catch(() => undefined)
     void enoent
     const realSpawn = updaterInternals.spawnOnce
     updaterInternals.spawnOnce = async () => ({ code: null, signal: null, stdout: '', stderr: '', timedOut: true, spawnError: 'ENOENT' })
-    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
     updaterInternals.spawnOnce = realSpawn
     expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('failed to start') })
     updaterInternals.spawnOnce = async () => ({ code: null, signal: null, stdout: '', stderr: '', timedOut: true })
     writeInstalledDependencies(root, ['dsh-loop'])
-    const timedOut = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' })
+    const timedOut = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
     updaterInternals.spawnOnce = realSpawn
     expect(timedOut).toMatchObject({ kind: 'error', text: expect.stringContaining('timed out') })
   })
 
   it('refuses a source the entry does not declare', async () => {
     const githubOnly = { ...entry(), install: { rows: [{ name: 'dsh-loop', github: { repo: 'a/b', ref: 'r' } }] } }
-    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: githubOnly, source: 'npm' })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: githubOnly, source: 'npm' })
     expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('no npm install source') })
   })
 
@@ -421,7 +421,7 @@ describe('installer unit seams', () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const root = mkdtempTracked('mayfly-install-')
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\n')
-    await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' })
+    await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
     expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toBe('packages:\n  - .\n')
   })
 
@@ -431,7 +431,7 @@ describe('installer unit seams', () => {
     for (const source of ['[]\n', '[\n', 'allowBuilds: []\n']) {
       const root = mkdtempTracked('mayfly-install-')
       writeFileSync(join(root, 'pnpm-workspace.yaml'), source)
-      const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: withBuild, source: 'npm' })
+      const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: withBuild, source: 'npm' })
       expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('pnpm-workspace.yaml') })
     }
     expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
@@ -443,7 +443,7 @@ describe('installer unit seams', () => {
     for (const source of ['{}\n', '[\n', '- insert: {}\n', '- insert:\n    - scalar\n', '- insert:\n    - id: wanted\n      name: another-package\n']) {
       const root = mkdtempTracked('mayfly-install-')
       writeFileSync(join(root, 'cordis.patch.yml'), source)
-      const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: withPatch, source: 'npm' })
+      const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: withPatch, source: 'npm' })
       expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('cordis.patch.yml') })
       expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toBe(source)
     }
@@ -454,10 +454,10 @@ describe('installer unit seams', () => {
     const root = mkdtempTracked('mayfly-install-')
     writeFileSync(join(root, 'cordis.patch.yml'), '- id: keep\n  name: keep\n  config:\n    value: !!js return 1\n')
     const noId = entry({ install: { rows: [{ name: 'pkg-no-id', activation: 'profile-patch', npm: { spec: 'pkg-no-id' } }] } })
-    expect((await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
+    expect((await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
     expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toContain('!!js return 1')
     writeInstalledDependencies(root, ['pkg-no-id'])
-    expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
+    expect((await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
     expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).not.toContain('pkg-no-id')
   })
 
@@ -468,13 +468,13 @@ describe('installer unit seams', () => {
       const root = mkdtempTracked('mayfly-uninstall-')
       writeInstalledDependencies(root, ['pkg-target'])
       writeFileSync(join(root, 'cordis.patch.yml'), source)
-      const outcome = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: target, source: 'npm' })
+      const outcome = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: target, source: 'npm' })
       expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('cordis.patch.yml') })
     }
     const root = mkdtempTracked('mayfly-uninstall-')
     writeInstalledDependencies(root, ['pkg-target'])
     writeFileSync(join(root, 'cordis.patch.yml'), '- scalar\n- name: top-level\n- insert:\n    - name: no-id\n    - id: orphan\n    - id: target\n      name: pkg-target\n')
-    expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: target, source: 'npm' })).kind).toBe('success')
+    expect((await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: target, source: 'npm' })).kind).toBe('success')
     expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([
       'scalar',
       { name: 'top-level' },
@@ -488,17 +488,17 @@ describe('installer unit seams', () => {
     const installRoot = mkdtempTracked('mayfly-install-')
     writeFileSync(join(installRoot, 'cordis.patch.yml'), '[]\n')
     updaterInternals.writeTextFile = () => { throw new Error('disk full') }
-    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: installRoot, entry: withPatch, source: 'npm' }))
+    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: installRoot, entry: withPatch, source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('activating') })
 
     const uninstallRoot = mkdtempTracked('mayfly-uninstall-')
     writeInstalledDependencies(uninstallRoot, ['pkg-write'])
     writeFileSync(join(uninstallRoot, 'cordis.patch.yml'), '- insert:\n    - id: write\n      name: pkg-write\n')
-    expect(await uninstallEntry({ dshBin: 'dsh', profile: 'p', root: uninstallRoot, entry: withPatch, source: 'npm' }))
+    expect(await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: uninstallRoot, entry: withPatch, source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('cleaning up') })
   })
 
-  it('import-checks new packages and restores the profile when compatibility fails', async () => {
+  it('uses the pinned JavaScript host for install and compatibility rollback', async () => {
     const root = mkdtempTracked('mayfly-install-')
     const files = {
       'package.json': JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0' }, dsh: { profile: { bundles: ['@ephemeral-ai/mayfly'] } } }),
@@ -509,14 +509,14 @@ describe('installer unit seams', () => {
     for (const [file, text] of Object.entries(files)) writeFileSync(join(root, file), text)
     const phases: string[] = []
     updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'does not provide an export named CallId', timedOut: false }
+      if (cmd === process.execPath && args[0] === '--input-type=module') return { code: 1, signal: null, stdout: '', stderr: 'does not provide an export named CallId', timedOut: false }
       if (args.includes('add')) {
         writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0', 'dsh-loop': 'github:x' } }))
       }
       return ok()
     })
     const outcome = await installEntry({
-      dshBin: 'dsh', profile: 'p', root,
+      dshCommand: { command: process.execPath, args: ['/bundled host/入口.js'] }, profile: 'p', root,
       entry: entry({ install: { allowBuilds: ['node-pty'], rows: entry().install.rows } }),
       source: 'npm', onProgress: phase => phases.push(phase),
     })
@@ -525,7 +525,8 @@ describe('installer unit seams', () => {
     expect(phases).toEqual(['verify', 'rollback'])
     for (const [file, text] of Object.entries(files)) expect(updaterInternals.readTextFile(join(root, file))).toBe(text)
     expect(updaterInternals.spawnOnce).toHaveBeenCalledWith(process.execPath, expect.arrayContaining(['--input-type=module']), expect.objectContaining({ cwd: root }))
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'remove', 'dsh-loop'], expect.any(Object))
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith(process.execPath, ['/bundled host/入口.js', 'plugin', '--profile', 'p', 'remove', 'dsh-loop'], expect.any(Object))
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith(process.execPath, ['/bundled host/入口.js', 'plugin', '--profile', 'p', 'add', 'dsh-loop'], expect.any(Object))
   })
 
   it('reports an incomplete rollback while still restoring captured files', async () => {
@@ -536,7 +537,7 @@ describe('installer unit seams', () => {
       if (args.includes('remove')) return { code: 1, signal: null, stdout: '', stderr: 'remove failed', timedOut: false }
       return ok()
     })
-    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
     expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('rollback incomplete') })
     expect(updaterInternals.readTextFile(join(root, 'package.json'))).toBe(JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0' } }))
   })
@@ -797,7 +798,7 @@ describe('/plugin key paths', () => {
     const rollbackGate = new Promise<void>(resolve => { releaseRollback = resolve })
     const world = await mountWorld({ index: [entry()] })
     updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'sh') return ok('/usr/bin/dsh\n')
+      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
       if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'missing export', timedOut: false }
       if (args.includes('remove')) await rollbackGate
       return ok()
@@ -821,7 +822,7 @@ describe('/plugin key paths', () => {
     const verifyGate = new Promise<void>(resolve => { releaseVerify = resolve })
     const world = await mountWorld({ index: [entry()] })
     updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'sh') return ok('/usr/bin/dsh\n')
+      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
       if (cmd === process.execPath) {
         await verifyGate
         return ok()
@@ -964,7 +965,7 @@ describe('/plugin coverage corners', () => {
     const world = await mountWorld({ index: [entry()] })
     const realSpawn = updaterInternals.spawnOnce
     updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'sh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
+      if (cmd === 'dsh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
       if (args[0] === 'plugin') await gate
       return realSpawn(cmd, args)
     })
@@ -985,7 +986,7 @@ describe('/plugin coverage corners', () => {
     const world = await mountWorld({ index: [entry()] })
     updaterInternals.env = { DSH_HOME: updaterInternals.env.DSH_HOME }
     const realSpawn = updaterInternals.spawnOnce
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => (cmd === 'sh' ? { code: 1, signal: null, stdout: '', stderr: '', timedOut: false } : realSpawn(cmd, [])))
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => (cmd === 'dsh' ? { code: 1, signal: null, stdout: '', stderr: '', timedOut: false } : realSpawn(cmd, [])))
     await world.run('/plugin install loop')
     expect(world.notices.at(-1)).toBe('plugin operations need the dsh CLI on PATH (or $DSH_BIN)')
     world.dispose()
@@ -1083,8 +1084,8 @@ describe('/plugin coverage corners', () => {
     const root = mkdtempTracked('mayfly-install-')
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\nallowBuilds:\n  "node-pty": true\n')
-    await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: profilePatch, source: 'npm' })
-    await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: profilePatch, source: 'npm' })
+    await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: profilePatch, source: 'npm' })
+    await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: profilePatch, source: 'npm' })
     expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toBe('packages:\n  - .\nallowBuilds:\n  "node-pty": true\n')
     expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([{ insert: [{ id: 't', name: 'pkg-t' }] }])
   })
@@ -1094,14 +1095,14 @@ describe('/plugin coverage corners', () => {
     const root = mkdtempTracked('mayfly-uninstall-')
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     writeInstalledDependencies(root, ['bare-pkg'])
-    const withoutFile = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: unquoted, source: 'npm' })
+    const withoutFile = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: unquoted, source: 'npm' })
     expect(withoutFile.kind).toBe('success')
     const unrelated = '- insert:\n    - id: other\n      name: other-package\n'
     writeFileSync(join(root, 'cordis.patch.yml'), unrelated)
-    expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: unquoted, source: 'npm' })).kind).toBe('success')
+    expect((await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: unquoted, source: 'npm' })).kind).toBe('success')
     expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toBe(unrelated)
     writeFileSync(join(root, 'cordis.patch.yml'), '- insert:\n    - id: u\n      name: bare-pkg\n')
-    const outcome = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: unquoted, source: 'npm' })
+    const outcome = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: unquoted, source: 'npm' })
     expect(outcome.kind).toBe('success')
     expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([])
   })
@@ -1163,7 +1164,7 @@ describe('/plugin lifecycle and locale', () => {
       })
       const realSpawn = updaterInternals.spawnOnce
       updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-        if (cmd === 'sh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
+        if (cmd === 'dsh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
         if (args[0] === 'plugin') await gate
         return realSpawn(cmd, args)
       })
@@ -1270,7 +1271,7 @@ describe('/plugin lifecycle and locale', () => {
 })
 
 describe('/plugin final coverage corners', () => {
-  it('covers the remaining unload gates: info load, findDshBin, the i-key invalidate', async () => {
+  it('covers the remaining unload gates: info load, findDshCommand, the i-key invalidate', async () => {
     // info argument path parking on the catalog load.
     let releaseFetch: ((value: string) => void) | undefined
     const fetchGate = new Promise<string>(resolve => {
@@ -1285,7 +1286,7 @@ describe('/plugin final coverage corners', () => {
     releaseFetch?.(indexJson([entry()]))
     await infoExecution
 
-    // operate parking on findDshBin (the sh spawn itself gated).
+    // operate parking on findDshCommand (the sh spawn itself gated).
     const shWorld = await mountWorld({ index: [entry()] })
     let releaseSh: (() => void) | undefined
     const shGate = new Promise<void>(resolve => {
@@ -1293,7 +1294,7 @@ describe('/plugin final coverage corners', () => {
     })
     const realSpawn = updaterInternals.spawnOnce
     updaterInternals.spawnOnce = vi.fn(async (cmd: string) => {
-      if (cmd === 'sh') await shGate
+      if (cmd === 'dsh') await shGate
       return realSpawn(cmd, [])
     })
     const shExecution = shWorld.run('/plugin install loop')
@@ -1309,7 +1310,7 @@ describe('/plugin final coverage corners', () => {
       releaseOp = resolve
     })
     updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'sh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
+      if (cmd === 'dsh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
       if (args[0] === 'plugin') await opGate
       return realSpawn(cmd, args)
     })
@@ -1375,7 +1376,7 @@ describe('badge and patch-shape arms', () => {
     const root = mkdtempTracked('mayfly-install-')
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     writeFileSync(join(root, 'cordis.patch.yml'), "- id: keep\n  name: 'keep-me'")
-    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: withPatch, source: 'npm' })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: withPatch, source: 'npm' })
     expect(outcome.kind).toBe('success')
     const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
     expect(patch).toContain('keep-me')
@@ -1383,7 +1384,7 @@ describe('badge and patch-shape arms', () => {
     // allowBuilds block lands after content lacking a trailing newline too.
     const allowEntry = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'x' } }] } })
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .')
-    await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: allowEntry, source: 'npm' })
+    await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: allowEntry, source: 'npm' })
     expect(parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '')).toMatchObject({ allowBuilds: { 'node-pty': true } })
   })
 })
@@ -1428,7 +1429,7 @@ describe('detail-shape arms', () => {
     const allowEntry = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'x' } }] } })
     const root = mkdtempTracked('mayfly-install-')
     updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: allowEntry, source: 'npm' })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: allowEntry, source: 'npm' })
     expect(outcome.kind).toBe('success')
     expect(parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '')).toMatchObject({ allowBuilds: { 'node-pty': true } })
 

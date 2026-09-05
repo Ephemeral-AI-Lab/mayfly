@@ -17,7 +17,8 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
 import { MayflyCurrentAgentService } from './current-agent.ts'
 import { interruptAgentTree } from './agent-interrupt.ts'
-import { armExitEpitaph, epitaphFor, profileFromArgv } from './exit-epitaph.ts'
+import { armExitEpitaph, epitaphFor } from './exit-epitaph.ts'
+import { profileNameFromArgv } from '../internal/profile.ts'
 import { createMayflyRequestController } from './request-lifecycle.ts'
 import { installRetractionService } from './retraction.ts'
 import { installSessionTitleCadence } from './title-cadence.ts'
@@ -124,7 +125,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => () => {
     const agent = current.current()
     armExitEpitaph(agent !== null && agent.session.seq > 0
-      ? epitaphFor(String(agent.id), profileFromArgv(process.argv))
+      ? epitaphFor(String(agent.id), profileNameFromArgv(process.argv))
       : undefined)
   })
 

@@ -7,15 +7,15 @@
  * restores them on rollback. The profile *name* is a launcher-level
  * flag the app tree cannot see through `cmdlineArgs` (it carries only
  * the inner arguments), so — exactly like the exit epitaph — the
- * updater scans `process.argv` itself; the app package cannot share its
- * copy without a new exports subpath, and adding one is the S30
- * incident family.
+ * shared internal profile helper scans `process.argv` for both commands
+ * and the app's exit resume line.
  *
  * @module @ephemeral-ai/mayfly/interaction/updater/profile
  */
 
 import { join } from 'node:path'
 import { updaterInternals } from './io.ts'
+import type { ResolvedCommand } from './io.ts'
 
 /** The profile manifest files a snapshot preserves. */
 const SNAPSHOT_FILES = ['package.json', 'pnpm-lock.yaml', 'cordis.patch.yml'] as const
@@ -35,25 +35,6 @@ export interface ProfileFacts {
   readonly linked: readonly string[]
 }
 
-/**
- * The profile name the launcher flags name — the same scan the exit
- * epitaph performs (`packages/mayfly/src/app/exit-epitaph.ts`); a private copy
- * by design, see the module header.
- * @param argv - the process arguments (launcher flags stay in place).
- * @returns the profile, defaulting to `mayfly`.
- */
-export function profileNameFromArgv(argv: readonly string[]): string {
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index]
-    if (arg !== undefined && arg.startsWith('--profile=')) return arg.slice('--profile='.length)
-    if (arg === '--profile') {
-      const next = argv[index + 1]
-      if (next !== undefined && !next.startsWith('-')) return next
-    }
-  }
-  return 'mayfly'
-}
-
 /** `$DSH_HOME` (default `~/.dsh`) — the attachments module's resolution. */
 export function dshHome(): string {
   const home = updaterInternals.env.DSH_HOME
@@ -66,20 +47,25 @@ export function profileRoot(profile: string): string {
 }
 
 /**
- * Resolve the dsh CLI binary: `$DSH_BIN`, else the first `dsh` on PATH
- * (the smoke scripts' discovery order, minus the workspace branch a user
- * install never has).
- * @returns the binary path, or `undefined` when neither resolves.
+ * Use the launcher's pinned JavaScript host, then an explicit DSH_BIN,
+ * then a shell-free PATH probe. Explicit selections never fall back to a
+ * different host: execution reports an invalid selection to the caller.
+ * @returns the command with fixed arguments, or undefined for a missing PATH host.
  */
-export async function findDshBin(): Promise<string | undefined> {
+export async function findDshCommand(): Promise<ResolvedCommand | undefined> {
+  const bundled = updaterInternals.env.MAYFLY_DSH_BIN
+  if (bundled !== undefined && bundled !== '') return { command: process.execPath, args: [bundled] }
   const fromEnv = updaterInternals.env.DSH_BIN
-  if (fromEnv !== undefined && fromEnv !== '') return fromEnv
-  const outcome = await updaterInternals.spawnOnce('sh', ['-c', 'command -v dsh'], {
+  if (fromEnv !== undefined && fromEnv !== '') {
+    return /\.[cm]?js$/i.test(fromEnv)
+      ? { command: process.execPath, args: [fromEnv] }
+      : { command: fromEnv, args: [] }
+  }
+  const outcome = await updaterInternals.spawnOnce('dsh', ['--version'], {
     timeoutMs: 5_000,
   })
-  if (outcome.spawnError !== undefined || outcome.code !== 0) return undefined
-  const path = outcome.stdout.trim()
-  return path === '' ? undefined : path
+  if (outcome.spawnError !== undefined || outcome.code !== 0 || outcome.timedOut) return undefined
+  return { command: 'dsh', args: [] }
 }
 
 /**

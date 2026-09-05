@@ -13,10 +13,16 @@
  * @module @ephemeral-ai/mayfly/interaction/updater/io
  */
 
-import { spawn } from 'node:child_process'
+import spawn from 'cross-spawn'
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir as osHomedir } from 'node:os'
 import { dirname } from 'node:path'
+
+/** A program and fixed arguments, kept separate from operation arguments. */
+export interface ResolvedCommand {
+  readonly command: string
+  readonly args: readonly string[]
+}
 
 /** Options every spawn shape accepts. */
 export interface SpawnOptions {
@@ -73,7 +79,7 @@ function childEnv(extra: Record<string, string> | undefined): Record<string, str
 function defaultSpawnOnce(cmd: string, args: readonly string[], opts: SpawnOptions = {}): Promise<SpawnOutcome> {
   const graceMs = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS
   return new Promise(resolve => {
-    const child = spawn(cmd, args, {
+    const child = spawn(cmd, [...args], {
       cwd: opts.cwd,
       env: childEnv(opts.env),
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -119,7 +125,7 @@ function defaultSpawnOnce(cmd: string, args: readonly string[], opts: SpawnOptio
 /** Spawn with live pipes the boot smoke drives interactively. */
 function defaultSpawnInteractive(cmd: string, args: readonly string[], opts: SpawnOptions = {}): InteractiveChild {
   const graceMs = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS
-  const child = spawn(cmd, args, {
+  const child = spawn(cmd, [...args], {
     cwd: opts.cwd,
     env: childEnv(opts.env),
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -252,4 +258,3 @@ export function cleanOutput(value: string): string {
     .replace(/\x1b\]8;;[^\x07]*\x07/g, '')
     .replace(/\r/g, '')
 }
-

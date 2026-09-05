@@ -62,6 +62,12 @@ export interface ToolRunOptions {
   timeoutMs?: number | undefined
   /** Full child environment (the staging-dir handoff); set means no inheritance. */
   env?: NodeJS.ProcessEnv | undefined
+  /** Text writes use stdin; image readers leave it empty. */
+  input?: string | undefined
+  /** Maximum captured bytes per output pipe. */
+  maxBuffer?: number | undefined
+  /** Cancels an in-flight helper when its owning operation is disposed. */
+  signal?: AbortSignal | undefined
 }
 
 /**
@@ -74,6 +80,7 @@ export interface ToolRunOptions {
  * @returns the stdout bytes, or the failure details.
  */
 export function runTool(command: string, args: readonly string[], options?: ToolRunOptions): Promise<ToolRun> {
+  if (options?.signal?.aborted) return Promise.resolve({ ok: false, code: 'ABORT_ERR', killed: false, stderr: '' })
   return new Promise(resolve => {
     // SIGKILL, not the default SIGTERM: wl-clipboard traps TERM for its own
     // cleanup and, wedged on an unresponsive compositor (GNOME's core-
@@ -81,26 +88,50 @@ export function runTool(command: string, args: readonly string[], options?: Tool
     // returns from the handler — a TERM'd tool survives as a zombie and the
     // exit event never settles this promise. Native helpers have no TERM
     // traps; the kill is a plain TerminateProcess on win32.
-    execFile(command, args, {
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const finish = (result: ToolRun): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      options?.signal?.removeEventListener('abort', abort)
+      resolve(result)
+    }
+    const stop = (code: string, killed: boolean): void => {
+      finish({ ok: false, code, killed, stderr: '' })
+      child.kill('SIGKILL')
+      // A descendant may retain the pipes after its parent dies. The deadline
+      // settles independently of close and releases our pipe handles as well.
+      child.stdin?.destroy()
+      child.stdout?.destroy()
+      child.stderr?.destroy()
+    }
+    const abort = (): void => stop('ABORT_ERR', false)
+    const child = execFile(command, args, {
       encoding: 'buffer',
-      timeout: options?.timeoutMs ?? CLIPBOARD_TOOL_TIMEOUT_MS,
       killSignal: 'SIGKILL',
-      maxBuffer: 32 * 1024 * 1024,
+      maxBuffer: options?.maxBuffer ?? 32 * 1024 * 1024,
+      windowsHide: true,
       ...(options?.env === undefined ? {} : { env: options.env }),
     }, (error, stdout, stderr) => {
       if (error === null) {
-        resolve({ ok: true, stdout })
+        finish({ ok: true, stdout })
         return
       }
-      resolve({
+      finish({
         ok: false,
         // `null` arrives only from a killed run without an exit code; the
         // detail formatter prints it like any other code.
         code: error.code ?? undefined,
-        killed: error.killed ?? false,
+        killed: error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? false : error.killed ?? false,
         stderr: stderr.toString(),
       })
     })
+    // A helper may intentionally ignore stdin and still exit successfully.
+    child.stdin?.on('error', () => {})
+    child.stdin?.end(options?.input)
+    timer = setTimeout(() => stop('ETIMEDOUT', true), options?.timeoutMs ?? CLIPBOARD_TOOL_TIMEOUT_MS)
+    options?.signal?.addEventListener('abort', abort, { once: true })
   })
 }
 
@@ -218,4 +249,3 @@ export async function withStagingDir<T>(fn: (stage: string) => Promise<T>): Prom
     await rm(stage, { recursive: true, force: true }).catch(() => {})
   }
 }
-

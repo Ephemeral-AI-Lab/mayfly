@@ -259,7 +259,7 @@ describe('/update guards', () => {
     const world = await mountWorld()
     updaterInternals.env = { DSH_HOME: join(world.home, '.dsh') }
     updaterInternals.spawnOnce = ((cmd: string) => {
-      if (cmd === 'sh') {
+      if (cmd === 'dsh') {
         return Promise.resolve({ code: 1, signal: null, stdout: '', stderr: 'not found', timedOut: false })
       }
       if (cmd === 'npm') return Promise.resolve({ ...ok(), stdout: packumentJson({ channelTag: TARGET_VERSION }) })

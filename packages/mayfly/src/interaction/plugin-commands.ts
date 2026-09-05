@@ -39,7 +39,8 @@ import {
   type InstalledPlugin,
 } from './plugin-market/installer.ts'
 import type { MarketEntry } from './plugin-market/types.ts'
-import { findDshBin, profileNameFromArgv, profileRoot } from './updater/profile.ts'
+import { findDshCommand, profileRoot } from './updater/profile.ts'
+import { profileNameFromArgv } from '../internal/profile.ts'
 
 /** Command outcome reused by every early-exit branch. */
 type CommandOutcome = { readonly kind: 'success', readonly text?: string } | { readonly kind: 'error', readonly text: string }
@@ -165,10 +166,10 @@ export function registerPluginCommand(ctx: Context): () => void {
     // Claim before the first await so overlapping keypresses cannot both run.
     operationInFlight = true
     try {
-      const dshBin = await findDshBin()
+      const dshCommand = await findDshCommand()
       /* v8 ignore next -- a fiber unload landing inside these awaits is a shutdown race */
       if (unloaded) return false
-      if (dshBin === undefined) {
+      if (dshCommand === undefined) {
         report({ text: t('plugin operations need the dsh CLI on PATH (or $DSH_BIN)'), tone: 'danger' })
         return false
       }
@@ -181,7 +182,7 @@ export function registerPluginCommand(ctx: Context): () => void {
         tone: 'muted',
       })
       const input = {
-        dshBin,
+        dshCommand,
         profile: profileNameFromArgv(process.argv),
         root: profileRoot(profileNameFromArgv(process.argv)),
         entry,

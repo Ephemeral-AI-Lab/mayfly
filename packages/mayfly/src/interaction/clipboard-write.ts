@@ -13,11 +13,8 @@
  * @module @ephemeral-ai/mayfly/interaction/clipboard-write
  */
 
-import { spawn } from 'node:child_process'
 import { emitClipboardOsc52 } from '../core/index.ts'
-
-/** Per-tool timeout; a hung clipboard helper must not wedge the command. */
-const CLIPBOARD_TOOL_TIMEOUT_MS = 3000
+import { failureDetail, runTool } from './clipboard-probe.ts'
 
 /** How the text was delivered: a verified local clipboard tool, or an
  *  unverified OSC 52 escape the terminal may have honored. */
@@ -47,43 +44,10 @@ const CLIPBOARD_TOOLS = clipboardToolsFor(process.platform)
  * spawnSync (code 0 wins) — and the settle guard makes the `error`
  * (ENOENT) and `close` events race-safe.
  */
-function runClipboardTool(command: string, args: string[], text: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ['pipe', 'ignore', 'pipe'],
-      timeout: CLIPBOARD_TOOL_TIMEOUT_MS,
-    })
-    let stderr = ''
-    let settled = false
-    const settle = (failure: Error | undefined): void => {
-      if (settled) return
-      settled = true
-      if (failure === undefined) resolve()
-      else reject(failure)
-    }
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
-    })
-    // EPIPE after the tool exits is expected; close carries the verdict.
-    // (An unhandled stdin error would crash the process, but the write is
-    // synchronous and the pipe buffered, so the handler is defensive.)
-    /* v8 ignore next -- EPIPE after a fast tool exit is a race, not a testable state */
-    child.stdin.on('error', () => {})
-    child.stdin.end(text)
-    child.on('error', (error) => settle(error))
-    child.on('close', (code) => {
-      if (code === 0) {
-        settle(undefined)
-        return
-      }
-      const detail = stderr.trim()
-      settle(new Error(
-        detail.length > 0
-          ? `${command} exited with code ${String(code)}: ${detail}`
-          : `${command} exited with code ${String(code)}`,
-      ))
-    })
-  })
+async function runClipboardTool(command: string, args: string[], text: string): Promise<void> {
+  const result = await runTool(command, args, { input: text, maxBuffer: 64 * 1024 })
+  if (result.ok) return
+  throw Object.assign(new Error(failureDetail(command, result)), { code: result.code })
 }
 
 /**

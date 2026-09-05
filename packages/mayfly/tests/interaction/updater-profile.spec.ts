@@ -11,12 +11,12 @@ import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()
 import { updaterInternals } from '../../src/interaction/updater/io.ts'
+import { profileNameFromArgv } from '../../src/internal/profile.ts'
 import {
   appendUpdateLog,
   backupDir,
   dshHome,
-  findDshBin,
-  profileNameFromArgv,
+  findDshCommand,
   profileRoot,
   readProfileFacts,
   restoreSnapshot,
@@ -84,30 +84,49 @@ describe('updater/profile home and root resolution', () => {
   })
 })
 
-describe('updater/profile findDshBin', () => {
-  it('honors DSH_BIN first', async () => {
-    updaterInternals.env = { DSH_BIN: '/opt/bin/dsh' }
-    await expect(findDshBin()).resolves.toBe('/opt/bin/dsh')
+describe('updater/profile findDshCommand', () => {
+  it('executes the launcher entry using Node with no global dsh installation', async () => {
+    const root = fixtureProfile({ 'nested host/入口.cjs': 'process.stdout.write(JSON.stringify(process.argv.slice(2)))' })
+    const bin = join(root, 'nested host', '入口.cjs')
+    updaterInternals.env = { MAYFLY_DSH_BIN: bin, DSH_BIN: '/wrong/global/dsh' }
+    const resolved = await findDshCommand()
+    expect(resolved).toBeDefined()
+    if (resolved === undefined) throw new Error('expected bundled host')
+    const result = await updaterInternals.spawnOnce(resolved.command, [...resolved.args, 'plugin', '--profile', 'space profile', 'add', 'literal$&package'], { env: { PATH: root } })
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(['plugin', '--profile', 'space profile', 'add', 'literal$&package'])
   })
 
-  it('falls back to command -v dsh', async () => {
-    updaterInternals.env = {}
-    updaterInternals.spawnOnce = () =>
-      Promise.resolve({ code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false })
-    await expect(findDshBin()).resolves.toBe('/usr/bin/dsh')
+  it('uses explicit native and JavaScript commands without PATH fallback', async () => {
+    updaterInternals.env = { DSH_BIN: '/opt/bin/dsh' }
+    await expect(findDshCommand()).resolves.toEqual({ command: '/opt/bin/dsh', args: [] })
+    updaterInternals.env = { DSH_BIN: '/missing space/host.mjs' }
+    await expect(findDshCommand()).resolves.toEqual({ command: process.execPath, args: ['/missing space/host.mjs'] })
+    updaterInternals.env = { DSH_BIN: '/global/dsh', MAYFLY_DSH_BIN: '/bundled space/host.js' }
+    await expect(findDshCommand()).resolves.toEqual({ command: process.execPath, args: ['/bundled space/host.js'] })
+  })
+
+  it('probes PATH directly without a POSIX shell', async () => {
+    updaterInternals.env = { DSH_BIN: '', MAYFLY_DSH_BIN: '' }
+    updaterInternals.spawnOnce = (command, args) => {
+      expect(command).toBe('dsh')
+      expect(args).toEqual(['--version'])
+      return Promise.resolve({ code: 0, signal: null, stdout: 'dsh 0.1.2\n', stderr: '', timedOut: false })
+    }
+    await expect(findDshCommand()).resolves.toEqual({ command: 'dsh', args: [] })
   })
 
   it('returns undefined when the lookup fails or comes back empty', async () => {
     updaterInternals.env = {}
     updaterInternals.spawnOnce = () =>
       Promise.resolve({ code: 1, signal: null, stdout: '', stderr: 'not found', timedOut: false })
-    await expect(findDshBin()).resolves.toBeUndefined()
+    await expect(findDshCommand()).resolves.toBeUndefined()
     updaterInternals.spawnOnce = () =>
-      Promise.resolve({ code: 0, signal: null, stdout: '\n', stderr: '', timedOut: false })
-    await expect(findDshBin()).resolves.toBeUndefined()
+      Promise.resolve({ code: 0, signal: null, stdout: '\n', stderr: '', timedOut: true })
+    await expect(findDshCommand()).resolves.toBeUndefined()
     updaterInternals.spawnOnce = () =>
       Promise.resolve({ code: null, signal: null, stdout: '', stderr: '', timedOut: false, spawnError: 'ENOENT' })
-    await expect(findDshBin()).resolves.toBeUndefined()
+    await expect(findDshCommand()).resolves.toBeUndefined()
   })
 })
 

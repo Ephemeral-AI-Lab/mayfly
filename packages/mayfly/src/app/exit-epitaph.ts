@@ -20,9 +20,6 @@
  * @module @ephemeral-ai/mayfly/app/exit-epitaph
  */
 
-/** The default profile the resume command names when the launcher flags do not. */
-const DEFAULT_PROFILE = 'mayfly'
-
 /** The default writer: plain synchronous stdout. */
 const defaultWriter = (text: string): void => {
   process.stdout.write(text)
@@ -66,25 +63,6 @@ export function armedEpitaph(): string | undefined {
 export function writeArmedEpitaph(): void {
   if (armed === undefined) return
   writer(armed)
-}
-
-/**
- * The profile name the launcher flags name: a `--profile <name>` pair or
- * a `--profile=<name>` literal, defaulting to `mayfly` (the dev-install
- * default; no `DSH_PROFILE` environment variable exists).
- * @param argv - the process arguments (the launcher flags stay in place).
- * @returns the profile for the resume command.
- */
-export function profileFromArgv(argv: readonly string[]): string {
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index]
-    if (arg !== undefined && arg.startsWith('--profile=')) return arg.slice('--profile='.length)
-    if (arg === '--profile') {
-      const next = argv[index + 1]
-      if (next !== undefined && !next.startsWith('-')) return next
-    }
-  }
-  return DEFAULT_PROFILE
 }
 
 /**

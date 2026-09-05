@@ -179,7 +179,7 @@ describe('default clipboard text writer', () => {
     rmSync(bin, { recursive: true, force: true })
   })
 
-  it('classifies a spawn error with a code other than ENOENT as its raw message', async () => {
+  it('preserves the error code of an installed but non-executable helper', async () => {
     const bin = mkdtempTracked('mayfly-clipboard-eacces-')
     // Present but not executable: spawn fails with EACCES, which carries a
     // `code` that is not ENOENT — the message survives verbatim. The PATH is
@@ -200,7 +200,7 @@ describe('default clipboard text writer', () => {
     // so no PATH tail is needed.
     process.env.PATH = bin
     await expect(copyTextToClipboard('lost'))
-      .rejects.toThrow(/no clipboard tool is available \(wl-copy spawn EACCES, xclip spawn EACCES\)|wl-copy EACCES/)
+      .rejects.toThrow('no clipboard tool is available (wl-copy exited with code EACCES, xclip exited with code EACCES)')
     rmSync(bin, { recursive: true, force: true })
   })
 })
