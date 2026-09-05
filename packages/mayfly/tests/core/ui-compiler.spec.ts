@@ -1378,6 +1378,17 @@ describe('compileMayflyUiNode', () => {
     expect(replay.match(new RegExp(CURSOR_MARKER, 'gu'))).toHaveLength(1)
   })
 
+  it('restores a stacked editor cursor without adding a label cursor', () => {
+    const { options } = fixture()
+    const focus = compiled(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Long label '.repeat(8), value: 'VALUE' }] }), options).focusTarget!
+    focus.focused = true
+    focus.render(20)
+    expect(focus.restoreFocusIdentity?.({ controlId: 'name', editing: true })).toBe(true)
+    const rows = focus.render(20)
+    expect(rows.join('').split(CURSOR_MARKER)).toHaveLength(2)
+    expect(rows.find(row => row.includes(CURSOR_MARKER))).toContain('VALUE')
+  })
+
   it('preserves one focused editor marker in layout and subsequent direct replay', () => {
     const { options } = fixture()
     const focus = compiled(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'alpha' }] }), options).focusTarget!

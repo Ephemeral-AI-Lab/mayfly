@@ -1,6 +1,7 @@
 /** Native search input and its two list consumers share Unicode and paste semantics. */
 import { Context } from '@deepseek-ai/cordis'
-import { CURSOR_MARKER, TuiMainScreen } from '@earendil-works/pi-tui'
+import { CURSOR_MARKER, stripTerminalSequences, TuiMainScreen } from '@earendil-works/pi-tui'
+import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { describe, expect, it, vi } from 'vitest'
 import { MayflyComponentsService } from '../../src/core/components.ts'
 import { SearchInput } from '../../src/core/search-input.ts'
@@ -74,10 +75,17 @@ describe('SearchInput', () => {
     panel.handleInput('\x1b[3~')
     panel.handleInput('\x04')
     expect(onDelete).not.toHaveBeenCalled()
+    expect(panel.currentNode()).toMatchObject({ child: { fields: [{ id: 'key', value: 'c' }] } })
     const rows = panel.render(width)
-    expect(rows.join('\n')).toContain('c')
-    expect(rows.join('\n')).toContain(CURSOR_MARKER)
+    const cursorRows = rows.filter(row => row.includes(CURSOR_MARKER))
+    expect(rows.join('').split(CURSOR_MARKER)).toHaveLength(2)
+    expect(cursorRows).toHaveLength(1)
+    expect(stripTerminalSequences(cursorRows[0]!)).toContain('c')
     expect(rows.every(row => visibleWidth(row) <= width)).toBe(true)
+    const frame = renderLayoutFrame({ render: columns => panel.render(columns), invalidate: () => panel.invalidate() }, width, 1, () => {})
+    expect(frame.lines).toHaveLength(1)
+    expect(stripTerminalSequences(frame.lines[0]!)).toContain('c')
+    expect(frame.lines[0]).toContain(CURSOR_MARKER)
     panel.handleInput(KEY.escape)
     panel.handleInput('\x04')
     expect(onDelete).toHaveBeenCalledOnce()

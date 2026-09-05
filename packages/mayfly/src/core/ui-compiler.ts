@@ -1736,11 +1736,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
         overflowed = true
         return sliceByColumn(row, 0, safeWidth, true)
       })
-      let inserted = false
+      let inserted = rendered.some(row => row.includes(CURSOR_MARKER))
       const result = { rows: rendered.map(row => {
         if (!this.focused || inserted || !row.includes(FOCUS_SENTINEL)) return row.replaceAll(FOCUS_SENTINEL, ' ')
         inserted = true
-        if (row.includes(CURSOR_MARKER)) return row.replaceAll(FOCUS_SENTINEL, ' ')
         return row.replace(FOCUS_SENTINEL, `${CURSOR_MARKER} `).replaceAll(FOCUS_SENTINEL, ' ')
       }), overflowed }
       return this.runtimeFailure === undefined ? result : { ...result, runtimeFailure: this.runtimeFailure }
