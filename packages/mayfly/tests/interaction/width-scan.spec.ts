@@ -13,11 +13,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import * as approvalPlugin from '../../src/interaction/approval-plugin.ts'
-import { ChildAttachView } from '../../src/interaction/attach-view.ts'
 import { CanonicalFormController, type FormField } from '../../src/interaction/form-panel.ts'
-import { HelpOverlay, type HelpSection } from '../../src/interaction/help.ts'
+import { HelpPanel, type HelpSection } from '../../src/interaction/help.ts'
 import { InfoPanel, type InfoSection } from '../../src/interaction/info-panel.ts'
 import { CanonicalDocumentController } from '../../src/interaction/frontend-panel.ts'
 import { jobOutputPanelModel, jobsPanelModel } from '../../src/interaction/jobs.ts'
@@ -27,8 +27,11 @@ import { CanonicalSelectController } from '../../src/interaction/select-list.ts'
 import { CanonicalMultiSelectController } from '../../src/interaction/select.ts'
 import { CanonicalSettingsController, SettingsNoticeController } from '../../src/interaction/settings-command.ts'
 import { UpdateNoticeComponent } from '../../src/interaction/update-notice.ts'
+import { SessionTranscriptPanel } from '../../src/interaction/session-transcript-panel.ts'
 import { fakeMayflyContext, FakeMayflyComponents, FakeKeymap } from './fakes.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
+import { FakeProjectionService } from '../transcript/pane-fakes.ts'
+import { userEvent } from '../transcript/helpers.ts'
 
 /**
  * Identity theme: the width scan measures rows through the same visible
@@ -152,7 +155,7 @@ describe('interaction width-scan', () => {
           ],
         },
       ]
-      const overlay = new HelpOverlay({
+      const overlay = new HelpPanel({
         theme: IDENTITY_THEME as never,
         components: new FakeMayflyComponents(),
         keymap: new FakeKeymap(),
@@ -262,24 +265,23 @@ describe('interaction width-scan', () => {
         })
       }
     })
-
-    it(`ChildAttachView survives ${name}`, () => {
-      const { ctx, screen } = fakeMayflyContext()
-      const view = new ChildAttachView({
-        ctx,
-        parent: {} as Agent,
-        target: { id: 'child', label: text, mode: 'continuable' },
-        screen,
-        components: new FakeMayflyComponents(),
-        colors: IDENTITY_THEME.colors as never,
-        t: key => key,
-        tools: { get: () => undefined },
-        onClose: vi.fn(),
-      })
+    it(`SessionTranscriptPanel survives ${name}`, () => {
+      const { ctx } = fakeMayflyContext({ agents: false })
+      const child = {
+        id: SessionId(`readonly-${name}`),
+        header: { cwd: '/repo', origin: 'subagent', parentSession: SessionId('parent') },
+        events: [userEvent(text)],
+      } as unknown as Session
+      ctx.set('sessionProjections', new FakeProjectionService() as never)
+      ctx.provide('sessions', { list: () => [child] } as never)
+      ctx.provide('agents', { get: () => undefined } as never)
+      const panel = new SessionTranscriptPanel(ctx, {
+        kind: 'subagent', sessionId: String(child.id), parentSessionId: 'parent', label: text, mode: 'one-shot',
+      }, vi.fn())
       for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`ChildAttachView/${name}`, view.render(width), width)
+        expectLinesFit(`SessionTranscriptPanel/${name}`, panel.render(width), width)
       }
-      view.dispose()
+      panel.dispose()
     })
 
     it(`approval plugin prompt survives ${name}`, async () => {

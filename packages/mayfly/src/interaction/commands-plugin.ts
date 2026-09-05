@@ -52,7 +52,7 @@ import { displayServices } from './display-services.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import { mountEditorReplacement } from './editor-panel-controller.ts'
 import type { HelpSection } from './help.ts'
-import { HelpOverlay } from './help.ts'
+import { HelpPanel } from './help.ts'
 import { registerMcpCommands } from './mcp-commands.ts'
 import { registerModelCommands } from './model-commands.ts'
 import { registerPluginCommand } from './plugin-commands.ts'
@@ -71,6 +71,7 @@ import { registerUpdateCommand } from './update-command.ts'
 import { registerTraceCommand } from './trace-command.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { rewindCandidates } from './rewind.ts'
+import { ACTION_TOGGLE, interactionKeyHint } from './keys.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-commands'
@@ -155,6 +156,8 @@ export function apply(ctx: Context, config: Config = {}): void {
    * @returns the command outcome.
    */
   async function listSessions(signal: AbortSignal): Promise<CommandResult> {
+    const primary = ctx.mayflyCurrentAgent.primary()
+    ctx.mayflyCurrentAgent.closeAuxiliary()
     // A persistence scan can be slow on large profiles. Acknowledge it before
     // the first await so the user is not left staring at an unchanged editor.
     getSharedEditor(ctx)?.notice?.('loading sessions...')
@@ -196,7 +199,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       clearLoadingNotice()
       return { kind: 'error', text: 'session picker is unavailable: the Mayfly screen is not mounted' }
     }
-    const currentId = ctx.mayflyCurrentAgent.current()?.id
+    const currentId = primary?.id
     const titleById = new Map<string, string>()
     const tree = createSessionTree(sorted, titleById, currentId === undefined ? undefined : String(currentId), formatDate)
     const loadingPages = new Set<number>()
@@ -231,7 +234,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       components: display.components,
       rows: buildRows(),
       title: 'Sessions',
-      contextHints: [{ id: 'toggle', keys: 'Space', label: 'toggle branch', priority: 95 }],
+      contextHints: [{ id: 'toggle', keys: interactionKeyHint(display.keymap, ACTION_TOGGLE, 'Space'), label: 'toggle branch', priority: 95 }],
       ...(currentId === undefined ? {} : { initialValue: String(currentId) }),
       filter: true,
       onCursorChanged: cursor => {
@@ -278,7 +281,8 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   /** Open a picker of safe branch points from the live session. */
   function rewindSession(): CommandResult {
-    const active = ctx.mayflyCurrentAgent.current()
+    const active = ctx.mayflyCurrentAgent.primary()
+    ctx.mayflyCurrentAgent.closeAuxiliary()
     if (active === null) return { kind: 'error', text: 'no active session' }
     if (active.status !== 'idle') return { kind: 'error', text: 'cannot rewind while the agent is running' }
     const candidates = rewindCandidates(active.session.snapshotEvents())
@@ -353,7 +357,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     ]
     let restore: () => void
     let offLocale: () => void
-    const overlay = new HelpOverlay({
+    const overlay = new HelpPanel({
       theme: display.theme,
       components: display.components,
       keymap: display.keymap,
@@ -414,7 +418,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       handler: () => {
         // The command target is the UI's current session, not necessarily
         // the dispatching agent; the app layer operates on the same value.
-        const current = ctx.mayflyCurrentAgent.current()
+        const current = ctx.mayflyCurrentAgent.primary()
         if (current !== null && current.status !== 'idle') {
           return { kind: 'error' as const, text: 'cannot fork while the agent is running' }
         }

@@ -11,6 +11,8 @@
 | `Ctrl-O` | 切换工具输出展开 | 在最近 **3 个 turn** 的工具卡与思考块的一行摘要与完整输出之间切换 |
 | `Ctrl-T` | 切换 todo 面板折叠 | 五行折叠视图 ↔ 整表视图 |
 | `F6` / `Shift+F6` | 切换 surface 焦点 | 按布局顺序在 Editor 与 pane lane 间前进/后退；到边界回到 Editor，capturing overlay 打开时由 overlay 独占焦点 |
+| `F7` | 切换主/辅助会话 | 在主会话与保留的 BTW/subagent 会话间切换整套 UI；无辅助槽时显示提示 |
+| `F8` | 关闭辅助会话 | detach subagent 或 dispose 临时 BTW Agent，并返回主会话 |
 
 ## 共享交互键位
 
@@ -31,7 +33,7 @@
 
 | 键 | 动作 | 说明 |
 | --- | --- | --- |
-| `Ctrl-C` | 清空 → 中断 → 退出 | 先清草稿，再中断运行中的 agent；**1 秒内第二次按下**退出 Mayfly |
+| `Ctrl-C` | 中断 → 清空 → 退出 | 中断当前 Agent 与所有 running continuable 后代；整棵选择子树无工作时清空草稿；**1 秒内第二次按下**退出 Mayfly |
 | `Ctrl-S` | steer 注入 | 把非空草稿作为转向指令注入当前 turn，并清空 buffer |
 | `Ctrl-V` | 粘贴图片 | 剪贴板图片入附件库，光标处插入 `[image #N]` 标记 |
 | `Ctrl-G` | 外部编辑器 | 草稿交给外部编辑器全屏编辑（`mayfly.editorCommand` 设置 → `$VISUAL` → `$EDITOR`；Mayfly 挂起让出终端）；以 `:cq` 退出则草稿原样保留 |
@@ -51,7 +53,9 @@
 | 计划评审 | `←` / `→` 或 `1`–`3` 选决策，`↑` / `↓` / `PageUp` / `PageDown` 滚动计划，`Enter` 确认 |
 | `/model` 面板 | 唯一 tab 层是 provider：`←` / `→` 不循环切换，`Enter` 进入模型列表；列表中 `↑` / `↓` 选模型，`←` / `→` 调当前模型的思考等级，`Tab` 进入同级提交动作 |
 | `/effort` 面板 | `←` / `→` 在思考等级间不循环移动，`Enter` 下钻；选择 `Set as default` 持久化，或选择 `Use for this session` 仅改当前会话 |
-| `/btw` 面板 | `Esc` 关闭；滚轮 / `PageUp` / `PageDown` 滚动；`Enter` 续问 |
+| `/agents` 浏览器 | ↑↓ 选择、`Space` 展开/折叠、`Enter` 查看；`Delete`/`Ctrl-D` 经 typed-`y` 确认后停止没有 live 后代的 live continuable child，父节点需先停止叶子 |
+| 只读 subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` 滚动；`Escape` 关闭；全局 `F7`/`F8` 仍生效 |
+| live BTW/subagent | 使用完整主编辑器与同一套 panel 键位；`F7` 切回主会话，`F8` 关闭辅助槽 |
 
 ## 自定义键位
 

@@ -96,7 +96,7 @@ describe('mayfly bundle', () => {
       'mayfly-pane-activity',
       'mayfly-pane-queue',
       'mayfly-pane-todo',
-      'mayfly-pane-btw',
+      'mayfly-btw-command',
       'mayfly-pane-agents',
       'mayfly-pane-workflow',
       'mayfly-attachments',

@@ -217,11 +217,8 @@ describe('editor-slot swap', () => {
     expect(() => restore()).not.toThrow()
   })
 
-  it('degrades to a no-op mount while no swap is installed', () => {
+  it('retains a panel until a host is installed', () => {
     const ctx = editorContext()
-    // The module state may hold nothing (mayfly-input never mounted, or a
-    // fresh module graph between suites): a dialog opening then degrades
-    // instead of crashing, and the returned disposer is inert.
     ctx.mayflyEditorPanels.setHost(undefined)
     const panel: MayflyFocusable & MayflyComponent = {
       focused: false,
@@ -230,10 +227,17 @@ describe('editor-slot swap', () => {
       render: () => ['panel'],
     }
     const restore = mountEditorReplacement(ctx, panel)
-    expect(() => {
-      restore()
-      restore()
-    }).not.toThrow()
+    const mounted: MayflyFocusable[] = []
+    ctx.mayflyEditorPanels.setHost({
+      mount: component => {
+        mounted.push(component)
+        return () => { mounted.splice(mounted.indexOf(component), 1) }
+      },
+    })
+    expect(mounted).toEqual([panel])
+    restore()
+    restore()
+    expect(mounted).toEqual([])
   })
 
   it('mounts through the installed swap and forwards the disposer', () => {
@@ -263,5 +267,100 @@ describe('editor-slot swap', () => {
     expect(mounted).toEqual([])
     // Leave the module state clean for the suites that follow.
     ctx.mayflyEditorPanels.setHost(undefined)
+  })
+
+  it('replays the complete stack in order when the host changes', () => {
+    const ctx = editorContext()
+    const first = { focused: false, invalidate: () => {}, render: () => ['first'] } as MayflyFocusable
+    const second = { focused: false, invalidate: () => {}, render: () => ['second'] } as MayflyFocusable
+    const firstHost: string[] = []
+    const secondHost: string[] = []
+    const host = (rows: string[]) => ({
+      mount: (component: MayflyFocusable) => {
+        const value = component.render(10)[0]!
+        rows.push(value)
+        return () => { rows.splice(rows.indexOf(value), 1) }
+      },
+    })
+    ctx.mayflyEditorPanels.setHost(host(firstHost))
+    const restoreFirst = ctx.mayflyEditorPanels.mount(first)
+    const restoreSecond = ctx.mayflyEditorPanels.mount(second)
+    expect(firstHost).toEqual(['first', 'second'])
+
+    ctx.mayflyEditorPanels.setHost(host(secondHost))
+    expect(firstHost).toEqual([])
+    expect(secondHost).toEqual(['first', 'second'])
+    restoreSecond()
+    expect(secondHost).toEqual(['first'])
+    restoreFirst()
+    expect(secondHost).toEqual([])
+  })
+
+  it('rolls back a partial replay when the replacement host rejects a panel', () => {
+    const ctx = editorContext()
+    const first = { focused: false, invalidate: () => {}, render: () => ['first'] } as MayflyFocusable
+    const second = { focused: false, invalidate: () => {}, render: () => ['second'] } as MayflyFocusable
+    const old = new Set<MayflyFocusable>()
+    ctx.mayflyEditorPanels.setHost({
+      mount: component => {
+        old.add(component)
+        return () => { old.delete(component) }
+      },
+    })
+    ctx.mayflyEditorPanels.mount(first)
+    ctx.mayflyEditorPanels.mount(second)
+    const partial = new Set<MayflyFocusable>()
+    expect(() => ctx.mayflyEditorPanels.setHost({
+      mount: component => {
+        if (component === second) throw new Error('host rejected second')
+        partial.add(component)
+        return () => { partial.delete(component) }
+      },
+    })).toThrow('host rejected second')
+    expect(old.size).toBe(0)
+    expect(partial.size).toBe(0)
+
+    const recovered: MayflyFocusable[] = []
+    ctx.mayflyEditorPanels.setHost({ mount: component => { recovered.push(component); return () => {} } })
+    expect(recovered).toEqual([first, second])
+  })
+
+  it('forgets a panel whose initial host mount throws', () => {
+    const ctx = editorContext()
+    const panel = { focused: false, invalidate: () => {}, render: () => ['panel'] } as MayflyFocusable
+    ctx.mayflyEditorPanels.setHost({ mount: () => { throw new Error('mount failed') } })
+    expect(() => ctx.mayflyEditorPanels.mount(panel)).toThrow('mount failed')
+    const recovered: MayflyFocusable[] = []
+    ctx.mayflyEditorPanels.setHost({ mount: component => { recovered.push(component); return () => {} } })
+    expect(recovered).toEqual([])
+  })
+
+  it('does not replay a panel disposed before the host appears', () => {
+    const ctx = editorContext()
+    const panel = { focused: false, invalidate: () => {}, render: () => ['panel'] } as MayflyFocusable
+    const restore = ctx.mayflyEditorPanels.mount(panel)
+    restore()
+    const mounted: MayflyFocusable[] = []
+    ctx.mayflyEditorPanels.setHost({ mount: component => { mounted.push(component); return () => {} } })
+    expect(mounted).toEqual([])
+  })
+
+  it('unmounts the live stack and refuses later mounts after disposal', () => {
+    const ctx = editorContext()
+    const mounted: MayflyFocusable[] = []
+    ctx.mayflyEditorPanels.setHost({
+      mount: component => {
+        mounted.push(component)
+        return () => { mounted.splice(mounted.indexOf(component), 1) }
+      },
+    })
+    const panel = { focused: false, invalidate: () => {}, render: () => ['panel'] } as MayflyFocusable
+    ctx.mayflyEditorPanels.mount(panel)
+    ctx.mayflyEditorPanels.dispose()
+    ctx.mayflyEditorPanels.dispose()
+    expect(mounted).toEqual([])
+    const ignored = ctx.mayflyEditorPanels.mount(panel)
+    ignored()
+    expect(mounted).toEqual([])
   })
 })

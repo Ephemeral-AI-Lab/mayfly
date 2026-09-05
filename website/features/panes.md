@@ -1,6 +1,6 @@
 # 底部面板
 
-状态栏与输入编辑器之间是**底部 dock**：五个被动面板按挂载顺序依次叠放（activity → queue → todo → btw → agents，编辑器最后）。无内容时各面板渲染零行——dock 不会跳变。
+状态栏与输入编辑器之间是**底部 dock**：五个被动面板按优先级依次叠放（activity → queue → todo → agents → workflow，编辑器最后）。无内容时各面板渲染零行——dock 不会跳变。BTW 和 `/agents` 打开的会话不属于 pane：它们切换当前 Agent 或使用统一的只读会话 panel。
 
 ## 活动面板（activity）
 
@@ -30,15 +30,20 @@
 
 `todo_write` 工具调用不出现在会话流里，这个面板是 todo 的唯一呈现面。
 
-## 侧问面板（/btw）
+## 辅助会话（/btw 与 /agents）
 
-`/btw <question>` 把当前会话 fork 成一次性旁路 agent——以全量事件流为种子、继承父会话的 provider/model——在不打扰主线的情况下问一个"顺便一提"的问题：
+Mayfly 只保留一个辅助会话槽。`/btw <question>` 创建临时旁路 Agent——以当前会话的全量事件流为种子，并继承 provider、model、reasoning effort 和 agent preset。`/agents` 则打开当前主会话的完整 descendant 树：
 
-- 面板标题 ` BTW ` + 按键提示（`Esc close`，正文溢出时加 `PgUp/PgDn or wheel`）；
-- `› 问题` 行 + 流式 Markdown 回复 + thinking 行；行预算随终端高度自适应（resize 即重排）；
-- 打开期间编辑器顶角与面板拼接为 `├┤`；**Esc** 关闭（草稿存活）、滚轮 / **PageUp** / **PageDown** 滚动、**Enter** 在同一旁路 agent 上续问；
-- 槽位单一：再次 `/btw` 会先销毁上一个旁路 agent；无参 `/btw` 直接收起面板。
+- live BTW 或 continuable subagent 成为 `mayflyCurrentAgent.current()`，原有 transcript、status、底部 pane、命令和完整编辑器整体切到该 Session；BTW 仍继承完整主会话上下文，但 transcript 从 BTW 自己的第一条提问开始，隐藏 seed 历史；图片、follow-up、steer、撤回和中断都走同一输入链；
+- one-shot 或当前不驻留的 continuable child 不激活 Agent，而是在 editor 槽位打开 core-owned 的全保真只读 transcript panel；它复用正式 transcript model、工具呈现、图片加载、宽度约束与滚动逻辑；
+- 状态栏中央显式显示当前侧以及 `F7 switch · F8 close`；`F7` 在主/辅助会话间切换，`F8` 完全关闭辅助视图并返回主会话；关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
+- 再次打开 BTW 或 child 会替换旧辅助槽。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork`、`/rewind` 和 `/agents` 浏览会先回到主会话；
+- `/agents` 中 `Enter` 查看 child，`Space` 展开分支，`Delete`/`Ctrl-D` 经 typed-`y` 确认后停止 live continuable child；`/agents stop <id>` 提供直接停止路径，one-shot 与 cold/inactive child 不允许停止。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。
 
 ## 子代理分组面板（agents）
 
 agent 派生的**子代理组**（subagent group）运行时，组卡片钉在编辑器正上方——dock 的最后一行（kimi swarm-pane 语义）。与 todo 面板对 `todo_write` 的关系一样：spawn 类工具调用被 step 折叠从会话流里隐去，本面板是运行中子代理的唯一呈现面——你能看到派生了谁、各自在干什么，而不必在会话流里翻工具卡。
+
+## Workflow 面板
+
+原生 `workflow/*` lifecycle 归因到当前 Agent 后，面板显示 workflow 名称、当前 phase、运行/完成/失败的子 Agent 树与逐秒 elapsed。运行结束的摘要会保留到下一次相关状态替换；切换主/辅助 Agent 时，面板与其他 session-scoped UI 一起切换。

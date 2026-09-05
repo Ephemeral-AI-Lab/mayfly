@@ -175,5 +175,10 @@ export function parseMarketIndex(text: string): MarketIndex {
     const issue = result.error.issues[0]!
     throw new Error(`market index is invalid at ${issue.path.join('.')}: ${issue.message}`)
   }
+  const ids = new Set<string>()
+  for (const entry of result.data.entries) {
+    if (ids.has(entry.id)) throw new Error(`market index repeats entry id ${entry.id}`)
+    ids.add(entry.id)
+  }
   return result.data as MarketIndex
 }

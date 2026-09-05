@@ -1,5 +1,5 @@
 /**
- * Unit tests for the `HelpOverlay` dialog: the framed `help` title, the
+ * Unit tests for the `HelpPanel` dialog: the framed `help` title, the
  * two-column sections, the scroll window and its `showing` tail, and the
  * close/scroll key handling (Escape/Enter/`q` close; arrows and PageUp/
  * PageDown scroll).
@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { MayflyKeymap } from '../../src/core/index.ts'
-import { HelpOverlay } from '../../src/interaction/help.ts'
+import { HelpPanel } from '../../src/interaction/help.ts'
 import type { HelpSection } from '../../src/interaction/help.ts'
 import { FakeMayflyComponents, FakeKeymap, FakeTheme, KEY } from './fakes.ts'
 
@@ -28,9 +28,9 @@ function mount(options: {
   sections?: readonly HelpSection[]
   maxVisible?: number
   keymap?: MayflyKeymap
-} = {}): { overlay: HelpOverlay; onClose: ReturnType<typeof vi.fn> } {
+} = {}): { overlay: HelpPanel; onClose: ReturnType<typeof vi.fn> } {
   const onClose = vi.fn()
-  const overlay = new HelpOverlay({
+  const overlay = new HelpPanel({
     theme: new FakeTheme(),
     components: new FakeMayflyComponents(),
     keymap: options.keymap ?? new FakeKeymap(),
@@ -41,7 +41,7 @@ function mount(options: {
   return { overlay, onClose }
 }
 
-describe('HelpOverlay', () => {
+describe('HelpPanel', () => {
   it('renders one canonical overlay with semantic sections and a close footer', () => {
     const { overlay } = mount()
     overlay.focused = true
@@ -98,6 +98,19 @@ describe('HelpOverlay', () => {
     const rows = overlay.render(60)
     expect(rows.some(row => row.includes('Plain'))).toBe(true)
     expect(rows.some(row => row.includes('x') && row.includes('plain'))).toBe(true)
+  })
+
+  it('maps every help label tone onto shared InfoPanel semantics', () => {
+    const tones: HelpSection[] = [
+      { heading: 'Primary', labelTone: 'primary', rows: [{ label: 'primary', description: 'a' }] },
+      { heading: 'Success', labelTone: 'success', rows: [{ label: 'success', description: 'b' }] },
+      { heading: 'Warning', labelTone: 'warning', rows: [{ label: 'warning', description: 'c' }] },
+      { heading: 'Danger', labelTone: 'danger', rows: [{ label: 'danger', description: 'd' }] },
+      { heading: 'Muted', labelTone: 'muted', rows: [{ label: 'muted', description: 'e' }] },
+    ]
+    const { overlay } = mount({ sections: tones, maxVisible: 30 })
+    const text = overlay.render(80).join('\n')
+    for (const section of tones) expect(text).toContain(section.heading)
   })
 
   it('renders without the showing tail when the sections fit the window', () => {

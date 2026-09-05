@@ -11,6 +11,8 @@ In effect regardless of focus:
 | `Ctrl-O` | Toggle tool output expansion | Switch the most recent **3 turns** of tool cards and thinking blocks between one-line summary and full output |
 | `Ctrl-T` | Toggle todo pane folding | Five-row folded view ↔ full list |
 | `F6` / `Shift+F6` | Move surface focus | Traverse the Editor and pane lanes in layout order; crossing an end returns to the Editor, while an open capturing overlay owns focus |
+| `F7` | Toggle primary/auxiliary | Switch the complete UI between main and the retained BTW/subagent conversation; show a notice when no auxiliary exists |
+| `F8` | Close auxiliary | Detach a subagent or dispose the temporary BTW Agent, returning to main |
 
 ## Shared interaction keys
 
@@ -34,7 +36,7 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 
 | Key | Action | Description |
 | --- | --- | --- |
-| `Ctrl-C` | Clear → interrupt → exit | Clears the draft, then interrupts a running agent; a **second press within 1 second** exits Mayfly |
+| `Ctrl-C` | Interrupt → clear → exit | Interrupts the selected Agent and all running continuable descendants; clears a draft only when the selected subtree is idle; a **second press within 1 second** exits Mayfly |
 | `Ctrl-S` | Steer | Inject the non-empty draft as a steering instruction into the current turn, clearing the buffer |
 | `Ctrl-V` | Paste image | Store the clipboard image in the attachment library, inserting an `[image #N]` marker at the cursor |
 | `Ctrl-G` | External editor | Hand the draft to an external editor for full-screen editing (`mayfly.editorCommand` setting → `$VISUAL` → `$EDITOR`; Mayfly suspends and yields the terminal); quitting with `:cq` leaves the draft untouched |
@@ -54,7 +56,9 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 | Plan review | `←` / `→` or `1`–`3` choose a decision; `↑` / `↓` / `PageUp` / `PageDown` scroll the plan; `Enter` confirms |
 | `/model` panel | providers are the only tab layer: non-wrapping `←` / `→` switches provider and `Enter` enters the model list; in the list, `↑` / `↓` selects a model, `←` / `→` adjusts that model's thinking level, and `Tab` reaches the equal action choices |
 | `/effort` panel | non-wrapping `←` / `→` moves between thinking levels and `Enter` descends; `Set as default` persists while `Use for this session` changes only the live session |
-| `/btw` pane | `Esc` close; mouse wheel / `PageUp` / `PageDown` scroll; `Enter` follow-up |
+| `/agents` browser | ↑↓ selects, `Space` expands/collapses, and `Enter` views; `Delete`/`Ctrl-D` stops a live continuable child with no live descendants after typed-`y` confirmation, so stop parent branches leaf-first |
+| Readonly subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` scroll; `Escape` closes; global `F7`/`F8` remain active |
+| Live BTW/subagent | Uses the complete main editor and the same panel keys; `F7` returns to main and `F8` closes the auxiliary slot |
 
 ## Custom bindings
 

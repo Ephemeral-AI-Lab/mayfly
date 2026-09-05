@@ -9,7 +9,7 @@ import type { MayflyJson, MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayf
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import { CanonicalPanelAdapter } from './canonical-panel.ts'
-import { ACTION_CANCEL, ACTION_SUBMIT } from './keys.ts'
+import { ACTION_CANCEL, ACTION_DELETE, ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB, ACTION_SUBMIT, interactionKeyHint } from './keys.ts'
 
 /** One canonical input field and its interaction validation. */
 export interface FormField {
@@ -56,16 +56,17 @@ export class CanonicalFormController implements MayflyFocusable {
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: event => this.onEvent(event),
       onFocusChange: identity => this.syncActive(identity.controlId),
       ...(options.t === undefined ? {} : { t: options.t }),
       contextHints: () => [
-        ...(!this.editing ? [{ id: 'dismiss', keys: 'Esc', label: this.options.cancelLabel ?? 'cancel', priority: 95 }] : []),
+        ...(!this.editing ? [{ id: 'dismiss', keys: interactionKeyHint(options.keymap, ACTION_CANCEL, 'Esc'), label: this.options.cancelLabel ?? 'cancel', priority: 95 }] : []),
         ...(this.editing && this.active === this.options.fields.length - 1
-          ? [{ id: 'activate', keys: 'Enter', label: 'submit', priority: 100 }]
+          ? [{ id: 'activate', keys: interactionKeyHint(options.keymap, ACTION_SUBMIT, 'Enter'), label: 'submit', priority: 100 }]
           : []),
-        ...(this.options.onDelete === undefined ? [] : [{ id: 'delete', keys: 'Ctrl+D', label: 'delete', priority: 85 }]),
+        ...(this.options.onDelete === undefined ? [] : [{ id: 'delete', keys: interactionKeyHint(options.keymap, ACTION_DELETE, 'Ctrl+D'), label: 'delete', priority: 85 }]),
       ],
       onTextSubmit: (controlId) => {
         const index = this.options.fields.findIndex(field => field.id === controlId)
@@ -103,8 +104,10 @@ export class CanonicalFormController implements MayflyFocusable {
 
   handleInput(data: string): void {
     const { keymap } = this.options
-    if (data === '\t' || data === '\x1b[Z') {
-      this.submitDirection = data === '\t' ? 1 : -1
+    const nextControl = keymap.matches(data, ACTION_NEXT_CONTROL)
+    const previousControl = keymap.matches(data, ACTION_SHIFT_TAB)
+    if (nextControl || previousControl) {
+      this.submitDirection = previousControl ? -1 : 1
       this.adapter.handleInput(data)
       this.submitDirection = 1
       return
@@ -117,7 +120,7 @@ export class CanonicalFormController implements MayflyFocusable {
       return
     }
     if (keymap.matches(data, ACTION_CANCEL)) { this.adapter.handleInput(data); this.editing = false; return }
-    if (data === '\x04' && this.options.onDelete !== undefined) { this.options.onDelete(); return }
+    if (keymap.matches(data, ACTION_DELETE) && this.options.onDelete !== undefined) { this.options.onDelete(); return }
     this.adapter.handleInput(data)
   }
 

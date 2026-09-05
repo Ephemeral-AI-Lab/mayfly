@@ -42,6 +42,13 @@ function ok(stdout = ''): SpawnOutcome {
   return { code: 0, signal: null, stdout, stderr: '', timedOut: false }
 }
 
+/** Write the profile dependency facts consumed by uninstallEntry. */
+function writeInstalledDependencies(root: string, names: readonly string[]): void {
+  writeFileSync(join(root, 'package.json'), JSON.stringify({
+    dependencies: Object.fromEntries(names.map(name => [name, '1.0.0'])),
+  }))
+}
+
 /** A marketplace entry fixture with every optional field populated. */
 function entry(overrides: Partial<MarketEntry> = {}): MarketEntry {
   return {
@@ -239,6 +246,16 @@ describe('installer unit seams', () => {
     expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
   })
 
+  it('blocks removed marketplace entries before spawning an install', async () => {
+    const removed = entry({ status: 'removed', statusNote: 'security incident' })
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: removed, source: 'npm' }))
+      .toMatchObject({ kind: 'error', text: expect.stringContaining('security incident') })
+    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: entry({ status: 'removed', statusNote: undefined }), source: 'npm' }))
+      .toEqual({ kind: 'error', text: '"Loop" was removed from the marketplace' })
+    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
+  })
+
   it('refuses to reinstall an entry while any of its rows are present', async () => {
     const root = mkdtempTracked('mayfly-install-')
     writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.4' } }))
@@ -276,8 +293,19 @@ describe('installer unit seams', () => {
       { name: 'dsh-workbench-ui', spec: 'x', version: '0.1.0' },
       { name: 'dsh-loop', spec: 'y', version: '0.1.3' },
     ])
-    expect(states.sidechat).toEqual({ installed: false, version: undefined, updateAvailable: false })
-    expect(states.loop).toEqual({ installed: true, version: '0.1.3', updateAvailable: true })
+    expect(states.sidechat).toEqual({ installed: false, version: undefined, updateAvailable: false, updateVersion: undefined })
+    expect(states.loop).toEqual({ installed: true, version: '0.1.3', updateAvailable: true, updateVersion: '0.1.4' })
+    expect(entryInstallStates([entry()], [{ name: 'dsh-loop', spec: 'y', version: '0.1.5' }]).loop)
+      .toEqual({ installed: true, version: '0.1.5', updateAvailable: false, updateVersion: undefined })
+    const multi = entry({
+      id: 'multi-update',
+      install: { rows: [{ name: 'stable-row' }, { name: 'outdated-row' }] },
+      npm: { 'stable-row': { latestVersion: '5.0.0' }, 'outdated-row': { latestVersion: '2.0.0' } },
+    })
+    expect(entryInstallStates([multi], [
+      { name: 'stable-row', spec: 'x', version: '5.0.0' },
+      { name: 'outdated-row', spec: 'y', version: '1.0.0' },
+    ])['multi-update']).toEqual({ installed: true, version: '5.0.0', updateAvailable: true, updateVersion: '2.0.0' })
   })
 
   it('installs: allowBuilds first, one add carrying every spec, then profile-patch rows', async () => {
@@ -321,6 +349,7 @@ describe('installer unit seams', () => {
     })
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const root = mkdtempTracked('mayfly-uninstall-')
+    writeInstalledDependencies(root, ['pkg-a', 'pkg-b'])
     writeFileSync(join(root, 'cordis.patch.yml'), [
       '- id: keep',
       "  name: 'keep-me'",
@@ -347,6 +376,15 @@ describe('installer unit seams', () => {
     expect(patch).not.toContain('x: 1')
   })
 
+  it('refuses an installer-level uninstall when no entry rows are present', async () => {
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    const outcome = await uninstallEntry({
+      dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-uninstall-'), entry: entry(), source: 'npm',
+    })
+    expect(outcome).toEqual({ kind: 'error', text: '"Loop" is not installed in this profile' })
+    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
+  })
+
   it('reports install failures with the allowBuilds follow-up when pnpm raised it', async () => {
     const failing = entry()
     const root = mkdtempTracked('mayfly-install-')
@@ -367,6 +405,7 @@ describe('installer unit seams', () => {
     updaterInternals.spawnOnce = realSpawn
     expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('failed to start') })
     updaterInternals.spawnOnce = async () => ({ code: null, signal: null, stdout: '', stderr: '', timedOut: true })
+    writeInstalledDependencies(root, ['dsh-loop'])
     const timedOut = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' })
     updaterInternals.spawnOnce = realSpawn
     expect(timedOut).toMatchObject({ kind: 'error', text: expect.stringContaining('timed out') })
@@ -417,6 +456,7 @@ describe('installer unit seams', () => {
     const noId = entry({ install: { rows: [{ name: 'pkg-no-id', activation: 'profile-patch', npm: { spec: 'pkg-no-id' } }] } })
     expect((await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
     expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toContain('!!js return 1')
+    writeInstalledDependencies(root, ['pkg-no-id'])
     expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
     expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).not.toContain('pkg-no-id')
   })
@@ -426,11 +466,13 @@ describe('installer unit seams', () => {
     const target = entry({ install: { rows: [{ id: 'target', name: 'pkg-target', activation: 'profile-patch', npm: { spec: 'pkg-target' } }] } })
     for (const source of ['{}\n', '[\n']) {
       const root = mkdtempTracked('mayfly-uninstall-')
+      writeInstalledDependencies(root, ['pkg-target'])
       writeFileSync(join(root, 'cordis.patch.yml'), source)
       const outcome = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: target, source: 'npm' })
       expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('cordis.patch.yml') })
     }
     const root = mkdtempTracked('mayfly-uninstall-')
+    writeInstalledDependencies(root, ['pkg-target'])
     writeFileSync(join(root, 'cordis.patch.yml'), '- scalar\n- name: top-level\n- insert:\n    - name: no-id\n    - id: orphan\n    - id: target\n      name: pkg-target\n')
     expect((await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: target, source: 'npm' })).kind).toBe('success')
     expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([
@@ -450,6 +492,7 @@ describe('installer unit seams', () => {
       .toMatchObject({ kind: 'error', text: expect.stringContaining('activating') })
 
     const uninstallRoot = mkdtempTracked('mayfly-uninstall-')
+    writeInstalledDependencies(uninstallRoot, ['pkg-write'])
     writeFileSync(join(uninstallRoot, 'cordis.patch.yml'), '- insert:\n    - id: write\n      name: pkg-write\n')
     expect(await uninstallEntry({ dshBin: 'dsh', profile: 'p', root: uninstallRoot, entry: withPatch, source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('cleaning up') })
@@ -606,6 +649,16 @@ describe('/plugin argument paths', () => {
     world.dispose()
   })
 
+  it('refuses to install a removed entry through the command path', async () => {
+    const removed = entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'compromised release' })
+    const world = await mountWorld({ index: [removed] })
+    expect(await world.run('/plugin install gone')).toMatchObject({
+      kind: 'error', text: expect.stringContaining('compromised release'),
+    })
+    expect(world.spawns.some(spawn => spawn.cmd === '/usr/bin/dsh')).toBe(false)
+    world.dispose()
+  })
+
   it('reports install failures from the CLI seam', async () => {
     const world = await mountWorld({ index: [entry()], spawn: { plugin: () => ({ code: 1, signal: null, stdout: '', stderr: 'pnpm: network down', timedOut: false }) } })
     await world.run('/plugin install loop')
@@ -690,6 +743,16 @@ describe('/plugin argument paths', () => {
     expect(json).toContain('yanked')
     expect(json).toContain('up 0.1.5')
     expect(json).toContain('Fresh')
+    world.dispose()
+  })
+
+  it('shows a removed entry without a reinstall command', async () => {
+    const gone = entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'yanked', install: { rows: [{ name: 'gone-pkg', npm: { spec: 'gone-pkg' } }] } })
+    const world = await mountWorld({ index: [gone] })
+    expect(await world.run('/plugin info gone')).toEqual({ kind: 'success' })
+    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    expect(json).toContain('yanked')
+    expect(json).not.toContain('Install command')
     world.dispose()
   })
 
@@ -847,7 +910,7 @@ describe('/plugin key paths', () => {
     world.dispose()
   })
 
-  it('renders a partially installed multi-row entry once', async () => {
+  it('lists a partially installed multi-row entry as removable and removes only present rows', async () => {
     const multi = entry({
       id: 'multi',
       displayName: 'Multi Row',
@@ -859,10 +922,17 @@ describe('/plugin key paths', () => {
     const world = await mountWorld({ index: [multi], profileDependencies: { 'multi-a': '1.0.0' } })
     await world.run('/plugin list')
     const panel = world.overlay() as BrowserPanel
-    selectBrowserTab(panel, 'not-installed')
     const json = JSON.stringify(panel.currentNode())
     expect(json).toContain('partial')
     expect(json.match(/Multi Row/gu)).toHaveLength(1)
+    expect(json).toContain('Uninstall')
+    expect(browserTabs(panel)).toMatchObject({ activeId: 'installed', items: [
+      { id: 'installed', count: 1 }, { id: 'not-installed', count: 0 },
+    ] })
+    panel.handleInput('u')
+    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
+    expect(world.spawns.find(spawn => spawn.args.includes('remove'))?.args)
+      .toEqual(['plugin', '--profile', 'mayfly', 'remove', 'multi-a'])
     world.dispose()
   })
 })
@@ -994,8 +1064,8 @@ describe('/plugin coverage corners', () => {
     const states = entryInstallStates([ghOnly, entry({ id: 'unrelated', install: { rows: [{ name: 'zz-pkg', npm: { spec: 'z' } }] } })], [
       { name: 'gh-pkg', spec: 'github:a/b#r', version: undefined },
     ])
-    expect(states.gh).toEqual({ installed: true, version: undefined, updateAvailable: false })
-    expect(states.unrelated).toEqual({ installed: false, version: undefined, updateAvailable: false })
+    expect(states.gh).toEqual({ installed: true, version: undefined, updateAvailable: false, updateVersion: undefined })
+    expect(states.unrelated).toEqual({ installed: false, version: undefined, updateAvailable: false, updateVersion: undefined })
   })
 
   it('rowSpec returns undefined when the requested source is absent', () => {
@@ -1023,6 +1093,7 @@ describe('/plugin coverage corners', () => {
     const unquoted = entry({ install: { rows: [{ id: 'u', name: 'bare-pkg', activation: 'profile-patch', npm: { spec: 'u' } }] } })
     const root = mkdtempTracked('mayfly-uninstall-')
     updaterInternals.spawnOnce = vi.fn(async () => ok())
+    writeInstalledDependencies(root, ['bare-pkg'])
     const withoutFile = await uninstallEntry({ dshBin: 'dsh', profile: 'p', root, entry: unquoted, source: 'npm' })
     expect(withoutFile.kind).toBe('success')
     const unrelated = '- insert:\n    - id: other\n      name: other-package\n'
@@ -1340,7 +1411,7 @@ describe('detail-shape arms', () => {
     })
     // Installed with an update available: the Version row shows the update.
     await world.run('/plugin info loop')
-    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('update available')
+    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('update available: 0.1.4')
     for (const id of ['tools-only', 'commands-only', 'tui-only', 'web-only2']) {
       await world.run(`/plugin info ${id}`)
       expect(world.overlay()).toBeDefined()

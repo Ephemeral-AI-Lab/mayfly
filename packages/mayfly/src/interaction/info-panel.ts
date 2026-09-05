@@ -10,7 +10,7 @@ import type { MayflyInlineSpan, MayflyTone, MayflyUiNode } from '@ephemeral-ai/m
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { CanonicalPanelAdapter } from './canonical-panel.ts'
-import { ACTION_CANCEL, ACTION_SUBMIT } from './keys.ts'
+import { ACTION_CANCEL, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_PAGE_DOWN, ACTION_PAGE_UP, ACTION_SUBMIT, interactionKeyHint } from './keys.ts'
 
 const DEFAULT_MAX_VISIBLE = 16
 const INFO_LEAF_PATH = '$.child.scroll'
@@ -28,6 +28,8 @@ export interface InfoSegment {
 /** One label/value row. */
 export interface InfoRow {
   readonly label: string
+  readonly labelStyle?: InfoStyle
+  readonly labelStrong?: boolean
   readonly segments: readonly InfoSegment[]
 }
 
@@ -42,12 +44,13 @@ export interface InfoPanelOptions {
   readonly theme: MayflyTheme
   readonly components: MayflyComponents
   readonly keymap: MayflyKeymap
-  readonly title: string
-  readonly sections: readonly InfoSection[]
+  readonly title: string | (() => string)
+  readonly sections: readonly InfoSection[] | (() => readonly InfoSection[])
   readonly onClose: () => void
   readonly t?: MayflyTranslate
   /** Maximum post-wrap content rows visible in the editor slot. */
   readonly maxVisible?: number
+  readonly showingLabel?: (start: number, end: number, total: number) => string
 }
 
 function tone(style: InfoStyle | undefined): MayflyTone {
@@ -81,11 +84,12 @@ export class InfoPanel implements MayflyFocusable {
   private contentLimit: number
 
   constructor(private readonly options: InfoPanelOptions) {
-    this.contentRows = options.sections.reduce((total, section) => total + section.rows.length + 2, 0)
+    this.contentRows = this.sections().reduce((total, section) => total + section.rows.length + 2, 0)
     this.contentLimit = Math.max(5, options.maxVisible ?? DEFAULT_MAX_VISIBLE)
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: PASSIVE_EVENT_SINK,
       onUnhandledEscape: options.onClose,
@@ -94,10 +98,10 @@ export class InfoPanel implements MayflyFocusable {
       focusWithoutControls: true,
       contextHints: () => [
         ...(this.contentRows > this.contentLimit ? [
-          { id: 'navigate', keys: '↑↓', label: 'scroll', priority: 90 },
-          { id: 'page', keys: 'PgUp/PgDn', label: 'page', priority: 85 },
+          { id: 'navigate', keys: `${interactionKeyHint(options.keymap, ACTION_MOVE_UP, '↑')}${interactionKeyHint(options.keymap, ACTION_MOVE_DOWN, '↓')}`, label: 'scroll', priority: 90 },
+          { id: 'page', keys: `${interactionKeyHint(options.keymap, ACTION_PAGE_UP, 'PgUp')}/${interactionKeyHint(options.keymap, ACTION_PAGE_DOWN, 'PgDn')}`, label: 'page', priority: 85 },
         ] : []),
-        { id: 'dismiss', keys: 'Esc/Enter/q', label: 'close', priority: 100 },
+        { id: 'dismiss', keys: `${interactionKeyHint(options.keymap, ACTION_CANCEL, 'Esc')}/${interactionKeyHint(options.keymap, ACTION_SUBMIT, 'Enter')}/q`, label: 'close', priority: 100 },
       ],
       maxLeafRows: this.contentLimit,
       leafRowWindowPath: INFO_LEAF_PATH,
@@ -131,7 +135,7 @@ export class InfoPanel implements MayflyFocusable {
   /** Current renderer-neutral information tree. */
   currentNode(): MayflyUiNode {
     const spans: MayflyInlineSpan[] = []
-    for (const [sectionIndex, section] of this.options.sections.entries()) {
+    for (const [sectionIndex, section] of this.sections().entries()) {
       appendSpan(spans, {
         text: `${sectionIndex === 0 ? '' : '\n\n'}${section.heading}`,
         tone: 'accent',
@@ -140,7 +144,11 @@ export class InfoPanel implements MayflyFocusable {
       for (const row of section.rows) {
         const segments = row.segments.map(segment => ({ text: segment.text, tone: tone(segment.style) }))
         if (row.label.length > 0) {
-          appendSpan(spans, { text: `\n${row.label}`, tone: 'muted' })
+          appendSpan(spans, {
+            text: `\n${row.label}`,
+            tone: tone(row.labelStyle ?? 'muted'),
+            ...(row.labelStrong === true ? { styles: ['strong'] } : {}),
+          })
           appendSpan(spans, { text: '  ' })
           for (const segment of segments) appendSpan(spans, segment)
         } else if (segments.length > 0) {
@@ -152,15 +160,21 @@ export class InfoPanel implements MayflyFocusable {
         }
       }
     }
+    const start = this.scrollTop + 1
+    const end = this.scrollTop + Math.min(this.contentLimit, this.contentRows - this.scrollTop)
     const showing = this.contentRows > this.contentLimit
-      ? `showing ${String(this.scrollTop + 1)}-${String(this.scrollTop + Math.min(this.contentLimit, this.contentRows - this.scrollTop))} of ${String(this.contentRows)} · `
+      ? this.options.showingLabel?.(start, end, this.contentRows) ?? `showing ${String(start)}-${String(end)} of ${String(this.contentRows)}`
       : ''
     return {
       kind: 'surface',
       chrome: 'overlay',
-      title: this.options.title,
+      title: typeof this.options.title === 'function' ? this.options.title() : this.options.title,
       child: { kind: 'scroll', child: { kind: 'rich-text', spans } },
-      ...(showing === '' ? {} : { footer: { kind: 'divider', label: showing.slice(0, -3) } as const }),
+      ...(showing === '' ? {} : { footer: { kind: 'divider', label: showing } as const }),
     }
+  }
+
+  private sections(): readonly InfoSection[] {
+    return typeof this.options.sections === 'function' ? this.options.sections() : this.options.sections
   }
 }

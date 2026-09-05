@@ -1991,11 +1991,12 @@ describe('compileMayflyUiNode', () => {
       ui.actions({ id: 'actions', items: [{ id: 'save', label: 'Save' }] }),
     ]), fixture().options).focusTarget!
     focus.handleInput?.('\r')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'name', editing: true })
     focus.handleInput?.('\t')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'name' })
     focus.handleInput?.('\x1b')
-    expect(focus.restoreFocusIdentity?.({ controlId: 'mode' })).toBe(true)
-    focus.handleInput?.('\r')
+    expect(focus.restoreFocusIdentity?.({ controlId: 'mode', editing: true })).toBe(true)
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'mode', editing: true })
     focus.handleInput?.('\t')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'mode' })
   })

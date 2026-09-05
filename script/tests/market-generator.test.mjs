@@ -35,7 +35,9 @@ test('market generator rejects unsafe paths and malformed install rows', () => {
   assert.throws(() => validateMarketIndex({ schemaVersion: 1, entries: [entry({ install: { rows: [] } })] }), /install.rows/)
   assert.throws(() => validateMarketIndex({ schemaVersion: 1, entries: [entry({ install: { rows: [{}] } })] }), /package name and source/)
   assert.throws(() => validateMarketIndex({ schemaVersion: 1, entries: [entry({ install: { rows: [{ name: 'x', npm: {} }] } })] }), /npm sources/)
+  assert.throws(() => validateMarketIndex({ schemaVersion: 1, entries: [entry({ install: { rows: [{ name: 'x', npm: { spec: 'x\n```' } }] } })] }), /npm sources/)
   assert.throws(() => validateMarketIndex({ schemaVersion: 1, entries: [entry({ install: { rows: [{ name: 'x', github: {} }] } })] }), /GitHub sources/)
+  assert.throws(() => validateMarketIndex({ schemaVersion: 1, entries: [entry({ install: { rows: [{ name: 'x', github: { repo: 'owner/repo', ref: 'main\n```' } }] } })] }), /GitHub sources/)
   const valid = { schemaVersion: 1, entries: [entry()] }
   assert.equal(validateMarketIndex(valid), valid.entries)
   const fallback = JSON.parse(readFileSync(new URL('../../website/scripts/market-fallback.json', import.meta.url), 'utf8'))
@@ -46,6 +48,9 @@ test('third-party README content stays inert in generated Vue Markdown', () => {
   const malicious = entry({
     displayName: 'Line one\n# injected',
     links: { repo: 'javascript:alert(1)', docs: 'https://example.com/docs' },
+    provides: { tools: ['<script>alert(2)</script>'], commands: ['{{ globalThis.location }}'] },
+    capabilities: ['<img src=x onerror=alert(3)>'],
+    verified: { at: '{{ globalThis.location }}', packages: [{ name: '<script>alert(4)</script>', version: '1.0.0' }] },
     readme: '<!-- @include: ../../../../.git/config -->\n{{ globalThis.location }}\n<script>alert(1)</script>',
   })
   const block = readmeBlock(malicious)
@@ -56,6 +61,8 @@ test('third-party README content stays inert in generated Vue Markdown', () => {
   const page = detailPage(malicious, 'en')
   assert.match(page, /title: "Line one # injected"/u)
   assert.doesNotMatch(page, /javascript:/u)
+  assert.doesNotMatch(page, /<script>|<img|\{\{/u)
+  assert.match(page, /&lt;script&gt;alert\(2\)&lt;\/script&gt;/u)
   assert.match(page, /https:\/\/example\.com\/docs/u)
 })
 
@@ -83,4 +90,13 @@ test('ACP is documented as a dedicated-profile automation frontend', () => {
   assert.equal(installCommand(acp), 'dsh plugin --profile <automation-name> add @deepseek-ai/dsh-acp')
   assert.match(detailPage(acp, 'en'), /owns stdio.*dedicated profile/su)
   assert.match(detailPage(acp, 'zh'), /独占 stdio.*独立 profile/su)
+  assert.match(detailPage(acp, 'en'), /`\/plugin install` inside Mayfly refuses/u)
+})
+
+test('removed entries retain a detail page without install instructions', () => {
+  const removed = entry({ status: 'removed', statusNote: 'compromised release' })
+  const page = detailPage(removed, 'en')
+  assert.match(page, /compromised release/u)
+  assert.match(page, /can no longer be installed/u)
+  assert.doesNotMatch(page, /dsh plugin|\/plugin install/u)
 })

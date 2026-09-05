@@ -22,18 +22,19 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyComponents, MayflyFocusable, MayflyScreen, MayflyTheme } from '../core/index.ts'
+import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyScreen, MayflyTheme } from '../core/index.ts'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { CanonicalPanelAdapter } from './canonical-panel.ts'
 import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
+import { ACTION_CANCEL, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SUBMIT, interactionKeyHint } from './keys.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-approval'
 /** Services required before the answerer can listen. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyEditorPanels', 'mayflyCurrentAgent']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyEditorPanels', 'mayflyCurrentAgent']
 
 /** Decoded input sequences the prompt handles directly (no keymap actions). */
 /** Construction options for {@link ApprovalPrompt}. */
@@ -42,6 +43,7 @@ interface ApprovalPromptOptions {
   readonly theme: MayflyTheme
   /** Component factory supplying the feedback editor and width helpers. */
   readonly components: MayflyComponents
+  readonly keymap: MayflyKeymap
   /** Screen, poked for a re-render after cursor and mode changes. */
   readonly screen: MayflyScreen
   /** Tool the approval gates. */
@@ -76,6 +78,7 @@ class ApprovalPrompt implements MayflyFocusable {
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: event => this.onEvent(event),
       onFocusChange: identity => this.syncCursor(identity.controlId, identity.itemId),
@@ -88,13 +91,13 @@ class ApprovalPrompt implements MayflyFocusable {
       contextHints: () => this.feedback
         ? [
             { id: 'feedback', keys: 'Type', label: 'feedback', priority: 90 },
-            { id: 'activate', keys: 'Enter', label: 'submit', priority: 100 },
-            { id: 'dismiss', keys: 'Esc', label: 'reject', priority: 95 },
+            { id: 'activate', keys: interactionKeyHint(options.keymap, ACTION_SUBMIT, 'Enter'), label: 'submit', priority: 100 },
+            { id: 'dismiss', keys: interactionKeyHint(options.keymap, ACTION_CANCEL, 'Esc'), label: 'reject', priority: 95 },
           ]
         : [
-            { id: 'navigate', keys: '↑↓/1-4', label: 'choose', priority: 90 },
-            { id: 'activate', keys: 'Enter', label: 'confirm', priority: 100 },
-            { id: 'dismiss', keys: 'Esc', label: 'reject', priority: 95 },
+            { id: 'navigate', keys: `${interactionKeyHint(options.keymap, ACTION_MOVE_UP, '↑')}${interactionKeyHint(options.keymap, ACTION_MOVE_DOWN, '↓')}/1-4`, label: 'choose', priority: 90 },
+            { id: 'activate', keys: interactionKeyHint(options.keymap, ACTION_SUBMIT, 'Enter'), label: 'confirm', priority: 100 },
+            { id: 'dismiss', keys: interactionKeyHint(options.keymap, ACTION_CANCEL, 'Esc'), label: 'reject', priority: 95 },
           ],
     })
   }
@@ -344,6 +347,7 @@ function prompt(
     const component = new ApprovalPrompt({
       theme: ctx.mayflyTheme,
       components: ctx.mayflyComponents,
+      keymap: ctx.mayflyKeymap,
       screen: ctx.mayflyScreen,
       toolName: req.toolName,
       ...req.reason === undefined ? {} : { reason: req.reason },

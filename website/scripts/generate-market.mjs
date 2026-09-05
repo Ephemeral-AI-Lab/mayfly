@@ -120,7 +120,11 @@ export function readmeBlock(entry) {
 }
 
 function inlineText(value) {
-  return String(value).replace(/\s+/gu, ' ').trim().replace(/([\\`*_[\]<>])/gu, '\\$1')
+  return escapeInertHtml(String(value).replace(/\s+/gu, ' ').trim()).replace(/([\\`*_[\]])/gu, '\\$1')
+}
+
+function inlineCode(value) {
+  return `<code>${escapeInertHtml(String(value).replace(/\s+/gu, ' ').trim())}</code>`
 }
 
 function safeHttpUrl(value) {
@@ -139,12 +143,21 @@ export function detailPage(entry, locale) {
   const description = inlineText(zh && entry.descriptionZh ? entry.descriptionZh : entry.description)
   const tools = entry.provides?.tools ?? []
   const commands = entry.provides?.commands ?? []
-  const verified = entry.verified?.packages?.map(pkg => `${pkg.name}@${pkg.version}`).join(', ')
+  const verified = entry.verified?.packages?.map(pkg => `${inlineCode(pkg.name)}@${inlineCode(pkg.version)}`).join(', ')
   const links = [
     safeHttpUrl(entry.links?.repo) ? `[${zh ? '仓库' : 'Repository'}](<${safeHttpUrl(entry.links.repo)}>)` : '',
     safeHttpUrl(entry.links?.docs) ? `[${zh ? '文档' : 'Docs'}](<${safeHttpUrl(entry.links.docs)}>)` : '',
     safeHttpUrl(entry.links?.npm) ? `[npm](<${safeHttpUrl(entry.links.npm)}>)` : '',
   ].filter(Boolean).join(' · ')
+  const install = entry.status === 'removed'
+    ? (zh ? '此条目已从市场移除，不能再安装。' : 'This entry has been removed from the marketplace and can no longer be installed.')
+    : `\`\`\`sh
+${installCommand(entry)}
+\`\`\`
+
+${requiresDedicatedProfile(entry)
+  ? (zh ? '请使用独立的非 Mayfly 自动化 profile；Mayfly 内的 `/plugin install` 会拒绝此条目。' : 'Use a dedicated non-Mayfly automation profile; `/plugin install` inside Mayfly refuses this entry.')
+  : (zh ? '在 Mayfly 中：`/plugin install ' + entry.id + '`（或 `/plugin` 浏览）。安装后**重启并新建会话**生效。' : 'Inside Mayfly: `/plugin install ' + entry.id + '` (or browse with `/plugin`). **Restart and start a new session** to apply.')}`
   return `---
 title: ${JSON.stringify(displayName)}
 ---
@@ -159,11 +172,7 @@ ${requiresDedicatedProfile(entry) ? (zh ? '> [!WARNING]\n> 此条目是独占 st
 
 ## ${zh ? '安装' : 'Install'}
 
-\`\`\`sh
-${installCommand(entry)}
-\`\`\`
-
-${zh ? '在 Mayfly 中：`/plugin install ' + entry.id + '`（或 `/plugin` 浏览）。安装后**重启并新建会话**生效。' : 'Inside Mayfly: `/plugin install ' + entry.id + '` (or browse with `/plugin`). **Restart and start a new session** to apply.'}
+${install}
 
 ## ${zh ? '前端支持' : 'Frontend support'}
 
@@ -173,13 +182,13 @@ ${verdict(entry, locale)}
 
 ## ${zh ? '提供' : 'Provides'}
 
-- ${zh ? '工具' : 'Tools'}: ${tools.length > 0 ? tools.map(tool => `\`${tool}\``).join(' · ') : zh ? '无' : 'none'}
-- ${zh ? '命令' : 'Commands'}: ${commands.length > 0 ? commands.join(' · ') : zh ? '无' : 'none'}
-${entry.capabilities?.length ? `- ${zh ? '能力披露' : 'Capabilities'}: ${entry.capabilities.join(', ')}` : ''}
+- ${zh ? '工具' : 'Tools'}: ${tools.length > 0 ? tools.map(inlineCode).join(' · ') : zh ? '无' : 'none'}
+- ${zh ? '命令' : 'Commands'}: ${commands.length > 0 ? commands.map(inlineCode).join(' · ') : zh ? '无' : 'none'}
+${entry.capabilities?.length ? `- ${zh ? '能力披露' : 'Capabilities'}: ${entry.capabilities.map(inlineText).join(', ')}` : ''}
 
 ## ${zh ? '审核信息' : 'Verification'}
 
-${verified ? `${zh ? '审核版本' : 'Reviewed versions'}: ${verified}（${entry.verified.at}）` : zh ? '未记录' : 'Not recorded.'} ${zh ? '收录是披露与审查，不是沙箱——安装第三方插件等同于安装任意 npm 包。' : 'Listing is disclosure and review, not a sandbox — installing a third-party plugin equals installing an arbitrary npm package.'}
+${verified ? `${zh ? '审核版本' : 'Reviewed versions'}: ${verified}（${inlineText(entry.verified.at)}）` : zh ? '未记录' : 'Not recorded.'} ${zh ? '收录是披露与审查，不是沙箱——安装第三方插件等同于安装任意 npm 包。' : 'Listing is disclosure and review, not a sandbox — installing a third-party plugin equals installing an arbitrary npm package.'}
 
 ${links ? `## ${zh ? '链接' : 'Links'}\n\n${links}` : ''}
 
@@ -219,10 +228,10 @@ export function validateMarketIndex(index) {
       if (typeof row !== 'object' || row === null || typeof row.name !== 'string' || (row.npm === undefined && row.github === undefined)) {
         throw new Error(`${entry.id}: every install row needs a package name and source`)
       }
-      if (row.npm !== undefined && (typeof row.npm !== 'object' || row.npm === null || typeof row.npm.spec !== 'string')) {
+      if (row.npm !== undefined && (typeof row.npm !== 'object' || row.npm === null || typeof row.npm.spec !== 'string' || row.npm.spec === '' || /[\r\n\0]/u.test(row.npm.spec))) {
         throw new Error(`${entry.id}: npm sources need a string spec`)
       }
-      if (row.github !== undefined && (typeof row.github !== 'object' || row.github === null || typeof row.github.repo !== 'string' || typeof row.github.ref !== 'string')) {
+      if (row.github !== undefined && (typeof row.github !== 'object' || row.github === null || typeof row.github.repo !== 'string' || typeof row.github.ref !== 'string' || /[\r\n\0]/u.test(row.github.repo) || /[\r\n\0]/u.test(row.github.ref) || (row.github.subdir !== undefined && (typeof row.github.subdir !== 'string' || /[\r\n\0]/u.test(row.github.subdir))))) {
         throw new Error(`${entry.id}: GitHub sources need repo and ref strings`)
       }
     }
@@ -242,7 +251,6 @@ async function main() {
   let zhCount = 0
   let enCount = 0
   for (const entry of entries) {
-    if (!entry?.id || entry.status === 'removed') continue
     mkdirSync(join(generated, entry.id), { recursive: true })
     writeFileSync(join(generated, entry.id, 'index.md'), detailPage(entry, 'zh'))
     mkdirSync(join(generatedEn, entry.id), { recursive: true })

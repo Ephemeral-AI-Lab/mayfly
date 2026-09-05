@@ -28,6 +28,7 @@
  */
 
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
+import { compactElapsedSeconds } from './agent-presentation.ts'
 import { ellipsize } from './present.ts'
 import type { TranscriptToolItem } from './types.ts'
 
@@ -113,10 +114,7 @@ interface RenderCache {
 
 /** kimi `agent-group.ts` elapsed format: `45s`, or `2m 10s` past a minute. */
 function formatElapsed(seconds: number): string {
-  if (seconds < 60) return `${String(seconds)}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainder = seconds % 60
-  return `${String(minutes)}m ${String(remainder)}s`
+  return compactElapsedSeconds(seconds)
 }
 
 /** Compact 1024-base token text (the usage.ts `formatTokens` twin). */

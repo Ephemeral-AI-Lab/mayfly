@@ -1671,7 +1671,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const tabControlId = controlGroups(controls)
       .filter(group => group.kind === 'tabs')[this.state.lastTabGroupIndex]
       ?.entries[0]?.control.identity.controlId
-    return tabControlId === undefined ? active.identity : { ...active.identity, tabControlId }
+    const identity: MayflyFocusIdentity = (active.kind === 'text' || active.kind === 'select')
+      && this.state.editingKey === active.key
+      ? { ...active.identity, editing: true }
+      : active.identity
+    return tabControlId === undefined ? identity : { ...identity, tabControlId }
   }
 
   restoreFocusIdentity(identity: MayflyFocusIdentity): boolean {
@@ -1691,6 +1695,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const tabIndex = tabGroups.findIndex(group => group.entries[0]?.control.identity.controlId === identity.tabControlId)
     if (tabIndex >= 0) this.state.lastTabGroupIndex = tabIndex
     this.state.pendingConfirmation = undefined
+    if (identity.editing === true && control.kind === 'select') this.state.beginSelectEditing(control.field, control.key)
+    else this.state.setEditing(identity.editing === true && control.kind === 'text' ? control.key : undefined)
     reconcile(this.state)
     return true
   }

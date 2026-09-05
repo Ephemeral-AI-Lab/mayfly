@@ -37,11 +37,9 @@
  * the shared mount closures. The service reads are lazy `ctx.get` — this
  * fiber must never become a theme dependent (the `/theme` swap disposes
  * dependents). A theme commit from the panel's own Theme row still
- * rebuilds the input fiber mid-swap, whose teardown unmounts the dock
- * slot: the panel re-homes the SAME instances (both levels, plus an open
- * form) on a deferred `'mayfly/input-editor-changed'` emission — the
- * `/theme` picker discipline, so the lists keep their highlight — and
- * reads its palette through a live getter.
+ * rebuilds the input fiber mid-swap; the shared editor-panel controller
+ * replays the same instances and focus identities onto the new dock host.
+ * The settings controller reads its palette through a live getter.
  *
  * @module @ephemeral-ai/mayfly/interaction/settings-command
  */
@@ -63,7 +61,7 @@ import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { currentMayflySettings } from './settings.ts'
 import { CanonicalFormController } from './form-panel.ts'
-import { ACTION_CANCEL, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SUBMIT, ACTION_TOGGLE } from './keys.ts'
+import { ACTION_CANCEL, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SUBMIT, ACTION_TOGGLE, interactionKeyHint } from './keys.ts'
 import type { PermissionPresetsService } from './permission-panel.ts'
 import { CanonicalSelectController } from './select-list.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
@@ -459,13 +457,14 @@ export class CanonicalSettingsController implements MayflyFocusable, CanonicalNo
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: event => this.onEvent(event),
       onUnhandledEscape: options.onCancel,
       ...(options.t === undefined ? {} : { t: options.t }),
       contextHints: () => [
-        { id: 'activate', keys: 'Enter/Space', label: 'change', compact: 'Enter', priority: 100 },
-        { id: 'dismiss', keys: 'Esc', label: 'back', priority: 95 },
+        { id: 'activate', keys: `${interactionKeyHint(options.keymap, ACTION_SUBMIT, 'Enter')}/${interactionKeyHint(options.keymap, ACTION_TOGGLE, 'Space')}`, label: 'change', compact: interactionKeyHint(options.keymap, ACTION_SUBMIT, 'Enter'), priority: 100 },
+        { id: 'dismiss', keys: interactionKeyHint(options.keymap, ACTION_CANCEL, 'Esc'), label: 'back', priority: 95 },
       ],
     })
   }
@@ -563,6 +562,7 @@ export interface NoticeTailOptions {
   readonly inner: CanonicalNodeSource
   readonly components: MayflyComponents
   readonly theme: MayflyTheme
+  readonly keymap: MayflyKeymap
   readonly notice: SettingsPanelNotice
 }
 
@@ -581,6 +581,7 @@ export class SettingsNoticeController implements MayflyFocusable {
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: () => {},
     })
@@ -785,6 +786,7 @@ export function registerSettingsCommand(ctx: Context): () => void {
           inner: groupsPanel,
           components: display.components,
           theme: liveTheme,
+          keymap: display.keymap,
           notice: panelNotice,
         })
         restoreGroups = mountEditorReplacement(ctx, groupsTail)
@@ -806,36 +808,12 @@ export function registerSettingsCommand(ctx: Context): () => void {
         openNs = undefined
       }
 
-      /**
-       * Re-claim the editor's dock slot: a theme swap rebuilds the input
-       * fiber (unmounting the panels with the old one), so the SAME panel
-       * instances mount fresh in stack order — the lists keep their
-       * highlight and the swap lands under the open panel.
-       */
-      const rehome = (): void => {
-        if (inactive()) return
-        restoreForm?.()
-        restoreList?.()
-        restoreGroups()
-        restoreGroups = mountEditorReplacement(ctx, groupsTail)
-        if (listPanel !== undefined) restoreList = mountEditorReplacement(ctx, listPanel)
-        if (formPanel !== undefined) restoreForm = mountEditorReplacement(ctx, formPanel)
-      }
-
-      // The input fiber's mount emits before its slot-swap machinery
-      // installs; one microtask later the panels re-home against the fresh
-      // swap (the /theme picker's deferral).
-      const offEditorChanged = ctx.on('mayfly/input-editor-changed', () => {
-        void Promise.resolve().then(rehome)
-      })
-
       /** Tear every level down: unsubscribe, pop the dock slots. */
       const close = (): void => {
         if (closed) return
         closed = true
         offLocale()
         offDocument()
-        offEditorChanged()
         restoreForm?.()
         restoreList?.()
         restoreGroups()

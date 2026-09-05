@@ -7,9 +7,10 @@
  */
 
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyComponents, MayflyFocusable, MayflyTheme } from '../core/index.ts'
+import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import type { AskUserQuestionAnswerItem, AskUserQuestionItem, AskUserQuestionOption } from '@deepseek-ai/dsh-user-questions'
 import { CanonicalPanelAdapter } from './canonical-panel.ts'
+import { ACTION_CANCEL } from './keys.ts'
 const RESERVED_ROWS = 14
 const MIN_PLAN_ROWS = 6
 const REJECT_LABEL = 'Reject'
@@ -40,6 +41,7 @@ export function planReviewChoices(question: AskUserQuestionItem): PlanReviewChoi
 export interface PlanReviewPanelOptions {
   readonly theme: MayflyTheme
   readonly components: MayflyComponents
+  readonly keymap: MayflyKeymap
   readonly question: AskUserQuestionItem
   readonly choices: PlanReviewChoices
   readonly viewportRows: () => number
@@ -65,6 +67,7 @@ export class PlanReviewPanel implements MayflyFocusable {
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: event => this.onEvent(event),
       onFocusChange: identity => this.syncCursor(identity.controlId, identity.itemId),
@@ -103,7 +106,7 @@ export class PlanReviewPanel implements MayflyFocusable {
     if (!this.editing && data === '2') { this.fire('reject'); return }
     if (!this.editing && data === '3') { this.enterRevision(); return }
     this.adapter.handleInput(data)
-    if (this.editing && data === '\x1b') this.editing = false
+    if (this.editing && this.options.keymap.matches(data, ACTION_CANCEL)) this.editing = false
   }
 
   invalidate(): void { this.adapter.invalidate() }

@@ -69,6 +69,8 @@ export interface MayflyFocusIdentity {
   readonly controlId: string
   readonly itemId?: string
   readonly tabControlId?: string
+  /** Core-owned edit mode for a focused text or select field. */
+  readonly editing?: boolean
 }
 
 /** Absolute column/row count or a percentage of the terminal dimension. */
@@ -898,40 +900,11 @@ declare module '@deepseek-ai/cordis' {
      */
     'mayfly/terminal-theme-changed'(scheme: 'dark' | 'light'): void
     /**
-     * The side-question pane docked above the input editor (or left) —
-     * the editor's top corners switch from `╭╮` to the spliced `├┤` while
-     * connected. Emitted by `mayfly-pane-btw` on open (true, with the busy
-     * flag), on dismiss or unload (false), and whenever the side agent's
-     * running state flips; `mayfly-input` listens, mirrors the flag onto the
-     * editor, and gates its Esc/Enter plus page/wheel routing on it.
-     * Unfiltered: the flag is broadcast to every fiber.
-     * @param connected - whether the pane is docked above the editor.
-     * @param busy - whether the side agent is still answering; a submit
-     *   while busy is refused by the editor and the draft restored.
-     * @mode emit
-     */
-    'mayfly/editor-connected-above'(connected: boolean, busy?: boolean): void
-    /**
-     * A key command for the open side-question pane, routed through the
-     * editor's context key chain. Escape closes it, while wheel and
-     * PageUp/PageDown scroll it without taking Up/Down from editor history.
-     * Emitted by `mayfly-input`; `mayfly-pane-btw` listens and runs the pane
-     * close/scroll/submit action. No-ops when the pane is closed; `submit`
-     * is refused while the side agent is still running.
-     * @param command - the pane action to run.
-     * @param text - the submitted follow-up text for `submit`.
-     * @param amount - row count for a scroll action.
-     * @mode emit
-     */
-    'mayfly/btw-command'(command: 'close' | 'scroll-up' | 'scroll-down' | 'submit', text?: string, amount?: number): void
-    /**
      * A dialog panel took over the input editor's dock slot, or the last
      * one left and the editor returned (the D30 editor-slot swap).
      * Emitted by `mayfly-input` when its replacement-panel stack transitions
-     * between empty and occupied; `mayfly-pane-activity` hides its row while
-     * any panel is up (below an open panel only the footer stays) and
-     * `mayfly-pane-btw` re-asserts its editor-splice flag around the
-     * editor's absence.
+     * between empty and occupied; passive bottom panes hide while a panel is
+     * up, leaving only the footer below the replacement.
      * Unfiltered: the slot is a singleton owned by `mayfly-input`.
      * @param occupied - whether a dialog panel currently occupies the
      *   editor's dock slot.

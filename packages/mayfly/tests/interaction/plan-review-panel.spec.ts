@@ -11,7 +11,7 @@ import type { MayflyComponent } from '../../src/core/types.ts'
 import { startMayflyTerminal } from '../../src/core/terminal.ts'
 import { FakeTerminal, waitForRender } from '../core/fake-terminal.ts'
 import { PlanReviewPanel, planReviewChoices } from '../../src/interaction/plan-review-panel.ts'
-import { FakeMayflyComponents, FakeTheme, KEY } from './fakes.ts'
+import { FakeKeymap, FakeMayflyComponents, FakeTheme, KEY } from './fakes.ts'
 
 /** The plan-review ask, with a non-standard approve label (never hardcoded). */
 function ask(overrides: Partial<AskUserQuestionItem> = {}): AskUserQuestionItem {
@@ -46,6 +46,7 @@ function mount(question: AskUserQuestionItem, viewportRows = 24): {
   const panel = new PlanReviewPanel({
     theme: new FakeTheme(),
     components,
+    keymap: new FakeKeymap(),
     question,
     choices,
     viewportRows: () => viewportRows,

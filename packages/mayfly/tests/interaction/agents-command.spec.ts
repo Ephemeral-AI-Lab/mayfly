@@ -13,11 +13,12 @@ import {
   agentMetricsText,
   buildAgentRows,
   formatAgentElapsed,
+  liveAgentDescendantCount,
   type MayflySubagentTreeEntry,
 } from '../../src/interaction/agents-command.ts'
 import { PromptEditorController, setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
-import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes.ts'
+import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme, KEY } from './fakes.ts'
 
 function plain(rows: readonly string[]): readonly string[] {
   return rows.map(row => row.replace(/\x1b\[[0-9;]*m/g, '').replace(/[~^#!?@]/g, ''))
@@ -78,6 +79,21 @@ describe('agent tree models', () => {
       child('under', { parentId: SessionId('leaf'), depth: 2 }),
     ], new Set()).map(row => row.value)).toEqual(['leaf'])
   })
+
+  it('counts only live descendants inside the selected subtree', () => {
+    const tree: MayflySubagentTreeEntry[] = [
+      child('branch', { activity: 'running', hasChildren: true }),
+      child('nested-a', { parentId: SessionId('branch'), depth: 2, activity: 'running', hasChildren: true }),
+      child('nested-b', { parentId: SessionId('nested-a'), depth: 3, activity: 'running' }),
+      child('inactive', { parentId: SessionId('branch'), depth: 2 }),
+      child('sibling', { activity: 'running' }),
+    ]
+    const isLive = (entry: ChildEntry): boolean => entry.activity === 'running'
+    expect(liveAgentDescendantCount(tree, 'branch', isLive)).toBe(2)
+    expect(liveAgentDescendantCount(tree, 'nested-a', isLive)).toBe(1)
+    expect(liveAgentDescendantCount(tree, 'nested-b', isLive)).toBe(0)
+    expect(liveAgentDescendantCount(tree, 'missing', isLive)).toBe(0)
+  })
 })
 
 interface CommandHarness {
@@ -88,6 +104,9 @@ interface CommandHarness {
   readonly sessionState: { current: Agent | null }
   readonly notices: string[]
   readonly projectionCalls: string[][]
+  readonly opened: unknown[]
+  readonly drain: ReturnType<typeof vi.fn>
+  readonly liveAgents: Map<string, Agent>
   readonly switchAgent: (agent: Agent | null) => void
   readonly fiber: { dispose(): Promise<void> }
   tree: readonly SubagentDescendantListEntry[]
@@ -124,17 +143,24 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     id: SessionId('invalid'), header: { cwd: '/tmp', origin: 'subagent', parentSession: parentSession.id },
   } as unknown as Session
   const parent = { id: parentSession.id, session: parentSession, status: 'idle' } as unknown as Agent
+  const childAgent = { id: childSession.id, session: childSession, status: 'idle' } as unknown as Agent
+  const liveAgents = new Map<string, Agent>([[String(parent.id), parent], [String(childAgent.id), childAgent]])
   const sessionState: { current: Agent | null } = { current: options.current === false ? null : parent }
   const listeners = new Set<(agent: Agent | null, revision: number) => void>()
+  const opened: unknown[] = []
   ctx.provide('testSession', sessionState)
   ctx.provide('mayflyCurrentAgent', {
     current: () => sessionState.current,
+    primary: () => sessionState.current,
+    view: () => ({ primarySessionId: String(parent.id), displayed: 'primary', auxiliary: null, revision: 0 }),
     revision: () => 0,
     subscribe(listener: (agent: Agent | null, revision: number) => void) {
       listeners.add(listener)
       listener(sessionState.current, 0)
       return () => { listeners.delete(listener) }
     },
+    openAuxiliary(view: unknown) { opened.push(view) },
+    closeAuxiliary: () => null,
   } as never)
   const projectionCalls: string[][] = []
   ctx.provide('sessionProjections', {
@@ -155,7 +181,7 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     onChanged: () => () => {},
   } as never)
   ctx.provide('sessions', { list: () => [parentSession, childSession, invalidSession] } as never)
-  ctx.provide('agents', { get: () => undefined } as never)
+  ctx.provide('agents', { get: (id: unknown) => liveAgents.get(String(id)) } as never)
   ctx.provide('tools', { get: () => undefined } as never)
   const harness = {
     ctx,
@@ -165,6 +191,9 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     sessionState,
     notices,
     projectionCalls,
+    opened,
+    drain: vi.fn(async () => {}),
+    liveAgents,
     switchAgent(agent: Agent | null) {
       sessionState.current = agent
       for (const listener of listeners) listener(agent, 1)
@@ -182,13 +211,14 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     },
     followup: async () => 'message-1',
     interrupt: () => {},
+    drainContinuableChildren: harness.drain,
   } as never)
   harness.fiber = await ctx.plugin(agentsPlugin)
   return harness
 }
 
-async function execute(rig: CommandHarness) {
-  return (await rig.ctx.commands.execute(rig.parent, '/agents', [], new AbortController().signal))?.result
+async function execute(rig: CommandHarness, input = '') {
+  return (await rig.ctx.commands.execute(rig.parent, `/agents${input === '' ? '' : ` ${input}`}`, [], new AbortController().signal))?.result
 }
 
 describe('mayfly-agents-command', () => {
@@ -208,6 +238,80 @@ describe('mayfly-agents-command', () => {
     const empty = await mountCommand()
     expect(await execute(empty)).toEqual({ kind: 'success', text: 'no subagents in this session' })
     await empty.fiber.dispose()
+  })
+
+  it('stops an exact continuable descendant and rejects unsafe targets', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    expect(await execute(rig, 'stop child')).toEqual({ kind: 'success', text: 'stopped subagent child' })
+    expect(rig.drain).toHaveBeenCalledWith(rig.parent, [SessionId('child')])
+
+    rig.tree = [child('once', { mode: 'one-shot' })]
+    expect(await execute(rig, 'stop once')).toEqual({ kind: 'error', text: 'subagent once is not continuable' })
+    expect(await execute(rig, 'stop missing')).toEqual({ kind: 'error', text: 'unknown subagent: missing' })
+    expect(await execute(rig, 'invalid')).toEqual({ kind: 'error', text: 'usage: /agents [stop <id>]' })
+
+    rig.tree = [child('orphan', { parentId: SessionId('offline-parent') })]
+    rig.liveAgents.set('orphan', { id: SessionId('orphan') } as Agent)
+    expect(await execute(rig, 'stop orphan')).toEqual({
+      kind: 'error', text: 'cannot stop subagent orphan: its direct parent is not live',
+    })
+    rig.tree = [child('child')]
+    rig.drain.mockRejectedValueOnce(new Error('drain failed'))
+    expect(await execute(rig, 'stop child')).toEqual({ kind: 'error', text: 'could not stop subagent child: drain failed' })
+    rig.listError = new Error('stop listing failed')
+    expect(await execute(rig, 'stop child')).toEqual({ kind: 'error', text: 'stop listing failed' })
+    await rig.fiber.dispose()
+  })
+
+  it('leaves an active child view before stopping it and rejects stop without a primary', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    vi.spyOn(rig.ctx.mayflyCurrentAgent, 'view').mockReturnValue({
+      primarySessionId: 'parent',
+      displayed: 'auxiliary',
+      auxiliary: {
+        kind: 'subagent', sessionId: 'child', parentSessionId: 'parent', label: 'child', mode: 'continuable', access: 'interactive',
+      },
+      revision: 1,
+    })
+    const close = vi.spyOn(rig.ctx.mayflyCurrentAgent, 'closeAuxiliary')
+    expect(await execute(rig, 'stop child')).toMatchObject({ kind: 'success' })
+    expect(close).toHaveBeenCalledOnce()
+    await rig.fiber.dispose()
+
+    const absent = await mountCommand({ current: false })
+    expect(await execute(absent, 'stop child')).toEqual({ kind: 'error', text: 'no session is live yet' })
+    await absent.fiber.dispose()
+  })
+
+  it('refuses direct teardown while the target owns live descendants', async () => {
+    const rig = await mountCommand()
+    rig.tree = [
+      child('branch', { activity: 'running', hasChildren: true }),
+      child('nested-a', { parentId: SessionId('branch'), depth: 2, activity: 'running', hasChildren: true }),
+      child('nested-b', { parentId: SessionId('nested-a'), depth: 3, activity: 'running' }),
+      child('sibling', { activity: 'running' }),
+    ]
+    rig.liveAgents.set('nested-a', { id: SessionId('nested-a') } as Agent)
+    rig.liveAgents.set('nested-b', { id: SessionId('nested-b') } as Agent)
+    rig.liveAgents.set('sibling', { id: SessionId('sibling') } as Agent)
+    expect(await execute(rig, 'stop branch')).toEqual({
+      kind: 'error', text: 'subagent branch owns 2 live descendants; stop its live descendants first',
+    })
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('does not report a cold continuable child as stopped', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    rig.liveAgents.delete('child')
+    expect(await execute(rig, 'stop child')).toEqual({
+      kind: 'error', text: 'subagent child is not live; there is no running Agent to stop',
+    })
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
   })
 
   it('uses native workflow labels only when one-shot descriptors omit a name', async () => {
@@ -253,7 +357,7 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
-  it('browses native descendants, samples live metrics, expands, and attaches directly', async () => {
+  it('browses native descendants, samples live metrics, expands, and opens an auxiliary view', async () => {
     const rig = await mountCommand()
     rig.tree = [
       child('child', { activity: 'running', hasChildren: true, label: 'explore' }),
@@ -275,14 +379,15 @@ describe('mayfly-agents-command', () => {
     browser.component.handleInput('\x1b[A')
     browser.component.handleInput('\x1b[A')
     browser.component.handleInput('\r')
-    await vi.waitFor(() => expect(rig.screen.overlays).toHaveLength(2))
-    expect(plain(rig.screen.overlays[1]!.component.render(80))[0]).toContain('Subagent · explore')
-    rig.screen.overlays[1]!.component.handleInput('q')
-    expect(rig.screen.overlays[1]!.hidden).toBe(true)
+    expect(browser.hidden).toBe(true)
+    expect(rig.opened).toEqual([{
+      kind: 'subagent', sessionId: 'child', parentSessionId: 'parent', label: 'explore', mode: 'continuable',
+    }])
     const controller = browser.component as unknown as {
       options: {
         onToggle(row: { value: string }): void
         onSelect(row: { value: string }): void
+        onDelete(row: { value: string }): void
         onCancel(): void
       }
     }
@@ -291,12 +396,174 @@ describe('mayfly-agents-command', () => {
     controller.options.onToggle({ value: 'child' })
     controller.options.onToggle({ value: 'child' })
     controller.options.onSelect({ value: 'broken' })
+    controller.options.onDelete({ value: 'broken' })
     controller.options.onSelect({ value: 'nested' })
-    await vi.waitFor(() => expect(rig.screen.overlays).toHaveLength(3))
-    rig.screen.overlays[2]!.component.handleInput('q')
+    expect(rig.opened.at(-1)).toEqual({
+      kind: 'subagent', sessionId: 'nested', parentSessionId: 'child', label: 'nested', mode: 'one-shot',
+    })
     controller.options.onCancel()
     controller.options.onCancel()
     expect(browser.hidden).toBe(true)
+    await rig.fiber.dispose()
+  })
+
+  it('requires typed y before the browser stops a continuable subagent', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child', { label: 'worker' })]
+    expect(await execute(rig)).toEqual({ kind: 'success' })
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    const confirm = rig.screen.overlays[1]!
+    confirm.component.render(100)
+    confirm.component.handleInput(KEY.enter)
+    confirm.component.handleInput('n')
+    confirm.component.handleInput(KEY.enter)
+    expect(rig.drain).not.toHaveBeenCalled()
+    expect(plain(confirm.component.render(100)).join('\n')).toContain('type y to confirm')
+
+    confirm.component.handleInput(KEY.enter)
+    confirm.component.handleInput('\x7f')
+    confirm.component.handleInput('y')
+    confirm.component.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(rig.drain).toHaveBeenCalledWith(rig.parent, [SessionId('child')])
+      expect(rig.notices).toContain('stopped subagent child')
+    })
+    expect(browser.hidden).toBe(true)
+    await rig.fiber.dispose()
+  })
+
+  it('rechecks live descendants after browser confirmation', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('branch', { activity: 'running', hasChildren: false })]
+    rig.liveAgents.set('branch', { id: SessionId('branch') } as Agent)
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    const confirm = rig.screen.overlays[1]!
+    rig.tree = [
+      child('branch', { activity: 'running', hasChildren: true }),
+      child('nested', { parentId: SessionId('branch'), depth: 2, activity: 'running' }),
+    ]
+    rig.liveAgents.set('nested', { id: SessionId('nested') } as Agent)
+    confirm.component.render(100)
+    confirm.component.handleInput('y')
+    confirm.component.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(plain(rig.notices)).toContain('subagent branch owns 1 live descendant; stop its live descendants first'))
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('drops a confirmed stop after unload or primary replacement', async () => {
+    const exercise = async (mode: 'unload' | 'replace'): Promise<CommandHarness> => {
+      const rig = await mountCommand()
+      rig.tree = [child('child')]
+      await execute(rig)
+      const browser = rig.screen.overlays[0]!
+      browser.component.render(100)
+      browser.component.handleInput(KEY.ctrlD)
+      const confirm = rig.screen.overlays[1]!
+      let release!: () => void
+      rig.deferred = new Promise(resolve => { release = resolve })
+      confirm.component.render(100)
+      confirm.component.handleInput('y')
+      confirm.component.handleInput(KEY.enter)
+      if (mode === 'unload') await rig.fiber.dispose()
+      else rig.switchAgent({ id: SessionId('replacement') } as Agent)
+      release()
+      await Promise.resolve()
+      await Promise.resolve()
+      return rig
+    }
+    const unloaded = await exercise('unload')
+    expect(unloaded.drain).not.toHaveBeenCalled()
+    expect(unloaded.notices).toEqual([])
+    const replaced = await exercise('replace')
+    await vi.waitFor(() => expect(plain(replaced.notices)).toContain('subagent child stop request is stale'))
+    expect(replaced.drain).not.toHaveBeenCalled()
+    await replaced.fiber.dispose()
+  })
+
+  it('cancels and replaces an open browser stop confirmation', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    const firstConfirm = rig.screen.overlays[1]!
+    browser.component.handleInput(KEY.ctrlD)
+    expect(firstConfirm.hidden).toBe(true)
+    const secondConfirm = rig.screen.overlays[2]!
+    secondConfirm.component.render(100)
+    secondConfirm.component.handleInput(KEY.escape)
+    expect(secondConfirm.hidden).toBe(true)
+    expect(browser.hidden).toBe(false)
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('uses the id in an unlabeled confirmation and reports browser stop failure', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child', { label: undefined })]
+    rig.drain.mockRejectedValueOnce(new Error('cannot drain'))
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    const confirm = rig.screen.overlays[1]!
+    const text = plain(confirm.component.render(100)).join('\n')
+    expect(text).toContain('type y to stop child')
+    confirm.component.handleInput(KEY.enter)
+    confirm.component.handleInput('y')
+    confirm.component.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(plain(rig.notices)).toContain('could not stop subagent child: cannot drain'))
+    await rig.fiber.dispose()
+  })
+
+  it('refuses to stop a one-shot subagent from the browser', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('once', { mode: 'one-shot' })]
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    expect(rig.screen.overlays).toHaveLength(1)
+    expect(plain(rig.notices)).toContain('one-shot subagents cannot be stopped from the browser')
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('refuses browser teardown while the target owns a live descendant', async () => {
+    const rig = await mountCommand()
+    rig.tree = [
+      child('branch', { activity: 'running', hasChildren: true }),
+      child('nested', { parentId: SessionId('branch'), depth: 2, activity: 'running' }),
+    ]
+    rig.liveAgents.set('branch', { id: SessionId('branch') } as Agent)
+    rig.liveAgents.set('nested', { id: SessionId('nested') } as Agent)
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    expect(rig.screen.overlays).toHaveLength(1)
+    expect(plain(rig.notices)).toContain('subagent branch owns 1 live descendant; stop its live descendants first')
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('does not open stop confirmation for a cold continuable child', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('cold')]
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    expect(rig.screen.overlays).toHaveLength(1)
+    expect(plain(rig.notices)).toContain('subagent cold is not live; there is no running Agent to stop')
+    expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
 

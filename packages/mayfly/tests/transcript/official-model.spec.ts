@@ -460,16 +460,22 @@ describe('OfficialConversationModelSource', () => {
     expect(source.snapshot().entries[0]).toMatchObject({ text: 'baseline' })
     expect(published).toEqual(['baseline'])
 
-    f.emit('other', projection(), 5)
-    f.emit('mayflyConversation', projection(), 4)
-    f.emit('mayflyConversation', { entries: 'bad', streaming: false }, 5)
-    expect(published).toEqual(['baseline'])
+    f.emit('mayflyConversation', projection([
+      { kind: 'assistant', id: 'a-1', seq: 1, turn: 0, step: 0, text: 'baseline updated', streaming: true },
+    ], true), 5)
+    expect(source.snapshot().entries[0]).toMatchObject({ text: 'baseline updated', streaming: true })
+    expect(published).toEqual(['baseline', 'baseline updated'])
+
+    f.emit('other', projection(), 6)
+    f.emit('mayflyConversation', projection(), 5)
+    f.emit('mayflyConversation', { entries: 'bad', streaming: false }, 6)
+    expect(published).toEqual(['baseline', 'baseline updated'])
 
     f.emit('mayflyConversation', projection([
       { kind: 'assistant', id: 'a-2', seq: 5, turn: 0, step: 0, text: 'live', streaming: true },
     ], true), 6)
     expect(source.snapshot().streaming).toBe(true)
-    expect(published).toEqual(['baseline', 'live'])
+    expect(published).toEqual(['baseline', 'baseline updated', 'live'])
 
     // A changed entry identity cannot use the incremental replacement path;
     // the mapper falls back to a complete model rebuild.
@@ -501,6 +507,36 @@ describe('OfficialConversationModelSource', () => {
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session)
     expect(source.snapshot().entries[0]).toMatchObject({ text: 'baseline' })
+    source.dispose()
+  })
+
+  it('hides inherited entries after an auxiliary transcript cut while retaining later updates', () => {
+    const f = sourceFixture(projection([
+      { kind: 'user', id: 'history-user', seq: 1, turn: 1, text: 'main history', images: [] },
+      { kind: 'assistant', id: 'history-answer', seq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
+      { kind: 'user', id: 'btw-user', seq: 3, turn: 2, text: 'side question', images: [] },
+      { kind: 'assistant', id: 'btw-answer', seq: 4, turn: 2, step: 0, text: 'side answer', streaming: true },
+    ], true), 4)
+    const published: string[][] = []
+    const source = new OfficialConversationModelSource(f.source, toolSource(), model => {
+      published.push(model.entries.map(entry => 'text' in entry ? entry.text : entry.kind))
+    })
+    source.attach(f.session, 2)
+    expect(source.snapshot().entries).toMatchObject([
+      { kind: 'transcript-user', text: 'side question' },
+      { kind: 'transcript-assistant', text: 'side answer' },
+    ])
+    f.emit('mayflyConversation', projection([
+      { kind: 'user', id: 'history-user', seq: 1, turn: 1, text: 'main history', images: [] },
+      { kind: 'assistant', id: 'history-answer', seq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
+      { kind: 'user', id: 'btw-user', seq: 3, turn: 2, text: 'side question', images: [] },
+      { kind: 'assistant', id: 'btw-answer', seq: 4, turn: 2, step: 0, text: 'side answer updated', streaming: false },
+    ], false), 5)
+    expect(source.snapshot().entries).not.toEqual(expect.arrayContaining([expect.objectContaining({ text: 'main history' })]))
+    expect(source.snapshot().entries).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'side answer updated' })]))
+    expect(published.at(-1)).toEqual(['side question', 'side answer updated'])
+    source.attach(f.session)
+    expect(source.snapshot().entries).toHaveLength(4)
     source.dispose()
   })
 })

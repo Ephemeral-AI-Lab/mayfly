@@ -101,6 +101,10 @@ describe('parseMarketIndex', () => {
     expect(() => parseMarketIndex('{"schemaVersion":1,"entries":[{"id":"x"}]}')).toThrow(/entries\.0\.source/)
   })
 
+  it('rejects duplicate marketplace ids before state derivation or rendering', () => {
+    expect(() => parseMarketIndex(indexJson([{ id: 'loop' }, { id: 'loop' }]))).toThrow(/repeats entry id loop/)
+  })
+
   it('normalizes nullable published fields and ignores catalog-only enrichment', () => {
     const published = entry('published') as Record<string, unknown>
     published.engines = null

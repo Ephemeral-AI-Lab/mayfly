@@ -10,14 +10,19 @@ import type { MayflyInlineSpan, MayflyUiEvent, MayflyUiNode } from '@ephemeral-a
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import type { Action, MayflyTranslate } from '../frontend/index.ts'
 import { CanonicalPanelAdapter, type CanonicalContextHint } from './canonical-panel.ts'
-import { ACTION_CANCEL } from './keys.ts'
-
-const KEY_UP = '\x1b[A'
-const KEY_DOWN = '\x1b[B'
-const KEY_LEFT = '\x1b[D'
-const KEY_RIGHT = '\x1b[C'
-const KEY_PAGE_UP = '\x1b[5~'
-const KEY_PAGE_DOWN = '\x1b[6~'
+import {
+  ACTION_BACKSPACE,
+  ACTION_CANCEL,
+  ACTION_END,
+  ACTION_HOME,
+  ACTION_MOVE_DOWN,
+  ACTION_MOVE_UP,
+  ACTION_PAGE_DOWN,
+  ACTION_PAGE_UP,
+  ACTION_SEGMENT_LEFT,
+  ACTION_SEGMENT_RIGHT,
+  interactionKeyHint,
+} from './keys.ts'
 const PAGE_SCROLL = 10
 const DEFAULT_MAX_VISIBLE = 20
 
@@ -98,6 +103,7 @@ export class CanonicalDocumentController implements MayflyFocusable {
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
+      keymap: options.keymap,
       node: () => this.currentNode(),
       onEvent: event => this.onEvent(event),
       onFocusChange: identity => this.onFocusChange(identity.controlId, identity.itemId),
@@ -130,17 +136,25 @@ export class CanonicalDocumentController implements MayflyFocusable {
     }
     const unhandled = this.filterEditing ? undefined : this.options.onUnhandledInput?.(data, this.resolveSelectedId(model))
     if (unhandled !== undefined) { void this.options.onAction(unhandled); return }
-    if (model.variantNavigation === 'inline' && (data === KEY_LEFT || data === KEY_RIGHT) && this.listIsActive(model)) {
-      this.moveVariant(model, data === KEY_LEFT ? -1 : 1)
+    const segmentLeft = this.options.keymap.matches(data, ACTION_SEGMENT_LEFT)
+    const segmentRight = this.options.keymap.matches(data, ACTION_SEGMENT_RIGHT)
+    if (model.variantNavigation === 'inline' && (segmentLeft || segmentRight) && this.listIsActive(model)) {
+      this.moveVariant(model, segmentLeft ? -1 : 1)
       return
     }
-    if (model.items === undefined && (data === KEY_UP || data === KEY_DOWN || data === KEY_PAGE_UP || data === KEY_PAGE_DOWN || data === 'g' || data === 'G')) {
-      const delta = data === KEY_UP ? -1 : data === KEY_DOWN ? 1 : data === KEY_PAGE_UP ? -PAGE_SCROLL : data === KEY_PAGE_DOWN ? PAGE_SCROLL : 0
-      this.scrollTop = data === 'g' ? 0 : data === 'G' ? Number.MAX_SAFE_INTEGER : Math.max(0, this.scrollTop + delta)
+    const moveUp = this.options.keymap.matches(data, ACTION_MOVE_UP)
+    const moveDown = this.options.keymap.matches(data, ACTION_MOVE_DOWN)
+    const pageUp = this.options.keymap.matches(data, ACTION_PAGE_UP)
+    const pageDown = this.options.keymap.matches(data, ACTION_PAGE_DOWN)
+    const home = this.options.keymap.matches(data, ACTION_HOME) || data === 'g'
+    const end = this.options.keymap.matches(data, ACTION_END) || data === 'G'
+    if (model.items === undefined && (moveUp || moveDown || pageUp || pageDown || home || end)) {
+      const delta = moveUp ? -1 : moveDown ? 1 : pageUp ? -PAGE_SCROLL : pageDown ? PAGE_SCROLL : 0
+      this.scrollTop = home ? 0 : end ? Number.MAX_SAFE_INTEGER : Math.max(0, this.scrollTop + delta)
       this.adapter.invalidate()
       return
     }
-    if (model.filterable === true && data === '\x7f') { this.query = this.query.slice(0, -1); this.reseedSelection(model); this.adapter.invalidate(); return }
+    if (model.filterable === true && this.options.keymap.matches(data, ACTION_BACKSPACE)) { this.query = [...this.query].slice(0, -1).join(''); this.reseedSelection(model); this.adapter.invalidate(); return }
     if (model.filterable === true && data.length === 1 && data >= ' ') {
       this.filterEditing = true
       this.query += data
@@ -244,11 +258,17 @@ export class CanonicalDocumentController implements MayflyFocusable {
     return [
       ...(model.filterable === true && this.query === '' ? [{ id: 'filter', keys: 'Type', label: 'to search', priority: 85 }] : []),
       ...(inlineVariants ? [
-        { id: 'navigate', keys: '↑↓', label: 'models', priority: 93 },
-        { id: 'variant', keys: '←→', label: 'thinking', priority: 92 },
+        { id: 'navigate', keys: `${interactionKeyHint(this.options.keymap, ACTION_MOVE_UP, '↑')}${interactionKeyHint(this.options.keymap, ACTION_MOVE_DOWN, '↓')}`, label: 'models', priority: 93 },
+        { id: 'variant', keys: `${interactionKeyHint(this.options.keymap, ACTION_SEGMENT_LEFT, '←')}${interactionKeyHint(this.options.keymap, ACTION_SEGMENT_RIGHT, '→')}`, label: 'thinking', priority: 92 },
       ] : []),
-      ...(!hasRows && model.view !== undefined ? [{ id: 'scroll', keys: '↑↓/PgUp/PgDn', label: 'scroll', compact: 'PgUp/PgDn', priority: 90 }] : []),
-      ...(this.filterEditing ? [{ id: 'dismiss', keys: 'Esc', label: 'finish search', priority: 96 }] : []),
+      ...(!hasRows && model.view !== undefined ? [{
+        id: 'scroll',
+        keys: `${interactionKeyHint(this.options.keymap, ACTION_MOVE_UP, '↑')}${interactionKeyHint(this.options.keymap, ACTION_MOVE_DOWN, '↓')}/${interactionKeyHint(this.options.keymap, ACTION_PAGE_UP, 'PgUp')}/${interactionKeyHint(this.options.keymap, ACTION_PAGE_DOWN, 'PgDn')}`,
+        label: 'scroll',
+        compact: `${interactionKeyHint(this.options.keymap, ACTION_PAGE_UP, 'PgUp')}/${interactionKeyHint(this.options.keymap, ACTION_PAGE_DOWN, 'PgDn')}`,
+        priority: 90,
+      }] : []),
+      ...(this.filterEditing ? [{ id: 'dismiss', keys: interactionKeyHint(this.options.keymap, ACTION_CANCEL, 'Esc'), label: 'finish search', priority: 96 }] : []),
       ...(this.filterEditing ? [] : this.options.contextHints?.() ?? []),
     ]
   }

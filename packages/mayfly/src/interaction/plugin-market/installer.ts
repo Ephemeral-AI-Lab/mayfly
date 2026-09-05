@@ -13,6 +13,7 @@
 import { join } from 'node:path'
 import { isMap, isSeq, parseDocument, type YAMLMap } from 'yaml'
 import { updaterInternals, type SpawnOutcome } from '../updater/io.ts'
+import { compareVersions } from '../updater/version.ts'
 import type { MarketEntry, MarketInstallRow } from './types.ts'
 
 /** Install ceiling, matching the updater's install timeout. */
@@ -66,6 +67,14 @@ const DEDICATED_PROFILE_PACKAGES = new Set(['@deepseek-ai/dsh-acp'])
 export function currentProfileInstallBlock(entry: MarketEntry): string | undefined {
   if (!entry.install.rows.some(row => DEDICATED_PROFILE_PACKAGES.has(row.name))) return undefined
   return 'automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile'
+}
+
+/** Why the marketplace entry cannot be installed from the current catalog. */
+export function marketEntryInstallBlock(entry: MarketEntry): string | undefined {
+  if (entry.status === 'removed') {
+    return `"${entry.displayName}" was removed from the marketplace${entry.statusNote === undefined ? '' : `: ${entry.statusNote}`}`
+  }
+  return currentProfileInstallBlock(entry)
 }
 
 /** The pnpm error signature the allowBuilds hint keys on. */
@@ -288,7 +297,7 @@ async function rollbackInstall(
  * the `profile-patch` rows into the user patch layer.
  */
 export async function installEntry(input: InstallerInput): Promise<InstallOutcome> {
-  const blocked = currentProfileInstallBlock(input.entry)
+  const blocked = marketEntryInstallBlock(input.entry)
   if (blocked !== undefined) return { kind: 'error', text: blocked }
   const rows = input.entry.install.rows
   const installedNames = new Set(readInstalledPlugins(input.root).map(plugin => plugin.name))
@@ -330,7 +339,9 @@ export async function installEntry(input: InstallerInput): Promise<InstallOutcom
 /** Remove one entry: one `dsh plugin remove` for every row name, then the
  * installer-written patch rows leave the user layer with it. */
 export async function uninstallEntry(input: InstallerInput): Promise<InstallOutcome> {
-  const names = input.entry.install.rows.map(row => row.name)
+  const installedNames = new Set(readInstalledPlugins(input.root).map(plugin => plugin.name))
+  const names = input.entry.install.rows.map(row => row.name).filter(name => installedNames.has(name))
+  if (names.length === 0) return { kind: 'error', text: `"${input.entry.displayName}" is not installed in this profile` }
   let patchEdit: PatchEdit | undefined
   try {
     patchEdit = prepareProfilePatchRemoval(input.root, input.entry.install.rows)
@@ -402,6 +413,8 @@ export interface EntryInstallState {
   readonly version: string | undefined
   /** A newer version is on the registry than the one installed. */
   readonly updateAvailable: boolean
+  /** First row version that is newer than its installed counterpart. */
+  readonly updateVersion: string | undefined
 }
 
 /**
@@ -420,11 +433,14 @@ export function entryInstallStates(
     const version = installed === true
       ? present.map(row => byName.get(row.name)).find(plugin => plugin?.version !== undefined)?.version
       : undefined
-    const first = entry.install.rows[0]
-    /* v8 ignore next -- the manifest schema guarantees at least one row */
-    const info = first === undefined ? undefined : entry.npm?.[first.name]
-    const updateAvailable = installed === true && info?.latestVersion != null && version !== undefined && version !== info.latestVersion
-    states[entry.id] = { installed, version, updateAvailable }
+    const updateVersion = installed === true
+      ? entry.install.rows.map(row => {
+          const current = byName.get(row.name)?.version
+          const latest = entry.npm?.[row.name]?.latestVersion
+          return current !== undefined && latest != null && compareVersions(latest, current) > 0 ? latest : undefined
+        }).find((candidate): candidate is string => candidate !== undefined)
+      : undefined
+    states[entry.id] = { installed, version, updateAvailable: updateVersion !== undefined, updateVersion }
   }
   return states
 }

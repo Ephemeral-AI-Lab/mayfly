@@ -218,7 +218,7 @@ describe('mayfly-questions provider', () => {
   })
 
   it('answers a scoped request for the exact live root agent', async () => {
-    const { ctx, screen } = fakeMayflyContext()
+    const { ctx, screen } = fakeMayflyContext({ agents: false })
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(UserQuestionService)
     await ctx.plugin(questionsPlugin)

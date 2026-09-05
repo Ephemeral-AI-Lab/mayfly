@@ -30,6 +30,7 @@ import {
   entryInstallStates,
   entrySupportsSource,
   installEntry,
+  marketEntryInstallBlock,
   readInstalledPlugins,
   rowSpec,
   uninstallEntry,
@@ -124,12 +125,11 @@ export function registerPluginCommand(ctx: Context): () => void {
     const pieces = [entry.source, surfaceBadge(entry)]
     /* v8 ignore next -- states() carries every indexed entry id */
     if (state?.installed === true) {
-      const latest = entry.install.rows.map(row => entry.npm?.[row.name]?.latestVersion).find(version => version != null)
-      pieces.push(state.updateAvailable === true ? `up ${latest ?? state.version ?? ''}`.trim() : 'installed')
+      pieces.push(state.updateAvailable === true ? `up ${state.updateVersion!}` : 'installed')
     } else if (entry.install.rows.some(row => installed.some(plugin => plugin.name === row.name))) {
       pieces.push('partial')
     }
-    if (entry.status === 'beta' || entry.status === 'unstable' || entry.status === 'deprecated') pieces.push(entry.status)
+    if (entry.status !== 'stable') pieces.push(entry.status)
     return pieces.join(' · ')
   }
 
@@ -146,6 +146,10 @@ export function registerPluginCommand(ctx: Context): () => void {
   const refreshInstalled = (): void => {
     installed = readInstalledPlugins(profileRoot(profileNameFromArgv(process.argv)))
   }
+
+  /** Whether at least one package row from the entry is present. */
+  const hasInstalledRows = (entry: MarketEntry): boolean =>
+    entry.install.rows.some(row => installed.some(plugin => plugin.name === row.name))
 
   /**
    * Run one install or removal through the dsh CLI seam. Shared by the key
@@ -247,7 +251,7 @@ export function registerPluginCommand(ctx: Context): () => void {
           { label: t('Source'), segments: segments(entry.source) },
           { label: t('Version'), segments: segments(state?.installed === true ? (state.version ?? 'installed') : (entry.verified?.packages[0]?.version ?? 'unknown')) },
           ...(state?.updateAvailable === true && state.version !== undefined
-            ? [{ label: '', segments: segments(t('update available: {version}', { version: state.version }), 'warning') }]
+            ? [{ label: '', segments: segments(t('update available: {version}', { version: state.updateVersion! }), 'warning') }]
             : []),
           { label: '', segments: segments(describe(entry), 'textMuted') },
         ],
@@ -285,7 +289,7 @@ export function registerPluginCommand(ctx: Context): () => void {
             label: t('Verified'),
             segments: segments(`${entry.verified.at} · ${entry.verified.packages.map(pkg => `${pkg.name}@${pkg.version}`).join(', ')}`),
           }]),
-          { label: t('Install command'), segments: segments(installCommand(entry), 'accent') },
+          ...(entry.status === 'removed' ? [] : [{ label: t('Install command'), segments: segments(installCommand(entry), 'accent') }]),
           ...(entry.links?.repo === undefined ? [] : [{ label: t('Links'), segments: segments(entry.links.repo, 'accent') }]),
         ],
       },
@@ -313,20 +317,20 @@ export function registerPluginCommand(ctx: Context): () => void {
     /** Indexed rows grouped by their current all-rows-installed state. */
     const marketItems = (): readonly FrontendPanelItem[] => {
       const state = states()
-      return entries().filter(entry => entry.status !== 'removed' || state[entry.id]?.installed === true).map(entry => {
-        const installedNow = state[entry.id]?.installed === true
+      return entries().filter(entry => entry.status !== 'removed' || hasInstalledRows(entry)).map(entry => {
+        const presentNow = hasInstalledRows(entry)
         const installBlocked = currentProfileInstallBlock(entry) !== undefined
         return {
           id: entry.id,
           label: entry.displayName,
           detail: entry.status === 'removed' ? (entry.statusNote ?? t('removed from the market')) : describe(entry),
           badge: badgeOf(entry, state[entry.id]),
-          group: installedNow ? 'installed' : 'not-installed',
+          group: presentNow ? 'installed' : 'not-installed',
           action: { kind: 'plugin-market/details', id: entry.id },
           actionLabel: t('Details'),
-          ...(!installedNow && installBlocked ? {} : {
-            secondaryAction: { kind: installedNow ? 'plugin-market/uninstall' : 'plugin-market/install', id: entry.id },
-            secondaryActionLabel: t(installedNow ? 'Uninstall' : 'Install'),
+          ...(!presentNow && installBlocked ? {} : {
+            secondaryAction: { kind: presentNow ? 'plugin-market/uninstall' : 'plugin-market/install', id: entry.id },
+            secondaryActionLabel: t(presentNow ? 'Uninstall' : 'Install'),
           }),
         }
       })
@@ -376,11 +380,11 @@ export function registerPluginCommand(ctx: Context): () => void {
       const entry = findEntry(id)
       /* v8 ignore next -- browser actions only carry ids from indexed rows */
       if (entry === undefined) return
-      if (action === 'uninstall' && states()[entry.id]?.installed !== true) {
+      if (action === 'uninstall' && !hasInstalledRows(entry)) {
         reportInPanel({ text: `"${entry.displayName}" is not installed in this profile`, tone: 'danger' })
         return
       }
-      const installBlock = action === 'install' ? currentProfileInstallBlock(entry) : undefined
+      const installBlock = action === 'install' ? marketEntryInstallBlock(entry) : undefined
       if (installBlock !== undefined) {
         reportInPanel({ text: t(installBlock), tone: 'danger' })
         return
@@ -546,7 +550,7 @@ export function registerPluginCommand(ctx: Context): () => void {
         if (unloaded) return { kind: 'success' }
         const entry = findEntry(id)
         if (entry === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
-        const installBlock = verb === 'install' ? currentProfileInstallBlock(entry) : undefined
+        const installBlock = verb === 'install' ? marketEntryInstallBlock(entry) : undefined
         if (installBlock !== undefined) return { kind: 'error', text: t(installBlock) }
         const source: InstallSource | undefined = requestedSource === 'npm' || requestedSource === 'github'
           ? requestedSource
@@ -554,7 +558,7 @@ export function registerPluginCommand(ctx: Context): () => void {
         if (verb === 'install' && source === undefined) {
           return { kind: 'error', text: `"${entry.displayName}" has no common install source for every package` }
         }
-        if (verb === 'uninstall' && states()[entry.id]?.installed !== true) {
+        if (verb === 'uninstall' && !hasInstalledRows(entry)) {
           return { kind: 'error', text: `"${entry.displayName}" is not installed in this profile` }
         }
         if (verb === 'install' && usefulInTui(entry) === false) {

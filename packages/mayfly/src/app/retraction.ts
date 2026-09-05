@@ -10,7 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
-import type { MayflyRequestController } from './request-lifecycle.ts'
+import type { MayflyRequestController, MayflyRequestRef } from './request-lifecycle.ts'
 
 /** Identity of one live turn removed from Mayfly's visible conversation. */
 export interface MayflyTurnRetraction {
@@ -86,6 +86,7 @@ export function installRetractionService(
   currentAgent: () => Agent | null,
   requests: MayflyRequestController,
   report: (message: string) => void,
+  interrupt: (agent: Agent, ref: MayflyRequestRef) => void = agent => { agent.cancel({ kind: 'user' }, { keepInbox: true }) },
 ): MayflyRetractionService {
   let pending: PendingRetraction | undefined
 
@@ -131,7 +132,7 @@ export function installRetractionService(
     tryRetract(messageId) {
       const agent = currentAgent()
       const ref = requests.active()
-      if (agent === null || agent.status !== 'running' || ref?.scope !== 'main' || pending !== undefined) return false
+      if (agent === null || agent.status !== 'running' || ref === undefined || pending !== undefined) return false
       const events = agent.session.snapshotEvents()
       const open = openTurn(events)
       if (open === undefined || !turnContainsMessage(events, open, messageId)) return false
@@ -144,7 +145,7 @@ export function installRetractionService(
       pending = { ...open, agent, session: agent.session, lifecycle }
       requests.transition(ref, 'aborted', 'retracted')
       ctx.emit('mayfly/turn-retracted', lifecycle)
-      agent.cancel({ kind: 'user' }, { keepInbox: true })
+      interrupt(agent, ref)
       return true
     },
   }

@@ -97,6 +97,7 @@ function bench(config: Config = {}, options: {
     get: (id: unknown) => live.get(String(id)),
     list: () => [...live.values()],
   } as never)
+  ctx.provide('subagents', { interrupt: vi.fn(), interruptByParent: vi.fn() } as never)
 
   const create = vi.fn(async (input: { cwd?: string }) => {
     if (createError !== undefined) throw createError
@@ -317,6 +318,43 @@ describe('mayfly app driver', () => {
     await Promise.resolve()
     expect(test.errors()).toContain('could not persist message retraction: append unavailable')
   })
+
+  it('routes retraction interrupt failures through the app error sink', async () => {
+    const test = bench()
+    const agent = await waitForAgent(test)
+    Object.assign(agent, { status: 'running' })
+    agent.session.events.push(
+      { type: 'turn/start', seq: 0, data: { turn: 1 } },
+      { type: 'user/message', seq: 1, data: { id: 'message-1', source: { kind: 'user' } } },
+    )
+    agent.cancel.mockImplementationOnce(() => { throw new Error('cancel refused') })
+    test.ctx.mayflyRequests.begin('main')
+    expect(test.ctx.mayflyRetractions.tryRetract('message-1')).toBe(true)
+    expect(test.errors()).toContain('could not interrupt current Agent: cancel refused')
+  })
+
+  it('interrupts a retracted continuable subagent through its parent address', async () => {
+    const test = bench()
+    const parent = await waitForAgent(test)
+    const child = fakeAgent('child', [
+      { type: 'turn/start', seq: 0, data: { turn: 1 } },
+      { type: 'user/message', seq: 1, data: { id: 'child-message', source: { kind: 'user' } } },
+    ])
+    Object.assign(child, { status: 'running' })
+    ;(child.session.surface.nodes as number[]).push(1)
+    test.live.set(String(child.id), child)
+    test.ctx.mayflyCurrentAgent.openAuxiliary({
+      kind: 'subagent',
+      sessionId: String(child.id),
+      parentSessionId: String(parent.id),
+      label: 'worker',
+      mode: 'continuable',
+    })
+    test.ctx.mayflyRequests.begin('subagent')
+    expect(test.ctx.mayflyRetractions.tryRetract('child-message')).toBe(true)
+    expect(test.ctx.subagents.interruptByParent).toHaveBeenCalledWith(child.id, parent.id, 'continuable')
+    expect(child.cancel).not.toHaveBeenCalled()
+  })
 })
 
 describe('MayflyCurrentAgentService', () => {
@@ -342,5 +380,166 @@ describe('MayflyCurrentAgentService', () => {
     expect(service.current()).toBeNull()
     off()
     expect(seen).toEqual([null, agent, null, agent, null])
+  })
+
+  it('toggles one live continuable auxiliary without replacing the primary', () => {
+    const ctx = new Context()
+    const primary = fakeAgent('primary')
+    const child = fakeAgent('child')
+    const agents = new Map([[String(primary.id), primary], [String(child.id), child]])
+    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
+    const service = new MayflyCurrentAgentService(ctx)
+    const views: string[] = []
+    service.subscribeView(view => { views.push(`${view.displayed}:${view.auxiliary?.access ?? 'none'}`) })
+    service.select(primary)
+    service.openAuxiliary({
+      kind: 'subagent', sessionId: String(child.id), parentSessionId: String(primary.id), label: 'worker', mode: 'continuable',
+    })
+    expect(service.current()).toBe(child)
+    expect(service.primary()).toBe(primary)
+    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'interactive' } })
+    expect(service.toggleAuxiliary()).toBe(true)
+    expect(service.current()).toBe(primary)
+    expect(service.view().displayed).toBe('primary')
+    expect(service.toggleAuxiliary()).toBe(true)
+    expect(service.current()).toBe(child)
+    expect(service.closeAuxiliary()).toMatchObject({ sessionId: String(child.id) })
+    expect(service.current()).toBe(primary)
+    expect(service.toggleAuxiliary()).toBe(false)
+    expect(views).toEqual([
+      'primary:none',
+      'primary:none',
+      'auxiliary:interactive',
+      'primary:interactive',
+      'auxiliary:interactive',
+      'primary:none',
+    ])
+  })
+
+  it('keeps one-shot and inactive continuable auxiliaries readonly', () => {
+    const ctx = new Context()
+    const primary = fakeAgent('primary')
+    const oneShot = fakeAgent('one-shot')
+    const agents = new Map([[String(primary.id), primary], [String(oneShot.id), oneShot]])
+    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
+    const service = new MayflyCurrentAgentService(ctx)
+    service.select(primary)
+    service.openAuxiliary({
+      kind: 'subagent', sessionId: String(oneShot.id), parentSessionId: String(primary.id), label: 'once', mode: 'one-shot',
+    })
+    expect(service.current()).toBe(primary)
+    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'readonly' } })
+    service.openAuxiliary({
+      kind: 'subagent', sessionId: 'cold', parentSessionId: String(primary.id), label: 'cold', mode: 'continuable',
+    })
+    expect(service.current()).toBe(primary)
+    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { sessionId: 'cold', access: 'readonly' } })
+  })
+
+  it('downgrades a disposed continuable child and upgrades its next live identity', () => {
+    const ctx = new Context()
+    const primary = fakeAgent('primary')
+    const child = fakeAgent('child')
+    const agents = new Map([[String(primary.id), primary], [String(child.id), child]])
+    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
+    const service = new MayflyCurrentAgentService(ctx)
+    service.select(primary)
+    service.openAuxiliary({
+      kind: 'subagent', sessionId: String(child.id), parentSessionId: String(primary.id), label: 'worker', mode: 'continuable',
+    })
+    agents.delete(String(child.id))
+    ctx.emit('agent/disposed', { agent: child } as never)
+    expect(service.current()).toBe(primary)
+    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'readonly' } })
+
+    const resumed = fakeAgent('child')
+    agents.set(String(resumed.id), resumed)
+    ctx.emit('agent/created', { agent: resumed } as never)
+    expect(service.current()).toBe(resumed)
+    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'interactive' } })
+  })
+
+  it('closes an owned BTW view when its exact Agent disappears', () => {
+    const ctx = new Context()
+    const primary = fakeAgent('primary')
+    const btw = fakeAgent('btw')
+    const agents = new Map([[String(primary.id), primary], [String(btw.id), btw]])
+    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
+    const service = new MayflyCurrentAgentService(ctx)
+    service.select(primary)
+    service.openAuxiliary({ kind: 'btw', sessionId: String(btw.id), parentSessionId: String(primary.id), label: 'side question' })
+    agents.delete(String(btw.id))
+    ctx.emit('agent/disposed', { agent: btw } as never)
+    expect(service.current()).toBe(primary)
+    expect(service.view()).toMatchObject({ displayed: 'primary', auxiliary: null })
+  })
+
+  it('rejects unsafe auxiliary identities and freezes published snapshots', () => {
+    const ctx = new Context()
+    const primary = fakeAgent('primary')
+    const live = new Map([[String(primary.id), primary]])
+    ctx.provide('agents', { get: (id: unknown) => live.get(String(id)) } as never)
+    const service = new MayflyCurrentAgentService(ctx)
+    expect(() => service.openAuxiliary({
+      kind: 'subagent', sessionId: 'child', parentSessionId: 'primary', label: 'child', mode: 'continuable',
+    })).toThrow('without a live primary Agent')
+    service.select(primary)
+    expect(() => service.openAuxiliary({
+      kind: 'subagent', sessionId: 'primary', parentSessionId: 'primary', label: 'self', mode: 'continuable',
+    })).toThrow('cannot open the primary Agent')
+    expect(() => service.openAuxiliary({
+      kind: 'btw', sessionId: 'missing', parentSessionId: 'primary', label: 'missing',
+    })).toThrow('cannot open non-live BTW Agent')
+
+    service.openAuxiliary({
+      kind: 'subagent', sessionId: 'cold', parentSessionId: 'primary', label: 'cold', mode: 'one-shot',
+    })
+    const snapshot = service.view()
+    expect(Object.isFrozen(snapshot)).toBe(true)
+    expect(Object.isFrozen(snapshot.auxiliary)).toBe(true)
+    ctx.emit('mayfly/request-close-agent-view')
+    expect(service.view().auxiliary).toBeNull()
+  })
+
+  it('invalidates a stale primary lookup and clears auxiliaries with it', () => {
+    const ctx = new Context()
+    const primary = fakeAgent('primary')
+    const child = fakeAgent('child')
+    const live = new Map([[String(primary.id), primary], [String(child.id), child]])
+    ctx.provide('agents', { get: (id: unknown) => live.get(String(id)) } as never)
+    const service = new MayflyCurrentAgentService(ctx)
+    service.select(primary)
+    service.openAuxiliary({
+      kind: 'subagent', sessionId: 'child', parentSessionId: 'primary', label: 'child', mode: 'continuable',
+    })
+    live.delete('primary')
+    expect(service.primary()).toBeNull()
+    expect(service.current()).toBeNull()
+    expect(service.view().auxiliary).toBeNull()
+  })
+
+  it('ignores unrelated Agent creation and upgrades a hidden continuable child', () => {
+    const ctx = new Context()
+    const primary = fakeAgent('primary')
+    const oneShot = fakeAgent('one-shot')
+    const live = new Map([[String(primary.id), primary], [String(oneShot.id), oneShot]])
+    ctx.provide('agents', { get: (id: unknown) => live.get(String(id)) } as never)
+    const service = new MayflyCurrentAgentService(ctx)
+    service.select(primary)
+    ctx.emit('agent/created', { agent: fakeAgent('unrelated') } as never)
+    service.openAuxiliary({
+      kind: 'subagent', sessionId: 'one-shot', parentSessionId: 'primary', label: 'once', mode: 'one-shot',
+    })
+    ctx.emit('agent/created', { agent: oneShot } as never)
+    service.openAuxiliary({
+      kind: 'subagent', sessionId: 'cold', parentSessionId: 'primary', label: 'cold', mode: 'continuable',
+    })
+    ctx.emit('agent/created', { agent: fakeAgent('other') } as never)
+    service.toggleAuxiliary()
+    const resumed = fakeAgent('cold')
+    live.set('cold', resumed)
+    ctx.emit('agent/created', { agent: resumed } as never)
+    expect(service.current()).toBe(primary)
+    expect(service.view()).toMatchObject({ displayed: 'primary', auxiliary: { access: 'interactive' } })
   })
 })

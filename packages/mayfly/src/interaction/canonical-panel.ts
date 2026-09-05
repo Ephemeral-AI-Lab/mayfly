@@ -13,10 +13,12 @@ import {
   type MayflyEditor,
   type MayflyFocusable,
   type MayflyFocusIdentity,
+  type MayflyKeymap,
   type MayflyTheme,
   type MayflyUiCompileResult,
 } from '../core/index.ts'
 import type { MayflyTranslate } from '../frontend/index.ts'
+import { ACTION_CANCEL } from './keys.ts'
 
 /** One interaction-private contextual operation merged by core. */
 export interface CanonicalContextHint {
@@ -40,6 +42,7 @@ export interface CanonicalNodeSource {
 export interface CanonicalPanelAdapterOptions {
   readonly components: MayflyComponents
   readonly theme: MayflyTheme
+  readonly keymap: MayflyKeymap
   readonly node: () => MayflyUiNode
   readonly onEvent: (event: MayflyUiEvent) => void
   readonly onUnhandledEscape?: () => void
@@ -61,6 +64,16 @@ export interface CanonicalPanelAdapterOptions {
   readonly fallbackFocusIdentity?: () => MayflyFocusIdentity | undefined
   /** Whether the restored text control is already in an explicit edit mode. */
   readonly startEditing?: () => boolean
+}
+
+function withEditing(identity: MayflyFocusIdentity, editing: boolean | undefined): MayflyFocusIdentity {
+  if (editing === undefined) return identity
+  const normalized = {
+    controlId: identity.controlId,
+    ...(identity.itemId === undefined ? {} : { itemId: identity.itemId }),
+    ...(identity.tabControlId === undefined ? {} : { tabControlId: identity.tabControlId }),
+  }
+  return editing ? { ...normalized, editing: true } : normalized
 }
 
 /** Compile canonical nodes lazily while preserving the outer focus identity. */
@@ -104,7 +117,7 @@ export class CanonicalPanelAdapter implements MayflyFocusable {
   /** Rebuild with one explicit semantic control as the next focus target. */
   focus(identity: MayflyFocusIdentity): void {
     this.invalidate()
-    this.focusIdentity = identity
+    this.focusIdentity = withEditing(identity, this.options.startEditing?.())
   }
 
   /** Read the compiler-owned semantic identity without changing focus. */
@@ -119,7 +132,7 @@ export class CanonicalPanelAdapter implements MayflyFocusable {
   handleInput(data: string): void {
     const target = this.focusTarget()
     if (target !== null) target.handleInput?.(data)
-    else if (data === '\x1b') this.options.onUnhandledEscape?.()
+    else if (this.options.keymap.matches(data, ACTION_CANCEL)) this.options.onUnhandledEscape?.()
   }
 
   /** Render only through the compiler-owned component or safe error surface. */
@@ -184,10 +197,14 @@ export class CanonicalPanelAdapter implements MayflyFocusable {
     const target = result.ok ? result.value.focusTarget : null
     if (target !== null) {
       target.focused = this.ownFocused
-      let restored = this.focusIdentity !== undefined && target.restoreFocusIdentity?.(this.focusIdentity) === true
+      const desired = this.focusIdentity === undefined
+        ? undefined
+        : withEditing(this.focusIdentity, this.options.startEditing?.())
+      let restored = desired !== undefined && target.restoreFocusIdentity?.(desired) === true
       const fallback = this.options.fallbackFocusIdentity?.()
-      if (!restored && fallback !== undefined) restored = target.restoreFocusIdentity?.(fallback) === true
-      if (this.options.startEditing?.() === true) target.handleInput?.('\r')
+      if (!restored && fallback !== undefined) {
+        restored = target.restoreFocusIdentity?.(withEditing(fallback, this.options.startEditing?.())) === true
+      }
     }
     return result
   }

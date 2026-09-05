@@ -8,14 +8,15 @@ Mayfly `0.1.0-alpha.1` 是 `dsh-base` 上的 flat Cordis plugin tree。Bundle
 - Harness 原生 `sessionProjections` 驱动 conversation、token/context、
   title 与 session facts。
 - 内置 command 直接注册在原生 `commands` service。
-- app 只选择当前 Agent，并通过 `mayflyCurrentAgent` 共享精确 identity。
+- app 持有主 Agent 与单辅助槽，并通过 `mayflyCurrentAgent` 共享当前展示的精确 identity。
 - transcript 与 interaction 不维护第二份 Agent/Session truth。
 
 ## 终端 UI
 
 - core 是唯一 pi-tui/raw-terminal owner；
 - status producer 直接注册到 `mayflyStatus`；
-- activity、queue、todo、BTW、agents、workflow pane 直接注册到 `mayflyPanes`；
+- activity、queue、todo、agents、workflow pane 直接注册到 `mayflyPanes`；
+- BTW 与 live continuable subagent 复用完整主布局；cold/one-shot child 使用 core-owned 只读 transcript panel；
 - jobs footer、`/jobs` 与 `/agents` 直接消费 Harness 原生 service；
 - overlay 由 `mayflyOverlays` 渲染；
 - editor 扩展由 `mayflyEditorExtensions` 组合在唯一 Mayfly editor 周围。

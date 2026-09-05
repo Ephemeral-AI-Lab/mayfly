@@ -39,8 +39,8 @@ flowchart TB
 - `mayfly-conversation`、startup、app/current Agent；
 - banner、transcript、official model；
 - basic/cwd/git/title/context/mode/jobs/goal status；
-- activity/queue/todo/BTW/agents/workflow pane；
-- jobs 与 agents command、attachments、paste image、editor-plus、interaction。
+- activity/queue/todo/agents/workflow pane；
+- BTW、jobs 与 agents command、attachments、paste image、editor-plus、interaction。
 
 外部 plugin row 与这些行处于同一 service graph。启动依赖全部由 `inject`
 决定，而不是 YAML 行序。任何内置 status/pane 都使用与外部插件相同的

@@ -59,9 +59,20 @@ if (agent !== null) {
 }
 ```
 
-`current()` 返回 `Agent | null`，`subscribe()` replay 当前 selection 并
-观察后续 revision。只有 registry 中仍存活的精确 Agent 能被选中；Agent dispose
-会清空 selection。
+`current()` 返回当前展示的 `Agent | null`，`primary()` 保留主会话；
+`subscribe()` replay 精确 Agent selection。`view()` / `subscribeView()` 暴露一个
+主会话加一个辅助槽的 readonly metadata，以及当前展示侧和
+`interactive | readonly` access。只有 registry 中仍存活的精确 Agent 能进入
+`current()`：live BTW/continuable child 直接驱动整套既有 UI，one-shot 或 cold
+child 保留主 Agent 并交给通用只读 transcript panel。`F7` 切换显示侧，`F8`
+关闭辅助槽；关闭 BTW 会额外释放其临时 Agent，关闭普通 subagent 只 detach。
+BTW 的 seed 只用于模型上下文；其 `transcriptAfterSeq` cutoff 让用户看到的流从
+BTW 自己的第一条提问开始，不重复主会话历史。
+
+用户中断当前 Agent 时，Mayfly 同步遍历 live `agents` 的 `parentSession` lineage，并通过
+`subagents.interrupt(..., { kind: 'ancestor', agent })` 向所有 running continuable
+后代发出中断。该操作只取消当前 turn，保留 Activation 与未领取 inbox；它不使用
+会递归销毁子树的 drain API。
 
 需要 Agent identity 的插件 inject `mayflyCurrentAgent`。只贡献静态 UI 的插件
 不应增加这一依赖，因为 app 或 core reload 时 Cordis 会按依赖关系卸载 consumer。
@@ -70,7 +81,9 @@ if (agent !== null) {
 
 所有 service 位于同一 Cordis graph。注册重复 id 或无效 definition 会直接抛出；
 dsh command handler 保持 dsh 自己的返回类型。没有 grant、manifest admission、
-gesture token、owner generation、buffer replay 或跨 realm proxy。
+gesture token、owner generation 或跨 realm proxy。`mayflyEditorPanels` 唯一拥有
+editor replacement 的逻辑栈，并在 theme/input host 重建后按原顺序 replay 相同
+panel 实例与语义焦点。
 
 Renderer 暂时缺位时 registry snapshot 仍可存在；renderer 恢复后通过
 `subscribe()` replay 当前 upsert。外部插件卸载时 provider 发布 remove delta。

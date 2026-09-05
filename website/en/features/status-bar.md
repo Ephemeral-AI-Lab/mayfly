@@ -6,6 +6,7 @@ registers on the same `mayflyStatus` service with a renderer-neutral
 
 | Entry | Priority | Content |
 | --- | --- | --- |
+| agent-view | 0 (center) | When an auxiliary exists, show the active side, auxiliary kind/label, and `F7 switch · F8 close` |
 | basic | 0 | current model |
 | mode | 2 | plan/yolo state |
 | cwd | 5 | current working directory |

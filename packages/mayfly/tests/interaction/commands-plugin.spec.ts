@@ -81,7 +81,10 @@ function provideAppBoundary(ctx: Context): void {
   const active = (): Agent | null => ctx.get('testSession')?.current ?? null
   ctx.provide('mayflyCurrentAgent', {
     current: active,
+    primary: active,
+    view: () => ({ primarySessionId: active() === null ? null : String(active()!.id), displayed: 'primary', auxiliary: null, revision: 0 }),
     revision: () => 0,
+    closeAuxiliary: () => null,
     subscribe: (listener: (agent: Agent | null, revision: number) => void) => {
       listener(active(), 0)
       return () => {}
