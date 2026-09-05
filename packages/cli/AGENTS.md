@@ -63,3 +63,12 @@ The CLI publishes `lib/bin.js`, seven `runtime-*.tgz` payloads, and bilingual RE
 CLI specs that create temporary homes or nested installs register the shared
 tracked-temp cleanup hook so Vitest worker reuse does not accumulate fixtures
 under the OS temp directory.
+
+All runtime publishers acquire the bundled `proper-lockfile` directory lease
+after extraction and revalidate the target under that lease. Retries are bounded
+to 12 seconds; the configured 120-second stale interval and 5-second
+heartbeat provide recovery after a crashed owner. Reported compromise prevents
+further publication. Only bounded validation and renames run in the synchronous
+critical section; quarantined trees are deleted after release. This lease does
+not provide fencing against a process or filesystem stalled beyond the stale
+interval. Do not replace it with an unlocked recheck before a rename.

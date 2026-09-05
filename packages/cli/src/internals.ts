@@ -20,6 +20,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
 import { homedir as osHomedir } from 'node:os'
 import { x as extractTar } from 'tar'
+import { lock } from 'proper-lockfile'
 
 /** Options every spawn shape accepts. */
 export interface SpawnOptions {
@@ -65,6 +66,8 @@ export interface CliInternals {
   readTextFile(path: string): string | undefined
   /** Size of a regular file, undefined when absent, unreadable, or a directory. */
   fileSize(path: string): number | undefined
+  /** Serialize the synchronous runtime publication section across processes. */
+  withRuntimeLock<T>(path: string, action: (assertLock: () => void) => T): Promise<T>
   /** Create a directory and its parents. */
   makeDirectory(path: string): void
   /** Create a uniquely named directory below an existing parent. */
@@ -130,6 +133,28 @@ export const cliInternals: CliInternals = {
       return stat.isFile() ? stat.size : undefined
     } catch {
       return undefined
+    }
+  },
+  async withRuntimeLock<T>(path: string, action: (assertLock: () => void) => T): Promise<T> {
+    let compromised: Error | undefined
+    const release = await lock(path, {
+      realpath: false,
+      stale: 120_000,
+      update: 5000,
+      retries: { retries: 60, minTimeout: 200, maxTimeout: 200, factor: 1 },
+      onCompromised: error => { compromised = error },
+    }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ELOCKED') throw new Error('runtime cache is busy; retry shortly (crashed-owner locks recover within two minutes)')
+      throw error
+    })
+    const assertLock = (): void => {
+      if (compromised !== undefined) throw compromised
+    }
+    try {
+      assertLock()
+      return action(assertLock)
+    } finally {
+      await release()
     }
   },
   makeDirectory(path: string): void {

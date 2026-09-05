@@ -34,6 +34,7 @@ function fixturePaths(): { target: string, temporary: string } {
   const home = mkdtempTracked('mayfly-cli-runtime-home-')
   cliInternals.env = { DSH_HOME: home }
   cliInternals.fileSize = () => 1
+  cliInternals.withRuntimeLock = async (_path, action) => action(() => {})
   return {
     target: join(home, 'cache', 'mayfly-cli-runtime', `${VERSION}-${HARNESS_LINE}-${cliInternals.platform}-${cliInternals.arch}`),
     temporary: join(home, 'cache', 'mayfly-cli-runtime', '.extract-fixture'),
@@ -75,7 +76,7 @@ describe('bundledDsh', () => {
     expect(removed).toEqual([])
   })
 
-  it('accepts a concurrent publisher after losing the atomic rename race', async () => {
+  it('rechecks a winner that published between the cache miss and lock acquisition', async () => {
     const { target, temporary } = fixturePaths()
     let winner = false
     const removed: string[] = []
@@ -87,9 +88,38 @@ describe('bundledDsh', () => {
     cliInternals.removeTree = path => { removed.push(path) }
     cliInternals.makeTempDirectory = () => temporary
     cliInternals.extractRuntimeArchive = async () => {}
-    cliInternals.renamePath = () => { winner = true; throw new Error('EEXIST') }
+    cliInternals.withRuntimeLock = async (_path, action) => { winner = true; return action(() => {}) }
+    cliInternals.renamePath = () => { throw new Error('must not rename the healthy winner') }
     await expect(bundledDsh(VERSION)).resolves.toMatchObject({ version: HARNESS_LINE })
     expect(removed).toEqual([temporary])
+  })
+
+  it('serializes two repair publishers so a successful winner cannot be quarantined', async () => {
+    const { target } = fixturePaths()
+    cliInternals.withRuntimeLock = REAL.withRuntimeLock
+    let corrupt = true
+    let winner = false
+    const mutations: string[] = []
+    cliInternals.readTextFile = path => {
+      if (path.startsWith(target)) return winner ? runtimeFile(path) : undefined
+      return runtimeFile(path)
+    }
+    cliInternals.extractRuntimeArchive = async () => { await Promise.resolve() }
+    cliInternals.renamePath = (from, to) => {
+      if (from === target) {
+        expect(winner).toBe(false)
+        mutations.push('quarantine corrupt')
+        corrupt = false
+      } else if (to === target) {
+        if (corrupt) throw new Error('existing directory')
+        expect(winner).toBe(false)
+        mutations.push('publish healthy')
+        winner = true
+      }
+    }
+    const results = await Promise.all([bundledDsh(VERSION), bundledDsh(VERSION)])
+    expect(results[0]).toEqual(results[1])
+    expect(mutations).toEqual(['quarantine corrupt', 'publish healthy'])
   })
 
   it('cleans the temporary tree and surfaces extraction or rename failures', async () => {
@@ -138,11 +168,10 @@ describe('bundledDsh', () => {
     expect(extractions).toHaveLength(2)
   })
 
-  it.each(['quarantine-winner', 'replacement-winner', 'replacement-failure'])('handles a repair publication race: %s', async scenario => {
-    const { target, temporary } = fixturePaths()
-    let winner = false
+  it('surfaces replacement failure while preserving the publication lock discipline', async () => {
+    const { temporary } = fixturePaths()
     let renames = 0
-    cliInternals.readTextFile = path => path.startsWith(temporary) || (winner && path.startsWith(target)) ? runtimeFile(path) : undefined
+    cliInternals.readTextFile = path => path.startsWith(temporary) ? runtimeFile(path) : undefined
     cliInternals.makeDirectory = () => {}
     cliInternals.makeTempDirectory = prefix => prefix.endsWith('.invalid-') ? `${temporary}-quarantine` : temporary
     cliInternals.removeTree = () => {}
@@ -150,17 +179,11 @@ describe('bundledDsh', () => {
     cliInternals.renamePath = () => {
       renames += 1
       if (renames === 1) throw new Error('existing corrupt cache')
-      if (renames === 2 && scenario === 'quarantine-winner') {
-        winner = true
-        throw new Error('concurrent quarantine')
-      }
       if (renames === 3) {
-        winner = scenario === 'replacement-winner'
         throw new Error('replacement failed')
       }
     }
-    if (scenario === 'replacement-failure') await expect(bundledDsh(VERSION)).rejects.toThrow('replacement failed')
-    else await expect(bundledDsh(VERSION)).resolves.toMatchObject({ version: HARNESS_LINE })
+    await expect(bundledDsh(VERSION)).rejects.toThrow('replacement failed')
   })
 
   it.each([

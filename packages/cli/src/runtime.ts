@@ -82,44 +82,41 @@ export async function bundledDsh(mayflyVersion: string): Promise<BundledDsh> {
   cliInternals.makeDirectory(cacheParent)
   const temporary = cliInternals.makeTempDirectory(join(cacheParent, '.extract-'))
   let published = false
+  let quarantined: string | undefined
   try {
     for (const archive of archives) {
       await cliInternals.extractRuntimeArchive(archive, temporary)
     }
     const prepared = readRuntime(temporary)
     if (prepared === undefined) throw new Error(`runtime payload does not contain @deepseek-ai/dsh@${HARNESS_LINE}`)
-    try {
-      cliInternals.renamePath(temporary, target)
-      published = true
-      return { ...prepared, binJs: prepared.binJs.replace(temporary, target) }
-    } catch (error) {
-      const winner = readRuntime(target)
-      if (winner !== undefined) return winner
-      // An invalid existing directory prevents rename. Move only that cache
-      // aside after a complete replacement exists; never remove the target.
-      const quarantine = cliInternals.makeTempDirectory(join(cacheParent, '.invalid-'))
+    return await cliInternals.withRuntimeLock(target, assertLock => {
+      const current = readRuntime(target)
+      if (current !== undefined) return current
+      assertLock()
       try {
+        cliInternals.renamePath(temporary, target)
+      } catch (error) {
+        // Every publisher holds this lock, so a validated winner cannot be
+        // replaced between the check above and quarantining the invalid tree.
+        assertLock()
+        const quarantine = cliInternals.makeTempDirectory(join(cacheParent, '.invalid-'))
+        quarantined = quarantine
         try {
+          assertLock()
           cliInternals.renamePath(target, join(quarantine, 'runtime'))
         } catch {
-          const concurrent = readRuntime(target)
-          if (concurrent !== undefined) return concurrent
           throw error
         }
-        try {
-          cliInternals.renamePath(temporary, target)
-          published = true
-          return { ...prepared, binJs: join(target, relative(temporary, prepared.binJs)) }
-        } catch (replacementError) {
-          const concurrent = readRuntime(target)
-          if (concurrent !== undefined) return concurrent
-          throw replacementError
-        }
-      } finally {
-        cliInternals.removeTree(quarantine)
+        assertLock()
+        cliInternals.renamePath(temporary, target)
       }
-    }
+      published = true
+      return { ...prepared, binJs: join(target, relative(temporary, prepared.binJs)) }
+    })
   } finally {
+    // Recursive deletion may be slow; it must not block the publication lease
+    // heartbeat. These uniquely owned paths no longer contain the live target.
+    if (quarantined !== undefined) cliInternals.removeTree(quarantined)
     if (!published) cliInternals.removeTree(temporary)
   }
 }
