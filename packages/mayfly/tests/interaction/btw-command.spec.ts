@@ -103,6 +103,17 @@ describe('mayfly-btw-command', () => {
     expect(test.handles[0]!.dispose).toHaveBeenCalledOnce()
   })
 
+  it('replaces an open BTW from the retained primary session', async () => {
+    const test = await boot()
+    expect(await test.commands.run('btw', 'first question')).toMatchObject({ kind: 'success' })
+    expect(await test.commands.run('btw', 'replacement question')).toMatchObject({ kind: 'success' })
+    expect(test.create).toHaveBeenCalledTimes(2)
+    expect(test.create.mock.calls[1]?.[0]).toMatchObject({ meta: { parentSession: test.parent.id } })
+    expect(test.handles[0]!.dispose).toHaveBeenCalledOnce()
+    expect(test.current.current()).toBe(test.handles[1]!.agent)
+    await test.dispose()
+  })
+
   it('closes immediately and disposes the owned Agent in the background', async () => {
     const test = await boot()
     await test.commands.run('btw', 'question')

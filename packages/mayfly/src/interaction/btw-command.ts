@@ -78,7 +78,7 @@ export function apply(ctx: Context): void {
 
   const ask = async (question: string): Promise<CommandResult> => {
     if (question === '') return close()
-    const parent = currentAgent.current()
+    const parent = currentAgent.primary()
     if (parent === null) return { kind: 'error', text: 'no active session for a side question' }
     const requestGeneration = ++generation
     pending?.abort()

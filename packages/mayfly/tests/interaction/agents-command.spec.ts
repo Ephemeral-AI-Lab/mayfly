@@ -277,7 +277,7 @@ describe('mayfly-agents-command', () => {
     })
     const close = vi.spyOn(rig.ctx.mayflyCurrentAgent, 'closeAuxiliary')
     expect(await execute(rig, 'stop child')).toMatchObject({ kind: 'success' })
-    expect(close).toHaveBeenCalledTimes(2)
+    expect(close).toHaveBeenCalledOnce()
     await rig.fiber.dispose()
 
     const absent = await mountCommand({ current: false })
@@ -432,6 +432,58 @@ describe('mayfly-agents-command', () => {
     })
     expect(browser.hidden).toBe(true)
     await rig.fiber.dispose()
+  })
+
+  it('rechecks live descendants after browser confirmation', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('branch', { activity: 'running', hasChildren: false })]
+    rig.liveAgents.set('branch', { id: SessionId('branch') } as Agent)
+    await execute(rig)
+    const browser = rig.screen.overlays[0]!
+    browser.component.render(100)
+    browser.component.handleInput(KEY.ctrlD)
+    const confirm = rig.screen.overlays[1]!
+    rig.tree = [
+      child('branch', { activity: 'running', hasChildren: true }),
+      child('nested', { parentId: SessionId('branch'), depth: 2, activity: 'running' }),
+    ]
+    rig.liveAgents.set('nested', { id: SessionId('nested') } as Agent)
+    confirm.component.render(100)
+    confirm.component.handleInput('y')
+    confirm.component.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(plain(rig.notices)).toContain('subagent branch owns 1 live descendant; stop its live descendants first'))
+    expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('drops a confirmed stop after unload or primary replacement', async () => {
+    const exercise = async (mode: 'unload' | 'replace'): Promise<CommandHarness> => {
+      const rig = await mountCommand()
+      rig.tree = [child('child')]
+      await execute(rig)
+      const browser = rig.screen.overlays[0]!
+      browser.component.render(100)
+      browser.component.handleInput(KEY.ctrlD)
+      const confirm = rig.screen.overlays[1]!
+      let release!: () => void
+      rig.deferred = new Promise(resolve => { release = resolve })
+      confirm.component.render(100)
+      confirm.component.handleInput('y')
+      confirm.component.handleInput(KEY.enter)
+      if (mode === 'unload') await rig.fiber.dispose()
+      else rig.switchAgent({ id: SessionId('replacement') } as Agent)
+      release()
+      await Promise.resolve()
+      await Promise.resolve()
+      return rig
+    }
+    const unloaded = await exercise('unload')
+    expect(unloaded.drain).not.toHaveBeenCalled()
+    expect(unloaded.notices).toEqual([])
+    const replaced = await exercise('replace')
+    await vi.waitFor(() => expect(plain(replaced.notices)).toContain('subagent child stop request is stale'))
+    expect(replaced.drain).not.toHaveBeenCalled()
+    await replaced.fiber.dispose()
   })
 
   it('cancels and replaces an open browser stop confirmation', async () => {

@@ -70,6 +70,7 @@
     "commander": "^15.0.0",
     "semver": "7.8.5",
     "simple-ascii-chart": "6.0.0",
+    "yaml": "2.9.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {

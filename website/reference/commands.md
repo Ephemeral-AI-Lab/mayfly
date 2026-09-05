@@ -31,6 +31,7 @@
 | `/trace` | — | `[copy <seq> \| copy all]` | 查看当前会话执行轨迹；可复制单项或完整轨迹 | `mayfly-commands`（trace-command） |
 | `/update` | — | `[version]` | 安全升级 Mayfly（预检/快照/装机冒烟/失败自动回滚；不带参数即只读检查） | `mayfly-commands`（update-command，D52） |
 | `/settings` | — | — | 按命名空间编辑用户设置（两级面板，改动即落盘；详见[配置](/guide/config)） | `mayfly-commands`（settings-command） |
+| `/plugin` | — | `[install <id> [--source npm\|github] \| uninstall <id> \| info <id> \| list \| refresh]` | 浏览/安装/移除插件市场条目（官方、dsh、社区三档来源；缓存优先，离线展示缓存目录；详见[插件市场仓库](https://github.com/Ephemeral-AI-Lab/dsh-plugins)） | `mayfly-commands`（plugin-commands） |
 | `/export` | — | `[path]` | 把当前会话导出为 Markdown 文件 | `mayfly-commands`（session-export） |
 | `/copy` | — | — | 复制最近一条助手消息到剪贴板 | `mayfly-commands`（session-export） |
 

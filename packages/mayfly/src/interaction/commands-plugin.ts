@@ -19,7 +19,9 @@
  * catalog, `/preset` over the agent-preset roster) lives in
  * `./tools-commands.ts` and `./preset-commands.ts`; and `/skills` (the
  * `#` pipeline's read-only listing) lives in `./skills-command.ts`; the
- * settings panel (`/settings`) lives in `./settings-command.ts`.
+ * settings panel (`/settings`) lives in `./settings-command.ts`; and
+ * `/plugin` (the marketplace browser over the dsh-plugins index) lives in
+ * `./plugin-commands.ts`.
  * Registrations are
  * effect-bound, so unloading the fiber removes them. Only `commands` is
  * injected: the overlay commands read the Mayfly display services through
@@ -53,6 +55,7 @@ import type { HelpSection } from './help.ts'
 import { HelpPanel } from './help.ts'
 import { registerMcpCommands } from './mcp-commands.ts'
 import { registerModelCommands } from './model-commands.ts'
+import { registerPluginCommand } from './plugin-commands.ts'
 import { registerPresetCommands } from './preset-commands.ts'
 import { registerSessionCommands } from './session-commands.ts'
 import { registerExportCommands } from './session-export.ts'
@@ -473,6 +476,8 @@ export function apply(ctx: Context, config: Config = {}): void {
     const trace = registerTraceCommand(ctx)
     // `/update` is the crash-safe, preflighted profile swap.
     const update = registerUpdateCommand(ctx)
+    // `/plugin` browses the marketplace index and installs or removes plugins.
+    const pluginMarket = registerPluginCommand(ctx)
     const settings = registerSettingsCommand(ctx)
     return () => {
       quit()
@@ -495,6 +500,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       mcpBrowser()
       trace()
       update()
+      pluginMarket()
       settings()
     }
   })

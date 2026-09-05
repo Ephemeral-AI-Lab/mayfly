@@ -16,3 +16,5 @@ npm publish --access public
 
 只有用户明确授权 exact package/version/tag 后才执行 publish。GitHub repository
 创建与 npm 发布是两个独立动作。
+
+发布之后，把插件[提交到插件市场](/market/submit)，Mayfly 用户就能用 `/plugin` 找到它。

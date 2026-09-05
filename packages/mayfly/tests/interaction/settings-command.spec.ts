@@ -373,7 +373,7 @@ describe('/settings level one', () => {
     const frame = l1(bench.screen).render(100)
       .map(line => line.replaceAll('^', '').replaceAll('~', '').replaceAll('_', ''))
       .join('\n')
-    expect(frame).toContain('mayfly — Mayfly UI preferences · 12 settings')
+    expect(frame).toContain('mayfly — Mayfly UI preferences · 13 settings')
     expect(frame).toContain('shell — bash tool limits · 5 settings')
     expect(frame).toContain('agent-presets — composition preset default · 1 settings')
   })
@@ -463,6 +463,7 @@ describe('/settings level two', () => {
       'mayfly.userFoldChars',
       'mayfly.editorCommand',
       'mayfly.pasteImageBackend',
+      'mayfly.marketIndexUrl',
     ])
     const byId = new Map(items.map(item => [item.id, item]))
     expect(byId.get('mayfly.updateCheck')?.currentValue).toBe('true')

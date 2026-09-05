@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CanonicalDocumentController, type FrontendPanelDocument } from '../../src/interaction/frontend-panel.ts'
 import { fakeMayflyContext, KEY } from './fakes.ts'
 
-function fixture(initial?: FrontendPanelDocument, options: { focused?: boolean, hint?: string, showSelectedVariantInFooter?: boolean, t?: (key: string) => string, onUnhandledInput?: (data: string, id: string | undefined) => { readonly kind: string } | undefined } = {}) {
+function fixture(initial?: FrontendPanelDocument, options: { focused?: boolean, hint?: string, showSelectedVariantInFooter?: boolean, initialGroup?: string, t?: (key: string) => string, onUnhandledInput?: (data: string, id: string | undefined) => { readonly kind: string } | undefined } = {}) {
   const display = fakeMayflyContext()
   let model: FrontendPanelDocument = initial ?? { mode: 'info', title: 'Fixture', view: { kind: 'text', content: 'body' }, submit: { kind: 'refresh' } }
   const onAction = vi.fn()
@@ -13,6 +13,7 @@ function fixture(initial?: FrontendPanelDocument, options: { focused?: boolean, 
     ...display, model: () => model, onAction, onClose, maxVisible: 5,
     ...(options.hint === undefined ? {} : { contextHints: () => [{ id: 'custom', keys: options.hint!, priority: 95 }] }),
     ...(options.showSelectedVariantInFooter === undefined ? {} : { showSelectedVariantInFooter: options.showSelectedVariantInFooter }),
+    ...(options.initialGroup === undefined ? {} : { initialGroup: options.initialGroup }),
     ...(options.t === undefined ? {} : { t: options.t }),
     ...(options.onUnhandledInput === undefined ? {} : { onUnhandledInput: options.onUnhandledInput }),
   })
@@ -32,6 +33,9 @@ describe('CanonicalDocumentController', () => {
     passive.panel.handleInput('x')
     passive.panel.handleInput(KEY.escape)
     expect(passive.onClose).toHaveBeenCalledOnce()
+    const quit = fixture({ mode: 'info', title: 'Quit' })
+    quit.panel.handleInput('q')
+    expect(quit.onClose).toHaveBeenCalledOnce()
 
     const translated = fixture(undefined, { t: key => `translated:${key}` })
     expect(translated.panel.render(40)).toBeDefined()
@@ -245,7 +249,7 @@ describe('CanonicalDocumentController', () => {
   it('bounds long lists, supports page/top/end keys, and custom input', () => {
     const shortcut = vi.fn(() => ({ kind: 'shortcut' as const }))
     const value = fixture({
-      mode: 'select', title: 'Long', items: Array.from({ length: 20 }, (_, index) => ({ id: String(index), label: `Item ${String(index)}` })),
+      mode: 'select', title: 'Long', filterable: true, items: Array.from({ length: 20 }, (_, index) => ({ id: String(index), label: `Item ${String(index)}` })),
     }, { hint: 'custom', onUnhandledInput: (data, id) => data === 'c' && id === '0' ? shortcut() : undefined })
     expect(extractList(value.panel.currentNode()).items).toHaveLength(20)
     expect(value.panel.render(60).join('\n')).toContain('Item 0')
@@ -253,6 +257,12 @@ describe('CanonicalDocumentController', () => {
     value.panel.handleInput('c'); value.panel.handleInput('\x1b[6~'); value.panel.handleInput('\x1b[F'); value.panel.handleInput('\x1b[H'); value.panel.handleInput('\x1b[5~')
     expect(value.onAction).toHaveBeenCalledWith({ kind: 'shortcut' })
     expect(value.panel.render(60).join('\n')).toContain('custom')
+    const actionCount = value.onAction.mock.calls.length
+    value.panel.handleInput('/')
+    value.panel.handleInput('c')
+    expect(value.onAction).toHaveBeenCalledTimes(actionCount)
+    expect(value.panel.render(60).join('\n')).toContain('/ c')
+    expect(value.panel.render(60).join('\n')).not.toContain('custom')
   })
 
   it('locks loading panels and refreshes replacement models', () => {
@@ -288,6 +298,13 @@ describe('CanonicalDocumentController', () => {
 
     const errorStatus = fixture({ mode: 'error', title: 'Failed update', dismissible: false })
     expect(errorStatus.panel.currentNode()).toMatchObject({ footer: { content: 'updating - do not close', tone: 'danger' } })
+
+    const deferredGroup = fixture({ mode: 'loading', title: 'Deferred group' }, { initialGroup: 'catalog' })
+    deferredGroup.panel.render(80)
+    deferredGroup.setModel(groupedModel)
+    const deferredNode = deferredGroup.panel.currentNode()
+    if (deferredNode.kind !== 'surface' || deferredNode.child.kind !== 'stack') throw new Error('expected grouped surface')
+    expect(deferredNode.child.children.map(child => child.node).find(node => node.kind === 'tabs')).toMatchObject({ activeId: 'catalog' })
   })
 
   it('maps compiler list, tab, and Escape events through the canonical adapter', () => {

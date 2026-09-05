@@ -144,6 +144,7 @@ describe('mayfly-settings schema and registration', () => {
       userFoldChars: 1000,
       editorCommand: '',
       pasteImageBackend: 'auto',
+      marketIndexUrl: '',
     })
     expect(settingsPlugin.name).toBe('mayfly-settings')
   })
@@ -172,6 +173,7 @@ describe('mayfly-settings schema and registration', () => {
       userFoldChars: 1000,
       editorCommand: 'my-editor --wait',
       pasteImageBackend: 'auto',
+      marketIndexUrl: '',
     })
     expect(ready.at(-1)).toMatchObject({ editorCommand: 'my-editor --wait' })
 

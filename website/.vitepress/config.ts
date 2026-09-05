@@ -45,11 +45,13 @@ const sharedTheme = {
 // 使用与定制，开发手册收口 /plugins/ 路径下的插件开发内容。
 const navZh = [
   { text: '用户手册', link: '/guide/', activeMatch: '/(guide|dsh|features|reference)' },
+  { text: '插件市场', link: '/market/', activeMatch: '^/market' },
   { text: '开发手册', link: '/plugins/', activeMatch: '^/plugins' },
 ]
 
 const navEn = [
   { text: 'User manual', link: '/en/guide/', activeMatch: '/en/(guide|dsh|features|reference)' },
+  { text: 'Marketplace', link: '/en/market/', activeMatch: '/en/market' },
   { text: 'Developer manual', link: '/en/plugins/', activeMatch: '^/en/plugins' },
 ]
 
@@ -96,6 +98,24 @@ const sidebarZh = {
       items: [
         { text: '键位参考', link: '/reference/keys' },
         { text: '斜杠命令参考', link: '/reference/commands' },
+      ],
+    },
+  ],
+  '/market/': [
+    {
+      text: '市场',
+      items: [
+        { text: '插件目录', link: '/market/' },
+        { text: '安装与更新', link: '/market/installing' },
+        { text: '信任与安全', link: '/market/trust' },
+      ],
+    },
+    {
+      text: '收录',
+      items: [
+        { text: '提交你的插件', link: '/market/submit' },
+        { text: 'Manifest 规范', link: '/market/manifest' },
+        { text: '审查清单', link: '/market/review' },
       ],
     },
   ],
@@ -182,6 +202,24 @@ const sidebarEn = {
       items: [
         { text: 'Key bindings', link: '/en/reference/keys' },
         { text: 'Slash commands', link: '/en/reference/commands' },
+      ],
+    },
+  ],
+  '/en/market/': [
+    {
+      text: 'Market',
+      items: [
+        { text: 'Plugin catalog', link: '/en/market/' },
+        { text: 'Installing & updating', link: '/en/market/installing' },
+        { text: 'Trust & safety', link: '/en/market/trust' },
+      ],
+    },
+    {
+      text: 'Listings',
+      items: [
+        { text: 'Submit your plugin', link: '/en/market/submit' },
+        { text: 'Manifest spec', link: '/en/market/manifest' },
+        { text: 'Review checklist', link: '/en/market/review' },
       ],
     },
   ],
