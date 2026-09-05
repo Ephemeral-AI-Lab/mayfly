@@ -26,6 +26,7 @@ import {
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { ui } from '../../../ui/src/index.ts'
 import { MayflyComponentsService } from '../../src/core/components.ts'
+import * as richDocument from '../../src/core/rich-document.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import type {
   MayflyAutocompleteItem,
@@ -840,6 +841,27 @@ describe('createEditor', () => {
 })
 
 describe('createMarkdown', () => {
+  it.each(['plain **text**', '```mermaid\ngraph LR; A --> B\n```'])('segments each text revision once across repaint and resize: %s', text => {
+    const { tui, stop } = bootTui()
+    const split = vi.spyOn(richDocument, 'splitRichDocument')
+    try {
+      const markdown = createService(tui).createMarkdown({ text })
+      const rows = markdown.render(80)
+      expect(markdown.render(80)).toBe(rows)
+      markdown.setText(text)
+      expect(markdown.render(80)).toBe(rows)
+      markdown.render(40)
+      markdown.invalidate()
+      markdown.render(40)
+      expect(split).toHaveBeenCalledTimes(1)
+      markdown.setText(`${text}\nchanged`)
+      expect(markdown.render(40).join('\n')).toContain('changed')
+      expect(split).toHaveBeenCalledTimes(2)
+    } finally {
+      split.mockRestore()
+      stop()
+    }
+  })
   it('maps the palette onto markdown constructs', () => {
     const { tui, stop } = bootTui()
     const components = createService(tui)
@@ -1243,6 +1265,20 @@ describe('EditorAdapter mention drill-down reopen', () => {
     await vi.waitFor(() => {
       expect(getSuggestions).toHaveBeenCalledTimes(3)
     })
+    stop()
+  })
+
+  it('reopens inside a quoted directory containing spaces', async () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    const text = 'see @"a b/"'
+    const { getSuggestions, provider } = stubProvider(() => ({ lines: [text], cursorLine: 0, cursorCol: text.length - 1 }))
+    editor.setAutocompleteProvider(provider)
+    editor.handleInput('see @')
+    await vi.waitFor(() => { expect(getSuggestions).toHaveBeenCalledTimes(1) })
+    editor.handleInput('\t')
+    expect(editor.getText()).toBe(text)
+    await vi.waitFor(() => { expect(getSuggestions).toHaveBeenCalledTimes(2) })
     stop()
   })
 

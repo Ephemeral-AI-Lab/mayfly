@@ -19,6 +19,7 @@ import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import * as editorPlus from '../../src/interaction/editor-plus.ts'
 import * as fileMention from '../../src/interaction/file-mention.ts'
+import * as mentionPaths from '../../src/internal/mention.ts'
 import { EditorDockHost } from '../../src/interaction/editor-dock-host.ts'
 import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
@@ -809,6 +810,33 @@ describe('mayfly-editor-plus argument-hint ghost', () => {
 })
 
 describe('mayfly-editor-plus @ mentions', () => {
+  it.each(['win32', 'linux'] as const)('routes unsupported %s path forms to the filesystem even with fd installed', async platform => {
+    fileMention.setFdProbe(async () => 'fd')
+    const { ctx, editor, components } = await mount()
+    await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
+    const classify = mentionPaths.requiresFilesystemMention
+    vi.spyOn(mentionPaths, 'requiresFilesystemMention').mockImplementation(token => classify(token, platform))
+    vi.spyOn(fileMention, 'listDirectoryMentions').mockResolvedValue(null)
+    const fallback = vi.spyOn(fileMention, 'fsMentionSuggestions').mockResolvedValue({ prefix: '@', items: [{ value: '@found', label: 'found' }] })
+    const delegated = vi.fn(async () => null)
+    components.mentionGetSuggestions = delegated
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const tokens = platform === 'win32' ? ['@C:\\Users\\de', '@C:/Users/de', "@'a b"] : ['@literal\\name', "@'a b"]
+    for (const token of tokens) {
+      const controller = new AbortController()
+      expect(await provider.getSuggestions([token], 0, token.length, { signal: controller.signal })).toMatchObject({ items: [{ value: '@found' }] })
+      expect(fallback).toHaveBeenLastCalledWith(process.cwd(), token, expect.any(AbortSignal))
+      const forwarded = fallback.mock.lastCall![2]
+      controller.abort()
+      expect(forwarded.aborted).toBe(true)
+    }
+    expect(delegated).not.toHaveBeenCalled()
+    fallback.mockClear()
+    const ordinary = platform === 'win32' ? '@\\\\server\\share\\fi' : '@src/co'
+    expect(await provider.getSuggestions([ordinary], 0, ordinary.length, { signal: signal() })).toBeNull()
+    expect(delegated).toHaveBeenCalledOnce()
+    expect(fallback).not.toHaveBeenCalled()
+  })
   const savedPath = process.env.PATH
   const savedCwd = process.cwd()
 

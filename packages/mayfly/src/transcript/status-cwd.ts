@@ -12,6 +12,7 @@ import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { SessionFactsService } from './session-facts.ts'
+import { displayPath, platformPath } from '../internal/paths.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-cwd'
@@ -31,12 +32,14 @@ const MAX_CWD_SEGMENTS = 3
  * @param home - the home directory to shorten against.
  * @returns the abbreviated cwd; `path` unchanged when empty or shallow.
  */
-export function shortenCwd(path: string, home: string): string {
+export function shortenCwd(path: string, home: string, platform: NodeJS.Platform = process.platform): string {
   if (path === '') return path
-  let work = path
-  if (home !== '' && path === home) return '~'
-  if (home !== '' && path.startsWith(home + '/')) {
-    work = '~' + path.slice(home.length)
+  let work = displayPath(path, platform)
+  if (home !== '') {
+    const paths = platformPath(platform)
+    const relative = displayPath(paths.relative(home, path), platform)
+    if (relative === '') return '~'
+    if (relative !== '..' && !relative.startsWith('../') && !paths.isAbsolute(relative)) work = `~/${relative}`
   }
 
   const segments = work.split('/').filter(segment => segment.length > 0)

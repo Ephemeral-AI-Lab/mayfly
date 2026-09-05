@@ -51,6 +51,7 @@ import {
   type SharedEditor,
 } from './editor-instance.ts'
 import { detectFdPath, extractAtPrefix, fsMentionSuggestions, listDirectoryMentions } from './file-mention.ts'
+import { requiresFilesystemMention } from '../internal/mention.ts'
 import { ACTION_BACKSPACE, ACTION_CANCEL } from './keys.ts'
 import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catalog.ts'
 import { sanitizeShellOutput } from './shell-sanitize.ts'
@@ -171,11 +172,12 @@ function createAutocompleteProvider(
         // Empty-tail tokens (a bare `@` or a directory drill-down) take the
         // one-level listing: deterministic, shallow, exactly the entries of
         // the resolved directory. Everything else — query-bearing tokens —
-        // runs the fd pipeline (fd's genuine no-match stays null, kimi: no
-        // fallback on it); only a missing or throwing fd runs the scanner.
+        // runs the fd pipeline (fd's genuine no-match stays null). Known
+        // unsupported path forms, or a missing/throwing fd, use the scanner.
         suggestions = await listDirectoryMentions(cwd, atPrefix, options.signal)
-        let fellBack = suggestions === null && fdPath === null
-        if (suggestions === null && fdPath !== null) {
+        const filesystemOnly = requiresFilesystemMention(atPrefix)
+        let fellBack = suggestions === null && (fdPath === null || filesystemOnly)
+        if (suggestions === null && fdPath !== null && !filesystemOnly) {
           try {
             suggestions = await inner.getSuggestions(lines, cursorLine, cursorCol, options)
           } catch {

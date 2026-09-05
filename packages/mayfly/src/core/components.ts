@@ -34,6 +34,8 @@ import {
 } from '@earendil-works/pi-tui'
 import { highlightCodeLines } from './highlight.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
+import { extractMentionToken, mentionPath } from '../internal/mention.ts'
+import { displayPath } from '../internal/paths.ts'
 import {
   highlightLeadingSlashToken,
   injectGhostHint,
@@ -165,29 +167,6 @@ export interface EditorChromePaints {
   readonly slashTokenPaint: (text: string) => string
   /** Styling for the argument-hint ghost (`textMuted`). */
   readonly ghostHintPaint: (text: string) => string
-}
-
-/** Token boundary characters ending a non-mention prefix (the kimi set). */
-const MENTION_DELIMITERS = new Set([' ', '\t', '"', "'", '='])
-
-/**
- * The token before the cursor when it is an `@` mention — the kimi
- * `extractAtPrefix` port: scan back to the nearest path delimiter; the
- * token from there must start with `@`. Quoted mentions degrade after the
- * first enclosed space, the same corner kimi's app-level extraction has
- * (the token restarts at the space).
- * @param text - the text before the cursor on the cursor's line.
- * @returns the mention token with its `@`, or `null` outside a mention.
- */
-function mentionTokenBeforeCursor(text: string): string | null {
-  let start = 0
-  for (let i = text.length - 1; i >= 0; i -= 1) {
-    if (MENTION_DELIMITERS.has(text.charAt(i))) {
-      start = i + 1
-      break
-    }
-  }
-  return text.charAt(start) === '@' ? text.slice(start) : null
 }
 
 function withoutFakeEditorCursor(row: string): string {
@@ -536,9 +515,9 @@ class EditorAdapter implements MayflyEditor {
     const { line, col } = this.editor.getCursor()
     /* v8 ignore next -- the real editor always renders the cursor line; the fallback only satisfies the index-access checker */
     const textBeforeCursor = (this.editor.getLines()[line] ?? '').slice(0, col)
-    const token = mentionTokenBeforeCursor(textBeforeCursor)
+    const token = extractMentionToken(textBeforeCursor)
     if (token === null) return
-    if (token !== '@' && !textBeforeCursor.endsWith('/')) return
+    if (token !== '@' && !displayPath(mentionPath(token)).endsWith('/')) return
     // The cast lands on a local — the repo's no-semicolon style cannot start
     // a statement with `(`.
     const trigger = this.editor as unknown as { tryTriggerAutocomplete(): void }
@@ -554,7 +533,8 @@ class EditorAdapter implements MayflyEditor {
 class MarkdownAdapter implements MayflyMarkdown {
   private readonly markdown: Markdown
   private text: string
-  private cache: { readonly key: string, readonly rows: string[] } | undefined
+  private segments: ReturnType<typeof splitRichDocument> | undefined
+  private cache: { readonly width: number, readonly rows: string[] } | undefined
 
   /**
    * @param markdown - the wrapped pi-tui Markdown.
@@ -574,20 +554,25 @@ class MarkdownAdapter implements MayflyMarkdown {
   }
 
   setText(text: string): void {
+    if (text === this.text) return
     this.text = text
+    this.segments = undefined
     this.cache = undefined
     this.markdown.setText(text)
   }
 
   render(width: number): string[] {
-    const segments = splitRichDocument(this.text)
-    if (!segments.some(segment => segment.kind === 'mermaid')) return this.expandRules(this.markdown.render(width), width)
     const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+    if (this.cache?.width === safeWidth) return this.cache.rows
+    const segments = this.segments ??= splitRichDocument(this.text)
+    if (!segments.some(segment => segment.kind === 'mermaid')) {
+      const rows = this.expandRules(this.markdown.render(safeWidth), safeWidth)
+      this.cache = { width: safeWidth, rows }
+      return rows
+    }
     const padX = Math.min(Math.max(0, Math.floor(this.paddingX)), Math.max(0, Math.floor((safeWidth - 1) / 2)))
     const padY = Math.max(0, Math.floor(this.paddingY))
     const contentWidth = Math.max(1, safeWidth - padX * 2)
-    const key = `${String(safeWidth)}:${this.text}`
-    if (this.cache?.key === key) return this.cache.rows
     const body = segments.flatMap(segment => {
       if (segment.kind === 'mermaid') {
         const diagram = renderMermaidRows(segment.source, contentWidth)
@@ -600,7 +585,7 @@ class MarkdownAdapter implements MayflyMarkdown {
     })
     const horizontal = padX === 0 ? body : body.map(line => `${' '.repeat(padX)}${line}`)
     const result = [...Array.from({ length: padY }, () => ''), ...horizontal, ...Array.from({ length: padY }, () => '')]
-    this.cache = { key, rows: result }
+    this.cache = { width: safeWidth, rows: result }
     return result
   }
 

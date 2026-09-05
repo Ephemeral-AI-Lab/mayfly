@@ -3,11 +3,12 @@
  * the kimi `FileMentionProvider` composition. The fd-backed pipeline itself
  * comes from L0 (`mayflyComponents.createFileMentionProvider`, the renderer's
  * combined provider with its scoped queries, substring scoring, and quoted
- * values); this module owns everything around it: the mention-token
- * extraction that gates the `@` branch (the kimi `extractAtPrefix` port),
+ * values); this module owns everything around it: shared quoted-token
+ * extraction that gates the `@` branch,
  * the PATH probe for the `fd` binary (Mayfly never downloads binaries, unlike
  * kimi's managed-CDN fallback), and the filesystem fallback that keeps `@`
- * completion alive while fd is missing or unspawnable — directories and
+ * completion alive while fd is missing, unspawnable, or unable to represent
+ * the typed path — directories and
  * hidden entries included, `.git` skipped (kimi) plus `node_modules`
  * (Mayfly's keep: without gitignore awareness a bare JS tree floods the scan
  * cap), capped at 2000 scanned entries and 50 suggestions.
@@ -19,11 +20,11 @@ import { execFile } from 'node:child_process'
 import { statSync, type Dirent } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { posix } from 'node:path'
 import type { MayflyAutocompleteItem, MayflyAutocompleteSuggestions } from '../core/index.ts'
+import { extractMentionToken, mentionPath } from '../internal/mention.ts'
+import { displayPath, platformPath } from '../internal/paths.ts'
 
-/** Token boundary characters for mention extraction (the kimi set). */
-const PATH_DELIMITERS = new Set([' ', '\t', '"', "'", '='])
 /** Hard cap on fallback-scan entries, directories included (kimi parity). */
 export const MAX_FALLBACK_SCAN = 2000
 /** Cap on fallback suggestions returned per query (kimi parity). */
@@ -32,24 +33,12 @@ export const MAX_FALLBACK_SUGGESTIONS = 50
 const FALLBACK_SKIP_DIRS = new Set(['.git', 'node_modules'])
 
 /**
- * The token before the cursor when it is an `@` mention: scan back to the
- * nearest path delimiter; the token from there must start with `@` (the
- * kimi `extractAtPrefix` port, verbatim). Quoted mentions degrade after
- * the first enclosed space — the token restarts at the space, the same
- * corner kimi's app-level extraction has.
+ * The mention before the cursor, preserving quoted paths and spaces.
  * @param text - the text before the cursor on the cursor's line.
  * @returns the mention token with its `@`, or `null` outside a mention.
  */
 export function extractAtPrefix(text: string): string | null {
-  let start = 0
-  for (let i = text.length - 1; i >= 0; i -= 1) {
-    if (PATH_DELIMITERS.has(text.charAt(i))) {
-      start = i + 1
-      break
-    }
-  }
-  if (text.charAt(start) !== '@') return null
-  return text.slice(start)
+  return extractMentionToken(text)
 }
 
 /**
@@ -118,7 +107,8 @@ interface FsMentionCandidate {
  * @param signal - aborts the walk between entries.
  * @returns the candidates, in discovery order.
  */
-async function collectFsMentionCandidates(root: string, signal: AbortSignal): Promise<FsMentionCandidate[]> {
+async function collectFsMentionCandidates(root: string, signal: AbortSignal, platform: NodeJS.Platform): Promise<FsMentionCandidate[]> {
+  const { join } = platformPath(platform)
   const out: FsMentionCandidate[] = []
   const stack = ['']
   let scanned = 0
@@ -147,7 +137,7 @@ async function collectFsMentionCandidates(root: string, signal: AbortSignal): Pr
         }
       }
       scanned += 1
-      out.push({ path, isDirectory })
+      out.push({ path: displayPath(path, platform), isDirectory })
       if (isDirectory && !entry.isSymbolicLink()) stack.push(path)
     }
   }
@@ -169,7 +159,7 @@ function scoreCandidate(candidate: FsMentionCandidate, lowerQuery: string): numb
     return (candidate.isDirectory ? 120 : 100) - depthPenalty
   }
   const lowerPath = candidate.path.toLowerCase()
-  const lowerBase = basename(candidate.path).toLowerCase()
+  const lowerBase = posix.basename(candidate.path).toLowerCase()
   let score = 0
   if (lowerBase === lowerQuery) score = 100
   else if (lowerBase.startsWith(lowerQuery)) score = 80
@@ -219,9 +209,16 @@ function toMentionItem(candidate: FsMentionCandidate): MayflyAutocompleteItem {
   const value = valuePath.includes(' ') ? `@"${valuePath}"` : `@${valuePath}`
   return {
     value,
-    label: `${basename(candidate.path)}${candidate.isDirectory ? '/' : ''}`,
+    label: `${posix.basename(candidate.path)}${candidate.isDirectory ? '/' : ''}`,
     description: candidate.path,
   }
+}
+
+function resolveMentionBase(cwd: string, base: string, platform: NodeJS.Platform): string {
+  const { join, isAbsolute } = platformPath(platform)
+  if (base === '') return cwd
+  if (isAbsolute(base)) return base
+  return base.startsWith('~/') ? join(homedir(), base.slice(2)) : join(cwd, base)
 }
 
 /**
@@ -236,14 +233,18 @@ export async function fsMentionSuggestions(
   cwd: string,
   atPrefix: string,
   signal: AbortSignal,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<MayflyAutocompleteSuggestions | null> {
   if (signal.aborted) return null
-  const query = atPrefix.slice(1)
-  const candidates = await collectFsMentionCandidates(cwd, signal)
+  const query = displayPath(mentionPath(atPrefix), platform)
+  const slash = query.lastIndexOf('/')
+  const base = query.slice(0, slash + 1)
+  const tail = query.slice(slash + 1)
+  const candidates = await collectFsMentionCandidates(resolveMentionBase(cwd, base, platform), signal, platform)
   if (candidates.length === 0 || signal.aborted) return null
-  const ranked = rankFsMentionCandidates(candidates, query).slice(0, MAX_FALLBACK_SUGGESTIONS)
+  const ranked = rankFsMentionCandidates(candidates, tail).slice(0, MAX_FALLBACK_SUGGESTIONS)
   if (ranked.length === 0) return null
-  return { prefix: atPrefix, items: ranked.map(toMentionItem) }
+  return { prefix: atPrefix, items: ranked.map(candidate => toMentionItem({ ...candidate, path: base + candidate.path })) }
 }
 
 /**
@@ -253,8 +254,8 @@ export async function fsMentionSuggestions(
  * @param atPrefix - the mention token with its `@`.
  * @returns the tail query (empty for a bare `@` or a directory drill-down).
  */
-function mentionTailQuery(atPrefix: string): string {
-  const query = atPrefix.slice(1)
+function mentionTailQuery(atPrefix: string, platform: NodeJS.Platform): string {
+  const query = displayPath(mentionPath(atPrefix), platform)
   const slash = query.lastIndexOf('/')
   return slash === -1 ? query : query.slice(slash + 1)
 }
@@ -273,7 +274,7 @@ const DIRECTORY_MENTION_LIMIT = 50
  * `null` here and keep the fd pipeline.
  * @param cwd - the session root relative bases resolve against.
  * @param atPrefix - the mention token with its `@` (its typed base —
- *   relative, `~/`, or absolute — is preserved verbatim in the values).
+ *   relative, `~/`, or absolute — is retained in normalized display form).
  * @param signal - aborts the listing.
  * @returns the suggestion set, or `null` for a query-bearing token, a
  *   base that is not a directory, an empty listing, or an aborted call.
@@ -282,17 +283,13 @@ export async function listDirectoryMentions(
   cwd: string,
   atPrefix: string,
   signal: AbortSignal,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<MayflyAutocompleteSuggestions | null> {
-  if (mentionTailQuery(atPrefix).length > 0) return null
+  if (mentionTailQuery(atPrefix, platform).length > 0) return null
   if (signal.aborted) return null
-  const base = atPrefix.slice(1)
-  const resolved = base === ''
-    ? cwd
-    : base.startsWith('/')
-      ? base
-      : base.startsWith('~/')
-        ? join(homedir(), base.slice(2))
-        : join(cwd, base)
+  const base = displayPath(mentionPath(atPrefix), platform)
+  const { join } = platformPath(platform)
+  const resolved = resolveMentionBase(cwd, base, platform)
   let directory: Dirent[]
   try {
     // readdir itself rejects non-directories (ENOTDIR — including a file

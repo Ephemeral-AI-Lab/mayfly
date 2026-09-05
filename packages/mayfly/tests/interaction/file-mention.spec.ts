@@ -7,6 +7,8 @@
 
 import { mkdirSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
+import * as fsPromises from 'node:fs/promises'
+import * as os from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_FALLBACK_SUGGESTIONS,
@@ -17,6 +19,10 @@ import {
   setFdProbe,
 } from '../../src/interaction/file-mention.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
+import { mentionPath, requiresFilesystemMention } from '../../src/internal/mention.ts'
+
+vi.mock('node:fs/promises', async importOriginal => ({ ...await importOriginal<typeof import('node:fs/promises')>() }))
+vi.mock('node:os', async importOriginal => ({ ...await importOriginal<typeof import('node:os')>() }))
 
 registerTempDirCleanup()
 
@@ -58,6 +64,16 @@ function fakeFdBin(line: string): string {
 }
 
 describe('extractAtPrefix', () => {
+  it('routes only path forms the native fd backend cannot represent to the filesystem', () => {
+    expect(requiresFilesystemMention('@C:\\Users\\de', 'win32')).toBe(true)
+    expect(requiresFilesystemMention('@C:/Users/de', 'win32')).toBe(true)
+    expect(requiresFilesystemMention('@\\\\server\\share\\de', 'win32')).toBe(false)
+    expect(requiresFilesystemMention('@src\\co', 'win32')).toBe(false)
+    expect(requiresFilesystemMention('@src\\co', 'linux')).toBe(true)
+    expect(requiresFilesystemMention("@'a b", 'linux')).toBe(true)
+    expect(requiresFilesystemMention('@"a b"', 'linux')).toBe(true)
+    expect(requiresFilesystemMention('@src/co', 'linux')).toBe(false)
+  })
   it('returns the token from the line start or after any path delimiter', () => {
     expect(extractAtPrefix('@sr')).toBe('@sr')
     expect(extractAtPrefix('see @sr')).toBe('@sr')
@@ -69,10 +85,20 @@ describe('extractAtPrefix', () => {
     expect(extractAtPrefix('')).toBeNull()
     expect(extractAtPrefix('hello')).toBeNull()
     expect(extractAtPrefix('see sr')).toBeNull()
-    // The quoted corner kimi shares: the token restarts at the enclosed
-    // space, so the mention gate loses the quoted form after its first
-    // space.
-    expect(extractAtPrefix('@"a b')).toBeNull()
+    expect(extractAtPrefix('email@example.com')).toBeNull()
+    expect(extractAtPrefix('@"a b" next')).toBeNull()
+  })
+
+  it('keeps open and closed quoted paths, including spaces and Windows separators', () => {
+    for (const token of ['@"a b', '@"a b/"', "@'a b'", '@"', '@"C:\\Users\\文档 文件\\']) {
+      expect(extractAtPrefix(`see ${token}`)).toBe(token)
+    }
+  })
+
+  it('extracts literal paths from either quote style without swallowing their spaces', () => {
+    for (const [token, path] of [['@abc', 'abc'], ['@"', ''], ["@'", ''], ['@"a b', 'a b'], ["@'a b'", 'a b'], ['@"a b/"', 'a b/']]) {
+      expect(mentionPath(token!)).toBe(path)
+    }
   })
 })
 
@@ -119,6 +145,47 @@ describe('detectFdPath', () => {
 })
 
 describe('fsMentionSuggestions', () => {
+  it('scopes quoted and absolute queries when fd is unavailable', async () => {
+    const root = fixture()
+    expect((await fsMentionSuggestions(root, '@src/a', signal()))?.items.map(item => item.value)).toEqual(['@src/a.ts'])
+    expect((await fsMentionSuggestions(root, '@"a b', signal()))?.items.map(item => item.value)).toEqual(['@"a b.txt"'])
+    expect((await fsMentionSuggestions(root, `@${root}/src/a`, signal()))?.items[0]?.value).toBe(`@${root}/src/a.ts`)
+    if (process.platform !== 'win32') {
+      writeFileSync(join(root, 'literal\\name.txt'), 'x')
+      expect((await fsMentionSuggestions(root, '@literal\\na', signal(), 'linux'))?.items[0]?.value).toBe('@literal\\name.txt')
+    }
+  })
+
+  it('normalizes Windows scan results before ranking and preserves scoped prefixes', async () => {
+    const entry = (name: string, directory = false) => ({ name, isDirectory: () => directory, isSymbolicLink: () => false })
+    const read = vi.spyOn(fsPromises, 'readdir').mockImplementation(async path => {
+      if (String(path).replaceAll('\\', '/').replace(/\/$/u, '') === 'C:/repo') return [entry('src', true), entry('top.ts')] as never
+      if (String(path).replaceAll('\\', '/').replace(/\/$/u, '') === 'C:/repo/src') return [entry('中文 File.ts')] as never
+      return [] as never
+    })
+    const all = await fsMentionSuggestions('C:\\repo', '@', signal(), 'win32')
+    expect(all?.items.map(item => item.value)).toEqual(['@src/', '@top.ts', '@"src/中文 File.ts"'])
+    expect((await fsMentionSuggestions('C:\\repo', '@src\\中文', signal(), 'win32'))?.items[0]?.value).toBe('@"src/中文 File.ts"')
+    expect(read).toHaveBeenCalledWith('C:\\repo\\src', { withFileTypes: true })
+  })
+
+  it('resolves Windows drive, UNC, home and quoted bases without prefixing the cwd', async () => {
+    vi.spyOn(os, 'homedir').mockReturnValue('C:\\Users\\demo')
+    const read = vi.spyOn(fsPromises, 'readdir').mockResolvedValue([{ name: '文档', isDirectory: () => true, isSymbolicLink: () => false }] as never)
+    const cases = [
+      ['@C:\\Users\\demo\\', 'C:/Users/demo/', '@C:/Users/demo/文档/'],
+      ['@\\\\server\\share\\', '//server/share/', '@//server/share/文档/'],
+      ['@~\\', 'C:\\Users\\demo', '@~/文档/'],
+      ['@"C:\\Program Files\\"', 'C:/Program Files/', '@"C:/Program Files/文档/"'],
+    ]
+    for (const [prefix, resolved, value] of cases) {
+      const result = await listDirectoryMentions('D:\\repo', prefix!, signal(), 'win32')
+      expect(read).toHaveBeenLastCalledWith(resolved, { withFileTypes: true })
+      expect(result?.prefix).toBe(prefix)
+      expect(result?.items[0]?.value).toBe(value)
+    }
+    expect(await listDirectoryMentions('D:\\repo', '@C:\\Users\\de', signal(), 'win32')).toBeNull()
+  })
   it('returns null for an already-aborted signal', async () => {
     const controller = new AbortController()
     controller.abort()

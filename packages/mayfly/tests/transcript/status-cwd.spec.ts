@@ -12,6 +12,20 @@ import * as cwd from '../../src/transcript/status-cwd.ts'
 import { asAgent, bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
 
 describe('shortenCwd', () => {
+  it('normalizes Windows separators and compares home paths case insensitively', () => {
+    expect(cwd.shortenCwd('C:\\Users\\Demo', 'c:\\users\\demo\\', 'win32')).toBe('~')
+    expect(cwd.shortenCwd('C:\\Users\\Demo\\文档', 'c:\\users\\demo', 'win32')).toBe('~/文档')
+    expect(cwd.shortenCwd('D:\\work', 'C:\\Users\\Demo', 'win32')).toBe('D:/work')
+    expect(cwd.shortenCwd('\\\\server\\share\\a\\b\\c', '', 'win32')).toBe('…/a/b/c')
+    expect(cwd.shortenCwd('C:\\one\\two\\three\\four', '', 'win32')).toBe('…/two/three/four')
+  })
+
+  it('keeps POSIX backslashes literal and respects whole home path segments', () => {
+    expect(cwd.shortenCwd('/a\\b/c', '', 'linux')).toBe('/a\\b/c')
+    expect(cwd.shortenCwd('/home', '/home/x', 'linux')).toBe('/home')
+    expect(cwd.shortenCwd('/home/xx', '/home/x', 'linux')).toBe('/home/xx')
+    expect(cwd.shortenCwd('/home/x/docs', '/home/x/', 'linux')).toBe('~/docs')
+  })
   it('shortens the home directory and everything under it', () => {
     expect(cwd.shortenCwd('/home/x', '/home/x')).toBe('~')
     expect(cwd.shortenCwd('/home/x/dev', '/home/x')).toBe('~/dev')
