@@ -173,7 +173,7 @@ export function registerPluginCommand(ctx: Context): () => void {
         return false
       }
       if (action === 'install' && entrySupportsSource(entry, source) === false) {
-        report({ text: `"${entry.displayName}" has no ${source} install source`, tone: 'danger' })
+        report({ text: t('"{name}" has no {source} install source', { name: entry.displayName, source }), tone: 'danger' })
         return false
       }
       report({
@@ -309,7 +309,7 @@ export function registerPluginCommand(ctx: Context): () => void {
   function openBrowse(initialGroup: 'installed' | 'not-installed'): CommandOutcome {
     const display = displayServices(ctx)
     if (display === undefined) {
-      return { kind: 'error', text: 'plugin browser is unavailable: the Mayfly screen is not mounted' }
+      return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly screen is not mounted') }
     }
 
     let panelStatus: OperationStatus | undefined
@@ -381,7 +381,7 @@ export function registerPluginCommand(ctx: Context): () => void {
       /* v8 ignore next -- browser actions only carry ids from indexed rows */
       if (entry === undefined) return
       if (action === 'uninstall' && !hasInstalledRows(entry)) {
-        reportInPanel({ text: `"${entry.displayName}" is not installed in this profile`, tone: 'danger' })
+        reportInPanel({ text: t('"{name}" is not installed in this profile', { name: entry.displayName }), tone: 'danger' })
         return
       }
       const installBlock = action === 'install' ? marketEntryInstallBlock(entry) : undefined
@@ -394,7 +394,7 @@ export function registerPluginCommand(ctx: Context): () => void {
       }
       const source = defaultInstallSource(entry)
       if (action === 'install' && source === undefined) {
-        reportInPanel({ text: `"${entry.displayName}" has no common install source for every package`, tone: 'danger' })
+        reportInPanel({ text: t('"{name}" has no common install source for every package', { name: entry.displayName }), tone: 'danger' })
         return
       }
       void operate(entry, action, source ?? 'npm', reportInPanel).then(() => {
@@ -523,7 +523,7 @@ export function registerPluginCommand(ctx: Context): () => void {
         const entry = findEntry(id)
         if (entry === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
         const display = displayServices(ctx)
-        if (display === undefined) return { kind: 'error', text: 'plugin browser is unavailable: the Mayfly screen is not mounted' }
+        if (display === undefined) return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly screen is not mounted') }
         let restore: () => void
         let offLocale: () => void
         const panel = detailPanel(entry, states()[entry.id], () => {
@@ -556,10 +556,10 @@ export function registerPluginCommand(ctx: Context): () => void {
           ? requestedSource
           : defaultInstallSource(entry)
         if (verb === 'install' && source === undefined) {
-          return { kind: 'error', text: `"${entry.displayName}" has no common install source for every package` }
+          return { kind: 'error', text: t('"{name}" has no common install source for every package', { name: entry.displayName }) }
         }
         if (verb === 'uninstall' && !hasInstalledRows(entry)) {
-          return { kind: 'error', text: `"${entry.displayName}" is not installed in this profile` }
+          return { kind: 'error', text: t('"{name}" is not installed in this profile', { name: entry.displayName }) }
         }
         if (verb === 'install' && usefulInTui(entry) === false) {
           getSharedEditor(ctx)?.notice?.(t('web-only plugin: it contributes nothing in this terminal frontend'))

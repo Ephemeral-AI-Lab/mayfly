@@ -1,0 +1,172 @@
+{
+  "node": "v24.15.0",
+  "platform": "linux",
+  "arch": "x64",
+  "samples": 7,
+  "gc": true,
+  "note": "Headless synthetic timings, not terminal FPS. Heap growth is not total allocation.",
+  "results": [
+    {
+      "size": 1000,
+      "scenario": "list.first-build-publish-render",
+      "medianMs": 3.841,
+      "p95Ms": 5.855,
+      "maxYieldDelayMs": 5.955,
+      "medianHeapGrowthBytes": 4410400,
+      "rssBytes": 156581888
+    },
+    {
+      "size": 1000,
+      "scenario": "list.repeat-publish-render",
+      "medianMs": 2.528,
+      "p95Ms": 2.639,
+      "maxYieldDelayMs": 2.689,
+      "medianHeapGrowthBytes": 2563992,
+      "rssBytes": 160382976
+    },
+    {
+      "size": 1000,
+      "scenario": "list.selection-update-render",
+      "medianMs": 3.291,
+      "p95Ms": 4.459,
+      "maxYieldDelayMs": 4.511,
+      "medianHeapGrowthBytes": 4405272,
+      "rssBytes": 160907264
+    },
+    {
+      "size": 1000,
+      "scenario": "list.page-down-render",
+      "medianMs": 0.534,
+      "p95Ms": 0.907,
+      "maxYieldDelayMs": 0.955,
+      "medianHeapGrowthBytes": 451424,
+      "rssBytes": 160907264
+    },
+    {
+      "size": 1000,
+      "scenario": "transcript.source-after-native-clone",
+      "medianMs": 0.556,
+      "p95Ms": 0.898,
+      "maxYieldDelayMs": 0.972,
+      "medianHeapGrowthBytes": 1784512,
+      "rssBytes": 161300480
+    },
+    {
+      "size": 1000,
+      "scenario": "transcript.native-parse-and-source",
+      "medianMs": 0.745,
+      "p95Ms": 0.89,
+      "maxYieldDelayMs": 0.941,
+      "medianHeapGrowthBytes": 3049304,
+      "rssBytes": 161300480
+    },
+    {
+      "size": 10000,
+      "scenario": "list.first-build-publish-render",
+      "medianMs": 21.728,
+      "p95Ms": 22.205,
+      "maxYieldDelayMs": 22.894,
+      "medianHeapGrowthBytes": 32754520,
+      "rssBytes": 177434624
+    },
+    {
+      "size": 10000,
+      "scenario": "list.repeat-publish-render",
+      "medianMs": 13.117,
+      "p95Ms": 13.666,
+      "maxYieldDelayMs": 13.731,
+      "medianHeapGrowthBytes": 18521232,
+      "rssBytes": 200957952
+    },
+    {
+      "size": 10000,
+      "scenario": "list.selection-update-render",
+      "medianMs": 22.594,
+      "p95Ms": 27.174,
+      "maxYieldDelayMs": 28.044,
+      "medianHeapGrowthBytes": 32602272,
+      "rssBytes": 199868416
+    },
+    {
+      "size": 10000,
+      "scenario": "list.page-down-render",
+      "medianMs": 0.451,
+      "p95Ms": 0.581,
+      "maxYieldDelayMs": 0.634,
+      "medianHeapGrowthBytes": 371416,
+      "rssBytes": 199868416
+    },
+    {
+      "size": 10000,
+      "scenario": "transcript.source-after-native-clone",
+      "medianMs": 3.293,
+      "p95Ms": 3.448,
+      "maxYieldDelayMs": 3.514,
+      "medianHeapGrowthBytes": 14976640,
+      "rssBytes": 207208448
+    },
+    {
+      "size": 10000,
+      "scenario": "transcript.native-parse-and-source",
+      "medianMs": 6.52,
+      "p95Ms": 6.829,
+      "maxYieldDelayMs": 6.891,
+      "medianHeapGrowthBytes": 29170112,
+      "rssBytes": 217432064
+    },
+    {
+      "size": 100000,
+      "scenario": "list.first-build-publish-render",
+      "medianMs": 280.215,
+      "p95Ms": 303.649,
+      "maxYieldDelayMs": 303.747,
+      "medianHeapGrowthBytes": 52406000,
+      "rssBytes": 352620544
+    },
+    {
+      "size": 100000,
+      "scenario": "list.repeat-publish-render",
+      "medianMs": 132.684,
+      "p95Ms": 155.919,
+      "maxYieldDelayMs": 156.02,
+      "medianHeapGrowthBytes": 31319432,
+      "rssBytes": 359538688
+    },
+    {
+      "size": 100000,
+      "scenario": "list.selection-update-render",
+      "medianMs": 276.142,
+      "p95Ms": 294.055,
+      "maxYieldDelayMs": 294.169,
+      "medianHeapGrowthBytes": 58717744,
+      "rssBytes": 371544064
+    },
+    {
+      "size": 100000,
+      "scenario": "list.page-down-render",
+      "medianMs": 0.462,
+      "p95Ms": 0.602,
+      "maxYieldDelayMs": 0.667,
+      "medianHeapGrowthBytes": 370008,
+      "rssBytes": 351424512
+    },
+    {
+      "size": 100000,
+      "scenario": "transcript.source-after-native-clone",
+      "medianMs": 38.207,
+      "p95Ms": 43.798,
+      "maxYieldDelayMs": 43.918,
+      "medianHeapGrowthBytes": 30448816,
+      "rssBytes": 363593728
+    },
+    {
+      "size": 100000,
+      "scenario": "transcript.native-parse-and-source",
+      "medianMs": 70.64,
+      "p95Ms": 73.997,
+      "maxYieldDelayMs": 74.119,
+      "medianHeapGrowthBytes": 57385256,
+      "rssBytes": 372219904
+    }
+  ]
+}

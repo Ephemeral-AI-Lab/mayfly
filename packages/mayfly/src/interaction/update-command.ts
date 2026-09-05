@@ -18,6 +18,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import { interactionTranslator } from './locale.ts'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import type { MayflyComponents, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import { join } from 'node:path'
@@ -73,13 +75,14 @@ export function updatePanelModel(
   state: UpdateProgressState,
   fromVersion: string,
   toVersion: string,
+  t: MayflyTranslate = interpolateLocaleMessage,
 ): FrontendPanelDocument {
   const settled = state.outcome !== undefined || state.blockedMessage !== undefined
   const stepItems = STEP_ROWS.flatMap(row => {
     const value = state.steps.get(row.step)
     if (value === undefined && row.step === 'rollback') return []
     const mark = value === 'ok' ? '✓' : value === 'fail' ? '✗' : value === 'start' ? '…' : '·'
-    return [{ id: row.step, label: `${mark} ${row.label}`, disabled: true }]
+    return [{ id: row.step, label: `${mark} ${t(row.label)}`, disabled: true }]
   })
   const nodes: MayflyUiNode[] = [
     { kind: 'divider', label: `v${fromVersion} → v${toVersion}` },
@@ -87,33 +90,33 @@ export function updatePanelModel(
   ]
   if (state.outcome !== undefined) {
     nodes.push(
-      { kind: 'divider', label: state.outcome.kind === 'success' ? 'Complete' : 'Failed' },
+      { kind: 'divider', label: t(state.outcome.kind === 'success' ? 'Complete' : 'Failed') },
       { kind: 'text', content: state.outcome.message },
-      { kind: 'text', content: `log: ${state.outcome.logPath}`, tone: 'muted' },
+      { kind: 'text', content: t('log: {path}', { path: state.outcome.logPath }), tone: 'muted' },
     )
   }
   if (state.blockedMessage !== undefined) {
     nodes.push(
-      { kind: 'divider', label: 'Blocked' },
+      { kind: 'divider', label: t('Blocked') },
       { kind: 'text', content: state.blockedMessage, tone: 'danger' },
-      { kind: 'text', content: 'nothing was changed', tone: 'muted' },
+      { kind: 'text', content: t('nothing was changed'), tone: 'muted' },
     )
   }
   return {
     mode: !settled ? 'loading' : state.outcome?.kind === 'success' ? 'info' : 'error',
-    title: 'Update Mayfly',
+    title: t('Update Mayfly'),
     view: { kind: 'stack', direction: 'column', children: nodes.map(node => ({ node })) },
     dismissible: settled,
   }
 }
 
 /** One-line notice emitted when the settled panel closes. */
-export function updatePanelSummary(state: UpdateProgressState): string {
+export function updatePanelSummary(state: UpdateProgressState, t: MayflyTranslate = interpolateLocaleMessage): string {
   const outcome = state.outcome
-  if (outcome === undefined) return state.blockedMessage === undefined ? 'update panel closed' : 'update blocked — nothing was changed'
+  if (outcome === undefined) return t(state.blockedMessage === undefined ? 'update panel closed' : 'update blocked — nothing was changed')
   return outcome.kind === 'success'
-    ? `updated to v${outcome.toVersion} — restart dsh to apply`
-    : `update did not complete (${outcome.kind}) — log: ${outcome.logPath}`
+    ? t('updated to v{version} — restart dsh to apply', { version: outcome.toVersion })
+    : t('update did not complete ({kind}) — log: {path}', { kind: outcome.kind, path: outcome.logPath })
 }
 
 /** The display services slice the confirm form needs. */
@@ -133,6 +136,7 @@ interface Display {
  * @returns whether the user confirmed.
  */
 function confirmUpdate(ctx: Context, display: Display, fromVersion: string, toVersion: string, detail: string): Promise<boolean> {
+  const t = interactionTranslator(ctx)
   // A second resolve is a Promise no-op, and a second slot restore is
   // idempotent, so submit and cancel racing needs no guard.
   return new Promise(resolve => {
@@ -144,15 +148,16 @@ function confirmUpdate(ctx: Context, display: Display, fromVersion: string, toVe
       keymap: display.keymap,
       theme: display.theme,
       components: display.components,
+      t,
       title: 'Update Mayfly',
       subtitle: [`v${fromVersion} → v${toVersion}`, detail].join(' · ').replace(/ · $/, ''),
       fields: [
         {
           id: 'yes',
-          label: `Update to v${toVersion}?`,
+          label: t('Update to v{version}?', { version: toVersion }),
           required: true,
           hint: 'type y to update · esc cancels · a boot smoke runs before the change is kept',
-          validate: value => value.toLowerCase() === 'y' ? undefined : 'type y to confirm, or Esc to cancel',
+          validate: value => value.toLowerCase() === 'y' ? undefined : t('type y to confirm, or Esc to cancel'),
         },
       ],
       onSubmit: values => done(String(values.yes).toLowerCase() === 'y'),
@@ -181,16 +186,18 @@ async function runSwapPanel(
     readonly toVersion: string
   },
 ): Promise<SwapOutcome> {
+  const t = interactionTranslator(ctx)
   const bootMarker = ctx.get('agentDefaultModel')?.currentSelection().model
   const state = createUpdateProgressState()
   let restore: () => void
   const panel = new CanonicalDocumentController({
     ...display,
-    model: () => updatePanelModel(state, input.fromVersion, input.toVersion),
+    t,
+    model: () => updatePanelModel(state, input.fromVersion, input.toVersion, t),
     onAction: () => undefined,
     onClose: () => {
       restore()
-      getSharedEditor(ctx)?.notice?.(updatePanelSummary(state))
+      getSharedEditor(ctx)?.notice?.(updatePanelSummary(state, t))
     },
   })
   restore = mountEditorReplacement(ctx, panel)
@@ -287,7 +294,7 @@ export function registerUpdateCommand(ctx: Context): () => void {
 async function runUpdateCommand(ctx: Context, requested: string): Promise<CommandResult> {
   const state = ctx.mayflyInteractionState
   if (state.updateInFlight) {
-    return { kind: 'error', text: 'an update is already in progress' }
+    return { kind: 'error', text: interactionTranslator(ctx)('an update is already in progress') }
   }
   state.updateInFlight = true
   try {
@@ -307,18 +314,19 @@ async function runUpdateCommand(ctx: Context, requested: string): Promise<Comman
  * @returns the command outcome.
  */
 async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandResult> {
+  const t = interactionTranslator(ctx)
   const current = ctx.get('mayflyCurrentAgent')?.current() ?? null
   if (current !== null && current.status !== 'idle') {
-    return { kind: 'error', text: 'the agent is running — wait for the current turn to finish before updating' }
+    return { kind: 'error', text: t('the agent is running — wait for the current turn to finish before updating') }
   }
   const display = displayServices(ctx)
   if (display === undefined) {
-    return { kind: 'error', text: 'update is unavailable: the Mayfly screen is not mounted' }
+    return { kind: 'error', text: t('update is unavailable: the Mayfly screen is not mounted') }
   }
-  getSharedEditor(ctx)?.notice?.(`checking the registry for ${MAYFLY_PACKAGE} updates…`)
+  getSharedEditor(ctx)?.notice?.(t('checking the registry for {package} updates…', { package: MAYFLY_PACKAGE }))
   const registry = await fetchPackument({
     onRetry: (attempt, total) =>
-      getSharedEditor(ctx)?.notice?.(`registry unreachable, retrying (${attempt}/${total})…`),
+      getSharedEditor(ctx)?.notice?.(t('registry unreachable, retrying ({attempt}/{total})…', { attempt, total })),
   })
   if (!registry.ok) {
     const detail = registry.reason === 'network'
@@ -326,27 +334,27 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
       : registry.reason === 'not-found'
         ? 'the registry answers E404 for @ephemeral-ai/mayfly — check the npmrc registry/mirror configuration'
         : 'unparseable answer — check the npmrc mirror and retry'
-    return { kind: 'error', text: `could not read the registry (${detail})` }
+    return { kind: 'error', text: t('could not read the registry ({detail})', { detail: t(detail) }) }
   }
   const packument = registry.packument
 
   let target: string
   if (requested !== '') {
     if (!isVersion(requested)) {
-      return { kind: 'error', text: `"${requested}" is not a version (try /update 0.1.0-alpha.1)` }
+      return { kind: 'error', text: t('"{version}" is not a version (try /update 0.1.0-alpha.1)', { version: requested }) }
     }
     target = requested
   } else {
     const channel = updateChannelOf(ctx)
     const offer = resolveOffer(packument, channel, MAYFLY_VERSION)
     if (offer.kind === 'no-tag') {
-      return { kind: 'error', text: `the registry carries no "${channel}" tag for @ephemeral-ai/mayfly — pick a version with /update <version>` }
+      return { kind: 'error', text: t('the registry carries no "{channel}" tag for @ephemeral-ai/mayfly — pick a version with /update <version>', { channel }) }
     }
     if (offer.kind === 'target-unparsable') {
-      return { kind: 'error', text: `the "${channel}" tag points at "${offer.target}", which does not parse as a version` }
+      return { kind: 'error', text: t('the "{channel}" tag points at "{version}", which does not parse as a version', { channel, version: offer.target }) }
     }
     if (offer.kind === 'up-to-date') {
-      return { kind: 'success', text: `up to date (v${MAYFLY_VERSION}; ${channel} tag: ${offer.target})` }
+      return { kind: 'success', text: t('up to date (v{version}; {channel} tag: {target})', { version: MAYFLY_VERSION, channel, target: offer.target }) }
     }
     // `offer` and `target-below-floor` both carry a target; the version
     // floor gate below refuses the below-floor shape with its own recipe.
@@ -358,7 +366,7 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
   const facts = readProfileFacts(root)
   const dshBin = await findDshBin()
   if (dshBin === undefined) {
-    return { kind: 'error', text: 'cannot find the dsh CLI — set DSH_BIN or put dsh on PATH' }
+    return { kind: 'error', text: t('cannot find the dsh CLI — set DSH_BIN or put dsh on PATH') }
   }
   const [hostOutput, cooldownMinutes, release] = await Promise.all([
     probeHostVersion(dshBin),
@@ -395,7 +403,7 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
   ].filter(part => part !== '')
   const confirmed = await confirmUpdate(ctx, display, fromVersion, target, detailParts.join(' · '))
   if (!confirmed) {
-    return { kind: 'success', text: 'update cancelled' }
+    return { kind: 'success', text: t('update cancelled') }
   }
 
   const outcome = await runSwapPanel(ctx, display, { root, profile, dshBin, fromVersion, toVersion: target })
@@ -409,8 +417,8 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
   return {
     kind: 'error',
     text: outcome.kind === 'rolled-back'
-      ? `update failed — rolled back to v${outcome.fromVersion}`
-      : 'update failed — the repair recipe is in the update panel',
+      ? t('update failed — rolled back to v{version}', { version: outcome.fromVersion })
+      : t('update failed — the repair recipe is in the update panel'),
   }
 }
 
@@ -429,16 +437,18 @@ function mountBlockedPanel(
   target: string,
   message: string,
 ): void {
+  const t = interactionTranslator(ctx)
   const state = createUpdateProgressState()
   state.blockedMessage = message
   let restore: () => void
   const panel = new CanonicalDocumentController({
     ...display,
-    model: () => updatePanelModel(state, fromVersion, target),
+    t,
+    model: () => updatePanelModel(state, fromVersion, target, t),
     onAction: () => undefined,
     onClose: () => {
       restore()
-      getSharedEditor(ctx)?.notice?.(updatePanelSummary(state))
+      getSharedEditor(ctx)?.notice?.(updatePanelSummary(state, t))
     },
   })
   restore = mountEditorReplacement(ctx, panel)

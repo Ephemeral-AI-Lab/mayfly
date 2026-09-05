@@ -38,6 +38,8 @@ import { CanonicalDocumentController } from '../../src/interaction/frontend-pane
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
+import { MayflyLocaleService } from '../../src/frontend/locale.ts'
+import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 
 /** The real seams, restored after every test. */
 const REAL = { ...updaterInternals }
@@ -218,6 +220,26 @@ async function mountWorld(options: {
 }
 
 describe('/update guards', () => {
+  it('translates outcomes and progress without changing their structured status', async () => {
+    const world = await mountWorld({ agentStatus: 'running' })
+    const locale = new MayflyLocaleService(world.ctx, { systemLocale: 'zh' })
+    locale.register('interaction', INTERACTION_LOCALE)
+    const t = locale.bind('interaction')
+    expect(await world.run()).toEqual({ kind: 'error', text: '代理正在运行，请等当前轮次结束后再更新' })
+    const state = createUpdateProgressState()
+    applyUpdateProgress(state, { step: 'install', state: 'start' })
+    expect(JSON.stringify(updatePanelModel(state, '1.0.0', '1.0.1', t))).toContain('安装')
+    state.blockedMessage = 'E404 raw diagnostic'
+    const blocked = updatePanelModel(state, '1.0.0', '1.0.1', t)
+    expect(blocked.title).toBe('更新 Mayfly')
+    expect(JSON.stringify(blocked)).toContain('E404 raw diagnostic')
+    expect(updatePanelSummary(state, t)).toBe('更新无法继续，未进行任何修改')
+    locale.setPreference('en')
+    expect(updatePanelModel(state, '1.0.0', '1.0.1', t).title).toBe('Update Mayfly')
+    locale.dispose()
+    world.dispose()
+  })
+
   it('refuses while the agent is running', async () => {
     const world = await mountWorld({ agentStatus: 'running' })
     const result = await world.run()

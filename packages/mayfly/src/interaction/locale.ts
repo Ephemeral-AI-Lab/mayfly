@@ -7,6 +7,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { OPERATION_ZH } from './operation-locale.ts'
 import {
   interpolateLocaleMessage,
   type MayflyLocaleCatalog,
@@ -15,6 +16,7 @@ import {
 } from '../frontend/index.ts'
 
 const zh: Readonly<Record<string, string>> = {
+  ...OPERATION_ZH,
   'tabs': '标签',
   'actions': '操作',
   'options': '选项',
