@@ -70,6 +70,8 @@ export interface MayflySettings {
   readonly editorCommand: string
   /** Linux clipboard backend for image paste; `auto` probes the session (the plugin config stands when the user layer never sets this). */
   readonly pasteImageBackend: 'auto' | 'wayland' | 'x11'
+  /** Plugin marketplace index URL; empty uses the official dsh-plugins chain. */
+  readonly marketIndexUrl: string
 }
 
 /** The settings schema; defaults double as the composition base. */
@@ -86,6 +88,7 @@ export const Config: z<MayflySettings> = z.object({
   userFoldChars: z.number().step(1).min(1).default(1000),
   editorCommand: z.string().default(''),
   pasteImageBackend: z.union([z.const('auto'), z.const('wayland'), z.const('x11')]).default('auto'),
+  marketIndexUrl: z.string().default(''),
 })
 
 /** The resolved defaults, used until a settings service layers overrides. */
@@ -102,6 +105,7 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   userFoldChars: 1000,
   editorCommand: '',
   pasteImageBackend: 'auto',
+  marketIndexUrl: '',
 }
 
 /** Stable Cordis plugin name. */

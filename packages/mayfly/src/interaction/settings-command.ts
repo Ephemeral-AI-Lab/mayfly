@@ -166,6 +166,11 @@ const ROWS: readonly SettingRow[] = [
     description: 'linux clipboard backend for image paste', kind: 'string', values: ['auto', 'wayland', 'x11'],
   },
   {
+    id: 'mayfly.marketIndexUrl', ns: 'mayfly', key: 'marketIndexUrl', label: 'Plugin market index',
+    description: 'marketplace index URL for /plugin; empty uses the official dsh-plugins chain', kind: 'string',
+    values: [], editable: true, emptyDisplay: 'official',
+  },
+  {
     id: 'shell.timeoutMs', ns: 'shell', key: 'timeoutMs', label: 'Shell timeout (ms)',
     description: 'default bash command timeout', kind: 'number', values: [30_000, 60_000, 120_000, 300_000, 600_000],
   },

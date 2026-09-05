@@ -32,6 +32,7 @@ export const STATUS_TIPS: readonly StatusTip[] = [
   { text: '/fork to branch the conversation and explore safely' },
   { text: '/btw <question>: ask a side question without disturbing the run', solo: true },
   { text: '/theme to switch the terminal UI theme' },
+  { text: '/plugin to browse and install plugins', priority: 2 },
   { text: '! to run a shell command', priority: 2 },
   { text: '@: mention files', priority: 2 },
   { text: 'type / to browse commands; matching is fuzzy', solo: true },
