@@ -29,6 +29,8 @@ import { loadModelsDevIndex, type ModelsDevMatch } from './models-dev.ts'
 import { CanonicalFormController, type FormField } from './form-panel.ts'
 import { CanonicalMultiSelectController } from './select.ts'
 import { CanonicalSelectController } from './select-list.ts'
+import { interactionTranslator, observeInteractionLocale } from './locale.ts'
+import type { MayflyTranslate } from '../frontend/index.ts'
 
 /** The wire protocols a custom endpoint may declare — the pi-ai `supportedProtocols` subset with a plain baseURL surface. */
 export const ENDPOINT_PROTOCOLS = [
@@ -97,6 +99,12 @@ export interface ProviderAddDisplay {
   readonly components: MayflyComponents
 }
 
+/** Provider outcomes carry status independently of the display language. */
+export interface ProviderFlowResult {
+  readonly kind: 'success' | 'error'
+  readonly text: string
+}
+
 /** The declared endpoint a wizard run gathered, before the commit. */
 interface EndpointDraft {
   route: string
@@ -104,6 +112,17 @@ interface EndpointDraft {
   baseURL?: string
   key: string
   models: { id: string, contextWindow?: number, maxTokens?: number, reasoningEfforts?: Record<string, string> | false }[] | undefined
+}
+
+function mountProviderPanel(ctx: Context, panel: MayflyFocusable): () => void {
+  return ctx.effect(() => {
+    const restore = mountEditorReplacement(ctx, panel)
+    const offLocale = observeInteractionLocale(ctx, () => {
+      panel.invalidate()
+      ctx.get('mayflyScreen')?.requestRender()
+    })
+    return () => { offLocale(); restore() }
+  })
 }
 
 /**
@@ -123,7 +142,7 @@ function step<T>(ctx: Context, build: (done: (value: T | undefined) => void) => 
       resolve(value)
     }
     const panel = build(done)
-    restore = mountEditorReplacement(ctx, panel)
+    restore = mountProviderPanel(ctx, panel)
   })
 }
 
@@ -139,6 +158,7 @@ function choose(ctx: Context, display: ProviderAddDisplay, title: string, items:
     keymap: display.keymap,
     theme: display.theme,
     components: display.components,
+    t: interactionTranslator(ctx),
     rows: items,
     title,
     onSelect: row => done(row.value),
@@ -150,12 +170,13 @@ function choose(ctx: Context, display: ProviderAddDisplay, title: string, items:
 function fillForm(
   ctx: Context,
   display: ProviderAddDisplay,
-  options: { title: string, subtitle: string, fields: readonly FormField[] },
+  options: { title: string, subtitle: string, fields: readonly FormField[], values?: Readonly<Record<string, string>> },
 ): Promise<Record<string, string> | undefined> {
   return step<Record<string, string>>(ctx, done => new CanonicalFormController({
     keymap: display.keymap,
     theme: display.theme,
     components: display.components,
+    t: (key, values) => interactionTranslator(ctx)(key, { ...options.values, ...values }),
     title: options.title,
     subtitle: options.subtitle,
     fields: options.fields,
@@ -266,6 +287,7 @@ async function collectModels(
   baseURL: string,
   key: string,
 ): Promise<CollectedModels | undefined> {
+  const t = interactionTranslator(ctx)
   // Declared protocol first (when it has a listing), then the
   // openai-completions gateway fallback; each api probes every base
   // candidate. The first failure (entered base, declared api) is the one
@@ -293,6 +315,7 @@ async function collectModels(
         keymap: display.keymap,
         theme: display.theme,
         components: display.components,
+        t,
         items: catalog.map((model: LlmDiscoveredModel) => ({ value: model.id, label: model.id })),
         title: 'Advertised models',
         onConfirm: items => done(items.map(item => item.value)),
@@ -319,8 +342,8 @@ async function collectModels(
   // entry may return behind a flag if a listing-less gateway shows up.
   return {
     error: failure !== undefined
-      ? `could not list models from the endpoint: ${failure.message}`
-      : `the endpoint listed no models under ${baseURL}`,
+      ? t('could not list models from the endpoint: {error}', { error: failure.message })
+      : t('the endpoint listed no models under {baseURL}', { baseURL }),
   }
 }
 
@@ -361,6 +384,7 @@ async function fillModelDefaults(
   models: NonNullable<EndpointDraft['models']>,
   catalogReached: boolean,
 ): Promise<NonNullable<EndpointDraft['models']> | undefined> {
+  const t = interactionTranslator(ctx)
   const defaults = await fillForm(ctx, display, {
     title: 'Model defaults',
     subtitle: catalogReached
@@ -373,18 +397,19 @@ async function fillModelDefaults(
         hint: 'tokens, e.g. 1048576 — empty keeps the 256k default',
         validate: value => value === '' || /^[0-9]+$/.test(value)
           ? undefined
-          : 'the context window is a token count (digits only)',
+          : t('the context window is a token count (digits only)'),
       },
       {
         id: 'efforts',
         label: 'Thinking efforts',
-        hint: `comma-separated from ${(THINKING_LEVELS as readonly string[]).join(', ')} — empty means none`,
+        hint: 'comma-separated from {levels} — empty means none',
         validate: value => value === '' || value.split(',').every(level =>
           THINKING_LEVELS.includes(level.trim() as typeof THINKING_LEVELS[number]))
           ? undefined
-          : `efforts come from ${(THINKING_LEVELS as readonly string[]).join(', ')}`,
+          : t('efforts come from {levels}', { levels: THINKING_LEVELS.join(', ') }),
       },
     ],
+    values: { levels: THINKING_LEVELS.join(', ') },
   })
   if (defaults === undefined) return undefined
   const contextWindow = defaults.context === '' ? undefined : Number(defaults.context)
@@ -454,18 +479,20 @@ type EditOutcome = { saved: Record<string, string> } | { delete: true } | { canc
  * @param ctx - plugin context; `settings` and `credentials` resolve lazily.
  * @param display - the resolved display quartet.
  * @param route - the configured provider route id.
- * @returns the outcome line for the notice channel.
+ * @returns the status and localized outcome for the notice channel.
  */
-export async function runProviderEdit(ctx: Context, display: ProviderAddDisplay, route: string): Promise<string> {
+export async function runProviderEdit(ctx: Context, display: ProviderAddDisplay, route: string): Promise<ProviderFlowResult> {
+  const translate = interactionTranslator(ctx)
+  const t: MayflyTranslate = (key, values) => translate(key, { route, ...values })
   const settings = ctx.get('settings') as EditSettings | undefined
   const credentials = ctx.get('credentials') as EditCredentials | undefined
   if (settings === undefined || credentials === undefined) {
-    return 'provider configuration requires the host settings and credentials services'
+    return { kind: 'error', text: t('provider configuration requires the host settings and credentials services') }
   }
   const ns = 'llm-pi-ai'
   const profile = readProfile(settings, ns, route)
   if (profile === undefined) {
-    return `provider "${route}" has no stored profile (catalog vendors carry none) — nothing to edit`
+    return { kind: 'error', text: t('provider "{route}" has no stored profile (catalog vendors carry none) — nothing to edit') }
   }
   /* v8 ignore next -- the edit command's host guard covers absent llm; this
      optional probe only distinguishes catalog routes when the service exists. */
@@ -487,38 +514,40 @@ export async function runProviderEdit(ctx: Context, display: ProviderAddDisplay,
     keymap: display.keymap,
     theme: display.theme,
     components: display.components,
-    title: `Configure ${route}`,
+    t,
+    title: 'Configure {route}',
     subtitle: 'empty fields keep their stored values',
     fields,
     onSubmit: values => done({ saved: values }),
     onCancel: () => done({ cancelled: true }),
     onDelete: () => done({ delete: true }),
   }))
-  if (outcome === undefined || 'cancelled' in outcome) return 'provider edit cancelled'
+  if (outcome === undefined || 'cancelled' in outcome) return { kind: 'success', text: t('provider edit cancelled') }
   if ('delete' in outcome) {
     const confirm = await fillForm(ctx, display, {
-      title: `Delete ${route}`,
+      title: 'Delete {route}',
+      values: { route },
       subtitle: 'type y to remove the provider and its stored key',
       fields: [
         {
           id: 'yes',
-          label: `Delete provider "${route}"?`,
+          label: 'Delete provider "{route}"?',
           required: true,
           validate: value => value.toLowerCase() === 'y'
             ? undefined
-            : 'type y to confirm, or Esc to keep the provider',
+            : t('type y to confirm, or Esc to keep the provider'),
         },
       ],
     })
-    if (confirm === undefined) return 'delete cancelled'
+    if (confirm === undefined) return { kind: 'success', text: t('delete cancelled') }
     const revision = settings.describe().find(descriptor => String(descriptor.ns) === 'llm-pi-ai')?.revision
     try {
       await settings.mutate(ns, [{ op: 'unset', path: ['providers', route] }], revision)
       await credentials.unset(credentialRef(deriveKeyRef(route)))
     } catch (error) {
-      return `could not delete provider ${route}: ${describe(error)}`
+      return { kind: 'error', text: t('could not delete provider {route}: {error}', { error: describe(error) }) }
     }
-    return `provider "${route}" removed`
+    return { kind: 'success', text: t('provider "{route}" removed') }
   }
   const saved = outcome.saved
   const next: Record<string, unknown> = {
@@ -539,25 +568,9 @@ export async function runProviderEdit(ctx: Context, display: ProviderAddDisplay,
       await credentials.set(credentialRef(deriveKeyRef(route)), key.trim())
     }
   } catch (error) {
-    return `could not update provider ${route}: ${describe(error)}`
+    return { kind: 'error', text: t('could not update provider {route}: {error}', { error: describe(error) }) }
   }
-  return `provider "${route}" updated`
-}
-
-/**
- * Whether a provider-flow outcome line is a failure — the cue its notice
- * paints error-red instead of plain (the dogfood ruling: a silent grey
- * error row the user scrolls past is a bug).
- * @param text - the outcome line the add/edit flow returned.
- * @returns `true` for guard and failure lines.
- */
-export function isProviderFlowError(text: string): boolean {
-  return text.startsWith('could not ')
-    || text.startsWith('provider configuration requires')
-    || text.startsWith('no configurable providers')
-    || text.startsWith('the endpoint listed no models')
-    || text.includes('has no stored profile')
-    || text.startsWith('every catalog vendor is already active')
+  return { kind: 'success', text: t('provider "{route}" updated') }
 }
 
 /**
@@ -567,18 +580,19 @@ export function isProviderFlowError(text: string): boolean {
  * @param display - the resolved display quartet.
  * @param openPicker - opens the scoped model picker over a route (the
  * post-add step; a cancelled picker keeps the provider).
- * @returns the outcome line for the command result.
+ * @returns the status and localized outcome for the command result.
  */
 export async function runProviderAdd(
   ctx: Context,
   display: ProviderAddDisplay,
   openPicker: (route: string) => void,
-): Promise<string> {
+): Promise<ProviderFlowResult> {
+  const t = interactionTranslator(ctx)
   const settings = ctx.get('settings')
   const credentials = ctx.get('credentials')
   const llm = ctx.get('llm')
   if (settings === undefined || credentials === undefined || llm === undefined) {
-    return 'provider configuration requires the host settings, credentials, and llm services'
+    return { kind: 'error', text: t('provider configuration requires the host settings, credentials, and llm services') }
   }
   const configurable = llm.listConfigurableProviders()
   const active = new Set(llm.listProviders().map(provider => provider.id))
@@ -590,7 +604,7 @@ export async function runProviderAdd(
   // discovery answered NO_DISCOVERY for "llm-deepseek").
   const piAi = configurable.filter(entry => entry.settingsNs === 'llm-pi-ai')
   if (piAi.length === 0) {
-    return 'no configurable providers: the host composition carries no llm-pi-ai provider settings surface'
+    return { kind: 'error', text: t('no configurable providers: the host composition carries no llm-pi-ai provider settings surface') }
   }
   const ns = 'llm-pi-ai'
 
@@ -599,7 +613,7 @@ export async function runProviderAdd(
     { value: 'known', label: 'Known provider (anthropic, openai, …)' },
     { value: 'custom', label: 'Custom endpoint (own baseURL and key)' },
   ])
-  if (source === undefined) return 'add provider cancelled'
+  if (source === undefined) return { kind: 'success', text: t('add provider cancelled') }
 
   // Step 2: the branch-specific declarations.
   let draft: EndpointDraft
@@ -608,19 +622,20 @@ export async function runProviderAdd(
       .filter(entry => !active.has(entry.provider))
       .map(entry => ({ value: entry.provider, label: `${entry.displayName} (${entry.provider})` }))
     if (vendors.length === 0) {
-      return 'every catalog vendor is already active — switch with /provider switch'
+      return { kind: 'error', text: t('every catalog vendor is already active — switch with /provider switch') }
     }
     const route = await choose(ctx, display, 'Known provider', vendors)
-    if (route === undefined) return 'add provider cancelled'
+    if (route === undefined) return { kind: 'success', text: t('add provider cancelled') }
     const ref = deriveKeyRef(route)
     const values = await fillForm(ctx, display, {
-      title: `Configure ${route}`,
-      subtitle: `the vendor default endpoint will be used; the key is stored under ${ref}`,
+      title: 'Configure {route}',
+      subtitle: 'the vendor default endpoint will be used; the key is stored under {ref}',
+      values: { route, ref },
       fields: [
         { id: 'key', label: 'API key', mask: true, required: true },
       ],
     })
-    if (values === undefined) return 'add provider cancelled'
+    if (values === undefined) return { kind: 'success', text: t('add provider cancelled') }
     draft = {
       route,
       protocol: undefined,
@@ -631,7 +646,7 @@ export async function runProviderAdd(
   } else {
     const protocol = await choose(ctx, display, 'Endpoint protocol',
       ENDPOINT_PROTOCOLS.map(value => ({ value, label: value })))
-    if (protocol === undefined) return 'add provider cancelled'
+    if (protocol === undefined) return { kind: 'success', text: t('add provider cancelled') }
     // The form loops: a failed listing re-opens the same panel with the
     // classified reason in its error line — fix the URL or key and
     // resubmit; only Escape leaves (the dogfood ruling: an error must not
@@ -641,6 +656,7 @@ export async function runProviderAdd(
       keymap: display.keymap,
       theme: display.theme,
       components: display.components,
+      t,
       title: 'Custom endpoint',
       subtitle: 'the profile is written to the llm-pi-ai settings namespace',
       fields: [
@@ -650,8 +666,8 @@ export async function runProviderAdd(
           required: true,
           hint: 'lowercase kebab-case, e.g. my-gateway',
           validate: value => ROUTE_ID.test(value)
-            ? (active.has(value) ? `provider name "${value}" already exists` : undefined)
-            : 'provider names are lowercase kebab-case (a-z, 0-9, -)',
+            ? (active.has(value) ? t('provider name "{name}" already exists', { name: value }) : undefined)
+            : t('provider names are lowercase kebab-case (a-z, 0-9, -)'),
         },
         {
           id: 'baseURL',
@@ -666,7 +682,7 @@ export async function runProviderAdd(
       onSubmit: values => settle?.(values),
       onCancel: () => settle?.(undefined),
     })
-    let restore = mountEditorReplacement(ctx, panel)
+    let restore = mountProviderPanel(ctx, panel)
     let declared: Record<string, string> | undefined
     let collected: Extract<CollectedModels, { models: unknown }> | undefined
     for (;;) {
@@ -675,14 +691,14 @@ export async function runProviderAdd(
       })
       if (values === undefined) {
         restore()
-        return 'add provider cancelled'
+        return { kind: 'success', text: t('add provider cancelled') }
       }
       /* v8 ignore next 2 -- both fields are required, the fallbacks are
          exactOptionalPropertyTypes artifacts */
       const outcome = await collectModels(ctx, display, llm, ns, protocol, values.baseURL ?? '', values.key ?? '')
       if (outcome === undefined) {
         restore()
-        return 'add provider cancelled'
+        return { kind: 'success', text: t('add provider cancelled') }
       }
       if ('error' in outcome) {
         panel.setError(outcome.error)
@@ -711,7 +727,7 @@ export async function runProviderAdd(
     const models = described
       ? enriched
       : await fillModelDefaults(ctx, display, enriched, index !== undefined)
-    if (models === undefined) return 'add provider cancelled'
+    if (models === undefined) return { kind: 'success', text: t('add provider cancelled') }
     /* v8 ignore next -- same required-field artifacts */
     draft = { route: declared.route ?? '', protocol, baseURL, key: declared.key ?? '', models }
   }
@@ -733,9 +749,9 @@ export async function runProviderAdd(
     )
     await credentials.set(credentialRef(deriveKeyRef(draft.route)), draft.key)
   } catch (error) {
-    return `could not add provider ${draft.route}: ${describe(error)}`
+    return { kind: 'error', text: t('could not add provider {route}: {error}', { route: draft.route, error: describe(error) }) }
   }
   // The route is live: offer the scoped picker; Escape keeps the provider.
   openPicker(draft.route)
-  return `provider "${draft.route}" added`
+  return { kind: 'success', text: t('provider "{route}" added', { route: draft.route }) }
 }

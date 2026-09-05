@@ -9,6 +9,7 @@
 import type { MayflyInlineSpan, MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import type { Action, MayflyTranslate } from '../frontend/index.ts'
+import { SearchInput } from '../core/search-input.ts'
 import { CanonicalPanelAdapter, type CanonicalContextHint } from './canonical-panel.ts'
 import {
   ACTION_BACKSPACE,
@@ -91,7 +92,8 @@ export class CanonicalDocumentController implements MayflyFocusable {
   private readonly adapter: CanonicalPanelAdapter
   private scrollTop = 0
   private selectedId: string | undefined
-  private query = ''
+  private readonly search: SearchInput
+  private get query(): string { return this.search.text }
   private filterEditing = false
   private group = 0
   private groupId: string | undefined
@@ -99,6 +101,7 @@ export class CanonicalDocumentController implements MayflyFocusable {
   private readonly selectedVariants = new Map<string, string>()
 
   constructor(private readonly options: FrontendPanelOptions) {
+    this.search = new SearchInput(options.components)
     this.initialGroup = options.initialGroup
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
@@ -123,6 +126,7 @@ export class CanonicalDocumentController implements MayflyFocusable {
 
   handleInput(data: string): void {
     const model = this.options.model()
+    if (this.search.pending) { this.updateSearch(data, model); return }
     if (this.options.keymap.matches(data, ACTION_CANCEL) && this.filterEditing) {
       this.filterEditing = false
       this.adapter.invalidate()
@@ -154,15 +158,17 @@ export class CanonicalDocumentController implements MayflyFocusable {
       this.adapter.invalidate()
       return
     }
-    if (model.filterable === true && this.options.keymap.matches(data, ACTION_BACKSPACE)) { this.query = [...this.query].slice(0, -1).join(''); this.reseedSelection(model); this.adapter.invalidate(); return }
-    if (model.filterable === true && data.length === 1 && data >= ' ') {
-      this.filterEditing = true
-      this.query += data
-      this.reseedSelection(model)
-      this.adapter.invalidate()
-      return
-    }
+    if (model.filterable === true && this.updateSearch(data, model)) return
     this.adapter.handleInput(data)
+  }
+
+  private updateSearch(data: string, model: FrontendPanelDocument): boolean {
+    const backspace = this.options.keymap.matches(data, ACTION_BACKSPACE)
+    if (!this.search.handleInput(data, backspace)) return false
+    if (!backspace) this.filterEditing = true
+    this.reseedSelection(model)
+    this.adapter.invalidate()
+    return true
   }
 
   invalidate(): void { this.adapter.invalidate() }
@@ -439,7 +445,7 @@ export class CanonicalDocumentController implements MayflyFocusable {
         this.adapter.invalidate()
       }
     } else if (event.kind === 'activate' && event.controlId === 'frontend-panel-clear-filter') {
-      this.query = ''
+      this.search.clear()
       this.filterEditing = false
       this.reseedSelection(model)
       this.adapter.invalidate()

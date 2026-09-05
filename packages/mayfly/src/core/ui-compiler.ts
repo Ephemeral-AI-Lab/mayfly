@@ -433,13 +433,16 @@ function editorFieldComponent(field: TextField, key: string, state: FocusState, 
         const labelText = `${prefix}${field.label}: `
         const label = field.disabled === true ? options.colors.muted(labelText) : focused ? options.colors.primary(labelText) : options.colors.textStrong(labelText)
         const labelWidth = visibleWidth(label)
-        const contentWidth = Math.max(1, available - labelWidth)
+        const stacked = available - labelWidth < Math.min(12, available)
+        const contentWidth = stacked ? available : available - labelWidth
         const emptyPlaceholder = editor.getExpandedText().length === 0 && field.placeholder !== undefined
         const body = emptyPlaceholder && !editor.focused
           ? [options.colors.textMuted(field.placeholder!)]
           : editor.renderContent(contentWidth, field.kind === 'secret')
         const indent = ' '.repeat(Math.min(available, labelWidth))
-        let rows = body.map((row, index) => sliceByColumn(`${index === 0 ? label : indent}${row}`, 0, available, true))
+        let rows = stacked
+          ? [sliceByColumn(label, 0, available, true), ...body.map(row => sliceByColumn(row, 0, available, true))]
+          : body.map((row, index) => sliceByColumn(`${index === 0 ? label : indent}${row}`, 0, available, true))
         if (field.error !== undefined) rows.push(sliceByColumn(options.colors.error(`   ! ${field.error}`), 0, available, true))
         if (state.layoutPass && focused) {
           let inserted = rows.some(row => row.includes(CURSOR_MARKER))

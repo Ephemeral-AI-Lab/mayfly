@@ -33,9 +33,10 @@ import {
   modelPickerPanelModel,
   type ModelPickerItem,
 } from './model-picker-model.ts'
-import { isProviderFlowError, runProviderAdd, runProviderEdit } from './provider-add.ts'
+import { runProviderAdd, runProviderEdit, type ProviderFlowResult } from './provider-add.ts'
 import { CanonicalSelectController, type SelectRow } from './select-list.ts'
 import { CURRENT_MARK } from './symbols.ts'
+import { interactionTranslator } from './locale.ts'
 
 /** Render one failure reason for an error result. */
 function describe(error: unknown): string {
@@ -597,8 +598,8 @@ export function registerModelCommands(ctx: Context): () => void {
    * @param route - the provider route to scope to.
    */
   /** Paint a provider-flow outcome: failures flash error-red. */
-  function paintFlowOutcome(display: { colors: { error(text: string): string } }, text: string): string {
-    return isProviderFlowError(text) ? display.colors.error(text) : text
+  function paintFlowOutcome(display: { colors: { error(text: string): string } }, result: ProviderFlowResult): string {
+    return result.kind === 'error' ? display.colors.error(result.text) : result.text
   }
 
   function pickModels(route: string): void {
@@ -626,8 +627,7 @@ export function registerModelCommands(ctx: Context): () => void {
       if (display === undefined) {
         return { kind: 'error', text: 'provider wizard is unavailable: the Mayfly screen is not mounted' }
       }
-      const text = await runProviderAdd(ctx, display, pickModels)
-      return { kind: isProviderFlowError(text) ? 'error' : 'success', text }
+      return runProviderAdd(ctx, display, pickModels)
     }
     if (argument.split(/\s+/)[0] === 'switch') {
       const name = argument.slice('switch'.length).trim()
@@ -669,6 +669,7 @@ export function registerModelCommands(ctx: Context): () => void {
       components: display.components,
       rows,
       title: 'Providers',
+      t: interactionTranslator(ctx),
       onSelect: row => {
         restore()
         void (async () => {

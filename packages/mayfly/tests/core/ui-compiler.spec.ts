@@ -1723,9 +1723,10 @@ describe('compileMayflyUiNode', () => {
     const multiline = compiled(ui.form({ id: 'form', fields: [{ kind: 'textarea', id: 'notes', label: 'Notes', value: '' }] }), fixture({
       resolveTextEditor: () => multilineEditor,
     }).options)
-    expect(multiline.component.render(20)).toEqual(['   Notes: first', '          second'])
+    expect(multiline.component.render(20)).toEqual(['   Notes: ', 'first', 'second'])
+    expect(multiline.component.render(40)).toEqual(['   Notes: first', '          second'])
     const multilineRoot = multiline.component as unknown as { root: { entries: { component: MayflyComponent }[] } }
-    expect(multilineRoot.root.entries[0]!.component.render(Number.NaN)).toEqual([' ', ' '])
+    expect(multilineRoot.root.entries[0]!.component.render(Number.NaN)).toEqual([' ', 'f', 's'])
 
     const failingEditor = createTestEditor()
     failingEditor.renderContent = () => { throw new Error('editor failed') }

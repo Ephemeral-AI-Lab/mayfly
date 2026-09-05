@@ -89,7 +89,7 @@ describe('interaction width-scan', () => {
     it(`canonical form survives ${name}`, () => {
       const { keymap, components } = fakeMayflyContext()
       const fields: FormField[] = [
-        { id: 'f1', label: text, required: true },
+        { id: 'f1', label: text, required: true, initial: 'visible-value' },
         { id: 'f2', label: 'Short' },
       ]
       const panel = new CanonicalFormController({

@@ -15,6 +15,8 @@ import { CanonicalSelectController, type SelectRow } from '../../src/interaction
 import { CURRENT_MARK } from '../../src/interaction/symbols.ts'
 import { setModelsDevLoader, type ModelsDevIndex } from '../../src/interaction/models-dev.ts'
 import { buildIndex } from '../../src/interaction/models-dev.ts'
+import { MayflyLocaleService } from '../../src/frontend/locale.ts'
+import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 
 /** Tests never touch the network: the offline loader is the default here. */
 const offlineLoader = (): Promise<ModelsDevIndex | undefined> => Promise.resolve(undefined)
@@ -252,6 +254,42 @@ function mountWizard(catalog: Parameters<typeof wizardLlm>[0], behavior: {
 }
 
 describe('runProviderAdd', () => {
+  it('translates add/edit/delete workflows and preserves structured failure status in Chinese', async () => {
+    const bench = mountWizard({})
+    const locale = new MayflyLocaleService(bench.ctx, { preference: 'zh' })
+    locale.register('interaction', INTERACTION_LOCALE)
+    const added = runProviderAdd(bench.ctx, bench.display, bench.picker)
+    expect(current(bench.screen).render!(120).join('\n')).toContain('添加提供商')
+    current(bench.screen).handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(2) })
+    current(bench.screen).handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(3) })
+    const form = current(bench.screen)
+    expect(form.render!(120).join('\n')).toContain('配置 anthropic')
+    expect(form.render!(120).join('\n')).toContain('API 密钥')
+    locale.setPreference('en')
+    expect(form.render!(120).join('\n')).toContain('Configure anthropic')
+    locale.setPreference('zh')
+    confirmTextFields(form, ['vendor-key'])
+    await expect(added).resolves.toEqual({ kind: 'success', text: '已添加提供商“anthropic”' })
+
+    bench.section.providers = { anthropic: { apiKeyEnv: 'ANTHROPIC_API_KEY' } }
+    const edit = runProviderEdit(bench.ctx, bench.display, 'anthropic')
+    const editable = current(bench.screen)
+    expect(editable.render!(120).join('\n')).toContain('提供商名称')
+    editable.handleInput('\x04')
+    await vi.waitFor(() => { expect(current(bench.screen).render!(120).join('\n')).toContain('删除 anthropic') })
+    current(bench.screen).handleInput('n')
+    current(bench.screen).handleInput(KEY.enter)
+    expect(current(bench.screen).render!(120).join('\n')).toContain('输入 y 确认')
+    current(bench.screen).handleInput('\x7f')
+    current(bench.screen).handleInput('y')
+    current(bench.screen).handleInput(KEY.enter)
+    await expect(edit).resolves.toEqual({ kind: 'success', text: '已移除提供商“anthropic”' })
+    await expect(runProviderEdit(bench.ctx, bench.display, 'missing')).resolves.toEqual({ kind: 'error', text: expect.stringContaining('没有已存储的配置') })
+    locale.dispose()
+  })
+
   it('falls back to the provider id when the display name is empty', () => {
     // The display-name helper's empty branch rides through catalogRows in
     // model-commands; here the pane row itself exercises the same rule.
@@ -285,7 +323,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(' ')
     current(bench.screen).handleInput(KEY.enter)
     await skipDefaults(bench.screen)
-    await expect(outcome).resolves.toBe('provider "my-gateway" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "my-gateway" added' })
     expect(bench.mutations).toEqual([{
       ns: 'llm-pi-ai',
       ops: [{ op: 'set', path: ['providers', 'my-gateway'], value: {
@@ -319,7 +357,7 @@ describe('runProviderAdd', () => {
     adopt.handleInput(' ') // and gpt-y, which reports no capacities
     adopt.handleInput(KEY.enter)
     await skipDefaults(bench.screen)
-    await expect(outcome).resolves.toBe('provider "gw2" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "gw2" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile.api).toBe('openai-completions')
     expect(profile.models).toEqual([{ id: 'gpt-x', contextWindow: 128000, maxTokens: 8192 }, { id: 'gpt-y' }])
@@ -335,7 +373,7 @@ describe('runProviderAdd', () => {
     current(atProtocol.screen).handleInput(KEY.enter)
     await vi.waitFor(() => { expect(atProtocol.screen.overlays).toHaveLength(2) })
     current(atProtocol.screen).handleInput(KEY.escape)
-    await expect(protocolRun).resolves.toBe('add provider cancelled')
+    await expect(protocolRun).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
 
     // Known branch, at the vendor choice.
     const atVendor = mountWizard({})
@@ -344,7 +382,7 @@ describe('runProviderAdd', () => {
     current(atVendor.screen).handleInput(KEY.enter)
     await vi.waitFor(() => { expect(atVendor.screen.overlays).toHaveLength(2) })
     current(atVendor.screen).handleInput(KEY.escape)
-    await expect(vendorRun).resolves.toBe('add provider cancelled')
+    await expect(vendorRun).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
 
     // Known branch, at the key form.
     const atForm = mountWizard({})
@@ -355,7 +393,7 @@ describe('runProviderAdd', () => {
     current(atForm.screen).handleInput(KEY.enter)
     await vi.waitFor(() => { expect(atForm.screen.overlays).toHaveLength(3) })
     current(atForm.screen).handleInput(KEY.escape)
-    await expect(formRun).resolves.toBe('add provider cancelled')
+    await expect(formRun).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
   })
 
   it('fills the model defaults and rejects invalid entries', async () => {
@@ -386,7 +424,7 @@ describe('runProviderAdd', () => {
       .toContain('the context window is a token count (digits only)')
     form.handleInput(KEY.escape)
     form.handleInput(KEY.escape)
-    await expect(invalidRun).resolves.toBe('add provider cancelled')
+    await expect(invalidRun).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
 
     // Invalid effort level: same treatment.
     const badEffort = mountWizard({ discovered: [{ id: 'm' }] })
@@ -413,7 +451,7 @@ describe('runProviderAdd', () => {
     expect((form.render?.(60) ?? []).join('\n')).toContain('efforts come from')
     form.handleInput(KEY.escape)
     form.handleInput(KEY.escape)
-    await expect(badEffortRun).resolves.toBe('add provider cancelled')
+    await expect(badEffortRun).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
 
     // Valid defaults ride into the profile.
     const valid = mountWizard({ discovered: [{ id: 'big-model' }] })
@@ -435,7 +473,7 @@ describe('runProviderAdd', () => {
     })
     form = current(valid.screen)
     confirmTextFields(form, ['1048576', 'low,high'])
-    await expect(validRun).resolves.toBe('provider "defaults-gw" added')
+    await expect(validRun).resolves.toEqual({ kind: 'success', text: 'provider "defaults-gw" added' })
     const profile = ((valid.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile.models).toEqual([{
       id: 'big-model',
@@ -463,7 +501,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(' ')
     current(bench.screen).handleInput(KEY.enter)
     await skipDefaults(bench.screen)
-    await expect(outcome).resolves.toBe('provider "bare-gw" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "bare-gw" added' })
     expect(probed[0]).toBe('https://bare.example.com')
     expect(probed).toContain('https://bare.example.com/v1')
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
@@ -489,7 +527,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(' ')
     current(bench.screen).handleInput(KEY.enter)
     await skipDefaults(bench.screen)
-    await expect(outcome).resolves.toBe('provider "v1-gw" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "v1-gw" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     // openai-completions appends /chat/completions — the base must carry /v1.
     expect(profile.baseURL).toBe('https://v1.example.com/v1')
@@ -511,7 +549,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(' ')
     current(bench.screen).handleInput(KEY.enter)
     await skipDefaults(bench.screen)
-    await expect(outcome).resolves.toBe('provider "kept-gw" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "kept-gw" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile.baseURL).toBe('https://kept.example.com/v1')
   })
@@ -531,7 +569,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(' ')
     current(bench.screen).handleInput(KEY.enter)
     await skipDefaults(bench.screen)
-    await expect(outcome).resolves.toBe('provider "strip-gw" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "strip-gw" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile.baseURL).toBe('https://strip.example.com')
   })
@@ -554,7 +592,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(' ')
     current(bench.screen).handleInput(KEY.enter)
     await skipDefaults(bench.screen)
-    await expect(outcome).resolves.toBe('provider "ns-check" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "ns-check" added' })
     expect(bench.mutations[0]?.ns).toBe('llm-pi-ai')
   })
 
@@ -563,7 +601,7 @@ describe('runProviderAdd', () => {
       { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek' },
     ] })
     await expect(runProviderAdd(bench.ctx, bench.display, bench.picker))
-      .resolves.toBe('no configurable providers: the host composition carries no llm-pi-ai provider settings surface')
+      .resolves.toEqual({ kind: 'error', text: 'no configurable providers: the host composition carries no llm-pi-ai provider settings surface' })
   })
 
   it('returns to the form with the credential reason when the key is rejected', async () => {
@@ -586,7 +624,7 @@ describe('runProviderAdd', () => {
     })
     expect(bench.mutations).toEqual([])
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('add provider cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
   })
 
   it('returns to the form when the endpoint lists nothing', async () => {
@@ -607,7 +645,7 @@ describe('runProviderAdd', () => {
     })
     expect(bench.mutations).toEqual([])
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('add provider cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
   })
 
   it('edits a configured provider and keeps untouched fields', async () => {
@@ -631,7 +669,7 @@ describe('runProviderAdd', () => {
     form.handleInput(KEY.enter)
     for (let i = 0; i < 40; i += 1) form.handleInput('\x7f')
     confirmTextFields(form, ['https://new.example.com', 'fresh-key'])
-    await expect(outcome).resolves.toBe('provider "my-gw" updated')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "my-gw" updated' })
     const op = ((bench.mutations[0] ?? { ops: [] }).ops as { op: string, path: string[], value?: Record<string, unknown> }[])[0]!
     expect(op.op).toBe('set')
     expect(op.path).toEqual(['providers', 'my-gw'])
@@ -662,7 +700,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(KEY.down)
     current(bench.screen).handleInput(KEY.enter)
     current(bench.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('provider "keepall" updated')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "keepall" updated' })
     const op = ((bench.mutations[0] ?? { ops: [] }).ops as { value?: Record<string, unknown> }[])[0]!
     expect(op.value).toMatchObject({
       api: 'openai-completions',
@@ -688,7 +726,7 @@ describe('runProviderAdd', () => {
     const form = current(bench.screen)
     form.handleInput(KEY.down)
     confirmTextFields(form, ['replacement-key'])
-    await expect(outcome).resolves.toBe('provider "anthropic" updated')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "anthropic" updated' })
     const op = ((bench.mutations[0] ?? { ops: [] }).ops as { value?: Record<string, unknown> }[])[0]!
     expect(op.value).toMatchObject({ baseURL: 'https://legacy-proxy.example.com' })
     expect(bench.credentialSet).toHaveBeenCalledWith(credentialRef('ANTHROPIC_API_KEY'), 'replacement-key')
@@ -709,7 +747,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(KEY.down)
     current(bench.screen).handleInput(KEY.enter)
     current(bench.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('could not update provider stuck: locked')
+    await expect(outcome).resolves.toEqual({ kind: 'error', text: 'could not update provider stuck: locked' })
   })
 
   it('deletes a configured provider after the typed confirmation', async () => {
@@ -726,7 +764,7 @@ describe('runProviderAdd', () => {
     })
     current(bench.screen).handleInput('y')
     current(bench.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('provider "gone" removed')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "gone" removed' })
     const op = ((bench.mutations[0] ?? { ops: [] }).ops as { op: string, path: string[] }[])[0]!
     expect(op.op).toBe('unset')
     expect(op.path).toEqual(['providers', 'gone'])
@@ -752,7 +790,7 @@ describe('runProviderAdd', () => {
     form.handleInput(KEY.enter)
     form.handleInput(KEY.enter)
     form.handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('provider "bare" updated')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "bare" updated' })
     const op = ((bench.mutations[0] ?? { ops: [] }).ops as { value?: Record<string, unknown> }[])[0]!
     expect(op.value).toMatchObject({
       displayName: 'bare',
@@ -779,13 +817,13 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput('\x7f')
     current(bench.screen).handleInput('y')
     current(bench.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('provider "unsure" removed')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "unsure" removed' })
   })
 
   it('answers a non-object section and a cancelled delete confirm', async () => {
     const empty = mountWizard({}, { settings: { section: 'not-an-object' } })
     await expect(runProviderEdit(empty.ctx, empty.display, 'x'))
-      .resolves.toContain('no stored profile')
+      .resolves.toEqual({ kind: 'error', text: expect.stringContaining('no stored profile') })
 
     const bench = mountWizard({}, {
       settings: { section: { providers: { stay: { baseURL: 'https://x' } } } },
@@ -799,7 +837,7 @@ describe('runProviderAdd', () => {
       expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('Delete stay')
     })
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('delete cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'delete cancelled' })
     expect(bench.mutations).toEqual([])
   })
 
@@ -820,17 +858,17 @@ describe('runProviderAdd', () => {
     })
     current(bench.screen).handleInput('y')
     current(bench.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('could not delete provider locked: read-only')
+    await expect(outcome).resolves.toEqual({ kind: 'error', text: 'could not delete provider locked: read-only' })
   })
 
   it('answers the edit guards: missing services, profile-less routes, cancel', async () => {
     const noServices = mountWizard({}, { withSettings: false })
     await expect(runProviderEdit(noServices.ctx, noServices.display, 'mock'))
-      .resolves.toBe('provider configuration requires the host settings and credentials services')
+      .resolves.toEqual({ kind: 'error', text: 'provider configuration requires the host settings and credentials services' })
 
     const profileless = mountWizard({})
     await expect(runProviderEdit(profileless.ctx, profileless.display, 'mock'))
-      .resolves.toContain('no stored profile')
+      .resolves.toEqual({ kind: 'error', text: expect.stringContaining('no stored profile') })
 
     const bench = mountWizard({}, {
       settings: { section: { providers: { keep: { baseURL: 'https://x' } } } },
@@ -840,7 +878,7 @@ describe('runProviderAdd', () => {
       expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('Configure keep')
     })
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('provider edit cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider edit cancelled' })
     expect(bench.mutations).toEqual([])
   })
 
@@ -858,7 +896,7 @@ describe('runProviderAdd', () => {
     confirmTextFields(form, ['gw4', 'https://gw4.example.com', 'k'])
     await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(4) })
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('add provider cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
     expect(bench.mutations).toEqual([])
   })
 
@@ -885,7 +923,7 @@ describe('runProviderAdd', () => {
       expect(rows).toContain('unable to verify the first certificate')
     })
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('add provider cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
   })
 
   it('returns to the form with the classified reason when discovery fails', async () => {
@@ -910,7 +948,7 @@ describe('runProviderAdd', () => {
     expect(bench.mutations).toEqual([])
     // Escape is the only way out.
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('add provider cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
   })
 
   it('adopts a known vendor with just the key', async () => {
@@ -923,7 +961,7 @@ describe('runProviderAdd', () => {
     await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(3) })
     const form = current(bench.screen)
     confirmTextFields(form, ['vendor-key'])
-    await expect(outcome).resolves.toBe('provider "anthropic" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "anthropic" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile).toEqual({ apiKeyEnv: 'ANTHROPIC_API_KEY' })
     expect(bench.credentialSet).toHaveBeenCalledWith(credentialRef('ANTHROPIC_API_KEY'), 'vendor-key')
@@ -952,7 +990,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(' ')
     current(bench.screen).handleInput(KEY.enter)
     // Fully matched: no defaults form — the add commits directly.
-    await expect(outcome).resolves.toBe('provider "z-ai-gw" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "z-ai-gw" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile.models).toEqual([{
       id: 'glm-5.3',
@@ -984,7 +1022,7 @@ describe('runProviderAdd', () => {
     // The listing's window survived; the efforts gap still offers the
     // (skippable) defaults form.
     await skipDefaults(bench.screen)
-    await expect(outcome).resolves.toBe('provider "listed-gw" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "listed-gw" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile.models).toEqual([{ id: 'gpt-x', contextWindow: 128_000 }])
   })
@@ -1008,7 +1046,7 @@ describe('runProviderAdd', () => {
     await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(4) })
     current(bench.screen).handleInput(' ')
     current(bench.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('provider "oai-gw" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "oai-gw" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile.models).toEqual([{ id: 'gpt-4o-mini', contextWindow: 128_000, reasoningEfforts: false }])
   })
@@ -1043,7 +1081,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(KEY.enter)
     current(bench.screen).handleInput(KEY.enter)
     current(bench.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('provider "mixed-gw" added')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "mixed-gw" added' })
     const profile = ((bench.mutations[0] ?? { ops: [] }).ops as { value: Record<string, unknown> }[])[0]!.value
     expect(profile.models).toEqual([
       { id: 'glm-4.6', contextWindow: 200_000 },
@@ -1054,15 +1092,15 @@ describe('runProviderAdd', () => {
   it('answers the guard texts: missing services, empty directory, all-active', async () => {
     const noSettings = await mountWizard({}, { withSettings: false })
     await expect(runProviderAdd(noSettings.ctx, noSettings.display, noSettings.picker))
-      .resolves.toBe('provider configuration requires the host settings, credentials, and llm services')
+      .resolves.toEqual({ kind: 'error', text: 'provider configuration requires the host settings, credentials, and llm services' })
 
     const noCredentials = await mountWizard({}, { withCredentials: false })
     await expect(runProviderAdd(noCredentials.ctx, noCredentials.display, noCredentials.picker))
-      .resolves.toBe('provider configuration requires the host settings, credentials, and llm services')
+      .resolves.toEqual({ kind: 'error', text: 'provider configuration requires the host settings, credentials, and llm services' })
 
     const noConfigurable = await mountWizard({ configurable: [] })
     await expect(runProviderAdd(noConfigurable.ctx, noConfigurable.display, noConfigurable.picker))
-      .resolves.toBe('no configurable providers: the host composition carries no llm-pi-ai provider settings surface')
+      .resolves.toEqual({ kind: 'error', text: 'no configurable providers: the host composition carries no llm-pi-ai provider settings surface' })
 
     const allActive = await mountWizard({
       active: ['mock', 'anthropic', 'openai'],
@@ -1071,7 +1109,7 @@ describe('runProviderAdd', () => {
     const outcome = runProviderAdd(allActive.ctx, allActive.display, allActive.picker)
     await vi.waitFor(() => { expect(allActive.screen.overlays).toHaveLength(1) })
     current(allActive.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('every catalog vendor is already active — switch with /provider switch')
+    await expect(outcome).resolves.toEqual({ kind: 'error', text: 'every catalog vendor is already active — switch with /provider switch' })
   })
 
   it('cancels quietly at the source step', async () => {
@@ -1079,7 +1117,7 @@ describe('runProviderAdd', () => {
     const outcome = runProviderAdd(bench.ctx, bench.display, bench.picker)
     await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(1) })
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('add provider cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
     expect(bench.mutations).toEqual([])
     expect(bench.credentialSet).not.toHaveBeenCalled()
   })
@@ -1101,7 +1139,7 @@ describe('runProviderAdd', () => {
     // The wizard stays pending; cancel it through the still-open form.
     form.handleInput(KEY.escape)
     form.handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('add provider cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
   })
 
   it('surfaces a plain-string settings failure', async () => {
@@ -1115,7 +1153,7 @@ describe('runProviderAdd', () => {
     current(bench.screen).handleInput(KEY.enter)
     current(bench.screen).handleInput('k')
     current(bench.screen).handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('could not add provider anthropic: plain reject')
+    await expect(outcome).resolves.toEqual({ kind: 'error', text: 'could not add provider anthropic: plain reject' })
   })
 
   it('rejects an existing provider name in the custom form', async () => {
@@ -1134,7 +1172,7 @@ describe('runProviderAdd', () => {
     expect(bench.mutations).toEqual([])
     form.handleInput(KEY.escape)
     form.handleInput(KEY.escape)
-    await expect(outcome).resolves.toBe('add provider cancelled')
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'add provider cancelled' })
   })
 
 
@@ -1150,7 +1188,7 @@ describe('runProviderAdd', () => {
     form.handleInput(KEY.enter)
     form.handleInput('k')
     form.handleInput(KEY.enter)
-    await expect(outcome).resolves.toBe('could not add provider anthropic: schema rejected')
+    await expect(outcome).resolves.toEqual({ kind: 'error', text: 'could not add provider anthropic: schema rejected' })
     expect(bench.credentialSet).not.toHaveBeenCalled()
   })
 

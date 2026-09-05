@@ -4,6 +4,7 @@
  */
 
 import type { MayflyFocusable, MayflyKeymap, MayflyTheme, MayflyComponents } from '../core/index.ts'
+import type { MayflyTranslate } from '../frontend/index.ts'
 import { ACTION_SUBMIT, ACTION_TOGGLE, interactionKeyHint } from './keys.ts'
 import { CanonicalSelectController, type SelectRow } from './select-list.ts'
 
@@ -17,6 +18,7 @@ export interface MayflySelectOptions {
   readonly components: MayflyComponents
   readonly items: readonly MayflySelectItem[]
   readonly title?: string
+  readonly t?: MayflyTranslate
   readonly onConfirm: (items: MayflySelectItem[]) => void
   readonly onCancel: () => void
 }
@@ -37,6 +39,7 @@ export class CanonicalMultiSelectController implements MayflyFocusable {
       keymap: options.keymap,
       theme: options.theme,
       components: options.components,
+      ...(options.t === undefined ? {} : { t: options.t }),
       rows,
       title: options.title ?? 'Select',
       mode: 'multiple',

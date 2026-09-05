@@ -9,6 +9,7 @@
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import type { MayflyTranslate } from '../frontend/index.ts'
+import { SearchInput } from '../core/search-input.ts'
 import { CanonicalPanelAdapter, type CanonicalContextHint, type CanonicalNodeSource } from './canonical-panel.ts'
 import {
   ACTION_BACKSPACE,
@@ -75,12 +76,14 @@ export function oneLine(text: string): string {
 export class CanonicalSelectController implements MayflyFocusable, CanonicalNodeSource {
   private readonly adapter: CanonicalPanelAdapter
   private cursor: number
-  private query = ''
+  private readonly search: SearchInput
+  private get query(): string { return this.search.text }
   private filterEditing = false
   private readonly filter: boolean
   private rows: readonly SelectRow[]
 
   constructor(private readonly options: SelectListPanelOptions) {
+    this.search = new SearchInput(options.components)
     this.rows = typeof options.rows === 'function' ? options.rows('') : options.rows
     const seeded = options.initialValue === undefined ? -1 : this.sourceRows().findIndex(row => row.value === options.initialValue)
     this.cursor = seeded >= 0 ? seeded : 0
@@ -121,6 +124,7 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
   }
 
   handleInput(data: string): void {
+    if (this.search.pending) { this.updateSearch(data); return }
     const view = this.filtered()
     if (this.options.mode === 'multiple' && this.options.onConfirm !== undefined
       && this.options.keymap.matches(data, ACTION_SUBMIT)) {
@@ -161,21 +165,18 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
       return
     }
     if (!this.filter) { this.adapter.handleInput(data); return }
-    if (this.options.keymap.matches(data, ACTION_BACKSPACE)) {
-      this.query = [...this.query].slice(0, -1).join('')
-      this.reseedCursor()
-      this.focusCursor()
-      return
-    }
-    if (data.length === 1 && data >= ' ') {
-      this.filterEditing = true
-      this.query += data
-      this.reseedCursor()
-      this.options.onCursorChanged?.(this.cursor, this.filtered())
-      this.focusCursor()
-      return
-    }
+    if (this.updateSearch(data)) return
     this.adapter.handleInput(data)
+  }
+
+  private updateSearch(data: string): boolean {
+    const backspace = this.options.keymap.matches(data, ACTION_BACKSPACE)
+    if (!this.search.handleInput(data, backspace)) return false
+    if (!backspace) this.filterEditing = true
+    this.reseedCursor()
+    this.options.onCursorChanged?.(this.cursor, this.filtered())
+    this.focusCursor()
+    return true
   }
 
   invalidate(): void { this.adapter.invalidate() }
@@ -286,7 +287,7 @@ export class CanonicalSelectController implements MayflyFocusable, CanonicalNode
 
   private onEvent(event: MayflyUiEvent): void {
     if (event.kind === 'activate' && event.controlId === 'select-list-clear-filter') {
-      this.query = ''
+      this.search.clear()
       this.filterEditing = false
       this.reseedCursor()
       const view = this.filtered()

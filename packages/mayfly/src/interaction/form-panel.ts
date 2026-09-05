@@ -66,7 +66,7 @@ export class CanonicalFormController implements MayflyFocusable {
         ...(this.editing && this.active === this.options.fields.length - 1
           ? [{ id: 'activate', keys: interactionKeyHint(options.keymap, ACTION_SUBMIT, 'Enter'), label: 'submit', priority: 100 }]
           : []),
-        ...(this.options.onDelete === undefined ? [] : [{ id: 'delete', keys: interactionKeyHint(options.keymap, ACTION_DELETE, 'Ctrl+D'), label: 'delete', priority: 85 }]),
+        ...(this.editing || this.options.onDelete === undefined ? [] : [{ id: 'delete', keys: interactionKeyHint(options.keymap, ACTION_DELETE, 'Ctrl+D'), label: 'delete', priority: 85 }]),
       ],
       onTextSubmit: (controlId) => {
         const index = this.options.fields.findIndex(field => field.id === controlId)
@@ -120,7 +120,7 @@ export class CanonicalFormController implements MayflyFocusable {
       return
     }
     if (keymap.matches(data, ACTION_CANCEL)) { this.adapter.handleInput(data); this.editing = false; return }
-    if (keymap.matches(data, ACTION_DELETE) && this.options.onDelete !== undefined) { this.options.onDelete(); return }
+    if (!this.editing && keymap.matches(data, ACTION_DELETE) && this.options.onDelete !== undefined) { this.options.onDelete(); return }
     this.adapter.handleInput(data)
   }
 
