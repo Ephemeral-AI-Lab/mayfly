@@ -101,6 +101,24 @@ function imageRefForCoverage(id: string): ImageAttachmentRef {
 }
 
 describe('editor extension completion multiplexer', () => {
+  it('does not invoke autocomplete sources for an already-aborted empty draft request', async () => {
+    const { ctx, editor, runtime } = runtimeFixture()
+    const getSuggestions = vi.fn(async () => null)
+    const unregister = registerEditorAutocompleteSource(ctx, 'cancelled-request', {
+      getSuggestions,
+      applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+    })
+    const controller = new AbortController()
+    controller.abort()
+    try {
+      await expect(editor.autocompleteProvider!.getSuggestions([], 0, 0, { signal: controller.signal })).resolves.toBeNull()
+      expect(getSuggestions).not.toHaveBeenCalled()
+    } finally {
+      unregister()
+      runtime.dispose()
+    }
+  })
+
   it('combines the Mayfly source with /, @, #, and manual extension requests', async () => {
     const requests: MayflyEditorCompletionRequest[] = []
     const extension: TestEditorExtension = {
@@ -882,8 +900,6 @@ describe('editor extension shell and actions', () => {
   })
 
   it('admits recursive passive shell nodes and contains malformed chrome contributions', () => {
-    const accessorTone = Object.defineProperty({ id: 'accessor-tone', message: 'bad tone' }, 'tone', { get: () => 'warning', enumerable: true })
-    const accessorMessage = Object.defineProperty({ id: 'accessor-message' }, 'message', { get: () => 'bad message', enumerable: true })
     const entries = [{
       id: 'acme.passive-stack',
       before: { kind: 'stack' as const, direction: 'column' as const, children: [{ node: { kind: 'text' as const, content: 'stack child' } }] },
@@ -893,8 +909,6 @@ describe('editor extension shell and actions', () => {
         { id: 'default-tone', message: 'default warning' },
         { id: 'explicit-tone', message: 'explicit success', tone: 'success' as const },
         null,
-        accessorTone,
-        accessorMessage,
         { id: 'invalid-message', message: 7 },
         { id: 'invalid-tone', message: 'invalid tone', tone: 'loud' },
       ],
@@ -924,11 +938,39 @@ describe('editor extension shell and actions', () => {
       'editor extension before must be passive',
       expect.stringContaining('unknown Mayfly UI kind'),
       expect.stringContaining('Mayfly UI text exceeds'),
-      expect.stringContaining('tone must be an own data property'),
-      expect.stringContaining('message must be an own data property'),
     ]))
     runtime.invalidate()
     runtime.dispose()
+  })
+
+  it.each(['tone', 'message'] as const)('rejects diagnostic %s accessors at both provider and renderer boundaries without invoking them', property => {
+    const { ctx } = fakeMayflyContext()
+    const getter = vi.fn(() => 'warning')
+    const diagnostic = Object.defineProperty({ id: 'accessor', message: 'unsafe' }, property, { get: getter, enumerable: true })
+    const decoration = { diagnostics: [diagnostic] } as MayflyEditorDecoration
+    expect(() => ctx.mayflyEditorExtensions.register({ id: 'acme.accessor' }, decoration)).toThrow('accessors')
+    expect(ctx.mayflyEditorExtensions.list()).toEqual([])
+    expect(getter).not.toHaveBeenCalled()
+
+    // Deliberately bypass provider admission to exercise the renderer's own
+    // defense against a malformed external registry implementation.
+    const off = vi.fn()
+    const subscribe = vi.spyOn(ctx.mayflyEditorExtensions, 'subscribe').mockImplementation(listener => {
+      listener({ kind: 'upsert', entry: { id: 'acme.accessor', definition: { id: 'acme.accessor' }, decoration, revision: 0 } })
+      return off
+    })
+    const notices: string[] = []
+    const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), notice: text => notices.push(text), shouldTransformSubmit: () => true })
+    try {
+      expect(runtime.focused).toBe(false)
+      runtime.render(80)
+      expect(notices).toEqual(expect.arrayContaining([expect.stringContaining(`${property} must be an own data property`)]))
+      expect(getter).not.toHaveBeenCalled()
+    } finally {
+      runtime.dispose()
+      subscribe.mockRestore()
+    }
+    expect(off).toHaveBeenCalledOnce()
   })
 
   it('falls back to the editor when separately valid extension trees exceed the shell quota', () => {
