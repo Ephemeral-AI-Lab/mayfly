@@ -210,6 +210,7 @@ async function runSwapPanel(
   try {
     outcome = await performSwap({
       ...input,
+      t,
       ...(bootMarker !== undefined ? { bootMarker } : {}),
       onProgress: progress => {
         applyUpdateProgress(state, progress)
@@ -222,7 +223,7 @@ async function runSwapPanel(
       kind: 'failed-no-rollback',
       fromVersion: input.fromVersion,
       toVersion: input.toVersion,
-      message: `the swap crashed: ${error instanceof Error ? error.message : String(error)}\nthe profile may be in a mixed state — the snapshot is at ${backupDir(input.root)}`,
+      message: t('the swap crashed: {error}\nthe profile may be in a mixed state — the snapshot is at {path}', { error: error instanceof Error ? error.message : String(error), path: backupDir(input.root) }),
       logPath: join(backupDir(input.root), 'update.log'),
     }
   }
@@ -377,12 +378,13 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
   ])
   const packageNames = release.names
   const verdicts = runPreflight({
+    t,
     facts,
     currentVersion: MAYFLY_VERSION,
     target,
     packument,
     packageNames,
-    host: { hostVersion: hostOutput, requiredLine: release.harnessLine },
+    host: { hostVersion: hostOutput, requiredLine: release.harnessLine, launcher: Boolean(updaterInternals.env.MAYFLY_DSH_BIN) },
     cooldown: { publishedAt: publishedAt(packument, target), cooldownMinutes, now: updaterInternals.now() },
   })
   const installedVersion = facts.installed['@ephemeral-ai/mayfly']

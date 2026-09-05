@@ -83,6 +83,9 @@ flowchart TB
   controller 和 action-id keymap 进入 core compiler。
 - transcript 只有一个 selected-session conversation controller；session generation
   改变时会销毁旧 entry cache。
+  原生 projection registry 校验完整值，transcript source 只重复准入末尾最多
+  200 个符合 cutoff 的 entry，不保存完整 projection，也不假设 Zod 解析后
+  entry 对象身份仍然稳定。原生全值校验和稀疏 cutoff 扫描仍可能随历史长度增长。
 - core 持有 named Screen Shell、terminal、focus、layout、form draft、control/scroll、
   list cursor/admission cache 与编译后的 renderer
   object；这些状态随 surface generation 失效，不进入公开 node。

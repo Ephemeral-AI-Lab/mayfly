@@ -8,6 +8,13 @@ scrolling, explicit Markdown and Mermaid nodes, structured charts, controlled pa
 progress, spacers, and dividers. Plain nodes can
 enter a stack directly; use `ui.child` only when child layout metadata is needed.
 
+Caller-owned data is isolated. Snapshots already created by this module may be
+shared across builders and registry updates without cloning their immutable
+subtrees again. Arbitrary frozen objects do not receive this optimization.
+Wire data must not contain cycles or accessor properties; getters are rejected
+without being executed. Registration identity remains fixed even if the caller
+later changes the original definition.
+
 ```ts
 import { defineMayflyComponent, ui } from '@ephemeral-ai/mayfly-ui'
 

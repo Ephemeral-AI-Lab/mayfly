@@ -40,6 +40,8 @@ import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
+import { checkCooldown, checkHostLine, repairRecipe } from '../../src/interaction/updater/preflight.ts'
+import { classifyInstallFailure } from '../../src/interaction/updater/swap.ts'
 
 /** The real seams, restored after every test. */
 const REAL = { ...updaterInternals }
@@ -234,6 +236,14 @@ describe('/update guards', () => {
     expect(blocked.title).toBe('更新 Mayfly')
     expect(JSON.stringify(blocked)).toContain('E404 raw diagnostic')
     expect(updatePanelSummary(state, t)).toBe('更新无法继续，未进行任何修改')
+    expect(checkCooldown('1.0.1', { publishedAt: 0, now: 60_000, cooldownMinutes: 10 }, t)).toMatchObject({
+      code: 'cooldown', blocking: true, message: expect.stringContaining('禁止安装'),
+    })
+    expect(classifyInstallFailure('EACCES: /raw/path', t)).toBe('配置目录不可写，请修复权限后重试')
+    expect(checkHostLine({ hostVersion: '0.1.0', requiredLine: '0.2.0', launcher: true }, t)).toMatchObject({
+      blocking: true, message: expect.stringContaining('npm i -g @ephemeral-ai/mayfly-cli'),
+    })
+    expect(repairRecipe(['@ephemeral-ai/mayfly'], '1.0.1', t)).toContain('dsh plugin --profile <name> add @ephemeral-ai/mayfly@1.0.1')
     locale.setPreference('en')
     expect(updatePanelModel(state, '1.0.0', '1.0.1', t).title).toBe('Update Mayfly')
     locale.dispose()

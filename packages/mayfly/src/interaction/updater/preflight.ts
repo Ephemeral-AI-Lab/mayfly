@@ -14,6 +14,7 @@
  */
 
 import type { Packument } from './registry.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../../frontend/index.ts'
 import type { ProfileFacts } from './profile.ts'
 import { compareVersions, isVersion, VERSION_FLOOR } from './version.ts'
 
@@ -42,9 +43,9 @@ export interface PassingVerdict {
 export type Verdict = BlockingVerdict | PassingVerdict
 
 /** The repair recipe every blocking lane/set verdict offers. */
-export function repairRecipe(names: readonly string[], version: string): string {
+export function repairRecipe(names: readonly string[], version: string, t: MayflyTranslate = interpolateLocaleMessage): string {
   const specs = names.map(name => `${name}@${version}`).join(' ')
-  return `repair: dsh plugin --profile <name> add ${specs} (reinstall by exact version) or delete the profile directory and re-add`
+  return t('repair: dsh plugin --profile <name> add {specs} (reinstall by exact version) or delete the profile directory and re-add', { specs })
 }
 
 /**
@@ -53,12 +54,12 @@ export function repairRecipe(names: readonly string[], version: string): string 
  * `ERR_MODULE_NOT_FOUND` (the state found on the maintainer's machine
  * after R1); pnpm warns about nothing.
  */
-export function checkLinkPollution(facts: ProfileFacts): Verdict {
+export function checkLinkPollution(facts: ProfileFacts, t: MayflyTranslate = interpolateLocaleMessage): Verdict {
   if (facts.linked.length === 0) return { code: 'link-pollution', blocking: false }
   return {
     code: 'link-pollution',
     blocking: true,
-    message: `the profile mixes link/file specs (${facts.linked.join(', ')}) — npm upgrades half-overwrite them and boot a broken tree; refuse to update\n${repairRecipe(['<the names above>'], '<version>')}`,
+    message: t('the profile mixes link/file specs ({specs}) — npm upgrades half-overwrite them and boot a broken tree; refuse to update', { specs: facts.linked.join(', ') }) + '\n' + repairRecipe(['<the names above>'], '<version>', t),
   }
 }
 
@@ -70,19 +71,19 @@ export function checkLinkPollution(facts: ProfileFacts): Verdict {
  * @param names - the target release's set, the repair recipe's fallback
  * when nothing is installed to enumerate.
  */
-export function checkSetConsistency(facts: ProfileFacts, currentVersion: string, names: readonly string[]): Verdict {
+export function checkSetConsistency(facts: ProfileFacts, currentVersion: string, names: readonly string[], t: MayflyTranslate = interpolateLocaleMessage): Verdict {
   if (facts.installed['@ephemeral-ai/mayfly'] !== undefined) {
     return { code: 'set-consistency', blocking: false }
   }
   return {
     code: 'set-consistency',
     blocking: true,
-    message: `the @ephemeral-ai/mayfly package is not installed (running ${currentVersion})\n${repairRecipe(names, '<version>')}`,
+    message: t('the @ephemeral-ai/mayfly package is not installed (running {version})', { version: currentVersion }) + '\n' + repairRecipe(names, '<version>', t),
   }
 }
 
 /** Gate 3 — the target must exist as a published version. */
-export function checkTargetExists(packument: Packument, target: string): Verdict {
+export function checkTargetExists(packument: Packument, target: string, t: MayflyTranslate = interpolateLocaleMessage): Verdict {
   // Key presence, not truthiness: the npm-view packument shape lists
   // versions as bare keys (values undefined until the targeted deps
   // query), and a value check would declare every one of them
@@ -91,22 +92,24 @@ export function checkTargetExists(packument: Packument, target: string): Verdict
   return {
     code: 'target-exists',
     blocking: true,
-    message: `version ${target} is not published under @ephemeral-ai/mayfly (registry knows: ${Object.keys(packument.versions).join(', ')})`,
+    message: t('version {version} is not published under @ephemeral-ai/mayfly (registry knows: {versions})', { version: target, versions: Object.keys(packument.versions).join(', ') }),
   }
 }
 
 /** Gate 4 — never offer, install, or roll back below Mayfly's first release. */
-export function checkVersionFloor(target: string): Verdict {
+export function checkVersionFloor(target: string, t: MayflyTranslate = interpolateLocaleMessage): Verdict {
   if (compareVersions(target, VERSION_FLOOR) >= 0) return { code: 'version-floor', blocking: false }
   return {
     code: 'version-floor',
     blocking: true,
-    message: `version ${target} predates Mayfly's first release; pick >= ${VERSION_FLOOR}`,
+    message: t("version {version} predates Mayfly's first release; pick >= {floor}", { version: target, floor: VERSION_FLOOR }),
   }
 }
 
 /** The host-line facts gate 5 reads. */
 export interface HostLineInput {
+  /** A bundled host advances by reinstalling its launcher, not a global dsh. */
+  readonly launcher?: boolean
   /** The global dsh CLI's version, `undefined` when unprobeable. */
   readonly hostVersion: string | undefined
   /** The bundle's pinned harness line, `undefined` when the manifest lacks it. */
@@ -121,20 +124,20 @@ export interface HostLineInput {
  * smoke still judges the result. An unprobeable host warns, not blocks:
  * the smoke boots the real dsh either way.
  */
-export function checkHostLine(input: HostLineInput): Verdict {
+export function checkHostLine(input: HostLineInput, t: MayflyTranslate = interpolateLocaleMessage): Verdict {
   const { hostVersion, requiredLine } = input
   if (hostVersion === undefined || requiredLine === undefined) {
     const detail = hostVersion === undefined
       ? 'could not determine the installed dsh CLI version'
       : `the registry manifest for this release does not name a harness pin`
-    return { code: 'host-line', blocking: false, message: `warning: ${detail} — the boot smoke will judge` }
+    return { code: 'host-line', blocking: false, message: t('warning: {detail} — the boot smoke will judge', { detail: t(detail) }) }
   }
   // The first full version anywhere in the probe output (`dsh --version`
   // prefixes the name and may append the Node build) — prerelease
   // included, or a plain `0.1.1` would outrank `0.1.1-rc.2`.
   const host = /\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/.exec(hostVersion)?.[0]
   if (host === undefined) {
-    return { code: 'host-line', blocking: false, message: `warning: unreadable dsh version "${hostVersion}" — the boot smoke will judge` }
+    return { code: 'host-line', blocking: false, message: t('warning: unreadable dsh version "{version}" — the boot smoke will judge', { version: hostVersion }) }
   }
   const order = compareVersions(host, requiredLine)
   if (order >= 0) {
@@ -144,13 +147,16 @@ export function checkHostLine(input: HostLineInput): Verdict {
     return {
       code: 'host-line',
       blocking: false,
-      message: `warning: dsh ${host} is a different major/minor than the tested line ${requiredLine} — proceeding; the boot smoke will judge`,
+      message: t('warning: dsh {host} is a different major/minor than the tested line {required} — proceeding; the boot smoke will judge', { host, required: requiredLine }),
     }
   }
   return {
     code: 'host-line',
     blocking: true,
-    message: `the installed dsh CLI (${host}) is older than this release's harness line (${requiredLine})\nfirst run: npm i -g @deepseek-ai/dsh@${requiredLine}`,
+    message: t("the installed dsh CLI ({host}) is older than this release's harness line ({required})\nfirst run: {command}", {
+      host, required: requiredLine,
+      command: input.launcher === true ? 'npm i -g @ephemeral-ai/mayfly-cli' : `npm i -g @deepseek-ai/dsh@${requiredLine}`,
+    }),
   }
 }
 
@@ -170,10 +176,10 @@ export interface CooldownInput {
  * the gate converts that future pnpm error into an ETA now. Never a
  * bypass: the supply-chain guard is the user's policy.
  */
-export function checkCooldown(target: string, input: CooldownInput): Verdict {
+export function checkCooldown(target: string, input: CooldownInput, t: MayflyTranslate = interpolateLocaleMessage): Verdict {
   const minutes = input.cooldownMinutes ?? DEFAULT_COOLDOWN_MINUTES
   if (input.publishedAt === undefined) {
-    return { code: 'cooldown', blocking: false, message: 'warning: publish time unknown — cooldown cannot be forecast' }
+    return { code: 'cooldown', blocking: false, message: t('warning: publish time unknown — cooldown cannot be forecast') }
   }
   const windowMs = minutes * 60_000
   const ageMs = input.now - input.publishedAt
@@ -182,7 +188,7 @@ export function checkCooldown(target: string, input: CooldownInput): Verdict {
   return {
     code: 'cooldown',
     blocking: true,
-    message: `v${target} was published ${Math.max(0, Math.round(ageMs / 60_000))} min ago; pnpm's minimumReleaseAge (${minutes} min) refuses installs until ${readyAt.toISOString().replace('T', ' ').slice(0, 16)} UTC — retry later`,
+    message: t("v{version} was published {age} min ago; pnpm's minimumReleaseAge ({minutes} min) refuses installs until {ready} UTC — retry later", { version: target, age: Math.max(0, Math.round(ageMs / 60_000)), minutes, ready: readyAt.toISOString().replace('T', ' ').slice(0, 16) }),
   }
 }
 
@@ -193,7 +199,7 @@ export function checkCooldown(target: string, input: CooldownInput): Verdict {
  * comparison base; absent installs say nothing).
  * @param target - the candidate target version.
  */
-export function checkDowngrade(facts: ProfileFacts, target: string): Verdict {
+export function checkDowngrade(facts: ProfileFacts, target: string, t: MayflyTranslate = interpolateLocaleMessage): Verdict {
   const installed = facts.installed['@ephemeral-ai/mayfly']
   if (installed === undefined || compareVersions(target, installed) >= 0) {
     return { code: 'downgrade', blocking: false }
@@ -201,12 +207,13 @@ export function checkDowngrade(facts: ProfileFacts, target: string): Verdict {
   return {
     code: 'downgrade',
     blocking: false,
-    message: `warning: v${target} is older than the installed v${installed} — a downgrade reinstalls @ephemeral-ai/mayfly at the older version`,
+    message: t('warning: v{version} is older than the installed v{installed} — a downgrade reinstalls @ephemeral-ai/mayfly at the older version', { version: target, installed }),
   }
 }
 
 /** Everything the composed pre-flight needs. */
 export interface PreflightInput {
+  readonly t?: MayflyTranslate
   readonly facts: ProfileFacts
   /** The package names used in repair guidance. */
   readonly packageNames: readonly string[]
@@ -227,13 +234,13 @@ export interface PreflightInput {
  */
 export function runPreflight(input: PreflightInput): Verdict[] {
   return [
-    checkLinkPollution(input.facts),
-    checkSetConsistency(input.facts, input.currentVersion, input.packageNames),
-    checkTargetExists(input.packument, input.target),
-    checkVersionFloor(input.target),
-    checkHostLine(input.host),
-    checkCooldown(input.target, input.cooldown),
-    checkDowngrade(input.facts, input.target),
+    checkLinkPollution(input.facts, input.t),
+    checkSetConsistency(input.facts, input.currentVersion, input.packageNames, input.t),
+    checkTargetExists(input.packument, input.target, input.t),
+    checkVersionFloor(input.target, input.t),
+    checkHostLine(input.host, input.t),
+    checkCooldown(input.target, input.cooldown, input.t),
+    checkDowngrade(input.facts, input.target, input.t),
   ]
 }
 

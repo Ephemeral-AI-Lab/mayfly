@@ -17,6 +17,7 @@
  */
 
 import { join } from 'node:path'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../../frontend/index.ts'
 import { cleanOutput, updaterInternals, type InteractiveChild, type SpawnOutcome, type ResolvedCommand } from './io.ts'
 import { appendUpdateLog, backupDir, readProfileFacts, restoreSnapshot, snapshotProfile } from './profile.ts'
 import { repairRecipe } from './preflight.ts'
@@ -110,6 +111,7 @@ export interface SwapOutcome {
 
 /** Everything the executor needs. */
 export interface SwapInput {
+  readonly t?: MayflyTranslate
   /** The profile workspace root. */
   readonly root: string
   /** The profile name (`dsh plugin --profile <name>`). */
@@ -152,21 +154,21 @@ function tail(text: string): string {
  * @param logTail - the last lines of the install output.
  * @returns the classified message.
  */
-export function classifyInstallFailure(logTail: string): string {
+export function classifyInstallFailure(logTail: string, t: MayflyTranslate = interpolateLocaleMessage): string {
   if (/minimumReleaseAge|minimum-release-age|release age|too recently published/i.test(logTail)) {
-    return 'pnpm refused the install: the release is inside the minimumReleaseAge cooldown window — retry after the window passes (the pre-flight prints the ETA)'
+    return t('pnpm refused the install: the release is inside the minimumReleaseAge cooldown window — retry after the window passes (the pre-flight prints the ETA)')
   }
   if (/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|network/i.test(logTail)) {
-    return 'the registry was unreachable — check the network (or the npmrc mirror) and retry'
+    return t('the registry was unreachable — check the network (or the npmrc mirror) and retry')
   }
   if (/ETARGET|404|Not Found/i.test(logTail)) {
-    return 'the registry does not serve this version — it may have been unpublished; pick another with /update <version>'
+    return t('the registry does not serve this version — it may have been unpublished; pick another with /update <version>')
   }
   if (/EACCES|EPERM|permission denied/i.test(logTail)) {
-    return 'the profile directory is not writable — fix permissions and retry'
+    return t('the profile directory is not writable — fix permissions and retry')
   }
   const lastLine = logTail.trim().split('\n').pop()
-  return `the install failed${lastLine === undefined || lastLine === '' ? '' : `: ${lastLine}`}`
+  return t('the install failed') + (lastLine === undefined || lastLine === '' ? '' : `: ${lastLine}`)
 }
 
 /** The import-sweep child script: resolve and import every spec. */
@@ -312,6 +314,7 @@ export async function bootSmoke(input: SwapInput): Promise<boolean> {
  * @returns the outcome for the panel and notices.
  */
 export async function performSwap(input: SwapInput): Promise<SwapOutcome> {
+  const t = input.t ?? interpolateLocaleMessage
   const logPath = join(backupDir(input.root), 'update.log')
   const pendingPath = join(backupDir(input.root), 'pending.json')
   logLine(input.root, `=== update ${input.fromVersion} -> ${input.toVersion} (${new Date(updaterInternals.now()).toISOString()}) ===`)
@@ -340,9 +343,9 @@ export async function performSwap(input: SwapInput): Promise<SwapOutcome> {
   logLine(input.root, `$ dsh plugin --profile ${input.profile} add ${installSpecs.join(' ')}\n${install.stdout}${install.stderr}`)
   if (install.code !== 0) {
     progress(input, 'install', 'fail')
-    const reason = classifyInstallFailure(tail(`${install.stdout}${install.stderr}`))
+    const reason = classifyInstallFailure(tail(`${install.stdout}${install.stderr}`), t)
     logLine(input.root, `install failed: ${reason}`)
-    return rollback(input, `install failed — ${reason}`, logPath, pendingPath)
+    return rollback(input, t('install failed — {reason}', { reason }), logPath, pendingPath)
   }
   progress(input, 'install', 'ok')
 
@@ -350,21 +353,21 @@ export async function performSwap(input: SwapInput): Promise<SwapOutcome> {
   if (!packageIsVersion(input.root, input.toVersion)) {
     progress(input, 'verify', 'fail')
     logLine(input.root, `post-install set check failed: ${JSON.stringify(readProfileFacts(input.root).installed)}`)
-    return rollback(input, 'post-install set check failed — the tree is not one version', logPath, pendingPath)
+    return rollback(input, t('post-install set check failed — the tree is not one version'), logPath, pendingPath)
   }
   progress(input, 'verify', 'ok')
 
   progress(input, 'smoke-imports', 'start')
   if (!await importSweepSmoke(input.root)) {
     progress(input, 'smoke-imports', 'fail')
-    return rollback(input, 'import smoke failed — a patch entry does not load (the D51 class)', logPath, pendingPath)
+    return rollback(input, t('import smoke failed — a patch entry does not load (the D51 class)'), logPath, pendingPath)
   }
   progress(input, 'smoke-imports', 'ok')
 
   progress(input, 'smoke-boot', 'start')
   if (!await bootSmoke(input)) {
     progress(input, 'smoke-boot', 'fail')
-    return rollback(input, 'boot smoke failed — the updated tree does not boot cleanly', logPath, pendingPath)
+    return rollback(input, t('boot smoke failed — the updated tree does not boot cleanly'), logPath, pendingPath)
   }
   progress(input, 'smoke-boot', 'ok')
 
@@ -375,7 +378,7 @@ export async function performSwap(input: SwapInput): Promise<SwapOutcome> {
     kind: 'success',
     fromVersion: input.fromVersion,
     toVersion: input.toVersion,
-    message: `updated ${input.fromVersion} → ${input.toVersion} · smoke passed · restart dsh to apply — this session keeps running ${input.fromVersion}`,
+    message: t('updated {from} → {to} · smoke passed · restart dsh to apply — this session keeps running {from}', { from: input.fromVersion, to: input.toVersion }),
     logPath,
   }
 }
@@ -387,13 +390,14 @@ function packageIsVersion(root: string, version: string): boolean {
 
 /** The failure path: restore, reinstall the old version, re-verify, re-smoke, report. */
 async function rollback(input: SwapInput, reason: string, logPath: string, pendingPath: string): Promise<SwapOutcome> {
+  const t = input.t ?? interpolateLocaleMessage
   if (compareVersions(input.fromVersion, VERSION_FLOOR) < 0) {
     logLine(input.root, `rollback refused: ${input.fromVersion} predates the Mayfly floor ${VERSION_FLOOR}`)
     return {
       kind: 'failed-no-rollback',
       fromVersion: input.fromVersion,
       toVersion: input.toVersion,
-      message: `${reason}; rollback refused (${input.fromVersion} predates ${VERSION_FLOOR}) — ${repairRecipe([MAYFLY_PACKAGE], VERSION_FLOOR)}`,
+      message: t('{reason}; rollback refused ({from} predates {floor}) — {repair}', { reason, from: input.fromVersion, floor: VERSION_FLOOR, repair: repairRecipe([MAYFLY_PACKAGE], VERSION_FLOOR, t) }),
       logPath,
     }
   }
@@ -413,7 +417,7 @@ async function rollback(input: SwapInput, reason: string, logPath: string, pendi
       kind: 'rollback-incomplete',
       fromVersion: input.fromVersion,
       toVersion: input.toVersion,
-      message: `${reason}; rollback reinstall failed — ${classifyInstallFailure(tail(`${reinstall.stdout}${reinstall.stderr}`))}; manual repair:\n${repairRecipe([MAYFLY_PACKAGE], input.fromVersion)}`,
+      message: t('{reason}; rollback reinstall failed — {failure}; manual repair:\n{repair}', { reason, failure: classifyInstallFailure(tail(`${reinstall.stdout}${reinstall.stderr}`), t), repair: repairRecipe([MAYFLY_PACKAGE], input.fromVersion, t) }),
       logPath,
     }
   }
@@ -424,7 +428,7 @@ async function rollback(input: SwapInput, reason: string, logPath: string, pendi
       kind: 'rollback-incomplete',
       fromVersion: input.fromVersion,
       toVersion: input.toVersion,
-      message: `${reason}; rolled back but the package has the wrong version — manual repair:\n${repairRecipe([MAYFLY_PACKAGE], input.fromVersion)}`,
+      message: t('{reason}; rolled back but the package has the wrong version — manual repair:\n{repair}', { reason, repair: repairRecipe([MAYFLY_PACKAGE], input.fromVersion, t) }),
       logPath,
     }
   }
@@ -434,7 +438,7 @@ async function rollback(input: SwapInput, reason: string, logPath: string, pendi
       kind: 'rollback-incomplete',
       fromVersion: input.fromVersion,
       toVersion: input.toVersion,
-      message: `${reason}; rolled back but the import smoke still fails — manual repair:\n${repairRecipe([MAYFLY_PACKAGE], input.fromVersion)}`,
+      message: t('{reason}; rolled back but the import smoke still fails — manual repair:\n{repair}', { reason, repair: repairRecipe([MAYFLY_PACKAGE], input.fromVersion, t) }),
       logPath,
     }
   }
@@ -445,7 +449,7 @@ async function rollback(input: SwapInput, reason: string, logPath: string, pendi
     kind: 'rolled-back',
     fromVersion: input.fromVersion,
     toVersion: input.toVersion,
-    message: `${reason}; rolled back to ${input.fromVersion} · smoke passed · log: ${logPath}`,
+    message: t('{reason}; rolled back to {from} · smoke passed · log: {path}', { reason, from: input.fromVersion, path: logPath }),
     logPath,
   }
 }

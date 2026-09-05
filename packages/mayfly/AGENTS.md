@@ -36,6 +36,22 @@ single/multi-select behavior shares one list controller. Core keeps form
 drafts, control/scroll bindings, virtual-list cursors, and the common framed
 scroll panel in dedicated renderer-owned implementations.
 
+Search text normalization belongs to core's shared native-editor input, including
+paste framing and grapheme deletion. Provider workflow outcomes carry structured
+status independently of their translated copy. A field being edited owns Delete
+and Ctrl-D; entity deletion is a browsing action.
+
+Native session projections validate whole values. The transcript source re-admits
+only its last 200 cutoff-eligible entries and retains no full projection copy;
+do not assume entry identity survives native Zod parsing. Sparse cutoff scans and
+the native whole-value validation may still scale with history length.
+
+In-app host operations use an internal command plus fixed-argument descriptor.
+The launcher's `MAYFLY_DSH_BIN` wins over `DSH_BIN` and PATH; a selected JavaScript
+entry runs through Node and must never silently fall back to another host.
+Clipboard readers and writers share one bounded subprocess runner. Profile argv
+parsing is shared internally with the app, without a new public export.
+
 BTW children retain the full seeded parent event stream for model context, but
 the transcript source applies the recorded seed cutoff so inherited history is
 not shown in the BTW conversation view.

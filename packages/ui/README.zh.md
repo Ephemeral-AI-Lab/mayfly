@@ -7,6 +7,11 @@ leaf、flex/viewport child、横纵 stack、surface、scroll、显式 Markdown/M
 progress、spacer 与 divider。普通 node 可直接进入 stack；只有需要 child layout
 metadata 时才使用 `ui.child`。
 
+调用方持有的数据始终被隔离。本模块已创建的快照可在 builder 和 registry 更新间
+共享，不重复克隆其不可变子树；任意外部冻结对象不会获得这项优化。
+Wire 数据不能包含循环引用或访问器属性，getter 会被拒绝而不会执行。
+即使调用方之后修改原始 definition，注册身份也保持不变。
+
 ```ts
 import { defineMayflyComponent, ui } from '@ephemeral-ai/mayfly-ui'
 
