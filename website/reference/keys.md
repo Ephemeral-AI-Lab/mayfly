@@ -33,7 +33,7 @@
 
 | 键 | 动作 | 说明 |
 | --- | --- | --- |
-| `Ctrl-C` | 清空 → 中断 → 退出 | 先清草稿，再中断运行中的 agent；**1 秒内第二次按下**退出 Mayfly |
+| `Ctrl-C` | 中断 → 清空 → 退出 | 中断当前 Agent 与所有 running continuable 后代；整棵选择子树无工作时清空草稿；**1 秒内第二次按下**退出 Mayfly |
 | `Ctrl-S` | steer 注入 | 把非空草稿作为转向指令注入当前 turn，并清空 buffer |
 | `Ctrl-V` | 粘贴图片 | 剪贴板图片入附件库，光标处插入 `[image #N]` 标记 |
 | `Ctrl-G` | 外部编辑器 | 草稿交给外部编辑器全屏编辑（`mayfly.editorCommand` 设置 → `$VISUAL` → `$EDITOR`；Mayfly 挂起让出终端）；以 `:cq` 退出则草稿原样保留 |

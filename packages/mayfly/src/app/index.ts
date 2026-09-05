@@ -16,6 +16,7 @@ import type { MayflyRequestLifecycle } from './request-lifecycle.ts'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
 import { MayflyCurrentAgentService } from './current-agent.ts'
+import { interruptAgentTree } from './agent-interrupt.ts'
 import { armExitEpitaph, epitaphFor, profileFromArgv } from './exit-epitaph.ts'
 import { createMayflyRequestController } from './request-lifecycle.ts'
 import { installRetractionService } from './retraction.ts'
@@ -98,20 +99,9 @@ export function apply(ctx: Context, config: Config): void {
     () => current.current(),
     requests,
     message => { io.stderr.write(`dsh: ${message}\n`) },
-    (agent, ref) => {
-      const view = current.view()
-      if (ref.scope === 'subagent'
-        && view.displayed === 'auxiliary'
-        && view.auxiliary?.kind === 'subagent'
-        && view.auxiliary.mode === 'continuable') {
-        ctx.subagents.interruptByParent(
-          SessionId(view.auxiliary.sessionId),
-          SessionId(view.auxiliary.parentSessionId),
-          'continuable',
-        )
-        return
-      }
-      agent.cancel({ kind: 'user' }, { keepInbox: true })
+    (agent) => {
+      const result = interruptAgentTree(ctx, agent, current.view(), { keepInbox: true })
+      for (const failure of result.failures) io.stderr.write(`dsh: could not interrupt ${failure}\n`)
     },
   )
 

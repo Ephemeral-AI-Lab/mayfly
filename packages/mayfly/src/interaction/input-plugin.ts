@@ -21,7 +21,7 @@
  * key-affordance row: kimi teaches affordances through the footer's
  * rotating tips instead, and the tips pool already covers every fragment
  * the row carried). The editor-context key chain (Escape
- * clear/retract/interrupt, Ctrl-C interrupt/clear/double-press exit, Ctrl-S
+ * clear/retract/interrupt, Ctrl-C selected-Agent-tree interrupt/clear/double-press exit, Ctrl-S
  * steer, Ctrl-G external
  * editor) resolves through
  * `ctx.mayflyKeymap` in the editor's `onKey` hook, which runs before the
@@ -64,6 +64,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
+import { interruptAgentTree } from '../app/agent-interrupt.ts'
 // Empty type import carries the `permissionPresets` Context merge the
 // bare-/permission interception probes (the service rides dsh-base).
 import type {} from '@deepseek-ai/dsh-permission-presets'
@@ -140,7 +141,7 @@ function availableCommands(ctx: Context) {
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-input'
 /** Services required before the editor can mount. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyEditorPanels', 'mayflyPromptSubmissions', 'commands', 'sessionProjections', 'subagents', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyEditorPanels', 'mayflyPromptSubmissions', 'commands', 'sessionProjections', 'agents', 'subagents', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
 
 /**
  * The single-line hint rendered under the input editor. Only the transient
@@ -519,21 +520,13 @@ export function apply(ctx: Context): void {
   function interrupt(): boolean {
     retractionCandidate = undefined
     const agent = ctx.mayflyCurrentAgent.current()
-    if (agent === null || agent.status !== 'running') return false
+    if (agent === null) return false
+    const result = interruptAgentTree(ctx, agent, ctx.mayflyCurrentAgent.view())
+    if (!result.requested) return false
     ctx.mayflyRequests.interrupt()
-    const view = ctx.mayflyCurrentAgent.view()
-    if (view.displayed === 'auxiliary'
-      && view.auxiliary?.kind === 'subagent'
-      && view.auxiliary.mode === 'continuable') {
-      ctx.subagents.interruptByParent(
-        SessionId(view.auxiliary.sessionId),
-        SessionId(view.auxiliary.parentSessionId),
-        'continuable',
-      )
-    } else {
-      agent.cancel({ kind: 'user' })
-    }
-    setNotice('interrupt requested')
+    setNotice(result.failures.length === 0
+      ? 'interrupt requested'
+      : colors.warning(`interrupt requested with failures: ${result.failures.join('; ')}`))
     return true
   }
 

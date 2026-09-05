@@ -97,7 +97,7 @@ function bench(config: Config = {}, options: {
     get: (id: unknown) => live.get(String(id)),
     list: () => [...live.values()],
   } as never)
-  ctx.provide('subagents', { interruptByParent: vi.fn() } as never)
+  ctx.provide('subagents', { interrupt: vi.fn(), interruptByParent: vi.fn() } as never)
 
   const create = vi.fn(async (input: { cwd?: string }) => {
     if (createError !== undefined) throw createError
@@ -317,6 +317,20 @@ describe('mayfly app driver', () => {
     } as never)
     await Promise.resolve()
     expect(test.errors()).toContain('could not persist message retraction: append unavailable')
+  })
+
+  it('routes retraction interrupt failures through the app error sink', async () => {
+    const test = bench()
+    const agent = await waitForAgent(test)
+    Object.assign(agent, { status: 'running' })
+    agent.session.events.push(
+      { type: 'turn/start', seq: 0, data: { turn: 1 } },
+      { type: 'user/message', seq: 1, data: { id: 'message-1', source: { kind: 'user' } } },
+    )
+    agent.cancel.mockImplementationOnce(() => { throw new Error('cancel refused') })
+    test.ctx.mayflyRequests.begin('main')
+    expect(test.ctx.mayflyRetractions.tryRetract('message-1')).toBe(true)
+    expect(test.errors()).toContain('could not interrupt current Agent: cancel refused')
   })
 
   it('interrupts a retracted continuable subagent through its parent address', async () => {

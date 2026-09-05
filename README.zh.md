@@ -95,7 +95,8 @@ mayfly
 `/agents stop <id>` 停止没有 live 后代的 live continuable child；仍有 live 后代的
 父节点会被拒绝，避免一次操作静默销毁整棵子树。`/btw <question>` 打开临时
 旁路 Agent。live 辅助 Agent 复用完整的 Mayfly 布局与编辑器：`F7` 在主/辅助会话间
-切换，`F8` 关闭辅助视图。
+切换，`F8` 关闭辅助视图。中断当前会话时也会中断它仍在运行的所有 continuable
+后代，但不会关闭这些 Agent。
 
 ## 架构
 

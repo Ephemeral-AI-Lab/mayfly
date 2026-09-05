@@ -103,7 +103,8 @@ descendants is refused so teardown cannot silently remove a whole subtree.
 `/btw <question>` opens a
 temporary side Agent. Live auxiliary Agents reuse the complete Mayfly layout
 and editor: press `F7` to switch between main and auxiliary conversations and
-`F8` to close the auxiliary view.
+`F8` to close the auxiliary view. Interrupting the selected conversation also
+interrupts every running continuable descendant without closing those Agents.
 
 ## Architecture
 

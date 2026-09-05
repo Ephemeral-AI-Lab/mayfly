@@ -36,7 +36,7 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 
 | Key | Action | Description |
 | --- | --- | --- |
-| `Ctrl-C` | Clear → interrupt → exit | Clears the draft, then interrupts a running agent; a **second press within 1 second** exits Mayfly |
+| `Ctrl-C` | Interrupt → clear → exit | Interrupts the selected Agent and all running continuable descendants; clears a draft only when the selected subtree is idle; a **second press within 1 second** exits Mayfly |
 | `Ctrl-S` | Steer | Inject the non-empty draft as a steering instruction into the current turn, clearing the buffer |
 | `Ctrl-V` | Paste image | Store the clipboard image in the attachment library, inserting an `[image #N]` marker at the cursor |
 | `Ctrl-G` | External editor | Hand the draft to an external editor for full-screen editing (`mayfly.editorCommand` setting → `$VISUAL` → `$EDITOR`; Mayfly suspends and yields the terminal); quitting with `:cq` leaves the draft untouched |

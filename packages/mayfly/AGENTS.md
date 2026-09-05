@@ -13,6 +13,9 @@ one auxiliary-view slot, and startup coordination. A live auxiliary Agent is
 the exact current Agent, so the ordinary transcript, status, panes, commands,
 and editor follow it. One-shot or cold children use the core-owned readonly
 transcript panel; interaction must not add another handwritten session view.
+Interrupting the selected Agent also interrupts every running continuable
+descendant through the native exact-ancestor authority; it must preserve child
+Activations and inbox work rather than calling a drain/teardown API.
 
 `cordis.patch.yml` inserts 34 ordinary siblings over `dsh-base`: six dsh
 support rows and 28 Mayfly rows. Dynamic plugins, official Mayfly rows, and native

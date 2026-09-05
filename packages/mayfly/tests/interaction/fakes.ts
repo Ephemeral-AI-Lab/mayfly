@@ -929,7 +929,7 @@ interface TestSessionState {
 }
 
 /** A context with the renderer services and native dsh session seams provided. */
-export function fakeMayflyContext(options: { readonly display?: boolean; readonly dock?: boolean } = {}): {
+export function fakeMayflyContext(options: { readonly display?: boolean; readonly dock?: boolean; readonly agents?: boolean } = {}): {
   ctx: Context
   screen: FakeScreen
   theme: FakeTheme
@@ -953,6 +953,18 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   const active = (): unknown | null => {
     const value = testSession()?.current
     return value ?? null
+  }
+  if (options.agents !== false) {
+    ctx.provide('agents', {
+      get: (id: unknown) => {
+        const agent = active() as { readonly id?: unknown } | null
+        return agent?.id !== undefined && String(agent.id) === String(id) ? agent : undefined
+      },
+      list: () => {
+        const agent = active()
+        return agent === null ? [] : [agent]
+      },
+    } as never)
   }
   const listeners = new Set<(agent: unknown | null, revision: number) => void>()
   const viewListeners = new Set<(view: unknown) => void>()
@@ -1025,6 +1037,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   ctx.provide('tools', { schemas: () => [] } as never)
   ctx.provide('subagents', {
     prompt: async () => ({ messageId: 'fake-subagent-message' }),
+    interrupt: () => {},
     interruptByParent: () => ({ accepted: true }),
     listDescendants: async () => [],
   } as never)

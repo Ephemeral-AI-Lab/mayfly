@@ -616,6 +616,43 @@ describe('mayfly-input plugin', () => {
     expect(cancel).not.toHaveBeenCalled()
   })
 
+  it('interrupts running descendants together with the selected main Agent', async () => {
+    const { ctx, editor, agent, cancel } = await mount({ running: true })
+    const child = {
+      id: SessionId('running-child'), status: 'running', cancel: vi.fn(),
+      session: { header: { parentSession: agent.id } },
+    } as unknown as Agent
+    const interrupt = vi.fn()
+    ctx.set('agents', {
+      list: () => [agent, child],
+    } as never)
+    ctx.set('subagents', { interrupt, interruptByParent: vi.fn(), prompt: vi.fn() } as never)
+
+    expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+    expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+    expect(interrupt).toHaveBeenCalledWith(child.id, { kind: 'ancestor', agent })
+  })
+
+  it('consumes interrupt for a running descendant of an idle main Agent and reports failures', async () => {
+    const { ctx, editor, hint, agent, cancel } = await mount()
+    const child = {
+      id: SessionId('running-child'), status: 'running', cancel: vi.fn(),
+      session: { header: { parentSession: agent.id } },
+    } as unknown as Agent
+    ctx.set('agents', {
+      list: () => [agent, child],
+    } as never)
+    ctx.set('subagents', {
+      interrupt: () => { throw new Error('child refused') },
+      interruptByParent: vi.fn(),
+      prompt: vi.fn(),
+    } as never)
+
+    expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+    expect(cancel).not.toHaveBeenCalled()
+    expect(hint.render(100).join('\n')).toContain('interrupt requested with failures: subagent running-child: child refused')
+  })
+
   it('ignores whitespace-only submissions', async () => {
     const { editor, followup } = await mount()
     type(editor, '   ')

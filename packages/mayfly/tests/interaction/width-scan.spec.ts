@@ -266,7 +266,7 @@ describe('interaction width-scan', () => {
       }
     })
     it(`SessionTranscriptPanel survives ${name}`, () => {
-      const { ctx } = fakeMayflyContext()
+      const { ctx } = fakeMayflyContext({ agents: false })
       const child = {
         id: SessionId(`readonly-${name}`),
         header: { cwd: '/repo', origin: 'subagent', parentSession: SessionId('parent') },
