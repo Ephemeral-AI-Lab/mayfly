@@ -16,6 +16,13 @@ on:
   # this event must not be path-filtered.
   pull_request:
   workflow_dispatch:
+  # The marketplace repository pings us when its index rebuilds, so the
+  # generated plugin pages pick up new listings without a website commit;
+  # the weekly run is the safety net for missed pings (the token is optional).
+  repository_dispatch:
+    types: [market-updated]
+  schedule:
+    - cron: '41 5 * * 1'
 
 permissions:
   contents: read
