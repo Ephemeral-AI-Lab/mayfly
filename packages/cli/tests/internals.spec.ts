@@ -92,6 +92,9 @@ describe('cli/internals fs and resolution defaults', () => {
     const file = join(dir, 'probe.txt')
     writeFileSync(file, 'content')
     expect(cliInternals.readTextFile(file)).toBe('content')
+    expect(cliInternals.fileSize(file)).toBe(7)
+    expect(cliInternals.fileSize(dir)).toBeUndefined()
+    expect(cliInternals.fileSize(join(dir, 'absent.txt'))).toBeUndefined()
     expect(cliInternals.readTextFile(join(dir, 'absent.txt'))).toBeUndefined()
   })
 

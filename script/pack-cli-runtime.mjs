@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -92,6 +92,25 @@ function packagePlatform(deployment, relative) {
   return { cpu: manifest.cpu, libc: manifest.libc, os: manifest.os }
 }
 
+/** Derive bounded native-file checks from the packages admitted to this layer. */
+function nativeSentinels(deployment, paths) {
+  const files = []
+  for (const name of PLATFORM_PACKAGES) {
+    const root = join('node_modules', name)
+    if (!paths.includes(root)) continue
+    const native = readdirSync(join(deployment, root), { recursive: true })
+      .filter(path => path.endsWith('.node') || /(?:^|[\\/])rg(?:\.exe)?$/.test(path))
+      .sort()
+    if (native.length === 0) throw new Error(`runtime sentinel package has no native binary: ${name}`)
+    for (const path of native) {
+      const relative = join(root, path)
+      files.push({ path: relative.replaceAll('\\', '/'), size: statSync(join(deployment, relative)).size })
+    }
+  }
+  if (files.length === 0 || files.length > 64) throw new Error('runtime native sentinel count is outside the launcher bound')
+  return files
+}
+
 /** Write one deterministic internal runtime archive. */
 function writeArchive(deployment, filename, paths) {
   const output = join(CLI_DIR, filename)
@@ -147,7 +166,11 @@ export async function buildCliRuntime() {
         return admits(platform.os, os) && admits(platform.cpu, cpu)
       })
       const filename = `runtime-${os}-${cpu}.tgz`
-      archives.push({ filename, bytes: writeArchive(deployment, filename, paths) })
+      const indexPath = join('node_modules', '.mayfly-runtime.json')
+      writeFileSync(join(deployment, indexPath), JSON.stringify({
+        platform: os, arch: cpu, harness: HARNESS_LINE, files: nativeSentinels(deployment, paths),
+      }))
+      archives.push({ filename, bytes: writeArchive(deployment, filename, [...paths, indexPath]) })
     }
     const bytes = archives.reduce((sum, archive) => sum + archive.bytes, 0)
     console.log(`cli runtime: dsh ${HARNESS_LINE}; ${PLATFORM_PACKAGES.length} platform sentinels; ${archives.length} archives / ${bytes} compressed bytes`)

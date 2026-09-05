@@ -6,7 +6,7 @@
  * @module @ephemeral-ai/mayfly-cli/runtime
  */
 
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dshHome } from './calibrate.ts'
 import { cliInternals } from './internals.ts'
@@ -43,10 +43,26 @@ function readRuntime(root: string): BundledDsh | undefined {
     if (manifest.version !== HARNESS_LINE || manifest.bin === null || typeof manifest.bin !== 'object') return undefined
     const entry = (manifest.bin as Record<string, unknown>).dsh
     if (typeof entry !== 'string') return undefined
-    return { binJs: join(dirname(manifestPath), entry), version: HARNESS_LINE }
+    const binJs = join(dirname(manifestPath), entry)
+    if (!isRuntimePath(relative(root, binJs).replaceAll('\\', '/')) || !cliInternals.fileSize(binJs)) return undefined
+    const indexText = cliInternals.readTextFile(join(root, 'node_modules', '.mayfly-runtime.json'))
+    if (indexText === undefined) return undefined
+    const index = JSON.parse(indexText) as { platform?: unknown, arch?: unknown, harness?: unknown, files?: unknown }
+    if (index.platform !== cliInternals.platform || index.arch !== cliInternals.arch || index.harness !== HARNESS_LINE) return undefined
+    if (!Array.isArray(index.files) || index.files.length === 0 || index.files.length > 64) return undefined
+    for (const file of index.files as Array<{ path?: unknown, size?: unknown } | null>) {
+      if (file === null || typeof file.path !== 'string' || !isRuntimePath(file.path)) return undefined
+      if (typeof file.size !== 'number' || file.size <= 0 || cliInternals.fileSize(join(root, file.path)) !== file.size) return undefined
+    }
+    return { binJs, version: HARNESS_LINE }
   } catch {
     return undefined
   }
+}
+
+/** The sentinel index and dsh entry cannot name paths outside the runtime. */
+function isRuntimePath(path: string): boolean {
+  return path.startsWith('node_modules/') && !path.includes('\\') && !path.split('/').includes('..')
 }
 
 /**
@@ -58,7 +74,8 @@ function readRuntime(root: string): BundledDsh | undefined {
 export async function bundledDsh(mayflyVersion: string): Promise<BundledDsh> {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(mayflyVersion)) throw new Error('launcher manifest has no valid version')
   const cacheParent = join(dshHome(), 'cache', 'mayfly-cli-runtime')
-  const target = join(cacheParent, `${mayflyVersion}-${HARNESS_LINE}`)
+  const archives = runtimeArchives(cliInternals.platform, cliInternals.arch)
+  const target = join(cacheParent, `${mayflyVersion}-${HARNESS_LINE}-${cliInternals.platform}-${cliInternals.arch}`)
   const current = readRuntime(target)
   if (current !== undefined) return current
 
@@ -66,7 +83,7 @@ export async function bundledDsh(mayflyVersion: string): Promise<BundledDsh> {
   const temporary = cliInternals.makeTempDirectory(join(cacheParent, '.extract-'))
   let published = false
   try {
-    for (const archive of runtimeArchives(cliInternals.platform, cliInternals.arch)) {
+    for (const archive of archives) {
       await cliInternals.extractRuntimeArchive(archive, temporary)
     }
     const prepared = readRuntime(temporary)
@@ -78,7 +95,29 @@ export async function bundledDsh(mayflyVersion: string): Promise<BundledDsh> {
     } catch (error) {
       const winner = readRuntime(target)
       if (winner !== undefined) return winner
-      throw error
+      // An invalid existing directory prevents rename. Move only that cache
+      // aside after a complete replacement exists; never remove the target.
+      const quarantine = cliInternals.makeTempDirectory(join(cacheParent, '.invalid-'))
+      try {
+        try {
+          cliInternals.renamePath(target, join(quarantine, 'runtime'))
+        } catch {
+          const concurrent = readRuntime(target)
+          if (concurrent !== undefined) return concurrent
+          throw error
+        }
+        try {
+          cliInternals.renamePath(temporary, target)
+          published = true
+          return { ...prepared, binJs: join(target, relative(temporary, prepared.binJs)) }
+        } catch (replacementError) {
+          const concurrent = readRuntime(target)
+          if (concurrent !== undefined) return concurrent
+          throw replacementError
+        }
+      } finally {
+        cliInternals.removeTree(quarantine)
+      }
     }
   } finally {
     if (!published) cliInternals.removeTree(temporary)

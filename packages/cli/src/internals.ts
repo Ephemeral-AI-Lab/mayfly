@@ -17,7 +17,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
 import { homedir as osHomedir } from 'node:os'
 import { x as extractTar } from 'tar'
 
@@ -63,6 +63,8 @@ export interface CliInternals {
   homedir(): string
   /** Read a UTF-8 file, `undefined` when missing or unreadable. */
   readTextFile(path: string): string | undefined
+  /** Size of a regular file, undefined when absent, unreadable, or a directory. */
+  fileSize(path: string): number | undefined
   /** Create a directory and its parents. */
   makeDirectory(path: string): void
   /** Create a uniquely named directory below an existing parent. */
@@ -118,6 +120,14 @@ export const cliInternals: CliInternals = {
   readTextFile(path: string): string | undefined {
     try {
       return readFileSync(path, 'utf8')
+    } catch {
+      return undefined
+    }
+  },
+  fileSize(path: string): number | undefined {
+    try {
+      const stat = statSync(path)
+      return stat.isFile() ? stat.size : undefined
     } catch {
       return undefined
     }
