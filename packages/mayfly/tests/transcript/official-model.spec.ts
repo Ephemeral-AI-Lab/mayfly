@@ -157,8 +157,8 @@ function sourceFixture(initial: ConversationProjection | unknown = projection(),
       snapshotValue = value
       snapshotSeq = seq
     },
-    emit(key: string, value: unknown, seq: number) {
-      changed?.(session, key, value, seq)
+    emit(key: string, value: unknown, seq: number, target = session) {
+      changed?.(target, key, value, seq)
     },
   }
 }
@@ -447,6 +447,141 @@ describe('official conversation model mapping', () => {
 })
 
 describe('OfficialConversationModelSource', () => {
+  it.each([1_000, 10_000, 100_000])('reads and admits only 200 entries from %i-entry histories', length => {
+    const entries = projection(Array.from({ length }, (_, index) => ({
+      kind: 'assistant' as const, id: String(index), seq: index, turn: 0, step: 0, text: 'history', streaming: false,
+    }))).entries
+    let reads = 0
+    const observed = new Proxy(entries, {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) {
+          reads += 1
+          expect(Number(key)).toBeGreaterThanOrEqual(length - 200)
+        }
+        return Reflect.get(target, key, receiver)
+      },
+    })
+    const fixture = sourceFixture({ entries: observed, streaming: false })
+    const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
+    source.attach(fixture.session)
+    expect(reads).toBe(200)
+    expect(source.snapshot().entries).toHaveLength(200)
+    expect(source.snapshot().entries[0]).toMatchObject({ id: String(length - 200) })
+    for (let seq = 1; seq <= 3; seq += 1) {
+      reads = 0
+      fixture.emit('mayflyConversation', { entries: observed, streaming: true }, seq)
+      expect(reads).toBe(200)
+      expect(source.snapshot().entries).toHaveLength(200)
+    }
+    source.dispose()
+  })
+
+  it('selects a complete eligible window across a sparse cutoff suffix without trusting entry order', () => {
+    const eligible = Array.from({ length: 250 }, (_, index) => ({
+      kind: 'assistant' as const, id: `visible-${String(index)}`, seq: 1_000 + index, turn: 1, step: 0, text: 'visible', streaming: false,
+    }))
+    const excluded = { kind: 'assistant' as const, id: 'excluded', seq: 1, turn: 0, step: 0, text: 'inherited', streaming: false }
+    const value = projection(eligible.flatMap(entry => [entry, excluded]))
+    const fixture = sourceFixture(value)
+    const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
+    source.attach(fixture.session, 999)
+    expect(source.snapshot().entries).toHaveLength(200)
+    expect(source.snapshot().entries[0]).toMatchObject({ id: 'visible-50' })
+    expect(source.snapshot().entries.at(-1)).toMatchObject({ id: 'visible-249' })
+    expect(source.snapshot().entries).toEqual(conversationTranscriptModel(projection(eligible), toolSource()).entries)
+    source.attach(fixture.session, 10_000)
+    expect(source.snapshot().entries).toEqual([])
+    source.dispose()
+  })
+
+  it.each([
+    null, undefined, 'bad', [], {}, { entries: [], streaming: 'bad' },
+    { entries: [null], streaming: false },
+    { entries: [{ kind: 'assistant', seq: 1 }], streaming: false },
+  ])('rejects malformed envelopes and visible entries: %j', value => {
+    const fixture = sourceFixture(projection())
+    const publish = vi.fn()
+    const source = new OfficialConversationModelSource(fixture.source, toolSource(), publish)
+    source.attach(fixture.session)
+    fixture.emit('mayflyConversation', value, 1)
+    expect(publish).toHaveBeenCalledOnce()
+    source.dispose()
+  })
+
+  it.each([null, 'bad', {}, { seq: 'bad' }, { seq: NaN }, { seq: 1.5 }])('rejects malformed cutoff candidates: %j', entry => {
+    const fixture = sourceFixture(projection())
+    const publish = vi.fn()
+    const source = new OfficialConversationModelSource(fixture.source, toolSource(), publish)
+    source.attach(fixture.session, 0)
+    fixture.emit('mayflyConversation', { entries: [entry], streaming: false }, 1)
+    expect(publish).toHaveBeenCalledOnce()
+    source.dispose()
+  })
+
+  it('leaves full historical schema admission to the native producer', () => {
+    const tail = projection(Array.from({ length: 200 }, (_, index) => ({
+      kind: 'assistant' as const, id: String(index), seq: index, turn: 0, step: 0, text: 'visible', streaming: false,
+    }))).entries
+    const fixture = sourceFixture({ entries: [null, ...tail], streaming: false })
+    const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
+    source.attach(fixture.session)
+    expect(source.snapshot().entries).toHaveLength(200)
+    source.dispose()
+  })
+
+  it('passes parsed snapshots to presenters without freezing caller-owned nested tool data', () => {
+    const content = [{ type: 'text', text: 'raw' }]
+    const result = { content, text: 'raw', isError: false, endedAt: 200 }
+    const presentResult = vi.fn((_args: unknown, _result: unknown) => undefined)
+    const tools = { get: () => ({ presentResult }) } as unknown as ToolPresentationSource
+    const fixture = sourceFixture(projection([transcriptTool({ result })]))
+    const source = new OfficialConversationModelSource(fixture.source, tools, () => undefined)
+    source.attach(fixture.session)
+    expect(presentResult).toHaveBeenCalledOnce()
+    const presented = presentResult.mock.calls[0]![1] as { content: unknown[] }
+    expect(presented.content).toEqual(content)
+    expect(presented.content).not.toBe(content)
+    expect(presented.content[0]).not.toBe(content[0])
+    expect(Object.isFrozen(content)).toBe(false)
+    content[0]!.text = 'changed'
+    expect(presented.content[0]).toEqual({ type: 'text', text: 'raw' })
+    source.dispose()
+  })
+
+  it('reconciles multiple changes, removals, and session switches without retaining history', () => {
+    const initial = projection([
+      { kind: 'assistant', id: 'one', seq: 1, turn: 0, step: 0, text: 'first', streaming: true },
+      { kind: 'thinking', id: 'two', seq: 2, turn: 0, step: 0, text: 'thinking', streaming: true },
+    ], true)
+    const fixture = sourceFixture(initial, 2)
+    const publish = vi.fn()
+    const source = new OfficialConversationModelSource(fixture.source, toolSource(), publish)
+    source.attach(fixture.session)
+    const changed = projection([
+      { kind: 'assistant', id: 'one', seq: 1, updatedSeq: 3, turn: 0, step: 0, text: 'settled', streaming: false },
+      { kind: 'thinking', id: 'two', seq: 2, updatedSeq: 3, turn: 0, step: 0, text: 'settled thought', streaming: false },
+    ])
+    fixture.emit('mayflyConversation', changed, 3)
+    expect(source.snapshot().entries).toEqual(conversationTranscriptModel(changed, toolSource()).entries)
+    fixture.emit('mayflyConversation', projection(), 4)
+    expect(source.snapshot().entries).toEqual([])
+    const nextSession = { id: 'session-2' } as unknown as Session
+    fixture.set(initial, 2)
+    source.attach(nextSession)
+    expect(source.snapshot().generation).toBe(2)
+    const before = source.snapshot()
+    fixture.emit('mayflyConversation', changed, 5)
+    expect(source.snapshot()).toBe(before)
+    fixture.emit('mayflyConversation', changed, 3, nextSession)
+    expect(source.snapshot().entries).toEqual(conversationTranscriptModel(changed, toolSource()).entries)
+    source.dispose()
+    const count = publish.mock.calls.length
+    fixture.emit('mayflyConversation', initial, 6, nextSession)
+    source.attach(fixture.session)
+    expect(publish).toHaveBeenCalledTimes(count)
+    expect(source.snapshot().entries).toEqual([])
+  })
+
   it('publishes baseline and live whole values while rejecting stale and malformed changes', () => {
     const f = sourceFixture(projection([
       { kind: 'assistant', id: 'a-1', seq: 1, turn: 0, step: 0, text: 'baseline', streaming: false },
@@ -477,8 +612,7 @@ describe('OfficialConversationModelSource', () => {
     expect(source.snapshot().streaming).toBe(true)
     expect(published).toEqual(['baseline', 'baseline updated', 'live'])
 
-    // A changed entry identity cannot use the incremental replacement path;
-    // the mapper falls back to a complete model rebuild.
+    // Whole-value replacement must not preserve entries from the prior view.
     f.emit('mayflyConversation', projection([
       { kind: 'assistant', id: 'a-3', seq: 7, turn: 0, step: 0, text: 'replacement', streaming: true },
     ], true), 7)
