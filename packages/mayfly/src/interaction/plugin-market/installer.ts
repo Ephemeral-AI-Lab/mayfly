@@ -17,6 +17,10 @@ import type { MarketEntry, MarketInstallRow } from './types.ts'
 
 /** Install ceiling, matching the updater's install timeout. */
 const INSTALL_TIMEOUT_MS = 1_200_000
+/** Fresh-process import ceiling for the newly installed entry points. */
+const IMPORT_TIMEOUT_MS = 30_000
+/** Profile files restored when a new plugin fails its compatibility check. */
+const TRANSACTION_FILES = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'cordis.patch.yml'] as const
 
 /** One plugin the profile actually carries. */
 export interface InstalledPlugin {
@@ -118,6 +122,42 @@ interface PatchEdit {
   readonly text: string
 }
 
+interface FileSnapshot {
+  readonly path: string
+  readonly text: string | undefined
+}
+
+/** Capture the complete manifest/config boundary changed by installation. */
+function snapshotTransactionFiles(root: string): readonly FileSnapshot[] {
+  return TRANSACTION_FILES.map(file => {
+    const path = join(root, file)
+    return { path, text: updaterInternals.readTextFile(path) }
+  })
+}
+
+/** Restore captured files, removing ones that did not exist before. */
+function restoreTransactionFiles(files: readonly FileSnapshot[]): void {
+  for (const file of files) {
+    if (file.text === undefined) updaterInternals.removeFile(file.path)
+    else updaterInternals.writeTextFile(file.path, file.text)
+  }
+}
+
+/** Import every new package root in a fresh Node process. */
+async function importInstalledRows(root: string, rows: readonly MarketInstallRow[]): Promise<SpawnOutcome> {
+  const script = [
+    "const { createRequire } = await import('node:module')",
+    "const { join } = await import('node:path')",
+    "const { pathToFileURL } = await import('node:url')",
+    "const req = createRequire(join(process.cwd(), 'package.json'))",
+    `for (const name of ${JSON.stringify(rows.map(row => row.name))}) await import(pathToFileURL(req.resolve(name)).href)`,
+  ].join('\n')
+  return updaterInternals.spawnOnce(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: root,
+    timeoutMs: IMPORT_TIMEOUT_MS,
+  })
+}
+
 /** Collect and validate every row nested under a top-level `insert` patch. */
 function insertionRows(items: readonly unknown[]): YAMLMap[] {
   const rows: YAMLMap[] = []
@@ -213,6 +253,33 @@ export interface InstallerInput {
   readonly entry: MarketEntry
   /** Which remote specs come from. */
   readonly source: InstallSource
+  /** Optional progress sink for the interactive browser. */
+  readonly onProgress?: (phase: 'verify' | 'rollback') => void
+}
+
+/** Remove a newly installed entry and restore its pre-install files. */
+async function rollbackInstall(
+  input: InstallerInput,
+  names: readonly string[],
+  files: readonly FileSnapshot[],
+  reason: string,
+): Promise<InstallOutcome> {
+  input.onProgress?.('rollback')
+  const removal = await updaterInternals.spawnOnce(input.dshBin,
+    ['plugin', '--profile', input.profile, 'remove', ...names],
+    { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
+  let restoreError: string | undefined
+  try {
+    restoreTransactionFiles(files)
+  } catch (error) {
+    restoreError = errorText(error)
+  }
+  if (removal.code !== 0 || restoreError !== undefined) {
+    const details = [removal.code === 0 ? undefined : describeFailure('automatic rollback', removal), restoreError === undefined ? undefined : `restoring profile files failed: ${restoreError}`]
+      .filter((detail): detail is string => detail !== undefined).join('; ')
+    return { kind: 'error', text: `${reason}; rollback incomplete: ${details}` }
+  }
+  return { kind: 'error', text: `${reason}; changes rolled back` }
 }
 
 /**
@@ -224,10 +291,15 @@ export async function installEntry(input: InstallerInput): Promise<InstallOutcom
   const blocked = currentProfileInstallBlock(input.entry)
   if (blocked !== undefined) return { kind: 'error', text: blocked }
   const rows = input.entry.install.rows
+  const installedNames = new Set(readInstalledPlugins(input.root).map(plugin => plugin.name))
+  if (rows.some(row => installedNames.has(row.name))) {
+    return { kind: 'error', text: `"${input.entry.displayName}" is already or partially installed; uninstall it before reinstalling` }
+  }
   const specs = rows.map(row => rowSpec(row, input.source)).filter((spec): spec is string => spec !== undefined)
   if (specs.length !== rows.length || specs.length === 0) {
     return { kind: 'error', text: `"${input.entry.displayName}" has no ${input.source} install source` }
   }
+  const files = snapshotTransactionFiles(input.root)
   let patchEdit: PatchEdit | undefined
   try {
     patchEdit = prepareProfilePatchRows(input.root, rows.filter(row => row.activation === 'profile-patch'))
@@ -239,12 +311,18 @@ export async function installEntry(input: InstallerInput): Promise<InstallOutcom
     ['plugin', '--profile', input.profile, 'add', ...specs],
     { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
   if (outcome.code !== 0) {
+    restoreTransactionFiles(files)
     return { kind: 'error', text: describeFailure(`installing "${input.entry.displayName}"`, outcome) }
+  }
+  input.onProgress?.('verify')
+  const imported = await importInstalledRows(input.root, rows)
+  if (imported.code !== 0) {
+    return rollbackInstall(input, rows.map(row => row.name), files, describeFailure(`checking "${input.entry.displayName}" compatibility`, imported))
   }
   try {
     if (patchEdit !== undefined) updaterInternals.writeTextFile(patchEdit.path, patchEdit.text)
   } catch (error) {
-    return { kind: 'error', text: `packages installed but activating "${input.entry.displayName}" failed: ${errorText(error)}` }
+    return rollbackInstall(input, rows.map(row => row.name), files, `activating "${input.entry.displayName}" failed: ${errorText(error)}`)
   }
   return { kind: 'success' }
 }

@@ -1,10 +1,10 @@
 /**
  * The `/plugin` command family: the marketplace browser over the index
  * published by Ephemeral-AI-Lab/dsh-plugins (`dist/index.json`). `/plugin`
- * opens a grouped, type-to-filter catalog — Enter opens the read-only
- * detail panel, `i` installs, `u` removes, `r` refreshes; `/plugin list`
- * shows what the profile carries, what has updates, and what left the
- * market; `install <id> [--source npm|github]`, `uninstall <id>`,
+ * opens installed/not-installed tabs over a type-to-filter catalog — Enter
+ * opens the read-only detail panel, `i` installs, `u` removes, `r` refreshes;
+ * every operation reports progress and its result inside the panel.
+ * `install <id> [--source npm|github]`, `uninstall <id>`,
  * `info <id>`, and `refresh` run the argument paths directly. Installs and
  * removals shell out to `dsh plugin --profile <name> add|remove` — the same
  * seam the updater's swap uses — then remind that bundle membership is a
@@ -42,6 +42,14 @@ import { findDshBin, profileNameFromArgv, profileRoot } from './updater/profile.
 
 /** Command outcome reused by every early-exit branch. */
 type CommandOutcome = { readonly kind: 'success', readonly text?: string } | { readonly kind: 'error', readonly text: string }
+
+/** One operation message shown either in the browser or the prompt editor. */
+interface OperationStatus {
+  readonly text: string
+  readonly tone: 'muted' | 'warning' | 'success' | 'danger'
+}
+
+type OperationReporter = (status: OperationStatus) => void
 
 /**
  * Register `/plugin`.
@@ -115,7 +123,12 @@ export function registerPluginCommand(ctx: Context): () => void {
   const badgeOf = (entry: MarketEntry, state: EntryInstallState | undefined): string => {
     const pieces = [entry.source, surfaceBadge(entry)]
     /* v8 ignore next -- states() carries every indexed entry id */
-    if (state?.installed === true) pieces.push(state.updateAvailable === true ? `up ${state.version ?? ''}`.trim() : 'installed')
+    if (state?.installed === true) {
+      const latest = entry.install.rows.map(row => entry.npm?.[row.name]?.latestVersion).find(version => version != null)
+      pieces.push(state.updateAvailable === true ? `up ${latest ?? state.version ?? ''}`.trim() : 'installed')
+    } else if (entry.install.rows.some(row => installed.some(plugin => plugin.name === row.name))) {
+      pieces.push('partial')
+    }
     if (entry.status === 'beta' || entry.status === 'unstable' || entry.status === 'deprecated') pieces.push(entry.status)
     return pieces.join(' · ')
   }
@@ -139,38 +152,61 @@ export function registerPluginCommand(ctx: Context): () => void {
    * handlers and the argument paths so warnings, notices, and the in-flight
    * guard stay identical.
    */
-  async function operate(entry: MarketEntry, action: 'install' | 'uninstall', source: InstallSource): Promise<void> {
+  async function operate(entry: MarketEntry, action: 'install' | 'uninstall', source: InstallSource, reporter?: OperationReporter): Promise<boolean> {
+    const report: OperationReporter = reporter ?? (status => getSharedEditor(ctx)?.notice?.(status.text))
     if (operationInFlight) {
-      getSharedEditor(ctx)?.notice?.('a plugin operation is already running')
-      return
+      report({ text: t('a plugin operation is already running'), tone: 'warning' })
+      return false
     }
     // Claim before the first await so overlapping keypresses cannot both run.
     operationInFlight = true
     try {
       const dshBin = await findDshBin()
       /* v8 ignore next -- a fiber unload landing inside these awaits is a shutdown race */
-      if (unloaded) return
+      if (unloaded) return false
       if (dshBin === undefined) {
-        getSharedEditor(ctx)?.notice?.('plugin operations need the dsh CLI on PATH (or $DSH_BIN)')
-        return
+        report({ text: t('plugin operations need the dsh CLI on PATH (or $DSH_BIN)'), tone: 'danger' })
+        return false
       }
       if (action === 'install' && entrySupportsSource(entry, source) === false) {
-        getSharedEditor(ctx)?.notice?.(`"${entry.displayName}" has no ${source} install source`)
-        return
+        report({ text: `"${entry.displayName}" has no ${source} install source`, tone: 'danger' })
+        return false
       }
-      getSharedEditor(ctx)?.notice?.(t(action === 'install' ? 'installing "{name}"...' : 'removing "{name}"...', { name: entry.displayName }))
-      const input = { dshBin, profile: profileNameFromArgv(process.argv), root: profileRoot(profileNameFromArgv(process.argv)), entry, source }
+      report({
+        text: t(action === 'install' ? 'installing "{name}"...' : 'removing "{name}"...', { name: entry.displayName }),
+        tone: 'muted',
+      })
+      const input = {
+        dshBin,
+        profile: profileNameFromArgv(process.argv),
+        root: profileRoot(profileNameFromArgv(process.argv)),
+        entry,
+        source,
+        ...(reporter === undefined ? {} : { onProgress: (phase: 'verify' | 'rollback') => {
+          report({
+            text: t(phase === 'verify' ? 'checking "{name}" compatibility...' : 'rolling back "{name}"...', { name: entry.displayName }),
+            tone: phase === 'verify' ? 'muted' : 'warning',
+          })
+        } }),
+      }
       const outcome = action === 'install' ? await installEntry(input) : await uninstallEntry(input)
       /* v8 ignore next -- a fiber unload landing inside these awaits is a shutdown race */
-      if (unloaded) return
+      if (unloaded) return false
       if (outcome.kind === 'error') {
-        getSharedEditor(ctx)?.notice?.(t(action === 'install' ? 'install failed: {message}' : 'uninstall failed: {message}', { message: outcome.text }))
-        return
+        report({
+          text: t(action === 'install' ? 'install failed: {message}' : 'uninstall failed: {message}', { message: outcome.text }),
+          tone: 'danger',
+        })
+        return false
       }
       refreshInstalled()
-      getSharedEditor(ctx)?.notice?.(t(action === 'install'
-        ? 'installed; restart Mayfly and start a new session to apply'
-        : 'removed; restart Mayfly and start a new session to apply'))
+      report({
+        text: t(action === 'install'
+          ? 'installed; restart Mayfly and start a new session to apply'
+          : 'removed; restart Mayfly and start a new session to apply'),
+        tone: 'success',
+      })
+      return true
     } finally {
       operationInFlight = false
     }
@@ -265,68 +301,35 @@ export function registerPluginCommand(ctx: Context): () => void {
     })
   }
 
-  /**
-   * Open the browse panel. `mode` selects the catalog (grouped by source
-   * tier) or the installed view (grouped by installed / updates / removed).
-   */
-  function openBrowse(mode: 'catalog' | 'installed'): CommandOutcome {
+  /** Open the marketplace as installed and not-installed tabs. */
+  function openBrowse(initialGroup: 'installed' | 'not-installed'): CommandOutcome {
     const display = displayServices(ctx)
     if (display === undefined) {
       return { kind: 'error', text: 'plugin browser is unavailable: the Mayfly screen is not mounted' }
     }
 
-    /** Rows for the catalog mode: live entries except tombstones. */
-    const catalogItems = (): readonly FrontendPanelItem[] =>
-      entries().filter(entry => entry.status !== 'removed').map(entry => {
+    let panelStatus: OperationStatus | undefined
+
+    /** Indexed rows grouped by their current all-rows-installed state. */
+    const marketItems = (): readonly FrontendPanelItem[] => {
+      const state = states()
+      return entries().filter(entry => entry.status !== 'removed' || state[entry.id]?.installed === true).map(entry => {
+        const installedNow = state[entry.id]?.installed === true
+        const installBlocked = currentProfileInstallBlock(entry) !== undefined
         return {
           id: entry.id,
           label: entry.displayName,
-          detail: describe(entry),
-          badge: badgeOf(entry, states()[entry.id]),
-          group: entry.source,
+          detail: entry.status === 'removed' ? (entry.statusNote ?? t('removed from the market')) : describe(entry),
+          badge: badgeOf(entry, state[entry.id]),
+          group: installedNow ? 'installed' : 'not-installed',
           action: { kind: 'plugin-market/details', id: entry.id },
           actionLabel: t('Details'),
+          ...(!installedNow && installBlocked ? {} : {
+            secondaryAction: { kind: installedNow ? 'plugin-market/uninstall' : 'plugin-market/install', id: entry.id },
+            secondaryActionLabel: t(installedNow ? 'Uninstall' : 'Install'),
+          }),
         }
       })
-
-    /** Rows for the installed mode: profile deps joined against the index. */
-    const installedItems = (): readonly FrontendPanelItem[] => {
-      const installedByName = new Map(installed.map(plugin => [plugin.name, plugin]))
-      const indexedNames = new Set(entries().flatMap(entry => entry.install.rows.map(row => row.name)))
-      const state = states()
-      const rank = { installed: 0, updates: 1, removed: 2 } as const
-      const marketRows = entries().flatMap((entry): readonly FrontendPanelItem[] => {
-        const present = entry.install.rows.filter(row => installedByName.has(row.name))
-        if (present.length === 0) return []
-        const entryState = state[entry.id]
-        const removed = entry.status === 'removed'
-        const update = entryState?.updateAvailable === true
-        const latest = entry.install.rows.map(row => entry.npm?.[row.name]?.latestVersion).find(version => version != null)
-        const pieces = [
-          entryState?.installed === true ? entryState.version : 'partial',
-          update && latest !== null && latest !== undefined ? `up ${latest}` : undefined,
-          removed ? 'removed' : undefined,
-        ].filter((piece): piece is string => piece !== undefined)
-        return [{
-          id: entry.id,
-          label: entry.displayName,
-          detail: removed ? (entry.statusNote ?? t('removed from the market')) : describe(entry),
-          badge: pieces.join(' · '),
-          group: removed ? 'removed' : update ? 'updates' : 'installed',
-          action: { kind: 'plugin-market/details', id: entry.id },
-          actionLabel: t('Details'),
-        }]
-      })
-      const removedRows = installed.filter(plugin => !indexedNames.has(plugin.name)).map(plugin => ({
-        id: plugin.name,
-        label: plugin.name,
-        detail: plugin.spec,
-        badge: 'removed',
-        group: 'removed',
-      }))
-      const rows = [...marketRows, ...removedRows]
-      /* v8 ignore next -- every row above sets one of the three groups */
-      return [...rows].sort((a, b) => (rank[a.group as keyof typeof rank] ?? 0) - (rank[b.group as keyof typeof rank] ?? 0))
     }
 
     const model = (): FrontendPanelDocument => {
@@ -334,45 +337,63 @@ export function registerPluginCommand(ctx: Context): () => void {
         return { mode: 'loading', title: t('Plugin marketplace'), view: { kind: 'text', content: t('loading catalog...') } }
       }
       if (catalog.status === 'offline') {
-        return { mode: 'error', title: t('Plugin marketplace'), view: { kind: 'text', content: t('marketplace is offline: {message}', { message: catalog.message }) } }
+        return {
+          mode: 'error',
+          title: t('Plugin marketplace'),
+          view: { kind: 'text', content: panelStatus?.text ?? t('marketplace is offline: {message}', { message: catalog.message }) },
+        }
       }
-      // One flat list: the tier rides in the badge and the index order sorts
-      // official → dsh → community, so no tab row comes between focus and
-      // the rows (Enter on a row opens its detail, the trace-panel pattern).
-      const items = mode === 'catalog' ? catalogItems() : installedItems()
+      const items = marketItems()
+      const installedCount = items.filter(item => item.group === 'installed').length
+      const notInstalledCount = items.length - installedCount
       return {
         mode: 'select',
         title: t('Plugin marketplace'),
+        ...(panelStatus === undefined ? {} : { header: { kind: 'text', content: panelStatus.text, tone: panelStatus.tone } as const }),
         items,
         filterable: true,
-        empty: mode === 'catalog'
-          ? { title: t('No plugins indexed') }
-          : { title: t('no plugins installed') },
+        grouped: true,
+        includeAllGroup: false,
+        groups: ['installed', 'not-installed'],
+        groupLabels: { installed: t('Installed'), 'not-installed': t('Not installed') },
+        groupCounts: { installed: installedCount, 'not-installed': notInstalledCount },
+        emptyByGroup: {
+          installed: { title: t('no plugins installed') },
+          'not-installed': { title: t('all marketplace plugins are installed') },
+        },
       }
+    }
+
+    let panel: CanonicalDocumentController
+    const reportInPanel: OperationReporter = (status) => {
+      panelStatus = status
+      panel.invalidate()
+      display.screen.requestRender()
     }
 
     /** Install or remove the entry an `i`/`u` keypress selected. */
     const runOperation = (id: string, action: 'install' | 'uninstall'): void => {
       const entry = findEntry(id)
+      /* v8 ignore next -- browser actions only carry ids from indexed rows */
       if (entry === undefined) return
       if (action === 'uninstall' && states()[entry.id]?.installed !== true) {
-        getSharedEditor(ctx)?.notice?.(`"${entry.displayName}" is not installed in this profile`)
+        reportInPanel({ text: `"${entry.displayName}" is not installed in this profile`, tone: 'danger' })
         return
       }
       const installBlock = action === 'install' ? currentProfileInstallBlock(entry) : undefined
       if (installBlock !== undefined) {
-        getSharedEditor(ctx)?.notice?.(t(installBlock))
+        reportInPanel({ text: t(installBlock), tone: 'danger' })
         return
       }
       if (action === 'install' && usefulInTui(entry) === false) {
-        getSharedEditor(ctx)?.notice?.(t('web-only plugin: it contributes nothing in this terminal frontend'))
+        reportInPanel({ text: t('web-only plugin: it contributes nothing in this terminal frontend'), tone: 'warning' })
       }
       const source = defaultInstallSource(entry)
       if (action === 'install' && source === undefined) {
-        getSharedEditor(ctx)?.notice?.(`"${entry.displayName}" has no common install source for every package`)
+        reportInPanel({ text: `"${entry.displayName}" has no common install source for every package`, tone: 'danger' })
         return
       }
-      void operate(entry, action, source ?? 'npm').then(() => {
+      void operate(entry, action, source ?? 'npm', reportInPanel).then(() => {
         if (unloaded) return
         panel.invalidate()
         display.screen.requestRender()
@@ -402,11 +423,14 @@ export function registerPluginCommand(ctx: Context): () => void {
       if (action.kind === 'plugin-market/install') runOperation(id, 'install')
       else if (action.kind === 'plugin-market/uninstall') runOperation(id, 'uninstall')
       else if (action.kind === 'plugin-market/refresh') {
+        reportInPanel({ text: t('refreshing plugin catalog...'), tone: 'muted' })
         void reload(true).then(result => {
           /* v8 ignore next -- a fiber unload landing inside the refresh await is a shutdown race */
           if (unloaded) return
           if (result.status === 'offline') {
-            getSharedEditor(ctx)?.notice?.(t('refresh failed: {message}', { message: result.message }))
+            reportInPanel({ text: t('refresh failed: {message}', { message: result.message }), tone: 'danger' })
+          } else {
+            reportInPanel({ text: t('refreshed {count} entries', { count: String(result.index.entries.length) }), tone: 'success' })
           }
           panel.invalidate()
           display.screen.requestRender()
@@ -416,7 +440,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     }
 
     let restore: () => void
-    const panel = new CanonicalDocumentController({
+    panel = new CanonicalDocumentController({
       keymap: display.keymap,
       theme: display.theme,
       components: display.components,
@@ -436,11 +460,17 @@ export function registerPluginCommand(ctx: Context): () => void {
         return undefined
       },
       contextHints: () => [{
+        id: 'navigate',
+        keys: t('←→ tabs · ↑↓ select'),
+        compact: '←→/↑↓',
+        priority: 98,
+      }, {
         id: 'plugin-operations',
         keys: t('i install · u remove · r refresh'),
         compact: 'i/u/r',
         priority: 95,
       }],
+      initialGroup,
     })
     restore = mountEditorReplacement(ctx, panel)
     const offLocale = observeInteractionLocale(ctx, () => {
@@ -466,7 +496,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     handler: async (invocation): Promise<CommandOutcome> => {
       const raw = invocation.rawInput.trim()
       if (raw === '') {
-        return openBrowse('catalog')
+        return openBrowse('not-installed')
       }
       const tokens = raw.split(/\s+/)
       const verb = tokens[0]!

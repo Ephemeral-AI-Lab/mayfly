@@ -180,6 +180,29 @@ async function mountWorld(options: {
   }
 }
 
+interface BrowserPanel {
+  handleInput(data: string): void
+  currentNode(): unknown
+  render(width: number): string[]
+  onEvent(event: { kind: string, controlId: string, tabId?: string, value?: unknown }): void
+}
+
+/** Select one browser tab through the canonical tab event. */
+function selectBrowserTab(panel: BrowserPanel, tabId: 'installed' | 'not-installed'): void {
+  panel.onEvent({ kind: 'tab-change', controlId: 'frontend-panel-groups', tabId })
+}
+
+/** Activate one list row through the canonical selection event. */
+function activateBrowserRow(panel: BrowserPanel, id: string): void {
+  panel.onEvent({ kind: 'selection-change', controlId: 'frontend-panel-list', value: id })
+}
+
+/** Read the canonical tabs node from a plugin browser. */
+function browserTabs(panel: BrowserPanel): unknown {
+  const node = panel.currentNode() as { child: { children: Array<{ node: { kind?: string } }> } }
+  return node.child.children.find(child => child.node.kind === 'tabs')?.node
+}
+
 describe('installer unit seams', () => {
   it('composes npm and github specs, including monorepo subdirectories', () => {
     const row = entry().install.rows[0]!
@@ -213,6 +236,15 @@ describe('installer unit seams', () => {
     expect(currentProfileInstallBlock(acp)).toContain('owns stdio')
     expect(await installEntry({ dshBin: 'dsh', profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: acp, source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('dedicated non-Mayfly profile') })
+    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
+  })
+
+  it('refuses to reinstall an entry while any of its rows are present', async () => {
+    const root = mkdtempTracked('mayfly-install-')
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.4' } }))
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    expect(await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' }))
+      .toMatchObject({ kind: 'error', text: expect.stringContaining('already or partially installed') })
     expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
   })
 
@@ -422,6 +454,49 @@ describe('installer unit seams', () => {
     expect(await uninstallEntry({ dshBin: 'dsh', profile: 'p', root: uninstallRoot, entry: withPatch, source: 'npm' }))
       .toMatchObject({ kind: 'error', text: expect.stringContaining('cleaning up') })
   })
+
+  it('import-checks new packages and restores the profile when compatibility fails', async () => {
+    const root = mkdtempTracked('mayfly-install-')
+    const files = {
+      'package.json': JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0' }, dsh: { profile: { bundles: ['@ephemeral-ai/mayfly'] } } }),
+      'pnpm-lock.yaml': 'lockfileVersion: 9\n',
+      'pnpm-workspace.yaml': 'packages:\n  - .\nallowBuilds:\n  node-pty: false\n',
+      'cordis.patch.yml': '# user layer\n[]\n',
+    }
+    for (const [file, text] of Object.entries(files)) writeFileSync(join(root, file), text)
+    const phases: string[] = []
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'does not provide an export named CallId', timedOut: false }
+      if (args.includes('add')) {
+        writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0', 'dsh-loop': 'github:x' } }))
+      }
+      return ok()
+    })
+    const outcome = await installEntry({
+      dshBin: 'dsh', profile: 'p', root,
+      entry: entry({ install: { allowBuilds: ['node-pty'], rows: entry().install.rows } }),
+      source: 'npm', onProgress: phase => phases.push(phase),
+    })
+    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('changes rolled back') })
+    expect(outcome.kind === 'error' ? outcome.text : '').toContain('CallId')
+    expect(phases).toEqual(['verify', 'rollback'])
+    for (const [file, text] of Object.entries(files)) expect(updaterInternals.readTextFile(join(root, file))).toBe(text)
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith(process.execPath, expect.arrayContaining(['--input-type=module']), expect.objectContaining({ cwd: root }))
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'remove', 'dsh-loop'], expect.any(Object))
+  })
+
+  it('reports an incomplete rollback while still restoring captured files', async () => {
+    const root = mkdtempTracked('mayfly-install-')
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0' } }))
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false }
+      if (args.includes('remove')) return { code: 1, signal: null, stdout: '', stderr: 'remove failed', timedOut: false }
+      return ok()
+    })
+    const outcome = await installEntry({ dshBin: 'dsh', profile: 'p', root, entry: entry(), source: 'npm' })
+    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('rollback incomplete') })
+    expect(updaterInternals.readTextFile(join(root, 'package.json'))).toBe(JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0' } }))
+  })
 })
 
 describe('/plugin browse panel', () => {
@@ -431,10 +506,15 @@ describe('/plugin browse panel', () => {
     expect(result).toEqual({ kind: 'success' })
     const panel = world.overlay()
     expect(panel).toBeDefined()
-    const controller = panel as { currentNode(): { kind: string, child?: { children?: Array<{ node: unknown }> } }, render(width: number): string[] }
+    const controller = panel as BrowserPanel
     const node = controller.currentNode()
     expect(JSON.stringify(node)).toContain('Loop')
     expect(JSON.stringify(node)).toContain('official · Web+Server')
+    expect(browserTabs(controller)).toMatchObject({ kind: 'tabs', activeId: 'not-installed', items: [
+      { id: 'installed', count: 0 },
+      { id: 'not-installed', count: 1 },
+    ] })
+    expect(JSON.stringify(node)).toContain('Install')
     expect(controller.render(80).join('\n')).toContain('i install · u remove · r refresh')
     expect(controller.render(36).join('\n')).toContain('i/u/r')
     world.dispose()
@@ -479,10 +559,10 @@ describe('/plugin argument paths', () => {
     expect(detail).toContain('dedicated non-Mayfly profile')
     expect(detail).toContain('dsh plugin --profile <automation-name> add @deepseek-ai/dsh-acp')
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void, currentNode(): unknown }
+    const panel = world.overlay() as BrowserPanel
     expect(JSON.stringify(panel.currentNode())).toContain('Automation')
     panel.handleInput('i')
-    expect(world.notices).toContain('automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile')
+    expect(JSON.stringify(panel.currentNode())).toContain('automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile')
     world.dispose()
   })
 
@@ -649,28 +729,93 @@ describe('/plugin argument paths', () => {
 })
 
 describe('/plugin key paths', () => {
+  it('shows compatibility rollback progress and failure in the panel', async () => {
+    let releaseRollback: (() => void) | undefined
+    const rollbackGate = new Promise<void>(resolve => { releaseRollback = resolve })
+    const world = await mountWorld({ index: [entry()] })
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      if (cmd === 'sh') return ok('/usr/bin/dsh\n')
+      if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'missing export', timedOut: false }
+      if (args.includes('remove')) await rollbackGate
+      return ok()
+    })
+    await world.run('/plugin')
+    const panel = world.overlay() as BrowserPanel
+    panel.handleInput('i')
+    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('rolling back "Loop"...'))
+    releaseRollback?.()
+    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('changes rolled back'))
+    expect(browserTabs(panel)).toMatchObject({ activeId: 'not-installed', items: [
+      { id: 'installed', count: 0 }, { id: 'not-installed', count: 1 },
+    ] })
+    world.dispose()
+  })
+
+  it('shows progress and moves a plugin between tabs after visible actions complete', async () => {
+    let releaseInstall: (() => void) | undefined
+    const installGate = new Promise<void>(resolve => { releaseInstall = resolve })
+    let releaseVerify: (() => void) | undefined
+    const verifyGate = new Promise<void>(resolve => { releaseVerify = resolve })
+    const world = await mountWorld({ index: [entry()] })
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      if (cmd === 'sh') return ok('/usr/bin/dsh\n')
+      if (cmd === process.execPath) {
+        await verifyGate
+        return ok()
+      }
+      const manifestPath = join(world.root, 'package.json')
+      const manifest = JSON.parse(updaterInternals.readTextFile(manifestPath) ?? '{}') as { dependencies: Record<string, string> }
+      if (args.includes('add')) {
+        await installGate
+        manifest.dependencies['dsh-loop'] = '0.1.4'
+        mkdirSync(join(world.root, 'node_modules', 'dsh-loop'), { recursive: true })
+        writeFileSync(join(world.root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ version: '0.1.4' }))
+      } else if (args.includes('remove')) {
+        delete manifest.dependencies['dsh-loop']
+      }
+      writeFileSync(manifestPath, JSON.stringify(manifest))
+      return ok()
+    })
+    await world.run('/plugin')
+    const panel = world.overlay() as BrowserPanel
+    expect(JSON.stringify(panel.currentNode())).toContain('Install')
+    panel.onEvent({ kind: 'activate', controlId: 'frontend-panel-secondary' })
+    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('installing "Loop"...'))
+    releaseInstall?.()
+    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('checking "Loop" compatibility...'))
+    releaseVerify?.()
+    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('installed; restart Mayfly'))
+    expect(browserTabs(panel)).toMatchObject({ items: [{ id: 'installed', count: 1 }, { id: 'not-installed', count: 0 }] })
+    selectBrowserTab(panel, 'installed')
+    expect(JSON.stringify(panel.currentNode())).toContain('Uninstall')
+    panel.onEvent({ kind: 'activate', controlId: 'frontend-panel-secondary' })
+    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('removed; restart Mayfly'))
+    expect(browserTabs(panel)).toMatchObject({ items: [{ id: 'installed', count: 0 }, { id: 'not-installed', count: 1 }] })
+    world.dispose()
+  })
+
   it('i installs the selected row and u removes it, r refreshes', async () => {
     const world = await mountWorld({
       index: [entry()],
       profileDependencies: { 'dsh-loop': '0.1.4' },
       installedVersions: { 'dsh-loop': '0.1.4' },
     })
-    await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void, currentNode(): unknown }
+    await world.run('/plugin list')
+    const panel = world.overlay() as BrowserPanel
     panel.handleInput('u')
     await new Promise(resolve => setTimeout(resolve, 5))
     expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true)
     world.dispose()
   })
 
-  it('u on an uninstalled entry only flashes a notice', async () => {
+  it('u on an uninstalled entry reports inside the panel', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void }
+    const panel = world.overlay() as BrowserPanel
     panel.handleInput('u')
     await new Promise(resolve => setTimeout(resolve, 5))
     expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
-    expect(world.notices).toContain('"Loop" is not installed in this profile')
+    expect(panel.render(100).join('\n')).toContain('"Loop" is not installed in this profile')
     world.dispose()
   })
 
@@ -691,12 +836,12 @@ describe('/plugin key paths', () => {
     expect(await world.run('/plugin install mixed')).toMatchObject({ kind: 'error', text: expect.stringContaining('no common install source') })
     await world.run('/plugin info mixed')
     expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('add <mixed>')
-    await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void }
+    await world.run('/plugin list')
+    const panel = world.overlay() as BrowserPanel
     panel.handleInput('i')
+    expect(panel.render(100).join('\n')).toContain('"Mixed" has no common install source for every package')
     panel.handleInput('u')
     await new Promise(resolve => setTimeout(resolve, 5))
-    expect(world.notices).toContain('"Mixed" has no common install source for every package')
     expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true)
     expect(await world.run('/plugin uninstall mixed')).toEqual({ kind: 'success' })
     world.dispose()
@@ -713,7 +858,9 @@ describe('/plugin key paths', () => {
     })
     const world = await mountWorld({ index: [multi], profileDependencies: { 'multi-a': '1.0.0' } })
     await world.run('/plugin list')
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    const panel = world.overlay() as BrowserPanel
+    selectBrowserTab(panel, 'not-installed')
+    const json = JSON.stringify(panel.currentNode())
     expect(json).toContain('partial')
     expect(json.match(/Multi Row/gu)).toHaveLength(1)
     world.dispose()
@@ -752,12 +899,12 @@ describe('/plugin coverage corners', () => {
       return realSpawn(cmd, args)
     })
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void }
+    const panel = world.overlay() as BrowserPanel
     panel.handleInput('i')
     await new Promise(resolve => setTimeout(resolve, 5))
     panel.handleInput('I')
     await new Promise(resolve => setTimeout(resolve, 5))
-    expect(world.notices).toContain('a plugin operation is already running')
+    expect(JSON.stringify(panel.currentNode())).toContain('a plugin operation is already running')
     release?.()
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(world.spawns.filter(spawn => spawn.args.includes('add'))).toHaveLength(1)
@@ -787,16 +934,13 @@ describe('/plugin coverage corners', () => {
   it('Enter opens the detail overlay above the browse panel; Escape pops it', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void }
+    const panel = world.overlay() as BrowserPanel
     expect(world.screen.overlays).toHaveLength(1)
     await vi.waitFor(() => {
       expect(JSON.stringify(panel.currentNode())).toContain('Loop')
     })
-    // Compile the surface once, then step focus into the list and activate
-    // the row (the trace-command spec's driving discipline).
-    ;(panel as unknown as { render(width: number): string[] }).render(80)
-    panel.handleInput(KEY.tab)
-    panel.handleInput(KEY.enter)
+    // The canonical list emits the same selection action Enter dispatches.
+    activateBrowserRow(panel, 'loop')
     await vi.waitFor(() => {
       expect(world.screen.overlays).toHaveLength(2)
     })
@@ -810,13 +954,13 @@ describe('/plugin coverage corners', () => {
   it('r refreshes through the panel, hotkeys are case-insensitive, and other keys pass through', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void }
+    const panel = world.overlay() as BrowserPanel
     panel.handleInput('R')
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(updaterInternals.fetchText).toHaveBeenCalled()
     panel.handleInput('U')
     await new Promise(resolve => setTimeout(resolve, 5))
-    expect(world.notices).toContain('"Loop" is not installed in this profile')
+    expect(panel.render(100).join('\n')).toContain('"Loop" is not installed in this profile')
     // Any other printable key starts the built-in type-to-filter instead.
     panel.handleInput('x')
     world.dispose()
@@ -836,10 +980,11 @@ describe('/plugin coverage corners', () => {
     const webOnly = entry({ id: 'panel', displayName: 'Panel', surfaces: { web: { clientModule: true } } })
     const world = await mountWorld({ index: [webOnly] })
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void }
+    const panel = world.overlay() as BrowserPanel
     panel.handleInput('i')
+    expect(JSON.stringify(panel.currentNode())).toContain('web-only plugin: it contributes nothing in this terminal frontend')
     await new Promise(resolve => setTimeout(resolve, 10))
-    expect(world.notices).toContain('web-only plugin: it contributes nothing in this terminal frontend')
+    expect(JSON.stringify(panel.currentNode())).toContain('installed; restart Mayfly and start a new session to apply')
     expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(true)
     world.dispose()
   })
@@ -989,15 +1134,14 @@ describe('/plugin lifecycle and locale', () => {
     })
     const world = await mountWorld({ index: [entry(), tui] })
     await world.run('/plugin')
-    const browse = world.overlay() as { handleInput(data: string): void, currentNode(): unknown }
+    const browse = world.overlay() as BrowserPanel
     let json = JSON.stringify(browse.currentNode())
     expect(json).toContain('Tui Pane')
     expect(json).toContain('TUI+Server')
     expect(json).toContain('unstable')
     // Enter → detail above the browse panel; both observers re-render on a
     // preference switch, and the zh description takes over.
-    ;(browse as unknown as { render(width: number): string[] }).render(80)
-    browse.handleInput(KEY.enter)
+    activateBrowserRow(browse, 'loop')
     await vi.waitFor(() => {
       expect(world.screen.overlays).toHaveLength(2)
     })
@@ -1020,7 +1164,7 @@ describe('/plugin lifecycle and locale', () => {
     world.dispose()
   })
 
-  it('covers the info error paths and the installed-mode stray row hotkey', async () => {
+  it('covers info errors and excludes unindexed profile dependencies from market tabs', async () => {
     const world = await mountWorld({
       index: [entry()],
       profileDependencies: { 'stray-pkg': '1.0.0' },
@@ -1030,11 +1174,10 @@ describe('/plugin lifecycle and locale', () => {
     expect(await bare.run('/plugin info loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('not mounted') })
     bare.dispose()
     await world.run('/plugin list')
-    const panel = world.overlay() as { handleInput(data: string): void, currentNode(): unknown }
+    const panel = world.overlay() as BrowserPanel
     const json = JSON.stringify(panel.currentNode())
-    expect(json).toContain('stray-pkg')
-    expect(json).toContain('removed')
-    // i on the stray row resolves no entry and stays a no-op.
+    expect(json).not.toContain('stray-pkg')
+    expect(json).toContain('no plugins installed')
     panel.handleInput('i')
     await new Promise(resolve => setTimeout(resolve, 5))
     expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toHaveLength(0)
@@ -1114,13 +1257,13 @@ describe('/plugin final coverage corners', () => {
     // Load a cached catalog so the panel opens, then go offline for the key.
     updaterInternals.writeTextFile(join(world.root, '..', '..', 'storages', 'mayfly-plugin-market', 'cache.json'), JSON.stringify({ fetchedAt: 1_000_000, text: indexJson([entry()]) }))
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void }
+    const panel = world.overlay() as BrowserPanel
     updaterInternals.fetchText = vi.fn(async () => {
       throw new Error('offline now')
     })
     panel.handleInput('r')
     await new Promise(resolve => setTimeout(resolve, 10))
-    expect(world.notices.some(notice => notice.startsWith('refresh failed:'))).toBe(true)
+    expect(JSON.stringify(panel.currentNode())).toContain('refresh failed:')
     world.dispose()
   })
 

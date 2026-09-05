@@ -77,6 +77,8 @@ export interface FrontendPanelOptions {
   readonly t?: MayflyTranslate
   readonly contextHints?: () => readonly CanonicalContextHint[]
   readonly showSelectedVariantInFooter?: boolean
+  /** Group selected on first render; later user navigation remains authoritative. */
+  readonly initialGroup?: string
 }
 
 /** Canonical panel controller preserving the former panel interaction set. */
@@ -88,9 +90,11 @@ export class CanonicalDocumentController implements MayflyFocusable {
   private filterEditing = false
   private group = 0
   private groupId: string | undefined
+  private initialGroup: string | undefined
   private readonly selectedVariants = new Map<string, string>()
 
   constructor(private readonly options: FrontendPanelOptions) {
+    this.initialGroup = options.initialGroup
     this.adapter = new CanonicalPanelAdapter({
       components: options.components,
       theme: options.theme,
@@ -119,7 +123,12 @@ export class CanonicalDocumentController implements MayflyFocusable {
       return
     }
     if (!model.filterable && (data === 'q' || data === 'Q')) { this.cancel(); return }
-    const unhandled = this.options.onUnhandledInput?.(data, this.resolveSelectedId(model))
+    if (model.filterable === true && !this.filterEditing && data === '/') {
+      this.filterEditing = true
+      this.adapter.invalidate()
+      return
+    }
+    const unhandled = this.filterEditing ? undefined : this.options.onUnhandledInput?.(data, this.resolveSelectedId(model))
     if (unhandled !== undefined) { void this.options.onAction(unhandled); return }
     if (model.variantNavigation === 'inline' && (data === KEY_LEFT || data === KEY_RIGHT) && this.listIsActive(model)) {
       this.moveVariant(model, data === KEY_LEFT ? -1 : 1)
@@ -240,7 +249,7 @@ export class CanonicalDocumentController implements MayflyFocusable {
       ] : []),
       ...(!hasRows && model.view !== undefined ? [{ id: 'scroll', keys: '↑↓/PgUp/PgDn', label: 'scroll', compact: 'PgUp/PgDn', priority: 90 }] : []),
       ...(this.filterEditing ? [{ id: 'dismiss', keys: 'Esc', label: 'finish search', priority: 96 }] : []),
-      ...(this.options.contextHints?.() ?? []),
+      ...(this.filterEditing ? [] : this.options.contextHints?.() ?? []),
     ]
   }
 
@@ -326,6 +335,16 @@ export class CanonicalDocumentController implements MayflyFocusable {
   }
 
   private activeGroup(groups: readonly string[]): string {
+    if (this.groupId === undefined && this.initialGroup !== undefined) {
+      const index = groups.indexOf(this.initialGroup)
+      if (index >= 0) {
+        this.group = index
+        this.groupId = this.initialGroup
+        this.initialGroup = undefined
+        return this.groupId
+      }
+      return groups[this.group]!
+    }
     if (this.groupId !== undefined) {
       const index = groups.indexOf(this.groupId)
       if (index >= 0) {
