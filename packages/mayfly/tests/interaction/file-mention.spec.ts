@@ -5,8 +5,8 @@
  * semantics (kind detection, skip set, caps, and abort behavior).
  */
 
-import { mkdirSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, mkdirSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs'
+import { delimiter, join, sep } from 'node:path'
 import * as fsPromises from 'node:fs/promises'
 import * as os from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -34,7 +34,8 @@ const savedCwd = process.cwd()
 
 afterEach(() => {
   setFdProbe(undefined)
-  process.env.PATH = savedPath
+  if (savedPath === undefined) delete process.env.PATH
+  else process.env.PATH = savedPath
   process.chdir(savedCwd)
   vi.restoreAllMocks()
 })
@@ -54,11 +55,15 @@ function fixture(): string {
   return dir
 }
 
-/** A fake `fd` binary that prints one fixed line regardless of arguments. */
-function fakeFdBin(line: string): string {
+/** Native version-probe fixture; Windows executes Node directly without a shell. */
+function fakeFdBin(binary: 'fd' | 'fdfind' = 'fd'): string {
   const bin = mkdtempTracked('mayfly-mention-bin-')
-  const fd = join(bin, 'fd')
-  writeFileSync(fd, `#!/bin/sh\nprintf '${line}\\n'\n`)
+  if (process.platform === 'win32') {
+    copyFileSync(process.execPath, join(bin, `${binary}.exe`))
+    return bin
+  }
+  const fd = join(bin, binary)
+  writeFileSync(fd, '#!/bin/sh\nprintf "fd 8.0\\n"\n')
   chmodSync(fd, 0o755)
   return bin
 }
@@ -121,19 +126,17 @@ describe('detectFdPath', () => {
   })
 
   it('finds fd on the PATH through the default probe', async () => {
-    process.env.PATH = `${fakeFdBin('src/')}:${savedPath ?? ''}`
+    process.env.PATH = `${fakeFdBin()}${delimiter}${savedPath ?? ''}`
     await expect(detectFdPath(probeState())).resolves.toBe('fd')
   })
 
   it('falls back to fdfind when fd is absent', async () => {
-    const bin = fakeFdBin('src/')
-    const fd = join(bin, 'fd')
-    const fdfind = join(bin, 'fdfind')
-    writeFileSync(fd, '#!/bin/sh\nexit 1\n')
-    chmodSync(fd, 0o755)
-    // The stand-in must not invoke fd itself (the broken one would fail it).
-    writeFileSync(fdfind, '#!/bin/sh\necho fdfind 8.0\n')
-    chmodSync(fdfind, 0o755)
+    const bin = fakeFdBin('fdfind')
+    if (process.platform !== 'win32') {
+      const fd = join(bin, 'fd')
+      writeFileSync(fd, '#!/bin/sh\nexit 1\n')
+      chmodSync(fd, 0o755)
+    }
     process.env.PATH = bin
     await expect(detectFdPath(probeState())).resolves.toBe('fdfind')
   })
@@ -149,7 +152,7 @@ describe('fsMentionSuggestions', () => {
     const root = fixture()
     expect((await fsMentionSuggestions(root, '@src/a', signal()))?.items.map(item => item.value)).toEqual(['@src/a.ts'])
     expect((await fsMentionSuggestions(root, '@"a b', signal()))?.items.map(item => item.value)).toEqual(['@"a b.txt"'])
-    expect((await fsMentionSuggestions(root, `@${root}/src/a`, signal()))?.items[0]?.value).toBe(`@${root}/src/a.ts`)
+    expect((await fsMentionSuggestions(root, `@${root}/src/a`, signal()))?.items[0]?.description).toBe(`${root.split(sep).join('/')}/src/a.ts`)
     if (process.platform !== 'win32') {
       writeFileSync(join(root, 'literal\\name.txt'), 'x')
       expect((await fsMentionSuggestions(root, '@literal\\na', signal(), 'linux'))?.items[0]?.value).toBe('@literal\\name.txt')
@@ -204,7 +207,7 @@ describe('fsMentionSuggestions', () => {
 
   it('counts a symlink pointing at a directory as a directory without descending it', async () => {
     const root = fixture()
-    symlinkSync(join(root, 'src'), join(root, 'link'))
+    symlinkSync(join(root, 'src'), join(root, 'link'), process.platform === 'win32' ? 'junction' : 'dir')
     process.chdir(root)
     const all = await fsMentionSuggestions(root, '@', signal())
     // `link` ranks as a directory (shallow, +10) while `src`'s contents
@@ -216,7 +219,7 @@ describe('fsMentionSuggestions', () => {
 
   it('keeps a broken symlink as a file candidate', async () => {
     const root = fixture()
-    symlinkSync(join(root, 'no-such-target'), join(root, 'broken'))
+    symlinkSync(join(root, 'no-such-target'), join(root, 'broken'), process.platform === 'win32' ? 'junction' : 'dir')
     const suggestions = await fsMentionSuggestions(root, '@broken', signal())
     expect(suggestions?.items).toEqual([{ value: '@broken', label: 'broken', description: 'broken' }])
   })
@@ -257,6 +260,7 @@ describe('fsMentionSuggestions', () => {
 
   it('scores basename containment below prefix matches and boosts directories', async () => {
     const root = fixture()
+    expect((await fsMentionSuggestions(root, '@src', signal()))?.items.map(item => item.value)).toEqual(['@src/', '@src/a.ts', '@src/b.ts'])
     // 'op' sits inside top.md's basename but not at its start; src/a.ts
     // matches only through its path.
     const suggestions = await fsMentionSuggestions(root, '@op', signal())
@@ -306,12 +310,12 @@ describe('fsMentionSuggestions', () => {
     })
   })
 
-  it('drills into a typed base, preserving it verbatim in the values', async () => {
+  it('drills into a typed base, normalizing separators in the display paths', async () => {
     const root = fixture()
     const relative = await listDirectoryMentions(root, '@src/', signal())
     expect(relative?.items.map(item => item.value)).toEqual(['@src/a.ts', '@src/b.ts'])
     const absolute = await listDirectoryMentions(root, `@${root}/`, signal())
-    expect(absolute?.items.map(item => item.value)).toContain(`@${root}/src/`)
+    expect(absolute?.items.map(item => item.description)).toContain(`${root.split(sep).join('/')}/src`)
     const home = await listDirectoryMentions(root, '@~/', signal())
     expect(home).not.toBeNull()
   })
@@ -323,7 +327,7 @@ describe('fsMentionSuggestions', () => {
     const empty = mkdtempTracked('mayfly-mention-emptydir-')
     await expect(listDirectoryMentions(empty, '@', signal())).resolves.toBeNull()
     const locked = mkdtempTracked('mayfly-mention-locked-')
-    chmodSync(locked, 0o000)
+    vi.spyOn(fsPromises, 'readdir').mockRejectedValueOnce(Object.assign(new Error('permission denied'), { code: 'EACCES' }))
     await expect(listDirectoryMentions(locked, '@', signal())).resolves.toBeNull()
   })
 
@@ -340,8 +344,8 @@ describe('fsMentionSuggestions', () => {
 
   it('counts symlinked directories as directories and broken symlinks as files', async () => {
     const root = fixture()
-    symlinkSync(join(root, 'src'), join(root, 'link'))
-    symlinkSync(join(root, 'no-such-target'), join(root, 'broken'))
+    symlinkSync(join(root, 'src'), join(root, 'link'), process.platform === 'win32' ? 'junction' : 'dir')
+    symlinkSync(join(root, 'no-such-target'), join(root, 'broken'), process.platform === 'win32' ? 'junction' : 'dir')
     const suggestions = await listDirectoryMentions(root, '@', signal())
     const values = suggestions?.items.map(item => item.value)
     expect(values).toContain('@link/')
