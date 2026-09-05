@@ -172,8 +172,9 @@ class SnapshotHandle<Node> {
   set(node: Node, update?: MayflySnapshotUpdate): void {
     if (!this.live) return
     const frozen = freezeWire(node)
+    const admittedUpdate = freezeWire(update)
     this.revisionValue += 1
-    this.publish(frozen, this.revisionValue, update)
+    this.publish(frozen, this.revisionValue, admittedUpdate)
   }
 
   dispose(): void {
@@ -189,18 +190,20 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
   constructor(ctx: Context) { super(ctx, 'mayflyPanes') }
 
   register(definition: MayflyPaneDefinition, initialNode: MayflyUiNode | null = null): MayflyPaneRegistration {
-    validatePaneDefinition(definition)
-    if (this.entries.has(definition.id)) throw new Error(`pane "${definition.id}" is already registered`)
     const admittedDefinition = freezeWire(definition)
+    validatePaneDefinition(admittedDefinition)
+    const id = admittedDefinition.id
+    if (this.entries.has(id)) throw new Error(`pane "${id}" is already registered`)
+    const admittedNode = freezeWire(initialNode)
     const publish = (node: MayflyUiNode | null, revision: number, update?: MayflySnapshotUpdate): void => {
-      const entry = Object.freeze({ id: definition.id, definition: admittedDefinition, node, revision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
-      this.entries.set(definition.id, entry)
+      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+      this.entries.set(id, entry)
       this.upsert(entry)
     }
     let handle!: SnapshotHandle<MayflyUiNode | null>
     const remove = (revision: number): void => {
-      this.entries.delete(definition.id)
-      this.remove(definition.id, revision)
+      this.entries.delete(id)
+      this.remove(id, revision)
     }
     handle = new SnapshotHandle(publish, remove)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
@@ -210,7 +213,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       originalDispose()
       cleanup()
     }
-    publish(freezeWire(initialNode), 0)
+    publish(admittedNode, 0)
     return handle
   }
 
@@ -238,9 +241,11 @@ class OverlayHandle implements MayflyOverlayHandle {
 
   set(node: MayflyUiNode, update?: MayflySnapshotUpdate): void {
     if (!this.live) return
-    this.node = freezeWire(node)
+    const frozen = freezeWire(node)
+    const admittedUpdate = freezeWire(update)
+    this.node = frozen
     this.revisionValue += 1
-    this.publish(this.revisionValue, this.hiddenValue, this.focusRevisionValue, this.node, update)
+    this.publish(this.revisionValue, this.hiddenValue, this.focusRevisionValue, this.node, admittedUpdate)
   }
 
   focus(): void {
@@ -275,25 +280,26 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
   constructor(ctx: Context) { super(ctx, 'mayflyOverlays') }
 
   open(definition: MayflyOverlayDefinition, initialNode: MayflyUiNode): MayflyOverlayHandle {
-    validateOverlayDefinition(definition)
-    if (this.entries.has(definition.id)) throw new Error(`overlay "${definition.id}" is already open`)
     const admittedDefinition = freezeWire(definition)
+    validateOverlayDefinition(admittedDefinition)
+    const id = admittedDefinition.id
+    if (this.entries.has(id)) throw new Error(`overlay "${id}" is already open`)
     let node = freezeWire(initialNode)
     const order = this.nextOrder++
     const publish = (revision: number, hidden: boolean, focusRevision: number, nextNode?: MayflyUiNode, update?: MayflySnapshotUpdate): void => {
       node = nextNode ?? node
-      const entry = Object.freeze({ id: definition.id, definition: admittedDefinition, node, revision, order, hidden, focusRevision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
-      this.entries.set(definition.id, entry)
+      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision, order, hidden, focusRevision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+      this.entries.set(id, entry)
       this.upsert(entry)
     }
     let handle!: OverlayHandle
     const remove = (revision: number): void => {
-      this.handles.delete(definition.id)
-      this.entries.delete(definition.id)
-      this.remove(definition.id, revision)
+      this.handles.delete(id)
+      this.entries.delete(id)
+      this.remove(id, revision)
     }
     handle = new OverlayHandle(publish, remove, node)
-    this.handles.set(definition.id, handle)
+    this.handles.set(id, handle)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
@@ -323,18 +329,20 @@ export class MayflyStatusService extends ObservableRegistry<MayflyStatusEntry> i
   constructor(ctx: Context) { super(ctx, 'mayflyStatus') }
 
   register(definition: MayflyStatusDefinition, initialNode: MayflyStatusNode | null = null): MayflyStatusRegistration {
-    validateStatusDefinition(definition)
-    if (this.entries.has(definition.id)) throw new Error(`status "${definition.id}" is already registered`)
     const admittedDefinition = freezeWire(definition)
+    validateStatusDefinition(admittedDefinition)
+    const id = admittedDefinition.id
+    if (this.entries.has(id)) throw new Error(`status "${id}" is already registered`)
+    const admittedNode = freezeWire(initialNode)
     const publish = (node: MayflyStatusNode | null, revision: number): void => {
-      const entry = Object.freeze({ id: definition.id, definition: admittedDefinition, node, revision })
-      this.entries.set(definition.id, entry)
+      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision })
+      this.entries.set(id, entry)
       this.upsert(entry)
     }
     let handle!: SnapshotHandle<MayflyStatusNode | null>
     const remove = (revision: number): void => {
-      this.entries.delete(definition.id)
-      this.remove(definition.id, revision)
+      this.entries.delete(id)
+      this.remove(id, revision)
     }
     handle = new SnapshotHandle(publish, remove)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
@@ -344,7 +352,7 @@ export class MayflyStatusService extends ObservableRegistry<MayflyStatusEntry> i
       originalDispose()
       cleanup()
     }
-    publish(freezeWire(initialNode), 0)
+    publish(admittedNode, 0)
     return handle
   }
 
@@ -360,18 +368,20 @@ export class MayflyEditorExtensionService extends ObservableRegistry<MayflyEdito
   constructor(ctx: Context) { super(ctx, 'mayflyEditorExtensions') }
 
   register(definition: MayflyEditorExtensionDefinition, initialDecoration: MayflyEditorDecoration = {}): MayflyEditorExtensionRegistration {
-    validateEditorExtensionDefinition(definition)
-    if (this.entries.has(definition.id)) throw new Error(`editor extension "${definition.id}" is already registered`)
     const admittedDefinition = freezeWire(definition)
+    validateEditorExtensionDefinition(admittedDefinition)
+    const id = admittedDefinition.id
+    if (this.entries.has(id)) throw new Error(`editor extension "${id}" is already registered`)
+    const admittedDecoration = freezeWire(initialDecoration)
     const publish = (decoration: MayflyEditorDecoration, revision: number, update?: MayflySnapshotUpdate): void => {
-      const entry = Object.freeze({ id: definition.id, definition: admittedDefinition, decoration, revision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
-      this.entries.set(definition.id, entry)
+      const entry = Object.freeze({ id, definition: admittedDefinition, decoration, revision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+      this.entries.set(id, entry)
       this.upsert(entry)
     }
     let handle!: SnapshotHandle<MayflyEditorDecoration>
     const remove = (revision: number): void => {
-      this.entries.delete(definition.id)
-      this.remove(definition.id, revision)
+      this.entries.delete(id)
+      this.remove(id, revision)
     }
     handle = new SnapshotHandle(publish, remove)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
@@ -381,7 +391,7 @@ export class MayflyEditorExtensionService extends ObservableRegistry<MayflyEdito
       originalDispose()
       cleanup()
     }
-    publish(freezeWire(initialDecoration), 0)
+    publish(admittedDecoration, 0)
     return handle
   }
 

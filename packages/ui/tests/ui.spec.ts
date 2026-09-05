@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { deepFreeze, defineMayflyComponent, ui } from '../src/index.ts'
+import { describe, expect, it, vi } from 'vitest'
+import { deepFreeze, defineMayflyComponent, freezeWire, ui } from '../src/index.ts'
 
 function expectDeepFrozen(value: unknown, seen = new WeakSet<object>()): void {
   if (value === null || typeof value !== 'object' || seen.has(value)) return
@@ -147,6 +147,72 @@ describe('deepFreeze', () => {
     root.self = root
     expect(deepFreeze(root)).toBe(root)
     expectDeepFrozen(root)
+  })
+
+  it('does not invoke accessors or grant snapshot trust', () => {
+    const getter = vi.fn(() => 'changing')
+    const root = Object.defineProperty({}, 'content', { enumerable: true, get: getter })
+    expect(deepFreeze(root)).toBe(root)
+    expect(getter).not.toHaveBeenCalled()
+    expect(() => freezeWire(root)).toThrow('accessors')
+    expect(getter).not.toHaveBeenCalled()
+    const data = deepFreeze({ nested: { value: 1 } })
+    const snapshot = freezeWire(data)
+    expect(snapshot).not.toBe(data)
+    expect(snapshot.nested).not.toBe(data.nested)
+  })
+})
+
+describe('freezeWire snapshot trust', () => {
+  it('reuses only its own deeply immutable snapshots and nested branches', () => {
+    const list = ui.list({ id: 'large', mode: 'single', items: Array.from({ length: 100_000 }, (_, index) => ({ id: String(index), label: String(index) })) })
+    expect(freezeWire(list)).toBe(list)
+    const updated = ui.list({ ...list, filter: 'new', selectedIds: ['1'] })
+    expect(updated).not.toBe(list)
+    expect(updated.items).toBe(list.items)
+    expect(updated.items[0]).toBe(list.items[0])
+    expect(freezeWire({ list }).list).toBe(list)
+    expect(freezeWire(list.items)).toBe(list.items)
+  })
+
+  it('isolates caller-frozen objects and never changes their prototypes', () => {
+    const nested = { value: 'before' }
+    const caller = Object.freeze({ nested })
+    const snapshot = freezeWire(caller)
+    nested.value = 'after'
+    expect(snapshot).toEqual({ nested: { value: 'before' } })
+    expect(snapshot).not.toBe(caller)
+    const special = JSON.parse('{"__proto__":{"inherited":true},"constructor":"data"}') as object
+    const copied = freezeWire(special)
+    expect(Object.getPrototypeOf(copied)).toBe(Object.prototype)
+    expect(Object.hasOwn(copied, '__proto__')).toBe(true)
+    expect(copied).toEqual(special)
+    expectDeepFrozen(copied)
+  })
+
+  it('rejects getters before direct cloning, option spreading, or stack normalization', () => {
+    const getter = vi.fn(() => 'unsafe')
+    const content = Object.defineProperty({ kind: 'text' }, 'content', { enumerable: true, get: getter })
+    const options = Object.defineProperty({}, 'tone', { enumerable: true, get: getter })
+    const children = Object.defineProperty([], '0', { enumerable: true, get: getter })
+    expect(() => freezeWire(content)).toThrow('accessors')
+    expect(() => ui.text('safe', options)).toThrow('accessors')
+    expect(() => ui.child(content as never)).toThrow('accessors')
+    expect(() => ui.stack.row(children)).toThrow('accessors')
+    expect(() => ui.list({ id: 'list', mode: 'single', items: [content as never] })).toThrow('accessors')
+    expect(getter).not.toHaveBeenCalled()
+  })
+
+  it('does not trust snapshots from another module instance', async () => {
+    const snapshot = freezeWire({ nested: { value: 'snapshot' } })
+    vi.resetModules()
+    const other = await import('../src/builders.ts')
+    const copied = other.freezeWire(snapshot)
+    expect(copied).toEqual(snapshot)
+    expect(copied).not.toBe(snapshot)
+    expect(copied.nested).not.toBe(snapshot.nested)
+    expect(other.freezeWire(copied)).toBe(copied)
+    expect(freezeWire(copied)).not.toBe(copied)
   })
 })
 

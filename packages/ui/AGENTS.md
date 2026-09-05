@@ -9,7 +9,12 @@ pi-tui, terminal objects, or mutable product state.
 
 Builders must remain side-effect free and preserve the handwritten wire shape.
 They recursively clone caller-owned wire data before freezing the result and
-reject cycles. Stacks normalize plain nodes to `{ node }`; flex sizing and
+reject cycles and enumerable accessors without invoking getters, including
+before spreading builder options. Only snapshots produced by the same module's
+`freezeWire` may share immutable object identities; arbitrary frozen objects,
+`deepFreeze` results, and other module copies must still be cloned. Keep this
+trust internal and weakly held, without wire metadata or global registration.
+Stacks normalize plain nodes to `{ node }`; flex sizing and
 viewport conditions still require explicit `ui.child(node, options)` wrappers.
 List `detailSpans`, like all inline semantic content, pass through unchanged
 and are cloned/frozen with their list item. Do not add hidden layout metadata
@@ -27,4 +32,7 @@ or create a runtime registry. Core owns schema admission, quotas, and compile.
 Keep runtime source fully covered. Type fixtures must prove component prop
 inference, the explicit child boundary, and rejection of custom node kinds.
 Provider tests must prove registration ownership, delta replay, snapshot set, duplicate
-id rejection, and Fiber cleanup.
+id rejection, and Fiber cleanup. Admit definitions and initial snapshots before
+registering effects; all publication and cleanup must use the admitted id even
+when callers later mutate their definitions. Built root/provider tests must
+prove that trusted builder snapshots retain identity through publication.

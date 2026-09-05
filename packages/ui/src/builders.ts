@@ -1,4 +1,6 @@
-/** Pure builders for Mayfly's renderer-independent public UI wire format. */
+/** Pure builders for Mayfly's renderer-independent public UI wire format.
+ * @module @ephemeral-ai/mayfly-ui/builders
+ */
 import type {
   MayflyActionsNode,
   MayflyChartNode,
@@ -36,6 +38,8 @@ type ChartOptions = MayflyChartNode extends infer Node
   ? Node extends MayflyChartNode ? Omit<Node, 'kind'> : never
   : never
 const COMPONENT_ID_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
+// Only snapshots created here are trusted; other module copies clone safely.
+const wireSnapshots = new WeakSet<object>()
 
 /** Deeply freeze a value in place while tolerating object cycles. */
 export function deepFreeze<Value>(value: Value): Value {
@@ -52,11 +56,12 @@ export function deepFreeze<Value>(value: Value): Value {
   return value
 }
 
-function cloneWire<Value>(value: Value): Value {
+export function freezeWire<Value>(value: Value): Value {
   const clones = new WeakMap<object, object>()
   const active = new WeakSet<object>()
   const clone = (current: unknown): unknown => {
     if (current === null || typeof current !== 'object') return current
+    if (wireSnapshots.has(current)) return current
     if (active.has(current)) throw new TypeError('Mayfly UI wire data must not contain cycles')
     const existing = clones.get(current)
     if (existing !== undefined) return existing
@@ -65,23 +70,23 @@ function cloneWire<Value>(value: Value): Value {
     active.add(current)
     for (const key of Object.keys(current)) {
       const descriptor = Object.getOwnPropertyDescriptor(current, key)!
-      if ('value' in descriptor) (copy as Record<string, unknown>)[key] = clone(descriptor.value)
-      else Object.defineProperty(copy, key, descriptor)
+      if (!('value' in descriptor)) throw new TypeError('Mayfly UI wire data must not contain accessors')
+      Object.defineProperty(copy, key, {
+        value: clone(descriptor.value), enumerable: true, writable: true, configurable: true,
+      })
     }
     active.delete(current)
+    Object.freeze(copy)
+    wireSnapshots.add(copy)
     return copy
   }
   return clone(value) as Value
 }
 
-export function freezeWire<Value>(value: Value): Value {
-  return deepFreeze(cloneWire(value))
-}
-
 const frozen = freezeWire
 
 function text(content: string, options: TextOptions = {}): MayflyTextNode {
-  return frozen({ ...options, kind: 'text', content })
+  return frozen({ ...frozen(options), kind: 'text', content })
 }
 
 function markdown(source: string): MayflyMarkdownNode {
@@ -93,7 +98,7 @@ function fields(rows: MayflyFieldsNode['rows']): MayflyFieldsNode {
 }
 
 function code(value: string, options: CodeOptions = {}): MayflyCodeNode {
-  return frozen({ ...options, kind: 'code', code: value })
+  return frozen({ ...frozen(options), kind: 'code', code: value })
 }
 
 function diff(before: string, after: string): MayflyDiffNode {
@@ -109,7 +114,7 @@ function richText(spans: readonly MayflyInlineSpan[]): MayflyRichTextNode {
 }
 
 function child(node: MayflyUiNode, options: ChildOptions = {}): MayflyUiChild {
-  return frozen({ ...options, node })
+  return frozen({ ...frozen(options), node })
 }
 
 type MayflyStackBareNode = MayflyUiNode & {
@@ -123,52 +128,52 @@ type MayflyStackBareNode = MayflyUiNode & {
 export type MayflyStackItem = MayflyStackBareNode | (MayflyUiChild & { readonly kind?: never })
 
 function stack(direction: MayflyStackNode['direction'], children: readonly MayflyStackItem[], options: StackOptions = {}): MayflyStackNode {
-  const normalized: MayflyUiChild[] = children.map(item => 'kind' in item ? { node: item as MayflyUiNode } : item)
-  return frozen({ ...options, kind: 'stack', direction, children: normalized })
+  const normalized: MayflyUiChild[] = frozen(children).map(item => 'kind' in item ? { node: item as MayflyUiNode } : item)
+  return frozen({ ...frozen(options), kind: 'stack', direction, children: normalized })
 }
 
 function surface(options: Omit<MayflySurfaceNode, 'kind'>): MayflySurfaceNode {
-  return frozen({ ...options, kind: 'surface' })
+  return frozen({ ...frozen(options), kind: 'surface' })
 }
 
 function scroll(node: MayflyUiNode, options: ScrollOptions = {}): MayflyScrollNode {
-  return frozen({ ...options, kind: 'scroll', child: node })
+  return frozen({ ...frozen(options), kind: 'scroll', child: node })
 }
 
 function tabs(options: Omit<MayflyTabsNode, 'kind'>): MayflyTabsNode {
-  return frozen({ ...options, kind: 'tabs' })
+  return frozen({ ...frozen(options), kind: 'tabs' })
 }
 
 function list(options: Omit<MayflyListNode, 'kind'>): MayflyListNode {
-  return frozen({ ...options, kind: 'list' })
+  return frozen({ ...frozen(options), kind: 'list' })
 }
 
 function form(options: Omit<MayflyFormNode, 'kind'>): MayflyFormNode {
-  return frozen({ ...options, kind: 'form' })
+  return frozen({ ...frozen(options), kind: 'form' })
 }
 
 function actions(options: Omit<MayflyActionsNode, 'kind'>): MayflyActionsNode {
-  return frozen({ ...options, kind: 'actions' })
+  return frozen({ ...frozen(options), kind: 'actions' })
 }
 
 function loader(options: Omit<MayflyLoaderNode, 'kind'>): MayflyLoaderNode {
-  return frozen({ ...options, kind: 'loader' })
+  return frozen({ ...frozen(options), kind: 'loader' })
 }
 
 function empty(options: Omit<MayflyEmptyNode, 'kind'>): MayflyEmptyNode {
-  return frozen({ ...options, kind: 'empty' })
+  return frozen({ ...frozen(options), kind: 'empty' })
 }
 
 function progress(options: Omit<MayflyProgressNode, 'kind'>): MayflyProgressNode {
-  return frozen({ ...options, kind: 'progress' })
+  return frozen({ ...frozen(options), kind: 'progress' })
 }
 
 function spacer(options: Omit<MayflySpacerNode, 'kind'> = {}): MayflySpacerNode {
-  return frozen({ ...options, kind: 'spacer' })
+  return frozen({ ...frozen(options), kind: 'spacer' })
 }
 
 function divider(options: Omit<MayflyDividerNode, 'kind'> = {}): MayflyDividerNode {
-  return frozen({ ...options, kind: 'divider' })
+  return frozen({ ...frozen(options), kind: 'divider' })
 }
 
 function diagram(source: string): MayflyDiagramNode {
@@ -176,7 +181,7 @@ function diagram(source: string): MayflyDiagramNode {
 }
 
 function chart(options: ChartOptions): MayflyChartNode {
-  return frozen({ ...options, kind: 'chart' } as MayflyChartNode)
+  return frozen({ ...frozen(options), kind: 'chart' } as MayflyChartNode)
 }
 
 /** Pure builder namespace. Every result is recursively frozen. */

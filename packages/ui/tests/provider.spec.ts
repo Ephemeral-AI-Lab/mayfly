@@ -7,10 +7,100 @@ import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { apply } from '../src/provider.ts'
+import type { MayflyEditorDecoration, MayflyStatusNode } from '../src/contracts.ts'
 
 const packageDir = dirname(fileURLToPath(import.meta.url))
 
+function registryCase(ctx: Context, kind: 'pane' | 'status' | 'overlay' | 'editor') {
+  const register = (definition: { id: string, placement: 'bottom' }, payload: MayflyStatusNode & MayflyEditorDecoration) => {
+    switch (kind) {
+      case 'pane': return ctx.mayflyPanes.register(definition, payload)
+      case 'status': return ctx.mayflyStatus.register(definition, payload)
+      case 'overlay': return ctx.mayflyOverlays.open(definition, payload)
+      case 'editor': return ctx.mayflyEditorExtensions.register(definition, payload)
+    }
+  }
+  const registry = kind === 'pane' ? ctx.mayflyPanes : kind === 'status' ? ctx.mayflyStatus : kind === 'overlay' ? ctx.mayflyOverlays : ctx.mayflyEditorExtensions
+  return { register, registry }
+}
+
 describe('@ephemeral-ai/mayfly-ui provider', () => {
+  it.each(['pane', 'status', 'overlay', 'editor'] as const)('keeps %s identity and cleanup isolated from caller mutations', async kind => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'api-owner', apply })
+    const { register, registry } = registryCase(ctx, kind)
+    const neighbor = register({ id: 'test.neighbor', placement: 'bottom' }, { kind: 'text', content: 'neighbor', hint: 'neighbor' })
+    const deltas = vi.fn()
+    registry.subscribe(deltas)
+    let handle!: ReturnType<typeof register>
+    const definition = { id: 'test.original', placement: 'bottom' as const }
+    const consumer = await ctx.plugin({
+      name: 'mutable-owner',
+      inject: ['mayflyPanes', 'mayflyStatus', 'mayflyOverlays', 'mayflyEditorExtensions'],
+      apply(pluginCtx: Context) {
+        handle = registryCase(pluginCtx, kind).register(definition, { kind: 'text', content: 'first', hint: 'first' })
+      },
+    })
+    for (const id of ['test.unused', 'test.neighbor']) {
+      definition.id = id
+      handle.set({ kind: 'text', content: id, hint: id })
+      expect(registry.list().map(entry => [entry.id, entry.definition.id])).toEqual([
+        ['test.neighbor', 'test.neighbor'], ['test.original', 'test.original'],
+      ])
+      expect(registry.list().find(entry => entry.id === 'test.neighbor')?.revision).toBe(0)
+    }
+    await consumer.dispose()
+    expect(registry.list().map(entry => entry.id)).toEqual(['test.neighbor'])
+    expect(deltas).toHaveBeenLastCalledWith({ kind: 'remove', id: 'test.original', revision: 3 })
+    const count = deltas.mock.calls.length
+    handle.dispose()
+    handle.set({ kind: 'text', content: 'late' })
+    expect(deltas).toHaveBeenCalledTimes(count)
+    if (kind === 'overlay') {
+      expect(ctx.mayflyOverlays.close('test.original')).toBe(false)
+      expect(ctx.mayflyOverlays.close('test.neighbor')).toBe(true)
+    } else neighbor.dispose()
+    await owner.dispose()
+  })
+
+  it.each(['pane', 'status', 'overlay', 'editor'] as const)('makes failed %s admission atomic without invoking getters', async kind => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'api-owner', apply })
+    const { register, registry } = registryCase(ctx, kind)
+    const getter = vi.fn(() => 'test.failed')
+    const definition = Object.defineProperty({ placement: 'bottom' as const }, 'id', { enumerable: true, get: getter }) as { id: string, placement: 'bottom' }
+    const bad = Object.defineProperty({ kind: 'text' as const }, 'content', { enumerable: true, get: getter }) as MayflyStatusNode
+    const cyclic = { kind: 'text' as const, content: 'cycle', self: undefined as unknown }
+    cyclic.self = cyclic
+    const deltas = vi.fn()
+    registry.subscribe(deltas)
+    const consumer = await ctx.plugin({
+      name: 'failed-owner',
+      inject: ['mayflyPanes', 'mayflyStatus', 'mayflyOverlays', 'mayflyEditorExtensions'],
+      apply(pluginCtx: Context) {
+        const scoped = registryCase(pluginCtx, kind)
+        expect(() => scoped.register(definition, { kind: 'text', content: 'safe' })).toThrow('accessors')
+        expect(() => scoped.register({ id: 'test.failed', placement: 'bottom' }, bad)).toThrow('accessors')
+        expect(() => scoped.register({ id: 'test.failed', placement: 'bottom' }, cyclic)).toThrow('cycles')
+      },
+    })
+    expect(deltas).not.toHaveBeenCalled()
+    expect(registry.list()).toEqual([])
+    const good = register({ id: 'test.failed', placement: 'bottom' }, { kind: 'text', content: 'safe', hint: 'safe' })
+    const before = registry.list()[0]
+    expect(() => good.set(bad)).toThrow('accessors')
+    const update = Object.defineProperty({}, 'eventRevision', { enumerable: true, get: getter })
+    expect(() => good.set({ kind: 'text', content: 'rejected' }, update)).toThrow('accessors')
+    expect(good.revision).toBe(0)
+    expect(registry.list()[0]).toBe(before)
+    await consumer.dispose()
+    expect(registry.list()[0]).toBe(before)
+    expect(deltas).toHaveBeenCalledOnce()
+    expect(getter).not.toHaveBeenCalled()
+    good.dispose()
+    await owner.dispose()
+  })
+
   it('provides four direct Fiber-owned registries from an explicit provider entry', async () => {
     const ctx = new Context()
     const fiber = await ctx.plugin({ name: 'api-test', apply })
@@ -106,7 +196,7 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
   it('uses null pane/status nodes as absence and increments every explicit set', async () => {
     const ctx = new Context()
     const owner = await ctx.plugin({ name: 'api-owner', apply })
-    const pane = ctx.mayflyPanes.register({ id: 'pane.optional', placement: 'bottom' })
+    const pane = ctx.mayflyPanes.register({ id: 'pane.optional', placement: 'bottom', size: { min: 1, max: 10, preferred: 5 } })
     const status = ctx.mayflyStatus.register({ id: 'status.optional' })
     expect(ctx.mayflyPanes.list()[0]?.node).toBeNull()
     expect(ctx.mayflyStatus.list()[0]?.node).toBeNull()
@@ -123,7 +213,7 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
   it('opens, updates, focuses, hides, shows, and closes overlays in opening order', async () => {
     const ctx = new Context()
     const owner = await ctx.plugin({ name: 'api-owner', apply })
-    const later = ctx.mayflyOverlays.open({ id: 'overlay.later', capturing: true }, { kind: 'text', content: 'open' })
+    const later = ctx.mayflyOverlays.open({ id: 'overlay.later', capturing: true, width: '60%', maxHeight: 10 }, { kind: 'text', content: 'open' })
     const earlier = ctx.mayflyOverlays.open({ id: 'overlay.earlier' }, { kind: 'text', content: 'second' })
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.later' }, { kind: 'text', content: 'duplicate' })).toThrow('already open')
     expect(() => ctx.mayflyOverlays.open({ id: 'Bad Overlay' }, { kind: 'text', content: 'invalid' })).toThrow('invalid')
@@ -159,10 +249,11 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     )
     expect(() => ctx.mayflyEditorExtensions.register({ id: 'extension.alpha' })).toThrow('already registered')
     expect(() => ctx.mayflyEditorExtensions.register({ id: 'Bad Extension' })).toThrow('invalid')
-    alpha.set({ hint: 'second', diagnostics: [{ id: 'warning', message: 'check' }] })
+    alpha.set({ hint: 'second', diagnostics: [{ id: 'warning', message: 'check' }] }, { eventRevision: 8 })
     expect(ctx.mayflyEditorExtensions.list().map(entry => entry.id)).toEqual(['extension.alpha', 'extension.later'])
     expect(ctx.mayflyEditorExtensions.list()[0]).toMatchObject({
       revision: 1,
+      eventRevision: 8,
       definition: { id: 'extension.alpha' },
       decoration: { hint: 'second' },
     })
