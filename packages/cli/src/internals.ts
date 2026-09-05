@@ -56,7 +56,7 @@ export interface CliInternals {
   env: Record<string, string | undefined>
   /** The running Node binary. */
   execPath: string
-  /** The process platform — the win32 branches are seam-tested (CI runs ubuntu only). */
+  /** The process platform used for native command resolution. */
   platform: string
   /** The process CPU architecture used to select a native runtime layer. */
   arch: string

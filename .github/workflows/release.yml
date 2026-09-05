@@ -125,19 +125,23 @@ jobs:
         shell: bash
         run: mayfly plugin --help
       - name: calibrate exact bundle and compose profile
-        if: runner.os == 'Linux' && matrix.node == '24'
+        if: matrix.node == '24'
         run: mayfly --dump-config
       - name: verify installed Mayfly set
-        if: runner.os == 'Linux' && matrix.node == '24'
+        if: matrix.node == '24'
         shell: bash
         run: node script/verify-installed-mayfly.mjs "${RELEASE_VERSION#v}"
-      - name: real PTY boot and clean exit
-        if: runner.os == 'Linux' && matrix.node == '24'
-        shell: bash
-        run: |
-          (sleep 10; printf '/quit\r'; sleep 3) | timeout 90 script -qec mayfly "$RUNNER_TEMP/mayfly-candidate.typescript"
-          grep -q $'\033\[?2004h' "$RUNNER_TEMP/mayfly-candidate.typescript"
-          grep -q $'\033\[?2004l' "$RUNNER_TEMP/mayfly-candidate.typescript"
+      - name: install portable PTY verification dependencies
+        if: matrix.node == '24'
+        run: pnpm install --frozen-lockfile
+      - name: native PTY and ConPTY workflows
+        if: matrix.node == '24'
+        run: node script/smoke-platform-pty.mjs
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.node == '24'
+        with:
+          name: platform-pty-${{ runner.os }}
+          path: .artifacts/platform-pty
 
   promote:
     name: promote release channel

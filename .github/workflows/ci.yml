@@ -22,6 +22,36 @@ env:
   PRIMARY_NODE_VERSION: '24'
 
 jobs:
+  platform:
+    name: native platform regressions (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: native launcher, command, and clipboard regressions
+        run: >-
+          pnpm exec vitest run
+          packages/cli/tests/translate.spec.ts
+          packages/cli/tests/runtime.spec.ts
+          packages/cli/tests/runtime-lock.spec.ts
+          packages/cli/tests/main.spec.ts
+          packages/mayfly/tests/interaction/updater-profile.spec.ts
+          packages/mayfly/tests/interaction/clipboard-runner.spec.ts
+          packages/mayfly/tests/interaction/platform-command.spec.ts
+          packages/mayfly/tests/interaction/file-mention.spec.ts
+          packages/mayfly/tests/core/search-input.spec.ts
+          packages/mayfly/tests/transcript/status-cwd.spec.ts
+
   check:
     name: typecheck / lint / test (coverage)
     runs-on: ubuntu-latest

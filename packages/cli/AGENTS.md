@@ -72,3 +72,10 @@ further publication. Only bounded validation and renames run in the synchronous
 critical section; quarantined trees are deleted after release. This lease does
 not provide fencing against a process or filesystem stalled beyond the stale
 interval. Do not replace it with an unlocked recheck before a rename.
+
+PRs run native launcher, command-shim, and clipboard-process regressions on
+Linux, macOS, and Windows. Release candidates retain the Node 22/24 install
+matrix and run the composition plus `script/smoke-platform-pty.mjs` workflow
+on all three operating systems with Node 24. This driver uses native PTY or
+ConPTY, a local tarball marketplace fixture, and an isolated DSH_HOME; desktop
+clipboard and IME behavior still require the platform acceptance checklist.

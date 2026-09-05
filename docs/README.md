@@ -11,6 +11,8 @@
 `release-notes/`，历史调研与验收记录位于 `history/`；这些文件只描述其
 当时时点，不定义当前 API。
 
+跨平台自动化与桌面验收清单见 [platform-acceptance.md](./platform-acceptance.md)。
+
 插件作者应从 Website
 [开发手册](../website/plugins/index.md) 开始，并以
 [DeepSeek Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)

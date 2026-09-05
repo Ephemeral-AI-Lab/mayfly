@@ -10,3 +10,4 @@ website/.vitepress/marketplace-data/
 website/marketplace/*/
 website/en/marketplace/*/
 packages/cli/runtime*.tgz
+.artifacts/platform-pty/
