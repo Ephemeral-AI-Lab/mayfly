@@ -155,8 +155,8 @@ describe('mayfly-btw-command', () => {
   it('inherits the active model and latest preset while bounding the view label', async () => {
     const test = await boot()
     const seed = [
-      { type: 'session/start', data: {} },
-      { type: 'agent-preset/selected', data: { agentPreset: 'reviewer' } },
+      { type: 'session/start', seq: 7, data: {} },
+      { type: 'agent-preset/selected', seq: 8, data: { agentPreset: 'reviewer' } },
     ]
     Object.assign(test.parent.session, {
       snapshotEvents: () => seed,
@@ -177,6 +177,7 @@ describe('mayfly-btw-command', () => {
       meta: { isSeeded: true },
       agentOptions: { provider: 'provider-x', model: 'model-y', reasoningEffort: 'high' },
     })
+    expect(test.current.view().auxiliary).toMatchObject({ transcriptAfterSeq: 8 })
     const agentCtx = new Context()
     await request.setup(agentCtx)
     expect(test.presetMount).toHaveBeenCalledWith(agentCtx, 'reviewer')

@@ -117,6 +117,7 @@ interface Harness {
   readonly screen: FakeScreen
   readonly keymap: FakeKeymap
   readonly select: (agent: FakeAgent | null) => void
+  readonly selectAuxiliary: (agent: FakeAgent, transcriptAfterSeq: number) => void
 }
 
 function fixtureApply(ctx: Context): void {
@@ -174,10 +175,24 @@ async function bootTranscript(
   const _status = new MayflyStatusService(ctx)
   let active = initial
   let revision = 0
+  let auxiliary: {
+    readonly kind: 'btw'
+    readonly sessionId: string
+    readonly parentSessionId: string
+    readonly label: string
+    readonly transcriptAfterSeq?: number
+  } | null = null
+  let displayed: 'primary' | 'auxiliary' = 'primary'
   const listeners = new Set<(agent: Agent | null, revision: number) => void>()
   const currentAgent = {
     current: () => active as unknown as Agent | null,
     revision: () => revision,
+    view: () => ({
+      primarySessionId: active === null ? null : String(active.id),
+      displayed,
+      auxiliary,
+      revision,
+    }),
     subscribe(listener: (agent: Agent | null, nextRevision: number) => void) {
       listeners.add(listener)
       listener(active as unknown as Agent | null, revision)
@@ -186,8 +201,23 @@ async function bootTranscript(
   }
   const select = (agent: FakeAgent | null): void => {
     active = agent
+    auxiliary = null
+    displayed = 'primary'
     revision += 1
     for (const listener of listeners) listener(agent as unknown as Agent | null, revision)
+  }
+  const selectAuxiliary = (agent: FakeAgent, transcriptAfterSeq: number): void => {
+    active = agent
+    displayed = 'auxiliary'
+    auxiliary = {
+      kind: 'btw',
+      sessionId: String(agent.id),
+      parentSessionId: 'parent-1',
+      label: 'side question',
+      transcriptAfterSeq,
+    }
+    revision += 1
+    for (const listener of listeners) listener(agent as unknown as Agent, revision)
   }
   const services: Record<string, unknown> = {
     mayflyScreen: screen,
@@ -210,7 +240,7 @@ async function bootTranscript(
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
   disposers.push(async () => { await ctx.fiber.dispose() })
-  return { ctx, screen, keymap, select }
+  return { ctx, screen, keymap, select, selectAuxiliary }
 }
 
 function stripGutter(lines: string[]): string[] {
@@ -259,6 +289,39 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(text).toContain('file.txt')
     select(null)
     expect(contentLines(screen)).toEqual([])
+  })
+
+  it('hides inherited BTW history while preserving it when returning to the main session', async () => {
+    resetSeq()
+    const main = fakeAgent([
+      userEvent('main history'),
+      assistantEvent(1, 1, [{ type: 'text', text: 'main answer' }]),
+    ])
+    resetSeq()
+    const btw = fakeAgent([
+      userEvent('inherited main history'),
+      assistantEvent(1, 1, [{ type: 'text', text: 'inherited main answer' }]),
+      userEvent('BTW question'),
+      assistantEvent(2, 1, [{ type: 'text', text: 'BTW answer' }]),
+    ])
+    btw.id = 'btw-child'
+    btw.session.id = 'btw-child'
+    const { ctx, screen, select, selectAuxiliary } = await bootTranscript(main)
+    expect(contentLines(screen).join('\n')).toContain('main history')
+
+    selectAuxiliary(btw, 2)
+    const side = contentLines(screen).join('\n')
+    expect(side).toContain('BTW question')
+    expect(side).toContain('BTW answer')
+    expect(side).not.toContain('inherited main history')
+    expect(side).not.toContain('inherited main answer')
+
+    select(main)
+    const restored = contentLines(screen).join('\n')
+    expect(restored).toContain('main history')
+    expect(restored).toContain('main answer')
+    expect(restored).not.toContain('BTW answer')
+    await ctx.fiber.dispose()
   })
 
   it('isolates populated sessions whose transcript ids and revisions collide', async () => {

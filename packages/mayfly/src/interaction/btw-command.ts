@@ -86,8 +86,10 @@ export function apply(ctx: Context): void {
     const controller = new AbortController()
     pending = controller
     let handle: AgentHandle
+    let transcriptAfterSeq: number | undefined
     try {
       const seed = parent.session.snapshotEvents()
+      transcriptAfterSeq = seed.length === 0 ? undefined : seed.at(-1)!.seq
       const selected = parent.session.requestHeader()?.config ?? defaultModel.currentSelection()
       let preset = parent.session.header.agentPreset
       for (const event of seed) {
@@ -133,6 +135,7 @@ export function apply(ctx: Context): void {
       sessionId: String(handle.agent.id),
       parentSessionId: String(parent.id),
       label: labelFor(question),
+      ...(transcriptAfterSeq === undefined ? {} : { transcriptAfterSeq }),
     })
     const message = createUserMessage({ content: [{ type: 'text', text: question }], source: { kind: 'user' } })
     try {

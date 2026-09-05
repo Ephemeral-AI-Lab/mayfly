@@ -71,6 +71,9 @@ flowchart TB
 - app 持有主 Agent selection、单辅助槽与当前显示侧；它不重做 Harness
   command/tool/projection API。live 辅助会话成为精确 current Agent；one-shot 或
   cold child 由 core-owned 通用只读 transcript panel 展示。
+- BTW Agent 仍携带完整 seed 作为模型上下文，但 `mayflyCurrentAgent` 的 BTW
+  metadata 记录 seed cutoff，transcript source 只呈现 cutoff 之后的新问题、工具
+  与回答。
 - `mayfly-ui` provider 持有当前 UI contribution snapshots，且每项
   registration 随 consumer Fiber 清理。
 - transcript 与 interaction 持有它们自己的 renderer-neutral/TUI product state。

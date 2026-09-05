@@ -16,6 +16,8 @@ export type MayflyAuxiliaryView = Readonly<{
   readonly sessionId: string
   readonly parentSessionId: string
   readonly label: string
+  /** Last inherited event sequence; BTW transcript starts after this cut. */
+  readonly transcriptAfterSeq?: number
 } | {
   readonly kind: 'subagent'
   readonly sessionId: string

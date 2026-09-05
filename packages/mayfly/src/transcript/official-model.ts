@@ -338,6 +338,17 @@ export function conversationTranscriptModel(
   return createTranscriptModel('official-conversation', entries, projection.streaming, generation)
 }
 
+function visibleProjection(
+  projection: ConversationProjection,
+  transcriptAfterSeq: number | undefined,
+): ConversationProjection {
+  if (transcriptAfterSeq === undefined) return projection
+  return {
+    streaming: projection.streaming,
+    entries: projection.entries.filter(entry => entry.seq > transcriptAfterSeq),
+  }
+}
+
 /** Projection-to-model source scoped to one frontend tree and provider Fiber. */
 export class OfficialConversationModelSource {
   private model: TranscriptModel = createTranscriptModel('official-conversation', [], false)
@@ -345,6 +356,7 @@ export class OfficialConversationModelSource {
   private session: Session | null = null
   private generation = 0
   private watermark = -1
+  private transcriptAfterSeq: number | undefined
   private disposed = false
   private readonly offChanged: () => void
 
@@ -359,9 +371,10 @@ export class OfficialConversationModelSource {
       if (!parsed.success) return
       this.watermark = seq
       const raw = value as ConversationProjection
-      this.model = incrementalStreamingModel(this.rawProjection, raw, this.model, parsed.data)
-        ?? conversationTranscriptModel(parsed.data, this.tools, this.generation)
-      this.rawProjection = raw
+      const visible = visibleProjection(raw, this.transcriptAfterSeq)
+      this.model = incrementalStreamingModel(this.rawProjection, visible, this.model, visible)
+        ?? conversationTranscriptModel(visible, this.tools, this.generation)
+      this.rawProjection = visible
       this.publish(this.model)
     })
   }
@@ -372,8 +385,9 @@ export class OfficialConversationModelSource {
   }
 
   /** Attach to the app's current session, clearing stale content first. */
-  attach(session: Session | null): void {
+  attach(session: Session | null, transcriptAfterSeq?: number): void {
     this.session = session
+    this.transcriptAfterSeq = transcriptAfterSeq
     this.generation += 1
     this.watermark = -1
     if (session === null) {
@@ -385,10 +399,12 @@ export class OfficialConversationModelSource {
     const snapshot = this.projections.snapshot(session, ['mayflyConversation'])
     const parsed = conversationProjectionSchema.safeParse(snapshot.values.mayflyConversation)
     this.watermark = snapshot.asOfSeq
-    this.model = parsed.success
-      ? conversationTranscriptModel(parsed.data, this.tools, this.generation)
+    const raw = parsed.success ? snapshot.values.mayflyConversation as ConversationProjection : undefined
+    const visible = raw === undefined ? undefined : visibleProjection(raw, this.transcriptAfterSeq)
+    this.model = visible !== undefined
+      ? conversationTranscriptModel(visible, this.tools, this.generation)
       : createTranscriptModel('official-conversation', [], false, this.generation)
-    this.rawProjection = parsed.success ? snapshot.values.mayflyConversation as ConversationProjection : undefined
+    this.rawProjection = visible
     this.publish(this.model)
   }
 
@@ -398,6 +414,7 @@ export class OfficialConversationModelSource {
     this.disposed = true
     this.offChanged()
     this.session = null
+    this.transcriptAfterSeq = undefined
     this.rawProjection = undefined
     this.model = createTranscriptModel('official-conversation', [], false)
   }

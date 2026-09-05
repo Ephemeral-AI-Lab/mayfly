@@ -33,6 +33,10 @@ single/multi-select behavior shares one list controller. Core keeps form
 drafts, control/scroll bindings, virtual-list cursors, and the common framed
 scroll panel in dedicated renderer-owned implementations.
 
+BTW children retain the full seeded parent event stream for model context, but
+the transcript source applies the recorded seed cutoff so inherited history is
+not shown in the BTW conversation view.
+
 The public side-question entry is `./btw-command`. `./pane-btw` and
 `./attach-view` are retired without compatibility exports.
 

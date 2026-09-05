@@ -34,7 +34,7 @@
 
 Mayfly 只保留一个辅助会话槽。`/btw <question>` 创建临时旁路 Agent——以当前会话的全量事件流为种子，并继承 provider、model、reasoning effort 和 agent preset。`/agents` 则打开当前主会话的完整 descendant 树：
 
-- live BTW 或 continuable subagent 成为 `mayflyCurrentAgent.current()`，原有 transcript、status、底部 pane、命令和完整编辑器整体切到该 Session；图片、follow-up、steer、撤回和中断都走同一输入链；
+- live BTW 或 continuable subagent 成为 `mayflyCurrentAgent.current()`，原有 transcript、status、底部 pane、命令和完整编辑器整体切到该 Session；BTW 仍继承完整主会话上下文，但 transcript 从 BTW 自己的第一条提问开始，隐藏 seed 历史；图片、follow-up、steer、撤回和中断都走同一输入链；
 - one-shot 或当前不驻留的 continuable child 不激活 Agent，而是在 editor 槽位打开 core-owned 的全保真只读 transcript panel；它复用正式 transcript model、工具呈现、图片加载、宽度约束与滚动逻辑；
 - 状态栏中央显式显示当前侧以及 `F7 switch · F8 close`；`F7` 在主/辅助会话间切换，`F8` 完全关闭辅助视图并返回主会话；关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
 - 再次打开 BTW 或 child 会替换旧辅助槽。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork`、`/rewind` 和 `/agents` 浏览会先回到主会话；

@@ -166,12 +166,18 @@ export function apply(ctx: Context): void {
   )
   ctx.effect(() => () => officialSource.dispose())
   transcript.setSource(() => officialSource.snapshot())
+  const transcriptAfterSeq = (): number | undefined => {
+    const view = ctx.mayflyCurrentAgent.view()
+    return view.displayed === 'auxiliary' && view.auxiliary?.kind === 'btw'
+      ? view.auxiliary.transcriptAfterSeq
+      : undefined
+  }
   let selectedAgent = ctx.mayflyCurrentAgent.current()
-  officialSource.attach(selectedAgent?.session ?? null)
+  officialSource.attach(selectedAgent?.session ?? null, transcriptAfterSeq())
   const offAgent = ctx.mayflyCurrentAgent.subscribe((next) => {
     if (next === selectedAgent) return
     selectedAgent = next
-    officialSource.attach(next?.session ?? null)
+    officialSource.attach(next?.session ?? null, transcriptAfterSeq())
   })
   ctx.effect(() => () => offAgent())
   const footer = new StatusFooterComponent(

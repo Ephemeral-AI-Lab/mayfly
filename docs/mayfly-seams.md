@@ -66,6 +66,8 @@ if (agent !== null) {
 `current()`：live BTW/continuable child 直接驱动整套既有 UI，one-shot 或 cold
 child 保留主 Agent 并交给通用只读 transcript panel。`F7` 切换显示侧，`F8`
 关闭辅助槽；关闭 BTW 会额外释放其临时 Agent，关闭普通 subagent 只 detach。
+BTW 的 seed 只用于模型上下文；其 `transcriptAfterSeq` cutoff 让用户看到的流从
+BTW 自己的第一条提问开始，不重复主会话历史。
 
 需要 Agent identity 的插件 inject `mayflyCurrentAgent`。只贡献静态 UI 的插件
 不应增加这一依赖，因为 app 或 core reload 时 Cordis 会按依赖关系卸载 consumer。
