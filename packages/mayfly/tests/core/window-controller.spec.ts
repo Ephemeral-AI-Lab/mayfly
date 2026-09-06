@@ -5,6 +5,10 @@ describe('WindowController', () => {
   it('clamps offsets and reports navigation state', () => {
     const controller = new WindowController()
     expect(controller.update(10, 3, 5)).toEqual({ offset: 5, limit: 3, total: 10, hasPrevious: true, hasNext: true })
+    expect(controller.offset).toBe(5)
+    expect(controller.limit).toBe(3)
+    expect(controller.total).toBe(10)
+    expect(controller.clone().snapshot()).toEqual(controller.snapshot())
     expect(controller.move(99)).toEqual({ offset: 7, limit: 3, total: 10, hasPrevious: true, hasNext: false })
     expect(controller.move(-99)).toEqual({ offset: 0, limit: 3, total: 10, hasPrevious: false, hasNext: true })
   })
@@ -13,5 +17,6 @@ describe('WindowController', () => {
     const controller = new WindowController()
     expect(controller.update(Number.NaN, 0, Number.NaN)).toEqual({ offset: 0, limit: 1, total: 0, hasPrevious: false, hasNext: false })
     expect(controller.move(Number.NaN)).toEqual({ offset: 0, limit: 1, total: 0, hasPrevious: false, hasNext: false })
+    expect(controller.move(Number.POSITIVE_INFINITY)).toEqual({ offset: 0, limit: 1, total: 0, hasPrevious: false, hasNext: false })
   })
 })
