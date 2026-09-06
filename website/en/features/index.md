@@ -1,6 +1,6 @@
 # Features overview
 
-Mayfly `0.1.0-alpha.1` is a flat Cordis plugin tree over `dsh-base`. The
+Mayfly `0.1.0-alpha.2` is a flat Cordis plugin tree over `dsh-base`. The
 bundle inserts six dsh support rows and 28 Mayfly rows.
 
 ## Data and interaction

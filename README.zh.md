@@ -17,7 +17,7 @@
 
 Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 （`dsh`）的交互式终端界面。它是叠加在 `dsh-base` 上的树外 Cordis
-bundle，针对 Harness `0.1.2-alpha.5` 构建。Mayfly `0.1.0-alpha.1`
+bundle，针对 Harness `0.1.2-alpha.5` 构建。Mayfly `0.1.0-alpha.2`
 刻意与 dsh Web 使用同一种插件模型：插件是普通 Cordis sibling，直接消费
 dsh 原生服务。
 

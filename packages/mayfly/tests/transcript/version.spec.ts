@@ -1,6 +1,6 @@
 /**
  * The global version-control guard: Mayfly has ONE release version (the
- * current release line, `0.1.0-alpha.1` — the number the website's tagline and
+ * current release line, `0.1.0-alpha.2` — the number the website's tagline and
  * quickstart promise) and ONE harness dependency line (the `dsh-*` pins,
  * which stay on their own prerelease line while Mayfly's number moves).
  *
@@ -28,7 +28,7 @@ import { describe, expect, it } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 
 /** The published release version (the website's advertised number). */
-const RELEASE_VERSION = '0.1.0-alpha.1'
+const RELEASE_VERSION = '0.1.0-alpha.2'
 /** The harness prerelease line the dsh pins ride. */
 const HARNESS_LINE = '0.1.2-alpha.5'
 

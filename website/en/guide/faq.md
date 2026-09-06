@@ -2,7 +2,7 @@
 
 ## Why not a plain `npm install @ephemeral-ai/mayfly`?
 
-Mayfly is a plugin bundle installed into a dsh profile, not a standalone app — a bare install only drops the package into node_modules, with no host and no profile assembly, so there is nothing to run. The supported paths are the `mayfly` shell or `dsh plugin --profile mayfly add`; see [Quickstart](/en/guide/). The current release is `v0.1.0-alpha.1`, and ordinary installs use npm `latest`; reproducible environments should pin Mayfly `0.1.0-alpha.1` and Harness `0.1.2-alpha.5`. The contributor development install lives in [Contributing to Mayfly](/en/plugins/contributing).
+Mayfly is a plugin bundle installed into a dsh profile, not a standalone app — a bare install only drops the package into node_modules, with no host and no profile assembly, so there is nothing to run. The supported paths are the `mayfly` shell or `dsh plugin --profile mayfly add`; see [Quickstart](/en/guide/). The current release is `v0.1.0-alpha.2`, and ordinary installs use npm `latest`; reproducible environments should pin Mayfly `0.1.0-alpha.2` and Harness `0.1.2-alpha.5`. The contributor development install lives in [Contributing to Mayfly](/en/plugins/contributing).
 
 ## The default install does not resolve the newest release?
 

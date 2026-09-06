@@ -365,7 +365,7 @@ describe('mayfly-banner plugin', () => {
     const { screen } = await bootBanner({ displayVersion })
     const joined = screen.children[0]?.render(100).join('\n') ?? ''
     expect(joined).toContain(`Version:   ${displayVersion}`)
-    expect(MAYFLY_VERSION).toBe('0.1.0-alpha.1')
+    expect(MAYFLY_VERSION).toBe('0.1.0-alpha.2')
   })
 
   it('switches the mounted banner language without replacing its component', async () => {

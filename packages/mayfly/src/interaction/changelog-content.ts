@@ -22,6 +22,19 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.0-alpha.2',
+    summary: 'Complete transcript output, cancellable UI providers, and more reliable agent and plugin workflows.',
+    highlights: [
+      'Complete content - retain transcript history, expanded tool output, and chart data; browse large background-job logs through bounded output pages.',
+      'Async UI snapshots - cancel pane and overlay loads, page pane content, contain startup failures, and preserve newer explicit snapshots.',
+      'Stable rendering - preserve scroll anchors when content changes and refresh cached layouts after viewport or session changes.',
+      'Agent views - reuse the session layout for auxiliary agents, hide inherited BTW history, and scope interruption to the selected agent and its running descendants.',
+      'Plugin marketplace - browse and install plugins in Mayfly and discover available packages on the website.',
+      'Platform reliability - improve editor input, clipboard helpers, exact-host commands, and concurrent CLI runtime cache repair across Linux, macOS, and Windows.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.1',
     summary: 'Mayfly begins with a consolidated three-package terminal UI for DeepSeek Harness.',
     highlights: [

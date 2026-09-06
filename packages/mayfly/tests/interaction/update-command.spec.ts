@@ -15,6 +15,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { inc } from 'semver'
 import { Context } from '@deepseek-ai/cordis'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SettingsProvider, { type SettingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -56,7 +57,8 @@ const RC3_NAMES = RC2_NAMES
 
 /** Version roles used by the update scenarios across release bumps. */
 const CURRENT_VERSION = MAYFLY_VERSION
-const TARGET_VERSION = '0.1.0-alpha.2'
+const TARGET_VERSION = inc(CURRENT_VERSION, 'prerelease')!
+const AHEAD_VERSION = inc(TARGET_VERSION, 'prerelease')!
 
 /** A spawn success. */
 function ok(): SpawnOutcome {
@@ -102,13 +104,13 @@ function packumentJson(options: { channelTag?: string; time?: Record<string, str
     'dist-tags': { latest: options.channelTag ?? CURRENT_VERSION },
     versions: {
       '0.1.0-alpha.0': { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.1' } },
-      '0.1.0-alpha.3': { dependencies: { ...rc2Deps, '@ephemeral-ai/mayfly-ui': '^0.1.0-alpha.3' } },
+      [AHEAD_VERSION]: { dependencies: { ...rc2Deps, '@ephemeral-ai/mayfly-ui': `^${AHEAD_VERSION}` } },
       [CURRENT_VERSION]: { dependencies: { ...rc2Deps, '@ephemeral-ai/mayfly-ui': `^${CURRENT_VERSION}` } },
       [TARGET_VERSION]: { dependencies: { ...rc2Deps, '@ephemeral-ai/mayfly-ui': `^${TARGET_VERSION}` } },
     },
     time: {
       '0.1.0-alpha.0': '2026-08-20T00:00:00.000Z',
-      '0.1.0-alpha.3': '2026-08-22T00:00:00.000Z',
+      [AHEAD_VERSION]: '2026-08-22T00:00:00.000Z',
       [CURRENT_VERSION]: '2026-08-22T00:00:00.000Z',
       [TARGET_VERSION]: '2026-08-23T00:00:00.000Z',
       ...options.time,
@@ -582,7 +584,7 @@ describe('/update confirm and swap', () => {
       'dist-tags': { latest: TARGET_VERSION },
       versions: {
         [CURRENT_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
-        '0.1.0-alpha.3': { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
+        [AHEAD_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
         [TARGET_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
       },
       time: { [CURRENT_VERSION]: '2026-08-20T00:00:00.000Z' },
@@ -779,11 +781,11 @@ describe('/update confirm and swap', () => {
 
   it('a downgrade target reinstalls the main package in one transaction', async () => {
     const world = await mountWorld()
-    // Move the profile to alpha.3 so alpha.2 is a downgrade.
+    // Move the profile ahead of the target to exercise a downgrade.
     rmSync(join(world.root, 'node_modules', '@ephemeral-ai'), { recursive: true, force: true })
-    world.installAt('0.1.0-alpha.3')
+    world.installAt(AHEAD_VERSION)
     const manifest = JSON.parse(String(updaterInternals.readTextFile(join(world.root, 'package.json')))) as Record<string, unknown>
-    manifest.dependencies = { '@ephemeral-ai/mayfly': '0.1.0-alpha.3' }
+    manifest.dependencies = { '@ephemeral-ai/mayfly': AHEAD_VERSION }
     updaterInternals.writeTextFile(join(world.root, 'package.json'), JSON.stringify(manifest))
     world.ctx.provide('agentDefaultModel', { currentSelection: () => ({ model: 'deepseek-chat marker', provider: 'x' }) })
     const pending = world.ctx.commands.execute(world.agent, `/update ${TARGET_VERSION}`, [], new AbortController().signal)
@@ -810,7 +812,7 @@ describe('/update confirm and swap', () => {
     // rollback set the discovered install.
     const npmViewPackument = JSON.stringify({
       'dist-tags': { latest: TARGET_VERSION },
-      versions: [CURRENT_VERSION, '0.1.0-alpha.3', TARGET_VERSION],
+      versions: [CURRENT_VERSION, AHEAD_VERSION, TARGET_VERSION],
       time: { [CURRENT_VERSION]: '2026-08-20T00:00:00.000Z', [TARGET_VERSION]: '2026-08-23T00:00:00.000Z' },
     })
     const world = await mountWorld({
