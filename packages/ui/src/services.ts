@@ -209,6 +209,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
     }
     handle = new SnapshotHandle(publish, remove) as SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
     let activeLoad: AbortController | undefined
+    let nextCursor: string | undefined
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
@@ -220,15 +221,36 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
     handle.refresh = async (): Promise<void> => {
       const load = admittedDefinition.load
       if (load === undefined || handle.disposed) return
+      nextCursor = undefined
       activeLoad?.abort()
       const controller = new AbortController()
       activeLoad = controller
       try {
-        const next = await load(controller.signal)
+        const page = await load({ signal: controller.signal })
         /* v8 ignore next -- disposal and abort races are covered by the controller fence. */
-        if (!handle.disposed && !controller.signal.aborted) handle.set(next ?? null)
+        if (!handle.disposed && !controller.signal.aborted) {
+          nextCursor = page.nextCursor
+          handle.set(page.node ?? null)
+        }
       } finally {
         /* v8 ignore next -- only a superseding refresh can make this false. */
+        if (activeLoad === controller) activeLoad = undefined
+        controller.abort()
+      }
+    }
+    handle.loadMore = async (): Promise<boolean> => {
+      const load = admittedDefinition.load
+      if (load === undefined || handle.disposed || nextCursor === undefined) return false
+      activeLoad?.abort()
+      const controller = new AbortController()
+      activeLoad = controller
+      try {
+        const page = await load({ cursor: nextCursor, signal: controller.signal })
+        if (handle.disposed || controller.signal.aborted) return false
+        nextCursor = page.nextCursor
+        handle.set(page.node ?? null)
+        return true
+      } finally {
         if (activeLoad === controller) activeLoad = undefined
         controller.abort()
       }
@@ -336,9 +358,9 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
         const controller = new AbortController()
         activeLoad = controller
         try {
-          const next = await load(controller.signal)
+          const page = await load({ signal: controller.signal })
           /* v8 ignore next -- disposal and abort races are covered by the controller fence. */
-          if (!handle.disposed && !controller.signal.aborted) handle.set(next)
+          if (!handle.disposed && !controller.signal.aborted) handle.set(page.node)
         } finally {
           /* v8 ignore next -- only a superseding load can make this false. */
           if (activeLoad === controller) activeLoad = undefined

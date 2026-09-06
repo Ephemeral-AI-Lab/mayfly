@@ -19,7 +19,9 @@ export interface MayflyNodeRegistration<Node> extends MayflyRegistration {
 }
 
 /** Service-owned asynchronous snapshot source; the node remains pure data. */
-export type MayflySnapshotProvider<Node> = (signal: AbortSignal) => Node | Promise<Node>
+export interface MayflySnapshotRequest { readonly cursor?: string, readonly signal: AbortSignal }
+export interface MayflySnapshotPage<Node> { readonly node: Node, readonly nextCursor?: string, readonly total?: number }
+export type MayflySnapshotProvider<Node> = (request: MayflySnapshotRequest) => MayflySnapshotPage<Node> | Promise<MayflySnapshotPage<Node>>
 
 export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
 export type MayflyTextStyle = 'strong' | 'italic' | 'strike'
@@ -96,7 +98,7 @@ export type MayflyRegistryDelta<Entry> = MayflyRegistryUpsert<Entry> | MayflyReg
 export type MayflyPanePlacement = 'header' | 'left' | 'right' | 'bottom'
 export interface MayflyPaneDefinition { readonly id: string, readonly title?: string, readonly priority?: number, readonly placement: MayflyPanePlacement, readonly size?: { readonly min?: number, readonly preferred?: number | 'auto', readonly max?: number }, readonly narrow?: 'bottom' | 'overlay' | 'hidden', readonly onEvent?: MayflyUiEventHandler, readonly load?: MayflySnapshotProvider<MayflyUiNode | null> }
 export interface MayflyPaneEntry { readonly id: string, readonly definition: MayflyPaneDefinition, readonly node: MayflyUiNode | null, readonly revision: number, readonly eventRevision?: number }
-export interface MayflyPaneRegistration extends MayflyNodeRegistration<MayflyUiNode> { refresh(): Promise<void> }
+export interface MayflyPaneRegistration extends MayflyNodeRegistration<MayflyUiNode> { refresh(): Promise<void>, loadMore(): Promise<boolean> }
 export interface MayflyPaneRegistry { register(definition: MayflyPaneDefinition, initialNode?: MayflyUiNode | null): MayflyPaneRegistration, list(): readonly MayflyPaneEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyPaneEntry>) => void): () => void }
 
 export type MayflyOverlayAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right'

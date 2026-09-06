@@ -153,26 +153,31 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     const ctx = new Context()
     const owner = await ctx.plugin({ name: 'api-owner', apply })
     const signals: AbortSignal[] = []
+    let calls = 0
     const pane = ctx.mayflyPanes.register({
       id: 'test.loaded-pane',
       placement: 'bottom',
-      load: async signal => {
-        signals.push(signal)
-        return { kind: 'text', content: 'loaded' }
+      load: async request => {
+        signals.push(request.signal)
+        calls += 1
+        return { node: { kind: 'text', content: calls === 1 ? 'loaded' : 'next' }, ...(calls === 1 ? { nextCursor: 'next-page' } : {}) }
       },
     })
     await vi.waitFor(() => expect(ctx.mayflyPanes.list()[0]?.node).toEqual({ kind: 'text', content: 'loaded' }))
     expect(signals).toHaveLength(1)
     expect(signals[0]!.aborted).toBe(true)
+    expect(await pane.loadMore()).toBe(true)
+    expect(ctx.mayflyPanes.list()[0]?.node).toEqual({ kind: 'text', content: 'next' })
+    expect(await pane.loadMore()).toBe(false)
     await pane.refresh()
-    expect(ctx.mayflyPanes.list()[0]?.revision).toBe(2)
+    expect(ctx.mayflyPanes.list()[0]?.revision).toBe(3)
     await owner.dispose()
   })
 
   it('ignores a pane provider result after disposal', async () => {
     const ctx = new Context()
     const owner = await ctx.plugin({ name: 'late-owner', apply })
-    const gate = Promise.withResolvers<{ readonly kind: 'text', readonly content: string }>()
+    const gate = Promise.withResolvers<{ readonly node: { readonly kind: 'text', readonly content: string } }>()
     const pane = ctx.mayflyPanes.register({ id: 'test.late-pane', placement: 'bottom', load: () => gate.promise })
     pane.dispose()
     gate.resolve({ kind: 'text', content: 'late' })
@@ -277,8 +282,8 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     const overlay = ctx.mayflyOverlays.open({
       id: 'overlay.loaded',
       load: async current => {
-        signal = current
-        return { kind: 'text', content: 'loaded' }
+        signal = current.signal
+        return { node: { kind: 'text', content: 'loaded' } }
       },
     }, { kind: 'text', content: 'initial' })
     await vi.waitFor(() => expect(ctx.mayflyOverlays.list()[0]?.node).toEqual({ kind: 'text', content: 'loaded' }))
