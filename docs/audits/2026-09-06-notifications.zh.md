@@ -1,6 +1,6 @@
 # Mayfly 通知与队列审计
 
-日期：2026-09-06。基线：`e7a9b72`，Harness `0.1.2-alpha.5`。
+日期：2026-09-06。基线：`bd171aa`，Harness `0.1.2-alpha.5`。
 范围：官方 interaction、app、transcript、core，以及本次权限消息的原生 dsh 生产路径。
 本轮是行为审计，没有修改运行时代码。
 
