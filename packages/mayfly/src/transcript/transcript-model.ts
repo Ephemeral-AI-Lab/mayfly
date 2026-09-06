@@ -51,7 +51,7 @@ interface ExpandableComponent extends MayflyComponent { setExpanded?(expanded: b
 
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
-/** Maximum semantic entries mounted by one transcript model component. */
+/** Legacy export retained for consumers; transcript rendering no longer drops history. */
 export const TRANSCRIPT_MODEL_WINDOW = 200
 
 /** Renderer-only dependencies for semantic transcript entries. */
@@ -179,7 +179,7 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.prune(new Set())
       this.generation = model.generation
     }
-    const bounded = model.entries.slice(-TRANSCRIPT_MODEL_WINDOW)
+    const bounded = model.entries
     const policy = this.presentation()
     const rendered = this.renderedRows
     if (rendered?.model === model

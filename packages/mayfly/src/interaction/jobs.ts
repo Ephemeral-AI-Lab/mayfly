@@ -89,13 +89,11 @@ export function jobsPanelModel(jobs: readonly JobSnapshot[], now: number, t: May
 
 /** Build a read-only output document from one explicit consuming read. */
 export function jobOutputPanelModel(job: JobSnapshot, output: string, t: MayflyTranslate): FrontendPanelDocument {
-  const tail = tailJobOutput(output)
+  const tail = { text: output, truncated: false }
   const empty = isLiveJob(job)
     ? t('(no new output yet)')
     : t('(no new output — already consumed by the agent or an earlier read, or the job produced none)')
-  const code = tail.text === ''
-    ? empty
-    : tail.truncated ? `${t('… output truncated')}\n${tail.text}` : tail.text
+  const code = tail.text === '' ? empty : tail.text
   return {
     mode: 'info',
     title: t('Job {id}', { id: String(job.id) }),
