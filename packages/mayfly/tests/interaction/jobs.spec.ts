@@ -6,18 +6,20 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { JobId, type JobSnapshot } from '@deepseek-ai/dsh-jobs'
 import type { MayflyTranslate } from '../../src/frontend/index.ts'
+import { validateMayflyUiNode } from '../../src/core/index.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as jobsPlugin from '../../src/interaction/jobs.ts'
 import {
   formatJobDuration,
   isLiveJob,
   jobOutputPanelModel,
+  JobOutputPanel,
   jobsPanelModel,
   sortJobs,
   tailJobOutput,
 } from '../../src/interaction/jobs.ts'
 import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
-import { fakeMayflyContext } from './fakes.ts'
+import { fakeMayflyContext, FakeKeymap, FakeMayflyComponents, FakeTheme } from './fakes.ts'
 
 const t: MayflyTranslate = (key, values) => Object.entries(values ?? {})
   .reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), key)
@@ -66,6 +68,53 @@ function fakeJobs(initial: readonly JobSnapshot[] = []) {
 }
 
 describe('jobs panel models', () => {
+  it.each([
+    Array.from({ length: 500 }, (_, index) => `row ${String(index).padStart(3, '0')} ${'x'.repeat(60)}`).join('\n'),
+    `start${'x'.repeat(11_994)}\u{1F680}${'y'.repeat(24_000)}end`,
+  ])('retains complete large output in admissible, navigable pages', output => {
+    const close = vi.fn()
+    const panel = new JobOutputPanel(job('large', 'completed'), output, {
+      theme: new FakeTheme(), components: new FakeMayflyComponents(), keymap: new FakeKeymap(), t, onClose: close,
+    })
+    panel.focused = true
+    const first = panel.currentNode()
+    panel.handleInput('\x1b[D')
+    expect(panel.currentNode()).toEqual(first)
+    let retained = ''
+    while (retained.length < output.length) {
+      const node = panel.currentNode()
+      expect(validateMayflyUiNode(node).ok).toBe(true)
+      const surface = node as { child: { children: { node: { sections: { body: { code: string } }[] } }[] } }
+      const code = surface.child.children[0]!.node.sections[0]!.body.code
+      expect(code.length).toBeLessThanOrEqual(12_000)
+      expect(code.isWellFormed()).toBe(true)
+      retained += code
+      expect(panel.render(80).join('\n')).not.toContain('MAYFLY_LIMIT_EXCEEDED')
+      panel.handleInput('\x1b[F')
+      expect(panel.render(80).join('\n')).toContain(code.trimEnd().slice(-10))
+      if (retained.length < output.length) panel.handleInput('\x1b[C')
+    }
+    expect(retained).toBe(output)
+    expect(panel.focused).toBe(true)
+    const last = panel.currentNode()
+    panel.handleInput('\x1b[C')
+    expect(panel.currentNode()).toEqual(last)
+    panel.handleInput('\x1b[D')
+    expect(panel.currentNode()).not.toEqual(last)
+    panel.invalidate()
+    panel.handleInput('\x1b')
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('keeps empty output and one-page close behavior', () => {
+    const close = vi.fn()
+    const panel = new JobOutputPanel(job('empty', 'running'), '', {
+      theme: new FakeTheme(), components: new FakeMayflyComponents(), keymap: new FakeKeymap(), t, onClose: close,
+    })
+    expect(panel.render(80).join('\n')).toContain('(no new output yet)')
+    panel.handleInput('q')
+    expect(close).toHaveBeenCalledOnce()
+  })
   it('formats compact durations and detects live jobs', () => {
     expect(formatJobDuration(1_000, 1_000)).toBe('0s')
     expect(formatJobDuration(0, 59_999)).toBe('59s')
@@ -129,7 +178,8 @@ describe('jobs panel models', () => {
     expect(jobOutputPanelModel(job('failed', 'failed', { detail: 'boom' }), '', t).view)
       .toMatchObject({ sections: [{ title: 'label failed · failed · boom', body: { code: expect.stringContaining('already consumed') } }] })
     const long = Array.from({ length: 130 }, (_, index) => `row ${String(index)}`).join('\n')
-    expect(JSON.stringify(jobOutputPanelModel(job('done', 'completed'), long, t).view)).toContain('… output truncated\\nrow 10')
+    expect(JSON.stringify(jobOutputPanelModel(job('done', 'completed'), long, t).view)).toContain('row 0')
+    expect(JSON.stringify(jobOutputPanelModel(job('done', 'completed'), long, t).view)).toContain('row 129')
   })
 })
 
@@ -188,6 +238,30 @@ describe('mayfly-jobs command', () => {
     rig.ctx.emit('test/session-changed')
     expect(rig.screen.overlays[0]!.hidden).toBe(true)
     await rig.fiber.dispose()
+  })
+
+  it('reads large job output once and keeps all pages available until detail closes', async () => {
+    const rig = await mount({ rows: [job('large', 'completed')] })
+    const output = Array.from({ length: 500 }, (_, index) => `row ${String(index).padStart(3, '0')} ${'x'.repeat(60)}`).join('\n')
+    rig.registry.service.read.mockReturnValueOnce({ text: output, snapshot: job('large', 'completed') })
+    await rig.execute()
+    const list = rig.screen.overlays[0]!.component
+    list.handleInput('\r')
+    const detail = rig.screen.overlays[1]!.component
+    expect(detail.render(80).join('\n')).toContain('row 000')
+    detail.handleInput('\x1b[C')
+    detail.render(80)
+    detail.handleInput('\x1b[C')
+    detail.handleInput('\x1b[F')
+    expect(detail.render(80).join('\n')).toContain('row 499')
+    detail.handleInput('\x1b[D')
+    detail.handleInput('\x1b[D')
+    expect(detail.render(80).join('\n')).toContain('row 000')
+    expect(rig.registry.service.read).toHaveBeenCalledExactlyOnceWith(JobId('large'), rig.agent)
+    detail.handleInput('\x1b')
+    expect(list.render(80).join('\n')).toContain('large')
+    await rig.fiber.dispose()
+    expect(rig.registry.listenerCount()).toBe(0)
   })
 
   it('contains native list, read, and kill failures as notices or an empty panel', async () => {

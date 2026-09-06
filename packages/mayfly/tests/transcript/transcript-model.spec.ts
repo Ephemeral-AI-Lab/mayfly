@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponent, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/index.ts'
 import { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptModelComponent, type TranscriptModelRenderer } from '../../src/transcript/transcript-model.ts'
@@ -74,11 +75,36 @@ afterEach(() => {
 })
 
 describe('TranscriptController', () => {
-  it('mounts one dynamic source and refreshes canonical rows', () => { const ctx = new Context(); const f = fixture(); const service = new TranscriptController(ctx, f.screen, { renderer: plainRenderer() }); let current = model('one'); service.setSource(() => current); const component = f.children[0]!; expect(component.render(20)).toEqual(['entry']); service.refreshLocale(); current = model('one', [{ kind: 'fields', rows: [{ label: 'a', value: [{ text: 'b' }] }] }]); service.refresh(); expect(component.render(20)).toEqual(['a: b']); service.dispose(); expect(component.render(20)).toEqual([]); service.refresh() })
+  it('recompiles canonical viewport conditions after invalidation and generation changes', () => {
+    let viewportRows = 10
+    const entry = ui.stack.column([
+      ui.child(ui.text('short'), { when: { maxHeight: 20 } }),
+      ui.child(ui.text('tall'), { when: { minHeight: 21 } }),
+    ])
+    let current: TranscriptModel | null = createTranscriptModel('conditional', [entry])
+    const component = new TranscriptModelComponent(() => current, { ...plainRenderer(), viewportRows: () => viewportRows })
+    expect(component.render(40)).toEqual(['short'])
+    current = { ...current, streaming: true }
+    expect(component.render(40)).toEqual(['short'])
+    viewportRows = 30
+    component.invalidate()
+    expect(component.render(40)).toEqual(['tall'])
+    viewportRows = 10
+    current = { ...current, generation: 1 }
+    expect(component.render(40)).toEqual(['short'])
+    current = null
+    expect(component.render(40)).toEqual([])
+    viewportRows = 30
+    current = createTranscriptModel('conditional', [entry], false, 1)
+    expect(component.render(40)).toEqual(['tall'])
+    component.dispose()
+  })
+  it('mounts one dynamic source and refreshes canonical rows', () => { const ctx = new Context(); const f = fixture(); const service = new TranscriptController(ctx, f.screen, { renderer: plainRenderer() }); let current = model('one'); service.setSource(() => current); const component = f.children[0]!; expect(component.render(20)).toEqual(['entry']); service.refreshLocale(); service.refreshPresentationPolicy(); current = model('one', [{ kind: 'fields', rows: [{ label: 'a', value: [{ text: 'b' }] }] }]); service.refresh(); expect(component.render(20)).toEqual(['a: b']); service.dispose(); expect(component.render(20)).toEqual([]); service.refresh() })
   it('handles a null source, late attach, source replacement, and unload', () => { const ctx = new Context(); const service = new TranscriptController(ctx, undefined, { renderer: plainRenderer() }); service.setSource(() => null); service.refresh(); const f = fixture(); service.attach(f.screen); expect(f.children).toHaveLength(1); expect(f.children[0]!.render(20)).toEqual([]); service.setSource(model('active')); expect(f.children).toHaveLength(1); expect(f.children[0]!.render(20)).toEqual(['entry']); service.dispose(); expect(f.children).toHaveLength(0) })
   it('renders null and nested canonical nodes safely', () => { expect(new TranscriptModelComponent(() => null, plainRenderer()).render(10)).toEqual([]); const c = new TranscriptModelComponent(() => model('nested', [{ kind: 'sections', sections: [{ title: 's', body: { kind: 'code', code: 'abcdef' } }] }]), plainRenderer()); expect(c.render(3)).toEqual(['\x1b[1ms\x1b[22m', 'abc', 'def']); c.invalidate() })
   it('renders a static source and disposes its mounted child', () => { const f = fixture(); const service = new TranscriptController(new Context(), f.screen, { renderer: plainRenderer() }); service.setSource(model('static')); expect(f.children[0]!.render(20)).toEqual(['entry']); service.dispose(); expect(f.children).toHaveLength(0) })
-  it('bounds the rendered entry window and cleans up on reattach', () => { const entries = Array.from({ length: TRANSCRIPT_MODEL_WINDOW + 3 }, (_, index) => ({ kind: 'text' as const, content: String(index) })); const component = new TranscriptModelComponent(() => model('bounded', entries), plainRenderer()); const rows = component.render(20); expect(rows).toHaveLength(TRANSCRIPT_MODEL_WINDOW); expect(rows[0]).toBe('3'); const first = fixture(); const second = fixture(); const service = new TranscriptController(new Context(), first.screen, { renderer: plainRenderer() }); service.setSource(model('reattach')); service.attach(second.screen); expect(first.children).toHaveLength(0); expect(second.children).toHaveLength(1); service.dispose() })
+  it('returns a bounded viewport window with total row metadata', () => { const component = new TranscriptModelComponent(() => model('window', Array.from({ length: 10 }, (_, index) => ({ kind: 'text' as const, content: String(index) }))), plainRenderer()); expect(component.renderWindow(20, 2, 3)).toEqual({ rows: ['5', '6', '7'], total: 10 }); expect(component.renderWindow(20, Number.NaN, Number.NaN).rows).toHaveLength(1) })
+  it('renders the complete entry history and cleans up on reattach', () => { const entries = Array.from({ length: TRANSCRIPT_MODEL_WINDOW + 3 }, (_, index) => ({ kind: 'text' as const, content: String(index) })); const component = new TranscriptModelComponent(() => model('bounded', entries), plainRenderer()); const rows = component.render(20); expect(rows).toHaveLength(TRANSCRIPT_MODEL_WINDOW + 3); expect(rows[0]).toBe('0'); const first = fixture(); const second = fixture(); const service = new TranscriptController(new Context(), first.screen, { renderer: plainRenderer() }); service.setSource(model('reattach')); service.attach(second.screen); expect(first.children).toHaveLength(0); expect(second.children).toHaveLength(1); service.dispose() })
   it('builds immutable replay/live fixtures without folding session events', () => { const replay = createTranscriptModel('session', [{ kind: 'text', content: 'user' }, { kind: 'code', code: 'assistant' }]); expect(replay.streaming).toBeUndefined(); expect(Object.isFrozen(replay.entries)).toBe(true); const live = appendTranscriptNode(replay, { kind: 'text', content: 'stream' }, true); expect(live.streaming).toBe(true); expect(live.entries).toHaveLength(3); const settled = appendTranscriptNode(live, { kind: 'text', content: 'done' }, false); expect(settled.streaming).toBe(false); expect(replay.entries).toHaveLength(2) })
 
   it('renders every semantic entry through the plain renderer fallback', () => {

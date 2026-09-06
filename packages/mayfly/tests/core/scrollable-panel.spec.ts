@@ -92,4 +92,51 @@ describe('ScrollablePanel', () => {
     expect(panel.render(10)).toEqual([])
     expect(dispose).toHaveBeenCalledOnce()
   })
+
+  it('uses a component-provided viewport window when available', () => {
+    const screen = new FakeScreen()
+    screen.rows = 8
+    const renderWindow = vi.fn((_width: number, _offset: number, rows: number) => ({ rows: ['windowed'], total: rows + 1 }))
+    const panel = new ScrollablePanel({
+      screen,
+      components: new FakeMayflyComponents(),
+      colors: new FakeTheme().colors,
+      body: { render: () => ['fallback'], renderWindow, invalidate: vi.fn() },
+      title: () => 'Windowed',
+      onClose: vi.fn(),
+    })
+    expect(plain(panel.render(20)).join('\n')).toContain('windowed')
+    expect(renderWindow).toHaveBeenCalledOnce()
+  })
+
+  it('renders windowed rows at the adjusted offset after growth and shrinkage', () => {
+    const screen = new FakeScreen()
+    screen.rows = 8
+    let rows = Array.from({ length: 10 }, (_, index) => `row ${String(index)}`)
+    const panel = new ScrollablePanel({
+      screen,
+      components: new FakeMayflyComponents(),
+      colors: new FakeTheme().colors,
+      body: {
+        render: () => { throw new Error('must use the window') },
+        renderWindow: (_width: number, offset: number, limit: number) => {
+          const end = Math.max(0, rows.length - offset)
+          return { rows: rows.slice(Math.max(0, end - limit), end), total: rows.length }
+        },
+        invalidate: () => {},
+      },
+      title: () => 'Windowed',
+      onClose: () => {},
+    })
+    const visible = () => plain(panel.render(20)).slice(1, 5).map(row => row.slice(2, -2).trim())
+    expect(visible()).toEqual(['row 6', 'row 7', 'row 8', 'row 9'])
+    panel.handleInput('\x1b[H')
+    expect(visible()).toEqual(['row 0', 'row 1', 'row 2', 'row 3'])
+    rows.push('row 10')
+    expect(visible()).toEqual(['row 0', 'row 1', 'row 2', 'row 3'])
+    rows = rows.slice(0, 3)
+    expect(visible()).toEqual(['row 0', 'row 1', 'row 2', ''])
+    rows.push('row 3', 'row 4')
+    expect(visible()).toEqual(['row 1', 'row 2', 'row 3', 'row 4'])
+  })
 })

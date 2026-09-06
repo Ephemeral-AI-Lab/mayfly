@@ -51,7 +51,7 @@ interface ExpandableComponent extends MayflyComponent { setExpanded?(expanded: b
 
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
-/** Maximum semantic entries mounted by one transcript model component. */
+/** Legacy export retained for consumers; transcript rendering no longer drops history. */
 export const TRANSCRIPT_MODEL_WINDOW = 200
 
 /** Renderer-only dependencies for semantic transcript entries. */
@@ -157,6 +157,7 @@ function entryRevision(entry: TranscriptEntryModel): number {
 /** Bounded semantic transcript component with id-based reconciliation. */
 export class TranscriptModelComponent implements MayflyComponent {
   private readonly cached = new Map<string, CachedComponent>()
+  private canonicalRows = new WeakMap<object, { readonly width: number, readonly rows: string[] }>()
   private expanded = false
   private renderedRows: RenderedRowsCache | undefined
   private generation: number | undefined
@@ -170,16 +171,18 @@ export class TranscriptModelComponent implements MayflyComponent {
     const model = this.source()
     if (model === null) {
       this.renderedRows = undefined
+      this.canonicalRows = new WeakMap()
       this.prune(new Set())
       this.generation = undefined
       return []
     }
     if (this.generation !== model.generation) {
       this.renderedRows = undefined
+      this.canonicalRows = new WeakMap()
       this.prune(new Set())
       this.generation = model.generation
     }
-    const bounded = model.entries.slice(-TRANSCRIPT_MODEL_WINDOW)
+    const bounded = model.entries
     const policy = this.presentation()
     const rendered = this.renderedRows
     if (rendered?.model === model
@@ -194,9 +197,25 @@ export class TranscriptModelComponent implements MayflyComponent {
     this.prune(live)
     const rows = entries.flatMap(entry => isSemantic(entry)
       ? this.renderSemantic(entry, width, expandableTurns.has(entry.turn), policy)
-      : renderCanonicalNode(entry, width, this.renderer))
+      : this.renderCanonical(entry, width))
     this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
     return rows
+  }
+
+  private renderCanonical(entry: MayflyUiNode, width: number): string[] {
+    const cached = this.canonicalRows.get(entry)
+    if (cached?.width === width) return cached.rows
+    const rows = renderCanonicalNode(entry, width, this.renderer)
+    this.canonicalRows.set(entry, { width, rows })
+    return rows
+  }
+
+  renderWindow(width: number, offset: number, rows: number): { readonly rows: string[], readonly total: number } {
+    const rendered = this.render(width)
+    const safeRows = Math.max(1, Number.isFinite(rows) ? Math.floor(rows) : 1)
+    const safeOffset = Math.max(0, Number.isFinite(offset) ? Math.floor(offset) : 0)
+    const end = Math.max(0, rendered.length - safeOffset)
+    return { rows: rendered.slice(Math.max(0, end - safeRows), end), total: rendered.length }
   }
 
   /** Apply the global recent-detail expansion state to mounted entries. */
@@ -212,6 +231,7 @@ export class TranscriptModelComponent implements MayflyComponent {
 
   invalidate(): void {
     this.renderedRows = undefined
+    this.canonicalRows = new WeakMap()
     for (const cached of this.cached.values()) {
       cached.rows = undefined
       cached.component.invalidate()
@@ -221,6 +241,7 @@ export class TranscriptModelComponent implements MayflyComponent {
   /** Dispose timers and async renderer resources held by cached components. */
   dispose(): void {
     this.renderedRows = undefined
+    this.canonicalRows = new WeakMap()
     this.prune(new Set())
   }
 

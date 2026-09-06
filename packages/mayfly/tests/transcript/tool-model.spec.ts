@@ -13,7 +13,7 @@ describe('ToolModelComponent', () => {
     const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'call-only', name: 'call-only', expanded: true, call: { kind: 'text', content: 'pending call' } }), renderer)
     expect(component.render(20)).toEqual(['pending call'])
   })
-  it('bounds both collapsed and expanded presenter output', () => {
+  it('folds collapsed output while preserving the complete expanded presenter output', () => {
     const rows = Array.from({ length: 220 }, (_, index) => `row ${String(index)}`).join('\n')
     const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'bounded', name: 'bounded', call: { kind: 'code', code: rows }, result: { kind: 'code', code: rows } }), renderer)
     const collapsed = component.render(40)
@@ -21,8 +21,8 @@ describe('ToolModelComponent', () => {
     expect(collapsed.at(-1)).toContain('ctrl+o to expand')
     component.setExpanded(true)
     const expanded = component.render(40)
-    expect(expanded).toHaveLength(200)
-    expect(expanded.at(-1)).toContain('more lines')
+    expect(expanded).toHaveLength(220)
+    expect(expanded.at(-1)).toBe('row 219')
   })
   it('contains invalid canonical nodes and degenerate viewports', () => {
     const invalid = { kind: 'list', id: 'bad', selectedIds: [], items: [{ id: 'same', label: 'one' }, { id: 'same', label: 'two' }] } as MayflyUiNode

@@ -10,7 +10,6 @@ import type { MayflyComponents, MayflySemanticColors } from '../../src/core/inde
 import type { ReadCallModel, TranscriptReadGroupModel } from '../../src/frontend/index.ts'
 import {
   groupReadsByFile,
-  READ_GROUP_EXPANDED_ROW_LIMIT,
   READ_GROUP_ROW_LIMIT,
   ReadGroupComponent,
 } from '../../src/transcript/read-group.ts'
@@ -187,7 +186,7 @@ describe('ReadGroupComponent', () => {
     expect(component.render(80)).toEqual(collapsed)
   })
 
-  it('bounds the expanded tree and truncates every row to the viewport', () => {
+  it('renders the complete expanded tree and truncates every row to the viewport', () => {
     const reads = Array.from({ length: 90 }, (_, index) => read({
       callId: `r${String(index)}`,
       path: `file${String(index)}.ts`,
@@ -197,8 +196,8 @@ describe('ReadGroupComponent', () => {
     const component = new ReadGroupComponent(group(reads), IDENTITY, COMPONENTS)
     component.setExpanded(true)
     const expanded = component.render(60)
-    expect(expanded).toHaveLength(2 + READ_GROUP_EXPANDED_ROW_LIMIT)
-    expect(expanded.at(-1)).toContain('more lines')
+    expect(expanded.length).toBeGreaterThan(2 + 200)
+    expect(expanded.at(-1)).not.toContain('more lines')
     for (const row of expanded) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(60)
     const narrow = new ReadGroupComponent(group([
       read({ callId: 'wide', path: 'a/very/deep/path/that/exceeds/the/columns.ts', range: { first: 1, last: 9 }, totalLines: 99, error: undefined }),

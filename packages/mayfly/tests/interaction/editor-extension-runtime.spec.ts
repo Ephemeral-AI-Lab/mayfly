@@ -620,18 +620,19 @@ describe('editor extension submit barrier', () => {
   })
 
   it.each([
-    ['null value', async () => null as never, 'submit transform must return an object'],
-    ['invalid value', async () => success({ text: 7 as never }), 'submit transform text exceeds'],
-    ['overlong text', async () => success({ text: 'x'.repeat(20_001) }), 'submit transform text exceeds'],
-  ])('contains malicious %s and keeps the draft', async (_label, transform, expectedNotice) => {
+    ['null value', async () => null as never, 'submit transform must return an object', false],
+    ['invalid value', async () => success({ text: 7 as never }), 'submit transform text must be a string', false],
+    ['overlong text', async () => success({ text: 'x'.repeat(20_001) }), 'submit transform text exceeds', true],
+  ])('contains malicious %s without losing the draft', async (_label, transform, expectedNotice, submitsOriginal) => {
     const { editor, runtime, notices } = runtimeFixture([{ id: 'acme.invalid-transform', transformSubmit: transform }])
     const submitted = vi.fn()
     editor.onSubmit = submitted
     editor.setText('still here')
     editor.submit()
     await vi.waitFor(() => expect(notices.some(notice => notice.includes(expectedNotice))).toBe(true))
-    expect(editor.getText()).toBe('still here')
-    expect(submitted).not.toHaveBeenCalled()
+    expect(editor.getText()).toBe(submitsOriginal ? '' : 'still here')
+    if (submitsOriginal) expect(submitted).toHaveBeenCalledWith('still here')
+    else expect(submitted).not.toHaveBeenCalled()
     runtime.dispose()
   })
 

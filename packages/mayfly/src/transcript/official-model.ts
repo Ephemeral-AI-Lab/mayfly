@@ -18,7 +18,7 @@ import {
 } from '../conversation/index.ts'
 import type { ReadCallModel, SearchCallModel, TranscriptEntryModel, TranscriptModel, TranscriptReadGroupModel, TranscriptSearchGroupModel } from '../frontend/index.ts'
 import { createToolPresentationModel } from './tool-model.ts'
-import { createTranscriptModel, TRANSCRIPT_MODEL_WINDOW } from './transcript-model.ts'
+import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
 
 /**
@@ -295,7 +295,7 @@ export function conversationTranscriptModel(
     run = []
     runFamily = undefined
   }
-  for (const entry of projection.entries.slice(-TRANSCRIPT_MODEL_WINDOW)) {
+  for (const entry of projection.entries) {
     if (entry.kind !== 'tool') {
       // Thinking is meta, not content: it neither renders into the run nor
       // breaks it — reads and searches stay grouped across the model's
@@ -322,7 +322,7 @@ export function conversationTranscriptModel(
   return createTranscriptModel('official-conversation', entries, projection.streaming, generation)
 }
 
-/** Native projections validate the whole wire; only admit our display window again. */
+/** Native projections validate the complete wire and preserve all entries. */
 function visibleProjection(
   value: unknown,
   transcriptAfterSeq: number | undefined,
@@ -330,18 +330,13 @@ function visibleProjection(
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
   const envelope = value as Record<string, unknown>
   if (!Array.isArray(envelope.entries) || typeof envelope.streaming !== 'boolean') return undefined
-  let entries: unknown[]
-  if (transcriptAfterSeq === undefined) entries = envelope.entries.slice(-TRANSCRIPT_MODEL_WINDOW)
-  else {
+  let entries: unknown[] = envelope.entries
+  if (transcriptAfterSeq !== undefined) {
     entries = []
-    // A cutoff can exclude a sparse suffix; scanning is bounded by input length,
-    // while schema work and retained data stay bounded by the display window.
-    for (let index = envelope.entries.length - 1; index >= 0 && entries.length < TRANSCRIPT_MODEL_WINDOW; index -= 1) {
-      const entry: unknown = envelope.entries[index]
-      if (entry === null || typeof entry !== 'object' || !('seq' in entry) || typeof entry.seq !== 'number' || !Number.isSafeInteger(entry.seq)) return undefined
-      if (entry.seq > transcriptAfterSeq) entries.push(entry)
+    for (const candidate of envelope.entries) {
+      if (candidate === null || typeof candidate !== 'object' || !('seq' in candidate) || typeof candidate.seq !== 'number' || !Number.isSafeInteger(candidate.seq)) return undefined
+      if (candidate.seq > transcriptAfterSeq) entries.push(candidate)
     }
-    entries.reverse()
   }
   const parsed = conversationProjectionSchema.safeParse({ entries, streaming: envelope.streaming })
   return parsed.success ? parsed.data : undefined

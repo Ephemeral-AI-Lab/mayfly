@@ -97,6 +97,7 @@ function validatePaneDefinition(definition: unknown): void {
   validateSize(definition.size, 'pane size')
   if (definition.narrow !== undefined && !NARROW_POLICIES.has(definition.narrow as string)) throw new TypeError('pane narrow policy is invalid')
   optionalCallback(definition.onEvent, 'pane onEvent')
+  optionalCallback(definition.load, 'pane load')
 }
 
 function validateStatusDefinition(definition: unknown): void {
@@ -126,6 +127,7 @@ function validateOverlayDefinition(definition: unknown): void {
   validateOverlaySize(definition.maxHeight, 'overlay maxHeight')
   optionalNonNegativeInteger(definition.minWidth, 'overlay minWidth')
   optionalCallback(definition.onEvent, 'overlay onEvent')
+  optionalCallback(definition.load, 'overlay load')
 }
 
 function validateEditorExtensionDefinition(definition: unknown): void {
@@ -200,20 +202,69 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       this.entries.set(id, entry)
       this.upsert(entry)
     }
-    let handle!: SnapshotHandle<MayflyUiNode | null>
+    let handle!: SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
     const remove = (revision: number): void => {
       this.entries.delete(id)
       this.remove(id, revision)
     }
-    handle = new SnapshotHandle(publish, remove)
+    handle = new SnapshotHandle(publish, remove) as SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
+    let activeLoad: AbortController | undefined
+    let nextCursor: string | undefined
+    let cursorRevision = 0
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
       if (handle.disposed) return
+      activeLoad?.abort()
       originalDispose()
       cleanup()
     }
+    handle.refresh = async (): Promise<void> => {
+      const load = admittedDefinition.load
+      if (load === undefined || handle.disposed) return
+      nextCursor = undefined
+      activeLoad?.abort()
+      const controller = new AbortController()
+      activeLoad = controller
+      const revision = handle.revision
+      try {
+        const page = await load({ signal: controller.signal })
+        if (!controller.signal.aborted && handle.revision === revision) {
+          nextCursor = page.nextCursor
+          cursorRevision = revision + 1
+          handle.set(page.node ?? null)
+        }
+      } catch (error) {
+        if (!controller.signal.aborted && handle.revision === revision) throw error
+      } finally {
+        if (activeLoad === controller) activeLoad = undefined
+        controller.abort()
+      }
+    }
+    handle.loadMore = async (): Promise<boolean> => {
+      const load = admittedDefinition.load
+      if (load === undefined || handle.disposed || nextCursor === undefined || cursorRevision !== handle.revision) return false
+      activeLoad?.abort()
+      const controller = new AbortController()
+      activeLoad = controller
+      const revision = handle.revision
+      try {
+        const page = await load({ cursor: nextCursor, signal: controller.signal })
+        if (controller.signal.aborted || handle.revision !== revision) return false
+        nextCursor = page.nextCursor
+        cursorRevision = revision + 1
+        handle.set(page.node)
+        return true
+      } catch (error) {
+        if (!controller.signal.aborted && handle.revision === revision) throw error
+        return false
+      } finally {
+        if (activeLoad === controller) activeLoad = undefined
+        controller.abort()
+      }
+    }
     publish(admittedNode, 0)
+    void handle.refresh().catch(error => { this.ctx.logger.warn(`pane "${id}" snapshot load failed`, error) })
     return handle
   }
 
@@ -226,6 +277,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
 class OverlayHandle implements MayflyOverlayHandle {
   private live = true
   private revisionValue = 0
+  private snapshotRevisionValue = 0
   private hiddenValue = false
   private focusRevisionValue = 0
 
@@ -238,12 +290,14 @@ class OverlayHandle implements MayflyOverlayHandle {
   get disposed(): boolean { return !this.live }
   get closed(): boolean { return !this.live }
   get revision(): number { return this.revisionValue }
+  get snapshotRevision(): number { return this.snapshotRevisionValue }
 
   set(node: MayflyUiNode, update?: MayflySnapshotUpdate): void {
     if (!this.live) return
     const frozen = freezeWire(node)
     const admittedUpdate = freezeWire(update)
     this.node = frozen
+    this.snapshotRevisionValue += 1
     this.revisionValue += 1
     this.publish(this.revisionValue, this.hiddenValue, this.focusRevisionValue, this.node, admittedUpdate)
   }
@@ -299,15 +353,36 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
       this.remove(id, revision)
     }
     handle = new OverlayHandle(publish, remove, node)
+    let activeLoad: AbortController | undefined
     this.handles.set(id, handle)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
       if (handle.disposed) return
+      activeLoad?.abort()
       originalDispose()
       cleanup()
     }
+    const load = admittedDefinition.load
     publish(0, false, 0)
+    if (load !== undefined && !handle.disposed) {
+      void (async () => {
+        const controller = new AbortController()
+        activeLoad = controller
+        const revision = handle.snapshotRevision
+        try {
+          const page = await load({ signal: controller.signal })
+          if (!controller.signal.aborted && handle.snapshotRevision === revision) handle.set(page.node)
+        } catch (error) {
+          if (!controller.signal.aborted && handle.snapshotRevision === revision) {
+            this.ctx.logger.warn(`overlay "${id}" snapshot load failed`, error)
+          }
+        } finally {
+          activeLoad = undefined
+          controller.abort()
+        }
+      })()
+    }
     return handle
   }
 

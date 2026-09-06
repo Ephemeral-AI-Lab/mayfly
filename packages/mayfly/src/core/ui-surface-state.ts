@@ -4,6 +4,7 @@
 import type { MayflyFormField, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import type { Component } from '@earendil-works/pi-tui'
 import { admittedListIndex, admittedListItem } from './ui-validator.ts'
+import { WindowController } from './window-controller.ts'
 
 export interface UiControlBinding {
   readonly component: Component
@@ -137,13 +138,19 @@ export type UiListMovement = 'up' | 'down' | 'page-up' | 'page-down' | 'home' | 
 /** Bounded list windows and semantic cursor anchors across snapshot replacement. */
 export class UiListStateStore {
   private readonly cursors = new Map<string, { items: MayflyListNode['items'], index: number, itemId?: string }>()
+  private readonly windows = new Map<string, WindowController>()
 
   window(node: MayflyListNode, rowLimit: number): readonly UiVirtualListEntry[] {
     if (node.items.length === 0) return []
     const cursor = this.cursor(node)
-    const visible = Math.max(1, Math.min(256, Number.isFinite(rowLimit) ? Math.floor(rowLimit) : 20))
+    const visible = Math.max(1, Number.isFinite(rowLimit) ? Math.floor(rowLimit) : 20)
+    let controller = this.windows.get(node.id)
+    if (controller === undefined) {
+      controller = new WindowController()
+      this.windows.set(node.id, controller)
+    }
     const size = Math.min(node.items.length, visible + 4)
-    const start = Math.min(Math.max(0, node.items.length - size), Math.max(0, cursor - Math.floor(size / 2)))
+    const start = controller.update(node.items.length, size, Math.max(0, cursor - Math.floor(size / 2))).offset
     return Array.from({ length: size }, (_, offset) => {
       const index = start + offset
       return { index, item: admittedListItem(node.items, index)! }
@@ -172,13 +179,16 @@ export class UiListStateStore {
 
   checkpoint(): () => void {
     const cursors = new Map(this.cursors)
+    const windows = new Map([...this.windows].map(([key, value]) => [key, value.clone()] as const))
     return () => {
       this.cursors.clear()
       for (const [key, value] of cursors) this.cursors.set(key, value)
+      this.windows.clear()
+      for (const [key, value] of windows) this.windows.set(key, value)
     }
   }
 
-  clear(): void { this.cursors.clear() }
+  clear(): void { this.cursors.clear(); this.windows.clear() }
 
   private cursor(node: MayflyListNode): number {
     const previous = this.cursors.get(node.id)

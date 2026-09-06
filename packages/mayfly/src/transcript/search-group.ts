@@ -16,7 +16,7 @@ import type { SearchCallModel, TranscriptSearchGroupModel } from '../frontend/in
 export const SEARCH_GROUP_ROW_LIMIT = 8
 
 /** Total row ceiling in the expanded card, matching the tool-body budget. */
-export const SEARCH_GROUP_EXPANDED_ROW_LIMIT = 200
+export const SEARCH_GROUP_EXPANDED_ROW_LIMIT = Number.MAX_SAFE_INTEGER
 
 /** Colors plus width helpers threaded through the row builders. */
 interface RenderDeps {
@@ -64,10 +64,11 @@ export class SearchGroupComponent implements MayflyComponent {
     const cut = (row: string): string => this.components.truncateToWidth(row, width)
     const clamp = (rows: string[]): string[] => rows.map(cut)
     const tree = this.renderPatternRows(deps, cut)
-    const limit = this.expanded ? SEARCH_GROUP_EXPANDED_ROW_LIMIT : SEARCH_GROUP_ROW_LIMIT
+    if (this.expanded) return clamp(['', this.renderHeader(width), ...tree])
+    const limit = SEARCH_GROUP_ROW_LIMIT
     if (tree.length <= limit) return clamp(['', this.renderHeader(width), ...tree])
     const hidden = tree.length - (limit - 1)
-    const hint = this.expanded ? `... (${String(hidden)} more lines)` : `... (${String(hidden)} more, ctrl+o to expand)`
+    const hint = `... (${String(hidden)} more, ctrl+o to expand)`
     return clamp(['', this.renderHeader(width), ...tree.slice(0, limit - 1), this.colors.textMuted(cut(hint))])
   }
 

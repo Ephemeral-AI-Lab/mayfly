@@ -17,7 +17,7 @@ import type { ReadCallModel, TranscriptReadGroupModel } from '../frontend/index.
 export const READ_GROUP_ROW_LIMIT = 8
 
 /** Total row ceiling in the expanded card, matching the tool-body budget. */
-export const READ_GROUP_EXPANDED_ROW_LIMIT = 200
+export const READ_GROUP_EXPANDED_ROW_LIMIT = Number.MAX_SAFE_INTEGER
 
 /** One file's read windows, in first-read order. */
 export interface ReadFileGroup {
@@ -115,11 +115,10 @@ export class ReadGroupComponent implements MayflyComponent {
     const cut = (row: string): string => this.components.truncateToWidth(row, width)
     const clamp = (rows: string[]): string[] => rows.map(cut)
     const tree = this.renderFileRows(deps, cut)
-    const limit = this.expanded ? READ_GROUP_EXPANDED_ROW_LIMIT : READ_GROUP_ROW_LIMIT
+    if (this.expanded) return clamp(['', this.renderHeader(width), ...tree])
+    const limit = READ_GROUP_ROW_LIMIT
     if (tree.length <= limit) return clamp(['', this.renderHeader(width), ...tree])
-    const hint = this.expanded
-      ? `... (${String(tree.length - (limit - 1))} more lines)`
-      : `... (${String(tree.length - (limit - 1))} more, ctrl+o to expand)`
+    const hint = `... (${String(tree.length - (limit - 1))} more, ctrl+o to expand)`
     return clamp(['', this.renderHeader(width), ...tree.slice(0, limit - 1), this.colors.textMuted(cut(hint))])
   }
 

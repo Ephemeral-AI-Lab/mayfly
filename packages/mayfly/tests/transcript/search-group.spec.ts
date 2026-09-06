@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/index.ts'
 import type { SearchCallModel, TranscriptSearchGroupModel } from '../../src/frontend/index.ts'
 import {
-  SEARCH_GROUP_EXPANDED_ROW_LIMIT,
   SEARCH_GROUP_ROW_LIMIT,
   SearchGroupComponent,
 } from '../../src/transcript/search-group.ts'
@@ -225,8 +224,8 @@ describe('SearchGroupComponent', () => {
     const big = new SearchGroupComponent(group(huge), IDENTITY, COMPONENTS)
     big.setExpanded(true)
     const expanded = big.render(60)
-    expect(expanded).toHaveLength(2 + SEARCH_GROUP_EXPANDED_ROW_LIMIT)
-    expect(expanded.at(-1)).toContain('more lines')
+    expect(expanded.length).toBeGreaterThan(2 + 200)
+    expect(expanded.at(-1)).not.toContain('more lines')
     for (const row of expanded) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(60)
     const narrow = new SearchGroupComponent(group([search({ callId: 'w', pattern: 'x'.repeat(60), shape: 'paths', paths: ['y'.repeat(60)], total: 1 })]), IDENTITY, COMPONENTS).render(24)
     for (const row of narrow) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(24)

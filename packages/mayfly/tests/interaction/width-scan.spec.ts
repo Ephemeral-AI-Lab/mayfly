@@ -20,7 +20,7 @@ import { CanonicalFormController, type FormField } from '../../src/interaction/f
 import { HelpPanel, type HelpSection } from '../../src/interaction/help.ts'
 import { InfoPanel, type InfoSection } from '../../src/interaction/info-panel.ts'
 import { CanonicalDocumentController } from '../../src/interaction/frontend-panel.ts'
-import { jobOutputPanelModel, jobsPanelModel } from '../../src/interaction/jobs.ts'
+import { JobOutputPanel, jobOutputPanelModel, jobsPanelModel } from '../../src/interaction/jobs.ts'
 import { PlanReviewPanel, planReviewChoices } from '../../src/interaction/plan-review-panel.ts'
 import { Questionnaire } from '../../src/interaction/questionnaire.ts'
 import { CanonicalSelectController } from '../../src/interaction/select-list.ts'
@@ -227,6 +227,24 @@ describe('interaction width-scan', () => {
       })
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`canonical-loading-document/${name}`, panel.render(width), width)
+      }
+    })
+
+    it(`paged job output survives ${name}`, () => {
+      const panel = new JobOutputPanel({ id: 'large', label: 'Large output', status: 'completed' } as JobSnapshot,
+        `${text}\n`.repeat(Math.ceil(30_000 / (text.length + 1))), {
+          theme: IDENTITY_THEME as never,
+          components: new FakeMayflyComponents(),
+          keymap: new FakeKeymap(),
+          t: key => key,
+          onClose: vi.fn(),
+        })
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`job-output/${name}`, panel.render(width), width)
+        panel.handleInput('\x1b[C')
+        expectLinesFit(`job-output-next/${name}`, panel.render(width), width)
+        panel.handleInput('\x1b[F')
+        expectLinesFit(`job-output-end/${name}`, panel.render(width), width)
       }
     })
 
