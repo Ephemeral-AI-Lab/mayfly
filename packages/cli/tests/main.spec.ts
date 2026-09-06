@@ -173,7 +173,9 @@ describe('main', () => {
   it('routes a pnpm-missing bootstrap to the pnpm manual line', async () => {
     fixtureLauncher()
     cliInternals.spawnOnce = async (cmd, args) => args[args.length - 1] === '--version'
-      ? { code: null, signal: null, stdout: '', stderr: '', timedOut: false, spawnError: 'Error: spawn pnpm ENOENT' }
+      ? cliInternals.platform === 'win32'
+        ? { code: 9009, signal: null, stdout: '', stderr: '', timedOut: false }
+        : { code: null, signal: null, stdout: '', stderr: '', timedOut: false, spawnError: 'Error: spawn pnpm ENOENT' }
       : OK
     let inherited = false
     cliInternals.spawnInherit = async () => {

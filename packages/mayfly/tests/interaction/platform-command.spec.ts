@@ -13,10 +13,10 @@ describe.skipIf(process.platform !== 'win32')('Windows command shims', () => {
     const root = join(parent, 'space 中文')
     mkdirSync(root)
     for (const command of ['npm', 'pnpm']) {
-      writeFileSync(join(root, `${command}.cmd`), '@echo off\r\necho %*\r\n')
+      writeFileSync(join(root, `${command}.cmd`), '@echo off\r\necho %~1\r\necho %~2\r\necho %~3\r\n')
       const result = await updaterInternals.spawnOnce(command, ['config', 'get', 'registry'], { env: { PATH: root }, timeoutMs: 5000 })
       expect(result.code).toBe(0)
-      expect(result.stdout.trim()).toBe('config get registry')
+      expect(result.stdout.trim().split(/\r?\n/u)).toEqual(['config', 'get', 'registry'])
     }
   })
 })
