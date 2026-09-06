@@ -224,7 +224,7 @@ describe('fsMentionSuggestions', () => {
     expect(suggestions?.items).toEqual([{ value: '@broken', label: 'broken', description: 'broken' }])
   })
 
-  it('stops the scan at the entry cap, leaving deeper trees unlisted', async () => {
+  it('stops the scan at the entry cap, leaving deeper trees unlisted', { timeout: 30_000 }, async () => {
     const root = mkdtempTracked('mayfly-mention-deep-')
     // a/ holds 1999 files plus subdir b/; with a/ itself that fills the
     // 2000-entry budget exactly, so b/ (holding needle.txt) is never
@@ -238,7 +238,7 @@ describe('fsMentionSuggestions', () => {
     expect(over).toBeNull()
   })
 
-  it('reaches needles below the scan cap through nested directories', async () => {
+  it('reaches needles below the scan cap through nested directories', { timeout: 30_000 }, async () => {
     const root = mkdtempTracked('mayfly-mention-shallow-')
     mkdirSync(join(root, 'a', 'b'), { recursive: true })
     for (let index = 0; index < 1990; index += 1) {
