@@ -534,7 +534,6 @@ function chartHeight(object: Record<string, unknown>, path: string): number | un
   const value = own(object, 'height', path)
   if (value === undefined) return undefined
   const height = finiteInteger(value, `${path}.height`, 4)
-  if (height > 20) invalid(`${path}.height must be <= 20`)
   return height
 }
 
@@ -789,7 +788,6 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         if (chart === 'line' || chart === 'point') {
           const series = collection(required(object, 'series', path), `${path}.series`)
             .map((item, index) => chartSeries(item, `${path}.series[${String(index)}]`, state))
-          if (series.length > 20) limit(`${path}.series exceeds 20 entries`)
           uniqueIds(series, `${path}.series`)
           return {
             kind, chart, series,
@@ -805,7 +803,6 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
             .map((item, index) => text(item, `${path}.categories[${String(index)}]`, state))
           const series = collection(required(object, 'series', path), `${path}.series`)
             .map((item, index) => barSeries(item, `${path}.series[${String(index)}]`, state))
-          if (series.length > 20) limit(`${path}.series exceeds 20 entries`)
           uniqueIds(series, `${path}.series`)
           if (series.some(item => item.values.length !== categories.length)) invalid(`${path}.series values must match categories`)
           const layout = layoutValue === undefined ? undefined : enumeration(layoutValue, ['grouped', 'stacked', 'normalized'], `${path}.layout`)

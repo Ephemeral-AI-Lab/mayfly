@@ -96,11 +96,8 @@ describe('validateMayflyUiNode', () => {
   it.each([
     [{ kind: 'diagram', diagram: 'html', source: 'x' }, 'diagram'],
     [{ kind: 'chart', chart: 'line', series: [{ id: 'a', points: [{ x: 0, y: Number.NaN }] }] }, 'finite number'],
-    [{ kind: 'chart', chart: 'line', height: 21, series: [] }, 'height'],
     [{ kind: 'chart', chart: 'line', series: [{ id: 'a', points: [] }, { id: 'a', points: [] }] }, 'duplicate ids'],
-    [{ kind: 'chart', chart: 'line', series: Array.from({ length: 21 }, (_, index) => ({ id: `s${String(index)}`, points: [] })) }, 'series exceeds 20'],
     [{ kind: 'chart', chart: 'bar', categories: ['A'], series: [{ id: 'a', values: [] }] }, 'match categories'],
-    [{ kind: 'chart', chart: 'bar', categories: [], series: Array.from({ length: 21 }, (_, index) => ({ id: `s${String(index)}`, values: [] })) }, 'series exceeds 20'],
     [{ kind: 'chart', chart: 'bar', layout: 'normalized', categories: ['A'], series: [{ id: 'a', values: [-1] }] }, 'non-negative'],
     [{ kind: 'chart', chart: 'bar', layout: 'normalized', categories: ['A'], series: [{ id: 'a', values: [0] }] }, 'positive'],
     [{ kind: 'chart', chart: 'heatmap', columns: ['A'], rows: ['R'], values: [[1, 2]], levels: [{ value: 1, label: 'one' }] }, 'dimensions'],

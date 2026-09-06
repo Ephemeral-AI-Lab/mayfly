@@ -100,7 +100,7 @@ function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' }>
         result.push(components.truncateToWidth(`${node.rows[index] ?? ''}: ${row.map(value => value ?? '-').join(' ')}`, width))
       }
   }
-  return result.slice(0, 20)
+  return result
 }
 
 function renderNumeric(node: Extract<MayflyChartNode, { readonly chart: 'line' | 'point' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
