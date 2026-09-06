@@ -175,8 +175,8 @@ describe('official conversation model mapping', () => {
       streaming: false,
     }))
     const model = conversationTranscriptModel(projection(entries), toolSource())
-    expect(model.entries).toHaveLength(200)
-    expect(model.entries[0]).toMatchObject({ id: 'assistant-3' })
+    expect(model.entries).toHaveLength(203)
+    expect(model.entries[0]).toMatchObject({ id: 'assistant-0' })
   })
 
   it('maps every semantic entry and filters tool-owned dock channels', () => {

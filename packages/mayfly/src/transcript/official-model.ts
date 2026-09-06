@@ -18,7 +18,7 @@ import {
 } from '../conversation/index.ts'
 import type { ReadCallModel, SearchCallModel, TranscriptEntryModel, TranscriptModel, TranscriptReadGroupModel, TranscriptSearchGroupModel } from '../frontend/index.ts'
 import { createToolPresentationModel } from './tool-model.ts'
-import { createTranscriptModel, TRANSCRIPT_MODEL_WINDOW } from './transcript-model.ts'
+import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
 
 /**
@@ -295,7 +295,7 @@ export function conversationTranscriptModel(
     run = []
     runFamily = undefined
   }
-  for (const entry of projection.entries.slice(-TRANSCRIPT_MODEL_WINDOW)) {
+  for (const entry of projection.entries) {
     if (entry.kind !== 'tool') {
       // Thinking is meta, not content: it neither renders into the run nor
       // breaks it — reads and searches stay grouped across the model's

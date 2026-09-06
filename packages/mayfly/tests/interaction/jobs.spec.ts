@@ -129,7 +129,8 @@ describe('jobs panel models', () => {
     expect(jobOutputPanelModel(job('failed', 'failed', { detail: 'boom' }), '', t).view)
       .toMatchObject({ sections: [{ title: 'label failed · failed · boom', body: { code: expect.stringContaining('already consumed') } }] })
     const long = Array.from({ length: 130 }, (_, index) => `row ${String(index)}`).join('\n')
-    expect(JSON.stringify(jobOutputPanelModel(job('done', 'completed'), long, t).view)).toContain('… output truncated\\nrow 10')
+    expect(JSON.stringify(jobOutputPanelModel(job('done', 'completed'), long, t).view)).toContain('row 0')
+    expect(JSON.stringify(jobOutputPanelModel(job('done', 'completed'), long, t).view)).toContain('row 129')
   })
 })
 
