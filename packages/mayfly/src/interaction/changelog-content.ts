@@ -22,6 +22,19 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.0-alpha.3',
+    summary: 'OAuth provider onboarding, independent plan and permission controls, and clearer streaming progress.',
+    highlights: [
+      'OAuth providers - discover available sign-in flows in /provider and create the provider profile after authorization succeeds.',
+      'Plan and permissions - Shift+Tab toggles plan independently from /permission, and the status line can display plan and yolo together.',
+      'Explicit confirmations - use Yes/No actions with No initially focused; cancelling provider deletion preserves the edit draft.',
+      'Output progress - finish the thinking animation when the answer starts and show output counts and estimated token rates for the active phase, with narrow-width fallbacks.',
+      'Streaming responsiveness - defer transcript conversion until the next snapshot read and keep shared session views responsive during output bursts.',
+      'Updater compatibility - accept npm 12 JSON result arrays when checking for updates.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.2',
     summary: 'Complete transcript output, cancellable UI providers, and more reliable agent and plugin workflows.',
     highlights: [

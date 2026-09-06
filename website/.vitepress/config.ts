@@ -6,7 +6,7 @@ const base = process.env.DOCS_BASE ?? '/'
  * 站点版本：当前预览线，与三个发布包一致。
  * 升级时只改这一处（首页 hero 文案与 footer 同步引用语义，见各 index.md）。
  */
-const SITE_VERSION = '0.1.0-alpha.2'
+const SITE_VERSION = '0.1.0-alpha.3'
 
 /**
  * Optional deployment origin. Local and fork builds deliberately have no
