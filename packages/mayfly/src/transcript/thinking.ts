@@ -80,6 +80,7 @@ export class ThinkingComponent implements MayflyComponent {
   private spinnerFrame = 0
   private spinnerTimer: ReturnType<typeof setInterval> | undefined
   private cache: { key: string, lines: string[] } | undefined
+  private wrapped: { text: string, width: number, lines: string[] } | undefined
 
   /**
    * @param item - the folded thinking item; mutated by the fold as the step
@@ -105,6 +106,7 @@ export class ThinkingComponent implements MayflyComponent {
   /** Drop the cached lines; the next render rebuilds from the item. */
   invalidate(): void {
     this.cache = undefined
+    this.wrapped = undefined
   }
 
   /**
@@ -134,9 +136,10 @@ export class ThinkingComponent implements MayflyComponent {
     if (this.cache?.key === key) return this.cache.lines
 
     const contentWidth = Math.max(1, width - THINKING_INDENT.length)
-    const contentLines = text.length > 0
-      ? this.components.wrapText(text, contentWidth)
-      : ['']
+    const contentLines = this.wrapped?.text === text && this.wrapped.width === contentWidth
+      ? this.wrapped.lines
+      : text.length > 0 ? this.components.wrapText(text, contentWidth) : ['']
+    this.wrapped = { text, width: contentWidth, lines: contentLines }
     let lines: string[]
     if (streaming) {
       // Live: the spinner row over the reasoning's rolling tail window.
@@ -188,7 +191,7 @@ export class ThinkingComponent implements MayflyComponent {
         return
       }
       this.spinnerFrame += 1
-      this.invalidate()
+      this.cache = undefined
       this.requestRender?.()
     }, BRAILLE_SPINNER_INTERVAL_MS)
   }

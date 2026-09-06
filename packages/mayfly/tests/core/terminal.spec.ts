@@ -114,6 +114,35 @@ class TerminalOutputStream implements AmbientOutputStream {
 }
 
 describe('startMayflyTerminal', () => {
+  it.each(['main', 'alternate'] as const)('repaints a resize before the pending stream timer in %s mode', async mode => {
+    const terminal = new FakeTerminal(40, 10)
+    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, mode)
+    const component = { render: vi.fn((width: number) => [`width ${String(width)}`]), invalidate() {} }
+    runtime.addChild(component)
+    await waitForRender()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    try {
+      runtime.requestRender()
+      await new Promise<void>(resolve => process.nextTick(resolve))
+      component.render.mockClear()
+      terminal.resize(100, 30)
+      await new Promise<void>(resolve => process.nextTick(resolve))
+      expect(component.render).toHaveBeenCalledWith(100)
+      expect(terminal.output).toContain('width 100')
+      component.render.mockClear()
+      terminal.resize(100, 12)
+      await new Promise<void>(resolve => process.nextTick(resolve))
+      expect(component.render).toHaveBeenCalledWith(100)
+      component.render.mockClear()
+      terminal.resize(25, 12)
+      await new Promise<void>(resolve => process.nextTick(resolve))
+      expect(component.render).toHaveBeenCalledWith(25)
+    } finally {
+      await runtime.stop()
+      vi.useRealTimers()
+    }
+  })
+
   it('uses the default background probe when none is injected', async () => {
     const terminal = new FakeTerminal()
     const runtime = await startMayflyTerminal(terminal, undefined)

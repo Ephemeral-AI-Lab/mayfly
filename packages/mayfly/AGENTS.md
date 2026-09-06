@@ -44,10 +44,13 @@ paste framing and grapheme deletion. Provider workflow outcomes carry structured
 status independently of their translated copy. A field being edited owns Delete
 and Ctrl-D; entity deletion is a browsing action.
 
-Native session projections validate whole values. The transcript source re-admits
-only its last 200 cutoff-eligible entries and retains no full projection copy;
-do not assume entry identity survives native Zod parsing. Sparse cutoff scans and
-the native whole-value validation may still scale with history length.
+Native session projections validate whole values. The transcript source retains
+the latest unread native value and converts it on the next snapshot read, so
+stream bursts do not repeatedly parse and present history before a frame. Attach,
+detach, and unload discard pending values; session generations isolate rendered
+entries. Conversion preserves all cutoff-eligible history. Do not assume entry
+identity survives native Zod parsing. Native whole-value validation and each
+rendered conversion may still scale with history length.
 
 In-app host operations use an internal command plus fixed-argument descriptor.
 The launcher's `MAYFLY_DSH_BIN` wins over `DSH_BIN` and PATH; a selected JavaScript

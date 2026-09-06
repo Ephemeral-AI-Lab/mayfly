@@ -63,7 +63,7 @@ function context(options: {
       }),
     })
   }
-  return { ctx, screen, observationDispose }
+  return { ctx, screen, projections, observationDispose }
 }
 
 function target(id: string, mode: 'one-shot' | 'continuable' = 'one-shot') {
@@ -71,6 +71,30 @@ function target(id: string, mode: 'one-shot' | 'continuable' = 'one-shot') {
 }
 
 describe('SessionTranscriptPanel', () => {
+  it('reads the latest live projection at render time and preserves streaming after a burst', () => {
+    resetSeq()
+    const events = [turnStart(1), stepStart(1, 1), userEvent('live question')]
+    const live = session('live-child', events)
+    const { ctx, screen, projections } = context({ live })
+    const panel = new SessionTranscriptPanel(ctx, target('live-child'), () => {})
+    panel.render(60)
+    const requests = screen.renderRequests.length
+    for (const text of ['first thought\n', 'second thought\n', 'latest thought']) {
+      const event = reasoningDelta(1, 1, text)
+      events.push(event)
+      projections.emit(live, event)
+    }
+    expect(screen.renderRequests).toHaveLength(requests + 1)
+    const rendered = panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')
+    expect(rendered).toContain('thinking...')
+    expect(rendered).toContain('latest thought')
+    const settled = assistantEvent(1, 1, [{ type: 'text', text: 'final live answer' }])
+    events.push(settled)
+    projections.emit(live, settled)
+    expect(panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')).toContain('final live answer')
+    panel.dispose()
+  })
+
   it('renders the complete live transcript through the standard core shell', () => {
     resetSeq()
     const live = session('child', [

@@ -447,6 +447,69 @@ describe('official conversation model mapping', () => {
 })
 
 describe('OfficialConversationModelSource', () => {
+  it('coalesces a token burst before parsing history or invoking tool presenters', () => {
+    const entries = projection(Array.from({ length: 300 }, (_, index) => transcriptTool({
+      id: String(index), callId: String(index), seq: index,
+    }))).entries
+    const fixture = sourceFixture(projection(entries), 299)
+    const get = vi.fn(() => undefined)
+    const publish = vi.fn()
+    const source = new OfficialConversationModelSource(fixture.source, { get }, publish)
+    source.attach(fixture.session)
+    expect(get).not.toHaveBeenCalled()
+    expect(source.snapshot().entries).toHaveLength(300)
+    get.mockClear()
+    publish.mockClear()
+    let reads = 0
+    for (let seq = 300; seq < 1_300; seq += 1) {
+      const value = {
+        get entries() {
+          reads += 1
+          return [...entries, { kind: 'thinking', id: 'live', seq: 300, updatedSeq: seq,
+            turn: 1, step: 0, text: `thought ${String(seq)}`, streaming: seq < 1_299 }]
+        },
+        streaming: seq < 1_299,
+      }
+      fixture.emit('mayflyConversation', value, seq)
+    }
+    expect(reads).toBe(0)
+    expect(get).not.toHaveBeenCalled()
+    expect(publish).toHaveBeenCalledOnce()
+    // A stale callback must not replace the newest pending whole value.
+    fixture.emit('mayflyConversation', projection(), 1_298)
+    const current = source.snapshot()
+    expect(current.entries).toHaveLength(301)
+    expect(current.entries.at(-1)).toMatchObject({ text: 'thought 1299', streaming: false })
+    expect(current.streaming).toBe(false)
+    expect(get).toHaveBeenCalledTimes(300)
+    expect(reads).toBe(2)
+    expect(source.snapshot()).toBe(current)
+    expect(reads).toBe(2)
+    source.dispose()
+  })
+
+  it('drops unpainted BTW changes on switch, detach, and unload', () => {
+    const fixture = sourceFixture(projection(), 0)
+    const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
+    source.attach(fixture.session, 0)
+    fixture.emit('mayflyConversation', projection([
+      { kind: 'thinking', id: 'btw', seq: 1, turn: 0, step: 0, text: 'pending side thought', streaming: true },
+    ]), 1)
+    const main = { id: 'main' } as unknown as Session
+    source.attach(main)
+    fixture.emit('mayflyConversation', projection([
+      { kind: 'thinking', id: 'late-btw', seq: 2, turn: 0, step: 0, text: 'late side thought', streaming: true },
+    ]), 2)
+    expect(source.snapshot()).toMatchObject({ generation: 2, entries: [] })
+    fixture.emit('mayflyConversation', projection([transcriptTool()]), 3, main)
+    source.attach(null)
+    expect(source.snapshot().entries).toEqual([])
+    source.attach(main)
+    fixture.emit('mayflyConversation', projection([transcriptTool()]), 4, main)
+    source.dispose()
+    expect(source.snapshot().entries).toEqual([])
+  })
+
   it.each([1_000, 10_000, 100_000])('reads and admits the complete %i-entry history', length => {
     const entries = projection(Array.from({ length }, (_, index) => ({
       kind: 'assistant' as const, id: String(index), seq: index, turn: 0, step: 0, text: 'history', streaming: false,
@@ -464,14 +527,16 @@ describe('OfficialConversationModelSource', () => {
     const fixture = sourceFixture({ entries: observed, streaming: false })
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session)
-    expect(reads).toBe(length)
+    expect(reads).toBe(0)
     expect(source.snapshot().entries).toHaveLength(length)
+    expect(reads).toBe(length)
     expect(source.snapshot().entries[0]).toMatchObject({ id: '0' })
     for (let seq = 1; seq <= 3; seq += 1) {
       reads = 0
       fixture.emit('mayflyConversation', { entries: observed, streaming: true }, seq)
-      expect(reads).toBe(length)
+      expect(reads).toBe(0)
       expect(source.snapshot().entries).toHaveLength(length)
+      expect(reads).toBe(length)
     }
     source.dispose()
   }, 30_000)
@@ -503,8 +568,10 @@ describe('OfficialConversationModelSource', () => {
     const publish = vi.fn()
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), publish)
     source.attach(fixture.session)
+    const before = source.snapshot()
     fixture.emit('mayflyConversation', value, 1)
-    expect(publish).toHaveBeenCalledOnce()
+    expect(source.snapshot()).toBe(before)
+    expect(publish).toHaveBeenCalledTimes(2)
     source.dispose()
   })
 
@@ -513,8 +580,10 @@ describe('OfficialConversationModelSource', () => {
     const publish = vi.fn()
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), publish)
     source.attach(fixture.session, 0)
+    const before = source.snapshot()
     fixture.emit('mayflyConversation', { entries: [entry], streaming: false }, 1)
-    expect(publish).toHaveBeenCalledOnce()
+    expect(source.snapshot()).toBe(before)
+    expect(publish).toHaveBeenCalledTimes(2)
     source.dispose()
   })
 
@@ -537,6 +606,7 @@ describe('OfficialConversationModelSource', () => {
     const fixture = sourceFixture(projection([transcriptTool({ result })]))
     const source = new OfficialConversationModelSource(fixture.source, tools, () => undefined)
     source.attach(fixture.session)
+    source.snapshot()
     expect(presentResult).toHaveBeenCalledOnce()
     const presented = presentResult.mock.calls[0]![1] as { content: unknown[] }
     expect(presented.content).toEqual(content)
@@ -587,8 +657,8 @@ describe('OfficialConversationModelSource', () => {
       { kind: 'assistant', id: 'a-1', seq: 1, turn: 0, step: 0, text: 'baseline', streaming: false },
     ]), 4)
     const published: string[] = []
-    const source = new OfficialConversationModelSource(f.source, toolSource(), model => {
-      const entry = model.entries[0]
+    const source = new OfficialConversationModelSource(f.source, toolSource(), () => {
+      const entry = source.snapshot().entries[0]
       published.push(entry?.kind === 'transcript-assistant' ? entry.text : 'empty')
     })
     source.attach(f.session)
@@ -604,13 +674,13 @@ describe('OfficialConversationModelSource', () => {
     f.emit('other', projection(), 6)
     f.emit('mayflyConversation', projection(), 5)
     f.emit('mayflyConversation', { entries: 'bad', streaming: false }, 6)
-    expect(published).toEqual(['baseline', 'baseline updated'])
+    expect(published).toEqual(['baseline', 'baseline updated', 'baseline updated'])
 
     f.emit('mayflyConversation', projection([
       { kind: 'assistant', id: 'a-2', seq: 5, turn: 0, step: 0, text: 'live', streaming: true },
     ], true), 6)
     expect(source.snapshot().streaming).toBe(true)
-    expect(published).toEqual(['baseline', 'baseline updated', 'live'])
+    expect(published).toEqual(['baseline', 'baseline updated', 'baseline updated', 'live'])
 
     // Whole-value replacement must not preserve entries from the prior view.
     f.emit('mayflyConversation', projection([
@@ -652,8 +722,8 @@ describe('OfficialConversationModelSource', () => {
       { kind: 'assistant', id: 'btw-answer', seq: 4, turn: 2, step: 0, text: 'side answer', streaming: true },
     ], true), 4)
     const published: string[][] = []
-    const source = new OfficialConversationModelSource(f.source, toolSource(), model => {
-      published.push(model.entries.map(entry => 'text' in entry ? entry.text : entry.kind))
+    const source = new OfficialConversationModelSource(f.source, toolSource(), () => {
+      published.push(source.snapshot().entries.map(entry => 'text' in entry ? entry.text : entry.kind))
     })
     source.attach(f.session, 2)
     expect(source.snapshot().entries).toMatchObject([

@@ -458,6 +458,17 @@ export async function startMayflyTerminal(
         copySelection: text => copySelectionText(text, terminal),
       })
     : new TuiMainScreen(terminal)
+  const requestRender = current.requestRender.bind(current)
+  let renderColumns = terminal.columns
+  let renderRows = terminal.rows
+  // pi-tui routes resize through requestRender too. A new viewport must
+  // preempt its streaming frame timer just as keyboard input does.
+  current.requestRender = (force = false) => {
+    const resized = renderColumns !== terminal.columns || renderRows !== terminal.rows
+    renderColumns = terminal.columns
+    renderRows = terminal.rows
+    requestRender(force || resized)
+  }
   const stable = createStableTuiReference(() => current)
   // TuiAltScreen registers its viewport listener in its constructor. Move it
   // behind Mayfly's contextual content handler and wheel normalizer: the main

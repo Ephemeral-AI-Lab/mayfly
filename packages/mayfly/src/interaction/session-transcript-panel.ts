@@ -47,6 +47,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
   ) {
     const screen = ctx.mayflyScreen
     const childAgent = ctx.agents.get(SessionId(target.sessionId))
+    const live = childAgent?.session ?? [...ctx.sessions.list()].find(session => String(session.id) === target.sessionId)
     const tools: ToolPresentationSource = { get: name => ctx.tools.get(name, childAgent) }
     const renderer: TranscriptModelRenderer = {
       colors: ctx.mayflyTheme.colors,
@@ -60,7 +61,10 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       },
       requestRender: () => screen.requestRender(),
     }
-    this.body = new TranscriptModelComponent(() => this.model, renderer)
+    this.body = new TranscriptModelComponent(
+      live === undefined ? () => this.model : () => this.source.snapshot(),
+      renderer,
+    )
     this.shell = new ScrollablePanel({
       screen,
       components: ctx.mayflyComponents,
@@ -76,12 +80,8 @@ export class SessionTranscriptPanel implements MayflyFocusable {
     this.source = new OfficialConversationModelSource(
       ctx.sessionProjections,
       tools,
-      model => {
-        this.model = model
-        this.shell.invalidate()
-      },
+      () => screen.requestRender(),
     )
-    const live = childAgent?.session ?? [...ctx.sessions.list()].find(session => String(session.id) === target.sessionId)
     if (live === undefined) void this.loadCold(tools)
     else this.source.attach(live)
   }

@@ -23,11 +23,16 @@ import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type
 
 /**
  * Native projection read face consumed by the transcript mapper. The registry
- * validates complete values; the mapper repeats admission only for its window.
+ * validates complete values; the mapper repeats admission on the next read.
  */
 export interface ConversationProjectionSource {
   snapshot(session: Session, keys?: readonly ['mayflyConversation']): { readonly asOfSeq: number, readonly values: Readonly<Record<string, unknown>> }
   onChanged(listener: (session: Session, key: string, value: unknown, seq: number) => void): () => void
+}
+
+interface PendingProjection {
+  readonly value: unknown
+  readonly seq: number
 }
 
 /** Preview lines a read window carries for the expanded group view. */
@@ -348,6 +353,7 @@ export class OfficialConversationModelSource {
   private session: Session | null = null
   private generation = 0
   private watermark = -1
+  private pending: PendingProjection | undefined
   private transcriptAfterSeq: number | undefined
   private disposed = false
   private readonly offChanged: () => void
@@ -355,20 +361,29 @@ export class OfficialConversationModelSource {
   constructor(
     private readonly projections: ConversationProjectionSource,
     private readonly tools: ToolPresentationSource,
-    private readonly publish: (model: TranscriptModel) => void,
+    private readonly publish: () => void,
   ) {
     this.offChanged = projections.onChanged((session, key, value, seq) => {
-      if (this.disposed || session !== this.session || key !== 'mayflyConversation' || seq <= this.watermark) return
-      const visible = visibleProjection(value, this.transcriptAfterSeq)
-      if (visible === undefined) return
-      this.watermark = seq
-      this.model = conversationTranscriptModel(visible, this.tools, this.generation)
-      this.publish(this.model)
+      if (this.disposed || session !== this.session || key !== 'mayflyConversation' || seq <= Math.max(this.watermark, this.pending?.seq ?? -1)) return
+      // Native changes are complete, validated values. Keep only the latest
+      // until a renderer reads it, so a burst never maps history per token.
+      const notify = this.pending === undefined
+      this.pending = { value, seq }
+      if (notify) this.publish()
     })
   }
 
-  /** Current dynamic registry value. */
+  /** Convert the latest unread native value once, then reuse its model. */
   snapshot(): TranscriptModel {
+    const pending = this.pending
+    if (pending !== undefined) {
+      this.pending = undefined
+      const visible = visibleProjection(pending.value, this.transcriptAfterSeq)
+      if (visible !== undefined) {
+        this.watermark = pending.seq
+        this.model = conversationTranscriptModel(visible, this.tools, this.generation)
+      }
+    }
     return this.model
   }
 
@@ -379,18 +394,16 @@ export class OfficialConversationModelSource {
     this.transcriptAfterSeq = transcriptAfterSeq
     this.generation += 1
     this.watermark = -1
+    this.pending = undefined
+    this.model = createTranscriptModel('official-conversation', [], false, this.generation)
     if (session === null) {
-      this.model = createTranscriptModel('official-conversation', [], false, this.generation)
-      this.publish(this.model)
+      this.publish()
       return
     }
     const snapshot = this.projections.snapshot(session, ['mayflyConversation'])
     this.watermark = snapshot.asOfSeq
-    const visible = visibleProjection(snapshot.values.mayflyConversation, this.transcriptAfterSeq)
-    this.model = visible !== undefined
-      ? conversationTranscriptModel(visible, this.tools, this.generation)
-      : createTranscriptModel('official-conversation', [], false, this.generation)
-    this.publish(this.model)
+    this.pending = { value: snapshot.values.mayflyConversation, seq: snapshot.asOfSeq }
+    this.publish()
   }
 
   /** Drop the subscription and reject every late projection callback. */
@@ -399,6 +412,7 @@ export class OfficialConversationModelSource {
     this.disposed = true
     this.offChanged()
     this.session = null
+    this.pending = undefined
     this.transcriptAfterSeq = undefined
     this.model = createTranscriptModel('official-conversation', [], false)
   }

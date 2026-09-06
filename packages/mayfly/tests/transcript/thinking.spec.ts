@@ -5,7 +5,7 @@
  * asserts against pi-tui's own width helpers (the D48 real-semantics swap).
  */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   setThinkingTimers,
   ThinkingComponent,
@@ -68,6 +68,36 @@ function thinkingItem(partial: Partial<TranscriptThinkingItem> = {}): Transcript
 const SIX_WORDS = 'l0 l1 l2 l3 l4 l5'
 
 describe('ThinkingComponent', () => {
+  it('reuses wrapped reasoning across spinner ticks, but recomputes for text, width, and invalidation', () => {
+    const timers = new FakeTimers()
+    setThinkingTimers(timers)
+    const components = fakeMayflyComponents()
+    const wrap = vi.spyOn(components, 'wrapText')
+    const item = thinkingItem({ text: 'thinking '.repeat(1_000), streaming: true })
+    const component = new ThinkingComponent(item, COLORS, components)
+    const first = component.render(80)
+    for (let i = 0; i < 5; i += 1) {
+      timers.ticks[0]!()
+      const frame = component.render(80)
+      expect(frame[1]).not.toBe(first[1])
+      expect(frame.slice(2)).toEqual(first.slice(2))
+    }
+    expect(wrap).toHaveBeenCalledOnce()
+    item.text += 'new thought'
+    component.render(80)
+    component.render(40)
+    expect(wrap).toHaveBeenCalledTimes(3)
+    item.streaming = false
+    component.render(40)
+    component.setExpanded(true)
+    component.render(40)
+    expect(wrap).toHaveBeenCalledTimes(3)
+    component.invalidate()
+    component.render(40)
+    expect(wrap).toHaveBeenCalledTimes(4)
+    component.dispose()
+  })
+
   it('renders the live spinner row over the reasoning\'s tail window', () => {
     const timers = new FakeTimers()
     setThinkingTimers(timers)
