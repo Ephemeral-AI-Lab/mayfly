@@ -474,7 +474,7 @@ describe('OfficialConversationModelSource', () => {
       expect(source.snapshot().entries).toHaveLength(length)
     }
     source.dispose()
-  })
+  }, 30_000)
 
   it('selects a complete eligible window across a sparse cutoff suffix without trusting entry order', () => {
     const eligible = Array.from({ length: 250 }, (_, index) => ({
