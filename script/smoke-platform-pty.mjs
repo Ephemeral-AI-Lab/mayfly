@@ -199,3 +199,6 @@ try {
   }
   rmSync(fixture, { recursive: true, force: true })
 }
+
+// Child exit and artifact cleanup are complete; ConPTY workers can keep Node alive.
+if (process.platform === 'win32') process.stdout.write('', () => process.exit(0))
