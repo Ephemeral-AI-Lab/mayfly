@@ -18,5 +18,6 @@ describe('WindowController', () => {
     expect(controller.update(Number.NaN, 0, Number.NaN)).toEqual({ offset: 0, limit: 1, total: 0, hasPrevious: false, hasNext: false })
     expect(controller.move(Number.NaN)).toEqual({ offset: 0, limit: 1, total: 0, hasPrevious: false, hasNext: false })
     expect(controller.move(Number.POSITIVE_INFINITY)).toEqual({ offset: 0, limit: 1, total: 0, hasPrevious: false, hasNext: false })
+    expect(controller.update(3, Number.POSITIVE_INFINITY)).toEqual({ offset: 0, limit: 1, total: 3, hasPrevious: false, hasNext: true })
   })
 })
