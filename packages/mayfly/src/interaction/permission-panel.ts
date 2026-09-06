@@ -84,7 +84,7 @@ export function openPermissionPanel(ctx: Context): void {
   }
   const agent = ctx.mayflyCurrentAgent.current()
   if (agent === null) return
-  const current = ctx.permissionPresets.current(agent.session)
+  const current = presets.current(agent.session)
   const rows: SelectRow[] = presets.names.map(name => ({
     value: name,
     label: presets.optionOf(name).name,
