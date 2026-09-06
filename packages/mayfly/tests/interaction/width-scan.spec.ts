@@ -17,6 +17,7 @@ import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import * as approvalPlugin from '../../src/interaction/approval-plugin.ts'
 import { CanonicalFormController, type FormField } from '../../src/interaction/form-panel.ts'
+import { createConfirmationPanel } from '../../src/interaction/confirmation-panel.ts'
 import { HelpPanel, type HelpSection } from '../../src/interaction/help.ts'
 import { InfoPanel, type InfoSection } from '../../src/interaction/info-panel.ts'
 import { CanonicalDocumentController } from '../../src/interaction/frontend-panel.ts'
@@ -78,6 +79,15 @@ function planAsk(text: string) {
 
 describe('interaction width-scan', () => {
   for (const { name, text } of ADVERSARIAL) {
+    it(`Yes/No confirmation survives ${name}`, () => {
+      const { components, keymap } = fakeMayflyContext()
+      const panel = createConfirmationPanel({
+        components, keymap, theme: IDENTITY_THEME as never,
+        title: 'Confirm', question: text, detail: text,
+        onConfirm: vi.fn(), onCancel: vi.fn(),
+      })
+      for (const width of SCAN_WIDTHS) expectLinesFit(`confirmation/${name}`, panel.render(width), width)
+    })
     it(`UpdateNoticeComponent survives ${name}`, () => {
       const { components } = fakeMayflyContext()
       const notice = new UpdateNoticeComponent(

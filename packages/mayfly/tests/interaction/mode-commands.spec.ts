@@ -93,37 +93,57 @@ async function mount(options: MountOptions = {}) {
 }
 
 describe('cycleMode', () => {
-  it('cycles normal -> plan -> yolo -> normal through native commands', async () => {
+  it('toggles normal and plan without changing permissions', async () => {
     const world = await mount()
-    expect(sessionModeSnapshot(world.ctx, world.agent).mode).toBe('normal')
+    expect(sessionModeSnapshot(world.ctx, world.agent)).toEqual({ plan: { active: false, pending: false }, yolo: false })
 
     await cycleMode(world.ctx)
     expect(world.runs).toEqual(['/plan'])
-    expect(sessionModeSnapshot(world.ctx, world.agent).mode).toBe('plan')
+    expect(sessionModeSnapshot(world.ctx, world.agent).plan?.active).toBe(true)
 
     await cycleMode(world.ctx)
-    expect(world.runs).toEqual(['/plan', '/plan off', '/permission danger-full-access'])
-    expect(world.currentPreset()).toBe('danger-full-access')
-    expect(sessionModeSnapshot(world.ctx, world.agent).mode).toBe('yolo')
-
-    await cycleMode(world.ctx)
-    expect(world.runs).toEqual(['/plan', '/plan off', '/permission danger-full-access', '/permission workspace-write'])
+    expect(world.runs).toEqual(['/plan', '/plan off'])
     expect(world.currentPreset()).toBe('workspace-write')
-    expect(sessionModeSnapshot(world.ctx, world.agent).mode).toBe('normal')
-    expect(notices).toEqual(['ran /plan', 'ran /permission danger-full-access', 'ran /permission workspace-write'])
+    expect(sessionModeSnapshot(world.ctx, world.agent).plan?.active).toBe(false)
+    expect(notices).toEqual(['ran /plan', 'ran /plan off'])
   })
 
-  it('turns off a concurrent plan selection when leaving yolo', async () => {
-    const world = await mount({ plan: { active: true }, currentPreset: 'danger-full-access' })
-    expect(sessionModeSnapshot(world.ctx, world.agent).mode).toBe('yolo')
+  it('preserves yolo while entering and leaving plan, until an explicit permission command', async () => {
+    const world = await mount({ currentPreset: 'danger-full-access' })
+    const execute = vi.spyOn(world.ctx.commands, 'execute')
     await cycleMode(world.ctx)
-    expect(world.runs).toEqual(['/plan off', '/permission workspace-write'])
+    expect(sessionModeSnapshot(world.ctx, world.agent)).toEqual({ plan: { active: true, pending: false }, yolo: true })
+    await cycleMode(world.ctx)
+    expect(world.runs).toEqual(['/plan', '/plan off'])
+    expect(world.currentPreset()).toBe('danger-full-access')
+    expect(sessionModeSnapshot(world.ctx, world.agent)).toEqual({ plan: { active: false, pending: false }, yolo: true })
+    expect(execute.mock.calls.every(call => call[0] === world.agent)).toBe(true)
+
+    await cycleMode(world.ctx)
+    await world.ctx.commands.execute(world.agent, '/permission workspace-write', [], new AbortController().signal)
+    expect(sessionModeSnapshot(world.ctx, world.agent)).toEqual({ plan: { active: true, pending: false }, yolo: false })
+    await world.ctx.commands.execute(world.agent, '/permission danger-full-access', [], new AbortController().signal)
+    expect(sessionModeSnapshot(world.ctx, world.agent)).toEqual({ plan: { active: true, pending: false }, yolo: true })
   })
 
-  it('degrades to the available native axis', async () => {
+  it.each([
+    { active: false, pending: false, command: '/plan' },
+    { active: false, pending: true, command: '/plan off' },
+    { active: true, pending: false, command: '/plan off' },
+    { active: true, pending: true, command: '/plan' },
+  ])('toggles the selected state with active=$active pending=$pending', async ({ active, pending, command }) => {
+    const world = await mount({ plan: { active, pending }, currentPreset: 'danger-full-access' })
+    await cycleMode(world.ctx)
+    expect(world.runs).toEqual([command])
+    expect(world.currentPreset()).toBe('danger-full-access')
+  })
+
+  it('does not fall back to changing permissions when plan is unavailable', async () => {
     const permissionsOnly = await mount({ plan: false })
     await cycleMode(permissionsOnly.ctx)
-    expect(permissionsOnly.runs).toEqual(['/permission danger-full-access'])
+    expect(permissionsOnly.runs).toEqual([])
+    expect(notices).toEqual(['plan mode is unavailable'])
+    expect(permissionsOnly.currentPreset()).toBe('workspace-write')
 
     notices = []
     const planOnly = await mount({ plan: { active: true }, presets: false })
@@ -133,29 +153,30 @@ describe('cycleMode', () => {
     notices = []
     const absent = await mount({ plan: false, presets: false })
     await cycleMode(absent.ctx)
-    expect(notices).toEqual(['mode switching is unavailable'])
+    expect(notices).toEqual(['plan mode is unavailable'])
+    expect(sessionModeSnapshot(absent.ctx, absent.agent)).toEqual({ plan: undefined, yolo: false })
   })
 
-  it('reports a yolo table that has no normal preset', async () => {
-    const world = await mount({
-      plan: false,
-      currentPreset: 'unconfined',
-      presets: [{ name: 'unconfined', sandbox: 'danger-full-access', approval: 'never' }],
-    })
+  it.each(['unconfined', 'alias', 'ask-full', 'custom'])('derives yolo from the selected preset bundle: %s', async currentPreset => {
+    const world = await mount({ currentPreset, presets: [
+      { name: 'unconfined', sandbox: 'danger-full-access', approval: 'never' },
+      { name: 'alias', sandbox: 'danger-full-access', approval: 'never' },
+      { name: 'ask-full', sandbox: 'danger-full-access', approval: 'ask' },
+    ] })
+    expect(sessionModeSnapshot(world.ctx, world.agent).yolo).toBe(currentPreset === 'unconfined' || currentPreset === 'alias')
     await cycleMode(world.ctx)
-    expect(world.runs).toEqual([])
-    expect(notices).toEqual(['normal mode is unavailable: no workspace-write/ask permission preset'])
+    expect(world.runs).toEqual(['/plan'])
+    expect(world.currentPreset()).toBe(currentPreset)
   })
 
-  it('publishes the last success, paints errors, and keeps textless success quiet', async () => {
+  it('publishes success, paints errors, and keeps textless success quiet', async () => {
     const failed = await mount({
       plan: { active: true },
-      resultFor: line => line === '/plan off'
-        ? { kind: 'success', text: 'left plan' }
-        : { kind: 'error', text: 'denied' },
+      resultFor: () => ({ kind: 'error', text: 'denied' }),
     })
     await cycleMode(failed.ctx)
-    expect(failed.runs).toEqual(['/plan off', '/permission danger-full-access'])
+    expect(failed.runs).toEqual(['/plan off'])
+    expect(failed.plan?.active).toBe(true)
     expect(notices).toEqual(['!denied!'])
 
     notices = []

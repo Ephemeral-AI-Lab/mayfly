@@ -36,9 +36,13 @@ agent 需要用户裁决时，Mayfly 以全宽上拉面板应答。面板采用 
 
 问卷答案作为用户可见内容进入会话，模型可见。
 
+## 二次确认
+
+开启完全访问、停止子 Agent、删除 Provider 和更新 Mayfly 都使用显式的 **Yes / No** 按钮（中文界面为“是 / 否”）。默认焦点是 No；选择 Yes 后才执行，No 或 Esc 取消。确认区显示操作对象和后果，不要求输入固定文字。取消权限或子 Agent 确认会返回原列表；取消 Provider 删除会返回原编辑表单并保留草稿。
+
 ## 多字段表单
 
-自定义 provider 接入引导与 danger 权限预设的打字确认（`y`）走多字段表单面板：
+自定义 Provider 接入引导及真实配置值编辑使用多字段表单面板：
 
 - 每个字段从紧凑的「标签 · 提示：值」单行开始；选中行显示 `→`，过长的值在下方续行；
 - **↑ / ↓** 只在导航态不循环切换字段，编辑态仍用于字段内光标移动；直接输入开始编辑，未编辑字段第一次 **Enter** 进入编辑，编辑态 Enter 或合法值上的 Tab 确认并前进，在末字段提交；非法值保持原字段；**Tab** 只在内容导航态切语义组，**Escape** 逐层返回；
@@ -58,8 +62,8 @@ plan 模式下 agent 调 `exit_plan_mode` 收尾时，评审请求以专用问�
 - **Revise** 行自带反馈输入框；提交后作为「带反馈的拒绝」答回（harness 侧折叠为 "their feedback: …"），agent 拿到修改意见继续迭代 plan；空提交等价于普通 Reject；
 - Approve/Reject 直接定案；请求中止时面板随取消码关闭（`ASK_CANCELLED`）。
 
-plan 模式的进入/退出走 `Shift+Tab` 三态循环（normal → plan → yolo，见[会话模式](/features/modes)），footer 的模式徽标实时反映。
+`Shift+Tab` 只切换 normal 与 plan（见[会话模式](/features/modes)），保留当前权限。YOLO 通过 `/permission` 独立控制，不会跳过计划评审；footer 可以同时显示 plan 与 yolo。
 
 ## 权限预设切换面板
 
-`/permission` 打开权限预设选择器（与 `/sessions` `/preset` 同款单选列表面板）：每行一个预设名（sandbox 模式 + 审批策略的命名束），当前预设带 `← current` 标记；Enter 切换走宿主同一写路径，**danger 级预设需打字 `y` 确认**（防误触）。裸调用由输入层拦截开面；命令本身由上游 `dsh-permission-presets` 注册，带参调用透传。
+`/permission` 打开权限预设选择器（与 `/sessions` `/preset` 同款单选列表面板）：每行一个预设名（sandbox 模式 + 审批策略的命名束），当前预设带 `← current` 标记；Enter 切换走宿主同一写路径，**danger 级预设使用 Yes / No 确认，默认选中 No**。裸调用由输入层拦截开面；命令本身由上游 `dsh-permission-presets` 注册，带参调用透传。

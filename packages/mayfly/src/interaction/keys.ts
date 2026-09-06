@@ -138,7 +138,7 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_SEGMENT_LEFT, keys: 'left', description: 'Step the segment control left (contextual)' },
   { id: ACTION_SEGMENT_RIGHT, keys: 'right', description: 'Step the segment control right (contextual)' },
   { id: ACTION_NEXT_CONTROL, keys: 'tab', description: 'Move to the next control' },
-  { id: ACTION_SHIFT_TAB, keys: 'shift+tab', description: 'Move to the previous control / cycle session mode in the editor' },
+  { id: ACTION_SHIFT_TAB, keys: 'shift+tab', description: 'Move to the previous control / toggle plan mode in the editor' },
   { id: ACTION_EXTERNAL_EDITOR, keys: 'ctrl+g', description: 'Edit the draft in your external editor ($VISUAL/$EDITOR)' },
   { id: ACTION_CYCLE_MODEL, keys: 'alt+m', description: 'Cycle the session model within the current provider (contextual)' },
   { id: ACTION_TOGGLE_AGENT_VIEW, keys: 'f7', description: 'Toggle the primary and auxiliary conversation' },

@@ -829,15 +829,20 @@ describe('mayfly-input plugin', () => {
     hint.invalidate()
   })
 
-  it('opens the permission picker on a bare /permission instead of dispatching', async () => {
+  it('opens the bare /permission picker with a sibling service and dispatches only a selection', async () => {
     const { ctx, screen, editor, editorRoot, hint } = await mount()
     const handler = vi.fn(() => ({ kind: 'success' as const, text: 'should not run' }))
     ctx.commands.register({ name: 'permission', description: 'spy standing in for the upstream command', handler })
-    ctx.provide('permissionPresets', {
-      names: ['read-only', 'workspace-write'],
-      current: () => 'workspace-write',
-      resolve: name => ({ sandbox: `${name}-sandbox`, approval: 'ask' }),
-      optionOf: name => ({ value: name, name }),
+    await ctx.plugin({
+      name: 'test-permission-presets',
+      apply(provider) {
+        provider.provide('permissionPresets', {
+          names: ['read-only', 'workspace-write'],
+          current: () => 'workspace-write',
+          resolve: name => ({ sandbox: `${name}-sandbox`, approval: 'ask' }),
+          optionOf: name => ({ value: name, name }),
+        })
+      },
     })
     type(editor, '/permission')
     editor.handleInput(KEY.enter)
@@ -856,6 +861,14 @@ describe('mayfly-input plugin', () => {
     expect(handler).not.toHaveBeenCalled()
     expect(screen.children).toEqual([editorRoot])
     expect(screen.focused).toBe(editorRoot)
+
+    type(editor, '/permission')
+    editor.handleInput(KEY.enter)
+    const reopened = screen.children[0] as MayflyFocusable
+    reopened.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce())
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: ' workspace-write' }))
+    expect(screen.children).toEqual([editorRoot])
   })
 
   it('passes a with-argument /permission line through to the command', async () => {

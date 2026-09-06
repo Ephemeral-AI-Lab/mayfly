@@ -40,15 +40,15 @@
 - **`/resume <session-id>`** —— `/sessions` 的别名：带 id 直接恢复，不带参数与 `/sessions` 一样打开 lineage 树选择器（按 `parentSession` 组织、兄弟节点按创建时间降序、当前会话标 `← current`；当前会话的祖先路径自动展开且不带出旁支，其他分支用 **Space 切换展开/折叠**）。列表按当前工作目录圈定，每行显示会话标题，**直接输入即过滤**且能搜到折叠节点；`Esc` 退出筛选但保留 query，聚焦 `Clear filter` action 才清空，再按焦点层级取消。
 - **`/fork`** —— agent 非 idle（正在运行）时返回 `cannot fork while the agent is running`。
 - **`/rewind`** —— 单层列出当前会话的直接用户回合；选择一个回合会从该完整回合之前创建普通子 session。父会话不截断、不删除，仍可从 `/sessions` 恢复；agent 运行时拒绝。
-- **`/btw` / `/agents`** —— 共用一个辅助会话槽。live BTW/continuable child 复用完整主布局和编辑器，one-shot/cold child 使用全保真只读 transcript panel；状态栏显式显示 `F7 switch · F8 close`。`/agents stop <id>` 只接受没有 live 后代的 live continuable child，浏览器里的停止还需要 typed-`y` 确认；cold/inactive child 不会被误报为已停止，父节点需先从叶子向上停止，避免 Harness 的递归 teardown 扩大操作范围。
+- **`/btw` / `/agents`** —— 共用一个辅助会话槽。live BTW/continuable child 复用完整主布局和编辑器，one-shot/cold child 使用全保真只读 transcript panel；状态栏显式显示 `F7 switch · F8 close`。`/agents stop <id>` 只接受没有 live 后代的 live continuable child，浏览器里的停止需在 Yes / No 确认中选择 Yes；cold/inactive child 不会被误报为已停止，父节点需先从叶子向上停止，避免 Harness 的递归 teardown 扩大操作范围。
 - **`/model` / `/effort`** —— 无参数分别打开模型选择面板与横向力度选择器；面板用不循环的 `←` `→` 移动 provider/effort tabs、`Enter` 下钻、内容态 `Tab` 切到 action。选择 **`Set as default`** 会切换并持久化；选择 **`Use for this session`** 只改变当前会话。带参数直接切换并持久化为新默认。免开面板的快路：**`Alt+M`** 在当前 provider 的模型列表里逐个切换（仅本会话，草稿保留；见[键位参考](/reference/keys)）。
 - **`/provider`** —— 三条子命令：`list` 列出可用 provider 与当前路由；`switch <name>` 切换；`add` 进入新增 provider 流程。
 - **`/preset`** —— 在薄宿主预设名册（上游 `standard` / `minimal` / `ptc` / `cordis`，以及 Mayfly `mayfly-cordis`）上切换 agent 组合：工具面、人格与 plan 模式都来自当前预设。没有 `code` alias。仅在**空会话**允许切换——已开始的会话返回 `cannot switch presets: this session has already started (blank sessions only)`。
 
 ## 模式与审批
 
-- **`Shift+Tab` 模式循环** —— normal → plan → yolo 只编排 dsh 原生命令：`/plan`、`/plan off`、`/permission danger-full-access` 与 `/permission workspace-write`（见[会话模式](/features/modes)）。Mayfly 不注册 `/yolo` 或 `/yes`。
-- **`/permission`** —— 列出/切换权限预设（sandbox 模式 + 审批策略的命名束）。与 `/preset` 同款单选列表面板；danger 预设需打字 `y` 确认。裸 `/permission` 由输入层拦截开面；命令本身由上游 `dsh-permission-presets` 注册（补全与 `/help` 均会列出），带参调用透传给宿主命令执行切换。
+- **`Shift+Tab` 计划切换** —— normal ↔ plan，只执行 `/plan` 或 `/plan off`。YOLO 使用 `/permission danger-full-access` 进入、`/permission workspace-write` 退出，可与 plan 叠加（见[会话模式](/features/modes)）。Mayfly 不注册 `/yolo` 或 `/yes`。
+- **`/permission`** —— 列出/切换权限预设（sandbox 模式 + 审批策略的命名束）。与 `/preset` 同款单选列表面板；danger 预设打开 Yes / No 确认，默认选中 No。裸 `/permission` 由输入层拦截开面；命令本身由上游 `dsh-permission-presets` 注册（补全与 `/help` 均会列出），带参调用透传给宿主命令执行切换。
 - **`/mcp`** —— 三层面板浏览宿主连接的 MCP 服务器：服务器选择器 → 服务器面板（config 伪行 + 工具行）→ 详情（config 状态/脱敏连接/策略，或工具 schema）。只读——增删服务器走 profile patch（见 [dsh/mcp](/dsh/mcp)）；空态有指路。
 - **`/init`** —— 让 agent 分析代码库并把结论写入项目根的 `AGENTS.md`：已存在则先读取、延续仍然准确的内容，重写为一个连贯的最新文件（而非追加），使用项目自身文档的主要语言。
 

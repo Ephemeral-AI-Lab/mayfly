@@ -36,9 +36,13 @@ Requests from other agents (not the one mounted in the UI) don't open a panel �
 
 Questionnaire answers enter the session as user-visible content the model can see.
 
+## Confirmations
+
+Full access, stopping a subagent, deleting a provider, and updating Mayfly use explicit **Yes / No** buttons. No is focused initially. Select Yes to proceed, or No or Esc to cancel. The panel names the target and consequences without requiring a fixed text response. Cancelling a permission or subagent confirmation returns to the original list; cancelling provider deletion returns to the edit form with its draft preserved.
+
 ## Multi-field forms
 
-Custom provider onboarding and the typed `y` confirmation for the danger permission preset use a multi-field form panel:
+Custom provider onboarding and configuration editing use a multi-field form panel:
 
 - each field starts on one compact `label · hint: value` row; the selected row carries `→`, and wrapped values continue under that row;
 - non-wrapping **Up / Down** moves between fields only in navigation and remains available for cursor movement while editing; typing starts editing, the first **Enter** on an untouched field enters edit mode, and Enter or a valid Tab while editing confirms and advances or submits the last field; invalid input stays active; **Tab** switches semantic groups only in content navigation, and **Escape** climbs one layer at a time;
@@ -58,8 +62,8 @@ When the agent calls `exit_plan_mode` to wrap up a plan, the review request open
 - the **Revise** row carries the feedback input; submitting answers with a decline-with-feedback (the harness folds it into "their feedback: …"), so the agent iterates on the plan with the notes; an empty submission equals a plain Reject;
 - Approve/Reject settle directly; an aborted signal closes the panel with the cancellation code (`ASK_CANCELLED`).
 
-Plan mode itself enters/exits through the `Shift+Tab` three-state cycle (normal → plan → yolo, see [Session modes](/en/features/modes)); the footer's mode badge reflects it live.
+`Shift+Tab` toggles only normal and plan (see [Session modes](/en/features/modes)), preserving current permissions. YOLO is controlled separately through `/permission` and does not skip plan review; the footer can show plan and yolo together.
 
 ## Permission-preset panel
 
-`/permission` opens the permission-preset selector (the same single-select list shape as `/sessions` and `/preset`): one row per preset (a named bundle of sandbox mode + approval policy), the active one marked `← current`; Enter switches through the host's same write path, and a **danger-level preset requires a typed `y`** (no accidental switches). A bare invocation is intercepted by the input layer to open the panel; the command itself is registered by the upstream `dsh-permission-presets`, and argumented calls pass through.
+`/permission` opens the permission-preset selector (the same single-select list shape as `/sessions` and `/preset`): one row per preset (a named bundle of sandbox mode + approval policy), the active one marked `← current`; Enter switches through the host's same write path, and a **danger-level preset uses a Yes / No confirmation with No focused initially**. A bare invocation is intercepted by the input layer to open the panel; the command itself is registered by the upstream `dsh-permission-presets`, and argumented calls pass through.

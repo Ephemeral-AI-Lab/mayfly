@@ -49,8 +49,6 @@ export const OPERATION_ZH: Readonly<Record<string, string>> = {
   'update blocked — nothing was changed': '更新无法继续，未进行任何修改',
   'updated to v{version} — restart dsh to apply': '已更新到 v{version}，重启后生效',
   'update did not complete ({kind}) — log: {path}': '更新未完成（{kind}），日志：{path}',
-  'type y to update · esc cancels · a boot smoke runs before the change is kept': '输入 y 更新，Esc 取消；保存更改前会验证启动',
-  'type y to confirm, or Esc to cancel': '输入 y 确认，或按 Esc 取消',
   'an update is already in progress': '已有更新正在进行',
   'the agent is running — wait for the current turn to finish before updating': '代理正在运行，请等当前轮次结束后再更新',
   'update is unavailable: the Mayfly screen is not mounted': '更新不可用：Mayfly 界面尚未挂载',

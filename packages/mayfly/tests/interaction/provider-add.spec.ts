@@ -17,6 +17,7 @@ import { setModelsDevLoader, type ModelsDevIndex } from '../../src/interaction/m
 import { buildIndex } from '../../src/interaction/models-dev.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
+import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 
 /** Tests never touch the network: the offline loader is the default here. */
 const offlineLoader = (): Promise<ModelsDevIndex | undefined> => Promise.resolve(undefined)
@@ -203,7 +204,7 @@ interface DrivenPanel {
 }
 
 function current(screen: FakeScreen): DrivenPanel {
-  const entry = screen.overlays[screen.overlays.length - 1]
+  const entry = screen.overlays.findLast(overlay => !overlay.hidden)
   expect(entry).toBeDefined()
   return entry!.component as never
 }
@@ -253,6 +254,127 @@ function mountWizard(catalog: Parameters<typeof wizardLlm>[0], behavior: {
   }
 }
 
+type OAuthRequest = Parameters<Context['authorization']['begin']>[0]
+const oauthEntries = [
+  { key: 'other/vendor', label: 'Other', methods: [{ id: 'oauth' }] },
+  { key: 'llm-pi-ai/token-only', label: 'Token', methods: [{ id: 'token' }] },
+  { key: 'llm-pi-ai/mock', label: 'Already active', methods: [{ id: 'oauth' }] },
+  { key: 'llm-pi-ai/oauth-vendor', label: 'OAuth vendor', methods: [{ id: 'oauth' }] },
+]
+
+function startOAuth(bench: Bench, signal?: AbortSignal) {
+  const outcome = runProviderAdd(bench.ctx, bench.display, bench.picker, signal)
+  current(bench.screen).handleInput(KEY.down)
+  current(bench.screen).handleInput(KEY.down)
+  current(bench.screen).handleInput(KEY.enter)
+  return { outcome }
+}
+
+async function selectOAuth(bench: Bench) {
+  await vi.waitFor(() => expect(current(bench.screen).render!(100).join('\n')).toContain('OAuth vendor'))
+  current(bench.screen).handleInput(KEY.enter)
+}
+
+describe('OAuth provider workflow', () => {
+  it('reports absent authorization and excludes unsupported or already configured routes', async () => {
+    const absent = mountWizard({})
+    await expect(startOAuth(absent).outcome).resolves.toMatchObject({ kind: 'error', text: expect.stringContaining('unavailable') })
+    const none = mountWizard({})
+    none.ctx.provide('authorization', { list: () => oauthEntries.slice(0, 3) } as never)
+    await expect(startOAuth(none).outcome).resolves.toMatchObject({ kind: 'error', text: expect.stringContaining('already active') })
+  })
+
+  it('cancels the provider selection before starting authorization', async () => {
+    const bench = mountWizard({})
+    const begin = vi.fn()
+    bench.ctx.provide('authorization', { list: () => oauthEntries, begin } as never)
+    const { outcome } = startOAuth(bench)
+    await vi.waitFor(() => expect(current(bench.screen).render!(100).join('\n')).toContain('OAuth vendor'))
+    current(bench.screen).handleInput(KEY.escape)
+    await expect(outcome).resolves.toMatchObject({ kind: 'success', text: 'add provider cancelled' })
+    expect(begin).not.toHaveBeenCalled()
+  })
+
+  it.each(['authorized', 'cancelled', 'throw', 'write-failure'] as const)('handles an OAuth result of %s', async status => {
+    const bench = mountWizard({}, status === 'write-failure' ? { settings: { failMutate: new Error('locked') } } : {})
+    const signal = new AbortController().signal
+    const begin = vi.fn(async (request: OAuthRequest) => {
+      expect(request.method).toBe('oauth')
+      expect(request.signal).toBe(status === 'authorized' ? signal : undefined)
+      request.interaction!.notify({ message: 'Signing in' })
+      if (status === 'throw') throw new Error('sign in failed')
+      return { status: status === 'cancelled' ? 'cancelled' : 'authorized' }
+    })
+    bench.ctx.provide('authorization', { list: () => oauthEntries, begin } as never)
+    if (status === 'authorized') {
+      const settings = bench.ctx.get('settings')!
+      vi.spyOn(settings, 'describe').mockReturnValue([])
+    }
+    const { outcome } = startOAuth(bench, status === 'authorized' ? signal : undefined)
+    await selectOAuth(bench)
+    const result = await outcome
+    expect(result.kind).toBe(status === 'throw' || status === 'write-failure' ? 'error' : 'success')
+    if (status === 'authorized') {
+      expect(bench.picker).toHaveBeenCalledWith('oauth-vendor')
+      expect(bench.mutations).toEqual([{ ns: 'llm-pi-ai', ops: [{ op: 'set', path: ['providers', 'oauth-vendor'], value: {} }], expected: undefined }])
+    } else expect(bench.picker).not.toHaveBeenCalled()
+  })
+
+  it('forwards notices and answers text, secret, and selection challenges', async () => {
+    const bench = mountWizard({})
+    const notice = vi.fn()
+    setSharedEditor(bench.ctx, { editor: {} as never, submitPrompt: vi.fn(), notice })
+    const answers: string[] = []
+    const challenges = [
+      { kind: 'text' as const, message: 'Text challenge', placeholder: 'paste code' },
+      { kind: 'secret' as const, message: 'Secret challenge' },
+      { kind: 'select' as const, message: 'Selection challenge', options: [{ id: 'one', label: 'First' }] },
+      { kind: 'select' as const, message: 'Empty selection' },
+    ]
+    bench.ctx.provide('authorization', {
+      list: () => oauthEntries,
+      begin: async (request: OAuthRequest) => {
+        request.interaction!.notify({ message: 'Open', url: 'https://example.test' })
+        request.interaction!.notify({ message: 'Open', url: 'https://example.test', code: '123' })
+        for (const challenge of challenges) answers.push(await request.interaction!.prompt(challenge))
+        return { status: 'authorized' }
+      },
+    } as never)
+    const { outcome } = startOAuth(bench)
+    await selectOAuth(bench)
+    for (const challenge of challenges) {
+      await vi.waitFor(() => expect(current(bench.screen).render!(100).join('\n')).toContain(challenge.message))
+      const panel = current(bench.screen)
+      if (challenge.message === 'Empty selection') {
+        ;(panel as unknown as { onEvent(event: unknown): void }).onEvent({ kind: 'submit', controlId: 'form-panel', values: {} })
+      } else confirmTextFields(panel, ['one'])
+    }
+    await expect(outcome).resolves.toMatchObject({ kind: 'success' })
+    expect(answers).toEqual(['one', 'one', 'one', ''])
+    expect(notice).toHaveBeenCalledWith('Open https://example.test')
+    expect(notice).toHaveBeenCalledWith('Open https://example.test (123)')
+  })
+
+  it('reports a cancelled OAuth challenge without adding a provider', async () => {
+    const bench = mountWizard({})
+    setSharedEditor(bench.ctx, { editor: {} as never, submitPrompt: vi.fn() })
+    bench.ctx.provide('authorization', {
+      list: () => oauthEntries,
+      begin: async (request: OAuthRequest) => {
+        request.interaction!.notify({ message: 'Signing in' })
+        await request.interaction!.prompt({ kind: 'text', message: 'Code' })
+        return { status: 'authorized' }
+      },
+    } as never)
+    const { outcome } = startOAuth(bench)
+    await selectOAuth(bench)
+    await vi.waitFor(() => expect(current(bench.screen).render!(100).join('\n')).toContain('OAuth sign in'))
+    current(bench.screen).handleInput(KEY.escape)
+    await expect(outcome).resolves.toMatchObject({ kind: 'error', text: expect.stringContaining('authorization cancelled') })
+    expect(bench.mutations).toEqual([])
+  })
+})
+
 describe('runProviderAdd', () => {
   it('translates add/edit/delete workflows and preserves structured failure status in Chinese', async () => {
     const bench = mountWizard({})
@@ -279,11 +401,10 @@ describe('runProviderAdd', () => {
     expect(editable.render!(120).join('\n')).toContain('提供商名称')
     editable.handleInput('\x04')
     await vi.waitFor(() => { expect(current(bench.screen).render!(120).join('\n')).toContain('删除 anthropic') })
-    current(bench.screen).handleInput('n')
+    expect(current(bench.screen).render!(120).join('\n')).toContain('否')
     current(bench.screen).handleInput(KEY.enter)
-    expect(current(bench.screen).render!(120).join('\n')).toContain('输入 y 确认')
-    current(bench.screen).handleInput('\x7f')
-    current(bench.screen).handleInput('y')
+    current(bench.screen).handleInput('\x04')
+    current(bench.screen).handleInput(KEY.left)
     current(bench.screen).handleInput(KEY.enter)
     await expect(edit).resolves.toEqual({ kind: 'success', text: '已移除提供商“anthropic”' })
     await expect(runProviderEdit(bench.ctx, bench.display, 'missing')).resolves.toEqual({ kind: 'error', text: expect.stringContaining('没有已存储的配置') })
@@ -750,7 +871,7 @@ describe('runProviderAdd', () => {
     await expect(outcome).resolves.toEqual({ kind: 'error', text: 'could not update provider stuck: locked' })
   })
 
-  it('deletes a configured provider after the typed confirmation', async () => {
+  it('deletes a configured provider after selecting Yes', async () => {
     const bench = mountWizard({}, {
       settings: { section: { providers: { gone: { baseURL: 'https://x', apiKeyEnv: 'GONE_API_KEY' } } } },
     })
@@ -762,7 +883,7 @@ describe('runProviderAdd', () => {
     await vi.waitFor(() => {
       expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('Delete gone')
     })
-    current(bench.screen).handleInput('y')
+    current(bench.screen).handleInput(KEY.left)
     current(bench.screen).handleInput(KEY.enter)
     await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "gone" removed' })
     const op = ((bench.mutations[0] ?? { ops: [] }).ops as { op: string, path: string[] }[])[0]!
@@ -798,7 +919,7 @@ describe('runProviderAdd', () => {
     })
   })
 
-  it('rejects a non-y delete confirmation', async () => {
+  it('keeps the edit draft when No cancels a provider deletion', async () => {
     const bench = mountWizard({}, {
       settings: { section: { providers: { unsure: { baseURL: 'https://x' } } } },
     })
@@ -806,16 +927,20 @@ describe('runProviderAdd', () => {
     await vi.waitFor(() => {
       expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('Configure unsure')
     })
-    current(bench.screen).handleInput('\x04')
+    const editor = current(bench.screen)
+    editor.handleInput(KEY.enter)
+    editor.handleInput(' draft')
+    editor.handleInput(KEY.enter)
+    editor.handleInput('\x04')
     await vi.waitFor(() => {
       expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('Delete unsure')
     })
-    current(bench.screen).handleInput('n')
     current(bench.screen).handleInput(KEY.enter)
-    expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('type y to confirm')
-    current(bench.screen).handleInput(KEY.enter)
-    current(bench.screen).handleInput('\x7f')
-    current(bench.screen).handleInput('y')
+    expect(current(bench.screen)).toBe(editor)
+    expect((editor.render?.(80) ?? []).join('\n')).toContain('unsure draft')
+    expect(bench.mutations).toEqual([])
+    editor.handleInput('\x04')
+    current(bench.screen).handleInput(KEY.left)
     current(bench.screen).handleInput(KEY.enter)
     await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider "unsure" removed' })
   })
@@ -837,7 +962,9 @@ describe('runProviderAdd', () => {
       expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('Delete stay')
     })
     current(bench.screen).handleInput(KEY.escape)
-    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'delete cancelled' })
+    expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('Configure stay')
+    current(bench.screen).handleInput(KEY.escape)
+    await expect(outcome).resolves.toEqual({ kind: 'success', text: 'provider edit cancelled' })
     expect(bench.mutations).toEqual([])
   })
 
@@ -856,7 +983,7 @@ describe('runProviderAdd', () => {
     await vi.waitFor(() => {
       expect((current(bench.screen).render?.(80) ?? []).join('\n')).toContain('Delete locked')
     })
-    current(bench.screen).handleInput('y')
+    current(bench.screen).handleInput(KEY.left)
     current(bench.screen).handleInput(KEY.enter)
     await expect(outcome).resolves.toEqual({ kind: 'error', text: 'could not delete provider locked: read-only' })
   })

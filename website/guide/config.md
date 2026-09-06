@@ -65,7 +65,7 @@ key 仍在**每次请求时**解析，因此运行期间补充或轮换凭据无
 /provider add              # 新增 provider 向导
 ```
 
-Providers 面板里**选中一个已配置的路由即进入编辑**：可改显示名、baseURL、key（留空保留原值），`Ctrl+D` 删除整个路由（需键入 `y` 二次确认）。内置的 `deepseek-official` 路由没有可编辑的存储档案（面板会提示 nothing to edit）——调整它走 `settings.yaml` 的 `llm-deepseek:` 段。
+Providers 面板里**选中一个已配置的路由即进入编辑**：可改显示名、baseURL、key（留空保留原值），`Ctrl+D` 打开删除确认，选择 Yes 才删除；No 或 Esc 返回编辑并保留草稿。内置的 `deepseek-official` 路由没有可编辑的存储档案（面板会提示 nothing to edit）——调整它走 `settings.yaml` 的 `llm-deepseek:` 段。
 
 `/provider add` 有两条分支：
 
@@ -185,7 +185,7 @@ settings.yaml 的效果则直接在界面里看：`/model` 面板列出各路由
 
 ## 更多配置面
 
-- **权限与沙箱** —— 权限预设（workspace-write / danger-full-access）、审批策略，见[权限与模式](/dsh/modes)；会话内 `Shift+Tab` 通过原生 `/plan` 与 `/permission` 命令循环 normal → plan → yolo。
+- **权限与沙箱** —— 权限预设（workspace-write / danger-full-access）、审批策略，见[权限与模式](/dsh/modes)；`/permission` 控制 YOLO，`Shift+Tab` 只切换 normal ↔ plan。计划与权限独立生效。
 - **Agent 预设** —— `/preset` 在上游 shipped `standard` / `minimal` / `ptc` / `cordis` 与 Mayfly 的 `mayfly-cordis` 间切换工具面与人格（仅空会话）。Mayfly 不提供旧 `code` alias。
 - **Skills** —— 用户级技能放 `~/.dsh/skills/`，见 [Skills](/dsh/skills)。
 - **MCP** —— MCP server 的接入配置见 [MCP 配置](/dsh/mcp)。

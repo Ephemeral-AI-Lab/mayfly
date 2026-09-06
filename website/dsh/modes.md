@@ -49,5 +49,5 @@ dsh 里"模式"一词出现在四个层面，各自独立、组合生效：
 
 ::: tip 与 Mayfly 的关系
 权限预设（`dsh-permission-presets`）**在默认装配里**（dsh-base 78 行之一）。Mayfly 目前以审批面板承担 `ask` 策略；预设切换器已落地——在输入框直接敲 `/permission`（裸调用由输入层拦截，带参透传上游命令）即可打开预设切换面板，持久默认由 `/settings` 面板的 `permission.defaultPreset` 行维护。
-Mayfly 的 yolo 徽标就是当前 `danger-full-access` 预设的显示名称，不是另一套权限状态；`Shift+Tab` 通过原生 `/plan` 与 `/permission` 命令完成三态循环。
+Mayfly 的 yolo 徽标表示当前 `danger-full-access` + `never` 权限预设。`Shift+Tab` 只通过 `/plan` 与 `/plan off` 切换计划状态；YOLO 通过 `/permission` 独立控制。计划与 YOLO 可以叠加，状态栏同时显示两者。
 :::

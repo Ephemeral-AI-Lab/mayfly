@@ -42,7 +42,7 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 | `Ctrl-G` | External editor | Hand the draft to an external editor for full-screen editing (`mayfly.editorCommand` setting → `$VISUAL` → `$EDITOR`; Mayfly suspends and yields the terminal); quitting with `:cq` leaves the draft untouched |
 | `Alt+M` | Cycle session model | Step through the current provider's models (**session-only**, no persisted default; the press is consumed, the draft stays intact) |
 | `Backspace` | Delete / exit mode | Backspace on an empty `!` bash prompt exits back to prompt mode |
-| `Shift+Tab` | Cycle session mode | normal → plan → yolo (see [Session modes](/en/features/modes)). Effective only under editor focus — panels and questionnaires keep their own Tab navigation |
+| `Shift+Tab` | Toggle plan state | normal ↔ plan, preserving permissions and YOLO (see [Session modes](/en/features/modes)). Effective only under editor focus; panels and questionnaires keep their own Tab navigation |
 
 ## Panel contexts
 
@@ -56,7 +56,7 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 | Plan review | `←` / `→` or `1`–`3` choose a decision; `↑` / `↓` / `PageUp` / `PageDown` scroll the plan; `Enter` confirms |
 | `/model` panel | providers are the only tab layer: non-wrapping `←` / `→` switches provider and `Enter` enters the model list; in the list, `↑` / `↓` selects a model, `←` / `→` adjusts that model's thinking level, and `Tab` reaches the equal action choices |
 | `/effort` panel | non-wrapping `←` / `→` moves between thinking levels and `Enter` descends; `Set as default` persists while `Use for this session` changes only the live session |
-| `/agents` browser | ↑↓ selects, `Space` expands/collapses, and `Enter` views; `Delete`/`Ctrl-D` stops a live continuable child with no live descendants after typed-`y` confirmation, so stop parent branches leaf-first |
+| `/agents` browser | ↑↓ selects, `Space` expands/collapses, and `Enter` views; `Delete`/`Ctrl-D` opens a Yes / No confirmation before stopping a live continuable child with no live descendants, so stop parent branches leaf-first |
 | Readonly subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` scroll; `Escape` closes; global `F7`/`F8` remain active |
 | Live BTW/subagent | Uses the complete main editor and the same panel keys; `F7` returns to main and `F8` closes the auxiliary slot |
 

@@ -39,7 +39,7 @@
 | `Ctrl-G` | 外部编辑器 | 草稿交给外部编辑器全屏编辑（`mayfly.editorCommand` 设置 → `$VISUAL` → `$EDITOR`；Mayfly 挂起让出终端）；以 `:cq` 退出则草稿原样保留 |
 | `Alt+M` | 循环会话模型 | 当前 provider 的模型列表里逐个切换（**仅本会话**、不写默认；按键被消费，草稿不动） |
 | `Backspace` | 退格 / 退模式 | 空的 `!` bash 提示符上退格即退回 prompt 模式 |
-| `Shift+Tab` | 循环会话模式 | normal → plan → yolo（见[会话模式](/features/modes)）。仅在编辑器焦点下生效——面板与问卷保留各自的 Tab 导航 |
+| `Shift+Tab` | 切换计划状态 | normal ↔ plan，保留当前权限与 YOLO（见[会话模式](/features/modes)）。仅在编辑器焦点下生效；面板与问卷保留各自的 Tab 导航 |
 
 ## 面板语境
 
@@ -53,7 +53,7 @@
 | 计划评审 | `←` / `→` 或 `1`–`3` 选决策，`↑` / `↓` / `PageUp` / `PageDown` 滚动计划，`Enter` 确认 |
 | `/model` 面板 | 唯一 tab 层是 provider：`←` / `→` 不循环切换，`Enter` 进入模型列表；列表中 `↑` / `↓` 选模型，`←` / `→` 调当前模型的思考等级，`Tab` 进入同级提交动作 |
 | `/effort` 面板 | `←` / `→` 在思考等级间不循环移动，`Enter` 下钻；选择 `Set as default` 持久化，或选择 `Use for this session` 仅改当前会话 |
-| `/agents` 浏览器 | ↑↓ 选择、`Space` 展开/折叠、`Enter` 查看；`Delete`/`Ctrl-D` 经 typed-`y` 确认后停止没有 live 后代的 live continuable child，父节点需先停止叶子 |
+| `/agents` 浏览器 | ↑↓ 选择、`Space` 展开/折叠、`Enter` 查看；`Delete`/`Ctrl-D` 打开 Yes / No 确认后停止没有 live 后代的 live continuable child，父节点需先停止叶子 |
 | 只读 subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` 滚动；`Escape` 关闭；全局 `F7`/`F8` 仍生效 |
 | live BTW/subagent | 使用完整主编辑器与同一套 panel 键位；`F7` 切回主会话，`F8` 关闭辅助槽 |
 

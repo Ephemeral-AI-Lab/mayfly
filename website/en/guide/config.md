@@ -65,7 +65,7 @@ Keys still resolve **per request**, so adding or rotating one while Mayfly is ru
 /provider add              # the add-provider wizard
 ```
 
-Selecting a configured route in the Providers panel opens its **edit form**: display name, baseURL, and key (empty keeps the stored value); `Ctrl+D` deletes the route after a typed confirmation. The built-in `deepseek-official` route has no stored profile to edit (the panel says "nothing to edit") — tune it through the `llm-deepseek:` section of `settings.yaml`.
+Selecting a configured route in the Providers panel opens its **edit form**: display name, baseURL, and key (empty keeps the stored value). `Ctrl+D` opens a deletion confirmation; Yes deletes, while No or Esc returns to editing with the draft preserved. The built-in `deepseek-official` route has no stored profile to edit (the panel says "nothing to edit") — tune it through the `llm-deepseek:` section of `settings.yaml`.
 
 `/provider add` branches two ways:
 
@@ -185,7 +185,7 @@ settings.yaml effects show up right in the UI: the `/model` panel lists each rou
 
 ## Other configuration surfaces
 
-- **Permissions & sandbox** — permission presets (workspace-write / danger-full-access), approval policies, see [Modes & permissions](/en/dsh/modes); in-session `Shift+Tab` cycles normal → plan → yolo through native `/plan` and `/permission` commands.
+- **Permissions & sandbox**: permission presets (workspace-write / danger-full-access) and approval policies, see [Modes & permissions](/en/dsh/modes). `/permission` controls YOLO; `Shift+Tab` toggles only normal ↔ plan. Planning and permissions remain independent.
 - **Agent presets** — `/preset` switches tool surface and persona across upstream shipped `standard` / `minimal` / `ptc` / `cordis` and Mayfly's `mayfly-cordis` (blank sessions only). Mayfly does not provide the old `code` alias.
 - **Skills** — user-level skills live under `~/.dsh/skills/`, see [Skills](/en/dsh/skills).
 - **MCP** — wiring MCP servers is covered in [MCP setup](/en/dsh/mcp).

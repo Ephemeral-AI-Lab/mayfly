@@ -1,7 +1,7 @@
 /**
  * Unit tests for the `/permission` preset picker: row construction from
  * the preset service, the current badge and derived `custom` row, the
- * danger-full-access typed-y gate, dispatch through the real command
+ * danger-full-access Yes/No confirmation, dispatch through the real command
  * runtime, and the degraded guards. The panel mounts through the fake
  * D30 editor-slot swap (the FakeScreen overlay registry).
  */
@@ -158,7 +158,7 @@ describe('openPermissionPanel', () => {
     top(mounted).component.handleInput(KEY.escape)
   })
 
-  it('gates danger-full-access behind a typed-y form that returns to the list on Esc', async () => {
+  it('gates danger-full-access behind Yes/No actions and returns to the list on Esc', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
     // Seed is workspace-write (row 1); one Down reaches the danger row.
@@ -174,24 +174,39 @@ describe('openPermissionPanel', () => {
     expect(mounted.runs).toEqual([])
   })
 
-  it('keeps the gate open on a wrong entry and dispatches on y', async () => {
+  it('defaults to No and dispatches only after selecting Yes', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
     top(mounted).component.handleInput(KEY.down)
     top(mounted).component.handleInput(KEY.enter)
     const gate = top(mounted)
-    gate.component.handleInput('n')
-    gate.component.handleInput(KEY.enter)
-    // The validation error holds the form; nothing dispatched yet.
-    expect(gate.hidden).toBe(false)
+    expect(gate.component.render(80).join('\n')).toContain('Yes')
+    expect(gate.component.render(80).join('\n')).toContain('No')
+    gate.component.handleInput('y')
     expect(mounted.runs).toEqual([])
     gate.component.handleInput(KEY.enter)
-    gate.component.handleInput('\x7f')
-    gate.component.handleInput('y')
-    gate.component.handleInput(KEY.enter)
+    expect(gate.hidden).toBe(true)
+    expect(mounted.runs).toEqual([])
+    mounted.overlays[0]!.component.handleInput(KEY.enter)
+    top(mounted).component.handleInput(KEY.left)
+    top(mounted).component.handleInput(KEY.enter)
     await vi.waitFor(() => { expect(mounted.runs).toEqual([' danger-full-access']) })
     await vi.waitFor(() => { expect(mounted.notices).toContain('preset danger-full-access') })
     expect(mounted.overlays.every(overlay => overlay.hidden)).toBe(true)
+  })
+
+  it('describes a custom full-access preset that still asks for approval', async () => {
+    const presets = fakePresets()
+    const mounted = await mount({ presets: {
+      ...presets,
+      resolve: name => ({ ...presets.resolve(name), approval: 'ask' }),
+    } })
+    openPermissionPanel(mounted.ctx)
+    top(mounted).component.handleInput(KEY.down)
+    top(mounted).component.handleInput(KEY.enter)
+    expect(top(mounted).component.render(120).join('\n')).toContain('will still prompt')
+    top(mounted).component.handleInput(KEY.escape)
+    expect(mounted.runs).toEqual([])
   })
 
   it('cancels back to the editor without dispatching', async () => {

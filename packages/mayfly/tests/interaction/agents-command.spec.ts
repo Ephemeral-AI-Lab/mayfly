@@ -407,7 +407,7 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
-  it('requires typed y before the browser stops a continuable subagent', async () => {
+  it('defaults to No and requires selecting Yes before stopping a continuable subagent', async () => {
     const rig = await mountCommand()
     rig.tree = [child('child', { label: 'worker' })]
     expect(await execute(rig)).toEqual({ kind: 'success' })
@@ -417,15 +417,13 @@ describe('mayfly-agents-command', () => {
     const confirm = rig.screen.overlays[1]!
     confirm.component.render(100)
     confirm.component.handleInput(KEY.enter)
-    confirm.component.handleInput('n')
-    confirm.component.handleInput(KEY.enter)
     expect(rig.drain).not.toHaveBeenCalled()
-    expect(plain(confirm.component.render(100)).join('\n')).toContain('type y to confirm')
-
-    confirm.component.handleInput(KEY.enter)
-    confirm.component.handleInput('\x7f')
-    confirm.component.handleInput('y')
-    confirm.component.handleInput(KEY.enter)
+    expect(confirm.hidden).toBe(true)
+    expect(browser.hidden).toBe(false)
+    browser.component.handleInput(KEY.ctrlD)
+    const reopened = rig.screen.overlays.at(-1)!
+    reopened.component.handleInput(KEY.left)
+    reopened.component.handleInput(KEY.enter)
     await vi.waitFor(() => {
       expect(rig.drain).toHaveBeenCalledWith(rig.parent, [SessionId('child')])
       expect(rig.notices).toContain('stopped subagent child')
@@ -449,7 +447,7 @@ describe('mayfly-agents-command', () => {
     ]
     rig.liveAgents.set('nested', { id: SessionId('nested') } as Agent)
     confirm.component.render(100)
-    confirm.component.handleInput('y')
+    confirm.component.handleInput(KEY.left)
     confirm.component.handleInput(KEY.enter)
     await vi.waitFor(() => expect(plain(rig.notices)).toContain('subagent branch owns 1 live descendant; stop its live descendants first'))
     expect(rig.drain).not.toHaveBeenCalled()
@@ -468,7 +466,7 @@ describe('mayfly-agents-command', () => {
       let release!: () => void
       rig.deferred = new Promise(resolve => { release = resolve })
       confirm.component.render(100)
-      confirm.component.handleInput('y')
+      confirm.component.handleInput(KEY.left)
       confirm.component.handleInput(KEY.enter)
       if (mode === 'unload') await rig.fiber.dispose()
       else rig.switchAgent({ id: SessionId('replacement') } as Agent)
@@ -515,9 +513,8 @@ describe('mayfly-agents-command', () => {
     browser.component.handleInput(KEY.ctrlD)
     const confirm = rig.screen.overlays[1]!
     const text = plain(confirm.component.render(100)).join('\n')
-    expect(text).toContain('type y to stop child')
-    confirm.component.handleInput(KEY.enter)
-    confirm.component.handleInput('y')
+    expect(text).toContain('Stop child')
+    confirm.component.handleInput(KEY.left)
     confirm.component.handleInput(KEY.enter)
     await vi.waitFor(() => expect(plain(rig.notices)).toContain('could not stop subagent child: cannot drain'))
     await rig.fiber.dispose()

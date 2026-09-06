@@ -13,15 +13,20 @@ import { sessionModeSnapshot } from './mode-commands.ts'
 export const name = 'mayfly-status-mode'
 export const inject = ['mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections']
 
-/** Register the current Agent's plan/yolo badge. */
+/** Register the current Agent's independent plan and yolo badges. */
 export function apply(ctx: Context): void {
   const node = (): MayflyStatusNode | null => {
     const agent = ctx.mayflyCurrentAgent.current()
     const state = agent === null ? undefined : sessionModeSnapshot(ctx, agent)
-    const text = state?.mode === 'yolo'
-      ? 'yolo'
-      : state?.mode === 'plan' ? state.plan?.pending === true ? 'plan...' : 'plan' : ''
-    return text === '' ? null : { kind: 'text', content: text, tone: text === 'yolo' ? 'warning' : 'accent' }
+    const plan: MayflyStatusNode | null = state?.plan?.active === true || state?.plan?.pending === true
+      ? { kind: 'text', content: state.plan.pending ? 'plan...' : 'plan', tone: 'accent' }
+      : null
+    const yolo: MayflyStatusNode | null = state?.yolo === true
+      ? { kind: 'text', content: 'yolo', tone: 'warning' }
+      : null
+    if (plan === null) return yolo
+    if (yolo === null) return plan
+    return { kind: 'stack', direction: 'row', gap: 1, children: [{ node: plan }, { node: yolo }] }
   }
   const registration = ctx.mayflyStatus.register({ id: 'mayfly.status.mode', priority: 2 }, node())
   const refresh = (): void => registration.set(node())

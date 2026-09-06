@@ -12,9 +12,8 @@
  * `command/done` and the `permission/preset`/`sandbox/mode`/
  * `approval/policy` knob events logged for free. The `custom` preset is
  * a display-only derived state (upstream rejects it on write), and the
- * `danger-full-access` row demands a typed-y canonical form gate (the D33
- * ruling; kimi's picker has none) because it unbundles both the sandbox
- * and the approval policy.
+ * `danger-full-access` row opens an explicit Yes/No confirmation because
+ * it changes the sandbox and approval policy together.
  *
  * @module @ephemeral-ai/mayfly/interaction/permission-panel
  */
@@ -28,7 +27,8 @@ import type {} from '@deepseek-ai/dsh-commands'
 import { displayServices } from './display-services.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { CanonicalFormController, type FormField } from './form-panel.ts'
+import { createConfirmationPanel } from './confirmation-panel.ts'
+import { interactionTranslator } from './locale.ts'
 import { CanonicalSelectController, type SelectRow } from './select-list.ts'
 import { CURRENT_MARK } from './symbols.ts'
 
@@ -84,7 +84,7 @@ export function openPermissionPanel(ctx: Context): void {
   }
   const agent = ctx.mayflyCurrentAgent.current()
   if (agent === null) return
-  const current = ctx.permissionPresets.current(agent.session)
+  const current = presets.current(agent.session)
   const rows: SelectRow[] = presets.names.map(name => ({
     value: name,
     label: presets.optionOf(name).name,
@@ -113,39 +113,34 @@ export function openPermissionPanel(ctx: Context): void {
     )
   }
 
-  // The list stays mounted under the danger gate: cancelling the form
+  // The list stays mounted under the danger gate: cancelling the confirmation
   // pops the stack back onto the picker instead of rebuilding it.
   /* v8 ignore next -- the placeholder only runs if the panel settles
      before its mount returns, which the building order forbids */
   let restoreList: () => void = () => {}
   const confirmDanger = (name: string): void => {
-    const fields: FormField[] = [{
-      id: 'yes',
-      label: `Enable ${name}?`,
-      required: true,
-      validate: value => value.toLowerCase() === 'y'
-        ? undefined
-        : 'type y to confirm, or Esc to pick another preset',
-    }]
-    const form = new CanonicalFormController({
+    const confirm = createConfirmationPanel({
       keymap: display.keymap,
       theme: display.theme,
       components: display.components,
+      t: (key, values) => interactionTranslator(ctx)(key, { preset: presets.optionOf(name).name, ...values }),
       title: 'Full access',
-      subtitle: 'no sandbox, and no approval prompts — every tool call runs unchecked',
-      fields,
-      onSubmit: () => {
+      question: 'Enable {preset}?',
+      detail: presets.resolve(name).approval === 'never'
+        ? 'Disable the file sandbox. Requests that still require approval will be rejected without prompting.'
+        : 'Disable the file sandbox. Requests that require approval will still prompt.',
+      onConfirm: () => {
         // Leave both layers: the gate pops onto the picker, and a
         // confirmed switch closes the picker too.
-        restoreForm()
+        restoreConfirm()
         restoreList()
         dispatch(name)
       },
       onCancel: () => {
-        restoreForm()
+        restoreConfirm()
       },
     })
-    const restoreForm = mountEditorReplacement(ctx, form)
+    const restoreConfirm = mountEditorReplacement(ctx, confirm)
   }
 
   const panel = new CanonicalSelectController({
