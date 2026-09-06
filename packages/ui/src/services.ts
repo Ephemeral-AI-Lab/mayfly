@@ -249,7 +249,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
         /* v8 ignore next -- disposal and abort races are fenced here. */
         if (handle.disposed || controller.signal.aborted) return false
         nextCursor = page.nextCursor
-        handle.set(page.node ?? null)
+        handle.set(page.node)
         return true
       } finally {
         /* v8 ignore next -- only a superseding refresh can make this false. */
