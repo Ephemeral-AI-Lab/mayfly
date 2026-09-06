@@ -13,6 +13,8 @@
 
 跨平台自动化与桌面验收清单见 [platform-acceptance.md](./platform-acceptance.md)。
 
+交互架构提案见 [UI/UX 统一模型设计](./design/ui-ux-unification.zh.md)：涵盖通知、表单、列表、标签页、输入路由与提示的一致性审视、目标状态模型和迁移验收。该提案尚未实施，不定义当前运行时行为。
+
 插件作者应从 Website
 [开发手册](../website/plugins/index.md) 开始，并以
 [DeepSeek Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
