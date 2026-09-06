@@ -1,7 +1,7 @@
 /**
  * The Add Provider flow (S23 v1): a promise-per-panel wizard over the D30
- * editor-slot stack — the kimi `provider.ts` flow shape. Two branches share
- * the machinery: adopting a known vendor from `listConfigurableProviders()`
+ * editor-slot stack — the kimi `provider.ts` flow shape. Three branches share
+ * the machinery: OAuth sign-in through the authorization seam, adopting a known vendor from `listConfigurableProviders()`
  * (the dormant pi-ai catalog — anthropic, openai, …) with only its key and
  * host-supplied endpoint, or declaring a custom endpoint (own route id, wire
  * protocol, baseURL, key). The commit is the
@@ -19,12 +19,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { credentialKey, credentialRef } from '@deepseek-ai/dsh-credentials'
 // Empty type imports carry the `settings`/`credentials` Context merges this
 // module resolves lazily.
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-credentials'
+import type {} from '@deepseek-ai/dsh-authorization'
 import { mountEditorReplacement } from './editor-panel-controller.ts'
+import { getSharedEditor } from './editor-instance.ts'
 import { loadModelsDevIndex, type ModelsDevMatch } from './models-dev.ts'
 import { CanonicalFormController, type FormField } from './form-panel.ts'
 import { CanonicalMultiSelectController } from './select.ts'
@@ -586,6 +588,7 @@ export async function runProviderAdd(
   ctx: Context,
   display: ProviderAddDisplay,
   openPicker: (route: string) => void,
+  signal?: AbortSignal,
 ): Promise<ProviderFlowResult> {
   const t = interactionTranslator(ctx)
   const settings = ctx.get('settings')
@@ -608,16 +611,74 @@ export async function runProviderAdd(
   }
   const ns = 'llm-pi-ai'
 
-  // Step 1: the source branch.
+  // Step 1: the source branch. OAuth is deliberately separate from known
+  // providers: dormant catalog routes must not appear in the main picker.
   const source = await choose(ctx, display, 'Add provider', [
     { value: 'known', label: 'Known provider (anthropic, openai, …)' },
     { value: 'custom', label: 'Custom endpoint (own baseURL and key)' },
+    { value: 'oauth', label: 'OAuth provider (sign in)' },
   ])
   if (source === undefined) return { kind: 'success', text: t('add provider cancelled') }
 
   // Step 2: the branch-specific declarations.
   let draft: EndpointDraft
-  if (source === 'known') {
+  if (source === 'oauth') {
+    const authorization = ctx.get('authorization')
+    if (authorization === undefined) return { kind: 'error', text: t('OAuth is unavailable: the host authorization service is not mounted') }
+    const oauthEntries = authorization.list().filter(entry => {
+      const provider = entry.key as string
+      return String(provider).startsWith('llm-pi-ai/') && entry.methods.some(method => method.id === 'oauth')
+        && !active.has(String(provider).slice('llm-pi-ai/'.length))
+    })
+    if (oauthEntries.length === 0) return { kind: 'error', text: t('every OAuth provider is already active or unavailable') }
+    const key = await choose(ctx, display, 'OAuth provider', oauthEntries.map(entry => ({
+      value: String(entry.key).slice('llm-pi-ai/'.length),
+      label: entry.label,
+    })))
+    if (key === undefined) return { kind: 'success', text: t('add provider cancelled') }
+    const route = key
+    const editor = getSharedEditor(ctx)
+    const interaction = {
+      notify: (notice: { message: string, url?: string, code?: string }) => {
+        const detail = notice.url === undefined ? notice.message : `${notice.message} ${notice.url}${notice.code === undefined ? '' : ` (${notice.code})`}`
+        editor?.notice?.(detail)
+      },
+      prompt: async (prompt: { kind: 'text' | 'secret' | 'select', message: string, placeholder?: string, options?: readonly { id: string, label: string }[] }) => {
+        const values = await fillForm(ctx, display, {
+          title: 'OAuth sign in',
+          subtitle: prompt.message,
+          fields: [{
+            id: 'answer',
+            label: prompt.kind === 'select' ? (prompt.options ?? []).map(option => `${option.id}: ${option.label}`).join(' / ') : prompt.message,
+            mask: prompt.kind === 'secret',
+            required: true,
+            ...(prompt.placeholder === undefined ? {} : { hint: prompt.placeholder }),
+          }],
+        })
+        if (values === undefined) throw new Error('authorization cancelled')
+        return values.answer ?? ''
+      },
+    }
+    try {
+      const outcome = await authorization.begin({
+        key: credentialKey('llm-pi-ai', route),
+        method: 'oauth',
+        interaction,
+        ...(signal === undefined ? {} : { signal }),
+      })
+      if (outcome.status !== 'authorized') return { kind: 'success', text: t('add provider cancelled') }
+    } catch (error) {
+      return { kind: 'error', text: t('OAuth sign in failed for {route}: {error}', { route, error: describe(error) }) }
+    }
+    const revision = settings.describe().find(descriptor => descriptor.ns === ns)?.revision
+    try {
+      await settings.mutate(ns, [{ op: 'set', path: ['providers', route], value: {} }], revision)
+    } catch (error) {
+      return { kind: 'error', text: t('could not add provider {route}: {error}', { route, error: describe(error) }) }
+    }
+    openPicker(route)
+    return { kind: 'success', text: t('provider "{route}" added and signed in', { route }) }
+  } else if (source === 'known') {
     const vendors = piAi
       .filter(entry => !active.has(entry.provider))
       .map(entry => ({ value: entry.provider, label: `${entry.displayName} (${entry.provider})` }))

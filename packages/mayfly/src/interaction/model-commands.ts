@@ -613,7 +613,7 @@ export function registerModelCommands(ctx: Context): () => void {
    * routes with `← current`, dormant catalog vendors with
    * `· not configured`, and the `+ Add provider` CTA); `switch <name>`
    * opens the scoped model picker over that route's models (the picked
-   * model commits provider and model together); `add` runs the wizard.
+   * model commits provider and model together); `add` runs the OAuth/known/custom wizard.
    * @param rawInput - the command's argument text.
    * @param signal - the dispatching UI request's cancellation signal.
    * @returns the command outcome.
@@ -627,7 +627,7 @@ export function registerModelCommands(ctx: Context): () => void {
       if (display === undefined) {
         return { kind: 'error', text: 'provider wizard is unavailable: the Mayfly screen is not mounted' }
       }
-      return runProviderAdd(ctx, display, pickModels)
+      return runProviderAdd(ctx, display, pickModels, signal)
     }
     if (argument.split(/\s+/)[0] === 'switch') {
       const name = argument.slice('switch'.length).trim()
@@ -674,7 +674,7 @@ export function registerModelCommands(ctx: Context): () => void {
         restore()
         void (async () => {
           const text = row.value === ADD_PROVIDER
-            ? await runProviderAdd(ctx, display, pickModels)
+            ? await runProviderAdd(ctx, display, pickModels, signal)
             : await runProviderEdit(ctx, display, row.value)
           /* v8 ignore next -- cordis disposal kills the continuation on a
              dead context before the notice could fire */
@@ -703,7 +703,7 @@ export function registerModelCommands(ctx: Context): () => void {
   })
   const provider = ctx.commands.register({
     name: 'provider',
-    description: 'List providers, switch the route, or add one',
+    description: 'List providers, switch the route, or add one (including OAuth)',
     input: { hint: '[list | switch <provider> | add]' },
     handler: invocation => manageProvider(invocation.rawInput, invocation.signal),
   })
