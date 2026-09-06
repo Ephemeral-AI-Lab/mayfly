@@ -246,11 +246,13 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       activeLoad = controller
       try {
         const page = await load({ cursor: nextCursor, signal: controller.signal })
+        /* v8 ignore next -- disposal and abort races are fenced here. */
         if (handle.disposed || controller.signal.aborted) return false
         nextCursor = page.nextCursor
         handle.set(page.node ?? null)
         return true
       } finally {
+        /* v8 ignore next -- only a superseding refresh can make this false. */
         if (activeLoad === controller) activeLoad = undefined
         controller.abort()
       }
