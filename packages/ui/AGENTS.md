@@ -32,7 +32,10 @@ or create a runtime registry. Core owns schema admission, quotas, and compile.
 Keep runtime source fully covered. Type fixtures must prove component prop
 inference, the explicit child boundary, and rejection of custom node kinds.
 Provider tests must prove registration ownership, delta replay, snapshot set, duplicate
-id rejection, and Fiber cleanup. Admit definitions and initial snapshots before
+id rejection, Fiber cleanup, and cancellable pane/overlay snapshot loading. Async
+providers live on service definitions and publish frozen node snapshots; functions,
+Promises, cursors, or renderer state must never be embedded in `MayflyUiNode`.
+Admit definitions and initial snapshots before
 registering effects; all publication and cleanup must use the admitted id even
 when callers later mutate their definitions. Built root/provider tests must
 prove that trusted builder snapshots retain identity through publication.
