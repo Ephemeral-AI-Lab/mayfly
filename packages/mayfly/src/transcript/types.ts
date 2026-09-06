@@ -6,6 +6,7 @@
 
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { OutputProgress } from '../conversation/types.ts'
 
 /** A user prompt rendered in the transcript. */
 export interface TranscriptUserItem {
@@ -37,8 +38,9 @@ export interface TranscriptThinkingItem {
   readonly step: number
   /** Accumulated reasoning text. */
   text: string
-  /** True until the step's `assistant/message` finalizes the item. */
+  /** True only while reasoning is the current output phase. */
   streaming: boolean
+  outputProgress?: OutputProgress | undefined
 }
 
 /**

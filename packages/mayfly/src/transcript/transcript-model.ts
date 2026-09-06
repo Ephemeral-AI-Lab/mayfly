@@ -329,7 +329,7 @@ export class TranscriptModelComponent implements MayflyComponent {
         break
       }
       case 'transcript-thinking': {
-        const item = { kind: 'thinking' as const, seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming }
+        const item = { kind: 'thinking' as const, seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming, outputProgress: entry.outputProgress }
         target = new ThinkingComponent(item, renderer.colors, renderer.components, () => {
           this.invalidateEntry(entry.id)
           renderer.requestRender()
@@ -338,6 +338,7 @@ export class TranscriptModelComponent implements MayflyComponent {
           const thinking = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-thinking' }>
           item.text = thinking.text
           item.streaming = thinking.streaming
+          item.outputProgress = thinking.outputProgress
           target.invalidate()
           return true
         }

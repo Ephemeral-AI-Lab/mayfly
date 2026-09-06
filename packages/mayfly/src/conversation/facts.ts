@@ -11,6 +11,7 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-tool-todo'
 import { z } from 'zod'
+import { appendOutputProgress, outputProgressSchema } from './output-progress.ts'
 import type { ConversationFactsState } from './types.ts'
 
 const todoSchema = z.object({
@@ -25,6 +26,9 @@ export const conversationFactsSchema = z.object({
   turn: z.number().int().nonnegative(),
   flowUp: z.number().nonnegative().optional(),
   flowDownChars: z.number().int().nonnegative(),
+  outputProgress: outputProgressSchema.optional(),
+  currentStep: z.number().int().nonnegative().optional(),
+  lastCompletedStep: z.number().int().nonnegative().optional(),
   todos: z.array(todoSchema),
   contextTokens: z.number().nonnegative(),
   contextWindow: z.number().positive().optional(),
@@ -74,8 +78,8 @@ export function foldConversationFacts(
     case 'turn/start':
       return {
         ...state, phase: 'waiting', active: true, turn: event.data.turn, flowUp: undefined,
-        flowDownChars: 0, epochToolCount: 0, epochTokens: 0, usageByStep: {},
-        activity: undefined, runOutcome: undefined, endedAt: undefined,
+        flowDownChars: 0, outputProgress: undefined, epochToolCount: 0, epochTokens: 0, usageByStep: {},
+        activity: undefined, runOutcome: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
       }
     case 'user/message': {
       if (event.data.source?.kind !== 'user') return state
@@ -86,19 +90,44 @@ export function foldConversationFacts(
       return text === '' || text === state.promptText ? state : { ...state, promptText: text }
     }
     case 'step/start':
-      return { ...state, phase: 'waiting', active: true, turn: event.data.turn, flowUp: undefined, flowDownChars: 0 }
+      return { ...state, phase: 'waiting', active: true, turn: event.data.turn, currentStep: event.data.step, flowUp: undefined, flowDownChars: 0, outputProgress: undefined }
     case 'assistant/chunk': {
+      const { turn, step } = event.data
+      if (turn < state.turn || (turn === state.turn && (state.runOutcome !== undefined
+        || (state.currentStep !== undefined && step < state.currentStep)
+        || (state.lastCompletedStep !== undefined && step <= state.lastCompletedStep)))) return state
       const { chunk } = event.data
+      if (chunk.type === 'finish'
+        || (chunk.type === 'block-end' && ((chunk.block.type === 'reasoning' && state.phase === 'thinking')
+          || (chunk.block.type === 'text' && state.phase === 'composing')))
+        || chunk.type === 'tool-call-delta'
+        || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')) {
+        return { ...state, phase: 'waiting', outputProgress: undefined }
+      }
       if (chunk.type === 'reasoning-delta') {
-        if (chunk.text.trim() === '') return { ...state, phase: 'waiting', active: true, turn: event.data.turn }
-        return { ...state, phase: 'thinking', active: true, turn: event.data.turn, flowDownChars: state.flowDownChars + chunk.text.length, activity: { kind: 'reasoning' } }
+        if (chunk.text.trim() === '' && state.phase !== 'thinking') return state
+        if (chunk.text === '') return state
+        return {
+          ...state, phase: 'thinking', active: true, turn: event.data.turn, currentStep: step,
+          flowDownChars: state.flowDownChars + chunk.text.length, activity: { kind: 'reasoning' },
+          outputProgress: appendOutputProgress(state.phase === 'thinking' ? state.outputProgress : undefined, chunk.text.length, event.time),
+        }
       }
       if (chunk.type === 'text-delta') {
-        return { ...state, phase: 'composing', active: true, turn: event.data.turn, flowDownChars: state.flowDownChars + chunk.text.length, activity: { kind: 'text' } }
+        if (chunk.text === '') return state
+        return {
+          ...state, phase: 'composing', active: true, turn: event.data.turn, currentStep: step,
+          flowDownChars: state.flowDownChars + chunk.text.length, activity: { kind: 'text' },
+          outputProgress: appendOutputProgress(state.phase === 'composing' ? state.outputProgress : undefined, chunk.text.length, event.time),
+        }
       }
       return state
     }
     case 'assistant/message':
+      if (event.data.turn < state.turn) return state
+      if (state.currentStep === undefined || event.data.step >= state.currentStep) {
+        state = { ...state, phase: 'waiting', outputProgress: undefined, currentStep: event.data.step, lastCompletedStep: event.data.step }
+      }
       return event.data.usage === undefined
         ? state
         : (() => {
@@ -114,7 +143,7 @@ export function foldConversationFacts(
       if (event.data.name === 'subagent' || event.data.name === 'subagent_fork') {
         return {
           ...state,
-          phase: 'tool', active: true, turn: event.data.turn,
+          phase: 'tool', active: true, turn: event.data.turn, outputProgress: undefined,
           epochToolCount: (state.epochToolCount ?? 0) + 1,
           activity: { kind: 'tool', name: event.data.name },
           agentCalls: [...state.agentCalls, {
@@ -129,7 +158,7 @@ export function foldConversationFacts(
         }
       }
       return {
-        ...state, phase: 'tool', active: true, turn: event.data.turn,
+        ...state, phase: 'tool', active: true, turn: event.data.turn, outputProgress: undefined,
         epochToolCount: (state.epochToolCount ?? 0) + 1,
         activity: { kind: 'tool', name: event.data.name },
       }
@@ -151,10 +180,10 @@ export function foldConversationFacts(
       return { ...state, phase: 'tool', active: true, agentCalls }
     }
     case 'step/end':
-      return { ...state, phase: 'waiting', active: true, turn: event.data.turn }
+      return { ...state, phase: 'waiting', active: true, turn: event.data.turn, outputProgress: undefined }
     case 'turn/end':
       return {
-        ...state, phase: 'idle', active: false, turn: event.data.turn,
+        ...state, phase: 'idle', active: false, turn: event.data.turn, outputProgress: undefined,
         runOutcome: event.data.reason.kind === 'completed' ? 'completed' : 'failed', endedAt: event.time,
       }
     case 'todo/write':
@@ -193,5 +222,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 2,
+  stateVersion: 3,
 }

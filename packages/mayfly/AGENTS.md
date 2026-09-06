@@ -62,6 +62,12 @@ entries. Conversion preserves all cutoff-eligible history. Do not assume entry
 identity survives native Zod parsing. Native whole-value validation and each
 rendered conversion may still scale with history length.
 
+The conversation projections own phase-local output measurements from session
+event timestamps. Thinking animation stops at reasoning block completion or a
+switch to text/tools, while the final assistant message still corrects its
+content. Thinking headers and composing activity rows consume those readonly
+measurements; renderer timers only animate and expire stale rate labels.
+
 In-app host operations use an internal command plus fixed-argument descriptor.
 The launcher's `MAYFLY_DSH_BIN` wins over `DSH_BIN` and PATH; a selected JavaScript
 entry runs through Node and must never silently fall back to another host.

@@ -274,6 +274,7 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
       return {
         kind: 'transcript-thinking', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, step: entry.step,
         text: entry.text, streaming: entry.streaming,
+        ...(entry.outputProgress === undefined ? {} : { outputProgress: entry.outputProgress }),
       }
     case 'error':
       return {

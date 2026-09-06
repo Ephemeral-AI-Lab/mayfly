@@ -56,6 +56,15 @@ export interface ConversationThinkingEntry extends ConversationEntryBase {
   readonly step: number
   readonly text: string
   readonly streaming: boolean
+  readonly outputProgress?: OutputProgress | undefined
+}
+
+/** Output within one streaming phase, measured from committed event timestamps. */
+export interface OutputProgress {
+  readonly chars: number
+  readonly initialChars: number
+  readonly startedAt: number
+  readonly updatedAt: number
 }
 
 /** Canonical result facts preserved for an official tool presenter. */
@@ -134,6 +143,8 @@ export interface ConversationFacts {
   readonly turn: number
   readonly flowUp?: number | undefined
   readonly flowDownChars: number
+  /** Current reasoning or answer phase only; cleared at stream boundaries. */
+  readonly outputProgress?: OutputProgress | undefined
   readonly todos: readonly TodoItem[]
   readonly contextTokens: number
   readonly contextWindow?: number | undefined
@@ -174,7 +185,10 @@ export interface ConversationAgentCall {
 }
 
 /** Plain-JSON state checkpointed for {@link ConversationFacts}. */
-export interface ConversationFactsState extends ConversationFacts {}
+export interface ConversationFactsState extends ConversationFacts {
+  readonly currentStep?: number | undefined
+  readonly lastCompletedStep?: number | undefined
+}
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {

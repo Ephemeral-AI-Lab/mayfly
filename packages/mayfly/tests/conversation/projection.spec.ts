@@ -370,14 +370,14 @@ describe('mayflyConversation projection', () => {
     state = foldConversationProjection(state, event('step/start', { turn: 7, step: 1 }))
     expect(state.streamingStep).toBeNull()
     expect(state.pendingReasoning).toBe('')
-    expect(state.entries).toMatchObject([{ kind: 'assistant', text: '', streaming: false }])
+    expect(state.entries).toEqual([])
     expect(beforeWhitespace.streamingStep).toBe('7:0')
 
     expect(conversationProjectionSchema.safeParse({ entries: state.entries, streaming: true }).success).toBe(true)
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(3)
+    expect(conversationProjectionDefinition.stateVersion).toBe(4)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -519,7 +519,7 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 3, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 4, seq: 3 })
     expect(ctx.sessionProjections.viewCheckpoint(checkpoint)).toMatchObject({
       mayflyConversation: { entries: expect.arrayContaining([expect.objectContaining({ kind: 'assistant', text: 'live' })]) },
     })
