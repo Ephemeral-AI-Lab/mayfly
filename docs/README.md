@@ -15,6 +15,8 @@
 
 交互架构提案见 [UI/UX 统一模型设计](./design/ui-ux-unification.zh.md)：涵盖通知、表单、列表、标签页、输入路由与提示的一致性审视、目标状态模型和迁移验收。该提案尚未实施，不定义当前运行时行为。
 
+对应的 [交互重构实施计划](./design/ui-ux-implementation.zh.md) 列出协议固化、成对可编辑试点、通知/授权指引、分批迁移和发布验收的代码范围与门槛。
+
 插件作者应从 Website
 [开发手册](../website/plugins/index.md) 开始，并以
 [DeepSeek Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)

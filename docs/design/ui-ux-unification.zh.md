@@ -2,11 +2,13 @@
 
 状态：分析与设计提案，尚未实施。本文件不替代当前架构文档，不表示下文拟定的内部类型、事件或 API 已经存在。
 
-审视日期：2026-09-06。代码基线：`bd171aa`，包含已经完成的 plan/YOLO 解耦、权限 picker 修复和 Yes/No 确认；这些改动尚未合并主分支。
+审视日期：2026-09-06。原始审计基线：`bd171aa`，包含 plan/YOLO 解耦、权限 picker 修复和 Yes/No 确认。设计复审对照主分支 `b57eb0d`，上述修复现已合并；原始探针记录仍对应原基线。
 
 范围：官方命令和面板，以及承载外部插件的四个 UI registry、core compiler、焦点、输入与异步事件路径。结论区分代码事实、已运行的行为探针和建议的新规则。
 
 相关证据：[第一轮交互审视](../audits/2026-09-06-interaction-ux.zh.md)、[通知审计](../audits/2026-09-06-notifications.zh.md)。
+
+编码交付见 [UI/UX 交互重构实施计划](./ui-ux-implementation.zh.md)。本次补齐公共协议、稳定 owner、授权指引和试点门槛；新增协议均为拟实施设计，不是现有 API。
 
 ## 1. 结论与目标
 
@@ -15,6 +17,8 @@
 建议建立一个 frontend-tree-scoped 的 **UIInteractionModel**：所有 surface 的通用交互状态由它统一管理，状态按 surface/control/session 隔离；同类控件使用同一个 reducer；绘制、快捷键提示和动作可用性来自同一状态与动作描述。
 
 “唯一模型”指唯一权威写入路径和可复用的行为规则。每个列表仍有自己的选中集合，每个表单仍有自己的草稿，但它们是模型中的实例数据，不是各业务功能自建的实现。渲染缓存、不可变快照、原生编辑器的内部缓冲不应成为另一套可独立决策的业务状态。
+
+实施以共享 reducer 和每个 surface 的状态所有权为边界。frontend 协调跨 surface 的导航、输入路由和操作/通知索引；不要求每次按键遍历整棵状态树，也不接管授权、更新或 Job 的领域流程。集中存储的范围由第一阶段的真实可编辑消费者验证后确定。
 
 目标不变式：
 
@@ -147,12 +151,24 @@ UIInteractionModel 内部由按控件种类划分的纯 reducer 组成，所有�
 
 - `packages/ui` 继续只拥有 readonly contract、纯 builder 和四个 registry；不放可变 store、renderer 对象或 Harness 对象。
 - 统一模型的 reducer 与输入/焦点实现放在 `packages/mayfly/src/core/` 内，确保原始按键、布局和 focus 仍只有 core 处理。
-- 演进现有内部 `mayflyInteractionState` 作为 frontend tree 的稳定状态入口；把 UI 模型的挂载与 renderer/theme 的挂载生命周期分开。若需要调整注册位置，使用普通 Cordis sibling 和显式 inject，实施时更新组合与包指引。
-- 现有缓存、粘贴资源和配置引用与新的交互状态分别分区；不把这个服务继续扩展成任意业务数据的杂物箱。
+- 稳定状态 owner 挂在现有 `mayfly-frontend` sibling，由 `frontend/index.ts` 挂载 core 内部的纯交互状态模块。模块不经 `core/index.ts` 导入终端或 renderer；不新增公共 subpath 或第五个 UI contribution service。
+- 拟定内部服务名为 `mayflyUiInteraction`，不直接扩展 `mayflyInteractionState`。后者由依赖 `mayflyCurrentAgent`、`skills` 的 interaction Fiber 创建，不能成为所有公共 surface 的稳定状态根；它继续持有原有缓存、粘贴资源和配置引用。
+- 稳定 owner 不 inject app/current-Agent、skills、theme、components、screen 或 keymap。registry 订阅由其独立子 Fiber 显式 inject 四个 UI service 中实际消费的服务；renderer、官方业务贡献各自 inject 稳定服务，依赖方向不能反转。
 - `mayflyEditorPanels` 逐步变为统一 navigation slice 的入口；EditorDockHost 只投影逻辑栈到物理挂载，不另定取消规则。
-- 四个公开 UI contribution service 保持不变。业务插件仍直接使用原生 dsh；不增加 manifest、realm、权限 facade 或特有插件框架。
+- 四个公开 UI contribution service 的名称与贡献边界保持不变，数据与事件合约按 4.6 升级。业务插件仍直接使用原生 dsh；不增加 manifest、realm、权限 facade 或特有插件框架。
 
-模型实例随 frontend tree 销毁；renderer/theme reload 只解绑并重建 renderer handles。所有可保留的用户态存于稳定模型实例，不能依赖已经卸载的组件对象存活。
+模型实例随 frontend owner 销毁；renderer/theme reload 只解绑并重建 renderer handles。已迁移的官方贡献必须从依赖 theme/components 的 input 子 Fiber 中移出。Provider 配置等 app-scope 贡献还必须移出依赖 current-Agent/skills 的 interaction 父 Fiber，挂到现有 frontend sibling 的独立业务子 Fiber，仅 inject 实际需要的原生服务；否则 core 重载经 app 传递卸载时仍会丢失表单。真正卸载的贡献不能以“保留草稿”为由复活。所有可保留的用户态存于稳定模型实例，不能依赖已经卸载的组件对象存活。
+
+| 生命周期事件 | 稳定 owner 与贡献的行为 |
+| --- | --- |
+| renderer/core 暂缺、theme 替换 | owner 与仍存活的注册保留；新 renderer replay 同一 surface 实例，旧 handles 和输入 continuation 失效 |
+| app/current-Agent 或 skills provider 重载 | owner 与不依赖这些服务的外部贡献保留；实际依赖这些服务的业务 Fiber 正常卸载，移除自己的 surface 和 bindings |
+| 当前 Agent 选择改变 | 业务绑定发布 scope 变化；旧 Agent 的结果不能写入新 scope；无 Agent 依赖的静态 UI 不重置 |
+| consumer unload 或 registration dispose | 立即移除该注册的状态、敏感草稿、动作绑定及适用任务；仅隐藏/返回父页不等于 dispose |
+| UI provider 重载 | 旧注册全部失效；相同公开 ID 的新注册是新实例，不继承旧动作或草稿 |
+| frontend owner 或整个 tree 销毁 | 清理全部状态、订阅、计时与 runtime bindings；其他 tree 不受影响 |
+
+第一阶段的 whole-tree 测试必须实际卸载并恢复上述依赖，不能仅用 `InteractionStateService.dispose()` 的单元测试代替依赖图证明。实施时同步 frontend/core/interaction 所有权文档和包指引。
 
 ### 4.4 内部状态分区
 
@@ -162,7 +178,7 @@ UIInteractionModel 内部由按控件种类划分的纯 reducer 组成，所有�
 UIInteractionModel
   navigation
     surface stack / active surface / return anchor
-  surfaces[surfaceId]
+  surfaces[surfaceInstanceKey]
     source revision / scope / lifecycle
     forms[formId]
       baseline / draft binding / dirty / field errors / validation state
@@ -177,14 +193,16 @@ UIInteractionModel
   operations[operationId]
     origin / target / source revision / phase / cancellation facts
   notifications[notificationId]
-    scope / operation ID / severity / content / detail action / lifetime
+    scope / operation ID / severity / purpose / content / detail action / lifetime
 ```
 
 原始 Agent、Session、Promise、AbortController、pi-tui 对象、焦点 handle 和宽度信息不进入公开模型快照。业务动作映射、取消句柄与原生 editor 实例在同一 owner 的私有 runtime bindings 中管理。
 
+`surfaceInstanceKey` 在稳定 owner 内由 contribution kind、注册实例及其 generation 确定，不能只用公开 `surfaceId`。不同 registry 可以使用同名 ID；dispose 后重开同名 ID 也必须隔离。控件状态再按稳定的页面路径和 control ID 定位，页面路径使用 tab ID/item ID，不使用标签文案、数组下标或 renderer leaf path。这是内部实例索引，不增加插件 owner token 或 realm。
+
 ### 4.5 需要补齐的数据契约
 
-现有只读 node 是良好基础，但不足以表达全部通用 UX。以下是契约能力清单，具体字段名由真实消费者和类型测试确定，不同时建立另一套面板 DSL。
+现有只读 node 是良好基础，但不足以表达全部通用 UX。以下能力在既有 node、registration 和事件合约上演进；4.6 定义必须实现的协议，4.7 给出消费者时序。最终导出类型名由类型测试固化，不同时建立另一套面板 DSL。
 
 | 契约 | 复用现有部分 | 需要明确或补齐的语义 |
 | --- | --- | --- |
@@ -196,6 +214,65 @@ UIInteractionModel
 | Source update | revision/eventRevision、稳定 node/control ID | acknowledgement、数据刷新、schema 改变、整体替换的明确区分 |
 
 动作 handler 可以消费统一模型提交的草稿快照并调用原生服务，但不能持有一份会自行更新的 UI 草稿。外部源的 committed snapshot 和 UI 编辑 baseline 是只读参照，不成为新的领域状态权威。
+
+### 4.6 快照、页面与动作协议
+
+以下称为新交互协议；通过 Mayfly 与 `mayfly-ui` 的明确版本升级发布。试点仅在候选构建使用，现有发布版本的 `MayflyUiEvent` 和 `set(node, { eventRevision })` 保持原义。发布前形成类型迁移说明并迁移仓库内真实外部消费者；不增加永久的新旧模式开关或兼容 export。
+
+| 协议部分 | 新协议的确定语义 |
+| --- | --- |
+| 注册的初始 node | 表单 `value` 和 choice `selectedIds` 是只读 baseline，首次创建草稿；后续编辑只写 surface 的 draft。浏览列表的光标不再从 `selectedIds` 回写 |
+| 注册作用域 | registration 声明 readonly 的 app/session/panel 归属和目标标识；作用域内的业务 authority 留在 handler 私有绑定。目标改变必须整体 replace，不能用 data 把旧草稿悄悄转给另一目标 |
+| 普通数据更新 | 扩展 snapshot update metadata，以 `reason: 'data'` 明确表示；新协议省略 metadata 时也按 data 处理。未修改字段跟随新值；已修改字段保留草稿，仅在对应 baseline 值变化时标记冲突 |
+| 操作确认回写 | owner 将 handler 的 accepted 回执准入为 `reason: 'ack'`，关联本次 operation ID 和提交的 draft revision。只接纳同一注册实例、scope 和仍有效操作；业务不另发一次 `set()` 确认同一提交，旧回执也不作为 reset |
+| 整体替换 | `reason: 'replace'` 明确销毁旧实例状态和适用 continuation，再从新 node 初始化；不能通过改标题或重建等价对象隐式触发 |
+| 呈现刷新 | theme、locale、resize 不触发 replace 或制造领域版本；翻译后的 readonly 文案可随等价 data 快照重发，baseline 值不变就不重置草稿。新 renderer 从稳定实例取得状态 |
+| tab 内容归属 | 在现有 `MayflyUiChild` 上补充 readonly `tab: { controlId, itemId }` 关联；嵌套关联组成页面路径。该页面切换为不可见时保留草稿，明确删除关联子树时释放状态 |
+| 动态页面 | 插件发布页面的 loading/empty/数据子树并保留 tab 关联；不能用删除页面表示暂时未加载。结果绑定页面路径及读取代际，不能覆盖另一页 |
+| 选择变动与接受 | `selection-toggle` 仅改变本地 draft；`selection-accept` 才发起选择 action。公共事件类型分开，不能继续用同名 `selection-change` 交给 latest |
+| 动作提交 | registration 的 handler 接收 action ID、control/page 路径、不可变草稿及 operation context；context 带取消 signal。业务只读此次提交值，不维护持续变化的表单副本 |
+| 校验与结算 | 注册层返回结构化 UI 回执：accepted、invalid、conflict 或 failed。invalid 带字段路径和错误；accepted 回写权威 node 及 ack；failed 保留草稿。回执不改写原生 dsh 的返回类型或错误分类 |
+
+Save 启动前冻结此次 draft revision，并锁住该表单的修改与重复提交；不锁其他 surface，也不阻止该动作必需的子交互。异步只读校验可采用 latest，但结果必须匹配字段草稿版本。写入前的领域校验与原生 effect 由业务 handler 执行，模型不推断 native action 是否成功。
+
+回执的 accepted node 先经 registration/provider 的既有快照发布路径冻结并发布，稳定 owner 将对应 ack 与操作结算一次准入；不能只改 renderer 的私有 node，或先清 dirty、后收到另一个 baseline。准入失败按该操作失败处理并保留草稿。提交中若收到冲突的数据更新，保留冲突与实际原生结果；不能仅因收到 accepted 就抹去更新后的权威值。没有原生 revision/CAS 能力的领域，handler 需要重新读取并报告冲突或请求用户重新确认，不能把 UI revision 当成领域并发保证。
+
+表单提交回执的最小形状如下，属于拟定注册层协议。事件上下文负责关联 operation、页面路径与取消 signal，node 内仍没有 callback/Promise；其他事件不需要返回表单回执。accepted 的 node 是写入后重新读取的完整 surface 快照，conflict 的 node 是最新权威快照，均须先通过现有冻结和准入边界。
+
+```ts
+type FormActionReply =
+  | { readonly kind: 'accepted', readonly node: MayflyUiNode }
+  | { readonly kind: 'invalid', readonly errors: readonly FieldError[] }
+  | { readonly kind: 'conflict', readonly node: MayflyUiNode, readonly message: string }
+  | { readonly kind: 'failed', readonly message: string }
+
+interface FieldError {
+  readonly pagePath: readonly { readonly controlId: string, readonly itemId: string }[]
+  readonly formId: string
+  readonly fieldId: string
+  readonly message: string
+}
+```
+
+页面关联在 core admission 中验证：引用存在的 tabs/item；同一页面内 control ID 唯一；不同页面可复用同名字段，事件包含页面路径。可见性、宽度和可见窗口仍由 renderer 决定。扩展关联不改变大列表按 viewport 准入、隐藏分支延迟准入和局部失败隔离的契约。
+
+### 4.7 官方与外部表单的同一时序
+
+试点选择官方 Provider 编辑表单，以及通过 `mayflyOverlays.open()` 注册的外部配置表单。两者发布同样的 Form/Choice node；外部示例的业务值通过原生 settings namespace 读写。下表只用协议语义表达调用，不把拟定字段伪装成现有 SDK 示例。
+
+| 步骤 | 插件/业务动作 | 共享模型的结果 |
+| --- | --- | --- |
+| 打开 | 发布 baseline `name=A`、领域版本 r1 和两个有明确关联的页面 | 创建注册实例，草稿为 A，页面草稿各自隔离 |
+| 输入 B，再按 Tab/切页/返回 | 无领域写入；业务可读取只读草稿做校验，无须 `set()` 回送每次键入 | 当前值 B 保留，焦点与页面锚点恢复，原生值仍为 A |
+| 后台数据更新 | 发布 `reason: data` 的 `name=C`、r2 | 保留 B 并标记冲突；未修改字段同步，取消不会写回 A |
+| 处理冲突 | 用户选择放弃该字段草稿，或在查看新 baseline 后显式重新提交 | handler 使用实际 native revision；无无条件覆盖或自动冲突重试 |
+| Save | handler 收到本次草稿、baseline 版本、operation ID 和 signal | 先登记 busy；重复 Save 不启动第二个写入 |
+| 校验失败 | 返回 invalid 及字段路径 | 解除 busy，定位错误并保留全部草稿，不产生领域写入 |
+| 写入成功 | 原生写入成功后返回 accepted 和权威 node；owner 关联 ack | 原子更新 baseline/draft，清 dirty，显示该操作反馈 |
+| renderer reload | 注册和业务 Fiber 仍存活 | 重绑同一实例，恢复草稿；不重发 Save |
+| 关闭或重开同名 surface | dispose 旧注册，再创建新注册 | 旧回执无效；新 surface 不继承旧草稿、错误或确认目标 |
+
+第一阶段同时提供上述两种真实挂载和同一参数化事件轨迹。若外部消费者仍需自行维护 tab/草稿或猜测 reset，协议试点不算完成，不能进入全量迁移。
 
 ## 5. 统一交互协议
 
@@ -332,28 +409,46 @@ Alt+M 这类明确命名为“下一个模型”的快捷动作可以保留，�
 | 模型内部策略消息 | 保留原生 inbox；不作为用户 queue 显示 |
 | 用户待处理 prompt/steer/附件 | 上方队列，只读投影；不复制 inbox 状态 |
 | 短操作反馈 | 当前 editor 或 panel 下方、footer 上方的统一 feedback slot |
+| 等待用户完成外部操作的指引 | 所属交互 surface 持续显示必要信息和动作；feedback 只提示该交互仍在等待 |
 | 字段错误 | 同一模型中的 field error，贴近字段 |
 | 长任务进度/失败详情 | 所属操作/document surface，feedback 提供摘要与详情动作 |
 | 当前 plan/yolo、jobs、context 状态 | footer/pane 持续投影，独立于通知 acknowledgement |
 | 启动前或无法维持 UI 的错误 | stderr；运行中可恢复错误同时进入统一反馈 |
 
-feedback slot 不再属于“仅编辑器可见的 hint”。活动面板也有同一个可见出口。建议为摘要保留一行，长文通过详情呈现，避免通知长度使编辑区反复跳动；实际分配仍由 core 统一根据 viewport 决定。
+feedback slot 不再属于“仅编辑器可见的 hint”。活动面板也有同一个可见出口。建议为短反馈摘要保留一行，长文通过详情呈现，避免通知长度使编辑区反复跳动；实际分配仍由 core 统一根据 viewport 决定。完成操作所需的指引不受这一行摘要配额限制，见 7.3。
 
 ### 7.2 生命周期与归属
 
-- 每条通知都有稳定 ID、owner、app/session/panel scope、operation ID 和 severity。
+- 每条通知都有稳定 ID、owner、app/session/panel scope、operation ID、severity 和 purpose。purpose 区分短反馈、进度与待用户操作的指引，不能只靠 severity 决定寿命。
 - 同一操作的 loading/success/error 更新同一记录；生产者只能清理自己的记录。
-- progress 持续到操作结算；建议第一版 success/info 摘要在累计可见 5 秒后消失，所属 surface 隐藏时暂停计时；warning/error 保留到明确处理、同操作替换或 scope 关闭，并可回看详情。计时由 model 的 effect owner 驱动，不在 render 中改状态，也不提供功能各自设定的任意 TTL。
+- progress 持续到操作结算；仅 purpose 为短反馈的 success/info 摘要在累计可见 5 秒后消失，所属 surface 隐藏时暂停计时。warning/error 保留到明确处理、同操作替换或 scope 关闭，并可回看详情；待用户操作的指引按交互结算清理，不使用 TTL。计时由 model 的 effect owner 驱动，不在 render 中改状态，也不提供功能各自设定的任意 TTL。
 - 不再由任意编辑清空所有错误；滚动“有新消息”是状态提示，不覆盖操作失败。
 - 应用级更新结果跨会话可见且标记目标 profile；会话级结果归原会话；panel 关闭不把结果写给另一个 panel。
 - 使用有界的会话/应用通知记录，超额按统一策略回收已结算低优先级项；进行中的操作和未处理的关键失败不得因高频普通消息被挤掉。
 - 敏感字段内容不进入提示、操作审计快照或通知历史。
 
+### 7.3 OAuth 与持续交互指引
+
+当前 `provider-add.ts` 接受原生 authorization 的 `notify({ message, url?, code? })`。网址和验证码可能是用户在浏览器完成登录所需的唯一信息，必须迁入授权 surface 的持续内容，不能只转成一条 info。原生 authorization 继续拥有认证状态、超时和结果；Mayfly 只持有当前可展示的指引。
+
+| 事件 | UI 行为与清理 |
+| --- | --- |
+| 收到 url/code 或明确要求用户操作的 notify | 在本次授权实例中发布 `purpose: action-required` 的指引；保留 message、完整 URL 和 code 的结构，不先拼接再截断。无法判断的授权 notify 在请求结束前保留 |
+| 随后收到 text/secret/select prompt | 指引仍可在同一授权 surface 查看，prompt 使用共享 Form/Choice；capturing 面板不能挡住查看完整指引、复制所需值和取消授权的动作 |
+| 窄终端或长 URL | 使用所属 Document/Scroll 区域呈现全文，保证 prompt 与动作可达；不依赖底层 footer 的详情按钮，也不显示无入口的省略标记 |
+| 等待浏览器操作、切 tab 或 renderer reload | 指引持续保留；五秒计时、无关 loading、键入或其他操作反馈不清除它 |
+| authorization 更新指引 | 按授权实例和指引 ID 更新；新的码可替换旧码，不能替换另一个授权请求的内容 |
+| 原生成功、失败、取消、超时或业务 owner unload | 结算本次交互并释放 URL/code/secret 引用；历史和日志最多保留不含敏感内容的结果摘要 |
+
+URL、code 和 secret 的明文只允许在该授权实例的必要交互中使用，不进入通用通知历史、调试状态导出或审计快照。Provider 新增属于应用配置操作，切换当前 Agent 本身不应把授权指引归给新会话；若其实际业务 Fiber 卸载，按正常取消规则结束。
+
+授权 action 可以在运行期间等待子 prompt。父操作只阻止重复启动授权，子表单必须继续接收输入并独立结算；不能让同一全局 FIFO 等待父 Promise 而阻塞其子交互。取消向原生 signal 传递，晚到的 notify/prompt/result 不能重新打开已关闭的授权 surface。
+
 ## 8. 异步、关闭与数据刷新
 
 ### 8.1 同一个 OperationState
 
-动作状态统一为 `idle → validating → awaiting-confirmation → running → succeeded/failed/cancelled`；领域动作并不一定经过所有阶段。状态由共享 reducer 驱动，业务只提供校验与原生 effect。
+动作状态统一为 `idle → validating → awaiting-confirmation → running → succeeded/failed/cancelled`；领域动作并不一定经过所有阶段。状态由共享 reducer 驱动，业务只提供校验与原生 effect。`running` 可以关联待用户处理的子交互，其父子结算和局部 busy 规则见 7.3；不把原生授权、更新或 Job 细分阶段复制进通用状态机。
 
 启动 effect 前先在模型中登记 operation 和 busy，防止连续输入重复启动。草稿搜索/校验可以采用 latest；明确提交/动作不能因为同名 `selection-change` 到达就被误当成可丢弃的草稿更新。
 
@@ -371,13 +466,13 @@ UI 快照仅记录标识；业务 effect 必须通过原生服务取得精确 Ag
 | --- | --- |
 | 主题、语言、终端尺寸、等价 node 重建 | 保留草稿/焦点/选择；只重算呈现 |
 | 外部值更新，字段未修改 | 同步新 baseline |
-| 外部值更新，字段有草稿 | 保留草稿并标记冲突，提交时使用领域 revision 校验 |
+| 外部值更新，字段有草稿 | 对应 baseline 值变化才标记冲突并保留草稿；提交时使用领域 revision 校验，无 native revision 时按 4.6 处理 |
 | 列表重排或新增 | 按稳定 ID 保留锚点，不依赖 array/object identity |
 | 字段/条目/动作被删除 | 按共享 reconcile 规则回退；旧动作失效 |
 | 返回父 surface | 恢复原实例状态与焦点锚点 |
 | 所属 Fiber 真正卸载 | 注销贡献、取消适用任务、移除状态，不复活旧 panel |
 
-公开 surface 当前对 external replacement 有明确的重置语义，因此新的“数据刷新保留草稿”需要区分呈现刷新、数据更新和意图上的整体替换。实施时必须形成清楚的版本化契约；不能在原 `set()` 上无说明地改变所有外部插件行为。
+公开 surface 当前对 external replacement 有明确的重置语义。新协议按 4.6 的 data/ack/replace 和呈现刷新规则实现，随明确版本升级迁移；旧发布版本不能在原 `set()` 上无说明地改变所有外部插件行为。
 
 ## 9. 业务模块允许与禁止的职责
 
@@ -407,22 +502,33 @@ UI 快照仅记录标识；业务 effect 必须通过原生服务取得精确 Ag
 | hint、settings notice、market status、update notice | NotificationState/OperationState | notice 字符串和各功能的清空/染色/寿命逻辑 |
 | 官方 CanonicalPanelAdapter、公开 surface 编译 | 同一个 surface session 与 renderer 接口 | 官方专属 focus mirror、main-mode 与无穷 viewport 分支 |
 
-这些是最终删除目标。迁移期间可以有一个短期转换边界，但迁移某类控件时应一次覆盖所有该类消费者；不能让旧、新两种相同行为长期并存。
+这些是最终删除目标。候选分支中可以逐个迁移消费者并保留一个短期转换边界；对某类控件宣告完成前，必须覆盖官方和仓库内外部消费者。不能以阶段完成为由发布同一角色的两套默认行为，也不能要求仓库无法控制的所有第三方插件同时完成升级；第三方按发布版本和迁移文档升级。
 
 ## 11. 实施顺序
 
 | 阶段 | 内容 | 阶段完成条件 |
 | --- | --- | --- |
-| 0. 固化协议 | 交互矩阵、状态 owner、内部事件、版本影响和 conformance fixtures | 所有已发现问题都有指定的新规则和验收场景 |
-| 1. 建立共享模型与动作路由 | 稳定 model owner、surface instance、输入作用域、AvailableActions、effects/notification 基础 | 一个只读 Document 与一个标准 Decision 在验收环境试点；renderer reload 不丢状态；不把局部试点称为已统一发布 |
-| 2. 迁移通知与导航 | queue 分类、可见 feedback slot、scope/ID、返回与异步结算 | 五个通知探针转为修复回归；无 hidden error、串会话和跨操作清空 |
+| 0. 固化协议与独立修复 | 将 4.6/4.7 固化为类型、事件轨迹和迁移说明；列明 owner 依赖图；queue 分类等独立修复单独交付 | 公共更新/回执/页面协议无待猜测的关键语义；每个审计项有目标阶段和回归场景 |
+| 1. 成对可编辑试点 | frontend 稳定 owner、按 surface 的 Form/Choice reducer、局部动作执行、最小导航/反馈；官方 Provider 编辑表单与真实外部 overlay 共用它们 | 通过下列强制场景和完整 gate、profile 验收；只读 Document/Decision 为辅助，不能代替可编辑证据 |
+| 2. 迁移通知与导航 | 可见 feedback、scope/ID/purpose、返回和异步结算、OAuth 持续指引 | 五个通知探针转为修复回归；无 hidden error、串会话和跨操作清空；OAuth prompt 期间完整指引可达且不超时消失 |
 | 3. 迁移 Form 与 Choice | 表单 Save/Cancel、设置 enum、OAuth、数值/集合、多选，以及对应公开字段/事件和消费者 | 所有表单/选择器共用协议；导航零领域写入；删除旧 controller 状态机 |
 | 4. 迁移 Tree/Tabs/Wizard/Document/Decision | 会话/Agent 浏览、市场、模型、问卷、计划评审与公开 action.confirm | 搜索、边界、tab 保留、只读关闭和确认规则一致；取消保留父级草稿 |
 | 5. 跨入口验证与收尾 | 第三方完整 composition、删除转换边界、文档和发布闭包 | 官方/外部相同逻辑轨迹得到相同 UX；源码门禁禁止私有通用逻辑回流 |
 
 这是跨模块和公共 UI 的架构变更，不能靠零散补丁完成。每阶段应有可单独验收的 worktree/profile；通过完整 gate、必要的 package/example 验证和 PTY 后再交付人工验收。凡涉及 Website 的阶段同时提供 LAN preview，按照仓库流程验收后再合并和清理。
 
-每类控件对应的公共契约迁移随该类一起完成，不等到最后才处理第三方入口。若某阶段不能同时迁完该类所有消费者，继续留在验收分支，不把同一角色的两种行为作为正式版本发布。
+第一阶段强制验收：
+
+1. 官方与外部入口执行相同输入轨迹；Tab/切页零领域写入，Save 单次写入，Cancel 恢复父 surface 的同一草稿和焦点。
+2. 异步字段校验的旧结果失效；提交失败保留草稿；data 冲突、ack 结算和 replace 重置得到不同且确定的结果。
+3. 两个 tab 复用相同字段 ID，切换/重排后各自恢复；明确删除页面后草稿与敏感数据释放。
+4. 真实 renderer/core/theme reload 保留存活贡献；app/skills 重载不清除无依赖的外部表单，依赖已卸载业务的表单不复活。
+5. 不同 registry 的同名 ID、关闭重开同名 ID、精确 Agent scope 切换均能隔离；旧 callback 和确认不能写入新实例。
+6. 20/40/80/160 列和短终端中 Save/Cancel、冲突、字段错误均可达；大列表窗口化和隐藏分支准入的现有保证继续通过。
+
+试点未通过时只调整协议和共享实现，不继续扩大到市场、问卷或全部表单。若共享 reducer 与实例 owner 已满足目标，协调层不再为“唯一模型”而集中更多业务流程。已经确认且可独立验证的 P1 修复可以先交付；具体编码批次、依赖与验收见 [实施计划](./ui-ux-implementation.zh.md)。
+
+每类控件对应的公共契约迁移随该类一起完成，不等到最后才处理第三方入口。试点或未完成的同类迁移保留在验收分支；发布边界按控件协议闭合，不按修改文件数量或内部阶段编号决定。
 
 ## 12. 一致性测试与防回归门禁
 
@@ -435,11 +541,11 @@ UI 快照仅记录标识；业务 effect 必须通过原生服务取得精确 Ag
 | Form | Tab/Shift+Tab 无领域写入；Save 一次；Cancel 草稿；错误定位；多行输入；secret 不泄露 |
 | Choice | 焦点/已选/已生效不同；空集合基数；no-op；disabled；ID 重排 |
 | Tree/Search | 无业务字母抢输入；空结果可退出；展开恢复；中英文/长文本/粘贴 |
-| Tabs | Tab 可进入内容；方向键不循环；各 tab 草稿和锚点保留 |
+| Tabs | Tab 可进入内容；方向键不循环；显式页面关联；同名字段隔离；各 tab 草稿和锚点保留及删除释放 |
 | Decision | 默认不执行；Yes 一次；No/Esc 返回；目标失效后旧事件无效 |
-| Notification | 面板期间可见；severity；scope；按 ID 更新/清除；晚结果与详情 |
+| Notification | 面板期间可见；severity/purpose；scope；按 ID 更新/清除；晚结果与详情；OAuth URL/code 在 prompt 期间可达、不按 TTL 清除、不入历史 |
 | Async | 校验拒绝、失败、超时、取消、重复提交、并发、目标删除、Fiber unload |
-| Reload | theme/locale/resize/renderer gap 不改变草稿与业务结果；整体替换按明确策略处理 |
+| Reload | theme/locale/resize/renderer gap 不改变草稿与业务结果；data/ack/replace 区分；真实 app/skills/provider/consumer 卸载依赖图；跨注册同名 ID 和重开隔离 |
 | Input/Help | 同一 AvailableActions 驱动实际处理与提示；改键后两者一起变；捕获 surface 阻止底层响应 |
 | Layout | 20/40/80/160 列、短终端高度、CJK/长单词；不仅不溢出，还要看得到可操作按钮和错误 |
 
