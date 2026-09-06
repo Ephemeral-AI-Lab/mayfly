@@ -157,6 +157,7 @@ function entryRevision(entry: TranscriptEntryModel): number {
 /** Bounded semantic transcript component with id-based reconciliation. */
 export class TranscriptModelComponent implements MayflyComponent {
   private readonly cached = new Map<string, CachedComponent>()
+  private readonly canonicalRows = new WeakMap<object, { readonly width: number, readonly rows: string[] }>()
   private expanded = false
   private renderedRows: RenderedRowsCache | undefined
   private generation: number | undefined
@@ -194,8 +195,16 @@ export class TranscriptModelComponent implements MayflyComponent {
     this.prune(live)
     const rows = entries.flatMap(entry => isSemantic(entry)
       ? this.renderSemantic(entry, width, expandableTurns.has(entry.turn), policy)
-      : renderCanonicalNode(entry, width, this.renderer))
+      : this.renderCanonical(entry, width))
     this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
+    return rows
+  }
+
+  private renderCanonical(entry: MayflyUiNode, width: number): string[] {
+    const cached = this.canonicalRows.get(entry)
+    if (cached?.width === width) return cached.rows
+    const rows = renderCanonicalNode(entry, width, this.renderer)
+    this.canonicalRows.set(entry, { width, rows })
     return rows
   }
 
