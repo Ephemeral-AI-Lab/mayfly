@@ -39,7 +39,7 @@
 | `Ctrl-G` | 外部编辑器 | 草稿交给外部编辑器全屏编辑（`mayfly.editorCommand` 设置 → `$VISUAL` → `$EDITOR`；Mayfly 挂起让出终端）；以 `:cq` 退出则草稿原样保留 |
 | `Alt+M` | 循环会话模型 | 当前 provider 的模型列表里逐个切换（**仅本会话**、不写默认；按键被消费，草稿不动） |
 | `Backspace` | 退格 / 退模式 | 空的 `!` bash 提示符上退格即退回 prompt 模式 |
-| `Shift+Tab` | 循环会话模式 | normal → plan → yolo（见[会话模式](/features/modes)）。仅在编辑器焦点下生效——面板与问卷保留各自的 Tab 导航 |
+| `Shift+Tab` | 切换计划状态 | normal ↔ plan，保留当前权限与 YOLO（见[会话模式](/features/modes)）。仅在编辑器焦点下生效；面板与问卷保留各自的 Tab 导航 |
 
 ## 面板语境
 

@@ -58,7 +58,7 @@ plan 模式下 agent 调 `exit_plan_mode` 收尾时，评审请求以专用问�
 - **Revise** 行自带反馈输入框；提交后作为「带反馈的拒绝」答回（harness 侧折叠为 "their feedback: …"），agent 拿到修改意见继续迭代 plan；空提交等价于普通 Reject；
 - Approve/Reject 直接定案；请求中止时面板随取消码关闭（`ASK_CANCELLED`）。
 
-plan 模式的进入/退出走 `Shift+Tab` 三态循环（normal → plan → yolo，见[会话模式](/features/modes)），footer 的模式徽标实时反映。
+`Shift+Tab` 只切换 normal 与 plan（见[会话模式](/features/modes)），保留当前权限。YOLO 通过 `/permission` 独立控制，不会跳过计划评审；footer 可以同时显示 plan 与 yolo。
 
 ## 权限预设切换面板
 

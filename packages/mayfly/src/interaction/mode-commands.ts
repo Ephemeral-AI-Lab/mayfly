@@ -1,6 +1,5 @@
 /**
- * Shift+Tab mode cycling over native dsh projections, permission presets,
- * and commands.
+ * Independent plan and permission state over native dsh projections and commands.
  *
  * @module @ephemeral-ai/mayfly/interaction/mode-commands
  */
@@ -13,15 +12,10 @@ import { displayServices } from './display-services.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import type { PermissionPresetsService } from './permission-panel.ts'
 
-/** Mayfly's three labels, derived entirely from native dsh state. */
-export type MayflySessionMode = 'normal' | 'plan' | 'yolo'
-
-/** Native state needed to render and advance the three-state cycle. */
+/** Independent native state for plan switching and status display. */
 export interface MayflySessionModeSnapshot {
-  readonly mode: MayflySessionMode
   readonly plan: { readonly active: boolean, readonly pending: boolean } | undefined
-  readonly normalPreset: string | undefined
-  readonly yoloPreset: string | undefined
+  readonly yolo: boolean
 }
 
 function describe(error: unknown): string {
@@ -32,19 +26,13 @@ function describe(error: unknown): string {
 export function sessionModeSnapshot(ctx: Context, agent: Agent): MayflySessionModeSnapshot {
   const plan = ctx.sessionProjections.snapshot(agent.session, ['plan']).values.plan
   const presets = ctx.get('permissionPresets') as PermissionPresetsService | undefined
-  const normalPreset = presets?.names.find(name => {
-    const spec = presets.resolve(name)
-    return spec.sandbox === 'workspace-write' && spec.approval === 'ask'
-  })
-  const yoloPreset = presets?.names.find(name => {
+  const currentPreset = presets?.current(agent.session)
+  const yolo = presets?.names.some(name => {
+    if (name !== currentPreset) return false
     const spec = presets.resolve(name)
     return spec.sandbox === 'danger-full-access' && spec.approval === 'never'
-  })
-  const currentPreset = presets?.current(agent.session)
-  const mode = currentPreset === yoloPreset && yoloPreset !== undefined
-    ? 'yolo'
-    : plan?.active === true || plan?.pending === true ? 'plan' : 'normal'
-  return { mode, plan, normalPreset, yoloPreset }
+  }) ?? false
+  return { plan, yolo }
 }
 
 function showResult(ctx: Context, result: { readonly kind: 'success' | 'error', readonly text?: string }): void {
@@ -53,48 +41,27 @@ function showResult(ctx: Context, result: { readonly kind: 'success' | 'error', 
   getSharedEditor(ctx)?.notice?.(paint === undefined ? result.text : paint(result.text))
 }
 
-/** Cycle the current Agent through normal, plan, and native full-access mode. */
+/** Toggle only the current Agent's plan selection, preserving permissions. */
 export async function cycleMode(ctx: Context): Promise<void> {
   const agent = ctx.mayflyCurrentAgent.current()
   if (agent === null) {
     getSharedEditor(ctx)?.notice?.('no session is live yet')
     return
   }
-  const state = sessionModeSnapshot(ctx, agent)
-  let lines: [string, ...string[]]
-  if (state.mode === 'yolo') {
-    if (state.normalPreset === undefined) {
-      getSharedEditor(ctx)?.notice?.('normal mode is unavailable: no workspace-write/ask permission preset')
-      return
-    }
-    lines = state.plan?.active === true || state.plan?.pending === true
-      ? ['/plan off', `/permission ${state.normalPreset}`]
-      : [`/permission ${state.normalPreset}`]
-  } else if (state.mode === 'plan') {
-    lines = ['/plan off', ...(state.yoloPreset === undefined ? [] : [`/permission ${state.yoloPreset}`])]
-  } else if (state.plan !== undefined) {
-    lines = ['/plan']
-  } else if (state.yoloPreset !== undefined) {
-    lines = [`/permission ${state.yoloPreset}`]
-  } else {
-    getSharedEditor(ctx)?.notice?.('mode switching is unavailable')
+  const plan = ctx.sessionProjections.snapshot(agent.session, ['plan']).values.plan
+  if (plan === undefined) {
+    getSharedEditor(ctx)?.notice?.('plan mode is unavailable')
     return
   }
+  // The wire projection's pending flag means the selected value is opposite active.
+  const line = plan.active !== plan.pending ? '/plan off' : '/plan'
   try {
-    let lastResult: { readonly kind: 'success' | 'error', readonly text?: string } | undefined
-    for (const line of lines) {
-      const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
-      if (execution === undefined) {
-        getSharedEditor(ctx)?.notice?.(`mode command is unavailable: ${line.split(' ')[0]}`)
-        return
-      }
-      lastResult = execution.result
-      if (lastResult.kind === 'error') {
-        showResult(ctx, lastResult)
-        return
-      }
+    const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
+    if (execution === undefined) {
+      getSharedEditor(ctx)?.notice?.('mode command is unavailable: /plan')
+      return
     }
-    showResult(ctx, lastResult!)
+    showResult(ctx, execution.result)
   } catch (error) {
     ctx.logger.warn(`mode cycle dispatch failed: ${describe(error)}`)
   }

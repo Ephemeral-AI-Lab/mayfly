@@ -47,7 +47,7 @@
 
 ## 模式与审批
 
-- **`Shift+Tab` 模式循环** —— normal → plan → yolo 只编排 dsh 原生命令：`/plan`、`/plan off`、`/permission danger-full-access` 与 `/permission workspace-write`（见[会话模式](/features/modes)）。Mayfly 不注册 `/yolo` 或 `/yes`。
+- **`Shift+Tab` 计划切换** —— normal ↔ plan，只执行 `/plan` 或 `/plan off`。YOLO 使用 `/permission danger-full-access` 进入、`/permission workspace-write` 退出，可与 plan 叠加（见[会话模式](/features/modes)）。Mayfly 不注册 `/yolo` 或 `/yes`。
 - **`/permission`** —— 列出/切换权限预设（sandbox 模式 + 审批策略的命名束）。与 `/preset` 同款单选列表面板；danger 预设需打字 `y` 确认。裸 `/permission` 由输入层拦截开面；命令本身由上游 `dsh-permission-presets` 注册（补全与 `/help` 均会列出），带参调用透传给宿主命令执行切换。
 - **`/mcp`** —— 三层面板浏览宿主连接的 MCP 服务器：服务器选择器 → 服务器面板（config 伪行 + 工具行）→ 详情（config 状态/脱敏连接/策略，或工具 schema）。只读——增删服务器走 profile patch（见 [dsh/mcp](/dsh/mcp)）；空态有指路。
 - **`/init`** —— 让 agent 分析代码库并把结论写入项目根的 `AGENTS.md`：已存在则先读取、延续仍然准确的内容，重写为一个连贯的最新文件（而非追加），使用项目自身文档的主要语言。

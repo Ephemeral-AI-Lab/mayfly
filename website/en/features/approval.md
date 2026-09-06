@@ -58,7 +58,7 @@ When the agent calls `exit_plan_mode` to wrap up a plan, the review request open
 - the **Revise** row carries the feedback input; submitting answers with a decline-with-feedback (the harness folds it into "their feedback: …"), so the agent iterates on the plan with the notes; an empty submission equals a plain Reject;
 - Approve/Reject settle directly; an aborted signal closes the panel with the cancellation code (`ASK_CANCELLED`).
 
-Plan mode itself enters/exits through the `Shift+Tab` three-state cycle (normal → plan → yolo, see [Session modes](/en/features/modes)); the footer's mode badge reflects it live.
+`Shift+Tab` toggles only normal and plan (see [Session modes](/en/features/modes)), preserving current permissions. YOLO is controlled separately through `/permission` and does not skip plan review; the footer can show plan and yolo together.
 
 ## Permission-preset panel
 

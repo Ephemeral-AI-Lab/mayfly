@@ -47,7 +47,7 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 
 ## Modes and approval
 
-- **`Shift+Tab` mode cycle** — normal → plan → yolo only orchestrates native dsh commands: `/plan`, `/plan off`, `/permission danger-full-access`, and `/permission workspace-write` (see [Session modes](/en/features/modes)). Mayfly does not register `/yolo` or `/yes`.
+- **`Shift+Tab` plan toggle**: normal ↔ plan, executing only `/plan` or `/plan off`. Enter YOLO with `/permission danger-full-access` and exit it with `/permission workspace-write`; YOLO can remain active alongside plan (see [Session modes](/en/features/modes)). Mayfly does not register `/yolo` or `/yes`.
 - **`/permission`** — lists/switches permission presets (named bundles of sandbox mode + approval policy). Same single-select panel shape as `/preset`; a danger preset requires a typed `y`. A bare `/permission` is intercepted by the input layer to open the panel; the command itself is registered by the upstream `dsh-permission-presets` (both completion and `/help` list it), and an argumented call passes through to the host command.
 - **`/mcp`** — a three-level panel browsing the MCP servers the host connects to: server picker → server panel (a config pseudo-row + raw tool rows) → detail (config status / redacted connection / policy, or a tool's schema). Read-only — servers are added via profile patch (see [dsh/mcp](/en/dsh/mcp)); the empty state points the way.
 - **`/init`** — the agent analyzes the codebase and writes `AGENTS.md` in the project root: if one exists it is read first, still-accurate content carries forward, and the file is rewritten into one coherent, up-to-date document (not appended), in the language the project's own docs mainly use.

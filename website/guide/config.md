@@ -185,7 +185,7 @@ settings.yaml 的效果则直接在界面里看：`/model` 面板列出各路由
 
 ## 更多配置面
 
-- **权限与沙箱** —— 权限预设（workspace-write / danger-full-access）、审批策略，见[权限与模式](/dsh/modes)；会话内 `Shift+Tab` 通过原生 `/plan` 与 `/permission` 命令循环 normal → plan → yolo。
+- **权限与沙箱** —— 权限预设（workspace-write / danger-full-access）、审批策略，见[权限与模式](/dsh/modes)；`/permission` 控制 YOLO，`Shift+Tab` 只切换 normal ↔ plan。计划与权限独立生效。
 - **Agent 预设** —— `/preset` 在上游 shipped `standard` / `minimal` / `ptc` / `cordis` 与 Mayfly 的 `mayfly-cordis` 间切换工具面与人格（仅空会话）。Mayfly 不提供旧 `code` alias。
 - **Skills** —— 用户级技能放 `~/.dsh/skills/`，见 [Skills](/dsh/skills)。
 - **MCP** —— MCP server 的接入配置见 [MCP 配置](/dsh/mcp)。

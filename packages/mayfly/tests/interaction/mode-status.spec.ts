@@ -2,10 +2,14 @@
  * @module @ephemeral-ai/mayfly/interaction/tests/mode-status
  */
 
+import { stripVTControlCharacters } from 'node:util'
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import * as modeStatus from '../../src/interaction/mode-status.ts'
+import { compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
+import { SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
+import { visibleWidth, wrapTextWithAnsi, truncateToWidth } from '../../src/core/width.ts'
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
 
@@ -61,9 +65,38 @@ describe('mayfly-status-mode', () => {
     const pending = await mount({ active: true, pending: true })
     expect(pending.entry()?.node).toMatchObject({ content: 'plan...' })
 
-    active.permissions.set(active.agent, 'danger-full-access')
-    active.agent.session.append('permission/preset', { preset: 'danger-full-access' })
-    expect(active.entry()).toMatchObject({ node: { content: 'yolo', tone: 'warning' } })
+    normal.permissions.set(normal.agent, 'danger-full-access')
+    normal.agent.session.append('permission/preset', { preset: 'danger-full-access' })
+    expect(normal.entry()).toMatchObject({ node: { content: 'yolo', tone: 'warning' } })
+  })
+
+  it.each([false, true])('renders both badges with pending=%s and preserves yolo when planning ends', async pending => {
+    const world = await mount({ active: true, pending })
+    world.permissions.set(world.agent, 'danger-full-access')
+    world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
+    const node = world.entry()!.node!
+    expect(node).toEqual({ kind: 'stack', direction: 'row', gap: 1, children: [
+      { node: { kind: 'text', content: pending ? 'plan...' : 'plan', tone: 'accent' } },
+      { node: { kind: 'text', content: 'yolo', tone: 'warning' } },
+    ] })
+    const identity = (text: string) => text
+    const compiled = compileMayflyStatusNode(node, {
+      components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
+      colors: new Proxy({}, { get: () => identity }) as never,
+      getViewport: () => ({ columns: 80, rows: 1 }),
+      screenMode: 'main', maxRows: 1,
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) throw new Error('mode status compilation failed')
+    expect(stripVTControlCharacters(compiled.value.component.render(20).join('')).trim()).toBe(pending ? 'plan... yolo' : 'plan yolo')
+    for (const width of SCAN_WIDTHS) expectLinesFit('plan-yolo-status', compiled.value.component.render(width), width)
+
+    world.states.set(world.agent, { active: false, pending: true })
+    world.agent.session.append('plan/mode', { active: false })
+    expect(world.entry()?.node).toMatchObject({ children: [{ node: { content: 'plan...' } }, { node: { content: 'yolo' } }] })
+    world.states.set(world.agent, { active: false })
+    world.agent.session.append('plan/mode', { active: false })
+    expect(world.entry()?.node).toEqual({ kind: 'text', content: 'yolo', tone: 'warning' })
   })
 
   it('refreshes from the current Session event stream', async () => {
@@ -102,5 +135,8 @@ describe('mayfly-status-mode', () => {
   it('hides when the plan projection is absent and permissions are normal', async () => {
     const world = await mount({ active: true }, false)
     expect(world.entry()).toMatchObject({ node: null })
+    world.permissions.set(world.agent, 'danger-full-access')
+    world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
+    expect(world.entry()?.node).toEqual({ kind: 'text', content: 'yolo', tone: 'warning' })
   })
 })

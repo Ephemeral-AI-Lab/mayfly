@@ -623,10 +623,8 @@ export function apply(ctx: Context): void {
       refreshHint()
       return true
     }
-    // Shift+Tab: cycle the session mode (normal → plan → yolo, S24a) through
-    // dsh's native plan command and permission presets. The press is always
-    // consumed. It fires in bash mode too — the input mode and the session
-    // mode are orthogonal axes.
+    // Shift+Tab toggles native plan state, including in bash input mode.
+    // Permission presets are independent and require an explicit command.
     if (keymap.matches(data, ACTION_SHIFT_TAB)) {
       void cycleMode(ctx)
       return true

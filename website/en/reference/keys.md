@@ -42,7 +42,7 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 | `Ctrl-G` | External editor | Hand the draft to an external editor for full-screen editing (`mayfly.editorCommand` setting → `$VISUAL` → `$EDITOR`; Mayfly suspends and yields the terminal); quitting with `:cq` leaves the draft untouched |
 | `Alt+M` | Cycle session model | Step through the current provider's models (**session-only**, no persisted default; the press is consumed, the draft stays intact) |
 | `Backspace` | Delete / exit mode | Backspace on an empty `!` bash prompt exits back to prompt mode |
-| `Shift+Tab` | Cycle session mode | normal → plan → yolo (see [Session modes](/en/features/modes)). Effective only under editor focus — panels and questionnaires keep their own Tab navigation |
+| `Shift+Tab` | Toggle plan state | normal ↔ plan, preserving permissions and YOLO (see [Session modes](/en/features/modes)). Effective only under editor focus; panels and questionnaires keep their own Tab navigation |
 
 ## Panel contexts
 

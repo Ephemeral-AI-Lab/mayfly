@@ -36,6 +36,12 @@ single/multi-select behavior shares one list controller. Core keeps form
 drafts, control/scroll bindings, virtual-list cursors, and the common framed
 scroll panel in dedicated renderer-owned implementations.
 
+Plan selection and permission presets are independent native dsh state.
+Editor Shift+Tab toggles only `/plan` and `/plan off`; full access requires
+an explicit `/permission` selection. Status renders plan and yolo together
+when both apply. The plan wire projection's `pending` flag means a transition
+is queued, not the target boolean; repeated toggles invert the selected state.
+
 Job detail retains each consuming read outside canonical snapshots and admits
 bounded output pages, including for single lines larger than the text quota.
 
