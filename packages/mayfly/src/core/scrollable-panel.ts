@@ -21,6 +21,10 @@ export interface ScrollablePanelOptions {
   readonly onClose: () => void
 }
 
+interface WindowedComponent extends MayflyComponent {
+  renderWindow?(width: number, offset: number, rows: number): { readonly rows: string[], readonly total: number }
+}
+
 /** Full-height editor-slot panel with core-owned frame and scrolling. */
 export class ScrollablePanel implements MayflyFocusable {
   focused = false
@@ -57,12 +61,16 @@ export class ScrollablePanel implements MayflyFocusable {
     const contentWidth = Math.max(1, width - 4)
     const footer = [...(this.options.footer?.() ?? [])]
     this.bodyRows = this.bodyBudget(footer.length)
-    const all = this.options.body.render(contentWidth)
-    if (this.scrollOffset > 0 && all.length > this.bodyTotal) this.scrollOffset += all.length - this.bodyTotal
-    this.bodyTotal = all.length
-    this.scrollOffset = Math.min(this.scrollOffset, Math.max(0, all.length - this.bodyRows))
-    const end = all.length - this.scrollOffset
-    const body = all.slice(Math.max(0, end - this.bodyRows), end)
+    const windowed = this.options.body as WindowedComponent
+    const rendered = windowed.renderWindow?.(contentWidth, this.scrollOffset, this.bodyRows)
+    const all = rendered === undefined ? this.options.body.render(contentWidth) : undefined
+    const total = rendered?.total ?? all!.length
+    if (this.scrollOffset > 0 && total > this.bodyTotal) this.scrollOffset += total - this.bodyTotal
+    this.bodyTotal = total
+    this.scrollOffset = Math.min(this.scrollOffset, Math.max(0, total - this.bodyRows))
+    const body = rendered === undefined
+      ? (() => { const end = total - this.scrollOffset; return all!.slice(Math.max(0, end - this.bodyRows), end) })()
+      : rendered.rows
     while (body.length < this.bodyRows) body.push('')
     const title = sanitizePluginText(this.options.title()).replace(/[\r\n]+/gu, ' ')
     const hint = sanitizePluginText(this.options.hint?.() ?? '').replace(/[\r\n]+/gu, ' ')

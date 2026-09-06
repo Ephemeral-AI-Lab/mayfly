@@ -92,4 +92,20 @@ describe('ScrollablePanel', () => {
     expect(panel.render(10)).toEqual([])
     expect(dispose).toHaveBeenCalledOnce()
   })
+
+  it('uses a component-provided viewport window when available', () => {
+    const screen = new FakeScreen()
+    screen.rows = 8
+    const renderWindow = vi.fn((_width: number, _offset: number, rows: number) => ({ rows: ['windowed'], total: rows + 1 }))
+    const panel = new ScrollablePanel({
+      screen,
+      components: new FakeMayflyComponents(),
+      colors: new FakeTheme().colors,
+      body: { render: () => ['fallback'], renderWindow, invalidate: vi.fn() },
+      title: () => 'Windowed',
+      onClose: vi.fn(),
+    })
+    expect(plain(panel.render(20)).join('\n')).toContain('windowed')
+    expect(renderWindow).toHaveBeenCalledOnce()
+  })
 })

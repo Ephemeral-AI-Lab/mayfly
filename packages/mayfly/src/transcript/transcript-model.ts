@@ -199,6 +199,14 @@ export class TranscriptModelComponent implements MayflyComponent {
     return rows
   }
 
+  renderWindow(width: number, offset: number, rows: number): { readonly rows: string[], readonly total: number } {
+    const rendered = this.render(width)
+    const safeRows = Math.max(1, Number.isFinite(rows) ? Math.floor(rows) : 1)
+    const safeOffset = Math.max(0, Number.isFinite(offset) ? Math.floor(offset) : 0)
+    const end = Math.max(0, rendered.length - safeOffset)
+    return { rows: rendered.slice(Math.max(0, end - safeRows), end), total: rendered.length }
+  }
+
   /** Apply the global recent-detail expansion state to mounted entries. */
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return
