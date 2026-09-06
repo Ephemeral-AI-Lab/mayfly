@@ -68,7 +68,7 @@ export class SearchGroupComponent implements MayflyComponent {
     const limit = SEARCH_GROUP_ROW_LIMIT
     if (tree.length <= limit) return clamp(['', this.renderHeader(width), ...tree])
     const hidden = tree.length - (limit - 1)
-    const hint = this.expanded ? `... (${String(hidden)} more lines)` : `... (${String(hidden)} more, ctrl+o to expand)`
+    const hint = `... (${String(hidden)} more, ctrl+o to expand)`
     return clamp(['', this.renderHeader(width), ...tree.slice(0, limit - 1), this.colors.textMuted(cut(hint))])
   }
 

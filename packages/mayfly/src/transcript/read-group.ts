@@ -118,9 +118,7 @@ export class ReadGroupComponent implements MayflyComponent {
     if (this.expanded) return clamp(['', this.renderHeader(width), ...tree])
     const limit = READ_GROUP_ROW_LIMIT
     if (tree.length <= limit) return clamp(['', this.renderHeader(width), ...tree])
-    const hint = this.expanded
-      ? `... (${String(tree.length - (limit - 1))} more lines)`
-      : `... (${String(tree.length - (limit - 1))} more, ctrl+o to expand)`
+    const hint = `... (${String(tree.length - (limit - 1))} more, ctrl+o to expand)`
     return clamp(['', this.renderHeader(width), ...tree.slice(0, limit - 1), this.colors.textMuted(cut(hint))])
   }
 

@@ -198,9 +198,7 @@ class ToolModelComponent implements MayflyComponent {
     const limit = COLLAPSED_ROW_LIMIT
     if (rows.length <= limit) return rows
     const remaining = rows.length - limit + 1
-    const hint = expanded
-      ? `... (${String(remaining)} more lines)`
-      : `... (${String(remaining)} more lines, ctrl+o to expand)`
+    const hint = `... (${String(remaining)} more lines, ctrl+o to expand)`
     const hintRow = renderCanonicalNode({ kind: 'text', content: hint }, width, this.renderer)[0]!
     return [...rows.slice(0, limit - 1), hintRow]
   }
