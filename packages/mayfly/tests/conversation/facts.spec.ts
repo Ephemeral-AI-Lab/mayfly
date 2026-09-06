@@ -36,8 +36,8 @@ function toolResult(callId: string, content: unknown[], isError = false): unknow
 }
 
 describe('mayflyConversationFacts projection', () => {
-  it('invalidates persisted version-1 checkpoints after the child-run facts expansion', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(2)
+  it('invalidates checkpoints after phase-local output measurements change', () => {
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(3)
   })
 
   it('folds lifecycle, streaming, usage, todos, request metadata, and agents', () => {
@@ -67,11 +67,10 @@ describe('mayflyConversationFacts projection', () => {
     state = foldConversationFacts(state, event('assistant/chunk', { turn: 1, step: 0, chunk: { type: 'text-delta', text: 'answer' } }))
     expect(foldConversationFacts(state, event('assistant/chunk', { turn: 1, step: 0, chunk: { type: 'audio-delta', text: '' } }))).toBe(state)
     expect(state).toMatchObject({ phase: 'composing', flowDownChars: 11 })
-    const beforeMessage = state
-    expect(foldConversationFacts(state, event('assistant/message', { usage: undefined }))).toBe(beforeMessage)
-    state = foldConversationFacts(state, event('assistant/message', { usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
+    expect(foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, usage: undefined }))).toMatchObject({ phase: 'waiting', outputProgress: undefined })
+    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
     expect(state.contextTokens).toBe(15)
-    state = foldConversationFacts(state, event('assistant/message', { usage: { inputTokens: 4 } }))
+    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, usage: { inputTokens: 4 } }))
     expect(state.contextTokens).toBe(4)
     state = foldConversationFacts(state, event('request/context', { contextWindow: 32 }))
     expect(foldConversationFacts(state, event('request/context', { contextWindow: 32 }))).toBe(state)

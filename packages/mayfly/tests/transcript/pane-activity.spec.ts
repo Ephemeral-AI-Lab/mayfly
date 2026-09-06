@@ -84,7 +84,7 @@ describe('mayfly-pane-activity', () => {
   it('mounts one bottom pane that renders the kimi placeholder row while idle', async () => {
     const { ctx, screen, dispose } = await boot()
     expect(activity.name).toBe('mayfly-pane-activity')
-    expect(activity.inject).toEqual(['mayflyPanes', 'mayflySessionFacts'])
+    expect(activity.inject).toEqual(['mayflyPanes', 'mayflySessionFacts', 'mayflyComponents'])
     expect(ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')?.definition.title).toBeUndefined()
     expect(screen.bottomChildren).toHaveLength(1)
     // kimi's Spacer(1): the placeholder row is always present when the
@@ -247,11 +247,10 @@ describe('mayfly-pane-activity', () => {
     const resetRow = screen.paneLines()[0] ?? ''
     expect(resetRow).not.toContain('↑')
     expect(resetRow).not.toContain('↓')
-    // An empty text delta still flips to composing, but with no counter —
-    // zero streamed chars renders no ↓.
+    // Empty deltas do not start a new output phase or publish a counter.
     emit2(ctx, agent, textDelta(2, 1, ''))
     const composingRow = screen.paneLines()[0] ?? ''
-    expect(composingRow).toContain('working...')
+    expect(composingRow).not.toContain('working...')
     expect(composingRow).not.toContain('↓')
     await dispose()
   })

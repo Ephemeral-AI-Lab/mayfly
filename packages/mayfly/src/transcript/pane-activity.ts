@@ -1,20 +1,9 @@
 /**
- * `mayfly-pane-activity` plugin: the dock's activity pane as the kimi mode
- * machine (the `resolveActivityPaneMode` port, S17). The pane renders one
- * row that says what the attached agent is doing: `waiting` and `tool` show
- * the moon spinner with a rotating teaching tip (the S15 footer pool through
- * the same SWRR expansion, picked fresh when the loading kind changes — the
- * kimi working-tips semantics), `composing` shows the braille `working...`
- * row with the frame in `primary`, the plain label, and the tip riding when
- * the width allows (full kimi parity — the user's second dogfood ruling
- * restored the row: kimi's assistant block has no cursor, so its pane
- * spinner is the composing signal; Mayfly aligns), `thinking` clears the pane
- * entirely (the spinner belongs to the transcript's thinking block), and
- * `idle` keeps the one-row placeholder kimi's `Spacer(1)` holds — always,
- * so the dock never jumps when the spinner disappears. A dialog panel
- * occupying the editor slot (`'mayfly/editor-slot-swapped'`) hides the pane
- * outright — below an open panel only the footer stays (the S16 dogfood
- * ruling).
+ * One activity row for the selected Agent. Waiting and tools use the moon
+ * spinner; composing shows working, phase-local output count and estimated
+ * rate. Responsive variants drop the tip, rate, then counters as space shrinks.
+ * Thinking owns its own transcript spinner and metrics, so this pane hides.
+ * Idle holds a spacer; editor dialogs hide the pane.
  *
  * The phase comes from the `mayflySessionFacts` bridge over the official
  * `mayflyConversationFacts` projection, so replay and live updates share one
@@ -25,10 +14,13 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyInlineSpan, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyComponents } from '../core/index.ts'
 // Empty type import carries the app-owned opaque binding event merge.
 import type {} from '../app/index.ts'
 import type { ConversationFacts } from '../conversation/index.ts'
+import type { OutputProgress } from '../conversation/types.ts'
+import { outputRate } from './output-rate.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import { formatTokens } from './status-context.ts'
 import { buildTipRotation } from './status-tips.ts'
@@ -51,7 +43,7 @@ import {
 export const name = 'mayfly-pane-activity'
 
 /** Services required before the pane can mount. */
-export const inject = ['mayflyPanes', 'mayflySessionFacts']
+export const inject = ['mayflyPanes', 'mayflySessionFacts', 'mayflyComponents']
 
 /** The joiner between the frame and the teaching tip (kimi format). */
 const TIP_LEAD = ' · Tip: '
@@ -99,17 +91,15 @@ interface ActivityState {
   tip: string
   /** The live turn-flow counter riding the spinner row; '' before any data. */
   flow: string
+  outputProgress?: OutputProgress | undefined
   /** Whether a dialog panel occupies the editor slot. */
   dialog: boolean
 }
 
 /**
- * The per-turn token-flow fold behind the spinner row (the round-5 ruling):
- * `↑` is the input side of the latest completed response's usage — the
- * context that went up; `↓` is the streamed text and reasoning this turn,
- * chars over the harness tokenMeter's fixed 4-chars/token heuristic. A
- * frozen `↓` while the spinner animates reads as waiting on the wire; a
- * climbing one reads as streaming.
+ * Input usage and output character counts from the facts projection.
+ * Composing counts only the current text phase; waiting/tools retain the
+ * existing step total. Output uses the Harness four-characters/token estimate.
  */
 interface TurnFlow {
   /** Context tokens of the latest `assistant/message` usage this turn. */
@@ -118,7 +108,6 @@ interface TurnFlow {
   downChars: number
 }
 
-/** Fold one event into the turn flow. */
 /** The spinner row's counter text: `↑30.2k ↓4.1k`, parts omitted at zero. */
 function flowCounter(flow: TurnFlow): string {
   const down = Math.floor(flow.downChars / 4)
@@ -129,20 +118,37 @@ function flowCounter(flow: TurnFlow): string {
 }
 
 /** Build the one-row canonical activity node for the current state. */
-function activityNode(state: ActivityState, t: MayflyTranslate): MayflyUiNode {
+function activityNode(state: ActivityState, t: MayflyTranslate, components: MayflyComponents): MayflyUiNode {
   if (state.mode === 'idle') return { kind: 'spacer' }
   const moon = state.mode === 'waiting' || state.mode === 'tool'
   const frame = moon
     ? MOON_SPINNER_FRAMES[state.frame % MOON_SPINNER_FRAMES.length]!
     : BRAILLE_SPINNER_FRAMES[state.frame % BRAILLE_SPINNER_FRAMES.length]!
+  const rate = outputRate(state.outputProgress, Date.now())
+  const spans: MayflyInlineSpan[] = [
+    { text: frame, tone: 'accent', styles: ['strong'] },
+    ...(!moon ? [{ text: t(WORKING_LABEL) } as const] : []),
+  ]
+  const variants = [spans.slice()]
+  for (const text of [
+    state.flow === '' ? '' : ` ${state.flow}`,
+    rate === '' ? '' : ` · ${rate}`,
+    `${t(TIP_LEAD)}${t(state.tip)}`,
+  ]) {
+    if (text === '') continue
+    spans.push({ text, tone: 'muted' })
+    variants.push(spans.slice())
+  }
+  const widths = variants.map(parts => components.visibleWidth(parts.map(part => part.text).join('')))
   return {
-    kind: 'rich-text',
-    spans: [
-      { text: frame, tone: 'accent', styles: ['strong'] },
-      ...(!moon ? [{ text: t(WORKING_LABEL) } as const] : []),
-      ...(state.flow === '' ? [] : [{ text: ` ${state.flow}`, tone: 'muted' as const }]),
-      { text: `${t(TIP_LEAD)}${t(state.tip)}`, tone: 'muted' },
-    ],
+    kind: 'stack', direction: 'column',
+    children: variants.map((parts, index) => ({
+      node: { kind: 'rich-text', spans: parts },
+      when: {
+        ...(index === 0 ? {} : { minWidth: widths[index]! }),
+        ...(index === variants.length - 1 ? {} : { maxWidth: widths[index + 1]! - 1 }),
+      },
+    })),
   }
 }
 
@@ -185,7 +191,7 @@ export function apply(ctx: Context): void {
   let tipIndex = 0
   const currentNode = (): MayflyUiNode | null => state.mode === 'hidden' || state.mode === 'thinking'
     ? null
-    : activityNode(state, t)
+    : activityNode(state, t, ctx.mayflyComponents)
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.activity',
     placement: 'bottom',
@@ -237,10 +243,12 @@ export function apply(ctx: Context): void {
     } else {
       stopTimer()
     }
-    const nextFlow = flowCounter({ up: facts.flowUp, downChars: facts.flowDownChars })
-    const changed = mode !== state.mode || tipChanged || nextFlow !== state.flow
+    const progress = mode === 'composing' ? facts.outputProgress : undefined
+    const nextFlow = flowCounter({ up: facts.flowUp, downChars: progress?.chars ?? facts.flowDownChars })
+    const changed = mode !== state.mode || tipChanged || nextFlow !== state.flow || progress !== state.outputProgress
     state.mode = mode
     state.flow = nextFlow
+    state.outputProgress = progress
     if (changed) publish()
   }
 

@@ -4,9 +4,10 @@
  * Live it scrolls the reasoning's tail — a blank separator row, the braille
  * spinner with the muted `thinking...` label, and the wrapped text's last
  * {@link THINKING_PREVIEW_LINES} lines — advancing at the braille interval
- * behind module-level replaceable timers (the `pane-activity` precedent)
- * with a caller-injected redraw nudge. The closing `assistant/message`
- * flips the item's `streaming` flag and the component settles in place,
+ * with projected token count and estimated rate beside the label.
+ * Reasoning completion or a switch to text/tools clears `streaming`,
+ * and the component settles in place. The closing `assistant/message`
+ * still corrects its authoritative content,
  * never remounting: finalized it renders the muted `● ` bullet with the
  * full italic body, folded to the first two lines plus a textMuted
  * `... (N more lines, ctrl+o to expand)` hint until the shared Ctrl-O
@@ -21,6 +22,8 @@ import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type M
 import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from './spinners.ts'
 import { STREAMING_RENDER_MAX_CHARS } from './components.ts'
 import type { TranscriptThinkingItem } from './types.ts'
+import { formatTokens } from './status-context.ts'
+import { outputRate } from './output-rate.ts'
 
 /** Rendered body lines kept visible when the block folds. */
 export const THINKING_PREVIEW_LINES = 2
@@ -129,10 +132,14 @@ export class ThinkingComponent implements MayflyComponent {
    */
   render(width: number): string[] {
     const { streaming } = this.item
+    if (streaming && this.spinnerTimer === undefined) this.startSpinner()
+    if (!streaming) this.stopSpinner()
+    const rate = streaming ? outputRate(this.item.outputProgress, Date.now()) : ''
+    const count = this.item.outputProgress === undefined ? '' : ` ↓${formatTokens(Math.floor(this.item.text.length / 4))}`
     const text = this.item.text.length > STREAMING_RENDER_MAX_CHARS
       ? streamingTextWindow(this.item.text)
       : sanitizePluginText(this.item.text)
-    const key = `${width}:${streaming}:${this.expanded}:${text}`
+    const key = `${width}:${streaming}:${this.expanded}:${rate}:${count}:${text}`
     if (this.cache?.key === key) return this.cache.lines
 
     const contentWidth = Math.max(1, width - THINKING_INDENT.length)
@@ -147,9 +154,14 @@ export class ThinkingComponent implements MayflyComponent {
         ? contentLines.slice(contentLines.length - THINKING_PREVIEW_LINES)
         : contentLines
       const frame = BRAILLE_SPINNER_FRAMES[this.spinnerFrame % BRAILLE_SPINNER_FRAMES.length]!
+      let label = 'thinking...'
+      if (this.components.visibleWidth(`${frame} ${label}${count}`) <= width) {
+        label += count
+        if (rate !== '' && this.components.visibleWidth(`${frame} ${label} · ${rate}`) <= width) label += ` · ${rate}`
+      }
       lines = [
         '',
-        `${this.colors.muted(frame)} ${this.colors.muted('thinking...')}`,
+        `${this.colors.muted(frame)} ${this.colors.muted(label)}`,
         ...tail.map(line => THINKING_INDENT + this.styled(line)),
       ]
     } else if (text.trim() === '') {
