@@ -2,7 +2,7 @@
 
 ## 为什么不直接 `npm install @ephemeral-ai/mayfly`？
 
-Mayfly 是装进 dsh profile 的插件包，不是独立应用——裸装只把包放进 node_modules，没有宿主与 profile 装配，跑不起来。正确路径：装 `mayfly` 壳包，或用 `dsh plugin --profile mayfly add`，见[快速上手](/guide/)。当前发布线是 `v0.1.0-alpha.2`，普通安装使用 npm `latest`；插件与 CI 应锁定 Mayfly `0.1.0-alpha.2` 与 Harness `0.1.2-alpha.5`。不支持 Harness RC。贡献者的本地开发安装见开发手册的[贡献本仓库](/plugins/contributing)页。
+Mayfly 是装进 dsh profile 的插件包，不是独立应用——裸装只把包放进 node_modules，没有宿主与 profile 装配，跑不起来。正确路径：装 `mayfly` 壳包，或用 `dsh plugin --profile mayfly add`，见[快速上手](/guide/)。当前发布线是 `v0.1.0-alpha.3`，普通安装使用 npm `latest`；插件与 CI 应锁定 Mayfly `0.1.0-alpha.3` 与 Harness `0.1.2-alpha.5`。不支持 Harness RC。贡献者的本地开发安装见开发手册的[贡献本仓库](/plugins/contributing)页。
 
 ## 默认安装没有拿到最新版本？
 

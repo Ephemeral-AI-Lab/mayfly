@@ -53,7 +53,7 @@ describe('buildVersionSections', () => {
       label: 'mayfly',
       segments: [{ text: `v${displayVersion}` }],
     })
-    expect(MAYFLY_VERSION).toBe('0.1.0-alpha.2')
+    expect(MAYFLY_VERSION).toBe('0.1.0-alpha.3')
   })
 })
 
@@ -540,7 +540,7 @@ describe('registerSessionCommands', () => {
     expect(node.child.child.spans.length).toBeLessThanOrEqual(200)
     const rows = plain(panel.render(100))
     expect(rows.join('\n')).toContain('changelog')
-    expect(rows.some(row => row.includes('Complete content'))).toBe(true)
+    expect(rows.some(row => row.includes('OAuth providers'))).toBe(true)
     overlay.component.handleInput?.('\x1b')
     expect(overlay.hidden).toBe(true)
   })

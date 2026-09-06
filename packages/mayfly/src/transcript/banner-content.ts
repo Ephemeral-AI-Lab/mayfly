@@ -12,4 +12,4 @@
  * The displayed Mayfly version; `tests/banner.spec.ts` fails the suite on
  * drift from `package.json`.
  */
-export const MAYFLY_VERSION = '0.1.0-alpha.2'
+export const MAYFLY_VERSION = '0.1.0-alpha.3'

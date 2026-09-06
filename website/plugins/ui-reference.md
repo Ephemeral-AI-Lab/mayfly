@@ -39,7 +39,7 @@ import { ui } from '@ephemeral-ai/mayfly-ui'
   `default | muted | accent | success | warning | danger`。
 - `emphasis` 是 `normal | strong`；省略时按普通文本处理。
 
-下面的“默认”描述 `0.1.0-alpha.2` 当前 Mayfly TUI。wire contract 只承诺字段语义，
+下面的“默认”描述 `0.1.0-alpha.3` 当前 Mayfly TUI。wire contract 只承诺字段语义，
 不会承诺具体边框字符、颜色值或按键绑定。
 
 ## 内容节点

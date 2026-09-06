@@ -3,7 +3,7 @@
 Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（**dsh**）的终端界面——理解 dsh 的几个核心概念，能让你把 Mayfly 用得更明白。本手册面向 Mayfly 用户提炼 dsh 的相关知识；完整工程文档见[官方参考站](https://deepseek-harness.github.io/deepseek-harness/reference/)。
 
 ::: info 版本基准
-本手册当前以 npm 上的 `0.1.2-alpha.5` Harness 发布线与 Mayfly `0.1.0-alpha.2` 为准。遇到出入以你安装的 `dsh --version` 与 `--dump-config` 为准。
+本手册当前以 npm 上的 `0.1.2-alpha.5` Harness 发布线与 Mayfly `0.1.0-alpha.3` 为准。遇到出入以你安装的 `dsh --version` 与 `--dump-config` 为准。
 :::
 
 ## dsh 是什么
