@@ -169,6 +169,18 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     await owner.dispose()
   })
 
+  it('ignores a pane provider result after disposal', async () => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'late-owner', apply })
+    const gate = Promise.withResolvers<{ readonly kind: 'text', readonly content: string }>()
+    const pane = ctx.mayflyPanes.register({ id: 'test.late-pane', placement: 'bottom', load: () => gate.promise })
+    pane.dispose()
+    gate.resolve({ kind: 'text', content: 'late' })
+    await Promise.resolve()
+    expect(ctx.mayflyPanes.list()).toEqual([])
+    await owner.dispose()
+  })
+
   it('orders pane/status snapshots and rejects duplicate or invalid ids', async () => {
     const ctx = new Context()
     const owner = await ctx.plugin({ name: 'api-owner', apply })

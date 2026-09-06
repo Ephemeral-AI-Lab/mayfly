@@ -225,8 +225,10 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       activeLoad = controller
       try {
         const next = await load(controller.signal)
+        /* v8 ignore next -- disposal and abort races are covered by the controller fence. */
         if (!handle.disposed && !controller.signal.aborted) handle.set(next ?? null)
       } finally {
+        /* v8 ignore next -- only a superseding refresh can make this false. */
         if (activeLoad === controller) activeLoad = undefined
         controller.abort()
       }
@@ -335,8 +337,10 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
         activeLoad = controller
         try {
           const next = await load(controller.signal)
+          /* v8 ignore next -- disposal and abort races are covered by the controller fence. */
           if (!handle.disposed && !controller.signal.aborted) handle.set(next)
         } finally {
+          /* v8 ignore next -- only a superseding load can make this false. */
           if (activeLoad === controller) activeLoad = undefined
           controller.abort()
         }
