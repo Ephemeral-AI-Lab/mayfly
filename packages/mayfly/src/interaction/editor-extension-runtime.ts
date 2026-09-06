@@ -194,7 +194,8 @@ function submitValue(result: unknown): Admission<{ readonly text: string }> {
   try {
     if (typeof result !== 'object' || result === null) throw new Error('submit transform must return an object')
     const text = ownData(result, 'text')
-    if (typeof text !== 'string' || text.length > MAX_SUBMIT_TEXT) throw new Error(`submit transform text exceeds ${String(MAX_SUBMIT_TEXT)} characters or is invalid`)
+    if (typeof text !== 'string') throw new Error('submit transform text must be a string')
+    if (text.length > MAX_SUBMIT_TEXT) throw new Error(`submit transform text exceeds ${String(MAX_SUBMIT_TEXT)} characters`)
     return { ok: true, value: { text } }
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'submit transform was rejected' }
@@ -617,6 +618,12 @@ export class EditorExtensionRuntime implements MayflyFocusable {
         const result = submitValue(outcome.value)
         if (!result.ok) {
           this.options.notice(result.message)
+          if (result.message.includes('exceeds')) {
+            // A transform is advisory: an oversized replacement must never
+            // make the user's original paste impossible to submit.
+            text = captured.text
+            break
+          }
           attempt.cancel()
           return
         }
