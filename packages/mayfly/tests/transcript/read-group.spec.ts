@@ -10,7 +10,6 @@ import type { MayflyComponents, MayflySemanticColors } from '../../src/core/inde
 import type { ReadCallModel, TranscriptReadGroupModel } from '../../src/frontend/index.ts'
 import {
   groupReadsByFile,
-  READ_GROUP_EXPANDED_ROW_LIMIT,
   READ_GROUP_ROW_LIMIT,
   ReadGroupComponent,
 } from '../../src/transcript/read-group.ts'

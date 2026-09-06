@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/index.ts'
 import type { SearchCallModel, TranscriptSearchGroupModel } from '../../src/frontend/index.ts'
 import {
-  SEARCH_GROUP_EXPANDED_ROW_LIMIT,
   SEARCH_GROUP_ROW_LIMIT,
   SearchGroupComponent,
 } from '../../src/transcript/search-group.ts'

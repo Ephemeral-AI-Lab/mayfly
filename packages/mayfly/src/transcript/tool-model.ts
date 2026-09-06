@@ -14,7 +14,6 @@ import { summarizeToolText } from './envelope.ts'
 import { summarizeToolCall } from './present.ts'
 
 const COLLAPSED_ROW_LIMIT = 12
-const EXPANDED_ROW_LIMIT = Number.MAX_SAFE_INTEGER
 
 /** Official facts required to build one renderer-neutral tool card. */
 export interface ToolPresentationFacts {
@@ -195,7 +194,8 @@ class ToolModelComponent implements MayflyComponent {
     // The tool component applies its own 12/200-row budget and needs the
     // complete validated row count to report the exact hidden remainder.
     const rows = renderCanonicalNode(view, width, this.renderer, Number.MAX_SAFE_INTEGER)
-    const limit = expanded ? EXPANDED_ROW_LIMIT : COLLAPSED_ROW_LIMIT
+    if (expanded) return rows
+    const limit = COLLAPSED_ROW_LIMIT
     if (rows.length <= limit) return rows
     const remaining = rows.length - limit + 1
     const hint = expanded
