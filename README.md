@@ -18,7 +18,7 @@ English | [中文](README.zh.md)
 Mayfly is an interactive terminal UI for
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`).
 It is an out-of-tree Cordis bundle over `dsh-base`, built against Harness
-`0.1.2-alpha.5`. Mayfly `0.1.0-alpha.1` deliberately uses the same plugin
+`0.1.2-alpha.5`. Mayfly `0.1.0-alpha.2` deliberately uses the same plugin
 model as dsh Web: plugins are ordinary Cordis siblings and consume native dsh
 services directly.
 

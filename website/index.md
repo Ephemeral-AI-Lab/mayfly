@@ -6,7 +6,7 @@ brandHero:
   eyebrow: A dsh-based multi-agent terminal
   name: mayfly
   tagline: ephemeral agents, enduring works
-  versionNote: v0.1.0-alpha.1 · 预览版
+  versionNote: v0.1.0-alpha.2 · 预览版
   install: npm -g install @ephemeral-ai/mayfly-cli
   copyLabel: 复制
   copiedLabel: 已复制

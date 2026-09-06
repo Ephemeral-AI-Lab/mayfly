@@ -1,6 +1,6 @@
 # 功能总览
 
-Mayfly `0.1.0-alpha.1` 是 `dsh-base` 上的 flat Cordis plugin tree。Bundle
+Mayfly `0.1.0-alpha.2` 是 `dsh-base` 上的 flat Cordis plugin tree。Bundle
 插入 6 个 dsh 支撑 row 与 28 个 Mayfly row。
 
 ## 数据与交互

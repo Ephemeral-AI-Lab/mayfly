@@ -45,7 +45,7 @@ Session, or mutable renderer objects in a node.
   `default | muted | accent | success | warning | danger`.
 - `emphasis` is `normal | strong`; omission means normal text.
 
-The defaults below describe the current Mayfly TUI in `0.1.0-alpha.1`. The wire
+The defaults below describe the current Mayfly TUI in `0.1.0-alpha.2`. The wire
 contract promises field semantics, not exact border glyphs, color values, or
 key bindings.
 

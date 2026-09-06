@@ -1,7 +1,7 @@
 # 快速上手
 
 ::: info 当前发布线
-`v0.1.0-alpha.1` 是当前预览版，并发布到 npm **`latest`**。普通安装不写 dist-tag；CI 和可复现环境应锁定 Mayfly `0.1.0-alpha.1` 与 Harness `0.1.2-alpha.5`。本页是用户安装路径；贡献者的本地开发安装见[贡献本仓库](/plugins/contributing)。
+`v0.1.0-alpha.2` 是当前预览版，并发布到 npm **`latest`**。普通安装不写 dist-tag；CI 和可复现环境应锁定 Mayfly `0.1.0-alpha.2` 与 Harness `0.1.2-alpha.5`。本页是用户安装路径；贡献者的本地开发安装见[贡献本仓库](/plugins/contributing)。
 :::
 
 ## 前置条件
