@@ -62,12 +62,16 @@ export class ScrollablePanel implements MayflyFocusable {
     const footer = [...(this.options.footer?.() ?? [])]
     this.bodyRows = this.bodyBudget(footer.length)
     const windowed = this.options.body as WindowedComponent
-    const rendered = windowed.renderWindow?.(contentWidth, this.scrollOffset, this.bodyRows)
+    const requestedOffset = this.scrollOffset
+    let rendered = windowed.renderWindow?.(contentWidth, requestedOffset, this.bodyRows)
     const all = rendered === undefined ? this.options.body.render(contentWidth) : undefined
     const total = rendered?.total ?? all!.length
     if (this.scrollOffset > 0 && total > this.bodyTotal) this.scrollOffset += total - this.bodyTotal
     this.bodyTotal = total
     this.scrollOffset = Math.min(this.scrollOffset, Math.max(0, total - this.bodyRows))
+    if (rendered !== undefined && this.scrollOffset !== requestedOffset) {
+      rendered = windowed.renderWindow!(contentWidth, this.scrollOffset, this.bodyRows)
+    }
     const body = rendered === undefined
       ? (() => { const end = total - this.scrollOffset; return all!.slice(Math.max(0, end - this.bodyRows), end) })()
       : rendered.rows

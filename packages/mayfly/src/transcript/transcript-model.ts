@@ -157,7 +157,7 @@ function entryRevision(entry: TranscriptEntryModel): number {
 /** Bounded semantic transcript component with id-based reconciliation. */
 export class TranscriptModelComponent implements MayflyComponent {
   private readonly cached = new Map<string, CachedComponent>()
-  private readonly canonicalRows = new WeakMap<object, { readonly width: number, readonly rows: string[] }>()
+  private canonicalRows = new WeakMap<object, { readonly width: number, readonly rows: string[] }>()
   private expanded = false
   private renderedRows: RenderedRowsCache | undefined
   private generation: number | undefined
@@ -171,12 +171,14 @@ export class TranscriptModelComponent implements MayflyComponent {
     const model = this.source()
     if (model === null) {
       this.renderedRows = undefined
+      this.canonicalRows = new WeakMap()
       this.prune(new Set())
       this.generation = undefined
       return []
     }
     if (this.generation !== model.generation) {
       this.renderedRows = undefined
+      this.canonicalRows = new WeakMap()
       this.prune(new Set())
       this.generation = model.generation
     }
@@ -229,6 +231,7 @@ export class TranscriptModelComponent implements MayflyComponent {
 
   invalidate(): void {
     this.renderedRows = undefined
+    this.canonicalRows = new WeakMap()
     for (const cached of this.cached.values()) {
       cached.rows = undefined
       cached.component.invalidate()
@@ -238,6 +241,7 @@ export class TranscriptModelComponent implements MayflyComponent {
   /** Dispose timers and async renderer resources held by cached components. */
   dispose(): void {
     this.renderedRows = undefined
+    this.canonicalRows = new WeakMap()
     this.prune(new Set())
   }
 

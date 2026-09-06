@@ -7,9 +7,20 @@ import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { apply } from '../src/provider.ts'
-import type { MayflyEditorDecoration, MayflyStatusNode } from '../src/contracts.ts'
+import type { MayflyEditorDecoration, MayflyStatusNode, MayflySnapshotProvider, MayflyUiNode } from '../src/contracts.ts'
 
 const packageDir = dirname(fileURLToPath(import.meta.url))
+
+function loadingCase(ctx: Context, kind: 'pane' | 'overlay', load: MayflySnapshotProvider<MayflyUiNode>) {
+  const initial = { kind: 'text' as const, content: 'initial' }
+  const handle = kind === 'pane'
+    ? ctx.mayflyPanes.register({ id: 'test.loading', placement: 'bottom', load }, initial)
+    : ctx.mayflyOverlays.open({ id: 'test.loading', load }, initial)
+  const registry = kind === 'pane' ? ctx.mayflyPanes : ctx.mayflyOverlays
+  return { handle, registry }
+}
+
+const flushLoads = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 function registryCase(ctx: Context, kind: 'pane' | 'status' | 'overlay' | 'editor') {
   const register = (definition: { id: string, placement: 'bottom' }, payload: MayflyStatusNode & MayflyEditorDecoration) => {
@@ -187,6 +198,135 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     await owner.dispose()
   })
 
+  it.each(['pane', 'overlay'] as const)('contains synchronous and asynchronous %s startup failures', async kind => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'failed-load-owner', apply })
+    for (const asynchronous of [false, true]) {
+      const error = new Error('provider unavailable')
+      const { handle, registry } = loadingCase(ctx, kind, () => {
+        if (asynchronous) return Promise.reject(error)
+        throw error
+      })
+      await flushLoads()
+      expect(registry.list()[0]).toMatchObject({ revision: 0, node: { content: 'initial' } })
+      handle.dispose()
+    }
+    await owner.dispose()
+  })
+
+  it.each(['pane', 'overlay'] as const)('contains abort-aware %s startup cancellation on Fiber unload', async kind => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'abort-load-owner', apply })
+    let signal!: AbortSignal
+    const consumer = await ctx.plugin({
+      name: 'loading-consumer',
+      inject: ['mayflyPanes', 'mayflyOverlays'],
+      apply(pluginCtx: Context) {
+        loadingCase(pluginCtx, kind, request => new Promise((_resolve, reject) => {
+          signal = request.signal
+          signal.addEventListener('abort', () => { reject(signal.reason) }, { once: true })
+        }))
+      },
+    })
+    await consumer.dispose()
+    await flushLoads()
+    expect(signal.aborted).toBe(true)
+    expect(ctx.mayflyPanes.list()).toEqual([])
+    expect(ctx.mayflyOverlays.list()).toEqual([])
+    await owner.dispose()
+  })
+
+  it.each(['pane', 'overlay'] as const)('fences %s startup results and failures after an explicit snapshot', async kind => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'snapshot-load-owner', apply })
+    for (const fails of [false, true]) {
+      const gate = Promise.withResolvers<{ node: MayflyUiNode, nextCursor: string }>()
+      const { handle, registry } = loadingCase(ctx, kind, () => gate.promise)
+      handle.set({ kind: 'text', content: 'newer' }, { eventRevision: 12 })
+      if (fails) gate.reject(new Error('stale failure'))
+      else gate.resolve({ node: { kind: 'text', content: 'stale' }, nextCursor: 'stale-cursor' })
+      await flushLoads()
+      expect(registry.list()[0]).toMatchObject({ revision: 1, eventRevision: 12, node: { content: 'newer' } })
+      if ('loadMore' in handle) expect(await handle.loadMore()).toBe(false)
+      handle.dispose()
+    }
+    await owner.dispose()
+  })
+
+  it('keeps explicit pane failures catchable and allows retrying refresh and loadMore', async () => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'retry-owner', apply })
+    const error = new Error('retry me')
+    const load = vi.fn<MayflySnapshotProvider<MayflyUiNode>>()
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ node: { kind: 'text', content: 'first' }, nextCursor: 'next' })
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ node: { kind: 'text', content: 'second' } })
+    const pane = ctx.mayflyPanes.register({ id: 'retry', placement: 'bottom', load })
+    await flushLoads()
+    await expect(pane.refresh()).rejects.toBe(error)
+    await pane.refresh()
+    await expect(pane.loadMore()).rejects.toBe(error)
+    expect(await pane.loadMore()).toBe(true)
+    expect(load.mock.calls.slice(-2).map(([request]) => request.cursor)).toEqual(['next', 'next'])
+    expect(ctx.mayflyPanes.list()[0]?.node).toEqual({ kind: 'text', content: 'second' })
+    pane.dispose()
+    await pane.refresh()
+    expect(await pane.loadMore()).toBe(false)
+    const passive = ctx.mayflyPanes.register({ id: 'passive', placement: 'bottom' })
+    await passive.refresh()
+    expect(await passive.loadMore()).toBe(false)
+    await owner.dispose()
+  })
+
+  it.each([false, true])('fences loadMore after set, including stale rejection (%s)', async fails => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'more-owner', apply })
+    const gate = Promise.withResolvers<{ node: MayflyUiNode }>()
+    const load = vi.fn<MayflySnapshotProvider<MayflyUiNode>>()
+      .mockResolvedValueOnce({ node: { kind: 'text', content: 'first' }, nextCursor: 'next' })
+      .mockImplementationOnce(() => gate.promise)
+    const pane = ctx.mayflyPanes.register({ id: 'more', placement: 'bottom', load })
+    await flushLoads()
+    const more = pane.loadMore()
+    pane.set({ kind: 'text', content: 'explicit' })
+    if (fails) gate.reject(new Error('stale'))
+    else gate.resolve({ node: { kind: 'text', content: 'stale' } })
+    expect(await more).toBe(false)
+    expect(ctx.mayflyPanes.list()[0]).toMatchObject({ revision: 2, node: { content: 'explicit' } })
+    expect(await pane.loadMore()).toBe(false)
+    expect(load).toHaveBeenCalledTimes(2)
+    await owner.dispose()
+  })
+
+  it.each(['refresh', 'loadMore'] as const)('cancels superseded pane %s loads and ignores late results', async method => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'superseded-owner', apply })
+    for (const fails of [false, true]) {
+      const old = Promise.withResolvers<{ node: MayflyUiNode }>()
+      const current = Promise.withResolvers<{ node: MayflyUiNode }>()
+      const load = vi.fn<MayflySnapshotProvider<MayflyUiNode>>()
+        .mockResolvedValueOnce({ node: { kind: 'text', content: 'first' }, nextCursor: 'next' })
+        .mockImplementationOnce(() => old.promise)
+        .mockImplementationOnce(() => current.promise)
+      const pane = ctx.mayflyPanes.register({ id: 'superseded', placement: 'bottom', load })
+      await flushLoads()
+      const pending = pane[method]()
+      const latest = pane.refresh()
+      expect(load.mock.calls[1]![0].signal.aborted).toBe(true)
+      if (fails) old.reject(new Error('cancelled'))
+      else old.resolve({ node: { kind: 'text', content: 'stale' } })
+      await pending
+      expect(load.mock.calls[2]![0].signal.aborted).toBe(false)
+      current.resolve({ node: { kind: 'text', content: 'latest' } })
+      await latest
+      expect(ctx.mayflyPanes.list()[0]?.node).toEqual({ kind: 'text', content: 'latest' })
+      pane.dispose()
+    }
+    await owner.dispose()
+  })
+
   it('orders pane/status snapshots and rejects duplicate or invalid ids', async () => {
     const ctx = new Context()
     const owner = await ctx.plugin({ name: 'api-owner', apply })
@@ -291,6 +431,54 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     expect(signal?.aborted).toBe(true)
     overlay.close()
     expect(signal?.aborted).toBe(true)
+    await owner.dispose()
+  })
+
+  it('publishes an overlay before a provider closes it synchronously', async () => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'synchronous-overlay-owner', apply })
+    const deltas = vi.fn()
+    ctx.mayflyOverlays.subscribe(deltas)
+    const overlay = ctx.mayflyOverlays.open({
+      id: 'self-closing',
+      load: () => {
+        expect(ctx.mayflyOverlays.list()[0]?.node).toEqual({ kind: 'text', content: 'initial' })
+        expect(ctx.mayflyOverlays.close('self-closing')).toBe(true)
+        return { node: { kind: 'text', content: 'late' } }
+      },
+    }, { kind: 'text', content: 'initial' })
+    await flushLoads()
+    expect(overlay.closed).toBe(true)
+    expect(ctx.mayflyOverlays.list()).toEqual([])
+    expect(ctx.mayflyOverlays.close('self-closing')).toBe(false)
+    expect(deltas.mock.calls.map(([delta]) => delta.kind)).toEqual(['upsert', 'remove'])
+    await owner.dispose()
+  })
+
+  it('skips overlay startup when an initial-publication listener closes it', async () => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'listener-overlay-owner', apply })
+    ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind === 'upsert') ctx.mayflyOverlays.close(delta.entry.id)
+    })
+    const load = vi.fn(() => ({ node: { kind: 'text' as const, content: 'unused' } }))
+    const { handle } = loadingCase(ctx, 'overlay', load)
+    expect(handle.disposed).toBe(true)
+    expect(load).not.toHaveBeenCalled()
+    expect(ctx.mayflyOverlays.list()).toEqual([])
+    await owner.dispose()
+  })
+
+  it('preserves overlay focus and visibility changes while its snapshot loads', async () => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'hidden-overlay-owner', apply })
+    const gate = Promise.withResolvers<{ node: MayflyUiNode }>()
+    const overlay = ctx.mayflyOverlays.open({ id: 'hidden', load: () => gate.promise }, { kind: 'text', content: 'initial' })
+    overlay.hide()
+    overlay.focus()
+    gate.resolve({ node: { kind: 'text', content: 'loaded' } })
+    await flushLoads()
+    expect(ctx.mayflyOverlays.list()[0]).toMatchObject({ hidden: true, focusRevision: 1, node: { content: 'loaded' } })
     await owner.dispose()
   })
 

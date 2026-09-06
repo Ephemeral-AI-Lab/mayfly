@@ -210,6 +210,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
     handle = new SnapshotHandle(publish, remove) as SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
     let activeLoad: AbortController | undefined
     let nextCursor: string | undefined
+    let cursorRevision = 0
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
@@ -225,40 +226,45 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       activeLoad?.abort()
       const controller = new AbortController()
       activeLoad = controller
+      const revision = handle.revision
       try {
         const page = await load({ signal: controller.signal })
-        /* v8 ignore next -- disposal and abort races are covered by the controller fence. */
-        if (!handle.disposed && !controller.signal.aborted) {
+        if (!controller.signal.aborted && handle.revision === revision) {
           nextCursor = page.nextCursor
+          cursorRevision = revision + 1
           handle.set(page.node ?? null)
         }
+      } catch (error) {
+        if (!controller.signal.aborted && handle.revision === revision) throw error
       } finally {
-        /* v8 ignore next -- only a superseding refresh can make this false. */
         if (activeLoad === controller) activeLoad = undefined
         controller.abort()
       }
     }
     handle.loadMore = async (): Promise<boolean> => {
       const load = admittedDefinition.load
-      if (load === undefined || handle.disposed || nextCursor === undefined) return false
+      if (load === undefined || handle.disposed || nextCursor === undefined || cursorRevision !== handle.revision) return false
       activeLoad?.abort()
       const controller = new AbortController()
       activeLoad = controller
+      const revision = handle.revision
       try {
         const page = await load({ cursor: nextCursor, signal: controller.signal })
-        /* v8 ignore next -- disposal and abort races are fenced here. */
-        if (handle.disposed || controller.signal.aborted) return false
+        if (controller.signal.aborted || handle.revision !== revision) return false
         nextCursor = page.nextCursor
+        cursorRevision = revision + 1
         handle.set(page.node)
         return true
+      } catch (error) {
+        if (!controller.signal.aborted && handle.revision === revision) throw error
+        return false
       } finally {
-        /* v8 ignore next -- only a superseding refresh can make this false. */
         if (activeLoad === controller) activeLoad = undefined
         controller.abort()
       }
     }
     publish(admittedNode, 0)
-    void handle.refresh()
+    void handle.refresh().catch(error => { this.ctx.logger.warn(`pane "${id}" snapshot load failed`, error) })
     return handle
   }
 
@@ -271,6 +277,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
 class OverlayHandle implements MayflyOverlayHandle {
   private live = true
   private revisionValue = 0
+  private snapshotRevisionValue = 0
   private hiddenValue = false
   private focusRevisionValue = 0
 
@@ -283,12 +290,14 @@ class OverlayHandle implements MayflyOverlayHandle {
   get disposed(): boolean { return !this.live }
   get closed(): boolean { return !this.live }
   get revision(): number { return this.revisionValue }
+  get snapshotRevision(): number { return this.snapshotRevisionValue }
 
   set(node: MayflyUiNode, update?: MayflySnapshotUpdate): void {
     if (!this.live) return
     const frozen = freezeWire(node)
     const admittedUpdate = freezeWire(update)
     this.node = frozen
+    this.snapshotRevisionValue += 1
     this.revisionValue += 1
     this.publish(this.revisionValue, this.hiddenValue, this.focusRevisionValue, this.node, admittedUpdate)
   }
@@ -355,22 +364,25 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
       cleanup()
     }
     const load = admittedDefinition.load
-    if (load !== undefined) {
+    publish(0, false, 0)
+    if (load !== undefined && !handle.disposed) {
       void (async () => {
         const controller = new AbortController()
         activeLoad = controller
+        const revision = handle.snapshotRevision
         try {
           const page = await load({ signal: controller.signal })
-          /* v8 ignore next -- disposal and abort races are covered by the controller fence. */
-          if (!handle.disposed && !controller.signal.aborted) handle.set(page.node)
+          if (!controller.signal.aborted && handle.snapshotRevision === revision) handle.set(page.node)
+        } catch (error) {
+          if (!controller.signal.aborted && handle.snapshotRevision === revision) {
+            this.ctx.logger.warn(`overlay "${id}" snapshot load failed`, error)
+          }
         } finally {
-          /* v8 ignore next -- only a superseding load can make this false. */
-          if (activeLoad === controller) activeLoad = undefined
+          activeLoad = undefined
           controller.abort()
         }
       })()
     }
-    publish(0, false, 0)
     return handle
   }
 

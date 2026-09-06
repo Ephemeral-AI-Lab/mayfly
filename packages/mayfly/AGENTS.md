@@ -36,6 +36,9 @@ single/multi-select behavior shares one list controller. Core keeps form
 drafts, control/scroll bindings, virtual-list cursors, and the common framed
 scroll panel in dedicated renderer-owned implementations.
 
+Job detail retains each consuming read outside canonical snapshots and admits
+bounded output pages, including for single lines larger than the text quota.
+
 Search text normalization belongs to core's shared native-editor input, including
 paste framing and grapheme deletion. Provider workflow outcomes carry structured
 status independently of their translated copy. A field being edited owns Delete

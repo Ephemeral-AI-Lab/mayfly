@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponent, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/index.ts'
 import { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptModelComponent, type TranscriptModelRenderer } from '../../src/transcript/transcript-model.ts'
@@ -74,6 +75,30 @@ afterEach(() => {
 })
 
 describe('TranscriptController', () => {
+  it('recompiles canonical viewport conditions after invalidation and generation changes', () => {
+    let viewportRows = 10
+    const entry = ui.stack.column([
+      ui.child(ui.text('short'), { when: { maxHeight: 20 } }),
+      ui.child(ui.text('tall'), { when: { minHeight: 21 } }),
+    ])
+    let current: TranscriptModel | null = createTranscriptModel('conditional', [entry])
+    const component = new TranscriptModelComponent(() => current, { ...plainRenderer(), viewportRows: () => viewportRows })
+    expect(component.render(40)).toEqual(['short'])
+    current = { ...current, streaming: true }
+    expect(component.render(40)).toEqual(['short'])
+    viewportRows = 30
+    component.invalidate()
+    expect(component.render(40)).toEqual(['tall'])
+    viewportRows = 10
+    current = { ...current, generation: 1 }
+    expect(component.render(40)).toEqual(['short'])
+    current = null
+    expect(component.render(40)).toEqual([])
+    viewportRows = 30
+    current = createTranscriptModel('conditional', [entry], false, 1)
+    expect(component.render(40)).toEqual(['tall'])
+    component.dispose()
+  })
   it('mounts one dynamic source and refreshes canonical rows', () => { const ctx = new Context(); const f = fixture(); const service = new TranscriptController(ctx, f.screen, { renderer: plainRenderer() }); let current = model('one'); service.setSource(() => current); const component = f.children[0]!; expect(component.render(20)).toEqual(['entry']); service.refreshLocale(); service.refreshPresentationPolicy(); current = model('one', [{ kind: 'fields', rows: [{ label: 'a', value: [{ text: 'b' }] }] }]); service.refresh(); expect(component.render(20)).toEqual(['a: b']); service.dispose(); expect(component.render(20)).toEqual([]); service.refresh() })
   it('handles a null source, late attach, source replacement, and unload', () => { const ctx = new Context(); const service = new TranscriptController(ctx, undefined, { renderer: plainRenderer() }); service.setSource(() => null); service.refresh(); const f = fixture(); service.attach(f.screen); expect(f.children).toHaveLength(1); expect(f.children[0]!.render(20)).toEqual([]); service.setSource(model('active')); expect(f.children).toHaveLength(1); expect(f.children[0]!.render(20)).toEqual(['entry']); service.dispose(); expect(f.children).toHaveLength(0) })
   it('renders null and nested canonical nodes safely', () => { expect(new TranscriptModelComponent(() => null, plainRenderer()).render(10)).toEqual([]); const c = new TranscriptModelComponent(() => model('nested', [{ kind: 'sections', sections: [{ title: 's', body: { kind: 'code', code: 'abcdef' } }] }]), plainRenderer()); expect(c.render(3)).toEqual(['\x1b[1ms\x1b[22m', 'abc', 'def']); c.invalidate() })

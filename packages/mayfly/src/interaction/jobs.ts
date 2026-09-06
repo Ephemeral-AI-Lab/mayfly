@@ -8,11 +8,13 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { JobId, type JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import type { MayflyFocusable } from '../core/index.ts'
 import type { Action, MayflyTranslate } from '../frontend/index.ts'
 import { displayServices } from './display-services.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { CanonicalDocumentController, type FrontendPanelDocument, type FrontendPanelItem } from './frontend-panel.ts'
+import { CanonicalDocumentController, type FrontendPanelDocument, type FrontendPanelItem, type FrontendPanelOptions } from './frontend-panel.ts'
+import { ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, interactionKeyHint } from './keys.ts'
 import { interactionTranslator } from './locale.ts'
 
 /** Stable Cordis plugin name. */
@@ -32,6 +34,9 @@ export const JOB_STATUS_MARKS: Readonly<Record<JobSnapshot['status'], string>> =
 
 /** How many trailing output lines the detail view keeps. */
 export const JOB_OUTPUT_TAIL_LINES = 120
+
+// Leave room for document chrome within the canonical text admission quota.
+const JOB_OUTPUT_PAGE_CHARS = 12_000
 
 /** Whether the job still occupies the background queue. */
 export function isLiveJob(job: JobSnapshot): boolean {
@@ -89,11 +94,10 @@ export function jobsPanelModel(jobs: readonly JobSnapshot[], now: number, t: May
 
 /** Build a read-only output document from one explicit consuming read. */
 export function jobOutputPanelModel(job: JobSnapshot, output: string, t: MayflyTranslate): FrontendPanelDocument {
-  const tail = { text: output, truncated: false }
   const empty = isLiveJob(job)
     ? t('(no new output yet)')
     : t('(no new output — already consumed by the agent or an earlier read, or the job produced none)')
-  const code = tail.text === '' ? empty : tail.text
+  const code = output === '' ? empty : output
   return {
     mode: 'info',
     title: t('Job {id}', { id: String(job.id) }),
@@ -114,6 +118,71 @@ export function jobOutputPanelModel(job: JobSnapshot, output: string, t: MayflyT
       ],
     },
     cancel: { kind: 'jobs.detail.close' },
+  }
+}
+
+/** Retain one consuming read outside the bounded canonical detail snapshots. */
+export class JobOutputPanel implements MayflyFocusable {
+  private readonly pages: string[] = []
+  private page = 0
+  private panel: CanonicalDocumentController
+
+  constructor(
+    private readonly job: JobSnapshot,
+    output: string,
+    private readonly options: Pick<FrontendPanelOptions, 'theme' | 'components' | 'keymap' | 'onClose'> & { readonly t: MayflyTranslate },
+  ) {
+    let start = 0
+    while (start < output.length) {
+      let end = Math.min(output.length, start + JOB_OUTPUT_PAGE_CHARS)
+      if (end < output.length) {
+        const newline = output.lastIndexOf('\n', end - 1)
+        if (newline >= start) end = newline + 1
+        else if (/[\uD800-\uDBFF]/u.test(output[end - 1]!)) end -= 1
+      }
+      this.pages.push(output.slice(start, end))
+      start = end
+    }
+    if (this.pages.length === 0) this.pages.push('')
+    this.panel = this.createPanel()
+  }
+
+  get focused(): boolean { return this.panel.focused }
+  set focused(value: boolean) { this.panel.focused = value }
+
+  currentNode() { return this.panel.currentNode() }
+  invalidate(): void { this.panel.invalidate() }
+  render(width: number): string[] { return this.panel.render(width) }
+
+  handleInput(data: string): void {
+    const { keymap } = this.options
+    const previous = keymap.matches(data, ACTION_SEGMENT_LEFT)
+    const next = keymap.matches(data, ACTION_SEGMENT_RIGHT)
+    if (!previous && !next) { this.panel.handleInput(data); return }
+    const page = Math.max(0, Math.min(this.pages.length - 1, this.page + (previous ? -1 : 1)))
+    if (page === this.page) return
+    const focused = this.focused
+    this.page = page
+    this.panel = this.createPanel()
+    this.focused = focused
+  }
+
+  private createPanel(): CanonicalDocumentController {
+    return new CanonicalDocumentController({
+      ...this.options,
+      model: () => {
+        const model = jobOutputPanelModel(this.job, this.pages[this.page]!, this.options.t)
+        return this.pages.length === 1 ? model : { ...model, title: `${model.title} (${String(this.page + 1)}/${String(this.pages.length)})` }
+      },
+      onAction: () => undefined,
+      maxVisible: 14,
+      contextHints: () => this.pages.length === 1 ? [] : [{
+        id: 'job-output-pages',
+        keys: `${interactionKeyHint(this.options.keymap, ACTION_SEGMENT_LEFT, '←')}/${interactionKeyHint(this.options.keymap, ACTION_SEGMENT_RIGHT, '→')}`,
+        label: this.options.t('page'),
+        priority: 95,
+      }],
+    })
   }
 }
 
@@ -167,13 +236,10 @@ export function apply(ctx: Context): void {
     const viewJob = (id: string): void => {
       try {
         const output = ctx.jobs.read(JobId(id), agent)
-        const detail = new CanonicalDocumentController({
+        const detail = new JobOutputPanel(output.snapshot, output.text, {
           ...display,
           t,
-          model: () => jobOutputPanelModel(output.snapshot, output.text, t),
-          onAction: () => undefined,
           onClose: () => restoreDetail?.(),
-          maxVisible: 14,
         })
         restoreDetail = mountEditorReplacement(ctx, detail)
       } catch (error) {
