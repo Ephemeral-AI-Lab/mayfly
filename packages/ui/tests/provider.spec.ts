@@ -149,6 +149,26 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     await owner.dispose()
   })
 
+  it('loads pane snapshots through a cancellable service-owned provider', async () => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'api-owner', apply })
+    const signals: AbortSignal[] = []
+    const pane = ctx.mayflyPanes.register({
+      id: 'test.loaded-pane',
+      placement: 'bottom',
+      load: async signal => {
+        signals.push(signal)
+        return { kind: 'text', content: 'loaded' }
+      },
+    })
+    await vi.waitFor(() => expect(ctx.mayflyPanes.list()[0]?.node).toEqual({ kind: 'text', content: 'loaded' }))
+    expect(signals).toHaveLength(1)
+    expect(signals[0]!.aborted).toBe(true)
+    await pane.refresh()
+    expect(ctx.mayflyPanes.list()[0]?.revision).toBe(2)
+    await owner.dispose()
+  })
+
   it('orders pane/status snapshots and rejects duplicate or invalid ids', async () => {
     const ctx = new Context()
     const owner = await ctx.plugin({ name: 'api-owner', apply })
@@ -235,6 +255,24 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     later.close()
     expect(ctx.mayflyOverlays.close('overlay.later')).toBe(false)
     earlier.close()
+    await owner.dispose()
+  })
+
+  it('loads overlay snapshots through a cancellable provider', async () => {
+    const ctx = new Context()
+    const owner = await ctx.plugin({ name: 'overlay-owner', apply })
+    let signal: AbortSignal | undefined
+    const overlay = ctx.mayflyOverlays.open({
+      id: 'overlay.loaded',
+      load: async current => {
+        signal = current
+        return { kind: 'text', content: 'loaded' }
+      },
+    }, { kind: 'text', content: 'initial' })
+    await vi.waitFor(() => expect(ctx.mayflyOverlays.list()[0]?.node).toEqual({ kind: 'text', content: 'loaded' }))
+    expect(signal?.aborted).toBe(true)
+    overlay.close()
+    expect(signal?.aborted).toBe(true)
     await owner.dispose()
   })
 

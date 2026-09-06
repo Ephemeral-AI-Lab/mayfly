@@ -97,6 +97,7 @@ function validatePaneDefinition(definition: unknown): void {
   validateSize(definition.size, 'pane size')
   if (definition.narrow !== undefined && !NARROW_POLICIES.has(definition.narrow as string)) throw new TypeError('pane narrow policy is invalid')
   optionalCallback(definition.onEvent, 'pane onEvent')
+  optionalCallback(definition.load, 'pane load')
 }
 
 function validateStatusDefinition(definition: unknown): void {
@@ -126,6 +127,7 @@ function validateOverlayDefinition(definition: unknown): void {
   validateOverlaySize(definition.maxHeight, 'overlay maxHeight')
   optionalNonNegativeInteger(definition.minWidth, 'overlay minWidth')
   optionalCallback(definition.onEvent, 'overlay onEvent')
+  optionalCallback(definition.load, 'overlay load')
 }
 
 function validateEditorExtensionDefinition(definition: unknown): void {
@@ -200,20 +202,37 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       this.entries.set(id, entry)
       this.upsert(entry)
     }
-    let handle!: SnapshotHandle<MayflyUiNode | null>
+    let handle!: SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
     const remove = (revision: number): void => {
       this.entries.delete(id)
       this.remove(id, revision)
     }
-    handle = new SnapshotHandle(publish, remove)
+    handle = new SnapshotHandle(publish, remove) as SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
+    let activeLoad: AbortController | undefined
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
       if (handle.disposed) return
+      activeLoad?.abort()
       originalDispose()
       cleanup()
     }
+    handle.refresh = async (): Promise<void> => {
+      const load = admittedDefinition.load
+      if (load === undefined || handle.disposed) return
+      activeLoad?.abort()
+      const controller = new AbortController()
+      activeLoad = controller
+      try {
+        const next = await load(controller.signal)
+        if (!handle.disposed && !controller.signal.aborted) handle.set(next ?? null)
+      } finally {
+        if (activeLoad === controller) activeLoad = undefined
+        controller.abort()
+      }
+    }
     publish(admittedNode, 0)
+    void handle.refresh()
     return handle
   }
 
@@ -299,13 +318,29 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
       this.remove(id, revision)
     }
     handle = new OverlayHandle(publish, remove, node)
+    let activeLoad: AbortController | undefined
     this.handles.set(id, handle)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
       if (handle.disposed) return
+      activeLoad?.abort()
       originalDispose()
       cleanup()
+    }
+    const load = admittedDefinition.load
+    if (load !== undefined) {
+      void (async () => {
+        const controller = new AbortController()
+        activeLoad = controller
+        try {
+          const next = await load(controller.signal)
+          if (!handle.disposed && !controller.signal.aborted) handle.set(next)
+        } finally {
+          if (activeLoad === controller) activeLoad = undefined
+          controller.abort()
+        }
+      })()
     }
     publish(0, false, 0)
     return handle

@@ -18,6 +18,9 @@ export interface MayflyNodeRegistration<Node> extends MayflyRegistration {
   set(node: Node | null, update?: MayflySnapshotUpdate): void
 }
 
+/** Service-owned asynchronous snapshot source; the node remains pure data. */
+export type MayflySnapshotProvider<Node> = (signal: AbortSignal) => Node | Promise<Node>
+
 export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
 export type MayflyTextStyle = 'strong' | 'italic' | 'strike'
 export interface MayflyInlineSpan { readonly text: string, readonly tone?: MayflyTone, readonly styles?: readonly MayflyTextStyle[] }
@@ -91,13 +94,13 @@ export interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: st
 export type MayflyRegistryDelta<Entry> = MayflyRegistryUpsert<Entry> | MayflyRegistryRemove
 
 export type MayflyPanePlacement = 'header' | 'left' | 'right' | 'bottom'
-export interface MayflyPaneDefinition { readonly id: string, readonly title?: string, readonly priority?: number, readonly placement: MayflyPanePlacement, readonly size?: { readonly min?: number, readonly preferred?: number | 'auto', readonly max?: number }, readonly narrow?: 'bottom' | 'overlay' | 'hidden', readonly onEvent?: MayflyUiEventHandler }
+export interface MayflyPaneDefinition { readonly id: string, readonly title?: string, readonly priority?: number, readonly placement: MayflyPanePlacement, readonly size?: { readonly min?: number, readonly preferred?: number | 'auto', readonly max?: number }, readonly narrow?: 'bottom' | 'overlay' | 'hidden', readonly onEvent?: MayflyUiEventHandler, readonly load?: MayflySnapshotProvider<MayflyUiNode | null> }
 export interface MayflyPaneEntry { readonly id: string, readonly definition: MayflyPaneDefinition, readonly node: MayflyUiNode | null, readonly revision: number, readonly eventRevision?: number }
-export type MayflyPaneRegistration = MayflyNodeRegistration<MayflyUiNode>
+export interface MayflyPaneRegistration extends MayflyNodeRegistration<MayflyUiNode> { refresh(): Promise<void> }
 export interface MayflyPaneRegistry { register(definition: MayflyPaneDefinition, initialNode?: MayflyUiNode | null): MayflyPaneRegistration, list(): readonly MayflyPaneEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyPaneEntry>) => void): () => void }
 
 export type MayflyOverlayAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right'
-export interface MayflyOverlayDefinition { readonly id: string, readonly title?: string, readonly capturing?: boolean, readonly dismissible?: boolean, readonly anchor?: MayflyOverlayAnchor, readonly width?: number | `${number}%`, readonly minWidth?: number, readonly maxHeight?: number | `${number}%`, readonly onEvent?: MayflyUiEventHandler }
+export interface MayflyOverlayDefinition { readonly id: string, readonly title?: string, readonly capturing?: boolean, readonly dismissible?: boolean, readonly anchor?: MayflyOverlayAnchor, readonly width?: number | `${number}%`, readonly minWidth?: number, readonly maxHeight?: number | `${number}%`, readonly onEvent?: MayflyUiEventHandler, readonly load?: MayflySnapshotProvider<MayflyUiNode> }
 export interface MayflyOverlayEntry { readonly id: string, readonly definition: MayflyOverlayDefinition, readonly node: MayflyUiNode, readonly revision: number, readonly order: number, readonly hidden: boolean, readonly focusRevision: number, readonly eventRevision?: number }
 export interface MayflyOverlayHandle extends MayflyRegistration { readonly revision: number, readonly closed: boolean, set(node: MayflyUiNode, update?: MayflySnapshotUpdate): void, focus(): void, hide(): void, show(): void, close(): void }
 export interface MayflyOverlayRegistry { open(definition: MayflyOverlayDefinition, initialNode: MayflyUiNode): MayflyOverlayHandle, close(id: string): boolean, list(): readonly MayflyOverlayEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyOverlayEntry>) => void): () => void }
