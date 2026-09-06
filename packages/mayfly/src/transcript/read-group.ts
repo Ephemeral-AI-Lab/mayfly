@@ -17,7 +17,7 @@ import type { ReadCallModel, TranscriptReadGroupModel } from '../frontend/index.
 export const READ_GROUP_ROW_LIMIT = 8
 
 /** Total row ceiling in the expanded card, matching the tool-body budget. */
-export const READ_GROUP_EXPANDED_ROW_LIMIT = 200
+export const READ_GROUP_EXPANDED_ROW_LIMIT = Number.MAX_SAFE_INTEGER
 
 /** One file's read windows, in first-read order. */
 export interface ReadFileGroup {

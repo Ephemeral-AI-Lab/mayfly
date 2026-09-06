@@ -14,7 +14,7 @@ import { summarizeToolText } from './envelope.ts'
 import { summarizeToolCall } from './present.ts'
 
 const COLLAPSED_ROW_LIMIT = 12
-const EXPANDED_ROW_LIMIT = 200
+const EXPANDED_ROW_LIMIT = Number.MAX_SAFE_INTEGER
 
 /** Official facts required to build one renderer-neutral tool card. */
 export interface ToolPresentationFacts {

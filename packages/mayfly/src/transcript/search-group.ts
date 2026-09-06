@@ -16,7 +16,7 @@ import type { SearchCallModel, TranscriptSearchGroupModel } from '../frontend/in
 export const SEARCH_GROUP_ROW_LIMIT = 8
 
 /** Total row ceiling in the expanded card, matching the tool-body budget. */
-export const SEARCH_GROUP_EXPANDED_ROW_LIMIT = 200
+export const SEARCH_GROUP_EXPANDED_ROW_LIMIT = Number.MAX_SAFE_INTEGER
 
 /** Colors plus width helpers threaded through the row builders. */
 interface RenderDeps {

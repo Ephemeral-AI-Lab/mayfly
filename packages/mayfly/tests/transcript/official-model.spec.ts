@@ -447,7 +447,7 @@ describe('official conversation model mapping', () => {
 })
 
 describe('OfficialConversationModelSource', () => {
-  it.each([1_000, 10_000, 100_000])('reads and admits only 200 entries from %i-entry histories', length => {
+  it.each([1_000, 10_000, 100_000])('reads and admits the complete %i-entry history', length => {
     const entries = projection(Array.from({ length }, (_, index) => ({
       kind: 'assistant' as const, id: String(index), seq: index, turn: 0, step: 0, text: 'history', streaming: false,
     }))).entries
@@ -456,7 +456,7 @@ describe('OfficialConversationModelSource', () => {
       get(target, key, receiver) {
         if (typeof key === 'string' && /^\d+$/.test(key)) {
           reads += 1
-          expect(Number(key)).toBeGreaterThanOrEqual(length - 200)
+          expect(Number(key)).toBeGreaterThanOrEqual(0)
         }
         return Reflect.get(target, key, receiver)
       },
@@ -464,14 +464,14 @@ describe('OfficialConversationModelSource', () => {
     const fixture = sourceFixture({ entries: observed, streaming: false })
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session)
-    expect(reads).toBe(200)
-    expect(source.snapshot().entries).toHaveLength(200)
-    expect(source.snapshot().entries[0]).toMatchObject({ id: String(length - 200) })
+    expect(reads).toBe(length)
+    expect(source.snapshot().entries).toHaveLength(length)
+    expect(source.snapshot().entries[0]).toMatchObject({ id: '0' })
     for (let seq = 1; seq <= 3; seq += 1) {
       reads = 0
       fixture.emit('mayflyConversation', { entries: observed, streaming: true }, seq)
-      expect(reads).toBe(200)
-      expect(source.snapshot().entries).toHaveLength(200)
+      expect(reads).toBe(length)
+      expect(source.snapshot().entries).toHaveLength(length)
     }
     source.dispose()
   })
@@ -485,8 +485,8 @@ describe('OfficialConversationModelSource', () => {
     const fixture = sourceFixture(value)
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session, 999)
-    expect(source.snapshot().entries).toHaveLength(200)
-    expect(source.snapshot().entries[0]).toMatchObject({ id: 'visible-50' })
+    expect(source.snapshot().entries).toHaveLength(250)
+    expect(source.snapshot().entries[0]).toMatchObject({ id: 'visible-0' })
     expect(source.snapshot().entries.at(-1)).toMatchObject({ id: 'visible-249' })
     expect(source.snapshot().entries).toEqual(conversationTranscriptModel(projection(eligible), toolSource()).entries)
     source.attach(fixture.session, 10_000)
@@ -525,7 +525,7 @@ describe('OfficialConversationModelSource', () => {
     const fixture = sourceFixture({ entries: [null, ...tail], streaming: false })
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session)
-    expect(source.snapshot().entries).toHaveLength(200)
+    expect(source.snapshot().entries).toHaveLength(0)
     source.dispose()
   })
 
