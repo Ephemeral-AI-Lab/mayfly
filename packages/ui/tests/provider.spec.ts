@@ -160,7 +160,7 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
       load: async request => {
         signals.push(request.signal)
         calls += 1
-        return { node: { kind: 'text', content: calls === 1 ? 'loaded' : 'next' }, ...(calls === 1 ? { nextCursor: 'next-page' } : {}) }
+        return { node: calls === 3 ? null : { kind: 'text', content: calls === 1 ? 'loaded' : 'next' }, ...(calls === 1 ? { nextCursor: 'next-page' } : {}) }
       },
     })
     await vi.waitFor(() => expect(ctx.mayflyPanes.list()[0]?.node).toEqual({ kind: 'text', content: 'loaded' }))
@@ -171,6 +171,7 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     expect(await pane.loadMore()).toBe(false)
     await pane.refresh()
     expect(ctx.mayflyPanes.list()[0]?.revision).toBe(3)
+    expect(ctx.mayflyPanes.list()[0]?.node).toBeNull()
     await owner.dispose()
   })
 
