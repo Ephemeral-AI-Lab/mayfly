@@ -65,7 +65,7 @@ Keys still resolve **per request**, so adding or rotating one while Mayfly is ru
 /provider add              # the add-provider wizard
 ```
 
-Selecting a configured route in the Providers panel opens its **edit form**: display name, baseURL, and key (empty keeps the stored value); `Ctrl+D` deletes the route after a typed confirmation. The built-in `deepseek-official` route has no stored profile to edit (the panel says "nothing to edit") — tune it through the `llm-deepseek:` section of `settings.yaml`.
+Selecting a configured route in the Providers panel opens its **edit form**: display name, baseURL, and key (empty keeps the stored value). `Ctrl+D` opens a deletion confirmation; Yes deletes, while No or Esc returns to editing with the draft preserved. The built-in `deepseek-official` route has no stored profile to edit (the panel says "nothing to edit") — tune it through the `llm-deepseek:` section of `settings.yaml`.
 
 `/provider add` branches two ways:
 

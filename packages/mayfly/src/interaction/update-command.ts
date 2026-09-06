@@ -3,7 +3,7 @@
  * spine — busy guard (plus a frontend-tree in-flight guard against a
  * second concurrent run), registry read (metadata, never dist-tag
  * resolution) with progress notices in the editor hint line, the
- * pre-flight gates, a typed `y` confirm, then the
+ * pre-flight gates, an explicit Yes/No confirmation, then the
  * swap executor behind a step panel (`check ✓ / snapshot ✓ / installing…
  * / verify ✓ / smoke: imports ✓ / smoke: boot…`) where Escape is ignored
  * while the install or smoke is in flight (closing mid-swap is the one
@@ -26,7 +26,7 @@ import { join } from 'node:path'
 import { displayServices } from './display-services.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { CanonicalFormController } from './form-panel.ts'
+import { createConfirmationPanel } from './confirmation-panel.ts'
 import { CanonicalDocumentController, type FrontendPanelDocument } from './frontend-panel.ts'
 import type { UpdateSettings } from './updater/check.ts'
 import { writeUpdateCheckState } from './updater/check.ts'
@@ -121,7 +121,7 @@ export function updatePanelSummary(state: UpdateProgressState, t: MayflyTranslat
     : t('update did not complete ({kind}) — log: {path}', { kind: outcome.kind, path: outcome.logPath })
 }
 
-/** The display services slice the confirm form needs. */
+/** The display services slice the confirmation needs. */
 interface Display {
   readonly theme: MayflyTheme
   readonly components: MayflyComponents
@@ -129,7 +129,7 @@ interface Display {
 }
 
 /**
- * Mount the typed-`y` confirm form (the provider-delete precedent) and
+ * Mount an explicit Yes/No confirmation and
  * await the answer.
  * @param display - the display services.
  * @param fromVersion - the running version.
@@ -146,23 +146,15 @@ function confirmUpdate(ctx: Context, display: Display, fromVersion: string, toVe
       restore()
       resolve(value)
     }
-    const panel = new CanonicalFormController({
+    const panel = createConfirmationPanel({
       keymap: display.keymap,
       theme: display.theme,
       components: display.components,
       t,
       title: 'Update Mayfly',
-      subtitle: [`v${fromVersion} → v${toVersion}`, detail].join(' · ').replace(/ · $/, ''),
-      fields: [
-        {
-          id: 'yes',
-          label: t('Update to v{version}?', { version: toVersion }),
-          required: true,
-          hint: 'type y to update · esc cancels · a boot smoke runs before the change is kept',
-          validate: value => value.toLowerCase() === 'y' ? undefined : t('type y to confirm, or Esc to cancel'),
-        },
-      ],
-      onSubmit: values => done(String(values.yes).toLowerCase() === 'y'),
+      question: t('Update to v{version}?', { version: toVersion }),
+      detail: [`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '),
+      onConfirm: () => done(true),
       onCancel: () => done(false),
     })
     const restore = mountEditorReplacement(ctx, panel)

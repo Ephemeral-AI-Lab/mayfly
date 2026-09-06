@@ -13,7 +13,7 @@ import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import { interactionTranslator } from './locale.ts'
 import { CanonicalSelectController, type SelectRow } from './select-list.ts'
-import { CanonicalFormController } from './form-panel.ts'
+import { createConfirmationPanel } from './confirmation-panel.ts'
 import { formatTokens } from './usage.ts'
 import { compactElapsedMs } from '../transcript/agent-presentation.ts'
 import { ACTION_CANCEL, ACTION_DELETE, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SUBMIT, ACTION_TOGGLE, interactionKeyHint } from './keys.ts'
@@ -316,19 +316,15 @@ export function apply(ctx: Context): void {
           return
         }
         restoreConfirm?.()
-        const form = new CanonicalFormController({
+        const confirm = createConfirmationPanel({
           keymap: display.keymap,
           theme: display.theme,
           components: display.components,
+          t: (key, values) => t(key, { agent: entry.label ?? String(entry.id), ...values }),
           title: 'Stop subagent',
-          subtitle: `type y to stop ${entry.label ?? String(entry.id)}`,
-          fields: [{
-            id: 'yes',
-            label: `Stop ${String(entry.id)}?`,
-            required: true,
-            validate: value => value.toLowerCase() === 'y' ? undefined : 'type y to confirm, or Esc to cancel',
-          }],
-          onSubmit: () => {
+          question: 'Stop {agent}?',
+          detail: 'End this live Agent and release its resources. Its saved conversation remains available.',
+          onConfirm: () => {
             restoreConfirm?.()
             restoreConfirm = undefined
             close()
@@ -343,7 +339,7 @@ export function apply(ctx: Context): void {
             restoreConfirm = undefined
           },
         })
-        restoreConfirm = mountEditorReplacement(ctx, form)
+        restoreConfirm = mountEditorReplacement(ctx, confirm)
       },
       onCancel: close,
     })

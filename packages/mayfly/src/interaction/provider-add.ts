@@ -29,6 +29,7 @@ import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import { loadModelsDevIndex, type ModelsDevMatch } from './models-dev.ts'
 import { CanonicalFormController, type FormField } from './form-panel.ts'
+import { createConfirmationPanel } from './confirmation-panel.ts'
 import { CanonicalMultiSelectController } from './select.ts'
 import { CanonicalSelectController } from './select-list.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
@@ -475,7 +476,7 @@ type EditOutcome = { saved: Record<string, string> } | { delete: true } | { canc
 /**
  * Edit one configured provider: its display name and API key, plus the base
  * URL for custom routes only (catalog vendors keep the host endpoint), with
- * Ctrl+D deleting the whole route after a typed confirmation. Save normalizes
+ * Ctrl+D deleting the whole route after a Yes/No confirmation. Save normalizes
  * custom base URLs by protocol and keeps every untouched field exactly as
  * stored.
  * @param ctx - plugin context; `settings` and `credentials` resolve lazily.
@@ -522,26 +523,21 @@ export async function runProviderEdit(ctx: Context, display: ProviderAddDisplay,
     fields,
     onSubmit: values => done({ saved: values }),
     onCancel: () => done({ cancelled: true }),
-    onDelete: () => done({ delete: true }),
+    onDelete: () => {
+      const confirm = createConfirmationPanel({
+        ...display,
+        t,
+        title: 'Delete {route}',
+        question: 'Delete provider "{route}"?',
+        detail: 'Remove the provider configuration and its stored API key.',
+        onConfirm: () => { restore(); done({ delete: true }) },
+        onCancel: () => restore(),
+      })
+      const restore = mountProviderPanel(ctx, confirm)
+    },
   }))
   if (outcome === undefined || 'cancelled' in outcome) return { kind: 'success', text: t('provider edit cancelled') }
   if ('delete' in outcome) {
-    const confirm = await fillForm(ctx, display, {
-      title: 'Delete {route}',
-      values: { route },
-      subtitle: 'type y to remove the provider and its stored key',
-      fields: [
-        {
-          id: 'yes',
-          label: 'Delete provider "{route}"?',
-          required: true,
-          validate: value => value.toLowerCase() === 'y'
-            ? undefined
-            : t('type y to confirm, or Esc to keep the provider'),
-        },
-      ],
-    })
-    if (confirm === undefined) return { kind: 'success', text: t('delete cancelled') }
     const revision = settings.describe().find(descriptor => String(descriptor.ns) === 'llm-pi-ai')?.revision
     try {
       await settings.mutate(ns, [{ op: 'unset', path: ['providers', route] }], revision)

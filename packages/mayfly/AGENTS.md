@@ -42,6 +42,10 @@ an explicit `/permission` selection. Status renders plan and yolo together
 when both apply. The plan wire projection's `pending` flag means a transition
 is queued, not the target boolean; repeated toggles invert the selected state.
 
+Binary confirmations use the shared canonical Yes/No action panel, with No
+initially focused and Escape cancelling. Do not model confirmation as a text
+field requiring a fixed token. Forms collect actual user data.
+
 Job detail retains each consuming read outside canonical snapshots and admits
 bounded output pages, including for single lines larger than the text quota.
 

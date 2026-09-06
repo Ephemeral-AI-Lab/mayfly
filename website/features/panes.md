@@ -38,7 +38,7 @@ Mayfly 只保留一个辅助会话槽。`/btw <question>` 创建临时旁路 Age
 - one-shot 或当前不驻留的 continuable child 不激活 Agent，而是在 editor 槽位打开 core-owned 的全保真只读 transcript panel；它复用正式 transcript model、工具呈现、图片加载、宽度约束与滚动逻辑；
 - 状态栏中央显式显示当前侧以及 `F7 switch · F8 close`；`F7` 在主/辅助会话间切换，`F8` 完全关闭辅助视图并返回主会话；关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
 - 再次打开 BTW 或 child 会替换旧辅助槽。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork`、`/rewind` 和 `/agents` 浏览会先回到主会话；
-- `/agents` 中 `Enter` 查看 child，`Space` 展开分支，`Delete`/`Ctrl-D` 经 typed-`y` 确认后停止 live continuable child；`/agents stop <id>` 提供直接停止路径，one-shot 与 cold/inactive child 不允许停止。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。
+- `/agents` 中 `Enter` 查看 child，`Space` 展开分支，`Delete`/`Ctrl-D` 打开 Yes / No 确认，选择 Yes 停止 live continuable child；`/agents stop <id>` 提供直接停止路径，one-shot 与 cold/inactive child 不允许停止。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。
 
 ## 子代理分组面板（agents）
 

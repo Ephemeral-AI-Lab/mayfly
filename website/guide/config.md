@@ -65,7 +65,7 @@ key 仍在**每次请求时**解析，因此运行期间补充或轮换凭据无
 /provider add              # 新增 provider 向导
 ```
 
-Providers 面板里**选中一个已配置的路由即进入编辑**：可改显示名、baseURL、key（留空保留原值），`Ctrl+D` 删除整个路由（需键入 `y` 二次确认）。内置的 `deepseek-official` 路由没有可编辑的存储档案（面板会提示 nothing to edit）——调整它走 `settings.yaml` 的 `llm-deepseek:` 段。
+Providers 面板里**选中一个已配置的路由即进入编辑**：可改显示名、baseURL、key（留空保留原值），`Ctrl+D` 打开删除确认，选择 Yes 才删除；No 或 Esc 返回编辑并保留草稿。内置的 `deepseek-official` 路由没有可编辑的存储档案（面板会提示 nothing to edit）——调整它走 `settings.yaml` 的 `llm-deepseek:` 段。
 
 `/provider add` 有两条分支：
 
