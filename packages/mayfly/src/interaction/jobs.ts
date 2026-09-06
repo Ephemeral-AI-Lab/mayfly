@@ -136,8 +136,8 @@ export class JobOutputPanel implements MayflyFocusable {
     while (start < output.length) {
       let end = Math.min(output.length, start + JOB_OUTPUT_PAGE_CHARS)
       if (end < output.length) {
-        const newline = output.lastIndexOf('\n', end - 1)
-        if (newline >= start) end = newline + 1
+        const newline = output.slice(start, end).lastIndexOf('\n')
+        if (newline >= 0) end = start + newline + 1
         else if (/[\uD800-\uDBFF]/u.test(output[end - 1]!)) end -= 1
       }
       this.pages.push(output.slice(start, end))
