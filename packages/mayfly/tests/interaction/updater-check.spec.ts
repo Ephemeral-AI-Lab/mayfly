@@ -88,8 +88,9 @@ function makeCheck(options: { json?: string; fail?: boolean } = {}) {
 }
 
 describe('updater/check runUpdateCheck', () => {
-  it('offers a newer release: mounts the notice and records the state', async () => {
-    const world = makeCheck()
+  it.each(['object', 'array'])('offers a newer release from an %s and records the state', async format => {
+    const document: unknown = JSON.parse(OFFER_JSON)
+    const world = makeCheck({ json: JSON.stringify(format === 'array' ? [document] : document) })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
     expect(world.screen.children).toHaveLength(1)
     const rows = world.screen.children[0]!.render(160)

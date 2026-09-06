@@ -121,12 +121,16 @@ describe('updater/registry normalizePackument', () => {
 })
 
 describe('updater/registry fetchPackument', () => {
-  it('reads a successful npm view on the first attempt without sleeping', async () => {
+  it.each(['object', 'array'])('reads npm view as an %s on the first attempt without sleeping', async format => {
     let spawns = 0
+    const document = { ...RAW_DOCUMENT, versions: Object.keys(RAW_DOCUMENT.versions) }
     seam({
       spawnOnce: () => {
         spawns += 1
-        return viewOk(JSON.stringify(RAW_DOCUMENT))
+        return viewOk(JSON.stringify(format === 'array' ? [document] : document))
+      },
+      fetchText: () => {
+        throw new Error('no fallback expected')
       },
       sleep: () => {
         throw new Error('no retry expected')
@@ -134,7 +138,7 @@ describe('updater/registry fetchPackument', () => {
     })
     const result = await fetchPackument()
     expect(spawns).toBe(1)
-    expect(result.ok).toBe(true)
+    expect(result).toEqual({ ok: true, packument: normalizePackument(document) })
   })
 
   it('retries a nonzero npm view and succeeds on the second attempt', async () => {
@@ -173,9 +177,19 @@ describe('updater/registry fetchPackument', () => {
     expect(spawns).toBe(3)
   })
 
-  it('reports valid JSON of a foreign shape as unparseable', async () => {
+  it.each(['{}', '[]', '[{}, {}]', '[null]', '["text"]', '[[]]'])(
+    'reports invalid or ambiguous document %s as unparseable', async stdout => {
+      seam({
+        spawnOnce: () => viewOk(stdout),
+        sleep: () => Promise.resolve(),
+      })
+      expect(await fetchPackument()).toEqual({ ok: false, reason: 'unparseable' })
+    },
+  )
+
+  it('rejects multiple valid registry documents instead of selecting the first', async () => {
     seam({
-      spawnOnce: () => viewOk('{}'),
+      spawnOnce: () => viewOk(JSON.stringify([RAW_DOCUMENT, RAW_DOCUMENT])),
       sleep: () => Promise.resolve(),
     })
     expect(await fetchPackument()).toEqual({ ok: false, reason: 'unparseable' })
@@ -281,17 +295,18 @@ describe('updater/registry releaseFacts', () => {
     expect((await releaseFacts(packument, '0.4.0')).harnessLine).toBeUndefined()
   })
 
-  it('falls back to the targeted dependencies query for version-list packuments', async () => {
+  it.each(['object', 'array'])('reads targeted dependencies as an %s for version-list packuments', async format => {
     const queries: string[][] = []
+    const dependencies = {
+      '@ephemeral-ai/mayfly-ui': '0.1.0-rc.3',
+      '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.3',
+    }
     updaterInternals.spawnOnce = (cmd, args) => {
       queries.push([...args])
       return Promise.resolve({
         code: 0,
         signal: null,
-        stdout: JSON.stringify({
-          '@ephemeral-ai/mayfly-ui': '0.1.0-rc.3',
-          '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.3',
-        }),
+        stdout: JSON.stringify(format === 'array' ? [dependencies] : dependencies),
         stderr: '',
         timedOut: false,
       })
@@ -324,11 +339,24 @@ describe('updater/registry releaseFacts', () => {
     expect(release.names).toEqual(['@ephemeral-ai/mayfly'])
   })
 
-  it('survives a non-object targeted-query answer with an empty set', async () => {
-    updaterInternals.spawnOnce = () =>
-      Promise.resolve({ code: 0, signal: null, stdout: 'null', stderr: '', timedOut: false })
+  it.each(['null', '[]', '[{}, {}]', '[null]', '[42]', '[[]]'])(
+    'does not infer a harness pin from invalid or ambiguous dependencies %s', async stdout => {
+      updaterInternals.spawnOnce = () => viewOk(stdout)
+      const listed = normalizePackument({ 'dist-tags': {}, versions: ['0.1.0-rc.3'], time: {} })!
+      expect(await releaseFacts(listed, '0.1.0-rc.3')).toEqual({
+        names: ['@ephemeral-ai/mayfly'],
+        harnessLine: undefined,
+      })
+    },
+  )
+
+  it('does not select a harness pin from multiple dependency results', async () => {
+    updaterInternals.spawnOnce = () => viewOk(JSON.stringify([
+      { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' },
+      { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.3' },
+    ]))
     const listed = normalizePackument({ 'dist-tags': {}, versions: ['0.1.0-rc.3'], time: {} })!
-    expect((await releaseFacts(listed, '0.1.0-rc.3')).names).toEqual(['@ephemeral-ai/mayfly'])
+    expect((await releaseFacts(listed, '0.1.0-rc.3')).harnessLine).toBeUndefined()
   })
 
   it('publishedAt parses timestamps and reports unknowns', () => {

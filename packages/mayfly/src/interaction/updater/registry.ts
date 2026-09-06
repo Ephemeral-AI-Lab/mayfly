@@ -106,10 +106,22 @@ export function normalizePackument(raw: unknown): Packument | undefined {
   return { tags: normalizedTags, versions: normalizedVersions, time: normalizedTime }
 }
 
+/** Read one object, accepting npm 12's singleton result array. */
+function parseSingleRecord(stdout: string): Record<string, unknown> | undefined {
+  let parsed: unknown = JSON.parse(stdout)
+  if (Array.isArray(parsed)) {
+    if (parsed.length !== 1) return undefined
+    parsed = parsed[0]
+  }
+  return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : undefined
+}
+
 /** Parse stdout text into a packument, classifying the failure mode. */
 function parseViewOutput(stdout: string): RegistryResult {
   try {
-    const packument = normalizePackument(JSON.parse(stdout))
+    const packument = normalizePackument(parseSingleRecord(stdout))
     if (packument === undefined) return { ok: false, reason: 'unparseable' }
     return { ok: true, packument }
   } catch {
@@ -224,10 +236,10 @@ async function viewDependencies(version: string): Promise<Record<string, string>
   })
   if (outcome.spawnError !== undefined || outcome.code !== 0) return undefined
   try {
-    const parsed: unknown = JSON.parse(outcome.stdout)
-    if (typeof parsed !== 'object' || parsed === null) return undefined
+    const parsed = parseSingleRecord(outcome.stdout)
+    if (parsed === undefined) return undefined
     const deps: Record<string, string> = {}
-    for (const [name, spec] of Object.entries(parsed as Record<string, unknown>)) {
+    for (const [name, spec] of Object.entries(parsed)) {
       if (typeof spec === 'string') deps[name] = spec
     }
     return deps

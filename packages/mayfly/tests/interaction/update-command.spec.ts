@@ -121,6 +121,7 @@ function packumentJson(options: { channelTag?: string; time?: Record<string, str
 /** One command world: temp profile at rc.2, scripted spawns, mounted command. */
 async function mountWorld(options: {
   packument?: string
+  dependencies?: string
   hostVersion?: string
   cooldownProbe?: string
   installBehavior?: (specs: string[]) => SpawnOutcome
@@ -158,7 +159,10 @@ async function mountWorld(options: {
   updaterInternals.spawnOnce = ((cmd: string, args: readonly string[], opts?: { cwd?: string; timeoutMs?: number }) => {
     spawns.push({ cmd, args: [...args] })
     void opts
-    if (cmd === 'npm') return Promise.resolve({ ...ok(), stdout: options.packument ?? packumentJson({ channelTag: TARGET_VERSION }) })
+    if (cmd === 'npm') {
+      const dependencies = args[2] === 'dependencies' ? options.dependencies : undefined
+      return Promise.resolve({ ...ok(), stdout: dependencies ?? options.packument ?? packumentJson({ channelTag: TARGET_VERSION }) })
+    }
     if (args[0] === '--version') {
       return Promise.resolve({ ...ok(), stdout: `${options.hostVersion ?? 'dsh 0.1.1-rc.2 (node v24)'}\n` })
     }
@@ -326,8 +330,9 @@ describe('/update early verdicts', () => {
     world.dispose()
   })
 
-  it('answers up to date without touching the profile', async () => {
-    const world = await mountWorld({ packument: packumentJson({ channelTag: CURRENT_VERSION }) })
+  it.each(['object', 'array'])('answers up to date from an %s without touching the profile', async format => {
+    const document: unknown = JSON.parse(packumentJson({ channelTag: CURRENT_VERSION }))
+    const world = await mountWorld({ packument: JSON.stringify(format === 'array' ? [document] : document) })
     const result = await world.run()
     expect(result).toEqual({ kind: 'success', text: `up to date (v${CURRENT_VERSION}; latest tag: ${CURRENT_VERSION})` })
     expect(world.spawns.some(call => call.args[0] === 'plugin')).toBe(false)
@@ -415,6 +420,26 @@ describe('/update early verdicts', () => {
     world.dispose()
   })
 
+  it.each(['/update', `/update ${TARGET_VERSION}`])('checks the harness pin from npm 12 for %s', async command => {
+    const world = await mountWorld({
+      packument: JSON.stringify([{
+        'dist-tags': { latest: TARGET_VERSION },
+        versions: [CURRENT_VERSION, TARGET_VERSION],
+        time: { [TARGET_VERSION]: '2026-08-23T00:00:00.000Z' },
+      }]),
+      dependencies: JSON.stringify([{ '@deepseek-ai/dsh-agent-presets': '0.1.2-alpha.5' }]),
+      hostVersion: 'dsh 0.1.2-alpha.4',
+    })
+    expect(await world.run(command)).toEqual({ kind: 'success' })
+    expect(overlayRows(world.screen)).toContain('npm i -g @deepseek-ai/dsh@0.1.2-alpha.5')
+    expect(world.spawns.filter(call => call.cmd === 'npm').map(call => call.args)).toEqual([
+      ['view', '@ephemeral-ai/mayfly', '--json'],
+      ['view', `@ephemeral-ai/mayfly@${TARGET_VERSION}`, 'dependencies', '--json'],
+    ])
+    expect(world.spawns.some(call => call.args[0] === 'plugin')).toBe(false)
+    world.dispose()
+  })
+
   it('blocks inside the cooldown window with the ETA on the panel', async () => {
     const world = await mountWorld({
       packument: packumentJson({ channelTag: TARGET_VERSION, time: { [TARGET_VERSION]: '2026-08-24T23:00:00.000Z' } }),
@@ -483,13 +508,23 @@ describe('/update confirm and swap', () => {
     world.dispose()
   })
 
-  it('cancels cleanly on Esc at the confirm form', async () => {
-    const world = await mountWorld()
+  it.each(['object', 'array'])('cancels cleanly after reading npm results as an %s', async format => {
+    const document = {
+      'dist-tags': { latest: TARGET_VERSION },
+      versions: [CURRENT_VERSION, TARGET_VERSION],
+      time: { [TARGET_VERSION]: '2026-08-23T00:00:00.000Z' },
+    }
+    const dependencies = { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' }
+    const world = await mountWorld({
+      packument: JSON.stringify(format === 'array' ? [document] : document),
+      dependencies: JSON.stringify(format === 'array' ? [dependencies] : dependencies),
+    })
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     ;(overlay as { handleInput(data: string): void }).handleInput(KEY.escape)
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'success', text: 'update cancelled' })
+    expect(world.spawns.some(call => call.args[0] === 'plugin')).toBe(false)
     world.dispose()
   })
 
