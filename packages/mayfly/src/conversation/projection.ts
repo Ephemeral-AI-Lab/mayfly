@@ -10,6 +10,7 @@ import type { ContentBlock, ImageBlock } from '@deepseek-ai/dsh-llm'
 import { isAppendSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
+import { appendOutputProgress, outputProgressSchema } from './output-progress.ts'
 import type {
   ConversationAssistantEntry,
   ConversationEntry,
@@ -50,7 +51,7 @@ const entryBase = {
 const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
   z.object({ ...entryBase, kind: z.literal('user'), text: z.string(), images: z.array(imageSchema) }),
   z.object({ ...entryBase, kind: z.literal('assistant'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean() }),
-  z.object({ ...entryBase, kind: z.literal('thinking'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean() }),
+  z.object({ ...entryBase, kind: z.literal('thinking'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean(), outputProgress: outputProgressSchema.optional() }),
   z.object({
     ...entryBase,
     kind: z.literal('tool'),
@@ -250,7 +251,10 @@ function applyReasoningChunk(
 ): ConversationProjectionState {
   if (state.streamingThinkingId !== null) {
     return replaceEntry(state, state.streamingThinkingId, event.seq, entry => entry.kind === 'thinking'
-      ? { ...entry, text: entry.text + text }
+      ? {
+          ...entry, text: entry.text + text, streaming: entry.streaming || text.trim() !== '',
+          outputProgress: appendOutputProgress(entry.streaming ? entry.outputProgress : undefined, text.length, event.time),
+        }
       : entry)
   }
   const pendingReasoning = state.pendingReasoning + text
@@ -265,6 +269,7 @@ function applyReasoningChunk(
     step: event.data.step,
     text: pendingReasoning,
     streaming: true,
+    outputProgress: appendOutputProgress(undefined, pendingReasoning.length, event.time),
   }
   const entries = [...state.entries]
   const assistantIndex = entryIndex(entries, state.streamingAssistantId)
@@ -277,6 +282,7 @@ function applyTextChunk(
   event: SessionEvent<'assistant/chunk'>,
   text: string,
 ): ConversationProjectionState {
+  state = pauseThinking(state, event.seq)
   if (state.streamingAssistantId !== null) {
     return replaceEntry(state, state.streamingAssistantId, event.seq, entry => entry.kind === 'assistant'
       ? { ...entry, text: entry.text + text }
@@ -294,6 +300,14 @@ function applyTextChunk(
     streaming: true,
   }
   return { ...appendEntry(state, entry), streamingAssistantId: id }
+}
+
+/** Retain the entry id so the final authoritative message still rewrites it. */
+function pauseThinking(state: ConversationProjectionState, seq: number): ConversationProjectionState {
+  if (state.streamingThinkingId === null) return state
+  return replaceEntry(state, state.streamingThinkingId, seq, entry => entry.kind === 'thinking' && entry.streaming
+    ? { ...entry, streaming: false }
+    : entry)
 }
 
 function finalizeAssistant(
@@ -445,7 +459,12 @@ export function foldConversationProjection(
       if (state.retractedTurns.includes(turn)) return state
       const key = stepKey(turn, step)
       if (state.interruptedTurns.includes(turn) || state.finalizedSteps.includes(key)) return state
+      if (chunk.type === 'finish'
+        || chunk.type === 'tool-call-delta'
+        || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')
+        || (chunk.type === 'block-end' && chunk.block.type === 'reasoning')) return pauseThinking(state, event.seq)
       if (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta') return state
+      if (chunk.text === '') return state
       const opened = openStreamingStep(state, turn, step, event.seq)
       return chunk.type === 'reasoning-delta'
         ? applyReasoningChunk(opened, event, chunk.text)
@@ -472,7 +491,7 @@ export function foldConversationProjection(
         channel: toolChannel(event.data.name),
       }
       return {
-        ...appendEntry(state, entry),
+        ...appendEntry(pauseThinking(state, event.seq), entry),
         toolEntryIds: { ...state.toolEntryIds, [entry.callId]: id },
       }
     }
@@ -500,5 +519,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
     viewSchema: conversationProjectionSchema,
     view: state => ({ entries: state.entries, streaming: state.active }),
   },
-  stateVersion: 3,
+  stateVersion: 4,
 }

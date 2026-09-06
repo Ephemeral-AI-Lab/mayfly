@@ -2,7 +2,7 @@
   "name": "@ephemeral-ai/mayfly",
   "description": "The Mayfly terminal UI bundle for DeepSeek Harness",
   "keywords": ["dsh", "deepseek-harness", "dsh-plugin", "mayfly", "tui", "terminal-ui", "cordis", "pi-tui", "coding-agent"],
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "publishConfig": { "access": "public" },
   "type": "module",
   "main": "lib/index.js",

@@ -1,7 +1,7 @@
 {
   "name": "@ephemeral-ai/mayfly-cli",
   "description": "The Mayfly launcher with a prepacked, pinned dsh runtime",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "publishConfig": {
     "access": "public"
   },

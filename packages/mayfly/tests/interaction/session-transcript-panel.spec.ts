@@ -156,6 +156,8 @@ describe('SessionTranscriptPanel', () => {
       stepStart(1, 1),
       reasoningDelta(1, 1, 'thinking'),
       toolCallEvent(1, 1, 'call-1', 'inspect', '{}'),
+      stepStart(1, 2),
+      reasoningDelta(1, 2, 'thinking after the tool'),
     ])
     const toolGet = vi.fn(() => undefined)
     const { ctx, screen } = context({ agentSession: live, toolGet })

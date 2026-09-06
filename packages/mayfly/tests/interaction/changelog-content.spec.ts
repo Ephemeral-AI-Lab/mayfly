@@ -9,7 +9,7 @@ import { CHANGELOG_ENTRIES } from '../../src/interaction/changelog-content.ts'
 
 describe('Mayfly changelog content', () => {
   it('starts with the current Mayfly release and no inherited history', () => {
-    expect(CHANGELOG_ENTRIES.map(entry => entry.version)).toEqual([MAYFLY_VERSION, '0.1.0-alpha.1'])
+    expect(CHANGELOG_ENTRIES.map(entry => entry.version)).toEqual([MAYFLY_VERSION, '0.1.0-alpha.2', '0.1.0-alpha.1'])
     expect(CHANGELOG_ENTRIES[0]).toMatchObject({
       version: MAYFLY_VERSION,
       knownIssues: [],

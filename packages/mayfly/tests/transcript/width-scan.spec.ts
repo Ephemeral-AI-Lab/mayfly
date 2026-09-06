@@ -95,6 +95,19 @@ function renderNode(node: MayflyUiNode, width: number): string[] {
 }
 
 describe('transcript width-scan', () => {
+  it('keeps live thinking metrics within every scan width', () => {
+    const now = Date.now()
+    const component = new ThinkingComponent({
+      kind: 'thinking', seq: 1, turn: 1, step: 1, text: '界'.repeat(4_800), streaming: true,
+      outputProgress: { chars: 4_800, initialChars: 4, startedAt: now - 1_000, updatedAt: now },
+    }, colors, fakeMayflyComponents())
+    try {
+      for (const width of SCAN_WIDTHS) expectLinesFit('Thinking/LiveMetrics', component.render(width), width)
+    } finally {
+      component.dispose()
+    }
+  })
+
   for (const locale of ['en', 'zh'] as const) {
     it(`localized transcript chrome survives every width in ${locale}`, () => {
       const components = fakeMayflyComponents()

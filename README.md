@@ -18,13 +18,20 @@ English | [中文](README.zh.md)
 Mayfly is an interactive terminal UI for
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`).
 It is an out-of-tree Cordis bundle over `dsh-base`, built against Harness
-`0.1.2-alpha.5`. Mayfly `0.1.0-alpha.2` deliberately uses the same plugin
+`0.1.2-alpha.5`. Mayfly `0.1.0-alpha.3` deliberately uses the same plugin
 model as dsh Web: plugins are ordinary Cordis siblings and consume native dsh
 services directly.
 
 Mayfly renders Markdown tables, closed Mermaid fences in assistant messages,
 and renderer-neutral line, point, bar, sparkline, and heatmap nodes directly in
 the terminal, with width-safe source or text fallbacks.
+
+While reasoning streams, its heading shows the current thinking block's
+estimated token count and output rate, for example
+`thinking... ↓1.2k · ≈42 tok/s`. When the answer starts, thinking stops
+animating and the activity row shows the answer phase's own count and rate.
+Rates use four characters per token, exclude first-chunk latency, and disappear
+after two seconds without output. Narrow terminals omit tips and rates first.
 
 <p align="center">
   <img src="website/public/shots/app-conversation.svg" width="720" alt="Mayfly terminal with a live transcript, tool card, editor, and status bar">

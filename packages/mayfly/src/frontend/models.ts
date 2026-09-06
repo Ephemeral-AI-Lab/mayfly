@@ -8,7 +8,7 @@ export interface TranscriptImageModel { readonly attachmentId: string; readonly 
 interface TranscriptEntryBase { readonly id: string; readonly seq: number; readonly updatedSeq: number; readonly turn: number }
 export interface TranscriptUserModel extends TranscriptEntryBase { readonly kind: 'transcript-user'; readonly text: string; readonly images: readonly TranscriptImageModel[] }
 export interface TranscriptAssistantModel extends TranscriptEntryBase { readonly kind: 'transcript-assistant'; readonly step: number; readonly text: string; readonly streaming: boolean }
-export interface TranscriptThinkingModel extends TranscriptEntryBase { readonly kind: 'transcript-thinking'; readonly step: number; readonly text: string; readonly streaming: boolean }
+export interface TranscriptThinkingModel extends TranscriptEntryBase { readonly kind: 'transcript-thinking'; readonly step: number; readonly text: string; readonly streaming: boolean; readonly outputProgress?: import('../conversation/types.ts').OutputProgress | undefined }
 export interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
 export interface TranscriptToolModel extends TranscriptEntryBase { readonly kind: 'transcript-tool'; readonly step: number; readonly callId: string; readonly name: string; readonly arguments: string; readonly startedAt: number; readonly result?: TranscriptToolResultModel; readonly presentation?: ToolPresentationModel }
 /** One bounded preview line carried for a read window's expanded view. */
