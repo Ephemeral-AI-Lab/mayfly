@@ -19,6 +19,8 @@ export class SearchInput {
 
   get pending(): boolean { return this.pasting }
   get text(): string { return this.editor.getExpandedText() }
+  setText(text: string): void { if (text !== this.text) this.editor.setText(text) }
+  render(width: number, focused: boolean): string[] { this.editor.focused = focused; return this.editor.renderContent(width) }
   clear(): void { this.editor.setText(''); this.pasteBuffer = ''; this.pasting = false }
 
   handleInput(data: string, backspace = false): boolean {

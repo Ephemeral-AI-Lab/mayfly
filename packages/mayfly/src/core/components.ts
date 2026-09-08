@@ -15,7 +15,6 @@ import {
   Image,
   Markdown,
   SelectList,
-  SettingsList,
   fuzzyFilter,
   fuzzyMatch,
   getImageDimensions,
@@ -28,8 +27,6 @@ import {
   type ImageTheme,
   type MarkdownTheme,
   type SelectListTheme,
-  type SettingItem,
-  type SettingsListTheme,
   type TUI,
 } from '@earendil-works/pi-tui'
 import { highlightCodeLines } from './highlight.ts'
@@ -61,8 +58,6 @@ import type {
   MayflySelectList,
   MayflySelectListOptions,
   MayflySemanticColors,
-  MayflySettingsList,
-  MayflySettingsListOptions,
   MayflyTheme,
   MayflyTopRuleOptions,
 } from './types.ts'
@@ -127,25 +122,6 @@ function markdownTheme(colors: MayflySemanticColors): MarkdownTheme {
 /** Map the palette to an image theme: only the text-fallback color is used. */
 function imageTheme(colors: MayflySemanticColors): ImageTheme {
   return { fallbackColor: colors.muted }
-}
-
-/**
- * Map the palette to a settings-list theme; `cursor` is a plain string.
- * The selected row's label and value take the interaction primary (S12
- * closes the S10 review item that left them on accent — the selected row
- * is an interaction target, `primary` is its token). Unselected values
- * paint plain `text`, not `muted`: the value column is content, and a dim
- * value column left the selected row indistinguishable (the S38 contrast
- * finding).
- */
-function settingsListTheme(colors: MayflySemanticColors): SettingsListTheme {
-  return {
-    label: (text, selected) => (selected ? colors.primary(text) : colors.text(text)),
-    value: (text, selected) => (selected ? colors.primary(text) : colors.text(text)),
-    description: colors.muted,
-    cursor: colors.primary('❯ '),
-    hint: colors.muted,
-  }
 }
 
 /**
@@ -643,27 +619,6 @@ class SelectListAdapter implements MayflySelectList {
   }
 }
 
-/** Delegate exposing a pi-tui `SettingsList` through the Mayfly contract. */
-class SettingsListAdapter implements MayflySettingsList {
-  constructor(private readonly list: SettingsList) {}
-
-  updateValue(id: string, newValue: string): void {
-    this.list.updateValue(id, newValue)
-  }
-
-  render(width: number): string[] {
-    return this.list.render(width)
-  }
-
-  handleInput(data: string): void {
-    this.list.handleInput(data)
-  }
-
-  invalidate(): void {
-    this.list.invalidate()
-  }
-}
-
 /** Constructor config for {@link MayflyComponentsService} (Cordis class-plugin arity). */
 export interface MayflyComponentsDeps {
   /** The active semantic color provider. */
@@ -804,31 +759,6 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     if (options.onCancel !== undefined) list.onCancel = options.onCancel
     if (options.onSelectionChange !== undefined) list.onSelectionChange = options.onSelectionChange
     return new SelectListAdapter(list)
-  }
-
-  /**
-   * Create a palette-themed settings list.
-   * @param options - items and change callbacks.
-   * @returns the settings component.
-   */
-  createSettingsList(options: MayflySettingsListOptions): MayflySettingsList {
-    // SettingsListOptions is not re-exported from pi-tui's package root;
-    // its only field is enableSearch.
-    const listOptions: { enableSearch?: boolean } = {}
-    if (options.enableSearch !== undefined) listOptions.enableSearch = options.enableSearch
-    // MayflySettingItem and pi-tui's SettingItem are structurally identical
-    // (the MayflyComponent submenu result satisfies pi-tui's Component), so
-    // the item list passes through unchanged.
-    return new SettingsListAdapter(
-      new SettingsList(
-        options.items as SettingItem[],
-        options.maxVisible ?? 10,
-        settingsListTheme(this.theme.colors),
-        options.onChange,
-        options.onCancel,
-        listOptions,
-      ),
-    )
   }
 
   /**

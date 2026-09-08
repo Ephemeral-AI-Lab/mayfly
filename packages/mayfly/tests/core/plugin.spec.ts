@@ -2,7 +2,8 @@
  * REAL-composition test: boot the mayfly-core plugin plus the mayfly-theme-dark
  * entry through the real Loader from a cordis.yml in a temp directory,
  * asserting the terminal starts, all five services register, the global key
- * dispatcher consumes handler actions before focus routing, the
+ * dispatcher consumes handler actions before ordinary focus routing while
+ * active editor overlays retain capture priority, the
  * terminal-theme-changed broadcast fires, and unloading restores the
  * terminal and removes the services and the dispatcher listener.
  */
@@ -16,6 +17,7 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import type { MayflyPaneRegistry } from '../../../ui/src/contracts.ts'
 import { apply as uiProviderApply } from '../../../ui/src/provider.ts'
+import { apply as frontendApply } from '../../src/frontend/index.ts'
 import { apply } from '../../src/core/index.ts'
 import { apply as themeDarkApply } from '../../src/core/theme-dark.ts'
 import { mkdtempTracked, registerTempDirCleanup } from './temp-dir.ts'
@@ -54,6 +56,10 @@ async function bootMayflyCore(): Promise<{ ctx: Context; output: () => string; p
 export const name = 'mayfly-ui-provider'
 export const apply = ctx => globalThis.__mayflyUiProviderApply(ctx)
 `)
+  writeFileSync(join(dir, 'mayfly-frontend.mjs'), `
+export const name = 'mayfly-frontend'
+export const apply = ctx => globalThis.__mayflyFrontendApply(ctx)
+`)
   writeFileSync(join(dir, 'mayfly-core.mjs'), `
 await globalThis.__delayMayflyCoreImport()
 export const name = 'mayfly-core'
@@ -71,6 +77,8 @@ export const apply = ctx => globalThis.__externalPaneApply(ctx)
   writeFileSync(join(dir, 'cordis.yml'), [
     '- id: mayfly-ui-provider',
     `  name: ${pathToFileURL(join(dir, 'mayfly-ui-provider.mjs')).href}`,
+    '- id: mayfly-frontend',
+    `  name: ${pathToFileURL(join(dir, 'mayfly-frontend.mjs')).href}`,
     '- id: external-pane',
     `  name: ${pathToFileURL(join(dir, 'external-pane.mjs')).href}`,
     '- id: mayfly-core',
@@ -82,12 +90,14 @@ export const apply = ctx => globalThis.__externalPaneApply(ctx)
   const globals = globalThis as unknown as {
     __mayflyCoreApply: typeof apply
     __mayflyUiProviderApply: typeof uiProviderApply
+    __mayflyFrontendApply: typeof frontendApply
     __delayMayflyCoreImport: () => Promise<void>
     __mayflyThemeDarkApply: typeof themeDarkApply
     __externalPaneApply: (ctx: Context) => void
   }
   const pane: StartupPaneProbe = { coreApplyStarted: false, appliedBeforeCore: false, appliedBeforeScreen: false, registerOk: false, renders: 0, gapRenders: 0 }
   globals.__mayflyUiProviderApply = uiProviderApply
+  globals.__mayflyFrontendApply = frontendApply
   globals.__delayMayflyCoreImport = () => new Promise<void>(resolve => setTimeout(resolve, 50))
   globals.__mayflyCoreApply = (ctx) => {
     pane.coreApplyStarted = true
@@ -205,11 +215,30 @@ describe('mayfly-core plugin through the real Loader', () => {
     await new Promise<void>(resolve => setTimeout(resolve, 50))
     expect(received).toEqual(['a'])
 
+    const captured: string[] = []
+    const panel = {
+      focused: false,
+      render: () => ['capturing'],
+      invalidate: () => {},
+      handleInput: (data: string) => captured.push(data),
+    }
+    ctx.mayflyScreen.setEditorReplacement(panel)
+    expect(ctx.mayflyScreen.capturesInput).toBe(true)
+    process.stdin.emit('data', Buffer.from('\x0f', 'utf8'))
+    await new Promise<void>(resolve => setTimeout(resolve, 50))
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(captured).toEqual(['\x0f'])
+    ctx.mayflyScreen.setEditorReplacement(null)
+    expect(ctx.mayflyScreen.capturesInput).toBe(false)
+    process.stdin.emit('data', Buffer.from('\x0f', 'utf8'))
+    await new Promise<void>(resolve => setTimeout(resolve, 50))
+    expect(handler).toHaveBeenCalledTimes(2)
+
     // Unloading removes the dispatcher listener with the fiber.
     await ctx.fiber.dispose()
     process.stdin.emit('data', Buffer.from('\x0f', 'utf8'))
     await new Promise<void>(resolve => setTimeout(resolve, 50))
-    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledTimes(2)
   })
 
   it('stops the terminal and removes the services when the tree unloads', async () => {

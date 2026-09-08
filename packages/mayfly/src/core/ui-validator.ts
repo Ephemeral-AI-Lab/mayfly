@@ -24,6 +24,9 @@ import type {
   MayflyUiChild,
   MayflyUiNode,
   MayflyViewportCondition,
+  MayflyPagePath,
+  MayflyPageSegment,
+  MayflyFieldValue,
 } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult } from './ui-contracts.ts'
 
@@ -52,6 +55,7 @@ class ValidationFault extends Error {
 
 interface ValidationState {
   readonly active: WeakSet<object>
+  pagePath: MayflyPagePath
   scrollDepth: number
   editorControls: number
   readonly budget: ValidationBudget
@@ -62,6 +66,8 @@ interface ValidationBudget {
   text: number
   chartCells: number
   readonly controlIds: Set<string>
+  readonly tabs: Map<string, ReadonlySet<string>>
+  readonly pages: { readonly path: MayflyPagePath, readonly tab: MayflyPageSegment }[]
 }
 
 function invalid(message: string): never {
@@ -155,10 +161,32 @@ function identifier(value: unknown, path: string, state: ValidationState, reserv
   const result = text(value, path, state)
   if (result.trim().length === 0) invalid(`${path} must not be empty`)
   if (reserve) {
-    if (state.budget.controlIds.has(result)) invalid(`control id "${result}" is duplicated`)
-    state.budget.controlIds.add(result)
+    reserveControl(result, state)
   }
   return result
+}
+
+function pageControl(path: MayflyPagePath, id: string): string {
+  return JSON.stringify([path.map(segment => [segment.controlId, segment.itemId]), id])
+}
+
+function reserveControl(id: string, state: ValidationState): void {
+  const key = pageControl(state.pagePath, id)
+  if (state.budget.controlIds.has(key)) invalid(`control id "${id}" is duplicated`)
+  state.budget.controlIds.add(key)
+}
+
+function pageSegment(value: unknown, path: string, state: ValidationState): MayflyPageSegment {
+  return enter(value, path, state, object => ({
+    controlId: identifier(required(object, 'controlId', path), `${path}.controlId`, state),
+    itemId: identifier(required(object, 'itemId', path), `${path}.itemId`, state),
+  }))
+}
+
+function validatePages(budget: ValidationBudget): void {
+  for (const page of budget.pages) {
+    if (!budget.tabs.get(pageControl(page.path, page.tab.controlId))?.has(page.tab.itemId)) invalid('page association references an unknown tab')
+  }
 }
 
 function enumeration<Value extends string | number>(value: unknown, values: readonly Value[], path: string): Value {
@@ -234,6 +262,9 @@ function listItem(value: unknown, path: string, state: ValidationState): MayflyL
       ...optional(detailSpansValue === undefined ? undefined : spans(detailSpansValue, `${path}.detailSpans`, state), 'detailSpans'),
       ...optional(optionalText(object, 'badge', path, state), 'badge'),
       ...optional(optionalText(object, 'group', path, state), 'group'),
+      ...optional(optionalText(object, 'disabledReason', path, state), 'disabledReason'),
+      ...optional(optionalText(object, 'parentId', path, state), 'parentId'),
+      ...optional(optionalText(object, 'searchText', path, state), 'searchText'),
       ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`), 'disabled'),
     }
   })
@@ -256,9 +287,12 @@ function validationState(budget: ValidationBudget = {
   text: 0,
   chartCells: 0,
   controlIds: new Set(),
+  tabs: new Map(),
+  pages: [],
 }): ValidationState {
   return {
     active: new WeakSet(),
+    pagePath: [],
     scrollDepth: 0,
     editorControls: 0,
     budget,
@@ -272,6 +306,7 @@ interface DeferredUiAdmission {
   readonly scrollDepth: number
   readonly budget: ValidationBudget
   readonly mayHaveControls: boolean
+  readonly pagePath: MayflyPagePath
   result?: MayflyValidationResult<MayflyUiNode>
 }
 
@@ -294,9 +329,9 @@ function deferredMayHaveControls(source: unknown): boolean {
   }
 }
 
-function deferredUiNode(source: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget): MayflyUiNode {
+function deferredUiNode(source: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget, pagePath: MayflyPagePath): MayflyUiNode {
   const placeholder = Object.freeze({ kind: 'spacer' as const, size: 1 as const })
-  deferredUiNodes.set(placeholder, { source, path, depth, scrollDepth, budget, mayHaveControls: deferredMayHaveControls(source) })
+  deferredUiNodes.set(placeholder, { source, path, depth, scrollDepth, budget, pagePath, mayHaveControls: deferredMayHaveControls(source) })
   return placeholder
 }
 
@@ -315,6 +350,11 @@ export function materializedDeferredUiNode(value: MayflyUiNode): MayflyValidatio
   return deferredUiNodes.get(value)?.result
 }
 
+/** Core can inspect declaration identities without admitting a hidden branch's content. */
+export function deferredUiNodeSource(value: MayflyUiNode): unknown {
+  return deferredUiNodes.get(value)?.source
+}
+
 /** Materialize one responsive subtree the first time its viewport condition becomes active. */
 export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidationResult<MayflyUiNode> | undefined {
   const deferred = deferredUiNodes.get(value)
@@ -325,17 +365,24 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     text: deferred.budget.text,
     chartCells: deferred.budget.chartCells,
     controlIds: new Set(deferred.budget.controlIds),
+    tabs: new Map(deferred.budget.tabs),
+    pages: deferred.budget.pages.length,
   }
   const state = validationState(deferred.budget)
   state.scrollDepth = deferred.scrollDepth
+  state.pagePath = deferred.pagePath
   try {
     deferred.result = { ok: true, value: freeze(node(deferred.source, deferred.path, state, deferred.depth, 'ui')) }
+    validatePages(deferred.budget)
   } catch (error) {
     deferred.budget.nodes = checkpoint.nodes
     deferred.budget.text = checkpoint.text
     deferred.budget.chartCells = checkpoint.chartCells
     deferred.budget.controlIds.clear()
     for (const id of checkpoint.controlIds) deferred.budget.controlIds.add(id)
+    deferred.budget.tabs.clear()
+    for (const [id, items] of checkpoint.tabs) deferred.budget.tabs.set(id, items)
+    deferred.budget.pages.splice(checkpoint.pages)
     deferred.result = error instanceof ValidationFault
       ? { ok: false, code: error.code, message: error.message }
       : { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly UI validation failed safely' }
@@ -443,13 +490,42 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
     const intentValue = own(object, 'intent', path)
     const disabledValue = own(object, 'disabled', path)
     const busyValue = own(object, 'busy', path)
+    const defaultFocus = own(object, 'defaultFocus', path)
+    const dismiss = own(object, 'dismiss', path)
+    const submitValue = own(object, 'submit', path)
+    const submit = submitValue === undefined ? undefined : collection(submitValue, `${path}.submit`).map((entry, index) => enter(entry, `${path}.submit[${index}]`, state, target => ({
+      formId: identifier(required(target, 'formId', path), `${path}.submit[${index}].formId`, state),
+      pagePath: collection(required(target, 'pagePath', path), `${path}.submit[${index}].pagePath`).map((segment, segmentIndex) => pageSegment(segment, `${path}.submit[${index}].pagePath[${segmentIndex}]`, state)),
+    })))
+    if (submit !== undefined && (submit.length === 0 || new Set(submit.map(target => pageControl(target.pagePath, target.formId))).size !== submit.length)) invalid(`${path}.submit requires unique form addresses`)
+    const readValue = own(object, 'read', path)
+    const navigateValue = own(object, 'navigate', path)
+    const navigate = navigateValue === undefined ? undefined : collection(navigateValue, `${path}.navigate`).map((segment, index) => pageSegment(segment, `${path}.navigate[${index}]`, state))
+    if (navigate !== undefined && (navigate.length === 0 || submit !== undefined || dismiss === true)) invalid(`${path}.navigate requires a destination and cannot submit or dismiss`)
+    const read = readValue === undefined ? undefined : collection(readValue, `${path}.read`).map((entry, index) => enter(entry, `${path}.read[${index}]`, state, target => ({
+      formId: identifier(required(target, 'formId', path), `${path}.read[${index}].formId`, state),
+      pagePath: collection(required(target, 'pagePath', path), `${path}.read[${index}].pagePath`).map((segment, segmentIndex) => pageSegment(segment, `${path}.read[${index}].pagePath[${segmentIndex}]`, state)),
+    })))
+    if (read !== undefined && submit !== undefined) invalid(`${path} cannot both read and submit forms`)
+    const selectionsValue = own(object, 'selections', path)
+    const selections = selectionsValue === undefined ? undefined : collection(selectionsValue, `${path}.selections`).map((entry, index) => enter(entry, `${path}.selections[${index}]`, state, target => ({
+      controlId: identifier(required(target, 'controlId', path), `${path}.selections[${index}].controlId`, state),
+      pagePath: collection(required(target, 'pagePath', path), `${path}.selections[${index}].pagePath`).map((segment, segmentIndex) => pageSegment(segment, `${path}.selections[${index}].pagePath[${segmentIndex}]`, state)),
+    })))
     return {
       id: text(required(object, 'id', path), `${path}.id`, state),
       label: text(required(object, 'label', path), `${path}.label`, state),
       ...optional(intentValue === undefined ? undefined : enumeration(intentValue, ['primary', 'secondary', 'danger'], `${path}.intent`), 'intent'),
       ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`), 'disabled'),
+      ...optional(optionalText(object, 'disabledReason', path, state), 'disabledReason'),
       ...optional(busyValue === undefined ? undefined : boolean(busyValue, `${path}.busy`), 'busy'),
       ...optional(optionalText(object, 'confirm', path, state), 'confirm'),
+      ...optional(defaultFocus === undefined ? undefined : boolean(defaultFocus, `${path}.defaultFocus`), 'defaultFocus'),
+      ...optional(dismiss === undefined ? undefined : boolean(dismiss, `${path}.dismiss`), 'dismiss'),
+      ...optional(submit, 'submit'),
+      ...optional(read, 'read'),
+      ...optional(selections, 'selections'),
+      ...optional(navigate, 'navigate'),
     }
   })
 }
@@ -543,10 +619,11 @@ function uiChild<Node>(
   state: ValidationState,
   depth: number,
   parseNode: (value: unknown, path: string, state: ValidationState, depth: number) => Node,
-  deferWhen?: (value: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget) => Node,
+  deferWhen?: (value: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget, pagePath: MayflyPagePath) => Node,
 ): Omit<MayflyUiChild, 'node'> & { readonly node: Node } {
   return enter(value, path, state, object => {
     const basisValue = own(object, 'basis', path)
+    const idValue = own(object, 'id', path)
     const basis = basisValue === undefined ? undefined : basisValue === 'auto' ? 'auto' : finiteInteger(basisValue, `${path}.basis`)
     const growValue = own(object, 'grow', path)
     const shrinkValue = own(object, 'shrink', path)
@@ -554,14 +631,28 @@ function uiChild<Node>(
     const maxValue = own(object, 'maxSize', path)
     const whenValue = own(object, 'when', path)
     const when = whenValue === undefined ? undefined : viewportCondition(whenValue, `${path}.when`)
+    const tabValue = own(object, 'tab', path)
+    if (tabValue !== undefined && deferWhen === undefined) invalid(`${path}.tab is only supported in UI content`)
+    const tab = tabValue === undefined ? undefined : pageSegment(tabValue, `${path}.tab`, state)
     const minSize = minValue === undefined ? undefined : finiteInteger(minValue, `${path}.minSize`)
     const maxSize = maxValue === undefined ? undefined : finiteInteger(maxValue, `${path}.maxSize`)
     if (minSize !== undefined && maxSize !== undefined && minSize > maxSize) invalid(`${path} size range is inverted`)
     const childValue = required(object, 'node', path)
-    return {
-      node: when === undefined || deferWhen === undefined
+    const parentPath = state.pagePath
+    if (tab !== undefined) {
+      state.budget.pages.push({ path: parentPath, tab })
+      state.pagePath = [...parentPath, tab]
+    }
+    let child: Node
+    try {
+      child = when === undefined || deferWhen === undefined
         ? parseNode(childValue, `${path}.node`, state, depth)
-        : deferWhen(childValue, `${path}.node`, depth, state.scrollDepth, state.budget),
+        : deferWhen(childValue, `${path}.node`, depth, state.scrollDepth, state.budget, state.pagePath)
+    } finally { state.pagePath = parentPath }
+    return {
+      node: child,
+      ...optional(idValue === undefined ? undefined : identifier(idValue, `${path}.id`, state), 'id'),
+      ...optional(tab, 'tab'),
       ...optional(basis, 'basis'),
       ...optional(growValue === undefined ? undefined : finiteInteger(growValue, `${path}.grow`), 'grow'),
       ...optional(shrinkValue === undefined ? undefined : finiteInteger(shrinkValue, `${path}.shrink`), 'shrink'),
@@ -589,30 +680,74 @@ function section(value: unknown, path: string, state: ValidationState, depth: nu
 
 function formField(value: unknown, path: string, state: ValidationState): MayflyFormField {
   return enter(value, path, state, object => {
-    const kind = enumeration(required(object, 'kind', path), ['input', 'textarea', 'secret', 'select', 'toggle'], `${path}.kind`)
+    const kind = enumeration(required(object, 'kind', path), ['input', 'textarea', 'secret', 'select', 'toggle', 'number', 'multiselect'], `${path}.kind`)
     const id = text(required(object, 'id', path), `${path}.id`, state)
     const label = text(required(object, 'label', path), `${path}.label`, state)
     const error = optionalText(object, 'error', path, state)
     const disabledValue = own(object, 'disabled', path)
     const disabled = disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`)
-    if (kind === 'toggle') return { kind, id, label, value: boolean(required(object, 'value', path), `${path}.value`), ...optional(error, 'error'), ...optional(disabled, 'disabled') }
-    if (kind === 'select') {
+    const requiredValue = own(object, 'required', path)
+    const originValue = own(object, 'origin', path)
+    const reset = own(object, 'resetValue', path)
+    const parseValue = (value: unknown, valuePath: string): MayflyFieldValue => {
+      if (kind === 'number') return nullableNumber(value, valuePath)
+      if (kind === 'toggle') return boolean(value, valuePath)
+      if (kind === 'select' && value === null) return null
+      if (kind === 'multiselect') {
+        const values = collection(value, valuePath).map((item, index) => identifier(item, `${valuePath}[${index}]`, state))
+        if (new Set(values).size !== values.length) invalid(`${valuePath} contains duplicate values`)
+        return values
+      }
+      return text(value, valuePath, state)
+    }
+    const common = {
+      id, label, ...optional(error, 'error'), ...optional(disabled, 'disabled'),
+      ...optional(optionalText(object, 'disabledReason', path, state), 'disabledReason'),
+      ...optional(requiredValue === undefined ? undefined : boolean(requiredValue, `${path}.required`), 'required'),
+      ...optional(originValue === undefined ? undefined : enumeration(originValue, ['inherited', 'explicit'], `${path}.origin`), 'origin'),
+      ...optional(reset === undefined ? undefined : parseValue(reset, `${path}.resetValue`), 'resetValue'),
+    }
+    if (kind === 'toggle') return { kind, ...common, value: boolean(required(object, 'value', path), `${path}.value`) }
+    if (kind === 'number') {
+      const minValue = own(object, 'min', path)
+      const maxValue = own(object, 'max', path)
+      const stepValue = own(object, 'step', path)
+      const min = minValue === undefined ? undefined : finiteNumber(minValue, `${path}.min`)
+      const max = maxValue === undefined ? undefined : finiteNumber(maxValue, `${path}.max`)
+      const step = stepValue === undefined ? undefined : finiteNumber(stepValue, `${path}.step`)
+      if (min !== undefined && max !== undefined && min > max) invalid(`${path} numeric range is inverted`)
+      if (step !== undefined && step <= 0) invalid(`${path}.step must be positive`)
+      return { kind, ...common, value: nullableNumber(required(object, 'value', path), `${path}.value`), ...optional(min, 'min'), ...optional(max, 'max'), ...optional(step, 'step'), ...optional(optionalText(object, 'unit', path, state), 'unit') }
+    }
+    if (kind === 'select' || kind === 'multiselect') {
       const raw = required(object, 'value', path)
-      if (raw !== null && typeof raw !== 'string') invalid(`${path}.value must be a string or null`)
       const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`, state))
       uniqueIds(options, `${path}.options`)
-      return { kind, id, label, value: raw, options, ...optional(error, 'error'), ...optional(disabled, 'disabled') }
+      if (kind === 'multiselect') return { kind, ...common, value: parseValue(raw, `${path}.value`) as readonly string[], options, ...selectionBounds(object, path) }
+      if (raw !== null && typeof raw !== 'string') invalid(`${path}.value must be a string or null`)
+      return { kind, ...common, value: raw, options }
     }
+    const minLengthValue = own(object, 'minLength', path)
+    const maxLengthValue = own(object, 'maxLength', path)
+    const minLength = minLengthValue === undefined ? undefined : finiteInteger(minLengthValue, `${path}.minLength`)
+    const maxLength = maxLengthValue === undefined ? undefined : finiteInteger(maxLengthValue, `${path}.maxLength`)
+    if (minLength !== undefined && maxLength !== undefined && minLength > maxLength) invalid(`${path} length range is inverted`)
     return {
-      kind,
-      id,
-      label,
+      kind, ...common,
       value: text(required(object, 'value', path), `${path}.value`, state),
       ...optional(optionalText(object, 'placeholder', path, state), 'placeholder'),
-      ...optional(error, 'error'),
-      ...optional(disabled, 'disabled'),
+      ...optional(minLength, 'minLength'), ...optional(maxLength, 'maxLength'),
     }
   })
+}
+
+function selectionBounds(object: Record<string, unknown>, path: string): { readonly minSelected?: number, readonly maxSelected?: number } {
+  const minValue = own(object, 'minSelected', path)
+  const maxValue = own(object, 'maxSelected', path)
+  const minSelected = minValue === undefined ? undefined : finiteInteger(minValue, `${path}.minSelected`)
+  const maxSelected = maxValue === undefined ? undefined : finiteInteger(maxValue, `${path}.maxSelected`)
+  if (minSelected !== undefined && maxSelected !== undefined && minSelected > maxSelected) invalid(`${path} selection range is inverted`)
+  return { ...optional(minSelected, 'minSelected'), ...optional(maxSelected, 'maxSelected') }
 }
 
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'ui', viewOnly?: false): MayflyUiNode
@@ -655,6 +790,8 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['stretch', 'start', 'center', 'end'], `${path}.align`), 'align'),
         } as const
         const entries = collection(required(object, 'children', path), `${path}.children`)
+        const childIds = entries.map((entry, index) => own(record(entry, `${path}.children[${index}]`), 'id', `${path}.children[${index}]`)).filter(id => id !== undefined)
+        if (new Set(childIds).size !== childIds.length) invalid(`${path}.children contains duplicate content ids`)
         if (mode === 'status') {
           const children: readonly MayflyStatusChild[] = entries.map((item, index) => uiChild(item, `${path}.children[${String(index)}]`, state, depth + 1, (child, childPath, childState, childDepth) => node(child, childPath, childState, childDepth, 'status')))
           return { ...stack, children }
@@ -669,7 +806,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           state,
           depth + 1,
           (child, childPath, childState, childDepth) => node(child, childPath, childState, childDepth, 'ui'),
-          (child, childPath, childDepth, scrollDepth, budget) => deferredUiNode(child, childPath, childDepth, scrollDepth, budget),
+          (child, childPath, childDepth, scrollDepth, budget, pagePath) => deferredUiNode(child, childPath, childDepth, scrollDepth, budget, pagePath),
         ))
         return { ...stack, children }
       }
@@ -690,27 +827,44 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
       }
       case 'scroll': {
         if (state.scrollDepth > 0) invalid('nested scroll nodes are not supported')
+        const idValue = own(object, 'id', path)
+        const id = idValue === undefined ? undefined : identifier(idValue, `${path}.id`, state)
+        if (id !== undefined) reserveControl(id, state)
         const followValue = own(object, 'follow', path)
         const scrollbarValue = own(object, 'scrollbar', path)
         state.scrollDepth += 1
         try {
-          return { kind, child: node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui'), ...optional(followValue === undefined ? undefined : enumeration(followValue, ['none', 'start', 'end'], `${path}.follow`), 'follow'), ...optional(scrollbarValue === undefined ? undefined : boolean(scrollbarValue, `${path}.scrollbar`), 'scrollbar') }
+          return { kind, ...optional(id, 'id'), child: node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui'), ...optional(followValue === undefined ? undefined : enumeration(followValue, ['none', 'start', 'end'], `${path}.follow`), 'follow'), ...optional(scrollbarValue === undefined ? undefined : boolean(scrollbarValue, `${path}.scrollbar`), 'scrollbar') }
         } finally {
           state.scrollDepth -= 1
         }
       }
       case 'tabs': {
+        const modeValue = own(object, 'mode', path)
         const items = collection(required(object, 'items', path), `${path}.items`).map((item, index): MayflyTabItem => enter(item, `${path}.items[${String(index)}]`, state, entry => {
           const disabledValue = own(entry, 'disabled', `${path}.items[${String(index)}]`)
           const countValue = own(entry, 'count', `${path}.items[${String(index)}]`)
-          return { id: text(required(entry, 'id', path), `${path}.items[${String(index)}].id`, state), label: text(required(entry, 'label', path), `${path}.items[${String(index)}].label`, state), ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.items[${String(index)}].disabled`), 'disabled'), ...optional(countValue === undefined ? undefined : finiteInteger(countValue, `${path}.items[${String(index)}].count`), 'count') }
+          return { id: text(required(entry, 'id', path), `${path}.items[${String(index)}].id`, state), label: text(required(entry, 'label', path), `${path}.items[${String(index)}].label`, state), ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.items[${String(index)}].disabled`), 'disabled'), ...optional(countValue === undefined ? undefined : finiteInteger(countValue, `${path}.items[${String(index)}].count`), 'count'), ...optional(optionalText(entry, 'backId', `${path}.items[${String(index)}]`, state), 'backId') }
         }))
         uniqueIds(items, `${path}.items`)
         const activeId = identifier(required(object, 'activeId', path), `${path}.activeId`, state)
         if (!items.some(item => item.id === activeId)) invalid(`${path}.activeId is not present in items`)
-        return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), activeId, items }
+        for (const item of items) if (item.backId !== undefined && (item.backId === item.id || !items.some(target => target.id === item.backId))) invalid(`${path}.backId requires a different page in the same tabs`)
+        for (const item of items) {
+          const visited = new Set<string>()
+          let current: MayflyTabItem | undefined = item
+          while (current !== undefined) {
+            if (visited.has(current.id)) invalid(`${path}.backId cannot form a cycle`)
+            visited.add(current.id)
+            current = items.find(target => target.id === current!.backId)
+          }
+        }
+        const id = identifier(required(object, 'id', path), `${path}.id`, state, true)
+        state.budget.tabs.set(pageControl(state.pagePath, id), new Set(items.map(item => item.id)))
+        return { kind, id, activeId, items, ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['tabs', 'wizard'], `${path}.mode`), 'mode') }
       }
       case 'list': {
+        const role = enumeration(required(object, 'role', path), ['browse', 'choose'], `${path}.role`)
         const modeValue = own(object, 'mode', path)
         const emptyValue = own(object, 'empty', path)
         const itemsValue = required(object, 'items', path)
@@ -724,8 +878,22 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const selectedIds = collection(required(object, 'selectedIds', path), `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
         if ((modeValue ?? 'single') === 'single' && selectedIds.length > 1) invalid(`${path}.selectedIds has more than one id in single mode`)
-        if (itemCount <= MAYFLY_UI_MAX_COLLECTION && selectedIds.some(id => admittedListIndex(items, id) < 0)) invalid(`${path}.selectedIds contains an unknown id`)
-        return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
+        const filterable = own(object, 'filterable', path)
+        const tree = own(object, 'tree', path)
+        if (tree === true && itemCount <= MAYFLY_UI_MAX_COLLECTION) {
+          const byId = new Map(items.map(item => [item.id, item]))
+          for (const item of items) {
+            if (item.parentId === item.id) invalid(`${path}.items tree cannot parent an item to itself`)
+            const seen = new Set<string>([item.id])
+            let parent = item.parentId
+            while (parent !== undefined && byId.has(parent)) {
+              if (seen.has(parent)) invalid(`${path}.items tree cannot contain a cycle`)
+              seen.add(parent)
+              parent = byId.get(parent)!.parentId
+            }
+          }
+        }
+        return { kind, role, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
       }
       case 'form': {
         const fields = collection(required(object, 'fields', path), `${path}.fields`).map((item, index) => formField(item, `${path}.fields[${String(index)}]`, state))
@@ -733,15 +901,13 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const id = identifier(required(object, 'id', path), `${path}.id`, state, true)
         for (const field of fields) {
           if (field.id.trim().length === 0) invalid(`${path}.fields id must not be empty`)
-          if (state.budget.controlIds.has(field.id)) invalid(`control id "${field.id}" is duplicated`)
-          state.budget.controlIds.add(field.id)
+          reserveControl(field.id, state)
         }
         const submitActionId = optionalText(object, 'submitActionId', path, state)
         const cancelActionId = optionalText(object, 'cancelActionId', path, state)
+        if (submitActionId !== undefined && submitActionId === cancelActionId) invalid(`${path} submit and cancel action ids are duplicated`)
         for (const actionId of [submitActionId, cancelActionId]) if (actionId !== undefined) {
           if (actionId.trim().length === 0) invalid(`${path} action id must not be empty`)
-          if (state.budget.controlIds.has(actionId)) invalid(`control id "${actionId}" is duplicated`)
-          state.budget.controlIds.add(actionId)
         }
         return { kind, id, fields, ...optional(submitActionId, 'submitActionId'), ...optional(cancelActionId, 'cancelActionId') }
       }
@@ -750,8 +916,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         uniqueIds(items, `${path}.items`)
         for (const item of items) {
           if (item.id.trim().length === 0) invalid(`${path}.items id must not be empty`)
-          if (state.budget.controlIds.has(item.id)) invalid(`control id "${item.id}" is duplicated`)
-          state.budget.controlIds.add(item.id)
+          reserveControl(item.id, state)
         }
         return { kind, id: text(required(object, 'id', path), `${path}.id`, state), items }
       }
@@ -761,8 +926,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const cancelActionId = optionalText(object, 'cancelActionId', path, state)
         if (cancelActionId !== undefined) {
           if (cancelActionId.trim().length === 0) invalid(`${path}.cancelActionId must not be empty`)
-          if (state.budget.controlIds.has(cancelActionId)) invalid(`control id "${cancelActionId}" is duplicated`)
-          state.budget.controlIds.add(cancelActionId)
+          reserveControl(cancelActionId, state)
         }
         return { kind, message: text(required(object, 'message', path), `${path}.message`, state), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['braille', 'tide'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId') }
       }
@@ -902,6 +1066,7 @@ function validate<Value>(value: unknown, mode: ValidationMode): MayflyValidation
       if (state.editorControls !== 1) invalid(`editor shell must contain exactly one editor-control; received ${String(state.editorControls)}`)
       assertEditorControlVisible(result as MayflyEditorShellNode)
     }
+    validatePages(state.budget)
     return { ok: true, value: freeze(result) as Value }
   } catch (error) {
     if (error instanceof ValidationFault) return { ok: false, code: error.code, message: error.message }

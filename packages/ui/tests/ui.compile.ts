@@ -2,6 +2,8 @@ import {
   defineMayflyComponent,
   ui,
   type MayflyEditorExtensionNode,
+  type MayflyUiActionHandler,
+  type MayflyUiEventHandlers,
   type MayflyStatusNode,
   type MayflyUiChild,
   type MayflyUiNode,
@@ -25,6 +27,15 @@ export const node: MayflyUiNode = metric.render({ label: 'Context', value: 42 })
 export const child: MayflyUiChild = ui.child(node, { shrink: 1 })
 export const document = ui.diagram('graph TD\nA --> B')
 export const chart = ui.chart({ chart: 'line', series: [{ id: 'load', points: [{ x: 0, y: 1 }] }] })
+export const handlers: MayflyUiEventHandlers = {
+  observe: event => event.kind === 'value-change' ? { kind: 'completed' } : undefined,
+  action: event => event.kind === 'submit' ? { kind: 'cancelled' } : { kind: 'completed' },
+}
+
+// @ts-expect-error actions must settle with a structured reply
+export const missingActionReply: MayflyUiActionHandler = () => {}
+// @ts-expect-error action handlers cannot receive observation events
+export const actionHandlesValueChange: MayflyUiActionHandler = event => event.kind === 'value-change' ? { kind: 'completed' } : { kind: 'cancelled' }
 
 // @ts-expect-error rich documents are not status nodes
 export const statusDocument: MayflyStatusNode = document

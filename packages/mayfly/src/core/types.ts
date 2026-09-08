@@ -10,6 +10,7 @@
 // merges belong to the contract layer because the `mayflyTheme` provider is
 // replaceable by the theme plugin family outside this package.
 import type {} from '@deepseek-ai/cordis'
+import type { MayflyPagePath } from '@ephemeral-ai/mayfly-ui'
 
 /**
  * A renderable Mayfly component. Structurally compatible with pi-tui's
@@ -67,6 +68,7 @@ export interface MayflyFocusable extends MayflyComponent {
 /** Renderer-neutral identity used only to preserve focus across recompilation. */
 export interface MayflyFocusIdentity {
   readonly controlId: string
+  readonly pagePath?: MayflyPagePath
   readonly itemId?: string
   readonly tabControlId?: string
   /** Core-owned edit mode for a focused text or select field. */
@@ -158,6 +160,8 @@ export interface MayflyOverlayHandle {
  * or keybinding responsibility.
  */
 export interface MayflyScreen {
+  /** Whether an active overlay or editor replacement must receive input before global actions. */
+  readonly capturesInput?: boolean
   /** Mount one stable content slot in the scroll region. */
   mountContentSlot(id: string, component: MayflyComponent | null): MayflyScreenSlot
   /** Mount one stable dock slot; footer slots remain below ordinary dock slots. */
@@ -691,53 +695,6 @@ export interface MayflySelectList extends MayflyComponent {
   getSelectedItem(): MayflySelectItem | null
 }
 
-/** One entry of a {@link MayflySettingsList}. */
-export interface MayflySettingItem {
-  /** Unique identifier reported to the change callback. */
-  id: string
-  /** Display label (left side). */
-  label: string
-  /** Optional description shown while the entry is highlighted. */
-  description?: string
-  /** Current value displayed on the right side. */
-  currentValue: string
-  /** When provided, confirm keys cycle through these values. */
-  values?: string[]
-  /**
-   * When provided, confirm opens this submenu.
-   * @param currentValue - the value at open time.
-   * @param done - closes the submenu, optionally committing a new value.
-   * @returns the component rendered as the submenu.
-   */
-  submenu?(currentValue: string, done: (selectedValue?: string) => void): MayflyComponent
-}
-
-/** Options for {@link MayflyComponents.createSettingsList}. */
-export interface MayflySettingsListOptions {
-  /** The settings to display. */
-  items: MayflySettingItem[]
-  /** Maximum simultaneously visible entries; defaults to 10. */
-  maxVisible?: number
-  /** Enable type-to-filter search; defaults to false. */
-  enableSearch?: boolean
-  /** Called after an entry's value changes. */
-  onChange(id: string, newValue: string): void
-  /** Called when the user dismisses the list. */
-  onCancel(): void
-}
-
-/** A key/value settings list. */
-export interface MayflySettingsList extends MayflyComponent {
-  /**
-   * Update one entry's displayed value in place, without remounting the
-   * list or moving its highlight — the channel for pushing external or
-   * rolled-back values into a live list.
-   * @param id - the entry id.
-   * @param newValue - the value to display.
-   */
-  updateValue(id: string, newValue: string): void
-}
-
 /** The outcome of a fuzzy subsequence probe; lower scores rank better. */
 export interface MayflyFuzzyMatch {
   /** Whether every query character matched, in order. */
@@ -822,12 +779,6 @@ export interface MayflyComponents {
    * @returns the list component.
    */
   createSelectList(options: MayflySelectListOptions): MayflySelectList
-  /**
-   * Create a settings list themed from the active palette.
-   * @param options - items and change callbacks.
-   * @returns the settings component.
-   */
-  createSettingsList(options: MayflySettingsListOptions): MayflySettingsList
   /**
    * Measure the visible width of styled text in terminal columns.
    * @param text - the text, ANSI styling allowed.

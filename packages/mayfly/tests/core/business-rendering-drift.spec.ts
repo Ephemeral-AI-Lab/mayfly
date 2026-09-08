@@ -29,7 +29,6 @@ const widthOperators = new Set([
 ])
 
 const approvedWidthMath = new Set([
-  'packages/mayfly/src/interaction/session-commands.ts:const cells = annotations.length * GRID_COLUMNS',
   'packages/mayfly/src/transcript/banner.ts:const logoWidth = Math.max(...LOGO_ART.map(art => art.length))',
   "packages/mayfly/src/transcript/status-model.ts:const remaining = width - used - (parts.length > 0 ? 2 : 0)",
   "packages/mayfly/src/transcript/status-model.ts:const renderWidth = result.ok && result.value.node.kind === 'text'",
@@ -52,9 +51,7 @@ const approvedPresentation = new Set([
   "border:packages/mayfly/src/transcript/search-group.ts:const branch = last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/search-group.ts:const childContinuation = `${String(continuation)}${last ? '   ' : '│  '}`",
   "border:packages/mayfly/src/transcript/search-group.ts:const continuation = last ? '   ' : '│  '",
-  "padding:packages/mayfly/src/interaction/agents-command.ts:const indent = '  '.repeat(Math.max(0, entry.depth - 1))",
   "padding:packages/mayfly/src/interaction/session-tree.ts:const prefix = depth === 0 ? '' : `${'  '.repeat(depth - 1)}${branch} `",
-  "padding:packages/mayfly/src/interaction/usage.ts:return '█'.repeat(filled) + '░'.repeat(Math.max(0, width - filled))",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
@@ -70,7 +67,7 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/status-model.ts:? ' '.repeat(Math.max(0, width - rightWidth)) + rightText",
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, centerStart - leftWidth))",
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))",
-  "pointer:packages/mayfly/src/interaction/update-command.ts:detail: [`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '),",
+  "pointer:packages/mayfly/src/interaction/update-command.ts:ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'muted' }),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} → v${toVersion}` },",
 ])
 

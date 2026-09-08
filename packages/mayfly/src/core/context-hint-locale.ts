@@ -28,6 +28,12 @@ const zh = Object.freeze({
   close: '关闭',
   leave: '退出编辑',
   newline: '换行',
+  Inherited: '继承',
+  Override: '显式覆盖',
+  'Use current value': '使用当前值',
+  'Keep my changes': '保留我的修改',
+  'Set override': '设为显式覆盖',
+  'Use inherited value': '恢复继承值',
 })
 
 const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))

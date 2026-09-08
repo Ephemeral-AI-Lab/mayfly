@@ -3,9 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import {
   type MayflyOverlayEntry,
   type MayflyPaneEntry,
-  type MayflyRegistryDelta,
   type MayflyUiEvent,
-  type MayflyUiEventHandler,
   type MayflyUiNode,
 } from '@ephemeral-ai/mayfly-ui'
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
@@ -14,10 +12,10 @@ import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
-
-const EVENT_TIMEOUT_MS = 30_000
+import type { UiSurfaceModel } from './ui-interaction-surface.ts'
+import type { UiInteractionService } from './ui-interaction-state.ts'
 const OVERLAY_DEFAULT_WIDTH = '70%'
-const OVERLAY_DEFAULT_MAX_HEIGHT = '80%'
+const OVERLAY_DEFAULT_MAX_HEIGHT = '33.333333333333336%'
 
 interface SurfaceSnapshot {
   readonly revision: number
@@ -29,128 +27,7 @@ type OwnerContext = Context & {
   readonly mayflyComponents: MayflyComponents
   readonly mayflyTheme: { readonly colors: MayflySemanticColors }
   readonly mayflyKeymap: MayflyKeymap
-}
-
-interface DispatchTask {
-  readonly event: MayflyUiEvent
-  readonly revision: number
-  readonly renderGeneration: number
-  readonly controller: AbortController
-}
-
-class SurfaceEventOwner {
-  private live = true
-  private revision = 0
-  private renderGeneration = 0
-  private readonly latest = new Map<string, AbortController>()
-  private readonly fifo: DispatchTask[] = []
-  private fifoRunning = false
-  private readonly active = new Set<AbortController>()
-  private readonly activeRevisions = new Map<AbortController, number>()
-
-  constructor(
-    private readonly surfaceId: string,
-    private readonly handler: MayflyUiEventHandler | undefined,
-    private readonly refresh: () => void,
-    private readonly close: (() => void) | undefined,
-  ) {}
-
-  replaceExternally(eventRevision?: number): 'internal' | 'external' {
-    if (eventRevision !== undefined && [...this.activeRevisions.values()].includes(eventRevision)) return 'internal'
-    for (const controller of this.active) controller.abort()
-    for (const task of this.fifo) task.controller.abort()
-    this.fifo.length = 0
-    this.latest.clear()
-    this.renderGeneration += 1
-    return 'external'
-  }
-
-  emit(event: MayflyUiEvent): void {
-    /* v8 ignore next -- disposed component shells fence input before it can reach their disposed event owner. */
-    if (!this.live) return
-    const revision = ++this.revision
-    const task: DispatchTask = { event, revision, renderGeneration: this.renderGeneration, controller: new AbortController() }
-    if (event.kind === 'value-change' || event.kind === 'selection-change' || event.kind === 'tab-change') {
-      const key = event.controlId
-      this.latest.get(key)?.abort()
-      this.latest.set(key, task.controller)
-      void this.execute(task).finally(() => { if (this.latest.get(key) === task.controller) this.latest.delete(key) })
-      return
-    }
-    this.fifo.push(task)
-    void this.drainFifo()
-  }
-
-  dispose(): void {
-    if (!this.live) return
-    this.live = false
-    for (const controller of this.active) controller.abort()
-    for (const task of this.fifo) task.controller.abort()
-    this.fifo.length = 0
-    this.latest.clear()
-  }
-
-  private async drainFifo(): Promise<void> {
-    if (this.fifoRunning) return
-    this.fifoRunning = true
-    try {
-      while (this.live && this.fifo.length > 0) await this.execute(this.fifo.shift()!)
-    } finally {
-      this.fifoRunning = false
-    }
-  }
-
-  private async execute(task: DispatchTask): Promise<void> {
-    /* v8 ignore next -- every abort path removes queued tasks before execution. */
-    if (!this.live || task.controller.signal.aborted) return
-    this.active.add(task.controller)
-    this.activeRevisions.set(task.controller, task.revision)
-    let timeout: ReturnType<typeof setTimeout> | undefined
-    let timedOut = false
-    try {
-      const handled = this.handler === undefined
-        ? Promise.resolve()
-        : Promise.resolve().then(() => this.handler!(task.event, {
-          surfaceId: this.surfaceId,
-          signal: task.controller.signal,
-          revision: task.revision,
-        }))
-      const timeoutResult = new Promise<void>(resolve => {
-          timeout = setTimeout(() => {
-            timedOut = true
-            task.controller.abort()
-            resolve()
-          }, EVENT_TIMEOUT_MS)
-        })
-      const aborted = new Promise<void>(resolve => {
-          const abort = () => resolve()
-          task.controller.signal.addEventListener('abort', abort, { once: true })
-          void handled.then(
-            () => task.controller.signal.removeEventListener('abort', abort),
-            () => task.controller.signal.removeEventListener('abort', abort),
-          )
-        })
-      await Promise.race([handled, timeoutResult, aborted])
-      if (timedOut) { this.closeSurface(); return }
-      if (!this.live || task.controller.signal.aborted || task.renderGeneration !== this.renderGeneration) return
-      if (task.event.kind === 'dismiss') this.closeSurface()
-      else this.refresh()
-    } catch {
-      /* v8 ignore next -- aborted/not-live dispatches settle through the raced abort result. */
-      if (this.live && (timedOut || !task.controller.signal.aborted)) this.closeSurface()
-    } finally {
-      /* v8 ignore else -- execute creates its timeout synchronously before the first await. */
-      if (timeout !== undefined) clearTimeout(timeout)
-      this.active.delete(task.controller)
-      this.activeRevisions.delete(task.controller)
-    }
-  }
-
-  private closeSurface(): void {
-    if (this.close === undefined) return
-    this.dispose()
-    this.close()
-  }
+  readonly mayflyUiInteraction: UiInteractionService
 }
 
 function safeFailureNode(kind: 'pane' | 'overlay', reason: string): MayflyUiNode {
@@ -163,6 +40,7 @@ function compile(
   options: {
     readonly components: MayflyComponents
     readonly colors: MayflySemanticColors
+    readonly keymap: MayflyKeymap
     readonly viewport: () => MayflyUiViewport
     readonly mode: 'main' | 'alternate'
     readonly emit: (event: MayflyUiEvent) => void
@@ -171,16 +49,13 @@ function compile(
     readonly translateHint?: (key: string) => string
     readonly interactive: boolean
     readonly runtime: MayflyUiSurfaceRuntime
-    readonly refreshMode: 'internal' | 'external'
     readonly title?: string
   },
 ): MayflyCompiledUi | null {
-  const framed = (value: MayflyUiNode): MayflyUiNode => options.title === undefined ? value : {
-    kind: 'surface',
-    chrome: 'overlay',
-    title: options.title,
-    padding: 1,
-    child: value,
+  const framed = (value: MayflyUiNode): MayflyUiNode => {
+    if (options.title === undefined) return value
+    if (value.kind === 'surface' && value.chrome === 'overlay') return { ...value, title: options.title }
+    return { kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: value }
   }
   if (node === null) {
     if (kind === 'pane') return null
@@ -200,6 +75,7 @@ function compile(
   const compilerOptions = {
     components: options.components,
     colors: options.colors,
+    keymap: options.keymap,
     getViewport: options.viewport,
     screenMode: options.mode,
     emit: options.emit,
@@ -210,29 +86,22 @@ function compile(
     ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
   }
   if (!options.interactive) {
-    const candidate = compileMayflyUiNode(framed(node), compilerOptions)
-    if (!candidate.ok || candidate.value.focusTarget !== null) {
+    const candidate = compileMayflyUiNode(framed(node), compilerOptions) as Extract<ReturnType<typeof compileMayflyUiNode>, { readonly ok: true }>
+    if (candidate.value.focusTarget !== null) {
       options.runtime.deactivate()
-      const fallbackNode = safeFailureNode(kind, candidate.ok ? 'non-capturing overlays cannot contain interactive controls' : candidate.message)
+      const fallbackNode = safeFailureNode(kind, 'non-capturing overlays cannot contain interactive controls')
       const fallback = compileMayflyUiNode(framed(fallbackNode), compilerOptions)
       /* v8 ignore next -- the admitted constant fallback text cannot fail compilation. */
       return fallback.ok ? fallback.value : { node: fallbackNode, component: fallback.errorComponent, focusTarget: null }
     }
   }
-  const result = compileMayflyUiSurfaceNode(framed(node), {
+  const result = compileMayflyUiSurfaceNode(node, {
     ...compilerOptions,
     surfaceRuntime: options.runtime,
-    refreshMode: options.refreshMode,
+    ...(options.title === undefined ? {} : { title: options.title }),
     ...(options.escapeHint === undefined ? {} : { escapeHint: options.escapeHint }),
   })
-  if (!result.ok) {
-    options.runtime.deactivate()
-    const fallbackNode = safeFailureNode(kind, result.message)
-    const fallback = compileMayflyUiNode(framed(fallbackNode), compilerOptions)
-    /* v8 ignore next -- the admitted constant fallback text cannot fail compilation. */
-    return fallback.ok ? fallback.value : { node: fallbackNode, component: fallback.errorComponent, focusTarget: null }
-  }
-  return result.value
+  return (result as Extract<typeof result, { readonly ok: true }>).value
 }
 
 function setCompiledFocus(compiled: MayflyCompiledUi | null, focused: boolean): void {
@@ -252,9 +121,9 @@ class PaneComponent implements MayflyFocusable {
     setCompiledFocus(this.targetValue, this.focusedValue)
   }
   [LAYOUT_NODE](): LayoutNode {
-    return !this.live || this.targetValue === null
+    return !this.live
       ? { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
-      : getLayoutNode(this.targetValue.component)!
+      : getLayoutNode(this.targetValue!.component)!
   }
   replace(compiled: MayflyCompiledUi | null): void {
     /* v8 ignore next -- record/map identity fences prevent replacement after one disposal. */
@@ -271,7 +140,7 @@ class PaneComponent implements MayflyFocusable {
     this.targetValue = null
     this.focusedValue = false
   }
-  render(width: number): string[] { return this.live ? this.targetValue?.component.render(width) ?? [] : [] }
+  render(width: number): string[] { return this.live ? this.targetValue!.component.render(width) : [] }
   invalidate(): void { if (this.live) this.targetValue?.component.invalidate() }
   handleInput(data: string): void { if (this.live) this.targetValue?.focusTarget?.handleInput?.(data) }
 }
@@ -309,7 +178,7 @@ class OverlayComponent implements MayflyFocusable {
     if (!this.live || this.targetValue === null) return []
     const rows = this.targetValue.component.render(width)
     const height = this.viewport().rows
-    if (rows.length < height) return rows
+    if (rows.length <= height) return rows
     return renderLayoutFrame(this.targetValue.component, width, height, this.requestRender).lines
   }
   invalidate(): void { if (this.live) this.targetValue?.component.invalidate() }
@@ -318,22 +187,22 @@ class OverlayComponent implements MayflyFocusable {
 
 interface PaneRecord {
   entry: MayflyPaneEntry
-  readonly events: SurfaceEventOwner
+  readonly interaction: UiSurfaceModel
   readonly runtime: MayflyUiSurfaceRuntime
   readonly component: PaneComponent
   registration: SurfaceRegistration | undefined
   renderScheduled?: boolean
-  renderMode: 'internal' | 'external' | undefined
+  renderedRevision: number
 }
 
 interface OverlayRecord {
   entry: MayflyOverlayEntry
-  readonly events: SurfaceEventOwner
+  readonly interaction: UiSurfaceModel
   readonly runtime: MayflyUiSurfaceRuntime
   readonly component: OverlayComponent
-  readonly handle: MayflyOverlayHandle
+  readonly handle: MayflyOverlayHandle | undefined
   renderScheduled?: boolean
-  renderMode: 'internal' | 'external' | undefined
+  renderedRevision: number
 }
 
 function overlayAnchor(anchor: MayflyOverlayEntry['definition']['anchor']) {
@@ -368,30 +237,36 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const paneViewport = (id: string): MayflyUiViewport => runtime.surfaceViewport(id)
   const overlayViewport = (entry: MayflyOverlayEntry): MayflyUiViewport => {
     const percent = (value: string, total: number) => Math.max(1, Math.floor(total * Number.parseFloat(value) / 100))
+    const height = entry.definition.maxHeight ?? OVERLAY_DEFAULT_MAX_HEIGHT
+    const requestedRows = typeof height === 'string' ? percent(height, runtime.rows) : Math.max(1, Math.floor(height))
+    if (entry.definition.presentation === 'editor') {
+      const viewport = ctx.mayflyScreen.editorViewport
+      return { columns: viewport.columns, rows: Math.max(1, Math.min(viewport.rows, requestedRows)) }
+    }
     const width = entry.definition.width ?? OVERLAY_DEFAULT_WIDTH
     const requestedWidth = typeof width === 'string' ? percent(width, runtime.columns) : Math.floor(width)
     const maximum = 100
     const columns = Math.min(runtime.columns, maximum, Math.max(Math.floor(entry.definition.minWidth ?? 1), requestedWidth))
-    const height = entry.definition.maxHeight ?? OVERLAY_DEFAULT_MAX_HEIGHT
-    return { columns: Math.max(1, columns), rows: Math.max(1, Math.min(runtime.rows, typeof height === 'string' ? percent(height, runtime.rows) : Math.floor(height))) }
+    return { columns: Math.max(1, columns), rows: Math.max(1, Math.min(runtime.rows, requestedRows)) }
   }
 
-  const renderPane = (record: PaneRecord, refreshMode: 'internal' | 'external'): void => {
+  const renderPane = (record: PaneRecord): void => {
     const entry = record.entry
-    const compiled = compile(entry.node, 'pane', {
+    const compiled = compile(record.interaction.decisionNode ?? record.interaction.node, 'pane', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
+      keymap: ctx.mayflyKeymap,
       viewport: () => paneViewport(entry.id),
       mode: runtime.mode,
-      emit: event => record.events.emit(event),
+      emit: record.interaction.emit.bind(record.interaction),
       onEscape: () => runtime.releaseSurfaceFocus(entry.id),
       escapeHint: 'leave',
       ...(translateHint === undefined ? {} : { translateHint }),
       interactive: true,
       runtime: record.runtime,
-      refreshMode,
       ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
     })
+    record.renderedRevision = record.interaction.revision
     if (compiled === null) {
       record.runtime.deactivate()
       record.component.replace(null)
@@ -415,51 +290,43 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     runtime.requestRender()
   }
 
-  const schedulePane = (record: PaneRecord, mode: 'internal' | 'external'): void => {
-    if (record.renderScheduled === true) {
-      if (mode === 'external') record.renderMode = mode
-      return
-    }
-    record.renderMode = mode
+  const schedulePane = (record: PaneRecord): void => {
+    if (record.renderScheduled === true) return
     record.renderScheduled = true
     queueMicrotask(() => {
       record.renderScheduled = false
-      const refreshMode = record.renderMode!
-      record.renderMode = undefined
       const retained = pending === undefined || pending.panes.some(entry => entry.id === record.entry.id)
-      if (!disposed && retained && panes.get(record.entry.id) === record) renderPane(record, refreshMode)
+      if (!disposed && retained && panes.get(record.entry.id) === record) renderPane(record)
     })
   }
 
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
-    const events = new SurfaceEventOwner(entry.id, entry.definition.onEvent, runtime.requestRender, undefined)
-    record = { entry, events, runtime: new MayflyUiSurfaceRuntime(), component: new PaneComponent(), registration: undefined, renderMode: undefined }
+    const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction), component: new PaneComponent(), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
-    schedulePane(record, 'external')
+    schedulePane(record)
   }
 
   const addOverlay = (entry: MayflyOverlayEntry): void => {
     let record!: OverlayRecord
-    const events = new SurfaceEventOwner(entry.id, entry.definition.onEvent, runtime.requestRender, () => {
-      ctx.mayflyOverlays.close(record.entry.id)
-    })
-    const surfaceRuntime = new MayflyUiSurfaceRuntime()
-    const compiled = compile(entry.node, 'overlay', {
+    const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)!
+    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction)
+    const compiled = compile(interaction.decisionNode ?? interaction.node, 'overlay', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
+      keymap: ctx.mayflyKeymap,
       viewport: () => overlayViewport(entry),
       mode: runtime.mode,
-      emit: event => events.emit(event),
-      ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => events.emit({ kind: 'dismiss' as const }), escapeHint: 'close' as const } : {}),
+      emit: interaction.emit.bind(interaction),
+      ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
       ...(translateHint === undefined ? {} : { translateHint }),
       interactive: entry.definition.capturing === true,
       runtime: surfaceRuntime,
-      refreshMode: 'external',
       ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
     })!
     const component = new OverlayComponent(compiled, () => overlayViewport(entry), runtime.requestRender)
-    const handle = runtime.showOverlay(component, {
+    const handle = entry.definition.presentation === 'editor' ? undefined : runtime.showOverlay(component, {
       width: entry.definition.width ?? OVERLAY_DEFAULT_WIDTH,
       ...(entry.definition.minWidth === undefined ? {} : { minWidth: entry.definition.minWidth }),
       maxWidth: 100,
@@ -467,43 +334,38 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       anchor: overlayAnchor(entry.definition.anchor),
       nonCapturing: !entry.definition.capturing,
     })
-    if (entry.hidden) handle.setHidden(true)
-    record = { entry, events, runtime: surfaceRuntime, component, handle, renderMode: undefined }
+    if (entry.hidden) handle?.setHidden(true)
+    record = { entry, interaction, runtime: surfaceRuntime, component, handle, renderedRevision: interaction.revision }
     overlays.set(entry.id, record)
   }
 
-  const renderOverlay = (record: OverlayRecord, refreshMode: 'internal' | 'external'): void => {
+  const renderOverlay = (record: OverlayRecord): void => {
     const entry = record.entry
-    const compiled = compile(entry.node, 'overlay', {
+    const compiled = compile(record.interaction.decisionNode ?? record.interaction.node, 'overlay', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
+      keymap: ctx.mayflyKeymap,
       viewport: () => overlayViewport(entry),
       mode: runtime.mode,
-      emit: event => record.events.emit(event),
-      ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => record.events.emit({ kind: 'dismiss' as const }), escapeHint: 'close' as const } : {}),
+      emit: record.interaction.emit.bind(record.interaction),
+      ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => record.interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
       ...(translateHint === undefined ? {} : { translateHint }),
       interactive: entry.definition.capturing === true,
       runtime: record.runtime,
-      refreshMode,
       ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
     })!
+    record.renderedRevision = record.interaction.revision
     record.component.replace(compiled)
     runtime.requestRender()
   }
 
-  const scheduleOverlay = (record: OverlayRecord, mode: 'internal' | 'external'): void => {
-    if (record.renderScheduled === true) {
-      if (mode === 'external') record.renderMode = mode
-      return
-    }
-    record.renderMode = mode
+  const scheduleOverlay = (record: OverlayRecord): void => {
+    if (record.renderScheduled === true) return
     record.renderScheduled = true
     queueMicrotask(() => {
       record.renderScheduled = false
-      const refreshMode = record.renderMode!
-      record.renderMode = undefined
       const retained = pending === undefined || pending.overlays.some(entry => entry.id === record.entry.id)
-      if (!disposed && retained && overlays.get(record.entry.id) === record) renderOverlay(record, refreshMode)
+      if (!disposed && retained && overlays.get(record.entry.id) === record) renderOverlay(record)
     })
   }
 
@@ -514,7 +376,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       const navigationPlacement = layout === undefined
         ? undefined
         : [layout.header, layout.left, layout.right, layout.bottom].find(lane => lane?.active.id === id)?.placement
-      record.events.dispose()
       record.runtime.dispose()
       record.component.dispose()
       record.registration?.dispose()
@@ -529,8 +390,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     for (const entry of snapshot.panes) {
       const record = panes.get(entry.id)
       if (record === undefined) { addPane(entry); continue }
-      if (record.entry.definition !== entry.definition) {
-        record.events.dispose()
+      if (record.interaction !== ctx.mayflyUiInteraction.get('pane', entry.id)) {
         record.runtime.dispose()
         record.component.dispose()
         record.registration?.dispose()
@@ -538,38 +398,44 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
         addPane(entry)
         continue
       }
-      const renderChanged = record.entry.revision !== entry.revision
+      const renderChanged = record.entry.revision !== entry.revision || record.renderedRevision !== record.interaction.revision
       record.entry = entry
-      if (renderChanged) schedulePane(record, record.renderMode ?? 'external')
+      if (renderChanged) schedulePane(record)
     }
 
     const overlayIds = new Set(snapshot.overlays.map(entry => entry.id))
     for (const [id, record] of [...overlays].reverse()) if (!overlayIds.has(id)) {
-      record.events.dispose()
       record.runtime.dispose()
       record.component.dispose()
-      record.handle.hide()
+      record.handle?.hide()
       overlays.delete(id)
     }
     for (const entry of [...snapshot.overlays].sort((left, right) => left.order - right.order)) {
       const record = overlays.get(entry.id)
       if (record === undefined) { addOverlay(entry); continue }
-      if (record.entry.definition !== entry.definition) {
-        record.events.dispose()
+      if (record.interaction !== ctx.mayflyUiInteraction.get('overlay', entry.id)) {
         record.runtime.dispose()
         record.component.dispose()
-        record.handle.hide()
+        record.handle?.hide()
         overlays.delete(entry.id)
         addOverlay(entry)
         continue
       }
-      const renderChanged = record.entry.revision !== entry.revision
+      const renderChanged = record.entry.revision !== entry.revision || record.renderedRevision !== record.interaction.revision
       const focusChanged = record.entry.focusRevision !== entry.focusRevision
       record.entry = entry
-      record.handle.setHidden(entry.hidden)
-      if (focusChanged) record.handle.focus()
-      if (renderChanged) scheduleOverlay(record, record.renderMode ?? 'external')
+      record.handle?.setHidden(entry.hidden)
+      if (focusChanged) record.handle?.focus()
+      if (renderChanged) scheduleOverlay(record)
     }
+    const editor = [...overlays.values()].filter(record => record.entry.definition.presentation === 'editor' && !record.entry.hidden).toSorted((left, right) => left.entry.order - right.entry.order).at(-1)
+    const occupied = editor !== undefined
+    if (occupied !== editorOccupied) {
+      editorOccupied = occupied
+      ctx.emit('mayfly/editor-slot-swapped', occupied)
+    }
+    ctx.mayflyScreen.setEditorReplacement(editor?.component ?? null)
+    ctx.mayflyUiInteraction.setNotificationVisibility(!occupied)
     appliedRevision = Math.max(appliedRevision, snapshot.revision)
   }
 
@@ -583,24 +449,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const schedule = (snapshot: SurfaceSnapshot): void => {
     /* v8 ignore next -- registryRevision is private and strictly increments for every published snapshot. */
     if (snapshot.revision <= appliedRevision) return
-    const paneEntries = new Map(snapshot.panes.map(entry => [entry.id, entry]))
-    const overlayEntries = new Map(snapshot.overlays.map(entry => [entry.id, entry]))
-    for (const [id, record] of panes) {
-      const entry = paneEntries.get(id)
-      if (entry === undefined || entry.definition !== record.entry.definition) record.events.dispose()
-      else if (entry !== record.entry) {
-        const mode = record.events.replaceExternally(entry.eventRevision)
-        record.renderMode = record.renderMode === 'external' ? 'external' : mode
-      }
-    }
-    for (const [id, record] of overlays) {
-      const entry = overlayEntries.get(id)
-      if (entry === undefined || entry.definition !== record.entry.definition) record.events.dispose()
-      else if (entry !== record.entry) {
-        const mode = record.events.replaceExternally(entry.eventRevision)
-        record.renderMode = record.renderMode === 'external' ? 'external' : mode
-      }
-    }
     pending = snapshot
     if (!scheduled) { scheduled = true; queueMicrotask(drain) }
   }
@@ -636,38 +484,32 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     { id: 'mayfly.surface.next', keys: 'f6', description: 'Focus the next Mayfly surface', handler: () => navigate(1) },
     { id: 'mayfly.surface.previous', keys: 'shift+f6', description: 'Focus the previous Mayfly surface', handler: () => navigate(-1) },
   ]))
-  const paneEntries = new Map<string, MayflyPaneEntry>()
-  const overlayEntries = new Map<string, MayflyOverlayEntry>()
   let registryRevision = 0
+  let editorOccupied = false
   const publish = (): void => schedule({
     revision: ++registryRevision,
-    panes: [...paneEntries.values()].sort((left, right) => (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id)),
-    overlays: [...overlayEntries.values()].sort((left, right) => left.order - right.order),
+    panes: ctx.mayflyUiInteraction.panes().toSorted((left, right) => (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id)),
+    overlays: ctx.mayflyUiInteraction.overlays().toSorted((left, right) => left.order - right.order),
   })
-  const applyDelta = <Entry extends { readonly id: string }>(entries: Map<string, Entry>, delta: MayflyRegistryDelta<Entry>): void => {
-    if (delta.kind === 'remove') entries.delete(delta.id)
-    else entries.set(delta.entry.id, delta.entry)
-    publish()
-  }
-  const offPanes = ctx.mayflyPanes.subscribe(delta => { applyDelta(paneEntries, delta) })
-  const offOverlays = ctx.mayflyOverlays.subscribe(delta => { applyDelta(overlayEntries, delta) })
+  const offInteraction = ctx.mayflyUiInteraction.subscribe(publish)
+  publish()
   ctx.effect(() => () => {
     disposed = true
-    offPanes()
-    offOverlays()
+    offInteraction()
     for (const record of [...overlays.values()].reverse()) {
-      record.events.dispose()
       record.runtime.dispose()
       record.component.dispose()
-      record.handle.hide()
+      record.handle?.hide()
     }
     for (const record of panes.values()) {
-      record.events.dispose()
       record.runtime.dispose()
       record.component.dispose()
       record.registration?.dispose()
     }
     overlays.clear()
+    ctx.mayflyScreen.setEditorReplacement(null)
+    ctx.mayflyUiInteraction.setNotificationVisibility(false)
+    if (editorOccupied) ctx.emit('mayfly/editor-slot-swapped', false)
     panes.clear()
     pending = undefined
   })

@@ -119,9 +119,10 @@ export function renderCanonicalView(
   width: number,
   components: MayflyComponents,
   colors: MayflySemanticColors,
-  maxRows: number,
+  maxRows?: number,
 ): string[] {
-  const rows = renderView(view, Math.max(1, width), components, colors, 0).slice(0, Math.max(0, maxRows))
+  const rendered = renderView(view, Math.max(1, width), components, colors, 0)
+  const rows = maxRows === undefined ? rendered : rendered.slice(0, Math.max(0, maxRows))
   return clampRowsToWidth(rows, Math.max(1, width), (text, target) => components.truncateToWidth(text, target))
 }
 

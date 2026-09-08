@@ -14,6 +14,8 @@ import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemantic
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { FakeTerminal } from './fake-terminal.ts'
+import * as frontend from '../../src/frontend/index.ts'
+import { MayflyScreenService } from '../../src/core/screen.ts'
 
 class Scope {
   private readonly cleanups: Array<() => void> = []
@@ -84,16 +86,21 @@ type TestOverlayHandle = MayflyOverlayHandle & { refresh(): void }
 async function fixture(columns = 80, rows = 24, compilerComponents: MayflyComponents = components, translateHint?: (key: string) => string): Promise<Fixture> {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
+  await root.plugin(frontend)
   const terminal = new FakeTerminal(columns, rows)
   const runtime = await startMayflyTerminal(terminal, () => Promise.resolve(undefined))
+  await root.plugin(MayflyScreenService, runtime)
   const owners: Scope[] = []
   const mount = (): Scope => {
     const owner = new Scope()
     Object.assign(owner, {
       mayflyPanes: root.mayflyPanes,
       mayflyOverlays: root.mayflyOverlays,
+      mayflyUiInteraction: root.mayflyUiInteraction,
+      mayflyScreen: root.mayflyScreen,
       mayflyComponents: compilerComponents,
       mayflyTheme: { colors },
+      emit: root.emit.bind(root),
       mayflyKeymap: {
         register(_actions: MayflyKeyAction[]) { return () => {} },
         matches: () => false,
@@ -153,6 +160,118 @@ function actionNode(id = 'go', confirm?: string): MayflyUiNode {
   return ui.actions({ id: 'actions', items: [{ id, label: id, ...(confirm === undefined ? {} : { confirm }) }] })
 }
 
+it('presents registered editor overlays in the fixed dock and restores drafts after renderer reload', async () => {
+  const bench = await fixture()
+  try {
+    const occupancy: boolean[] = []
+    bench.root.on('mayfly/editor-slot-swapped', occupied => occupancy.push(occupied))
+    const prompt = { focused: false, render: () => ['prompt'], invalidate() {}, handleInput() {} }
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', prompt)
+    slot.focus()
+    const handle = bench.open({
+      id: 'editor-form', title: 'Provider configuration', presentation: 'editor', capturing: true,
+      render: () => ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }], submitActionId: 'save', cancelActionId: 'cancel' }),
+    })
+    await flush()
+    expect(occupancy).toEqual([true])
+    expect(bench.stack()).toHaveLength(0)
+    expect(slot.component.render(80).join('\n')).toContain('Provider configuration')
+    slot.component.handleInput?.('draft')
+    await flush()
+    const model = bench.root.mayflyUiInteraction.get('overlay', 'editor-form')!
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.value).toBe('draft')
+    bench.owner.dispose()
+    expect(occupancy).toEqual([true, false])
+    expect(slot.component.render(80)).toEqual(['prompt'])
+    expect(model.disposed).toBe(false)
+    const next = bench.mount()
+    await flush()
+    expect(occupancy).toEqual([true, false, true])
+    expect(slot.component.render(80).join('\n')).toContain('draft')
+    slot.component.handleInput?.(' retained')
+    await flush()
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.value).toBe('draft retained')
+    handle.close()
+    await flush()
+    expect(occupancy).toEqual([true, false, true, false])
+    expect(slot.component.render(80)).toEqual(['prompt'])
+    next.dispose()
+    slot.dispose()
+  } finally { await bench.dispose() }
+})
+
+it('coalesces root overlay chrome and bounds editor presentations by the overlay height', async () => {
+  const bench = await fixture(80, 24)
+  try {
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+    const handle = bench.open({
+      id: 'bounded-editor', title: 'Command panel', presentation: 'editor', capturing: true,
+      render: () => ui.surface({ title: 'Command panel', chrome: 'overlay', padding: 1, child: ui.stack.column([
+        ui.tabs({ id: 'command-tabs', activeId: 'items', items: [{ id: 'items', label: 'Items' }] }),
+        ui.child(ui.list({ id: 'command-items', role: 'browse', selectedIds: [], items: Array.from({ length: 40 }, (_, index) => ({ id: String(index), label: `row ${String(index)}` })) }), { tab: { controlId: 'command-tabs', itemId: 'items' } }),
+        ui.actions({ id: 'command-actions', items: [{ id: 'close', label: 'Close' }] }),
+      ]) }),
+    })
+    await flush()
+    const rows = slot.component.render(80).map(stripTerminalSequences)
+    expect(rows).toHaveLength(Math.floor(24 / 3))
+    expect(rows.filter(row => row.startsWith('╭'))).toHaveLength(1)
+    expect(rows[0]).toMatch(/^╭ Command panel/u)
+    expect(rows.join('\n')).toContain('Items')
+    expect(rows.join('\n')).toContain('Close')
+    expect(rows.at(-1)).toMatch(/^╰/u)
+    bench.terminal.resize(80, 30)
+    expect(slot.component.render(80)).toHaveLength(10)
+    handle.close()
+    slot.dispose()
+  } finally { await bench.dispose() }
+})
+
+it('keeps short editor presentations at their natural content height', async () => {
+  const bench = await fixture(80, 24)
+  try {
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+    const handle = bench.open({
+      id: 'short-editor', title: 'Version', presentation: 'editor', capturing: true,
+      render: () => ui.surface({ title: 'Version', chrome: 'overlay', padding: 1, child: ui.stack.column([
+        ui.fields([
+          { label: 'Mayfly', value: [{ text: 'v0.1.0' }] },
+          { label: 'Harness', value: [{ text: '0.1.2' }] },
+        ]),
+        ui.actions({ id: 'information-actions', items: [{ id: 'refresh', label: 'Refresh' }, { id: 'close', label: 'Close' }] }),
+      ]) }),
+    })
+    await flush()
+    const rows = slot.component.render(80).map(stripTerminalSequences)
+    expect(rows.length).toBeLessThan(Math.floor(24 / 3))
+    expect(rows[0]).toMatch(/^╭ Version/u)
+    expect(rows.join('\n')).toContain('Mayfly')
+    expect(rows.join('\n')).toContain('Harness')
+    expect(rows.join('\n')).toContain('Refresh')
+    expect(rows.join('\n')).toContain('Close')
+    expect(rows.at(-1)).toMatch(/^╰/u)
+    bench.terminal.resize(80, 30)
+    expect(slot.component.render(80)).toHaveLength(rows.length)
+    handle.close()
+    slot.dispose()
+  } finally { await bench.dispose() }
+})
+
+it('coalesces a passive root overlay surface with its registration frame', async () => {
+  const bench = await fixture()
+  try {
+    const handle = bench.open({
+      id: 'passive-frame', title: 'Passive panel',
+      render: () => ui.surface({ title: 'Inner title', chrome: 'overlay', child: ui.text('body') }),
+    })
+    await flush()
+    const rows = bench.stack()[0]!.component.render(60).map(stripTerminalSequences)
+    expect(rows.filter(row => row.startsWith('╭'))).toHaveLength(1)
+    expect(rows[0]).toMatch(/^╭ Passive panel/u)
+    handle.close()
+  } finally { await bench.dispose() }
+})
+
 function inputNode(id = 'value', value = ''): MayflyUiNode {
   return ui.form({ id: 'form', fields: [{ kind: 'input', id, label: id, value }] })
 }
@@ -165,6 +284,88 @@ async function settleInput(component: Component, input: string): Promise<void> {
 afterEach(() => { vi.useRealTimers() })
 
 describe('direct overlay surface renderer', () => {
+  it('routes initial and refreshed actions, forwards focus, and bounds non-scroll content', async () => {
+    const f = await fixture(80, 4)
+    try {
+      const action = vi.fn(() => ({ kind: 'completed' as const }))
+      const handle = f.open({ id: 'events', capturing: true, maxHeight: 2, render: () => ui.stack.column([
+        ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }),
+        ui.text('second'), ui.text('third'),
+      ]), onEvent: { action } })
+      await flush()
+      f.stack()[0]!.component.handleInput?.('\r')
+      await flush()
+      expect(action).toHaveBeenCalledOnce()
+      expect(f.stack()[0]!.component.render(80)).toHaveLength(2)
+      handle.set(ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run again' }] }))
+      await flush()
+      f.stack()[0]!.component.handleInput?.('\r')
+      await flush()
+      expect(action).toHaveBeenCalledTimes(2)
+      const wrapper = f.stack()[0]!.component as unknown as { targetValue: { component: Component } }
+      vi.spyOn(wrapper.targetValue.component, 'render').mockReturnValue(['one', 'two', 'three', 'four'])
+      expect(wrapper.targetValue).toBeDefined()
+      expect(f.stack()[0]!.component.render(80)).toHaveLength(2)
+      handle.focus()
+      await flush()
+      expect((f.stack()[0]!.component as MayflyFocusable).focused).toBe(true)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('contains passive and capturing deferred compilation failures', async () => {
+    const f = await fixture()
+    try {
+      const invalid = () => ({ kind: 'stack', direction: 'column', children: [{ when: { minWidth: 1 }, node: { kind: 'unknown' } }] }) as never
+      f.open({ id: 'passive-invalid-deferred', render: invalid })
+      f.open({ id: 'active-invalid-deferred', capturing: true, render: invalid })
+      await flush()
+      expect(f.stack()).toHaveLength(2)
+      expect(f.stack().every(item => item.component.render(80).join(' ').includes('unknown Mayfly UI kind'))).toBe(true)
+      f.stack()[1]!.component.handleInput?.('\x1b')
+      await flush()
+      expect(f.root.mayflyOverlays.list().some(entry => entry.id === 'active-invalid-deferred')).toBe(false)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('contains passive and capturing renderer construction failures', async () => {
+    const broken = { ...components, createEditor: () => { throw new Error('editor construction failed') } } as MayflyComponents
+    const f = await fixture(80, 24, broken)
+    try {
+      const form = () => ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })
+      f.open({ id: 'passive-broken-editor', render: form })
+      f.open({ id: 'active-broken-editor', capturing: true, render: form })
+      await flush()
+      expect(f.stack()).toHaveLength(2)
+      const rendered = f.stack().map(item => item.component.render(80).join(' '))
+      expect(rendered).toEqual(expect.arrayContaining([expect.stringContaining('Mayfly UI')]))
+      expect(rendered.every(value => value.length > 0)).toBe(true)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('orders multiple visible editor overlays by activation', async () => {
+    const f = await fixture()
+    try {
+      const slot = f.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+      const first = f.open({ id: 'editor-one', presentation: 'editor', capturing: true, render: () => ui.text('one') })
+      const second = f.open({ id: 'editor-two', presentation: 'editor', capturing: true, render: () => ui.text('two') })
+      await flush()
+      expect(slot.component.render(80)[0]).toBe('two')
+      first.focus()
+      expect(f.root.mayflyOverlays.list().at(-1)?.id).toBe('editor-one')
+      await waitUntil(() => slot.component.render(80)[0] === 'one')
+      expect(slot.component.render(80)[0]).toBe('one')
+      second.close(); first.close(); slot.dispose()
+    } finally {
+      await f.dispose()
+    }
+  })
+
   it('replays still-open overlays across renderer gaps', async () => {
     const f = await fixture()
     try {
@@ -229,7 +430,7 @@ describe('direct overlay surface renderer', () => {
       await flush()
       const component = f.stack()[0]!.component
       await settleInput(component, '\r')
-      expect(component.render(80).at(-1)).toContain('Enter confirm')
+      expect(component.render(80).join('\n')).toContain('Enter confirm')
       await settleInput(component, '\x1b')
       expect(confirmed.closed).toBe(false)
       await settleInput(component, '\x1b')
@@ -287,7 +488,7 @@ describe('direct overlay surface renderer', () => {
   it('renders translated hints and bounded titled failure frames', async () => {
     const f = await fixture(80, 10, components, key => `translated:${key}`)
     try {
-      const translated = f.open({ id: 'translated', capturing: true, title: 'Actions', render: () => actionNode() })
+      const translated = f.open({ id: 'translated', capturing: true, title: 'Actions', maxHeight: 6, render: () => actionNode() })
       await flush()
       translated.refresh()
       await flush()
@@ -323,7 +524,7 @@ describe('direct overlay surface renderer', () => {
     }
   })
 
-  it('keeps shell and focus identity while external refresh resets local drafts', async () => {
+  it('keeps shell, focus, and drafts across data refreshes, then resets on replace', async () => {
     const f = await fixture()
     try {
       const base: MayflyFocusable = { focused: false, render: () => ['base'], invalidate: () => {} }
@@ -340,10 +541,15 @@ describe('direct overlay surface renderer', () => {
       await flush()
       expect(f.stack()[0]!.component).toBe(component)
       expect((component as MayflyFocusable).focused).toBe(true)
-      expect(component.render(80).join('\n')).toContain('name: A')
-      expect(component.render(80).join('\n')).not.toContain('name: AB')
+      expect(component.render(80).join('\n')).toContain('name: AB')
       await settleInput(component, 'C')
-      expect(component.render(80).join('\n')).toContain('name: AC')
+      expect(component.render(80).join('\n')).toContain('name: ABC')
+      handle.set(inputNode('name', 'A'), { reason: 'replace' })
+      await flush()
+      const replacement = f.stack()[0]!.component
+      expect(replacement).not.toBe(component)
+      expect(replacement.render(80).join('\n')).toContain('name: A')
+      expect(replacement.render(80).join('\n')).not.toContain('name: ABC')
       handle.close()
       await flush()
       expect(base.focused).toBe(true)
@@ -415,13 +621,12 @@ describe('direct overlay surface renderer', () => {
     const f = await fixture()
     try {
       const onEvent = vi.fn()
-      let handle!: TestOverlayHandle
-      handle = f.open({
+      f.open({
         id: 'internal-overlay', capturing: true, render: () => actionNode(),
-        onEvent: (event, context) => {
+        onEvent: { action: (event, context) => {
           onEvent(event, context)
-          handle.set(actionNode(), { eventRevision: context.revision })
-        },
+          return { kind: 'accepted' as const, node: actionNode(), source: [] }
+        } },
       })
       await flush()
       const component = f.stack()[0]!.component
@@ -460,10 +665,10 @@ describe('direct overlay surface renderer', () => {
             ? ui.stack.column([ui.actions({ id: 'leading', items: [{ id: 'other', label: 'Other' }] }), form])
             : ui.stack.column([form, ui.text('tail')])
         },
-        onEvent: event => {
+        onEvent: { observe: event => {
           if (event.kind === 'value-change') value = String(event.value)
           reordered = true
-        },
+        } },
       })
       await flush()
       const component = f.stack()[0]!.component
@@ -478,18 +683,22 @@ describe('direct overlay surface renderer', () => {
     }
   })
 
-  it('closes on handler throw and timeout while restoring focus', async () => {
+  it('contains handler failure, imposes no generic timeout, and aborts on close', async () => {
     vi.useFakeTimers()
     const f = await fixture()
     try {
       const base: MayflyFocusable = { focused: false, render: () => ['base'], invalidate: () => {} }
       f.runtime.addChild(base)
       f.runtime.setFocus(base)
-      const thrown = f.open({ id: 'throw', capturing: true, render: () => actionNode(), onEvent: () => { throw new Error('boom') } })
+      const thrown = f.open({ id: 'throw', capturing: true, render: () => actionNode(), onEvent: { action: () => { throw new Error('boom') } } })
       await flush()
       f.stack()[0]!.component.handleInput?.('\r')
       await flush()
-      expect(thrown.closed).toBe(true)
+      expect(thrown.closed).toBe(false)
+      expect(f.stack()[0]!.component.render(80).join('\n')).toContain('boom')
+      expect(base.focused).toBe(false)
+      thrown.close()
+      await flush()
       expect(base.focused).toBe(true)
 
       let signal: AbortSignal | undefined
@@ -497,25 +706,30 @@ describe('direct overlay surface renderer', () => {
         id: 'timeout',
         capturing: true,
         render: () => actionNode(),
-        onEvent: (_event, context) => {
+        onEvent: { action: (_event, context) => {
           signal = context.signal
-          return new Promise<void>(() => {})
-        },
+          return new Promise<never>(() => {})
+        } },
       })
       await flush()
       f.stack()[0]!.component.handleInput?.('\r')
       await flush()
       await vi.advanceTimersByTimeAsync(30_000)
       await flush()
+      expect(signal?.aborted).toBe(false)
+      expect(timeout.closed).toBe(false)
+      timeout.close()
+      await flush()
       expect(signal?.aborted).toBe(true)
-      expect(timeout.closed).toBe(true)
+      thrown.close()
+      await flush()
       expect(base.focused).toBe(true)
     } finally {
       await f.dispose()
     }
   })
 
-  it('serializes FIFO events and aborts latest-wins values by control', async () => {
+  it('runs independent actions concurrently and aborts latest-wins values by control', async () => {
     const f = await fixture()
     try {
       const order: string[] = []
@@ -524,14 +738,15 @@ describe('direct overlay surface renderer', () => {
         id: 'fifo',
         capturing: true,
         render: () => ui.actions({ id: 'actions', items: [{ id: 'one', label: 'one' }, { id: 'two', label: 'two' }] }),
-        onEvent: async event => {
-          if (event.kind !== 'activate') return
+        onEvent: { action: async event => {
+          if (event.kind !== 'activate') return { kind: 'completed' }
           order.push(`start:${event.controlId}`)
           const release = deferred<void>()
           fifoReleases.push(release)
           await release.promise
           order.push(`end:${event.controlId}`)
-        },
+          return { kind: 'completed' }
+        } },
       })
       await flush()
       const fifoComponent = f.stack()[0]!.component
@@ -539,10 +754,10 @@ describe('direct overlay surface renderer', () => {
       fifoComponent.handleInput?.('\x1b[C')
       fifoComponent.handleInput?.('\r')
       await flush()
-      expect(order).toEqual(['start:one'])
+      expect(order).toEqual(['start:one', 'start:two'])
       fifoReleases[0]!.resolve()
       await waitUntil(() => order.length === 3)
-      expect(order).toEqual(['start:one', 'end:one', 'start:two'])
+      expect(order).toEqual(['start:one', 'start:two', 'end:one'])
       fifoReleases[1]!.resolve()
       await waitUntil(() => order.length === 4)
       fifo.close()
@@ -555,12 +770,12 @@ describe('direct overlay surface renderer', () => {
         id: 'latest',
         capturing: true,
         render: () => { renders += 1; return inputNode() },
-        onEvent: (_event, context) => {
+        onEvent: { observe: (_event, context) => {
           contexts.push(context)
           const result = deferred<void>()
           releases.push(result)
           return result.promise
-        },
+        } },
       })
       await flush()
       const latestComponent = f.stack()[0]!.component
@@ -598,7 +813,10 @@ describe('direct overlay surface renderer', () => {
             ui.form({ id: 'profile', fields: [{ kind: 'toggle', id: 'enabled', label: 'Enabled', value: false }] }),
           ])
         },
-        onEvent: () => release.promise,
+        onEvent: {
+          observe: () => release.promise.then(() => ({ kind: 'completed' as const })),
+          action: () => release.promise.then(() => ({ kind: 'completed' as const })),
+        },
       })
       await flush()
       const component = f.stack()[0]!.component
@@ -665,10 +883,10 @@ describe('direct overlay surface renderer', () => {
         id: 'replace',
         capturing: true,
         render: () => actionNode(),
-        onEvent: (_event, context) => {
+        onEvent: { action: (_event, context) => {
           oldSignal = context.signal
-          return pending.promise
-        },
+          return pending.promise.then(() => ({ kind: 'completed' as const }))
+        } },
       })
       await flush()
       f.stack()[0]!.component.handleInput?.('\r')
