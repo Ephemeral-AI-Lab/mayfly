@@ -1,7 +1,5 @@
 # `@mayfly-example/ui-gallery`
 
-Ordinary Cordis plugin injecting `mayflyPanes`. It registers one static
-right-lane gallery built only from public `@ephemeral-ai/mayfly-ui` nodes and
-degrades to the bottom lane when narrow. Its rich group exercises Markdown,
-Mermaid, and every chart variant without renderer-specific options. Keep its
-snapshots static and the package opt-in.
+Injects `mayflyPanes` and publishes a static right-lane gallery with bottom
+fallback. Use only public wire nodes; keep Markdown, Mermaid, and all chart
+variants represented without renderer-specific options.

@@ -1,13 +1,8 @@
 # `@mayfly-example/ecosystem`
 
-Composition-only opt-in bundle for five runnable external plugins: header,
-right-inspector, bottom-log, overlay, and ui-gallery. The user kit is a
-dependency, not a row.
+Composition-only bundle: `cordis.patch.yml` mounts header, right-inspector,
+bottom-log, overlay, and ui-gallery as ordinary siblings. The user kit is a
+dependency, not a row; the runtime entry adds no contributions.
 
-Rows are ordinary Cordis siblings of Mayfly. They inject native dsh services and
-direct Mayfly UI services exactly as their source declares. Keep this package
-outside Mayfly's release set and default bundle.
-
-Tests must install publish-shaped packages, boot all five rows, observe their
-direct contributions, and prove Fiber unload cleanup. Do not add manifests,
-capability maps, host facades, provider examples, or compatibility paths.
+Composition tests must install publish-shaped packages, boot every row, observe
+direct UI contributions, and prove Fiber unload cleanup.

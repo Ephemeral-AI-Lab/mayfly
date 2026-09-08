@@ -1,192 +1,116 @@
-# AGENTS.md
+# Repository guidance
 
-Repository-wide guidance for AI coding agents. Read the owning package's
-`AGENTS.md` before changing that package. Current architecture is indexed in
-[docs/README.md](docs/README.md); use the Harness
-<https://deepseek-harness.github.io/deepseek-harness/reference/> and pi-tui
-<https://pi.dev/docs/latest/tui> references instead of guessing APIs.
+Mayfly is an out-of-tree, ESM-only TypeScript terminal UI bundle for DeepSeek
+Harness. Use the Node range and pinned pnpm in `package.json`. Runtime imports
+resolve built `lib/`; rebuild before testing installed profiles.
 
-## Project And Packages
+Read the owning package's instructions before editing:
 
-Mayfly is the ESM-only TypeScript terminal UI bundle for DeepSeek Harness. It is
-an out-of-tree Cordis bundle, not part of a default `dsh` installation. The
-workspace requires Node `^22.19.0 || >=24.0.0` and pinned pnpm 11. Runtime
-entries come from built `lib/`; source changes do not affect an installed
-profile until the relevant package is rebuilt.
-
-| Area | Responsibility | Instructions |
-| --- | --- | --- |
-| `packages/ui` | Renderer-neutral contracts, builders, and four direct Mayfly UI services/provider | [AGENTS.md](packages/ui/AGENTS.md) |
-| `packages/mayfly` | All runtime areas, public runtime subpaths, installable composition, and `mayfly-cordis` preset | [AGENTS.md](packages/mayfly/AGENTS.md) |
-| `packages/cli` | Dependency-free global `mayfly` launcher | [AGENTS.md](packages/cli/AGENTS.md) |
-| `examples` | Publish-shaped external consumers and composition | [AGENTS.md](examples/mayfly-ecosystem/AGENTS.md) |
-
-`script/package-contract.mjs` is the source of truth for release and example
-package sets. `docs/mayfly-architecture.md` and `docs/mayfly-seams.md` describe
-the current runtime. History and release notes do not define current behavior.
-
-## Architecture Rules
-
-- Mayfly and external plugins consume documented native dsh services directly.
-  Mayfly-specific UI contributions use only `mayflyPanes`, `mayflyStatus`,
-  `mayflyOverlays`, and `mayflyEditorExtensions`. Only
-  `packages/mayfly/src/core/` imports pi-tui or handles ANSI, raw terminal
-  state, focus, layout, and visible-width truth.
-- Events are facts, projections are current readonly state, and actions are
-  structured writes. Renderers do not fold Harness session events or retain
-  Agent/Session objects as a second source of truth.
-- Harness owns Agent/session/domain state. App owns only current-Agent
-  selection and startup coordination. Product mutable state must not be a
-  module singleton. Every registration, listener, timer, and asynchronous
-  continuation has unload and stale-generation behavior.
-- Renderer-neutral models contain readonly data and structured actions only:
-  no pi-tui, React/DOM, ANSI, terminal width, focus handle, renderer key
-  binding, Promise, Agent, Session, or renderer object.
-- New public surfaces need a real consumer, headless lifecycle evidence,
-  relevant replay/abort/late-result tests, renderer width coverage, bundle
-  composition coverage, and dedicated-profile acceptance.
-- Cordis entries export `name`, optional `inject`, and `apply(ctx)`. Effects are
-  Fiber-owned. Agent-scoped native dsh services use the exact Agent selected by
-  `mayflyCurrentAgent`.
-- Do not add a Mayfly manifest, capability host, adapter facade, private runtime
-  realm, provider owner, compatibility export, or special plugin-author CLI.
-
-Package `AGENTS.md` files hold only non-obvious implementation boundaries,
-ownership, change rules, and verification triggers. Update one when a change
-alters those facts, a public/subpath surface, lifecycle, composition, or the
-required verification. Ordinary refactors and added tests do not require
-documentation churn. Keep user-facing `README.md` and `README.zh.md` in sync.
-
-## Local Verification
-
-Start with the change-aware gate:
-
-```sh
-pnpm run verify:changed -- --plan  # inspect the selected checks
-pnpm run verify:changed            # execute them
-pnpm run verify:full               # complete CI code gate plus happy smoke
-```
-
-`verify:changed` compares `origin/main...HEAD` by default and also includes
-staged, unstaged, and untracked files; use `--base <ref>` when needed. It fails
-closed:
-
-| Change | Local gate |
+| Area | Ownership |
 | --- | --- |
-| Agent docs or shipped skills | AGENTS/skill drift and author-doc checks only |
-| Ordinary package source | changed-file lint, incremental type/build, related Vitest, exact changed-file 100% coverage |
-| Renderer source | ordinary gate plus the owning width scan |
-| Lifecycle-sensitive source | the owning package test suite with changed-file coverage |
-| Package/build manifests | build, `check:lib`, and package validation |
-| Public API/UI, global config, shared test infrastructure, deleted TypeScript, or unknown repository scripts | full gate |
-| Website source | strict website build in addition to applicable checks |
+| [packages/ui](packages/ui/AGENTS.md) | Renderer-neutral contracts, builders, UI services |
+| [packages/mayfly](packages/mayfly/AGENTS.md) | Runtime, public subpaths, composition, preset |
+| [packages/cli](packages/cli/AGENTS.md) | Standalone global launcher and runtime payload |
+| [examples](examples/AGENTS.md) | Publish-shaped external consumers and composition |
 
-The planner is an iteration aid, not the merge authority. CI always runs the
-full deterministic code gate. Use `pnpm run verify:full` before handing off a
-broad, release, architecture, composition, or workflow change. It runs full
-coverage once; do not precede it with a redundant plain `pnpm run test`.
+Current architecture: [docs/README.md](docs/README.md). Consult the
+[Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
+and [pi-tui docs](https://pi.dev/docs/latest/tui) rather than guessing APIs.
+History and release notes do not define current behavior.
 
-Useful direct commands remain `pnpm run test`, `pnpm run test:coverage`,
-`pnpm run typecheck`, `pnpm run lint`, `pnpm run build`,
-`pnpm run check:lib`, `pnpm run check:pack`, `pnpm run check:examples`,
-`pnpm run website:build`, and the smoke scripts. `pnpm run shots:sync`
-regenerates the committed component and app screenshots under
-`website/public/shots/` from headless renders (needs a prior build);
-`pnpm run shots:check` byte-compares them as a staleness gate.
-`pnpm run build:changed`
-performs incremental project-reference emission and bundles only changed
-runtime packages; structural build changes use the full clean build.
+## Architecture
 
-The build contract is derived from package manifests: concrete `exports` and
-`bin` targets determine tsdown entries through `script/package-contract.mjs`.
-The package `files` whitelist remains independent. Any subpath change must
-update its export, source entry, types target, and files inclusion;
-`pnpm run check:lib` verifies the built/published closure.
+- Consume native dsh services directly. Mayfly UI contributions use only
+  `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions`.
+- Harness owns Agent/session/domain state. App owns current-Agent selection
+  and startup coordination. Agent-scoped calls use the exact Agent selected
+  by `mayflyCurrentAgent`, not merely a matching session ID.
+- Events are facts, projections are readonly current state, actions are
+  structured writes. Renderers must not fold session events into a second
+  domain store. Wire models contain no Agent/Session, Promise, callback,
+  renderer object, focus handle, key binding, ANSI, or terminal width.
+- Only `packages/mayfly/src/core/` imports pi-tui or owns raw terminal state,
+  ANSI, focus, layout, and visible-width truth.
+- Cordis entries export `name`, optional `inject`, and `apply(ctx)`; ordering
+  comes from injection. Effects are Fiber-owned. Registrations, listeners,
+  timers, and async work need unload and stale-generation handling. No mutable
+  product singletons, private realms, capability hosts, adapter facades,
+  provider owners, Mayfly manifests, or compatibility exports.
 
-## Test Contracts
+## Verification
 
-- Vitest 4 uses fork workers. Specs import the package under test through
-  relative `src/*.ts`; runtime package-name imports inside that source still
-  resolve workspace `lib/`, so a fresh worktree needs one full build baseline.
-  Coverage is per-file 100% for executable source in packages and examples;
-  type-only `src/types.ts` files are excluded.
-- A component must never return a row wider than `render(width)`. Add new
-  content renderers to the owning `width-scan.spec.ts`; all width helpers in
-  runtime code flow through `mayflyComponents`, and tests use
-  `packages/mayfly/src/core/width.ts`. The frame clamp is only a diagnostic backstop.
-- Tests create temporary roots with `mkdtempTracked()` and register
-  `registerTempDirCleanup()` from `packages/mayfly/tests/core/temp-dir.ts`. Do not use
-  raw `mkdtempSync` for profile/session fixtures.
-- `packages/mayfly/tests/e2e.spec.ts` is the whole-tree Cordis test. It
-  proves native dsh service access, direct UI registration, exact Agent scope,
-  Fiber cleanup, and renderer reload.
+Start with `pnpm run verify:changed -- --plan`, then `pnpm run verify:changed`.
+The default comparison is `origin/main...HEAD` plus staged, unstaged, and
+untracked files; use `--base <ref>` when needed. The executable selection rules
+are in `script/test-impact.mjs` and `script/verify-changed.mjs`.
 
-## Worktree And Acceptance
+Use `pnpm run verify:full` for broad, release, architecture, composition, or
+workflow changes. CI runs the full deterministic gate. Full verification runs
+coverage once and happy smoke; do not precede it with redundant plain tests.
+Run `pnpm run check:pack` for distribution changes; it is not part of the full
+runner. After instruction or shipped-skill edits, run
+`pnpm run check:agent-docs`.
 
-Develop every user-visible behavior, public seam, or Website change in a
-dedicated worktree and branch. Never link a checkout into the production
-`mayfly` profile. Use `mayfly-dev` for the main development checkout and
-`mayfly-<tag>` for a worktree.
+- Vitest uses fork workers and per-file 100% executable-source coverage.
+  Type-only `src/types.ts` files are excluded. Specs import the tested source
+  relatively, but package-name imports resolve workspace `lib/`; fresh
+  worktrees need a full build baseline.
+- Every component row must fit `render(width)`. Add content renderers to the
+  owning `width-scan.spec.ts`. Runtime width helpers flow through
+  `mayflyComponents`; tests use `packages/mayfly/src/core/width.ts`. The frame
+  clamp is a diagnostic backstop.
+- Profile/session fixtures use `mkdtempTracked()` and
+  `registerTempDirCleanup()` from `packages/mayfly/tests/core/temp-dir.ts`.
+- `packages/mayfly/tests/e2e.spec.ts` proves whole-tree native service access,
+  direct UI contributions, exact Agent scope, Fiber cleanup, and core reload.
+- `script/package-contract.mjs` derives build entries from manifests and owns
+  release/example package sets. Subpath changes update exports, source, types,
+  and `files`; verify with `pnpm run check:lib`. Structural build changes need
+  `pnpm run build`; ordinary emission can use `pnpm run build:changed`.
+- Screenshot updates use `pnpm run shots:sync` after build; `pnpm run shots:check`
+  checks committed screenshots for staleness.
 
-1. Implement code, tests, docs, and any required package `AGENTS.md` update in
-   the worktree. Iterate with `verify:changed`; use `verify:full` before
-   acceptance when the classifier, owning package instructions, or the broad
-   change rules above require it.
-2. Choose acceptance artifacts from the actual change. Documentation-only
-   changes do not require a Mayfly profile. Here, documentation means README,
-   `docs/**`, Website pages/assets, and `AGENTS.md`; executable configuration,
-   manifests, scripts, preset payload, and shipped `SKILL.md` files are not
-   documentation-only even when their syntax is Markdown or YAML.
-3. For any `website/**` change, build and serve the result on the local network:
+## Worktree and acceptance
 
-   ```sh
-   pnpm run website:build
-   pnpm --dir website exec vitepress preview . --host 0.0.0.0 --port <available-port>
-   ```
+Develop user-visible behavior, public seams, and Website changes in a dedicated
+worktree and branch. Never link a checkout into production `mayfly`; use
+`mayfly-dev` for the main checkout and `mayfly-<tag>` for worktrees.
 
-   Keep that process available and give the user the affected routes under
-   `http://<actual-lan-ip>:<port>/` for explicit visual/content acceptance.
-   `0.0.0.0` is the bind address, not a browser URL; never hand off
-   `0.0.0.0`, `localhost`, or `127.0.0.1` for LAN review. A Website-only
-   documentation change uses this preview and no Mayfly profile. A mixed
-   Website/runtime change requires both acceptance paths.
-4. When runtime behavior, a public seam, composition, preset payload, or
-   shipped skill requires a Mayfly profile, install from the worktree with
-   `PROFILE=mayfly-<tag> script/install-dev.sh`, then run the relevant
-   headless/PTY smoke. Give the user `dsh --profile mayfly-<tag>` together with a
-   change-specific acceptance checklist: the primary workflow, expected
-   result, relevant fallback or narrow-width/lifecycle case, and the nearby
-   behavior that must not regress. Rebuild after source edits; reinstall only
-   when the dependency graph changes.
-5. Wait for every applicable human acceptance. Do not merge, stop a Website
-   preview, remove a profile, or redirect acceptance to the shared `mayfly`
-   profile beforehand.
-6. After acceptance, merge, rebuild the main checkout when runtime output is
-   involved, then stop previews, remove worktree profiles, and record the
-   exercised routes/scenarios in the merge summary.
+1. Implement and verify before requesting acceptance. README, `docs/**`,
+   Website pages/assets, and AGENTS-only changes need no runtime profile.
+   Executable config, manifests, scripts, preset payload, and shipped skills
+   are not documentation-only.
+2. Any `website/**` change requires `pnpm run website:build` and a persistent
+   preview: `pnpm --dir website exec vitepress preview . --host 0.0.0.0 --port <port>`.
+   Give affected routes at `http://<actual-lan-ip>:<port>/`, never localhost,
+   loopback, or the bind address, for human visual/content acceptance.
+3. Runtime behavior, public seams, composition, preset payload, and shipped
+   skills require `PROFILE=mayfly-<tag> script/install-dev.sh` and relevant
+   headless/PTY smoke. Give `dsh --profile mayfly-<tag>` with the primary
+   workflow, expected result, fallback/narrow-width/lifecycle case, and nearby
+   regression checks. Rebuild after source edits; reinstall when dependencies
+   change. Mixed Website/runtime changes need both acceptance paths.
+4. Wait for all applicable human acceptance before merging, stopping previews,
+   or removing profiles. Never redirect acceptance to production `mayfly`.
+   After acceptance and merge, rebuild main when runtime output changed, stop
+   previews, remove worktree profiles, and record exercised routes/scenarios.
 
-## Style, Dependencies, And Security
+## Maintenance
 
-- Match surrounding code: no semicolons, single quotes, 2-space indentation,
-  `.ts` relative import extensions, `import type`, strict TypeScript, and a
-  factual module-level `@module` JSDoc. Empty type imports may intentionally
-  activate declaration merges.
-- There is no formatter. Oxlint covers `packages` and `examples`. Do not
-  reimplement width math or add pi-tui outside core.
-- pnpm's minimum-release-age exclusions and disabled `koffi` build are
-  intentional. Harness line changes must update the complete pin/exclusion
-  set and pass `packages/mayfly/tests/transcript/version.spec.ts`; evolve the lockfile
-  without broad dependency refreshes.
-- Do not commit secrets. Treat `cordis.patch.yml` `!!js` values as executable
-  code. Do not enable dependency build scripts without review.
+Match surrounding TypeScript: no semicolons, single quotes, two spaces,
+`.ts` relative imports, `import type`, and factual module-level `@module` JSDoc.
+Empty type imports may activate declaration merges. Oxlint covers packages and
+examples; there is no formatter.
 
-## Skills
+Preserve minimum-release-age exclusions and the disabled `koffi` build. Harness
+line changes update all pins/exclusions and pass
+`packages/mayfly/tests/transcript/version.spec.ts`; avoid broad lockfile refreshes.
+Treat `cordis.patch.yml` `!!js` values as code. Do not commit secrets or enable
+dependency build scripts without review.
 
-Mayfly repository maintenance has no `.agents/skills` layer: durable maintainer
-guidance lives here, in package `AGENTS.md`, and in deterministic commands.
-The three skills under
-`packages/mayfly/presets/mayfly-cordis/skills/` are shipped to preset users:
-dynamic runtime prototyping, durable external Mayfly plugin creation/migration,
-and user-owned composition editing. They are not required for ordinary Mayfly
-source development. Run `pnpm run check:agent-docs` after changing these
-instructions or shipped skills.
+Keep README language variants in sync. AGENTS files contain durable boundaries
+and verification triggers, not change history or test-result snapshots. Update
+them when ownership, lifecycle, public surfaces, or required checks change.
+There is no maintainer `.agents/skills` layer; the three skills in
+`packages/mayfly/presets/mayfly-cordis/skills/` are for preset users, not ordinary
+repository development.
