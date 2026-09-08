@@ -8,20 +8,18 @@
  * boundary verbatim so every rewritten token is one the upstream pre-step
  * recognizes), and the `/skills` listing panel (`./skills-command.ts`).
  *
- * The seam is the app-owned skill snapshot and invalidation boundary; no
- * Harness Agent, scope key, or registry object reaches interaction. An
- * incomplete observation
- * (`complete: false` — a provider mid-revision) is never cached, and the
- * last good catalog survives until a complete one replaces it. Invalidation
- * rides the app's skill-change registration and session reader; both drop the cache and
- * preheat, and an epoch counter keeps a refresh that started under the old
- * session from repopulating the cache after the drop.
+ * Discovery reads native skills with the exact selected Agent and its cwd.
+ * Incomplete observations retain the last complete catalog for that Agent;
+ * changing the Agent clears it immediately. Native invalidation, replacement,
+ * and unload abort old discovery, with an epoch check fencing late results.
  *
  * @module @ephemeral-ai/mayfly/interaction/skills-catalog
  */
 
 import { Service, type Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SkillSummary } from '@deepseek-ai/dsh-skill'
+import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type {} from '../app/index.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -50,26 +48,28 @@ const SKILL_PREFIX = /(^|\s)#([a-z0-9-]*)$/
 /** Frontend-tree-scoped skill cache and invalidation owner. */
 export class SkillsCatalogService extends Service {
   private settled: readonly SkillSummary[] | undefined
+  private complete = false
   private epoch = 0
-  private flight: { readonly epoch: number, readonly promise: Promise<void> } | undefined
-  private observedSessionId: string | undefined
+  private flight: { readonly epoch: number, readonly promise: Promise<void>, readonly controller: AbortController } | undefined
+  private observedAgent: Agent | null
+  private readonly listeners = new Set<() => void>()
   private readonly sessionRegistration: () => void
   private readonly skillRegistration: () => void
   private disposed = false
 
-  /** @param ctx - interaction-root context carrying app session services. */
-  constructor(ctx: Context) {
+  /** @param ownerCtx - stable consumer context with native skills and Agent selection. */
+  constructor(private readonly ownerCtx: Context) {
+    const ctx = ownerCtx
     super(ctx, 'mayflySkillsCatalog')
-    this.observedSessionId = ctx.mayflyCurrentAgent.current()?.id
+    this.observedAgent = ctx.mayflyCurrentAgent.current()
     this.sessionRegistration = ctx.mayflyCurrentAgent.subscribe(agent => {
-      const next = agent?.id
-      if (next === this.observedSessionId) return
-      this.observedSessionId = next
-      this.drop()
+      if (agent === this.observedAgent) return
+      this.observedAgent = agent
+      this.invalidate(true)
       void this.refresh()
     })
     this.skillRegistration = ctx.on('skills/change', () => {
-      this.drop()
+      this.invalidate(false)
       void this.refresh()
     })
     void this.refresh()
@@ -80,20 +80,34 @@ export class SkillsCatalogService extends Service {
     return this.settled?.filter(skill => skill.invocation.userInvocable) ?? []
   }
 
+  snapshot(): { readonly skills: readonly SkillSummary[], readonly complete: boolean } {
+    return { skills: this.userInvocable(), complete: this.complete }
+  }
+
+  subscribe(listener: () => void): () => void {
+    if (this.disposed) return () => {}
+    this.listeners.add(listener)
+    return this.ctx.effect(() => () => { this.listeners.delete(listener) })
+  }
+
+  private changed(): void { for (const listener of this.listeners) { try { listener() } catch { /* observers do not own catalog settlement */ } } }
+
   /** Refresh once per epoch, preserving a last-good complete observation. */
   refresh(): Promise<void> {
     if (this.disposed) return Promise.resolve()
-    const currentId = this.ctx.mayflyCurrentAgent.current()?.id
-    if (currentId !== this.observedSessionId) {
-      this.observedSessionId = currentId
-      this.drop()
+    const agent = this.ownerCtx.mayflyCurrentAgent.current()
+    if (agent !== this.observedAgent) {
+      this.observedAgent = agent
+      this.invalidate(true)
     }
     if (this.flight?.epoch === this.epoch) return this.flight.promise
     const ticket = this.epoch
-    const promise = this.settle(ticket)
-    this.flight = { epoch: ticket, promise }
+    const controller = new AbortController()
+    const promise = this.settle(ticket, agent, controller.signal)
+    this.flight = { epoch: ticket, promise, controller }
     void promise.finally(() => {
       if (this.flight?.promise === promise) this.flight = undefined
+      controller.abort()
     })
     return promise
   }
@@ -104,36 +118,51 @@ export class SkillsCatalogService extends Service {
     this.disposed = true
     this.sessionRegistration()
     this.skillRegistration()
-    this.drop()
+    this.invalidate(true)
+    this.listeners.clear()
   }
 
   /** Test-only direct settlement seam, scoped to this service instance. */
   setForTest(skills: readonly SkillSummary[] | undefined): void {
-    this.epoch += 1
-    this.settled = skills === undefined ? undefined : [...skills]
+    this.invalidate(true)
+    this.settled = skills === undefined ? undefined : freezeWire(skills)
+    this.complete = skills !== undefined
+    this.changed()
   }
 
-  private drop(): void {
+  private invalidate(clear: boolean): void {
     this.epoch += 1
-    this.settled = undefined
+    this.flight?.controller.abort()
+    this.complete = false
+    if (clear) this.settled = undefined
+    this.changed()
   }
 
-  private async settle(ticket: number): Promise<void> {
-    const agent = this.ctx.mayflyCurrentAgent.current()
+  private async settle(ticket: number, agent: Agent | null, signal: AbortSignal): Promise<void> {
     if (agent === null) {
       this.settled = undefined
       return
     }
-    let result: Awaited<ReturnType<typeof this.ctx.skills.snapshot>>
+    let result: Awaited<ReturnType<typeof this.ownerCtx.skills.snapshot>>
     try {
-      result = await this.ctx.skills.snapshot({ cwd: agent.session.header.cwd, scope: agent })
+      result = await this.ownerCtx.skills.snapshot({ cwd: agent.session.header.cwd, scope: agent, signal })
+      if (this.disposed || ticket !== this.epoch || signal.aborted) return
+      if (this.ownerCtx.mayflyCurrentAgent.current() !== agent) return
+      if (result.complete) this.settled = freezeWire(result.skills)
+      this.complete = result.complete
+      this.changed()
     } catch {
+      if (!this.disposed && ticket === this.epoch && !signal.aborted) { this.complete = false; this.changed() }
       return
     }
-    if (this.disposed || ticket !== this.epoch) return
-    if (this.ctx.mayflyCurrentAgent.current() !== agent) return
-    if (result.complete) this.settled = result.skills
   }
+}
+
+export const name = 'mayfly-skills-catalog'
+export const inject = ['skills', 'mayflyCurrentAgent']
+export function apply(ctx: Context): void {
+  const service = new SkillsCatalogService(ctx)
+  ctx.effect(() => () => service.dispose())
 }
 
 /** Read the current tree's settled user-invocable skills. */

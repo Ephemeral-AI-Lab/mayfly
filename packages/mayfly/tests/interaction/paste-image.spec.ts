@@ -95,7 +95,7 @@ describe('mayfly-paste-image plugin', () => {
     ctx = mayfly.ctx
     keymap = mayfly.keymap
     ctx.provide('attachments', { imageLimits, saveImage, saveImages })
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
   })
 
   afterEach(async () => {
@@ -472,7 +472,7 @@ describe('default clipboard image reader', () => {
     const mayfly = fakeMayflyContext()
     ctx = mayfly.ctx
     ctx.provide('attachments', { imageLimits, saveImage, saveImages })
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
   })
 
   afterEach(async () => {
@@ -592,7 +592,7 @@ exit 1
     fiber = undefined
     editor = new FakeMayflyEditor()
     notices = []
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     tool(bin, 'wl-paste', wlPasteFake('image/png\nimage/jpeg\n', {
       'image/png': shBytes(GIF_1X1),
       'image/jpeg': shBytes(JPEG_PREFIX),
@@ -621,7 +621,7 @@ exit 1
     await vi.waitFor(() => {
       expect(editor.inserted).toHaveLength(1)
     })
-    expect(notices).toEqual(['pasting image...'])
+    expect(notices).toEqual(['pasting image...', 'pasted 2 images'])
     expect(editor.inserted).toHaveLength(1)
     expect(saveImages).toHaveBeenCalledWith([
       expect.objectContaining({ data: expect.any(Uint8Array), mediaType: 'image/png', name: 'castle image.png' }),
@@ -698,7 +698,7 @@ exit 1
       fiber = undefined
       editor = new FakeMayflyEditor()
       notices = []
-      setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+      setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     }
   })
 
@@ -730,7 +730,7 @@ exit 1
       fiber = undefined
       editor = new FakeMayflyEditor()
       notices = []
-      setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+      setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     }
   })
 
@@ -764,7 +764,7 @@ exit 1
       fiber = undefined
       editor = new FakeMayflyEditor()
       notices = []
-      setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+      setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     }
     expect(saveImages).not.toHaveBeenCalled()
   })
@@ -786,7 +786,7 @@ exit 1
       fiber = undefined
       editor = new FakeMayflyEditor()
       notices = []
-      setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+      setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     }
   })
 
@@ -815,7 +815,7 @@ exit 1
     await fiber!.dispose()
     fiber = undefined
     editor = new FakeMayflyEditor()
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     await mountDefault('wayland')
     await vi.waitFor(() => {
       expect(editor.inserted).toHaveLength(1)
@@ -825,7 +825,7 @@ exit 1
     await fiber!.dispose()
     fiber = undefined
     editor = new FakeMayflyEditor()
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, notice: text => notices.push(text) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     process.env.WAYLAND_DISPLAY = 'wayland-1'
     process.env.XDG_RUNTIME_DIR = '/tmp/mayfly-runtime'
     await mountDefault()

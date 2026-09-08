@@ -20,11 +20,11 @@ import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import * as editorPlus from '../../src/interaction/editor-plus.ts'
 import * as fileMention from '../../src/interaction/file-mention.ts'
 import * as mentionPaths from '../../src/internal/mention.ts'
-import { EditorDockHost } from '../../src/interaction/editor-dock-host.ts'
 import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 
 
 registerTempDirCleanup()
@@ -49,6 +49,7 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
   locale: MayflyLocaleService | undefined
 }> {
   const { ctx, screen, components } = fakeMayflyContext()
+  new UiInteractionService(ctx)
   const locale = options.locale === undefined
     ? undefined
     : new MayflyLocaleService(ctx, { systemLocale: options.locale })
@@ -61,8 +62,8 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
   ctx.provide('testSession', { current: options.withAgent === false ? null : agent, modelRef: undefined })
   const inputFiber = await ctx.plugin(inputPlugin)
   const editor = components.editors.at(-1)!
-  const dock = screen.slotTargets.get('editor.prompt') as EditorDockHost
-  const hint: MayflyComponent = { render: width => dock.renderHint(width), invalidate: () => dock.invalidate() }
+  const editorRoot = screen.children.at(-1)!
+  const hint: MayflyComponent = { render: width => editorRoot.render(width).slice(editor.render(width).length), invalidate: () => editorRoot.invalidate() }
   return {
     ctx,
     screen,

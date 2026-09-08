@@ -97,6 +97,12 @@ describe('buildIndex', () => {
 })
 
 describe('loadModelsDevIndex', () => {
+  it('uses an explicit loader seam', async () => {
+    const loaded = buildIndex(samplePayload())
+    setModelsDevLoader(async () => loaded)
+    expect(await loadModelsDevIndex(createContext())).toBe(loaded)
+  })
+
   it('surfaces an HTTP failure as the quiet offline path', async () => {
     const ctx = createContext()
     setModelsDevLoader(undefined)
@@ -122,6 +128,24 @@ describe('loadModelsDevIndex', () => {
     setModelsDevFetch(async () => { throw new Error('offline') })
     setModelsDevLoader(undefined)
     expect(await loadModelsDevIndex(createContext())).toBeUndefined()
+  })
+
+  it('accepts a caller signal and does not cache obsolete or ownerless results', async () => {
+    setModelsDevLoader(undefined)
+    const aborted = new AbortController()
+    setModelsDevFetch(async () => { aborted.abort(); return samplePayload() })
+    const ctx = createContext()
+    expect(await loadModelsDevIndex(ctx, aborted.signal)).toBeDefined()
+    expect(ctx.mayflyInteractionState.modelsDevCache).toBeUndefined()
+
+    setModelsDevFetch(async () => samplePayload())
+    const ownerless = new Context()
+    expect(await loadModelsDevIndex(ownerless, new AbortController().signal)).toBeDefined()
+
+    const disposed = createContext()
+    disposed.mayflyInteractionState.dispose()
+    expect(await loadModelsDevIndex(disposed)).toBeDefined()
+    expect(disposed.mayflyInteractionState.modelsDevCache).toBeUndefined()
   })
 
   it('runs the default fetch seam against a stubbed global fetch', async () => {

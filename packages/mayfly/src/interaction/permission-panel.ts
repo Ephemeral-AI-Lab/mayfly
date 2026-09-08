@@ -24,12 +24,10 @@ import type {} from '../app/index.ts'
 // (dsh-permission-presets) and the `commands` merge the dispatch uses.
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-commands'
-import { displayServices } from './display-services.ts'
-import { getSharedEditor } from './editor-instance.ts'
-import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { createConfirmationPanel } from './confirmation-panel.ts'
 import { interactionTranslator } from './locale.ts'
-import { CanonicalSelectController, type SelectRow } from './select-list.ts'
+import { openUiOverlay } from './ui-overlay.ts'
+import { createInteractionNotificationOwner } from './notifications.ts'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import { CURRENT_MARK } from './symbols.ts'
 
 /** The sandbox + approval bundle one preset resolves to. */
@@ -75,95 +73,69 @@ const CUSTOM_BLOCKED = 'custom is the derived state — pick a preset'
  * @param ctx - plugin context (`commands` via the calling plugin).
  */
 export function openPermissionPanel(ctx: Context): void {
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.permission', 'permission')
   const presets = ctx.get('permissionPresets') as PermissionPresetsService | undefined
   if (presets === undefined) return
-  const display = displayServices(ctx)
-  if (display === undefined) {
-    getSharedEditor(ctx)?.notice?.('permission picker is unavailable: the Mayfly screen is not mounted')
+  const overlays = ctx.get('mayflyOverlays')
+  if (overlays === undefined) {
+    notifications.report('open', { message: 'permission picker is unavailable: the Mayfly UI registry is not mounted', severity: 'error' })
     return
   }
-  const agent = ctx.mayflyCurrentAgent.current()
+  const currentAgents = ctx.get('mayflyCurrentAgent')
+  if (currentAgents === undefined) return
+  const agent = currentAgents.current()
   if (agent === null) return
   const current = presets.current(agent.session)
-  const rows: SelectRow[] = presets.names.map(name => ({
-    value: name,
+  const rows: Array<{ readonly id: string, readonly label: string, readonly detail?: string, readonly badge?: string, readonly disabled?: boolean }> = presets.names.map(name => ({
+    id: name,
     label: presets.optionOf(name).name,
-    description: presetDescription(presets.resolve(name)),
+    detail: presetDescription(presets.resolve(name)),
     ...(name === current ? { badge: CURRENT_MARK } : {}),
   }))
   if (current === 'custom') {
-    rows.push({ value: 'custom', label: presets.optionOf('custom').name, disabled: true })
+    rows.push({ id: 'custom', label: presets.optionOf('custom').name, disabled: true })
   }
 
   const dispatch = (name: string): void => {
     void ctx.commands.execute(agent, `/permission ${name}`, [], new AbortController().signal).then(
       execution => {
-        if (execution === undefined) return
+        if (execution === undefined) {
+          notifications.report('dispatch', { message: 'permission command is unavailable', severity: 'error' })
+          return
+        }
         const { result } = execution
         if (result.text === undefined) return
-        const paint = result.kind === 'error' ? displayServices(ctx)?.colors.error : undefined
-        getSharedEditor(ctx)?.notice?.(paint === undefined ? result.text : paint(result.text))
+        notifications.report('dispatch', { message: result.text, severity: result.kind === 'error' ? 'error' : 'success' })
       },
       error => {
-        // execute() rethrows handler failures and append failures alike;
-        // the picker has no panel left to paint them on, so the loud path
-        // is the logger.
-        ctx.logger.warn(`permission dispatch failed: ${error instanceof Error ? error.message : String(error)}`)
+        notifications.report('dispatch', { message: `permission dispatch failed: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' })
       },
     )
   }
 
-  // The list stays mounted under the danger gate: cancelling the confirmation
-  // pops the stack back onto the picker instead of rebuilding it.
-  /* v8 ignore next -- the placeholder only runs if the panel settles
-     before its mount returns, which the building order forbids */
-  let restoreList: () => void = () => {}
+  let picker!: ReturnType<typeof openUiOverlay>
   const confirmDanger = (name: string): void => {
-    const confirm = createConfirmationPanel({
-      keymap: display.keymap,
-      theme: display.theme,
-      components: display.components,
-      t: (key, values) => interactionTranslator(ctx)(key, { preset: presets.optionOf(name).name, ...values }),
-      title: 'Full access',
-      question: 'Enable {preset}?',
-      detail: presets.resolve(name).approval === 'never'
-        ? 'Disable the file sandbox. Requests that still require approval will be rejected without prompting.'
-        : 'Disable the file sandbox. Requests that require approval will still prompt.',
-      onConfirm: () => {
-        // Leave both layers: the gate pops onto the picker, and a
-        // confirmed switch closes the picker too.
-        restoreConfirm()
-        restoreList()
-        dispatch(name)
-      },
-      onCancel: () => {
-        restoreConfirm()
-      },
-    })
-    const restoreConfirm = mountEditorReplacement(ctx, confirm)
+    const t = interactionTranslator(ctx)
+    const id = 'mayfly.permission.confirm'
+    if (overlays.focus(id)) return
+    const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Full access'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
+      if (event.kind === 'activate' && event.actionId === 'yes') { handle.close(); picker.close(); dispatch(name) }
+      else if (event.kind === 'activate' && event.actionId === 'no') handle.close()
+      return { kind: 'completed' as const }
+    } } }, ui.surface({ chrome: 'overlay', title: t('Full access'), child: ui.stack.column([
+      ui.text(t('Enable {preset}?', { preset: presets.optionOf(name).name })),
+      ui.text(presets.resolve(name).approval === 'never' ? t('Disable the file sandbox. Requests that still require approval will be rejected without prompting.') : t('Disable the file sandbox. Requests that require approval will still prompt.'), { tone: 'warning' }),
+      ui.actions({ id: 'permission-confirm-actions', items: [{ id: 'yes', label: t('Yes'), intent: 'danger' }, { id: 'no', label: t('No'), defaultFocus: true }] }),
+    ]) }))
   }
 
-  const panel = new CanonicalSelectController({
-    keymap: display.keymap,
-    theme: display.theme,
-    components: display.components,
-    rows,
-    title: 'Permissions',
-    ...(current === 'custom' ? {} : { initialValue: current }),
-    onSelect: row => {
-      if (presets.resolve(row.value).sandbox === 'danger-full-access') {
-        confirmDanger(row.value)
-        return
-      }
-      restoreList()
-      dispatch(row.value)
-    },
-    onBlockedSelect: () => {
-      getSharedEditor(ctx)?.notice?.(display.colors.warning(CUSTOM_BLOCKED))
-    },
-    onCancel: () => {
-      restoreList()
-    },
-  })
-  restoreList = mountEditorReplacement(ctx, panel)
+  picker = openUiOverlay(ctx, { id: 'mayfly.permission', presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Permissions', scope: { kind: 'app', targetId: 'permission' }, onEvent: { action: event => {
+    if (event.kind !== 'selection-accept') return { kind: 'completed' as const }
+    const name = event.selectedIds[0]
+    if (name === undefined) return { kind: 'completed' as const }
+    if (name === 'custom') { notifications.report('custom', { message: CUSTOM_BLOCKED, severity: 'warning' }); return { kind: 'completed' as const } }
+    if (presets.resolve(name).sandbox === 'danger-full-access') confirmDanger(name)
+    else { picker.close(); dispatch(name) }
+    return { kind: 'completed' as const }
+  } } }, ui.surface({ chrome: 'overlay', title: 'Permissions', child: ui.list({ id: 'permissions', role: 'choose', selectedIds: current === 'custom' ? [] : [current], items: rows }) }))
 }

@@ -16,6 +16,7 @@ import type {
   MayflyEditorExtensionEntry,
   MayflyEditorExtensionNode,
   MayflyEditorSubmitRequest,
+  MayflyFeedback,
   MayflyUiEvent,
   MayflyUiNode,
 } from '@ephemeral-ai/mayfly-ui'
@@ -40,7 +41,6 @@ const MAX_SUBMIT_TEXT = 20_000
 const MAX_NOTICE_TEXT = 2_000
 const COMPLETION_TIMEOUT_MS = 5_000
 const SUBMIT_TIMEOUT_MS = 30_000
-const ACTION_TIMEOUT_MS = 30_000
 const IMAGE_MARKER = /\[image #\d+\]/gu
 const TOKEN_DELIMITERS = new Set([' ', '\t', '"', "'", '='])
 
@@ -68,7 +68,7 @@ interface ExtensionActionBinding {
   readonly actionId: string
 }
 
-type EditorExtensionRuntimeEntry = MayflyEditorExtensionDefinition & MayflyEditorDecoration
+type EditorExtensionRuntimeEntry = Omit<MayflyEditorExtensionDefinition, 'source'> & MayflyEditorDecoration & Pick<MayflyEditorExtensionEntry, 'events' | 'source'>
 
 interface EditorShell {
   readonly component: MayflyComponent
@@ -90,12 +90,14 @@ type Admission<Value> =
 export interface EditorExtensionRuntimeOptions {
   readonly ctx: Context
   readonly editor: MayflyEditor
-  readonly notice: (text: string) => void
+  readonly report: (id: string, feedback: MayflyFeedback) => void
+  readonly footer?: () => MayflyUiNode | undefined
   readonly shouldTransformSubmit: (text: string) => boolean
 }
 
 function failureMessage(value: unknown, fallback: string): string {
   try {
+    if (typeof value === 'string') return value.trim() || fallback
     if (typeof value !== 'object' || value === null) return fallback
     const descriptor = Object.getOwnPropertyDescriptor(value, 'message')
     return descriptor !== undefined && 'value' in descriptor && typeof descriptor.value === 'string'
@@ -250,8 +252,6 @@ export class EditorExtensionRuntime implements MayflyFocusable {
   private focusTarget: MayflyFocusable
   private shell: EditorShell
   private readonly pending = new Set<AbortController>()
-  private readonly activeEventRevisions = new Set<number>()
-  private readonly eventTails = new Map<string, Promise<void>>()
   private actionGeneration = 0
   private completionLifecycle = new AbortController()
   private prepared: PreparedSubmit | undefined
@@ -268,8 +268,8 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       else this.extensionEntries.set(delta.entry.id, delta.entry)
       this.entries = [...this.extensionEntries.values()]
         .sort((left, right) => (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id))
-        .map(entry => ({ ...entry.definition, ...entry.decoration }))
-      if (this.initialized) this.syncExtensions(delta.kind === 'upsert' ? delta.entry.eventRevision : undefined)
+        .map(entry => ({ ...entry.definition, source: entry.source, ...entry.decoration, events: entry.events }))
+      if (this.initialized) this.syncExtensions()
     })
     this.unsubscribeHost = options.ctx.mayflyPromptEditor.subscribeEditorState(() => {
       /* v8 ignore else -- the immediate subscription replay intentionally precedes initialization. */
@@ -292,6 +292,16 @@ export class EditorExtensionRuntime implements MayflyFocusable {
 
   handleInput(data: string): void { this.focusTarget.handleInput?.(data) }
   invalidate(): void { this.component.invalidate() }
+  private report(id: string, message: string, severity: MayflyFeedback['severity'] = 'error'): void {
+    try { this.options.report(id, { message, severity }) } catch { /* feedback consumers cannot break editor work */ }
+  }
+  private reportFeedback(id: string, feedback: MayflyFeedback): void {
+    try { this.options.report(id, feedback) } catch { /* feedback consumers cannot break editor work */ }
+  }
+  refreshPresentation(): void {
+    this.activateShell(this.compileShell())
+    this.options.ctx.mayflyScreen.requestRender()
+  }
 
   /** Consume the successful transform prepared before core cleared the editor. */
   takePrepared(source: string): { readonly text: string, readonly transformation?: SubmitTransformation } | undefined {
@@ -336,8 +346,8 @@ export class EditorExtensionRuntime implements MayflyFocusable {
   invalidateRoute(): void { this.abortPending() }
   invalidateSession(): void { this.abortPending() }
 
-  private syncExtensions(eventRevision?: number): void {
-    if (eventRevision === undefined || !this.activeEventRevisions.has(eventRevision)) this.abortPending()
+  private syncExtensions(): void {
+    this.abortPending()
     this.activateShell(this.compileShell())
     const transforms = this.entries.some(entry => entry.transformSubmit !== undefined)
     this.options.editor.setSubmitBarrier(transforms ? attempt => { this.beginSubmit(attempt) } : undefined)
@@ -358,8 +368,6 @@ export class EditorExtensionRuntime implements MayflyFocusable {
     this.completionLifecycle = new AbortController()
     for (const controller of this.pending) controller.abort()
     this.pending.clear()
-    this.activeEventRevisions.clear()
-    this.eventTails.clear()
     this.prepared = undefined
   }
 
@@ -384,7 +392,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       if (entry.before === undefined) continue
       const admitted = validateMayflyUiNode(entry.before)
       if (admitted.ok && isPassive(admitted.value)) children.push({ node: admitted.value })
-      else this.options.notice(admitted.ok ? 'editor extension before must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
+      else this.report('definition', admitted.ok ? 'editor extension before must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
     }
     children.push({ node: { kind: 'editor-control' } })
     for (const [entryIndex, entry] of this.entries.entries()) {
@@ -392,7 +400,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       if (typeof entry.hint === 'string') {
         const admitted = validateMayflyUiNode({ kind: 'text', content: entry.hint, tone: 'muted' })
         if (admitted.ok) rows.push(admitted.value)
-        else this.options.notice(admitted.message.slice(0, MAX_NOTICE_TEXT))
+        else this.report('definition', admitted.message.slice(0, MAX_NOTICE_TEXT))
       }
       if (Array.isArray(entry.diagnostics)) for (const diagnostic of entry.diagnostics) {
         try {
@@ -402,7 +410,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
           const admitted = validateMayflyUiNode({ kind: 'text', content: message, ...(tone === undefined ? { tone: 'warning' as const } : { tone }) })
           if (!admitted.ok) throw new Error(admitted.message)
           rows.push(admitted.value)
-        } catch (error) { this.options.notice(boundedMessage(error, 'editor extension diagnostic was rejected')) }
+        } catch (error) { this.report('definition', boundedMessage(error, 'editor extension diagnostic was rejected')) }
       }
       if (Array.isArray(entry.actions) && entry.actions.length > 0) {
         const admitted = validateMayflyUiNode({ kind: 'actions', id: `extension-actions-${String(entryIndex)}`, items: entry.actions })
@@ -414,14 +422,20 @@ export class EditorExtensionRuntime implements MayflyFocusable {
             return { ...action, id }
           })
           rows.push({ ...actionNode, items })
-        } else this.options.notice(admitted.message.slice(0, MAX_NOTICE_TEXT))
+        } else this.report('definition', admitted.message.slice(0, MAX_NOTICE_TEXT))
       }
       for (const row of rows) children.push({ node: row })
       if (entry.after !== undefined) {
         const admitted = validateMayflyUiNode(entry.after)
         if (admitted.ok && isPassive(admitted.value)) children.push({ node: admitted.value })
-        else this.options.notice(admitted.ok ? 'editor extension after must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
+        else this.report('definition', admitted.ok ? 'editor extension after must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
       }
+    }
+    const footer = this.options.footer?.()
+    if (footer !== undefined) {
+      const admitted = validateMayflyUiNode(footer)
+      if (admitted.ok && isPassive(admitted.value)) children.push({ node: admitted.value })
+      else this.report('definition', admitted.ok ? 'editor feedback must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
     }
     return {
       node: children.length === 1
@@ -439,12 +453,12 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       editor: this.options.editor,
       components: this.options.ctx.mayflyComponents,
       colors: this.options.ctx.mayflyTheme.colors,
-      getViewport: () => ({ columns: this.columns, rows: Number.MAX_SAFE_INTEGER }),
+      getViewport: () => this.options.ctx.mayflyScreen.editorViewport,
       screenMode: 'main',
       emit: event => { this.dispatchShellEvent(shell, event) },
     })
     if (!result.ok) {
-      this.options.notice(result.message.slice(0, MAX_NOTICE_TEXT))
+      this.report('definition', result.message.slice(0, MAX_NOTICE_TEXT))
       return this.plainShell()
     }
     shell = {
@@ -458,37 +472,29 @@ export class EditorExtensionRuntime implements MayflyFocusable {
 
   private dispatchShellEvent(shell: EditorShell, event: MayflyUiEvent): void {
     const target = event.kind === 'activate' ? shell.extensionActions.get(event.controlId) : undefined
-    if (target === undefined || target.entry.onEvent === undefined) return
+    const endpoint = target?.entry.events
+    if (target === undefined || endpoint === undefined) return
     const revision = ++this.operationRevision
-    const generation = this.actionGeneration
-    const translated: MayflyUiEvent = { kind: 'activate', controlId: target.actionId }
-    const previous = this.eventTails.get(target.entry.id) ?? Promise.resolve()
-    const next = previous.catch(() => {}).then(async () => {
-      if (this.actionGeneration !== generation || shell !== this.shell) return
-      const controller = new AbortController()
-      this.pending.add(controller)
-      this.activeEventRevisions.add(revision)
-      try {
-        const outcome = await settleCallback(
-          () => target.entry.onEvent!(translated, { surfaceId: target.entry.id, signal: controller.signal, revision }),
-          controller.signal,
-          ACTION_TIMEOUT_MS,
-        )
-        if (shell !== this.shell || controller.signal.aborted || outcome.kind === 'aborted') return
-        if (outcome.kind === 'timeout') { controller.abort(); this.options.notice('editor extension action timed out'); return }
-        if (outcome.kind === 'rejected') this.options.notice(boundedMessage(outcome.error, 'editor extension action failed'))
-      } finally {
-        this.pending.delete(controller)
-        this.activeEventRevisions.delete(revision)
-      }
-    })
-    this.eventTails.set(target.entry.id, next)
-    const clearTail = (): void => {
-      if (this.eventTails.get(target.entry.id) === next) this.eventTails.delete(target.entry.id)
-    }
-    void next.then(clearTail, error => {
-      clearTail()
-      try { this.options.notice(boundedMessage(error, 'editor extension action failed')) } catch { /* owner notice failures are contained */ }
+    const translated: MayflyUiEvent = { kind: 'activate', pagePath: [], controlId: target.actionId, actionId: target.actionId }
+    const controller = new AbortController()
+    this.pending.add(controller)
+    void endpoint.prepare(translated, {
+      surfaceId: target.entry.id,
+      source: target.entry.source,
+      signal: controller.signal,
+      revision,
+      operationId: `${target.entry.id}:${String(revision)}`,
+      report: feedback => { if (!controller.signal.aborted) this.reportFeedback('action', feedback) },
+    }).then(prepared => {
+      if (shell !== this.shell || controller.signal.aborted) return
+      const reply = prepared.reply
+      if (reply?.kind === 'failed' || reply?.kind === 'conflict') this.report('action', boundedMessage(reply.message, 'editor extension action failed'))
+      prepared.publish()
+    }).catch(error => {
+      if (!controller.signal.aborted) this.report('action', boundedMessage(error, 'editor extension action failed'))
+    }).finally(() => {
+      this.pending.delete(controller)
+      controller.abort()
     })
   }
 
@@ -534,7 +540,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
             const deadline = new AbortController()
             const entrySignal = AbortSignal.any([signal, deadline.signal])
             const outcome = await settleCallback(
-              () => entry.complete!(Object.freeze(context.request), { surfaceId: entry.id, signal: entrySignal, revision }),
+              () => entry.complete!(Object.freeze(context.request), { surfaceId: entry.id, source: entry.source, signal: entrySignal, revision, operationId: `${entry.id}:${String(revision)}`, report: () => {} }),
               entrySignal,
               COMPLETION_TIMEOUT_MS,
             )
@@ -543,12 +549,12 @@ export class EditorExtensionRuntime implements MayflyFocusable {
           })
           for (const outcome of await Promise.all(requests)) {
             if (signal.aborted || this.entries !== entries) return null
-            if (outcome.kind === 'timeout') { this.options.notice('editor extension completion timed out'); continue }
-            if (outcome.kind === 'rejected') { this.options.notice(boundedMessage(outcome.error, 'editor extension completion failed')); continue }
+            if (outcome.kind === 'timeout') { this.report('completion', 'editor extension completion timed out'); continue }
+            if (outcome.kind === 'rejected') { this.report('completion', boundedMessage(outcome.error, 'editor extension completion failed')); continue }
             /* v8 ignore next -- an aborted entry necessarily sets the shared signal tested above. */
             if (outcome.kind !== 'value') return null
             const result = completionItems(outcome.value)
-            if (!result.ok) { this.options.notice(result.message); continue }
+            if (!result.ok) { this.report('completion', result.message); continue }
             for (const candidate of result.value) {
               if (output.length >= MAX_COMPLETIONS) break
               const item: MayflyAutocompleteItem = {
@@ -598,18 +604,18 @@ export class EditorExtensionRuntime implements MayflyFocusable {
         if (controller.signal.aborted || this.entries !== entries) return
         const request: MayflyEditorSubmitRequest = Object.freeze({ text, attachments })
         const outcome = await settleCallback(
-          () => entry.transformSubmit!(request, { surfaceId: entry.id, signal: controller.signal, revision }),
+          () => entry.transformSubmit!(request, { surfaceId: entry.id, source: entry.source, signal: controller.signal, revision, operationId: `${entry.id}:${String(revision)}`, report: () => {} }),
           controller.signal,
           SUBMIT_TIMEOUT_MS,
         )
         if (controller.signal.aborted || this.entries !== entries) return
         if (outcome.kind === 'timeout') {
           controller.abort()
-          this.options.notice('editor extension submit transform timed out')
+          this.report('submit-transform', 'editor extension submit transform timed out')
           return
         }
         if (outcome.kind === 'rejected') {
-          this.options.notice(boundedMessage(outcome.error, 'editor extension submit transform failed'))
+          this.report('submit-transform', boundedMessage(outcome.error, 'editor extension submit transform failed'))
           attempt.cancel()
           return
         }
@@ -617,7 +623,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
         if (outcome.kind !== 'value') return
         const result = submitValue(outcome.value)
         if (!result.ok) {
-          this.options.notice(result.message)
+          this.report('submit-transform', result.message)
           if (result.message.includes('exceeds')) {
             // A transform is advisory: an oversized replacement must never
             // make the user's original paste impossible to submit.
@@ -630,14 +636,14 @@ export class EditorExtensionRuntime implements MayflyFocusable {
         text = result.value.text
       }
       if (text.trim().length === 0 && captured.attachments.length === 0) {
-        this.options.notice('submit transform produced an empty prompt')
+        this.report('submit-transform', 'submit transform produced an empty prompt')
         attempt.cancel()
         return
       }
       this.prepared = { source: attempt.text, text, attachments: captured.attachments }
       if (!attempt.commit()) this.prepared = undefined
     })().catch(error => {
-      if (!controller.signal.aborted) this.options.notice(failureMessage(error, 'submit transform failed'))
+      if (!controller.signal.aborted) this.report('submit-transform', failureMessage(error, 'submit transform failed'))
       attempt.cancel()
     }).finally(() => {
       attempt.signal.removeEventListener('abort', abort)

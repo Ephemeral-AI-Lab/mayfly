@@ -9,15 +9,16 @@
  * cases run sequentially and each leaves a known theme active.
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
+import * as uiProvider from '../../../ui/src/provider.ts'
+import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import * as themeDark from '../../src/core/theme-dark.ts'
 import * as themeLight from '../../src/core/theme-light.ts'
 import { MayflyTerminalInfoService } from '../../src/core/terminal-info.ts'
@@ -28,13 +29,10 @@ import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 
 const USAGE = 'usage: /theme [dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]'
 
-let dir: string
-beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'mayfly-theme-spec-'))
-})
-afterAll(async () => {
-  await rm(dir, { recursive: true, force: true })
-})
+registerTempDirCleanup()
+const dir = mkdtempTracked('mayfly-theme-spec-')
+const roots: Context[] = []
+afterEach(async () => { for (const ctx of roots.splice(0).reverse()) await ctx.fiber.dispose() })
 
 async function mount(): Promise<{
   ctx: Context
@@ -42,6 +40,8 @@ async function mount(): Promise<{
   fiber: { dispose(): Promise<void> }
 }> {
   const ctx = new Context()
+  roots.push(ctx)
+  await ctx.plugin(uiProvider)
   new InteractionStateService(ctx, DEFAULT_SETTINGS)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)

@@ -101,6 +101,7 @@ function patternsGroup() {
     ui.divider({ label: 'Patterns' }),
     ui.list({
       id: 'gallery-list',
+      role: 'choose',
       selectedIds: ['build'],
       items: [
         { id: 'build', label: 'Build project', detail: 'pnpm run build', badge: 'done', group: 'Tasks' },

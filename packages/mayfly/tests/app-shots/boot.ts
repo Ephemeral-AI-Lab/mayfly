@@ -43,9 +43,9 @@ import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
 import { startMayflyTerminal } from '../../src/core/terminal.ts'
 import * as themeDarkPlugin from '../../src/core/theme-dark.ts'
 import * as conversationPlugin from '../../src/conversation/index.ts'
+import * as frontendPlugin from '../../src/frontend/index.ts'
 import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
 import { PromptEditorController } from '../../src/interaction/editor-instance.ts'
-import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
 import { PromptSubmitPipeline } from '../../src/interaction/prompt-submit-pipeline.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import * as keysPlugin from '../../src/interaction/keys.ts'
@@ -262,6 +262,7 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   } as never)
 
   await ctx.plugin(uiProviderPlugin)
+  await ctx.plugin(frontendPlugin)
   await ctx.plugin(themeDarkPlugin)
 
   // Core mount, mirrored from tests/e2e-boot.ts (the direct-service tree).
@@ -279,7 +280,7 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   })
   ctx.plugin({
     name: 'mayfly-surface-renderer',
-    inject: ['mayflyPanes', 'mayflyOverlays', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
+    inject: ['mayflyUiInteraction', 'mayflyScreen', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
     apply(rendererCtx: Context) {
       mountMayflySurfaceRenderer(rendererCtx as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime)
     },
@@ -301,8 +302,6 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   ctx.effect(() => () => runtimeState.dispose())
   const promptEditor = new PromptEditorController(ctx)
   ctx.effect(() => () => promptEditor.dispose())
-  const editorPanels = new EditorPanelController(ctx)
-  ctx.effect(() => () => editorPanels.dispose())
   const promptSubmissions = new PromptSubmitPipeline(ctx)
   ctx.effect(() => () => promptSubmissions.dispose())
   const skillsCatalog = new SkillsCatalogService(ctx)

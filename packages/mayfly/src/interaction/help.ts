@@ -1,12 +1,8 @@
-/**
- * `/help` domain rows adapted onto the shared read-only information panel.
+/** Renderer-neutral `/help` document built from live commands and key actions.
  * @module @ephemeral-ai/mayfly/interaction/help
  */
-
-import type { MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } from '../core/index.ts'
+import { ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
-import { InfoPanel, type InfoSection, type InfoStyle } from './info-panel.ts'
 
 /** One help entry. */
 export interface HelpRow {
@@ -21,64 +17,26 @@ export interface HelpSection {
   readonly labelTone?: MayflyTone
 }
 
-/** Construction options for {@link HelpPanel}. */
-export interface HelpPanelOptions {
-  readonly theme: MayflyTheme
-  readonly components: MayflyComponents
-  readonly keymap: MayflyKeymap
-  readonly sections: readonly HelpSection[] | (() => readonly HelpSection[])
-  readonly t?: MayflyTranslate
-  readonly onClose: () => void
-  readonly maxVisible?: number
-}
-
-function infoStyle(tone: MayflyTone | undefined): InfoStyle {
-  switch (tone) {
-    case 'accent':
-    case 'primary': return 'accent'
-    case 'success': return 'success'
-    case 'warning': return 'warning'
-    case 'danger': return 'error'
-    case 'muted': return 'muted'
-    default: return 'text'
+/** Build the complete scrollable Help surface without renderer state. */
+export function helpNode(
+  sections: readonly HelpSection[],
+  t: MayflyTranslate = interpolateLocaleMessage,
+): MayflyUiNode {
+  const spans: MayflyInlineSpan[] = []
+  for (const [sectionIndex, section] of sections.entries()) {
+    spans.push({ text: `${sectionIndex === 0 ? '' : '\n\n'}${t(section.heading)}`, tone: 'accent', styles: ['strong'] })
+    for (const row of section.rows) {
+      spans.push({ text: `\n${row.label}`, tone: section.labelTone ?? 'muted', styles: ['strong'] })
+      spans.push({ text: `  ${t(row.description)}`, tone: 'muted' })
+    }
   }
-}
-
-/** Read-only help panel sharing InfoPanel's scroll, footer, and close logic. */
-export class HelpPanel implements MayflyFocusable {
-  private readonly panel: InfoPanel
-
-  constructor(private readonly options: HelpPanelOptions) {
-    const t = options.t ?? interpolateLocaleMessage
-    this.panel = new InfoPanel({
-      theme: options.theme,
-      components: options.components,
-      keymap: options.keymap,
-      title: () => t('help'),
-      sections: () => this.sections(t),
-      onClose: options.onClose,
-      ...(options.maxVisible === undefined ? {} : { maxVisible: options.maxVisible }),
-      showingLabel: (start, end, total) => t('showing {start}-{end} of {total} · ', { start, end, total }).replace(/ · $/u, ''),
-    })
-  }
-
-  get focused(): boolean { return this.panel.focused }
-  set focused(value: boolean) { this.panel.focused = value }
-  handleInput(data: string): void { this.panel.handleInput(data) }
-  invalidate(): void { this.panel.invalidate() }
-  render(width: number): string[] { return this.panel.render(width) }
-  currentNode() { return this.panel.currentNode() }
-
-  private sections(t: MayflyTranslate): InfoSection[] {
-    const sections = typeof this.options.sections === 'function' ? this.options.sections() : this.options.sections
-    return sections.map(section => ({
-      heading: t(section.heading),
-      rows: section.rows.map(row => ({
-        label: row.label,
-        labelStyle: infoStyle(section.labelTone),
-        labelStrong: true,
-        segments: [{ text: t(row.description), style: 'muted' }],
-      })),
-    }))
-  }
+  return ui.surface({
+    title: t('help'),
+    chrome: 'overlay',
+    padding: 1,
+    child: ui.stack.column([
+      ui.child(ui.scroll(ui.richText(spans), { id: 'help-document', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
+      ui.actions({ id: 'help-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
+    ]),
+  })
 }

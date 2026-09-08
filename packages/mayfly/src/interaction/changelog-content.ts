@@ -22,6 +22,18 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.0-alpha.4',
+    summary: 'One interaction model for built-in and external Mayfly surfaces.',
+    highlights: [
+      'Stable drafts - keep forms, choices, tabs, document anchors, confirmations, operations, and feedback across renderer reloads.',
+      'Structured events - separate observation facts from action effects and publish admitted acknowledgements through registration-bound endpoints.',
+      'Shared controls - use the same Form, Choice, Tree, Wizard, Document, validation, and keyboard behavior across Provider, Settings, requests, browsers, jobs, and updates.',
+      'Native ownership - preserve exact-Agent and native dsh service authority while fencing replacement, abort, unload, and late results.',
+      'External parity - demonstrate the final protocol with a two-page settings overlay that uses native revisions and path operations.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.3',
     summary: 'OAuth provider onboarding, independent plan and permission controls, and clearer streaming progress.',
     highlights: [

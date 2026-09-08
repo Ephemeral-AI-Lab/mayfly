@@ -1,403 +1,289 @@
-/**
- * Unit tests for the `/preset` command family: the pure row builder
- * (roster order, current badge, broken rows), and the command over the
- * real command runtime — the guard chain (roster/session/idle/blank), the
- * bare picker (mount, badge seeding, blocked selects, the re-dispatch
- * write path), the direct switch (event pairing, error shapes), and the
- * unload flag.
+/** Shared preset UI over native selection serialization and session projections.
+ * @module @ephemeral-ai/mayfly/tests/interaction/preset-commands
  */
-
-import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
-import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
-import { buildPresetRows, type PresetRow } from '../../src/interaction/preset-commands.ts'
-import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
+import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
+import AgentPresets, { type AgentPreset } from '@deepseek-ai/dsh-agent-presets'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { presetItems } from '../../src/interaction/preset-commands.ts'
+import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
+import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 
-describe('buildPresetRows', () => {
-  it('sorts by roster order then id, unordered after ordered, and badges the current entry', () => {
-    const rows = buildPresetRows([
-      { id: 'cordis', trust: 'system', order: 4 },
-      { id: 'standard', trust: 'system', order: 1, name: 'Standard' },
-      { id: 'beta', trust: 'system' },
-      { id: 'minimal', trust: 'system', order: 3 },
-      { id: 'alpha', trust: 'system' },
-    ], 'minimal')
-    expect(rows.map(row => row.value)).toEqual(['standard', 'minimal', 'cordis', 'alpha', 'beta'])
-    expect(rows.map(row => row.label)).toEqual(['Standard', 'minimal', 'cordis', 'alpha', 'beta'])
-    expect(rows[1]!.badge).toBe('← current')
-    expect(rows.filter(row => row.badge !== undefined)).toHaveLength(1)
+const preset = (id: string, options: Partial<AgentPreset> = {}): AgentPreset => ({ id, trust: 'system', path: `/presets/${id}/cordis.yml`, ...options })
+
+class FixturePresets extends AgentPresets {
+  catalog: AgentPreset[] = [preset('standard', { name: 'Standard' }), preset('minimal', { name: 'Minimal' })]
+  selected = new Map<Context, string>()
+  readonly recomposeCalls = vi.fn(async (ctx: Context, id: string): Promise<AgentPreset> => {
+    const preset = this.catalog.find(item => item.id === id)
+    if (preset === undefined || preset.broken !== undefined) throw new Error('Preset unavailable')
+    this.selected.set(ctx, id)
+    return preset
   })
+  constructor(ctx: Context) { super(ctx, { default: 'standard', roots: [], includeShippedRoot: false, includeUserRoot: false }) }
+  override async list() { return this.catalog }
+  override composedPreset(ctx: Context) { return this.selected.get(ctx) }
+  override recompose(ctx: Context, id: string) { return this.recomposeCalls(ctx, id) }
+}
 
-  it('disables broken rows with their reason, and passes descriptions through', () => {
-    const rows = buildPresetRows([
-      { id: 'broken', trust: 'user', broken: 'composition failed the entry-list audit' },
-      { id: 'ok', trust: 'system', description: 'The full coding agent' },
-    ], undefined)
-    expect(rows[0]).toEqual({
-      value: 'broken',
-      label: 'broken',
-      description: 'composition failed the entry-list audit',
-      disabled: true,
-    })
-    expect(rows[1]!.description).toBe('The full coding agent')
-  })
-})
+const contexts: Context[] = []
+afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+async function setup() {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const bench = await requestFixture(ctx)
+  await ctx.plugin(SessionStore)
+  await ctx.plugin(CommandRuntime)
+  await ctx.plugin(SessionProjectionRegistry)
+  const session = ctx.sessions.create(SessionId('current'))
+  Object.assign(bench.agent, { session, status: 'idle', ctx: new Context() })
+  const rosterOwner = await ctx.plugin({ name: 'native-roster', inject: ['sessionProjections'], apply(owner: Context) {
+    owner.sessionProjections.register(turnBoundaryProjectionDefinition)
+    new FixturePresets(owner.extend({ baseUrl: import.meta.url }))
+  } })
+  await flushRequests()
+  const run = (line = '/preset', signal = new AbortController().signal) => ctx.commands.execute(bench.agent, line, [], signal)
+  return { ...bench, rosterOwner, roster: ctx.agentPresets as FixturePresets, session, run }
+}
 
-describe('registerPresetCommands', () => {
-  /** The fake roster's knobs. */
-  interface RosterOptions {
-    presets?: PresetRow[]
-    current?: string
-    /** `list` rejects with this instead of answering. */
-    listError?: unknown
-  }
-
-  /** Build the fake roster recording every call. */
-  function fakeRoster(options: RosterOptions) {
-    const calls: { recompose: [Context, string][], listed: number } = { recompose: [], listed: 0 }
-    const roster = {
-      list: async (): Promise<PresetRow[]> => {
-        calls.listed += 1
-        if (options.listError !== undefined) throw options.listError
-        return [...(options.presets ?? [])]
-      },
-      recompose: async (agentCtx: Context, id: string): Promise<{ id: string }> => {
-        calls.recompose.push([agentCtx, id])
-        return { id }
-      },
-      composedPreset: (_agentCtx: Context): string | undefined => options.current,
+describe('native preset selection UI', () => {
+  it.each(ADVERSARIAL)('contains preset metadata at all widths and short heights: $name', async ({ name, text }) => {
+    const bench = await setup()
+    bench.roster.catalog = [preset('adversarial', { name: text, description: text })]
+    await bench.run()
+    const viewport = { columns: 80, rows: 20 }
+    const renderer = renderRequest(bench.model('mayfly.presets'), viewport)
+    for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+      viewport.columns = width
+      viewport.rows = height
+      const rows = renderer.component.render(width)
+      expectLinesFit(`presets/${name}/${height}`, rows, width)
+      expect(rows.length).toBeLessThanOrEqual(height)
     }
-    return { roster, calls }
-  }
-
-  /** Mount the command plugin over the fake services. */
-  async function mount(options: {
-    attach?: boolean
-    display?: boolean
-    agentStatus?: string
-    started?: boolean
-    roster?: RosterOptions
-    deferredList?: boolean
-    /** Provide no roster service at all (the host composes none). */
-    noRoster?: boolean
-  } = {}): Promise<{
-    ctx: Context
-    screen: FakeScreen
-    agent: Agent
-    fiber: { dispose(): Promise<void> }
-    roster: ReturnType<typeof fakeRoster>['roster']
-    calls: ReturnType<typeof fakeRoster>['calls']
-    notices: string[]
-    resolveList: (presets: PresetRow[]) => void
-  }> {
-    const base = fakeMayflyContext({ display: options.display })
-    const { ctx } = base
-    const screen = base.screen
-    await ctx.plugin(SessionStore)
-    await ctx.plugin(CommandRuntime)
-    const session = ctx.sessions.create(SessionId('preset-spec'))
-    if (options.started === true) session.append('turn/start', { turn: 0 })
-    const agent = {
-      id: session.id,
-      session,
-      status: options.agentStatus ?? 'idle',
-      ctx: new Context(),
-    } as unknown as Agent
-    if (options.attach !== false) {
-      ctx.provide('testSession', { current: agent })
-    }
-    // The deferred-list gate: the resolver lands only when the handler calls
-    // list(), so the returned callable must read through the holder, never a
-    // destructured copy of the placeholder.
-    const listGate: { resolve: (presets: PresetRow[]) => void } = { resolve: () => {} }
-    let roster: ReturnType<typeof fakeRoster>['roster']
-    if (options.noRoster === true) {
-      roster = fakeRoster({}).roster
-    } else if (options.deferredList === true) {
-      roster = {
-        list: () => new Promise<PresetRow[]>(resolve => { listGate.resolve = resolve }),
-        recompose: async (_agentCtx: Context, id: string) => ({ id }),
-        composedPreset: () => undefined,
-      }
-    } else {
-      const built = fakeRoster(options.roster ?? {})
-      roster = built.roster
-      // Keep the caller's `calls` handle wired to the shared object.
-      ;(mount as { lastCalls?: unknown }).lastCalls = built.calls
-    }
-    if (options.noRoster !== true) {
-      ctx.provide('agentPresets', roster)
-    }
-    const notices: string[] = []
-    setSharedEditor(ctx, {
-      editor: { focused: false, render: () => [], invalidate: () => {} } as never,
-      submitPrompt: () => {},
-      notice: (text: string) => { notices.push(text) },
-    })
-    const fiber = await ctx.plugin(commandsPlugin)
-    return {
-      ctx,
-      screen: screen as FakeScreen,
-      agent,
-      fiber,
-      roster,
-      calls: (mount as { lastCalls?: ReturnType<typeof fakeRoster>['calls'] }).lastCalls!,
-      notices,
-      resolveList: (presets: PresetRow[]) => { listGate.resolve(presets) },
-    }
-  }
-
-  async function run(ctx: Context, agent: Agent, line: string) {
-    const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
-    return execution?.result
-  }
-
-  /** The topmost overlay's panel. */
-  function top(screen: FakeScreen) {
-    const overlay = screen.overlays.at(-1)
-    if (overlay === undefined) throw new Error('no panel mounted')
-    return overlay
-  }
-
-  it('registers the command on the runtime', async () => {
-    const { ctx, agent } = await mount()
-    expect(ctx.commands.list().map(command => command.name)).toContain('preset')
-    // The named path reaches the switch core over the fake roster.
-    expect(await run(ctx, agent, '/preset standard')).toEqual({ kind: 'success', text: 'preset standard' })
+    renderer.runtime.dispose()
   })
 
-  it('unloading the command fiber removes the registration', async () => {
-    const { ctx } = await mount()
-    const commands = ctx.commands
-    await ctx.fiber.dispose()
-    expect(commands.list().map(command => command.name)).not.toContain('preset')
+  it('projects stable ordered choices, native labels, and disabled failures', () => {
+    const rows = presetItems([preset('z'), preset('broken', { trust: 'user', broken: 'Bad composition', order: 1 }), preset('first', { name: 'First', order: 0, description: 'Description' })], 'first', key => key)
+    expect(rows.map(row => row.id)).toEqual(['first', 'broken', 'z'])
+    expect(rows[0]).toMatchObject({ label: 'First', detail: 'Description', badge: 'current' })
+    expect(rows[1]).toMatchObject({ disabled: true, disabledReason: 'Bad composition' })
   })
 
-  it('refuses without a live session', async () => {
-    const { ctx, agent } = await mount({ attach: false })
-    expect(await run(ctx, agent, '/preset standard')).toEqual({ kind: 'error', text: 'no session is live yet' })
+  it('opens without renderer services, keeps failed selection visible, and retries through native select', async () => {
+    const bench = await setup()
+    expect((await bench.run())?.result.kind).toBe('success')
+    const model = bench.model('mayfly.presets')
+    bench.roster.recomposeCalls.mockRejectedValueOnce(new Error('Composition could not load'))
+    model.emit({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['minimal'] })
+    model.emit({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['minimal'] })
+    await flushRequests()
+    expect(bench.roster.recomposeCalls).toHaveBeenCalledTimes(1)
+    expect(model.disposed).toBe(false)
+    expect(model.feedbackSnapshot().at(-1)?.message).toBe('Composition could not load')
+    model.emit({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['minimal'] })
+    await flushRequests()
+    expect(model.disposed).toBe(true)
+    expect(bench.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected')).toMatchObject([{ data: { agentPreset: 'minimal' } }])
   })
 
-  it('refuses when the host composes no roster', async () => {
-    const { ctx, agent } = await mount({ noRoster: true })
-    expect(await run(ctx, agent, '/preset'))
-      .toEqual({ kind: 'error', text: 'agent presets are unavailable: the host composes no roster' })
-    expect(await run(ctx, agent, '/preset standard'))
-      .toEqual({ kind: 'error', text: 'agent presets are unavailable: the host composes no roster' })
+  it('uses native guards for a session that has started and keeps inspectable choices', async () => {
+    const bench = await setup()
+    bench.session.append('turn/start', { turn: 1 })
+    const direct = await bench.run('/preset minimal')
+    expect(direct?.result.kind).toBe('error')
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
+    await bench.run()
+    const model = bench.model('mayfly.presets')
+    model.emit({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['minimal'] })
+    await flushRequests()
+    expect(model.disposed).toBe(false)
+    expect(model.feedbackSnapshot().at(-1)?.severity).toBe('error')
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
   })
 
-  it('refuses while the agent is running', async () => {
-    const { ctx, agent } = await mount({ agentStatus: 'running' })
-    expect(await run(ctx, agent, '/preset standard'))
-      .toEqual({ kind: 'error', text: 'cannot switch presets while the agent is running' })
+  it('rejects running or noncurrent command targets before calling the native service', async () => {
+    const bench = await setup()
+    Object.assign(bench.agent, { status: 'running' })
+    expect((await bench.run('/preset minimal'))?.result.kind).toBe('error')
+    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    expect((await bench.run('/preset minimal'))?.result.kind).toBe('error')
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
   })
 
-  it('refuses once the session has started a turn, standalone events notwithstanding', async () => {
-    const { ctx, agent, calls } = await mount({ started: true, roster: { presets: [{ id: 'standard', trust: 'system' }] } })
-    expect(await run(ctx, agent, '/preset standard')).toEqual({
-      kind: 'error',
-      text: 'cannot switch presets: this session has already started (blank sessions only)',
-    })
-    expect(calls.recompose).toEqual([])
-    expect(agent.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected')).toEqual([])
+  it('serializes direct selections through the native service and records each native result once', async () => {
+    const bench = await setup()
+    const first = Promise.withResolvers<AgentPreset>()
+    bench.roster.recomposeCalls.mockImplementationOnce(() => first.promise)
+    const one = bench.run('/preset standard')
+    const two = bench.run('/preset minimal')
+    await flushRequests()
+    expect(bench.roster.recomposeCalls).toHaveBeenCalledOnce()
+    first.resolve(bench.roster.catalog[0]!)
+    await expect(one).resolves.toMatchObject({ result: { kind: 'success' } })
+    await expect(two).resolves.toMatchObject({ result: { kind: 'success' } })
+    expect(bench.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected').map(event => event.data.agentPreset)).toEqual(['standard', 'minimal'])
   })
 
-  it('reports a failing roster read for the bare command, Error and non-Error shapes', async () => {
-    const errorCase = await mount({ roster: { listError: new Error('roots unreadable') } })
-    expect(await run(errorCase.ctx, errorCase.agent, '/preset'))
-      .toEqual({ kind: 'error', text: 'roots unreadable' })
-    const bareCase = await mount({ roster: { listError: 'roots missing' } })
-    expect(await run(bareCase.ctx, bareCase.agent, '/preset'))
-      .toEqual({ kind: 'error', text: 'roots missing' })
+  it('retains search across refresh/repaint and blocks broken or removed choices', async () => {
+    const bench = await setup()
+    bench.roster.catalog.push(preset('broken', { trust: 'user', broken: 'Invalid' }))
+    await bench.run()
+    const model = bench.model('mayfly.presets')
+    const renderer = renderRequest(model)
+    renderer.input('mini')
+    expect(model.choice({ pagePath: [], controlId: 'presets' })!.query).toBe('mini')
+    renderer.runtime.dispose()
+    await bench.run()
+    expect(bench.model('mayfly.presets')).toBe(model)
+    model.emit({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['broken'] })
+    await flushRequests()
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
+    bench.roster.catalog = []
+    model.invoke('refresh')
+    await flushRequests()
+    expect(model.choice({ pagePath: [], controlId: 'presets' })!.query).toBe('mini')
+    const next = renderRequest(model)
+    next.input('\x15')
+    expect(next.component.render(60).join('\n')).toContain('No presets composed')
+    next.runtime.dispose()
   })
 
-  it('shows no picker when the fiber unloads while the listing is in flight', async () => {
-    const { ctx, agent, fiber, resolveList, screen } = await mount({ deferredList: true })
-    const pending = run(ctx, agent, '/preset')
-    await fiber.dispose()
-    resolveList([{ id: 'standard', trust: 'system' }])
+  it.each(['agent', 'roster', 'frontend'] as const)('retires the picker on %s changes and ignores late native results', async kind => {
+    const bench = await setup()
+    await bench.run()
+    const model = bench.model('mayfly.presets')
+    const gate = Promise.withResolvers<AgentPreset>()
+    bench.roster.recomposeCalls.mockImplementationOnce(() => gate.promise)
+    model.emit({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['minimal'] })
+    await flushRequests()
+    if (kind === 'agent') bench.ctx.mayflyCurrentAgent.select(bench.other)
+    else await (kind === 'roster' ? bench.rosterOwner : bench.front).dispose()
+    expect(model.disposed).toBe(true)
+    gate.resolve(preset('minimal'))
+    await flushRequests()
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+    expect(bench.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected')).toMatchObject([{ data: { agentPreset: 'minimal' } }])
+  })
+
+  it('does not mount a picker from a discovery result after the selected Agent changes', async () => {
+    const bench = await setup()
+    const gate = Promise.withResolvers<AgentPreset[]>()
+    vi.spyOn(bench.roster, 'list').mockReturnValue(gate.promise)
+    const pending = bench.run()
+    await flushRequests()
+    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    gate.resolve(bench.roster.catalog)
+    await pending
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('contains failed discovery and handles an initially empty roster through the shared empty state', async () => {
+    const bench = await setup()
+    vi.spyOn(bench.roster, 'list').mockRejectedValueOnce('Discovery failed')
+    expect((await bench.run())?.result).toEqual({ kind: 'error', text: 'Discovery failed' })
+    bench.roster.catalog = []
+    await bench.run()
+    const model = bench.model('mayfly.presets')
+    const renderer = renderRequest(model)
+    expect(renderer.component.render(60).join('\n')).toContain('No presets composed')
+    renderer.input('\x1b')
+    await flushRequests()
+    expect(model.disposed).toBe(true)
+    renderer.runtime.dispose()
+  })
+
+  it('refreshes locale while preserving search and blocks a forged unavailable selection at the endpoint', async () => {
+    const bench = await setup()
+    await bench.run()
+    const model = bench.model('mayfly.presets')
+    model.updateChoice({ pagePath: [], controlId: 'presets' }, { kind: 'query', query: 'mini' })
+    bench.ctx.mayflyLocale.setPreference('zh')
+    await flushRequests()
+    expect(model.choice({ pagePath: [], controlId: 'presets' })!.query).toBe('mini')
+    expect(JSON.stringify(model.node)).toContain('预设')
+    const entry = bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.presets')!
+    const reply = await entry.events.prepare({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['missing'] }, { surfaceId: entry.id, operationId: 'forged', source: [], revision: 0, signal: new AbortController().signal, report: vi.fn() })
+    expect(reply.reply).toMatchObject({ kind: 'failed' })
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
+  })
+
+  it('contains pre-aborted and mid-selection command invocations', async () => {
+    const bench = await setup()
+    const command = bench.ctx.commands.find(bench.agent, 'preset')!
+    const aborted = new AbortController()
+    aborted.abort()
+    expect(await command.handler({ agent: bench.agent, rawInput: '', signal: aborted.signal } as never)).toEqual({ kind: 'success' })
+
+    const gate = Promise.withResolvers<AgentPreset>()
+    bench.roster.recomposeCalls.mockImplementationOnce(() => gate.promise)
+    const during = new AbortController()
+    const pending = command.handler({ agent: bench.agent, rawInput: 'minimal', signal: during.signal } as never)
+    await vi.waitFor(() => expect(bench.roster.recomposeCalls).toHaveBeenCalled())
+    during.abort()
+    gate.resolve(preset('minimal'))
     expect(await pending).toEqual({ kind: 'success' })
-    expect(screen.overlays).toHaveLength(0)
   })
 
-  it('mounts without a current badge and ignores selection after the Agent disappears', async () => {
-    const { ctx, screen, agent, resolveList } = await mount({ deferredList: true })
-    const pending = run(ctx, agent, '/preset')
-    ;(ctx.get('testSession') as { current: Agent | null }).current = null
-    resolveList([{ id: 'standard', trust: 'system' }])
+  it('focuses a picker opened while roster discovery is pending', async () => {
+    const bench = await setup()
+    const gate = Promise.withResolvers<AgentPreset[]>()
+    vi.spyOn(bench.roster, 'list').mockReturnValueOnce(gate.promise)
+    const command = bench.ctx.commands.find(bench.agent, 'preset')!
+    const pending = command.handler({ agent: bench.agent, rawInput: '', signal: new AbortController().signal } as never)
+    const duplicate = bench.ctx.mayflyOverlays.open({ id: 'mayfly.presets', presentation: 'editor', capturing: true }, { kind: 'text', content: 'existing' })
+    gate.resolve(bench.roster.catalog)
     expect(await pending).toEqual({ kind: 'success' })
-    const picker = top(screen)
-    picker.component.handleInput(KEY.enter)
-    await new Promise(resolve => setImmediate(resolve))
-    expect(screen.overlays.every(overlay => overlay.hidden)).toBe(true)
+    expect(bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.presets')!.focusRevision).toBeGreaterThan(0)
+    duplicate.close()
   })
 
-  it('answers a notice for an empty roster', async () => {
-    const { ctx, agent } = await mount({ roster: { presets: [] } })
-    expect(await run(ctx, agent, '/preset')).toEqual({ kind: 'success', text: 'no presets composed' })
+  it('contains child creation races and refresh cancellation', async () => {
+    const missing = await setup()
+    let reads = 0
+    vi.spyOn(missing.ctx.mayflyCurrentAgent, 'current').mockImplementation(() => ++reads >= 3 ? missing.other : missing.agent)
+    const command = missing.ctx.commands.find(missing.agent, 'preset')!
+    expect(await command.handler({ agent: missing.agent, rawInput: '', signal: new AbortController().signal } as never)).toEqual({ kind: 'success' })
+    expect(missing.ctx.mayflyOverlays.list()).toEqual([])
+
+    const closed = await setup()
+    closed.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.presets') closed.ctx.mayflyOverlays.close('mayfly.presets') })
+    expect(await closed.ctx.commands.find(closed.agent, 'preset')!.handler({ agent: closed.agent, rawInput: '', signal: new AbortController().signal } as never)).toEqual({ kind: 'success' })
+    expect(closed.ctx.mayflyOverlays.list()).toEqual([])
+
+    const refreshing = await setup()
+    await refreshing.run()
+    const entry = refreshing.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.presets')!
+    const gate = Promise.withResolvers<AgentPreset[]>()
+    vi.spyOn(refreshing.roster, 'list').mockReturnValueOnce(gate.promise)
+    const abort = new AbortController()
+    const context = { surfaceId: entry.id, operationId: 'refresh', source: entry.source, revision: entry.revision, signal: abort.signal, report: vi.fn() }
+    const pending = entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'preset-actions', actionId: 'refresh' }, context)
+    abort.abort()
+    gate.resolve(refreshing.roster.catalog)
+    expect(await pending).toMatchObject({ kind: 'cancelled' })
   })
 
-  it('refuses the picker without the display services', async () => {
-    const { ctx, agent } = await mount({ display: false, roster: { presets: [{ id: 'standard', trust: 'system' }] } })
-    expect(await run(ctx, agent, '/preset'))
-      .toEqual({ kind: 'error', text: 'preset picker is unavailable: the Mayfly screen is not mounted' })
+  it('contains a discovery failure after the selected Agent changes', async () => {
+    const bench = await setup()
+    const gate = Promise.withResolvers<AgentPreset[]>()
+    vi.spyOn(bench.roster, 'list').mockReturnValueOnce(gate.promise)
+    const pending = bench.ctx.commands.find(bench.agent, 'preset')!.handler({ agent: bench.agent, rawInput: '', signal: new AbortController().signal } as never)
+    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    gate.reject(new Error('late discovery failure'))
+    expect(await pending).toEqual({ kind: 'success' })
   })
 
-  it('opens the picker over the roster with the current badge seeding the cursor, and cancels clean', async () => {
-    const { ctx, screen, agent } = await mount({
-      roster: {
-        current: 'minimal',
-        presets: [
-          { id: 'standard', trust: 'system', order: 1, description: 'The full coding agent' },
-          { id: 'minimal', trust: 'system', order: 3, description: 'Two tools, fixed prompt' },
-          { id: 'broken', trust: 'user', order: 5, broken: 'composition failed the entry-list audit' },
-        ],
-      },
-    })
-    expect(await run(ctx, agent, '/preset')).toEqual({ kind: 'success' })
-    const lines = top(screen).component.render(80)
-    expect(lines.join('\n')).toContain('Presets')
-    expect(lines.join('\n')).toContain('standard')
-    expect(lines.join('\n')).toContain('minimal')
-    expect(lines.join('\n')).toContain('The full coding agent')
-    const currentRow = lines.find(line => line.includes('← current')) ?? ''
-    expect(currentRow).toContain('minimal')
-    top(screen).component.handleInput(KEY.escape)
-    expect(top(screen).hidden).toBe(true)
-  })
-
-  it('switches through the picker: the select re-dispatches the write path with the event appended', async () => {
-    const { ctx, screen, agent, calls, notices } = await mount({
-      roster: {
-        presets: [
-          { id: 'standard', trust: 'system', order: 1 },
-          { id: 'beta', trust: 'system', order: 2 },
-        ],
-      },
-    })
-    expect(await run(ctx, agent, '/preset')).toEqual({ kind: 'success' })
-    // The cursor starts on the head row (standard); step down to beta.
-    top(screen).component.handleInput(KEY.down)
-    top(screen).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(notices).toContain('preset beta') })
-    expect(top(screen).hidden).toBe(true)
-    expect(calls.recompose).toEqual([[agent.ctx, 'beta']])
-    const selected = agent.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected')
-    expect(selected).toHaveLength(1)
-    expect(selected[0]!.data).toEqual({ agentPreset: 'beta' })
-    // The re-dispatch is the same write path as a typed line: the bare
-    // invocation and the explicit one both log command/run (name + args).
-    const runs = agent.session.snapshotEvents().filter(event => event.type === 'command/run')
-    expect(runs.map(event => ({ name: event.data.name, args: event.data.args }))).toEqual([
-      { name: 'preset', args: '' },
-      { name: 'preset', args: ' beta' },
-    ])
-  })
-
-  it('shows but skips a broken preset row', async () => {
-    const { ctx, screen, agent, calls, notices } = await mount({
-      roster: {
-        presets: [
-          { id: 'standard', trust: 'system', order: 1 },
-          { id: 'broken', trust: 'user', order: 2, broken: 'composition failed the entry-list audit' },
-        ],
-      },
-    })
-    expect(await run(ctx, agent, '/preset')).toEqual({ kind: 'success' })
-    top(screen).component.handleInput(KEY.down)
-    top(screen).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(notices).toContain('preset standard') })
-    expect(calls.recompose).toEqual([[agent.ctx, 'standard']])
-    expect(agent.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected')).toHaveLength(1)
-  })
-
-  it('contains a forged selection event for a disabled broken preset', async () => {
-    const { ctx, screen, agent, notices } = await mount({
-      roster: { presets: [{ id: 'broken', trust: 'user', broken: 'composition failed the audit' }] },
-    })
-    expect(await run(ctx, agent, '/preset')).toEqual({ kind: 'success' })
-    ;(top(screen).component as unknown as { onEvent(event: { kind: string, controlId: string, value: string }): void })
-      .onEvent({ kind: 'selection-change', controlId: 'select-list', value: 'broken' })
-    expect(notices.some(notice => notice.includes('composition failed the audit'))).toBe(true)
-    top(screen).component.handleInput(KEY.escape)
-  })
-
-  it('switches directly by name, pairing the event, and stays legal while blank', async () => {
-    const { ctx, agent, calls } = await mount({
-      roster: { presets: [{ id: 'standard', trust: 'system', order: 1 }, { id: 'beta', trust: 'system', order: 2 }] },
-    })
-    expect(await run(ctx, agent, '/preset beta')).toEqual({ kind: 'success', text: 'preset beta' })
-    // A second switch while still blank is legal: command/run never opens a turn.
-    expect(await run(ctx, agent, '/preset standard')).toEqual({ kind: 'success', text: 'preset standard' })
-    expect(calls.recompose.map(call => call[1])).toEqual(['beta', 'standard'])
-    const selected = agent.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected')
-    expect(selected.map(event => (event.data as { agentPreset: string }).agentPreset)).toEqual(['beta', 'standard'])
-  })
-
-  it('surfaces the roster\'s failure text for unknown and broken targets, Error and non-Error', async () => {
-    const failing = await mount({})
-    ;(failing.roster as { recompose: unknown }).recompose = async () => {
-      throw new Error('unknown preset nope, available: standard, beta')
-    }
-    expect(await run(failing.ctx, failing.agent, '/preset nope'))
-      .toEqual({ kind: 'error', text: 'unknown preset nope, available: standard, beta' })
-
-    const bare = await mount({})
-    ;(bare.roster as { recompose: unknown }).recompose = async () => {
-      throw 'mount exploded'
-    }
-    expect(await run(bare.ctx, bare.agent, '/preset broken')).toEqual({ kind: 'error', text: 'mount exploded' })
-  })
-
-  it('rejects a preset result when the active Agent changes during recomposition', async () => {
-    const mounted = await mount({ roster: { presets: [{ id: 'standard', trust: 'system' }] } })
-    let resolveRecompose: (preset: { id: string }) => void = () => {}
-    ;(mounted.roster as { recompose: unknown }).recompose = () => new Promise(resolve => {
-      resolveRecompose = resolve
-    })
-    const pending = run(mounted.ctx, mounted.agent, '/preset standard')
-    ;(mounted.ctx.get('testSession') as { current: Agent }).current = {
-      ...mounted.agent,
-      id: SessionId('preset-next'),
-    }
-    resolveRecompose({ id: 'standard' })
-    expect(await pending).toEqual({
-      kind: 'error',
-      text: 'the active session changed before the preset switch completed',
-    })
-    expect(mounted.agent.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected')).toEqual([])
-  })
-
-  it('paints a failed switch from the picker in error red through the dispatch write path', async () => {
-    const { ctx, agent, screen, notices } = await mount({
-      roster: { presets: [{ id: 'standard', trust: 'system' }, { id: 'beta', trust: 'system' }] },
-    })
-    // The switch fails only once dispatched: the picker itself mounts fine.
-    ;(ctx.get('agentPresets') as { recompose: unknown }).recompose = async () => {
-      throw new Error('unknown preset beta, available: standard')
-    }
-    await run(ctx, agent, '/preset')
-    top(screen).component.handleInput(KEY.down)
-    top(screen).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(notices).toContain('!unknown preset beta, available: standard!') })
-  })
-
-  it('logs Error and non-Error picker dispatch rejections', async () => {
-    for (const failure of [new Error('dispatch exploded'), 'raw dispatch failure']) {
-      const mounted = await mount({ roster: { presets: [{ id: 'standard', trust: 'system' }] } })
-      const warn = vi.spyOn(mounted.ctx.logger, 'warn').mockImplementation(() => {})
-      await run(mounted.ctx, mounted.agent, '/preset')
-      const execute = vi.spyOn(mounted.ctx.commands, 'execute').mockRejectedValueOnce(failure)
-      top(mounted.screen).component.handleInput(KEY.enter)
-      await vi.waitFor(() => {
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining(failure instanceof Error ? failure.message : failure))
-      })
-      execute.mockRestore()
-      warn.mockRestore()
-    }
+  it('rejects a selection when the Agent changes between wrapper and native select', async () => {
+    const bench = await setup()
+    await bench.run()
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.presets')!
+    let reads = 0
+    vi.spyOn(bench.ctx.mayflyCurrentAgent, 'current').mockImplementation(() => ++reads === 1 ? bench.agent : bench.other)
+    const context = { surfaceId: entry.id, operationId: 'select', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn() }
+    expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'presets', selectedIds: ['minimal'] }, context)).toMatchObject({ kind: 'failed', message: 'The active Agent changed before the preset switch' })
   })
 })

@@ -9,6 +9,7 @@
  */
 
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
+import type { MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 
 /** One flattened tree row suitable for the shared single-select panel. */
 export interface SessionTreeRow {
@@ -37,6 +38,63 @@ export interface SessionTreeProjection {
    * @param id - focused session id.
    */
   toggle(id: string): void
+}
+
+/** Build full declaration-order tree items for the shared Choice reducer. */
+export function sessionTreeItems(
+  headers: readonly SessionHeader[],
+  titles: ReadonlyMap<string, string>,
+  currentId: string | undefined,
+  formatDate: (createdAt: number) => string,
+): readonly MayflyListItem[] {
+  const byId = new Map(headers.map(header => [String(header.id), header]))
+  const parent = new Map<string, string>()
+  for (const header of headers) {
+    const id = String(header.id)
+    const candidate = header.parentSession === undefined ? undefined : String(header.parentSession)
+    if (candidate !== undefined && candidate !== id && byId.has(candidate)) parent.set(id, candidate)
+  }
+  for (const id of parent.keys()) {
+    const seen = new Set<string>([id])
+    let current = parent.get(id)
+    while (current !== undefined) {
+      if (seen.has(current)) { for (const member of seen) parent.delete(member); break }
+      seen.add(current)
+      current = parent.get(current)
+    }
+  }
+  const order = (left: SessionHeader, right: SessionHeader) => right.createdAt - left.createdAt || String(right.id).localeCompare(String(left.id))
+  const children = new Map<string, SessionHeader[]>()
+  const roots: SessionHeader[] = []
+  for (const header of headers) {
+    const owner = parent.get(String(header.id))
+    if (owner === undefined) roots.push(header)
+    else {
+      const bucket = children.get(owner) ?? []
+      bucket.push(header)
+      children.set(owner, bucket)
+    }
+  }
+  roots.sort(order)
+  for (const bucket of children.values()) bucket.sort(order)
+  const items: MayflyListItem[] = []
+  const visit = (header: SessionHeader): void => {
+    const id = String(header.id)
+    const title = titles.get(id)
+    const date = formatDate(header.createdAt)
+    const owner = parent.get(id)
+    items.push({
+      id,
+      label: title ?? id,
+      detail: `${id} · ${date}`,
+      searchText: `${title ?? ''} ${id} ${date}`,
+      ...(owner === undefined ? {} : { parentId: owner }),
+      ...(id === currentId ? { badge: '← current' } : {}),
+    })
+    for (const child of children.get(id) ?? []) visit(child)
+  }
+  for (const root of roots) visit(root)
+  return items
 }
 
 /** Disclosure marker for a fully expanded branch. */

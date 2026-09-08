@@ -18,16 +18,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import { interactionTranslator } from './locale.ts'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
-import type { MayflyComponents, MayflyKeymap, MayflyTheme } from '../core/index.ts'
 import { join } from 'node:path'
-import { displayServices } from './display-services.ts'
-import { getSharedEditor } from './editor-instance.ts'
-import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { createConfirmationPanel } from './confirmation-panel.ts'
-import { CanonicalDocumentController, type FrontendPanelDocument } from './frontend-panel.ts'
+import { openUiOverlay } from './ui-overlay.ts'
 import type { UpdateSettings } from './updater/check.ts'
 import { writeUpdateCheckState } from './updater/check.ts'
 import { updaterInternals } from './updater/io.ts'
@@ -44,6 +40,7 @@ import { resolveOffer, runPreflight } from './updater/preflight.ts'
 import { performSwap, type SwapOutcome, type SwapProgress, type SwapStep } from './updater/swap.ts'
 import { isVersion } from './updater/version.ts'
 import type {} from '../app/index.ts'
+import { createInteractionNotificationOwner } from './notifications.ts'
 
 /** The step rows the panel renders, in execution order. */
 const STEP_ROWS: readonly { step: SwapStep, label: string }[] = [
@@ -78,7 +75,7 @@ export function updatePanelModel(
   fromVersion: string,
   toVersion: string,
   t: MayflyTranslate = interpolateLocaleMessage,
-): FrontendPanelDocument {
+): MayflyUiNode {
   const settled = state.outcome !== undefined || state.blockedMessage !== undefined
   const stepItems = STEP_ROWS.flatMap(row => {
     const value = state.steps.get(row.step)
@@ -88,7 +85,7 @@ export function updatePanelModel(
   })
   const nodes: MayflyUiNode[] = [
     { kind: 'divider', label: `v${fromVersion} → v${toVersion}` },
-    { kind: 'list', id: 'update-steps', selectedIds: [], items: stepItems },
+    { kind: 'list', role: 'browse', id: 'update-steps', selectedIds: [], items: stepItems },
   ]
   if (state.outcome !== undefined) {
     nodes.push(
@@ -104,12 +101,21 @@ export function updatePanelModel(
       { kind: 'text', content: t('nothing was changed'), tone: 'muted' },
     )
   }
-  return {
-    mode: !settled ? 'loading' : state.outcome?.kind === 'success' ? 'info' : 'error',
+  return ui.surface({
     title: t('Update Mayfly'),
-    view: { kind: 'stack', direction: 'column', children: nodes.map(node => ({ node })) },
-    dismissible: settled,
-  }
+    chrome: 'overlay',
+    padding: 1,
+    child: ui.stack.column([
+      ...nodes,
+      ui.actions({ id: 'update-actions', items: [{
+        id: 'close',
+        label: t('Close'),
+        dismiss: true,
+        disabled: !settled,
+        ...(settled ? {} : { disabledReason: t('The update is still running') }),
+      }] }),
+    ]),
+  })
 }
 
 /** One-line notice emitted when the settled panel closes. */
@@ -121,13 +127,6 @@ export function updatePanelSummary(state: UpdateProgressState, t: MayflyTranslat
     : t('update did not complete ({kind}) — log: {path}', { kind: outcome.kind, path: outcome.logPath })
 }
 
-/** The display services slice the confirmation needs. */
-interface Display {
-  readonly theme: MayflyTheme
-  readonly components: MayflyComponents
-  readonly keymap: MayflyKeymap
-}
-
 /**
  * Mount an explicit Yes/No confirmation and
  * await the answer.
@@ -137,27 +136,35 @@ interface Display {
  * @param detail - the subtitle detail line (publish age, host line).
  * @returns whether the user confirmed.
  */
-function confirmUpdate(ctx: Context, display: Display, fromVersion: string, toVersion: string, detail: string): Promise<boolean> {
+function confirmUpdate(ctx: Context, fromVersion: string, toVersion: string, detail: string): Promise<boolean> {
   const t = interactionTranslator(ctx)
-  // A second resolve is a Promise no-op, and a second slot restore is
-  // idempotent, so submit and cancel racing needs no guard.
   return new Promise(resolve => {
-    const done = (value: boolean): void => {
-      restore()
-      resolve(value)
+    const id = 'mayfly.update.confirm'
+    let settled = false
+    let off!: () => void
+    const finish = (confirmed: boolean): void => {
+      if (settled) return
+      settled = true
+      off()
+      resolve(confirmed)
     }
-    const panel = createConfirmationPanel({
-      keymap: display.keymap,
-      theme: display.theme,
-      components: display.components,
-      t,
-      title: 'Update Mayfly',
-      question: t('Update to v{version}?', { version: toVersion }),
-      detail: [`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '),
-      onConfirm: () => done(true),
-      onCancel: () => done(false),
+    const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Update Mayfly'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
+      if (event.kind === 'dismiss') { finish(false); return { kind: 'cancelled' as const, dismiss: true } }
+      if (event.kind === 'activate' && (event.actionId === 'yes' || event.actionId === 'no')) {
+        finish(event.actionId === 'yes')
+        return { kind: 'completed' as const, dismiss: true }
+      }
+      return { kind: 'completed' as const }
+    } } }, ui.surface({ chrome: 'overlay', title: t('Update Mayfly'), child: ui.stack.column([
+      ui.text(t('Update to v{version}?', { version: toVersion })),
+      ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'muted' }),
+      ui.actions({ id: 'update-confirm-actions', items: [{ id: 'yes', label: t('Yes'), intent: 'primary' }, { id: 'no', label: t('No'), defaultFocus: true }] }),
+    ]) }))
+    off = ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind === 'remove' && delta.id === id) finish(false)
     })
-    const restore = mountEditorReplacement(ctx, panel)
+    if (handle.closed) finish(false)
+    ctx.effect(() => () => finish(false))
   })
 }
 
@@ -171,7 +178,6 @@ function confirmUpdate(ctx: Context, display: Display, fromVersion: string, toVe
  */
 async function runSwapPanel(
   ctx: Context,
-  display: NonNullable<ReturnType<typeof displayServices>>,
   input: {
     readonly root: string
     readonly profile: string
@@ -183,18 +189,15 @@ async function runSwapPanel(
   const t = interactionTranslator(ctx)
   const bootMarker = ctx.get('agentDefaultModel')?.currentSelection().model
   const state = createUpdateProgressState()
-  let restore: () => void
-  const panel = new CanonicalDocumentController({
-    ...display,
-    t,
-    model: () => updatePanelModel(state, input.fromVersion, input.toVersion, t),
-    onAction: () => undefined,
-    onClose: () => {
-      restore()
-      getSharedEditor(ctx)?.notice?.(updatePanelSummary(state, t))
-    },
-  })
-  restore = mountEditorReplacement(ctx, panel)
+  const id = 'mayfly.update.progress'
+  const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Update Mayfly'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
+    if (event.kind === 'dismiss') {
+      return state.outcome === undefined && state.blockedMessage === undefined
+        ? { kind: 'failed' as const, message: t('The update is still running') }
+        : { kind: 'completed' as const, dismiss: true }
+    }
+    return { kind: 'completed' as const }
+  } } }, updatePanelModel(state, input.fromVersion, input.toVersion, t))
   // A throw out of the executor (ENOSPC mid-rename, a crashed spawn
   // wrapper) must still settle the panel — an unsettled panel refuses to
   // close and would strand the editor replacement forever.
@@ -206,8 +209,7 @@ async function runSwapPanel(
       ...(bootMarker !== undefined ? { bootMarker } : {}),
       onProgress: progress => {
         applyUpdateProgress(state, progress)
-        panel.invalidate()
-        display.screen.requestRender()
+        handle.set(updatePanelModel(state, input.fromVersion, input.toVersion, t))
       },
     })
   } catch (error) {
@@ -220,8 +222,7 @@ async function runSwapPanel(
     }
   }
   state.outcome = outcome
-  panel.invalidate()
-  display.screen.requestRender()
+  handle.set(updatePanelModel(state, input.fromVersion, input.toVersion, t))
   return outcome
 }
 
@@ -268,11 +269,12 @@ function publishAgeDetail(published: number | undefined, now: number): string {
  * @returns the disposer removing the command.
  */
 export function registerUpdateCommand(ctx: Context): () => void {
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.update-command', 'update')
   const dispose = ctx.commands.register({
     name: 'update',
     description: 'Safely update Mayfly (preflight, snapshot, smoke, auto-rollback)',
     input: { hint: '[<version>]' },
-    handler: invocation => runUpdateCommand(ctx, invocation.rawInput.trim()),
+    handler: invocation => runUpdateCommand(ctx, invocation.rawInput.trim(), notifications),
   })
   return dispose
 }
@@ -286,14 +288,14 @@ export function registerUpdateCommand(ctx: Context): () => void {
  * exact version.
  * @returns the command outcome.
  */
-async function runUpdateCommand(ctx: Context, requested: string): Promise<CommandResult> {
+async function runUpdateCommand(ctx: Context, requested: string, notifications: ReturnType<typeof createInteractionNotificationOwner>): Promise<CommandResult> {
   const state = ctx.mayflyInteractionState
   if (state.updateInFlight) {
     return { kind: 'error', text: interactionTranslator(ctx)('an update is already in progress') }
   }
   state.updateInFlight = true
   try {
-    return await runUpdateFlow(ctx, requested)
+    return await runUpdateFlow(ctx, requested, notifications)
   } finally {
     state.updateInFlight = false
   }
@@ -308,20 +310,19 @@ async function runUpdateCommand(ctx: Context, requested: string): Promise<Comman
  * exact version.
  * @returns the command outcome.
  */
-async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandResult> {
+async function runUpdateFlow(ctx: Context, requested: string, notifications: ReturnType<typeof createInteractionNotificationOwner>): Promise<CommandResult> {
   const t = interactionTranslator(ctx)
   const current = ctx.get('mayflyCurrentAgent')?.current() ?? null
   if (current !== null && current.status !== 'idle') {
     return { kind: 'error', text: t('the agent is running — wait for the current turn to finish before updating') }
   }
-  const display = displayServices(ctx)
-  if (display === undefined) {
-    return { kind: 'error', text: t('update is unavailable: the Mayfly screen is not mounted') }
+  if (ctx.get('mayflyOverlays') === undefined) {
+    return { kind: 'error', text: t('update is unavailable: the Mayfly UI registry is not mounted') }
   }
-  getSharedEditor(ctx)?.notice?.(t('checking the registry for {package} updates…', { package: MAYFLY_PACKAGE }))
+  notifications.report('registry', { message: t('checking the registry for {package} updates…', { package: MAYFLY_PACKAGE }), severity: 'info', purpose: 'progress' }, { kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` }, 'registry')
   const registry = await fetchPackument({
     onRetry: (attempt, total) =>
-      getSharedEditor(ctx)?.notice?.(t('registry unreachable, retrying ({attempt}/{total})…', { attempt, total })),
+      notifications.report('registry', { message: t('registry unreachable, retrying ({attempt}/{total})…', { attempt, total }), severity: 'warning', purpose: 'progress' }, { kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` }, 'registry'),
   })
   if (!registry.ok) {
     const detail = registry.reason === 'network'
@@ -329,8 +330,11 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
       : registry.reason === 'not-found'
         ? 'the registry answers E404 for @ephemeral-ai/mayfly — check the npmrc registry/mirror configuration'
         : 'unparseable answer — check the npmrc mirror and retry'
-    return { kind: 'error', text: t('could not read the registry ({detail})', { detail: t(detail) }) }
+    const message = t('could not read the registry ({detail})', { detail: t(detail) })
+    notifications.report('registry', { message, severity: 'error' }, { kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` }, 'registry')
+    return { kind: 'error', text: message }
   }
+  notifications.clear('registry')
   const packument = registry.packument
 
   let target: string
@@ -384,7 +388,7 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
   if (blocking !== undefined) {
     // The verdict's multi-line repair recipe is the payload; a one-line
     // command result would truncate it away, so the panel carries it.
-    mountBlockedPanel(ctx, display, installedVersion ?? MAYFLY_VERSION, target, blocking.message)
+    mountBlockedPanel(ctx, installedVersion ?? MAYFLY_VERSION, target, blocking.message)
     return { kind: 'success' }
   }
   const warnings = verdicts.filter(verdict => !verdict.blocking && verdict.message !== undefined)
@@ -397,12 +401,12 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
     hostLine === undefined ? '' : `dsh ${hostLine}`,
     ...warnings.map(verdict => verdict.message!),
   ].filter(part => part !== '')
-  const confirmed = await confirmUpdate(ctx, display, fromVersion, target, detailParts.join(' · '))
+  const confirmed = await confirmUpdate(ctx, fromVersion, target, detailParts.join(' · '))
   if (!confirmed) {
     return { kind: 'success', text: t('update cancelled') }
   }
 
-  const outcome = await runSwapPanel(ctx, display, { root, profile, dshCommand, fromVersion, toVersion: target })
+  const outcome = await runSwapPanel(ctx, { root, profile, dshCommand, fromVersion, toVersion: target })
   if (outcome.kind === 'success') {
     // The boot check stops offering what this session just installed.
     writeUpdateCheckState({ lastCheckAt: updaterInternals.now(), lastNotifiedVersion: target })
@@ -428,7 +432,6 @@ async function runUpdateFlow(ctx: Context, requested: string): Promise<CommandRe
  */
 function mountBlockedPanel(
   ctx: Context,
-  display: NonNullable<ReturnType<typeof displayServices>>,
   fromVersion: string,
   target: string,
   message: string,
@@ -436,16 +439,5 @@ function mountBlockedPanel(
   const t = interactionTranslator(ctx)
   const state = createUpdateProgressState()
   state.blockedMessage = message
-  let restore: () => void
-  const panel = new CanonicalDocumentController({
-    ...display,
-    t,
-    model: () => updatePanelModel(state, fromVersion, target, t),
-    onAction: () => undefined,
-    onClose: () => {
-      restore()
-      getSharedEditor(ctx)?.notice?.(updatePanelSummary(state, t))
-    },
-  })
-  restore = mountEditorReplacement(ctx, panel)
+  openUiOverlay(ctx, { id: 'mayfly.update.blocked', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Update Mayfly'), scope: { kind: 'app', targetId: 'update-blocked' } }, updatePanelModel(state, fromVersion, target, t))
 }

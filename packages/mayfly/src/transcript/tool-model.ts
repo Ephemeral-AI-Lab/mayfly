@@ -109,7 +109,7 @@ export function toolResultNode(view: ToolResultView | undefined, outcome: ToolRe
         { label: 'status', value: [{ text: String(view.statusCode) }] },
         { label: 'truncated', value: [{ text: view.truncated ? 'yes' : 'no' }] },
       ] }
-      return { kind: 'list', id: 'tool-web-sources', selectedIds: [], items: view.sources.map((source, index) => ({ id: `source-${String(index)}`, label: source.title ?? source.url, detail: source.snippet ?? source.url })) }
+      return { kind: 'list', role: 'browse', id: 'tool-web-sources', selectedIds: [], items: view.sources.map((source, index) => ({ id: `source-${String(index)}`, label: source.title ?? source.url, detail: source.snippet ?? source.url })) }
   }
 }
 
@@ -191,9 +191,9 @@ class ToolModelComponent implements MayflyComponent {
     const expanded = this.expandedOverride ?? model.expanded ?? false
     const view = expanded ? model.result ?? model.call : model.call
     if (view === undefined) return []
-    // The tool component applies its own 12/200-row budget and needs the
-    // complete validated row count to report the exact hidden remainder.
-    const rows = renderCanonicalNode(view, width, this.renderer, Number.MAX_SAFE_INTEGER)
+    // The tool component applies its own 12/200-row budget after canonical
+    // content has rendered completely, so its hidden-line count stays exact.
+    const rows = renderCanonicalNode(view, width, this.renderer)
     if (expanded) return rows
     const limit = COLLAPSED_ROW_LIMIT
     if (rows.length <= limit) return rows

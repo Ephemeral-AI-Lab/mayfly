@@ -31,7 +31,7 @@ import type {} from '../app/index.ts'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { copyTextToClipboard } from './clipboard-write.ts'
-import { getSharedEditor } from './editor-instance.ts'
+import { createInteractionNotificationOwner } from './notifications.ts'
 /** The key-arg whitelist for the tool-call hint, in priority order (the
  * present.ts list — the export keeps the same hint the card shows). */
 const KEY_ARG_KEYS = ['file_path', 'command', 'pattern'] as const
@@ -454,6 +454,7 @@ export function buildFullExportMarkdown(input: FullExportInput): string {
  * @returns a disposer unregistering both commands.
  */
 export function registerExportCommands(ctx: Context): () => void {
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.session-export', 'session-export')
   /** The shared read path's outcome: session identity, decoded audit events,
    * and the current official projected transcript. */
   interface SessionExportSource {
@@ -548,7 +549,7 @@ export function registerExportCommands(ctx: Context): () => void {
     } catch (error) {
       return { kind: 'error', text: `could not write export: ${describe(error)}` }
     }
-    getSharedEditor(ctx)?.notice?.(`exported ${String(count)} ${full ? 'events' : 'items'} to ${outputPath}`)
+    notifications.report('export', { message: `exported ${String(count)} ${full ? 'events' : 'items'} to ${outputPath}`, severity: 'success' })
     return { kind: 'success' }
   }
 
@@ -577,9 +578,9 @@ export function registerExportCommands(ctx: Context): () => void {
     // The OSC 52 leg cannot be confirmed from this side — the terminal
     // honors it silently or ignores it silently — so it reports as
     // unverified (the kimi wording).
-    getSharedEditor(ctx)?.notice?.(method === 'native'
+    notifications.report('copy', { message: method === 'native'
       ? `copied the last assistant message (${String(text.length)} characters)`
-      : `copied via terminal escape sequence (unverified, ${String(text.length)} characters)`)
+      : `copied via terminal escape sequence (unverified, ${String(text.length)} characters)`, severity: 'success' })
     return { kind: 'success' }
   }
 

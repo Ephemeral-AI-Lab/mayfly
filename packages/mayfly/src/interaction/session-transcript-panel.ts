@@ -23,7 +23,6 @@ import {
 } from '../transcript/transcript-model.ts'
 import type { ToolPresentationSource } from '../transcript/present.ts'
 import type { TranscriptModel } from '../frontend/index.ts'
-import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { ACTION_CANCEL, ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from './keys.ts'
 
 type SubagentView = Extract<MayflyAuxiliaryView, { readonly kind: 'subagent' }>
@@ -52,6 +51,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
     const renderer: TranscriptModelRenderer = {
       colors: ctx.mayflyTheme.colors,
       components: ctx.mayflyComponents,
+      viewportRows: () => screen.editorViewport.rows,
       images: () => {
         const attachments = ctx.get('attachments') as { readImage(ref: unknown): Promise<{ data: Uint8Array }> } | undefined
         return attachments === undefined ? {} : {
@@ -143,16 +143,16 @@ export class SessionTranscriptPanel implements MayflyFocusable {
 /** Stable child-plugin name. */
 export const name = 'mayfly-session-transcript-panel'
 /** Renderer, projection, and editor-slot services required by the fallback. */
-export const inject = ['mayflyCurrentAgent', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyEditorPanels', 'sessionProjections', 'sessions', 'tools', 'agents']
+export const inject = ['mayflyCurrentAgent', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'sessionProjections', 'sessions', 'tools', 'agents']
 
 /** Mount the retained readonly auxiliary when it is the displayed view. */
 export function apply(ctx: Context): void {
-  let retained: { readonly target: SubagentView, readonly panel: SessionTranscriptPanel, restore: (() => void) | undefined } | undefined
+  let retained: { readonly target: SubagentView, readonly panel: SessionTranscriptPanel, shown: boolean } | undefined
 
   const clear = (): void => {
     const current = retained
     retained = undefined
-    current?.restore?.()
+    if (current?.shown === true) ctx.mayflyScreen.setEditorReplacement(null)
     current?.panel.dispose()
   }
   const sync = (): void => {
@@ -174,14 +174,15 @@ export function apply(ctx: Context): void {
       retained = {
         target: admitted,
         panel: new SessionTranscriptPanel(ctx, admitted, () => { ctx.emit('mayfly/request-close-agent-view') }),
-        restore: undefined,
+        shown: false,
       }
     }
-    if (snapshot.displayed === 'auxiliary' && retained.restore === undefined) {
-      retained.restore = mountEditorReplacement(ctx, retained.panel)
-    } else if (snapshot.displayed === 'primary' && retained.restore !== undefined) {
-      retained.restore()
-      retained.restore = undefined
+    if (snapshot.displayed === 'auxiliary' && retained.shown === false) {
+      ctx.mayflyScreen.setEditorReplacement(retained.panel)
+      retained.shown = true
+    } else if (snapshot.displayed === 'primary' && retained.shown === true) {
+      ctx.mayflyScreen.setEditorReplacement(null)
+      retained.shown = false
     }
   }
 

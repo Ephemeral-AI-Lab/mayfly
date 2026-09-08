@@ -11,12 +11,14 @@ export const name = 'mayfly-pane-queue'
 export const inject = ['mayflyPanes', 'mayflyCurrentAgent']
 
 function messageText(message: UserMessage): string {
-  return message.content
+  const text = message.content
     .filter(block => block.type === 'text')
     .map(block => block.text)
     .join(' ')
     .replace(/[\r\n]+/g, ' ')
     .trim()
+  const images = message.content.filter(block => block.type === 'image').length
+  return [text, ...(images === 0 ? [] : [`[${images} image${images === 1 ? '' : 's'}]`])].filter(Boolean).join(' ')
 }
 
 /** Register one ordinary bottom pane over the selected Agent's inbox. */
@@ -25,9 +27,10 @@ export function apply(ctx: Context): void {
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null || !agent.inbox.hasPending) return null
     const rows = [
-      ...agent.inbox.nextTurn.map(message => `queued / turn: ${messageText(message)}`),
-      ...agent.inbox.nextStep.map(message => `queued / step: ${messageText(message)}`),
+      ...agent.inbox.nextTurn.filter(message => message.source.kind === 'user').map(message => `Queued: ${messageText(message)}`),
+      ...agent.inbox.nextStep.filter(message => message.source.kind === 'user').map(message => `Steer: ${messageText(message)}`),
     ]
+    if (rows.length === 0) return null
     return {
       kind: 'stack',
       direction: 'column',

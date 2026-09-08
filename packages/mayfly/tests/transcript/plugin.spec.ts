@@ -47,6 +47,7 @@ class FakeScreen implements MayflyScreen {
   readonly renderRequests: Array<boolean | undefined> = []
   readonly columns = 80
   readonly rows = 24
+  get editorViewport(): { readonly columns: number, readonly rows: number } { return { columns: this.columns, rows: this.rows } }
   mountContentSlot(id: string, component: MayflyComponent | null) {
     return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())
   }

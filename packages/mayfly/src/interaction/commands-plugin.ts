@@ -13,13 +13,7 @@
  * the registered commands and key bindings in an overlay; `/theme` swaps
  * the live theme provider (see `./theme-switch.ts`); the Shift+Tab native
  * plan/permission cycle lives in `./mode-commands.ts`; the
- * session-info family (`/status` `/usage` `/version`) lives in
- * `./session-commands.ts`; `/init` (the canned AGENTS.md prompt) lives in
- * `./session-init.ts`; the config family (`/tools` over the live tool
- * catalog, `/preset` over the agent-preset roster) lives in
- * `./tools-commands.ts` and `./preset-commands.ts`; and `/skills` (the
- * `#` pipeline's read-only listing) lives in `./skills-command.ts`; the
- * settings panel (`/settings`) lives in `./settings-command.ts`; and
+ * `/init` (the canned AGENTS.md prompt) lives in `./session-init.ts`; and
  * `/plugin` (the marketplace browser over the dsh-plugins index) lives in
  * `./plugin-commands.ts`.
  * Registrations are
@@ -48,36 +42,28 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 // `session-query-sqlite` row with `openAt: never` keeps batch title reads
 // available); optional and resolved lazily like persistence.
 import type {} from '@deepseek-ai/dsh-session-query'
-import { displayServices } from './display-services.ts'
-import { getSharedEditor } from './editor-instance.ts'
-import { mountEditorReplacement } from './editor-panel-controller.ts'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { HelpSection } from './help.ts'
-import { HelpPanel } from './help.ts'
-import { registerMcpCommands } from './mcp-commands.ts'
+import { helpNode } from './help.ts'
 import { registerModelCommands } from './model-commands.ts'
 import { registerPluginCommand } from './plugin-commands.ts'
-import { registerPresetCommands } from './preset-commands.ts'
-import { registerSessionCommands } from './session-commands.ts'
 import { registerExportCommands } from './session-export.ts'
 import { registerInitCommand } from './session-init.ts'
-import { registerSettingsCommand } from './settings-command.ts'
-import { registerSkillsCommand } from './skills-command.ts'
-import { CanonicalSelectController, MAX_LIST_VISIBLE, type SelectRow } from './select-list.ts'
-import { createSessionTree } from './session-tree.ts'
-import { CURRENT_MARK } from './symbols.ts'
+import { sessionTreeItems } from './session-tree.ts'
 import { registerThemeCommand } from './theme-switch.ts'
-import { registerToolsCommands } from './tools-commands.ts'
 import { registerUpdateCommand } from './update-command.ts'
 import { registerTraceCommand } from './trace-command.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { rewindCandidates } from './rewind.ts'
-import { ACTION_TOGGLE, interactionKeyHint } from './keys.ts'
+import { openUiOverlay } from './ui-overlay.ts'
+import { createInteractionNotificationOwner } from './notifications.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-commands'
 /** Services required before the commands can register. */
 export const inject = [
   'commands',
+  'mayflyOverlays',
   'mayflyCurrentAgent',
   'mayflySkillsCatalog',
   'mayflyInteractionState',
@@ -86,12 +72,6 @@ export const inject = [
   'sessions',
   'tools',
 ]
-
-/** Built-in command configuration forwarded by the interaction root. */
-export interface Config {
-  /** Optional profile-local identity shown by `/status` and `/version`. */
-  readonly displayVersion?: string
-}
 
 /** Render one failure reason for an error result. */
 function describe(error: unknown): string {
@@ -110,6 +90,7 @@ function formatDate(createdAt: number): string {
  * directory with a long session history; older rows keep the id form.
  */
 export const DEFAULT_SESSION_TITLE_LIMIT = 100
+const SESSION_TITLE_PAGE_SIZE = 8
 
 let sessionTitleLimit = DEFAULT_SESSION_TITLE_LIMIT
 
@@ -131,9 +112,10 @@ export function currentSessionTitleLimit(): number {
  * @param ctx - plugin context.
  * @param config - command presentation configuration.
  */
-export function apply(ctx: Context, config: Config = {}): void {
+export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
   const aliasRegistry = ctx.mayflyInteractionState.aliases
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.commands', 'commands')
   /**
    * Set when this fiber unloads: the `/sessions` listing can still be in
    * flight (a tree unload lands between `list()` and the overlay mount),
@@ -144,7 +126,10 @@ export function apply(ctx: Context, config: Config = {}): void {
   let loadingNoticeActive = false
   ctx.effect(() => () => {
     unloaded = true
-    if (loadingNoticeActive) getSharedEditor(ctx)?.notice?.('')
+    if (loadingNoticeActive) {
+      loadingNoticeActive = false
+      notifications.clear('session-list')
+    }
   })
 
   /**
@@ -160,12 +145,12 @@ export function apply(ctx: Context, config: Config = {}): void {
     ctx.mayflyCurrentAgent.closeAuxiliary()
     // A persistence scan can be slow on large profiles. Acknowledge it before
     // the first await so the user is not left staring at an unchanged editor.
-    getSharedEditor(ctx)?.notice?.('loading sessions...')
+    notifications.report('session-list', { message: 'loading sessions...', severity: 'info', purpose: 'progress' })
     loadingNoticeActive = true
     const clearLoadingNotice = (): void => {
       if (!loadingNoticeActive) return
       loadingNoticeActive = false
-      getSharedEditor(ctx)?.notice?.('')
+      notifications.clear('session-list')
     }
     const persistence = ctx.get('sessionPersistence')
     if (persistence === undefined) {
@@ -194,86 +179,46 @@ export function apply(ctx: Context, config: Config = {}): void {
       clearLoadingNotice()
       return { kind: 'success', text: 'no sessions in this directory' }
     }
-    const display = displayServices(ctx)
-    if (display === undefined) {
-      clearLoadingNotice()
-      return { kind: 'error', text: 'session picker is unavailable: the Mayfly screen is not mounted' }
-    }
     const currentId = primary?.id
     const titleById = new Map<string, string>()
-    const tree = createSessionTree(sorted, titleById, currentId === undefined ? undefined : String(currentId), formatDate)
     const loadingPages = new Set<number>()
     const loadedPages = new Set<number>()
-    const buildRows = (): SelectRow[] => tree.rows().map(row => ({
-      value: row.value,
-      label: row.label,
-      ...(row.description === undefined ? {} : { description: row.description }),
-      filterText: row.filterText,
-      ...(row.current === true ? { badge: CURRENT_MARK } : {}),
-    }))
+    const buildRows = () => sessionTreeItems(sorted, titleById, currentId === undefined ? undefined : String(currentId), formatDate)
     // Hydrate the first page before mounting so labels do not visibly change
     // from session ids to titles. Later pages are prefetched near page ends.
-    let list!: CanonicalSelectController
+    let handle!: ReturnType<typeof openUiOverlay>
+    const view = () => ui.surface({ title: 'Sessions', chrome: 'overlay', child: ui.list({ id: 'sessions', role: 'choose', tree: true, selectedIds: currentId === undefined ? [] : [String(currentId)], filterable: true, items: buildRows() }) })
     const loadPage = (page: number, query: NonNullable<ReturnType<typeof ctx.get<'sessionQuery'>>>): Promise<void> => {
-      if (loadingPages.has(page) || loadedPages.has(page) || page * MAX_LIST_VISIBLE >= sessionTitleLimit) return Promise.resolve()
+      if (loadingPages.has(page) || loadedPages.has(page) || page * SESSION_TITLE_PAGE_SIZE >= sessionTitleLimit) return Promise.resolve()
       loadingPages.add(page)
-      const ids = sorted.slice(page * MAX_LIST_VISIBLE, Math.min((page + 1) * MAX_LIST_VISIBLE, sessionTitleLimit)).map(header => header.id)
+      const ids = sorted.slice(page * SESSION_TITLE_PAGE_SIZE, Math.min((page + 1) * SESSION_TITLE_PAGE_SIZE, sessionTitleLimit)).map(header => header.id)
       return query.readTitleSnapshots(ids, signal).then(results => {
         if (unloaded) return
         for (const result of results ?? []) {
           if (result.status === 'fulfilled' && result.value.title !== undefined) titleById.set(String(result.sessionId), result.value.title.title)
         }
         loadedPages.add(page)
-        list.setRows(buildRows())
-        display.screen.requestRender()
+        if (!handle.closed) handle.set(view())
       }).catch(() => undefined).finally(() => loadingPages.delete(page))
     }
-    list = new CanonicalSelectController({
-      keymap: display.keymap,
-      theme: display.theme,
-      components: display.components,
-      rows: buildRows(),
-      title: 'Sessions',
-      contextHints: [{ id: 'toggle', keys: interactionKeyHint(display.keymap, ACTION_TOGGLE, 'Space'), label: 'toggle branch', priority: 95 }],
-      ...(currentId === undefined ? {} : { initialValue: String(currentId) }),
-      filter: true,
-      onCursorChanged: cursor => {
-        const query = ctx.get('sessionQuery')
-        if (query === undefined) return
-        const page = Math.floor(cursor / MAX_LIST_VISIBLE)
-        void loadPage(page, query)
-        if (cursor % MAX_LIST_VISIBLE >= Math.floor(MAX_LIST_VISIBLE / 2)) void loadPage(page + 1, query)
-      },
-      onToggle: row => {
-        tree.toggle(row.value)
-        list.setRows(buildRows())
-        display.screen.requestRender()
-      },
-      onSelect: (row) => {
-        clearLoadingNotice()
-        restore()
-        if (row.value === String(currentId)) {
-          getSharedEditor(ctx)?.notice?.(display.colors.error('already the current session'))
-          return
-        }
-        ctx.emit('mayfly/request-resume', row.value)
-        getSharedEditor(ctx)?.notice?.(`resuming session ${row.value}`)
-      },
-      onCancel: () => {
-        clearLoadingNotice()
-        restore()
-      },
-    })
-    // The kimi dialog mount (D30): the panel replaces the editor in its
-    // dock slot, so below it only the footer remains — a floating overlay
-    // would leave the editor's frame peeking around the panel.
     const query = ctx.get('sessionQuery')
     if (query !== undefined) await loadPage(0, query)
     if (unloaded) {
       clearLoadingNotice()
       return { kind: 'success' }
     }
-    const restore = mountEditorReplacement(ctx, list)
+    handle = openUiOverlay(ctx, { id: 'mayfly.sessions', presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Sessions', scope: { kind: 'app', targetId: 'sessions' }, onEvent: { action: event => {
+        if (event.kind === 'selection-accept') {
+        const id = event.selectedIds[0]
+        if (id === String(currentId)) return { kind: 'completed' as const, feedback: { severity: 'info' as const, message: 'Already the current session' } }
+        if (id !== undefined) {
+          ctx.emit('mayfly/request-resume', id)
+          return { kind: 'completed' as const, dismiss: true }
+        }
+        }
+        return { kind: 'completed' as const }
+      },
+    } }, view())
     clearLoadingNotice()
     if (query !== undefined) void loadPage(1, query)
     return { kind: 'success' }
@@ -287,31 +232,19 @@ export function apply(ctx: Context, config: Config = {}): void {
     if (active.status !== 'idle') return { kind: 'error', text: 'cannot rewind while the agent is running' }
     const candidates = rewindCandidates(active.session.snapshotEvents())
     if (candidates.length === 0) return { kind: 'success', text: 'no user turns to rewind' }
-    const display = displayServices(ctx)
-    if (display === undefined) return { kind: 'error', text: 'rewind is unavailable: the Mayfly screen is not mounted' }
     const first = candidates[0]!
-    const list = new CanonicalSelectController({
-      keymap: display.keymap,
-      theme: display.theme,
-      components: display.components,
-      rows: candidates.map(candidate => ({
-        value: String(candidate.boundarySeq),
-        label: `Turn ${String(candidate.turn)} · ${candidate.prompt}`,
-        ...(candidate.response === undefined ? {} : { description: `↳ ${candidate.response}` }),
-        filterText: `${candidate.prompt} ${candidate.response ?? ''} ${String(candidate.turn)}`,
-      })),
-      title: 'Rewind current session',
-      footer: 'The original session stays available in /sessions.',
-      initialValue: String(first.boundarySeq),
-      filter: true,
-      onSelect: row => {
-        restore()
-        ctx.emit('mayfly/request-rewind', String(active.id), Number(row.value))
-        getSharedEditor(ctx)?.notice?.('creating rewind branch...')
-      },
-      onCancel: () => restore(),
-    })
-    const restore = mountEditorReplacement(ctx, list)
+    const id = 'mayfly.rewind'
+    if (ctx.mayflyOverlays.focus(id)) return { kind: 'success' }
+    openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Rewind current session', scope: { kind: 'session', sessionId: active.id }, onEvent: { action: event => {
+      if (event.kind === 'selection-accept' && event.selectedIds[0] !== undefined) {
+        ctx.emit('mayfly/request-rewind', String(active.id), Number(event.selectedIds[0]))
+        return { kind: 'completed' as const, dismiss: true }
+      }
+      return { kind: 'completed' as const }
+    } } }, ui.surface({ chrome: 'overlay', title: 'Rewind current session', child: ui.stack.column([
+      ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: [String(first.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: `Turn ${String(candidate.turn)} · ${candidate.prompt}`, ...(candidate.response === undefined ? {} : { detail: `↳ ${candidate.response}` }) })) }),
+      ui.text('The original session stays available in /sessions.', { tone: 'muted' }),
+    ]) }))
     return { kind: 'success' }
   }
 
@@ -322,10 +255,9 @@ export function apply(ctx: Context, config: Config = {}): void {
    * @returns the command outcome.
    */
   function showHelp(): CommandResult {
-    const display = displayServices(ctx)
-    if (display === undefined) {
-      return { kind: 'error', text: 'help is unavailable: the Mayfly screen is not mounted' }
-    }
+    const keymap = ctx.get('mayflyKeymap')
+    if (keymap === undefined) return { kind: 'error', text: 'help is unavailable: the Mayfly keymap is not mounted' }
+    if (ctx.mayflyOverlays.focus('mayfly.help')) return { kind: 'success' }
     const sections = (): HelpSection[] => [
       {
         heading: 'Commands',
@@ -349,32 +281,16 @@ export function apply(ctx: Context, config: Config = {}): void {
       {
         heading: 'Keys',
         labelTone: 'warning',
-        rows: display.keymap.list().map(action => ({
+        rows: keymap.list().map(action => ({
           label: [action.keys].flat().join('/'),
           description: t(action.description ?? action.id),
         })),
       },
     ]
-    let restore: () => void
-    let offLocale: () => void
-    const overlay = new HelpPanel({
-      theme: display.theme,
-      components: display.components,
-      keymap: display.keymap,
-      sections,
-      t,
-      onClose: () => {
-        offLocale()
-        restore()
-      },
-    })
-    // The kimi dialog mount (D30): the panel replaces the editor in its
-    // dock slot, so below it only the footer remains.
-    restore = mountEditorReplacement(ctx, overlay)
-    offLocale = observeInteractionLocale(ctx, () => {
-      overlay.invalidate()
-      display.screen.requestRender()
-    })
+    const view = () => helpNode(sections(), t)
+    const handle = openUiOverlay(ctx, { id: 'mayfly.help', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('help'), scope: { kind: 'app', targetId: 'help' } }, view())
+    const offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
+    ctx.effect(() => () => offLocale())
     return { kind: 'success' }
   }
 
@@ -459,26 +375,16 @@ export function apply(ctx: Context, config: Config = {}): void {
     // live in their own module with the same lazy-service discipline.
     const models = registerModelCommands(ctx)
     // The session-info family (`/status` `/usage` `/version`).
-    const sessionInfo = registerSessionCommands(ctx, config.displayVersion)
     // The session-export family (`/export` `/copy`).
     const sessionExport = registerExportCommands(ctx)
     // The canned-prompt command (`/init`).
     const init = registerInitCommand(ctx)
-    // The config-family commands (S28): `/tools` over the live tool
-    // catalog, `/preset` over the agent-preset roster.
-    const toolCatalog = registerToolsCommands(ctx)
-    const agentPresets = registerPresetCommands(ctx)
-    // The skills listing (`/skills`, the `#` pipeline's read side).
-    const skillsCommand = registerSkillsCommand(ctx)
-    // The MCP server browser (`/mcp`, S34): read-only over loader entries.
-    const mcpBrowser = registerMcpCommands(ctx)
     // `/trace` is a read-only view over the official session-query seam.
     const trace = registerTraceCommand(ctx)
     // `/update` is the crash-safe, preflighted profile swap.
     const update = registerUpdateCommand(ctx)
     // `/plugin` browses the marketplace index and installs or removes plugins.
     const pluginMarket = registerPluginCommand(ctx)
-    const settings = registerSettingsCommand(ctx)
     return () => {
       quit()
       quitAliases()
@@ -491,17 +397,11 @@ export function apply(ctx: Context, config: Config = {}): void {
       help()
       theme()
       models()
-      sessionInfo()
       sessionExport()
       init()
-      toolCatalog()
-      agentPresets()
-      skillsCommand()
-      mcpBrowser()
       trace()
       update()
       pluginMarket()
-      settings()
     }
   })
 }

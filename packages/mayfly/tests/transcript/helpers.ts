@@ -58,9 +58,6 @@ export function fakeMayflyComponents(): MayflyComponents {
     createSelectList(): never {
       throw new Error('fake createSelectList is out of scope for transcript tests')
     },
-    createSettingsList(): never {
-      throw new Error('fake createSettingsList is out of scope for transcript tests')
-    },
     visibleWidth,
     wrapText: wrapTextWithAnsi,
     truncateToWidth,

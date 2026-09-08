@@ -1,155 +1,37 @@
-/**
- * Unit tests for the `HelpPanel` dialog: the framed `help` title, the
- * two-column sections, the scroll window and its `showing` tail, and the
- * close/scroll key handling (Escape/Enter/`q` close; arrows and PageUp/
- * PageDown scroll).
+/** Renderer-neutral Help document tests.
+ * @module @ephemeral-ai/mayfly/tests/interaction/help
  */
+import { describe, expect, it } from 'vitest'
+import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 
-import { describe, expect, it, vi } from 'vitest'
-import type { MayflyKeymap } from '../../src/core/index.ts'
-import { HelpPanel } from '../../src/interaction/help.ts'
-import type { HelpSection } from '../../src/interaction/help.ts'
-import { FakeMayflyComponents, FakeKeymap, FakeTheme, KEY } from './fakes.ts'
+const sections: HelpSection[] = [
+  { heading: 'Commands', labelTone: 'primary', rows: [{ label: '/help', description: 'Show help' }] },
+  { heading: 'Keys', labelTone: 'warning', rows: [{ label: 'enter', description: 'Submit input' }] },
+]
 
-function sections(count = 3): HelpSection[] {
-  return [
-    {
-      heading: 'Commands',
-      labelTone: 'accent',
-      rows: Array.from({ length: count }, (_, index) => ({
-        label: `/cmd-${index}`,
-        description: `does thing ${index}`,
-      })),
-    },
-  ]
-}
-
-function mount(options: {
-  sections?: readonly HelpSection[]
-  maxVisible?: number
-  keymap?: MayflyKeymap
-} = {}): { overlay: HelpPanel; onClose: ReturnType<typeof vi.fn> } {
-  const onClose = vi.fn()
-  const overlay = new HelpPanel({
-    theme: new FakeTheme(),
-    components: new FakeMayflyComponents(),
-    keymap: options.keymap ?? new FakeKeymap(),
-    sections: options.sections ?? sections(),
-    ...(options.maxVisible === undefined ? {} : { maxVisible: options.maxVisible }),
-    onClose,
-  })
-  return { overlay, onClose }
-}
-
-describe('HelpPanel', () => {
-  it('renders one canonical overlay with semantic sections and a close footer', () => {
-    const { overlay } = mount()
-    overlay.focused = true
-    expect(overlay.focused).toBe(true)
-    const rows = overlay.render(60)
-    expect(overlay.currentNode()).toMatchObject({ kind: 'surface', chrome: 'overlay', title: 'help' })
-    expect(rows.join('\n')).toContain('help')
-    expect(rows.join('\n')).toContain('Commands')
-    expect(rows.join('\n')).toContain('/cmd-0')
-    expect(rows.join('\n')).toContain('does thing 2')
-    expect(rows.join('\n')).toContain('Esc/Enter/q close')
-    overlay.invalidate()
-  })
-
-  it('closes on the keymap cancel and submit keys and on q/Q', () => {
-    const { overlay, onClose } = mount()
-    overlay.handleInput(KEY.escape)
-    overlay.handleInput(KEY.enter)
-    overlay.handleInput('q')
-    overlay.handleInput('Q')
-    expect(onClose).toHaveBeenCalledTimes(4)
-  })
-
-  it('ignores unrelated keys', () => {
-    const { overlay, onClose } = mount()
-    overlay.handleInput('x')
-    expect(onClose).not.toHaveBeenCalled()
-  })
-
-  it('scrolls with arrows and pages, clamping at both ends', () => {
-    // Seven rendered rows (heading + six commands) against the five-row
-    // floored window: the maximum scrollTop is 2.
-    const { overlay } = mount({ maxVisible: 2, sections: sections(6) })
-    overlay.handleInput(KEY.up)
-    overlay.handleInput('\x1b[5~')
-    const top = overlay.render(60)
-    expect(top.some(row => row.includes(' showing 1-5 of 7'))).toBe(true)
-    for (let i = 0; i < 20; i += 1) overlay.handleInput(KEY.down)
-    const bottom = overlay.render(60)
-    expect(bottom.some(row => row.includes(' showing 3-7 of 7'))).toBe(true)
-    // PageDown past the end clamps to the last window.
-    overlay.handleInput('\x1b[6~')
-    expect(overlay.render(60).some(row => row.includes(' showing 3-7 of 7'))).toBe(true)
-  })
-
-  it('renders sections without a label paint and with empty rows', () => {
-    const { overlay } = mount({
-      maxVisible: 20,
-      sections: [
-        { heading: 'Plain', rows: [] },
-        { heading: 'Defaulted', rows: [{ label: 'x', description: 'plain' }] },
-      ],
+describe('helpNode', () => {
+  it('builds one frozen scroll document with semantic labels and a close action', () => {
+    const node = helpNode(sections)
+    expect(node).toMatchObject({
+      kind: 'surface', title: 'help', chrome: 'overlay',
+      child: { kind: 'stack', children: [
+        { node: { kind: 'scroll', id: 'help-document', scrollbar: true, child: { kind: 'rich-text' } } },
+        { node: { kind: 'actions', id: 'help-actions', items: [{ id: 'close', dismiss: true }] } },
+      ] },
     })
-    const rows = overlay.render(60)
-    expect(rows.some(row => row.includes('Plain'))).toBe(true)
-    expect(rows.some(row => row.includes('x') && row.includes('plain'))).toBe(true)
+    expect(JSON.stringify(node)).toContain('/help')
+    expect(JSON.stringify(node)).toContain('Submit input')
+    expect(Object.isFrozen(node)).toBe(true)
   })
 
-  it('maps every help label tone onto shared InfoPanel semantics', () => {
-    const tones: HelpSection[] = [
-      { heading: 'Primary', labelTone: 'primary', rows: [{ label: 'primary', description: 'a' }] },
-      { heading: 'Success', labelTone: 'success', rows: [{ label: 'success', description: 'b' }] },
-      { heading: 'Warning', labelTone: 'warning', rows: [{ label: 'warning', description: 'c' }] },
-      { heading: 'Danger', labelTone: 'danger', rows: [{ label: 'danger', description: 'd' }] },
-      { heading: 'Muted', labelTone: 'muted', rows: [{ label: 'muted', description: 'e' }] },
-    ]
-    const { overlay } = mount({ sections: tones, maxVisible: 30 })
-    const text = overlay.render(80).join('\n')
-    for (const section of tones) expect(text).toContain(section.heading)
+  it('translates headings, descriptions, title, and close label while preserving live key labels', () => {
+    const node = helpNode(sections, (message) => ({ help: '帮助', Commands: '命令', Keys: '按键', 'Show help': '显示帮助', 'Submit input': '提交输入', Close: '关闭' })[message] ?? message)
+    const text = JSON.stringify(node)
+    for (const expected of ['帮助', '命令', '按键', '显示帮助', '提交输入', '关闭', 'enter']) expect(text).toContain(expected)
   })
 
-  it('renders without the showing tail when the sections fit the window', () => {
-    const { overlay } = mount({ maxVisible: 20 })
-    const rows = overlay.render(60)
-    expect(rows.some(row => row.includes('showing'))).toBe(false)
-    expect(rows.length).toBeGreaterThan(5)
-  })
-
-  it('resets the scroll position when the window fits the content again', () => {
-    const { overlay } = mount({ maxVisible: 2, sections: sections(6) })
-    for (let i = 0; i < 5; i += 1) overlay.handleInput(KEY.down)
-    const scrolled = overlay.render(60)
-    expect(scrolled.some(row => row.includes(' showing 3-7 of 7'))).toBe(true)
-    const wide = mount({ maxVisible: 20 })
-    expect(wide.overlay.render(60).some(row => row.includes('showing'))).toBe(false)
-  })
-
-  it('bounds wrapped narrow content by the configured visible-row budget', () => {
-    const { overlay } = mount({ maxVisible: 5, sections: sections(6) })
-    const rows = overlay.render(2)
-    expect(rows.length).toBeLessThanOrEqual(9)
-    expect(rows.some(row => row.includes(':'))).toBe(false)
-  })
-
-  it('pages through one wrapped CJK/emoji row and clamps after a wide resize', () => {
-    const { overlay } = mount({
-      maxVisible: 5,
-      sections: [{ heading: 'H', rows: [{ label: 'X', description: '界🙂界🙂尾' }] }],
-    })
-    const first = overlay.render(2).join('\n')
-    expect(JSON.stringify(overlay.currentNode())).toMatch(/showing 1-5 of \d+/u)
-    expect(first).not.toContain('尾')
-
-    overlay.handleInput('\x1b[6~')
-    expect(overlay.render(2).join('')).toContain('尾')
-
-    const wide = overlay.render(80).join('\n')
-    expect(wide).toContain('尾')
-    expect(wide).not.toContain('showing')
+  it('keeps empty sections in the complete document', () => {
+    expect(JSON.stringify(helpNode([{ heading: 'Commands', rows: [] }]))).toContain('Commands')
+    expect(JSON.stringify(helpNode([{ heading: 'Default', rows: [{ label: 'row', description: 'description' }] }]))).toContain('muted')
   })
 })

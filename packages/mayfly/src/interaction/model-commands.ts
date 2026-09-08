@@ -23,28 +23,19 @@ import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '../app/index.ts'
-import type { Action } from '../frontend/index.ts'
-import { displayServices } from './display-services.ts'
-import { getSharedEditor } from './editor-instance.ts'
-import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { CanonicalDocumentController } from './frontend-panel.ts'
-import {
-  effortPickerPanelModel,
-  modelPickerPanelModel,
-  type ModelPickerItem,
-} from './model-picker-model.ts'
-import { runProviderAdd, runProviderEdit, type ProviderFlowResult } from './provider-add.ts'
-import { CanonicalSelectController, type SelectRow } from './select-list.ts'
-import { CURRENT_MARK } from './symbols.ts'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { setTimeout as delay } from 'node:timers/promises'
+import { ui } from '@ephemeral-ai/mayfly-ui'
+import { formatContextWindow, type ModelPickerItem } from './model-picker-model.ts'
+import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator } from './locale.ts'
+import type { InteractionFeedbackReporter } from './notifications.ts'
+import { getSharedEditor } from './editor-instance.ts'
 
 /** Render one failure reason for an error result. */
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
-
-/** The `/provider` picker's trailing wizard row — routes Enter to the Add flow. */
-const ADD_PROVIDER = '__add__'
 
 /**
  * Read the live session's immutable model selection.
@@ -60,9 +51,10 @@ function readSelection(
 
 /** Read the official next model selection for Mayfly's current Agent. */
 export function currentModelSelection(ctx: Context): MayflySessionModelSelection | undefined {
-  const agent = ctx.mayflyCurrentAgent.current()
-  if (agent === null) return undefined
-  const projected = ctx.sessionProjections.snapshot(agent.session, ['modelSelection']).values.modelSelection
+  const agent = ctx.get('mayflyCurrentAgent')?.current()
+  const projections = ctx.get('sessionProjections')
+  if (agent == null || projections === undefined) return undefined
+  const projected = projections.snapshot(agent.session, ['modelSelection']).values.modelSelection
   return projected?.next ?? projected?.lastUsed ?? ctx.get('agentDefaultModel')?.currentSelection()
 }
 
@@ -128,19 +120,24 @@ export function modelSwitchNotice(
  * @param persist - `false` for an explicit session-only action.
  * @returns the notice text describing the outcome.
  */
+interface ModelCommitResult { readonly text: string, readonly state: ModelSaveState, readonly selected?: MayflySessionModelSelection }
+
 async function commitModelSelection(
   ctx: Context,
   next: MayflySessionModelSelection,
   persist: boolean,
-): Promise<string> {
-  const agent = ctx.mayflyCurrentAgent.current()
-  if (agent === null) return 'no session is live yet'
+  signal?: AbortSignal,
+): Promise<ModelCommitResult> {
+  const agent = ctx.get('mayflyCurrentAgent')?.current()
+  const controller = ctx.get('sessionController')
+  if (agent == null || controller === undefined) return { text: 'no session is live yet', state: 'failed' }
   const previous = readSelection(ctx)
-  if ('error' in previous) return previous.error
-  const selected = await ctx.sessionController.selectModel({ sessionId: agent.id, ...next })
-  if (!persist) return modelSwitchNotice(previous.read, selected.selected, 'session-only')
+  if ('error' in previous) return { text: previous.error, state: 'failed' }
+  const selected = sameSelection(previous.read, next) ? { selected: previous.read } : await controller.selectModel({ sessionId: agent.id, ...next })
+  const result = (state: ModelSaveState, failure?: string): ModelCommitResult => ({ state, selected: selected.selected, text: modelSwitchNotice(previous.read, selected.selected, state, failure) })
+  if (!persist || signal?.aborted) return result('session-only')
   const defaults = ctx.get('agentDefaultModel')
-  if (defaults === undefined) return modelSwitchNotice(previous.read, selected.selected, 'unavailable')
+  if (defaults === undefined) return result('unavailable')
   const persisted = {
     provider: selected.selected.provider,
     model: selected.selected.model,
@@ -149,13 +146,13 @@ async function commitModelSelection(
       : { reasoningEffort: ReasoningEffortId(selected.selected.reasoningEffort) }),
   }
   if (sameSelection(defaults.currentSelection(), persisted)) {
-    return modelSwitchNotice(previous.read, selected.selected, 'skipped')
+    return result('skipped')
   }
   try {
     await defaults.saveSelection(persisted)
-    return modelSwitchNotice(previous.read, selected.selected, 'saved')
+    return result('saved')
   } catch (error) {
-    return modelSwitchNotice(previous.read, selected.selected, 'failed', describe(error))
+    return result('failed', describe(error))
   }
 }
 
@@ -225,33 +222,33 @@ async function providerModelIds(
  * reaches the Editor, so the typed draft is intact by construction.
  * @param ctx - plugin context.
  */
-export async function cycleSessionModel(ctx: Context, cache: ModelListCache): Promise<void> {
+export async function cycleSessionModel(ctx: Context, cache: ModelListCache, reporter?: InteractionFeedbackReporter): Promise<void> {
+  const report = reporter ?? getSharedEditor(ctx)?.report ?? (() => {})
   const selection = readSelection(ctx)
   if ('error' in selection) {
-    getSharedEditor(ctx)?.notice?.(selection.error)
+    report('model-cycle', { message: selection.error, severity: 'error' })
     return
   }
   const currentSelection = selection.read
   const listing = await providerModelIds(ctx, currentSelection.provider, cache)
   if ('error' in listing) {
-    const paint = displayServices(ctx)?.colors.error
-    getSharedEditor(ctx)?.notice?.(paint === undefined ? listing.error : paint(listing.error))
+    report('model-cycle', { message: listing.error, severity: 'error' })
     return
   }
   if (listing.ids.length === 0) {
-    getSharedEditor(ctx)?.notice?.('the current provider advertises no models')
+    report('model-cycle', { message: 'the current provider advertises no models', severity: 'warning' })
     return
   }
   const current = currentSelection.model
   const index = listing.ids.indexOf(current)
   const next = listing.ids[index === -1 ? 0 : (index + 1) % listing.ids.length]!
   try {
-    const text = await commitModelSelection(
+    const result = await commitModelSelection(
       ctx,
       { provider: currentSelection.provider, model: next },
       false,
     )
-    getSharedEditor(ctx)?.notice?.(text)
+    report('model-cycle', { message: result.text, severity: 'success' })
   } catch (error) {
     /* v8 ignore next -- the catch guards only the append-failure loud path
        (the cycleMode discipline); commitModelSelection itself never throws
@@ -341,6 +338,83 @@ async function catalogRows(
  * @param ctx - plugin context.
  * @returns the disposer removing both registrations and the alias relation.
  */
+async function modelOptions(ctx: Context, agent: Agent, item: ModelPickerItem, currentEffort: string | undefined, signal?: AbortSignal): Promise<boolean> {
+  const registry = ctx.get('mayflyOverlays')
+  if (registry === undefined) return false
+  if (registry.focus('mayfly.model.options')) return true
+  const t = interactionTranslator(ctx)
+  const preferred = currentEffort !== undefined && item.efforts?.includes(currentEffort) ? currentEffort : 'default'
+  const view = (effort: string) => ui.stack.column([
+    ui.form({ id: 'model-options', fields: item.efforts?.length ? [{
+      kind: 'select', id: 'effort', label: t('Thinking effort'), value: effort,
+      options: [{ id: 'default', label: t('Provider default') }, ...item.efforts.map(id => ({ id, label: id }))],
+    }] : [] }),
+    ui.actions({ id: 'model-actions', items: [
+      { id: 'default', label: t('Set as default'), submit: [{ pagePath: [], formId: 'model-options' }] },
+      { id: 'session', label: t('Use for this session'), submit: [{ pagePath: [], formId: 'model-options' }] },
+      { id: 'cancel', label: t('Cancel'), dismiss: true },
+    ] }),
+  ])
+  const node = view(preferred)
+  await openAgentOverlay(ctx, agent, { id: 'mayfly.model.options', title: `${item.providerLabel}/${item.name}`, presentation: 'editor', capturing: true }, node, scope => async (event, context) => {
+    if (event.kind !== 'submit') return { kind: 'completed' }
+    const effort = event.submission.forms[0]?.fields.find(field => field.id === 'effort')?.value
+    const result = await commitModelSelection(scope, { provider: item.provider, model: item.id, ...(typeof effort === 'string' && effort !== 'default' ? { reasoningEffort: ReasoningEffortId(effort) } : {}) }, event.submission.actionId === 'default', context.signal)
+    if (context.signal.aborted) return { kind: 'cancelled' }
+    const latest = view(String(result.selected?.reasoningEffort ?? 'default'))
+    return result.state === 'failed' || result.state === 'unavailable'
+      ? { kind: 'failed', node: latest, source: [], acceptedFields: event.submission.forms.flatMap(form => form.fields.map(field => ({ pagePath: form.pagePath, formId: form.formId, fieldId: field.id }))), message: result.text }
+      : { kind: 'accepted', node: latest, source: [], dismiss: true, feedback: { severity: 'success', message: result.text } }
+  }, signal)
+  return true
+}
+
+/** Open a native-Agent-scoped catalog using the shared collection and form controls. */
+export async function openModelPicker(ctx: Context, signal: AbortSignal, filterProvider?: string): Promise<CommandResult> {
+  const agent = ctx.get('mayflyCurrentAgent')?.current()
+  const registry = ctx.get('mayflyOverlays')
+  const selection = readSelection(ctx)
+  if (agent == null || 'error' in selection) return { kind: 'error', text: 'no session is live yet' }
+  if (registry === undefined) return { kind: 'error', text: 'model picker is unavailable' }
+  if (registry.focus('mayfly.models')) return { kind: 'success' }
+  const lifetime = new AbortController()
+  const combined = AbortSignal.any([signal, lifetime.signal])
+  const cleanup = ctx.effect(() => () => lifetime.abort())
+  try {
+    const llm = ctx.get('llm')
+    if (filterProvider !== undefined && llm !== undefined) {
+      const deadline = Date.now() + 2000
+      while (!llm.listProviders().some(provider => provider.id === filterProvider)) {
+        if (Date.now() >= deadline) return { kind: 'success' }
+        await delay(100, undefined, { signal: combined })
+      }
+    }
+    const catalog = await catalogRows(ctx, combined, filterProvider)
+    if (combined.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { kind: 'success' }
+    if ('error' in catalog) return { kind: 'error', text: catalog.error }
+    const t = interactionTranslator(ctx)
+    const byId = new Map(catalog.items.map(item => [JSON.stringify([item.provider, item.id]), item]))
+    const rows = catalog.items.map(item => ({
+      id: JSON.stringify([item.provider, item.id]), label: `${item.providerLabel}/${item.name}`, group: item.providerLabel,
+      ...(item.contextWindow === undefined ? {} : { detail: `${formatContextWindow(item.contextWindow)} context` }),
+      ...(item.provider === selection.read.provider && item.id === selection.read.model ? { badge: t('current') } : {}),
+    }))
+    await openAgentOverlay(ctx, agent, { id: 'mayfly.models', title: t('Select a model'), presentation: 'editor', capturing: true }, ui.list({
+      id: 'models', role: 'browse', selectedIds: [], items: rows, filterable: true,
+      empty: ui.empty({ title: t('No models advertised') }),
+    }), () => async event => {
+      if (event.kind !== 'selection-accept') return { kind: 'completed' }
+      const item = byId.get(event.selectedIds[0]!)
+      if (item === undefined) return { kind: 'failed', message: t('The model is no longer available') }
+      await modelOptions(ctx, agent, item, item.provider === selection.read.provider && item.id === selection.read.model ? String(selection.read.reasoningEffort ?? 'default') : undefined, signal)
+      return { kind: 'completed' }
+    }, signal)
+    return { kind: 'success' }
+  } catch (error) {
+    return combined.aborted ? { kind: 'success' } : { kind: 'error', text: describe(error) }
+  } finally { cleanup() }
+}
+
 export function registerModelCommands(ctx: Context): () => void {
   /**
    * Set when this fiber unloads: the catalog awaits can still be in flight
@@ -351,104 +425,6 @@ export function registerModelCommands(ctx: Context): () => void {
   const stopUnloaded = ctx.effect(() => () => {
     unloaded = true
   })
-
-  /**
-   * Open the model picker over the catalog, optionally scoped to one
-   * provider route (`/provider` switch and the post-add step reuse this).
-   * @param signal - a cancellation signal for the catalog awaits.
-   * @param filterProvider - restrict the rows to one provider route.
-   * @returns the command outcome.
-   */
-  async function openModelPicker(signal: AbortSignal, filterProvider?: string): Promise<CommandResult> {
-    const llm = ctx.get('llm')
-    const selection = readSelection(ctx)
-    if ('error' in selection) return { kind: 'error', text: selection.error }
-    const current = selection.read
-    // A freshly added route registers asynchronously on the real host —
-    // the settings file's watcher fires the update pi-ai reacts to, which
-    // can land a beat after the wizard's writes resolve (the first
-    // real-terminal dogfood hit exactly this). Poll briefly instead of
-    // failing the picker on the gap.
-    if (filterProvider !== undefined && llm !== undefined) {
-      const deadline = Date.now() + 2000
-      while (!llm.listProviders().some(provider => provider.id === filterProvider)) {
-        /* v8 ignore next -- the deadline and unload exits both return
-           quietly; the interesting path is the registration landing */
-        if (Date.now() >= deadline || unloaded) return { kind: 'success' }
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
-    }
-    const catalog = await catalogRows(ctx, signal, filterProvider)
-    /* v8 ignore next -- the llm guard ran in the calling handler; the
-       service cannot vanish mid-catalog on a live tree */
-    if ('error' in catalog) return { kind: 'error', text: catalog.error }
-    if (unloaded) return { kind: 'success' }
-    if (catalog.items.length === 0) {
-      return {
-        kind: 'success',
-        text: filterProvider === undefined
-          ? 'no models advertised for the configured providers'
-          : `provider "${filterProvider}" advertises no models`,
-      }
-    }
-    const display = displayServices(ctx)
-    if (display === undefined) {
-      return { kind: 'error', text: 'model picker is unavailable: the Mayfly screen is not mounted' }
-    }
-    const applySwitch = (provider: string, model: string, effort: string | undefined, persist: boolean): void => {
-      if (unloaded) return
-      void (async () => {
-        const text = await commitModelSelection(
-          ctx,
-          {
-            provider,
-            model,
-            ...(effort === undefined ? {} : { reasoningEffort: ReasoningEffortId(effort) }),
-          },
-          persist,
-        )
-        if (!unloaded) getSharedEditor(ctx)?.notice?.(text)
-      })()
-    }
-    const model = modelPickerPanelModel(catalog.items.map(item => ({
-        ...item,
-        current: item.provider === current.provider && item.id === current.model,
-      })), {
-      ...(current.reasoningEffort !== undefined
-        ? { currentEffort: String(current.reasoningEffort) }
-        : {}),
-      ...(ctx.mayflyCurrentAgent.current()?.session.requestHeader() !== undefined
-        ? { warning: 'switching models starts a fresh prompt cache' }
-        : {}),
-      ...(filterProvider !== undefined
-        /* v8 ignore next -- the poll above already established the llm
-           service for a scoped picker */
-        ? { title: `Select a model · ${providerDisplayName(llm!, filterProvider)}` }
-        : {}),
-    })
-    const execute = (action: Action): void => {
-      if (action.kind !== 'model.select') return
-      const provider = typeof action.provider === 'string' ? action.provider : undefined
-      const nextModel = typeof action.model === 'string' ? action.model : undefined
-      if (provider === undefined || nextModel === undefined) return
-      const effort = typeof action.effort === 'string' ? action.effort : undefined
-      const persist = action.persist !== false
-      restore()
-      applySwitch(provider, nextModel, effort, persist)
-    }
-    const panel = new CanonicalDocumentController({
-      ...display,
-      model: () => model,
-      onAction: execute,
-      onClose: () => {
-        restore()
-      },
-    })
-    // The kimi dialog mount (D30): the panel replaces the editor in its
-    // dock slot, so below it only the footer remains.
-    const restore = mountEditorReplacement(ctx, panel)
-    return { kind: 'success' }
-  }
 
   /**
    * The `/model` handler: no argument opens the picker over the catalog
@@ -481,14 +457,15 @@ export function registerModelCommands(ctx: Context): () => void {
           text: `ambiguous model id: ${argument} (${exact.map(item => `${item.provider}/${item.id}`).join(', ')})`,
         }
       }
-      const text = await commitModelSelection(
+      const result = await commitModelSelection(
         ctx,
         { provider: chosen.provider, model: chosen.id },
         true,
+        signal,
       )
-      return { kind: 'success', text }
+      return { kind: result.state === 'failed' || result.state === 'unavailable' ? 'error' : 'success', text: result.text }
     }
-    return openModelPicker(signal)
+    return openModelPicker(ctx, signal)
   }
 
   /**
@@ -519,55 +496,19 @@ export function registerModelCommands(ctx: Context): () => void {
     }
     const argument = rawInput.trim()
     if (argument === '') {
-      const display = displayServices(ctx)
-      if (display === undefined) {
-        return { kind: 'error', text: 'effort selector is unavailable: the Mayfly screen is not mounted' }
-      }
-      const segments = [
-        { id: 'default', label: 'Default' },
-        ...efforts.map(effort => ({ id: String(effort.id), label: String(effort.name) })),
-      ]
-      const currentId = current.reasoningEffort === undefined ? undefined : String(current.reasoningEffort)
-      const activeId = segments.some(segment => segment.id === currentId) ? currentId : 'default'
-      const applyEffort = (id: string, persist: boolean): void => {
-        if (unloaded) return
-        void (async () => {
-          const text = await commitModelSelection(
-            ctx,
-            {
-              provider: current.provider,
-              model: current.model,
-              ...(id === 'default' ? {} : { reasoningEffort: ReasoningEffortId(id) }),
-            },
-            persist,
-          )
-          if (!unloaded) getSharedEditor(ctx)?.notice?.(text)
-        })()
-      }
-      const model = effortPickerPanelModel(segments, activeId)
-      const panel = new CanonicalDocumentController({
-        ...display,
-        model: () => model,
-        onAction: (action) => {
-          if (action.kind !== 'effort.select') return
-          const id = typeof action.effort === 'string' ? action.effort : 'default'
-          restore()
-          applyEffort(id, action.persist !== false)
-        },
-        onClose: () => {
-          restore()
-        },
-      })
-      const restore = mountEditorReplacement(ctx, panel)
-      return { kind: 'success' }
+      const agent = ctx.get('mayflyCurrentAgent')?.current()
+      if (agent == null) return { kind: 'error', text: 'no session is live yet' }
+      const opened = await modelOptions(ctx, agent, { provider: current.provider, providerLabel: providerDisplayName(llm, current.provider), id: current.model, name: current.model, efforts: efforts.map(effort => String(effort.id)) }, current.reasoningEffort === undefined ? undefined : String(current.reasoningEffort), signal)
+      return opened ? { kind: 'success' } : { kind: 'error', text: 'model picker is unavailable' }
     }
     if (argument === 'default') {
-      const text = await commitModelSelection(
+      const result = await commitModelSelection(
         ctx,
         { provider: current.provider, model: current.model },
         true,
+        signal,
       )
-      return { kind: 'success', text }
+      return { kind: result.state === 'failed' || result.state === 'unavailable' ? 'error' : 'success', text: result.text }
     }
     const normalized = argument.toLowerCase()
     const match = efforts.find(effort =>
@@ -579,7 +520,7 @@ export function registerModelCommands(ctx: Context): () => void {
         text: `unsupported thinking effort "${argument}" for ${current.model}: available: default, ${efforts.map(effort => String(effort.id)).join(', ')}`,
       }
     }
-    const text = await commitModelSelection(
+    const result = await commitModelSelection(
       ctx,
       {
         provider: current.provider,
@@ -587,106 +528,9 @@ export function registerModelCommands(ctx: Context): () => void {
         reasoningEffort: ReasoningEffortId(String(match.id)),
       },
       true,
+      signal,
     )
-    return { kind: 'success', text }
-  }
-
-  /**
-   * Open the scoped model picker from a fire-and-forget call site (the
-   * provider panel, the post-add step) and flash its outcome through the
-   * notice channel.
-   * @param route - the provider route to scope to.
-   */
-  /** Paint a provider-flow outcome: failures flash error-red. */
-  function paintFlowOutcome(display: { colors: { error(text: string): string } }, result: ProviderFlowResult): string {
-    return result.kind === 'error' ? display.colors.error(result.text) : result.text
-  }
-
-  function pickModels(route: string): void {
-    void (async () => {
-      await openModelPicker(new AbortController().signal, route)
-    })()
-  }
-
-  /**
-   * The `/provider` handler: no argument opens the provider panel (active
-   * routes with `← current`, dormant catalog vendors with
-   * `· not configured`, and the `+ Add provider` CTA); `switch <name>`
-   * opens the scoped model picker over that route's models (the picked
-   * model commits provider and model together); `add` runs the OAuth/known/custom wizard.
-   * @param rawInput - the command's argument text.
-   * @param signal - the dispatching UI request's cancellation signal.
-   * @returns the command outcome.
-   */
-  async function manageProvider(rawInput: string, signal: AbortSignal): Promise<CommandResult> {
-    const argument = rawInput.trim()
-    const llm = ctx.get('llm')
-    if (llm === undefined) return { kind: 'error', text: 'the llm service is unavailable' }
-    if (argument === 'add') {
-      const display = displayServices(ctx)
-      if (display === undefined) {
-        return { kind: 'error', text: 'provider wizard is unavailable: the Mayfly screen is not mounted' }
-      }
-      return runProviderAdd(ctx, display, pickModels, signal)
-    }
-    if (argument.split(/\s+/)[0] === 'switch') {
-      const name = argument.slice('switch'.length).trim()
-      if (name.length === 0) return { kind: 'error', text: 'usage: /provider switch <name>' }
-      const lowered = name.toLowerCase()
-      const providers = llm.listProviders()
-      const match = providers.find(provider => provider.id.toLowerCase() === lowered)
-        ?? providers.find(provider => provider.name.toLowerCase() === lowered)
-      if (match === undefined) {
-        return {
-          kind: 'error',
-          text: `unknown provider: ${name} (registered: ${providers.map(provider => provider.id).join(', ')})`,
-        }
-      }
-      return openModelPicker(signal, match.id)
-    }
-    if (argument !== '') {
-      return { kind: 'error', text: 'usage: /provider [list | switch <name> | add]' }
-    }
-    const display = displayServices(ctx)
-    if (display === undefined) {
-      return { kind: 'error', text: 'provider picker is unavailable: the Mayfly screen is not mounted' }
-    }
-    // The pane lists the configured routes only — dormant catalog vendors
-    // live behind the Add wizard's known-provider branch. The trailing CTA
-    // row routes to the wizard (the shared list panel's uniform row shape,
-    // S24b: the CTA windows and wraps like any other row).
-    const selection = readSelection(ctx)
-    const currentProvider = 'error' in selection ? '' : selection.read.provider
-    const rows: SelectRow[] = llm.listProviders().map(provider => ({
-      value: provider.id,
-      label: provider.name.length > 0 ? provider.name : provider.id,
-      ...(provider.id === currentProvider ? { badge: CURRENT_MARK } : {}),
-    }))
-    rows.push({ value: ADD_PROVIDER, label: '+ Add provider' })
-    const panel = new CanonicalSelectController({
-      keymap: display.keymap,
-      theme: display.theme,
-      components: display.components,
-      rows,
-      title: 'Providers',
-      t: interactionTranslator(ctx),
-      onSelect: row => {
-        restore()
-        void (async () => {
-          const text = row.value === ADD_PROVIDER
-            ? await runProviderAdd(ctx, display, pickModels, signal)
-            : await runProviderEdit(ctx, display, row.value)
-          /* v8 ignore next -- cordis disposal kills the continuation on a
-             dead context before the notice could fire */
-          if (!unloaded) getSharedEditor(ctx)?.notice?.(paintFlowOutcome(display, text))
-        })()
-      },
-      onCancel: () => {
-        restore()
-      },
-    })
-    const restore = mountEditorReplacement(ctx, panel)
-    return { kind: 'success' }
+    return { kind: result.state === 'failed' || result.state === 'unavailable' ? 'error' : 'success', text: result.text }
   }
 
   const model = ctx.commands.register({
@@ -701,19 +545,12 @@ export function registerModelCommands(ctx: Context): () => void {
     input: { hint: '[level]' },
     handler: invocation => switchEffort(invocation.rawInput, invocation.signal),
   })
-  const provider = ctx.commands.register({
-    name: 'provider',
-    description: 'List providers, switch the route, or add one (including OAuth)',
-    input: { hint: '[list | switch <provider> | add]' },
-    handler: invocation => manageProvider(invocation.rawInput, invocation.signal),
-  })
   // The kimi alias: `/thinking` is not a separate registration — the input
   // layer rewrites it to `/effort` before `ctx.commands.execute`.
   const effortAliases = ctx.mayflyInteractionState.aliases.register('effort', ['thinking'])
   return () => {
     model()
     effort()
-    provider()
     effortAliases()
     stopUnloaded()
   }

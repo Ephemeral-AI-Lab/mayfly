@@ -1,268 +1,242 @@
-/** Boot-time provider onboarding: credential detection, setup, and skip. */
+/** Frontend-owned onboarding and native credential lifecycle evidence.
+ * @module @ephemeral-ai/mayfly/tests/interaction/provider-onboarding
+ */
+import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
+import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
+import { providerFixture } from './provider-fixture.ts'
 
-import { describe, expect, it, vi } from 'vitest'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import * as onboardingPlugin from '../../src/interaction/provider-onboarding.ts'
-import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
-import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
+const contexts: Context[] = []
+afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
-function current(screen: FakeScreen): { handleInput(data: string): void, render(width: number): string[] } {
-  const entry = screen.overlays.at(-1)
-  expect(entry).toBeDefined()
-  return entry!.component as never
-}
-
-async function mount(options: {
-  configured?: readonly string[]
-  providers?: readonly string[]
-  profiles?: Record<string, unknown>
-  failDescribe?: readonly string[]
-  failSet?: unknown
-  session?: boolean | 'null'
-  credentials?: boolean
-  display?: boolean
-  llm?: boolean
-  settings?: boolean
-  section?: unknown
-  sharedEditor?: boolean
-  describeImpl?: (ref: object) => Promise<{ configured: boolean, writable?: boolean }>
-  setImpl?: (ref: object, value: string) => Promise<void>
-  loader?: Promise<void>
-  waitForDescription?: boolean
-} = {}) {
-  const base = fakeMayflyContext()
-  const notices: string[] = []
-  const configured = new Set(options.configured ?? [])
-  const failDescribe = new Set(options.failDescribe ?? [])
-  const describe = vi.fn(async (ref: object) => {
-    if (options.describeImpl !== undefined) return options.describeImpl(ref)
-    const id = String(ref)
-    if (failDescribe.has(id)) throw new Error('credential backend unavailable')
-    return { configured: configured.has(id), writable: true }
-  })
-  const set = vi.fn(async (ref: object, value: string) => {
-    if (options.setImpl !== undefined) return options.setImpl(ref, value)
-    if (options.failSet !== undefined) throw options.failSet
-    configured.add(String(ref))
-    void value
-  })
-  if (options.display === false) {
-    base.ctx.set('mayflyTheme', undefined)
-  }
-  if (options.llm !== false) {
-    base.ctx.provide('llm', {
-      listProviders: () => (options.providers ?? ['deepseek-official']).map(id => ({ id, name: id })),
-    } as never)
-  }
-  if (options.settings !== false) {
-    base.ctx.provide('settings', {
-      get: (ns: string) => ns === 'llm-pi-ai'
-        ? options.section ?? { providers: options.profiles ?? {} }
-        : undefined,
-    } as never)
-  }
-  if (options.credentials !== false) {
-    base.ctx.provide('credentials', { describe, set } as never)
-  }
-  if (options.session !== false) {
-    base.ctx.provide('testSession', { current: options.session === 'null' ? null : {}, modelRef: undefined })
-  }
-  if (options.loader !== undefined) {
-    base.ctx.provide('loader', { await: () => options.loader } as never)
-  }
-  if (options.sharedEditor !== false) {
-    setSharedEditor(base.ctx, {
-      editor: { focused: false, render: () => [], invalidate: () => {} } as never,
-      submitPrompt: () => {},
-      notice: text => { notices.push(text) },
-    })
-  }
-  const fiber = await base.ctx.plugin(onboardingPlugin)
-  if (options.waitForDescription !== false) {
-    await vi.waitFor(() => {
-      if (options.credentials !== false && options.session !== false && options.session !== 'null') {
-        expect(describe).toHaveBeenCalled()
-      }
-    })
-  }
-  return { ...base, notices, describe, set, fiber }
+async function setup(profiles: Record<string, unknown> = {}, configured = false, llm?: unknown) {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const bench = await providerFixture(ctx, profiles, llm)
+  if (configured) bench.credentials.values.set(DEEPSEEK_KEY, 'configured')
+  const agent = { id: 'root', session: {} } as Agent
+  ctx.provide('agents', { get: (id: string) => id === agent.id ? agent : undefined } as never)
+  const mount = () => ctx.plugin({ name: 'onboarding-app', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner) } })
+  const app = await mount()
+  return { ...bench, agent, app, mount, model: () => ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.onboarding') }
 }
 
 describe('provider onboarding', () => {
-  it('asks only for DEEPSEEK_API_KEY when no provider credential is configured', async () => {
-    const bench = await mount()
-    await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(1) })
-    const form = current(bench.screen)
-    const rows = form.render(100).join('\n')
-    expect(rows).toContain('Connect to DeepSeek')
-    expect(rows).toContain('official endpoint')
-    expect(rows).toContain('DEEPSEEK_API_KEY')
-    expect(rows).toContain('configure another provider later')
-    form.handleInput('sk-secret')
-    form.handleInput(KEY.enter)
-    await vi.waitFor(() => {
-      expect(bench.set).toHaveBeenCalledWith(credentialRef('DEEPSEEK_API_KEY'), 'sk-secret')
-      expect(bench.screen.overlays[0]?.hidden).toBe(true)
+  it('waits for app readiness and saves only the official credential through explicit Save', async () => {
+    const bench = await setup()
+    await flush()
+    expect(bench.model()).toBeUndefined()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    const model = bench.model()!
+    expect(model.scope).toEqual({ kind: 'app', targetId: DEEPSEEK_KEY })
+    model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'new-key')
+    expect(bench.credentials.writes).toBe(0)
+    model.invoke('save')
+    model.invoke('save')
+    await flush()
+    expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('new-key')
+    expect(bench.credentials.writes).toBe(1)
+    expect(bench.settings.writes).toBe(0)
+    expect(bench.model()).toBeUndefined()
+  })
+
+  it.each([true, false])('skips setup when a native credential is configured (official=%s)', async official => {
+    const bench = await setup(official ? {} : { custom: { apiKeyEnv: 'CUSTOM_KEY' } }, official)
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    expect(bench.model()).toBeUndefined()
+  })
+
+  it('retains the app-scoped key draft through current-Agent service reload and can save during the gap', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    const model = bench.model()!
+    model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'retained-key')
+    await bench.app.dispose()
+    expect(model.disposed).toBe(false)
+    expect(model.form({ pagePath: [], formId: 'onboarding' })!.fields.key!.value).toBe('retained-key')
+    model.invoke('save')
+    await flush()
+    expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('retained-key')
+    await bench.mount()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    expect(bench.model()).toBeUndefined()
+  })
+
+  it('keeps failed input and permits a retry without reopening the form', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    const model = bench.model()!
+    bench.credentials.failWrite = true
+    model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'retry-key')
+    model.invoke('save')
+    await flush()
+    expect(model.form({ pagePath: [], formId: 'onboarding' })!.fields.key!.value).toBe('retry-key')
+    expect(model.feedbackSnapshot().at(-1)?.severity).toBe('error')
+    bench.credentials.failWrite = false
+    model.invoke('save')
+    await flush()
+    expect(bench.credentials.writes).toBe(1)
+    expect(model.disposed).toBe(true)
+  })
+
+  it('does not offer setup again after a deliberate skip and app reload', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    bench.model()!.invoke('cancel')
+    await flush()
+    await bench.app.dispose()
+    await bench.mount()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    expect(bench.model()).toBeUndefined()
+    expect(bench.credentials.writes).toBe(0)
+  })
+
+  it('contains a late credential read after the frontend owner has unloaded', async () => {
+    const bench = await setup()
+    const read = Promise.withResolvers<{ configured: boolean, writable: boolean, source: string }>()
+    vi.spyOn(bench.credentials, 'describe').mockReturnValue(read.promise)
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    await bench.front.dispose()
+    read.resolve({ configured: false, writable: true, source: 'memory' })
+    await flush()
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('enumerates native providers and ignores malformed configured references', async () => {
+    const bench = await setup({}, false, { listProviders: () => [{ id: 'anthropic', name: 'Anthropic' }] })
+    const get = vi.spyOn(bench.settings, 'get').mockReturnValue({ providers: {
+      missing: null,
+      primitive: 'invalid',
+      numeric: { apiKeyEnv: 42 },
+      empty: { apiKeyEnv: '' },
+      valid: { apiKeyEnv: 'EXTRA_KEY' },
+    } })
+    const describe = vi.spyOn(bench.credentials, 'describe').mockImplementation(async ref => {
+      if (String(ref) === 'ANTHROPIC_API_KEY') throw new Error('unreadable')
+      return { configured: false, writable: true, source: 'memory' }
     })
-    expect(bench.notices).toEqual(['DeepSeek API key saved'])
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    expect(get).toHaveBeenCalledWith('llm-pi-ai')
+    expect(describe.mock.calls.map(([ref]) => String(ref))).toEqual(expect.arrayContaining([DEEPSEEK_KEY, 'ANTHROPIC_API_KEY', 'EXTRA_KEY']))
+    expect(bench.model()).toBeDefined()
   })
 
-  it('does not open when DeepSeek or another active provider has a key', async () => {
-    const deepseek = await mount({ configured: ['DEEPSEEK_API_KEY'] })
-    expect(deepseek.screen.overlays).toHaveLength(0)
-    await deepseek.fiber.dispose()
-
-    const other = await mount({ providers: ['openai'], configured: ['OPENAI_API_KEY'] })
-    expect(other.screen.overlays).toHaveLength(0)
+  it.each([null, 42, { providers: null }, { providers: 'invalid' }])('treats malformed settings as having no extra references (%j)', async section => {
+    const bench = await setup()
+    vi.spyOn(bench.settings, 'get').mockReturnValue(section as never)
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    expect(bench.model()).toBeDefined()
   })
 
-  it('honors a profile-declared credential reference', async () => {
-    const bench = await mount({
-      providers: ['my-gateway'],
-      configured: ['MY_SECRET'],
-      profiles: { 'my-gateway': { apiKeyEnv: 'MY_SECRET' }, malformed: null },
+  it('validates forged empty submissions and rejects read-only credential sources', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')!
+    const event = (value: unknown) => ({
+      kind: 'submit' as const,
+      submission: { actionId: 'save', source: [], forms: [{ pagePath: [], formId: 'onboarding', fields: [{ id: 'key', value, change: 'set' as const }] }] },
     })
-    expect(bench.screen.overlays).toHaveLength(0)
-    expect(bench.describe).toHaveBeenCalledWith(credentialRef('MY_SECRET'))
+    const context = (actionSignal = new AbortController().signal) => ({ surfaceId: entry.id, operationId: 'test', source: [], revision: entry.revision, signal: actionSignal, report: vi.fn() })
+    expect((await entry.events.prepare(event(undefined), context())).reply).toMatchObject({ kind: 'invalid' })
+
+    vi.spyOn(bench.credentials, 'describe').mockResolvedValue({ configured: false, writable: false, source: 'environment' })
+    expect((await entry.events.prepare(event('key'), context())).reply).toEqual({ kind: 'failed', message: 'The credential source is read-only' })
   })
 
-  it('handles optional catalog and settings shapes', async () => {
-    const thin = await mount({ llm: false, settings: false })
-    await vi.waitFor(() => { expect(thin.screen.overlays).toHaveLength(1) })
-
-    const foreign = await mount({ section: 'not-an-object' })
-    await vi.waitFor(() => { expect(foreign.screen.overlays).toHaveLength(1) })
-
-    const noProfiles = await mount({ section: {} })
-    await vi.waitFor(() => { expect(noProfiles.screen.overlays).toHaveLength(1) })
-
-    const invalidRefs = await mount({
-      profiles: { number: { apiKeyEnv: 4 }, empty: { apiKeyEnv: '' } },
-    })
-    await vi.waitFor(() => { expect(invalidRefs.screen.overlays).toHaveLength(1) })
+  it('requires review before replacing a credential configured after the initial check', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    const model = bench.model()!
+    bench.credentials.values.set(DEEPSEEK_KEY, 'external')
+    model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'replacement')
+    model.invoke('save')
+    await flush()
+    expect(model.feedbackSnapshot().at(-1)?.message).toContain('configured elsewhere')
+    expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('external')
+    model.invoke('save')
+    await flush()
+    expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('replacement')
   })
 
-  it('skips for this run and points to the provider wizard', async () => {
-    const bench = await mount()
-    await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(1) })
-    current(bench.screen).handleInput(KEY.escape)
-    expect(bench.screen.overlays[0]?.hidden).toBe(true)
-    expect(bench.set).not.toHaveBeenCalled()
-    expect(bench.notices).toEqual(['Provider setup skipped — use /provider add to configure a provider'])
+  it('settles as cancelled when an action aborts after describe or write', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')!
+    const event = {
+      kind: 'submit' as const,
+      submission: { actionId: 'save', source: [], forms: [{ pagePath: [], formId: 'onboarding', fields: [{ id: 'key', value: 'key', change: 'set' as const }] }] },
+    }
+    const request = async (actionSignal: AbortSignal, operationId: string) => await entry.definition.onEvent!.action!(event, { surfaceId: entry.id, operationId, source: [], revision: entry.revision, signal: actionSignal, report: vi.fn() })
+    const reading = Promise.withResolvers<{ configured: boolean, writable: boolean, source: string }>()
+    const describe = vi.spyOn(bench.credentials, 'describe').mockReturnValueOnce(reading.promise)
+    const duringRead = new AbortController()
+    const readResult = request(duringRead.signal, 'during-read')
+    await vi.waitFor(() => expect(describe).toHaveBeenCalled())
+    duringRead.abort()
+    reading.resolve({ configured: false, writable: true, source: 'memory' })
+    expect(await readResult).toEqual({ kind: 'cancelled' })
+    describe.mockRestore()
+
+    const pending = Promise.withResolvers<void>()
+    vi.spyOn(bench.credentials, 'set').mockReturnValue(pending.promise)
+    const duringWrite = new AbortController()
+    const result = request(duringWrite.signal, 'during-write')
+    await vi.waitFor(() => expect(bench.credentials.set).toHaveBeenCalled())
+    duringWrite.abort()
+    pending.resolve()
+    expect(await result).toEqual({ kind: 'cancelled' })
   })
 
-  it('keeps the form open and renders credential write failures', async () => {
-    const bench = await mount({ failSet: new Error('credential file is read-only') })
-    await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(1) })
-    const form = current(bench.screen)
-    form.handleInput('bad')
-    form.handleInput(KEY.enter)
-    await vi.waitFor(() => {
-      expect(form.render(80).join('\n')).toContain('credential file is read-only')
-    })
-    expect(bench.screen.overlays[0]?.hidden).toBe(false)
+  it('shows a fallback surface when readiness cannot inspect settings', async () => {
+    const bench = await setup()
+    vi.spyOn(bench.settings, 'get').mockImplementation(() => { throw new Error('unavailable') })
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    expect(JSON.stringify(bench.model()!.node)).toContain('Provider setup could not be checked')
   })
 
-  it('renders non-Error write failures and tolerates a missing notice target', async () => {
-    const failed = await mount({ failSet: 'plain failure', sharedEditor: false })
-    await vi.waitFor(() => { expect(failed.screen.overlays).toHaveLength(1) })
-    const form = current(failed.screen)
-    form.handleInput('bad')
-    form.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(form.render(80).join('\n')).toContain('plain failure') })
-
-    const skipped = await mount({ sharedEditor: false })
-    await vi.waitFor(() => { expect(skipped.screen.overlays).toHaveLength(1) })
-    current(skipped.screen).handleInput(KEY.escape)
-    expect(skipped.screen.overlays[0]?.hidden).toBe(true)
+  it('focuses an existing fallback surface after a readiness failure', async () => {
+    const bench = await setup()
+    const existing = bench.ctx.mayflyOverlays.open({ id: 'mayfly.provider.onboarding', title: 'Existing', presentation: 'editor', capturing: true }, { kind: 'text', content: 'existing' })
+    vi.spyOn(bench.settings, 'get').mockImplementation(() => { throw new Error('unavailable') })
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await flush()
+    expect(bench.ctx.mayflyOverlays.list().find(item => item.id === existing.events.id)?.focusRevision).toBe(1)
   })
 
-  it('treats failed credential descriptions as unconfigured', async () => {
-    const bench = await mount({ failDescribe: ['DEEPSEEK_API_KEY', 'DEEPSEEK_OFFICIAL_API_KEY'] })
-    await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(1) })
-  })
-
-  it('waits for required services and retries on session change', async () => {
-    const bench = await mount({ credentials: false, session: false })
-    expect(bench.screen.overlays).toHaveLength(0)
-    bench.ctx.provide('credentials', { describe: async () => ({ configured: false }), set: async () => {} } as never)
-    bench.ctx.provide('testSession', { current: {}, modelRef: undefined })
-    bench.ctx.emit('test/session-changed', {} as never)
-    await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(1) })
-  })
-
-  it('waits while the session reference is empty', async () => {
-    const bench = await mount({ session: 'null' })
-    expect(bench.screen.overlays).toHaveLength(0)
-    bench.ctx.set('testSession', { current: {}, modelRef: undefined })
-    bench.ctx.emit('test/session-changed', {} as never)
-    await vi.waitFor(() => { expect(bench.screen.overlays).toHaveLength(1) })
-  })
-
-  it('deduplicates checks and ignores late writes after unload', async () => {
-    let resolveDescribe: ((value: { configured: boolean }) => void) | undefined
-    const describing = new Promise<{ configured: boolean }>(resolve => { resolveDescribe = resolve })
-    const checking = await mount({ describeImpl: () => describing })
-    checking.ctx.emit('test/session-changed', {} as never)
-    checking.ctx.emit('test/session-changed', {} as never)
-    resolveDescribe?.({ configured: false })
-    await vi.waitFor(() => { expect(checking.screen.overlays).toHaveLength(1) })
-    checking.ctx.emit('test/session-changed', {} as never)
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(checking.screen.overlays).toHaveLength(1)
-
-    let resolveSet: (() => void) | undefined
-    const pendingSet = new Promise<void>(resolve => { resolveSet = resolve })
-    const writing = await mount({ setImpl: () => pendingSet })
-    await vi.waitFor(() => { expect(writing.screen.overlays).toHaveLength(1) })
-    const form = current(writing.screen)
-    form.handleInput('key')
-    form.handleInput(KEY.enter)
-    await writing.fiber.dispose()
-    resolveSet?.()
-    await pendingSet
-    expect(writing.notices).toEqual([])
-
-    let rejectSet: ((error: Error) => void) | undefined
-    const rejectedSet = new Promise<void>((_resolve, reject) => { rejectSet = reject })
-    const rejecting = await mount({ setImpl: () => rejectedSet })
-    await vi.waitFor(() => { expect(rejecting.screen.overlays).toHaveLength(1) })
-    const rejectedForm = current(rejecting.screen)
-    rejectedForm.handleInput('key')
-    rejectedForm.handleInput(KEY.enter)
-    await rejecting.fiber.dispose()
-    rejectSet?.(new Error('late failure'))
-    await expect(rejectedSet).rejects.toThrow('late failure')
-    expect(rejecting.notices).toEqual([])
-  })
-
-  it('ignores checks that finish after loader or credential teardown', async () => {
-    let resolveLoader: (() => void) | undefined
-    const loader = new Promise<void>(resolve => { resolveLoader = resolve })
-    const settling = await mount({ loader, waitForDescription: false })
-    await settling.fiber.dispose()
-    resolveLoader?.()
-    await loader
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(settling.screen.overlays).toHaveLength(0)
-
-    let resolveDescribe: ((value: { configured: boolean }) => void) | undefined
-    const description = new Promise<{ configured: boolean }>(resolve => { resolveDescribe = resolve })
-    const describing = await mount({ describeImpl: () => description })
-    await describing.fiber.dispose()
-    resolveDescribe?.({ configured: false })
-    await description
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(describing.screen.overlays).toHaveLength(0)
-  })
-
-  it('degrades when the display is unavailable and restores on unload', async () => {
-    const absent = await mount({ display: false })
-    expect(absent.screen.overlays).toHaveLength(0)
-
-    const mounted = await mount()
-    await vi.waitFor(() => { expect(mounted.screen.overlays).toHaveLength(1) })
-    await mounted.fiber.dispose()
-    expect(mounted.screen.overlays[0]?.hidden).toBe(true)
+  it('contains loader completion and failure after frontend unload', async () => {
+    for (const outcome of ['resolve', 'reject'] as const) {
+      const ctx = new Context()
+      contexts.push(ctx)
+      const loading = Promise.withResolvers<void>()
+      ctx.provide('loader', { await: () => loading.promise } as never)
+      const bench = await providerFixture(ctx)
+      const agent = { id: `root-${outcome}`, session: {} } as Agent
+      ctx.provide('agents', { get: () => agent } as never)
+      await ctx.plugin({ name: `onboarding-app-${outcome}`, inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner) } })
+      ctx.mayflyCurrentAgent.select(agent)
+      await flush()
+      await bench.front.dispose()
+      if (outcome === 'resolve') loading.resolve()
+      else loading.reject(new Error('loader failed'))
+      await flush()
+      expect(ctx.mayflyOverlays.list()).toEqual([])
+    }
   })
 })

@@ -30,16 +30,16 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { MAYFLY_VERSION } from '../../transcript/banner-content.ts'
 import { join } from 'node:path'
-import { getSharedEditor } from '../editor-instance.ts'
 import { currentMayflySettings, type MayflySettings } from '../settings.ts'
 import type { InterruptedNoticeContent } from '../update-notice.ts'
-import { interruptedNoticeRows, UpdateNoticeComponent, updateNoticeRows } from '../update-notice.ts'
+import { interruptedNoticeRows, updateNoticeRows } from '../update-notice.ts'
 import { updaterInternals } from './io.ts'
 import { backupDir, dshHome, profileRoot, readProfileFacts } from './profile.ts'
 import { profileNameFromArgv } from '../../internal/profile.ts'
 import { resolveOffer } from './preflight.ts'
 import { fetchPackument, publishedAt } from './registry.ts'
 import { compareVersions } from './version.ts'
+import { createInteractionNotificationOwner } from '../notifications.ts'
 
 /** How often the boot check re-queries the registry. */
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1_000
@@ -62,7 +62,7 @@ export type UpdateSettings = Pick<MayflySettings, 'updateCheck' | 'updateChannel
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-update-check'
 /** Tree-scoped settings state required by the boot check. */
-export const inject = ['mayflyInteractionState']
+export const inject = ['mayflyInteractionState', 'mayflyUiInteraction']
 
 /** The state file's path under the plugin storage convention. */
 export function updateCheckStatePath(): string {
@@ -190,25 +190,12 @@ export async function runUpdateCheck(
  * @param target - the offered version.
  */
 function mountNotice(ctx: Context, target: string): void {
-  const screen = ctx.get('mayflyScreen')
-  const components = ctx.get('mayflyComponents')
-  if (screen === undefined || components === undefined) return
   const profile = profileNameFromArgv(process.argv)
   if (readProfileFacts(profileRoot(profile)).linked.length > 0) return
-  const notice = new UpdateNoticeComponent(
-    (text, width) => components.truncateToWidth(text, width),
-    updateNoticeRows({
-      current: MAYFLY_VERSION,
-      target,
-      command: `dsh plugin --profile ${profile} add @ephemeral-ai/mayfly@${target}`,
-    }),
-  )
-  ctx.effect(() => {
-    const slot = screen.mountContentSlot('local.update-offer', notice)
-    return () => slot.dispose()
-  })
-  screen.requestRender()
-  getSharedEditor(ctx)?.notice?.(`Mayfly v${target} available — /update to upgrade`)
+  const rows = updateNoticeRows({ current: MAYFLY_VERSION, target, command: `dsh plugin --profile ${profile} add @ephemeral-ai/mayfly@${target}` })
+  createInteractionNotificationOwner(ctx, 'mayfly.update-check', 'update-check').report('offer', {
+    message: rows[0]!, detail: rows[1]!, severity: 'info',
+  }, { kind: 'app', targetId: `profile/${profile}` })
 }
 
 /**
@@ -240,18 +227,10 @@ function pendingSwapMarker(): InterruptedNoticeContent | undefined {
  * @param content - the marker facts.
  */
 function mountInterruptedNotice(ctx: Context, content: InterruptedNoticeContent): void {
-  const screen = ctx.get('mayflyScreen')
-  const components = ctx.get('mayflyComponents')
-  if (screen === undefined || components === undefined) return
-  const notice = new UpdateNoticeComponent(
-    (text, width) => components.truncateToWidth(text, width),
-    interruptedNoticeRows(content),
-  )
-  ctx.effect(() => {
-    const slot = screen.mountContentSlot('local.update-interrupted', notice)
-    return () => slot.dispose()
-  })
-  screen.requestRender()
+  const rows = interruptedNoticeRows(content)
+  createInteractionNotificationOwner(ctx, 'mayfly.update-recovery', 'update-check').report('interrupted', {
+    message: rows[0]!, detail: rows[1]!, severity: 'error',
+  }, { kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` })
 }
 
 /**

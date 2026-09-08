@@ -5,27 +5,45 @@
  * disposal.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
+import * as uiProvider from '../../../ui/src/provider.ts'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
 import type SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
-import { clearSharedEditor, PromptEditorController, setSharedEditor } from '../../src/interaction/editor-instance.ts'
-import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type {} from '../../src/app/index.ts'
-import { fakeMayflyContext, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
+import { fakeMayflyContext, KEY, type FakeMayflyComponents } from './fakes.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { registerTempDirCleanup } from '../core/temp-dir.ts'
+import { renderRequest } from './request-fixture.ts'
 
 registerTempDirCleanup()
+const roots: Context[] = []
+afterEach(async () => {
+  for (const root of roots.splice(0).reverse()) await root.fiber.dispose()
+})
+
+async function mountInteractionOwner(ctx: Context): Promise<void> {
+  await ctx.plugin({
+    name: 'test-ui-interaction-owner',
+    apply(owner: Context) {
+      const service = new UiInteractionService(owner)
+      owner.effect(() => () => service.dispose())
+      mountUiRegistryObservers(owner)
+    },
+  })
+  await Promise.resolve()
+}
 
 /** The structural slice of `sessionQuery` the `/sessions` titles read. */
 interface TitleQueryFake {
@@ -47,13 +65,13 @@ async function mount(options: {
   locale?: 'en' | 'zh'
 } = {}): Promise<{
   ctx: Context
-  screen: FakeScreen
   components: FakeMayflyComponents
   agent: Agent
   fiber: { dispose(): Promise<void> }
   locale: MayflyLocaleService | undefined
 }> {
-  const { ctx, screen, components } = fakeMayflyContext()
+  const { ctx, components } = fakeMayflyContext()
+  roots.push(ctx)
   const locale = options.locale === undefined
     ? undefined
     : new MayflyLocaleService(ctx, { systemLocale: options.locale })
@@ -70,11 +88,13 @@ async function mount(options: {
   if (options.sessionQuery !== undefined) {
     ctx.provide('sessionQuery', options.sessionQuery as unknown as SessionQueryEngine)
   }
+  await mountInteractionOwner(ctx)
   const fiber = await ctx.plugin(commandsPlugin)
-  return { ctx, screen, components, agent, fiber, locale }
+  return { ctx, components, agent, fiber, locale }
 }
 
 const signal = (): AbortSignal => new AbortController().signal
+const flushCommands = (): Promise<void> => new Promise(resolve => { setImmediate(resolve) })
 
 /** Provide native command dependencies without mounting Mayfly display services. */
 function provideAppBoundary(ctx: Context): void {
@@ -135,11 +155,48 @@ function rejected(id: string): {
   return { sessionId: SessionId(id), status: 'rejected', reason: 'log unreadable' }
 }
 
-/** The overlay component of the last shown overlay. */
-function overlay(screen: FakeScreen): { handleInput(data: string): void } {
-  const entry = screen.overlays.at(-1)
-  if (entry === undefined) throw new Error('no overlay shown')
-  return entry.component as { handleInput(data: string): void }
+interface SurfaceDriver {
+  readonly model: UiSurfaceModel
+  readonly closed: boolean
+  render(width: number): string[]
+  handleInput(data: string): void
+  invalidate(): void
+}
+
+const surfaceDrivers = new WeakMap<UiSurfaceModel, SurfaceDriver>()
+
+/** Drive a registered overlay through the shared model and compiler. */
+function overlay(ctx: Context, id?: string): SurfaceDriver {
+  const entry = id === undefined
+    ? ctx.mayflyOverlays.list().at(-1)
+    : ctx.mayflyOverlays.list().find(candidate => candidate.id === id)
+  if (entry === undefined) throw new Error('no overlay registered')
+  const model = ctx.mayflyUiInteraction.get('overlay', entry.id)
+  if (model === undefined) throw new Error('no overlay model')
+  const existing = surfaceDrivers.get(model)
+  if (existing !== undefined) return existing
+  let width = 80
+  let compiled = renderRequest(model)
+  const runtime = compiled.runtime
+  let renderedRevision = model.revision
+  let renderedWidth = width
+  const current = () => {
+    if (renderedRevision !== model.revision || renderedWidth !== width) {
+      compiled = renderRequest(model, { columns: width, rows: 24 }, runtime)
+      renderedRevision = model.revision
+      renderedWidth = width
+    }
+    return compiled
+  }
+  const driver: SurfaceDriver = {
+    model,
+    get closed() { return model.disposed },
+    render(nextWidth) { width = nextWidth; return current().component.render(width) },
+    handleInput(data) { current().input(data) },
+    invalidate() { current().component.invalidate() },
+  }
+  surfaceDrivers.set(model, driver)
+  return driver
 }
 
 describe('mayfly-commands plugin', () => {
@@ -192,6 +249,9 @@ describe('mayfly-commands plugin', () => {
     const execution = await ctx.commands.execute(agent, '/sessions', [], signal())
     expect(execution?.result).toEqual({ kind: 'success' })
     expect(onResume).not.toHaveBeenCalled()
+    const entry = ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.sessions')!
+    const context = { surfaceId: entry.id, operationId: 'empty', source: entry.source, revision: entry.revision, signal: signal(), report: vi.fn() }
+    expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'sessions', selectedIds: [] }, context)).toEqual({ kind: 'completed' })
     // The alias rewrites to /sessions with the id argument intact.
     expect(ctx.mayflyInteractionState.aliases.canonicalOf('resume')).toBe('sessions')
   })
@@ -248,8 +308,7 @@ describe('mayfly-commands plugin', () => {
   })
 
   it('/rewind opens direct user turns and emits the selected safe boundary', async () => {
-    const notice = vi.fn()
-    const { ctx, screen, components, agent } = await mount()
+    const { ctx, agent } = await mount()
     agent.session.append('turn/start', { turn: 1 })
     agent.session.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'fix the login flow' }],
@@ -266,23 +325,23 @@ describe('mayfly-commands plugin', () => {
       },
     }, { surfaceOp: 'append' })
     agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-    setSharedEditor(ctx, { editor: components.createEditor(), submitPrompt: () => {}, notice })
-    try {
-      const onRewind = vi.fn()
-      ctx.on('mayfly/request-rewind', onRewind)
-      const execution = await ctx.commands.execute(agent, '/rewind', [], signal())
-      expect(execution?.result).toEqual({ kind: 'success' })
-      const rows = screen.overlays[0]?.component.render(72) ?? []
-      expect(rows.some(row => row.includes('Rewind current session'))).toBe(true)
-      expect(rows.some(row => row.includes('Turn 1 · fix the login flow'))).toBe(true)
-      expect(rows.some(row => row.includes('login flow fixed'))).toBe(true)
-      expect(rows.some(row => row.includes('The original session stays available'))).toBe(true)
-      overlay(screen).handleInput(KEY.enter)
-      expect(onRewind).toHaveBeenCalledWith(String(agent.id), 0)
-      expect(notice).toHaveBeenCalledWith('creating rewind branch...')
-    } finally {
-      clearSharedEditor(ctx)
-    }
+    const onRewind = vi.fn()
+    ctx.on('mayfly/request-rewind', onRewind)
+    const execution = await ctx.commands.execute(agent, '/rewind', [], signal())
+    expect(execution?.result).toEqual({ kind: 'success' })
+    const opened = ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.rewind')!
+    expect((await ctx.commands.execute(agent, '/rewind', [], signal()))?.result).toEqual({ kind: 'success' })
+    expect(ctx.mayflyOverlays.list().find(entry => entry.id === opened.id)!.focusRevision).toBeGreaterThan(opened.focusRevision)
+    const panel = overlay(ctx, 'mayfly.rewind')
+    const rows = panel.render(72)
+    expect(rows.some(row => row.includes('Rewind current session'))).toBe(true)
+    expect(rows.some(row => row.includes('Turn 1 · fix the login flow'))).toBe(true)
+    expect(rows.some(row => row.includes('login flow fixed'))).toBe(true)
+    expect(rows.some(row => row.includes('The original session stays available'))).toBe(true)
+    panel.handleInput(KEY.enter)
+    await flushCommands()
+    expect(onRewind).toHaveBeenCalledWith(String(agent.id), 0)
+    expect(panel.closed).toBe(true)
   })
 
   it('/rewind handles unavailable, running, empty, and cancelled states', async () => {
@@ -301,8 +360,10 @@ describe('mayfly-commands plugin', () => {
       source: { kind: 'user' },
     }), { surfaceOp: 'append' })
     await empty.ctx.commands.execute(empty.agent, '/rewind', [], signal())
-    overlay(empty.screen).handleInput(KEY.escape)
-    expect(empty.screen.overlays[0]?.hidden).toBe(true)
+    const panel = overlay(empty.ctx, 'mayfly.rewind')
+    panel.handleInput(KEY.escape)
+    await flushCommands()
+    expect(panel.closed).toBe(true)
   })
 
   it('/sessions errors when session persistence is unavailable', async () => {
@@ -328,19 +389,19 @@ describe('mayfly-commands plugin', () => {
   })
 
   it('/sessions answers "no sessions in this directory" for an empty or all-foreign listing', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: { list: () => Promise.resolve([header('s-away', 1_000, '/elsewhere'), header('s-bare', 2_000)]) },
     })
     const execution = await ctx.commands.execute(agent, '/sessions', [], signal())
     expect(execution?.result).toEqual({ kind: 'success', text: 'no sessions in this directory' })
-    expect(screen.overlays).toHaveLength(0)
+    expect(ctx.mayflyOverlays.list()).toHaveLength(0)
     const empty = await mount({ persistence: { list: () => Promise.resolve([]) } })
     const bare = await empty.ctx.commands.execute(empty.agent, '/sessions', [], signal())
     expect(bare?.result).toEqual({ kind: 'success', text: 'no sessions in this directory' })
   })
 
   it('/sessions scopes to this cwd, lists newest-first, and marks the live one', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: {
         list: () => Promise.resolve([
           header('s-old', 1_000, HERE),
@@ -357,20 +418,23 @@ describe('mayfly-commands plugin', () => {
     // rows (`id · date`, the constant cwd dropped — D46) with the `❯ `
     // pointer plus the `← current` badge on the live session. The foreign
     // and cwd-less rows never render.
-    const rows = screen.overlays[0]?.component.render(72) ?? []
+    const panel = overlay(ctx, 'mayfly.sessions')
+    const rows = panel.render(72)
     expect(rows.some(row => row.includes('Sessions'))).toBe(true)
-    expect(rows.some(row => row.includes('Enter choose') && row.includes('Space toggle branch'))).toBe(true)
+    expect(rows.some(row => row.includes('Enter choose'))).toBe(true)
+    expect(rows.some(row => row.includes('Type filter'))).toBe(true)
     expect(rows.some(row => row.includes(`${agent.id} · 1970-01-01 00:00`) && row.includes('← current'))).toBe(true)
     expect(rows.some(row => row.includes('s-mid · 1970-01-01 00:00'))).toBe(true)
     expect(rows.some(row => row.includes('s-old · 1970-01-01 00:00'))).toBe(true)
     expect(rows.some(row => row.includes('s-away'))).toBe(false)
     expect(rows.some(row => row.includes('s-bare'))).toBe(false)
-    overlay(screen).handleInput(KEY.escape)
-    expect(screen.overlays[0]?.hidden).toBe(true)
+    panel.handleInput(KEY.escape)
+    await flushCommands()
+    expect(panel.closed).toBe(true)
   })
 
   it('/sessions leads titled rows with the title and demotes the id to the description', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: {
         list: () => Promise.resolve([
           header('s-fix', 3_000, HERE),
@@ -387,18 +451,18 @@ describe('mayfly-commands plugin', () => {
       },
     })
     await ctx.commands.execute(agent, '/sessions', [], signal())
-    const rows = screen.overlays[0]?.component.render(88) ?? []
+    const rows = overlay(ctx, 'mayfly.sessions').render(88)
     expect(rows.some(row => row.includes('Fix the questionnaire width crash') && row.includes('— s-fix · 1970-01-01 00:00'))).toBe(true)
     // The live session (older than s-fix) is second, led by its title with
     // the current badge; a rejected observation degrades to the id form.
     expect(rows.some(row => row.includes('Kimi-style welcome banner') && row.includes(`— ${agent.id} · 1970-01-01 00:00`) && row.includes('← current'))).toBe(true)
     const plainRow = rows.find(row => row.includes('s-plain · 1970-01-01 00:00'))
     expect(plainRow).toBeDefined()
-    expect(plainRow).not.toContain('—')
+    expect(plainRow).toContain('s-plain · 1970-01-01 00:00')
   })
 
   it('/sessions renders persisted parentSession lineage as a tree', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: {
         list: () => Promise.resolve([
           header('root', 1_000, HERE),
@@ -408,37 +472,42 @@ describe('mayfly-commands plugin', () => {
       },
     })
     await ctx.commands.execute(agent, '/sessions', [], signal())
-    const collapsed = screen.overlays[0]?.component.render(90) ?? []
-    expect(collapsed.some(row => row.includes('Space toggle branch'))).toBe(true)
-    expect(collapsed.some(row => row.includes('▸ root · 1970-01-01 00:00'))).toBe(true)
+    const panel = overlay(ctx, 'mayfly.sessions')
+    const collapsed = panel.render(90)
+    expect(panel.model.choice({ pagePath: [], controlId: 'sessions' })?.expandedIds).toEqual([])
+    expect(collapsed.some(row => row.includes('root · 1970-01-01 00:00'))).toBe(true)
     expect(collapsed.some(row => row.includes('child-a'))).toBe(false)
-    overlay(screen).handleInput(KEY.space)
-    const expanded = screen.overlays[0]?.component.render(90) ?? []
-    expect(expanded.some(row => row.includes('▾ root · 1970-01-01 00:00'))).toBe(true)
-    expect(expanded.some(row => row.includes('├─   child-a'))).toBe(true)
-    expect(expanded.some(row => row.includes('└─   child-b'))).toBe(true)
+    panel.handleInput(KEY.space)
+    await flushCommands()
+    const expanded = panel.render(90)
+    expect(panel.model.choice({ pagePath: [], controlId: 'sessions' })?.expandedIds).toEqual(['root'])
+    expect(expanded.some(row => row.includes('child-a'))).toBe(true)
+    expect(expanded.some(row => row.includes('child-b'))).toBe(true)
   })
 
   it('/sessions opens with the id form when no sessionQuery is mounted', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: { list: () => Promise.resolve([header('s-one', 1_000, HERE)]) },
     })
     const execution = await ctx.commands.execute(agent, '/sessions', [], signal())
     expect(execution?.result).toEqual({ kind: 'success' })
-    const rows = screen.overlays[0]?.component.render(60) ?? []
+    const rows = overlay(ctx, 'mayfly.sessions').render(60)
     expect(rows.some(row => row.includes('s-one · 1970-01-01 00:00'))).toBe(true)
   })
 
   it('/sessions works without a currently attached Mayfly session', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       attach: false,
       persistence: { list: () => Promise.resolve([header('s-one', 1_000, HERE)]) },
     })
     const onResume = vi.fn()
     ctx.on('mayfly/request-resume', onResume)
     await ctx.commands.execute(agent, '/sessions', [], signal())
-    overlay(screen).handleInput(KEY.enter)
+    const panel = overlay(ctx, 'mayfly.sessions')
+    panel.handleInput(KEY.enter)
+    await flushCommands()
     expect(onResume).toHaveBeenCalledWith('s-one')
+    expect(panel.closed).toBe(true)
   })
 
   it('/sessions resolves titles only for the newest sessions under the limit', async () => {
@@ -471,7 +540,7 @@ describe('mayfly-commands plugin', () => {
   })
 
   it('/sessions degrades to the id form when the whole title batch fails', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: {
         list: () => Promise.resolve([header('s-one', 1_000, HERE), header('s-two', 2_000, HERE)]),
       },
@@ -483,21 +552,21 @@ describe('mayfly-commands plugin', () => {
     })
     const execution = await ctx.commands.execute(agent, '/sessions', [], signal())
     expect(execution?.result).toEqual({ kind: 'success' })
-    const rows = screen.overlays[0]?.component.render(60) ?? []
+    const rows = overlay(ctx, 'mayfly.sessions').render(60)
     expect(rows.some(row => row.includes('s-two · 1970-01-01 00:00'))).toBe(true)
     expect(rows.some(row => row.includes('s-one · 1970-01-01 00:00'))).toBe(true)
   })
 
   it('/sessions keeps the skeleton when title hydration returns malformed data', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: { list: () => Promise.resolve([header('s-one', 1_000, HERE)]) },
       sessionQuery: {
         readTitleSnapshots: async () => undefined as never,
       },
     })
     await ctx.commands.execute(agent, '/sessions', [], signal())
-    await Promise.resolve()
-    const rows = screen.overlays[0]?.component.render(60) ?? []
+    await flushCommands()
+    const rows = overlay(ctx, 'mayfly.sessions').render(60)
     expect(rows.some(row => row.includes('s-one · 1970-01-01 00:00'))).toBe(true)
   })
 
@@ -505,7 +574,7 @@ describe('mayfly-commands plugin', () => {
     const headers = Array.from({ length: 10 }, (_, index) => header(`s-${index}`, 10_000 - index, HERE))
     const calls: string[][] = []
     const secondPage = Promise.withResolvers<ReadonlyArray<ReturnType<typeof titled>>>()
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: { list: () => Promise.resolve(headers) },
       sessionQuery: {
         readTitleSnapshots: async ids => {
@@ -520,7 +589,7 @@ describe('mayfly-commands plugin', () => {
       headers.slice(0, 8).map(item => String(item.id)),
       headers.slice(8).map(item => String(item.id)),
     ])
-    const panel = overlay(screen)
+    const panel = overlay(ctx, 'mayfly.sessions')
     for (let index = 0; index < 6; index += 1) panel.handleInput(KEY.down)
     expect(calls).toHaveLength(2)
     expect(calls[1]).toEqual(headers.slice(8).map(item => String(item.id)))
@@ -532,17 +601,19 @@ describe('mayfly-commands plugin', () => {
 
   it('/sessions remains usable with more than 200 persisted rows', async () => {
     const headers = Array.from({ length: 500 }, (_, index) => header(`large-${String(index)}`, 1_000 - index, HERE))
-    const { ctx, screen, agent } = await mount({ persistence: { list: () => Promise.resolve(headers) } })
+    const { ctx, agent } = await mount({ persistence: { list: () => Promise.resolve(headers) } })
     const onResume = vi.fn()
     ctx.on('mayfly/request-resume', onResume)
 
     const execution = await ctx.commands.execute(agent, '/sessions', [], signal())
     expect(execution?.result).toEqual({ kind: 'success' })
-    expect(screen.overlays[0]?.component.render(80).join('\n')).toContain('(1/500)')
-    expect(screen.overlays[0]?.component.render(80).join('\n')).not.toContain('Mayfly UI rejected')
+    const largePanel = overlay(ctx, 'mayfly.sessions')
+    expect(largePanel.render(80).join('\n')).toContain('(1/500)')
+    expect(largePanel.render(80).join('\n')).not.toContain('Mayfly UI rejected')
 
-    overlay(screen).handleInput('\x1b[F')
-    overlay(screen).handleInput(KEY.enter)
+    largePanel.handleInput('\x1b[F')
+    largePanel.handleInput(KEY.enter)
+    await flushCommands()
     expect(onResume).toHaveBeenCalledWith('large-499')
   })
 
@@ -550,7 +621,7 @@ describe('mayfly-commands plugin', () => {
     const headers = Array.from({ length: 10 }, (_, index) => header(`late-${index}`, 10_000 - index, HERE))
     const gate = Promise.withResolvers<ReadonlyArray<ReturnType<typeof titled>>>()
     let call = 0
-    const { ctx, screen, agent, fiber } = await mount({
+    const { ctx, agent, fiber } = await mount({
       persistence: { list: () => Promise.resolve(headers) },
       sessionQuery: {
         readTitleSnapshots: async ids => {
@@ -561,16 +632,16 @@ describe('mayfly-commands plugin', () => {
       },
     })
     await ctx.commands.execute(agent, '/sessions', [], signal())
-    const panel = overlay(screen)
+    const panel = overlay(ctx, 'mayfly.sessions')
     for (let index = 0; index < 8; index += 1) panel.handleInput(KEY.down)
     await fiber.dispose()
     gate.resolve([])
-    await Promise.resolve()
-    expect(screen.overlays).toHaveLength(1)
+    await flushCommands()
+    expect(ctx.mayflyOverlays.list()).toHaveLength(0)
   })
 
   it('/sessions filters rows by the typed query and clears it before cancelling', async () => {
-    const { ctx, screen, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: {
         list: () => Promise.resolve([header('s-fix', 2_000, HERE), header('s-banner', 1_000, HERE)]),
       },
@@ -579,60 +650,54 @@ describe('mayfly-commands plugin', () => {
       },
     })
     await ctx.commands.execute(agent, '/sessions', [], signal())
-    const panel = overlay(screen)
+    const panel = overlay(ctx, 'mayfly.sessions')
     for (const char of 'Banner') panel.handleInput(char)
-    const rows = screen.overlays[0]?.component.render(60) ?? []
+    const rows = panel.render(60)
     expect(rows.some(row => row.includes('Banner rework'))).toBe(true)
     expect(rows.some(row => row.includes('Fix width crash'))).toBe(false)
     // Escape clears the query first; only the second press cancels.
     panel.handleInput(KEY.escape)
-    expect(screen.overlays[0]?.hidden).not.toBe(true)
+    expect(panel.closed).toBe(false)
     panel.handleInput(KEY.escape)
-    expect(screen.overlays[0]?.hidden).toBe(true)
+    await flushCommands()
+    expect(panel.closed).toBe(true)
   })
 
   it('/sessions emits mayfly/request-resume when another session is picked', async () => {
-    const notice = vi.fn()
-    const { ctx, screen, components, agent } = await mount({
+    const { ctx, agent } = await mount({
       persistence: { list: () => Promise.resolve([header('s-other', 2_000, HERE), header(String(agent.id), 3_000, HERE)]) },
     })
-    setSharedEditor(ctx, { editor: components.createEditor(), submitPrompt: () => {}, notice })
-    try {
-      const onResume = vi.fn()
-      ctx.on('mayfly/request-resume', onResume)
-      await ctx.commands.execute(agent, '/sessions', [], signal())
-      overlay(screen).handleInput(KEY.down)
-      overlay(screen).handleInput(KEY.enter)
-      expect(screen.overlays[0]?.hidden).toBe(true)
-      expect(onResume).toHaveBeenCalledWith('s-other')
-      expect(notice).toHaveBeenCalledWith('resuming session s-other')
-    } finally {
-      clearSharedEditor(ctx)
-    }
+    const onResume = vi.fn()
+    ctx.on('mayfly/request-resume', onResume)
+    await ctx.commands.execute(agent, '/sessions', [], signal())
+    const panel = overlay(ctx, 'mayfly.sessions')
+    panel.handleInput(KEY.down)
+    panel.handleInput(KEY.enter)
+    await flushCommands()
+    expect(panel.closed).toBe(true)
+    expect(onResume).toHaveBeenCalledWith('s-other')
   })
 
-  it('/sessions flashes an error notice when the live session is picked', async () => {
-    const notice = vi.fn()
-    const { ctx, screen, components, agent } = await mount({
+  it('/sessions keeps the picker open with local feedback when the live session is picked', async () => {
+    const { ctx, agent } = await mount({
       persistence: { list: () => Promise.resolve([header(String(agent.id), 3_000, HERE)]) },
     })
-    setSharedEditor(ctx, { editor: components.createEditor(), submitPrompt: () => {}, notice })
-    try {
-      const onResume = vi.fn()
-      ctx.on('mayfly/request-resume', onResume)
-      await ctx.commands.execute(agent, '/sessions', [], signal())
-      overlay(screen).handleInput(KEY.enter)
-      expect(screen.overlays[0]?.hidden).toBe(true)
-      expect(onResume).not.toHaveBeenCalled()
-      expect(notice).toHaveBeenCalledWith('!already the current session!')
-    } finally {
-      clearSharedEditor(ctx)
-    }
+    const onResume = vi.fn()
+    ctx.on('mayfly/request-resume', onResume)
+    await ctx.commands.execute(agent, '/sessions', [], signal())
+    const panel = overlay(ctx, 'mayfly.sessions')
+    panel.handleInput(KEY.enter)
+    await flushCommands()
+    expect(panel.closed).toBe(false)
+    expect(onResume).not.toHaveBeenCalled()
+    expect(panel.model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'info', message: 'Already the current session' }),
+    ]))
   })
 
   it('/sessions shows no overlay when the fiber unloads while the listing is in flight', async () => {
     const gate = Promise.withResolvers<SessionHeader[]>()
-    const { ctx, screen, agent, fiber } = await mount({
+    const { ctx, agent, fiber } = await mount({
       persistence: { list: () => gate.promise },
     })
     const pending = ctx.commands.execute(agent, '/sessions', [], signal())
@@ -640,35 +705,30 @@ describe('mayfly-commands plugin', () => {
     gate.resolve([header('s-late', 1_000, HERE)])
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'success' })
-    expect(screen.overlays).toHaveLength(0)
+    expect(ctx.mayflyOverlays.list()).toHaveLength(0)
   })
 
   it('/sessions waits for first-page title hydration and ignores a late result after unload', async () => {
     const gate = Promise.withResolvers<ReadonlyArray<{ sessionId: { toString(): string }, status: 'fulfilled', value: { title?: { title: string } } }>>()
-    const { ctx, screen, agent, fiber } = await mount({
+    const { ctx, agent, fiber } = await mount({
       persistence: { list: () => Promise.resolve([header('s-late', 1_000, HERE)]) },
       sessionQuery: { readTitleSnapshots: () => gate.promise },
     })
     const pending = ctx.commands.execute(agent, '/sessions', [], signal())
-    await Promise.resolve()
-    expect(screen.overlays).toHaveLength(0)
+    await flushCommands()
+    expect(ctx.mayflyOverlays.list()).toHaveLength(0)
     await fiber.dispose()
     gate.resolve([])
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'success' })
-    // The fake screen does not model the editor-slot disposer; the important
-    // contract here is that the late title continuation is harmless after the
-    // owning fiber has unloaded.
-    await Promise.resolve()
-    expect(screen.overlays).toHaveLength(0)
+    await flushCommands()
+    expect(ctx.mayflyOverlays.list()).toHaveLength(0)
   })
 
-  it('/sessions errors when the Mayfly display services are not mounted', async () => {
-    // A bare context without the Mayfly services: persistence alone is present.
+  it('/sessions and /rewind publish headless surfaces while the renderer is absent', async () => {
     const ctx = new Context()
+    roots.push(ctx)
     new InteractionStateService(ctx, DEFAULT_SETTINGS)
-    new PromptEditorController(ctx)
-    new EditorPanelController(ctx)
     await ctx.plugin(SessionStore)
     await ctx.plugin(CommandRuntime)
     ctx.provide('sessionPersistence', {
@@ -677,12 +737,13 @@ describe('mayfly-commands plugin', () => {
     const session = ctx.sessions.create(SessionId('commands-bare'))
     const agent = { id: session.id, session } as unknown as Agent
     provideAppBoundary(ctx)
+    await ctx.plugin(uiProvider)
+    await mountInteractionOwner(ctx)
     await ctx.plugin(commandsPlugin)
     const execution = await ctx.commands.execute(agent, '/sessions', [], signal())
-    expect(execution?.result).toEqual({
-      kind: 'error',
-      text: 'session picker is unavailable: the Mayfly screen is not mounted',
-    })
+    expect(execution?.result).toEqual({ kind: 'success' })
+    expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.sessions')
+    ctx.mayflyOverlays.close('mayfly.sessions')
     ;(agent as unknown as { status: string }).status = 'idle'
     ctx.provide('testSession', { current: agent, modelRef: undefined })
     session.append('turn/start', { turn: 1 })
@@ -690,120 +751,118 @@ describe('mayfly-commands plugin', () => {
       content: [{ type: 'text', text: 'rewind without a screen' }],
       source: { kind: 'user' },
     }), { surfaceOp: 'append' })
-    expect((await ctx.commands.execute(agent, '/rewind', [], signal()))?.result).toEqual({
-      kind: 'error',
-      text: 'rewind is unavailable: the Mayfly screen is not mounted',
-    })
-    await ctx.fiber.dispose()
+    expect((await ctx.commands.execute(agent, '/rewind', [], signal()))?.result).toEqual({ kind: 'success' })
+    expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.rewind')
   })
 
   it('/help lists the registered commands and key bindings in an overlay', async () => {
-    const { ctx, screen, agent } = await mount()
+    const { ctx, agent } = await mount()
     const execution = await ctx.commands.execute(agent, '/help', [], signal())
     expect(execution?.result).toEqual({ kind: 'success' })
+    const opened = ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.help')!
+    expect((await ctx.commands.execute(agent, '/help', [], signal()))?.result).toEqual({ kind: 'success' })
+    expect(ctx.mayflyOverlays.list().find(entry => entry.id === opened.id)!.focusRevision).toBeGreaterThan(opened.focusRevision)
     // The canonical Help surface owns chrome and semantic rows. The sections
     // overflow the window, so a `showing` line replaces the tail.
-    const rows = screen.overlays[0]?.component.render(80) ?? []
+    const panel = overlay(ctx, 'mayfly.help')
+    const rows = panel.render(80)
     expect(rows.join('\n')).toContain('help')
     expect(rows.join('\n')).toContain('Commands')
-    expect(rows.join('\n')).toContain('/changelog')
-    expect(rows.join('\n')).toContain('/context')
+    expect(rows.join('\n')).toContain('/plugin')
+    expect(rows.join('\n')).toContain('/update')
     expect(rows.join('\n')).toContain('/effort (/thinking)')
-    expect(rows.some(row => row.includes('showing 1-16 of'))).toBe(true)
-    // Scrolling down reaches the Keys section with the two-column layout.
-    for (let i = 0; i < 21; i += 1) overlay(screen).handleInput(KEY.down)
-    const scrolled = screen.overlays[0]?.component.render(80) ?? []
-    expect(scrolled.some(row => row.includes('Keys'))).toBe(true)
-    // The keys section remains reachable after the command list grows.
-    expect(scrolled.some(row => row.includes('enter') && row.includes('Submit input'))).toBe(true)
-    screen.overlays[0]?.component.invalidate()
-    overlay(screen).handleInput(KEY.escape)
-    expect(screen.overlays[0]?.hidden).toBe(true)
+    expect(rows.some(row => row.includes('Keys'))).toBe(true)
+    expect(rows.some(row => row.includes('enter') && row.includes('Submit input'))).toBe(true)
+    panel.invalidate()
+    panel.handleInput(KEY.escape)
+    await flushCommands()
+    expect(panel.closed).toBe(true)
   })
 
   it('/help handles no current Agent', async () => {
-    const { ctx, screen, agent } = await mount()
+    const { ctx, agent } = await mount()
     ;(ctx.get('testSession') as { current: Agent | null }).current = null
     await ctx.commands.execute(agent, '/help', [], signal())
-    expect(screen.overlays[0]?.component.render(80).join('\n')).toContain('Keys')
-    overlay(screen).handleInput(KEY.escape)
+    const panel = overlay(ctx, 'mayfly.help')
+    expect(panel.render(80).join('\n')).toContain('Keys')
+    panel.handleInput(KEY.escape)
   })
 
   it('/help switches language in place while preserving the open overlay', async () => {
-    const { ctx, screen, agent, locale } = await mount({ locale: 'en' })
+    const { ctx, agent, locale } = await mount({ locale: 'en' })
     await ctx.commands.execute(agent, '/help', [], signal())
-    const open = screen.overlays[0]!.component
+    const open = overlay(ctx, 'mayfly.help')
     expect(open.render(80).join('\n')).toContain('Commands')
     open.handleInput(KEY.down)
 
     locale!.setPreference('zh')
-    expect(screen.overlays[0]!.component).toBe(open)
     const localized = open.render(80).join('\n')
     expect(localized).toContain('帮助')
     expect(localized).toContain('命令')
-    expect(localized).toContain('显示第')
+    expect(localized).toContain('浏览、安装与管理插件')
     open.handleInput(KEY.escape)
   })
 
   it('/help falls back to the action id when a binding has no description', async () => {
-    const { ctx, screen, agent } = await mount()
+    const { ctx, agent } = await mount()
     const keymap = ctx.get('mayflyKeymap')
     const unregister = keymap?.register([{ id: 'spec.custom', keys: 'f9' }])
     await ctx.commands.execute(agent, '/help', [], signal())
     // The f9 row is the last key binding, beyond the first window; extra
     // Downs clamp at the scroll floor; use a generous count so additions to
     // the command/key roster do not hide the final binding.
-    for (let i = 0; i < 50; i += 1) overlay(screen).handleInput(KEY.down)
-    const rows = screen.overlays[0]?.component.render(80) ?? []
+    const panel = overlay(ctx, 'mayfly.help')
+    panel.render(80)
+    for (let i = 0; i < 50; i += 1) panel.handleInput(KEY.down)
+    const rows = panel.render(80)
     expect(rows.join('\n')).toContain('f9')
     expect(rows.join('\n')).toContain('spec.custom')
     unregister?.()
-    overlay(screen).handleInput(KEY.escape)
+    panel.handleInput(KEY.escape)
   })
 
-  it('/help closes on Enter and on q as well', async () => {
-    const { ctx, screen, agent } = await mount()
+  it('/help closes on Escape while unrelated input is ignored', async () => {
+    const { ctx, agent } = await mount()
     await ctx.commands.execute(agent, '/help', [], signal())
-    overlay(screen).handleInput(KEY.enter)
-    expect(screen.overlays[0]?.hidden).toBe(true)
-    await ctx.commands.execute(agent, '/help', [], signal())
-    overlay(screen).handleInput('q')
-    expect(screen.overlays[1]?.hidden).toBe(true)
-    // An unrelated key keeps the overlay open.
-    await ctx.commands.execute(agent, '/help', [], signal())
-    overlay(screen).handleInput('x')
-    expect(screen.overlays[2]?.hidden).toBe(false)
-    overlay(screen).handleInput(KEY.escape)
+    const panel = overlay(ctx, 'mayfly.help')
+    panel.handleInput('x')
+    expect(panel.closed).toBe(false)
+    panel.handleInput(KEY.escape)
+    await flushCommands()
+    expect(panel.closed).toBe(true)
   })
 
   it('/help truncates rows to the render width', async () => {
-    const { ctx, screen, components, agent } = await mount()
+    const { ctx, components, agent } = await mount()
     await ctx.commands.execute(agent, '/help', [], signal())
-    const rows = screen.overlays[0]?.component.render(10) ?? []
+    const panel = overlay(ctx, 'mayfly.help')
+    const rows = panel.render(10)
     // The overlay's own truncation (headings, two-column rows, and the
     // showing tail) keeps every content row inside the width; the frame's
     // title and rules are width-exact by construction. The fake theme's
     // markers add two columns per styled row, so the invariant allows the
     // inflation (the real theme's SGR is zero-width).
     expect(rows.slice(2, -1).every(row => components.visibleWidth(row) <= 12)).toBe(true)
-    overlay(screen).handleInput(KEY.escape)
+    panel.handleInput(KEY.escape)
   })
 
-  it('/help errors when the Mayfly display services are not mounted', async () => {
+  it('/help reports the missing keymap without requiring renderer services', async () => {
     const ctx = new Context()
+    roots.push(ctx)
     new InteractionStateService(ctx, DEFAULT_SETTINGS)
     await ctx.plugin(SessionStore)
     await ctx.plugin(CommandRuntime)
     const session = ctx.sessions.create(SessionId('commands-bare-help'))
     const agent = { id: session.id, session } as unknown as Agent
     provideAppBoundary(ctx)
+    await ctx.plugin(uiProvider)
+    await mountInteractionOwner(ctx)
     await ctx.plugin(commandsPlugin)
     const execution = await ctx.commands.execute(agent, '/help', [], signal())
     expect(execution?.result).toEqual({
       kind: 'error',
-      text: 'help is unavailable: the Mayfly screen is not mounted',
+      text: 'help is unavailable: the Mayfly keymap is not mounted',
     })
-    await ctx.fiber.dispose()
   })
 
   it('unregisters every command when the fiber disposes', async () => {

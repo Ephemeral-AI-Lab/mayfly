@@ -7,6 +7,7 @@
  */
 
 import { Service, type Context } from '@deepseek-ai/cordis'
+import type { MayflyFeedback } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyAutocompleteProvider, MayflyEditor } from '../core/index.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -19,7 +20,7 @@ export interface SharedEditor {
   readonly editor: MayflyEditor
   readonly submitPrompt: (text: string) => void
   readonly abortPrompt?: () => void
-  readonly notice?: (text: string) => void
+  readonly report?: (id: string, feedback: MayflyFeedback) => void
 }
 
 /** Presence id of the optional editor-plus enhancement. */

@@ -13,6 +13,7 @@ import * as overlay from '../../overlay/src/index.ts'
 import * as inspector from '../../right-inspector/src/index.ts'
 import * as uiGallery from '../../ui-gallery/src/index.ts'
 import { summaryMetric } from '../src/index.ts'
+import { MemorySettings } from '../../overlay/tests/settings.ts'
 
 interface CommandProbeDefinition {
   readonly name: string
@@ -77,6 +78,7 @@ describe('direct plugin services and lifecycle', () => {
     const ctx = await directContext()
     try {
       await ctx.plugin(CommandProbe)
+      await ctx.plugin(MemorySettings)
       const fiber = await ctx.plugin(overlay)
       const commands = ctx.commands as unknown as CommandProbe
       const command = commands.find('example-overlay')
