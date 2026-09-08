@@ -19,15 +19,14 @@ Codex session `01a07aa1-3760-7791-92dd-dc5f797f2874` 已用于恢复此前决策
 
 ## 当前边界
 
-技术实现、发布候选自动门禁和 Step 19 人工接受已经完成。尚未完成的工作只有
-Step 20，不再包含生产消费者迁移：
+技术实现、发布候选自动门禁、Step 19 人工接受和 Step 20 合并清理均已完成：
 
-1. 提交并合并已接受的候选。
-2. 重建主 checkout。
-3. 停止 Website preview，移除专用 profile 和 worktree。
+1. 候选四笔提交已通过 `5fbbdc8` 合并到 main。
+2. 主 checkout 已重建并通过 `check:lib`。
+3. Website preview、专用 profile 和 worktree 已清理。
 
-`mayfly` 共享 profile 不用于候选验收。Website preview、专用 profile 和 worktree 在
-用户明确接受前保持可用。
+`mayfly` 共享 profile 未用于候选验收。Website preview、专用 profile 和 worktree
+均只保留到用户明确接受，随后按仓库流程清理。
 
 ## 人工验收顺序
 
@@ -72,5 +71,6 @@ window/occupancy 归一化为安全整数，长面板限制为 8/24 行，`/vers
 
 ## 合并条件
 
-最终源码门禁、Website/profile 复核和用户接受均已完成。现在执行分支合并、主
-checkout 重建，并在成功后停止 preview、删除 profile/worktree。
+最终源码门禁、Website/profile 复核、用户接受、分支合并、主 checkout 重建和资源
+清理均已完成。main 原有 artifacts/audit 文件得到保留；重叠的早期 PR #15 文档原文
+另存为 stash commit `dfcdfe3`，最终文档保留并更新了其中有效内容。

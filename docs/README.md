@@ -23,7 +23,7 @@
 
 具体执行顺序见 [交互模型完全迁移：20 步执行方案](./design/ui-interaction-migration-steps.zh.md)，包含各步修改范围、验证与完成条件，以及全部消费者和最终 profile 的验收边界。
 
-[20 步完成审计](./design/ui-interaction-completion-audit.zh.md) 逐项列出当前权威证据与判定；Step 1 至 19 已完成，Step 20 正在执行验收后合并和清理。
+[20 步完成审计](./design/ui-interaction-completion-audit.zh.md) 逐项列出权威证据与判定；Step 1 至 20 已完成并合并到 main。
 
 插件作者应从 Website
 [开发手册](../website/plugins/index.md) 开始，并以

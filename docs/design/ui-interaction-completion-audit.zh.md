@@ -27,7 +27,7 @@
 | 17 | 文档、示例、版本、截图 | 架构/seams/AGENTS/README/Website 中英同步；alpha.4 三包锁步；外部 settings overlay；36 component + 6 app shots 当前有效 | 完成 |
 | 18 | 完整发布候选门禁 | 最终 `verify:full`、`check:pack`、`shots:check`、`website:build` 通过；3 个 tarball 通过 publint 和包闭包 | 完成 |
 | 19 | 专用 profile 与人工验收 | `mayfly-ui-interaction` 已 link 安装；实际启动、配置展开、happy/PTY/mouse/output smoke 通过；用户于 2026-09-08 接受 A-E/W 全部场景 | 完成 |
-| 20 | 验收后合并与清理 | 正在提交和合并候选；主 checkout 重建、preview/profile/worktree 清理将在合并后执行 | **执行中** |
+| 20 | 验收后合并与清理 | 候选四笔提交经 `5fbbdc8` 合并到 main；main build/check:lib 通过；preview、profile、worktree 已清理，alpha.4 pack artifacts 已迁入 main | 完成 |
 
 ## 最终自动证据
 
@@ -54,11 +54,12 @@ smoke:pty / smoke:pty:mouse / smoke:pty:output
 ```
 
 性能命令、环境、100k list/Tree/Document 数字与 CJK Jobs 原因记录在
-[实施进度](./ui-interaction-progress.zh.md)。Website 严格构建通过；当前 LAN 路由为
-`http://192.168.8.188:4183/plugins/ui-reference`，专用入口为
-`dsh --profile mayfly-ui-interaction`。
+[实施进度](./ui-interaction-progress.zh.md)。Website 严格构建通过；人工验收使用了
+`http://192.168.8.188:4183/plugins/ui-reference` 等三条路由与
+`dsh --profile mayfly-ui-interaction`，验收后均已清理。
 
 ## 完成边界
 
-技术迁移和人工验收已经完成到 Step 19。Step 20 正在执行提交、合并、主 checkout
-重建与验收资源清理；这些动作完成前不宣称整套迁移交付完成。
+Step 1 至 20 全部完成。main merge commit 为 `5fbbdc8`；主 checkout 已重建并通过
+53 项 lib closure 检查。Website preview、`mayfly-ui-interaction` profile 和 worktree
+已移除；alpha.4 pack 证据保存在 main `.artifacts/ui-interaction-alpha4/`。

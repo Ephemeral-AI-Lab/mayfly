@@ -2,8 +2,8 @@
 
 日期：2026-09-07；状态更新：2026-09-08。执行位置：
 `/home/x/dev/deepseek-harness-plugin/mayfly-ui-interaction`；分支：
-`refactor/ui-interaction`。Step 1 至 19 已完成；用户于 2026-09-08 接受最终
-Website/profile 候选，Step 20 正在执行验收后合并清理。
+`refactor/ui-interaction`。Step 1 至 20 已完成；用户于 2026-09-08 接受最终
+Website/profile 候选，候选已合并到 main 并完成主构建和资源清理。
 
 当前事实见 [续做核查](./ui-interaction-resume-plan.zh.md)，协议与行为目标见
 [详细设计](./pr15-interaction-refactor-plan.zh.md)。最新候选已通过全仓 typecheck、

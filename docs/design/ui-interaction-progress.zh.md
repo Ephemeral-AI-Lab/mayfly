@@ -9,8 +9,8 @@
 
 ## 当前结论
 
-Step 1 至 19 已经完成，用户于 2026-09-08 接受专用 profile 与 Website 候选。
-Step 20 的验收后合并和清理正在执行；当前仍未写入共享 `mayfly` profile。
+Step 1 至 20 已经完成。用户于 2026-09-08 接受专用 profile 与 Website 候选；
+候选四笔提交已通过 merge commit `5fbbdc8` 进入 main，未写入共享 `mayfly` profile。
 
 指定的 Codex session `01a07aa1-3760-7791-92dd-dc5f797f2874` 只用于恢复开发过程；
 它不是 Harness 持久会话 ID。实际进度以本工作树、类型、测试和构建结果为准。
@@ -97,11 +97,17 @@ node --experimental-transform-types --expose-gc script/audit-performance.mjs
 - `check:pack` 通过：三个 alpha.4 tarball 通过 publint，CLI runtime 包含锁定的
   Harness 0.1.2-alpha.5、26 个平台 sentinel 与 7 个归档。
 - `shots:sync` / `shots:check` 通过：36 张 component shot 与 6 张 app shot 当前有效。
-- 最终 `website:build` 通过；preview 保留在局域网端口 4183。
+- 最终 `website:build` 通过；局域网端口 4183 在验收完成后已停止。
 - `mayfly-ui-interaction` profile 已从工作树安装。`smoke:pty`、鼠标 smoke、输出恢复
   smoke 均通过；专用 profile 的版本、展开组合和 40×24 实际启动已检查。
 
-## 剩余交付
+## 合并与清理
 
-1. 提交并合并已接受的候选，重建主 checkout。
-2. 停止 preview，移除专用 profile 和 worktree，并记录最终 merge/cleanup 证据。
+- 候选提交为 `4e94835`、`63dbfae`、`e5c94fc`、`e09206f`；main merge commit 为
+  `5fbbdc8`。
+- main checkout 的 `pnpm run build` 和 `pnpm run check:lib` 通过。
+- 验收时访问了中英文 UI reference/component model 路由，并运行表单、选择、
+  Tree/Document、OAuth/请求、Market/Jobs/Update、Prompt/Session/Extension 场景。
+- Website preview、`mayfly-ui-interaction` profile 和 worktree 已清理。候选 alpha.4
+  pack artifacts 保存在 main `.artifacts/ui-interaction-alpha4/`；main 原 artifacts 与
+  audit 文件未覆盖。
