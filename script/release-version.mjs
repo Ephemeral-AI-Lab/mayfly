@@ -32,7 +32,6 @@ const replacements = new Map([
   ['packages/cli/tests/main.spec.ts', [`const PIN = '${old}'`, `const PIN = '${next}'`]],
   ['packages/cli/tests/runtime.spec.ts', [`const VERSION = '${old}'`, `const VERSION = '${next}'`]],
   ['packages/mayfly/tests/transcript/banner.spec.ts', [`expect(MAYFLY_VERSION).toBe('${old}')`, `expect(MAYFLY_VERSION).toBe('${next}')`]],
-  ['packages/mayfly/tests/interaction/session-commands.spec.ts', [`expect(MAYFLY_VERSION).toBe('${old}')`, `expect(MAYFLY_VERSION).toBe('${next}')`]],
 ])
 for (const [relativePath, [from, to]] of replacements) {
   const path = join(ROOT, relativePath)

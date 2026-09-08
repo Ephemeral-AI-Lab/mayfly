@@ -229,9 +229,7 @@ export const SCENARIOS = [
   },
   {
     id: 'tabs',
-    // Doc example, verbatim: the render() output with the doc's initial
-    // activeTab = 'summary'.
-    title: 'tabs — controlled active item',
+    title: 'tabs — frontend-owned active item',
     width: 64,
     build: ui => ui.stack.column([
       ui.tabs({
@@ -243,28 +241,29 @@ export const SCENARIOS = [
           { id: 'legacy', label: 'Legacy', disabled: true },
         ],
       }),
-      ui.text('Summary content'),
+      ui.child(ui.text('Summary content'), { tab: { controlId: 'settings-tabs', itemId: 'summary' } }),
+      ui.child(ui.text('Advanced content'), { tab: { controlId: 'settings-tabs', itemId: 'advanced' } }),
     ]),
   },
   {
     id: 'tabs-active',
-    // Same node after the plugin accepts tab-change: activeTab = 'advanced',
-    // so the strip shows the count badge on the active item and the body
-    // switches — exactly what the doc's onEvent example produces.
-    title: 'tabs — after accepting tab-change',
+    // Same baseline after the frontend model accepts one tab-change fact.
+    title: 'tabs — after frontend tab change',
     width: 64,
     build: ui => ui.stack.column([
       ui.tabs({
         id: 'settings-tabs',
-        activeId: 'advanced',
+        activeId: 'summary',
         items: [
           { id: 'summary', label: 'Summary' },
           { id: 'advanced', label: 'Advanced', count: 4 },
           { id: 'legacy', label: 'Legacy', disabled: true },
         ],
       }),
-      ui.text('Advanced content'),
+      ui.child(ui.text('Summary content'), { tab: { controlId: 'settings-tabs', itemId: 'summary' } }),
+      ui.child(ui.text('Advanced content'), { tab: { controlId: 'settings-tabs', itemId: 'advanced' } }),
     ]),
+    drive: focus => { focus.handleInput?.('\x1b[C') },
   },
   {
     id: 'list',
@@ -273,6 +272,7 @@ export const SCENARIOS = [
     width: 64,
     build: ui => ui.list({
       id: 'item-list',
+      role: 'browse',
       selectedIds: ['one'],
       items: [
         { id: 'one', label: 'First item' },
@@ -288,6 +288,7 @@ export const SCENARIOS = [
     width: 64,
     build: ui => ui.list({
       id: 'plugin-list',
+      role: 'choose',
       mode: 'multiple',
       selectedIds: ['context'],
       items: [
@@ -321,8 +322,7 @@ export const SCENARIOS = [
   },
   {
     id: 'form-editing',
-    // Doc example, verbatim; drive replays Enter (enter edit mode) then types
-    // 'Ada Lovelace', so the shot shows the draft with the visible cursor.
+    // Focused text fields edit directly; typing updates the frontend draft.
     title: 'form — text editing with visible cursor',
     width: 64,
     build: ui => ui.form({
@@ -333,10 +333,7 @@ export const SCENARIOS = [
       ],
       submitActionId: 'Create profile',
     }),
-    drive: focus => {
-      focus.handleInput?.('\r')
-      focus.handleInput?.('Ada Lovelace')
-    },
+    drive: focus => { focus.handleInput?.('Ada Lovelace') },
   },
   {
     id: 'form-select',
@@ -393,9 +390,8 @@ export const SCENARIOS = [
   },
   {
     id: 'actions-confirm',
-    // The same node as `actions`; drive moves to the danger item and presses
-    // Enter once, capturing the documented pending-confirmation state.
-    title: 'actions — pending confirmation',
+    // The same node as `actions`, driven into the shared default-No decision.
+    title: 'actions — default-No decision',
     width: 64,
     build: ui => ui.actions({
       id: 'session-actions',
