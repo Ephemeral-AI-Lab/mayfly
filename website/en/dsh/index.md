@@ -3,7 +3,7 @@
 Mayfly is the terminal interface for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (**dsh**) — understanding a few core dsh concepts makes Mayfly much easier to use well. This handbook distills the dsh knowledge Mayfly users need; the complete engineering docs live at the [official reference site](https://deepseek-harness.github.io/deepseek-harness/reference/).
 
 ::: info Version basis
-This handbook tracks Harness npm release `0.1.2-alpha.5` and Mayfly `0.1.0-alpha.3`. When in doubt, trust your installed `dsh --version` and `--dump-config`.
+This handbook tracks Harness npm release `0.1.2-alpha.5` and Mayfly `0.1.0-alpha.4`. When in doubt, trust your installed `dsh --version` and `--dump-config`.
 :::
 
 ## What dsh is
@@ -14,7 +14,7 @@ Three keywords:
 
 - **Bundle** — a set of plugins shipped with their own mount code, declaring its plugin rows through the package's `cordis.patch.yml`; `dsh-base` is the first layer of every profile.
 - **Profile** — a named assembly: the bundles it layers, its own patch overrides, and its independently installed plugins. See [Profiles & directories](/en/dsh/profiles).
-- **Mayfly** — is a bundle: it inserts 34 Mayfly-owned rows over `dsh-base` (including the private-runtime group that isolates management authority and raw app services) and takes over the terminal interface (see the [features overview](/en/features/)).
+- **Mayfly** — is a bundle: it inserts six dsh support rows and 28 Mayfly rows over `dsh-base`. Built-in features and external plugins are ordinary Cordis siblings on the same service graph (see the [features overview](/en/features/)).
 
 ## CLI cheat sheet
 

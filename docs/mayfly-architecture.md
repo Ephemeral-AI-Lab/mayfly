@@ -44,6 +44,8 @@ flowchart TB
    布局和 visible width。
 6. UI contribution 始终是普通 readonly node；core 私有地窗口化大列表，并在
    响应式分支首次可见时才校验和编译，不向插件暴露 renderer 调度状态。
+   Pane 与 overlay 的表单、选择、页面、文档锚点、操作和反馈由 frontend 的
+   `mayflyUiInteraction` 实例持有，因此 core/theme reload 不会丢失有效草稿。
 7. core 启动时按固定顺序预建 prelude、conversation、local activity、EditorDock
    与 Footer host。Feature 只领取 named slot lease；临时 notice/echo 进入 local
    activity region，不改变 terminal root 顺序。
@@ -76,11 +78,13 @@ flowchart TB
   与回答。
 - `mayfly-ui` provider 持有当前 UI contribution snapshots，且每项
   registration 随 consumer Fiber 清理。
-- transcript 与 interaction 持有它们自己的 renderer-neutral/TUI product state。
-- interaction 内部把当前 editor/autocomplete、可跨 host replay 的 panel stack 与
-  submit transform 分成 `mayflyPromptEditor`、`mayflyEditorPanels`、
-  `mayflyPromptSubmissions` 三个 Fiber service。选择器、信息面板与表单只通过共享
-  controller 和 action-id keymap 进入 core compiler。
+- frontend 的 `mayflyUiInteraction` 按 registration instance 持有 renderer-neutral
+  Form、Choice、Tabs、Document、operation 与 feedback 状态。它分别观察 pane 和
+  overlay registry，在 renderer 缺位时继续存活，并在 registration replace/remove
+  或 provider unload 时清理对应实例。
+- interaction 保留 prompt editor/autocomplete 与 submit transform 的专属状态。
+  Editor presentation 是普通 `mayflyOverlays` registration；旧 panel/controller 栈
+  已删除。业务只发布 readonly node，并通过结构化 action reply 写回权威 snapshot。
 - transcript 只有一个 selected-session conversation controller；session generation
   改变时会销毁旧 entry cache。
   原生 projection registry 校验完整值，transcript source 暂存最新尚未读取的
@@ -88,9 +92,9 @@ flowchart TB
   突发 token 在一帧前反复转换历史。切换、detach 和 unload 丢弃待绘制值；
   不假设 Zod 解析后 entry 对象身份仍然稳定。原生全值校验和每次绘制时的
   转换仍可能随历史长度增长。
-- core 持有 named Screen Shell、terminal、focus、layout、form draft、control/scroll、
-  list cursor/admission cache 与编译后的 renderer
-  object；这些状态随 surface generation 失效，不进入公开 node。
+- core 持有 named Screen Shell、terminal、focus、layout、editor binding、
+  control/scroll handle、admission cache 与编译后的 renderer object；这些状态随
+  renderer generation 失效，不进入公开 node，也不成为 draft 的第二来源。
 
 Renderer 可以根据当前 Agent 调用 projection snapshot，但不能折叠第二份
 Harness session event truth。

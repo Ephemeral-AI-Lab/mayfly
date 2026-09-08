@@ -45,7 +45,7 @@ Full access, stopping a subagent, deleting a provider, and updating Mayfly use e
 Custom provider onboarding and configuration editing use a multi-field form panel:
 
 - each field starts on one compact `label · hint: value` row; the selected row carries `→`, and wrapped values continue under that row;
-- non-wrapping **Up / Down** moves between fields only in navigation and remains available for cursor movement while editing; typing starts editing, the first **Enter** on an untouched field enters edit mode, and Enter or a valid Tab while editing confirms and advances or submits the last field; invalid input stays active; **Tab** switches semantic groups only in content navigation, and **Escape** climbs one layer at a time;
+- non-wrapping **Up / Down** moves between fields in navigation and remains available for cursor movement while editing; typing or the first **Enter** enters edit mode, and Enter confirms and advances; a select applies its candidate only with Enter, while Tab discards an unconfirmed adjustment and moves to the next group; invalid input stays active, and **Escape** climbs one layer at a time;
 - a validation error renders directly below the failing field without closing the panel; any edit clears it;
 - values truncate to the panel width, so long pasted keys never break the frame.
 

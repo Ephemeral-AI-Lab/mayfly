@@ -3,7 +3,7 @@
 Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（**dsh**）的终端界面——理解 dsh 的几个核心概念，能让你把 Mayfly 用得更明白。本手册面向 Mayfly 用户提炼 dsh 的相关知识；完整工程文档见[官方参考站](https://deepseek-harness.github.io/deepseek-harness/reference/)。
 
 ::: info 版本基准
-本手册当前以 npm 上的 `0.1.2-alpha.5` Harness 发布线与 Mayfly `0.1.0-alpha.3` 为准。遇到出入以你安装的 `dsh --version` 与 `--dump-config` 为准。
+本手册当前以 npm 上的 `0.1.2-alpha.5` Harness 发布线与 Mayfly `0.1.0-alpha.4` 为准。遇到出入以你安装的 `dsh --version` 与 `--dump-config` 为准。
 :::
 
 ## dsh 是什么
@@ -14,7 +14,7 @@ dsh 是一个**插件化的 agent 宿主**（harness）：模型适配、工具�
 
 - **Bundle（捆）** —— 一组自带挂载代码的插件集合，通过包内 `cordis.patch.yml` 声明自己的插件行；`dsh-base` 是一切 profile 的第一层。
 - **Profile（装配）** —— 具名的组装方案：列出叠放的 bundle、自己的 patch 覆盖、以及独立安装的插件。详见 [Profile 与目录](/dsh/profiles)。
-- **Mayfly** —— 就是一个 bundle：在 `dsh-base` 之上插入 34 条 Mayfly 自有行（含隔离管理权限与 raw app service 的 private runtime group），把终端交互界面接管过来（见[功能总览](/features/)）。
+- **Mayfly** —— 就是一个 bundle：在 `dsh-base` 之上插入 6 条 dsh 支撑行和 28 条 Mayfly 行；所有官方功能与外部插件都是同一 service graph 上的普通 Cordis sibling（见[功能总览](/features/)）。
 
 ## CLI 速查
 

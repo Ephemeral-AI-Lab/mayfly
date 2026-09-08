@@ -18,7 +18,7 @@ English | [中文](README.zh.md)
 Mayfly is an interactive terminal UI for
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`).
 It is an out-of-tree Cordis bundle over `dsh-base`, built against Harness
-`0.1.2-alpha.5`. Mayfly `0.1.0-alpha.3` deliberately uses the same plugin
+`0.1.2-alpha.5`. Mayfly `0.1.0-alpha.4` deliberately uses the same plugin
 model as dsh Web: plugins are ordinary Cordis siblings and consume native dsh
 services directly.
 
@@ -60,6 +60,13 @@ Plugins always return ordinary renderer-neutral nodes. Mayfly automatically
 windows large `list` nodes and delays hidden responsive branches, so plugins
 do not manage viewport ranges, overscan, renderer caches, or scroll
 controllers. Plugins still own database and network fetching.
+
+Interactive panes and overlays declare `onEvent: { observe, action }`. Mayfly's
+frontend owner retains form drafts, selections, tabs, document anchors,
+confirmation, operation state, and feedback across renderer reloads. Plugins
+perform native reads and writes in `action`, then return a structured settlement
+such as `accepted`, `invalid`, `conflict`, or `failed`; external data refreshes
+use `set(node, { reason: 'data', source })`.
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'

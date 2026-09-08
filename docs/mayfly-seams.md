@@ -42,11 +42,26 @@ range、overscan、cache、measurement 或 scroll controller API，插件仍负�
 的网络与数据库取数。
 
 Provider 在 snapshot 成功冻结后为每次 `set()` 生成单调 revision，并通过
-upsert/remove delta 通知 core。Pane、overlay 与 editor-extension 事件可以把
-callback 的 `context.revision` 作为 `eventRevision` 回写；renderer 将其视为同一
-操作的 internal refresh，而外部替换会 abort 旧 continuation。
-Pane/status 的 null snapshot 不占布局；overlay 提供 `focus/hide/show/close`。即使调用方不手动 dispose，
-Cordis Fiber unload 也会清理 registration。
+upsert/remove delta 通知 frontend owner 与 core。`set(node, { reason: 'data',
+source })` 发布权威数据刷新；`reason: 'replace'` 建立新的 instance 边界，也是唯一
+允许改变 `scope` 的更新。旧 `eventRevision` 参数已经删除，插件不能自行制造 ack。
+
+Pane、overlay 与 editor extension 的 `onEvent` 分为 `observe` 和 `action`。
+`observe` 只接收 value、selection toggle 与 tab change 事实，不能发布 snapshot、
+导航或关闭 surface；`action` 处理 activate、selection accept、submit 与 dismiss，
+每个已处理动作必须返回 `accepted`、`invalid`、`conflict`、`failed`、`completed`
+或 `cancelled` 的结构化回执。`MayflyUiEventContext` 提供当前 `source`、operation ID、
+revision、AbortSignal 与 progress reporter。
+
+`accepted` 及带 `acceptedFields` 的 partial failure 由 registration-bound endpoint
+生成一次性 publisher。Core 先准入回包，再由 publisher 以 ack 更新原 registration；
+data/replace、卸载、abort 或同名重开会撤销不再有效的 handler、reporter 和 publisher。
+表单草稿、single-flight、冲突、确认、页面与反馈属于 frontend interaction owner，
+不要求插件在 handler 内回声调用 `set()`。
+
+Pane/status 的 null snapshot 不占布局；overlay 提供
+`focus/hide/show/close`，`presentation: 'editor'` 使用现有 editor host。
+即使调用方不手动 dispose，Cordis Fiber unload 也会清理 registration。
 
 ## 当前 Agent
 
@@ -81,9 +96,12 @@ BTW 自己的第一条提问开始，不重复主会话历史。
 
 所有 service 位于同一 Cordis graph。注册重复 id 或无效 definition 会直接抛出；
 dsh command handler 保持 dsh 自己的返回类型。没有 grant、manifest admission、
-gesture token、owner generation 或跨 realm proxy。`mayflyEditorPanels` 唯一拥有
-editor replacement 的逻辑栈，并在 theme/input host 重建后按原顺序 replay 相同
-panel 实例与语义焦点。
+gesture token、owner generation 或跨 realm proxy。Editor replacement 使用
+`presentation: 'editor'` 的普通 overlay；registry 保留 registration，core 在
+theme/input host 重建后重新投影同一 frontend instance 与语义焦点。
 
 Renderer 暂时缺位时 registry snapshot 仍可存在；renderer 恢复后通过
 `subscribe()` replay 当前 upsert。外部插件卸载时 provider 发布 remove delta。
+Overlay registration 的 title 提供宿主外框；根节点若已是 `chrome: 'overlay'` 的
+surface，core 将两者合并为一个外框。普通 overlay 与 `presentation: 'editor'` 都遵守
+`maxHeight`，未声明时最多使用终端高度的三分之一；短内容保持自然高度。
