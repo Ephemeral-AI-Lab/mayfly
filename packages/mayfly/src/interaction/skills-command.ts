@@ -1,123 +1,90 @@
-/**
- * The `/skills` command (S29): the read-only `InfoPanel` over the settled
- * user-invocable skills — one source-layered section per origin (the
- * project roots fold into `Project`, the user roots into `User`, any other
- * source heads its section as delivered), each skill listing its name (with
- * a `user-only` marker when the model cannot invoke it), its description,
- * and its `whenToUse` guidance when present. The listing shares the
- * catalog with the `#` completion branch and the submit rewrite
- * (`./skills-catalog.ts`): the handler refreshes it first, so the panel and
- * the dropdown never disagree. This module injects nothing and resolves
- * every service through `ctx.get` (the `/theme` fiber-dispose trap, the
- * session-info family's discipline).
- *
+/** Shared readonly skills listing over the same catalog used by prompt gestures.
  * @module @ephemeral-ai/mayfly/interaction/skills-command
  */
-
 import type { Context } from '@deepseek-ai/cordis'
-import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SkillSummary } from '@deepseek-ai/dsh-skill'
-import type { InfoRow, InfoSection } from './info-panel.ts'
-import { InfoPanel } from './info-panel.ts'
-import { displayServices } from './display-services.ts'
-import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { refresh, userInvocableSkills } from './skills-catalog.ts'
+import { ui, type MayflyUiNode, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyTranslate } from '../frontend/index.ts'
+import { openAgentOverlay } from './agent-overlay.ts'
+import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 
-/**
- * The folded section order: the conventional layers first, then any other
- * source by first appearance in the settled (name-sorted) list.
- */
-const SECTION_ORDER: readonly string[] = ['Project', 'User']
+export const name = 'mayfly-skills-command'
+export const inject = ['commands', 'mayflySkillsCatalog', 'mayflyCurrentAgent', 'mayflyOverlays']
 
-/**
- * The section heading for one skill source layer: the two project roots
- * (`project-dsh`, `project-agents`) fold into `Project` and the two user
- * roots (`user-dsh`, `user-agents`) into `User`; every other source
- * (`custom`, `runtime`, `bundled`, …) heads its section as delivered.
- * @param source - the summary's discovery source.
- * @returns the section heading.
- */
-function sectionHeading(source: string): string {
+export function skillGroup(source: string): string {
   if (source === 'project-dsh' || source === 'project-agents') return 'Project'
   if (source === 'user-dsh' || source === 'user-agents') return 'User'
   return source
 }
 
-/**
- * Build the `/skills` panel's sections (pure, for the spec): the settled
- * skills grouped by folded source layer in section order, each skill as
- * its name row (carrying the `user-only` marker when the model cannot
- * invoke it) followed by its description and — when present — its
- * `whenToUse` guidance.
- * @param skills - the user-invocable summaries to list.
- * @returns the sections in display order.
- */
-export function buildSkillsSections(skills: readonly SkillSummary[]): InfoSection[] {
-  const byHeading = new Map<string, SkillSummary[]>()
-  for (const skill of skills) {
-    const heading = sectionHeading(skill.source)
-    const bucket = byHeading.get(heading)
-    if (bucket === undefined) byHeading.set(heading, [skill])
-    else bucket.push(skill)
-  }
-  const rank = (heading: string): number => {
-    const index = SECTION_ORDER.indexOf(heading)
-    return index === -1 ? SECTION_ORDER.length : index
-  }
-  return [...byHeading.keys()]
-    .sort((left, right) => rank(left) - rank(right))
-    .map(heading => ({ heading, rows: byHeading.get(heading)!.flatMap(skillRows) }))
-}
-
-/** The rows of one skill: name (with the user-only marker), description, whenToUse. */
-function skillRows(skill: SkillSummary): InfoRow[] {
-  return [
-    {
-      label: skill.name,
-      segments: skill.invocation.modelInvocable ? [] : [{ text: 'user-only', style: 'muted' }],
-    },
-    { label: '', segments: [{ text: skill.description, style: 'muted' }] },
-    ...(skill.whenToUse !== undefined
-      ? [{ label: '', segments: [{ text: skill.whenToUse, style: 'textMuted' as const }] }]
-      : []),
-  ]
-}
-
-/**
- * Register the `/skills` command on `ctx.commands`.
- * @param ctx - plugin context carrying the command registry.
- * @returns the registration disposer.
- */
-export function registerSkillsCommand(ctx: Context): () => void {
-  return ctx.commands.register({
-    name: 'skills',
-    description: 'List available skills (the # prompt invokes one)',
-    handler: async (): Promise<CommandResult> => {
-      if (ctx.mayflyCurrentAgent.current() === null) {
-        return { kind: 'error', text: 'no active session' }
-      }
-      // Refresh before listing: the panel and the `#` dropdown share the
-      // catalog, and a fresh filesystem edit should surface here.
-      await refresh(ctx)
-      const skills = userInvocableSkills(ctx)
-      if (skills.length === 0) {
-        return { kind: 'success', text: 'no skills' }
-      }
-      const display = displayServices(ctx)
-      if (display === undefined) {
-        return { kind: 'error', text: 'skills panel is unavailable: the Mayfly screen is not mounted' }
-      }
-      const restore = mountEditorReplacement(ctx, new InfoPanel({
-        keymap: display.keymap,
-        theme: display.theme,
-        components: display.components,
-        title: 'skills',
-        sections: buildSkillsSections(skills),
-        onClose: () => {
-          restore()
-        },
-      }))
-      return { kind: 'success' }
-    },
+export function skillsNode(skills: readonly SkillSummary[], complete: boolean, t: MayflyTranslate): MayflyUiNode {
+  const order = ['Project', 'User']
+  for (const skill of skills) if (!order.includes(skillGroup(skill.source))) order.push(skillGroup(skill.source))
+  const sorted = skills.toSorted((left, right) => {
+    const a = order.indexOf(skillGroup(left.source)), b = order.indexOf(skillGroup(right.source))
+    return a - b || left.name.localeCompare(right.name)
   })
+  return ui.surface({ title: t('Skills'), chrome: 'overlay', padding: 1, child: ui.stack.column([
+    ...complete ? [] : [ui.text(t('Skill catalog is incomplete; showing the last complete catalog'), { tone: 'warning' })],
+    ui.list({ id: 'skills', role: 'browse', filterable: true, selectedIds: [], items: sorted.map(skill => ({
+      id: skill.name, label: skill.name, group: t(skillGroup(skill.source)), detail: skill.description,
+      ...skill.invocation.modelInvocable ? {} : { badge: t('user-only') },
+    })), empty: ui.empty({ title: t('No skills available') }) }),
+    ui.actions({ id: 'skills-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+  ]) })
+}
+
+export function apply(ctx: Context): void {
+  mountInteractionLocale(ctx)
+  const lifetime = new AbortController()
+  ctx.effect(() => () => lifetime.abort())
+  const catalog = ctx.mayflySkillsCatalog
+  const t = interactionTranslator(ctx)
+  ctx.commands.register({ name: 'skills', description: t('List available skills (the # prompt invokes one)'), handler: async invocation => {
+    const agent = invocation.agent
+    if (lifetime.signal.aborted || invocation.signal.aborted) return { kind: 'success' }
+    if (ctx.mayflyCurrentAgent.current() !== agent) return { kind: 'error', text: t('no active session') }
+    if (ctx.mayflyOverlays.focus('mayfly.skills')) return { kind: 'success' }
+    await catalog.refresh()
+    if (lifetime.signal.aborted || invocation.signal.aborted || ctx.mayflyCurrentAgent.current() !== agent) return { kind: 'success' }
+    const view = () => { const snapshot = catalog.snapshot(); return skillsNode(snapshot.skills, snapshot.complete, t) }
+    let handle: MayflyOverlayHandle | undefined
+    const refresh = () => { if (handle?.closed === false) handle.set(view()) }
+    handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.skills', presentation: 'editor', capturing: true }, view(), owner => {
+      owner.effect(() => catalog.subscribe(refresh))
+      owner.effect(() => observeInteractionLocale(owner, refresh))
+      return async event => {
+        if (event.kind === 'activate' && event.actionId === 'refresh') { await catalog.refresh(); return { kind: 'completed' } }
+        if (event.kind !== 'selection-accept' || event.controlId !== 'skills') return { kind: 'completed' }
+        const skill = catalog.userInvocable().find(skill => skill.name === event.selectedIds[0])
+        if (skill === undefined) return { kind: 'cancelled' }
+        ctx.mayflyOverlays.close('mayfly.skills.detail')
+        const detail = (skill: SkillSummary) => ui.surface({ title: skill.name, chrome: 'overlay', padding: 1, child: ui.stack.column([
+          ...catalog.snapshot().complete ? [] : [ui.text(t('Skill catalog is incomplete; showing the last complete catalog'), { tone: 'warning' })],
+          ui.child(ui.scroll(ui.stack.column([
+            ui.text(skill.description), ...skill.whenToUse === undefined ? [] : [ui.text(skill.whenToUse)],
+            ui.fields([{ label: t('Source'), value: [{ text: skill.source }] }, { label: t('Provider'), value: [{ text: skill.provider }] }]),
+          ]), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
+          ui.actions({ id: 'detail-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
+        ]) })
+        let child: MayflyOverlayHandle | undefined
+        const refreshDetail = () => {
+          if (child?.closed !== false) return
+          const latest = catalog.userInvocable().find(item => item.name === skill.name)
+          if (latest === undefined) child.close()
+          else child.set(detail(latest))
+        }
+        child = await openAgentOverlay(owner, agent, { id: 'mayfly.skills.detail', presentation: 'editor', capturing: true }, detail(skill), scope => {
+          scope.effect(() => catalog.subscribe(refreshDetail))
+          scope.effect(() => observeInteractionLocale(scope, refreshDetail))
+          return () => ({ kind: 'completed' })
+        }, lifetime.signal)
+        refreshDetail()
+        return { kind: 'completed' }
+      }
+    }, lifetime.signal)
+    if (invocation.signal.aborted) handle?.close()
+    refresh()
+    return { kind: 'success' }
+  } })
 }

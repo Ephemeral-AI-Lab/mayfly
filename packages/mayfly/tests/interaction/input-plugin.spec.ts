@@ -22,11 +22,11 @@ import * as paneQueuePlugin from '../../src/interaction/pane-queue.ts'
 import {
   getSharedEditor,
 } from '../../src/interaction/editor-instance.ts'
-import { mountEditorReplacement } from '../../src/interaction/editor-panel-controller.ts'
 import { registerSubmitTransformer } from '../../src/interaction/prompt-submit-pipeline.ts'
 import { setExternalEditorLauncher } from '../../src/interaction/external-editor.ts'
-import { EditorDockHost } from '../../src/interaction/editor-dock-host.ts'
 import { fakeMayflyContext, KEY, type FakeMayflyComponents, type FakeMayflyEditor, type FakeScreen } from './fakes.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { renderRequest } from './request-fixture.ts'
 
 /** One settled-skill double for the catalog seam. */
 function skillOf(name: string): SkillSummary {
@@ -106,6 +106,9 @@ async function mount(options: {
   fiber: { dispose(): Promise<void> }
 }> {
   const { ctx, screen, components } = fakeMayflyContext()
+  new UiInteractionService(ctx)
+  mountUiRegistryObservers(ctx)
+  await Promise.resolve()
   // This suite exercises only the editor slot. The shared fake now owns the
   // transcript dock service's stable empty bottom root; remove that unrelated
   // fixture root so the existing slot assertions stay local to mayfly-input.
@@ -136,8 +139,10 @@ async function mount(options: {
   const fiber = await ctx.plugin(inputPlugin)
   const editor = components.editors.at(-1)!
   const editorRoot = screen.children[0] as MayflyFocusable & MayflyComponent
-  const dock = screen.slotTargets.get('editor.prompt') as EditorDockHost
-  const hint: MayflyComponent = { render: width => dock.renderHint(width), invalidate: () => dock.invalidate() }
+  const hint: MayflyComponent = {
+    render: width => editorRoot.render(width).slice(editor.render(width).length),
+    invalidate: () => editorRoot.invalidate(),
+  }
   // The terminal paints one frame before it can deliver focused input. The
   // shell compiler synchronizes its nested editor focus during that frame.
   editorRoot.render(screen.columns)
@@ -154,6 +159,7 @@ describe('mayfly-input plugin', () => {
     expect(inputPlugin.inject).toContain('mayflyRequests')
     expect(inputPlugin.inject).toContain('mayflyRetractions')
     expect(inputPlugin.inject).toContain('mayflyEditorExtensions')
+    expect(inputPlugin.inject).toContain('mayflyOverlays')
   })
 
   it('mounts the editor and hint line focused at the bottom of the tree', async () => {
@@ -221,9 +227,9 @@ describe('mayfly-input plugin', () => {
     expect(editor.getText()).toBe('')
   })
 
-  it('clears a navigation notice when the session switch settles', async () => {
+  it('clears input-owned navigation feedback when the session switch settles', async () => {
     const { ctx, hint, agent } = await mount()
-    getSharedEditor(ctx)?.notice?.('creating rewind branch...')
+    getSharedEditor(ctx)?.report?.('navigation', { message: 'creating rewind branch...', severity: 'info' })
     expect(hint.render(80)).toEqual(['~creating rewind branch...~'])
     ctx.emit('test/session-changed', agent)
     expect(hint.render(80)).toEqual([])
@@ -367,7 +373,7 @@ describe('mayfly-input plugin', () => {
 
     type(editor, '[image #1] keep this')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(hint.render(80)).toEqual(['~!child rejected the prompt!~']))
+    await vi.waitFor(() => expect(hint.render(80)).toEqual(['!child rejected the prompt!']))
     expect(editor.getText()).toBe('[image #1] keep this')
     expect(editor.history).toEqual([])
     expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
@@ -393,7 +399,7 @@ describe('mayfly-input plugin', () => {
     installEditorTransform(missing.ctx, request => ({ text: request.text }))
     type(missing.editor, '[image #1] caption')
     missing.editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(missing.hint.render(80)).toEqual(['~!image delivery requires the attachment store!~']))
+    await vi.waitFor(() => expect(missing.hint.render(80)).toEqual(['!image delivery requires the attachment store!']))
     expect(missing.ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
     await missing.fiber.dispose()
 
@@ -401,7 +407,7 @@ describe('mayfly-input plugin', () => {
     registerSubmitTransformer(unsupported.ctx, () => [{ type: 'reasoning', text: 'not human input' } as never])
     type(unsupported.editor, 'unsupported')
     unsupported.editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(unsupported.hint.render(80)).toEqual(['~!unsupported human prompt block: reasoning!~']))
+    await vi.waitFor(() => expect(unsupported.hint.render(80)).toEqual(['!unsupported human prompt block: reasoning!']))
     expect(unsupported.editor.getText()).toBe('unsupported')
     await unsupported.fiber.dispose()
   })
@@ -427,7 +433,7 @@ describe('mayfly-input plugin', () => {
     expect(prompt).not.toHaveBeenCalled()
     expect(editor.getText()).toBe('keep the race-safe draft')
     expect(editor.history).toEqual([])
-    expect(hint.render(80)).toEqual(['~!the subagent is no longer available for input!~'])
+    expect(hint.render(80)).toEqual(['!the subagent is no longer available for input!'])
   })
 
   it('restores a submission when the auxiliary closes between routing and delivery', async () => {
@@ -667,12 +673,12 @@ describe('mayfly-input plugin', () => {
     type(editor, 'cannot send')
     editor.handleInput(KEY.enter)
     expect(followup).toHaveBeenCalledOnce()
-    expect(hint.render(80)).toEqual(['~!follow-up rejected!~'])
+    expect(hint.render(80)).toEqual(['!follow-up rejected!'])
 
     followup.mockImplementationOnce(() => { throw 'bare follow-up rejection' })
     type(editor, 'still cannot send')
     editor.handleInput(KEY.enter)
-    expect(hint.render(80)).toEqual(['~!bare follow-up rejection!~'])
+    expect(hint.render(80)).toEqual(['!bare follow-up rejection!'])
   })
 
   it('restores transformed image attachments when the follow-up is rejected', async () => {
@@ -684,7 +690,7 @@ describe('mayfly-input plugin', () => {
 
     type(editor, '[image #1] caption')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(hint.render(80)).toEqual(['~!extension follow-up rejected!~']))
+    await vi.waitFor(() => expect(hint.render(80)).toEqual(['!extension follow-up rejected!']))
     expect(followup).toHaveBeenCalledOnce()
     expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
   })
@@ -696,7 +702,7 @@ describe('mayfly-input plugin', () => {
     type(editor, 'keep this draft')
     editor.handleInput(KEY.enter)
 
-    await vi.waitFor(() => expect(hint.render(80)).toEqual(['~extension transform rejected~']))
+    await vi.waitFor(() => expect(hint.render(80)).toEqual(['!extension transform rejected!']))
     expect(editor.getText()).toBe('keep this draft')
     expect(followup).not.toHaveBeenCalled()
   })
@@ -751,7 +757,7 @@ describe('mayfly-input plugin', () => {
     const { screen, editor, hint } = await mount({ withAgent: false })
     type(editor, 'hello')
     editor.handleInput(KEY.enter)
-    expect(hint.render(80)).toEqual(['~no active session~'])
+    expect(hint.render(80)).toEqual(['!no active session!'])
     expect(screen.renderRequests).toBeGreaterThan(0)
   })
 
@@ -801,7 +807,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/missing')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['~unknown command: /missing~'])
+      expect(hint.render(80)).toEqual(['!unknown command: /missing!'])
     })
   })
 
@@ -830,7 +836,7 @@ describe('mayfly-input plugin', () => {
   })
 
   it('opens the bare /permission picker with a sibling service and dispatches only a selection', async () => {
-    const { ctx, screen, editor, editorRoot, hint } = await mount()
+    const { ctx, editor, hint } = await mount()
     const handler = vi.fn(() => ({ kind: 'success' as const, text: 'should not run' }))
     ctx.commands.register({ name: 'permission', description: 'spy standing in for the upstream command', handler })
     await ctx.plugin({
@@ -846,29 +852,26 @@ describe('mayfly-input plugin', () => {
     })
     type(editor, '/permission')
     editor.handleInput(KEY.enter)
-    // The picker replaces the editor in its dock slot (the real D30
-    // machinery the plugin installs); the upstream command never runs and
-    // no notice lands (the panel owns the interaction).
-    await vi.waitFor(() => { expect(screen.children).toHaveLength(1) })
-    const panel = screen.children[0] as MayflyFocusable
-    const frame = (panel as { render(width: number): string[] }).render(80).join('\n')
+    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeDefined() })
+    const panel = ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!
+    const rendered = renderRequest(panel)
+    const frame = rendered.component.render(80).join('\n')
     expect(frame).toContain('Permissions')
     expect(frame).toContain('← current')
     expect(handler).not.toHaveBeenCalled()
     expect(hint.render(80)).toEqual([])
-    // Esc closes back to the editor, still without a dispatch.
-    panel.handleInput(KEY.escape)
+    panel.requestClose()
+    await vi.waitFor(() => expect(panel.disposed).toBe(true))
     expect(handler).not.toHaveBeenCalled()
-    expect(screen.children).toEqual([editorRoot])
-    expect(screen.focused).toBe(editorRoot)
+    rendered.runtime.dispose()
 
     type(editor, '/permission')
     editor.handleInput(KEY.enter)
-    const reopened = screen.children[0] as MayflyFocusable
-    reopened.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeDefined())
+    ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!.emit({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['workspace-write'] })
     await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce())
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: ' workspace-write' }))
-    expect(screen.children).toEqual([editorRoot])
+    await vi.waitFor(() => expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeUndefined())
   })
 
   it('passes a with-argument /permission line through to the command', async () => {
@@ -894,7 +897,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/permission')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['~unknown command: /permission~'])
+      expect(hint.render(80)).toEqual(['!unknown command: /permission!'])
     })
   })
 
@@ -908,7 +911,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/fail')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['~!broken!~'])
+      expect(hint.render(80)).toEqual(['!broken!'])
     })
     ctx.commands.register({
       name: 'throw',
@@ -920,11 +923,11 @@ describe('mayfly-input plugin', () => {
     type(editor, '/throw')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['~!boom!~'])
+      expect(hint.render(80)).toEqual(['!boom!'])
     })
   })
 
-  it('preserves and wraps a multi-line command result', async () => {
+  it('folds a multi-line command result into a summary and retains the original detail', async () => {
     const { ctx, editor, hint } = await mount()
     ctx.commands.register({
       name: 'multiline',
@@ -937,9 +940,9 @@ describe('mayfly-input plugin', () => {
     type(editor, '/multiline')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(120)).toEqual(['~Goal created~', '~Status: active~', '~~', '~Activation: armed~'])
+      expect(hint.render(120)).toEqual(['~Goal created · Status: active · Activation: armed~'])
     })
-    expect(hint.render(120)).toHaveLength(4)
+    expect(ctx.mayflyUiInteraction.notificationSnapshot().at(-1)?.detail).toBe('Goal created\nStatus: active\n\n  Activation: armed')
   })
 
   it('keeps successful goal output in Todo/footer surfaces while preserving errors', async () => {
@@ -964,7 +967,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/goal fail')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(120)).toEqual(['~!goal failed!~'])
+      expect(hint.render(120)).toEqual(['!goal failed!'])
     })
   })
 
@@ -1045,7 +1048,10 @@ describe('mayfly-input plugin', () => {
     const { editor, hint } = await mount({ withAgent: false })
     type(editor, 'hello')
     editor.handleInput(KEY.enter)
-    expect(hint.render(10)).toEqual(['~no active~', '~session~'])
+    const rows = hint.render(10)
+    expect(rows).toHaveLength(2)
+    expect(rows.join('')).toContain('no act')
+    expect(rows.join('')).toContain('session')
   })
 
   it('renders no hint row when a command succeeds without text', async () => {
@@ -1063,12 +1069,28 @@ describe('mayfly-input plugin', () => {
     expect(hint.render(80)).toEqual([])
   })
 
-  it('folds a long multi-line notice into the hint row', async () => {
+  it('folds multi-line feedback into one summary and retains its detail', async () => {
     const { ctx, hint } = await mount()
-    getSharedEditor(ctx)?.notice?.(Array.from({ length: 10 }, (_, index) => index === 0 ? '' : `notice ${String(index)}`).join('\n'))
+    const message = Array.from({ length: 10 }, (_, index) => index === 0 ? '' : `notice ${String(index)}`).join('\n')
+    getSharedEditor(ctx)?.report?.('long', { message: message.replace(/\s*[\r\n]+\s*/gu, ' · ').trim(), severity: 'info', detail: message })
     const rows = hint.render(80)
-    expect(rows).toHaveLength(8)
-    expect(rows.at(-1)).toBe('~... more~')
+    expect(rows.join('')).toContain('notice 1')
+    expect(ctx.mayflyUiInteraction.notificationSnapshot().at(-1)?.detail).toBe(message)
+  })
+
+  it('orders equally severe visible notifications by creation time', async () => {
+    const { ctx, hint } = await mount()
+    const owner = ctx.mayflyUiInteraction.createNotificationOwner('input-order')
+    owner.report('first', { kind: 'app', targetId: 'prompt' }, { severity: 'info', message: 'First' })
+    owner.report('second', { kind: 'app', targetId: 'prompt' }, { severity: 'info', message: 'Second' })
+    expect(hint.render(80)).toEqual(['~Second~'])
+    owner.dispose()
+  })
+
+  it('contains synchronous hint refresh reentry from invalid extension feedback', async () => {
+    const { ctx, hint } = await mount()
+    ctx.mayflyEditorExtensions.register({ id: 'input.invalid-after' }, { after: { kind: 'actions', id: 'interactive-after', items: [] } })
+    expect(hint.render(80).join('\n')).toContain('editor extension after must be passive')
   })
 
   it('renders no persistent row in any state — the footer tips teach the affordances', async () => {
@@ -1116,111 +1138,6 @@ describe('mayfly-input plugin', () => {
     await first.ctx.plugin(inputPlugin)
     const second = (first.ctx.mayflyComponents as FakeMayflyComponents).editors.at(-1)!
     expect(second.history).toEqual(['/theme dark', 'hello'])
-  })
-
-  describe('editor-slot swap (D30 dialog mount)', () => {
-    /** A minimal focusable panel for slot tests. */
-    function panel(name: string): MayflyFocusable & MayflyComponent {
-      return {
-        name,
-        focused: false,
-        handleInput: vi.fn(),
-        invalidate: vi.fn(),
-        render: () => [name],
-      }
-    }
-
-    it('hides the editor for the panel and restores it with focus on dispose', async () => {
-      const { ctx, screen, editorRoot, hint } = await mount()
-      const first = panel('first')
-      const restore = mountEditorReplacement(ctx, first)
-      // The editor and hint left the dock; the panel took the slot and
-      // the focus.
-      expect(screen.children).toEqual([editorRoot])
-      expect(editorRoot.render(80)).toEqual(['first'])
-      expect(first.focused).toBe(true)
-      expect(screen.focused).toBe(editorRoot)
-      restore()
-      expect(screen.children).toEqual([editorRoot])
-      expect(hint.render(80)).toEqual([])
-      expect(screen.focused).toBe(editorRoot)
-      restore()
-    })
-
-    it('stacks nested panels: disposing the top refocuses the one beneath', async () => {
-      const { ctx, screen, editorRoot } = await mount()
-      const outer = panel('outer')
-      const inner = panel('inner')
-      const restoreOuter = mountEditorReplacement(ctx, outer)
-      const restoreInner = mountEditorReplacement(ctx, inner)
-      expect(screen.children).toEqual([editorRoot])
-      expect(editorRoot.render(80)).toEqual(['inner'])
-      restoreInner()
-      // The outer panel stays mounted and regains focus.
-      expect(screen.children).toEqual([editorRoot])
-      expect(editorRoot.render(80)).toEqual(['outer'])
-      expect(outer.focused).toBe(true)
-      restoreOuter()
-      expect(screen.children).toEqual([editorRoot])
-      expect(screen.focused).toBe(editorRoot)
-    })
-
-    it('keeps the editor hidden when the bottom panel of a stack disposes first', async () => {
-      const { ctx, screen, editorRoot } = await mount()
-      const outer = panel('outer')
-      const inner = panel('inner')
-      const restoreOuter = mountEditorReplacement(ctx, outer)
-      const restoreInner = mountEditorReplacement(ctx, inner)
-      // Out-of-order: the first-mounted panel goes while the top stays.
-      restoreOuter()
-      expect(screen.children).toEqual([editorRoot])
-      expect(editorRoot.render(80)).toEqual(['inner'])
-      expect(inner.focused).toBe(true)
-      restoreInner()
-      expect(screen.focused).toBe(editorRoot)
-    })
-
-    it('unmounts an open panel with the fiber and turns its disposer into a no-op', async () => {
-      const { ctx, screen, fiber } = await mount()
-      const open = panel('open')
-      const restore = mountEditorReplacement(ctx, open)
-      await fiber.dispose()
-      // The teardown unmounted the panel; the late disposer must not
-      // resurrect the editor against the disposed fiber's screen handle.
-      expect(screen.children).toEqual([])
-      expect(() => restore()).not.toThrow()
-      expect(() => restore()).not.toThrow()
-      expect(screen.children).toEqual([])
-      expect(screen.focused).toBeNull()
-    })
-
-    it('keeps the editor buffer across a swap round-trip', async () => {
-      const { ctx, editor } = await mount()
-      type(editor, 'draft survives')
-      const restore = mountEditorReplacement(ctx, panel('modal'))
-      restore()
-      expect(editor.getText()).toBe('draft survives')
-    })
-
-    it('emits mayfly/editor-slot-swapped on occupancy transitions only', async () => {
-      const { ctx, fiber } = await mount()
-      const swaps: boolean[] = []
-      ctx.on('mayfly/editor-slot-swapped', occupied => swaps.push(occupied))
-
-      const restoreOuter = mountEditorReplacement(ctx, panel('outer'))
-      // A nested panel does not re-emit: the slot stayed occupied.
-      const restoreInner = mountEditorReplacement(ctx, panel('inner'))
-      restoreInner()
-      expect(swaps).toEqual([true])
-      restoreOuter()
-      expect(swaps).toEqual([true, false])
-
-      // Unloading with a panel open releases the occupancy too.
-      mountEditorReplacement(ctx, panel('gone'))
-      expect(swaps).toEqual([true, false, true])
-      await fiber.dispose()
-      expect(swaps).toEqual([true, false, true, false])
-    })
   })
 
   describe('editor-context keys', () => {
@@ -1319,7 +1236,7 @@ describe('mayfly-input plugin', () => {
       try {
         vi.setSystemTime(1_000_000)
         expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
-        expect(hint.render(80)).toEqual(['~press ctrl+c again to exit~'])
+        expect(hint.render(80)).toEqual(['?press ctrl+c again to exit?'])
       } finally {
         vi.useRealTimers()
       }
@@ -1352,7 +1269,7 @@ describe('mayfly-input plugin', () => {
         vi.setSystemTime(3_002_000)
         expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
         expect(exit).not.toHaveBeenCalled()
-        expect(hint.render(80)).toEqual(['~press ctrl+c again to exit~'])
+        expect(hint.render(80)).toEqual(['?press ctrl+c again to exit?'])
       } finally {
         vi.useRealTimers()
       }
@@ -1407,7 +1324,7 @@ describe('mayfly-input plugin', () => {
 
       steer.mockImplementationOnce(() => { throw 'bare steer rejection' })
       expect(editor.onKey?.(KEY.ctrlS)).toBe(true)
-      expect(hint.render(80)).toEqual(['~!bare steer rejection!~'])
+      expect(hint.render(80)).toEqual(['!bare steer rejection!'])
     })
 
     it('dispatches Shift+Tab through the native plan command', async () => {
@@ -1502,7 +1419,7 @@ describe('mayfly-input plugin', () => {
       const { editor, screen, hint } = await mount()
       expect(editor.onKey?.(KEY.ctrlG)).toBe(true)
       expect(screen.suspends).toBe(0)
-      expect(hint.render(80)).toEqual(['~set $VISUAL or $EDITOR to edit drafts externally~'])
+      expect(hint.render(80)).toEqual(['?set $VISUAL or $EDITOR to edit drafts externally?'])
     })
 
     it('notices a launcher failure and re-arms for the next press', async () => {
@@ -1511,14 +1428,14 @@ describe('mayfly-input plugin', () => {
       fakeLauncher(() => outcome)
       editor.handleInput(KEY.ctrlG)
       await vi.waitFor(() => {
-        expect(hint.render(80)).toEqual(['~!editor gone!~'])
+        expect(hint.render(80)).toEqual(['!editor gone!'])
       })
       expect(screen.suspends).toBe(1)
       // A non-Error rejection stringifies into the notice.
       outcome = Promise.reject('plain failure')
       editor.handleInput(KEY.ctrlG)
       await vi.waitFor(() => {
-        expect(hint.render(80)).toEqual(['~!plain failure!~'])
+        expect(hint.render(80)).toEqual(['!plain failure!'])
       })
       expect(screen.suspends).toBe(2)
       outcome = Promise.resolve('second try')
@@ -1587,15 +1504,6 @@ describe('mayfly-input plugin', () => {
 })
 
 describe('the Alt+M model cycle key', () => {
-  /** Capture the shared editor's notice channel for assertions. */
-  function captureNotices(ctx: Context): string[] {
-    const notices: string[] = []
-    const shared = getSharedEditor(ctx) as { notice?: (text: string) => void } | undefined
-    expect(shared).toBeDefined()
-    shared!.notice = (text: string) => { notices.push(text) }
-    return notices
-  }
-
   it('switches the session model without touching the draft', async () => {
     const writes: unknown[] = []
     const state = { current: { provider: 'mock', model: 'mock' } }
@@ -1607,23 +1515,21 @@ describe('the Alt+M model cycle key', () => {
     ctx.provide('llm', {
       listModels: async () => [{ id: 'mock', name: 'Mock' }, { id: 'mock-pro', name: 'Mock Pro' }],
     } as never)
-    const notices = captureNotices(ctx)
     type(editor, 'keep this draft')
     editor.handleInput(KEY.altM)
     // The press is consumed before the Editor sees it, so the draft
     // survives byte for byte — the point of the hotkey.
     expect(editor.getText()).toBe('keep this draft')
-    await vi.waitFor(() => { expect(notices).toHaveLength(1) })
-    expect(notices[0]).toBe('Switched to mock-pro (mock) · session only')
+    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(1) })
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()[0]!.message).toBe('Switched to mock-pro (mock) · session only')
     expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro' }])
   })
 
   it('still consumes the press without a session, flashing the guard notice', async () => {
     const { ctx, editor } = await mount({ withAgent: false })
-    const notices = captureNotices(ctx)
     type(editor, 'draft')
     editor.handleInput(KEY.altM)
     expect(editor.getText()).toBe('draft')
-    await vi.waitFor(() => { expect(notices).toEqual(['no session is live yet']) })
+    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).toEqual(['no session is live yet']) })
   })
 })

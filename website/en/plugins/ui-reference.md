@@ -4,13 +4,13 @@ This page documents the complete Public Beta wire-node construction API in
 `@ephemeral-ai/mayfly-ui`. A `ui.*` builder only constructs, copies, and freezes
 renderer-neutral data. The Mayfly renderer owns validation, layout, themes,
 width, focus, input routing, and event dispatch. The plugin still owns domain
-data, controlled state, and the meaning of a successful event.
+data, native effects, and authoritative data snapshots.
 
 > For how node trees are organized and controlled state flows, see the
 > companion [Component model](/en/plugins/component-model) guide.
 
 ```ts
-import type { MayflyUiEvent, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyUiActionEvent, MayflyUiEventContext, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 ```
 
@@ -19,13 +19,13 @@ import { ui } from '@ephemeral-ai/mayfly-ui'
 | Mayfly owns | The plugin owns |
 | --- | --- |
 | Rendering text, tabs, lists, forms, actions, and the other nodes | Node data and product copy |
-| Theme mapping, width degradation, focus, and navigation in the active renderer | Controlled state such as `activeId`, `selectedIds`, and field values |
-| Converting user input into `MayflyUiEvent` | Validating events and calling the owning domain service/action |
-| Rerender after a successful event plus abort, stale, and unload fencing | Calling the pane/overlay handle's `set(node)` after external data changes |
+| Drafts, selections, pages, operations, and feedback for the registration | Domain facts and calls to the owning native service/action |
+| Theme mapping, width degradation, focus, and navigation | Data-snapshot baselines, source stamps, and scope |
+| Event classification, reply admission, ack publication, and lifecycle fencing | Structured action replies and handle `set()` calls for external data |
 
 Nodes never accept renderer callbacks, raw keys, terminal coordinates, ANSI,
-or focus handles. Do not perform I/O in `render()`, and do not place Agent,
-Session, or mutable renderer objects in a node.
+or focus handles. Do not place I/O, Agent, Session, or mutable renderer objects
+in a node.
 
 ## Shared rules and limits
 
@@ -45,9 +45,22 @@ Session, or mutable renderer objects in a node.
   `default | muted | accent | success | warning | danger`.
 - `emphasis` is `normal | strong`; omission means normal text.
 
-The defaults below describe the current Mayfly TUI in `0.1.0-alpha.3`. The wire
+The defaults below describe the current Mayfly TUI in `0.1.0-alpha.4`. The wire
 contract promises field semantics, not exact border glyphs, color values, or
 key bindings.
+
+### Migrating from alpha.3
+
+- Split `onEvent(event, context)` into `onEvent.observe` and `onEvent.action`.
+- Replace `selection-change` with observation `selection-toggle` or action
+  `selection-accept`; every event carries `pagePath`.
+- Remove plugin-owned form/tab/list drafts, pending confirmation, and renderer
+  cursors. Node values are initial/data baselines.
+- Return a structured settlement from every action handler. Read submitted
+  forms and selections from `event.submission`, not a flat `values` object.
+- Remove `set(node, { eventRevision })`. Use `reason: 'data'` for external
+  refresh and `reason: 'replace'` for a new instance. Only the
+  registration-bound publisher creates acknowledgements.
 
 ## Content nodes
 
@@ -454,8 +467,12 @@ ui.surface({
 | `footer` | Optional node between the body and bottom border |
 
 `chrome: 'overlay'` is only a visual intent. It does not create an overlay;
-use `api.overlays.open()` for the actual surface. The screenshot above renders
-exactly this node:
+use `api.overlays.open()` for the actual surface. When that surface is the
+registration root, core coalesces it with the registration title into one
+frame. Ordinary overlays and `presentation: 'editor'` both honor `maxHeight`,
+defaulting to at most one third of the terminal height. Short content keeps its
+natural height instead of stretching to that limit. The screenshot above
+renders exactly this node:
 
 ```ts
 ui.surface({
@@ -494,18 +511,21 @@ ui.surface({
 
 ```ts
 ui.scroll(node: MayflyUiNode, options?: {
+  id?: string
   follow?: 'none' | 'start' | 'end'
   scrollbar?: boolean
 })
 ```
 
 `follow` expresses the desired position after refresh; omission behaves as
-`none`. In an alternate-screen surface, the current TUI actively follows the
-end for `end`, while `start` and `none` begin at the top without active
-following. The outer scroll owner takes over on the main screen.
-`scrollbar: true` requests a visible scrollbar. The parent layout supplies the
-actual scroll height. Nested scroll nodes are rejected. The screenshot above
-renders exactly this node:
+`none`. With an `id`, the frontend owner stores a semantic content-block and
+character-offset anchor, so data insertion, width changes, and renderer rebuilds
+restore the same position. `follow: 'end'` stays attached to appended content.
+Interactive surfaces in both main and alternate modes use the height supplied
+by their parent layout. A passive main-mode transcript scroll is linearized and
+delegated to the outer transcript viewport. `scrollbar: true` requests a visible
+scrollbar. Nested scroll nodes are rejected.
+The screenshot above renders exactly this node:
 
 ```ts
 ui.scroll(
@@ -516,10 +536,11 @@ ui.scroll(
 
 ## Controlled interactive nodes
 
-Every interactive node receives canonical state from the plugin and emits a
-proposed next state. After the plugin accepts the proposal and `onEvent()`
-returns success, Mayfly automatically calls `render()` again. Nodes do not
-permanently mutate plugin state on their own.
+The plugin supplies a readonly baseline and action declarations. Mayfly's
+frontend owner keeps drafts, selections, pages, decisions, operations, and
+feedback for each registration instance. The renderer projects that state and
+emits semantic events. Plugins publish external domain changes as data snapshots
+and settle native actions with structured replies.
 
 ### `tabs`
 
@@ -531,52 +552,49 @@ permanently mutate plugin state on their own.
 ui.tabs({
   id: string
   activeId: string
+  mode?: 'tabs' | 'wizard'
   items: readonly {
     id: string
     label: string
     disabled?: boolean
     count?: number
+    backId?: string
   }[]
 })
 ```
 
-- `activeId` must name an item; the plugin stores and updates it.
+- `activeId` must name an item and supplies the initial or data-snapshot
+  baseline. The Mayfly instance keeps the current active page.
 - A disabled item remains visible but cannot be activated.
 - `count` is a non-negative safe-integer hint that a renderer may hide at
   narrow widths.
-- Tabs render only the tab strip, not each tab's body.
-- Activating an item emits
-  `{ kind: 'tab-change', controlId: id, tabId: item.id }`.
+- `mode: 'wizard'` records completed steps against validated form revisions;
+  edits or conflicts invalidate completion.
+- `backId` declares a return target in the same group. Admission rejects missing
+  targets and cycles.
+- Tabs render only the tab strip. Associate bodies with
+  `ui.child(node, { tab })`.
+- Activating an item sends a `tab-change` fact with its `pagePath` to
+  `onEvent.observe`. The plugin does not echo a snapshot to switch pages.
 
 ```ts
-let activeTab = 'summary'
-
-const render = () => ui.stack.column([
+ui.stack.column([
   ui.tabs({
     id: 'settings-tabs',
-    activeId: activeTab,
+    activeId: 'summary',
     items: [
       { id: 'summary', label: 'Summary' },
       { id: 'advanced', label: 'Advanced', count: 4 },
       { id: 'legacy', label: 'Legacy', disabled: true },
     ],
   }),
-  activeTab === 'summary'
-    ? ui.text('Summary content')
-    : ui.text('Advanced content'),
+  ui.child(ui.text('Summary content'), { tab: { controlId: 'settings-tabs', itemId: 'summary' } }),
+  ui.child(ui.text('Advanced content'), { tab: { controlId: 'settings-tabs', itemId: 'advanced' } }),
 ])
-
-const onEvent = (event: MayflyUiEvent) => {
-  if (event.kind === 'tab-change' && event.controlId === 'settings-tabs') {
-    activeTab = event.tabId
-  }
-  return { ok: true, value: undefined } as const
-}
 ```
 
-After the plugin accepts `tab-change` and writes `activeTab = 'advanced'`,
-the next `render()` output looks like this — both the strip highlight and the
-body follow canonical state:
+After the user selects advanced, the strip and associated body project the
+same frontend page state:
 
 ![`tabs` after switching](/shots/tabs-active.svg)
 
@@ -607,9 +625,15 @@ ui.stack.column([
 ui.list({
   id: string
   mode?: 'single' | 'multiple'
+  role: 'browse' | 'choose'
   selectedIds: readonly string[]
   items: readonly MayflyListItem[]
   filter?: string
+  filterable?: boolean
+  tree?: boolean
+  minSelected?: number
+  maxSelected?: number
+  acceptActionId?: string
   empty?: MayflyUiNode
 })
 
@@ -621,9 +645,13 @@ type MayflyListItem = {
   badge?: string
   group?: string
   disabled?: boolean
+  disabledReason?: string
+  parentId?: string
+  searchText?: string
 }
 ```
 
+`role: 'browse'` opens or inspects entries; `role: 'choose'` submits a choice.
 `mode` defaults to `single`. Single mode permits at most one selected id, and
 every selected id must exist in `items`. `detailSpans` takes precedence over
 `detail`. `group` is a grouping heading and `badge` is a compact label. A
@@ -633,6 +661,7 @@ exactly this node:
 ```ts
 ui.list({
   id: 'item-list',
+  role: 'browse',
   selectedIds: ['one'],
   items: [
     { id: 'one', label: 'First item' },
@@ -641,9 +670,11 @@ ui.list({
 })
 ```
 
-`filter` only displays the current query; it does not filter `items` for the
-plugin. Pass the already-filtered items. When items is empty, Mayfly renders
-`empty`; omitting `empty` produces no rows.
+`filterable: true` enables shared search, while `filter` supplies its initial
+query. Mayfly matches and focuses the supplied items without starting network
+work. `tree: true` combines with `parentId` for shared expansion state. Large
+item arrays validate and render only around the current window. Empty items
+render the optional `empty` node.
 
 Multiple mode combines with `group`, `badge`, `detail`, and `disabled` for
 richer pickers:
@@ -655,6 +686,7 @@ richer pickers:
 ```ts
 ui.list({
   id: 'plugin-list',
+  role: 'choose',
   mode: 'multiple',
   selectedIds: ['context'],
   items: [
@@ -665,16 +697,16 @@ ui.list({
 })
 ```
 
-Event payloads:
-
-- single: `{ kind: 'selection-change', controlId: id, value: item.id }`
-- multiple: `value` is the proposed complete `string[]` after toggling the item
+Selection changes send `selection-toggle` and the complete `selectedIds` to
+`onEvent.observe`. Explicit acceptance sends `selection-accept` to
+`onEvent.action`. An action may also declare `selections` so immutable action
+inputs contain the current selection with submitted forms.
 
 ### `form`
 
 ![`form` node rendering](/shots/form.svg)
 
-*All five field kinds in their default state: the secret value is masked, the select shows its current value, and the toggle shows its switch (width 64).*
+*Common field kinds in their default state: the secret value is masked, the select shows its current value, and the toggle shows its switch (width 64).*
 
 ```ts
 ui.form({
@@ -692,7 +724,9 @@ A form field is this discriminated union:
 | `input` | `id`, `label`, `value: string` | `placeholder`, `error`, `disabled` | `string` |
 | `textarea` | Same as input | Same as input | `string` |
 | `secret` | Same as input | Same as input; renderer masks value | `string` |
+| `number` | `id`, `label`, `value: number \| null` | `min`, `max`, `step`, `unit` | a `string` draft while editing |
 | `select` | `id`, `label`, `value: string \| null`, `options: MayflyListItem[]` | `error`, `disabled` | `string \| null` |
+| `multiselect` | `id`, `label`, `value: string[]`, `options` | `minSelected`, `maxSelected` | `string[]` |
 | `toggle` | `id`, `label`, `value: boolean` | `error`, `disabled` | `boolean` |
 
 The screenshot above renders exactly this node:
@@ -715,15 +749,16 @@ ui.form({
 })
 ```
 
-While text is edited, Mayfly keeps a draft within the current surface generation
-and continuously emits `value-change`. The plugin must still write accepted
-values back to its view state. A recreated surface or an externally changed
-canonical value wins over the old draft. The first Enter enters a text field;
-the next Enter confirms and returns to that field's navigation state. Alt+Enter
-inserts a textarea newline.
+The Mayfly frontend instance retains text drafts and sends `value-change` with a
+field revision to `onEvent.observe` for optional asynchronous validation. The
+plugin does not echo each keystroke as a snapshot. When an authoritative data
+snapshot changes, the model reconciles untouched values, drafts, and conflicts.
+Focused text fields remain in navigation until typing or Enter starts editing.
+Enter advances from a single-line input; Enter or Alt+Enter inserts a textarea
+newline.
 
-In the form below, pressing Enter on the Name field enters edit mode and
-typing `Ada Lovelace` leaves a draft — the shot shows the draft text and the
+In the form below, focusing the Name field and typing `Ada Lovelace` leaves a
+draft. The shot shows the draft text and the
 cursor that this interaction sequence produces:
 
 ![`form` text editing](/shots/form-editing.svg)
@@ -741,11 +776,11 @@ ui.form({
 })
 ```
 
-The first Enter on a select opens an adjustment state shown as
-`‹ value ›`. Left/Right changes only the renderer-local candidate; another
-Enter emits one confirmed `value-change`. Escape or Tab cancels and
-restores the value captured on entry. Up/Down changes form fields only outside
-the adjustment state.
+Enter opens a shared Choice picker for select fields. Left/Right moves semantic
+focus, Enter accepts a single option, and Space toggles a multiselect option.
+Escape discards the picker and stays on the field. Tab also discards an
+unconfirmed picker adjustment, then moves to the next semantic group. The
+picker draft survives renderer rebuilds.
 
 In the form below, pressing Enter on the Theme field opens the adjustment
 state and one Right step moves the candidate to Light — `‹ Light ›` is the
@@ -753,7 +788,7 @@ adjustment presentation:
 
 ![`form` select adjustment](/shots/form-select.svg)
 
-*Adjustment state: `‹ Light ›` is only a renderer-local candidate until Enter confirms one `value-change` (width 64).*
+*Adjustment state: `‹ Light ›` is the shared picker's semantic focus; Enter writes it into the field draft (width 64).*
 
 ```ts
 ui.form({
@@ -770,7 +805,9 @@ ui.form({
 ```
 
 `error` shows a validation message under the field; disabled fields do not
-enter focus navigation but remain present in submitted values:
+enter focus navigation but remain in the submitted form. Required, length,
+numeric, and selection constraints run before an action starts. `origin` and
+`resetValue` produce shared override/reset tools:
 
 ![`form` error and disabled states](/shots/form-validation.svg)
 
@@ -787,19 +824,27 @@ ui.form({
 })
 ```
 
-`submitActionId` adds a submit control. The current TUI uses the string as the
-button label, and activation emits:
+`submitActionId` adds a submit control. An action's declared `submit` addresses
+collect one or more forms across pages and lock that action boundary:
 
 ```ts
 {
   kind: 'submit',
   controlId: form.id,
-  values: { [field.id]: currentDraftValue },
+  pagePath: [],
+  submission: {
+    actionId: 'save',
+    draftRevision: number,
+    source: [{ resourceId: 'settings', revision: 3 }],
+    forms: [{ pagePath: [], formId: form.id, draftRevision: number, fields: [
+      { id: 'name', change: 'set', value: 'Ada' },
+    ] }],
+  },
 }
 ```
 
-`cancelActionId` adds a cancel control and emits
-`{ kind: 'activate', controlId: cancelActionId }`.
+`cancelActionId` adds a shared close control. A dirty form first opens the
+default-No discard decision.
 
 ### `actions`
 
@@ -815,16 +860,24 @@ ui.actions({
     label: string
     intent?: 'primary' | 'secondary' | 'danger'
     disabled?: boolean
+    disabledReason?: string
     busy?: boolean
     confirm?: string
+    submit?: readonly MayflyFormAddress[]
+    read?: readonly MayflyFormAddress[]
+    selections?: readonly MayflySelectionAddress[]
+    defaultFocus?: boolean
+    dismiss?: boolean
+    navigate?: MayflyPagePath
   }[]
 })
 ```
 
-Activating an enabled item emits `{ kind: 'activate', controlId: item.id }`.
+Activating an enabled item sends `activate` with `actionId`, `controlId`, and
+`pagePath` to `onEvent.action`.
 Disabled and busy items cannot activate; busy also communicates in-progress
-presentation. An action with `confirm` requires a second confirmation in the
-current focus generation, and Escape first clears pending confirmation.
+presentation. An action with `confirm` requires explicit Yes in a shared
+default-No decision; Escape or No returns to the original surface.
 `intent` communicates semantic priority; the theme owns its appearance. The
 outer `actions.id` identifies the group, while an event's `controlId` is the
 activated item's `id`. Both screenshots render exactly this node:
@@ -840,13 +893,12 @@ ui.actions({
 })
 ```
 
-After the first Enter on the danger item, the pending-confirmation state
-appends the confirm prompt after the label in place (`label ? confirm`); only
-a second Enter emits `activate`:
+Enter on the danger item opens the shared Yes/No decision with No focused.
+Only Yes emits the original action:
 
 ![`actions` pending confirmation](/shots/actions-confirm.svg)
 
-*Pending confirmation: the prompt `Discard all changes?` shows in place, Escape cancels (width 64).*
+*Pending confirmation: `Discard all changes?` is a shared default-No decision (width 64).*
 
 `busy` marks an in-progress action and `disabled` an unavailable one; neither
 can activate:
@@ -878,9 +930,10 @@ should not repeat generic keyboard teaching in a surface footer:
 - Directional content movement does not wrap and disabled items cannot receive
   focus. Single lists activate with Enter; multiple lists toggle with Space and
   confirm with Enter; actions accept Enter or Space.
-- Valid text/select editing confirms with Enter or Tab, while invalid input
-  stays active. Escape climbs editing → content → nested tabs → outer tabs →
-  close, one layer at a time.
+- Text/select editing confirms with Enter, while invalid input stays active.
+  Tab retains text drafts but discards an unconfirmed select adjustment before
+  moving to the next semantic group. Escape climbs editing → content → nested
+  tabs → outer tabs → close, one layer at a time.
 - A pending action confirmation changes the hint to `Enter confirm · Esc
   cancel`. Read-only scroll regions are focusable and support arrows, Page,
   Home, and End.
@@ -1022,39 +1075,45 @@ the assigned width. The screenshot above renders exactly this node:
 ui.divider()
 ```
 
-## Events and rerendering
+## Events and snapshot updates
 
 Panes, overlays, and editor extensions place the handler on the definition,
 not on an individual node:
 
 ```ts
-onEvent: (
-  event: MayflyUiEvent,
-  context: MayflyUiEventContext,
-) => void | Promise<void>
+onEvent: {
+  observe(event: MayflyUiObservationEvent, context: MayflyUiEventContext) {
+    return { kind: 'completed' }
+  },
+  async action(event: MayflyUiActionEvent, context: MayflyUiEventContext) {
+    return { kind: 'completed' }
+  },
+}
 ```
 
-| Event | Source | Payload |
+| Channel | Events | Purpose |
 | --- | --- | --- |
-| `activate` | Action, cancel, loader cancel | `controlId` |
-| `selection-change` | List | `controlId`, `value` |
-| `value-change` | Form field | `controlId`, `value` |
-| `submit` | Form submit | Form `controlId`, complete `values` |
-| `tab-change` | Tabs | `controlId`, `tabId` |
-| `dismiss` | A dismissible surface such as overlay Escape | No control id |
+| `observe` | `value-change`, `selection-toggle`, `tab-change` | Editing facts and async validation; cannot publish, navigate, or dismiss |
+| `action` | `activate`, `selection-accept`, `submit`, `dismiss` | Native effects and explicit settlement |
 
-`context` carries the current `surfaceId`, `revision`, and `AbortSignal`.
-`value-change`, `selection-change`, and
-`tab-change` are latest-wins per control id. `activate`, `submit`, and
-`dismiss` are FIFO per surface. Mayfly automatically rerenders after handler
-success. Failure, abort, timeout, an old generation, or a result after unload
-cannot commit.
+`context` carries `surfaceId`, current source stamps, revision, a unique
+`operationId`, `AbortSignal`, and `report(feedback)`. Observations are
+latest-wins per field; each action boundary is single-flight. Replacement,
+unload, or abort revokes late handlers, progress reports, and publishers.
 
-Call the pane/overlay handle's `set(node)` or the editor-extension registration's
-`set(decoration)` when an external projection, service subscription, or timer
-changes state. Inside `onEvent()`, publish with
-`{ eventRevision: context.revision }`; unmarked external updates abort older
-event work while the matching event revision remains current.
+Actions return a structured reply. `accepted` carries the authoritative node
+and source; `invalid` carries field errors; `conflict` retains drafts against a
+new baseline; `failed` may include partially accepted field addresses;
+`completed` and `cancelled` publish no snapshot. Replies may also carry
+`feedback`, semantic `navigate`, and successful `dismiss`. Core admits the
+reply and then invokes its one-use publisher, so the handler does not call
+`set()` to acknowledge its own action.
+
+When an external projection, service subscription, or timer changes domain
+state, call `set(node, { reason: 'data', source })` on a pane/overlay handle or
+the corresponding editor-extension `set()`. A new instance or scope uses
+`reason: 'replace'`. Callers cannot publish acknowledgements, and there is no
+`eventRevision` compatibility argument.
 
 ## Surface compatibility matrix
 

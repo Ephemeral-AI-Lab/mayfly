@@ -118,9 +118,6 @@ export type {
   MayflySelectList,
   MayflySelectListOptions,
   MayflySemanticColors,
-  MayflySettingItem,
-  MayflySettingsList,
-  MayflySettingsListOptions,
   MayflyTerminalInfo,
   MayflyTheme,
   MayflyTopRuleOptions,
@@ -151,13 +148,17 @@ export async function apply(ctx: Context): Promise<void> {
   // declaration — which a self-provided service cannot carry. Registration
   // is still effect-bound, so unloading reverts it.
   const keymap = new MayflyKeymapService(ctx)
-  // The global key dispatcher consumes handler-carrying actions before
-  // focus routing; wiring it here because the runtime predates the keymap.
-  ctx.effect(() =>
-    runtime.tui.addInputListener(data => (keymap.dispatch(data) ? { consume: true } : undefined)),
-  )
   ctx.plugin(MayflyTerminalInfoService, { background: runtime.background, kittyKeyboard: runtime.kittyKeyboard })
   ctx.plugin(MayflyScreenService, runtime)
+  ctx.plugin({
+    name: 'mayfly-global-key-dispatcher',
+    inject: ['mayflyScreen'],
+    apply(owner: Context) {
+      owner.effect(() => runtime.tui.addInputListener(data =>
+        owner.mayflyScreen.capturesInput === true || !keymap.dispatch(data) ? undefined : { consume: true }),
+      )
+    },
+  })
   ctx.plugin({
     name: 'mayfly-components',
     inject: ['mayflyTheme'],
@@ -167,7 +168,7 @@ export async function apply(ctx: Context): Promise<void> {
   })
   ctx.plugin({
     name: 'mayfly-surface-renderer',
-    inject: ['mayflyPanes', 'mayflyOverlays', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
+    inject: ['mayflyUiInteraction', 'mayflyScreen', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
     apply(subCtx: Context) {
       mountMayflySurfaceRenderer(subCtx as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime, contextHintTranslator(ctx))
     },

@@ -17,7 +17,7 @@
 
 Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 （`dsh`）的交互式终端界面。它是叠加在 `dsh-base` 上的树外 Cordis
-bundle，针对 Harness `0.1.2-alpha.5` 构建。Mayfly `0.1.0-alpha.3`
+bundle，针对 Harness `0.1.2-alpha.5` 构建。Mayfly `0.1.0-alpha.4`
 刻意与 dsh Web 使用同一种插件模型：插件是普通 Cordis sibling，直接消费
 dsh 原生服务。
 
@@ -53,6 +53,12 @@ Mayfly 不再有专用插件 manifest、能力协商、适配 facade、私有插
 插件始终只返回普通的 renderer-neutral 节点。Mayfly 会自动窗口化大型 `list`
 节点，并延迟隐藏的响应式分支；插件无需管理 viewport range、overscan、renderer
 cache 或 scroll controller。数据库与网络取数仍由插件负责。
+
+交互式 pane 与 overlay 声明 `onEvent: { observe, action }`。Mayfly frontend owner
+在 renderer reload 期间保留表单草稿、选择、tabs、文档锚点、确认、operation 状态
+与反馈。插件在 `action` 中执行原生读写，再返回 `accepted`、`invalid`、`conflict`
+或 `failed` 等结构化结算；外部数据刷新使用
+`set(node, { reason: 'data', source })`。
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'

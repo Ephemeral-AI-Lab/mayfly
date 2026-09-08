@@ -20,7 +20,6 @@ import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()
 import { updaterInternals, type SpawnOutcome } from '../../src/interaction/updater/io.ts'
-import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import { registerPluginCommand } from '../../src/interaction/plugin-commands.ts'
 import { currentProfileInstallBlock, defaultInstallSource, entryInstallStates, readInstalledPlugins, rowSpec, installEntry, uninstallEntry, entrySupportsSource, MAYFLY_PACKAGE } from '../../src/interaction/plugin-market/installer.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
@@ -28,6 +27,9 @@ import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import type { MarketEntry } from '../../src/interaction/plugin-market/types.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { renderRequest } from './request-fixture.ts'
 
 /** The real seams, restored after every test. */
 const REAL = { ...updaterInternals }
@@ -153,11 +155,18 @@ async function mountWorld(options: {
 
   const mayfly = options.withScreen === false ? undefined : fakeMayflyContext()
   const ctx = mayfly?.ctx ?? new Context()
+  const notices: string[] = []
   // The fakes mount the interaction state with the screen; a bare context
   // still needs one for the settings thunk.
   if (mayfly === undefined) new InteractionStateService(ctx, settingsPlugin.DEFAULT_SETTINGS)
   // The Service constructor registers itself; the fakes ship no locale.
   if (mayfly !== undefined && options.withLocale !== false) new MayflyLocaleService(ctx, { systemLocale: 'en' })
+  if (mayfly !== undefined) {
+    const interaction = new UiInteractionService(ctx)
+    interaction.subscribe(() => { notices.splice(0, notices.length, ...interaction.notificationSnapshot().map(item => item.message)) })
+    mountUiRegistryObservers(ctx)
+    await Promise.resolve()
+  }
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('plugin-spec'))
@@ -166,9 +175,30 @@ async function mountWorld(options: {
   // the unload gates (the agents-command spec's discipline).
   const fiber = await ctx.plugin({ name: 'plugin-market-spec', inject: ['commands'], apply: c => { registerPluginCommand(c) } })
   const dispose = (): void => { void fiber.dispose() }
-  const notices: string[] = []
-  if (mayfly !== undefined) {
-    setSharedEditor(ctx, { submitPrompt: () => {}, notice: text => notices.push(text) } as never)
+  const drivers = new WeakMap<UiSurfaceModel, BrowserPanel>()
+  const surface = (prefix = 'mayfly.plugin-market'): UiSurfaceModel | undefined => {
+    const entry = mayfly === undefined ? undefined : ctx.mayflyOverlays.list().findLast(entry => entry.id.startsWith(prefix))
+    return entry === undefined ? undefined : ctx.mayflyUiInteraction.get('overlay', entry.id)
+  }
+  const panel = (): BrowserPanel | undefined => {
+    const entry = mayfly === undefined ? undefined : ctx.mayflyOverlays.list().at(-1)
+    if (entry === undefined) return undefined
+    const model = ctx.mayflyUiInteraction.get('overlay', entry.id)
+    if (model === undefined) return undefined
+    const existing = drivers.get(model)
+    if (existing !== undefined) return existing
+    let compiled: ReturnType<typeof renderRequest> | undefined
+    const sync = (width = 80) => {
+      if (compiled === undefined || compiled.runtime.interaction?.revision !== model.revision) compiled = renderRequest(model, { columns: width, rows: 24 }, compiled?.runtime)
+      return compiled
+    }
+    const driver: BrowserPanel = {
+      handleInput: data => sync().input(data),
+      currentNode: () => model.node,
+      render: width => sync(width).component.render(width),
+    }
+    drivers.set(model, driver)
+    return driver
   }
   return {
     ctx,
@@ -179,11 +209,12 @@ async function mountWorld(options: {
     writes,
     notices,
     dispose,
+    surface,
     run: async (line: string) => {
       const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
       return execution?.result
     },
-    overlay: (): unknown => (mayfly?.screen as FakeScreen | undefined)?.overlays.at(-1)?.component,
+    overlay: (): unknown => panel(),
   }
 }
 
@@ -191,17 +222,38 @@ interface BrowserPanel {
   handleInput(data: string): void
   currentNode(): unknown
   render(width: number): string[]
-  onEvent(event: { kind: string, controlId: string, tabId?: string, value?: unknown }): void
 }
 
-/** Select one browser tab through the canonical tab event. */
-function selectBrowserTab(panel: BrowserPanel, tabId: 'installed' | 'not-installed'): void {
-  panel.onEvent({ kind: 'tab-change', controlId: 'frontend-panel-groups', tabId })
+/** Address the controls inside the active marketplace tab. */
+function marketPage(model: UiSurfaceModel) {
+  return [{ controlId: 'plugin-market-tabs', itemId: model.activeTab({ pagePath: [], controlId: 'plugin-market-tabs' }) ?? 'not-installed' }]
 }
 
-/** Activate one list row through the canonical selection event. */
-function activateBrowserRow(panel: BrowserPanel, id: string): void {
-  panel.onEvent({ kind: 'selection-change', controlId: 'frontend-panel-list', value: id })
+/** Select one browser tab through shared tab state. */
+function selectBrowserTab(model: UiSurfaceModel, tabId: 'installed' | 'not-installed'): void {
+  model.activateTab({ pagePath: [], controlId: 'plugin-market-tabs' }, tabId)
+}
+
+/** Move the shared browse focus without turning it into mutable domain selection. */
+function focusBrowserRow(model: UiSurfaceModel, id: string): void {
+  const pagePath = marketPage(model)
+  model.updateChoice({ pagePath, controlId: `plugins-${pagePath[0]!.itemId}` }, { kind: 'focus', id })
+}
+
+/** Dispatch the same semantic event produced by Enter on a browse row. */
+function activateBrowserRow(model: UiSurfaceModel, id: string): void {
+  const pagePath = marketPage(model)
+  model.emit({ kind: 'selection-accept', pagePath, controlId: `plugins-${pagePath[0]!.itemId}`, selectedIds: [id] })
+}
+
+/** Invoke one declared action in the active marketplace tab. */
+function invokeMarketAction(model: UiSurfaceModel, actionId: 'details' | 'install' | 'remove' | 'refresh'): void {
+  model.invoke(actionId, actionId === 'refresh' ? [] : marketPage(model))
+}
+
+/** Current structured feedback text for assertions. */
+function marketFeedback(model: UiSurfaceModel): string {
+  return model.feedbackSnapshot().map(item => item.message).join('\n')
 }
 
 /** Read the canonical tabs node from a plugin browser. */
@@ -544,6 +596,24 @@ describe('installer unit seams', () => {
 })
 
 describe('/plugin browse panel', () => {
+  it('uses shared tab/list selection state for the first install action', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    expect(await world.run('/plugin')).toEqual({ kind: 'success' })
+    const model = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-market')!
+    const pagePath = [{ controlId: 'plugin-market-tabs', itemId: 'not-installed' }]
+    const list = model.choice({ pagePath, controlId: 'plugins-not-installed' })
+    expect(list?.focusedId).toBe('loop')
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'install', pagePath, verb: 'activate', enabled: true }),
+    ]))
+    model.invoke('install', pagePath)
+    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(true))
+    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'success', message: expect.stringContaining('installed') }),
+    ]))
+    world.dispose()
+  })
+
   it('loads the catalog and opens the grouped browse panel', async () => {
     const world = await mountWorld({ index: [entry()] })
     const result = await world.run('/plugin')
@@ -559,16 +629,15 @@ describe('/plugin browse panel', () => {
       { id: 'not-installed', count: 1 },
     ] })
     expect(JSON.stringify(node)).toContain('Install')
-    expect(controller.render(80).join('\n')).toContain('i install · u remove · r refresh')
-    expect(controller.render(36).join('\n')).toContain('i/u/r')
+    expect(controller.render(80).join('\n')).toContain('Details  Install  Remove')
+    expect(controller.render(36).join('\n')).toContain('Details')
     world.dispose()
   })
 
   it('shows the offline document when nothing can be fetched', async () => {
     const world = await mountWorld({ offline: true })
     await world.run('/plugin')
-    const node = (world.overlay() as { currentNode(): unknown }).currentNode()
-    expect(JSON.stringify(node)).toContain('offline')
+    await vi.waitFor(() => expect(JSON.stringify(world.surface()?.node)).toContain('offline'))
     world.dispose()
   })
 
@@ -603,10 +672,10 @@ describe('/plugin argument paths', () => {
     expect(detail).toContain('dedicated non-Mayfly profile')
     expect(detail).toContain('dsh plugin --profile <automation-name> add @deepseek-ai/dsh-acp')
     await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
-    expect(JSON.stringify(panel.currentNode())).toContain('Automation')
-    panel.handleInput('i')
-    expect(JSON.stringify(panel.currentNode())).toContain('automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile')
+    const model = world.surface()!
+    expect(JSON.stringify(model.node)).toContain('Automation')
+    invokeMarketAction(model, 'install')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile'))
     world.dispose()
   })
 
@@ -792,7 +861,7 @@ describe('/plugin argument paths', () => {
   })
 })
 
-describe('/plugin key paths', () => {
+describe('/plugin surface actions', () => {
   it('shows compatibility rollback progress and failure in the panel', async () => {
     let releaseRollback: (() => void) | undefined
     const rollbackGate = new Promise<void>(resolve => { releaseRollback = resolve })
@@ -804,12 +873,12 @@ describe('/plugin key paths', () => {
       return ok()
     })
     await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
-    panel.handleInput('i')
-    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('rolling back "Loop"...'))
+    const model = world.surface()!
+    invokeMarketAction(model, 'install')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('rolling back "Loop"...'))
     releaseRollback?.()
-    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('changes rolled back'))
-    expect(browserTabs(panel)).toMatchObject({ activeId: 'not-installed', items: [
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('changes rolled back'))
+    expect(browserTabs(world.overlay() as BrowserPanel)).toMatchObject({ activeId: 'not-installed', items: [
       { id: 'installed', count: 0 }, { id: 'not-installed', count: 1 },
     ] })
     world.dispose()
@@ -841,45 +910,95 @@ describe('/plugin key paths', () => {
       return ok()
     })
     await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
-    expect(JSON.stringify(panel.currentNode())).toContain('Install')
-    panel.onEvent({ kind: 'activate', controlId: 'frontend-panel-secondary' })
-    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('installing "Loop"...'))
+    const model = world.surface()!
+    expect(JSON.stringify(model.node)).toContain('Install')
+    invokeMarketAction(model, 'install')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installing "Loop"...'))
     releaseInstall?.()
-    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('checking "Loop" compatibility...'))
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('checking "Loop" compatibility...'))
     releaseVerify?.()
-    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('installed; restart Mayfly'))
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installed; restart Mayfly'))
+    const panel = world.overlay() as BrowserPanel
     expect(browserTabs(panel)).toMatchObject({ items: [{ id: 'installed', count: 1 }, { id: 'not-installed', count: 0 }] })
-    selectBrowserTab(panel, 'installed')
-    expect(JSON.stringify(panel.currentNode())).toContain('Uninstall')
-    panel.onEvent({ kind: 'activate', controlId: 'frontend-panel-secondary' })
-    await vi.waitFor(() => expect(panel.render(100).join('\n')).toContain('removed; restart Mayfly'))
+    selectBrowserTab(model, 'installed')
+    expect(model.activeTab({ pagePath: [], controlId: 'plugin-market-tabs' })).toBe('installed')
+    invokeMarketAction(model, 'remove')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('removed; restart Mayfly'))
     expect(browserTabs(panel)).toMatchObject({ items: [{ id: 'installed', count: 0 }, { id: 'not-installed', count: 1 }] })
     world.dispose()
   })
 
-  it('i installs the selected row and u removes it, r refreshes', async () => {
+  it('removes the focused installed row through its declared action', async () => {
     const world = await mountWorld({
       index: [entry()],
       profileDependencies: { 'dsh-loop': '0.1.4' },
       installedVersions: { 'dsh-loop': '0.1.4' },
     })
     await world.run('/plugin list')
-    const panel = world.overlay() as BrowserPanel
-    panel.handleInput('u')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true)
+    invokeMarketAction(world.surface()!, 'remove')
+    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
     world.dispose()
   })
 
-  it('u on an uninstalled entry reports inside the panel', async () => {
+  it('disables removal for the not-installed group with a reason', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
-    panel.handleInput('u')
-    await new Promise(resolve => setTimeout(resolve, 5))
+    const model = world.surface()!
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'remove', pagePath: marketPage(model), enabled: false, disabledReason: 'Not installed in this profile' }),
+    ]))
+    invokeMarketAction(model, 'remove')
     expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
-    expect(panel.render(100).join('\n')).toContain('"Loop" is not installed in this profile')
+    world.dispose()
+  })
+
+  it('defends forged unavailable operations and repeated detail actions', async () => {
+    const mixed = entry({
+      id: 'mixed', displayName: 'Mixed',
+      install: { rows: [{ name: 'mixed-a', npm: { spec: 'mixed-a' } }, { name: 'mixed-b', github: { repo: 'a/b', ref: 'r' } }] },
+    })
+    const web = entry({ id: 'web', displayName: 'Web', surfaces: { web: { clientModule: true } } })
+    const world = await mountWorld({ index: [entry(), mixed, web] })
+    await world.run('/plugin')
+    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
+    const reports: string[] = []
+    const context = { surfaceId: root.id, operationId: 'direct', source: root.source, revision: root.revision, signal: new AbortController().signal, report: (feedback: { message: string }) => reports.push(feedback.message) }
+    const operation = (actionId: 'install' | 'remove', id: string) => ({ kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId, inputs: { forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: [id] }] } })
+    expect(await root.definition.onEvent!.action!(operation('remove', 'loop'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('not installed') })
+    expect(await root.definition.onEvent!.action!(operation('install', 'mixed'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('no common install source') })
+    expect(await root.definition.onEvent!.action!(operation('install', 'web'), context)).toMatchObject({ kind: 'accepted' })
+    expect(reports).toContain('web-only plugin: it contributes nothing in this terminal frontend')
+
+    const details = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'details', inputs: { forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
+    await root.definition.onEvent!.action!(details, context)
+    const detail = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.loop')!
+    await root.definition.onEvent!.action!(details, context)
+    expect(world.ctx.mayflyOverlays.list().find(item => item.id === detail.id)!.focusRevision).toBeGreaterThan(detail.focusRevision)
+    expect(await root.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'actions', actionId: 'details', inputs: { forms: [], source: [], selections: [] } }, context)).toEqual({ kind: 'completed' })
+    world.dispose()
+  })
+
+  it('contains detail creation after the browse parent closes', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await world.run('/plugin')
+    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
+    const context = { surfaceId: root.id, operationId: 'detail', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
+    const pending = root.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugins-not-installed', selectedIds: ['loop'] }, context)
+    world.ctx.mayflyOverlays.close(root.id)
+    await pending
+    await new Promise(resolve => setImmediate(resolve))
+    expect(world.ctx.mayflyOverlays.list()).toEqual([])
+    world.dispose()
+  })
+
+  it('contains a detail closed by an initial-publication listener', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await world.run('/plugin')
+    world.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.plugin-detail.loop') world.ctx.mayflyOverlays.close(delta.entry.id) })
+    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
+    const context = { surfaceId: root.id, operationId: 'detail', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
+    await root.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugins-not-installed', selectedIds: ['loop'] }, context)
+    expect(world.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.plugin-market'])
     world.dispose()
   })
 
@@ -901,11 +1020,12 @@ describe('/plugin key paths', () => {
     await world.run('/plugin info mixed')
     expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('add <mixed>')
     await world.run('/plugin list')
-    const panel = world.overlay() as BrowserPanel
-    panel.handleInput('i')
-    expect(panel.render(100).join('\n')).toContain('"Mixed" has no common install source for every package')
-    panel.handleInput('u')
-    await new Promise(resolve => setTimeout(resolve, 5))
+    const model = world.surface()!
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'install', pagePath: marketPage(model), enabled: false, disabledReason: 'Already installed in this profile' }),
+    ]))
+    invokeMarketAction(model, 'remove')
+    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
     expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true)
     expect(await world.run('/plugin uninstall mixed')).toEqual({ kind: 'success' })
     world.dispose()
@@ -925,12 +1045,13 @@ describe('/plugin key paths', () => {
     const panel = world.overlay() as BrowserPanel
     const json = JSON.stringify(panel.currentNode())
     expect(json).toContain('partial')
-    expect(json.match(/Multi Row/gu)).toHaveLength(1)
-    expect(json).toContain('Uninstall')
+    const model = world.surface()!
+    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-installed' })?.definition.items).toHaveLength(1)
+    expect(json).toContain('Remove')
     expect(browserTabs(panel)).toMatchObject({ activeId: 'installed', items: [
       { id: 'installed', count: 1 }, { id: 'not-installed', count: 0 },
     ] })
-    panel.handleInput('u')
+    invokeMarketAction(model, 'remove')
     await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
     expect(world.spawns.find(spawn => spawn.args.includes('remove'))?.args)
       .toEqual(['plugin', '--profile', 'mayfly', 'remove', 'multi-a'])
@@ -964,20 +1085,18 @@ describe('/plugin coverage corners', () => {
     })
     const world = await mountWorld({ index: [entry()] })
     const realSpawn = updaterInternals.spawnOnce
+    let enteredOperation = false
     updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
       if (cmd === 'dsh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
-      if (args[0] === 'plugin') await gate
+      if (args[0] === 'plugin') { enteredOperation = true; await gate }
       return realSpawn(cmd, args)
     })
-    await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
-    panel.handleInput('i')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    panel.handleInput('I')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    expect(JSON.stringify(panel.currentNode())).toContain('a plugin operation is already running')
+    const first = world.run('/plugin install loop')
+    await vi.waitFor(() => expect(enteredOperation).toBe(true))
+    const second = world.run('/plugin install loop')
+    await vi.waitFor(() => expect(world.notices).toContain('a plugin operation is already running'))
     release?.()
-    await new Promise(resolve => setTimeout(resolve, 10))
+    await Promise.all([first, second])
     expect(world.spawns.filter(spawn => spawn.args.includes('add'))).toHaveLength(1)
     world.dispose()
   })
@@ -1005,58 +1124,58 @@ describe('/plugin coverage corners', () => {
   it('Enter opens the detail overlay above the browse panel; Escape pops it', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
-    expect(world.screen.overlays).toHaveLength(1)
-    await vi.waitFor(() => {
-      expect(JSON.stringify(panel.currentNode())).toContain('Loop')
-    })
+    const model = world.surface()!
+    expect(world.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['mayfly.plugin-market'])
+    expect(JSON.stringify(model.node)).toContain('Loop')
     // The canonical list emits the same selection action Enter dispatches.
-    activateBrowserRow(panel, 'loop')
-    await vi.waitFor(() => {
-      expect(world.screen.overlays).toHaveLength(2)
-    })
-    const detail = world.screen.overlays.at(-1)!.component as { handleInput(data: string): void }
-    detail.handleInput(KEY.escape)
-    expect(world.screen.overlays.at(-1)!.hidden).toBe(true)
-    expect(world.screen.overlays[0]!.hidden).toBe(false)
+    activateBrowserRow(model, 'loop')
+    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['mayfly.plugin-market', 'mayfly.plugin-detail.loop']))
+    expect(world.ctx.mayflyOverlays.close('mayfly.plugin-detail.loop')).toBe(true)
+    expect(world.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['mayfly.plugin-market'])
+    invokeMarketAction(model, 'details')
+    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list()).toHaveLength(2))
+    expect(world.ctx.mayflyOverlays.close('mayfly.plugin-market')).toBe(true)
+    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list()).toEqual([]))
     world.dispose()
   })
 
-  it('r refreshes through the panel, hotkeys are case-insensitive, and other keys pass through', async () => {
+  it('refreshes through its action and treats printable action letters as search text', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
-    panel.handleInput('R')
-    await new Promise(resolve => setTimeout(resolve, 10))
+    const model = world.surface()!
+    invokeMarketAction(model, 'refresh')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refreshed 1 entries'))
     expect(updaterInternals.fetchText).toHaveBeenCalled()
-    panel.handleInput('U')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    expect(panel.render(100).join('\n')).toContain('"Loop" is not installed in this profile')
-    // Any other printable key starts the built-in type-to-filter instead.
-    panel.handleInput('x')
+    const before = world.spawns.length
+    const panel = world.overlay() as BrowserPanel
+    panel.handleInput(KEY.tab)
+    for (const key of 'iur') panel.handleInput(key)
+    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('iur')
+    expect(world.spawns).toHaveLength(before)
     world.dispose()
   })
 
-  it('i with no selected row is a no-op', async () => {
+  it('does not run an action when the active browse group has no focused row', async () => {
     const world = await mountWorld({ index: [] })
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void }
-    panel.handleInput('i')
+    invokeMarketAction(world.surface()!, 'install')
     await new Promise(resolve => setTimeout(resolve, 5))
     expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh' && spawn.args[0] === 'plugin')).toHaveLength(0)
     world.dispose()
   })
 
-  it('installs through the i hotkey with the web-only warning for web-only entries', async () => {
+  it('reports the web-only warning and installs through the declared action', async () => {
     const webOnly = entry({ id: 'panel', displayName: 'Panel', surfaces: { web: { clientModule: true } } })
     const world = await mountWorld({ index: [webOnly] })
     await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
-    panel.handleInput('i')
-    expect(JSON.stringify(panel.currentNode())).toContain('web-only plugin: it contributes nothing in this terminal frontend')
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(JSON.stringify(panel.currentNode())).toContain('installed; restart Mayfly and start a new session to apply')
+    const model = world.surface()!
+    const observed: string[] = []
+    const off = model.subscribe(() => { observed.push(marketFeedback(model)) })
+    invokeMarketAction(model, 'install')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installed; restart Mayfly and start a new session to apply'))
+    expect(observed.some(text => text.includes('web-only plugin: it contributes nothing in this terminal frontend'))).toBe(true)
     expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(true)
+    off()
     world.dispose()
   })
 
@@ -1121,12 +1240,13 @@ describe('/plugin lifecycle and locale', () => {
       return calls === 1 ? first : indexJson([entry({ id: 'newer', displayName: 'Newer' })])
     })
     await world.run('/plugin')
-    const panel = world.overlay() as { handleInput(data: string): void, currentNode(): unknown }
-    panel.handleInput('r')
-    await new Promise(resolve => setTimeout(resolve, 5))
+    const model = world.surface()!
+    const refresh = world.run('/plugin refresh')
+    await vi.waitFor(() => expect(calls).toBe(2))
     releaseFirst?.(indexJson([entry({ id: 'older', displayName: 'Older' })]))
-    await new Promise(resolve => setTimeout(resolve, 5))
-    const json = JSON.stringify(panel.currentNode())
+    await refresh
+    await vi.waitFor(() => expect(JSON.stringify(model.node)).toContain('Newer'))
+    const json = JSON.stringify(model.node)
     expect(json).toContain('Newer')
     expect(json).not.toContain('Older')
     world.dispose()
@@ -1141,11 +1261,13 @@ describe('/plugin lifecycle and locale', () => {
     const realFetch = updaterInternals.fetchText
     updaterInternals.fetchText = vi.fn(async (url: string) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url)))
     await world.run('/plugin')
+    const model = world.surface()!
+    expect(JSON.stringify(model.node)).toContain('loading catalog...')
     await world.dispose()
     release?.(indexJson([entry()]))
     await new Promise(resolve => setTimeout(resolve, 10))
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('loading catalog...')
+    expect(model.disposed).toBe(true)
+    expect(world.ctx.mayflyOverlays.list()).toEqual([])
     world.dispose()
   })
 
@@ -1206,33 +1328,30 @@ describe('/plugin lifecycle and locale', () => {
     })
     const world = await mountWorld({ index: [entry(), tui] })
     await world.run('/plugin')
-    const browse = world.overlay() as BrowserPanel
-    let json = JSON.stringify(browse.currentNode())
+    const browse = world.surface()!
+    let json = JSON.stringify(browse.node)
     expect(json).toContain('Tui Pane')
     expect(json).toContain('TUI+Server')
     expect(json).toContain('unstable')
     // Enter → detail above the browse panel; both observers re-render on a
     // preference switch, and the zh description takes over.
-    activateBrowserRow(browse, 'loop')
-    await vi.waitFor(() => {
-      expect(world.screen.overlays).toHaveLength(2)
-    })
-    // Info panels are construction-frozen (the /mcp D40 boundary): a locale
-    // switch re-renders the panels below but a fresh info is the zh one.
+    focusBrowserRow(browse, 'loop')
+    invokeMarketAction(browse, 'details')
+    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.plugin-detail.loop'))
     world.ctx.mayflyLocale.setPreference('zh')
     await new Promise(resolve => setTimeout(resolve, 5))
-    const detail = world.screen.overlays.at(-1)!.component as { handleInput(data: string): void }
-    detail.handleInput(KEY.escape)
+    expect(JSON.stringify(world.surface('mayfly.plugin-detail.loop')?.node)).toContain('循环提示与闹钟。')
+    world.ctx.mayflyOverlays.close('mayfly.plugin-detail.loop')
     // The bare info path mounts its own locale observer.
     await world.run('/plugin info loop')
-    const info = world.overlay() as { handleInput(data: string): void, currentNode(): unknown }
-    expect(JSON.stringify(info.currentNode())).toContain('循环提示与闹钟。')
+    const info = world.surface('mayfly.plugin-detail.loop')!
+    expect(JSON.stringify(info.node)).toContain('循环提示与闹钟。')
     world.ctx.mayflyLocale.setPreference('en')
     await new Promise(resolve => setTimeout(resolve, 5))
-    info.handleInput(KEY.escape)
-    // Escape closes the browse panel.
-    browse.handleInput(KEY.escape)
-    expect(world.screen.overlays[0]!.hidden).toBe(true)
+    expect(JSON.stringify(info.node)).toContain('Recurring prompts and alarms.')
+    world.ctx.mayflyOverlays.close('mayfly.plugin-detail.loop')
+    world.ctx.mayflyOverlays.close('mayfly.plugin-market')
+    expect(world.ctx.mayflyOverlays.list()).toEqual([])
     world.dispose()
   })
 
@@ -1246,12 +1365,11 @@ describe('/plugin lifecycle and locale', () => {
     expect(await bare.run('/plugin info loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('not mounted') })
     bare.dispose()
     await world.run('/plugin list')
-    const panel = world.overlay() as BrowserPanel
-    const json = JSON.stringify(panel.currentNode())
+    const model = world.surface()!
+    const json = JSON.stringify(model.node)
     expect(json).not.toContain('stray-pkg')
     expect(json).toContain('no plugins installed')
-    panel.handleInput('i')
-    await new Promise(resolve => setTimeout(resolve, 5))
+    invokeMarketAction(model, 'install')
     expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toHaveLength(0)
     world.dispose()
   })
@@ -1271,7 +1389,7 @@ describe('/plugin lifecycle and locale', () => {
 })
 
 describe('/plugin final coverage corners', () => {
-  it('covers the remaining unload gates: info load, findDshCommand, the i-key invalidate', async () => {
+  it('covers the remaining unload gates: info load, findDshCommand, and surface action settlement', async () => {
     // info argument path parking on the catalog load.
     let releaseFetch: ((value: string) => void) | undefined
     const fetchGate = new Promise<string>(resolve => {
@@ -1303,8 +1421,8 @@ describe('/plugin final coverage corners', () => {
     releaseSh?.()
     await shExecution
 
-    // The i-key path's post-operate invalidate also gates on the unload.
-    const keyWorld = await mountWorld({ index: [entry()] })
+    // The surface action's post-operate settlement also gates on the unload.
+    const actionWorld = await mountWorld({ index: [entry()] })
     let releaseOp: (() => void) | undefined
     const opGate = new Promise<void>(resolve => {
       releaseOp = resolve
@@ -1314,28 +1432,26 @@ describe('/plugin final coverage corners', () => {
       if (args[0] === 'plugin') await opGate
       return realSpawn(cmd, args)
     })
-    await keyWorld.run('/plugin')
-    const panel = keyWorld.overlay() as { handleInput(data: string): void }
-    panel.handleInput('i')
+    await actionWorld.run('/plugin')
+    invokeMarketAction(actionWorld.surface()!, 'install')
     await new Promise(resolve => setTimeout(resolve, 5))
-    await keyWorld.dispose()
+    await actionWorld.dispose()
     releaseOp?.()
     await new Promise(resolve => setTimeout(resolve, 10))
   })
 
-  it('flashes the refresh failure when the r key hits an offline market', async () => {
+  it('reports refresh failure from the offline surface action', async () => {
     const world = await mountWorld({ index: [entry()], offline: true })
     await world.run('/plugin refresh').catch(() => undefined)
     // Load a cached catalog so the panel opens, then go offline for the key.
     updaterInternals.writeTextFile(join(world.root, '..', '..', 'storages', 'mayfly-plugin-market', 'cache.json'), JSON.stringify({ fetchedAt: 1_000_000, text: indexJson([entry()]) }))
     await world.run('/plugin')
-    const panel = world.overlay() as BrowserPanel
+    const model = world.surface()!
     updaterInternals.fetchText = vi.fn(async () => {
       throw new Error('offline now')
     })
-    panel.handleInput('r')
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(JSON.stringify(panel.currentNode())).toContain('refresh failed:')
+    invokeMarketAction(model, 'refresh')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refresh failed:'))
     world.dispose()
   })
 
@@ -1420,7 +1536,7 @@ describe('detail-shape arms', () => {
     world.dispose()
   })
 
-  it('covers bare-context installs, missing workspace files, and the r-unload gate', async () => {
+  it('covers bare-context installs, missing workspace files, and the refresh unload gate', async () => {
     const world = await mountWorld({ index: [entry()], withScreen: false })
     expect(await world.run('/plugin install loop')).toEqual({ kind: 'success' })
     world.dispose()
@@ -1433,7 +1549,7 @@ describe('detail-shape arms', () => {
     expect(outcome.kind).toBe('success')
     expect(parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '')).toMatchObject({ allowBuilds: { 'node-pty': true } })
 
-    // The r-key refresh continuation gates on the fiber unload.
+    // The refresh continuation gates on the fiber unload.
     const rWorld = await mountWorld({})
     let release: ((value: string) => void) | undefined
     const gate = new Promise<string>(resolve => {
@@ -1442,12 +1558,11 @@ describe('detail-shape arms', () => {
     const realFetch = updaterInternals.fetchText
     updaterInternals.fetchText = vi.fn(async (url: string) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url)))
     await rWorld.run('/plugin')
-    const panel = rWorld.overlay() as { handleInput(data: string): void }
-    panel.handleInput('r')
+    const refresh = rWorld.run('/plugin refresh')
     await new Promise(resolve => setTimeout(resolve, 5))
     await rWorld.dispose()
     release?.(indexJson([entry()]))
-    await new Promise(resolve => setTimeout(resolve, 10))
+    await refresh
   })
 })
 

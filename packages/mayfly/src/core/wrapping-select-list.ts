@@ -27,6 +27,7 @@ export class WrappingSelectList extends SelectList {
     const { filteredItems, selectedIndex, maxVisible, theme, layout } = this.internals()
     const node: MayflyListNode = {
       kind: 'list',
+      role: 'choose',
       id: 'slash-autocomplete',
       selectedIds: filteredItems[selectedIndex] === undefined ? [] : [String(selectedIndex)],
       items: filteredItems.map((item, index) => ({

@@ -66,7 +66,7 @@ describe('ui builders', () => {
     const action = ui.actions({ id: 'actions', items: [{ id: 'save', label: 'Save', intent: 'primary', busy: true }] })
     const nodes = [
       ui.tabs({ id: 'tabs', activeId: 'one', items: [{ id: 'one', label: 'One', count: 2 }, { id: 'two', label: 'Two', disabled: true }] }),
-      ui.list({ id: 'list', mode: 'multiple', selectedIds: ['one'], items: [{ id: 'one', label: 'One', detail: 'detail', detailSpans: [{ text: '[High]', tone: 'accent', styles: ['strong'] }], badge: 'new', group: 'g' }], filter: 'o', empty: ui.text('none') }),
+      ui.list({ id: 'list', role: 'choose', mode: 'multiple', selectedIds: ['one'], items: [{ id: 'one', label: 'One', detail: 'detail', detailSpans: [{ text: '[High]', tone: 'accent', styles: ['strong'] }], badge: 'new', group: 'g' }], filter: 'o', empty: ui.text('none') }),
       ui.form({ id: 'form', fields: [
         { kind: 'input', id: 'name', label: 'Name', value: 'Mayfly', placeholder: 'name' },
         { kind: 'textarea', id: 'notes', label: 'Notes', value: '', error: 'required' },
@@ -165,7 +165,7 @@ describe('deepFreeze', () => {
 
 describe('freezeWire snapshot trust', () => {
   it('reuses only its own deeply immutable snapshots and nested branches', () => {
-    const list = ui.list({ id: 'large', mode: 'single', items: Array.from({ length: 100_000 }, (_, index) => ({ id: String(index), label: String(index) })) })
+    const list = ui.list({ id: 'large', role: 'browse', mode: 'single', selectedIds: [], items: Array.from({ length: 100_000 }, (_, index) => ({ id: String(index), label: String(index) })) })
     expect(freezeWire(list)).toBe(list)
     const updated = ui.list({ ...list, filter: 'new', selectedIds: ['1'] })
     expect(updated).not.toBe(list)
@@ -199,7 +199,7 @@ describe('freezeWire snapshot trust', () => {
     expect(() => ui.text('safe', options)).toThrow('accessors')
     expect(() => ui.child(content as never)).toThrow('accessors')
     expect(() => ui.stack.row(children)).toThrow('accessors')
-    expect(() => ui.list({ id: 'list', mode: 'single', items: [content as never] })).toThrow('accessors')
+    expect(() => ui.list({ id: 'list', role: 'browse', mode: 'single', selectedIds: [], items: [content as never] })).toThrow('accessors')
     expect(getter).not.toHaveBeenCalled()
   })
 

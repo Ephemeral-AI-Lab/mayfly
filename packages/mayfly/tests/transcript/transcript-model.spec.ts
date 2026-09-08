@@ -60,6 +60,7 @@ function renderer(
   return {
     colors: COLORS as MayflySemanticColors,
     components: fakeMayflyComponents(),
+    viewportRows: () => 20,
     images: () => ({}),
     requestRender,
     semantic,

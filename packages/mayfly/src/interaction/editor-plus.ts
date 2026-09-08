@@ -145,7 +145,7 @@ function slashItemDescription(command: {
 function createAutocompleteProvider(
   ctx: Context,
   mode: () => 'prompt' | 'bash',
-  notice: (text: string) => void,
+  report: (message: string) => void,
 ): MayflyAutocompleteProvider {
   const t = interactionTranslator(ctx)
   // Captured before any unload: the fd probe settles asynchronously and a
@@ -192,7 +192,7 @@ function createAutocompleteProvider(
         // trace — the empty-session-cwd corner read as "@ is dead". Flash
         // the hint line instead; a superseded (aborted) round stays quiet.
         if (suggestions === null && !options.signal.aborted) {
-          notice(t('no matching files under the session cwd'))
+          report(t('no matching files under the session cwd'))
         }
         return suggestions
       }
@@ -570,7 +570,7 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
   const unregisterAutocomplete = registerEditorAutocompleteSource(
     ctx,
     ENHANCEMENT_EDITOR_PLUS,
-    createAutocompleteProvider(ctx, () => mode, text => shared.notice?.(text)),
+    createAutocompleteProvider(ctx, () => mode, message => shared.report?.('file-completion', { message, severity: 'warning' })),
   )
   // A draft restored before this attach (a theme-swap reload) deserves its
   // ghost without waiting for the next edit.

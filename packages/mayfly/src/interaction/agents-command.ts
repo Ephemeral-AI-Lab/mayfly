@@ -8,15 +8,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import type { WorkflowAgentInfo } from '@deepseek-ai/dsh-workflow'
-import { displayServices } from './display-services.ts'
-import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { getSharedEditor } from './editor-instance.ts'
+import { ui, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
-import { CanonicalSelectController, type SelectRow } from './select-list.ts'
-import { createConfirmationPanel } from './confirmation-panel.ts'
+import { openUiOverlay } from './ui-overlay.ts'
 import { formatTokens } from './usage.ts'
 import { compactElapsedMs } from '../transcript/agent-presentation.ts'
-import { ACTION_CANCEL, ACTION_DELETE, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SUBMIT, ACTION_TOGGLE, interactionKeyHint } from './keys.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-agents-command'
@@ -29,7 +25,7 @@ export const inject = [
   'sessions',
   'sessionProjections',
   'mayflyCurrentAgent',
-  'mayflyEditorPanels',
+  'mayflyOverlays',
   'tools',
 ]
 
@@ -57,50 +53,27 @@ export function agentMetricsText(
   return parts.join(' · ')
 }
 
-/** Build visible stable-preorder rows under the local expansion set. */
-export function buildAgentRows(
-  entries: readonly MayflySubagentTreeEntry[],
-  expanded: ReadonlySet<string>,
-  now = Date.now(),
-): SelectRow[] {
-  const byId = new Map(entries.map(entry => [String(entry.id), entry]))
-  const hidden = (entry: MayflySubagentTreeEntry): boolean => {
-    if (entry.depth <= 1) return false
-    let orphan = true
-    let cursor = String(entry.parentId)
-    while (true) {
-      const parent = byId.get(cursor)
-      if (parent === undefined) return orphan
-      orphan = false
-      if (parent.kind === 'child' && parent.hasChildren) {
-        if (!expanded.has(String(parent.id))) return true
-        cursor = String(parent.parentId)
-        continue
-      }
-      return true
-    }
-  }
-  const rows: SelectRow[] = []
-  for (const entry of entries) {
-    if (hidden(entry)) continue
+/** Full native tree declaration consumed by the shared Tree/Choice state. */
+export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now = Date.now()): readonly MayflyListItem[] {
+  const ids = new Set(entries.map(entry => String(entry.id)))
+  return entries.map(entry => {
     const id = String(entry.id)
-    const indent = '  '.repeat(Math.max(0, entry.depth - 1))
-    if (entry.kind === 'diagnostic') {
-      rows.push({ value: id, label: `${indent}⚠ ${id}`, description: `diagnostic: ${entry.reason}`, disabled: true })
-      continue
+    const parentId = String(entry.parentId)
+    if (entry.kind === 'diagnostic') return {
+      id, label: `⚠ ${id}`, detail: `diagnostic: ${entry.reason}`, disabled: true,
+      ...(ids.has(parentId) ? { parentId } : {}),
     }
-    const marker = entry.hasChildren ? (expanded.has(id) ? '▾ ' : '▸ ') : ''
     const label = entry.label ?? id
     const metrics = agentMetricsText(entry, now)
-    rows.push({
-      value: id,
-      label: `${indent}${marker}${entry.activity === 'running' ? '●' : '○'} ${label}`,
-      description: [entry.mode, ...(metrics === '' ? [] : [metrics])].join(' · '),
+    return {
+      id,
+      label: `${entry.activity === 'running' ? '●' : '○'} ${label}`,
+      detail: [entry.mode, ...(metrics === '' ? [] : [metrics])].join(' · '),
+      searchText: `${label} ${id} ${entry.mode}`,
+      ...(ids.has(parentId) ? { parentId } : {}),
       ...(entry.activity === 'running' ? { badge: 'running' } : {}),
-      filterText: `${label} ${id} ${entry.mode}`,
-    })
-  }
-  return rows
+    }
+  })
 }
 
 /** Count live Agent descendants whose teardown would follow the selected root. */
@@ -224,8 +197,7 @@ export function apply(ctx: Context): void {
   }
 
   async function showAgents(signal: AbortSignal): Promise<CommandResult> {
-    const display = displayServices(ctx)
-    if (display === undefined) return { kind: 'error', text: t('agents panel is unavailable: the Mayfly screen is not mounted') }
+    if (ctx.get('mayflyOverlays') === undefined) return { kind: 'error', text: t('agents panel is unavailable: the Mayfly screen is not mounted') }
     const parent = ctx.mayflyCurrentAgent.primary()
     if (parent === null) return { kind: 'error', text: t('no session is live yet') }
     ctx.mayflyCurrentAgent.closeAuxiliary()
@@ -238,112 +210,66 @@ export function apply(ctx: Context): void {
     if (unloaded || ctx.mayflyCurrentAgent.current() !== parent) return { kind: 'success' }
     if (listed.length === 0) return { kind: 'success', text: t('no subagents in this session') }
     closeOpenBrowser?.()
-    const entries = withLiveMetrics(ctx, listed, workflowLabels)
-    const byId = new Map(entries.map(entry => [String(entry.id), entry]))
-    const expanded = new Set<string>()
-    let restore: (() => void) | undefined
-    let restoreConfirm: (() => void) | undefined
-    let closed = false
+    let entries = withLiveMetrics(ctx, listed, workflowLabels)
+    let byId = new Map(entries.map(entry => [String(entry.id), entry]))
+    let handle!: ReturnType<typeof openUiOverlay>
     const close = (): void => {
-      if (closed) return
-      closed = true
       offAgent()
-      restoreConfirm?.()
-      restoreConfirm = undefined
-      restore?.()
-      restore = undefined
       closeOpenBrowser = undefined
+      handle?.close()
     }
     const offAgent = ctx.mayflyCurrentAgent.subscribe(next => {
       if (next !== parent) close()
     })
-    const browser = new CanonicalSelectController({
-      keymap: display.keymap,
-      theme: display.theme,
-      components: display.components,
-      rows: buildAgentRows(entries, expanded),
-      title: t('Subagents'),
-      suppressAutomaticContextHints: true,
-      contextHints: [
-        { id: 'navigate', keys: `${interactionKeyHint(display.keymap, ACTION_MOVE_UP, '↑')}${interactionKeyHint(display.keymap, ACTION_MOVE_DOWN, '↓')}`, label: 'select', priority: 90 },
-        {
-          id: 'activate',
-          keys: `${interactionKeyHint(display.keymap, ACTION_SUBMIT, 'Enter')} view · ${interactionKeyHint(display.keymap, ACTION_TOGGLE, 'Space')} expand · ${interactionKeyHint(display.keymap, ACTION_DELETE, 'Delete')}`,
-          label: 'stop',
-          compact: interactionKeyHint(display.keymap, ACTION_SUBMIT, 'Enter'),
-          priority: 100,
-        },
-        { id: 'dismiss', keys: interactionKeyHint(display.keymap, ACTION_CANCEL, 'Esc'), label: 'close', priority: 95 },
-      ],
-      t,
-      onToggle: row => {
-        const entry = byId.get(row.value)
-        if (entry?.kind !== 'child' || !entry.hasChildren) return
-        if (expanded.has(row.value)) expanded.delete(row.value)
-        else expanded.add(row.value)
-        browser.setRows(buildAgentRows(entries, expanded))
-      },
-      onSelect: row => {
-        const entry = byId.get(row.value)
-        if (entry?.kind !== 'child') return
+    const stopReason = (selectedId: string | undefined): string | undefined => {
+      if (selectedId === undefined) return t('Select a subagent first')
+      const target = byId.get(selectedId)
+      if (target?.kind !== 'child') return t('The selected subagent is no longer available')
+      if (target.mode !== 'continuable') return `subagent ${selectedId} is not continuable`
+      const descendants = liveAgentDescendantCount(entries, selectedId, candidate => ctx.agents.get(candidate.id) !== undefined)
+      const nested = descendantStopError(target, descendants)
+      if (nested !== undefined) return nested.text
+      if (ctx.agents.get(target.id) === undefined) return `subagent ${selectedId} is not live; there is no running Agent to stop`
+      if (ctx.agents.get(target.parentId) === undefined) return `cannot stop subagent ${selectedId}: its direct parent is not live`
+      return undefined
+    }
+    const view = (selectedId?: string) => {
+      const reason = stopReason(selectedId)
+      const selected = selectedId === undefined ? undefined : byId.get(selectedId)
+      const confirm = selected?.kind === 'child' ? t('Stop {agent}?', { agent: selected.label ?? selectedId! }) : t('Stop selected subagent?')
+      return ui.surface({ title: t('Subagents'), chrome: 'overlay', child: ui.stack.column([
+      ui.list({ id: 'subagents', role: 'choose', tree: true, minSelected: 1, selectedIds: selectedId === undefined ? [] : [selectedId], filterable: true, items: agentTreeItems(entries) }),
+      ui.actions({ id: 'subagent-actions', items: [
+        { id: 'view', label: t('View selected'), selections: [{ pagePath: [], controlId: 'subagents' }] },
+        { id: 'stop', label: t('Stop selected'), intent: 'danger', confirm, selections: [{ pagePath: [], controlId: 'subagents' }], disabled: reason !== undefined, ...(reason === undefined ? {} : { disabledReason: reason }) },
+        { id: 'close', label: t('Close'), dismiss: true },
+      ] }),
+      ]) })
+    }
+    handle = openUiOverlay(ctx, { id: 'mayfly.agents', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Subagents'), scope: { kind: 'session', sessionId: parent.id }, onEvent: { action: async (event, context) => {
+      if (event.kind === 'selection-accept') {
+        const selectedId = event.selectedIds[0]
+        return selectedId === undefined ? { kind: 'completed' } : { kind: 'accepted', node: view(selectedId), source: [] }
+      }
+      if (event.kind !== 'activate' || (event.actionId !== 'view' && event.actionId !== 'stop')) return { kind: 'completed' }
+      const selectedId = event.inputs?.selections?.find(selection => selection.controlId === 'subagents')?.selectedIds[0]
+      const entry = selectedId === undefined ? undefined : byId.get(selectedId)
+      if (entry?.kind !== 'child') return { kind: 'failed', message: t('The selected subagent is no longer available') }
+      if (event.actionId === 'view') {
         close()
-        ctx.mayflyCurrentAgent.openAuxiliary({
-          kind: 'subagent',
-          sessionId: String(entry.id),
-          parentSessionId: String(entry.parentId),
-          label: entry.label ?? String(entry.id),
-          mode: entry.mode,
-        })
-      },
-      onDelete: row => {
-        const entry = byId.get(row.value)
-        if (entry?.kind !== 'child') return
-        if (entry.mode !== 'continuable') {
-          getSharedEditor(ctx)?.notice?.(display.colors.warning('one-shot subagents cannot be stopped from the browser'))
-          return
-        }
-        if (ctx.agents.get(entry.id) === undefined) {
-          getSharedEditor(ctx)?.notice?.(display.colors.warning(`subagent ${String(entry.id)} is not live; there is no running Agent to stop`))
-          return
-        }
-        const descendantError = descendantStopError(entry, liveAgentDescendantCount(
-          entries,
-          String(entry.id),
-          candidate => ctx.agents.get(candidate.id) !== undefined,
-        ))
-        if (descendantError !== undefined) {
-          getSharedEditor(ctx)?.notice?.(display.colors.warning(descendantError.text))
-          return
-        }
-        restoreConfirm?.()
-        const confirm = createConfirmationPanel({
-          keymap: display.keymap,
-          theme: display.theme,
-          components: display.components,
-          t: (key, values) => t(key, { agent: entry.label ?? String(entry.id), ...values }),
-          title: 'Stop subagent',
-          question: 'Stop {agent}?',
-          detail: 'End this live Agent and release its resources. Its saved conversation remains available.',
-          onConfirm: () => {
-            restoreConfirm?.()
-            restoreConfirm = undefined
-            close()
-            void stopEntry(String(entry.id), signal).then(result => {
-              if (unloaded) return
-              const paint = result.kind === 'error' ? display.colors.error : (text: string) => text
-              getSharedEditor(ctx)?.notice?.(paint(result.text))
-            })
-          },
-          onCancel: () => {
-            restoreConfirm?.()
-            restoreConfirm = undefined
-          },
-        })
-        restoreConfirm = mountEditorReplacement(ctx, confirm)
-      },
-      onCancel: close,
-    })
-    restore = mountEditorReplacement(ctx, browser)
+        ctx.mayflyCurrentAgent.openAuxiliary({ kind: 'subagent', sessionId: String(entry.id), parentSessionId: String(entry.parentId), label: entry.label ?? String(entry.id), mode: entry.mode })
+        return { kind: 'completed' }
+      }
+      const result = await stopEntry(selectedId!, context.signal)
+      if (result.kind === 'error') return { kind: 'failed', message: result.text }
+      try {
+        listed = await ctx.subagents.listDescendants(parent.id, context.signal)
+        entries = withLiveMetrics(ctx, listed, workflowLabels)
+        byId = new Map(entries.map(entry => [String(entry.id), entry]))
+        handle.set(view(selectedId))
+      } catch { /* the native stop already completed; retain the last readable tree */ }
+      return { kind: 'completed', feedback: { severity: 'success', message: result.text } }
+    } } }, view())
     closeOpenBrowser = close
     return { kind: 'success' }
   }

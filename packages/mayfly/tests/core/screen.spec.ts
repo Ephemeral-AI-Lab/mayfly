@@ -38,6 +38,7 @@ function recordingRuntime(): MayflyTerminalRuntime & Recorded {
     get contentChanges() { return recorded.contentChanges },
     columns: 120,
     rows: 24,
+    hasCapturingOverlay: () => false,
     addChild(component) {
       recorded.added.push(component)
     },
@@ -86,6 +87,36 @@ const component: MayflyComponent = {
 }
 
 describe('MayflyScreenService', () => {
+  it('keeps the editor replacement alive through prompt lease gaps and restores the prompt', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    const prompt = { focused: false, render: () => ['prompt'], invalidate: () => {}, handleInput: vi.fn() }
+    const panel = { focused: false, render: () => ['panel'], invalidate: vi.fn(), handleInput: vi.fn() }
+    const slot = screen.mountDockSlot('editor.prompt', prompt)
+    slot.component.focused = true
+    expect(screen.capturesInput).toBe(false)
+    screen.mountDockSlot('status.footer', { render: () => ['footer'], invalidate() {} }, 'bottom')
+    screen.setEditorReplacement(panel)
+    expect(screen.capturesInput).toBe(true)
+    expect(prompt.focused).toBe(false)
+    expect(panel.focused).toBe(true)
+    expect(slot.component.render(80)).toEqual(['panel'])
+    slot.component.handleInput?.('x')
+    expect(panel.handleInput).toHaveBeenCalledWith('x')
+    expect(screen.editorViewport).toEqual({ columns: 120, rows: 22 })
+    slot.dispose()
+    expect(slot.component.render(80)).toEqual(['panel'])
+    const restored = screen.mountDockSlot('editor.prompt', prompt)
+    screen.setEditorReplacement(null)
+    expect(screen.capturesInput).toBe(false)
+    expect(restored.component.render(80)).toEqual(['prompt'])
+    expect(prompt.focused).toBe(true)
+    expect(panel.focused).toBe(false)
+    await ctx.fiber.dispose()
+  })
+
   it('registers as ctx.mayflyScreen and unregisters when the fiber disposes', async () => {
     const ctx = new Context()
     const fiber = ctx.plugin(MayflyScreenService, recordingRuntime())

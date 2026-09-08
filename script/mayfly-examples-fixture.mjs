@@ -144,11 +144,17 @@ try {
   const dependencies = Object.fromEntries([...tarballs].map(([name, tarball]) => [name, `file:${tarball}`]))
   dependencies['@deepseek-ai/cordis'] = '4.0.2'
   dependencies['@deepseek-ai/dsh-commands'] = harnessLine
+  dependencies['@deepseek-ai/dsh-settings'] = harnessLine
+  const workspace = parseYaml(readFileSync(join(ROOT, 'pnpm-workspace.yaml'), 'utf8'))
+  const pinnedSuffix = `@${supportedHarnessLine}`
+  const harnessOverrides = Object.fromEntries(workspace.minimumReleaseAgeExclude
+    .filter(spec => spec.startsWith('@deepseek-ai/dsh-') && spec.endsWith(pinnedSuffix))
+    .map(spec => [spec.slice(0, -pinnedSuffix.length), harnessLine]))
   writeFileSync(join(fixtureRoot, 'package.json'), `${JSON.stringify({
     private: true,
     type: 'module',
     dependencies,
-    overrides: { '@deepseek-ai/dsh-commands': harnessLine },
+    overrides: harnessOverrides,
   }, null, 2)}\n`)
   execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--legacy-peer-deps'], { cwd: fixtureRoot, stdio: 'ignore' })
   report.installed = true
@@ -168,9 +174,16 @@ try {
   }
   walkHarnessPackages(join(fixtureRoot, 'node_modules'), report.harnessPackages)
   ensure(report.harnessPackages['@deepseek-ai/dsh-commands'] === harnessLine, 'EXAMPLES_HARNESS_LINE_MISMATCH', `dsh commands resolved to ${String(report.harnessPackages['@deepseek-ai/dsh-commands'])}`)
+  for (const [name, version] of Object.entries(report.harnessPackages)) ensure(version === harnessLine, 'EXAMPLES_HARNESS_LINE_MISMATCH', `${name} resolved to ${version}`)
 
   const fixtureRequire = createRequire(join(fixtureRoot, 'fixture.mjs'))
   const load = name => import(pathToFileURL(fixtureRequire.resolve(name)).href)
+  const { default: SettingsProvider } = await load('@deepseek-ai/dsh-settings')
+  class MemorySettings extends SettingsProvider {
+    writable = true
+    async load() { return {} }
+    async persist() {}
+  }
   const [cordis, provider, kit, header, inspector, bottomLog, overlay, gallery] = await Promise.all([
     load('@deepseek-ai/cordis'),
     load('@ephemeral-ai/mayfly-ui/provider'),
@@ -192,7 +205,7 @@ try {
       ['@mayfly-example/header', ['mayflyPanes']],
       ['@mayfly-example/right-inspector', ['mayflyPanes']],
       ['@mayfly-example/bottom-log', ['mayflyPanes']],
-      ['@mayfly-example/overlay', ['commands', 'mayflyOverlays']],
+      ['@mayfly-example/overlay', ['commands', 'settings', 'mayflyOverlays']],
       ['@mayfly-example/ui-gallery', ['mayflyPanes']],
     ])
     for (const row of rows) {
@@ -232,6 +245,7 @@ try {
   await scenario('overlay.command-and-lifecycle', async () => {
     const ctx = new cordis.Context()
     const apiFiber = await ctx.plugin(provider)
+    const settingsFiber = await ctx.plugin(MemorySettings)
     let command
     ctx.provide('commands', {
       register(definition) { command = definition; return () => { command = undefined } },
@@ -240,8 +254,20 @@ try {
     ensure(command?.name === 'example-overlay', 'EXAMPLES_DSH_COMMAND', 'overlay did not register through dsh commands')
     const result = await command.handler({ rawInput: '' })
     ensure(result.kind === 'success' && ctx.mayflyOverlays.list()[0]?.id === overlay.overlayRequest.id, 'EXAMPLES_OVERLAY_DIRECT', 'command did not open the direct overlay')
+    const entry = ctx.mayflyOverlays.list()[0]
+    const prepared = await entry.events.prepare({
+      kind: 'submit', controlId: 'settings', pagePath: [],
+      submission: { actionId: 'save', draftRevision: 1, source: entry.source, forms: [{
+        pagePath: [{ controlId: 'settings-pages', itemId: 'connection' }], formId: 'settings', draftRevision: 1,
+        fields: [{ id: 'name', change: 'set', value: 'Packed settings' }],
+      }] },
+    }, { surfaceId: entry.id, source: entry.source, revision: 1, operationId: 'packed-save', signal: new AbortController().signal, report() {} })
+    ensure(prepared.reply?.kind === 'accepted' && prepared.publish(), 'EXAMPLES_OVERLAY_SAVE', 'overlay did not publish its structured settings acknowledgement')
+    ensure(ctx.settings.get(overlay.SETTINGS_NAMESPACE)?.connection.name === 'Packed settings', 'EXAMPLES_OVERLAY_SETTINGS', 'overlay did not write native settings')
     await pluginFiber.dispose()
     ensure(ctx.mayflyOverlays.list().length === 0, 'EXAMPLES_OVERLAY_UNLOAD', 'overlay survived Fiber unload')
+    ensure(ctx.settings.describe().length === 0, 'EXAMPLES_OVERLAY_NAMESPACE_UNLOAD', 'overlay namespace survived Fiber unload')
+    await settingsFiber.dispose()
     await apiFiber.dispose()
   })
 

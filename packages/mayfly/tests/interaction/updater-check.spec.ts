@@ -16,6 +16,7 @@ import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 registerTempDirCleanup()
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { fakeMayflyContext } from './fakes.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { updaterInternals } from '../../src/interaction/updater/io.ts'
 import { apply as applySettings, DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import {
@@ -77,6 +78,7 @@ function makeCheck(options: { json?: string; fail?: boolean } = {}) {
     return Promise.resolve({ code: 0, signal: null, stdout: options.json ?? OFFER_JSON, stderr: '', timedOut: false })
   }
   const { ctx, screen } = fakeMayflyContext({ dock: false })
+  const interaction = new UiInteractionService(ctx)
   /** The profile the boot check inspects (default: absent). */
   const profileRootDir = join(home, 'profiles', 'mayfly')
   /** Install a profile manifest with the given dependency specs. */
@@ -84,7 +86,7 @@ function makeCheck(options: { json?: string; fail?: boolean } = {}) {
     mkdirSync(profileRootDir, { recursive: true })
     writeFileSync(join(profileRootDir, 'package.json'), JSON.stringify({ name: 'profile', dependencies }))
   }
-  return { home, now, spawns: () => spawns, ctx, screen, statePath: updateCheckStatePath(), profileRootDir, writeProfile }
+  return { home, now, spawns: () => spawns, ctx, screen, notifications: () => interaction.notificationSnapshot(), statePath: updateCheckStatePath(), profileRootDir, writeProfile }
 }
 
 describe('updater/check runUpdateCheck', () => {
@@ -92,16 +94,10 @@ describe('updater/check runUpdateCheck', () => {
     const document: unknown = JSON.parse(OFFER_JSON)
     const world = makeCheck({ json: JSON.stringify(format === 'array' ? [document] : document) })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
-    expect(world.screen.children).toHaveLength(1)
-    const rows = world.screen.children[0]!.render(160)
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toContain(`v${OFFER_VERSION}`)
-    expect(rows[0]).toContain(`v${MAYFLY_VERSION}`)
-    expect(rows[1]).toContain('run /update')
-    expect(rows[1]).toContain(`dsh plugin --profile mayfly add @ephemeral-ai/mayfly@${OFFER_VERSION}`)
-    expect(world.screen.renderRequests).toBeGreaterThan(0)
-    // Stateless render; invalidate is a harmless no-op.
-    expect(() => world.screen.children[0]!.invalidate()).not.toThrow()
+    expect(world.notifications()).toHaveLength(1)
+    expect(world.notifications()[0]).toMatchObject({ severity: 'info', message: expect.stringContaining(`v${OFFER_VERSION}`), detail: expect.stringContaining('run /update') })
+    expect(world.notifications()[0]!.message).toContain(`v${MAYFLY_VERSION}`)
+    expect(world.notifications()[0]!.detail).toContain(`dsh plugin --profile mayfly add @ephemeral-ai/mayfly@${OFFER_VERSION}`)
     const state = readUpdateCheckState()
     expect(state).toEqual({
       lastCheckAt: world.now,
@@ -109,7 +105,7 @@ describe('updater/check runUpdateCheck', () => {
       lastOffer: { version: OFFER_VERSION, publishedAt: Date.parse('2026-08-23T00:00:00.000Z') },
     })
     await world.ctx.fiber.dispose()
-    expect(world.screen.children).toEqual([])
+    expect(world.notifications()).toEqual([])
   })
 
   it('re-mounts the notice from the cached offer inside the 24h window', async () => {
@@ -122,8 +118,8 @@ describe('updater/check runUpdateCheck', () => {
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
     // No network read, but the notice is back.
     expect(world.spawns()).toBe(0)
-    expect(world.screen.children).toHaveLength(1)
-    expect(world.screen.children[0]!.render(80)[0]).toContain(`v${OFFER_VERSION}`)
+    expect(world.notifications()).toHaveLength(1)
+    expect(world.notifications()[0]!.message).toContain(`v${OFFER_VERSION}`)
   })
 
   it('stays quiet inside the window when the cached offer does not outrank the running version', async () => {
@@ -131,7 +127,7 @@ describe('updater/check runUpdateCheck', () => {
     writeUpdateCheckState({ lastCheckAt: world.now - 1_000, lastOffer: { version: MAYFLY_VERSION } })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
     expect(world.spawns()).toBe(0)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
   })
 
   it('skips the registry entirely inside the 24h cache window', async () => {
@@ -139,7 +135,7 @@ describe('updater/check runUpdateCheck', () => {
     writeUpdateCheckState({ lastCheckAt: world.now - 1_000 })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
     expect(world.spawns()).toBe(0)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
   })
 
   it('re-checks and re-notifies once the cache window has passed', async () => {
@@ -147,21 +143,21 @@ describe('updater/check runUpdateCheck', () => {
     writeUpdateCheckState({ lastCheckAt: world.now - 25 * 60 * 60 * 1_000, lastNotifiedVersion: OFFER_VERSION })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
     expect(world.spawns()).toBe(1)
-    expect(world.screen.children).toHaveLength(1)
+    expect(world.notifications()).toHaveLength(1)
   })
 
   it('does nothing when the setting is off (the offline switch)', async () => {
     const world = makeCheck()
     await runUpdateCheck(world.ctx, () => ({ updateCheck: false, updateChannel: 'rc' }), () => false)
     expect(world.spawns()).toBe(0)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
   })
 
   it('records the failure class and stays silent when the registry fails', async () => {
     const world = makeCheck({ fail: true })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
     expect(world.spawns()).toBe(3)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
     // A failed read does NOT stamp the window: the next boot retries.
     expect(readUpdateCheckState()).toEqual({ lastCheckAt: 0, lastError: 'network' })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
@@ -187,14 +183,14 @@ describe('updater/check runUpdateCheck', () => {
   it('clears the state on an up-to-date read without mounting', async () => {
     const world = makeCheck({ json: CURRENT_JSON })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
     expect(readUpdateCheckState()).toEqual({ lastCheckAt: world.now })
   })
 
   it('follows the configured channel and stays silent on a missing tag', async () => {
     const world = makeCheck()
     await runUpdateCheck(world.ctx, () => ({ updateCheck: true, updateChannel: 'next' }), () => false)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
     expect(readUpdateCheckState()).toEqual({ lastCheckAt: world.now })
   })
 
@@ -202,7 +198,7 @@ describe('updater/check runUpdateCheck', () => {
     const world = makeCheck()
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => true)
     expect(world.spawns()).toBe(0)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
   })
 
   it('aborts after the registry read when the fiber unloaded', async () => {
@@ -213,7 +209,7 @@ describe('updater/check runUpdateCheck', () => {
       return calls >= 2
     })
     expect(world.spawns()).toBe(1)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
     // The unload won the race: not even the state was written.
     expect(readUpdateCheckState()).toBeUndefined()
   })
@@ -226,7 +222,7 @@ describe('updater/check runUpdateCheck', () => {
       return calls >= 3
     })
     expect(world.spawns()).toBe(1)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
     expect(readUpdateCheckState()?.lastNotifiedVersion).toBe(OFFER_VERSION)
   })
 
@@ -245,7 +241,7 @@ describe('updater/check runUpdateCheck', () => {
     // notice — which would invite the link-breaking `dsh plugin add` —
     // stays away.
     expect(world.spawns()).toBe(1)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
     expect(readUpdateCheckState()?.lastNotifiedVersion).toBe(OFFER_VERSION)
   })
 
@@ -255,13 +251,11 @@ describe('updater/check runUpdateCheck', () => {
     mkdirSync(backup, { recursive: true })
     writeFileSync(join(backup, 'pending.json'), JSON.stringify({ from: '0.1.0-rc.6', to: '0.1.0-rc.8', startedAt: 1 }))
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
-    expect(world.screen.children).toHaveLength(1)
-    const rows = world.screen.children[0]!.render(120)
-    expect(rows[0]).toContain('a previous /update to v0.1.0-rc.8 was interrupted')
-    expect(rows[1]).toContain(backup)
-    expect(rows[1]).toContain('run /update to retry')
+    expect(world.notifications()).toHaveLength(1)
+    expect(world.notifications()[0]).toMatchObject({ severity: 'error', message: expect.stringContaining('a previous /update to v0.1.0-rc.8 was interrupted'), detail: expect.stringContaining(backup) })
+    expect(world.notifications()[0]!.detail).toContain('run /update to retry')
     await world.ctx.fiber.dispose()
-    expect(world.screen.children).toEqual([])
+    expect(world.notifications()).toEqual([])
   })
 
   it('warns on an unparseable marker, even with the check switched off, and never throws without a screen', async () => {
@@ -270,8 +264,8 @@ describe('updater/check runUpdateCheck', () => {
     mkdirSync(backup, { recursive: true })
     writeFileSync(join(backup, 'pending.json'), '{nope')
     await runUpdateCheck(world.ctx, () => ({ updateCheck: false, updateChannel: 'rc' }), () => false)
-    expect(world.screen.children).toHaveLength(1)
-    expect(world.screen.children[0]!.render(120)[0]).toContain('a previous /update was interrupted')
+    expect(world.notifications()).toHaveLength(1)
+    expect(world.notifications()[0]!.message).toContain('a previous /update was interrupted')
     expect(world.spawns()).toBe(0)
     // No screen: the warning degrades to nothing, silently.
     const bare = new Context()
@@ -285,15 +279,14 @@ describe('updater/check runUpdateCheck', () => {
     // A bare JSON scalar parses but is no marker object.
     writeFileSync(join(backup, 'pending.json'), '42')
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
-    expect(world.screen.children).toHaveLength(1)
-    expect(world.screen.children[0]!.render(120)[0]).toContain('a previous /update was interrupted')
+    expect(world.notifications()).toHaveLength(1)
+    expect(world.notifications()[0]!.message).toContain('a previous /update was interrupted')
     // An object without a string `to` warns without naming the version.
     writeFileSync(join(backup, 'pending.json'), JSON.stringify({ from: '0.1.0-rc.6', to: 9 }))
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
-    expect(world.screen.children).toHaveLength(2)
-    const rows = world.screen.children[1]!.render(120)
-    expect(rows[0]).toContain('a previous /update was interrupted')
-    expect(rows[0]).not.toContain('to v')
+    expect(world.notifications()).toHaveLength(2)
+    expect(world.notifications()[1]!.message).toContain('a previous /update was interrupted')
+    expect(world.notifications()[1]!.message).not.toContain('to v')
   })
 
   it('records the offer without a publish stamp when the registry recorded none', async () => {
@@ -304,7 +297,7 @@ describe('updater/check runUpdateCheck', () => {
     })
     const world = makeCheck({ json: timeless })
     await runUpdateCheck(world.ctx, () => DEFAULT_SETTINGS, () => false)
-    expect(world.screen.children).toHaveLength(1)
+    expect(world.notifications()).toHaveLength(1)
     expect(readUpdateCheckState()).toEqual({
       lastCheckAt: world.now,
       lastNotifiedVersion: OFFER_VERSION,
@@ -369,7 +362,7 @@ describe('updater/check apply', () => {
     const world = makeCheck()
     apply(world.ctx)
     await new Promise(resolve => setTimeout(resolve, 20))
-    expect(world.screen.children).toHaveLength(1)
+    expect(world.notifications()).toHaveLength(1)
     expect(readUpdateCheckState()?.lastNotifiedVersion).toBe(OFFER_VERSION)
     expect(name).toBe('mayfly-update-check')
   })
@@ -381,7 +374,7 @@ describe('updater/check apply', () => {
     apply(world.ctx)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(world.spawns()).toBe(0)
-    expect(world.screen.children).toHaveLength(0)
+    expect(world.notifications()).toHaveLength(0)
   })
 
   it('runs the check when the shared thunk leaves the switch on', async () => {
@@ -390,6 +383,6 @@ describe('updater/check apply', () => {
     applySettings(world.ctx)
     apply(world.ctx)
     await new Promise(resolve => setTimeout(resolve, 20))
-    expect(world.screen.children).toHaveLength(1)
+    expect(world.notifications()).toHaveLength(1)
   })
 })

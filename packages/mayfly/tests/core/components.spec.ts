@@ -1,5 +1,5 @@
 /**
- * `ctx.mayflyComponents` service: delegation of the four factories to the
+ * `ctx.mayflyComponents` service: delegation of its factories to the
  * real pi-tui components, the palette → renderer-theme mapping, the
  * re-exported width helpers' parity with pi-tui, and the S14 completion
  * polish on the editor — the wrapping slash dropdown (vs. the stock list on
@@ -185,7 +185,7 @@ describe('createEditor', () => {
       expect(replay).not.toContain('\uf8ff')
       expect(replay.match(new RegExp(CURSOR_MARKER, 'gu'))).toHaveLength(1)
     }
-    result.value.focusTarget!.handleInput?.('\x1b')
+    result.value.focusTarget!.focused = false
     expect(result.value.component.render(40).join('')).not.toContain('\x1b[7m')
     stop()
   })
@@ -1008,64 +1008,6 @@ describe('createSelectList', () => {
     list.handleInput('\r')
     list.handleInput('\x1b')
     list.render(40)
-    stop()
-  })
-})
-
-describe('createSettingsList', () => {
-  it('renders the palette and wires change/cancel callbacks', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const changes: [string, string][] = []
-    let cancelled = 0
-    const list = components.createSettingsList({
-      items: [
-        { id: 'mode', label: 'Mode', description: 'the mode', currentValue: 'a', values: ['a', 'b'] },
-        { id: 'note', label: 'Note', currentValue: 'plain' },
-      ],
-      onChange: (id, newValue) => changes.push([id, newValue]),
-      onCancel: () => cancelled++,
-    })
-
-    const output = list.render(60).join('\n')
-    // The selected row's label and value take the interaction primary (S12
-    // closes the S10 review item), the other row's label AND value take
-    // plain text (the S38 contrast ruling: the value column is content, not
-    // de-emphasis), the description muted, and the cursor the primary
-    // marker.
-    expect(output).toContain('«primary:Mode»')
-    expect(output).toContain('«primary:a»')
-    expect(output).toContain('«text:Note»')
-    expect(output).toContain('«text:plain»')
-    expect(output).toContain('«muted:  the mode»')
-    expect(output).toContain('«primary:❯ »')
-
-    // updateValue rewrites one entry's displayed value in place.
-    list.updateValue('note', 'edited')
-    expect(list.render(60).join('\n')).toContain('«text:edited»')
-
-    // Enter cycles the first item's value; Escape cancels.
-    list.handleInput('\r')
-    expect(changes).toEqual([['mode', 'b']])
-    list.handleInput('\x1b[B')
-    list.handleInput('\x1b')
-    expect(cancelled).toBe(1)
-
-    list.invalidate()
-    stop()
-  })
-
-  it('supports the search variant', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const list = components.createSettingsList({
-      items: [{ id: 'mode', label: 'Mode', currentValue: 'a', values: ['a', 'b'] }],
-      maxVisible: 3,
-      enableSearch: true,
-      onChange: () => {},
-      onCancel: () => {},
-    })
-    expect(list.render(60).join('\n')).toContain('Mode')
     stop()
   })
 })

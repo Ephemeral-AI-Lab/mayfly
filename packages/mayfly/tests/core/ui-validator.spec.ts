@@ -50,7 +50,7 @@ describe('validateMayflyUiNode', () => {
       ui.surface({ title: 'title', subtitle: 'subtitle', badges: [{ text: 'badge' }], chrome: 'surface', padding: 1, child: ui.text('child'), footer: ui.text('footer') }),
       ui.scroll(ui.text('scroll'), { follow: 'start', scrollbar: true }),
       ui.tabs({ id: 'tabs', activeId: 'one', items: [{ id: 'one', label: 'One', count: 2 }, { id: 'two', label: 'Two', disabled: true }] }),
-      ui.list({ id: 'list', mode: 'multiple', selectedIds: ['one'], filter: 'o', items: [{ id: 'one', label: 'One', detail: 'detail', detailSpans: [{ text: '\x1b[31mcurrent', tone: 'accent', styles: ['strong'] }], badge: 'badge', group: 'g' }], empty: ui.empty({ title: 'none' }) }),
+      ui.list({ role: 'choose', id: 'list', mode: 'multiple', selectedIds: ['one'], filter: 'o', items: [{ id: 'one', label: 'One', detail: 'detail', detailSpans: [{ text: '\x1b[31mcurrent', tone: 'accent', styles: ['strong'] }], badge: 'badge', group: 'g' }], empty: ui.empty({ title: 'none' }) }),
       ui.form({ id: 'form', fields: [
         { kind: 'input', id: 'input', label: 'Input', value: 'v', placeholder: 'p', error: 'e' },
         { kind: 'textarea', id: 'area', label: 'Area', value: 'v' },
@@ -187,8 +187,8 @@ describe('validateMayflyUiNode', () => {
   it('admits large lists lazily and isolates an invalid item when it is reached', () => {
     const items: unknown[] = Array.from({ length: 500 }, (_, index) => ({ id: String(index), label: `Item ${String(index)}` }))
     items[499] = Object.defineProperty({ id: 'bad' }, 'label', { get: () => 'unsafe', enumerable: true })
-    const result = validateMayflyUiNode({ kind: 'list', id: 'large', selectedIds: [], items })
-    expect(result).toMatchObject({ ok: true, value: { kind: 'list', items: { length: 500 } } })
+    const result = validateMayflyUiNode({ role: 'choose', kind: 'list', id: 'large', selectedIds: [], items })
+    expect(result).toMatchObject({ ok: true, value: { role: 'choose', kind: 'list', items: { length: 500 } } })
     if (!result.ok || result.value.kind !== 'list') return
     expect(result.value.items[0]).toMatchObject({ id: '0', label: 'Item 0' })
     expect(result.value.items[0]).toBe(result.value.items[0])
@@ -206,7 +206,7 @@ describe('validateMayflyUiNode', () => {
     const items = Array.from({ length: 600 }, (_, index) => ({ id: String(index), label: `Item ${String(index)}` }))
     items[550] = { label: 'Missing id' } as never
     items[599] = { id: '598', label: 'Duplicate' }
-    const result = validateMayflyUiNode({ kind: 'list', id: 'cached', selectedIds: [], items })
+    const result = validateMayflyUiNode({ role: 'choose', kind: 'list', id: 'cached', selectedIds: [], items })
     expect(result.ok).toBe(true)
     if (!result.ok || result.value.kind !== 'list') return
     expect(admittedListIndex(result.value.items, '10')).toBe(10)
@@ -220,13 +220,13 @@ describe('validateMayflyUiNode', () => {
   it('contains sparse, accessor, throwing, and subclassed large list inputs', () => {
     const sparse = Array.from({ length: 201 }, (_, index) => ({ id: String(index), label: 'ok' }))
     delete sparse[200]
-    const sparseResult = accepted({ kind: 'list', id: 'sparse', selectedIds: [], items: sparse }) as Extract<import('@ephemeral-ai/mayfly-ui').MayflyUiNode, { kind: 'list' }>
+    const sparseResult = accepted({ role: 'choose', kind: 'list', id: 'sparse', selectedIds: [], items: sparse }) as Extract<import('@ephemeral-ai/mayfly-ui').MayflyUiNode, { kind: 'list' }>
     expect(sparseResult.items[200]).toMatchObject({ disabled: true, label: expect.stringContaining('dense array') })
     expect(admittedListIndex(sparseResult.items, 'missing')).toBe(-1)
 
     const accessor = Array.from({ length: 201 }, (_, index) => ({ id: String(index), label: 'ok' }))
     Object.defineProperty(accessor, '200', { get: () => ({ id: 'bad', label: 'bad' }) })
-    const accessorResult = accepted({ kind: 'list', id: 'accessor', selectedIds: [], items: accessor }) as Extract<import('@ephemeral-ai/mayfly-ui').MayflyUiNode, { kind: 'list' }>
+    const accessorResult = accepted({ role: 'choose', kind: 'list', id: 'accessor', selectedIds: [], items: accessor }) as Extract<import('@ephemeral-ai/mayfly-ui').MayflyUiNode, { kind: 'list' }>
     expect(accessorResult.items[200]).toMatchObject({ disabled: true, label: expect.stringContaining('must be data') })
 
     const throwing = new Proxy(Array.from({ length: 201 }, (_, index) => ({ id: String(index), label: 'ok' })), {
@@ -235,13 +235,13 @@ describe('validateMayflyUiNode', () => {
         return Reflect.getOwnPropertyDescriptor(target, property)
       },
     })
-    const throwingResult = accepted({ kind: 'list', id: 'throwing', selectedIds: [], items: throwing }) as Extract<import('@ephemeral-ai/mayfly-ui').MayflyUiNode, { kind: 'list' }>
+    const throwingResult = accepted({ role: 'choose', kind: 'list', id: 'throwing', selectedIds: [], items: throwing }) as Extract<import('@ephemeral-ai/mayfly-ui').MayflyUiNode, { kind: 'list' }>
     expect(throwingResult.items[200]).toMatchObject({ disabled: true, label: expect.stringContaining('is invalid') })
 
     class ListSubclass extends Array<unknown> {}
     const subclass = new ListSubclass(...Array.from({ length: 201 }, (_, index) => ({ id: String(index), label: 'ok' })))
-    expect(validateMayflyUiNode({ kind: 'list', id: 'subclass', selectedIds: [], items: subclass })).toMatchObject({ ok: false, message: expect.stringContaining('plain array') })
-    expect(validateMayflyUiNode({ kind: 'list', id: 'object', selectedIds: [], items: {} })).toMatchObject({ ok: false, message: expect.stringContaining('array') })
+    expect(validateMayflyUiNode({ role: 'choose', kind: 'list', id: 'subclass', selectedIds: [], items: subclass })).toMatchObject({ ok: false, message: expect.stringContaining('plain array') })
+    expect(validateMayflyUiNode({ role: 'choose', kind: 'list', id: 'object', selectedIds: [], items: {} })).toMatchObject({ ok: false, message: expect.stringContaining('array') })
   })
 
   it('materializes responsive placeholders once and safely contains unexpected failures', () => {
@@ -333,8 +333,7 @@ describe('validateMayflyUiNode', () => {
     [{ kind: 'progress', value: Number.MAX_SAFE_INTEGER + 1, max: Number.MAX_SAFE_INTEGER + 1 }, 'safe range'],
     [{ kind: 'spacer', size: 3 }, 'invalid'],
     [{ kind: 'tabs', id: 'x', activeId: 'missing', items: [] }, 'activeId'],
-    [{ kind: 'list', id: 'x', selectedIds: ['missing'], items: [] }, 'selectedIds'],
-    [{ kind: 'list', id: 'x', selectedIds: [], items: [{ id: 'a', label: 'A', detailSpans: [{ text: 'x', tone: 'neon' }] }] }, 'invalid'],
+    [{ role: 'choose', kind: 'list', id: 'x', selectedIds: [], items: [{ id: 'a', label: 'A', detailSpans: [{ text: 'x', tone: 'neon' }] }] }, 'invalid'],
     [{ kind: 'form', id: 'x', fields: [{ kind: 'toggle', id: 'a', label: 'A', value: true }, { kind: 'toggle', id: 'a', label: 'B', value: false }] }, 'duplicate'],
     [{ kind: 'stack', direction: 'row', children: [{ node: { kind: 'text', content: 'x' }, minSize: 2, maxSize: 1 }] }, 'inverted'],
   ])('returns a stable invalid-contribution result for %j', (value, message) => {
@@ -355,9 +354,9 @@ describe('validateMayflyUiNode', () => {
     ])
     expect(validateMayflyUiNode(duplicate)).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: expect.stringContaining('duplicated') })
     expect(validateMayflyUiNode(ui.actions({ id: 'actions', items: [{ id: '', label: 'Empty' }] }))).toMatchObject({ ok: false, message: expect.stringContaining('empty') })
-    expect(validateMayflyUiNode(ui.list({ id: 'list', selectedIds: ['a', 'a'], items: [{ id: 'a', label: 'A' }] }))).toMatchObject({ ok: false, message: expect.stringContaining('duplicate') })
-    expect(validateMayflyUiNode(ui.list({ id: 'list', selectedIds: ['a', 'b'], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }))).toMatchObject({ ok: false, message: expect.stringContaining('single mode') })
-    expect(validateMayflyUiNode(ui.list({ id: '', selectedIds: [], items: [] }))).toMatchObject({ ok: false, message: expect.stringContaining('empty') })
+    expect(validateMayflyUiNode(ui.list({ role: 'choose', id: 'list', selectedIds: ['a', 'a'], items: [{ id: 'a', label: 'A' }] }))).toMatchObject({ ok: false, message: expect.stringContaining('duplicate') })
+    expect(validateMayflyUiNode(ui.list({ role: 'choose', id: 'list', selectedIds: ['a', 'b'], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }))).toMatchObject({ ok: false, message: expect.stringContaining('single mode') })
+    expect(validateMayflyUiNode(ui.list({ role: 'choose', id: '', selectedIds: [], items: [] }))).toMatchObject({ ok: false, message: expect.stringContaining('empty') })
     expect(validateMayflyUiNode(ui.stack.column([
       ui.tabs({ id: 'same', activeId: 'a', items: [{ id: 'a', label: 'A' }] }),
       ui.tabs({ id: 'same', activeId: 'b', items: [{ id: 'b', label: 'B' }] }),
@@ -391,7 +390,7 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode(ui.loader({ message: 'load' })).ok).toBe(true)
     expect(validateMayflyUiNode(ui.scroll(ui.text('plain'))).ok).toBe(true)
     expect(validateMayflyUiNode(ui.sections([{ body: ui.text('body') }])).ok).toBe(true)
-    expect(validateMayflyUiNode(ui.list({ id: 'disabled-list', selectedIds: [], items: [{ id: 'disabled', label: 'Disabled', disabled: true }] })).ok).toBe(true)
+    expect(validateMayflyUiNode(ui.list({ role: 'choose', id: 'disabled-list', selectedIds: [], items: [{ id: 'disabled', label: 'Disabled', disabled: true }] })).ok).toBe(true)
   })
 
   it('contains proxies/accessors, ignores unknown getters, and never freezes caller data', () => {
@@ -485,6 +484,19 @@ describe('validateMayflyUiNode', () => {
       code: 'MAYFLY_INVALID_CONTRIBUTION',
       message: expect.stringContaining('plain array'),
     })
+  })
+})
+
+describe('action and content identities', () => {
+  it('rejects actions that read and submit together and duplicate content ids', () => {
+    const target = { pagePath: [], formId: 'form' }
+    expect(validateMayflyUiNode(ui.actions({ id: 'actions', items: [{ id: 'save', label: 'Save', read: [target], submit: [target] }] }))).toMatchObject({ ok: false, message: expect.stringContaining('both read and submit') })
+    expect(validateMayflyUiNode({
+      kind: 'stack', direction: 'column', children: [
+        { id: 'same', node: { kind: 'text', content: 'one' } },
+        { id: 'same', node: { kind: 'text', content: 'two' } },
+      ],
+    })).toMatchObject({ ok: false, message: expect.stringContaining('duplicate content ids') })
   })
 })
 

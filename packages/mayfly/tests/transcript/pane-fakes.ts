@@ -31,6 +31,7 @@ export class PaneFakeScreen implements MayflyScreen {
   readonly renderRequests: (boolean | undefined)[] = []
   readonly columns = 80
   rows = 24
+  get editorViewport(): { readonly columns: number, readonly rows: number } { return { columns: this.columns, rows: this.rows } }
   private readonly paneComponents = new Map<string, MayflyComponent>()
   private panes?: MayflyPaneService
   private components?: ReturnType<typeof fakeMayflyComponents>

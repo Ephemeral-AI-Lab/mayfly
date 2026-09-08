@@ -27,7 +27,6 @@ registerTempDirCleanup()
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import * as updateCheck from '../../src/interaction/updater/check.ts'
 import { updaterInternals, type InteractiveChild, type SpawnOutcome } from '../../src/interaction/updater/io.ts'
-import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import {
   applyUpdateProgress,
   createUpdateProgressState,
@@ -35,17 +34,20 @@ import {
   updatePanelModel,
   updatePanelSummary,
 } from '../../src/interaction/update-command.ts'
-import { CanonicalDocumentController } from '../../src/interaction/frontend-panel.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
-import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
+import { fakeMayflyContext, KEY } from './fakes.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { checkCooldown, checkHostLine, repairRecipe } from '../../src/interaction/updater/preflight.ts'
 import { classifyInstallFailure } from '../../src/interaction/updater/swap.ts'
+import { renderRequest } from './request-fixture.ts'
 
 /** The real seams, restored after every test. */
 const REAL = { ...updaterInternals }
+const flushUpdate = (): Promise<void> => new Promise(resolve => { setImmediate(resolve) })
 
 afterEach(() => {
   Object.assign(updaterInternals, REAL)
@@ -193,13 +195,19 @@ async function mountWorld(options: {
 
   const mayfly = options.withScreen === false ? undefined : fakeMayflyContext()
   const ctx = mayfly?.ctx ?? new Context()
+  let interaction: UiInteractionService | undefined
+  if (mayfly !== undefined) {
+    interaction = new UiInteractionService(ctx)
+    mountUiRegistryObservers(ctx)
+    await Promise.resolve()
+  }
   if (mayfly === undefined) new InteractionStateService(ctx, settingsPlugin.DEFAULT_SETTINGS)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('update-spec'))
   const agent = { id: session.id, session, status: options.agentStatus ?? 'idle' } as unknown as Agent
   ctx.provide('testSession', { current: options.sessionCurrent === 'null' ? null : agent, modelRef: undefined })
-  const dispose = registerUpdateCommand(ctx)
+  const disposeCommand = registerUpdateCommand(ctx)
   return {
     ctx,
     screen: mayfly?.screen as FakeScreen,
@@ -209,20 +217,40 @@ async function mountWorld(options: {
     now,
     spawns,
     installAt,
-    dispose,
+    dispose: () => {
+      disposeCommand()
+      if (mayfly !== undefined) for (const overlay of ctx.mayflyOverlays.list()) ctx.mayflyOverlays.close(overlay.id)
+      interaction?.dispose()
+    },
     /** Execute /update and return its result. */
     run: async (line = '/update') => {
       const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
       return execution?.result
     },
-    /** Wait for the first dialog overlay and return its component. */
+    /** Wait for the first dialog surface and drive it through the shared model. */
     waitOverlay: async (): Promise<unknown> => {
       for (let i = 0; i < 100; i += 1) {
-        const overlay = (mayfly?.screen as FakeScreen | undefined)?.overlays.at(-1)?.component
-        if (overlay !== undefined) return overlay
+        const entry = mayfly === undefined ? undefined : ctx.mayflyOverlays.list().at(-1)
+        if (entry !== undefined) {
+          const model = ctx.mayflyUiInteraction.get('overlay', entry.id)
+          if (model !== undefined) {
+            return {
+              render: (width: number) => renderRequest(model, { columns: width, rows: 24 }).component.render(width),
+              handleInput: (data: string) => renderRequest(model).input(data),
+            }
+          }
+        }
         await new Promise(resolve => setTimeout(resolve, 2))
       }
       throw new Error('no overlay mounted')
+    },
+    waitSurface: async (id: string): Promise<UiSurfaceModel> => {
+      for (let index = 0; index < 100; index += 1) {
+        const model = ctx.mayflyUiInteraction.get('overlay', id)
+        if (model !== undefined) return model
+        await new Promise(resolve => setTimeout(resolve, 2))
+      }
+      throw new Error(`no surface registered: ${id}`)
     },
   }
 }
@@ -343,7 +371,7 @@ describe('/update early verdicts', () => {
     const world = await mountWorld({ packument: packumentJson({ channelTag: CURRENT_VERSION }) })
     const result = await world.run('/update 0.9.9')
     expect(result).toEqual({ kind: 'success' })
-    expect(overlayRows(world.screen)).toContain('is not published')
+    expect(overlayRows(world.ctx)).toContain('is not published')
     world.dispose()
   })
 
@@ -351,7 +379,7 @@ describe('/update early verdicts', () => {
     const world = await mountWorld()
     const result = await world.run('/update 0.1.0-alpha.0')
     expect(result).toEqual({ kind: 'success' })
-    expect(overlayRows(world.screen)).toContain("Mayfly's first release")
+    expect(overlayRows(world.ctx)).toContain("Mayfly's first release")
     world.dispose()
   })
 
@@ -376,7 +404,7 @@ describe('/update early verdicts', () => {
     rmSync(join(world.root, 'node_modules', '@ephemeral-ai', 'mayfly', 'package.json'))
     const result = await world.run(`/update ${CURRENT_VERSION}`)
     expect(result).toEqual({ kind: 'success' })
-    const rows = overlayRows(world.screen)
+    const rows = overlayRows(world.ctx)
     expect(rows).toContain('the @ephemeral-ai/mayfly package is not installed')
     expect(rows).toContain('repair: dsh plugin')
     expect(rows).toContain(`v${CURRENT_VERSION} → v${CURRENT_VERSION}`)
@@ -401,14 +429,15 @@ describe('/update early verdicts', () => {
     // The verdict speaks through the panel (a result line would truncate
     // the recipe); the command itself resolves success-no-text.
     expect(result).toEqual({ kind: 'success' })
-    const rows = overlayRows(world.screen)
+    const rows = overlayRows(world.ctx)
     expect(rows).toContain('the profile mixes link/file specs (@ephemeral-ai/mayfly)')
     expect(rows).toContain('repair: dsh plugin')
     expect(rows).toContain('nothing was changed')
     // Esc closes the blocked panel through the bound restore path.
-    const component = world.screen.overlays.at(-1)?.component as { handleInput(data: string): void } | undefined
-    dispatchUnknownPanelAction(component)
-    expect(() => component?.handleInput(KEY.escape)).not.toThrow()
+    const blocked = await world.waitSurface('mayfly.update.blocked')
+    blocked.requestClose()
+    await flushUpdate()
+    expect(blocked.disposed).toBe(true)
     world.dispose()
   })
 
@@ -416,7 +445,7 @@ describe('/update early verdicts', () => {
     const world = await mountWorld({ hostVersion: 'dsh 0.1.1-rc.1' })
     const result = await world.run()
     expect(result).toEqual({ kind: 'success' })
-    expect(overlayRows(world.screen)).toContain('npm i -g @deepseek-ai/dsh@0.1.1-rc.2')
+    expect(overlayRows(world.ctx)).toContain('npm i -g @deepseek-ai/dsh@0.1.1-rc.2')
     world.dispose()
   })
 
@@ -431,7 +460,7 @@ describe('/update early verdicts', () => {
       hostVersion: 'dsh 0.1.2-alpha.4',
     })
     expect(await world.run(command)).toEqual({ kind: 'success' })
-    expect(overlayRows(world.screen)).toContain('npm i -g @deepseek-ai/dsh@0.1.2-alpha.5')
+    expect(overlayRows(world.ctx)).toContain('npm i -g @deepseek-ai/dsh@0.1.2-alpha.5')
     expect(world.spawns.filter(call => call.cmd === 'npm').map(call => call.args)).toEqual([
       ['view', '@ephemeral-ai/mayfly', '--json'],
       ['view', `@ephemeral-ai/mayfly@${TARGET_VERSION}`, 'dependencies', '--json'],
@@ -446,7 +475,7 @@ describe('/update early verdicts', () => {
     })
     const result = await world.run()
     expect(result).toEqual({ kind: 'success' })
-    const rows = overlayRows(world.screen)
+    const rows = overlayRows(world.ctx)
     expect(rows).toContain('minimumReleaseAge')
     expect(rows).toContain('2026-08-25 23:00')
     world.dispose()
@@ -501,10 +530,10 @@ describe('/update confirm and swap', () => {
     expect(state).toContain(`"lastNotifiedVersion": "${TARGET_VERSION}"`)
     // The progress panel stays readable; Esc closes it through the bound
     // restore path.
-    const panelOverlay = world.screen.overlays.at(-1)?.component as { handleInput(data: string): void } | undefined
-    expect(panelOverlay).toBeDefined()
-    dispatchUnknownPanelAction(panelOverlay)
-    panelOverlay!.handleInput(KEY.escape)
+    const progress = await world.waitSurface('mayfly.update.progress')
+    progress.requestClose()
+    await flushUpdate()
+    expect(progress.disposed).toBe(true)
     world.dispose()
   })
 
@@ -560,7 +589,7 @@ describe('/update confirm and swap', () => {
     const execution = await pending
     // The result line stays a short summary; the panel carries the recipe.
     expect(execution?.result).toEqual({ kind: 'error', text: `update failed — rolled back to v${CURRENT_VERSION}` })
-    const rows = overlayRows(world.screen)
+    const rows = overlayRows(world.ctx)
     expect(rows).toContain('cooldown window')
     expect(rows).toContain(`rolled back to ${CURRENT_VERSION}`)
     world.dispose()
@@ -577,7 +606,7 @@ describe('/update confirm and swap', () => {
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
-    expect(overlayRows(world.screen)).toContain('manual repair')
+    expect(overlayRows(world.ctx)).toContain('manual repair')
     world.dispose()
   })
 
@@ -658,7 +687,7 @@ describe('/update confirm and swap', () => {
     })
     const result = await world.run()
     expect(result).toEqual({ kind: 'success' })
-    expect(overlayRows(world.screen)).toContain('minimumReleaseAge')
+    expect(overlayRows(world.ctx)).toContain('minimumReleaseAge')
     world.dispose()
   })
 
@@ -670,7 +699,7 @@ describe('/update confirm and swap', () => {
       })
       const result = await world.run()
       expect(result, probe).toEqual({ kind: 'success' })
-      expect(overlayRows(world.screen), probe).toContain('minimumReleaseAge')
+      expect(overlayRows(world.ctx), probe).toContain('minimumReleaseAge')
       world.dispose()
     }
   })
@@ -678,30 +707,101 @@ describe('/update confirm and swap', () => {
   it('refuses a second concurrent run and releases the guard after settle', async () => {
     const world = await mountWorld()
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
-    const overlay = await world.waitOverlay()
+    const confirmation = await world.waitSurface('mayfly.update.confirm')
     // While the first run parks at the confirm form, a second /update is refused.
     const second = await world.run()
     expect(second).toEqual({ kind: 'error', text: 'an update is already in progress' })
-    ;(overlay as { handleInput(data: string): void }).handleInput(KEY.escape)
+    confirmation.requestClose()
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'success', text: 'update cancelled' })
+    expect(confirmation.disposed).toBe(true)
     // The guard released with the settle: a third run reaches the confirm again.
-    const overlaysBefore = world.screen.overlays.length
     const third = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
-    // waitOverlay returns overlays.at(-1), which is still the first run's
-    // hidden form — wait for the NEW record before driving it.
-    let thirdOverlay: unknown
-    for (let i = 0; i < 100; i += 1) {
-      if (world.screen.overlays.length > overlaysBefore) {
-        thirdOverlay = world.screen.overlays.at(-1)!.component
-        break
-      }
-      await new Promise(resolve => setTimeout(resolve, 2))
-    }
-    expect(thirdOverlay).toBeDefined()
-    ;(thirdOverlay as { handleInput(data: string): void }).handleInput(KEY.escape)
+    const next = await world.waitSurface('mayfly.update.confirm')
+    expect(next).not.toBe(confirmation)
+    next.requestClose()
     const thirdExecution = await third
     expect(thirdExecution?.result).toEqual({ kind: 'success', text: 'update cancelled' })
+    world.dispose()
+  })
+
+  it('settles confirmation cancellation when its registry entry is closed', async () => {
+    const world = await mountWorld()
+    const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
+    await world.waitSurface('mayfly.update.confirm')
+    expect(world.ctx.mayflyOverlays.close('mayfly.update.confirm')).toBe(true)
+    await expect(pending).resolves.toMatchObject({ result: { kind: 'success', text: 'update cancelled' } })
+    const retry = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
+    const confirmation = await world.waitSurface('mayfly.update.confirm')
+    confirmation.requestClose()
+    await expect(retry).resolves.toMatchObject({ result: { kind: 'success', text: 'update cancelled' } })
+    world.dispose()
+  })
+
+  it('settles confirmation cancellation when its owning context unloads', async () => {
+    const world = await mountWorld()
+    const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
+    await world.waitSurface('mayfly.update.confirm')
+    await world.ctx.fiber.dispose()
+    await expect(pending).resolves.toMatchObject({ result: { kind: 'success', text: 'update cancelled' } })
+  })
+
+  it('ignores unrelated confirmation and progress events and settles confirmation once', async () => {
+    const world = await mountWorld()
+    const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
+    await world.waitSurface('mayfly.update.confirm')
+    const confirmation = world.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.update.confirm')!
+    const context = { surfaceId: confirmation.id, operationId: 'direct', source: confirmation.source, revision: confirmation.revision, signal: new AbortController().signal, report: vi.fn() }
+    expect(await confirmation.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context)).toEqual({ kind: 'completed' })
+    const decline = { kind: 'activate' as const, pagePath: [], controlId: 'update-confirm-actions', actionId: 'no' }
+    expect(await confirmation.definition.onEvent!.action!(decline, context)).toEqual({ kind: 'completed', dismiss: true })
+    expect(await confirmation.definition.onEvent!.action!(decline, context)).toEqual({ kind: 'completed', dismiss: true })
+    await expect(pending).resolves.toMatchObject({ result: { kind: 'success', text: 'update cancelled' } })
+    world.ctx.mayflyOverlays.close(confirmation.id)
+
+    const next = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
+    const model = await world.waitSurface('mayfly.update.confirm')
+    model.invoke('yes')
+    const progress = await world.waitSurface('mayfly.update.progress')
+    const progressEntry = world.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.update.progress')!
+    const progressContext = { ...context, surfaceId: progressEntry.id, source: progressEntry.source, revision: progressEntry.revision }
+    expect(await progressEntry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, progressContext)).toEqual({ kind: 'completed' })
+    await next
+    progress.requestClose()
+    world.dispose()
+  })
+
+  it('settles a confirmation closed during initial publication', async () => {
+    const world = await mountWorld()
+    world.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.update.confirm') world.ctx.mayflyOverlays.close(delta.entry.id) })
+    const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
+    await expect(pending).resolves.toMatchObject({ result: { kind: 'success', text: 'update cancelled' } })
+    world.dispose()
+  })
+
+  it('keeps the progress surface open while the swap runs and closes it after settlement', async () => {
+    const world = await mountWorld()
+    const release = Promise.withResolvers<void>()
+    const spawn = updaterInternals.spawnOnce
+    updaterInternals.spawnOnce = ((cmd: string, args: readonly string[], options?: { cwd?: string, timeoutMs?: number }) => {
+      if (args[0] !== 'plugin') return spawn(cmd, args, options)
+      return release.promise.then(() => spawn(cmd, args, options))
+    }) as typeof updaterInternals.spawnOnce
+    const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
+    const confirmation = await world.waitSurface('mayfly.update.confirm')
+    confirmation.invoke('yes')
+    const progress = await world.waitSurface('mayfly.update.progress')
+    progress.requestClose()
+    await flushUpdate()
+    expect(progress.disposed).toBe(false)
+    expect(progress.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'error', message: 'The update is still running' }),
+    ]))
+    release.resolve()
+    await expect(pending).resolves.toMatchObject({ result: { kind: 'success' } })
+    progress.requestClose()
+    await flushUpdate()
+    expect(progress.disposed).toBe(true)
     world.dispose()
   })
 
@@ -719,13 +819,14 @@ describe('/update confirm and swap', () => {
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
-    const rows = overlayRows(world.screen)
+    const rows = overlayRows(world.ctx)
     expect(rows).toContain('the swap crashed')
     expect(rows).toContain('ENOSPC')
     expect(rows).toContain('the snapshot is at')
-    const panelOverlay = world.screen.overlays.at(-1)?.component as { handleInput(data: string): void } | undefined
-    expect(panelOverlay).toBeDefined()
-    panelOverlay!.handleInput(KEY.escape)
+    const progress = await world.waitSurface('mayfly.update.progress')
+    progress.requestClose()
+    await flushUpdate()
+    expect(progress.disposed).toBe(true)
     world.dispose()
   })
 
@@ -741,19 +842,18 @@ describe('/update confirm and swap', () => {
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
-    expect(overlayRows(world.screen)).toContain('the swap crashed: disk full')
-    const panelOverlay = world.screen.overlays.at(-1)?.component as { handleInput(data: string): void } | undefined
-    panelOverlay?.handleInput(KEY.escape)
+    expect(overlayRows(world.ctx)).toContain('the swap crashed: disk full')
+    const progress = await world.waitSurface('mayfly.update.progress')
+    progress.requestClose()
     world.dispose()
   })
 
   it('flashes the registry-check progress and retry notices in the hint line', async () => {
     const world = await mountWorld()
     const notices: string[] = []
-    setSharedEditor(world.ctx, {
-      editor: world.ctx.get('mayflyComponents')!.createEditor(),
-      submitPrompt: () => {},
-      notice: text => notices.push(text),
+    const off = world.ctx.mayflyUiInteraction.subscribe(() => {
+      const message = world.ctx.mayflyUiInteraction.notificationSnapshot().find(item => item.operationId === 'registry')?.message
+      if (message !== undefined && notices.at(-1) !== message) notices.push(message)
     })
     const stub = updaterInternals.spawnOnce
     let npmFailures = 2
@@ -771,6 +871,7 @@ describe('/update confirm and swap', () => {
     expect(notices).toContain('registry unreachable, retrying (3/3)…')
     ;(overlay as { handleInput(data: string): void }).handleInput(KEY.escape)
     await pending
+    off()
     world.dispose()
   })
 
@@ -834,8 +935,8 @@ describe('/update confirm and swap', () => {
     expect(execution?.result?.kind).toBe('success')
     const install = world.spawns.find(call => call.args[0] === 'plugin')
     expect(install?.args).toEqual(['plugin', '--profile', 'mayfly', 'add', `${RC2_NAMES[0]}@${TARGET_VERSION}`])
-    const panelOverlay = world.screen.overlays.at(-1)?.component as { handleInput(data: string): void } | undefined
-    panelOverlay?.handleInput(KEY.escape)
+    const progress = await world.waitSurface('mayfly.update.progress')
+    progress.requestClose()
     world.dispose()
   })
 
@@ -878,78 +979,89 @@ const plain = (rows: readonly string[]): string =>
   rows.join('\n').replace(/[\^_!]/g, '').replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
 
 /** The last overlay's rendered rows, cleaned, if one is mounted. */
-function overlayRows(screen: FakeScreen): string {
-  const component = screen.overlays.at(-1)?.component as { render(width: number): string[] } | undefined
-  return plain(component?.render(120) ?? [])
-}
-
-/** Dispatch a deliberately unknown action through a mounted generic panel. */
-function dispatchUnknownPanelAction(component: unknown): void {
-  ;(component as { options: { onAction(action: { readonly kind: string }): void } })
-    .options.onAction({ kind: 'fixture.unknown' })
+function overlayRows(ctx: Context): string {
+  const entry = ctx.mayflyOverlays.list().at(-1)
+  const model = entry === undefined ? undefined : ctx.mayflyUiInteraction.get('overlay', entry.id)
+  if (model === undefined) return ''
+  const renderer = renderRequest(model, { columns: 120, rows: 24 })
+  try { return plain(renderer.component.render(120)) } finally { renderer.runtime.dispose() }
 }
 
 describe('update panel model', () => {
-  function mount(state = createUpdateProgressState()) {
-    const display = fakeMayflyContext()
-    const closed = vi.fn()
-    const panel = new CanonicalDocumentController({
-      ...display,
-      model: () => updatePanelModel(state, '0.1.0-rc.6', '0.1.0-rc.7'),
-      onAction: vi.fn(),
-      onClose: closed,
-    })
-    return { state, panel, closed }
+  async function mount(state = createUpdateProgressState()) {
+    const { ctx } = fakeMayflyContext()
+    const interaction = new UiInteractionService(ctx)
+    mountUiRegistryObservers(ctx)
+    await flushUpdate()
+    const view = () => updatePanelModel(state, '0.1.0-rc.6', '0.1.0-rc.7')
+    const handle = ctx.mayflyOverlays.open({
+      id: 'update-model', capturing: true, dismissal: 'discard', scope: { kind: 'app', targetId: 'update-model' },
+      onEvent: { action: event => event.kind === 'dismiss'
+        ? state.outcome === undefined && state.blockedMessage === undefined
+          ? { kind: 'failed', message: 'The update is still running' }
+          : { kind: 'completed', dismiss: true }
+        : { kind: 'completed' } },
+    }, view())
+    const model = ctx.mayflyUiInteraction.get('overlay', 'update-model')!
+    const publish = () => handle.set(view())
+    const rows = (width = 80) => {
+      const renderer = renderRequest(model, { columns: width, rows: 24 })
+      try { return plain(renderer.component.render(width)) } finally { renderer.runtime.dispose() }
+    }
+    return { ctx, interaction, state, handle, model, publish, rows }
   }
 
-  it('renders the step ladder, refuses close mid-swap, and closes after settle', () => {
-    const { state, panel, closed } = mount()
+  it('renders the step ladder, refuses close mid-swap, and closes after settle', async () => {
+    const { state, model, publish, rows } = await mount()
     expect(updatePanelSummary(state)).toBe('update panel closed')
     applyUpdateProgress(state, { step: 'snapshot', state: 'ok' })
     applyUpdateProgress(state, { step: 'install', state: 'start' })
-    panel.handleInput(KEY.escape)
-    panel.handleInput(KEY.enter)
-    expect(closed).not.toHaveBeenCalled()
-    let rows = plain(panel.render(80))
-    expect(rows).toContain('v0.1.0-rc.6 → v0.1.0-rc.7')
-    expect(rows).toContain('✓ snapshot')
-    expect(rows).toContain('… install')
-    expect(rows).not.toContain('rollback')
-    expect(rows).toContain('updating - do not close')
+    publish()
+    model.requestClose()
+    await flushUpdate()
+    expect(model.disposed).toBe(false)
+    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'error', message: 'The update is still running' })]))
+    expect(model.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'close', enabled: false, disabledReason: 'The update is still running' })]))
+    let rendered = rows()
+    expect(rendered).toContain('v0.1.0-rc.6 → v0.1.0-rc.7')
+    expect(rendered).toContain('✓ snapshot')
+    expect(rendered).toContain('… install')
+    expect(rendered).not.toContain('rollback')
     state.outcome = {
       kind: 'success', fromVersion: '0.1.0-rc.6', toVersion: '0.1.0-rc.7',
       message: 'updated — restart dsh to apply', logPath: '/tmp/update.log',
     }
-    panel.invalidate()
-    rows = plain(panel.render(80))
-    expect(rows).toContain('restart dsh to apply')
-    expect(rows).toContain('log: /tmp/update.log')
-    panel.handleInput(KEY.escape)
-    expect(closed).toHaveBeenCalledOnce()
+    publish()
+    rendered = rows()
+    expect(rendered).toContain('restart dsh to apply')
+    expect(rendered).toContain('log: /tmp/update.log')
+    model.requestClose()
+    await flushUpdate()
+    expect(model.disposed).toBe(true)
     expect(updatePanelSummary(state)).toContain('restart dsh to apply')
   })
 
-  it('renders blocked and rollback outcomes and summarizes failures', () => {
+  it('renders blocked and rollback outcomes and summarizes failures', async () => {
     const blocked = createUpdateProgressState()
     blocked.blockedMessage = 'the profile mixes link/file specs (@ephemeral-ai/mayfly)\nrepair the profile'
-    expect(updatePanelModel(blocked, 'old', 'new')).toMatchObject({ mode: 'error', dismissible: true })
+    expect(updatePanelModel(blocked, 'old', 'new')).toMatchObject({ kind: 'surface', title: 'Update Mayfly', chrome: 'overlay' })
+    expect(JSON.stringify(updatePanelModel(blocked, 'old', 'new'))).toContain('repair the profile')
     expect(updatePanelSummary(blocked)).toContain('update blocked')
 
-    const { state, panel, closed } = mount()
+    const state = createUpdateProgressState()
     applyUpdateProgress(state, { step: 'smoke-boot', state: 'fail' })
     applyUpdateProgress(state, { step: 'rollback', state: 'ok' })
     state.outcome = {
       kind: 'rolled-back', fromVersion: '0.1.0-rc.6', toVersion: '0.1.0-rc.7',
       message: 'boot smoke failed; rolled back', logPath: '/tmp/update.log',
     }
-    const rows = plain(panel.render(80))
-    expect(rows).toContain('✗ smoke: boot')
-    expect(rows).toContain('✓ rollback')
+    const mounted = await mount(state)
+    const rendered = mounted.rows()
+    expect(rendered).toContain('✗ smoke: boot')
+    expect(rendered).toContain('✓ rollback')
     expect(updatePanelSummary(state)).toContain('did not complete')
-    panel.handleInput('x')
-    expect(closed).not.toHaveBeenCalled()
-    panel.handleInput('q')
-    panel.handleInput('Q')
-    expect(closed).toHaveBeenCalledTimes(2)
+    mounted.model.invoke('close')
+    await flushUpdate()
+    expect(mounted.model.disposed).toBe(true)
   })
 })

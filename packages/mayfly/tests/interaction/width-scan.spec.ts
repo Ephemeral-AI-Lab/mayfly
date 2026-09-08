@@ -11,46 +11,21 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import { Context } from '@deepseek-ai/cordis'
+import Schema from '@deepseek-ai/schemastery'
+import { ui } from '../../../ui/src/index.ts'
 import type { JobSnapshot } from '@deepseek-ai/dsh-jobs'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
-import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
-import * as approvalPlugin from '../../src/interaction/approval-plugin.ts'
-import { CanonicalFormController, type FormField } from '../../src/interaction/form-panel.ts'
-import { createConfirmationPanel } from '../../src/interaction/confirmation-panel.ts'
-import { HelpPanel, type HelpSection } from '../../src/interaction/help.ts'
-import { InfoPanel, type InfoSection } from '../../src/interaction/info-panel.ts'
-import { CanonicalDocumentController } from '../../src/interaction/frontend-panel.ts'
-import { JobOutputPanel, jobOutputPanelModel, jobsPanelModel } from '../../src/interaction/jobs.ts'
-import { PlanReviewPanel, planReviewChoices } from '../../src/interaction/plan-review-panel.ts'
-import { Questionnaire } from '../../src/interaction/questionnaire.ts'
-import { CanonicalSelectController } from '../../src/interaction/select-list.ts'
-import { CanonicalMultiSelectController } from '../../src/interaction/select.ts'
-import { CanonicalSettingsController, SettingsNoticeController } from '../../src/interaction/settings-command.ts'
-import { UpdateNoticeComponent } from '../../src/interaction/update-notice.ts'
+import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
+import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
+import { documentPages } from '../../src/interaction/document-pages.ts'
 import { SessionTranscriptPanel } from '../../src/interaction/session-transcript-panel.ts'
-import { fakeMayflyContext, FakeMayflyComponents, FakeKeymap } from './fakes.ts'
+import { fakeMayflyContext } from './fakes.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 import { FakeProjectionService } from '../transcript/pane-fakes.ts'
 import { userEvent } from '../transcript/helpers.ts'
-
-/**
- * Identity theme: the width scan measures rows through the same visible
- * width the renderer uses, so marker paints (whose literals add columns the
- * production SGR paints do not) would read as false overflows.
- */
-const id = (text: string): string => text
-const IDENTITY_THEME = {
-  colors: {
-    text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
-    borderFocus: id, success: id, error: id, warning: id, selectedBg: id, roleUser: id,
-    shellMode: id,
-    mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id,
-    mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-    diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
-    diffGutter: id, diffMeta: id,
-  },
-}
+import { renderRequest, requestFixture } from './request-fixture.ts'
+import { settingsFixture, settingsField } from './settings-fixture.ts'
 
 /** One questionnaire ask whose option label and description are the fixture. */
 function ask(text: string) {
@@ -73,88 +48,36 @@ function planAsk(text: string) {
       { label: text.slice(0, 40), description: text },
       { label: 'Keep planning', description: 'Stay in plan mode; refine first.' },
     ],
-    intent: { kind: 'plan-review', approve: text.slice(0, 40) },
+    intent: { kind: 'plan-review' as const, approve: text.slice(0, 40) },
+    detail: text,
   }
 }
 
 describe('interaction width-scan', () => {
   for (const { name, text } of ADVERSARIAL) {
-    it(`Yes/No confirmation survives ${name}`, () => {
-      const { components, keymap } = fakeMayflyContext()
-      const panel = createConfirmationPanel({
-        components, keymap, theme: IDENTITY_THEME as never,
-        title: 'Confirm', question: text, detail: text,
-        onConfirm: vi.fn(), onCancel: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) expectLinesFit(`confirmation/${name}`, panel.render(width), width)
-    })
-    it(`UpdateNoticeComponent survives ${name}`, () => {
-      const { components } = fakeMayflyContext()
-      const notice = new UpdateNoticeComponent(
-        (line, width) => components.truncateToWidth(line, width),
-        { current: '0.1.0-rc.2', target: text.slice(0, 20), command: `dsh plugin --profile mayfly add @ephemeral-ai/mayfly@${text.slice(0, 12)}` },
-      )
-      for (const width of SCAN_WIDTHS) expectLinesFit(`UpdateNotice/${name}`, notice.render(width), width)
-    })
-    it(`canonical form survives ${name}`, () => {
-      const { keymap, components } = fakeMayflyContext()
-      const fields: FormField[] = [
-        { id: 'f1', label: text, required: true, initial: 'visible-value' },
-        { id: 'f2', label: 'Short' },
-      ]
-      const panel = new CanonicalFormController({
-        keymap, theme: IDENTITY_THEME as never, components,
-        title: text,
-        subtitle: text,
-        fields,
-        onSubmit: vi.fn(),
-        onCancel: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`canonical-form/${name}`, panel.render(width), width)
-      }
+    for (const kind of ['form', 'multiselect'] as const) it(`shared ${kind} survives ${name}`, async () => {
+      const bench = await requestFixture()
+      try {
+        const node = kind === 'form'
+          ? ui.form({ id: 'form', fields: [{ kind: 'input', id: 'f1', label: text, value: 'visible-value', required: true }, { kind: 'input', id: 'f2', label: 'Short', value: '' }], submitActionId: 'save' })
+          : ui.list({ id: 'choices', role: 'choose', mode: 'multiple', selectedIds: [], items: [{ id: 'hostile', label: text, detail: text }, { id: 'short', label: 'Short' }] })
+        bench.ctx.mayflyOverlays.open({ id: 'width-case', capturing: true }, ui.surface({ title: text, subtitle: text, chrome: 'overlay', child: node }))
+        const model = bench.ctx.mayflyUiInteraction.get('overlay', 'width-case')!
+        const viewport = { columns: 80, rows: 20 }
+        const renderer = renderRequest(model, viewport)
+        try {
+          for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+            viewport.columns = width
+            viewport.rows = height
+            const rows = renderer.component.render(width)
+            expectLinesFit(`shared-${kind}/${name}/${height}`, rows, width)
+            expect(rows.length).toBeLessThanOrEqual(height)
+          }
+        } finally { renderer.runtime.dispose() }
+      } finally { await bench.ctx.fiber.dispose() }
     })
 
-    it(`canonical single-select survives ${name}`, () => {
-      const panel = new CanonicalSelectController({
-        keymap: new FakeKeymap(),
-        theme: IDENTITY_THEME as never,
-        components: new FakeMayflyComponents(),
-        rows: [
-          { value: 'hostile', label: text, description: text, badge: text },
-          { value: 'short', label: 'Short' },
-        ],
-        title: text,
-        titleHint: text,
-        footer: text,
-        filter: true,
-        onSelect: vi.fn(),
-        onCancel: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`canonical-single-select/${name}`, panel.render(width), width)
-      }
-    })
-
-    it(`canonical multi-select survives ${name}`, () => {
-      const panel = new CanonicalMultiSelectController({
-        keymap: new FakeKeymap(),
-        theme: IDENTITY_THEME as never,
-        components: new FakeMayflyComponents(),
-        items: [
-          { value: 'hostile', label: text, description: text },
-          { value: 'short', label: 'Short' },
-        ],
-        title: text,
-        onConfirm: vi.fn(),
-        onCancel: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`canonical-multi-select/${name}`, panel.render(width), width)
-      }
-    })
-
-    it(`HelpOverlay survives ${name}`, () => {
+    it(`Help document survives ${name}`, async () => {
       const sections: HelpSection[] = [
         {
           heading: 'Commands',
@@ -165,100 +88,44 @@ describe('interaction width-scan', () => {
           ],
         },
       ]
-      const overlay = new HelpPanel({
-        theme: IDENTITY_THEME as never,
-        components: new FakeMayflyComponents(),
-        keymap: new FakeKeymap(),
-        sections,
-        onClose: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`HelpOverlay/${name}`, overlay.render(width), width)
-      }
+      const bench = await requestFixture()
+      try {
+        bench.ctx.mayflyOverlays.open({ id: 'help-width', capturing: true }, helpNode(sections))
+        const model = bench.ctx.mayflyUiInteraction.get('overlay', 'help-width')!
+        const viewport = { columns: 80, rows: 20 }
+        const renderer = renderRequest(model, viewport)
+        try {
+          for (const width of SCAN_WIDTHS) {
+            viewport.columns = width
+            expectLinesFit(`HelpDocument/${name}`, renderer.component.render(width), width)
+          }
+        } finally { renderer.runtime.dispose() }
+      } finally { await bench.ctx.fiber.dispose() }
     })
 
-    it(`InfoPanel survives ${name}`, () => {
-      const sections: InfoSection[] = [
-        {
-          heading: 'Session',
-          rows: [
-            { label: text, segments: [{ text }] },
-            { label: 'id', segments: [{ text }, { text, style: 'muted' as const }] },
-          ],
-        },
-      ]
-      const panel = new InfoPanel({
-        theme: IDENTITY_THEME as never,
-        components: new FakeMayflyComponents(),
-        keymap: new FakeKeymap(),
-        title: text,
-        sections,
-        onClose: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`InfoPanel/${name}`, panel.render(width), width)
-      }
+    it(`paged job output survives ${name}`, async () => {
+      const bench = await requestFixture()
+      const read = { snapshot: { id: 'large', label: 'Large output', status: 'completed' } as JobSnapshot, text: `${text}\n`.repeat(Math.ceil(13_000 / (text.length + 1))) }
+      const pages = documentPages(read.text)
+      try {
+        for (const page of pages.keys()) {
+          const handle = bench.ctx.mayflyOverlays.open({ id: 'job-output', capturing: true }, jobOutputNode(read, pages, page + 1, key => key))
+          const model = bench.ctx.mayflyUiInteraction.get('overlay', 'job-output')!
+          const viewport = { columns: 80, rows: 20 }
+          const renderer = renderRequest(model, viewport)
+          try {
+            for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+              viewport.columns = width; viewport.rows = height
+              const rows = renderer.component.render(width)
+              expectLinesFit(`job-output/${name}/${page}/${height}`, rows, width)
+              expect(rows.length).toBeLessThanOrEqual(height)
+            }
+          } finally { renderer.runtime.dispose(); handle.close() }
+        }
+      } finally { await bench.ctx.fiber.dispose() }
     })
 
-    it(`canonical document survives ${name}`, () => {
-      const panel = new CanonicalDocumentController({
-        theme: IDENTITY_THEME as never,
-        components: new FakeMayflyComponents(),
-        keymap: new FakeKeymap(),
-        model: () => ({
-          kind: 'panel', mode: 'select', title: text,
-          header: { kind: 'text', text },
-          view: { kind: 'list', filterable: true, grouped: true, items: [
-            { id: 'a', label: text, detail: text, group: text, variants: [{ id: 'v', label: text, action: { kind: 'pick' } }] },
-            { id: 'b', label: text, group: 'other', action: { kind: 'pick' } },
-          ] },
-        }),
-        onAction: vi.fn(),
-        onClose: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`canonical-document/${name}`, panel.render(width), width)
-      }
-    })
-
-    it(`canonical loading document survives ${name}`, () => {
-      const panel = new CanonicalDocumentController({
-        theme: IDENTITY_THEME as never,
-        components: new FakeMayflyComponents(),
-        keymap: new FakeKeymap(),
-        model: () => ({
-          mode: 'loading',
-          title: text,
-          view: { kind: 'text', content: text },
-          dismissible: false,
-        }),
-        onAction: vi.fn(),
-        onClose: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`canonical-loading-document/${name}`, panel.render(width), width)
-      }
-    })
-
-    it(`paged job output survives ${name}`, () => {
-      const panel = new JobOutputPanel({ id: 'large', label: 'Large output', status: 'completed' } as JobSnapshot,
-        `${text}\n`.repeat(Math.ceil(30_000 / (text.length + 1))), {
-          theme: IDENTITY_THEME as never,
-          components: new FakeMayflyComponents(),
-          keymap: new FakeKeymap(),
-          t: key => key,
-          onClose: vi.fn(),
-        })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`job-output/${name}`, panel.render(width), width)
-        panel.handleInput('\x1b[C')
-        expectLinesFit(`job-output-next/${name}`, panel.render(width), width)
-        panel.handleInput('\x1b[F')
-        expectLinesFit(`job-output-end/${name}`, panel.render(width), width)
-      }
-    })
-
-    it(`native jobs documents survive ${name}`, () => {
+    it(`native jobs documents survive ${name}`, async () => {
       const job = {
         id: text,
         kind: 'bash',
@@ -269,29 +136,28 @@ describe('interaction width-scan', () => {
         detail: text,
         reported: false,
       } as JobSnapshot
-      const panels = [
-        new CanonicalDocumentController({
-          theme: IDENTITY_THEME as never,
-          components: new FakeMayflyComponents(),
-          keymap: new FakeKeymap(),
-          model: () => jobsPanelModel([job], 61_000, key => key),
-          onAction: vi.fn(),
-          onClose: vi.fn(),
-        }),
-        new CanonicalDocumentController({
-          theme: IDENTITY_THEME as never,
-          components: new FakeMayflyComponents(),
-          keymap: new FakeKeymap(),
-          model: () => jobOutputPanelModel(job, text, key => key),
-          onAction: vi.fn(),
-          onClose: vi.fn(),
-        }),
+      const bench = await requestFixture()
+      const nodes = [
+        ui.list({ id: 'jobs', role: 'browse', selectedIds: [], items: jobItems([job], 61_000, key => key) }),
+        jobDetailsNode(job, key => key),
+        jobOutputNode({ snapshot: job, text }, [text], 1, key => key),
       ]
-      for (const width of SCAN_WIDTHS) {
-        panels.forEach((panel, index) => {
-          expectLinesFit(`native-jobs-${String(index)}/${name}`, panel.render(width), width)
-        })
-      }
+      try {
+        for (const [index, node] of nodes.entries()) {
+          const handle = bench.ctx.mayflyOverlays.open({ id: 'job-view', capturing: true }, node)
+          const model = bench.ctx.mayflyUiInteraction.get('overlay', 'job-view')!
+          const viewport = { columns: 80, rows: 20 }
+          const renderer = renderRequest(model, viewport)
+          try {
+            for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+              viewport.columns = width; viewport.rows = height
+              const rows = renderer.component.render(width)
+              expectLinesFit(`native-jobs-${index}/${name}/${height}`, rows, width)
+              expect(rows.length).toBeLessThanOrEqual(height)
+            }
+          } finally { renderer.runtime.dispose(); handle.close() }
+        }
+      } finally { await bench.ctx.fiber.dispose() }
     })
     it(`SessionTranscriptPanel survives ${name}`, () => {
       const { ctx } = fakeMayflyContext({ agents: false })
@@ -312,110 +178,52 @@ describe('interaction width-scan', () => {
       panel.dispose()
     })
 
-    it(`approval plugin prompt survives ${name}`, async () => {
-      const { ctx, screen } = fakeMayflyContext()
-      const agent = {
-        id: `approval-width-${name}`,
-        status: 'idle',
-        inbox: { nextTurn: [], nextStep: [], remove: () => false },
-        followup: vi.fn(),
-        steer: vi.fn(),
-        cancel: vi.fn(),
-      } as unknown as Agent
-      ctx.provide('testSession', { current: agent, modelRef: undefined })
-      await ctx.plugin(approvalPlugin)
-      const request: ApprovalRequest = { agent, toolName: text, reason: text }
-      const pending = ctx.waterfall(
-        'approval/request',
-        request,
-        () => Promise.resolve<ApprovalOutcome>('unavailable'),
-      )
-      const component = screen.overlays.at(-1)?.component
-      if (component === undefined) throw new Error('approval prompt did not mount')
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`approval-plugin/${name}`, component.render(width), width)
-      }
-      component.handleInput?.('\x1b')
-      await pending
-      await ctx.fiber.dispose()
+    for (const kind of ['approval', 'plan', 'questionnaire'] as const) it(`shared request ${kind} survives ${name}`, async () => {
+      const bench = await requestFixture()
+      try {
+        const pending = kind === 'approval' ? bench.approve({ toolName: text, reason: text }) : bench.ctx.userQuestions.ask({ questions: [kind === 'plan' ? planAsk(text) : ask(text)] })
+        const cancelled = pending.catch(() => {})
+        const model = bench.model(kind === 'approval' ? 'mayfly.approval.' : 'mayfly.questions.')
+        const viewport = { columns: 80, rows: 24 }
+        const renderer = renderRequest(model, viewport)
+        try {
+          for (const width of SCAN_WIDTHS) for (const height of [24, 10, 5]) {
+            viewport.columns = width
+            viewport.rows = height
+            const rows = renderer.component.render(width)
+            expectLinesFit(`${kind}/${name}/${height}`, rows, width)
+            expect(rows.length).toBeLessThanOrEqual(height)
+          }
+          if (kind !== 'questionnaire') {
+            model.invoke(kind === 'approval' ? 'feedback' : 'revise', [{ controlId: kind === 'approval' ? 'approval' : 'review', itemId: 'decision' }])
+            const feedbackRenderer = renderRequest(model, viewport)
+            for (const width of SCAN_WIDTHS) expectLinesFit(`${kind}-feedback/${name}`, feedbackRenderer.component.render(width), width)
+            feedbackRenderer.runtime.dispose()
+            model.back()
+          }
+          model.requestClose()
+          await cancelled
+        } finally { renderer.runtime.dispose() }
+      } finally { await bench.ctx.fiber.dispose() }
     })
-
-    it(`PlanReviewPanel survives ${name}`, () => {
-      const question = planAsk(text) as Parameters<typeof planReviewChoices>[0]
-      const choices = planReviewChoices(question)
-      expect(choices).toBeDefined()
-      const panel = new PlanReviewPanel({
-        theme: IDENTITY_THEME as never,
-        components: new FakeMayflyComponents(),
-        question,
-        choices: choices!,
-        viewportRows: () => 24,
-        onComplete: vi.fn(),
-        onCancel: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`PlanReviewPanel/${name}`, panel.render(width), width)
-      }
-    })
-
-    it(`Questionnaire survives ${name}`, () => {
-      const questionnaire = new Questionnaire({
-        theme: IDENTITY_THEME as never,
-        components: new FakeMayflyComponents(),
-        questions: [ask(text)] as never,
-        onComplete: vi.fn(),
-        onCancel: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`Questionnaire/${name}`, questionnaire.render(width), width)
-      }
-      questionnaire.handleInput('\x1b')
-    })
-    it(`canonical settings survives ${name}`, () => {
-      const components = new FakeMayflyComponents()
-      const items = [
-        { id: 'a', label: text, description: text, currentValue: text, values: [text, 'other'] },
-        { id: 'b', label: 'Short', currentValue: '1', values: ['1', '2'] },
-      ]
-      const panel = new CanonicalSettingsController({
-        theme: IDENTITY_THEME as never,
-        components,
-        keymap: new FakeKeymap(),
-        title: `settings › ${text}`,
-        footer: ['↑↓ select', text, 'esc back'],
-        items: [
-          ...items,
-        ],
-        notice: { current: { text, error: true } },
-        onChange: vi.fn(),
-        onCancel: vi.fn(),
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`canonical-settings/${name}`, panel.render(width), width)
-      }
-      panel.handleInput('\x1b')
-    })
-
-    it(`settings notice survives ${name}`, () => {
-      const components = new FakeMayflyComponents()
-      const tail = new SettingsNoticeController({
-        // The inner panel budgets its own rows (the canonical selector
-        // contract); the tail's own addition is the truncated notice row.
-        inner: {
-          focused: false,
-          currentNode: () => ({ kind: 'text', content: text }),
-          handleInput: () => {},
-          invalidate: () => {},
-        },
-        components,
-        theme: IDENTITY_THEME as never,
-        notice: { current: { text, error: false } },
-      })
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`settings-notice/${name}`, tail.render(width), width)
-      }
-      tail.handleInput('\x1b')
-      tail.invalidate()
+    it(`shared settings survives ${name}`, async () => {
+      const ctx = new Context()
+      try {
+        const bench = await settingsFixture(ctx, Schema.object({ value: Schema.string().default(text), choice: Schema.union([text, 'other']).default(text), enabled: Schema.boolean().default(true) }))
+        const model = await bench.open()
+        model.edit(settingsField('value'), `${text} modified`)
+        const viewport = { columns: 80, rows: 20 }
+        const renderer = renderRequest(model, viewport)
+        try {
+          for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+            viewport.columns = width
+            viewport.rows = height
+            const rows = renderer.component.render(width)
+            expectLinesFit(`shared-settings/${name}/${height}`, rows, width)
+            expect(rows.length).toBeLessThanOrEqual(height)
+          }
+        } finally { renderer.runtime.dispose() }
+      } finally { await ctx.fiber.dispose() }
     })
   }
 })

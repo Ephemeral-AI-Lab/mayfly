@@ -29,6 +29,7 @@ export interface PasteImageRuntimeState {
 
 /** Mutable interaction state whose lifetime is the parent frontend tree. */
 export class InteractionStateService extends Service {
+  private live = true
   readonly aliases = new CommandAliasRegistry()
   readonly draft = new DraftStash()
   settingsSource: () => MayflySettings
@@ -49,7 +50,10 @@ export class InteractionStateService extends Service {
     this.settingsSource = () => defaultSettings
   }
 
+  get disposed(): boolean { return !this.live }
+
   dispose(): void {
+    this.live = false
     this.aliases.clear()
     this.draft.clearAll()
     this.modelsDevCache = undefined

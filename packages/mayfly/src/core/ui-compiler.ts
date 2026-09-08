@@ -18,15 +18,18 @@ import type {
   MayflyUiEvent,
   MayflyUiNode,
   MayflyViewportCondition,
+  MayflyFieldAddress,
+  MayflyFieldValue,
+  MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
-import { CURSOR_MARKER, HStack, Key, matchesKey, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
+import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { hintRow } from './chrome.ts'
 import { renderChartRows } from './chart-renderer.ts'
 import { ownDataErrorMessage } from './error-message.ts'
-import { paintPluginTone, renderCanonicalView } from './plugin-view.ts'
-import type { MayflyComponent, MayflyComponents, MayflyEditor, MayflyFocusable, MayflyFocusIdentity, MayflySemanticColors } from './types.ts'
+import { paintPluginTone, renderCanonicalView, sanitizePluginText } from './plugin-view.ts'
+import type { MayflyComponent, MayflyComponents, MayflyEditor, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflySemanticColors } from './types.ts'
 import {
   renderActions,
   renderDivider,
@@ -41,6 +44,7 @@ import {
   type PatternFocus,
 } from './ui-patterns.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
+import { fieldActions, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import {
   deferredUiNodeMayHaveControls,
   isDeferredUiNode,
@@ -53,13 +57,23 @@ import {
 import type { MayflyEditorShellNode, MayflyUiErrorCode } from './ui-contracts.ts'
 import {
   UiControlStore,
-  UiFormStateStore,
-  UiListStateStore,
   type UiControlBinding,
   type UiListMovement,
   type UiScrollControl,
   type UiVirtualListEntry,
 } from './ui-surface-state.ts'
+import type { UiSurfaceModel } from './ui-interaction-surface.ts'
+import { admittedListItem } from './ui-validator.ts'
+import { choiceError, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
+import { SearchInput } from './search-input.ts'
+import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
+import type { UiControlAddress } from './ui-interaction-tree.ts'
+import {
+  ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_HOME, ACTION_MOVE_DOWN, ACTION_MOVE_UP,
+  ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_PAGE_DOWN, ACTION_PAGE_UP, ACTION_SEGMENT_LEFT,
+  ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey, keyActionKeys,
+  matchesKeyAction,
+} from './key-actions.ts'
 
 const FOCUS_SENTINEL = '\uf8ff'
 const ERROR_MAX_ROWS = 3
@@ -75,24 +89,13 @@ export interface MayflyUiViewport {
 
 /** Narrow runtime dependencies accepted by the canonical compiler. */
 export interface MayflyUiCompilerOptions {
+  readonly interaction?: UiSurfaceModel
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
   readonly getViewport: () => MayflyUiViewport
   readonly screenMode: 'main' | 'alternate'
-  /** Internal compatibility budget; public plugin surfaces retain the 20-row default. */
-  readonly maxLeafRows?: number
-  /** Internal compatibility leaf path; public plugin surfaces never set it. */
-  readonly leafRowWindowPath?: string
-  /** Live offset for the selected compatibility leaf. */
-  readonly leafRowOffset?: () => number
-  /** Receives the selected leaf's clamped offset and post-wrap row metadata. */
-  readonly onLeafRowOffset?: (offset: number, totalRows: number, limit: number) => void
-  /** Requests a new compatibility-leaf offset after a focused scroll gesture. */
-  readonly onLeafRowScroll?: (offset: number) => void
-  /** Internal stable editor pool used only by official form adapters. */
-  readonly resolveTextEditor?: (controlId: string, path: string) => MayflyEditor
-  /** Internal official-form submit bridge. */
-  readonly onTextSubmit?: (controlId: string, value: string) => void
+  /** Live semantic key bindings; omitted only by isolated compiler fixtures. */
+  readonly keymap?: MayflyKeymap
   /** Interaction-private observation of renderer focus; public UI events stay confirmation-only. */
   readonly onFocusChange?: (identity: MayflyFocusIdentity) => void
   /** Renderer-private contextual key hints used by official panel adapters. */
@@ -122,7 +125,7 @@ export interface MayflyEditorShellCompilerOptions extends MayflyUiCompilerOption
 /** Core-private compiler options for one bridge-owned plugin surface. */
 interface MayflyUiSurfaceCompilerOptions extends MayflyUiCompilerOptions {
   readonly surfaceRuntime: MayflyUiSurfaceRuntime
-  readonly refreshMode: 'internal' | 'external'
+  readonly title?: string
   readonly escapeHint?: 'close' | 'leave'
 }
 
@@ -244,8 +247,8 @@ interface ControlBase {
   readonly navigation: 'horizontal' | 'vertical' | 'none'
 }
 
-type TextField = Extract<MayflyFormField, { readonly kind: 'input' | 'textarea' | 'secret' }>
-type SelectField = Extract<MayflyFormField, { readonly kind: 'select' }>
+type TextField = Extract<MayflyFormField, { readonly kind: 'input' | 'textarea' | 'secret' | 'number' }>
+type SelectField = Extract<MayflyFormField, { readonly kind: 'select' | 'multiselect' }>
 type ToggleField = Extract<MayflyFormField, { readonly kind: 'toggle' }>
 type FormNode = Extract<MayflyUiNode, { readonly kind: 'form' }>
 
@@ -256,15 +259,16 @@ type ControlDescriptor =
       readonly activation: 'enter' | 'space' | 'both'
       readonly event: MayflyUiEvent
       readonly commitEvent?: MayflyUiEvent
-      readonly confirm?: string
       readonly listEntry?: { readonly node: MayflyListNode, readonly index: number }
     })
   | (ControlBase & { readonly kind: 'text', readonly field: TextField })
   | (ControlBase & { readonly kind: 'select', readonly field: SelectField })
   | (ControlBase & { readonly kind: 'toggle', readonly field: ToggleField })
   | (ControlBase & { readonly kind: 'submit', readonly form: FormNode })
+  | (ControlBase & { readonly kind: 'field-action', readonly address: MayflyFieldAddress, readonly action: UiFieldAction })
   | (ControlBase & { readonly kind: 'editor' })
   | (ControlBase & { readonly kind: 'scroll' })
+  | (ControlBase & { readonly kind: 'list', readonly node: MayflyListNode })
 
 interface ControlGroup {
   readonly id: string
@@ -290,18 +294,15 @@ interface FocusState {
   lastIndex: number
   focused: boolean
   layoutPass: boolean
-  pendingConfirmation: string | undefined
   controls(): readonly ControlDescriptor[]
   allControls(): readonly ControlDescriptor[]
   emit(event: MayflyUiEvent): void
   field(field: MayflyFormField, key: string): MayflyFormField
-  fieldValue(field: MayflyFormField, key: string): string | boolean | null
-  setTextValue(key: string, canonical: string, value: string): void
+  fieldValue(field: MayflyFormField, key: string): MayflyFieldValue
+  setValue(key: string, value: MayflyFieldValue): void
   textEditor(field: TextField, key: string): MayflyEditor
-  setSelectValue(key: string, canonical: string | null, value: string | null): void
   beginSelectEditing(field: SelectField, key: string): void
-  finishSelectEditing(field: SelectField, key: string, cancel: boolean): string | null
-  setToggleValue(key: string, canonical: boolean, value: boolean): void
+  finishSelectEditing(field: SelectField, key: string, cancel: boolean): MayflyFieldValue
   setEditing(key: string | undefined): void
   blurInactiveEditors(controls: readonly ControlDescriptor[]): void
   setLayoutViewport(viewport: MayflyUiViewport): void
@@ -382,11 +383,52 @@ function staticComponent(render: (width: number) => string[], options: RuntimeCo
   }
 }
 
-function markdownLeafComponent(node: Extract<MayflyUiNode, { readonly kind: 'markdown' }>, path: string, options: RuntimeCompilerOptions): MayflyComponent {
+class SemanticScrollView extends ScrollView {
+  private width = 1
+  private restore = true
+
+  constructor(
+    component: Component,
+    options: ConstructorParameters<typeof ScrollView>[1],
+    private readonly model: UiSurfaceModel,
+    private readonly address: UiControlAddress,
+  ) { super(component, options) }
+
+  override render(width: number): string[] {
+    this.width = this.getContentWidth(width)
+    return super.render(width)
+  }
+
+  override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
+    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    if (!this.restore) return
+    this.restore = false
+    const state = this.model.document(this.address)
+    if (state?.anchor?.follow === 'end') super.scrollToEnd()
+    else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width), { disableFollow: true })
+  }
+
+  private sync(): void {
+    const state = this.model.document(this.address)
+    if (state === undefined) return
+    const anchor = documentAnchorAtRow(state, this.scrollTop, this.width, this.isFollowingEnd ? 'end' : 'none')
+    if (anchor !== undefined) this.model.moveDocument(this.address, anchor)
+  }
+
+  override scrollTo(scrollTop: number, options?: Parameters<ScrollView['scrollTo']>[1]): void {
+    super.scrollTo(scrollTop, options)
+    this.sync()
+  }
+  override scrollBy(lines: number): number { const remaining = super.scrollBy(lines); this.sync(); return remaining }
+  override scrollToStart(): void { super.scrollToStart(); this.sync() }
+  override scrollToEnd(): void { super.scrollToEnd(); this.sync() }
+}
+
+function markdownLeafComponent(node: Extract<MayflyUiNode, { readonly kind: 'markdown' }>, options: RuntimeCompilerOptions): MayflyComponent {
   const markdown = options.components.createMarkdown({ text: node.source })
   return {
     render: width => {
-      try { return windowLeafRows(markdown.render(Math.max(1, width)), path, options) }
+      try { return markdown.render(Math.max(1, width)) }
       catch (error) {
         const message = renderFailure(error)
         options.reportRuntimeFailure(message)
@@ -403,20 +445,16 @@ function diagramSource(node: MayflyDiagramNode): string {
   return `${fence}mermaid\n${node.source}\n${fence}`
 }
 
-function diagramComponent(node: MayflyDiagramNode, path: string, options: RuntimeCompilerOptions): MayflyComponent {
+function diagramComponent(node: MayflyDiagramNode, options: RuntimeCompilerOptions): MayflyComponent {
   const markdown = options.components.createMarkdown({ text: diagramSource(node) })
   return {
-    render: width => windowLeafRows(markdown.render(Math.max(1, width)), path, options),
+    render: width => markdown.render(Math.max(1, width)),
     invalidate: () => markdown.invalidate(),
   }
 }
 
-function chartComponent(node: MayflyChartNode, path: string, options: RuntimeCompilerOptions): MayflyComponent {
-  return staticComponent(width => windowLeafRows(
-    renderChartRows(node, Math.max(1, width), options.components, options.colors),
-    path,
-    options,
-  ), options)
+function chartComponent(node: MayflyChartNode, options: RuntimeCompilerOptions): MayflyComponent {
+  return staticComponent(width => renderChartRows(node, Math.max(1, width), options.components, options.colors), options)
 }
 
 function editorFieldComponent(field: TextField, key: string, state: FocusState, options: RuntimeCompilerOptions): MayflyComponent {
@@ -426,24 +464,26 @@ function editorFieldComponent(field: TextField, key: string, state: FocusState, 
     render: width => {
       try {
         const editor = currentEditor()
+        const presented = state.field(field, key)
         const available = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-        const focused = state.focused && state.activeKey === key && field.disabled !== true
+        const focused = state.focused && state.activeKey === key && presented.disabled !== true
         editor.focused = focused && state.editingKey === key
         const prefix = focused ? `${FOCUS_SENTINEL}→ ` : '   '
-        const labelText = `${prefix}${field.label}: `
-        const label = field.disabled === true ? options.colors.muted(labelText) : focused ? options.colors.primary(labelText) : options.colors.textStrong(labelText)
+        const labelText = `${prefix}${presented.label}: `
+        const label = presented.disabled === true ? options.colors.muted(labelText) : focused ? options.colors.primary(labelText) : options.colors.textStrong(labelText)
         const labelWidth = visibleWidth(label)
         const stacked = available - labelWidth < Math.min(12, available)
         const contentWidth = stacked ? available : available - labelWidth
-        const emptyPlaceholder = editor.getExpandedText().length === 0 && field.placeholder !== undefined
+        const placeholder = 'placeholder' in field ? field.placeholder : undefined
+        const emptyPlaceholder = editor.getExpandedText().length === 0 && placeholder !== undefined
         const body = emptyPlaceholder && !editor.focused
-          ? [options.colors.textMuted(field.placeholder!)]
+          ? [options.colors.textMuted(placeholder!)]
           : editor.renderContent(contentWidth, field.kind === 'secret')
         const indent = ' '.repeat(Math.min(available, labelWidth))
         let rows = stacked
           ? [sliceByColumn(label, 0, available, true), ...body.map(row => sliceByColumn(row, 0, available, true))]
           : body.map((row, index) => sliceByColumn(`${index === 0 ? label : indent}${row}`, 0, available, true))
-        if (field.error !== undefined) rows.push(sliceByColumn(options.colors.error(`   ! ${field.error}`), 0, available, true))
+        if (presented.error !== undefined) rows.push(sliceByColumn(options.colors.error(`   ! ${presented.error}`), 0, available, true))
         if (state.layoutPass && focused) {
           let inserted = rows.some(row => row.includes(CURSOR_MARKER))
           rows = rows.map(row => {
@@ -463,55 +503,6 @@ function editorFieldComponent(field: TextField, key: string, state: FocusState, 
   }
 }
 
-function windowLeafRows(rows: string[], path: string, options: MayflyUiCompilerOptions): string[] {
-  const limit = Math.max(0, Math.floor(options.maxLeafRows ?? 20))
-  if (options.leafRowWindowPath !== path) return rows.slice(0, limit)
-  let requested = 0
-  try {
-    const value = options.leafRowOffset?.() ?? 0
-    if (Number.isFinite(value)) requested = Math.max(0, Math.floor(value))
-  } catch { /* compatibility state failures fall back to the first page */ }
-  const offset = Math.min(requested, Math.max(0, rows.length - limit))
-  try { options.onLeafRowOffset?.(offset, rows.length, limit) } catch { /* compatibility observers cannot escape render */ }
-  return rows.slice(offset, offset + limit)
-}
-
-class MainLeafScrollControl implements ScrollControl {
-  private offset = 0
-  private totalRows = Number.MAX_SAFE_INTEGER
-  viewportHeight = 1
-
-  constructor(
-    private readonly notify?: (offset: number) => void,
-    readOffset?: () => number,
-    initialLimit = 1,
-  ) {
-    try {
-      const value = readOffset?.() ?? 0
-      if (Number.isFinite(value)) this.offset = Math.max(0, Math.floor(value))
-    } catch { /* compatibility state failures start at the first row */ }
-    this.viewportHeight = Math.max(1, Math.floor(initialLimit))
-  }
-
-  update(offset: number, totalRows: number, limit: number): void {
-    this.offset = offset
-    this.totalRows = totalRows
-    this.viewportHeight = Math.max(1, limit)
-  }
-
-  scrollBy(amount: number): void { this.move(this.offset + amount) }
-  scrollToStart(): void { this.move(0) }
-  scrollToEnd(): void { this.move(this.totalRows) }
-  setScrollbarActive(_active: boolean): void {}
-
-  private move(requested: number): void {
-    const offset = Math.max(0, Math.min(Math.floor(requested), Math.max(0, this.totalRows - this.viewportHeight)))
-    if (offset === this.offset) return
-    this.offset = offset
-    try { this.notify?.(offset) } catch { /* official scroll observers cannot escape input */ }
-  }
-}
-
 function safePaint(colors: MayflySemanticColors, tone: MayflyTone | undefined, value: string): string {
   return paintPluginTone(colors, tone)(value)
 }
@@ -519,13 +510,11 @@ function safePaint(colors: MayflySemanticColors, tone: MayflyTone | undefined, v
 function patternFocus(state: FocusState, prefix: string): PatternFocus {
   const controls = state.controls()
   const active = controls.find(control => control.group === prefix && control.key === state.activeKey)
-  const pending = controls.find(control => control.group === prefix && control.key === state.pendingConfirmation)
   const adjusting = controls.find(control => control.group === prefix && control.key === state.editingKey && control.kind === 'select')
   return {
     key: active?.renderKey ?? '',
     focused: state.focused,
     marker: state.layoutPass ? `${CURSOR_MARKER} ` : FOCUS_SENTINEL,
-    ...(pending === undefined ? {} : { pendingKey: pending.renderKey }),
     ...(adjusting === undefined ? {} : { adjustingKey: adjusting.renderKey }),
   }
 }
@@ -554,7 +543,7 @@ function pad(component: Component, amount: number, options: RuntimeCompilerOptio
 function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
   const body = new VStack()
   body.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors).slice(1), options))
-  body.addChild(child)
+  body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) body.addChild(footer)
   if (contextHint !== undefined) body.addChild(contextHint)
 
@@ -610,27 +599,27 @@ function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surfac
   if (node.chrome === 'overlay') return overlaySurfaceComponent(node, child, footer, contextHint, options)
   const component = new VStack()
   component.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors), options))
-  component.addChild(child)
+  component.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) component.addChild(footer)
   if (contextHint !== undefined) component.addChild(contextHint)
   component.addChild(staticComponent(width => renderSurfaceTail(node, width, options.colors), options))
   return pad(component, node.padding ?? 0, options)
 }
 
-function controlKey(kind: string, controlId: string, itemId?: string): string {
-  return JSON.stringify(itemId === undefined ? [kind, controlId] : [kind, controlId, itemId])
+function controlKey(kind: string, controlId: string, itemId?: string, pagePath: MayflyPagePath = []): string {
+  return JSON.stringify([pagePath, kind, controlId, itemId])
 }
 
-function focusIdentity(controlId: string, itemId?: string): MayflyFocusIdentity {
-  return itemId === undefined ? { controlId } : { controlId, itemId }
+function focusIdentity(controlId: string, itemId?: string, pagePath: MayflyPagePath = []): MayflyFocusIdentity {
+  return { controlId, pagePath, ...(itemId === undefined ? {} : { itemId }) }
 }
 
-function controlGroup(kind: string, controlId: string): string {
-  return JSON.stringify([kind, controlId])
+function controlGroup(kind: string, controlId: string, pagePath: MayflyPagePath = []): string {
+  return JSON.stringify([pagePath, kind, controlId])
 }
 
-function actionGroup(node: Extract<MayflyUiNode, { readonly kind: 'actions' }>): string {
-  return JSON.stringify(['actions', node.id, [...node.items].map(item => item.id).sort()])
+function actionGroup(node: Extract<MayflyUiNode, { readonly kind: 'actions' }>, pagePath: MayflyPagePath = []): string {
+  return JSON.stringify([pagePath, 'actions', node.id, [...node.items].map(item => item.id).sort()])
 }
 
 function fieldStateKey(key: string, kind: MayflyFormField['kind']): string {
@@ -661,7 +650,7 @@ function controlGroups(controls: readonly ControlDescriptor[]): ControlGroup[] {
 }
 
 function sameFocusIdentity(left: MayflyFocusIdentity, right: MayflyFocusIdentity): boolean {
-  return left.controlId === right.controlId && left.itemId === right.itemId
+  return left.controlId === right.controlId && left.itemId === right.itemId && JSON.stringify(left.pagePath) === JSON.stringify(right.pagePath ?? [])
 }
 
 function groupTarget(controls: readonly ControlDescriptor[], group: string, remembered: string | undefined): number {
@@ -686,46 +675,56 @@ function keyHint(id: string, keys: string, label: string, priority: number, comp
   return { id, keys, label, compact, priority }
 }
 
+function actionsHint(options: RuntimeCompilerOptions, id: string, actionIds: readonly string[], fallback: string, label: string, priority: number, compact?: string): ContextKeyHint {
+  const keys = actionIds.flatMap(actionId => keyActionKeys(options.keymap, actionId)).map(displayKey)
+  const rendered = keys.length === 0 ? fallback : keys.join('/')
+  return keyHint(id, rendered, label, priority, compact === undefined ? rendered : compact)
+}
+
+function actionHint(options: RuntimeCompilerOptions, id: string, fallback: string, label: string, priority: number, compact?: string): ContextKeyHint {
+  return actionsHint(options, id, [id], fallback, label, priority, compact)
+}
+
 function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, escapeHint: 'close' | 'leave' | undefined): ContextKeyHint[] {
   if (options.contextHints?.suppressAuto === true) return []
   if (active === undefined || active.kind === 'editor') {
     return escapeHint === undefined || options.contextHints?.focusWithoutControls !== true
       ? []
-      : [keyHint('dismiss', 'Esc', escapeHint, 70)]
+      : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 70)]
   }
   if (active.kind === 'scroll') {
     return [
-      keyHint('navigate', '↑↓/PgUp/PgDn', 'scroll', 100, 'PgUp/PgDn'),
-      ...(groupOrder(controls).length > 1 ? [keyHint('group', 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
-      ...(escapeHint === undefined ? [] : [keyHint('dismiss', 'Esc', 'back', 90)]),
+      actionsHint(options, 'navigate', [ACTION_MOVE_UP, ACTION_MOVE_DOWN, ACTION_PAGE_UP, ACTION_PAGE_DOWN], '↑↓/PgUp/PgDn', 'scroll', 100, 'PgUp/PgDn'),
+      ...(groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
+      ...(escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', 'back', 90)]),
     ]
-  }
-  if (state.pendingConfirmation === active.key) {
-    return [keyHint('activate', 'Enter', 'confirm', 100), keyHint('dismiss', 'Esc', 'cancel', 95)]
   }
   if (active.kind === 'text' && state.editingKey === active.key) {
     return [
-      ...(active.field.kind === 'textarea' ? [keyHint('newline', 'Alt+Enter', 'newline', 90)] : []),
-      keyHint('activate', 'Enter', 'finish', 100),
-      keyHint('dismiss', 'Esc', 'leave', 95),
-      ...(groupOrder(controls).length > 1 ? [keyHint('group', 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
+      ...(active.field.kind === 'textarea' ? [actionsHint(options, 'newline', [ACTION_SUBMIT, ACTION_NEWLINE], 'Enter/Alt+Enter', 'newline', 90)] : [actionHint(options, ACTION_SUBMIT, 'Enter', 'next', 100)]),
+      actionHint(options, ACTION_CANCEL, 'Esc', options.listRuntime.interaction?.backTarget() === undefined ? 'leave' : 'back', 95),
+      ...(groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
     ]
   }
   if (active.kind === 'select' && state.editingKey === active.key) {
     const optionCount = active.field.options.filter(option => option.disabled !== true).length
     return [
-      ...(optionCount > 1 ? [keyHint('navigate', '←→', 'options', 90)] : []),
-      keyHint('activate', 'Enter', 'apply', 100),
-      keyHint('dismiss', 'Esc', 'cancel', 95),
-      ...(groupOrder(controls).length > 1 ? [keyHint('group', 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
+      ...(optionCount > 1 ? [actionsHint(options, 'navigate', [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT], '←→', 'options', 90)] : []),
+      actionHint(options, ACTION_SUBMIT, 'Enter', 'apply', 100),
+      actionHint(options, ACTION_CANCEL, 'Esc', 'cancel', 95),
+      ...(groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
     ]
   }
 
   const siblings = controls.filter(control => control.group === active.group)
   const movement = siblings.length <= 1 && groupOrder(controls).length <= 1
     ? []
-    : [keyHint(
+    : [actionsHint(
+        options,
         'navigate',
+        active.kind === 'event' && active.role === 'tab'
+          ? [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT]
+          : [ACTION_MOVE_UP, ACTION_MOVE_DOWN, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT],
         active.kind === 'event' && active.role === 'tab' ? '←→' : '↑↓←→',
         active.kind === 'event' && active.role === 'tab'
           ? 'tabs'
@@ -736,28 +735,39 @@ function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOpt
               : 'options',
         90,
       )]
+  if (active.kind === 'list') return [
+    ...(active.node.filterable ? [keyHint('search', 'Type', 'filter', 100), actionHint(options, ACTION_CLEAR_SEARCH, 'Ctrl+U', 'clear', 90)] : []),
+    ...(active.node.role === 'choose' ? [actionHint(options, ACTION_SUBMIT, 'Enter', 'choose', 95)] : []),
+    ...(escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 80)]),
+  ]
   const primary = active.kind === 'text'
-    ? keyHint('activate', 'Enter', 'edit', 100)
+    ? actionHint(options, ACTION_SUBMIT, 'Enter', 'edit', 100)
     : active.kind === 'select'
-      ? keyHint('activate', 'Enter', 'adjust', 100)
+      ? actionHint(options, ACTION_SUBMIT, 'Enter', 'adjust', 100)
       : active.kind === 'toggle'
-        ? keyHint('activate', 'Space/Enter', 'toggle', 100, 'Enter')
+        ? actionsHint(options, 'activate', [ACTION_TOGGLE, ACTION_SUBMIT], 'Space/Enter', 'toggle', 100, 'Enter')
+        : active.kind === 'field-action'
+          ? actionHint(options, ACTION_SUBMIT, 'Enter', 'apply', 100)
         : active.kind === 'submit'
-          ? keyHint('activate', 'Enter', 'submit', 100)
+          ? actionHint(options, ACTION_SUBMIT, 'Enter', 'submit', 100)
           : active.role === 'tab'
-            ? keyHint('activate', 'Enter', 'open', 100)
+            ? actionHint(options, ACTION_SUBMIT, 'Enter', 'open', 100)
             : active.role === 'list-single'
-              ? keyHint('activate', 'Enter', 'choose', 100)
+              ? actionHint(options, ACTION_SUBMIT, 'Enter', 'choose', 100)
               : active.role === 'list-multiple'
-                ? keyHint('activate', 'Space / Enter', 'toggle / confirm', 100, 'Space/Enter')
+                ? actionsHint(options, 'activate', [ACTION_TOGGLE, ACTION_SUBMIT], 'Space / Enter', 'toggle / confirm', 100, 'Space/Enter')
                 : active.role === 'cancel'
-                  ? keyHint('activate', 'Enter', 'cancel', 100)
-                  : keyHint('activate', 'Enter', 'run', 100)
+                  ? actionHint(options, ACTION_SUBMIT, 'Enter', 'cancel', 100)
+                  : active.event.kind === 'activate' && active.event.actionId.startsWith('mayfly.decision.')
+                    ? actionHint(options, ACTION_SUBMIT, 'Enter', 'confirm', 100)
+                    : actionHint(options, ACTION_SUBMIT, 'Enter', 'run', 100)
   return [
     ...movement,
+    ...(active.kind === 'event' && active.listEntry?.node.filterable === true ? [keyHint('search', 'Type', 'filter', 100)] : []),
     primary,
-    ...(active.kind === 'event' && active.role === 'tab' ? [] : groupOrder(controls).length > 1 ? [keyHint('group', 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
-    ...(escapeHint === undefined ? [] : [keyHint('dismiss', 'Esc', escapeHint, 70)]),
+    ...(active.kind === 'event' && active.listEntry?.node.tree === true ? [actionHint(options, ACTION_TOGGLE, 'Space', 'toggle branch', 95)] : []),
+    ...(active.kind === 'event' && active.role === 'tab' ? [] : groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
+    ...(escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 70)]),
   ]
 }
 
@@ -848,29 +858,32 @@ function detachTextEditorCallbacks(lease: TextEditorLease): void {
 function releaseTextEditor(lease: TextEditorLease): void {
   lease.editor.focused = false
   detachTextEditorCallbacks(lease)
+  lease.editor.setText('')
 }
 
 function listRowLimit(options: RuntimeCompilerOptions): number {
-  return options.screenMode === 'main'
-    ? options.maxLeafRows ?? 20
-    : safeViewport(options.getViewport).rows
+  return options.listRuntime.listRowLimit(safeViewport(options.getViewport).rows)
 }
 
 function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, path = '$', includeHidden = false): ControlDescriptor[] {
   const controls: ControlDescriptor[] = []
   const visit = (current: CompilableNode, currentPath: string): void => {
+    const pagePath = options.listRuntime.pagePath(current)
+    const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
+    const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
+    const scopedFocusIdentity = (id: string, itemId?: string) => focusIdentity(id, itemId, pagePath)
     if (current.kind !== 'editor-control' && isDeferredUiNode(current as MayflyUiNode)) {
       const admitted = materializeDeferredUiNode(current as MayflyUiNode)
-      if (admitted?.ok === true) visit(admitted.value, currentPath)
+      if (admitted?.ok === true) { options.listRuntime.admitDeferred(admitted.value, pagePath); visit(admitted.value, currentPath) }
       return
     }
     switch (current.kind) {
       case 'editor-control':
-        controls.push({ kind: 'editor', key: controlKey('editor', 'editor-control'), renderKey: 'editor-control', identity: focusIdentity('editor-control'), preferred: true, group: controlGroup('editor', 'editor-control'), navigation: 'none' })
+        controls.push({ kind: 'editor', key: scopedControlKey('editor', 'editor-control'), renderKey: 'editor-control', identity: scopedFocusIdentity('editor-control'), preferred: true, group: scopedControlGroup('editor', 'editor-control'), navigation: 'none' })
         break
       case 'stack':
         for (const [index, child] of current.children.entries()) {
-          const visible = conditionMatches(child.when, safeViewport(options.getViewport))
+          const visible = conditionMatches(child.when, safeViewport(options.getViewport)) && (child.tab === undefined || options.listRuntime.activeTab({ pagePath, controlId: child.tab.controlId }) === child.tab.itemId)
           if (visible) visit(child.node, `${currentPath}.${String(index)}`)
           else if (includeHidden) {
             const admitted = materializedDeferredUiNode(child.node as MayflyUiNode)
@@ -886,54 +899,59 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
       case 'scroll': {
         const before = controls.length
         visit(current.child, `${currentPath}.scroll`)
-        const mainWindow = options.screenMode === 'main'
-          && options.leafRowWindowPath?.startsWith(`${currentPath}.scroll`) === true
-        if (controls.length === before && (options.screenMode === 'alternate' || mainWindow)) {
-          const key = controlKey('scroll', currentPath)
-          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: focusIdentity(key), preferred: true, group: controlGroup('scroll', currentPath), navigation: 'none' })
+        if (controls.length === before && (options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined)) {
+          const key = scopedControlKey('scroll', currentPath)
+          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none' })
         }
         break
       }
       case 'tabs':
-        for (const item of current.items) if (item.disabled !== true) controls.push({ kind: 'event', role: 'tab', activation: 'enter', key: controlKey('tabs', current.id, item.id), renderKey: item.id, identity: focusIdentity(current.id, item.id), preferred: item.id === current.activeId, group: controlGroup('tabs', current.id), navigation: 'horizontal', event: { kind: 'tab-change', controlId: current.id, tabId: item.id } })
+        for (const item of current.items) if (item.disabled !== true) controls.push({ kind: 'event', role: 'tab', activation: 'enter', key: scopedControlKey('tabs', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(current.id, item.id), preferred: item.id === (options.listRuntime.activeTab({ pagePath, controlId: current.id }) ?? current.activeId), group: scopedControlGroup('tabs', current.id), navigation: 'horizontal', event: { kind: 'tab-change', pagePath, controlId: current.id, tabId: item.id } })
         break
       case 'list':
+        if (options.listRuntime.listWindow(current, listRowLimit(options)).length === 0) controls.push({ kind: 'list', node: current, key: scopedControlKey('empty-list', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('list', current.id), navigation: 'none' })
         for (const { item, index } of options.listRuntime.listWindow(current, listRowLimit(options))) if (item.disabled !== true) {
-          const value = current.mode === 'multiple'
-            ? current.selectedIds.includes(item.id) ? current.selectedIds.filter(id => id !== item.id) : [...current.selectedIds, item.id]
-            : item.id
+          const selected = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })?.selectedIds ?? current.selectedIds
+          const selectedIds = current.mode === 'multiple'
+            ? selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id]
+            : [item.id]
           controls.push({
             kind: 'event',
             role: current.mode === 'multiple' ? 'list-multiple' : 'list-single',
             activation: current.mode === 'multiple' ? 'space' : 'enter',
-            key: controlKey('list', current.id, item.id),
+            key: scopedControlKey('list', current.id, item.id),
             renderKey: item.id,
-            identity: focusIdentity(current.id, item.id),
-            preferred: current.selectedIds.includes(item.id),
-            group: controlGroup('list', current.id),
+            identity: scopedFocusIdentity(current.id, item.id),
+            preferred: options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })?.focusedId === item.id,
+            group: scopedControlGroup('list', current.id),
             navigation: 'vertical',
-            event: { kind: 'selection-change', controlId: current.id, value },
+            event: { kind: current.mode === 'multiple' ? 'selection-toggle' : 'selection-accept', pagePath, controlId: current.id, selectedIds },
             listEntry: { node: current, index },
-            ...(current.mode === 'multiple' ? { commitEvent: { kind: 'selection-change', controlId: current.id, value: current.selectedIds } as MayflyUiEvent } : {}),
+            ...(current.mode === 'multiple' ? { commitEvent: { kind: 'selection-accept', pagePath, controlId: current.id, selectedIds: selected } as MayflyUiEvent } : {}),
           })
         }
         if (current.items.length === 0 && current.empty !== undefined) visit(current.empty, `${currentPath}.empty`)
         break
       case 'form':
         for (const field of current.fields) if (field.disabled !== true) {
-          const base: ControlBase = { key: controlKey('form-field', current.id, field.id), renderKey: field.id, identity: focusIdentity(field.id), preferred: false, group: controlGroup('form', current.id), navigation: 'vertical' }
+          const base: ControlBase = { key: scopedControlKey('form-field', current.id, field.id), renderKey: field.id, identity: scopedFocusIdentity(field.id), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical' }
           if (field.kind === 'toggle') controls.push({ ...base, kind: 'toggle', field })
-          else if (field.kind === 'select') controls.push({ ...base, kind: 'select', field })
+          else if (field.kind === 'select' || field.kind === 'multiselect') controls.push({ ...base, kind: 'select', field })
           else controls.push({ ...base, kind: 'text', field })
+          const address = { pagePath, formId: current.id, fieldId: field.id }
+          for (const action of fieldActions(options.listRuntime.interaction?.form(address), field.id)) controls.push({
+            ...base, kind: 'field-action', key: scopedControlKey('field-action', current.id, `${field.id}/${action.id}`),
+            renderKey: `${field.id}/${action.id}`, identity: scopedFocusIdentity(field.id, action.id), address, action,
+          })
         }
-        if (current.submitActionId !== undefined) controls.push({ kind: 'submit', key: controlKey('form-submit', current.id), renderKey: 'submit', identity: focusIdentity(current.submitActionId), preferred: false, group: controlGroup('form', current.id), navigation: 'vertical', form: current })
-        if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: controlKey('form-cancel', current.id), renderKey: 'cancel', identity: focusIdentity(current.cancelActionId), preferred: false, group: controlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', controlId: current.cancelActionId } })
+        if (current.submitActionId !== undefined) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
+        if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('form-cancel', current.id), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
       case 'actions':
-        for (const item of current.items) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: controlKey('action', current.id, item.id), renderKey: item.id, identity: focusIdentity(item.id), preferred: item.intent === 'primary', group: actionGroup(current), navigation: 'horizontal', event: { kind: 'activate', controlId: item.id }, ...(item.confirm === undefined ? {} : { confirm: item.confirm }) })
+        for (const item of current.items) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id } })
         break
       case 'loader':
-        if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: controlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: focusIdentity(current.cancelActionId), preferred: false, group: controlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', controlId: current.cancelActionId } })
+        if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
       case 'empty': if (current.actions !== undefined) visit(current.actions, `${currentPath}.actions`); break
       default: break
@@ -962,7 +980,7 @@ function deferredComponent(node: MayflyUiNode, state: FocusState, options: Runti
     if (component !== undefined) return component
     const admitted = materializeDeferredUiNode(node)!
     if (admitted?.ok === true) {
-      options.listRuntime.admitDeferred(admitted.value)
+      options.listRuntime.admitDeferred(admitted.value, options.listRuntime.pagePath(node))
       component = compileNode(admitted.value, state, options, path, mode)
     } else component = new ErrorComponent(admitted.message, options.colors)
     return component
@@ -974,6 +992,9 @@ function deferredComponent(node: MayflyUiNode, state: FocusState, options: Runti
 }
 
 function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCompilerOptions, path = '$', mode: CompilerMode = 'ui', contextHint?: Component): Component {
+  const pagePath = options.listRuntime.pagePath(node)
+  const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
+  const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
   if (node.kind !== 'editor-control' && isDeferredUiNode(node as MayflyUiNode)) return deferredComponent(node as MayflyUiNode, state, options, path, mode)
   switch (node.kind) {
     case 'editor-control': {
@@ -982,7 +1003,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       const component: MayflyComponent = {
         render: width => {
           try {
-            editor.focused = state.focused && state.activeKey === controlKey('editor', 'editor-control')
+            editor.focused = state.focused && state.activeKey === scopedControlKey('editor', 'editor-control')
             return editor.render(Math.max(1, width))
           } catch (error) {
             const message = renderFailure(error, 'unknown editor failure')
@@ -992,45 +1013,39 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         },
         invalidate: () => editor.invalidate(),
       }
-      state.bindControls([controlKey('editor', 'editor-control')], { component, axis: 'none' })
+      state.bindControls([scopedControlKey('editor', 'editor-control')], { component, axis: 'none' })
       return component
     }
-    case 'text': return staticComponent(width => windowLeafRows(renderCanonicalView(
+    case 'text': return staticComponent(width => renderCanonicalView(
         node,
         width,
         options.components,
         options.colors,
-        Number.MAX_SAFE_INTEGER,
-      ), path, options), options)
-    case 'markdown': return markdownLeafComponent(node, path, options)
+      ), options)
+    case 'markdown': return markdownLeafComponent(node, options)
     case 'fields':
     case 'code':
     case 'diff':
-    case 'sections': return staticComponent(width => windowLeafRows(renderCanonicalView(
+    case 'sections': return staticComponent(width => renderCanonicalView(
       node as MayflySectionContentNode,
       width,
       options.components,
       options.colors,
-      Number.MAX_SAFE_INTEGER,
-    ), path, options), options)
-    case 'rich-text': return staticComponent(width => windowLeafRows(
-      options.components.wrapText(joinSpans(node, options.colors), Math.max(1, width)),
-      path,
-      options,
     ), options)
+    case 'rich-text': return staticComponent(width => options.components.wrapText(joinSpans(node, options.colors), Math.max(1, width)), options)
     case 'stack': {
       const stackOptions = {
         ...(node.gap === undefined ? {} : { gap: node.gap }),
         ...(node.align === undefined ? {} : { align: node.align }),
       }
-      const spatial = mode === 'status' || options.screenMode === 'alternate'
+      const spatial = mode === 'status' || options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined
       const stack = !spatial || node.direction === 'column'
         ? new VStack([], stackOptions)
         : new HStack([], stackOptions)
       for (const [index, child] of node.children.entries()) {
         const compiled = compileNode(child.node, state, options, `${path}.${String(index)}`, mode)
         const layout = !spatial
-          ? { visible: () => conditionMatches(child.when, safeViewport(options.getViewport)) }
+          ? { visible: () => conditionMatches(child.when, safeViewport(options.getViewport)) && (child.tab === undefined || options.listRuntime.activeTab({ pagePath, controlId: child.tab.controlId }) === child.tab.itemId) }
           : {
               ...(child.basis === undefined || child.basis === 'auto' ? (child.basis === 'auto' ? { basis: 'auto' as const } : {}) : { basis: Math.min(child.basis, LAYOUT_VALUE_MAX) }),
               ...(child.grow === undefined ? {} : { grow: Math.min(child.grow, LAYOUT_VALUE_MAX) }),
@@ -1045,7 +1060,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
                   state.setLayoutViewport(current)
                   reconcile(state)
                 }
-                return conditionMatches(child.when, current)
+                return conditionMatches(child.when, current) && (child.tab === undefined || options.listRuntime.activeTab({ pagePath, controlId: child.tab.controlId }) === child.tab.itemId)
               },
             }
         stack.addChild(compiled, layout)
@@ -1055,78 +1070,98 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'surface': return surfaceComponent(node, compileNode(node.child, state, options, `${path}.child`, mode), node.footer === undefined ? undefined : compileNode(node.footer, state, options, `${path}.footer`, mode), contextHint, options)
     case 'scroll': {
       const childPath = `${path}.scroll`
-      if (options.screenMode === 'main') {
-        if (options.leafRowWindowPath?.startsWith(childPath) !== true) return compileNode(node.child, state, options, childPath, mode)
-        const scroll = new MainLeafScrollControl(options.onLeafRowScroll, options.leafRowOffset, options.maxLeafRows)
-        const child = compileNode(node.child, state, {
-          ...options,
-          onLeafRowOffset: (offset, totalRows, limit) => {
-            scroll.update(offset, totalRows, limit)
-            options.onLeafRowOffset?.(offset, totalRows, limit)
-          },
-        }, childPath, mode)
-        const key = controlKey('scroll', path)
-        state.bindControls([key], { component: child, axis: 'none' })
-        state.bindScroll(key, scroll)
-        return child
+      if (options.screenMode === 'main' && options.listRuntime.interaction === undefined) {
+        return compileNode(node.child, state, options, childPath, mode)
       }
       const child = compileNode(node.child, state, options, childPath, mode)
-      const scroll = new ScrollView(child, { follow: node.follow === 'end' ? 'end' : 'none', primary: false, overscroll: 'contain', scrollbar: node.scrollbar === true ? 'auto' : 'hidden' })
-      const key = controlKey('scroll', path)
+      const scrollOptions = { follow: node.follow === 'end' ? 'end' as const : 'none' as const, primary: false, overscroll: 'contain' as const, scrollbar: node.scrollbar === true ? 'auto' as const : 'hidden' as const }
+      const address = node.id === undefined ? undefined : { pagePath, controlId: node.id }
+      const model = options.listRuntime.interaction
+      const scroll = address === undefined || model === undefined || model.document(address) === undefined
+        ? new ScrollView(child, scrollOptions)
+        : new SemanticScrollView(child as Component, scrollOptions, model, address)
+      const key = scopedControlKey('scroll', path)
       state.bindControls([key], { component: scroll, axis: 'none' })
       state.bindScroll(key, scroll)
       return scroll
     }
     case 'tabs': {
-      const component = staticComponent(width => renderTabs(node, width, patternFocus(state, controlGroup('tabs', node.id)), options.colors), options)
-      state.bindControls(node.items.filter(item => item.disabled !== true).map(item => controlKey('tabs', node.id, item.id)), { component, axis: 'horizontal' })
+      const component = staticComponent(width => {
+        const completed = options.listRuntime.interaction?.completedSteps({ pagePath, controlId: node.id }) ?? []
+        return renderTabs({ ...node, activeId: options.listRuntime.activeTab({ pagePath, controlId: node.id }) ?? node.activeId, items: node.items.map(item => completed.includes(item.id) ? { ...item, label: `✓ ${item.label}` } : item) }, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors)
+      }, options)
+      state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: 'horizontal' })
       return component
     }
     case 'list': {
-      if (node.items.length === 0) return node.empty === undefined ? staticComponent(() => [], options) : compileNode(node.empty, state, options, `${path}.empty`, mode)
+      const empty = node.empty === undefined ? undefined : compileNode(node.empty, state, options, `${path}.empty`, mode)
+      const { filter: _filter, ...unfiltered } = node
       let component!: MayflyComponent
       component = staticComponent(width => {
         const entries = options.listRuntime.listWindow(node, listRowLimit(options))
         const items = entries.map(entry => entry.item)
-        state.bindControls(items.filter(item => item.disabled !== true).map(item => controlKey('list', node.id, item.id)), { component, axis: 'vertical' })
-        return renderList(
-          { ...node, items },
+        const choice = options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })
+        state.bindControls(items.filter(item => item.disabled !== true).map(item => scopedControlKey('list', node.id, item.id)), { component, axis: 'vertical' })
+        const query = choice?.query ?? node.filter ?? ''
+        const queryRows = choice?.searching === true ? options.listRuntime.search(node).render(Math.max(1, width - 2), state.focused && state.activeGroup === scopedControlGroup('list', node.id)).map(row => sliceByColumn(`/ ${row}`, 0, width, true)) : []
+        const visibleCount = choice === undefined ? node.items.length : choiceVisibleCount(choice)
+        const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
+        const counter = visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
+        const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted('No matches'), 0, width, true)] : empty?.render(width) ?? [] : renderList(
+          { ...unfiltered, items, selectedIds: options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })?.selectedIds ?? node.selectedIds },
           width,
-          listRowLimit(options),
-          patternFocus(state, controlGroup('list', node.id)),
+          Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1)),
+          patternFocus(state, scopedControlGroup('list', node.id)),
           options.colors,
         )
+        return [...(queryRows.length > 0 ? queryRows : query.length > 0 ? [sliceByColumn(`/ ${query}`, 0, width, true)] : []), ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body]
       }, options)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
-      state.bindControls(initial.filter(entry => entry.item.disabled !== true).map(entry => controlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
+      if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
+      state.bindControls(initial.filter(entry => entry.item.disabled !== true).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
       return component
     }
     case 'form': {
       const stack = new VStack()
       for (const field of node.fields) {
-        const key = controlKey('form-field', node.id, field.id)
-        const component = field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret'
+        const key = scopedControlKey('form-field', node.id, field.id)
+        const component = field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret' || field.kind === 'number'
           ? editorFieldComponent(field, key, state, options)
-          : staticComponent(width => renderFormField(state.field(field, key), width, patternFocus(state, controlGroup('form', node.id)), options.colors), options)
+          : staticComponent(width => {
+            const address = options.listRuntime.fieldAddress(key)!
+            const optionId = options.listRuntime.interaction?.form(address)?.fields[field.id]?.picker?.focusedId
+            return renderFormField(state.field(field, key), width, { ...patternFocus(state, scopedControlGroup('form', node.id)), ...(optionId === undefined ? {} : { optionId }) }, options.colors)
+          }, options)
         stack.addChild(component)
         if (field.disabled !== true) state.bindControls([key], { component, axis: 'none' })
+        const address = { pagePath, formId: node.id, fieldId: field.id }
+        const actions = fieldActions(options.listRuntime.interaction?.form(address), field.id)
+        if (actions.length > 0) {
+          const tools = staticComponent(width => {
+            const current = fieldActions(options.listRuntime.interaction?.form(address), field.id)
+            state.bindControls(current.map(action => scopedControlKey('field-action', node.id, `${field.id}/${action.id}`)), { component: tools, axis: 'horizontal' })
+            return renderActions({ kind: 'actions', id: field.id, items: current.map(action => ({ id: `${field.id}/${action.id}`, label: options.contextHints?.translate?.(action.label) ?? action.label })) }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, false)
+          }, options)
+          stack.addChild(tools)
+          state.bindControls(actions.map(action => scopedControlKey('field-action', node.id, `${field.id}/${action.id}`)), { component: tools, axis: 'horizontal' })
+        }
       }
       if (node.submitActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitActionId!, intent: 'primary' }] }, width, patternFocus(state, controlGroup('form', node.id)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitActionId!, intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
-        state.bindControls([controlKey('form-submit', node.id)], { component, axis: 'none' })
+        state.bindControls([scopedControlKey('form-submit', node.id)], { component, axis: 'none' })
       }
       if (node.cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'cancel', label: node.cancelActionId! }] }, width, patternFocus(state, controlGroup('form', node.id)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'cancel', label: node.cancelActionId! }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
-        state.bindControls([controlKey('form-cancel', node.id)], { component, axis: 'none' })
+        state.bindControls([scopedControlKey('form-cancel', node.id)], { component, axis: 'none' })
       }
       return stack
     }
     case 'actions': {
       const vertical = options.screenMode === 'main'
-      const component = staticComponent(width => renderActions(node, width, patternFocus(state, actionGroup(node)), options.colors, vertical), options)
-      state.bindControls(node.items.filter(item => item.disabled !== true && item.busy !== true).map(item => controlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
+      const component = staticComponent(width => renderActions(node, width, patternFocus(state, actionGroup(node, pagePath)), options.colors, vertical), options)
+      state.bindControls(node.items.filter(item => item.disabled !== true && item.busy !== true).map(item => scopedControlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
       return component
     }
     case 'loader': {
@@ -1134,9 +1169,9 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       stack.addChild(staticComponent(width => renderLoader(node, width, options.colors), options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: cancelActionId }] }, width, patternFocus(state, controlGroup('loader', cancelActionId)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: cancelActionId }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
         stack.addChild(component)
-        state.bindControls([controlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
+        state.bindControls([scopedControlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
       }
       return stack
     }
@@ -1149,8 +1184,8 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'progress': return staticComponent(width => renderProgress(node, width, options.colors), options)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
     case 'divider': return staticComponent(width => renderDivider(node.label, width, options.colors), options)
-    case 'diagram': return diagramComponent(node, path, options)
-    case 'chart': return chartComponent(node, path, options)
+    case 'diagram': return diagramComponent(node, options)
+    case 'chart': return chartComponent(node, options)
   }
 }
 
@@ -1174,7 +1209,6 @@ function reconcile(state: FocusState): readonly ControlDescriptor[] {
       state.activeKey = undefined
       state.activeGroup = undefined
     }
-    state.pendingConfirmation = undefined
     state.lastIndex = 0
     state.lastTabGroupIndex = 0
     for (const scroll of state.scrollViews.values()) scroll.setScrollbarActive(false)
@@ -1214,11 +1248,11 @@ function reconcile(state: FocusState): readonly ControlDescriptor[] {
   }
   const groupIds = groups.map(group => group.id)
   const requestedGroup = desiredHidden ? state.desiredGroup : state.activeGroup
+  const declaredDefault = controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
   const fallbackGroup = requestedGroup !== undefined && groupIds.includes(requestedGroup)
     ? requestedGroup
-    : groupIds[0]!
+    : declaredDefault?.group ?? groupIds[0]!
   state.lastIndex = groupTarget(controls, fallbackGroup, state.groupActiveKeys.get(fallbackGroup))
-  state.pendingConfirmation = undefined
   state.activeKey = controls[state.lastIndex]!.key
   state.activeGroup = controls[state.lastIndex]!.group
   if (!desiredHidden) {
@@ -1303,9 +1337,9 @@ function nearestDirectionalControl(
 }
 
 /**
- * Renderer-private state shared by every compiled projection of one mounted
- * plugin surface. The bridge owns its lifetime; canonical nodes remain plain
- * readonly data and never receive this object.
+ * Renderer bindings shared by compiled projections of one surface. The
+ * frontend model owns drafts and actions; this object owns only editor,
+ * focus, geometry, and admission caches for the current renderer lifetime.
  */
 export class MayflyUiSurfaceRuntime {
   private node: CompilableNode | undefined
@@ -1313,20 +1347,24 @@ export class MayflyUiSurfaceRuntime {
   private layoutViewport: ((viewport: MayflyUiViewport) => void) | undefined
   private generation = 0
   private live = true
-  private readonly forms = new UiFormStateStore()
   private readonly controls = new UiControlStore()
-  private readonly lists = new UiListStateStore()
+  private readonly fieldAddresses = new Map<string, MayflyFieldAddress>()
+  private readonly nodePages = new WeakMap<object, MayflyPagePath>()
+  private readonly tabDefinitions = new Map<string, Extract<MayflyUiNode, { readonly kind: 'tabs' }>>()
+  private readonly searches = new Map<string, SearchInput>()
   private readonly textEditors = new Map<string, TextEditorLease>()
   private readonly editorFocusCheckpoints: Map<MayflyEditor, boolean>[] = []
   private readonly fieldKinds = new Map<string, MayflyFormField['kind']>()
   private readonly fieldOwners = new Map<string, string>()
   private readonly fieldRecency = new Map<string, true>()
+  private listRowBudget: number | undefined
   readonly state: FocusState
 
-  constructor() {
-    const fieldValue = (field: MayflyFormField, key: string): string | boolean | null => {
-      const stateKey = fieldStateKey(key, field.kind)
-      return this.forms.value(field, stateKey)
+  constructor(readonly interaction?: UiSurfaceModel) {
+    const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
+      const address = this.fieldAddresses.get(key)
+      const draft = address === undefined ? undefined : this.interaction?.form(address)?.fields[address.fieldId]
+      return draft === undefined ? field.value : draft.value
     }
     this.state = {
       activeKey: undefined,
@@ -1341,38 +1379,49 @@ export class MayflyUiSurfaceRuntime {
       lastIndex: 0,
       focused: false,
       layoutPass: false,
-      pendingConfirmation: undefined,
       controls: () => this.node === undefined || this.options === undefined ? [] : controlsForNode(this.node, this.options),
       allControls: () => this.node === undefined || this.options === undefined ? [] : controlsForNode(this.node, this.options, '$', true),
       emit: event => {
         if (!this.live) return
-        try { this.options?.emit(event) } catch { /* event failures are host-owned */ }
+        try {
+          if (this.interaction !== undefined) this.interaction.emit(event)
+          else this.options?.emit(event)
+        } catch { /* event failures are host-owned */ }
       },
-      field: (field, key) => ({ ...field, value: fieldValue(field, key) } as MayflyFormField),
+      field: (field, key) => {
+        const address = this.fieldAddresses.get(key)
+        const form = address === undefined ? undefined : this.interaction?.form(address)
+        const draft = address === undefined ? undefined : form?.fields[address.fieldId]
+        const picker = draft?.picker
+        const value = picker === undefined ? fieldValue(field, key) : field.kind === 'multiselect' ? picker.selectedIds : picker.selectedIds[0] ?? null
+        const origin = draft?.change === 'reset' || (draft?.change ?? 'unchanged') === 'unchanged' && field.origin === 'inherited' ? 'Inherited' : 'Override'
+        return { ...field, value: field.kind === 'number' ? field.value : value,
+          ...field.origin === undefined ? {} : { label: `${field.label} (${this.options?.contextHints?.translate?.(origin) ?? origin})` },
+          ...(draft?.error === undefined ? {} : { error: draft.error }),
+          ...(draft?.conflict ? { error: 'Resolve the changed value before saving' } : {}),
+          ...(picker === undefined || choiceError(picker) === undefined ? {} : { error: choiceError(picker) }),
+          ...(form?.pending === undefined ? {} : { disabled: true }),
+        } as MayflyFormField
+      },
       fieldValue,
-      setTextValue: (key, canonical, value) => { this.forms.setText(key, canonical, value) },
-      textEditor: (field, key) => this.textEditor(field, key),
-      setSelectValue: (key, canonical, value) => {
-        this.forms.setSelect(key, canonical, value)
+      setValue: (key, value) => {
+        const address = this.fieldAddresses.get(key)
+        if (address !== undefined) this.interaction?.edit(address, value)
       },
-      beginSelectEditing: (field, key) => {
-        const stateKey = fieldStateKey(key, field.kind)
+      textEditor: (field, key) => this.textEditor(field, key),
+      beginSelectEditing: (_field, key) => {
         this.state.setEditing(key)
-        this.forms.beginSelect(field, stateKey)
+        const address = this.fieldAddresses.get(key)
+        if (address !== undefined) this.interaction?.updateForm(address, { kind: 'begin-picker', fieldId: address.fieldId })
       },
       finishSelectEditing: (field, key, cancel) => {
-        const stateKey = fieldStateKey(key, field.kind)
-        const value = this.forms.finishSelect(field, stateKey, cancel)
+        const address = this.fieldAddresses.get(key)
+        if (address !== undefined) this.interaction?.updateForm(address, { kind: 'finish-picker', fieldId: address.fieldId, cancel })
         this.state.setEditing(undefined)
-        return value
+        return fieldValue(field, key)
       },
-      setToggleValue: (key, canonical, value) => { this.forms.setToggle(key, canonical, value) },
       setEditing: key => {
         if (this.state.editingKey === key) return
-        if (this.state.editingKey !== undefined) {
-          const stateKey = fieldStateKey(this.state.editingKey, 'select')
-          this.forms.cancelSelect(stateKey)
-        }
         this.state.editingKey = key
         for (const lease of this.textEditors.values()) lease.editor.focused = false
       },
@@ -1388,29 +1437,59 @@ export class MayflyUiSurfaceRuntime {
     }
   }
 
-  bind(node: CompilableNode, options: RuntimeCompilerOptions, refreshMode: 'internal' | 'external', setLayoutViewport: (viewport: MayflyUiViewport) => void): number {
+  bind(node: CompilableNode, options: RuntimeCompilerOptions, setLayoutViewport: (viewport: MayflyUiViewport) => void): number {
     if (!this.live) throw new Error('surface runtime is disposed')
-    if (refreshMode === 'external') {
-      if (this.state.editingKey !== undefined && this.fieldKinds.get(this.state.editingKey) === 'select') this.state.setEditing(undefined)
-      this.forms.resetExternal()
-      this.state.pendingConfirmation = undefined
-    }
     this.node = node
     this.options = options
     this.layoutViewport = setLayoutViewport
+    this.listRowBudget = undefined
     this.controls.resetGeneration()
     this.generation += 1
     return this.generation
   }
 
-  current(generation: number): boolean { return this.live && generation === this.generation }
+  current(generation: number): boolean { return this.live && this.interaction?.disposed !== true && generation === this.generation }
 
-  listWindow(node: MayflyListNode, rowLimit: number): readonly VirtualListEntry[] {
-    return this.lists.window(node, rowLimit)
+  pagePath(node: object): MayflyPagePath { return this.nodePages.get(node) ?? [] }
+
+  activeTab(address: { readonly pagePath: MayflyPagePath, readonly controlId: string }): string | undefined {
+    return this.interaction === undefined ? this.tabDefinitions.get(controlGroup('tabs', address.controlId, address.pagePath))?.activeId : this.interaction.activeTab(address)
   }
 
-  moveList(node: MayflyListNode, from: number, movement: ListMovement, pageSize: number): VirtualListEntry | undefined {
-    return this.lists.move(node, from, movement, pageSize)
+  fieldAddress(key: string): MayflyFieldAddress | undefined { return this.fieldAddresses.get(key) }
+
+  listRowLimit(viewportRows: number): number { return Math.min(viewportRows, this.listRowBudget ?? viewportRows) }
+
+  setListRowBudget(rows: number | undefined): void { this.listRowBudget = rows }
+
+  search(node: MayflyListNode): SearchInput {
+    const key = controlGroup('list', node.id, this.pagePath(node))
+    let search = this.searches.get(key)
+    if (search === undefined) { search = new SearchInput(this.options!.components); this.searches.set(key, search) }
+    search.setText(this.interaction?.choice({ pagePath: this.pagePath(node), controlId: node.id })?.query ?? '')
+    return search
+  }
+
+  listWindow(node: MayflyListNode, rowLimit: number): readonly VirtualListEntry[] {
+    const state = this.interaction?.choice({ pagePath: this.pagePath(node), controlId: node.id })
+    const count = state === undefined ? node.items.length : choiceVisibleCount(state)
+    const size = Math.min(count, Math.max(1, Math.floor(rowLimit)) + 4)
+    const cursor = state === undefined ? 0 : choiceVisiblePosition(state)
+    const start = Math.max(0, Math.min(count - size, cursor - Math.floor(size / 2)))
+    return Array.from({ length: size }, (_, offset) => {
+      const index = state === undefined ? start + offset : choiceVisibleIndex(state, start + offset)!
+      return { index, item: state === undefined ? admittedListItem(node.items, index)! : decorateChoiceItem(state, index) }
+    })
+  }
+
+  moveList(node: MayflyListNode, _from: number, movement: ListMovement, pageSize: number): VirtualListEntry | undefined {
+    const address = { pagePath: this.pagePath(node), controlId: node.id }
+    if (movement === 'home' || movement === 'end') this.interaction?.updateChoice(address, { kind: 'edge', edge: movement === 'home' ? 'first' : 'last' })
+    else this.interaction?.updateChoice(address, { kind: 'move', direction: movement === 'up' || movement === 'page-up' ? -1 : 1, count: movement === 'page-up' || movement === 'page-down' ? pageSize : 1 })
+    const state = this.interaction?.choice(address)
+    const index = state?.focusedIndex ?? -1
+    const item = index < 0 ? undefined : admittedListItem(node.items, index)
+    return item === undefined ? undefined : { index, item }
   }
 
   setFocused(value: boolean): void {
@@ -1422,6 +1501,7 @@ export class MayflyUiSurfaceRuntime {
     const node = this.node
     const options = this.options
     const layoutViewport = this.layoutViewport
+    const listRowBudget = this.listRowBudget
     const generation = this.generation
     const focus = {
       activeKey: this.state.activeKey,
@@ -1432,23 +1512,19 @@ export class MayflyUiSurfaceRuntime {
       lastIndex: this.state.lastIndex,
       focused: this.state.focused,
       layoutPass: this.state.layoutPass,
-      pendingConfirmation: this.state.pendingConfirmation,
       lastTabGroupIndex: this.state.lastTabGroupIndex,
     }
-    const restoreForms = this.forms.checkpoint()
     const groupActiveKeys = new Map(this.state.groupActiveKeys)
     const restoreControls = this.controls.checkpoint()
-    const restoreLists = this.lists.checkpoint()
     return () => {
       this.node = node
       this.options = options
       this.layoutViewport = layoutViewport
+      this.listRowBudget = listRowBudget
       this.generation = generation
       Object.assign(this.state, focus)
-      restoreForms()
       this.state.groupActiveKeys.clear(); for (const [key, value] of groupActiveKeys) this.state.groupActiveKeys.set(key, value)
       restoreControls()
-      restoreLists()
     }
   }
 
@@ -1480,8 +1556,9 @@ export class MayflyUiSurfaceRuntime {
   }
 
   /** Add fields from a newly visible deferred branch without aging sibling state. */
-  admitDeferred(node: MayflyUiNode): void {
-    this.admitFields(node, new Set())
+  admitDeferred(node: MayflyUiNode, pagePath: MayflyPagePath): void {
+    this.interaction?.admitVisibleControls()
+    this.admitFields(node, new Set(), pagePath)
   }
 
   deactivate(): void {
@@ -1490,8 +1567,8 @@ export class MayflyUiSurfaceRuntime {
     this.node = undefined
     this.options = undefined
     this.layoutViewport = undefined
+    this.listRowBudget = undefined
     this.setFocused(false)
-    this.state.pendingConfirmation = undefined
     for (const lease of this.textEditors.values()) releaseTextEditor(lease)
   }
 
@@ -1501,12 +1578,14 @@ export class MayflyUiSurfaceRuntime {
     this.live = false
     for (const lease of this.textEditors.values()) releaseTextEditor(lease)
     this.textEditors.clear()
-    this.forms.resetExternal()
+    this.fieldAddresses.clear()
+    this.tabDefinitions.clear()
+    for (const search of this.searches.values()) search.clear()
+    this.searches.clear()
     this.fieldKinds.clear()
     this.fieldOwners.clear()
     this.fieldRecency.clear()
     this.controls.resetGeneration()
-    this.lists.clear()
     this.state.activeKey = undefined
     this.state.activeGroup = undefined
     this.state.desiredKey = undefined
@@ -1517,22 +1596,30 @@ export class MayflyUiSurfaceRuntime {
     this.state.lastTabGroupIndex = 0
   }
 
-  private admitFields(current: CompilableNode, active: Set<string>): void {
+  private admitFields(current: CompilableNode, active: Set<string>, pagePath: MayflyPagePath = []): void {
+    this.nodePages.set(current, pagePath)
     if (current.kind !== 'editor-control' && isDeferredUiNode(current as MayflyUiNode)) {
       const admitted = materializedDeferredUiNode(current as MayflyUiNode)
-      if (admitted?.ok === true) this.admitFields(admitted.value, active)
+      if (admitted?.ok === true) this.admitFields(admitted.value, active, pagePath)
       return
     }
     switch (current.kind) {
-      case 'stack': for (const child of current.children) this.admitFields(child.node, active); break
+      case 'stack': for (const child of current.children) this.admitFields(child.node, active, child.tab === undefined ? pagePath : [...pagePath, child.tab]); break
       case 'surface':
-        this.admitFields(current.child, active)
-        if (current.footer !== undefined) this.admitFields(current.footer, active)
+        this.admitFields(current.child, active, pagePath)
+        if (current.footer !== undefined) this.admitFields(current.footer, active, pagePath)
         break
-      case 'scroll': this.admitFields(current.child, active); break
-      case 'list': if (current.empty !== undefined) this.admitFields(current.empty, active); break
-      case 'form': for (const field of current.fields) this.touchField(controlKey('form-field', current.id, field.id), field, active); break
-      case 'empty': if (current.actions !== undefined) this.admitFields(current.actions, active); break
+      case 'scroll': this.admitFields(current.child, active, pagePath); break
+      case 'list': if (current.empty !== undefined) this.admitFields(current.empty, active, pagePath); break
+      case 'form': for (const field of current.fields) {
+        const key = controlKey('form-field', current.id, field.id, pagePath)
+        const address = { pagePath, formId: current.id, fieldId: field.id }
+        this.fieldAddresses.set(key, address)
+        this.fieldAddresses.set(fieldStateKey(key, field.kind), address)
+        this.touchField(key, field, active)
+      }; break
+      case 'tabs': this.tabDefinitions.set(controlGroup('tabs', current.id, pagePath), current); break
+      case 'empty': if (current.actions !== undefined) this.admitFields(current.actions, active, pagePath); break
       default: break
     }
   }
@@ -1549,13 +1636,14 @@ export class MayflyUiSurfaceRuntime {
   }
 
   private evictField(stateKey: string): void {
-    this.forms.evict(stateKey)
+    this.fieldAddresses.delete(stateKey)
     const lease = this.textEditors.get(stateKey)
     if (lease !== undefined) {
       releaseTextEditor(lease)
       this.textEditors.delete(stateKey)
     }
     const owner = this.fieldOwners.get(stateKey)!
+    this.fieldAddresses.delete(owner)
     if (this.state.editingKey === owner) this.state.setEditing(undefined)
     this.fieldKinds.delete(owner)
     this.fieldOwners.delete(stateKey)
@@ -1567,7 +1655,7 @@ export class MayflyUiSurfaceRuntime {
     if (options === undefined) throw new Error('surface runtime is inactive')
     const stateKey = fieldStateKey(key, field.kind)
     const previous = this.textEditors.get(stateKey)
-    let editor = options.resolveTextEditor?.(field.id, stateKey) ?? previous?.editor
+    let editor = previous?.editor
     if (editor === undefined) {
       editor = options.components.createEditor()
     }
@@ -1575,8 +1663,7 @@ export class MayflyUiSurfaceRuntime {
       if (!checkpoint.has(editor)) checkpoint.set(editor, editor.focused)
     }
     let lease = previous
-    if (lease === undefined || lease.editor !== editor) {
-      if (lease !== undefined) releaseTextEditor(lease)
+    if (lease === undefined) {
       lease = { editor, onChange: undefined, onSubmit: undefined }
       this.textEditors.set(stateKey, lease)
     } else {
@@ -1591,15 +1678,12 @@ export class MayflyUiSurfaceRuntime {
     const onChange = (): void => {
       if (!this.live || this.options !== options || editor.onChange !== onChange) return
       const value = editor!.getExpandedText()
-      this.state.setTextValue(stateKey, field.value, value)
-      this.state.emit({ kind: 'value-change', controlId: field.id, value })
+      this.state.setValue(stateKey, value)
     }
     const onSubmit = (value: string): void => {
       if (!this.live || this.options !== options || editor.onSubmit !== onSubmit) return
-      this.state.setTextValue(stateKey, field.value, value)
+      this.state.setValue(stateKey, value)
       if (this.state.editingKey === key) this.state.setEditing(undefined)
-      this.state.emit({ kind: 'value-change', controlId: field.id, value })
-      try { options.onTextSubmit?.(field.id, value) } catch { /* official submit observers cannot escape input */ }
     }
     lease.onChange = onChange
     lease.onSubmit = onSubmit
@@ -1616,6 +1700,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   private runtimeFailure: string | undefined
   private readonly surfaceRuntime: MayflyUiSurfaceRuntime
   private readonly generation: number
+  private viewportOffset = 0
 
   constructor(
     private readonly node: CompilableNode,
@@ -1623,12 +1708,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
     mode: CompilerMode,
     private readonly editor?: MayflyEditor,
     surfaceRuntime?: MayflyUiSurfaceRuntime,
-    refreshMode: 'internal' | 'external' = 'external',
     contextKeyHints = false,
     contextEscapeHint?: 'close' | 'leave',
   ) {
     this.viewport = safeViewport(options.getViewport)
-    this.surfaceRuntime = surfaceRuntime ?? new MayflyUiSurfaceRuntime()
+    this.surfaceRuntime = surfaceRuntime ?? new MayflyUiSurfaceRuntime(options.interaction)
     const runtimeOptions: RuntimeCompilerOptions = {
       ...options,
       ...(editor === undefined ? {} : { editor }),
@@ -1636,19 +1720,21 @@ class CompiledSurface implements MayflyEditorShellComponent {
       listRuntime: this.surfaceRuntime,
       reportRuntimeFailure: message => { this.runtimeFailure ??= message },
     }
-    this.generation = this.surfaceRuntime.bind(node, runtimeOptions, refreshMode, viewport => { this.viewport = viewport })
+    this.generation = this.surfaceRuntime.bind(node, runtimeOptions, viewport => { this.viewport = viewport })
     this.state = this.surfaceRuntime.state
+    this.surfaceRuntime.admit(node)
     const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, contextEscapeHint) : undefined
     const compiledRoot = compileNode(node, this.state, runtimeOptions, '$', mode, node.kind === 'surface' ? contextHint : undefined)
     if (contextHint === undefined || node.kind === 'surface') this.root = compiledRoot
     else {
       const root = new VStack()
-      root.addChild(compiledRoot)
+      root.addChild(compiledRoot, this.surfaceRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
       root.addChild(contextHint)
       this.root = root
     }
     reconcile(this.state)
-    this.surfaceRuntime.admit(node)
+    const remembered = this.surfaceRuntime.interaction?.focus
+    if (remembered !== undefined) this.restoreFocusIdentity(remembered)
   }
 
   get focused(): boolean { return this.state.focused }
@@ -1656,12 +1742,13 @@ class CompiledSurface implements MayflyEditorShellComponent {
     if (!this.surfaceRuntime.current(this.generation)) return
     this.surfaceRuntime.setFocused(value)
     if (!value && this.editor !== undefined) this.editor.focused = false
-    if (!value) this.state.pendingConfirmation = undefined
     reconcile(this.state)
   }
 
   hasControls(): boolean {
-    return this.state.allControls().length > 0 || containsDeferredNode(this.node)
+    const controls = this.state.allControls()
+    const deferred = containsDeferredNode(this.node)
+    return controls.length > 0 || deferred
   }
 
   captureFocusIdentity(): MayflyFocusIdentity | undefined {
@@ -1697,9 +1784,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const tabGroups = controlGroups(controls).filter(group => group.kind === 'tabs')
     const tabIndex = tabGroups.findIndex(group => group.entries[0]?.control.identity.controlId === identity.tabControlId)
     if (tabIndex >= 0) this.state.lastTabGroupIndex = tabIndex
-    this.state.pendingConfirmation = undefined
-    if (identity.editing === true && control.kind === 'select') this.state.beginSelectEditing(control.field, control.key)
-    else this.state.setEditing(identity.editing === true && control.kind === 'text' ? control.key : undefined)
+    const address = this.surfaceRuntime.fieldAddress(control.key)
+    const picker = address === undefined ? undefined : this.surfaceRuntime.interaction?.form(address)?.fields[address.fieldId]?.picker
+    if (control.kind === 'select' && (identity.editing === true || picker !== undefined)) this.state.beginSelectEditing(control.field, control.key)
+    else this.state.setEditing(control.kind === 'text' && identity.editing === true ? control.key : undefined)
     reconcile(this.state)
     return true
   }
@@ -1726,10 +1814,57 @@ class CompiledSurface implements MayflyEditorShellComponent {
       this.viewport = maxRows === undefined
         ? safeViewport(this.options.getViewport)
         : { columns: safeWidth, rows: maxRows }
+      this.surfaceRuntime.setListRowBudget(undefined)
       reconcile(this.state)
-      const rows = this.root.render(safeWidth)
-      const rowLimit = maxRows ?? (this.options.screenMode === 'alternate' ? this.viewport.rows : undefined)
-      const limited = rowLimit === undefined ? rows : rows.slice(0, rowLimit)
+      let rows: string[]
+      const constrainedLayout = (): string[] => {
+        const viewport = this.viewport
+        this.state.layoutPass = true
+        try { return renderLayoutFrame(this.root, safeWidth, viewport.rows, () => {}).lines }
+        finally { this.state.layoutPass = false; this.viewport = viewport }
+      }
+      rows = this.root.render(safeWidth)
+      if (this.surfaceRuntime.interaction !== undefined && this.state.scrollViews.size > 0) rows = constrainedLayout()
+      else {
+        const hasList = this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
+        if (this.surfaceRuntime.interaction !== undefined && hasList) {
+          let budget = this.viewport.rows
+          while (rows.length > this.viewport.rows && budget > 1) {
+            const next = Math.max(1, budget - (rows.length - this.viewport.rows))
+            budget = next
+            this.surfaceRuntime.setListRowBudget(budget)
+            reconcile(this.state)
+            rows = this.root.render(safeWidth)
+          }
+        }
+      }
+      const rowLimit = maxRows ?? (this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
+      const severity = { info: 0, success: 1, warning: 2, error: 3 }
+      const notice = this.surfaceRuntime.interaction?.feedbackSnapshot().toSorted((left, right) => severity[left.severity] - severity[right.severity]).at(-1)
+      const feedbackRows = notice === undefined || rowLimit === 1 ? [] : [sliceByColumn(
+        (notice.severity === 'error' ? this.options.colors.error : notice.severity === 'warning' ? this.options.colors.warning : this.options.colors.textMuted)(sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')),
+        0, safeWidth, true,
+      )]
+      const contentLimit = rowLimit === undefined ? rows.length : Math.max(1, rowLimit - feedbackRows.length)
+      const caretRow = rows.findIndex(row => row.includes(CURSOR_MARKER))
+      const focusRow = caretRow < 0 ? rows.findIndex(row => row.includes(FOCUS_SENTINEL)) : caretRow
+      const pinFrame = rowLimit !== undefined && rows.length > contentLimit && this.node.kind === 'surface'
+        && (this.node.chrome === 'overlay' || this.node.chrome === 'surface')
+      let limited: string[]
+      if (pinFrame && contentLimit > 1) {
+        const innerLength = Math.max(0, rows.length - 2)
+        const innerLimit = Math.max(0, contentLimit - 2)
+        const innerFocus = focusRow > 0 && focusRow < rows.length - 1 ? focusRow - 1 : -1
+        if (innerFocus >= 0 && innerFocus < this.viewportOffset) this.viewportOffset = innerFocus
+        else if (innerFocus >= this.viewportOffset + innerLimit) this.viewportOffset = innerFocus - innerLimit + 1
+        this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, innerLength - innerLimit))
+        limited = [rows[0]!, ...rows.slice(1 + this.viewportOffset, 1 + this.viewportOffset + innerLimit), rows.at(-1)!, ...feedbackRows]
+      } else {
+        if (focusRow >= 0 && focusRow < this.viewportOffset) this.viewportOffset = focusRow
+        else if (focusRow >= this.viewportOffset + contentLimit) this.viewportOffset = focusRow - contentLimit + 1
+        this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, rows.length - contentLimit))
+        limited = [...rows.slice(this.viewportOffset, this.viewportOffset + contentLimit), ...feedbackRows]
+      }
       let overflowed = rowLimit !== undefined && rows.length > rowLimit
       const rendered = limited.map(row => {
         if (visibleWidth(row) <= safeWidth) return row
@@ -1773,7 +1908,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
       lastIndex: this.state.lastIndex,
       focused: this.state.focused,
       layoutPass: this.state.layoutPass,
-      pendingConfirmation: this.state.pendingConfirmation,
       lastTabGroupIndex: this.state.lastTabGroupIndex,
       viewport: this.viewport,
       runtimeFailure: this.runtimeFailure,
@@ -1794,7 +1928,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
       this.state.lastIndex = focus.lastIndex
       this.state.focused = focus.focused
       this.state.layoutPass = focus.layoutPass
-      this.state.pendingConfirmation = focus.pendingConfirmation
       this.state.lastTabGroupIndex = focus.lastTabGroupIndex
       this.viewport = focus.viewport
       this.runtimeFailure = focus.runtimeFailure
@@ -1814,7 +1947,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.state.desiredGroup = controls[index]!.group
     this.state.groupActiveKeys.set(controls[index]!.group, controls[index]!.key)
     this.state.lastIndex = index
-    this.state.pendingConfirmation = undefined
   }
 
   /** Render a passive status surface with a fixed row budget and overflow signal. */
@@ -1826,7 +1958,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     if (controls.length === 0) return rectangles
     const width = Math.max(1, this.viewport.columns)
     const measuredHeight = Math.max(1, this.root.render(width).length)
-    const height = this.options.screenMode === 'alternate'
+    const height = this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined
       ? Math.max(1, this.viewport.rows)
       : measuredHeight
     const previousLayoutPass = this.state.layoutPass
@@ -1861,14 +1993,27 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const controls = reconcile(this.state)
     const active = controls[this.state.lastIndex]
     const groups = controlGroups(controls)
+    const list = active?.kind === 'list' ? active.node : active?.kind === 'event' ? active.listEntry?.node : undefined
+    if (list?.filterable === true) {
+      const address = { pagePath: this.surfaceRuntime.pagePath(list), controlId: list.id }
+      const choice = this.surfaceRuntime.interaction?.choice(address)
+      if (choice !== undefined) {
+        const search = this.surfaceRuntime.search(list)
+        if (matchesKeyAction(this.options.keymap, data, ACTION_CANCEL) && choice.searching) { this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'stop-search' }); return }
+        if (matchesKeyAction(this.options.keymap, data, ACTION_CLEAR_SEARCH)) { search.clear(); this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'clear-search' }); return }
+        if (data === '/' && !choice.searching) { this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'query', query: choice.query }); return }
+        if ((data !== ' ' || choice.searching) && search.handleInput(data, data === '\x7f' || data === '\b')) {
+          this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'query', query: search.text })
+          return
+        }
+      }
+    }
     const tabGroups = groups.filter(group => group.kind === 'tabs')
-    const contentGroups = groups.filter(group => group.kind === 'content')
     const moveTo = (index: number): void => {
       const control = controls[index]
       /* v8 ignore next -- every caller resolves an entry from the current control set. */
       if (control === undefined) return
       this.state.setEditing(undefined)
-      this.state.pendingConfirmation = undefined
       this.state.lastIndex = index
       this.state.activeKey = control.key
       this.state.activeGroup = control.group
@@ -1878,25 +2023,33 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const tabIndex = tabGroups.findIndex(group => group.id === control.group)
       if (tabIndex >= 0) this.state.lastTabGroupIndex = tabIndex
       reconcile(this.state)
+      this.surfaceRuntime.interaction?.focusControl(control.identity as UiControlAddress)
       try { this.options.onFocusChange?.(control.identity) } catch { /* focus observers cannot escape input */ }
     }
     const moveGroup = (delta: -1 | 1): void => {
-      if (active === undefined || (active.kind === 'event' && active.role === 'tab') || contentGroups.length <= 1) return
-      const current = contentGroups.findIndex(group => group.id === active.group)
+      const currentActive = active!
+      const current = groups.findIndex(group => group.id === currentActive.group)
       /* v8 ignore next -- a non-tab active control belongs to one content group above. */
       if (current < 0) return
-      const target = contentGroups[(current + contentGroups.length + delta) % contentGroups.length]!
-      moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)))
-    }
-    if (matchesKey(data, Key.escape)) {
-      if (active !== undefined && this.state.editingKey === active.key && (active.kind === 'text' || active.kind === 'select')) {
-        if (active.kind === 'select') this.state.finishSelectEditing(active.field, active.key, true)
-        else this.state.setEditing(undefined)
+      const sibling = controls[this.state.lastIndex + delta]
+      if (sibling?.group === currentActive.group && !(currentActive.kind === 'event' && (currentActive.role === 'tab' || currentActive.role === 'list-single' || currentActive.role === 'list-multiple'))) {
+        moveTo(this.state.lastIndex + delta)
         return
       }
-      const consumed = this.state.pendingConfirmation !== undefined
-      this.state.pendingConfirmation = undefined
-      if (consumed) return
+      const target = groups[current + delta]
+      if (target === undefined) return
+      moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)))
+    }
+    if (matchesKeyAction(this.options.keymap, data, ACTION_CANCEL)) {
+      if (active?.kind === 'select' && this.state.editingKey === active.key) {
+        this.state.finishSelectEditing(active.field, active.key, true)
+        return
+      }
+      if (this.surfaceRuntime.interaction?.back()) return
+      if (this.surfaceRuntime.interaction?.registration.definition.dismissal === 'discard') {
+        this.options.onUnhandledEscape?.()
+        return
+      }
       if (active !== undefined && tabGroups.length > 0) {
         const activeTabIndex = tabGroups.findIndex(group => group.id === active.group)
         if (activeTabIndex > 0) {
@@ -1915,7 +2068,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
       return
     }
     if (active === undefined) return
-    if (data === '\t' || data === '\x1b[Z') {
+    if (active.kind === 'list' && matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) { this.state.emit({ kind: 'selection-accept', pagePath: active.identity.pagePath!, controlId: active.node.id, selectedIds: this.surfaceRuntime.interaction?.choice({ pagePath: active.identity.pagePath!, controlId: active.node.id })?.selectedIds ?? [] }); return }
+    const nextControl = matchesKeyAction(this.options.keymap, data, ACTION_NEXT_CONTROL)
+    const previousControl = matchesKeyAction(this.options.keymap, data, ACTION_SHIFT_TAB)
+    if (nextControl || previousControl) {
       // An editor-only provider shell has nowhere to rove. Preserve the
       // editing engine's Tab contract so it can accept or explicitly open
       // autocomplete without the canonical wrapper consuming the key.
@@ -1923,19 +2079,15 @@ class CompiledSurface implements MayflyEditorShellComponent {
         this.editor?.handleInput?.(data)
         return
       }
-      if (active.kind === 'event' && active.role === 'tab') return
-      const delta = data === '\t' ? 1 : -1
+      const delta = nextControl ? 1 : -1
       if (active.kind === 'text' && this.state.editingKey === active.key) {
-        if (active.field.error !== undefined) return
         const editor = this.state.textEditor(active.field, active.key)
-        editor.onSubmit?.(editor.getExpandedText())
+        this.state.setValue(active.key, editor.getExpandedText())
         moveGroup(delta)
         return
       }
       if (active.kind === 'select' && this.state.editingKey === active.key) {
-        if (active.field.error !== undefined) return
-        const value = this.state.finishSelectEditing(active.field, active.key, false)
-        this.state.emit({ kind: 'value-change', controlId: active.field.id, value })
+        this.state.finishSelectEditing(active.field, active.key, true)
         moveGroup(delta)
         return
       }
@@ -1947,40 +2099,46 @@ class CompiledSurface implements MayflyEditorShellComponent {
       return
     }
     if (active.kind === 'text' && this.state.editingKey === active.key) {
+      if (this.state.field(active.field, active.key).disabled === true) return
       const editor = this.state.textEditor(active.field, active.key)
       editor.focused = this.state.focused
-      if (matchesKey(data, Key.alt('enter'))) {
+      if (matchesKeyAction(this.options.keymap, data, ACTION_NEWLINE)) {
         if (active.field.kind === 'textarea') editor.insertText('\n')
         return
       }
-      if (matchesKey(data, Key.enter)) {
-        editor.onSubmit?.(editor.getExpandedText())
+      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) {
+        if (active.field.kind === 'textarea') editor.insertText('\n')
+        else { this.state.setValue(active.key, editor.getExpandedText()); moveGroup(1) }
         return
       }
       editor.handleInput?.(data)
       return
     }
-    const direction: NavigationDirection | undefined = data === '\x1b[A' ? 'up'
-      : data === '\x1b[B' ? 'down'
-        : data === '\x1b[D' ? 'left'
-          : data === '\x1b[C' ? 'right'
+    const direction: NavigationDirection | undefined = matchesKeyAction(this.options.keymap, data, ACTION_MOVE_UP) ? 'up'
+      : matchesKeyAction(this.options.keymap, data, ACTION_MOVE_DOWN) ? 'down'
+        : matchesKeyAction(this.options.keymap, data, ACTION_SEGMENT_LEFT) ? 'left'
+          : matchesKeyAction(this.options.keymap, data, ACTION_SEGMENT_RIGHT) ? 'right'
             : undefined
-    const horizontal = data === '\x1b[D' || data === '\x1b[C'
     if (active.kind === 'select' && this.state.editingKey === active.key) {
-      if (horizontal) {
-        const enabled = active.field.options.filter(option => option.disabled !== true)
-        if (enabled.length === 0) return
-        const current = this.state.fieldValue(active.field, active.key)
-        const currentIndex = enabled.findIndex(option => option.id === current)
-        const delta = direction === 'left' ? -1 : 1
-        const nextIndex = currentIndex < 0 ? (delta > 0 ? 0 : enabled.length - 1) : currentIndex + delta
-        if (nextIndex < 0 || nextIndex >= enabled.length) return
-        this.state.setSelectValue(fieldStateKey(active.key, active.field.kind), active.field.value, enabled[nextIndex]!.id)
+      const address = this.surfaceRuntime.fieldAddress(active.key)
+      const model = this.surfaceRuntime.interaction
+      if (address === undefined || model === undefined) return
+      const picker = model.form(address)?.fields[address.fieldId]?.picker
+      if (picker === undefined) return
+      if (direction !== undefined) {
+        model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'move', direction: direction === 'left' || direction === 'up' ? -1 : 1, count: 1 } })
         return
       }
-      if (matchesKey(data, Key.enter)) {
-        const value = this.state.finishSelectEditing(active.field, active.key, false)
-        this.state.emit({ kind: 'value-change', controlId: active.field.id, value })
+      if (matchesKeyAction(this.options.keymap, data, ACTION_TOGGLE) && active.field.kind === 'multiselect' && picker.focusedId !== undefined) {
+        model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'toggle', id: picker.focusedId } })
+        return
+      }
+      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) {
+        if (active.field.kind === 'select' && picker.focusedId !== undefined) {
+          if (active.field.options.find(option => option.id === picker.focusedId)?.disabled === true) return
+          model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'select', ids: [picker.focusedId] } })
+        }
+        this.state.finishSelectEditing(active.field, active.key, false)
       }
       return
     }
@@ -1990,10 +2148,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
       if (scroll === undefined) return
       if (direction === 'up') scroll.scrollBy(-1)
       else if (direction === 'down') scroll.scrollBy(1)
-      else if (data === '\x1b[5~') scroll.scrollBy(-Math.max(1, scroll.viewportHeight))
-      else if (data === '\x1b[6~') scroll.scrollBy(Math.max(1, scroll.viewportHeight))
-      else if (data === '\x1b[H' || data === 'g') scroll.scrollToStart()
-      else if (data === '\x1b[F' || data === 'G') scroll.scrollToEnd()
+      else if (matchesKeyAction(this.options.keymap, data, ACTION_PAGE_UP)) scroll.scrollBy(-Math.max(1, scroll.viewportHeight))
+      else if (matchesKeyAction(this.options.keymap, data, ACTION_PAGE_DOWN)) scroll.scrollBy(Math.max(1, scroll.viewportHeight))
+      else if (matchesKeyAction(this.options.keymap, data, ACTION_HOME)) scroll.scrollToStart()
+      else if (matchesKeyAction(this.options.keymap, data, ACTION_END)) scroll.scrollToEnd()
       return
     }
     if (active.kind === 'event' && active.role === 'tab') {
@@ -2008,7 +2166,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         }
         return
       }
-      if (matchesKey(data, Key.enter)) {
+      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) {
         const groupIndex = groups.findIndex(group => group.id === active.group)
         const target = groups[groupIndex + 1]
         if (target !== undefined) moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)))
@@ -2016,12 +2174,18 @@ class CompiledSurface implements MayflyEditorShellComponent {
       return
     }
     if (active.kind === 'event' && active.listEntry !== undefined) {
+      if (active.listEntry.node.tree === true && matchesKeyAction(this.options.keymap, data, ACTION_TOGGLE)) {
+        const pagePath = active.identity.pagePath!
+        const item = admittedListItem(active.listEntry.node.items, active.listEntry.index)!
+        this.surfaceRuntime.interaction?.updateChoice({ pagePath, controlId: active.listEntry.node.id }, { kind: 'expand', id: item.id })
+        return
+      }
       const movement: ListMovement | undefined = direction === 'up' ? 'up'
         : direction === 'down' ? 'down'
-          : data === '\x1b[5~' ? 'page-up'
-            : data === '\x1b[6~' ? 'page-down'
-              : data === '\x1b[H' ? 'home'
-                : data === '\x1b[F' ? 'end'
+          : matchesKeyAction(this.options.keymap, data, ACTION_PAGE_UP) ? 'page-up'
+            : matchesKeyAction(this.options.keymap, data, ACTION_PAGE_DOWN) ? 'page-down'
+              : matchesKeyAction(this.options.keymap, data, ACTION_HOME) ? 'home'
+                : matchesKeyAction(this.options.keymap, data, ACTION_END) ? 'end'
                   : undefined
       if (movement !== undefined) {
         const target = this.surfaceRuntime.moveList(
@@ -2031,10 +2195,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
           Math.max(1, Math.min(10, this.viewport.rows - 1)),
         )
         if (target === undefined || target.index === active.listEntry.index) return
-        const key = controlKey('list', active.listEntry.node.id, target.item.id)
-        const group = controlGroup('list', active.listEntry.node.id)
+        const pagePath = active.identity.pagePath!
+        const key = controlKey('list', active.listEntry.node.id, target.item.id, pagePath)
+        const group = controlGroup('list', active.listEntry.node.id, pagePath)
         this.state.setEditing(undefined)
-        this.state.pendingConfirmation = undefined
         this.state.activeKey = key
         this.state.activeGroup = group
         this.state.desiredKey = key
@@ -2042,6 +2206,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         this.state.groupActiveKeys.set(group, key)
         const updated = reconcile(this.state)
         this.state.lastIndex = updated.findIndex(control => control.key === key)
+        this.surfaceRuntime.interaction?.focusControl({ pagePath, controlId: active.listEntry.node.id, itemId: target.item.id })
         try { this.options.onFocusChange?.(focusIdentity(active.listEntry.node.id, target.item.id)) } catch { /* focus observers cannot escape input */ }
         return
       }
@@ -2061,7 +2226,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       return
     }
     if (active.kind === 'text') {
-      if (matchesKey(data, Key.enter)) {
+      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) {
         this.state.setEditing(active.key)
         return
       }
@@ -2073,22 +2238,27 @@ class CompiledSurface implements MayflyEditorShellComponent {
       return
     }
     if (active.kind === 'select') {
-      if (matchesKey(data, Key.enter)) this.state.beginSelectEditing(active.field, active.key)
+      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) this.state.beginSelectEditing(active.field, active.key)
       return
     }
-    const enter = matchesKey(data, Key.enter)
-    const space = data === ' '
+    const enter = matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)
+    const space = matchesKeyAction(this.options.keymap, data, ACTION_TOGGLE)
+    if (active.kind === 'field-action') {
+      if (!enter && !space) return
+      this.surfaceRuntime.interaction?.updateForm(active.address, active.action.intent)
+      this.surfaceRuntime.interaction?.focusControl({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
+      this.restoreFocusIdentity({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
+      return
+    }
     if (active.kind === 'toggle') {
       if (!enter && !space) return
       const value = !this.state.fieldValue(active.field, active.key)
-      this.state.setToggleValue(fieldStateKey(active.key, active.field.kind), active.field.value, value)
-      this.state.emit({ kind: 'value-change', controlId: active.field.id, value })
+      this.state.setValue(active.key, value)
       return
     }
     if (active.kind === 'submit') {
       if (!enter && !space) return
-      const values = Object.fromEntries(active.form.fields.map(field => [field.id, this.state.fieldValue(field, controlKey('form-field', active.form.id, field.id))]))
-      this.state.emit({ kind: 'submit', controlId: active.form.id, values })
+      this.surfaceRuntime.interaction?.invoke(active.form.submitActionId!, active.identity.pagePath!)
       return
     }
     const eventControl = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
@@ -2100,12 +2270,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
       ? enter || space
       : eventControl.activation === 'enter' ? enter : space
     if (!activates) return
-    if (eventControl.confirm !== undefined && this.state.pendingConfirmation !== eventControl.key) {
-      this.state.pendingConfirmation = eventControl.key
-      return
-    }
-    if (eventControl.confirm !== undefined && !enter) return
-    this.state.pendingConfirmation = undefined
     this.state.emit(eventControl.event)
   }
 
@@ -2134,9 +2298,9 @@ class StatusErrorComponent implements MayflyStatusComponent {
   invalidate(): void { this.error.invalidate() }
 }
 
-function admittedSurface(node: CompilableNode, options: MayflyUiCompilerOptions, mode: CompilerMode, editor?: MayflyEditor, surfaceRuntime?: MayflyUiSurfaceRuntime, refreshMode?: 'internal' | 'external', contextKeyHints = false, contextEscapeHint?: 'close' | 'leave'): CompiledSurface {
+function admittedSurface(node: CompilableNode, options: MayflyUiCompilerOptions, mode: CompilerMode, editor?: MayflyEditor, surfaceRuntime?: MayflyUiSurfaceRuntime, contextKeyHints = false, contextEscapeHint?: 'close' | 'leave'): CompiledSurface {
   const rollback = surfaceRuntime?.checkpoint()
-  try { return new CompiledSurface(node, options, mode, editor, surfaceRuntime, refreshMode, contextKeyHints, contextEscapeHint) }
+  try { return new CompiledSurface(node, options, mode, editor, surfaceRuntime, contextKeyHints, contextEscapeHint) }
   catch (error) { rollback?.(); throw error }
 }
 
@@ -2153,7 +2317,7 @@ export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOpt
   try {
     const contextKeyHints = options.contextHints?.enabled === true
     const contextEscapeHint = options.onUnhandledEscape === undefined ? undefined : 'close'
-    const surface = admittedSurface(admitted.value, options, 'ui', undefined, undefined, undefined, contextKeyHints, contextEscapeHint)
+    const surface = admittedSurface(admitted.value, options, 'ui', undefined, undefined, contextKeyHints, contextEscapeHint)
     const hasControls = surface.hasControls()
     const focusTarget = hasControls || (contextKeyHints && options.contextHints?.focusWithoutControls === true) ? surface : null
     return { ok: true, value: { node: admitted.value, component: surface, focusTarget } }
@@ -2165,13 +2329,22 @@ export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOpt
 
 /** Compile one validated projection into a bridge-owned persistent runtime. */
 export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurfaceCompilerOptions): MayflyUiCompileResult {
-  const admitted = validateMayflyUiNode(value)
+  const admitted = value !== null && value === options.surfaceRuntime.interaction?.node
+    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
   try {
     const contextEscapeHint = options.onUnhandledEscape === undefined ? undefined : options.escapeHint ?? 'close'
-    const surface = admittedSurface(admitted.value, options, 'ui', undefined, options.surfaceRuntime, options.refreshMode, true, contextEscapeHint)
+    let node = admitted.value
+    if (options.title !== undefined) {
+      const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } })
+      if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
+      node = admitted.value.kind === 'surface' && admitted.value.chrome === 'overlay'
+        ? { ...admitted.value, title: options.title }
+        : { ...frame.value, child: node }
+    }
+    const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, true, contextEscapeHint)
     const hasControls = surface.hasControls()
     const focusTarget = hasControls || options.contextHints?.focusWithoutControls === true ? surface : null
     return { ok: true, value: { node: admitted.value, component: surface, focusTarget } }

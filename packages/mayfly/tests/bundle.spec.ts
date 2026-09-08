@@ -126,7 +126,7 @@ describe('mayfly bundle', () => {
     expect(statusGoal.inject).toEqual(['mayflyStatus', 'mayflyCurrentAgent', 'mayflySessionFacts', 'goals'])
     expect(statusJobs.inject).toEqual(['mayflyStatus', 'mayflyCurrentAgent', 'jobs'])
     expect(paneWorkflow.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions'])
-    expect(jobsCommand.inject).toEqual(['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyPromptEditor', 'mayflyEditorPanels'])
+    expect(jobsCommand.inject).toEqual(['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays'])
     expect(agentsCommand.inject).toEqual([
       'commands',
       'subagents',
@@ -134,7 +134,7 @@ describe('mayfly bundle', () => {
       'sessions',
       'sessionProjections',
       'mayflyCurrentAgent',
-      'mayflyEditorPanels',
+      'mayflyOverlays',
       'tools',
     ])
     const dependencies = [

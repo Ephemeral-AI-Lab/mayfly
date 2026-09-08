@@ -503,13 +503,12 @@ function transformImageMarkers(ctx: Context, text: string): ContentBlock[] | Sub
  * @param isUnloaded - reports whether this fiber unloaded mid-flight.
  */
 async function pasteFlow(ctx: Context, config: Config, shared: SharedEditor, isUnloaded: () => boolean): Promise<void> {
-  // A missing notice callback degrades to silence rather than a throw.
-  const notice = shared.notice ?? (() => {})
+  const report = shared.report ?? (() => {})
   // The probe can take seconds (a wedged wl-paste costs its whole timeout);
   // flash an in-progress notice so the wait reads as work, not a dead key.
   // The marker insertion's own change event clears it on success; a failure
   // notice overwrites it in place.
-  notice('pasting image...')
+  report('paste-image', { message: 'pasting image...', severity: 'info', purpose: 'progress' })
   let result: ClipboardImageResult
   try {
     result = await (clipboardImageReader?.() ?? defaultClipboardImageReader(ctx, config, ctx.attachments.imageLimits))
@@ -517,12 +516,12 @@ async function pasteFlow(ctx: Context, config: Config, shared: SharedEditor, isU
     // An injected reader rejecting degrades to the same notice family.
     if (isUnloaded()) return
     const message = error instanceof Error ? error.message : String(error)
-    notice(`clipboard read failed: ${message}`)
+    report('paste-image', { message: `clipboard read failed: ${message}`, severity: 'error' })
     return
   }
   if (isUnloaded()) return
   if (result.kind !== 'image' && result.kind !== 'images') {
-    notice(failureNotice(result))
+    report('paste-image', { message: failureNotice(result), severity: 'error' })
     return
   }
   try {
@@ -547,12 +546,12 @@ async function pasteFlow(ctx: Context, config: Config, shared: SharedEditor, isU
     shared.editor.insertText(markers.join(' '))
     if (result.fallback === true && result.backend !== undefined) {
       const label = result.backend === 'x11' ? 'X11' : 'Wayland'
-      notice(`pasted image via ${label} fallback; verify it is current`)
-    }
+      report('paste-image', { message: `pasted image via ${label} fallback; verify it is current`, severity: 'warning' })
+    } else report('paste-image', { message: `pasted ${String(refs.length)} image${refs.length === 1 ? '' : 's'}`, severity: 'success' })
   } catch (error) {
     if (isUnloaded()) return
     const message = error instanceof Error ? error.message : String(error)
-    notice(`image rejected: ${message}`)
+    report('paste-image', { message: `image rejected: ${message}`, severity: 'error' })
   }
 }
 

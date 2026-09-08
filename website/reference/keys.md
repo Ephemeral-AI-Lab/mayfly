@@ -49,7 +49,7 @@
 | `/sessions` 选择器 | ↑↓ 不循环导航，`Enter` 恢复；输入筛选后 `Esc` 只结束筛选并保留 query，聚焦 `Clear filter` 才清空，再按层级退出 |
 | 审批面板 | ↑↓ 不循环 + `Enter`，或数字键 `1`–`4` 直选；`Escape` 拒绝 |
 | 问卷面板 | 问题 tabs 用不循环的 `←` / `→` 切题、`Enter` 进入内容；Tab 在问题 tabs 上无动作；单选 ↑↓ + `Enter`，多选 `Space` + `Enter`，Other 编辑器内 `Esc` 返回列表 |
-| 表单面板 | `↑` / `↓` 在导航态不循环切字段；文本第一次 `Enter` 进入编辑，编辑态 `Enter` 或合法值上的 `Tab` 确认，非法值停在原字段，textarea 用 `Alt+Enter` 换行；select 用 `Enter` 进入、`←` / `→` 调整、`Enter`/合法 `Tab` 确认；内容态 `Tab` 切语义组，`Escape` 逐层返回 |
+| 表单面板 | `↑` / `↓` 在导航态不循环切字段；文本用直接输入或第一次 `Enter` 进入编辑，编辑态 `Enter` 确认，非法值停在原字段，textarea 用 `Alt+Enter` 换行；select 用 `Enter` 进入、`←` / `→` 调整、`Enter` 应用；`Tab` 放弃未确认的 select 调整并切到下一语义组，`Escape` 逐层返回 |
 | 计划评审 | `←` / `→` 或 `1`–`3` 选决策，`↑` / `↓` / `PageUp` / `PageDown` 滚动计划，`Enter` 确认 |
 | `/model` 面板 | 唯一 tab 层是 provider：`←` / `→` 不循环切换，`Enter` 进入模型列表；列表中 `↑` / `↓` 选模型，`←` / `→` 调当前模型的思考等级，`Tab` 进入同级提交动作 |
 | `/effort` 面板 | `←` / `→` 在思考等级间不循环移动，`Enter` 下钻；选择 `Set as default` 持久化，或选择 `Use for this session` 仅改当前会话 |

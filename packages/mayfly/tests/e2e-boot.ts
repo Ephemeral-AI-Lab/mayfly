@@ -17,6 +17,7 @@ import type {
   MayflyStatusRegistry,
 } from '../../ui/src/contracts.ts'
 import * as appPlugin from '../src/app/index.ts'
+import * as frontendPlugin from '../src/frontend/index.ts'
 import type { MayflyCurrentAgentService } from '../src/app/current-agent.ts'
 import {
   MayflyComponentsService,
@@ -118,6 +119,7 @@ export interface DirectObservations {
 
 interface DirectHooks {
   readonly uiProviderApply: typeof uiProviderPlugin.apply
+  readonly frontendApply: typeof frontendPlugin.apply
   readonly themeApply: typeof themeDarkPlugin.apply
   readonly appApply: typeof appPlugin.apply
   readonly appInject: typeof appPlugin.inject
@@ -157,6 +159,7 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
 
   const hooks: DirectHooks = {
     uiProviderApply: uiProviderPlugin.apply,
+    frontendApply: frontendPlugin.apply,
     themeApply: themeDarkPlugin.apply,
     appApply: appPlugin.apply,
     appInject: appPlugin.inject,
@@ -175,7 +178,7 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
       })
       ctx.plugin({
         name: 'mayfly-surface-renderer',
-        inject: ['mayflyPanes', 'mayflyOverlays', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
+        inject: ['mayflyUiInteraction', 'mayflyScreen', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
         apply(rendererCtx: Context) {
           mountMayflySurfaceRenderer(rendererCtx as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime)
         },
@@ -241,6 +244,11 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
     `  name: ${fixture('mayfly-ui-provider.mjs', `
 export const name = 'mayfly-ui-provider'
 export const apply = ctx => globalThis.__mayflyDirectE2E.uiProviderApply(ctx)
+`)}`,
+    '- id: mayfly-frontend',
+    `  name: ${fixture('mayfly-frontend.mjs', `
+export const name = 'mayfly-frontend'
+export const apply = ctx => globalThis.__mayflyDirectE2E.frontendApply(ctx)
 `)}`,
     '- id: mayfly-theme-dark',
     `  name: ${fixture('mayfly-theme-dark.mjs', `

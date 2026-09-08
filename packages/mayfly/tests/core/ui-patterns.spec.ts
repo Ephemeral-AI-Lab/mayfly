@@ -206,7 +206,7 @@ describe('private UI pattern painters', () => {
     const vertical = renderActions(node, 40, { key: 'secondary', focused: true, marker: '|', pendingKey: 'secondary' }, colors, true)
     expect(vertical).toHaveLength(5)
     expect(vertical.join('\n')).toContain('[ Run ]')
-    expect(vertical.join('\n')).toContain('|Later ? sure')
+    expect(vertical.join('\n')).toContain('|Later')
     expect(vertical.join('\n')).toContain('! Delete')
     expect(renderActions(node, 40, { key: 'danger', focused: true, marker: '|' }, colors, true).join('\n')).toContain('|! Delete')
     expect(vertical.join('\n')).toContain('… Wait')
@@ -244,5 +244,20 @@ describe('private UI pattern painters', () => {
     expect(renderDivider(undefined, 3, colors)).toEqual(['───'])
     expect(renderDivider('long label', 3, colors)[0]).toHaveLength(3)
     expect(renderDivider(undefined, Number.NaN, colors)).toEqual(['─'])
+  })
+
+  it('renders numeric units and expanded select and multiselect options', () => {
+    expect(renderFormField({ kind: 'number', id: 'count', label: 'Count', value: 2, unit: 'ms' }, 30, idle, colors)[0]).toContain('2 ms')
+    expect(renderFormField({ kind: 'number', id: 'count', label: 'Count', value: null }, 30, idle, colors)[0]).toContain('Count:')
+    const select = renderFormField({
+      kind: 'select', id: 'mode', label: 'Mode', value: 'one', options: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two', disabled: true, disabledReason: 'Unavailable' }],
+    }, 40, { key: 'mode', focused: true, marker: '|', adjustingKey: 'mode', optionId: 'two' }, colors)
+    expect(select).toHaveLength(3)
+    expect(select.join('\n')).toContain('[x] One')
+    expect(select.join('\n')).toContain('> [ ] Two: Unavailable')
+    const multiple = renderFormField({
+      kind: 'multiselect', id: 'levels', label: 'Levels', value: ['one'], options: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }],
+    }, 40, { key: 'levels', focused: true, marker: '|', adjustingKey: 'levels' }, colors)
+    expect(multiple.join('\n')).toContain('> [x] One')
   })
 })

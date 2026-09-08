@@ -100,7 +100,7 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     const good = register({ id: 'test.failed', placement: 'bottom' }, { kind: 'text', content: 'safe', hint: 'safe' })
     const before = registry.list()[0]
     expect(() => good.set(bad)).toThrow('accessors')
-    const update = Object.defineProperty({}, 'eventRevision', { enumerable: true, get: getter })
+    const update = Object.defineProperty({}, 'source', { enumerable: true, get: getter })
     expect(() => good.set({ kind: 'text', content: 'rejected' }, update)).toThrow('accessors')
     expect(good.revision).toBe(0)
     expect(registry.list()[0]).toBe(before)
@@ -242,11 +242,11 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     for (const fails of [false, true]) {
       const gate = Promise.withResolvers<{ node: MayflyUiNode, nextCursor: string }>()
       const { handle, registry } = loadingCase(ctx, kind, () => gate.promise)
-      handle.set({ kind: 'text', content: 'newer' }, { eventRevision: 12 })
+      handle.set({ kind: 'text', content: 'newer' }, { reason: 'data', source: [{ resourceId: 'settings', revision: 12 }] })
       if (fails) gate.reject(new Error('stale failure'))
       else gate.resolve({ node: { kind: 'text', content: 'stale' }, nextCursor: 'stale-cursor' })
       await flushLoads()
-      expect(registry.list()[0]).toMatchObject({ revision: 1, eventRevision: 12, node: { content: 'newer' } })
+      expect(registry.list()[0]).toMatchObject({ revision: 1, source: [{ resourceId: 'settings', revision: 12 }], node: { content: 'newer' } })
       if ('loadMore' in handle) expect(await handle.loadMore()).toBe(false)
       handle.dispose()
     }
@@ -362,7 +362,13 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-width', width: '120%' as never }, { kind: 'text', content: 'bad' })).toThrow('width')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-anchor', anchor: 'diagonal' as never }, { kind: 'text', content: 'bad' })).toThrow('anchor')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-capturing', capturing: 'yes' as never }, { kind: 'text', content: 'bad' })).toThrow('capturing')
+    expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-presentation', presentation: 'dialog' as never }, { kind: 'text', content: 'bad' })).toThrow('presentation')
+    expect(() => ctx.mayflyOverlays.open({ id: 'overlay.editor-without-capture', presentation: 'editor' }, { kind: 'text', content: 'bad' })).toThrow('capture')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-min-width', minWidth: -1 }, { kind: 'text', content: 'bad' })).toThrow('non-negative')
+    expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-handler', onEvent: (() => {}) as never }, { kind: 'text', content: 'bad' })).toThrow('object')
+    expect(() => ctx.mayflyOverlays.open({ id: 'overlay.empty-handler', onEvent: {} }, { kind: 'text', content: 'bad' })).toThrow('requires')
+    expect(() => ctx.mayflyOverlays.open({ id: 'overlay.unknown-handler', onEvent: { action: () => ({ kind: 'completed' }), other: () => {} } as never }, { kind: 'text', content: 'bad' })).toThrow('unknown handler')
+    expect(() => ctx.mayflyPanes.register({ id: 'pane.bad-handler', placement: 'bottom', onEvent: { observe: true } as never })).toThrow('function')
     expect(() => ctx.mayflyEditorExtensions.register({ id: 'extension.bad-callback', complete: true as never })).toThrow('function')
     expect(ctx.mayflyPanes.list()).toEqual([])
     expect(ctx.mayflyStatus.list()).toEqual([])
@@ -378,8 +384,8 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     const status = ctx.mayflyStatus.register({ id: 'status.optional' })
     expect(ctx.mayflyPanes.list()[0]?.node).toBeNull()
     expect(ctx.mayflyStatus.list()[0]?.node).toBeNull()
-    pane.set({ kind: 'text', content: 'visible' }, { eventRevision: 7 })
-    expect(ctx.mayflyPanes.list()[0]?.eventRevision).toBe(7)
+    pane.set({ kind: 'text', content: 'visible' }, { source: [{ resourceId: 'settings', revision: 7 }] })
+    expect(ctx.mayflyPanes.list()[0]?.source).toEqual([{ resourceId: 'settings', revision: 7 }])
     pane.set(null)
     status.set({ kind: 'text', content: 'ready' })
     expect(pane.revision).toBe(2)
@@ -388,22 +394,25 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     await owner.dispose()
   })
 
-  it('opens, updates, focuses, hides, shows, and closes overlays in opening order', async () => {
+  it('opens, updates, focuses, hides, shows, and closes overlays in activation order', async () => {
     const ctx = new Context()
     const owner = await ctx.plugin({ name: 'api-owner', apply })
     const later = ctx.mayflyOverlays.open({ id: 'overlay.later', capturing: true, width: '60%', maxHeight: 10 }, { kind: 'text', content: 'open' })
     const earlier = ctx.mayflyOverlays.open({ id: 'overlay.earlier' }, { kind: 'text', content: 'second' })
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.later' }, { kind: 'text', content: 'duplicate' })).toThrow('already open')
     expect(() => ctx.mayflyOverlays.open({ id: 'Bad Overlay' }, { kind: 'text', content: 'invalid' })).toThrow('invalid')
-    later.set({ kind: 'text', content: 'updated' }, { eventRevision: 4 })
+    later.set({ kind: 'text', content: 'updated' }, { source: [{ resourceId: 'settings', revision: 4 }] })
     expect(later.revision).toBe(1)
-    expect(ctx.mayflyOverlays.list()[0]?.eventRevision).toBe(4)
+    expect(ctx.mayflyOverlays.list()[0]?.source).toEqual([{ resourceId: 'settings', revision: 4 }])
     later.focus()
     later.hide()
     later.hide()
-    expect(ctx.mayflyOverlays.list()[0]).toMatchObject({ id: 'overlay.later', revision: 2, focusRevision: 1, hidden: true })
+    expect(ctx.mayflyOverlays.list().find(entry => entry.id === 'overlay.later')).toMatchObject({ id: 'overlay.later', revision: 2, focusRevision: 1, hidden: true })
     later.show()
-    expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['overlay.later', 'overlay.earlier'])
+    expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['overlay.earlier', 'overlay.later'])
+    expect(ctx.mayflyOverlays.focus('overlay.earlier')).toBe(true)
+    expect(ctx.mayflyOverlays.list().at(-1)?.id).toBe('overlay.earlier')
+    expect(ctx.mayflyOverlays.focus('missing')).toBe(false)
     expect(ctx.mayflyOverlays.close('overlay.later')).toBe(true)
     expect(later.closed).toBe(true)
     later.set({ kind: 'text', content: 'ignored' })
@@ -493,11 +502,11 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     )
     expect(() => ctx.mayflyEditorExtensions.register({ id: 'extension.alpha' })).toThrow('already registered')
     expect(() => ctx.mayflyEditorExtensions.register({ id: 'Bad Extension' })).toThrow('invalid')
-    alpha.set({ hint: 'second', diagnostics: [{ id: 'warning', message: 'check' }] }, { eventRevision: 8 })
+    alpha.set({ hint: 'second', diagnostics: [{ id: 'warning', message: 'check' }] }, { source: [{ resourceId: 'settings', revision: 8 }] })
     expect(ctx.mayflyEditorExtensions.list().map(entry => entry.id)).toEqual(['extension.alpha', 'extension.later'])
     expect(ctx.mayflyEditorExtensions.list()[0]).toMatchObject({
       revision: 1,
-      eventRevision: 8,
+      source: [{ resourceId: 'settings', revision: 8 }],
       definition: { id: 'extension.alpha' },
       decoration: { hint: 'second' },
     })

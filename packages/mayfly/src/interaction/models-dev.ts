@@ -67,17 +67,18 @@ export function setModelsDevLoader(replacement?: () => Promise<ModelsDevIndex | 
 }
 
 /** Load through the optional test seam or this frontend tree's cache. */
-export async function loadModelsDevIndex(ctx: Context): Promise<ModelsDevIndex | undefined> {
+export async function loadModelsDevIndex(ctx: Context, signal?: AbortSignal): Promise<ModelsDevIndex | undefined> {
   if (modelsDevLoader !== undefined) return modelsDevLoader()
-  const state = ctx.mayflyInteractionState
-  const cache = state.modelsDevCache
+  const state = ctx.get('mayflyInteractionState')
+  const cache = state?.modelsDevCache
   if (cache !== undefined && Date.now() - cache.at < CACHE_TTL_MS) return cache.index
   try {
     // Best-effort: a slow or unreachable endpoint must never block the
     // wizard, so the fetch carries its own short deadline.
-    const payload = await catalogFetch(MODELS_DEV_URL, AbortSignal.timeout(4000))
+    const deadline = AbortSignal.timeout(4000)
+    const payload = await catalogFetch(MODELS_DEV_URL, signal === undefined ? deadline : AbortSignal.any([deadline, signal]))
     const index = buildIndex(payload)
-    state.modelsDevCache = { at: Date.now(), index }
+    if (!signal?.aborted && state !== undefined && !state.disposed) state.modelsDevCache = { at: Date.now(), index }
     return index
   } catch {
     return undefined

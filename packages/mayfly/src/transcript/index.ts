@@ -145,6 +145,7 @@ export function apply(ctx: Context): void {
     renderer: {
       colors,
       components: ctx.mayflyComponents,
+      viewportRows: () => screen.editorViewport.rows,
       images: imageDependencies,
       requestRender: () => screen.requestRender(),
       presentation,

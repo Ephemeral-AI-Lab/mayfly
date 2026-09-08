@@ -5,7 +5,7 @@ import { createToolPresentationModel, toolCallNode, toolResultNode, toolResultCh
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
 
-const renderer = { components: fakeMayflyComponents(), colors: COLORS as MayflySemanticColors }
+const renderer = { components: fakeMayflyComponents(), colors: COLORS as MayflySemanticColors, viewportRows: () => 20 }
 
 describe('ToolModelComponent', () => {
   it('renders missing nodes and invalidates safely', () => { const empty = new ToolModelComponent(() => ({ kind: 'tool', id: 'empty', name: 'empty' }), renderer); expect(empty.render(10)).toEqual([]); empty.invalidate(); const none = new ToolModelComponent(() => null, renderer); expect(none.render(10)).toEqual([]); none.invalidate() })

@@ -5,6 +5,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-include'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { freezeWire } from './builders.ts'
+import { admitSnapshotUpdate, UiEventEndpoint, validateScope, validateSource } from './snapshot-events.ts'
 import type {
   MayflyEditorDecoration,
   MayflyEditorExtensionDefinition,
@@ -27,6 +28,10 @@ import type {
   MayflyStatusRegistry,
   MayflyUiNode,
   MayflySnapshotUpdate,
+  MayflySnapshotChange,
+  MayflyUiEventHandlers,
+  MayflyInteractionDefinition,
+  MayflyInteractionSnapshot,
 } from './contracts.ts'
 
 const ID = /^[a-z0-9][a-z0-9._/-]*$/u
@@ -69,6 +74,15 @@ function optionalCallback(value: unknown, path: string): void {
   if (value !== undefined && typeof value !== 'function') throw new TypeError(`${path} must be a function`)
 }
 
+function optionalEventHandlers(value: unknown, path: string): void {
+  if (value === undefined) return
+  assertRecord(value, path)
+  if (Object.keys(value).some(key => key !== 'observe' && key !== 'action')) throw new TypeError(`${path} contains an unknown handler`)
+  optionalCallback(value.observe, `${path}.observe`)
+  optionalCallback(value.action, `${path}.action`)
+  if (value.observe === undefined && value.action === undefined) throw new TypeError(`${path} requires an observe or action handler`)
+}
+
 function validateSize(value: unknown, path: string): void {
   if (value === undefined) return
   assertRecord(value, path)
@@ -87,6 +101,8 @@ function validateSurfaceDefinition(definition: unknown, kind: string): asserts d
   assertRecord(definition, kind)
   if (typeof definition.id !== 'string') throw new TypeError(`${kind} id must be a string`)
   assertId(definition.id, kind)
+  if (definition.scope !== undefined) validateScope(definition.scope)
+  if (definition.source !== undefined) validateSource(definition.source)
 }
 
 function validatePaneDefinition(definition: unknown): void {
@@ -96,7 +112,7 @@ function validatePaneDefinition(definition: unknown): void {
   optionalInteger(definition.priority, 'pane priority')
   validateSize(definition.size, 'pane size')
   if (definition.narrow !== undefined && !NARROW_POLICIES.has(definition.narrow as string)) throw new TypeError('pane narrow policy is invalid')
-  optionalCallback(definition.onEvent, 'pane onEvent')
+  optionalEventHandlers(definition.onEvent, 'pane onEvent')
   optionalCallback(definition.load, 'pane load')
 }
 
@@ -122,18 +138,21 @@ function validateOverlayDefinition(definition: unknown): void {
   optionalString(definition.title, 'overlay title')
   optionalBoolean(definition.capturing, 'overlay capturing')
   optionalBoolean(definition.dismissible, 'overlay dismissible')
+  if (definition.dismissal !== undefined && definition.dismissal !== 'confirm-dirty' && definition.dismissal !== 'discard') throw new TypeError('overlay dismissal is invalid')
+  if (definition.presentation !== undefined && definition.presentation !== 'overlay' && definition.presentation !== 'editor') throw new TypeError('overlay presentation is invalid')
+  if (definition.presentation === 'editor' && definition.capturing !== true) throw new TypeError('editor presentations must capture input')
   if (definition.anchor !== undefined && !OVERLAY_ANCHORS.has(definition.anchor as string)) throw new TypeError('overlay anchor is invalid')
   validateOverlaySize(definition.width, 'overlay width')
   validateOverlaySize(definition.maxHeight, 'overlay maxHeight')
   optionalNonNegativeInteger(definition.minWidth, 'overlay minWidth')
-  optionalCallback(definition.onEvent, 'overlay onEvent')
+  optionalEventHandlers(definition.onEvent, 'overlay onEvent')
   optionalCallback(definition.load, 'overlay load')
 }
 
 function validateEditorExtensionDefinition(definition: unknown): void {
   validateSurfaceDefinition(definition, 'editor extension')
   optionalInteger(definition.priority, 'editor extension priority')
-  optionalCallback(definition.onEvent, 'editor extension onEvent')
+  optionalEventHandlers(definition.onEvent, 'editor extension onEvent')
   optionalCallback(definition.complete, 'editor extension complete')
   optionalCallback(definition.transformSubmit, 'editor extension transformSubmit')
 }
@@ -159,14 +178,29 @@ abstract class ObservableRegistry<Entry extends { readonly id: string }> extends
   }
 }
 
+function snapshotMetadata(definition: MayflyInteractionDefinition): (update: MayflySnapshotChange) => MayflyInteractionSnapshot {
+  let scope = definition.scope ?? freezeWire({ kind: 'app' as const, targetId: 'application' })
+  let source = definition.source ?? freezeWire([])
+  return update => {
+    if ('scope' in update && update.scope !== undefined) scope = update.scope
+    if (update.source !== undefined) source = update.source
+    return { scope, source }
+  }
+}
+
 class SnapshotHandle<Node> {
   private live = true
   private revisionValue = 0
+  readonly events: UiEventEndpoint<Node>
 
   constructor(
-    private readonly publish: (node: Node, revision: number, update?: MayflySnapshotUpdate) => void,
+    private readonly publish: (node: Node, revision: number, update?: MayflySnapshotChange) => void,
     private readonly cleanup: (revision: number) => void,
-  ) {}
+    id: string,
+    handler?: MayflyUiEventHandlers<Node>,
+  ) {
+    this.events = new UiEventEndpoint(id, handler, (node, update) => this.commit(node, update))
+  }
 
   get disposed(): boolean { return !this.live }
   get revision(): number { return this.revisionValue }
@@ -174,13 +208,19 @@ class SnapshotHandle<Node> {
   set(node: Node, update?: MayflySnapshotUpdate): void {
     if (!this.live) return
     const frozen = freezeWire(node)
-    const admittedUpdate = freezeWire(update)
+    const admittedUpdate = admitSnapshotUpdate(update)
+    if (admittedUpdate.reason === 'replace' || node === null) this.events.replace()
+    this.commit(frozen, admittedUpdate)
+  }
+
+  private commit(node: Node, update: MayflySnapshotChange): void {
     this.revisionValue += 1
-    this.publish(frozen, this.revisionValue, admittedUpdate)
+    this.publish(node, this.revisionValue, update)
   }
 
   dispose(): void {
     this.live = false
+    this.events.dispose()
     this.revisionValue += 1
     this.cleanup(this.revisionValue)
   }
@@ -197,8 +237,9 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
     const id = admittedDefinition.id
     if (this.entries.has(id)) throw new Error(`pane "${id}" is already registered`)
     const admittedNode = freezeWire(initialNode)
-    const publish = (node: MayflyUiNode | null, revision: number, update?: MayflySnapshotUpdate): void => {
-      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+    const metadata = snapshotMetadata(admittedDefinition)
+    const publish = (node: MayflyUiNode | null, revision: number, update: MayflySnapshotChange = {}): void => {
+      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision, ...metadata(update), update: freezeWire(update), events: handle.events.endpoint })
       this.entries.set(id, entry)
       this.upsert(entry)
     }
@@ -207,7 +248,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       this.entries.delete(id)
       this.remove(id, revision)
     }
-    handle = new SnapshotHandle(publish, remove) as SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
+    handle = new SnapshotHandle(publish, remove, id, admittedDefinition.onEvent) as SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
     let activeLoad: AbortController | undefined
     let nextCursor: string | undefined
     let cursorRevision = 0
@@ -263,7 +304,7 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
         controller.abort()
       }
     }
-    publish(admittedNode, 0)
+    publish(admittedNode, 0, { reason: 'replace', ...(admittedDefinition.source === undefined ? {} : { source: admittedDefinition.source }), ...(admittedDefinition.scope === undefined ? {} : { scope: admittedDefinition.scope }) })
     void handle.refresh().catch(error => { this.ctx.logger.warn(`pane "${id}" snapshot load failed`, error) })
     return handle
   }
@@ -280,12 +321,17 @@ class OverlayHandle implements MayflyOverlayHandle {
   private snapshotRevisionValue = 0
   private hiddenValue = false
   private focusRevisionValue = 0
+  readonly events: UiEventEndpoint<MayflyUiNode>
 
   constructor(
-    private readonly publish: (revision: number, hidden: boolean, focusRevision: number, node?: MayflyUiNode, update?: MayflySnapshotUpdate) => void,
+    private readonly publish: (revision: number, hidden: boolean, focusRevision: number, node?: MayflyUiNode, update?: MayflySnapshotChange) => void,
     private readonly cleanup: (revision: number) => void,
     private node: MayflyUiNode,
-  ) {}
+    id: string,
+    handler?: MayflyUiEventHandlers,
+  ) {
+    this.events = new UiEventEndpoint(id, handler, (node, update) => this.commit(node, update))
+  }
 
   get disposed(): boolean { return !this.live }
   get closed(): boolean { return !this.live }
@@ -295,11 +341,16 @@ class OverlayHandle implements MayflyOverlayHandle {
   set(node: MayflyUiNode, update?: MayflySnapshotUpdate): void {
     if (!this.live) return
     const frozen = freezeWire(node)
-    const admittedUpdate = freezeWire(update)
-    this.node = frozen
+    const admittedUpdate = admitSnapshotUpdate(update)
+    if (admittedUpdate.reason === 'replace') this.events.replace()
+    this.commit(frozen, admittedUpdate)
+  }
+
+  private commit(node: MayflyUiNode, update: MayflySnapshotChange): void {
+    this.node = node
     this.snapshotRevisionValue += 1
     this.revisionValue += 1
-    this.publish(this.revisionValue, this.hiddenValue, this.focusRevisionValue, this.node, admittedUpdate)
+    this.publish(this.revisionValue, this.hiddenValue, this.focusRevisionValue, this.node, update)
   }
 
   focus(): void {
@@ -314,6 +365,7 @@ class OverlayHandle implements MayflyOverlayHandle {
 
   dispose(): void {
     this.live = false
+    this.events.dispose()
     this.revisionValue += 1
     this.cleanup(this.revisionValue)
   }
@@ -339,10 +391,14 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
     const id = admittedDefinition.id
     if (this.entries.has(id)) throw new Error(`overlay "${id}" is already open`)
     let node = freezeWire(initialNode)
-    const order = this.nextOrder++
-    const publish = (revision: number, hidden: boolean, focusRevision: number, nextNode?: MayflyUiNode, update?: MayflySnapshotUpdate): void => {
+    let order = this.nextOrder++
+    let focusedRevision = 0
+    const metadata = snapshotMetadata(admittedDefinition)
+    const publish = (revision: number, hidden: boolean, focusRevision: number, nextNode?: MayflyUiNode, update: MayflySnapshotChange = {}): void => {
+      if (focusRevision > focusedRevision) order = this.nextOrder++
+      focusedRevision = focusRevision
       node = nextNode ?? node
-      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision, order, hidden, focusRevision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision, order, hidden, focusRevision, ...metadata(update), update: freezeWire(update), events: handle.events.endpoint })
       this.entries.set(id, entry)
       this.upsert(entry)
     }
@@ -352,7 +408,7 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
       this.entries.delete(id)
       this.remove(id, revision)
     }
-    handle = new OverlayHandle(publish, remove, node)
+    handle = new OverlayHandle(publish, remove, node, id, admittedDefinition.onEvent)
     let activeLoad: AbortController | undefined
     this.handles.set(id, handle)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
@@ -364,7 +420,7 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
       cleanup()
     }
     const load = admittedDefinition.load
-    publish(0, false, 0)
+    publish(0, false, 0, node, { reason: 'replace', ...(admittedDefinition.source === undefined ? {} : { source: admittedDefinition.source }), ...(admittedDefinition.scope === undefined ? {} : { scope: admittedDefinition.scope }) })
     if (load !== undefined && !handle.disposed) {
       void (async () => {
         const controller = new AbortController()
@@ -390,6 +446,13 @@ export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry>
     const handle = this.handles.get(id)
     if (handle === undefined) return false
     handle.close()
+    return true
+  }
+
+  focus(id: string): boolean {
+    const handle = this.handles.get(id)
+    if (handle === undefined) return false
+    handle.focus()
     return true
   }
 
@@ -419,7 +482,7 @@ export class MayflyStatusService extends ObservableRegistry<MayflyStatusEntry> i
       this.entries.delete(id)
       this.remove(id, revision)
     }
-    handle = new SnapshotHandle(publish, remove)
+    handle = new SnapshotHandle(publish, remove, id)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
@@ -448,8 +511,9 @@ export class MayflyEditorExtensionService extends ObservableRegistry<MayflyEdito
     const id = admittedDefinition.id
     if (this.entries.has(id)) throw new Error(`editor extension "${id}" is already registered`)
     const admittedDecoration = freezeWire(initialDecoration)
-    const publish = (decoration: MayflyEditorDecoration, revision: number, update?: MayflySnapshotUpdate): void => {
-      const entry = Object.freeze({ id, definition: admittedDefinition, decoration, revision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+    const metadata = snapshotMetadata(admittedDefinition)
+    const publish = (decoration: MayflyEditorDecoration, revision: number, update: MayflySnapshotChange = {}): void => {
+      const entry = Object.freeze({ id, definition: admittedDefinition, decoration, revision, ...metadata(update), update: freezeWire(update), events: handle.events.endpoint })
       this.entries.set(id, entry)
       this.upsert(entry)
     }
@@ -458,7 +522,7 @@ export class MayflyEditorExtensionService extends ObservableRegistry<MayflyEdito
       this.entries.delete(id)
       this.remove(id, revision)
     }
-    handle = new SnapshotHandle(publish, remove)
+    handle = new SnapshotHandle(publish, remove, id, admittedDefinition.onEvent)
     const cleanup = this.ctx.effect(() => () => handle.dispose())
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = (): void => {
@@ -466,7 +530,7 @@ export class MayflyEditorExtensionService extends ObservableRegistry<MayflyEdito
       originalDispose()
       cleanup()
     }
-    publish(admittedDecoration, 0)
+    publish(admittedDecoration, 0, { reason: 'replace', ...(admittedDefinition.source === undefined ? {} : { source: admittedDefinition.source }), ...(admittedDefinition.scope === undefined ? {} : { scope: admittedDefinition.scope }) })
     return handle
   }
 

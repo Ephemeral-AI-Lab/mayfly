@@ -16,6 +16,8 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
+import * as uiProvider from '../../../ui/src/provider.ts'
+import * as frontend from '../../src/frontend/index.ts'
 import * as mayflyCore from '../../src/core/index.ts'
 import * as themeDark from '../../src/core/theme-dark.ts'
 import { apply } from '../../src/interaction/index.ts'
@@ -46,8 +48,14 @@ async function bootInteraction(): Promise<{ ctx: Context; output: () => string }
     commands: CommandRuntime,
     userQuestions: UserQuestionService,
     interactionApply: apply,
+    uiProviderApply: uiProvider.apply,
+    frontendApply: frontend.apply,
   }
   writeFileSync(join(dir, 'cordis.yml'), [
+    '- id: mayfly-ui-provider',
+    `  name: ${pathToFileURL(join(dir, 'ui-provider.mjs')).href}`,
+    '- id: mayfly-frontend',
+    `  name: ${pathToFileURL(join(dir, 'frontend.mjs')).href}`,
     '- id: mayfly-core',
     `  name: ${pathToFileURL(join(dir, 'core.mjs')).href}`,
     // mayflyTheme moved out of mayfly-core into the theme-dark subpath plugin;
@@ -62,6 +70,14 @@ async function bootInteraction(): Promise<{ ctx: Context; output: () => string }
     `  name: ${pathToFileURL(join(dir, 'interaction.mjs')).href}`,
     '',
   ].join('\n'))
+  writeFileSync(join(dir, 'ui-provider.mjs'), `
+export const name = 'mayfly-ui-provider'
+export const apply = ctx => globalThis.__mayflyInteractionFixtures.uiProviderApply(ctx)
+`)
+  writeFileSync(join(dir, 'frontend.mjs'), `
+export const name = 'mayfly-frontend'
+export const apply = ctx => globalThis.__mayflyInteractionFixtures.frontendApply(ctx)
+`)
   writeFileSync(join(dir, 'core.mjs'), `
 export const name = 'mayfly-core'
 export const apply = ctx => globalThis.__mayflyInteractionFixtures.coreApply(ctx)

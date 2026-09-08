@@ -17,10 +17,10 @@ import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { TranscriptItem } from '../../src/transcript/index.ts'
 import { conversationProjectionDefinition, foldConversationProjection, initialConversationState } from '../../src/conversation/projection.ts'
 import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
-import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
 import { buildExportMarkdown, buildFullExportMarkdown, lastAssistantText } from '../../src/interaction/session-export.ts'
-import { fakeMayflyContext, FakeMayflyEditor } from './fakes.ts'
+import { fakeMayflyContext } from './fakes.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()
@@ -459,11 +459,8 @@ describe('registerExportCommands', () => {
     fiber: { dispose(): Promise<void> }
   }> {
     const { ctx } = fakeMayflyContext()
-    setSharedEditor(ctx, {
-      editor: new FakeMayflyEditor(),
-      submitPrompt: () => {},
-      notice: text => notices.push(text),
-    })
+    const interaction = new UiInteractionService(ctx)
+    interaction.subscribe(() => { notices.splice(0, notices.length, ...interaction.notificationSnapshot().map(item => item.message)) })
     await ctx.plugin(SessionStore)
     await ctx.plugin(CommandRuntime)
     const session = ctx.sessions.create(

@@ -87,7 +87,7 @@ async function mount(options: MountOptions = {}) {
   setSharedEditor(ctx, {
     editor: { focused: false, render: () => [], invalidate: () => {} } as never,
     submitPrompt: () => {},
-    notice: text => { notices.push(text) },
+    report: (_id, feedback) => { notices.push(feedback.message) },
   })
   return { ctx, agent, plan, runs, currentPreset: () => currentPreset }
 }
@@ -169,7 +169,7 @@ describe('cycleMode', () => {
     expect(world.currentPreset()).toBe(currentPreset)
   })
 
-  it('publishes success, paints errors, and keeps textless success quiet', async () => {
+  it('publishes structured success and errors and keeps textless success quiet', async () => {
     const failed = await mount({
       plan: { active: true },
       resultFor: () => ({ kind: 'error', text: 'denied' }),
@@ -177,7 +177,7 @@ describe('cycleMode', () => {
     await cycleMode(failed.ctx)
     expect(failed.runs).toEqual(['/plan off'])
     expect(failed.plan?.active).toBe(true)
-    expect(notices).toEqual(['!denied!'])
+    expect(notices).toEqual(['denied'])
 
     notices = []
     const textless = await mount({ resultFor: () => ({ kind: 'success' }) })
@@ -194,6 +194,10 @@ describe('cycleMode', () => {
     const missing = await mount({ registerPlan: false })
     await cycleMode(missing.ctx)
     expect(notices).toEqual(['mode command is unavailable: /plan'])
+
+    const silent = new (await import('@deepseek-ai/cordis')).Context()
+    silent.provide('mayflyCurrentAgent', { current: () => null } as never)
+    await cycleMode(silent)
   })
 
   it('contains command dispatch failures in the logger', async () => {

@@ -24,8 +24,8 @@ export interface PatternFocus {
   readonly key: string
   readonly focused: boolean
   readonly marker: string
-  readonly pendingKey?: string
   readonly adjustingKey?: string
+  readonly optionId?: string
 }
 
 const PARTIAL_BLOCKS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const
@@ -294,7 +294,7 @@ export function renderList(node: ListNode, width: number, height: number, focus:
 export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
   const focused = focus.focused && focus.key === field.id && field.disabled !== true
-  const adjusting = focused && field.kind === 'select' && focus.adjustingKey === field.id
+  const adjusting = focused && (field.kind === 'select' || field.kind === 'multiselect') && focus.adjustingKey === field.id
   let value: string
   let placeholder = false
   if (field.kind === 'toggle') value = field.value ? '[on]' : '[off]'
@@ -302,15 +302,25 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
     const selected = field.value === null ? 'Choose…' : field.options.find(option => option.id === field.value)?.label ?? field.value
     value = adjusting ? `‹ ${selected} ›` : selected
   }
+  else if (field.kind === 'multiselect') value = field.options.filter(option => field.value.includes(option.id)).map(option => option.label).join(', ') || 'None selected'
+  else if (field.kind === 'number') value = `${field.value ?? ''}${field.unit === undefined ? '' : ` ${field.unit}`}`
   else if (field.kind === 'secret') value = field.value.length === 0 ? field.placeholder ?? '' : '•'.repeat(field.value.length)
   else value = field.value.length === 0 ? field.placeholder ?? '' : field.value
-  if (field.kind !== 'toggle' && field.kind !== 'select') placeholder = field.value.length === 0 && field.placeholder !== undefined
+  if (field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret') placeholder = field.value.length === 0 && field.placeholder !== undefined
   const prefix = interactivePrefix({ key: field.id, focused, marker: focus.marker })
   const row = field.disabled === true
     ? colors.muted(`${prefix}${field.label}: ${value}`)
     : focused ? colors.primary(`${prefix}${field.label}: ${value}`)
       : `${prefix}${colors.textStrong(`${field.label}:`)} ${placeholder ? colors.textMuted(value) : colors.text(value)}`
   const rows = [fit(row, available)]
+  if (adjusting && (field.kind === 'select' || field.kind === 'multiselect')) {
+    for (const option of field.options) {
+      const selected = field.kind === 'select' ? field.value === option.id : field.value.includes(option.id)
+      const active = (focus.optionId ?? (field.kind === 'select' ? field.value : field.value[0])) === option.id
+      const text = `${active ? ' >' : '  '} ${selected ? '[x]' : '[ ]'} ${option.label}${option.disabledReason === undefined ? '' : `: ${option.disabledReason}`}`
+      rows.push(fit(option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.text(text), available))
+    }
+  }
   if (field.error !== undefined) rows.push(fit(colors.error(`   ! ${field.error}`), available))
   return rows
 }
@@ -318,8 +328,7 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
 function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly value: string, readonly focused: boolean, readonly active: boolean } {
   const busy = item.busy === true
   const focused = focus.focused && focus.key === item.id && item.disabled !== true && !busy
-  const pending = focused && focus.pendingKey === item.id && item.confirm !== undefined
-  const label = `${busy ? '… ' : ''}${item.label}${pending ? ` ? ${item.confirm}` : ''}`
+  const label = `${busy ? '… ' : ''}${item.label}`
   const framed = item.intent === 'primary' ? `[ ${label} ]` : item.intent === 'danger' ? `! ${label}` : label
   const content = item.disabled === true || busy ? colors.muted(framed) : item.intent === 'danger' ? colors.error(framed) : focused || item.intent === 'primary' ? colors.primary(framed) : colors.text(framed)
   const selection = focused ? colors.selectedBg(content) : content

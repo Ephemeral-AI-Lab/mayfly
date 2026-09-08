@@ -50,11 +50,9 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
-  MayflyComponent,
-  MayflyComponents,
   MayflyScreen,
-  MayflySemanticColors,
 } from '../core/index.ts'
+import { ui, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { normalizeWheelInput } from '../core/terminal.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
@@ -75,7 +73,6 @@ import {
 } from './editor-instance.ts'
 import { applyReversibleSubmitTransformers } from './prompt-submit-pipeline.ts'
 import { EditorExtensionRuntime } from './editor-extension-runtime.ts'
-import { EditorDockHost } from './editor-dock-host.ts'
 import { mountEditorPlus } from './editor-plus.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { currentMayflySettings } from './settings.ts'
@@ -141,68 +138,7 @@ function availableCommands(ctx: Context) {
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-input'
 /** Services required before the editor can mount. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyEditorPanels', 'mayflyPromptSubmissions', 'commands', 'sessionProjections', 'agents', 'subagents', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
-
-/**
- * The single-line hint rendered under the input editor. Only the transient
- * notice tier exists and paints `muted`; with nothing transient the row
- * renders zero rows — the persistent key-affordance tier retired with the
- * S15 dogfood verdict, and the slash-discovery tier with the S34 dogfood
- * verdict (D43): the editor's autocomplete dropdown already lists the same
- * catalog through the same fuzzy filter, interactively, so the discovery
- * row only ever surfaced alongside-or-after it as a duplicate. The row
- * keeps the empty-result feedback (`no matching command: /x` — the
- * dropdown closes itself on an empty match, so the notice is the only
- * signal) and every one-shot command notice.
- */
-class HintLine implements MayflyComponent {
-  private text: string | undefined
-
-  /**
-   * @param screen - the screen service, captured at mount (same fiber
-   *   lifetime; property access through a disposed context throws).
-   * @param colors - the active semantic color table.
-   * @param components - the width-truncation helper source.
-   */
-  constructor(
-    private readonly screen: MayflyScreen,
-    private readonly colors: MayflySemanticColors,
-    private readonly components: MayflyComponents,
-  ) {}
-
-  /**
-   * Replace the transient hint text and schedule a re-render.
-   * @param text - the new hint, or `undefined` to release the row.
-   */
-  setHint(text: string | undefined): void {
-    this.text = text
-    this.screen.requestRender()
-  }
-
-  /** No cached render state. */
-  invalidate(): void {}
-
-  /**
-   * Render the hint as wrapped rows, or nothing. Width handling goes through
-   * `mayflyComponents`, so rows carrying ANSI styling (error notices) are never
-   * cut mid-sequence.
-   * @param width - current viewport width in columns.
-   * @returns one string per rendered row.
-   */
-  render(width: number): string[] {
-    if (this.text === undefined) return []
-    const rows = this.text.split(/\r\n?|\n/u).flatMap(line => {
-      const wrapped = this.components.wrapText(line.trim(), Math.max(1, width))
-      /* c8 ignore next -- the renderer normally returns one row for an empty line. */
-      return wrapped.length === 0 ? [''] : wrapped
-    })
-    const maxRows = 8
-    if (rows.length <= maxRows) return rows.map(row => this.colors.muted(row))
-    const visible = rows.slice(0, maxRows - 1)
-    visible.push(this.components.truncateToWidth('... more', width))
-    return visible.map(row => this.colors.muted(row))
-  }
-}
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyPromptSubmissions', 'mayflyUiInteraction', 'mayflyOverlays', 'commands', 'sessionProjections', 'agents', 'subagents', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
 
 /**
  * Mount the input editor with the hint line pinned below it and focus the
@@ -218,8 +154,6 @@ export function apply(ctx: Context): void {
   const aliases = ctx.mayflyInteractionState.aliases
   const draft = ctx.mayflyInteractionState.draft
   const modelListCache = createModelListCache()
-  /** One-shot notice shown in the hint line until the next edit. */
-  let notice: string | undefined
   /** Current editor text, captured through `onChange` for the slash hint. */
   let currentText = ''
   /**
@@ -256,11 +190,36 @@ export function apply(ctx: Context): void {
   // `>` prompt symbol the rounded-box chrome overlays.
   editor.setPromptSymbol('>')
 
-  const hintLine = new HintLine(screen, colors, ctx.mayflyComponents)
+  const notificationOwner = ctx.mayflyUiInteraction.createNotificationOwner('mayfly.input')
+  ctx.effect(() => () => notificationOwner.dispose())
+  const notificationScope = (): MayflyUiScope => {
+    const agent = ctx.mayflyCurrentAgent.current()
+    return agent === null ? { kind: 'app', targetId: 'prompt' } : { kind: 'session', sessionId: String(agent.id) }
+  }
+  const visibleNotification = (): MayflyFeedbackRecord | undefined => {
+    const agentId = ctx.mayflyCurrentAgent.current()?.id
+    const severity = { info: 0, success: 1, warning: 2, error: 3 }
+    return ctx.mayflyUiInteraction.notificationSnapshot()
+      .filter(record => record.scope.kind === 'app' || (record.scope.kind === 'session' && String(record.scope.sessionId) === String(agentId)))
+      .toSorted((left, right) => severity[left.severity] - severity[right.severity] || left.createdAt - right.createdAt)
+      .at(-1)
+  }
+  const feedbackNode = (): MayflyUiNode | undefined => {
+    const record = visibleNotification()
+    if (record !== undefined) return ui.text(record.message, { tone: record.severity === 'error' ? 'danger' : record.severity === 'info' ? 'muted' : record.severity })
+    const hint = slashHint()
+    return hint === undefined ? undefined : ui.text(hint, { tone: 'muted' })
+  }
+  const showFeedback = (id: string, message: string, severity: MayflyFeedback['severity'], detail?: string): void => {
+    const summary = message.replace(/\s*[\r\n]+\s*/gu, ' · ').trim()
+    const fullDetail = detail ?? (summary === message ? undefined : message)
+    notificationOwner.report(id, notificationScope(), { message: summary, severity, ...(fullDetail === undefined ? {} : { detail: fullDetail }) }, id)
+  }
   const extensionRuntime = new EditorExtensionRuntime({
     ctx,
     editor,
-    notice: text => setNotice(text),
+    report: (id, feedback) => notificationOwner.report(`editor-extension/${id}`, notificationScope(), feedback, id),
+    footer: feedbackNode,
     shouldTransformSubmit: text => ctx.mayflyCurrentAgent.current() !== null
       && draft.getStashedInputMode() !== 'bash'
       && parseCommand(text.trim()) === undefined,
@@ -289,16 +248,14 @@ export function apply(ctx: Context): void {
     return undefined
   }
 
-  /** Recompute the hint line from the notice or the slash feedback. */
+  /** Recompile the prompt footer from structured feedback or slash state. */
+  let refreshingHint = false
   function refreshHint(): void {
-    hintLine.setHint(notice ?? slashHint())
+    if (refreshingHint) return
+    refreshingHint = true
+    try { extensionRuntime.refreshPresentation() } finally { refreshingHint = false }
   }
-
-  /** Flash a notice in the hint line. */
-  function setNotice(text: string): void {
-    notice = text === '' ? undefined : text
-    refreshHint()
-  }
+  ctx.effect(() => ctx.mayflyUiInteraction.subscribe(refreshHint))
 
   /** Restore a subagent submission that never reached its addressed child. */
   function restoreSubagentSubmission(
@@ -315,7 +272,7 @@ export function apply(ctx: Context): void {
     editor.setText(value)
     currentText = editor.getText()
     draft.stashDraft(currentText)
-    setNotice(colors.error(error instanceof Error ? error.message : String(error)))
+    showFeedback('subagent-submit', error instanceof Error ? error.message : String(error), 'error')
     screen.requestRender()
   }
 
@@ -371,7 +328,7 @@ export function apply(ctx: Context): void {
   function submitPrompt(value: string): void {
     const line = value.trim()
     retractionCandidate = undefined
-    notice = undefined
+    notificationOwner.clearAll()
     editor.setText('')
     // Re-sync explicitly: whether setText fires onChange is the component's
     // own behavior, and the hint must never lag the buffer.
@@ -388,7 +345,7 @@ export function apply(ctx: Context): void {
     draft.stashHistory(editor.getHistory())
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null) {
-      setNotice('no active session')
+      showFeedback('prompt-submit', 'no active session', 'error')
       return
     }
     const parsed = parseCommand(line)
@@ -419,7 +376,7 @@ export function apply(ctx: Context): void {
         }
       } catch (error) {
         transformed.rollback?.()
-        setNotice(colors.error(error instanceof Error ? error.message : String(error)))
+        showFeedback('prompt-submit', error instanceof Error ? error.message : String(error), 'error')
         return
       }
       ctx.mayflyRequests.begin(view.displayed === 'auxiliary' && view.auxiliary?.kind === 'btw' ? 'btw' : 'main')
@@ -453,14 +410,14 @@ export function apply(ctx: Context): void {
         // The fiber may be gone — `/theme` unloads it mid-execution — and
         // the reloaded fiber repaints, so a late notice is moot.
         if (unloaded) return
-        if (execution === undefined) setNotice(`unknown command: ${line}`)
-        else if (execution.result.kind === 'error') setNotice(colors.error(execution.result.text))
-        else if (execution.result.text !== undefined && commandName !== 'goal') setNotice(execution.result.text)
+        if (execution === undefined) showFeedback('command', `unknown command: ${line}`, 'error')
+        else if (execution.result.kind === 'error') showFeedback('command', execution.result.text, 'error')
+        else if (execution.result.text !== undefined && commandName !== 'goal') showFeedback('command', execution.result.text, 'info')
       },
       (error: unknown) => {
         if (unloaded) return
         /* v8 ignore next -- execute() normalizes handler rejections to Error before this rejection handler runs */
-        setNotice(colors.error(error instanceof Error ? error.message : String(error)))
+        showFeedback('command', error instanceof Error ? error.message : String(error), 'error')
       },
     )
   }
@@ -477,7 +434,7 @@ export function apply(ctx: Context): void {
   async function runExternalEditorFlow(): Promise<void> {
     const command = resolveExternalEditorCommand(process.env, currentMayflySettings(ctx).editorCommand)
     if (command === undefined) {
-      setNotice('set $VISUAL or $EDITOR to edit drafts externally')
+      showFeedback('external-editor', 'set $VISUAL or $EDITOR to edit drafts externally', 'warning')
       return
     }
     externalEditorRunning = true
@@ -499,7 +456,7 @@ export function apply(ctx: Context): void {
     } catch (error) {
       // The launcher rejected (spawn failure); resume already ran, so the
       // notice paints on the live screen — unless the fiber went with it.
-      if (!unloaded) setNotice(colors.error(error instanceof Error ? error.message : String(error)))
+      if (!unloaded) showFeedback('external-editor', error instanceof Error ? error.message : String(error), 'error')
     } finally {
       externalEditorRunning = false
     }
@@ -524,9 +481,9 @@ export function apply(ctx: Context): void {
     const result = interruptAgentTree(ctx, agent, ctx.mayflyCurrentAgent.view())
     if (!result.requested) return false
     ctx.mayflyRequests.interrupt()
-    setNotice(result.failures.length === 0
+    showFeedback('interrupt', result.failures.length === 0
       ? 'interrupt requested'
-      : colors.warning(`interrupt requested with failures: ${result.failures.join('; ')}`))
+      : `interrupt requested with failures: ${result.failures.join('; ')}`, result.failures.length === 0 ? 'info' : 'warning')
     return true
   }
 
@@ -586,7 +543,7 @@ export function apply(ctx: Context): void {
         return true
       }
       lastInterruptAt = now
-      setNotice('press ctrl+c again to exit')
+      showFeedback('exit', 'press ctrl+c again to exit', 'warning')
       return true
     }
     // Ctrl-S: steer the current turn with the draft — an idle agent starts
@@ -612,7 +569,7 @@ export function apply(ctx: Context): void {
         agent.steer(createUserMessage({ content: transformed.blocks, source: { kind: 'user' } }))
       } catch (error) {
         transformed.rollback?.()
-        setNotice(colors.error(error instanceof Error ? error.message : String(error)))
+        showFeedback('steer', error instanceof Error ? error.message : String(error), 'error')
         return true
       }
       ctx.mayflyRequests.begin(view.displayed === 'auxiliary' && view.auxiliary?.kind === 'btw' ? 'btw' : 'main')
@@ -626,7 +583,7 @@ export function apply(ctx: Context): void {
     // Shift+Tab toggles native plan state, including in bash input mode.
     // Permission presets are independent and require an explicit command.
     if (keymap.matches(data, ACTION_SHIFT_TAB)) {
-      void cycleMode(ctx)
+      void cycleMode(ctx, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }
     // Ctrl-G: hand the draft to $VISUAL/$EDITOR (S31). The terminal
@@ -644,7 +601,7 @@ export function apply(ctx: Context): void {
     // the same reasons as the mode cycle, and it fires in bash mode too
     // (input mode and model are orthogonal axes).
     if (keymap.matches(data, ACTION_CYCLE_MODEL)) {
-      void cycleSessionModel(ctx, modelListCache)
+      void cycleSessionModel(ctx, modelListCache, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }
     return false
@@ -658,7 +615,7 @@ export function apply(ctx: Context): void {
     // returns the neutral border. `mayfly-editor-plus` re-asserts its shell
     // hue on top while bash mode is active.
     editor.setBorderColor(text.trimStart().startsWith('/') ? colors.primary : colors.border)
-    notice = undefined
+    notificationOwner.clearAll()
     refreshHint()
   }
   editor.onKey = handleEditorKey
@@ -692,41 +649,28 @@ export function apply(ctx: Context): void {
       pendingSubagentPrompts.clear()
     }
     extensionRuntime.invalidateSession()
-    notice = undefined
+    notificationOwner.clearAll()
     refreshHint()
   })
   ctx.effect(() => sessionRegistration)
   ctx.effect(() => {
-    const dock = new EditorDockHost(extensionRuntime, hintLine, occupied => {
-      ctx.emit('mayfly/editor-slot-swapped', occupied)
-    })
-    const slot = screen.mountDockSlot('editor.prompt', dock)
+    const slot = screen.mountDockSlot('editor.prompt', extensionRuntime)
     slot.focus()
-    const shared = { editor, submitPrompt, abortPrompt: () => { interruptOrClear() }, notice: setNotice }
+    const shared = {
+      editor,
+      submitPrompt,
+      abortPrompt: () => { interruptOrClear() },
+      report: (id: string, feedback: MayflyFeedback) => notificationOwner.report(id, notificationScope(), feedback, id),
+    }
     setSharedEditor(ctx, shared)
     const detachEditorPlus = mountEditorPlus(ctx, shared, () => unloaded)
     ctx.emit('mayfly/input-editor-changed')
 
-    ctx.mayflyEditorPanels.setHost({
-      mount: (component) => {
-        const remove = dock.mountPanel(component)
-        slot.focus()
-        screen.requestRender()
-        return () => {
-          remove()
-          slot.focus()
-          screen.requestRender()
-        }
-      },
-    })
-
     return () => {
-      ctx.mayflyEditorPanels.setHost(undefined)
       clearSharedEditor(ctx)
       ctx.emit('mayfly/input-editor-changed')
       detachEditorPlus()
       extensionRuntime.dispose()
-      dock.dispose()
       slot.dispose()
     }
   })
@@ -762,7 +706,7 @@ export function apply(ctx: Context): void {
       if (editor.getText().length > 0) return false
       if (ctx.mayflyKeymap.matches(data, ACTION_END)) {
         ctx.mayflyScreen.followContent()
-        setNotice('')
+        notificationOwner.clear('transcript-follow')
         return true
       }
       /* v8 ignore stop */
@@ -772,7 +716,8 @@ export function apply(ctx: Context): void {
   })
   /* v8 ignore start -- notification is driven by live streaming events */
   ctx.effect(() => ctx.on('mayfly/transcript-content-changed', paused => {
-    if (paused) setNotice('new messages available · press End to follow')
+    if (paused) showFeedback('transcript-follow', 'new messages available · press End to follow', 'info')
+    else notificationOwner.clear('transcript-follow')
   }))
   /* v8 ignore stop */
 }

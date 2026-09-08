@@ -1,33 +1,19 @@
 /**
- * The `/mcp` read layer (S34): collects the host's mcp-client plugin
- * instances from the loader entry tree and joins them with the tool
- * registry's server-qualified names, the honest read-only view D36 ruled on
- * — servers are declared in the user's profile patch, Mayfly never edits
- * them. One loader entry = one server (`dsh-mcp-client` semantics); its
- * normalized config lives on the fiber (Schemastery-validated, defaults
- * filled), so the read prefers `fiber.config` and falls back to the raw
- * `options.config` for entries that never got that far.
+ * Read-only MCP facts from native loader entries and tool schemas. Validated
+ * Fiber config wins over raw entry config; environment/header values never
+ * enter the projection. Registered counts join global names (including ones
+ * restricted for this Agent) with this Agent's scoped registrations. Visible
+ * schemas use the exact requested Agent, or the global view for a null scope.
  *
- * Two counting views are read on purpose. The registered count (global
- * registry view) is the health signal: an mcp-client fiber stays ACTIVE with
- * `failOnStartupError: false` even when its connection failed or its
- * reconnect budget ran out — the one honest "is this server alive" fact is
- * whether its tools are registered. The visible list (the agent's preset
- * standing scope, the same resolution `/tools` uses) is what the session can
- * actually call — the two diverge under tool restrictions, and showing only
- * one would misread a restricted preset as a dead server or vice versa.
- *
- * Status stays approximate by upstream contract: the plugin emits no
- * connection events (state changes go to the logger only) and exposes no
- * restart API, so `no tools` covers the three indistinguishable causes
- * (connecting, contained startup failure, exhausted reconnects) and the
- * recovery hint names the only real remedies — reload the plugin (HMR) or
- * restart the host.
+ * Connection state remains approximate: an active client with no tools can
+ * be connecting, contain a startup failure, or have exhausted reconnects.
+ * Neither a connection-state API nor a restart action is invented here.
  *
  * @module @ephemeral-ai/mayfly/interaction/mcp-servers
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Entry } from '@deepseek-ai/cordis-plugin-loader'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type {} from '../app/index.ts'
@@ -87,7 +73,7 @@ export interface McpServerView {
   readonly fiberState: number | undefined
   /** The derived status. */
   readonly status: McpStatus
-  /** Tools registered under this server's namespace (global registry view). */
+  /** Distinct tool names in the global and selected-Agent views, including restricted globals. */
   readonly registeredCount: number
   /** The session-visible tools of this server (equals the global view when no session is live). */
   readonly toolsVisible: readonly ToolSchema[]
@@ -197,20 +183,18 @@ function serverPrefix(serverName: string): string {
  * Collect the MCP server catalog. Reads the loader entry tree once, the
  * global registry view once, and — when a session is live — the agent's
  * visible view once more.
- * @param ctx - plugin context carrying the loader and app-owned tool-catalog
- *   action boundary.
+ * @param ctx - native loader/tools consumer context.
+ * @param agent - exact native Agent whose visible tools are read; null uses globals.
  * @returns the joined catalog.
- * @throws when the preset roster cannot resolve its standing mount (the
- *   caller owns the error surface).
+ * @throws when a dependency is absent or native schema projection fails.
  */
-export async function collectMcpServers(ctx: Context): Promise<McpCatalog> {
+export async function collectMcpServers(ctx: Context, agent: Agent | null = ctx.mayflyCurrentAgent.current()): Promise<McpCatalog> {
   const loader = ctx.get('loader') as
     | { entries(): Generator<Entry, void, void> }
     | undefined
   if (loader === undefined) throw new Error('the host composes no loader service')
   const tools = ctx.get('tools')
   if (tools === undefined) throw new Error('the host composes no tools service')
-  const agent = ctx.mayflyCurrentAgent.current()
 
   // The declared servers, in entry-tree order; the normalized fiber config
   // is preferred, the raw options config covers never-started entries.
@@ -225,18 +209,20 @@ export async function collectMcpServers(ctx: Context): Promise<McpCatalog> {
     configs.push({ entry, config: record })
   }
 
-  // The global registry view: the registered (health) counts, and the
-  // orphans — mcp__-named tools no declared server owns.
+  // The global view retains restricted tools; the Agent view adds local registrations.
   const globalSchemas = tools.schemas()
+  const sessionLive = agent !== null
+  const visibleSchemas = agent === null ? globalSchemas : tools.schemas(agent)
   const registered = new Map<string, number>()
   let orphanCount = 0
   const prefixes = configs
     .map(({ config }) => readString(config.serverName))
     .filter((name): name is string => name !== undefined)
     .map(serverPrefix)
-  for (const schema of globalSchemas) {
-    if (!schema.name.startsWith(MCP_PREFIX)) continue
-    const owner = prefixes.find(prefix => schema.name.startsWith(prefix))
+    .toSorted((left, right) => right.length - left.length)
+  for (const name of new Set([...globalSchemas, ...visibleSchemas].map(schema => schema.name))) {
+    if (!name.startsWith(MCP_PREFIX)) continue
+    const owner = prefixes.find(prefix => name.startsWith(prefix))
     if (owner === undefined) {
       orphanCount += 1
       continue
@@ -247,8 +233,6 @@ export async function collectMcpServers(ctx: Context): Promise<McpCatalog> {
   // The session-visible view: the agent's preset scope when a session is
   // live, the global view otherwise (the process-level truth /mcp degrades
   // to — the panel notes the missing session).
-  const sessionLive = agent !== null
-  const visibleSchemas = agent === null ? globalSchemas : tools.schemas(agent)
   const visible = new Map<string, ToolSchema[]>()
     for (const schema of visibleSchemas) {
       if (!schema.name.startsWith(MCP_PREFIX)) continue

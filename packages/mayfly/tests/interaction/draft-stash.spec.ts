@@ -14,6 +14,7 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import { DraftStash } from '../../src/interaction/draft-stash.ts'
 import { fakeMayflyContext, KEY, type FakeMayflyComponents, type FakeMayflyEditor } from './fakes.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 
 function type(editor: FakeMayflyEditor, text: string): void {
   for (const char of text) editor.handleInput(char)
@@ -25,6 +26,7 @@ async function boot(): Promise<{
   followup: ReturnType<typeof vi.fn>
 }> {
   const { ctx, components } = fakeMayflyContext()
+  new UiInteractionService(ctx)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('draft-spec'))

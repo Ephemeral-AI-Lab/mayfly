@@ -190,6 +190,8 @@ describe('skills catalog invalidation', () => {
     expect(userInvocableSkills(ctx)).toEqual([])
     ctx.mayflySkillsCatalog.dispose()
     ctx.mayflySkillsCatalog.dispose()
+    const off = ctx.mayflySkillsCatalog.subscribe(() => {})
+    off()
     await expect(refresh(ctx)).resolves.toBeUndefined()
   })
 })

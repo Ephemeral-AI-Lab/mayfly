@@ -24,7 +24,10 @@ const coreLibUrl = new URL('../../packages/mayfly/lib/core.js', import.meta.url)
 if (!existsSync(coreLibUrl)) {
   throw new Error('packages/mayfly/lib is missing — run `pnpm build` before the shots pipeline')
 }
+const { Context } = await import(new URL('../../packages/mayfly/node_modules/@deepseek-ai/cordis/lib/index.js', import.meta.url).href)
 const { compileMayflyUiNode } = await import(coreLibUrl.href)
+const uiProvider = await import(new URL('../../packages/ui/lib/provider.js', import.meta.url).href)
+const mayflyFrontend = await import(new URL('../../packages/mayfly/lib/frontend.js', import.meta.url).href)
 const { DARK_COLORS } = await import(new URL('../../packages/mayfly/lib/theme-dark.js', import.meta.url).href)
 // Resolve pi-tui through core's own node_modules so the width helpers are the
 // exact instance core's `src/width.ts` re-exports (D48 single width truth).
@@ -122,62 +125,91 @@ const components = {
 export async function renderScenario(scenario, ui, defineMayflyComponent) {
   const width = scenario.width
   const node = scenario.build(ui, defineMayflyComponent)
-  const events = []
-  const result = compileMayflyUiNode(node, {
-    components,
-    colors: DARK_COLORS,
-    getViewport: () => ({ columns: width, rows: scenario.height ?? 24 }),
-    screenMode: 'alternate',
-    emit: event => events.push(event),
-  })
-  if (!result.ok) throw new Error(`${scenario.id}: compile failed — ${result.message}`)
-  const compiled = result.value
-
-  const focus = compiled.focusTarget
-  let rows
-  if (scenario.height === undefined) {
-    if (focus) {
-      focus.focused = true
-      scenario.drive?.(focus, null)
-    }
-    rows = compiled.component.render(width)
-  } else {
-    if (focus) focus.focused = true
-    const frame = renderLayoutFrame(compiled.component, width, scenario.height, () => {})
-    scenario.drive?.(focus, frame)
-    rows = renderLayoutFrame(compiled.component, width, scenario.height, () => {}).lines
-  }
-  for (const [index, row] of rows.entries()) {
-    const rowWidth = visibleWidth(row)
-    if (rowWidth > width) {
-      throw new Error(`${scenario.id}: row ${index} overflows (${rowWidth} > ${width}) — D48 contract violation`)
-    }
+  const surfaceId = `shot.${scenario.id.toLowerCase()}`
+  const ctx = new Context()
+  const providerFiber = await ctx.plugin(uiProvider)
+  const frontendFiber = await ctx.plugin(mayflyFrontend)
+  await new Promise(resolve => { setImmediate(resolve) })
+  const handle = ctx.mayflyOverlays.open({
+    id: surfaceId,
+    capturing: true,
+    onEvent: {
+      observe: () => ({ kind: 'completed' }),
+      action: () => ({ kind: 'completed' }),
+    },
+  }, node)
+  const model = ctx.mayflyUiInteraction.get('overlay', surfaceId)
+  if (model === undefined) throw new Error(`${scenario.id}: frontend interaction model is missing`)
+  const compile = () => {
+    const result = compileMayflyUiNode(model.decisionNode ?? model.node, {
+      interaction: model,
+      components,
+      colors: DARK_COLORS,
+      getViewport: () => ({ columns: width, rows: scenario.height ?? 24 }),
+      screenMode: 'alternate',
+      contextHints: { enabled: true },
+      emit: event => { model.emit(event) },
+      onUnhandledEscape: () => { model.emit({ kind: 'dismiss', pagePath: [] }) },
+    })
+    if (!result.ok) throw new Error(`${scenario.id}: compile failed — ${result.message}`)
+    return result.value
   }
 
-  // pi-tui marks the cursor with an APC (`\x1b_pi:c\x07`) that headless xterm
-  // cannot parse; paint it as a reverse-video block over the cell it sits on —
-  // the way a real terminal's hardware cursor would show up in a screenshot.
-  // The marker precedes its cell, so invert the following char (a full row
-  // falls back to inverting the preceding char to avoid growing the row).
-  const paintCursor = (row, pattern, replacement) =>
-    row.replace(pattern, (...args) => replacement(args[1] || ' '))
-  const painted = rows.map(row => {
-    if (!row.includes(CURSOR_MARKER)) return row
-    const follow = paintCursor(row, /\x1b_pi:c\x07(.?)/su, ch => `\x1b[7m${ch}\x1b[27m`)
-    if (visibleWidth(follow) <= width) return follow
-    const precede = paintCursor(row, /(.?)\x1b_pi:c\x07/su, ch => `\x1b[7m${ch}\x1b[27m`)
-    if (visibleWidth(precede) <= width) return precede
-    throw new Error(`${scenario.id}: cursor block does not fit at either side of the marker`)
-  })
-
-  const lineCount = Math.max(1, painted.length)
-  const term = new Terminal({ cols: width, rows: lineCount, scrollback: 0, allowProposedApi: true })
-  await new Promise((resolve, reject) => {
-    try {
-      term.write(painted.join('\r\n'), resolve)
-    } catch (error) {
-      reject(error)
+  try {
+    let compiled = compile()
+    let focus = compiled.focusTarget
+    let rows
+    if (scenario.height === undefined) {
+      if (focus) {
+        focus.focused = true
+        scenario.drive?.(focus, null)
+      }
+      compiled = compile()
+      focus = compiled.focusTarget
+      if (focus) focus.focused = true
+      rows = compiled.component.render(width)
+    } else {
+      if (focus) focus.focused = true
+      const frame = renderLayoutFrame(compiled.component, width, scenario.height, () => {})
+      scenario.drive?.(focus, frame)
+      compiled = compile()
+      focus = compiled.focusTarget
+      if (focus) focus.focused = true
+      rows = renderLayoutFrame(compiled.component, width, scenario.height, () => {}).lines
     }
-  })
-  return { term, cols: width, rows: lineCount }
+    for (const [index, row] of rows.entries()) {
+      const rowWidth = visibleWidth(row)
+      if (rowWidth > width) {
+        throw new Error(`${scenario.id}: row ${index} overflows (${rowWidth} > ${width}) — D48 contract violation`)
+      }
+    }
+
+    // pi-tui marks the cursor with an APC (`\x1b_pi:c\x07`) that headless xterm
+    // cannot parse; paint it as a reverse-video block over the cell it sits on.
+    const paintCursor = (row, pattern, replacement) =>
+      row.replace(pattern, (...args) => replacement(args[1] || ' '))
+    const painted = rows.map(row => {
+      if (!row.includes(CURSOR_MARKER)) return row
+      const follow = paintCursor(row, /\x1b_pi:c\x07(.?)/su, ch => `\x1b[7m${ch}\x1b[27m`)
+      if (visibleWidth(follow) <= width) return follow
+      const precede = paintCursor(row, /(.?)\x1b_pi:c\x07/su, ch => `\x1b[7m${ch}\x1b[27m`)
+      if (visibleWidth(precede) <= width) return precede
+      throw new Error(`${scenario.id}: cursor block does not fit at either side of the marker`)
+    })
+
+    const lineCount = Math.max(1, painted.length)
+    const term = new Terminal({ cols: width, rows: lineCount, scrollback: 0, allowProposedApi: true })
+    await new Promise((resolve, reject) => {
+      try {
+        term.write(painted.join('\r\n'), resolve)
+      } catch (error) {
+        reject(error)
+      }
+    })
+    return { term, cols: width, rows: lineCount }
+  } finally {
+    handle.close()
+    await frontendFiber.dispose()
+    await providerFiber.dispose()
+  }
 }

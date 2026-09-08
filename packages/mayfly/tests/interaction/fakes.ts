@@ -40,8 +40,6 @@ import type {
   MayflySelectList,
   MayflySelectListOptions,
   MayflySemanticColors,
-  MayflySettingsList,
-  MayflySettingsListOptions,
   MayflyTheme,
 } from '../../src/core/index.ts'
 import type { MayflyScreenService, MayflyKeymapService, MayflyComponentsService } from '../../src/core/index.ts'
@@ -49,7 +47,6 @@ import type { MayflyScreenService, MayflyKeymapService, MayflyComponentsService 
 // tests import them straight from core's src types.
 import type { MayflyImage, MayflyImageOptions } from '../../src/core/types.ts'
 import { PromptEditorController } from '../../src/interaction/editor-instance.ts'
-import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
 import { PromptSubmitPipeline } from '../../src/interaction/prompt-submit-pipeline.ts'
 import {
   INTERACTION_KEY_ACTIONS,
@@ -495,68 +492,6 @@ export class FakeMayflyMarkdown implements MayflyMarkdown {
 }
 
 /**
- * Fake settings list: records its options for test inspection, mirrors
- * pi-tui's key semantics (Up/Down wrap the highlight, Enter/Space cycles
- * the highlighted item's `values` — reporting through `onChange` — Escape
- * cancels), and truncates each row to the render width (the D48 width
- * discipline: no unbudgeted rows even in fakes).
- */
-export class FakeMayflySettingsList implements MayflySettingsList {
-  /** The highlighted item index (pi-tui's selectedIndex). */
-  private index = 0
-
-  /**
-   * @param options - the list options; retained for test inspection.
-   */
-  constructor(readonly options: MayflySettingsListOptions) {}
-
-  /** updateValue calls, in order. */
-  readonly updates: [string, string][] = []
-
-  /**
-   * Mirror pi-tui's `updateValue`: set the matching item's displayed value
-   * without touching the highlight, and record the call.
-   * @param id - the item id.
-   * @param newValue - the value to display.
-   */
-  updateValue(id: string, newValue: string): void {
-    this.updates.push([id, newValue])
-    const item = this.options.items.find(entry => entry.id === id)
-    if (item !== undefined) item.currentValue = newValue
-  }
-
-  handleInput(data: string): void {
-    const { items } = this.options
-    if (data === KEY.up || data === KEY.down) {
-      if (items.length > 0) {
-        this.index = data === KEY.up
-          ? this.index === 0 ? items.length - 1 : this.index - 1
-          : this.index === items.length - 1 ? 0 : this.index + 1
-      }
-      return
-    }
-    if (data === KEY.enter || data === KEY.space) {
-      const item = items[this.index]
-      if (item?.values !== undefined && item.values.length > 0) {
-        // pi-tui's activateItem: cycle from the current value.
-        const next = item.values[(item.values.indexOf(item.currentValue) + 1) % item.values.length]!
-        item.currentValue = next
-        this.options.onChange(item.id, next)
-      }
-      return
-    }
-    if (data === KEY.escape) this.options.onCancel()
-  }
-
-  render(width: number): string[] {
-    return this.options.items.map(item =>
-      truncateToWidth(`${item.label}: ${item.currentValue}`, Math.max(0, width)))
-  }
-
-  invalidate(): void {}
-}
-
-/**
  * Fake `@`-mention completion source: records its construction facts and
  * reads its behavior through the owning factory instance, so re-programming
  * `mentionGetSuggestions`/`mentionApplyCompletion` reaches providers created
@@ -650,15 +585,6 @@ export class FakeMayflyComponents implements MayflyComponents {
   createSelectList(options: MayflySelectListOptions): FakeMayflySelectList {
     const list = new FakeMayflySelectList(options)
     this.selectLists.push(list)
-    return list
-  }
-
-  /** Every settings list created through this factory, in creation order. */
-  readonly settingsLists: FakeMayflySettingsList[] = []
-
-  createSettingsList(options: MayflySettingsListOptions): MayflySettingsList {
-    const list = new FakeMayflySettingsList(options)
-    this.settingsLists.push(list)
     return list
   }
 
@@ -1062,11 +988,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   new SkillsCatalogService(ctx)
   new InteractionStateService(ctx, DEFAULT_SETTINGS)
   new PromptEditorController(ctx)
-  new EditorPanelController(ctx)
   new PromptSubmitPipeline(ctx)
-  // The D30 editor-slot swap stands in for `mayfly-input`'s real machinery:
-  // dialog specs assert the mounted panel through the overlay registry.
-  ctx.mayflyEditorPanels.setHost({ mount: component => screen.mountDialogPanel(component) })
   screen.renderRequests = 0
   return { ctx, screen, theme, keymap, components }
 }

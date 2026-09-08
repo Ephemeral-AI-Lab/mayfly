@@ -7,9 +7,11 @@ import { setImmediate } from 'node:timers/promises'
 import { ui } from '../packages/ui/lib/index.js'
 import { apply } from '../packages/ui/lib/provider.js'
 import { compileMayflyUiNode, MayflyComponentsService } from '../packages/mayfly/lib/core.js'
+import * as frontend from '../packages/mayfly/lib/frontend.js'
 import { DARK_COLORS } from '../packages/mayfly/lib/theme-dark.js'
 import { OfficialConversationModelSource } from '../packages/mayfly/src/transcript/official-model.ts'
 import { conversationProjectionSchema } from '../packages/mayfly/src/conversation/projection.ts'
+import { moveDocument, reconcileDocument } from '../packages/mayfly/src/core/ui-interaction-document.ts'
 import { FakeTerminal } from '../packages/mayfly/tests/core/fake-terminal.ts'
 
 const require = createRequire(new URL('../packages/mayfly/package.json', import.meta.url))
@@ -19,6 +21,7 @@ const samples = 7
 const results = []
 const ctx = new Context()
 const owner = await ctx.plugin({ name: 'audit-performance', apply })
+const frontendOwner = await ctx.plugin(frontend)
 const components = new MayflyComponentsService(ctx, {
   theme: { colors: DARK_COLORS },
   tui: new TuiMainScreen(new FakeTerminal(80, 24)),
@@ -49,9 +52,9 @@ async function measure(size, scenario, action, prepare = () => {}) {
     medianHeapGrowthBytes: heaps[3], rssBytes: process.memoryUsage().rss })
 }
 
-function compile(node) {
+function compile(node, interaction) {
   const result = compileMayflyUiNode(node, {
-    components, colors: DARK_COLORS, getViewport: () => ({ columns: 80, rows: 24 }),
+    interaction, components, colors: DARK_COLORS, getViewport: () => ({ columns: 80, rows: 24 }),
     screenMode: 'alternate', emit: () => {},
   })
   if (!result.ok) throw new Error(result.message)
@@ -64,20 +67,44 @@ try {
     const items = Array.from({ length: size }, (_, index) => ({ id: String(index), label: `Item ${index}` }))
     const pane = ctx.mayflyPanes.register({ id: 'audit.list', placement: 'bottom' })
     const published = () => ctx.mayflyPanes.list()[0].node
+    const interaction = () => ctx.mayflyUiInteraction.get('pane', 'audit.list')
     await measure(size, 'list.first-build-publish-render', () => {
-      pane.set(ui.list({ id: 'items', selectedIds: [], items }))
-      compile(published())
+      pane.set(ui.list({ id: 'items', role: 'browse', selectedIds: [], items }))
+      compile(published(), interaction())
     })
-    const frozen = ui.list({ id: 'items', selectedIds: [], items })
-    await measure(size, 'list.repeat-publish-render', () => { pane.set(frozen); compile(published()) })
+    const frozen = ui.list({ id: 'items', role: 'browse', selectedIds: [], items })
+    await measure(size, 'list.repeat-publish-render', () => { pane.set(frozen); compile(published(), interaction()) })
     await measure(size, 'list.selection-update-render', () => {
       pane.set(ui.list({ ...frozen, selectedIds: ['1'] }))
-      compile(published())
+      compile(published(), interaction())
     })
-    const compiled = compile(published())
+    const compiled = compile(published(), interaction())
+    const revision = interaction().revision
+    await measure(size, 'list.repeat-render', () => {
+      compiled.component.render(80)
+      if (interaction().revision !== revision) throw new Error('render mutated interaction state')
+    })
     await measure(size, 'list.page-down-render', () => {
       compiled.focusTarget.handleInput('\u001b[6~')
       compiled.component.render(80)
+    })
+
+    const address = { pagePath: [], controlId: 'items' }
+    interaction().updateChoice(address, { kind: 'query', query: 'Item' })
+    const filtered = compile(published(), interaction())
+    await measure(size, 'list.filtered-repeat-render', () => { filtered.component.render(80) })
+    await measure(size, 'list.filtered-page-down-render', () => {
+      filtered.focusTarget.handleInput('\u001b[6~')
+      filtered.component.render(80)
+    })
+
+    interaction().updateChoice(address, { kind: 'clear-search' })
+    pane.set(ui.list({ ...frozen, tree: true }))
+    const tree = compile(published(), interaction())
+    await measure(size, 'list.tree-repeat-render', () => { tree.component.render(80) })
+    await measure(size, 'list.tree-page-down-render', () => {
+      tree.focusTarget.handleInput('\u001b[6~')
+      tree.component.render(80)
     })
     pane.dispose()
 
@@ -99,16 +126,33 @@ try {
     }
     await measure(size, 'transcript.source-after-native-clone', () => {
       changed(session, 'mayflyConversation', value, ++seq)
-      if (source.snapshot().entries.length !== 200) throw new Error('transcript window changed')
+      const snapshot = source.snapshot()
+      if (snapshot.entries.length !== size || snapshot.entries.at(-1)?.id !== String(size - 1)) {
+        throw new Error('complete transcript projection changed')
+      }
     }, nativeDelta)
     await measure(size, 'transcript.native-parse-and-source', () => {
       nativeDelta()
       changed(session, 'mayflyConversation', value, ++seq)
     })
     source.dispose()
+
+    const text = 'x'.repeat(size)
+    const document = id => ui.scroll(ui.text(id), { id: 'audit.document' })
+    const initialDocument = reconcileDocument(undefined, document(text))
+    const anchoredDocument = moveDocument(initialDocument, { blockId: initialDocument.blocks[0].id, offset: Math.floor(size / 2), follow: 'none' })
+    await measure(size, 'document.append-reconcile', () => {
+      const next = reconcileDocument(anchoredDocument, document(`${text}tail`))
+      if (next.anchor?.offset !== Math.floor(size / 2)) throw new Error('document append moved the anchor')
+    })
+    await measure(size, 'document.prepend-reconcile', () => {
+      const next = reconcileDocument(anchoredDocument, document(`head${text}`))
+      if (next.anchor?.offset !== Math.floor(size / 2) + 4) throw new Error('document prepend lost the anchor')
+    })
   }
   console.log(JSON.stringify({ node: process.version, platform: process.platform, arch: process.arch,
     samples, gc: typeof global.gc === 'function', note: 'Headless synthetic timings, not terminal FPS. Heap growth is not total allocation.', results }, null, 2))
 } finally {
+  await frontendOwner.dispose()
   await owner.dispose()
 }

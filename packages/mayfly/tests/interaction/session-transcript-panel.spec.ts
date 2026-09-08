@@ -247,14 +247,10 @@ describe('mayfly-session-transcript-panel plugin', () => {
     const { ctx } = context({ live })
     const mounted: MayflyFocusable[] = []
     let unmounts = 0
-    ctx.reflect.provide('mayflyEditorPanels', {
-      mount(component: MayflyFocusable) {
-        mounted.push(component)
-        return () => {
-          unmounts += 1
-          const index = mounted.indexOf(component)
-          if (index >= 0) mounted.splice(index, 1)
-        }
+    Object.assign(ctx.mayflyScreen, {
+      setEditorReplacement(component: MayflyFocusable | null) {
+        if (component === null) { if (mounted.length > 0) unmounts += 1; mounted.splice(0); return }
+        mounted.splice(0, mounted.length, component)
       },
     })
     let snapshot: ReturnType<Context['mayflyCurrentAgent']['view']> = {

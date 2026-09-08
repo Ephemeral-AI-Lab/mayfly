@@ -18,6 +18,7 @@ declare module '@deepseek-ai/cordis' {
 class StableSlotHost implements MayflyFocusable {
   private active = true
   private focusedValue = false
+  private replacement: MayflyComponent | null = null
 
   constructor(
     readonly id: string,
@@ -26,15 +27,16 @@ class StableSlotHost implements MayflyFocusable {
   ) {}
 
   get focused(): boolean { return this.active && this.focusedValue }
+  get editorReplaced(): boolean { return this.active && this.replacement !== null }
   set focused(value: boolean) {
-    this.focusedValue = this.active && this.target !== null && value
+    this.focusedValue = this.active && this.currentTarget() !== null && value
     const target = this.focusTarget()
     if (target !== null) target.focused = this.focusedValue
   }
 
   replace(component: MayflyComponent | null): void {
     if (!this.active || component === this.target) return
-    const previous = this.focusTarget()
+    const previous = this.replacement === null ? this.focusTarget() : null
     if (previous !== null) previous.focused = false
     this.target = component
     const next = this.focusTarget()
@@ -42,34 +44,49 @@ class StableSlotHost implements MayflyFocusable {
     this.runtime.requestRender()
   }
 
+  replaceEditor(component: MayflyComponent | null): boolean {
+    if (!this.active || component === this.replacement) return false
+    const previous = this.focusTarget()
+    if (previous !== null) previous.focused = false
+    this.replacement = component
+    const next = this.focusTarget()
+    if (next !== null) next.focused = this.focusedValue
+    this.runtime.requestRender()
+    return true
+  }
+
   focus(): void {
-    if (!this.active || this.target === null) return
+    if (!this.active || this.currentTarget() === null) return
     this.runtime.setFocus(this)
   }
 
-  render(width: number): string[] { return this.target?.render(width) ?? [] }
-  invalidate(): void { this.target?.invalidate() }
-  handleInput(data: string): void { this.target?.handleInput?.(data) }
+  render(width: number): string[] { return this.currentTarget()?.render(width) ?? [] }
+  invalidate(): void { this.currentTarget()?.invalidate() }
+  handleInput(data: string): void { this.currentTarget()?.handleInput?.(data) }
 
   clear(): void {
-    if (this.focusedValue) this.runtime.setFocus(null)
-    const target = this.focusTarget()
+    if (this.focusedValue && this.replacement === null) this.runtime.setFocus(null)
+    const target = this.target !== null && typeof (this.target as MayflyFocusable).focused === 'boolean' ? this.target as MayflyFocusable : null
     if (target !== null) target.focused = false
-    this.focusedValue = false
+    if (this.replacement === null) this.focusedValue = false
     this.target = null
     this.runtime.requestRender()
   }
 
   deactivate(): void {
+    this.replaceEditor(null)
     this.clear()
     this.active = false
   }
 
   private focusTarget(): MayflyFocusable | null {
-    return this.target !== null && typeof (this.target as MayflyFocusable).focused === 'boolean'
-      ? this.target as MayflyFocusable
+    const target = this.currentTarget()
+    return target !== null && typeof (target as MayflyFocusable).focused === 'boolean'
+      ? target as MayflyFocusable
       : null
   }
+
+  private currentTarget(): MayflyComponent | null { return this.replacement ?? this.target }
 }
 
 class ScreenSlotLease implements MayflyScreenSlot {
@@ -149,6 +166,24 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   /** Current terminal height in rows. */
   get rows(): number {
     return this.runtime.rows
+  }
+
+  /** Whether a modal overlay or editor replacement currently owns input. */
+  get capturesInput(): boolean {
+    return this.runtime.hasCapturingOverlay() || this.fixed.get('editor.prompt')!.editorReplaced
+  }
+
+  /** The editor shares the terminal with the fixed footer and at least one content row. */
+  get editorViewport(): { readonly columns: number, readonly rows: number } {
+    const columns = this.runtime.columns
+    const footerRows = this.fixed.get('status.footer')!.render(columns).length
+    return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1) }
+  }
+
+  /** Present the active registered editor overlay without replacing the prompt's lease. */
+  setEditorReplacement(component: MayflyFocusable | null): void {
+    const host = this.fixed.get('editor.prompt')!
+    if (host.replaceEditor(component) && !this.runtime.hasCapturingOverlay()) host.focus()
   }
 
   mountContentSlot(id: string, component: MayflyComponent | null): MayflyScreenSlot {

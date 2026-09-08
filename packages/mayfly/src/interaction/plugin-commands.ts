@@ -2,8 +2,8 @@
  * The `/plugin` command family: the marketplace browser over the index
  * published by Ephemeral-AI-Lab/dsh-plugins (`dist/index.json`). `/plugin`
  * opens installed/not-installed tabs over a type-to-filter catalog — Enter
- * opens the read-only detail panel, `i` installs, `u` removes, `r` refreshes;
- * every operation reports progress and its result inside the panel.
+ * opens the read-only detail panel, while declared actions install, remove,
+ * and refresh; every operation reports progress and its result in its surface.
  * `install <id> [--source npm|github]`, `uninstall <id>`,
  * `info <id>`, and `refresh` run the argument paths directly. Installs and
  * removals shell out to `dsh plugin --profile <name> add|remove` — the same
@@ -14,13 +14,9 @@
  * @module @ephemeral-ai/mayfly/interaction/plugin-commands
  */
 
-import type { Context } from '@deepseek-ai/cordis'
-import type { Action } from '../frontend/index.ts'
-import { displayServices } from './display-services.ts'
-import { getSharedEditor } from './editor-instance.ts'
-import { mountEditorReplacement } from './editor-panel-controller.ts'
-import { CanonicalDocumentController, type FrontendPanelDocument, type FrontendPanelItem } from './frontend-panel.ts'
-import { InfoPanel, type InfoSection, type InfoSegment } from './info-panel.ts'
+import type { Context, Fiber } from '@deepseek-ai/cordis'
+import { openUiOverlay } from './ui-overlay.ts'
+import { ui, type MayflyInlineSpan, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { currentMayflySettings } from './settings.ts'
 import { DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, type CatalogResult } from './plugin-market/catalog.ts'
@@ -41,6 +37,7 @@ import {
 import type { MarketEntry } from './plugin-market/types.ts'
 import { findDshCommand, profileRoot } from './updater/profile.ts'
 import { profileNameFromArgv } from '../internal/profile.ts'
+import { createInteractionNotificationOwner } from './notifications.ts'
 
 /** Command outcome reused by every early-exit branch. */
 type CommandOutcome = { readonly kind: 'success', readonly text?: string } | { readonly kind: 'error', readonly text: string }
@@ -50,6 +47,8 @@ interface OperationStatus {
   readonly text: string
   readonly tone: 'muted' | 'warning' | 'success' | 'danger'
 }
+interface DetailSegment { readonly text: string, readonly style?: 'text' | 'textMuted' | 'accent' | 'success' | 'warning' }
+interface DetailSection { readonly heading: string, readonly rows: readonly { readonly label: string, readonly segments: readonly DetailSegment[] }[] }
 
 type OperationReporter = (status: OperationStatus) => void
 
@@ -60,6 +59,7 @@ type OperationReporter = (status: OperationStatus) => void
  */
 export function registerPluginCommand(ctx: Context): () => void {
   const t = interactionTranslator(ctx)
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.market', 'plugin-market')
   /** Set when this fiber unloads: awaits must gate continuations on it. */
   let unloaded = false
   ctx.effect(() => () => {
@@ -158,7 +158,12 @@ export function registerPluginCommand(ctx: Context): () => void {
    * guard stay identical.
    */
   async function operate(entry: MarketEntry, action: 'install' | 'uninstall', source: InstallSource, reporter?: OperationReporter): Promise<boolean> {
-    const report: OperationReporter = reporter ?? (status => getSharedEditor(ctx)?.notice?.(status.text))
+    const operationId = `plugin/${entry.id}/${action}`
+    const report: OperationReporter = reporter ?? (status => notifications.report(operationId, {
+      message: status.text,
+      severity: status.tone === 'danger' ? 'error' : status.tone === 'muted' ? 'info' : status.tone,
+      ...(status.tone === 'muted' ? { purpose: 'progress' as const } : {}),
+    }, undefined, operationId))
     if (operationInFlight) {
       report({ text: t('a plugin operation is already running'), tone: 'warning' })
       return false
@@ -232,13 +237,12 @@ export function registerPluginCommand(ctx: Context): () => void {
   }
 
   /** The read-only detail panel for one entry. */
-  function detailPanel(entry: MarketEntry, state: EntryInstallState | undefined, onClose: () => void): InfoPanel {
-    const display = displayServices(ctx)
-    const segments = (text: string, style?: InfoSegment['style']): InfoSegment[] => [{ text, ...(style === undefined ? {} : { style }) }]
+  function detailNode(entry: MarketEntry, state: EntryInstallState | undefined): MayflyUiNode {
+    const segments = (text: string, style?: DetailSegment['style']): DetailSegment[] => [{ text, ...(style === undefined ? {} : { style }) }]
     const installBlock = currentProfileInstallBlock(entry)
     const tuiFull = installBlock === undefined && usefulInTui(entry)
     const webFull = installBlock === undefined && (entry.surfaces.web !== undefined || entry.surfaces.server !== undefined)
-    const sections: InfoSection[] = [
+    const sections: DetailSection[] = [
       {
         heading: t('Overview'),
         rows: [
@@ -295,200 +299,191 @@ export function registerPluginCommand(ctx: Context): () => void {
         ],
       },
     ]
-    return new InfoPanel({
-      theme: display!.theme,
-      components: display!.components,
-      keymap: display!.keymap,
-      title: entry.displayName,
-      sections,
-      onClose,
-      t,
-    })
+    const tone = (style: DetailSegment['style']): NonNullable<MayflyInlineSpan['tone']> => style === 'textMuted' ? 'muted' : style === 'accent' ? 'accent' : style === 'success' ? 'success' : style === 'warning' ? 'warning' : 'default'
+    return ui.surface({ title: entry.displayName, chrome: 'overlay', padding: 1, child: ui.stack.column([
+      ui.child(ui.scroll(ui.sections(sections.map(section => ({
+        title: section.heading,
+        body: ui.fields(section.rows.map(row => ({ label: row.label, value: row.segments.map(segment => {
+          const semanticTone = tone(segment.style)
+          return { text: segment.text, tone: semanticTone }
+        }) }))),
+      }))), { id: `plugin-detail-document/${entry.id}`, scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
+      ui.actions({ id: 'plugin-detail-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
+    ]) })
   }
 
   /** Open the marketplace as installed and not-installed tabs. */
   function openBrowse(initialGroup: 'installed' | 'not-installed'): CommandOutcome {
-    const display = displayServices(ctx)
-    if (display === undefined) {
-      return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly screen is not mounted') }
-    }
-
-    let panelStatus: OperationStatus | undefined
+    if (ctx.get('mayflyOverlays') === undefined) return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly UI registry is not mounted') }
+    const browseLifetime = new AbortController()
+    const detailOwners = new Set<Fiber>()
 
     /** Indexed rows grouped by their current all-rows-installed state. */
-    const marketItems = (): readonly FrontendPanelItem[] => {
-      const state = states()
-      return entries().filter(entry => entry.status !== 'removed' || hasInstalledRows(entry)).map(entry => {
-        const presentNow = hasInstalledRows(entry)
-        const installBlocked = currentProfileInstallBlock(entry) !== undefined
-        return {
-          id: entry.id,
-          label: entry.displayName,
-          detail: entry.status === 'removed' ? (entry.statusNote ?? t('removed from the market')) : describe(entry),
-          badge: badgeOf(entry, state[entry.id]),
-          group: presentNow ? 'installed' : 'not-installed',
-          action: { kind: 'plugin-market/details', id: entry.id },
-          actionLabel: t('Details'),
-          ...(!presentNow && installBlocked ? {} : {
-            secondaryAction: { kind: presentNow ? 'plugin-market/uninstall' : 'plugin-market/install', id: entry.id },
-            secondaryActionLabel: t(presentNow ? 'Uninstall' : 'Install'),
-          }),
-        }
-      })
+    const marketItems = (): readonly MarketEntry[] => {
+      return entries().filter(entry => entry.status !== 'removed' || hasInstalledRows(entry)).map(entry => entry)
     }
-
-    const model = (): FrontendPanelDocument => {
+    const marketNode = (): MayflyUiNode => {
       if (catalog === undefined) {
-        return { mode: 'loading', title: t('Plugin marketplace'), view: { kind: 'text', content: t('loading catalog...') } }
+        return ui.surface({ title: t('Plugin marketplace'), chrome: 'overlay', child: ui.loader({ message: t('loading catalog...') }) })
       }
       if (catalog.status === 'offline') {
-        return {
-          mode: 'error',
-          title: t('Plugin marketplace'),
-          view: { kind: 'text', content: panelStatus?.text ?? t('marketplace is offline: {message}', { message: catalog.message }) },
-        }
+        return ui.surface({ title: t('Plugin marketplace'), chrome: 'overlay', child: ui.stack.column([
+          ui.text(t('marketplace is offline: {message}', { message: catalog.message }), { tone: 'danger' }),
+          ui.actions({ id: 'plugin-market-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+        ]) })
       }
       const items = marketItems()
-      const installedCount = items.filter(item => item.group === 'installed').length
-      const notInstalledCount = items.length - installedCount
-      return {
-        mode: 'select',
-        title: t('Plugin marketplace'),
-        ...(panelStatus === undefined ? {} : { header: { kind: 'text', content: panelStatus.text, tone: panelStatus.tone } as const }),
-        items,
-        filterable: true,
-        grouped: true,
-        includeAllGroup: false,
-        groups: ['installed', 'not-installed'],
-        groupLabels: { installed: t('Installed'), 'not-installed': t('Not installed') },
-        groupCounts: { installed: installedCount, 'not-installed': notInstalledCount },
-        emptyByGroup: {
-          installed: { title: t('no plugins installed') },
-          'not-installed': { title: t('all marketplace plugins are installed') },
-        },
-      }
+      const groupIds = ['installed', 'not-installed'] as const
+      const groups = groupIds.map(group => {
+        const groupItems = items.filter(entry => (hasInstalledRows(entry) ? 'installed' : 'not-installed') === group)
+        return ui.child(ui.stack.column([
+          ui.list({
+            id: `plugins-${group}`,
+            role: 'browse',
+            filterable: true,
+            selectedIds: [],
+            items: groupItems.map(entry => ({ id: entry.id, label: entry.displayName, detail: entry.status === 'removed' ? (entry.statusNote ?? t('removed from the market')) : describe(entry), badge: badgeOf(entry, states()[entry.id]), searchText: `${entry.displayName} ${describe(entry)}` })),
+            empty: ui.empty({ title: t(group === 'installed' ? 'no plugins installed' : 'no plugins available') }),
+          }),
+          ui.actions({ id: `plugin-market-${group}-actions`, items: [
+            { id: 'details', label: t('Details'), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
+            { id: 'install', label: t('Install'), ...(group === 'installed' ? { disabled: true, disabledReason: t('Already installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
+            { id: 'remove', label: t('Remove'), ...(group === 'not-installed' ? { disabled: true, disabledReason: t('Not installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
+          ] }),
+        ]), { tab: { controlId: 'plugin-market-tabs', itemId: group } })
+      })
+      return ui.surface({ title: t('Plugin marketplace'), chrome: 'overlay', child: ui.stack.column([
+        ui.tabs({ id: 'plugin-market-tabs', activeId: initialGroup, items: groupIds.map(group => ({ id: group, label: t(group === 'installed' ? 'Installed' : 'Not installed'), count: items.filter(entry => (hasInstalledRows(entry) ? 'installed' : 'not-installed') === group).length })) }),
+        ...groups,
+        ui.actions({ id: 'plugin-market-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+      ]) })
     }
 
-    let panel: CanonicalDocumentController
-    const reportInPanel: OperationReporter = (status) => {
-      panelStatus = status
-      panel.invalidate()
-      display.screen.requestRender()
-    }
-
-    /** Install or remove the entry an `i`/`u` keypress selected. */
-    const runOperation = (id: string, action: 'install' | 'uninstall'): void => {
+    let handle!: ReturnType<typeof openUiOverlay>
+    /** Install or remove the entry selected by an explicit surface action. */
+    const runOperation = async (id: string, action: 'install' | 'uninstall', reporter: OperationReporter): Promise<boolean> => {
       const entry = findEntry(id)
       /* v8 ignore next -- browser actions only carry ids from indexed rows */
-      if (entry === undefined) return
+      if (entry === undefined) return false
       if (action === 'uninstall' && !hasInstalledRows(entry)) {
-        reportInPanel({ text: t('"{name}" is not installed in this profile', { name: entry.displayName }), tone: 'danger' })
-        return
+        reporter({ text: t('"{name}" is not installed in this profile', { name: entry.displayName }), tone: 'danger' })
+        return false
       }
       const installBlock = action === 'install' ? marketEntryInstallBlock(entry) : undefined
       if (installBlock !== undefined) {
-        reportInPanel({ text: t(installBlock), tone: 'danger' })
-        return
+        reporter({ text: t(installBlock), tone: 'danger' })
+        return false
       }
       if (action === 'install' && usefulInTui(entry) === false) {
-        reportInPanel({ text: t('web-only plugin: it contributes nothing in this terminal frontend'), tone: 'warning' })
+        reporter({ text: t('web-only plugin: it contributes nothing in this terminal frontend'), tone: 'warning' })
       }
       const source = defaultInstallSource(entry)
       if (action === 'install' && source === undefined) {
-        reportInPanel({ text: t('"{name}" has no common install source for every package', { name: entry.displayName }), tone: 'danger' })
-        return
+        reporter({ text: t('"{name}" has no common install source for every package', { name: entry.displayName }), tone: 'danger' })
+        return false
       }
-      void operate(entry, action, source ?? 'npm', reportInPanel).then(() => {
-        if (unloaded) return
-        panel.invalidate()
-        display.screen.requestRender()
-      })
+      const completed = await operate(entry, action, source ?? 'npm', reporter)
+      return completed
     }
 
     /** Mount the detail panel for one entry above the browse panel. */
-    const openDetail = (id: string): void => {
+    const openDetail = async (id: string): Promise<void> => {
       const entry = findEntry(id)
       /* v8 ignore next -- detail actions only ever carry entry ids from rows */
       if (entry === undefined) return
-      let restoreDetail: () => void
-      let offDetail: () => void
-      const detail = detailPanel(entry, states()[entry.id], () => {
-        offDetail()
-        restoreDetail()
+      const detailId = `mayfly.plugin-detail.${entry.id}`
+      if (ctx.mayflyOverlays.focus(detailId)) return
+      let owner: Fiber | undefined
+      let closed = false
+      owner = await ctx.plugin({
+        name: 'mayfly-plugin-market-detail',
+        inject: ['mayflyOverlays'],
+        apply(scope: Context) {
+          if (browseLifetime.signal.aborted) { closed = true; return }
+          const view = () => detailNode(entry, states()[entry.id])
+          const detail = openUiOverlay(scope, {
+            id: detailId,
+            presentation: 'editor',
+            capturing: true,
+            dismissal: 'discard',
+            title: entry.displayName,
+            scope: { kind: 'panel', parent: { kind: 'overlay', id: 'mayfly.plugin-market' } },
+          }, view(), browseLifetime.signal)
+          const offLocale = observeInteractionLocale(scope, () => { detail.set(view()) })
+          const offRegistry = scope.mayflyOverlays.subscribe(delta => {
+            if (delta.kind === 'remove' && delta.id === detailId && detail.closed) { closed = true; void owner?.dispose() }
+          })
+          scope.effect(() => () => { offLocale(); offRegistry(); detail.close(); detailOwners.delete(owner!) })
+          if (detail.closed) closed = true
+        },
       })
-      restoreDetail = mountEditorReplacement(ctx, detail)
-      offDetail = observeInteractionLocale(ctx, () => {
-        detail.invalidate()
-        display.screen.requestRender()
-      })
+      if (closed || browseLifetime.signal.aborted) await owner.dispose()
+      else detailOwners.add(owner)
     }
 
-    const handleAction = (action: Action): void => {
-      const id = String(action.id ?? '')
-      if (action.kind === 'plugin-market/install') runOperation(id, 'install')
-      else if (action.kind === 'plugin-market/uninstall') runOperation(id, 'uninstall')
-      else if (action.kind === 'plugin-market/refresh') {
-        reportInPanel({ text: t('refreshing plugin catalog...'), tone: 'muted' })
-        void reload(true).then(result => {
+    const refreshMarket = async (reporter: OperationReporter): Promise<boolean> => {
+        reporter({ text: t('refreshing plugin catalog...'), tone: 'muted' })
+        const result = await reload(true)
           /* v8 ignore next -- a fiber unload landing inside the refresh await is a shutdown race */
-          if (unloaded) return
+          if (unloaded) return false
           if (result.status === 'offline') {
-            reportInPanel({ text: t('refresh failed: {message}', { message: result.message }), tone: 'danger' })
+            reporter({ text: t('refresh failed: {message}', { message: result.message }), tone: 'danger' })
           } else {
-            reportInPanel({ text: t('refreshed {count} entries', { count: String(result.index.entries.length) }), tone: 'success' })
+            reporter({ text: t('refreshed {count} entries', { count: String(result.index.entries.length) }), tone: 'success' })
           }
-          panel.invalidate()
-          display.screen.requestRender()
-        })
-      }
-      else openDetail(id)
+          return result.status !== 'offline'
     }
 
-    let restore: () => void
-    panel = new CanonicalDocumentController({
-      keymap: display.keymap,
-      theme: display.theme,
-      components: display.components,
-      model,
-      t,
-      onAction: action => handleAction(action),
-      onClose: () => {
-        offLocale()
-        restore()
+    handle = openUiOverlay(ctx, { id: 'mayfly.plugin-market', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Plugin marketplace'), scope: { kind: 'app', targetId: 'plugin-market' }, onEvent: {
+      action: async (event, context) => {
+        if (event.kind === 'selection-accept' && event.selectedIds[0] !== undefined) await openDetail(event.selectedIds[0])
+        if (event.kind === 'activate' && event.actionId === 'details') {
+          const id = event.inputs?.selections?.[0]?.selectedIds[0]
+          if (id !== undefined) await openDetail(id)
+        }
+        if (event.kind === 'activate' && (event.actionId === 'install' || event.actionId === 'remove')) {
+          const id = event.inputs?.selections?.[0]?.selectedIds[0]
+          if (id !== undefined) {
+            let message = t('plugin operation failed')
+            const report: OperationReporter = status => {
+              message = status.text
+              context.report({ message: status.text, severity: status.tone === 'danger' ? 'error' : status.tone === 'warning' ? 'warning' : status.tone === 'success' ? 'success' : 'info', purpose: status.tone === 'muted' ? 'progress' : 'feedback' })
+            }
+            const completed = await runOperation(id, event.actionId === 'install' ? 'install' : 'uninstall', report)
+            return completed ? { kind: 'accepted', node: marketNode(), source: [], feedback: { severity: 'success', message } } : { kind: 'failed', node: marketNode(), source: [], message }
+          }
+        }
+        if (event.kind === 'activate' && event.actionId === 'refresh') {
+          let message = t('refresh failed')
+          const report: OperationReporter = status => {
+            message = status.text
+            context.report({ message, severity: status.tone === 'danger' ? 'error' : status.tone === 'success' ? 'success' : 'info', purpose: status.tone === 'muted' ? 'progress' : 'feedback' })
+          }
+          return await refreshMarket(report)
+            ? { kind: 'accepted', node: marketNode(), source: [], feedback: { severity: 'success', message } }
+            : { kind: 'failed', node: marketNode(), source: [], message }
+        }
+        return { kind: 'completed' as const }
       },
-      onUnhandledInput: (data, selectedId): Action | undefined => {
-        // Refresh works without a selection; install and remove need a row.
-        if (data === 'r' || data === 'R') return { kind: 'plugin-market/refresh' }
-        if (selectedId === undefined) return undefined
-        if (data === 'i' || data === 'I') return { kind: 'plugin-market/install', id: selectedId }
-        if (data === 'u' || data === 'U') return { kind: 'plugin-market/uninstall', id: selectedId }
-        return undefined
-      },
-      contextHints: () => [{
-        id: 'navigate',
-        keys: t('←→ tabs · ↑↓ select'),
-        compact: '←→/↑↓',
-        priority: 98,
-      }, {
-        id: 'plugin-operations',
-        keys: t('i install · u remove · r refresh'),
-        compact: 'i/u/r',
-        priority: 95,
-      }],
-      initialGroup,
+    } }, marketNode())
+    const offLocale = observeInteractionLocale(ctx, () => { handle.set(marketNode()) })
+    let cleanupBrowse!: () => void
+    const offBrowse = ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind === 'remove' && delta.id === 'mayfly.plugin-market' && handle.closed) cleanupBrowse()
     })
-    restore = mountEditorReplacement(ctx, panel)
-    const offLocale = observeInteractionLocale(ctx, () => {
-      panel.invalidate()
-      display.screen.requestRender()
+    cleanupBrowse = ctx.effect(() => () => {
+      offLocale()
+      offBrowse()
+      browseLifetime.abort()
+      for (const owner of detailOwners) void owner.dispose()
+      detailOwners.clear()
     })
     // The panel mounts immediately with the loading document when the caller
     // opened before the first load settled; swap in the data when it arrives.
     if (catalog === undefined) {
       void reload(false).then(() => {
         if (unloaded) return
-        panel.invalidate()
-        display.screen.requestRender()
+        handle.set(marketNode())
       })
     }
     return { kind: 'success' }
@@ -519,23 +514,16 @@ export function registerPluginCommand(ctx: Context): () => void {
       }
       if (verb === 'info') {
         if (id === undefined) return { kind: 'error', text: 'usage: /plugin info <id>' }
+        if (ctx.get('mayflyOverlays') === undefined) return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly UI registry is not mounted') }
         if (catalog === undefined) await reload(false)
         if (unloaded) return { kind: 'success' }
         const entry = findEntry(id)
         if (entry === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
-        const display = displayServices(ctx)
-        if (display === undefined) return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly screen is not mounted') }
-        let restore: () => void
         let offLocale: () => void
-        const panel = detailPanel(entry, states()[entry.id], () => {
-          offLocale()
-          restore()
-        })
-        restore = mountEditorReplacement(ctx, panel)
-        offLocale = observeInteractionLocale(ctx, () => {
-          panel.invalidate()
-          display.screen.requestRender()
-        })
+        const view = () => detailNode(entry, states()[entry.id])
+        const handle = openUiOverlay(ctx, { id: `mayfly.plugin-detail.${entry.id}`, presentation: 'editor', capturing: true, dismissal: 'discard', title: entry.displayName, scope: { kind: 'app', targetId: `plugin/${entry.id}` } }, view())
+        offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
+        ctx.effect(() => () => offLocale())
         return { kind: 'success' }
       }
       if (verb === 'install' || verb === 'uninstall') {
@@ -563,7 +551,7 @@ export function registerPluginCommand(ctx: Context): () => void {
           return { kind: 'error', text: t('"{name}" is not installed in this profile', { name: entry.displayName }) }
         }
         if (verb === 'install' && usefulInTui(entry) === false) {
-          getSharedEditor(ctx)?.notice?.(t('web-only plugin: it contributes nothing in this terminal frontend'))
+          notifications.report(`plugin/${entry.id}/compatibility`, { message: t('web-only plugin: it contributes nothing in this terminal frontend'), severity: 'warning' })
         }
         await operate(entry, verb, source ?? 'npm')
         return { kind: 'success' }

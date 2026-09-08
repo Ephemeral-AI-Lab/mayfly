@@ -11,11 +11,6 @@
  * @module @ephemeral-ai/mayfly/interaction/update-notice
  */
 
-import type { MayflyComponent } from '../core/index.ts'
-
-/** How the notice truncates a row to the viewport. */
-export type RowTruncator = (text: string, width: number) => string
-
 /** The notice's facts. */
 export interface UpdateNoticeContent {
   /** The version the process runs. */
@@ -59,34 +54,4 @@ export function interruptedNoticeRows(content: InterruptedNoticeContent): string
     `a previous /update${target} was interrupted — the profile may be in a mixed state`,
     `restore the backup at ${content.backupPath} — or run /update to retry`,
   ]
-}
-
-/**
- * The two-row update notice. Renders the composed rows truncated to the
- * viewport; holds no state, so `invalidate` is a no-op.
- */
-export class UpdateNoticeComponent implements MayflyComponent {
-  private readonly rows: readonly string[]
-  private readonly truncate: RowTruncator
-
-  /**
-   * @param truncate - the components service's width-safe truncator.
-   * @param rows - the composed rows (see {@link updateNoticeRows} and
-   * {@link interruptedNoticeRows}).
-   */
-  constructor(truncate: RowTruncator, rows: readonly string[] | UpdateNoticeContent) {
-    this.rows = Array.isArray(rows) ? rows : updateNoticeRows(rows as UpdateNoticeContent)
-    this.truncate = truncate
-  }
-
-  /**
-   * @param width - current viewport width in columns.
-   * @returns the notice rows, each within `width`.
-   */
-  render(width: number): string[] {
-    return this.rows.map(row => this.truncate(row, width))
-  }
-
-  /** Stateless render; nothing to drop. */
-  invalidate(): void {}
 }

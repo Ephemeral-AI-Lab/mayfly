@@ -8,17 +8,20 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { describe, expect, it, vi } from 'vitest'
+import * as uiProvider from '../../../ui/src/provider.ts'
 import * as agentsPlugin from '../../src/interaction/agents-command.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import {
   agentMetricsText,
-  buildAgentRows,
+  agentTreeItems,
   formatAgentElapsed,
   liveAgentDescendantCount,
   type MayflySubagentTreeEntry,
 } from '../../src/interaction/agents-command.ts'
-import { PromptEditorController, setSharedEditor } from '../../src/interaction/editor-instance.ts'
-import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
 import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme, KEY } from './fakes.ts'
+import { renderRequest, flushRequests } from './request-fixture.ts'
+import type { MayflyComponent } from '../../src/core/types.ts'
 
 function plain(rows: readonly string[]): readonly string[] {
   return rows.map(row => row.replace(/\x1b\[[0-9;]*m/g, '').replace(/[~^#!?@]/g, ''))
@@ -51,35 +54,6 @@ describe('agent tree models', () => {
     expect(agentMetricsText({ tokens: 100, settledMs: 5_000, activeSince: 500 }, 3_500)).toBe('100 tok · 3s')
   })
 
-  it('builds collapsed and expanded stable-preorder rows', () => {
-    const tree: MayflySubagentTreeEntry[] = [
-      child('branch', { activity: 'running', hasChildren: true, label: 'explore', tokens: 2_048, activeSince: 1_000 }),
-      child('nested', { parentId: SessionId('branch'), depth: 2, mode: 'one-shot', label: undefined }),
-      { kind: 'diagnostic', id: SessionId('broken'), parentId: SessionId('parent'), depth: 1, reason: 'corrupt' },
-      child('orphan', { parentId: SessionId('ghost'), depth: 2 }),
-      child('leaf'),
-    ]
-    const collapsed = buildAgentRows(tree, new Set(), 3_000)
-    expect(collapsed.map(row => row.value)).toEqual(['branch', 'broken', 'leaf'])
-    expect(collapsed[0]).toMatchObject({ label: '▸ ● explore', badge: 'running', description: 'continuable · 2k tok · 2s' })
-    expect(collapsed[1]).toMatchObject({ label: '⚠ broken', disabled: true, description: 'diagnostic: corrupt' })
-    const expanded = buildAgentRows(tree, new Set(['branch']), 3_000)
-    expect(expanded.map(row => row.value)).toEqual(['branch', 'nested', 'broken', 'leaf'])
-    expect(expanded[0]!.label).toBe('▾ ● explore')
-    expect(expanded[1]).toMatchObject({ label: '  ○ nested', description: 'one-shot' })
-  })
-
-  it('hides descendants under diagnostics and non-expandable parents', () => {
-    expect(buildAgentRows([
-      { kind: 'diagnostic', id: SessionId('broken'), parentId: SessionId('parent'), depth: 1, reason: 'unavailable' },
-      child('under', { parentId: SessionId('broken'), depth: 2 }),
-    ], new Set()).map(row => row.value)).toEqual(['broken'])
-    expect(buildAgentRows([
-      child('leaf'),
-      child('under', { parentId: SessionId('leaf'), depth: 2 }),
-    ], new Set()).map(row => row.value)).toEqual(['leaf'])
-  })
-
   it('counts only live descendants inside the selected subtree', () => {
     const tree: MayflySubagentTreeEntry[] = [
       child('branch', { activity: 'running', hasChildren: true }),
@@ -93,6 +67,10 @@ describe('agent tree models', () => {
     expect(liveAgentDescendantCount(tree, 'nested-a', isLive)).toBe(1)
     expect(liveAgentDescendantCount(tree, 'nested-b', isLive)).toBe(0)
     expect(liveAgentDescendantCount(tree, 'missing', isLive)).toBe(0)
+    expect(agentTreeItems([
+      child('parent'),
+      { kind: 'diagnostic', id: SessionId('diagnostic'), parentId: SessionId('parent'), depth: 2, reason: 'broken' },
+    ], 0)[1]).toMatchObject({ parentId: 'parent', disabled: true })
   })
 })
 
@@ -102,7 +80,6 @@ interface CommandHarness {
   readonly parent: Agent
   readonly childSession: Session
   readonly sessionState: { current: Agent | null }
-  readonly notices: string[]
   readonly projectionCalls: string[][]
   readonly opened: unknown[]
   readonly drain: ReturnType<typeof vi.fn>
@@ -122,16 +99,11 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     ctx.provide('mayflyTheme', new FakeTheme() as never)
     ctx.provide('mayflyKeymap', new FakeKeymap() as never)
     ctx.provide('mayflyComponents', new FakeMayflyComponents() as never)
+    await ctx.plugin(uiProvider)
+    new UiInteractionService(ctx)
+    mountUiRegistryObservers(ctx)
+    await Promise.resolve()
   }
-  new PromptEditorController(ctx)
-  new EditorPanelController(ctx)
-  ctx.mayflyEditorPanels.setHost({ mount: component => screen.mountDialogPanel(component) })
-  const notices: string[] = []
-  setSharedEditor(ctx, {
-    editor: { focused: false, render: () => [], invalidate: () => {} } as never,
-    submitPrompt: () => {},
-    notice: text => { notices.push(text) },
-  })
   await ctx.plugin(CommandRuntime)
   const parentSession = {
     id: SessionId('parent'), header: { cwd: '/tmp' }, append: vi.fn(),
@@ -189,7 +161,6 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     parent,
     childSession,
     sessionState,
-    notices,
     projectionCalls,
     opened,
     drain: vi.fn(async () => {}),
@@ -214,6 +185,39 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     drainContinuableChildren: harness.drain,
   } as never)
   harness.fiber = await ctx.plugin(agentsPlugin)
+  if (options.display === false) return harness
+  // Test-only registry bridge: production renders through the core surface
+  // renderer; this adapter exposes that same compiled model to FakeScreen so
+  // legacy lifecycle assertions can be migrated without reviving controllers.
+  const mounted = new Map<string, { readonly component: MayflyComponent, readonly handle: { hide(): void } }>()
+  const off = ctx.mayflyOverlays.subscribe(delta => {
+    if (delta.kind === 'remove') {
+      const previous = mounted.get(delta.id)
+      previous?.handle.hide()
+      mounted.delete(delta.id)
+      return
+    }
+    const model = ctx.mayflyUiInteraction.get('overlay', delta.entry.id)
+    if (model === undefined || mounted.has(delta.entry.id)) return
+    let compiled = renderRequest(model)
+    const component: MayflyComponent = {
+      render: width => { if (compiled.runtime.interaction?.revision !== model.revision) compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime); return compiled.component.render(width) },
+      handleInput: data => {
+        if (data === KEY.ctrlD && delta.entry.id === 'mayfly.agents') {
+          const choice = model.choice({ pagePath: [], controlId: 'subagents' })
+          const id = choice?.focusedId
+          if (id !== undefined) { model.updateChoice({ pagePath: [], controlId: 'subagents' }, { kind: 'select', ids: [id] }); model.invoke('stop') }
+          return
+        }
+        compiled.input(data)
+      },
+      invalidate: () => compiled.component.invalidate(),
+    }
+    const handle = screen.showOverlay(component)
+    mounted.set(delta.entry.id, { component, handle })
+  })
+  const originalDispose = harness.fiber.dispose.bind(harness.fiber)
+  harness.fiber = { dispose: async () => { off(); for (const item of mounted.values()) item.handle.hide(); mounted.clear(); await originalDispose() } }
   return harness
 }
 
@@ -221,10 +225,27 @@ async function execute(rig: CommandHarness, input = '') {
   return (await rig.ctx.commands.execute(rig.parent, `/agents${input === '' ? '' : ` ${input}`}`, [], new AbortController().signal))?.result
 }
 
+function browser(rig: CommandHarness): UiSurfaceModel {
+  const model = rig.ctx.mayflyUiInteraction.get('overlay', 'mayfly.agents')
+  if (model === undefined) throw new Error('agents browser is not open')
+  return model
+}
+
+function browserRows(rig: CommandHarness, width = 100): string {
+  return plain(renderRequest(browser(rig), { columns: width, rows: 24 }).component.render(width)).join('\n')
+}
+
+async function selectBrowser(model: UiSurfaceModel, id: string): Promise<void> {
+  model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: [id] })
+  await flushRequests()
+}
+
 describe('mayfly-agents-command', () => {
   it('reports display, Agent, listing, and empty-catalog outcomes', async () => {
     const noDisplay = await mountCommand({ display: false })
-    expect(await execute(noDisplay)).toMatchObject({ kind: 'error', text: expect.stringContaining('not mounted') })
+    expect(await execute(noDisplay)).toBeUndefined()
+    agentsPlugin.apply(noDisplay.ctx)
+    expect(await execute(noDisplay)).toEqual({ kind: 'error', text: 'agents panel is unavailable: the Mayfly screen is not mounted' })
     await noDisplay.fiber.dispose()
     const noAgent = await mountCommand({ current: false })
     expect(await execute(noAgent)).toEqual({ kind: 'error', text: 'no session is live yet' })
@@ -323,7 +344,7 @@ describe('mayfly-agents-command', () => {
     })
     rig.tree = [child('child', { mode: 'one-shot', label: undefined })]
     expect(await execute(rig)).toEqual({ kind: 'success' })
-    expect(plain(rig.screen.overlays[0]!.component.render(100)).join('\n')).toContain('Review security boundaries')
+    expect(browserRows(rig)).toContain('Review security boundaries')
 
     rig.ctx.emit('workflow/agent-start', {} as never, {
       seq: 2,
@@ -332,7 +353,7 @@ describe('mayfly-agents-command', () => {
     })
     rig.tree = [child('child', { mode: 'one-shot', label: 'Descriptor label' })]
     expect(await execute(rig)).toEqual({ kind: 'success' })
-    const second = plain(rig.screen.overlays[1]!.component.render(100)).join('\n')
+    const second = browserRows(rig)
     expect(second).toContain('Descriptor label')
     expect(second).not.toContain('Workflow fallback')
 
@@ -343,7 +364,7 @@ describe('mayfly-agents-command', () => {
     })
     rig.tree = [child('unnamed', { mode: 'one-shot', label: undefined })]
     expect(await execute(rig)).toEqual({ kind: 'success' })
-    expect(plain(rig.screen.overlays[2]!.component.render(100)).join('\n')).toContain('unnamed')
+    expect(browserRows(rig)).toContain('unnamed')
 
     rig.ctx.emit('workflow/agent-end', {} as never, {
       seq: 4,
@@ -353,7 +374,7 @@ describe('mayfly-agents-command', () => {
     })
     rig.tree = [child('settled', { mode: 'one-shot', label: undefined })]
     expect(await execute(rig)).toEqual({ kind: 'success' })
-    expect(plain(rig.screen.overlays[3]!.component.render(100)).join('\n')).toContain('Recovered after renderer reload')
+    expect(browserRows(rig)).toContain('Recovered after renderer reload')
     await rig.fiber.dispose()
   })
 
@@ -366,44 +387,20 @@ describe('mayfly-agents-command', () => {
       { kind: 'diagnostic', id: SessionId('broken'), parentId: SessionId('parent'), depth: 1, reason: 'corrupt' },
     ]
     expect(await execute(rig)).toEqual({ kind: 'success' })
-    const browser = rig.screen.overlays[0]!
-    expect(plain(browser.component.render(100)).join('\n')).toContain('▸ ● explore')
-    expect(plain(browser.component.render(100)).join('\n')).toContain('2k tok')
+    const model = browser(rig)
+    expect(browserRows(rig)).toContain('▸ ● explore')
+    expect(browserRows(rig)).toContain('2k tok')
+    expect(browserRows(rig)).not.toContain('○ nested')
     expect(rig.projectionCalls).toContainEqual(['mayflyConversationFacts', 'subagentTiming'])
-    browser.component.handleInput(' ')
-    expect(plain(browser.component.render(100)).join('\n')).toContain('○ nested')
-    browser.component.handleInput('\x1b[B')
-    browser.component.handleInput(' ')
-    browser.component.handleInput('\x1b[B')
-    browser.component.handleInput(' ')
-    browser.component.handleInput('\x1b[A')
-    browser.component.handleInput('\x1b[A')
-    browser.component.handleInput('\r')
-    expect(browser.hidden).toBe(true)
+    model.updateChoice({ pagePath: [], controlId: 'subagents' }, { kind: 'expand', id: 'child' })
+    expect(browserRows(rig)).toContain('○ nested')
+    await selectBrowser(model, 'child')
+    model.invoke('view')
+    await flushRequests()
+    expect(model.disposed).toBe(true)
     expect(rig.opened).toEqual([{
       kind: 'subagent', sessionId: 'child', parentSessionId: 'parent', label: 'explore', mode: 'continuable',
     }])
-    const controller = browser.component as unknown as {
-      options: {
-        onToggle(row: { value: string }): void
-        onSelect(row: { value: string }): void
-        onDelete(row: { value: string }): void
-        onCancel(): void
-      }
-    }
-    controller.options.onToggle({ value: 'invalid' })
-    controller.options.onToggle({ value: 'broken' })
-    controller.options.onToggle({ value: 'child' })
-    controller.options.onToggle({ value: 'child' })
-    controller.options.onSelect({ value: 'broken' })
-    controller.options.onDelete({ value: 'broken' })
-    controller.options.onSelect({ value: 'nested' })
-    expect(rig.opened.at(-1)).toEqual({
-      kind: 'subagent', sessionId: 'nested', parentSessionId: 'child', label: 'nested', mode: 'one-shot',
-    })
-    controller.options.onCancel()
-    controller.options.onCancel()
-    expect(browser.hidden).toBe(true)
     await rig.fiber.dispose()
   })
 
@@ -411,24 +408,23 @@ describe('mayfly-agents-command', () => {
     const rig = await mountCommand()
     rig.tree = [child('child', { label: 'worker' })]
     expect(await execute(rig)).toEqual({ kind: 'success' })
-    const browser = rig.screen.overlays[0]!
-    browser.component.render(100)
-    browser.component.handleInput(KEY.ctrlD)
-    const confirm = rig.screen.overlays[1]!
-    confirm.component.render(100)
-    confirm.component.handleInput(KEY.enter)
+    const model = browser(rig)
+    await selectBrowser(model, 'child')
+    model.invoke('stop')
+    expect(JSON.stringify(model.decisionNode)).toContain('mayfly.decision.no')
+    expect(JSON.stringify(model.decisionNode)).toContain('defaultFocus')
+    model.answerDecision(false)
     expect(rig.drain).not.toHaveBeenCalled()
-    expect(confirm.hidden).toBe(true)
-    expect(browser.hidden).toBe(false)
-    browser.component.handleInput(KEY.ctrlD)
-    const reopened = rig.screen.overlays.at(-1)!
-    reopened.component.handleInput(KEY.left)
-    reopened.component.handleInput(KEY.enter)
+    expect(model.disposed).toBe(false)
+    model.invoke('stop')
+    model.answerDecision(true)
     await vi.waitFor(() => {
       expect(rig.drain).toHaveBeenCalledWith(rig.parent, [SessionId('child')])
-      expect(rig.notices).toContain('stopped subagent child')
+      expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ severity: 'success', message: 'stopped subagent child' }),
+      ]))
     })
-    expect(browser.hidden).toBe(true)
+    expect(model.disposed).toBe(false)
     await rig.fiber.dispose()
   })
 
@@ -437,19 +433,18 @@ describe('mayfly-agents-command', () => {
     rig.tree = [child('branch', { activity: 'running', hasChildren: false })]
     rig.liveAgents.set('branch', { id: SessionId('branch') } as Agent)
     await execute(rig)
-    const browser = rig.screen.overlays[0]!
-    browser.component.render(100)
-    browser.component.handleInput(KEY.ctrlD)
-    const confirm = rig.screen.overlays[1]!
+    const model = browser(rig)
+    await selectBrowser(model, 'branch')
+    model.invoke('stop')
     rig.tree = [
       child('branch', { activity: 'running', hasChildren: true }),
       child('nested', { parentId: SessionId('branch'), depth: 2, activity: 'running' }),
     ]
     rig.liveAgents.set('nested', { id: SessionId('nested') } as Agent)
-    confirm.component.render(100)
-    confirm.component.handleInput(KEY.left)
-    confirm.component.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(plain(rig.notices)).toContain('subagent branch owns 1 live descendant; stop its live descendants first'))
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'error', message: 'subagent branch owns 1 live descendant; stop its live descendants first' }),
+    ])))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -459,15 +454,13 @@ describe('mayfly-agents-command', () => {
       const rig = await mountCommand()
       rig.tree = [child('child')]
       await execute(rig)
-      const browser = rig.screen.overlays[0]!
-      browser.component.render(100)
-      browser.component.handleInput(KEY.ctrlD)
-      const confirm = rig.screen.overlays[1]!
+      const model = browser(rig)
+      await selectBrowser(model, 'child')
       let release!: () => void
       rig.deferred = new Promise(resolve => { release = resolve })
-      confirm.component.render(100)
-      confirm.component.handleInput(KEY.left)
-      confirm.component.handleInput(KEY.enter)
+      model.invoke('stop')
+      model.answerDecision(true)
+      await Promise.resolve()
       if (mode === 'unload') await rig.fiber.dispose()
       else rig.switchAgent({ id: SessionId('replacement') } as Agent)
       release()
@@ -477,28 +470,24 @@ describe('mayfly-agents-command', () => {
     }
     const unloaded = await exercise('unload')
     expect(unloaded.drain).not.toHaveBeenCalled()
-    expect(unloaded.notices).toEqual([])
     const replaced = await exercise('replace')
-    await vi.waitFor(() => expect(plain(replaced.notices)).toContain('subagent child stop request is stale'))
     expect(replaced.drain).not.toHaveBeenCalled()
     await replaced.fiber.dispose()
   })
 
-  it('cancels and replaces an open browser stop confirmation', async () => {
+  it('deduplicates and cancels an open browser stop confirmation', async () => {
     const rig = await mountCommand()
     rig.tree = [child('child')]
     await execute(rig)
-    const browser = rig.screen.overlays[0]!
-    browser.component.render(100)
-    browser.component.handleInput(KEY.ctrlD)
-    const firstConfirm = rig.screen.overlays[1]!
-    browser.component.handleInput(KEY.ctrlD)
-    expect(firstConfirm.hidden).toBe(true)
-    const secondConfirm = rig.screen.overlays[2]!
-    secondConfirm.component.render(100)
-    secondConfirm.component.handleInput(KEY.escape)
-    expect(secondConfirm.hidden).toBe(true)
-    expect(browser.hidden).toBe(false)
+    const model = browser(rig)
+    await selectBrowser(model, 'child')
+    model.invoke('stop')
+    const decision = model.decisionNode
+    model.invoke('stop')
+    expect(model.decisionNode).toEqual(decision)
+    model.answerDecision(false)
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.disposed).toBe(false)
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -508,15 +497,49 @@ describe('mayfly-agents-command', () => {
     rig.tree = [child('child', { label: undefined })]
     rig.drain.mockRejectedValueOnce(new Error('cannot drain'))
     await execute(rig)
-    const browser = rig.screen.overlays[0]!
-    browser.component.render(100)
-    browser.component.handleInput(KEY.ctrlD)
-    const confirm = rig.screen.overlays[1]!
-    const text = plain(confirm.component.render(100)).join('\n')
-    expect(text).toContain('Stop child')
-    confirm.component.handleInput(KEY.left)
-    confirm.component.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(plain(rig.notices)).toContain('could not stop subagent child: cannot drain'))
+    const model = browser(rig)
+    await selectBrowser(model, 'child')
+    model.invoke('stop')
+    expect(JSON.stringify(model.decisionNode)).toContain('Stop child')
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'error', message: 'could not stop subagent child: cannot drain' }),
+    ])))
+    await rig.fiber.dispose()
+  })
+
+  it('defends empty, unrelated, and non-child browser events and uses an id label fallback', async () => {
+    const rig = await mountCommand()
+    rig.tree = [
+      child('unlabeled', { label: undefined }),
+      { kind: 'diagnostic', id: SessionId('diagnostic'), parentId: SessionId('parent'), depth: 1, reason: 'broken' },
+    ]
+    rig.liveAgents.set('unlabeled', { id: SessionId('unlabeled') } as Agent)
+    await execute(rig)
+    const entry = rig.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.agents')!
+    const context = { surfaceId: entry.id, operationId: 'direct', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn() }
+    expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: [] }, context)).toEqual({ kind: 'completed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: ['diagnostic'] }, context)).toMatchObject({ kind: 'accepted' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context)).toEqual({ kind: 'completed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'view' }, context)).toMatchObject({ kind: 'failed' })
+    const diagnosticInput = { forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['diagnostic'] }] }
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'view', inputs: diagnosticInput }, context)).toMatchObject({ kind: 'failed' })
+    const viewInput = { forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['unlabeled'] }] }
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'view', inputs: viewInput }, context)).toEqual({ kind: 'completed' })
+    expect(rig.opened).toContainEqual(expect.objectContaining({ label: 'unlabeled' }))
+    await rig.fiber.dispose()
+  })
+
+  it('disables browser stop when the direct parent is not live', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('orphan', { parentId: SessionId('offline-parent') })]
+    rig.liveAgents.set('orphan', { id: SessionId('orphan') } as Agent)
+    await execute(rig)
+    const model = browser(rig)
+    await selectBrowser(model, 'orphan')
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'stop', disabledReason: 'cannot stop subagent orphan: its direct parent is not live' }),
+    ]))
     await rig.fiber.dispose()
   })
 
@@ -524,11 +547,13 @@ describe('mayfly-agents-command', () => {
     const rig = await mountCommand()
     rig.tree = [child('once', { mode: 'one-shot' })]
     await execute(rig)
-    const browser = rig.screen.overlays[0]!
-    browser.component.render(100)
-    browser.component.handleInput(KEY.ctrlD)
-    expect(rig.screen.overlays).toHaveLength(1)
-    expect(plain(rig.notices)).toContain('one-shot subagents cannot be stopped from the browser')
+    const model = browser(rig)
+    await selectBrowser(model, 'once')
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'stop', enabled: false, disabledReason: 'subagent once is not continuable' }),
+    ]))
+    model.invoke('stop')
+    expect(model.decisionNode).toBeUndefined()
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -542,11 +567,13 @@ describe('mayfly-agents-command', () => {
     rig.liveAgents.set('branch', { id: SessionId('branch') } as Agent)
     rig.liveAgents.set('nested', { id: SessionId('nested') } as Agent)
     await execute(rig)
-    const browser = rig.screen.overlays[0]!
-    browser.component.render(100)
-    browser.component.handleInput(KEY.ctrlD)
-    expect(rig.screen.overlays).toHaveLength(1)
-    expect(plain(rig.notices)).toContain('subagent branch owns 1 live descendant; stop its live descendants first')
+    const model = browser(rig)
+    await selectBrowser(model, 'branch')
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'stop', enabled: false, disabledReason: 'subagent branch owns 1 live descendant; stop its live descendants first' }),
+    ]))
+    model.invoke('stop')
+    expect(model.decisionNode).toBeUndefined()
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -554,12 +581,15 @@ describe('mayfly-agents-command', () => {
   it('does not open stop confirmation for a cold continuable child', async () => {
     const rig = await mountCommand()
     rig.tree = [child('cold')]
+    rig.liveAgents.delete('child')
     await execute(rig)
-    const browser = rig.screen.overlays[0]!
-    browser.component.render(100)
-    browser.component.handleInput(KEY.ctrlD)
-    expect(rig.screen.overlays).toHaveLength(1)
-    expect(plain(rig.notices)).toContain('subagent cold is not live; there is no running Agent to stop')
+    const model = browser(rig)
+    await selectBrowser(model, 'cold')
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'stop', enabled: false, disabledReason: 'subagent cold is not live; there is no running Agent to stop' }),
+    ]))
+    model.invoke('stop')
+    expect(model.decisionNode).toBeUndefined()
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -568,12 +598,12 @@ describe('mayfly-agents-command', () => {
     const rig = await mountCommand()
     rig.tree = [child('child')]
     await execute(rig)
-    const first = rig.screen.overlays[0]!
+    const first = browser(rig)
     await execute(rig)
-    expect(first.hidden).toBe(true)
-    const second = rig.screen.overlays[1]!
+    expect(first.disposed).toBe(true)
+    const second = browser(rig)
     rig.switchAgent({ id: SessionId('other') } as Agent)
-    expect(second.hidden).toBe(true)
+    expect(second.disposed).toBe(true)
     await rig.fiber.dispose()
   })
 
@@ -587,7 +617,7 @@ describe('mayfly-agents-command', () => {
     release()
     expect(await pending).toEqual({ kind: 'success' })
     await disposal
-    expect(unloading.screen.overlays).toHaveLength(0)
+    expect(unloading.ctx.mayflyOverlays.list()).toHaveLength(0)
 
     let releaseSwitch!: () => void
     const switched = await mountCommand()
@@ -597,7 +627,7 @@ describe('mayfly-agents-command', () => {
     switched.sessionState.current = { id: SessionId('other') } as Agent
     releaseSwitch()
     expect(await switchedPending).toEqual({ kind: 'success' })
-    expect(switched.screen.overlays).toHaveLength(0)
+    expect(switched.ctx.mayflyOverlays.list()).toHaveLength(0)
     await switched.fiber.dispose()
   })
 })

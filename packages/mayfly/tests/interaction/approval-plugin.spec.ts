@@ -1,390 +1,212 @@
-/**
- * Tests for the `mayfly-approval` plugin: the interactive four-choice
- * answerer on the `approval/request` waterfall, dispatched directly through
- * Cordis (the approval service's policy/session plumbing is covered by
- * `@deepseek-ai/dsh-user-approval` itself). Covers the menu choices and
- * digit shortcuts, the session-scoped allowance, the feedback steering,
- * Escape/abort semantics, the FIFO serialization of concurrent requests,
- * and delegation for agents the UI does not own.
+/** Native approval outcomes, acknowledgement ordering, and shared decision input.
+ * @module @ephemeral-ai/mayfly/tests/interaction/approval-plugin
  */
-
-import { describe, expect, it, vi } from 'vitest'
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import { MayflyLocaleService } from '../../src/frontend/locale.ts'
-import * as approvalPlugin from '../../src/interaction/approval-plugin.ts'
-import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
-import { fakeMayflyContext, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
 
-async function mount(options: { attach?: boolean, locale?: 'en' | 'zh' } = {}): Promise<{
-  ctx: Context
-  screen: FakeScreen
-  components: FakeMayflyComponents
-  agent: Agent
-  steer: ReturnType<typeof vi.fn>
-  locale: MayflyLocaleService | undefined
-}> {
-  const { ctx, screen, components } = fakeMayflyContext()
-  const locale = options.locale === undefined
-    ? undefined
-    : new MayflyLocaleService(ctx, { systemLocale: options.locale })
-  locale?.register('interaction', INTERACTION_LOCALE)
-  await ctx.plugin(SessionStore)
-  const session = ctx.sessions.create(SessionId('approval-spec'))
-  const steer = vi.fn()
-  const agent = { id: session.id, session, steer } as unknown as Agent
-  ctx.provide('testSession', { current: options.attach === false ? null : agent, modelRef: undefined })
-  await ctx.plugin(approvalPlugin)
-  return { ctx, screen, components, agent, steer, locale }
-}
+const contexts: Context[] = []
+afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+async function setup() { const ctx = new Context(); contexts.push(ctx); return requestFixture(ctx) }
+const decision = [{ controlId: 'approval', itemId: 'decision' }]
+const feedback = [{ controlId: 'approval', itemId: 'feedback' }]
 
-function request(agent: Agent, extra: Partial<ApprovalRequest> = {}): ApprovalRequest {
-  return { agent, toolName: 'bash', ...extra }
-}
-
-/** Dispatch the waterfall with the fail-closed fallback as the chain tail. */
-function decide(
-  ctx: Context,
-  req: ApprovalRequest,
-): Promise<ApprovalOutcome> & { fallback: ReturnType<typeof vi.fn> } {
-  const fallback = vi.fn(() => Promise.resolve<ApprovalOutcome>('unavailable'))
-  return Object.assign(ctx.waterfall('approval/request', req, fallback), { fallback })
-}
-
-function overlay(screen: FakeScreen): { handleInput(data: string): void } {
-  const entry = screen.overlays.at(-1)
-  if (entry === undefined) throw new Error('no overlay shown')
-  return entry.component as { handleInput(data: string): void }
-}
-
-describe('mayfly-approval answerer', () => {
-  it('allows once on confirm of the default choice', async () => {
-    const { ctx, screen, agent } = await mount()
-    const pending = decide(ctx, request(agent, { reason: 'writes files' }))
-    const prompt = screen.overlays[0]!.component as unknown as {
-      focused: boolean
-      onEvent(event: { kind: string, controlId: string, value?: unknown }): void
-    }
-    prompt.focused = true
-    const rendered = screen.overlays[0]?.component.render(60) ?? []
-    expect(rendered.join('\n')).toContain('Approve bash?')
-    expect(rendered.join('\n')).toContain('writes files')
-    expect(rendered.join('\n')).toContain('Allow once')
-    expect(rendered.join('\n')).toContain('Allow bash for this session')
-    expect(rendered.join('\n')).toContain('Reject with feedback')
-    expect(rendered.join('\n')).toContain('↑↓/1-4 choose')
-    expect(prompt.focused).toBe(true)
-    prompt.onEvent({ kind: 'activate', controlId: 'other' })
-    prompt.onEvent({ kind: 'value-change', controlId: 'other', value: 'ignored' })
-    prompt.onEvent({ kind: 'value-change', controlId: 'approval-reason', value: 3 })
-    prompt.onEvent({ kind: 'selection-change', controlId: 'approval-choices', value: 'missing' })
-    prompt.onEvent({ kind: 'selection-change', controlId: 'approval-choices', value: '9' })
-    const internals = prompt as unknown as { syncCursor(controlId: string, itemId: string | undefined): void }
-    internals.syncCursor('other', '1')
-    internals.syncCursor('approval-choices', undefined)
-    internals.syncCursor('approval-choices', 'missing')
-    internals.syncCursor('approval-choices', '9')
-    internals.syncCursor('approval-choices', '0')
-    overlay(screen).handleInput(KEY.enter)
-    await expect(pending).resolves.toBe('allowed-once')
-    expect(pending.fallback).not.toHaveBeenCalled()
-    expect(screen.overlays[0]?.hidden).toBe(true)
-    // A second confirmation after settling is a no-op.
-    overlay(screen).handleInput(KEY.enter)
-  })
-
-  it('omits the reason row when the asker gave none', async () => {
-    const { ctx, screen, agent } = await mount()
-    const pending = decide(ctx, request(agent))
-    const rendered = screen.overlays[0]?.component.render(60) ?? []
-    expect(rendered.join('\n')).toContain('Approve bash?')
-    expect(rendered.join('\n')).not.toContain('writes files')
-    expect(rendered.join('\n')).toContain('Allow once')
-    overlay(screen).handleInput(KEY.escape)
-    await pending
-  })
-
-  it('switches an open approval prompt in place without moving its choice', async () => {
-    const { ctx, screen, agent, locale } = await mount({ locale: 'en' })
-    const pending = decide(ctx, request(agent))
-    const prompt = screen.overlays[0]!.component
-    overlay(screen).handleInput(KEY.down)
-    expect(prompt.render(60).join('\n')).toContain('Allow bash for this session')
-
-    locale!.setPreference('zh')
-    expect(screen.overlays[0]!.component).toBe(prompt)
-    const localized = prompt.render(60).join('\n')
-    expect(localized).toContain('是否批准 bash？')
-    expect(localized).toContain('→ 本会话允许 bash [2]')
-    overlay(screen).handleInput(KEY.escape)
-    await pending
-  })
-
-  it('moves the highlight with Up/Down without wrapping', async () => {
-    const { ctx, screen, agent } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput(KEY.up)
-    expect(screen.overlays[0]?.component.render(60).join('\n')).toContain('→ Allow once [1]')
-    overlay(screen).handleInput(KEY.down)
-    expect(screen.overlays[0]?.component.render(60).join('\n')).toContain('→ Allow bash for this session [2]')
-    overlay(screen).handleInput(KEY.down)
-    expect(screen.overlays[0]?.component.render(60).join('\n')).toContain('→ Reject [3]')
-    overlay(screen).handleInput(KEY.up)
-    expect(screen.overlays[0]?.component.render(60).join('\n')).toContain('→ Allow bash for this session [2]')
-    overlay(screen).handleInput(KEY.escape)
-    await pending
-  })
-
-  it('rejects when the Reject choice is confirmed', async () => {
-    const { ctx, screen, agent } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput(KEY.down)
-    overlay(screen).handleInput(KEY.down)
-    overlay(screen).handleInput(KEY.enter)
+describe('native approval UI', () => {
+  it('defaults to rejection even with preceding scrollable context and ignores former digit shortcuts', async () => {
+    const bench = await setup()
+    const pending = bench.approve({ reason: 'writes files' })
+    const model = bench.model('mayfly.approval.')
+    const renderer = renderRequest(model)
+    expect(renderer.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'reject' })
+    renderer.input('1')
+    renderer.input('2')
+    expect(model.disposed).toBe(false)
+    renderer.input('\r')
     await expect(pending).resolves.toBe('rejected')
+    expect(model.disposed).toBe(true)
+    renderer.runtime.dispose()
   })
 
-  it('direct-selects choices with the 1-4 digit keys', async () => {
-    const { ctx, screen, agent } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput('3')
-    await expect(pending).resolves.toBe('rejected')
-    const second = decide(ctx, request(agent, { toolName: 'write' }))
-    overlay(screen).handleInput('1')
+  it('allows once without adding a session allowance and requires an explicit session grant', async () => {
+    const bench = await setup()
+    const first = bench.approve()
+    bench.model('mayfly.approval.').invoke('allow-once', decision)
+    await expect(first).resolves.toBe('allowed-once')
+    const second = bench.approve()
+    bench.model('mayfly.approval.').invoke('allow-session', decision)
     await expect(second).resolves.toBe('allowed-once')
+    await expect(bench.approve()).resolves.toBe('allowed-once')
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+    const aborted = new AbortController()
+    aborted.abort()
+    await expect(bench.approve({ signal: aborted.signal })).resolves.toBe('cancelled')
   })
 
-  it('ignores keys outside the menu vocabulary', async () => {
-    const { ctx, screen, agent } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput('5')
-    overlay(screen).handleInput('x')
-    expect(screen.overlays[0]?.hidden).toBe(false)
-    overlay(screen).handleInput(KEY.escape)
+  it('keeps feedback on Back, rejects on the next Escape, and never steers unsubmitted text', async () => {
+    const bench = await setup()
+    const pending = bench.approve()
+    const model = bench.model('mayfly.approval.')
+    model.invoke('feedback', decision)
+    expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('feedback')
+    let renderer = renderRequest(model)
+    renderer.component.render(80)
+    renderer.input('too risky')
+    expect(model.form({ pagePath: feedback, formId: 'feedback-form' })!.fields.reason!.value).toBe('too risky')
+    renderer.input('\x1b')
+    expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('decision')
+    expect(model.decisionNode).toBeUndefined()
+    renderer.runtime.dispose()
+    model.invoke('feedback', decision)
+    renderer = renderRequest(model)
+    expect(renderer.component.render(80).join('\n')).toContain('too risky')
+    renderer.input('\x1b')
+    renderer.runtime.dispose()
+    renderer = renderRequest(model)
+    renderer.input('\x1b')
     await expect(pending).resolves.toBe('rejected')
+    expect(bench.steer).not.toHaveBeenCalled()
+    renderer.runtime.dispose()
   })
 
-  it('rejects on Escape', async () => {
-    const { ctx, screen, agent } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput(KEY.escape)
+  it.each(['', '  first line\nsecond line  '])('submits feedback exactly once and preserves text: %j', async reason => {
+    const bench = await setup()
+    const pending = bench.approve()
+    const model = bench.model('mayfly.approval.')
+    model.invoke('feedback', decision)
+    model.edit({ pagePath: feedback, formId: 'feedback-form', fieldId: 'reason' }, reason)
+    model.invoke('send-feedback', feedback)
+    model.invoke('send-feedback', feedback)
+    expect(bench.steer).not.toHaveBeenCalled()
     await expect(pending).resolves.toBe('rejected')
+    model.invoke('send-feedback', feedback)
+    if (reason === '') expect(bench.steer).not.toHaveBeenCalled()
+    else {
+      expect(bench.steer).toHaveBeenCalledOnce()
+      expect(bench.steer.mock.calls[0]![0]).toMatchObject({ content: [{ type: 'text', text: `User rejected bash: ${reason}` }], source: { kind: 'user' } })
+    }
   })
 
-  it('cancels and hides the overlay when the request signal aborts', async () => {
-    const { ctx, screen, agent } = await mount()
+  it('lets a real abort beat a prepared grant and cannot replay the retired endpoint', async () => {
+    const bench = await setup()
     const controller = new AbortController()
-    const pending = decide(ctx, request(agent, { signal: controller.signal }))
+    const pending = bench.approve({ signal: controller.signal })
+    const model = bench.model('mayfly.approval.')
+    model.invoke('allow-session', decision)
     controller.abort()
     await expect(pending).resolves.toBe('cancelled')
-    expect(screen.overlays[0]?.hidden).toBe(true)
+    model.invoke('allow-session', decision)
+    const next = bench.approve()
+    bench.model('mayfly.approval.').invoke('reject', decision)
+    await expect(next).resolves.toBe('rejected')
   })
 
-  it('settles immediately as cancelled for a pre-aborted signal', async () => {
-    const { ctx, screen, agent } = await mount()
-    const controller = new AbortController()
-    controller.abort()
-    await expect(decide(ctx, request(agent, { signal: controller.signal }))).resolves.toBe('cancelled')
-    expect(screen.overlays).toHaveLength(0)
-  })
-
-  it('remembers "Allow for this session" and short-circuits later prompts for the tool', async () => {
-    const { ctx, screen, agent } = await mount()
-    const first = decide(ctx, request(agent))
-    overlay(screen).handleInput('2')
+  it('queues native requests in FIFO order and removes a withdrawn queued request', async () => {
+    const bench = await setup()
+    const first = bench.approve()
+    const abort = new AbortController()
+    const skipped = bench.approve({ toolName: 'write', signal: abort.signal })
+    const last = bench.approve({ toolName: 'read' })
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
+    abort.abort()
+    await expect(skipped).resolves.toBe('cancelled')
+    bench.model('mayfly.approval.').invoke('allow-once', decision)
     await expect(first).resolves.toBe('allowed-once')
-    expect(screen.overlays).toHaveLength(1)
-    // Same tool: no second prompt.
-    await expect(decide(ctx, request(agent))).resolves.toBe('allowed-once')
-    expect(screen.overlays).toHaveLength(1)
-    // A different tool still prompts; allowing it for the session too reuses
-    // the agent's allowance set.
-    const third = decide(ctx, request(agent, { toolName: 'write' }))
-    expect(screen.overlays).toHaveLength(2)
-    overlay(screen).handleInput('2')
-    await expect(third).resolves.toBe('allowed-once')
-    await expect(decide(ctx, request(agent, { toolName: 'write' }))).resolves.toBe('allowed-once')
-    expect(screen.overlays).toHaveLength(2)
+    expect(JSON.stringify(bench.model('mayfly.approval.').node)).toContain('Approve read?')
+    bench.model('mayfly.approval.').requestClose()
+    await expect(last).resolves.toBe('rejected')
   })
 
-  it('does not retain an allowance after the prompt Agent becomes stale', async () => {
-    const { ctx, screen, agent } = await mount()
-    const pending = decide(ctx, request(agent))
-    ;(ctx.get('testSession') as { current: Agent | null }).current = { id: 'stale' } as Agent
-    overlay(screen).handleInput('2')
-    await expect(pending).resolves.toBe('allowed-once')
-
-    ;(ctx.get('testSession') as { current: Agent | null }).current = agent
-    const retry = decide(ctx, request(agent))
-    expect(screen.overlays).toHaveLength(2)
-    overlay(screen).handleInput(KEY.escape)
-    await expect(retry).resolves.toBe('rejected')
-  })
-
-  it('steers the agent with the reason on "Reject with feedback"', async () => {
-    const { ctx, screen, agent, steer } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput('4')
-    ;(screen.overlays[0]!.component as { focused?: boolean }).focused = true
-    const rendered = screen.overlays[0]?.component.render(60) ?? []
-    expect(rendered.join('\n')).toContain('Approve bash?')
-    expect(rendered.join('\n')).toContain('Reason:')
-    overlay(screen).handleInput('\x1b[200~too Xrisky\x1b[201~')
-    for (let step = 0; step < 5; step += 1) overlay(screen).handleInput(KEY.left)
-    overlay(screen).handleInput('\x7f')
-    const edited = screen.overlays[0]?.component.render(60).join('\n') ?? ''
-    expect(edited).toContain('too |risky')
-    expect(edited).not.toContain('too Xrisky')
-    expect(edited).toContain('|')
-    overlay(screen).handleInput(KEY.enter)
-    await expect(pending).resolves.toBe('rejected')
-    expect(steer).toHaveBeenCalledOnce()
-    const message = steer.mock.calls[0]?.[0] as {
-      role: string
-      content: Array<{ type: string, text: string }>
-      source: { kind: string }
-    }
-    expect(message.role).toBe('user')
-    expect(message.content).toEqual([{ type: 'text', text: 'User rejected bash: too risky' }])
-    expect(message.source).toEqual({ kind: 'user' })
-    // A late duplicate submission neither steers nor settles again.
-    overlay(screen).handleInput(KEY.enter)
-    expect(steer).toHaveBeenCalledOnce()
-    screen.overlays[0]?.component.invalidate()
-  })
-
-  it('does not steer after the feedback prompt Agent becomes stale', async () => {
-    const { ctx, screen, agent, steer } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput('4')
-    overlay(screen).handleInput('too risky')
-    ;(ctx.get('testSession') as { current: Agent | null }).current = { id: 'stale' } as Agent
-    overlay(screen).handleInput(KEY.enter)
-    await expect(pending).resolves.toBe('rejected')
-    expect(steer).not.toHaveBeenCalled()
-  })
-
-  it('treats an empty feedback reason as a plain Reject without steering', async () => {
-    const { ctx, screen, agent, steer } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput('4')
-    overlay(screen).handleInput(KEY.enter)
-    await expect(pending).resolves.toBe('rejected')
-    expect(steer).not.toHaveBeenCalled()
-  })
-
-  it('leaves feedback editing before Escape rejects', async () => {
-    const { ctx, screen, agent, steer } = await mount()
-    const pending = decide(ctx, request(agent))
-    overlay(screen).handleInput('4')
-    overlay(screen).handleInput(KEY.escape)
-    expect(screen.overlays[0]?.hidden).toBe(false)
-    overlay(screen).handleInput(KEY.escape)
-    await expect(pending).resolves.toBe('rejected')
-    expect(steer).not.toHaveBeenCalled()
-  })
-
-  it('serializes concurrent requests: the second prompt shows after the first settles', async () => {
-    const { ctx, screen, agent } = await mount()
-    const first = decide(ctx, request(agent))
-    const second = decide(ctx, request(agent, { toolName: 'write' }))
-    expect(screen.overlays).toHaveLength(1)
-    overlay(screen).handleInput(KEY.enter)
+  it('applies a session grant to already queued requests for the same tool', async () => {
+    const bench = await setup()
+    const first = bench.approve()
+    const second = bench.approve()
+    bench.model('mayfly.approval.').invoke('allow-session', decision)
     await expect(first).resolves.toBe('allowed-once')
-    await vi.waitFor(() => {
-      expect(screen.overlays).toHaveLength(2)
-    })
-    expect(screen.overlays[0]?.hidden).toBe(true)
-    overlay(screen).handleInput(KEY.escape)
-    await expect(second).resolves.toBe('rejected')
+    await expect(second).resolves.toBe('allowed-once')
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
   })
 
-  it('skips a queued request whose signal aborted while waiting', async () => {
-    const { ctx, screen, agent } = await mount()
-    const first = decide(ctx, request(agent))
-    const controller = new AbortController()
-    const second = decide(ctx, request(agent, { toolName: 'write', signal: controller.signal }))
-    expect(screen.overlays).toHaveLength(1)
-    await Promise.resolve()
-    controller.abort()
-    await expect(second).resolves.toBe('cancelled')
-    overlay(screen).handleInput(KEY.enter)
-    await expect(first).resolves.toBe('allowed-once')
-    expect(screen.overlays).toHaveLength(1)
-  })
-
-  it('cancels visible and queued prompts when the session changes', async () => {
-    const { ctx, screen, agent } = await mount()
-    const first = decide(ctx, request(agent))
-    const second = decide(ctx, request(agent, { toolName: 'write' }))
-    expect(screen.overlays).toHaveLength(1)
-    ;(ctx.get('testSession') as { current: Agent | null }).current = { id: 'next' } as Agent
-    ctx.emit('test/session-changed')
+  it.each(['selection', 'same-id', 'app-unload', 'frontend-unload'] as const)('retires active and queued work after %s', async mode => {
+    const bench = await setup()
+    const first = bench.approve()
+    const old = bench.model('mayfly.approval.')
+    const second = bench.approve({ toolName: 'write' })
+    if (mode === 'selection') bench.ctx.mayflyCurrentAgent.select(bench.other)
+    else if (mode === 'same-id') {
+      const replacement = { ...bench.agent } as Agent
+      bench.agents.set(bench.agent.id, replacement)
+      bench.ctx.mayflyCurrentAgent.select(replacement)
+    } else await (mode === 'app-unload' ? bench.app : bench.front).dispose()
     await expect(first).resolves.toBe('cancelled')
     await expect(second).resolves.toBe('cancelled')
-    expect(screen.overlays[0]?.hidden).toBe(true)
+    old.invoke('allow-once', decision)
+    expect(old.disposed).toBe(true)
   })
 
-  it('cancels visible and queued prompts when the plugin Fiber unloads', async () => {
-    const { ctx, agent } = await mount()
-    const first = decide(ctx, request(agent))
-    const second = decide(ctx, request(agent, { toolName: 'write' }))
-    await ctx.fiber.dispose()
-    await expect(first).resolves.toBe('cancelled')
-    await expect(second).resolves.toBe('cancelled')
-  })
-
-  it('delegates after the current Agent is cleared', async () => {
-    const { ctx, screen, agent } = await mount()
-    ;(ctx.get('testSession') as { current: Agent | null }).current = null
-    ctx.emit('test/session-changed', null)
-    const pending = decide(ctx, request(agent))
-    await expect(pending).resolves.toBe('unavailable')
-    expect(screen.overlays).toHaveLength(0)
-  })
-
-  it('rejects a queued prompt whose request owner becomes stale before it mounts', async () => {
-    const { ctx, screen, agent } = await mount()
-    const first = decide(ctx, request(agent))
-    const second = decide(ctx, request(agent, { toolName: 'write' }))
-    ;(ctx.get('testSession') as { current: Agent | null }).current = { id: 'next' } as Agent
-    overlay(screen).handleInput(KEY.enter)
-    await expect(first).resolves.toBe('allowed-once')
-    await expect(second).resolves.toBe('cancelled')
-    expect(screen.overlays).toHaveLength(1)
-  })
-
-  it('does not retain a session allowance after the exact current Agent changes', async () => {
-    const { ctx, screen, agent } = await mount()
-    const first = decide(ctx, request(agent))
-    overlay(screen).handleInput('2')
-    await expect(first).resolves.toBe('allowed-once')
-    ;(ctx.get('testSession') as { current: Agent | null }).current = { id: 'next' } as Agent
-    ctx.emit('test/session-changed')
-    ;(ctx.get('testSession') as { current: Agent | null }).current = agent
-    ctx.emit('test/session-changed', agent)
-    const second = decide(ctx, request(agent))
-    expect(screen.overlays).toHaveLength(2)
-    overlay(screen).handleInput(KEY.escape)
+  it('delegates other Agents and clears allowances when the exact selection changes', async () => {
+    const bench = await setup()
+    await expect(bench.approve({ agent: bench.other })).resolves.toBe('unavailable')
+    const first = bench.approve()
+    bench.model('mayfly.approval.').invoke('allow-session', decision)
+    await first
+    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    const second = bench.approve()
+    bench.model('mayfly.approval.').requestClose()
     await expect(second).resolves.toBe('rejected')
+    bench.ctx.mayflyCurrentAgent.select(null)
+    await expect(bench.approve()).resolves.toBe('unavailable')
   })
 
-  it('delegates down the waterfall for an agent the UI does not own', async () => {
-    const { ctx, screen } = await mount()
-    const other = { id: 'other' } as unknown as Agent
-    const pending = decide(ctx, request(other))
+  it('refreshes translated chrome while a feedback draft and its focus survive', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyLocale.setPreference('en')
+    const pending = bench.approve()
+    const model = bench.model('mayfly.approval.')
+    model.invoke('feedback', decision)
+    model.edit({ pagePath: feedback, formId: 'feedback-form', fieldId: 'reason' }, '草稿')
+    bench.ctx.mayflyLocale.setPreference('zh')
+    await flushRequests()
+    expect(model.form({ pagePath: feedback, formId: 'feedback-form' })!.fields.reason!.value).toBe('草稿')
+    expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('feedback')
+    expect(JSON.stringify(model.node)).toContain('拒绝并反馈')
+    model.invoke('send-feedback', feedback)
+    await expect(pending).resolves.toBe('rejected')
+  })
+
+  it('ignores unrelated direct events before an approval answer exists', async () => {
+    const bench = await setup()
+    const pending = bench.approve()
+    const entry = bench.ctx.mayflyOverlays.list()[0]!
+    const context = { surfaceId: entry.id, operationId: 'noop', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn() }
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context)).toEqual({ kind: 'completed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'other', source: entry.source, forms: [] } }, context)).toEqual({ kind: 'completed' })
+    bench.model('mayfly.approval.').invoke('reject', decision)
+    await expect(pending).resolves.toBe('rejected')
+  })
+
+  it('rechecks exact Agent authority when a queued request starts', async () => {
+    const bench = await setup()
+    let reads = 0
+    let changeAt = Number.POSITIVE_INFINITY
+    vi.spyOn(bench.ctx.mayflyCurrentAgent, 'current').mockImplementation(() => ++reads >= changeAt ? bench.other : bench.agent)
+    const first = bench.approve()
+    const queued = bench.approve({ toolName: 'write' })
+    changeAt = reads + 4
+    bench.model('mayfly.approval.').invoke('reject', decision)
+    await expect(first).resolves.toBe('rejected')
+    await expect(queued).resolves.toBe('cancelled')
+  })
+
+  it('maps an accepted callback failure to unavailable', async () => {
+    const bench = await setup()
+    bench.agent.steer = vi.fn(() => { throw new Error('steer failed') }) as never
+    const pending = bench.approve()
+    const model = bench.model('mayfly.approval.')
+    model.invoke('feedback', decision)
+    model.edit({ pagePath: feedback, formId: 'feedback-form', fieldId: 'reason' }, 'reason')
+    model.invoke('send-feedback', feedback)
     await expect(pending).resolves.toBe('unavailable')
-    expect(pending.fallback).toHaveBeenCalledOnce()
-    expect(screen.overlays).toHaveLength(0)
   })
-
-  it('delegates when no session is attached', async () => {
-    const { ctx, screen, agent } = await mount({ attach: false })
-    const pending = decide(ctx, request(agent))
-    await expect(pending).resolves.toBe('unavailable')
-    expect(screen.overlays).toHaveLength(0)
-  })
-
 })

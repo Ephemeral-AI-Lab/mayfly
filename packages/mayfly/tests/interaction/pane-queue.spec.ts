@@ -45,22 +45,36 @@ describe('mayfly-pane-queue', () => {
       direction: 'column',
       children: [
         { node: { kind: 'divider' } },
-        { node: { kind: 'text', content: 'queued / turn: first turn', tone: 'muted' } },
-        { node: { kind: 'text', content: 'queued / turn: second turn', tone: 'muted' } },
-        { node: { kind: 'text', content: 'queued / step: steer this', tone: 'muted' } },
+        { node: { kind: 'text', content: 'Queued: first turn', tone: 'muted' } },
+        { node: { kind: 'text', content: 'Queued: second turn', tone: 'muted' } },
+        { node: { kind: 'text', content: 'Steer: steer this', tone: 'muted' } },
       ],
     })
   })
 
-  it('keeps image-only message text empty', async () => {
-    const image = { content: [{ type: 'image' }] } as unknown as UserMessage
+  it('summarizes image-only messages', async () => {
+    const image = { source: { kind: 'user' }, content: [{ type: 'image' }] } as unknown as UserMessage
     const world = await mount(true, fakeInbox([image]))
     expect(world.entry()?.node).toMatchObject({
       children: [
         { node: { kind: 'divider' } },
-        { node: { content: 'queued / turn: ' } },
+        { node: { content: 'Queued: [1 image]' } },
       ],
     })
+    const images = { source: { kind: 'user' }, content: [{ type: 'text', text: 'caption' }, { type: 'image' }, { type: 'image' }] } as unknown as UserMessage
+    const plural = await mount(true, fakeInbox([images]))
+    expect(plural.entry()?.node).toMatchObject({ children: [expect.anything(), { node: { content: 'Queued: caption [2 images]' } }] })
+  })
+
+  it('excludes internal runtime messages without modifying the native inbox', async () => {
+    const policy = createUserMessage({ content: [{ type: 'text', text: 'Policy changed' }], source: { kind: 'plugin', plugin: 'approval' } })
+    const inbox = fakeInbox([], [policy])
+    const world = await mount(true, inbox)
+    expect(world.entry()?.node).toBeNull()
+    expect(inbox.nextStep).toEqual([policy])
+    inbox.nextTurn.push(message('User work'))
+    world.ctx.emit('agent/inbox/inserted', { agent: world.agent } as never)
+    expect(world.entry()?.node).toMatchObject({ children: [{ node: { kind: 'divider' } }, { node: { content: 'Queued: User work' } }] })
   })
 
   it('refreshes only for the exact current Agent inbox', async () => {

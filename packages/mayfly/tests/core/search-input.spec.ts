@@ -1,20 +1,41 @@
-/** Native search input and its two list consumers share Unicode and paste semantics. */
+/** Native search/editor input through the shared pane and overlay models. */
 import { Context } from '@deepseek-ai/cordis'
 import { CURSOR_MARKER, stripTerminalSequences, TuiMainScreen } from '@earendil-works/pi-tui'
-import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyComponentsService } from '../../src/core/components.ts'
 import { SearchInput } from '../../src/core/search-input.ts'
-import { CanonicalSelectController } from '../../src/interaction/select-list.ts'
-import { CanonicalDocumentController } from '../../src/interaction/frontend-panel.ts'
-import { CanonicalFormController } from '../../src/interaction/form-panel.ts'
-import { FakeTheme, FakeKeymap, KEY } from '../interaction/fakes.ts'
+import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime } from '../../src/core/ui-compiler.ts'
+import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
+import * as provider from '../../../ui/src/provider.ts'
+import * as frontend from '../../src/frontend/index.ts'
+import { FakeTheme, KEY } from '../interaction/fakes.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 
-function display() {
+const contexts: Context[] = []
+const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
+afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+function display(ctx = new Context()) {
+  contexts.push(ctx)
   const theme = new FakeTheme()
-  return { theme, keymap: new FakeKeymap(), components: new MayflyComponentsService(new Context(), { theme, tui: new TuiMainScreen(new FakeTerminal()) }) }
+  return { theme, components: new MayflyComponentsService(ctx, { theme, tui: new TuiMainScreen(new FakeTerminal()) }) }
+}
+
+async function surface(node: MayflyUiNode, kind: 'pane' | 'overlay' = 'overlay', width = 60) {
+  const ctx = new Context()
+  const { components, theme } = display(ctx)
+  await ctx.plugin(provider)
+  await ctx.plugin(frontend)
+  const onEvent = vi.fn(() => ({ kind: 'completed' as const }))
+  if (kind === 'pane') ctx.mayflyPanes.register({ id: 'test', placement: 'bottom', onEvent: { action: onEvent } }, node)
+  else ctx.mayflyOverlays.open({ id: 'test', capturing: true, onEvent: { action: onEvent } }, node)
+  const model = ctx.mayflyUiInteraction.get(kind, 'test')!
+  const runtime = new MayflyUiSurfaceRuntime(model)
+  const viewport = { columns: width, rows: 10 }
+  const compiled = compileMayflyUiSurfaceNode(model.node, { surfaceRuntime: runtime, components, colors: theme.colors, getViewport: () => viewport, screenMode: 'alternate', emit: event => model.emit(event), onUnhandledEscape: () => model.requestClose() })
+  if (!compiled.ok) throw new Error(compiled.message)
+  compiled.value.focusTarget!.focused = true
+  return { model, runtime, viewport, onEvent, panel: compiled.value.component, input: (data: string) => compiled.value.focusTarget!.handleInput!(data) }
 }
 
 describe('SearchInput', () => {
@@ -47,47 +68,48 @@ describe('SearchInput', () => {
     expect(input.text).toBe('中文 😀 reddone')
   })
 
-  it.each(['select', 'document'] as const)('keeps pasted navigation and cancel keys inside the %s search', kind => {
-    const onCancel = vi.fn()
-    const onSelect = vi.fn()
-    const common = display()
-    const panel = kind === 'select'
-      ? new CanonicalSelectController({ ...common, filter: true, rows: [{ value: 'x', label: '中文😀' }], onCancel, onSelect })
-      : new CanonicalDocumentController({ ...common, model: () => ({ mode: 'select', title: 'Search', filterable: true, items: [{ id: 'x', label: '中文😀' }] }), onClose: onCancel, onAction: onSelect })
-    panel.focused = true
-    panel.handleInput('\x1b[200~')
-    panel.handleInput('中文😀')
-    panel.handleInput('\x1b[201~')
+  it.each(['pane', 'overlay'] as const)('keeps pasted navigation and cancel keys inside the %s search', async kind => {
+    const { panel, input, model, onEvent, runtime } = await surface(ui.list({ id: 'search', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'x', label: '中文😀' }] }), kind)
+    input('\x1b[200~')
+    input('中文😀')
+    input('\x1b[201~')
+    await flush()
     expect(panel.render(60).join('\n')).toContain('中文😀')
-    expect(JSON.stringify(panel.currentNode())).toContain('"filter":"中文😀"')
-    expect(onCancel).not.toHaveBeenCalled()
-    panel.handleInput(KEY.escape)
-    expect(onCancel).not.toHaveBeenCalled()
+    expect(model.choice({ pagePath: [], controlId: 'search' })!.query).toBe('中文😀')
+    expect(onEvent).not.toHaveBeenCalled()
+    input(KEY.escape)
+    await flush()
+    expect(onEvent).not.toHaveBeenCalled()
+    expect(model.disposed).toBe(false)
+    runtime.dispose()
   })
 
-  it.each([20, 40, 80])('keeps long-label field values visible and delete inside the editor at width %i', width => {
-    const onDelete = vi.fn()
-    const onSubmit = vi.fn()
-    const panel = new CanonicalFormController({ ...display(), title: 'Form', fields: [{ id: 'key', label: '很长的字段标签 '.repeat(8), initial: 'abc' }], onDelete, onSubmit, onCancel: vi.fn() })
-    panel.focused = true
-    panel.handleInput(KEY.enter)
-    panel.handleInput('\x01')
-    panel.handleInput('\x1b[3~')
-    panel.handleInput('\x04')
-    expect(onDelete).not.toHaveBeenCalled()
-    expect(panel.currentNode()).toMatchObject({ child: { fields: [{ id: 'key', value: 'c' }] } })
+  it.each([20, 40, 80])('keeps long-label field values visible and delete inside the editor at width %i', async width => {
+    const { panel, input, model, viewport, runtime, onEvent } = await surface(ui.stack.column([
+      ui.form({ id: 'form', fields: [{ kind: 'input', id: 'key', label: '很长的字段标签 '.repeat(8), value: 'abc' }] }),
+      ui.actions({ id: 'entity-actions', items: [{ id: 'delete', label: 'Delete', confirm: 'Delete?' }] }),
+    ]), 'overlay', width)
+    panel.render(width)
+    input('\r')
+    input('\x01')
+    input('\x1b[3~')
+    input('\x04')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.key!.value).toBe('c')
     const rows = panel.render(width)
     const cursorRows = rows.filter(row => row.includes(CURSOR_MARKER))
     expect(rows.join('').split(CURSOR_MARKER)).toHaveLength(2)
     expect(cursorRows).toHaveLength(1)
     expect(stripTerminalSequences(cursorRows[0]!)).toContain('c')
     expect(rows.every(row => visibleWidth(row) <= width)).toBe(true)
-    const frame = renderLayoutFrame({ render: columns => panel.render(columns), invalidate: () => panel.invalidate() }, width, 1, () => {})
-    expect(frame.lines).toHaveLength(1)
-    expect(stripTerminalSequences(frame.lines[0]!)).toContain('c')
-    expect(frame.lines[0]).toContain(CURSOR_MARKER)
-    panel.handleInput(KEY.escape)
-    panel.handleInput('\x04')
-    expect(onDelete).toHaveBeenCalledOnce()
+    viewport.rows = 1
+    const frame = panel.render(width)
+    expect(frame).toHaveLength(1)
+    expect(stripTerminalSequences(frame[0]!)).toContain('c')
+    expect(frame[0]).toContain(CURSOR_MARKER)
+    input(KEY.escape)
+    input('\x04')
+    await flush()
+    expect(onEvent.mock.calls.every(call => (call as unknown as [{ kind: string }])[0].kind !== 'activate')).toBe(true)
+    runtime.dispose()
   })
 })

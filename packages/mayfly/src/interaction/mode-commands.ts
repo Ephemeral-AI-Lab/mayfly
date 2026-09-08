@@ -8,9 +8,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-plan-mode'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import { displayServices } from './display-services.ts'
-import { getSharedEditor } from './editor-instance.ts'
 import type { PermissionPresetsService } from './permission-panel.ts'
+import type { InteractionFeedbackReporter } from './notifications.ts'
+import { getSharedEditor } from './editor-instance.ts'
 
 /** Independent native state for plan switching and status display. */
 export interface MayflySessionModeSnapshot {
@@ -35,22 +35,22 @@ export function sessionModeSnapshot(ctx: Context, agent: Agent): MayflySessionMo
   return { plan, yolo }
 }
 
-function showResult(ctx: Context, result: { readonly kind: 'success' | 'error', readonly text?: string }): void {
+function showResult(report: InteractionFeedbackReporter, result: { readonly kind: 'success' | 'error', readonly text?: string }): void {
   if (result.text === undefined) return
-  const paint = result.kind === 'error' ? displayServices(ctx)?.colors.error : undefined
-  getSharedEditor(ctx)?.notice?.(paint === undefined ? result.text : paint(result.text))
+  report('mode', { message: result.text, severity: result.kind === 'error' ? 'error' : 'success' })
 }
 
 /** Toggle only the current Agent's plan selection, preserving permissions. */
-export async function cycleMode(ctx: Context): Promise<void> {
+export async function cycleMode(ctx: Context, reporter?: InteractionFeedbackReporter): Promise<void> {
+  const report = reporter ?? getSharedEditor(ctx)?.report ?? (() => {})
   const agent = ctx.mayflyCurrentAgent.current()
   if (agent === null) {
-    getSharedEditor(ctx)?.notice?.('no session is live yet')
+    report('mode', { message: 'no session is live yet', severity: 'error' })
     return
   }
   const plan = ctx.sessionProjections.snapshot(agent.session, ['plan']).values.plan
   if (plan === undefined) {
-    getSharedEditor(ctx)?.notice?.('plan mode is unavailable')
+    report('mode', { message: 'plan mode is unavailable', severity: 'error' })
     return
   }
   // The wire projection's pending flag means the selected value is opposite active.
@@ -58,10 +58,10 @@ export async function cycleMode(ctx: Context): Promise<void> {
   try {
     const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
     if (execution === undefined) {
-      getSharedEditor(ctx)?.notice?.('mode command is unavailable: /plan')
+      report('mode', { message: 'mode command is unavailable: /plan', severity: 'error' })
       return
     }
-    showResult(ctx, execution.result)
+    showResult(report, execution.result)
   } catch (error) {
     ctx.logger.warn(`mode cycle dispatch failed: ${describe(error)}`)
   }

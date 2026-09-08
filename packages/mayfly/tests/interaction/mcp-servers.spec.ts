@@ -324,6 +324,13 @@ describe('collectMcpServers', () => {
     expect(servers[3]).toMatchObject({ transport: 'unknown', endpoint: '(no command)', status: 'no-tools' })
   })
 
+  it('assigns overlapping server namespaces to their most specific declared prefix', async () => {
+    const ctx = collectContext({ entries: [entry({ id: 'short', fiberConfig: { ...STDIO_CONFIG, serverName: 'a' } }), entry({ id: 'long', fiberConfig: { ...STDIO_CONFIG, serverName: 'a__b' } })], global: [tool('mcp__a__one'), tool('mcp__a__b__two')] })
+    const catalog = await collectMcpServers(ctx)
+    expect(catalog.servers.map(server => server.registeredCount)).toEqual([1, 1])
+    expect(catalog.servers.map(server => server.toolsVisible.map(tool => tool.name))).toEqual([['mcp__a__one'], ['mcp__a__b__two']])
+  })
+
   it('uses the exact Agent scope without a preset adapter', async () => {
     const ctx = collectContext({
       entries: [entry({ fiberConfig: STDIO_CONFIG })],
