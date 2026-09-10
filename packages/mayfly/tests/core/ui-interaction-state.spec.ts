@@ -628,6 +628,14 @@ it('settles rejected publication and clears progress without leaving a running o
   expect(model.feedbackSnapshot()).toEqual([])
 })
 
+it('fences a node publication when no node was ever admitted', async () => {
+  const { model } = directSurface(null, async () => ({ reply: { kind: 'completed', node: ui.text('snapshot'), source: [] }, publish: () => true }))
+  model.requestClose()
+  await flush()
+  expect(model.operationSnapshot()).toMatchObject([{ phase: 'succeeded' }])
+  expect(model.feedbackSnapshot()).toEqual([])
+})
+
 it('cancels a pending direct operation and ignores its late report', async () => {
   const gate = Promise.withResolvers<{ reply: MayflyUiActionReply, publish: () => boolean }>()
   let eventContext!: import('@ephemeral-ai/mayfly-ui').MayflyUiEventContext

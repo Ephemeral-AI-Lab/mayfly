@@ -455,6 +455,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       colors: this.options.ctx.mayflyTheme.colors,
       getViewport: () => this.options.ctx.mayflyScreen.editorViewport,
       screenMode: 'main',
+      keymap: this.options.ctx.mayflyKeymap,
       emit: event => { this.dispatchShellEvent(shell, event) },
     })
     if (!result.ok) {
@@ -486,9 +487,10 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       operationId: `${target.entry.id}:${String(revision)}`,
       report: feedback => { if (!controller.signal.aborted) this.reportFeedback('action', feedback) },
     }).then(prepared => {
-      if (shell !== this.shell || controller.signal.aborted) return
+      if (controller.signal.aborted) return
       const reply = prepared.reply
-      if (reply?.kind === 'failed' || reply?.kind === 'conflict') this.report('action', boundedMessage(reply.message, 'editor extension action failed'))
+      if (reply?.feedback !== undefined) this.reportFeedback('action', reply.feedback)
+      else if (reply?.kind === 'failed' || reply?.kind === 'conflict') this.report('action', boundedMessage(reply.message, 'editor extension action failed'))
       prepared.publish()
     }).catch(error => {
       if (!controller.signal.aborted) this.report('action', boundedMessage(error, 'editor extension action failed'))

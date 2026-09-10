@@ -22,6 +22,7 @@ export function admitNotificationMessage(value: unknown): string {
 export class UiNotificationStore {
   private readonly records = new Map<string, MayflyFeedbackRecord>()
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly accruedAt = new Map<string, number>()
   private visible = true
   private visibleSince = Date.now()
   private live = true
@@ -32,7 +33,7 @@ export class UiNotificationStore {
     const now = Date.now()
     return freezeWire([...this.records.values()].map(record => ({
       ...record,
-      visibleMs: record.visibleMs + (this.visible ? Math.max(0, now - Math.max(this.visibleSince, record.createdAt)) : 0),
+      visibleMs: record.visibleMs + (this.visible ? Math.max(0, now - this.accruedFrom(record)) : 0),
     })))
   }
 
@@ -45,7 +46,7 @@ export class UiNotificationStore {
       const now = Date.now()
       const settlesProgress = previous?.purpose === 'progress' && feedback.purpose !== 'progress'
       const visibleMs = previous === undefined || settlesProgress ? 0
-        : previous.visibleMs + (this.visible ? Math.max(0, now - Math.max(this.visibleSince, previous.createdAt)) : 0)
+        : previous.visibleMs + (this.visible ? Math.max(0, now - this.accruedFrom(previous)) : 0)
       const record = freezeWire({
         ...feedback,
         id,
@@ -57,6 +58,7 @@ export class UiNotificationStore {
         ...(feedback.detail === undefined ? {} : { detail: admitNotificationMessage(feedback.detail) }),
       })
       this.records.set(id, record)
+      this.accruedAt.set(id, now)
       this.cancelTimer(id)
       this.schedule(id, record)
     } catch {
@@ -78,6 +80,7 @@ export class UiNotificationStore {
 
   clear(id: string, notify = true): void {
     this.cancelTimer(id)
+    this.accruedAt.delete(id)
     if (this.records.delete(id) && notify) this.changed()
   }
 
@@ -85,6 +88,7 @@ export class UiNotificationStore {
     let changed = false
     for (const [id, record] of this.records) if (record.owner === owner) {
       this.cancelTimer(id)
+      this.accruedAt.delete(id)
       this.records.delete(id)
       changed = true
     }
@@ -104,8 +108,8 @@ export class UiNotificationStore {
     const now = Date.now()
     if (!visible) {
       for (const [id, record] of this.records) {
-        const elapsed = Math.max(0, now - Math.max(this.visibleSince, record.createdAt))
-        this.records.set(id, freezeWire({ ...record, visibleMs: record.visibleMs + elapsed }))
+        this.records.set(id, freezeWire({ ...record, visibleMs: record.visibleMs + Math.max(0, now - this.accruedFrom(record)) }))
+        this.accruedAt.set(id, now)
         this.cancelTimer(id)
       }
       this.visible = false
@@ -129,6 +133,11 @@ export class UiNotificationStore {
     const timer = this.timers.get(id)
     if (timer !== undefined) clearTimeout(timer)
     this.timers.delete(id)
+  }
+
+  /** Time up to which this record's visible interval is already banked. */
+  private accruedFrom(record: MayflyFeedbackRecord): number {
+    return Math.max(this.accruedAt.get(record.id) ?? record.createdAt, this.visibleSince)
   }
 
   private schedule(id: string, record: MayflyFeedbackRecord): void {

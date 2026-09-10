@@ -84,6 +84,16 @@ describe('SearchInput', () => {
     runtime.dispose()
   })
 
+  it('accepts a space as part of an active filter', async () => {
+    const { panel, input, model, runtime } = await surface(ui.list({ id: 'search', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'x', label: 'a b' }] }))
+    input('a')
+    input(' ')
+    await flush()
+    expect(model.choice({ pagePath: [], controlId: 'search' })!.query).toBe('a ')
+    expect(panel.render(60).join('\n')).toContain('a b')
+    runtime.dispose()
+  })
+
   it.each([20, 40, 80])('keeps long-label field values visible and delete inside the editor at width %i', async width => {
     const { panel, input, model, viewport, runtime, onEvent } = await surface(ui.stack.column([
       ui.form({ id: 'form', fields: [{ kind: 'input', id: 'key', label: '很长的字段标签 '.repeat(8), value: 'abc' }] }),

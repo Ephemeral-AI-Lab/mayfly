@@ -66,6 +66,125 @@ async function directSetup(options: {
 }
 
 describe('provider editor', () => {
+  it('discovers endpoint models and saves the selected set while retaining stored metadata', async () => {
+    const discover = vi.fn(async () => [{ id: 'one', name: 'One' }, { id: 'loaded', name: 'Loaded' }])
+    const bench = await directSetup({ llm: { listConfigurableProviders: () => [], discoverModels: discover } })
+    expect(discover).toHaveBeenCalledWith('llm-pi-ai', expect.objectContaining({ provider: 'custom', baseURL: 'https://old.example/v1' }), expect.anything())
+    expect(JSON.stringify(bench.entry?.node)).toContain('loaded')
+    bench.model!.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['one', 'loaded'] })
+    bench.model!.invoke('save')
+    await flush()
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'one', contextWindow: 4000 }, { id: 'loaded' }] } } })
+  })
+
+  it('keeps stored configuration editable when endpoint discovery fails', async () => {
+    const discover = vi.fn(async () => { throw new Error('endpoint unreachable') })
+    const bench = await directSetup({ llm: { listConfigurableProviders: () => [], discoverModels: discover } })
+    expect(bench.opened).toBe(true)
+    expect(JSON.stringify(bench.entry?.node)).toContain('one')
+  })
+
+  it('falls through listing bases when the first endpoint path refuses', async () => {
+    const discover = vi.fn(async (_ns: string, request: { readonly baseURL?: string }) =>
+      request.baseURL === 'https://old.example/v1' ? [] : [{ id: 'fallback' }])
+    const bench = await directSetup({ llm: { listConfigurableProviders: () => [], discoverModels: discover } })
+    expect(discover).toHaveBeenCalledTimes(2)
+    expect(JSON.stringify(bench.entry?.node)).toContain('fallback')
+  })
+
+  it('discovers catalog models for a route without a base URL', async () => {
+    const discover = vi.fn(async () => [{ id: 'catalog' }])
+    const bench = await directSetup({ profiles: { custom: { apiKeyEnv: 'CUSTOM_KEY', models: [{ id: 'one' }] } }, llm: { listConfigurableProviders: () => [], discoverModels: discover } })
+    expect(discover).toHaveBeenCalledWith('llm-pi-ai', { provider: 'custom', api: 'openai-completions' }, expect.anything())
+    expect(JSON.stringify(bench.entry?.node)).toContain('catalog')
+  })
+
+  it('stages a custom model from the form and writes it with the next save', async () => {
+    const bench = await directSetup()
+    const entry = bench.entry!
+    const action = entry.definition.onEvent!.action!
+    const added = await action({ kind: 'submit', submission: {
+      actionId: 'add-custom-model', source: entry.source,
+      forms: [{ pagePath: address('models').pagePath, formId: 'provider', fields: [
+        { id: 'custom-model-id', value: 'custom-x', change: 'set' as const },
+        { id: 'custom-context', value: 8192, change: 'set' as const },
+        { id: 'custom-efforts', value: ['low', 'high'], change: 'set' as const },
+      ] }],
+    } }, requestContext(entry))
+    expect(added).toMatchObject({ kind: 'accepted', feedback: { message: 'Model "custom-x" added' } })
+    expect(JSON.stringify((added as { node?: unknown }).node)).toContain('custom-x')
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'one', contextWindow: 4000 }] } } })
+
+    expect(await action({ kind: 'submit', submission: {
+      actionId: 'save', source: entry.source, forms: [],
+      selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['one', 'custom-x'] }],
+    } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [
+      { id: 'one', contextWindow: 4000 },
+      { id: 'custom-x', contextWindow: 8192, reasoningEfforts: { low: 'low', high: 'high' } },
+    ] } } })
+  })
+
+  it('rejects a custom model with a blank id', async () => {
+    const bench = await directSetup()
+    const entry = bench.entry!
+    expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: {
+      actionId: 'add-custom-model', source: entry.source,
+      forms: [{ pagePath: address('models').pagePath, formId: 'provider', fields: [] }],
+    } }, requestContext(entry))).toMatchObject({ kind: 'invalid', errors: [expect.objectContaining({ fieldId: 'custom-model-id' })] })
+  })
+
+  it('stages a hand-added model with only an id', async () => {
+    const bench = await directSetup()
+    const entry = bench.entry!
+    const action = entry.definition.onEvent!.action!
+    expect(await action({ kind: 'submit', submission: {
+      actionId: 'add-custom-model', source: entry.source,
+      forms: [{ pagePath: address('models').pagePath, formId: 'provider', fields: [{ id: 'custom-model-id', value: 'solo', change: 'set' as const }] }],
+    } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    expect(await action({ kind: 'submit', submission: {
+      actionId: 'save', source: entry.source, forms: [],
+      selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['one', 'solo'] }],
+    } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'one', contextWindow: 4000 }, { id: 'solo' }] } } })
+  })
+
+  it('saves and clears the route default thinking effort', async () => {
+    const bench = await directSetup()
+    const entry = bench.entry!
+    const action = entry.definition.onEvent!.action!
+    const effort = (value: string) => ({ actionId: 'save', source: entry.source, forms: [{ pagePath: address('models').pagePath, formId: 'provider', fields: [{ id: 'reasoning', value, change: 'set' as const }] }] })
+    expect(await action({ kind: 'submit', submission: effort('high') }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { reasoning: 'high' } } })
+    const current = bench.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!
+    expect(await current.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'save', source: current.source, forms: [{ pagePath: address('models').pagePath, formId: 'provider', fields: [{ id: 'reasoning', value: 'default', change: 'set' as const }] }] } }, requestContext(current))).toMatchObject({ kind: 'accepted' })
+    expect((bench.settings.get('llm-pi-ai') as { providers: { custom: Record<string, unknown> } }).providers.custom.reasoning).toBeUndefined()
+  })
+
+  it('writes a discovery selection for a profile with no stored models', async () => {
+    const discover = vi.fn(async () => [{ id: 'solo', contextWindow: 64000, maxTokens: 4096 }])
+    const bench = await directSetup({ profiles: { custom: { apiKeyEnv: 'CUSTOM_KEY' } }, llm: { listConfigurableProviders: () => [], discoverModels: discover } })
+    const entry = bench.entry!
+    expect(JSON.stringify(entry.node)).toContain('solo')
+    expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'save', source: entry.source, forms: [], selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['solo'] }] } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'solo', contextWindow: 64000, maxTokens: 4096 }] } } })
+  })
+
+  it('keeps string stored model ids and folds in discovered and hand-added facts', async () => {
+    const discover = vi.fn(async () => [{ id: 'named', contextWindow: 128000 }])
+    const bench = await directSetup({
+      profiles: { custom: { apiKeyEnv: 'CUSTOM_KEY', models: [{ contextWindow: 4000 }, { id: 'named', maxTokens: 2048 }] } },
+      llm: { listConfigurableProviders: () => [], discoverModels: discover },
+    })
+    const entry = bench.entry!
+    expect(JSON.stringify(entry.node)).toContain('named')
+    expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'save', source: entry.source, forms: [], selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['named', 'extra'] }] } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [
+      { id: 'named', contextWindow: 128000, maxTokens: 2048 },
+      { id: 'extra' },
+    ] } } })
+  })
+
   it('opens without app, skills, theme, or renderer and writes only changed native paths', async () => {
     const { ctx, model, settings, credentials } = await setup()
     expect(ctx.get('mayflyCurrentAgent')).toBeUndefined()

@@ -163,6 +163,15 @@ describe('flat choice reducer', () => {
     expect(choiceVisibleCount(flattened)).toBe(flat.items.length)
   })
 
+  it('retains a newer choice edit across an acknowledgement but resets one matching the submission', () => {
+    const submitted = ['one']
+    const replacement = { ...flat, selectedIds: ['one'] }
+    expect(acknowledgeChoice(reduceChoice(createChoiceState(flat), { kind: 'select', ids: ['two'] }), replacement, submitted)).toMatchObject({ selectedIds: ['two'], dirty: true })
+    expect(acknowledgeChoice(reduceChoice(createChoiceState(flat), { kind: 'select', ids: [] }), replacement, submitted)).toMatchObject({ selectedIds: [], dirty: true })
+    expect(acknowledgeChoice(reduceChoice(createChoiceState(flat), { kind: 'select', ids: ['one'] }), replacement, submitted)).toMatchObject({ selectedIds: ['one'], dirty: false })
+    expect(acknowledgeChoice({ ...createChoiceState(flat), selectedIds: ['two'], dirty: true }, replacement, ['two'])).toMatchObject({ selectedIds: ['one'], dirty: false })
+  })
+
   it('derives minimum, maximum, missing, disabled, and valid selection errors', () => {
     expect(choiceError({ ...createChoiceState(flat), selectedIds: [] })).toContain('at least')
     expect(choiceError({ ...createChoiceState(flat), selectedIds: ['one', 'two', 'disabled'] })).toContain('at most')

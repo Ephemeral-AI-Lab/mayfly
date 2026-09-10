@@ -23,6 +23,20 @@ describe('notification records', () => {
     store.report('invalid-detail', { owner: 'owner', scope: app }, { severity: 'info', message: 'valid', detail: 42 as never })
     expect(store.get('invalid-detail')).toMatchObject({ severity: 'error' })
     expect(changed).toHaveBeenCalledTimes(2)
+    expect(store.snapshot()).toHaveLength(2)
+    store.setVisible(false)
+  })
+
+  it('accrues each visible interval once across reports, snapshots, and hiding', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const store = new UiNotificationStore(vi.fn())
+    store.report('work', { owner: 'owner', scope: app }, { severity: 'warning', message: 'One' })
+    await vi.advanceTimersByTimeAsync(1_000)
+    store.report('work', { owner: 'owner', scope: app }, { severity: 'warning', message: 'Two' })
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(store.snapshot()[0]!.visibleMs).toBe(2_000)
+    store.setVisible(false)
+    expect(store.snapshot()[0]!.visibleMs).toBe(2_000)
   })
 
   it('restarts settled progress and pauses accumulated visibility while hidden', async () => {

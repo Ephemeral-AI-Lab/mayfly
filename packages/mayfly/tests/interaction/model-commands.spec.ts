@@ -368,6 +368,22 @@ describe('model-family commands', () => {
     expect(notices).toEqual([])
   })
 
+  it('reports an Agent lost immediately before the default write', async () => {
+    const { ctx, agent, saveSelection } = await mount()
+    await ctx.commands.execute(agent, '/model', [], signal())
+    const options = await selectModel(ctx, 'mock', 'mock-pro')
+    let replaced = false
+    const defaults = ctx.get('agentDefaultModel') as { currentSelection(): unknown }
+    vi.spyOn(defaults, 'currentSelection').mockImplementation(() => {
+      replaced = true
+      return { provider: 'mock', model: 'mock' }
+    })
+    vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockImplementation(() => replaced ? null : agent)
+    options.invoke('default')
+    await vi.waitFor(() => expect(options.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining('agent changed before saving model default') })])))
+    expect(saveSelection).not.toHaveBeenCalled()
+  })
+
   it('/model picker commits through the explicit session-only action and skips the default write', async () => {
     const { ctx, agent, writes, saveSelection } = await mount()
     await ctx.commands.execute(agent, '/model', [], signal())

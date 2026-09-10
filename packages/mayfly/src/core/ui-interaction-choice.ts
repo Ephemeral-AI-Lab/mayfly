@@ -39,13 +39,22 @@ export type UiChoiceIntent =
   | { readonly kind: 'clear-search' }
   | { readonly kind: 'expand', readonly id: string }
 
+const ownedIndexes = new WeakSet<readonly unknown[]>()
+
+function immutable<T>(values: readonly T[]): readonly T[] {
+  if (ownedIndexes.has(values)) return values
+  const frozen = Object.freeze([...values])
+  ownedIndexes.add(frozen)
+  return frozen
+}
+
 function freezeChoice(state: UiChoiceState): UiChoiceState {
   return Object.freeze({
     ...state,
-    selectedIds: Object.freeze([...state.selectedIds]),
-    expandedIds: Object.freeze([...state.expandedIds]),
-    matches: state.matches === undefined ? undefined : Object.freeze([...state.matches]),
-    ...(state.visibleTreeIndices === undefined ? {} : { visibleTreeIndices: Object.freeze([...state.visibleTreeIndices]) }),
+    selectedIds: immutable(state.selectedIds),
+    expandedIds: immutable(state.expandedIds),
+    matches: state.matches === undefined ? undefined : immutable(state.matches),
+    ...(state.visibleTreeIndices === undefined ? {} : { visibleTreeIndices: immutable(state.visibleTreeIndices) }),
   })
 }
 
@@ -197,8 +206,10 @@ export function decorateChoiceItem(state: UiChoiceState, index: number): MayflyL
   return { ...item, label: `${'  '.repeat(Math.max(0, depth))}${marker}${item.label}` }
 }
 
-export function acknowledgeChoice(state: UiChoiceState, definition: MayflyListNode): UiChoiceState {
-  return freezeChoice(reconcileChoice({ ...state, dirty: false, selectedIds: definition.selectedIds }, definition))
+export function acknowledgeChoice(state: UiChoiceState, definition: MayflyListNode, submittedIds?: readonly string[]): UiChoiceState {
+  const changedAfterSubmit = submittedIds !== undefined && state.dirty
+    && (state.selectedIds.length !== submittedIds.length || state.selectedIds.some((id, index) => id !== submittedIds[index]))
+  return freezeChoice(reconcileChoice({ ...state, dirty: changedAfterSubmit, selectedIds: changedAfterSubmit ? state.selectedIds : definition.selectedIds }, definition))
 }
 
 export function reconcileChoice(state: UiChoiceState, definition: MayflyListNode): UiChoiceState {

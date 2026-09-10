@@ -333,21 +333,26 @@ export function registerPluginCommand(ctx: Context): () => void {
         ]) })
       }
       const items = marketItems()
+      const installStates = states()
       const groupIds = ['installed', 'not-installed'] as const
       const groups = groupIds.map(group => {
         const groupItems = items.filter(entry => (hasInstalledRows(entry) ? 'installed' : 'not-installed') === group)
+        const canRepair = groupItems.some(entry => {
+          const state = installStates[entry.id]
+          return state?.updateAvailable === true || state?.installed !== true
+        })
         return ui.child(ui.stack.column([
           ui.list({
             id: `plugins-${group}`,
             role: 'browse',
             filterable: true,
             selectedIds: [],
-            items: groupItems.map(entry => ({ id: entry.id, label: entry.displayName, detail: entry.status === 'removed' ? (entry.statusNote ?? t('removed from the market')) : describe(entry), badge: badgeOf(entry, states()[entry.id]), searchText: `${entry.displayName} ${describe(entry)}` })),
+            items: groupItems.map(entry => ({ id: entry.id, label: entry.displayName, detail: entry.status === 'removed' ? (entry.statusNote ?? t('removed from the market')) : describe(entry), badge: badgeOf(entry, installStates[entry.id]), searchText: `${entry.displayName} ${describe(entry)}` })),
             empty: ui.empty({ title: t(group === 'installed' ? 'no plugins installed' : 'no plugins available') }),
           }),
           ui.actions({ id: `plugin-market-${group}-actions`, items: [
             { id: 'details', label: t('Details'), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
-            { id: 'install', label: t('Install'), ...(group === 'installed' ? { disabled: true, disabledReason: t('Already installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
+            { id: 'install', label: t(group === 'installed' ? 'Update / repair' : 'Install'), ...(group === 'installed' && !canRepair ? { disabled: true, disabledReason: t('Already installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
             { id: 'remove', label: t('Remove'), ...(group === 'not-installed' ? { disabled: true, disabledReason: t('Not installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
           ] }),
         ]), { tab: { controlId: 'plugin-market-tabs', itemId: group } })
@@ -373,6 +378,11 @@ export function registerPluginCommand(ctx: Context): () => void {
       if (installBlock !== undefined) {
         reporter({ text: t(installBlock), tone: 'danger' })
         return false
+      }
+      const installState = states()[entry.id]
+      if (action === 'install' && installState?.installed === true && installState.updateAvailable !== true) {
+        reporter({ text: t('"{name}" is already installed and up to date', { name: entry.displayName }), tone: 'success' })
+        return true
       }
       if (action === 'install' && usefulInTui(entry) === false) {
         reporter({ text: t('web-only plugin: it contributes nothing in this terminal frontend'), tone: 'warning' })

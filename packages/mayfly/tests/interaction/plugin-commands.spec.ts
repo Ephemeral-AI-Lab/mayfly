@@ -952,6 +952,21 @@ describe('/plugin surface actions', () => {
     world.dispose()
   })
 
+  it('reports an already up-to-date installed entry instead of reinstalling it', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      profileDependencies: { 'dsh-loop': '0.1.4' },
+      installedVersions: { 'dsh-loop': '0.1.4' },
+    })
+    await world.run('/plugin')
+    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
+    const context = { surfaceId: root.id, operationId: 'up-to-date', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
+    const operation = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'install', inputs: { forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
+    expect(await root.definition.onEvent!.action!(operation, context)).toMatchObject({ kind: 'accepted', feedback: { message: '"Loop" is already installed and up to date' } })
+    expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
+    world.dispose()
+  })
+
   it('defends forged unavailable operations and repeated detail actions', async () => {
     const mixed = entry({
       id: 'mixed', displayName: 'Mixed',

@@ -9,6 +9,7 @@ import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } 
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
+import { createInteractionNotificationOwner } from './notifications.ts'
 
 export const name = 'mayfly-preset-command'
 export const inject = ['commands', 'agentPresets', 'mayflyCurrentAgent', 'mayflyOverlays']
@@ -30,6 +31,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => lifetime.abort())
   const roster = ctx.agentPresets
   const t = interactionTranslator(ctx)
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.preset', 'preset')
   const current = (agent: Agent) => !lifetime.signal.aborted && ctx.mayflyCurrentAgent.current() === agent
   const select = async (agent: Agent, id: string, signal: AbortSignal) => {
     if (signal.aborted || !current(agent)) throw new Error(t('The active Agent changed before the preset switch'))
@@ -66,9 +68,14 @@ export function apply(ctx: Context): void {
             const selected = event.selectedIds[0]
             if (selected === undefined || !catalog.some(preset => preset.id === selected && preset.broken === undefined)) return { kind: 'failed', message: t('The preset is no longer available') }
             try {
-              await select(agent, selected, context.signal)
-              return context.signal.aborted || !current(agent) ? { kind: 'cancelled' } : { kind: 'accepted', node: view(), source: [], dismiss: true }
-            } catch (error) { return { kind: 'failed', message: message(error) } }
+              const switched = await select(agent, selected, context.signal)
+              if (context.signal.aborted || !current(agent)) return { kind: 'cancelled' }
+              notifications.report('select', { severity: 'success', message: t('Preset switched to {preset}', { preset: switched }) })
+              return { kind: 'accepted', node: view(), source: [], dismiss: true }
+            } catch (error) {
+              notifications.report('select', { severity: 'error', message: message(error) })
+              return { kind: 'failed', message: message(error) }
+            }
           }
           if (event.kind === 'activate' && event.actionId === 'refresh') {
             const next = await roster.list()

@@ -134,6 +134,7 @@ async function commitModelSelection(
   const previous = readSelection(ctx)
   if ('error' in previous) return { text: previous.error, state: 'failed' }
   const selected = sameSelection(previous.read, next) ? { selected: previous.read } : await controller.selectModel({ sessionId: agent.id, ...next })
+  if (signal?.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { text: 'agent changed before model selection completed', state: 'failed' }
   const result = (state: ModelSaveState, failure?: string): ModelCommitResult => ({ state, selected: selected.selected, text: modelSwitchNotice(previous.read, selected.selected, state, failure) })
   if (!persist || signal?.aborted) return result('session-only')
   const defaults = ctx.get('agentDefaultModel')
@@ -149,6 +150,7 @@ async function commitModelSelection(
     return result('skipped')
   }
   try {
+    if (ctx.get('mayflyCurrentAgent')?.current() !== agent) return result('failed', 'agent changed before saving model default')
     await defaults.saveSelection(persisted)
     return result('saved')
   } catch (error) {

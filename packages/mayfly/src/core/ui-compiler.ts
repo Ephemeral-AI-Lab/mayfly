@@ -81,6 +81,12 @@ const LAYOUT_VALUE_MAX = 1_000_000
 const INACTIVE_FIELD_CACHE_LIMIT = 64
 const PASSIVE_EVENT_SINK = Function.prototype as (event: MayflyUiEvent) => void
 
+/** Semantic actions a focused filterable list routes; their bound keys must not start a text filter. */
+const LIST_FILTER_RESERVED_ACTIONS = [
+  ACTION_SUBMIT, ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_MOVE_UP, ACTION_MOVE_DOWN,
+  ACTION_PAGE_UP, ACTION_PAGE_DOWN, ACTION_HOME, ACTION_END, ACTION_TOGGLE, ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB,
+] as const
+
 /** Pane-relative dimensions used by responsive child conditions. */
 export interface MayflyUiViewport {
   readonly columns: number
@@ -385,7 +391,6 @@ function staticComponent(render: (width: number) => string[], options: RuntimeCo
 
 class SemanticScrollView extends ScrollView {
   private width = 1
-  private restore = true
 
   constructor(
     component: Component,
@@ -401,8 +406,6 @@ class SemanticScrollView extends ScrollView {
 
   override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
     super.updateLayout(contentHeight, viewportHeight, requestRender)
-    if (!this.restore) return
-    this.restore = false
     const state = this.model.document(this.address)
     if (state?.anchor?.follow === 'end') super.scrollToEnd()
     else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width), { disableFollow: true })
@@ -2002,7 +2005,12 @@ class CompiledSurface implements MayflyEditorShellComponent {
         if (matchesKeyAction(this.options.keymap, data, ACTION_CANCEL) && choice.searching) { this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'stop-search' }); return }
         if (matchesKeyAction(this.options.keymap, data, ACTION_CLEAR_SEARCH)) { search.clear(); this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'clear-search' }); return }
         if (data === '/' && !choice.searching) { this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'query', query: choice.query }); return }
-        if ((data !== ' ' || choice.searching) && search.handleInput(data, data === '\x7f' || data === '\b')) {
+        /* While searching, printable input filters except for the explicit submit key.
+           Outside search, any bound list action wins over type-to-filter. */
+        const reservedAction = choice.searching
+          ? matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)
+          : LIST_FILTER_RESERVED_ACTIONS.some(actionId => matchesKeyAction(this.options.keymap, data, actionId))
+        if (!reservedAction && (data !== ' ' || choice.searching) && search.handleInput(data, data === '\x7f' || data === '\b')) {
           this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'query', query: search.text })
           return
         }

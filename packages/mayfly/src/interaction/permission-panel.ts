@@ -119,7 +119,12 @@ export function openPermissionPanel(ctx: Context): void {
     const id = 'mayfly.permission.confirm'
     if (overlays.focus(id)) return
     const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Full access'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
-      if (event.kind === 'activate' && event.actionId === 'yes') { handle.close(); picker.close(); dispatch(name) }
+      if (event.kind === 'activate' && event.actionId === 'yes') {
+        handle.close(); picker.close()
+        if (currentAgents.current() !== agent) {
+          notifications.report('dispatch', { message: 'permission target changed; action cancelled', severity: 'warning' })
+        } else dispatch(name)
+      }
       else if (event.kind === 'activate' && event.actionId === 'no') handle.close()
       return { kind: 'completed' as const }
     } } }, ui.surface({ chrome: 'overlay', title: t('Full access'), child: ui.stack.column([

@@ -1073,6 +1073,17 @@ describe('editor extension shell and actions', () => {
     runtime.dispose()
   })
 
+  it('forwards final reply feedback for a completed action', async () => {
+    const { runtime, notices } = runtimeFixture([{
+      id: 'acme.action-success',
+      actions: [{ id: 'run', label: 'Run' }],
+      onEvent: { action: () => ({ kind: 'completed', feedback: { severity: 'success', message: 'Applied' } }) },
+    }])
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    await vi.waitFor(() => expect(notices).toContain('Applied'))
+    runtime.dispose()
+  })
+
   it('drops late action reports and rejections after invalidation', async () => {
     const gate = Promise.withResolvers<never>()
     let report!: (feedback: { severity: 'error', message: string }) => void

@@ -17,6 +17,8 @@ export interface ProviderProfile {
   readonly api?: string
   readonly baseURL?: string
   readonly apiKeyEnv?: string
+  readonly models?: readonly { readonly id?: unknown, readonly [key: string]: unknown }[]
+  readonly reasoning?: string
 }
 
 export function providerProfile(value: unknown, route: string): ProviderProfile | undefined {

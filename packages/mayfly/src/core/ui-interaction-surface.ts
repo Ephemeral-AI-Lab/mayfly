@@ -286,7 +286,8 @@ export class UiSurfaceModel {
         const previous = this.choices.get(key)
         const task = update.reason === 'ack' ? this.tasks.get(update.operationId) : undefined
         const accepted = update.reason === 'ack' && update.acceptedFields === undefined && (task?.submission?.selections?.some(selection => uiControlKey(selection) === key) === true || (task?.event.kind === 'selection-accept' && uiControlKey(task.event) === key))
-        const next = previous === undefined ? createChoiceState(current) : accepted ? acknowledgeChoice(previous, current) : reconcileChoice(previous, current)
+        const submittedSelection = accepted ? task?.submission?.selections?.find(selection => uiControlKey(selection) === key)?.selectedIds : undefined
+        const next = previous === undefined ? createChoiceState(current) : accepted ? acknowledgeChoice(previous, current, submittedSelection) : reconcileChoice(previous, current)
         this.choices.set(key, next)
         changed ||= next !== previous
       } else if (current.kind === 'tabs') {
@@ -339,7 +340,7 @@ export class UiSurfaceModel {
     if (next !== state) {
       this.forms.set(formAddressKey(address), next)
       this.changed()
-      if (intent.kind === 'edit' || intent.kind === 'reset' || intent.kind === 'resolve-conflict') {
+      if (intent.kind === 'edit' || intent.kind === 'reset' || intent.kind === 'resolve-conflict' || (intent.kind === 'finish-picker' && !intent.cancel)) {
         const field = next.fields[intent.fieldId]!
         this.observe({ kind: 'value-change', pagePath: address.pagePath, formId: address.formId, controlId: intent.fieldId, value: field.value, draftRevision: field.revision })
       }
@@ -576,9 +577,6 @@ export class UiSurfaceModel {
         if (!admitted.ok) throw new Error(admitted.message)
         if (task.submission !== undefined && (reply.kind === 'accepted' || (reply.kind === 'failed' && reply.acceptedFields !== undefined))) prepareUiForms(admitted.value, task.submission.forms)
         publication = { source: reply.node, admitted: admitted.value }
-      }
-      if (reply.kind === 'accepted' && reply.node === null && task.submission !== undefined) throw new Error('submitted form acknowledgement has no snapshot')
-      if (reply.kind === 'accepted' || (reply.kind === 'failed' && reply.acceptedFields !== undefined)) {
         if (this.admittedNode !== null && task.submission !== undefined) {
           prepareUiForms(this.admittedNode, task.submission.forms)
           this.admitVisibleControls()
@@ -587,14 +585,15 @@ export class UiSurfaceModel {
         const currentData = baselineData(this.admittedNode)
         const dataChanged = currentData !== baselineData(task.sourceNode) || !sameUiSource(this.source, task.source)
         const confirmsCurrent = this.source.length > 0
-          ? sameUiSource(this.source, reply.source!)
-          : (reply.source?.length ?? 0) === 0 && currentData === baselineData(publication?.admitted ?? null)
+          ? reply.source !== undefined && sameUiSource(this.source, reply.source)
+          : (reply.source?.length ?? 0) === 0 && currentData === baselineData(publication.admitted)
         if (dataChanged && !confirmsCurrent) {
           this.setPhase(task, reply.kind === 'accepted' ? 'succeeded' : 'failed')
           this.report(task.id, { message: reply.kind === 'accepted' ? 'The action completed, but newer data must be reviewed' : reply.message, severity: reply.kind === 'accepted' ? 'warning' : 'error' })
           return
         }
       }
+      if (reply.kind === 'accepted' && reply.node === null && task.submission !== undefined) throw new Error('submitted form acknowledgement has no snapshot')
       if (reply.kind === 'invalid') this.applyErrors(task, reply)
       if (reply.kind === 'failed' && reply.acceptedFields !== undefined) {
         if (reply.acceptedFields.some(field => !task.formKeys.has(formAddressKey(field)) || !Object.hasOwn(this.form(field)!.fields, field.fieldId))) throw new TypeError('partial acknowledgement addresses an unknown submitted field')

@@ -212,6 +212,22 @@ describe('openPermissionPanel', () => {
     expect(mounted.overlays).toEqual([])
   })
 
+  it('cancels a full-access dispatch after the selected Agent is replaced', async () => {
+    const mounted = await mount()
+    openPermissionPanel(mounted.ctx)
+    top(mounted).component.handleInput(KEY.down)
+    top(mounted).component.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(mounted.overlays).toHaveLength(2))
+    const replacement = { id: mounted.agent.id, session: mounted.agent.session, status: 'idle' } as unknown as Agent
+    ;(mounted.ctx.get('testSession') as { current: Agent | null }).current = replacement
+    const gate = top(mounted)
+    gate.component.handleInput(KEY.left)
+    gate.component.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(mounted.overlays).toEqual([]))
+    expect(mounted.runs).toEqual([])
+    await vi.waitFor(() => expect(mounted.notices).toContain('permission target changed; action cancelled'))
+  })
+
   it('describes a custom full-access preset that still asks for approval', async () => {
     const presets = fakePresets()
     const mounted = await mount({ presets: {

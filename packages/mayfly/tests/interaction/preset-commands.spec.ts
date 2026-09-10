@@ -88,6 +88,7 @@ describe('native preset selection UI', () => {
     await flushRequests()
     expect(model.disposed).toBe(true)
     expect(bench.session.snapshotEvents().filter(event => event.type === 'agent-preset/selected')).toMatchObject([{ data: { agentPreset: 'minimal' } }])
+    expect(bench.ctx.mayflyUiInteraction.notificationSnapshot().at(-1)).toMatchObject({ severity: 'success', message: 'Preset switched to minimal' })
   })
 
   it('uses native guards for a session that has started and keeps inspectable choices', async () => {
