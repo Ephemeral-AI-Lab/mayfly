@@ -38,7 +38,7 @@ describe('registerTraceCommand', () => {
     expect(JSON.stringify(empty)).toContain('no trace events yet')
     const item: TraceItem = {
       seq: 3, lastSeq: 5, eventSeqs: [3, 4, 5], time: Number.NaN,
-      type: 'assistant/chunk', surface: 'shadowed', title: 'Thinking', summary: 'first\nsecond',
+      type: 'assistant/attempt', surface: 'shadowed', title: 'Thinking', summary: 'first\nsecond',
     }
     const aggregated = JSON.stringify(tracePanelModel('session', [item]))
     expect(aggregated).toContain('??:??:?? #3-5 Thinking')

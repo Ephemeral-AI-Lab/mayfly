@@ -88,7 +88,7 @@ async function screen() {
 
 const clean = () => cleanOutput(out)
 try {
-  if (!(await waitFor(() => clean().includes('deepseek-v4-flash'), 'statusline'))) throw new Error('boot')
+  if (!(await waitFor(() => clean().includes('deepseek-flash'), 'statusline'))) throw new Error('boot')
   if (!out.includes('\x1b[?1002h') || !out.includes('\x1b[?1006h')) throw new Error('mouse reporting was not enabled')
 
   term.write('ping\r')

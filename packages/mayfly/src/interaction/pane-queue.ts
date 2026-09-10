@@ -25,7 +25,7 @@ function messageText(message: UserMessage): string {
 export function apply(ctx: Context): void {
   const render = (): MayflyUiNode | null => {
     const agent = ctx.mayflyCurrentAgent.current()
-    if (agent === null || !agent.inbox.hasPending) return null
+    if (agent === null || (agent.inbox.nextTurn.length === 0 && agent.inbox.nextStep.length === 0)) return null
     const rows = [
       ...agent.inbox.nextTurn.filter(message => message.source.kind === 'user').map(message => `Queued: ${messageText(message)}`),
       ...agent.inbox.nextStep.filter(message => message.source.kind === 'user').map(message => `Steer: ${messageText(message)}`),

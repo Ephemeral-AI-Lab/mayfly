@@ -456,11 +456,11 @@ describe('/update early verdicts', () => {
         versions: [CURRENT_VERSION, TARGET_VERSION],
         time: { [TARGET_VERSION]: '2026-08-23T00:00:00.000Z' },
       }]),
-      dependencies: JSON.stringify([{ '@deepseek-ai/dsh-agent-presets': '0.1.2-alpha.5' }]),
+      dependencies: JSON.stringify([{ '@deepseek-ai/dsh-agent-presets': '0.1.5-rc.1' }]),
       hostVersion: 'dsh 0.1.2-alpha.4',
     })
     expect(await world.run(command)).toEqual({ kind: 'success' })
-    expect(overlayRows(world.ctx)).toContain('npm i -g @deepseek-ai/dsh@0.1.2-alpha.5')
+    expect(overlayRows(world.ctx)).toContain('npm i -g @deepseek-ai/dsh@0.1.5-rc.1')
     expect(world.spawns.filter(call => call.cmd === 'npm').map(call => call.args)).toEqual([
       ['view', '@ephemeral-ai/mayfly', '--json'],
       ['view', `@ephemeral-ai/mayfly@${TARGET_VERSION}`, 'dependencies', '--json'],

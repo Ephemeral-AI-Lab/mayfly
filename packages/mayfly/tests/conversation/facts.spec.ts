@@ -25,6 +25,15 @@ function event(type: SessionEvent['type'], data: unknown, time = 1_700_000_000_0
   return result
 }
 
+/** One `assistant/attempt` whose compact stream holds a single packed run. */
+function attempt(turn: number, step: number, kind: 'reasoning' | 'text', text: string): SessionEvent {
+  return event('assistant/attempt', {
+    turn,
+    step,
+    stream: [{ type: kind === 'reasoning' ? 'reasoning-chunks' : 'text-chunks', time0: 1_700_000_000_000, index: 0, dt: [], texts: [text] }],
+  })
+}
+
 function toolResult(callId: string, content: unknown[], isError = false): unknown {
   return {
     turn: 1,
@@ -61,16 +70,16 @@ describe('mayflyConversationFacts projection', () => {
     state = foldConversationFacts(state, event('turn/start', { turn: 1 }))
     expect(state).toMatchObject({ phase: 'waiting', active: true, turn: 1, flowDownChars: 0 })
     state = foldConversationFacts(state, event('step/start', { turn: 1, step: 0 }))
-    state = foldConversationFacts(state, event('assistant/chunk', { turn: 1, step: 0, chunk: { type: 'reasoning-delta', text: '  ' } }))
+    state = foldConversationFacts(state, attempt(1, 0, 'reasoning', '  '))
     expect(state).toMatchObject({ phase: 'waiting', active: true })
-    state = foldConversationFacts(state, event('assistant/chunk', { turn: 1, step: 0, chunk: { type: 'reasoning-delta', text: 'think' } }))
-    state = foldConversationFacts(state, event('assistant/chunk', { turn: 1, step: 0, chunk: { type: 'text-delta', text: 'answer' } }))
-    expect(foldConversationFacts(state, event('assistant/chunk', { turn: 1, step: 0, chunk: { type: 'audio-delta', text: '' } }))).toBe(state)
+    state = foldConversationFacts(state, attempt(1, 0, 'reasoning', 'think'))
+    state = foldConversationFacts(state, attempt(1, 0, 'text', 'answer'))
+    expect(foldConversationFacts(state, event('assistant/attempt', { turn: 1, step: 0, stream: [{ type: 'chunk', time: 1, chunk: { type: 'finish', index: 0 } }] }))).toMatchObject({ phase: 'waiting' })
     expect(state).toMatchObject({ phase: 'composing', flowDownChars: 11 })
-    expect(foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, usage: undefined }))).toMatchObject({ phase: 'waiting', outputProgress: undefined })
-    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
+    expect(foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: undefined }))).toMatchObject({ phase: 'waiting', outputProgress: undefined })
+    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
     expect(state.contextTokens).toBe(15)
-    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, usage: { inputTokens: 4 } }))
+    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 4 } }))
     expect(state.contextTokens).toBe(4)
     state = foldConversationFacts(state, event('request/context', { contextWindow: 32 }))
     expect(foldConversationFacts(state, event('request/context', { contextWindow: 32 }))).toBe(state)
@@ -106,6 +115,23 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ phase: 'idle', active: false, turn: 2, runOutcome: 'failed' })
   })
 
+  it('folds foreign or malformed embedded streams as empty', () => {
+    let state = initialConversationFacts()
+    // A hand-built event may carry no stream at all; the step still advances.
+    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0 } as never))
+    expect(state).toMatchObject({ phase: 'waiting', flowDownChars: 0 })
+    // A malformed packed record must not break the projection.
+    state = foldConversationFacts(state, event('assistant/attempt', {
+      turn: 1, step: 0, stream: [{ type: 'text-chunks', time0: 1, index: 0, dt: [0, 0], texts: ['bad'] }],
+    }))
+    expect(state).toMatchObject({ flowDownChars: 0 })
+    // A boundary-only stream while already waiting keeps the phase.
+    state = foldConversationFacts(state, event('assistant/attempt', {
+      turn: 1, step: 1, stream: [{ type: 'chunk', time: 2, chunk: { type: 'finish', index: 0 } }],
+    }))
+    expect(state.phase).toBe('waiting')
+  })
+
   it('guards malformed tool results and validates the wire value', () => {
     const state = initialConversationFacts()
     const legacy = { ...state }
@@ -138,7 +164,7 @@ describe('mayflyConversationFacts projection', () => {
     const off = ctx.sessionProjections.onChanged((target, key, _value, nextSeq) => {
       if (target === session && key === 'mayflyConversationFacts') changed.push(nextSeq)
     })
-    session.append('assistant/chunk', { turn: 2, step: 0, chunk: { type: 'text-delta', index: 0, text: 'live' } })
+    session.append('assistant/attempt', { turn: 2, step: 0, stream: [{ type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['live'] }] })
     expect(changed).toEqual([2])
     off()
     await fiber.dispose()

@@ -9,6 +9,7 @@
 
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { expandAssistantStream, type AssistantStreamRecord, type TimedStreamChunk } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tool-todo'
 import { z } from 'zod'
 import { appendOutputProgress, outputProgressSchema } from './output-progress.ts'
@@ -67,6 +68,62 @@ function contextTokens(usage: { inputTokens: number, cacheReadTokens?: number, c
 }
 
 /**
+ * Fold one expanded durable stream (the compact records an attempt or message
+ * event embeds) into the facts state. Harness `0.1.5` moved streaming deltas
+ * out of the session event log; the durable events now carry the same chunks
+ * as timed records, so the phase machine runs over the expansion.
+ */
+function foldStreamChunks(
+  state: ConversationFactsState,
+  turn: number,
+  step: number,
+  stream: readonly AssistantStreamRecord[],
+): ConversationFactsState {
+  let next = state
+  for (const { time, chunk } of expandTimed(stream)) {
+    if (chunk.type === 'finish'
+      || (chunk.type === 'block-end' && ((chunk.block.type === 'reasoning' && next.phase === 'thinking')
+        || (chunk.block.type === 'text' && next.phase === 'composing')))
+      || chunk.type === 'tool-call-delta'
+      || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')) {
+      if (next.phase === 'waiting') continue
+      next = { ...next, phase: 'waiting', outputProgress: undefined }
+      continue
+    }
+    if (chunk.type === 'reasoning-delta') {
+      if (chunk.text.trim() === '' && next.phase !== 'thinking') continue
+      if (chunk.text === '') continue
+      next = {
+        ...next, phase: 'thinking', active: true, turn, currentStep: step,
+        flowDownChars: next.flowDownChars + chunk.text.length, activity: { kind: 'reasoning' },
+        outputProgress: appendOutputProgress(next.phase === 'thinking' ? next.outputProgress : undefined, chunk.text.length, time),
+      }
+      continue
+    }
+    if (chunk.type === 'text-delta') {
+      if (chunk.text === '') continue
+      next = {
+        ...next, phase: 'composing', active: true, turn, currentStep: step,
+        flowDownChars: next.flowDownChars + chunk.text.length, activity: { kind: 'text' },
+        outputProgress: appendOutputProgress(next.phase === 'composing' ? next.outputProgress : undefined, chunk.text.length, time),
+      }
+    }
+  }
+  return next
+}
+
+/** Records of one durable stream event, expanded to timed chunks. Foreign or
+ * malformed streams fold as empty rather than breaking the projection. */
+function expandTimed(stream: readonly AssistantStreamRecord[] | undefined): readonly TimedStreamChunk[] {
+  if (!Array.isArray(stream)) return []
+  try {
+    return expandAssistantStream(stream)
+  } catch {
+    return []
+  }
+}
+
+/**
  * Fold one committed session event into the renderer-neutral facts state.
  * Unrelated events return the same state reference to avoid change-feed work.
  */
@@ -91,54 +148,31 @@ export function foldConversationFacts(
     }
     case 'step/start':
       return { ...state, phase: 'waiting', active: true, turn: event.data.turn, currentStep: event.data.step, flowUp: undefined, flowDownChars: 0, outputProgress: undefined }
-    case 'assistant/chunk': {
-      const { turn, step } = event.data
+    case 'assistant/attempt': {
+      const { turn, step, stream } = event.data
       if (turn < state.turn || (turn === state.turn && (state.runOutcome !== undefined
         || (state.currentStep !== undefined && step < state.currentStep)
         || (state.lastCompletedStep !== undefined && step <= state.lastCompletedStep)))) return state
-      const { chunk } = event.data
-      if (chunk.type === 'finish'
-        || (chunk.type === 'block-end' && ((chunk.block.type === 'reasoning' && state.phase === 'thinking')
-          || (chunk.block.type === 'text' && state.phase === 'composing')))
-        || chunk.type === 'tool-call-delta'
-        || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')) {
-        return { ...state, phase: 'waiting', outputProgress: undefined }
-      }
-      if (chunk.type === 'reasoning-delta') {
-        if (chunk.text.trim() === '' && state.phase !== 'thinking') return state
-        if (chunk.text === '') return state
-        return {
-          ...state, phase: 'thinking', active: true, turn: event.data.turn, currentStep: step,
-          flowDownChars: state.flowDownChars + chunk.text.length, activity: { kind: 'reasoning' },
-          outputProgress: appendOutputProgress(state.phase === 'thinking' ? state.outputProgress : undefined, chunk.text.length, event.time),
-        }
-      }
-      if (chunk.type === 'text-delta') {
-        if (chunk.text === '') return state
-        return {
-          ...state, phase: 'composing', active: true, turn: event.data.turn, currentStep: step,
-          flowDownChars: state.flowDownChars + chunk.text.length, activity: { kind: 'text' },
-          outputProgress: appendOutputProgress(state.phase === 'composing' ? state.outputProgress : undefined, chunk.text.length, event.time),
-        }
-      }
-      return state
+      return foldStreamChunks(state, turn, step, stream)
     }
-    case 'assistant/message':
+    case 'assistant/message': {
       if (event.data.turn < state.turn) return state
+      let folded: ConversationFactsState = state
       if (state.currentStep === undefined || event.data.step >= state.currentStep) {
-        state = { ...state, phase: 'waiting', outputProgress: undefined, currentStep: event.data.step, lastCompletedStep: event.data.step }
+        folded = { ...state, phase: 'waiting', outputProgress: undefined, currentStep: event.data.step, lastCompletedStep: event.data.step }
       }
-      return event.data.usage === undefined
-        ? state
-        : (() => {
-          const used = contextTokens(event.data.usage)
-          const usage = event.data.usage
-          const total = usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0) + usage.outputTokens
-          const key = `${event.data.turn}/${event.data.step}`
-          const usageByStep = { ...state.usageByStep, [key]: total }
-          const epochTokens = Object.values(usageByStep).reduce((sum, value) => sum + value, 0)
-          return { ...state, contextTokens: used, flowUp: used, usageByStep, epochTokens }
-        })()
+      // The assembled message embeds its own compact stream; folding it keeps
+      // flow-down and phase measurements over successful attempts too.
+      const streamed = foldStreamChunks(folded, event.data.turn, event.data.step, event.data.stream)
+      const usage = event.data.usage
+      if (usage === undefined) return streamed
+      const used = contextTokens(usage)
+      const total = usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0) + usage.outputTokens
+      const key = `${event.data.turn}/${event.data.step}`
+      const usageByStep = { ...streamed.usageByStep, [key]: total }
+      const epochTokens = Object.values(usageByStep).reduce((sum, value) => sum + value, 0)
+      return { ...streamed, contextTokens: used, flowUp: used, usageByStep, epochTokens }
+    }
     case 'tool/call':
       if (event.data.name === 'subagent' || event.data.name === 'subagent_fork') {
         return {

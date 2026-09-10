@@ -14,6 +14,7 @@ import { conversationProjectionSchema } from '../conversation/index.ts'
 import type { MayflyAuxiliaryView } from '../app/current-agent.ts'
 import {
   conversationTranscriptModel,
+  liveDraftsOf,
   OfficialConversationModelSource,
 } from '../transcript/official-model.ts'
 import {
@@ -81,6 +82,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       ctx.sessionProjections,
       tools,
       () => screen.requestRender(),
+      liveDraftsOf(ctx),
     )
     if (live === undefined) void this.loadCold(tools)
     else this.source.attach(live)

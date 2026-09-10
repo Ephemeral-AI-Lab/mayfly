@@ -178,7 +178,7 @@ describe('mayfly bundle', () => {
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
     }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.1.2-alpha.5')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.1.5-rc.1')
   })
 
   it('keeps the host fallback persona valid for agents without preset model variables', () => {
@@ -213,7 +213,7 @@ describe('mayfly bundle', () => {
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
     }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.1.2-alpha.5')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.1.5-rc.1')
   })
 
   it('keeps the host fallback persona valid for agents without preset model variables', () => {

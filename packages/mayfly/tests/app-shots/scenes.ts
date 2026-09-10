@@ -158,9 +158,9 @@ function scriptChildSession(tree: AppShotTree, id: string, prompt: string, at: n
   if (outcome === 'waiting') return session
   appendAt(session, at + 300, 'step/start', { turn: 1, step: 1 })
   if (outcome === 'running') {
-    appendAt(session, at + 400, 'assistant/chunk', {
+    appendAt(session, at + 400, 'assistant/attempt', {
       turn: 1, step: 1,
-      chunk: { type: 'reasoning-delta', index: 0, text: 'Mapping the hero copy against the brand tokens…' },
+      stream: [{ type: 'reasoning-chunks', time0: at + 400, index: 0, dt: [], texts: ['Mapping the hero copy against the brand tokens…'] }],
     })
     return session
   }

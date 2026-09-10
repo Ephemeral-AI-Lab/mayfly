@@ -1,7 +1,7 @@
 # Quickstart
 
 ::: info Current release line
-`v0.1.0-alpha.4` is the current preview and is published to npm **`latest`**. Ordinary installs omit the dist-tag; plugins, CI, and reproducible environments should pin Mayfly `0.1.0-alpha.4` and Harness `0.1.2-alpha.5`. Harness RC releases are not supported. This page is the user install path; the contributor development install (checkout, link install, iteration loop) lives in the developer manual under [Contributing to Mayfly](/en/plugins/contributing).
+`v0.1.0-alpha.4` is the current preview and is published to npm **`latest`**. Ordinary installs omit the dist-tag; plugins, CI, and reproducible environments should pin Mayfly `0.1.0-alpha.4` and Harness `0.1.5-rc.1`. The harness dependency line now tracks the npm RC release channel. This page is the user install path; the contributor development install (checkout, link install, iteration loop) lives in the developer manual under [Contributing to Mayfly](/en/plugins/contributing).
 :::
 
 ## Prerequisites
@@ -10,7 +10,7 @@
 | --- | --- |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | pnpm | 11 (needed for first assembly, upgrades, and `plugin` management; an already-calibrated profile does not check it on every boot. Run `npm i -g pnpm@11`, or `corepack enable && corepack prepare pnpm@11.7.0 --activate`) |
-| dsh CLI | the recommended `mayfly` launcher includes exactly `0.1.2-alpha.5`; only the direct-dsh path below installs it separately |
+| dsh CLI | the recommended `mayfly` launcher includes exactly `0.1.5-rc.1`; only the direct-dsh path below installs it separately |
 
 ## Install (preview)
 

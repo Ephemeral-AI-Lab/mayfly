@@ -91,7 +91,7 @@ async function waitFor(predicate, label) {
 const clean = () => cleanOutput(out)
 
 try {
-  if (!(await waitFor(() => clean().includes('deepseek-v4-flash'), 'the statusline boot frame'))) throw new Error('boot')
+  if (!(await waitFor(() => clean().includes('deepseek-flash'), 'the statusline boot frame'))) throw new Error('boot')
   term.write('ping\r')
   if (!(await waitFor(() => clean().includes('unbroken-xxxx'), 'the streamed reply'))) throw new Error('reply')
   // The slash dropdown: WrappingSelectList at 40 columns.

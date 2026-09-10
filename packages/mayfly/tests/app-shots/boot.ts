@@ -210,7 +210,8 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
     },
   } satisfies PermissionPresetsService as never)
   ctx.provide('sessionPersistence', {
-    list: () => Promise.resolve([...persistedHeaders]),
+    // Harness 0.1.5 lists snapshots carrying the stored header.
+    list: () => Promise.resolve(persistedHeaders.map(header => ({ header }))),
   } as never)
   ctx.provide('sessionQuery', {
     readSession: (id: unknown) => {

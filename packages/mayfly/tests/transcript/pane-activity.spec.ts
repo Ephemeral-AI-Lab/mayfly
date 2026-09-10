@@ -220,11 +220,11 @@ describe('mayfly-pane-activity', () => {
     const { ctx, screen, dispose } = await boot(agent)
     // Before any data the moon row carries no counter.
     expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} · Tip: ${FIRST_TIP}`])
-    // Chunks that carry no text (block starts, tool-call deltas) count
+    // Streams that carry no text (boundary records, tool-call deltas) count
     // nothing.
-    emit2(ctx, agent, event('assistant/chunk', {
+    emit2(ctx, agent, event('assistant/attempt', {
       turn: 1, step: 1,
-      chunk: { type: 'block-start', index: 0, blockType: 'text' },
+      stream: [{ type: 'chunk', time: 1, chunk: { type: 'block-start', index: 0, blockType: 'text' } }],
     }))
     expect(screen.paneLines()[0]).not.toContain('↓')
     // A finished response contributes its input side as ↑ (context tokens:

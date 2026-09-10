@@ -30,8 +30,8 @@ it('handles cloned native snapshots, multi-entry settlement, retraction, and lat
   source.attach(session)
   const baseline = ctx.sessionProjections.snapshot(session, ['mayflyConversation']).values.mayflyConversation as ConversationProjection
   session.append('step/start', { turn: 0, step: 0 })
-  session.append('assistant/chunk', { turn: 0, step: 0, chunk: { type: 'text-delta', index: 0, text: 'partial' } })
-  session.append('assistant/chunk', { turn: 0, step: 0, chunk: { type: 'reasoning-delta', index: 1, text: 'thought' } })
+  session.append('assistant/attempt', { turn: 0, step: 0, stream: [{ type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['partial'] }] })
+  session.append('assistant/attempt', { turn: 0, step: 0, stream: [{ type: 'reasoning-chunks', time0: 2, index: 0, dt: [], texts: ['thought'] }] })
   expect(values[0]!.entries[0]).toEqual(baseline.entries[0])
   expect(values[0]!.entries[0]).not.toBe(baseline.entries[0])
   expect(values[1]!.entries[0]).not.toBe(values[0]!.entries[0])
@@ -44,6 +44,7 @@ it('handles cloned native snapshots, multi-entry settlement, retraction, and lat
       content: [{ type: 'reasoning', text: 'final thought' }, { type: 'text', text: 'final answer' }],
       source: { kind: 'model', provider: 'mock', model: 'mock' },
     },
+    stream: [],
   }, { surfaceOp: 'append' })
   expect(source.snapshot().entries).toMatchObject([
     { kind: 'transcript-user', text: 'question' },
@@ -56,12 +57,15 @@ it('handles cloned native snapshots, multi-entry settlement, retraction, and lat
   source.attach(null)
   source.attach(session)
   expect(source.snapshot().entries).toEqual(conversationTranscriptModel(checkpointView, tools).entries)
-  session.append('assistant/message', {
-    turn: 0, step: 0, interrupted: true,
-    message: { id: MessageId('retraction'), role: 'assistant', content: [], source: { kind: 'model', provider: 'mock', model: 'mock' } },
-  }, { surfaceOp: { op: 'replace', start: settledSeq, end: settledSeq }, sourceEventSeqs: [settledSeq] })
+  session.append('system/message', {
+    turn: 0, step: 0,
+    message: {
+      id: MessageId('retraction'), role: 'system', content: [],
+      source: { kind: 'plugin', plugin: 'mayfly-retraction' },
+    },
+  }, { surfaceOp: { op: 'replace', startSeq: settledSeq, endSeq: settledSeq }, sourceEventSeqs: [settledSeq] })
   expect(source.snapshot().entries).toEqual([])
-  session.append('assistant/chunk', { turn: 0, step: 0, chunk: { type: 'text-delta', index: 0, text: 'late' } })
+  session.append('assistant/attempt', { turn: 0, step: 0, stream: [{ type: 'text-chunks', time0: 3, index: 0, dt: [], texts: ['late'] }] })
   expect(source.snapshot().entries).toEqual([])
   source.dispose()
   const count = publish.mock.calls.length

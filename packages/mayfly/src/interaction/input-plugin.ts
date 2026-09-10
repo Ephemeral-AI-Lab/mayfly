@@ -298,6 +298,9 @@ export function apply(ctx: Context): void {
       parentSessionId: SessionId(target.parentSessionId),
       childSessionId: SessionId(target.sessionId),
       mode: 'continuable',
+      // Queue for the child's next turn: the auxiliary input panel is a
+      // follow-up channel, not mid-step steering (the upstream host default).
+      delivery: 'queue',
       content,
     }, controller.signal)).then(receipt => {
       if (unloaded || controller.signal.aborted || currentAgent.view().revision !== viewRevision) return

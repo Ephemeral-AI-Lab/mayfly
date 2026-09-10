@@ -86,7 +86,7 @@ async function screen() {
 
 const clean = () => cleanOutput(out)
 try {
-  await waitFor(() => clean().includes('deepseek-v4-flash'), 'statusline')
+  await waitFor(() => clean().includes('deepseek-flash'), 'statusline')
   term.write('history prompt\r')
   await waitFor(() => clean().includes('turn-finished'), 'settled turn')
   await sleep(300)
@@ -99,7 +99,7 @@ try {
   if (recovered.includes('[cordis:bleed-fixture]') || recovered.includes('host-bleed-')) {
     throw new Error('Host JSON remained in the renderer frame')
   }
-  if (!recovered.includes('deepseek-v4-flash')) throw new Error('footer was not restored')
+  if (!recovered.includes('deepseek-flash')) throw new Error('footer was not restored')
 
   term.write('\x1b[57419;1:1u')
   await sleep(250)

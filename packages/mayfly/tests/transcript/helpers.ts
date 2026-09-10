@@ -155,28 +155,44 @@ export function imageRef(id: string, mediaType = 'image/png'): ImageBlock['attac
   return { id, mediaType } as ImageBlock['attachment']
 }
 
-/** An `assistant/chunk` text-delta event. */
-export function textDelta(turn: number, step: number, text: string): SessionEvent<'assistant/chunk'> {
-  return event('assistant/chunk', { turn, step, chunk: { type: 'text-delta', index: 0, text } })
+/** An `assistant/attempt` carrying one durable text run. */
+export function textDelta(turn: number, step: number, text: string): SessionEvent<'assistant/attempt'> {
+  return attemptDelta(turn, step, 'text-chunks', text)
 }
 
-/** An `assistant/chunk` reasoning-delta event. */
-export function reasoningDelta(turn: number, step: number, text: string): SessionEvent<'assistant/chunk'> {
-  return event('assistant/chunk', { turn, step, chunk: { type: 'reasoning-delta', index: 0, text } })
+/** An `assistant/attempt` carrying one durable reasoning run. */
+export function reasoningDelta(turn: number, step: number, text: string): SessionEvent<'assistant/attempt'> {
+  return attemptDelta(turn, step, 'reasoning-chunks', text)
+}
+
+/** One attempt event whose compact stream holds a single packed run. */
+function attemptDelta(
+  turn: number,
+  step: number,
+  kind: 'text-chunks' | 'reasoning-chunks',
+  text: string,
+): SessionEvent<'assistant/attempt'> {
+  const base = event('assistant/attempt', { turn, step, stream: [] })
+  return {
+    ...base,
+    data: { turn, step, stream: [{ type: kind, time0: base.time, index: 0, dt: [], texts: [text] }] },
+  }
 }
 
 /** An `assistant/message` finalize event. */
 export function assistantEvent(turn: number, step: number, content: ContentBlock[]): SessionEvent<'assistant/message'> {
-  return event('assistant/message', { turn, step, message: assistantMessage(content) })
+  return event('assistant/message', { turn, step, message: assistantMessage(content), stream: [] })
 }
 
 /** Mayfly's durable empty surface replacement for one retracted turn. */
-export function retractionEvent(turn: number, step: number, start: number, end: number): SessionEvent<'assistant/message'> {
-  const base = assistantEvent(turn, step, [])
+export function retractionEvent(turn: number, step: number, start: number, end: number): SessionEvent<'system/message'> {
   return {
-    ...base,
-    data: { ...base.data, interrupted: true },
-    surfaceOp: { op: 'replace', start, end },
+    ...event('system/message', {
+      turn,
+      step,
+      message: { id: MessageId(`m-${seq}`), role: 'system', content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+    }),
+    surfaceOp: { op: 'replace', startSeq: start, endSeq: end },
     sourceEventSeqs: [start, end].filter((seq, index, values) => values.indexOf(seq) === index),
   }
 }

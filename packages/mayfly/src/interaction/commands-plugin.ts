@@ -159,7 +159,7 @@ export function apply(ctx: Context): void {
     }
     let headers: SessionHeader[]
     try {
-      headers = await persistence.list(signal)
+      headers = (await persistence.list({ signal })).map(snapshot => snapshot.header)
     } catch (error) {
       clearLoadingNotice()
       return { kind: 'error', text: `could not list sessions: ${describe(error)}` }

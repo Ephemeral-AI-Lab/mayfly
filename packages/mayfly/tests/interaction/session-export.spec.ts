@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import SessionStore, { decodeStorageRecord, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { TranscriptItem } from '../../src/transcript/index.ts'
@@ -224,7 +224,8 @@ describe('buildExportMarkdown', () => {
         { type: 'text', text: 'CONTEXT-SECRET' },
       ], source: { kind: 'plugin', plugin: 'agent-context' } } },
       { type: 'step/start', seq: 5, time: 5, data: { turn: 0, step: 0 } },
-      { type: 'assistant/chunk', seq: 6, time: 6, data: { turn: 0, step: 0, chunk: { index: 0, blockType: 'text', textDelta: 'x' } } },
+      // A settled attempt without a surface message renders its own section.
+      { type: 'assistant/attempt', seq: 6, time: 6, data: { turn: 0, step: 0, stream: [{ type: 'text-chunks', time0: 6, index: 0, dt: [], texts: ['draft prefix'] }] } },
       { type: 'assistant/message', seq: 7, time: 7, data: {
         turn: 0,
         step: 0,
@@ -304,7 +305,10 @@ describe('buildExportMarkdown', () => {
     // a codeless failure omits the parenthetical.
     expect(markdown).toContain('#### turn/end (error: endpoint 404 (ENDPOINT_404))')
     expect(markdown).toContain('#### turn/end (error: no code)')
-    // Chunk rows are the message's raw material and stay out.
+    // Attempt prefixes render in their own section; the old chunk rows stay
+    // out entirely.
+    expect(markdown).toContain('#### assistant attempt')
+    expect(markdown).toContain('draft prefix')
     expect(markdown).not.toContain('#### assistant/chunk')
     // The empty user message and the reasoning-less assistant message keep
     // their headers without bodies; the string-meta result and the failed
@@ -320,6 +324,32 @@ describe('buildExportMarkdown', () => {
     // Unknown event types dump their raw JSON.
     expect(markdown).toContain('#### request/header')
     expect(markdown).toContain('"reason": "initial"')
+  })
+
+  it('renders an attempt section with reasoning when the stream carried one', () => {
+    const events = [
+      { type: 'turn/start', seq: 1, time: 1, data: { turn: 0 } },
+      { type: 'assistant/attempt', seq: 2, time: 2, data: {
+        turn: 0, step: 0,
+        stream: [
+          { type: 'reasoning-chunks', time0: 2, index: 0, dt: [], texts: ['private reasoning'] },
+          { type: 'text-chunks', time0: 3, index: 1, dt: [], texts: ['partial answer'] },
+        ],
+      } },
+      // A reasoning-only attempt renders its thinking without plain text;
+      // a boundary-only attempt adds noise and stays out entirely.
+      { type: 'assistant/attempt', seq: 3, time: 3, data: {
+        turn: 0, step: 1, stream: [{ type: 'reasoning-chunks', time0: 3, index: 0, dt: [], texts: ['silent reasoning'] }],
+      } },
+      { type: 'assistant/attempt', seq: 4, time: 4, data: {
+        turn: 0, step: 2, stream: [{ type: 'chunk', time: 4, chunk: { type: 'block-start', index: 0, blockType: 'text' } }],
+      } },
+    ] as unknown as SessionEvent[]
+    const markdown = buildFullExportMarkdown({ sessionId: 's', workDir: undefined, events, exportedAt: new Date('2026-08-21T00:00:00.000Z') })
+    expect(markdown.match(/#### assistant attempt/g)).toHaveLength(2)
+    expect(markdown).toContain('private reasoning')
+    expect(markdown).toContain('partial answer')
+    expect(markdown).toContain('silent reasoning')
   })
 
   it('formats sub-1024 usage without optional cache buckets', () => {
@@ -445,12 +475,41 @@ describe('registerExportCommands', () => {
 
   interface FakePersistence {
     content: string
-    supportsRawArtifacts?: boolean
-    /** When set, `readRaw` resolves this value instead of the content. */
-    rawResult?: { content: string, header: { id: string } } | undefined
-    /** When set, `readRaw` throws this value (a non-Error exercises the
+    /** When `true`, `open` rejects with the no-artifact stop. */
+    missingArtifact?: boolean
+    /** When set, `open` throws this value (a non-Error exercises the
      * `describe` fallback). */
     throwRaw?: unknown
+  }
+
+  /** Decode the fixture JSONL into events: plain rows pass through, packed
+   * chunk rows become the durable `assistant/attempt` events of the 0.1.5
+   * storage format. */
+  function decodeFixtureLog(content: string): SessionEvent[] {
+    return content.split('\n').filter(line => line.trim() !== '').flatMap(line => {
+      try {
+        const row = JSON.parse(line) as Record<string, unknown> & {
+          type?: string, seq0?: number, time0?: number,
+          data?: { turn: number, step: number, index: number, dt: number[], texts: string[] },
+        }
+        if ((row.type === 'text-chunks' || row.type === 'reasoning-chunks') && row.data !== undefined) {
+          return [{
+            type: 'assistant/attempt',
+            seq: row.seq0,
+            time: row.time0,
+            data: {
+              turn: row.data.turn,
+              step: row.data.step,
+              stream: [{ type: row.type, time0: row.time0, index: row.data.index, dt: row.data.dt, texts: row.data.texts }],
+            },
+          } as unknown as SessionEvent]
+        }
+        return [row as unknown as SessionEvent]
+      } catch {
+        // The real backend's read is fail-closed over corrupt storage.
+        throw new Error('corrupt session log: invalid JSONL line')
+      }
+    })
   }
 
   async function mount(options: MountOptions = {}): Promise<{
@@ -475,28 +534,31 @@ describe('registerExportCommands', () => {
     }
     const persistence = options.persistence
     if (persistence !== undefined) {
-      // `'rawResult' in` distinguishes an explicit `undefined` (the backend
-      // has no artifact) from the absent field (build from `content`).
-      const raw = 'rawResult' in persistence
-        ? persistence.rawResult
-        : { content: persistence.content, header: { id: agent.id } }
+      // The 0.1.5 backend decodes its own storage: the fake resolves decoded
+      // events through a read handle, exactly as the jsonl backend would. A
+      // corrupt fixture log fails closed at read time, not at mount.
+      let events: SessionEvent[] = []
+      let decodeError: unknown
+      try {
+        events = decodeFixtureLog(persistence.content)
+      } catch (error) {
+        decodeError = error
+      }
       const service = {
-        supportsRawArtifacts: persistence.supportsRawArtifacts ?? true,
-        readRaw: vi.fn(async () => {
+        open: vi.fn(async () => {
           if ('throwRaw' in persistence) throw persistence.throwRaw
-          return raw
+          if (persistence.missingArtifact === true) throw new Error('the session has no stored artifact yet')
+          return {
+            read: vi.fn(async () => {
+              if (decodeError !== undefined) throw decodeError
+              return { eventState: 'shared-frozen', events }
+            }),
+            close: vi.fn(async () => {}),
+          }
         }),
       } as unknown as SessionPersistence
       ctx.provide('sessionPersistence', service)
-      const projectionEvents = persistence.content.split('\n')
-        .filter(line => line.trim() !== '')
-        .flatMap(line => {
-          try {
-            return decodeStorageRecord(JSON.parse(line))
-          } catch {
-            return []
-          }
-        })
+      const projectionEvents = events
         .map(event => event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result'
           ? { ...event, surfaceOp: event.surfaceOp ?? 'append' } as SessionEvent
           : event)
@@ -641,7 +703,7 @@ describe('registerExportCommands', () => {
     }
   })
 
-  it('decodes packed chunk rows through the dsh storage decoder', async () => {
+  it('expands packed chunk rows through the handle read path', async () => {
     const log = [
       logLine({ type: 'turn/start', seq: 1, time: 1, data: { turn: 0 } }),
       logLine({ type: 'user/message', seq: 2, time: 2, data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } }),
@@ -686,18 +748,13 @@ describe('registerExportCommands', () => {
     expect(await run(noPersistence.ctx, noPersistence.agent, '/export'))
       .toEqual({ kind: 'error', text: 'session persistence is unavailable' })
     await noPersistence.fiber.dispose()
-    // A backend without raw artifacts.
-    const noRaw = await mount({ persistence: { content: '', supportsRawArtifacts: false } })
-    expect(await run(noRaw.ctx, noRaw.agent, '/export'))
-      .toEqual({ kind: 'error', text: 'this session persistence backend does not expose raw artifacts' })
-    await noRaw.fiber.dispose()
     const flushFailure = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
     vi.spyOn(flushFailure.ctx.sessions, 'flush').mockRejectedValueOnce(new Error('flush failed'))
     expect(await run(flushFailure.ctx, flushFailure.agent, '/export'))
       .toEqual({ kind: 'error', text: 'flush failed' })
     await flushFailure.fiber.dispose()
-    // No stored artifact.
-    const noArtifact = await mount({ persistence: { content: '', rawResult: undefined } })
+    // No stored artifact: the backend rejects the open with its own stop.
+    const noArtifact = await mount({ persistence: { content: '', missingArtifact: true } })
     expect(await run(noArtifact.ctx, noArtifact.agent, '/export'))
       .toEqual({ kind: 'error', text: 'the session has no stored artifact yet' })
     await noArtifact.fiber.dispose()

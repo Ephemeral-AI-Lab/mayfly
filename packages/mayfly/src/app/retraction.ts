@@ -8,7 +8,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
+import { createSystemMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { MayflyRequestController, MayflyRequestRef } from './request-lifecycle.ts'
 
@@ -93,25 +93,20 @@ export function installRetractionService(
   const persist = (entry: PendingRetraction, endSeq: number): void => {
     queueMicrotask(() => {
       const nodes = entry.session.surface.nodes.filter(seq => seq > entry.startSeq && seq < endSeq)
-      const start = nodes[0]
-      const end = nodes.at(-1)
       /* v8 ignore next -- a matched human surface message guarantees at least one node before turn/end */
-      if (start === undefined || end === undefined) return
-      const config = entry.session.requestHeader()?.config
+      if (nodes.length === 0) return
       try {
-        entry.session.append('assistant/message', {
+        // Harness `0.1.5` forbids source citations on assistant messages (they
+        // embed their own stream), so the durable retraction marker is an
+        // empty plugin-attributed system/message replacing the shadowed range:
+        // it derives to no model-visible message while provenance cites every
+        // removed node.
+        entry.session.append('system/message', {
           turn: entry.turn,
           step: entry.step,
-          message: createAssistantMessage({
-            content: [],
-            source: {
-              provider: config?.provider ?? entry.agent.options.provider ?? '',
-              model: config?.model ?? entry.agent.options.model ?? '',
-            },
-          }),
-          interrupted: true,
+          message: createSystemMessage('', 'mayfly-retraction'),
         }, {
-          surfaceOp: { op: 'replace', start, end },
+          surfaceOp: { op: 'replace', startSeq: nodes[0]!, endSeq: nodes.at(-1)! },
           sourceEventSeqs: nodes,
         })
       } catch (error) {

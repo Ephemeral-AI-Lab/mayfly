@@ -16,10 +16,32 @@ import {
   type ConversationProjection,
   type ConversationToolEntry,
 } from '../conversation/index.ts'
+import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
 import type { ReadCallModel, SearchCallModel, TranscriptEntryModel, TranscriptModel, TranscriptReadGroupModel, TranscriptSearchGroupModel } from '../frontend/index.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
+
+/**
+ * Live assistant-stream draft source. Harness `0.1.5` publishes streaming
+ * deltas as transient Agent frames the session projection never sees; the
+ * mapper overlays the current draft as synthetic streaming entries until the
+ * durable settlement rewrites the step.
+ */
+export interface LiveDraftSource {
+  subscribe(listener: () => void): () => void
+  get(sessionId: string): LiveAssistantDraft | undefined
+}
+
+/** Adapt the optional ctx live-stream service into a draft source. */
+export function liveDraftsOf(ctx: { get(name: 'mayflyLiveAssistantStream'): unknown }): LiveDraftSource | undefined {
+  const service = ctx.get('mayflyLiveAssistantStream') as LiveAssistantStreamService | undefined
+  if (service === undefined) return undefined
+  return {
+    subscribe: listener => service.subscribe(listener),
+    get: sessionId => service.get(sessionId),
+  }
+}
 
 /**
  * Native projection read face consumed by the transcript mapper. The registry
@@ -355,14 +377,18 @@ export class OfficialConversationModelSource {
   private generation = 0
   private watermark = -1
   private pending: PendingProjection | undefined
+  private lastVisible: ConversationProjection | undefined
+  private lastDraft: LiveAssistantDraft | undefined
   private transcriptAfterSeq: number | undefined
   private disposed = false
   private readonly offChanged: () => void
+  private readonly offLive: () => void
 
   constructor(
     private readonly projections: ConversationProjectionSource,
     private readonly tools: ToolPresentationSource,
     private readonly publish: () => void,
+    private readonly live?: LiveDraftSource,
   ) {
     this.offChanged = projections.onChanged((session, key, value, seq) => {
       if (this.disposed || session !== this.session || key !== 'mayflyConversation' || seq <= Math.max(this.watermark, this.pending?.seq ?? -1)) return
@@ -372,18 +398,25 @@ export class OfficialConversationModelSource {
       this.pending = { value, seq }
       if (notify) this.publish()
     })
+    this.offLive = live === undefined ? () => {} : live.subscribe(() => { this.publish() })
   }
 
   /** Convert the latest unread native value once, then reuse its model. */
   snapshot(): TranscriptModel {
+    const draft = this.session === null ? undefined : this.live?.get(String(this.session.id))
     const pending = this.pending
     if (pending !== undefined) {
       this.pending = undefined
       const visible = visibleProjection(pending.value, this.transcriptAfterSeq)
       if (visible !== undefined) {
         this.watermark = pending.seq
-        this.model = conversationTranscriptModel(visible, this.tools, this.generation)
+        this.lastVisible = visible
+        this.lastDraft = draft
+        this.model = conversationTranscriptModel(withLiveDraft(visible, draft, pending.seq), this.tools, this.generation)
       }
+    } else if (draft !== this.lastDraft && this.lastVisible !== undefined) {
+      this.lastDraft = draft
+      this.model = conversationTranscriptModel(withLiveDraft(this.lastVisible, draft, this.watermark), this.tools, this.generation)
     }
     return this.model
   }
@@ -396,6 +429,8 @@ export class OfficialConversationModelSource {
     this.generation += 1
     this.watermark = -1
     this.pending = undefined
+    this.lastVisible = undefined
+    this.lastDraft = undefined
     this.model = createTranscriptModel('official-conversation', [], false, this.generation)
     if (session === null) {
       this.publish()
@@ -412,9 +447,59 @@ export class OfficialConversationModelSource {
     if (this.disposed) return
     this.disposed = true
     this.offChanged()
+    this.offLive()
     this.session = null
     this.pending = undefined
+    this.lastVisible = undefined
+    this.lastDraft = undefined
     this.transcriptAfterSeq = undefined
     this.model = createTranscriptModel('official-conversation', [], false)
   }
+}
+
+/**
+ * Overlay the live streaming draft onto one visible projection value. Draft
+ * entries reuse the projection's streaming entry ids for their step so the
+ * settlement rewrite replaces them; superseded projection streaming entries
+ * for the same step are dropped first. Returns the visible value unchanged
+ * when nothing streams or the step already settled.
+ */
+function withLiveDraft(
+  visible: ConversationProjection,
+  draft: LiveAssistantDraft | undefined,
+  seqAnchor: number,
+): ConversationProjection {
+  if (draft === undefined) return visible
+  const settled = visible.entries.some(entry => (entry.kind === 'assistant' || entry.kind === 'thinking')
+    && entry.turn === draft.turn && entry.step === draft.step && !entry.streaming)
+  if (settled) return visible
+  const seq = Math.max(seqAnchor, ...visible.entries.map(entry => entry.seq)) + 1
+  const entries = visible.entries.filter(entry => !((entry.kind === 'assistant' || entry.kind === 'thinking')
+    && entry.turn === draft.turn && entry.step === draft.step))
+  if (draft.reasoning.trim() !== '') {
+    entries.push({
+      kind: 'thinking',
+      id: `thinking:${String(draft.turn)}:${String(draft.step)}`,
+      seq,
+      updatedSeq: seq,
+      turn: draft.turn,
+      step: draft.step,
+      text: draft.reasoning,
+      streaming: true,
+      outputProgress: draft.outputProgress,
+    })
+  }
+  if (draft.text !== '') {
+    entries.push({
+      kind: 'assistant',
+      id: `assistant:${String(draft.turn)}:${String(draft.step)}`,
+      seq,
+      updatedSeq: seq,
+      turn: draft.turn,
+      step: draft.step,
+      text: draft.text,
+      streaming: true,
+    })
+  }
+  return { ...visible, entries }
 }

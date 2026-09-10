@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/interaction/session-commands
  */
 import { Context } from '@deepseek-ai/cordis'
+import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionInfoFacts } from '../../src/interaction/session-commands.ts'
 import { changelogNode, contextNode, formatCreated, statusNode, usageNode, versionNode, type SessionInfoFacts } from '../../src/interaction/session-info-model.ts'
@@ -22,7 +23,13 @@ describe('native session information', () => {
     bench.session.append('turn/start', { turn: 1 })
     bench.session.append('step/start', { turn: 1, step: 0 })
     bench.session.append('request/context', { provider: 'p', model: 'm', contextWindow: 1024 })
-    bench.session.append('assistant/chunk', { turn: 1, step: 0, chunk: { type: 'usage', usage: { inputTokens: 100, outputTokens: 7, cacheReadTokens: 20, cacheWriteTokens: 10 } } })
+    bench.session.append('assistant/message', {
+      turn: 1,
+      step: 0,
+      message: createAssistantMessage({ content: [], source: { kind: 'model', provider: 'p', model: 'm' } }),
+      stream: [],
+      usage: { inputTokens: 100, outputTokens: 7, cacheReadTokens: 20, cacheWriteTokens: 10 },
+    }, { surfaceOp: 'append' })
     bench.session.append('step/end', { turn: 1, step: 0 })
     const snapshot = vi.spyOn(bench.ctx.sessionProjections, 'snapshot')
     const facts = sessionInfoFacts(bench.ctx, bench.agent)
