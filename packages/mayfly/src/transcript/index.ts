@@ -21,7 +21,8 @@ import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
 import { TranscriptController } from './transcript-model.ts'
 import { SessionFactsService } from './session-facts.ts'
-import { OfficialConversationModelSource } from './official-model.ts'
+import { OfficialConversationModelSource, type LiveDraftSource } from './official-model.ts'
+import { LiveAssistantStreamService } from '../conversation/live-stream.ts'
 import {
   DEFAULT_EXPAND_TURNS,
   TranscriptPresentationPolicy,
@@ -139,7 +140,16 @@ export function apply(ctx: Context): void {
     }
   }
 
-  const sessionFacts = new SessionFactsService(ctx)
+  // Live assistant frames precede every facts consumer here: the service
+  // folds transient agent/assistant-stream publications into per-session
+  // drafts both the facts bridge and the transcript source overlay.
+  const liveStream = new LiveAssistantStreamService(ctx)
+  ctx.effect(() => () => liveStream.dispose())
+  const liveDrafts: LiveDraftSource = {
+    subscribe: listener => liveStream.subscribe(listener),
+    get: sessionId => liveStream.get(sessionId),
+  }
+  const sessionFacts = new SessionFactsService(ctx, liveStream)
   ctx.effect(() => () => sessionFacts.dispose())
   const transcript = new TranscriptController(ctx, undefined, {
     renderer: {
@@ -164,6 +174,7 @@ export function apply(ctx: Context): void {
       }
     } },
     () => transcript.refresh(),
+    liveDrafts,
   )
   ctx.effect(() => () => officialSource.dispose())
   transcript.setSource(() => officialSource.snapshot())

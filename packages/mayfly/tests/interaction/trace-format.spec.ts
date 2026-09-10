@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionEventRecord, SessionEventTraceObservation, SessionEventWindow } from '@deepseek-ai/dsh-session-query'
-import { formatTraceAll, formatTraceItem, toTraceItem, traceSummary, traceTitle, traceTime } from '../../src/interaction/trace-format.ts'
+import { attemptStreamText, formatTraceAll, formatTraceItem, toTraceItem, traceSummary, traceTitle, traceTime } from '../../src/interaction/trace-format.ts'
 
 const event = (type: string, data: unknown): SessionEvent => ({ type, seq: 3, time: 1000, data } as SessionEvent)
 const record: SessionEventRecord = { sessionId: 'session' as never, seq: 3, time: 1000, type: 'user/message', surface: 'current' }
@@ -11,7 +11,7 @@ const record: SessionEventRecord = { sessionId: 'session' as never, seq: 3, time
 describe('trace-format', () => {
   it('labels known and unknown event types', () => {
     expect(traceTitle('user/message')).toBe('User request')
-    expect(traceTitle('assistant/chunk')).toBe('Thinking')
+    expect(traceTitle('assistant/attempt')).toBe('Assistant attempt')
     expect(traceTitle('assistant/message')).toBe('Assistant answer')
     expect(traceTitle('tool/call')).toBe('Tool call')
     expect(traceTitle('tool/result')).toBe('Tool result')
@@ -30,7 +30,20 @@ describe('trace-format', () => {
     const cyclic: Record<string, unknown> = {}
     cyclic.self = cyclic
     expect(traceSummary(event('custom/event', cyclic))).toBe('[unserializable event payload]')
-    expect(traceSummary(event('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'block-start', index: 0, blockType: 'text' } }))).toContain('block-start')
+    expect(traceSummary(event('assistant/attempt', { turn: 1, step: 1, stream: [{ type: 'chunk', time: 1, chunk: { type: 'block-start', index: 0, blockType: 'text' } }] }))).toContain('block-start')
+  })
+
+  it('concatenates every record shape an attempt stream may embed', () => {
+    const stream = [
+      { type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['packed'] },
+      { type: 'reasoning-chunks', time0: 2, index: 1, dt: [1], texts: ['deep ', 'thought'] },
+      { type: 'tool-call-chunks', time0: 3, index: 2, dt: [], id: 'c', name: 'read', args: ['{}'] },
+      { type: 'chunk', time: 4, chunk: { type: 'reasoning-delta', index: 2, text: ' raw-r' } },
+      { type: 'chunk', time: 5, chunk: { type: 'text-delta', index: 3, text: ' raw-t' } },
+      { type: 'chunk', time: 6, chunk: { type: 'finish', index: 4 } },
+    ]
+    expect(attemptStreamText(stream)).toEqual({ reasoning: 'deep thought raw-r', text: 'packed raw-t' })
+    expect(traceSummary(event('assistant/attempt', { turn: 1, step: 1, stream }))).toContain('packed raw-t')
   })
 
   it('builds items and serializes relations and raw payload', () => {

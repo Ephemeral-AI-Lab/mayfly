@@ -212,7 +212,8 @@ try {
   if (profile.dependencies?.['@ephemeral-ai/mayfly'] !== version) {
     throw new Error(`profile spec is not the exact Mayfly version ${version}`)
   }
-  const cache = join(dshHome, 'cache', 'mayfly-cli-runtime', `${version}-0.1.2-alpha.5`)
+  // The runtime cache is one platform-scoped directory per version-line.
+  const cache = join(dshHome, 'cache', 'mayfly-cli-runtime', `${version}-0.1.5-rc.1-${process.platform}-${process.arch}`)
   if (!existsSync(cache) || readdirSync(cache).length === 0) throw new Error('packed CLI did not materialize its runtime cache')
 
   console.log(`CLI_LOCAL_REGISTRY_SMOKE_PASS mayfly=${version} profile=mayfly packages=2`)

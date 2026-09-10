@@ -54,10 +54,10 @@ describe('message retraction', () => {
     test.ctx.on('mayfly/turn-retracted', event => retracted.push(event.turn))
     test.requests.begin('main')
     const message = enterPrompt(test.session)
-    test.session.append('assistant/chunk', {
+    test.session.append('assistant/attempt', {
       turn: 1,
       step: 1,
-      chunk: { type: 'reasoning-delta', text: 'private thought' },
+      stream: [{ type: 'reasoning-chunks', time0: 1, index: 0, dt: [], texts: ['private thought'] }],
     })
 
     test.ctx.emit('session/event', Session.create(SessionId('foreign')), {
@@ -80,8 +80,12 @@ describe('message retraction', () => {
     await Promise.resolve()
     const marker = test.session.snapshotEvents().at(-1)!
     expect(marker).toMatchObject({
-      type: 'assistant/message',
-      data: { turn: 1, step: 1, interrupted: true, message: { content: [] } },
+      type: 'system/message',
+      data: {
+        turn: 1,
+        step: 1,
+        message: { content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+      },
       surfaceOp: { op: 'replace' },
     })
     expect(test.session.deriveMessages()).toEqual([])

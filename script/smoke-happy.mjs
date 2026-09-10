@@ -81,7 +81,7 @@ const clean = () => cleanOutput(out)
 
 // Boot marker: the statusline's model label (the banner mounts only after
 // a session attaches, which the fresh boot does not have yet).
-if (!(await waitFor(() => clean().includes('deepseek-v4-flash'), 'the statusline boot frame'))) {
+if (!(await waitFor(() => clean().includes('deepseek-flash'), 'the statusline boot frame'))) {
   console.error(clean().slice(-2500))
   dsh.kill()
   await server.close()
@@ -122,7 +122,7 @@ const overflowLog = join(piAgent, 'mayfly-overflow.log')
 const overflow = existsSync(overflowLog) ? readFileSync(overflowLog, 'utf8') : ''
 const final = clean()
 const ok = exitCode === 0
-  && final.includes('deepseek-v4-flash')
+  && final.includes('deepseek-flash')
   && final.includes(PATHOLOGICAL.slice(0, 24))
   && !final.includes('exceeds terminal width')
   && !final.includes('pi-crash.log')

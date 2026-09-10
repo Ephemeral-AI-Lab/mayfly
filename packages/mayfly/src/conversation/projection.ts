@@ -7,6 +7,7 @@
  */
 
 import type { ContentBlock, ImageBlock } from '@deepseek-ai/dsh-llm'
+import { expandAssistantStream, type AssistantStreamRecord, type TimedStreamChunk } from '@deepseek-ai/dsh-llm'
 import { isAppendSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
@@ -21,6 +22,25 @@ import type {
   ConversationThinkingEntry,
   ConversationToolEntry,
 } from './types.ts'
+
+/** Position anchor of one stream application: durable event or live frame. */
+interface StreamAnchor {
+  readonly seq: number
+  readonly time: number
+  readonly turn: number
+  readonly step: number
+}
+
+/** Records of one durable attempt stream, expanded to timed chunks. Foreign
+ * or malformed streams fold as empty rather than breaking the projection. */
+function expandTimed(stream: readonly AssistantStreamRecord[] | undefined): readonly TimedStreamChunk[] {
+  if (!Array.isArray(stream)) return []
+  try {
+    return expandAssistantStream(stream)
+  } catch {
+    return []
+  }
+}
 
 const jsonSchema: z.ZodType<ConversationJson> = z.lazy(() => z.union([
   z.null(),
@@ -191,11 +211,15 @@ function appendEntry(state: ConversationProjectionState, entry: ConversationEntr
   return { ...state, entries: [...state.entries, entry] }
 }
 
-/** Whether an empty non-append assistant replacement is Mayfly's durable retraction marker. */
+/** Whether an empty plugin-attributed system replacement is Mayfly's durable
+ * retraction marker. Harness `0.1.5` forbids source citations on assistant
+ * messages (they embed their own stream), so the empty replacement marker
+ * rides a system/message that derives to no model-visible message. */
 export function isTurnRetraction(event: SessionEvent): boolean {
-  return event.type === 'assistant/message'
-    && event.data.interrupted === true
+  return event.type === 'system/message'
     && event.data.message.content.length === 0
+    && event.data.message.source.kind === 'plugin'
+    && event.data.message.source.plugin === 'mayfly-retraction'
     && event.surfaceOp !== undefined
     && event.surfaceOp !== 'append'
 }
@@ -246,30 +270,30 @@ function openStreamingStep(state: ConversationProjectionState, turn: number, ste
 
 function applyReasoningChunk(
   state: ConversationProjectionState,
-  event: SessionEvent<'assistant/chunk'>,
+  anchor: StreamAnchor,
   text: string,
 ): ConversationProjectionState {
   if (state.streamingThinkingId !== null) {
-    return replaceEntry(state, state.streamingThinkingId, event.seq, entry => entry.kind === 'thinking'
+    return replaceEntry(state, state.streamingThinkingId, anchor.seq, entry => entry.kind === 'thinking'
       ? {
           ...entry, text: entry.text + text, streaming: entry.streaming || text.trim() !== '',
-          outputProgress: appendOutputProgress(entry.streaming ? entry.outputProgress : undefined, text.length, event.time),
+          outputProgress: appendOutputProgress(entry.streaming ? entry.outputProgress : undefined, text.length, anchor.time),
         }
       : entry)
   }
   const pendingReasoning = state.pendingReasoning + text
   if (pendingReasoning.trim() === '') return { ...state, pendingReasoning }
-  const id = `thinking:${stepKey(event.data.turn, event.data.step)}`
+  const id = `thinking:${stepKey(anchor.turn, anchor.step)}`
   const entry: ConversationThinkingEntry = {
     kind: 'thinking',
     id,
-    seq: event.seq,
-    updatedSeq: event.seq,
-    turn: event.data.turn,
-    step: event.data.step,
+    seq: anchor.seq,
+    updatedSeq: anchor.seq,
+    turn: anchor.turn,
+    step: anchor.step,
     text: pendingReasoning,
     streaming: true,
-    outputProgress: appendOutputProgress(undefined, pendingReasoning.length, event.time),
+    outputProgress: appendOutputProgress(undefined, pendingReasoning.length, anchor.time),
   }
   const entries = [...state.entries]
   const assistantIndex = entryIndex(entries, state.streamingAssistantId)
@@ -279,23 +303,23 @@ function applyReasoningChunk(
 
 function applyTextChunk(
   state: ConversationProjectionState,
-  event: SessionEvent<'assistant/chunk'>,
+  anchor: StreamAnchor,
   text: string,
 ): ConversationProjectionState {
-  state = pauseThinking(state, event.seq)
+  state = pauseThinking(state, anchor.seq)
   if (state.streamingAssistantId !== null) {
-    return replaceEntry(state, state.streamingAssistantId, event.seq, entry => entry.kind === 'assistant'
+    return replaceEntry(state, state.streamingAssistantId, anchor.seq, entry => entry.kind === 'assistant'
       ? { ...entry, text: entry.text + text }
       : entry)
   }
-  const id = `assistant:${stepKey(event.data.turn, event.data.step)}`
+  const id = `assistant:${stepKey(anchor.turn, anchor.step)}`
   const entry: ConversationAssistantEntry = {
     kind: 'assistant',
     id,
-    seq: event.seq,
-    updatedSeq: event.seq,
-    turn: event.data.turn,
-    step: event.data.step,
+    seq: anchor.seq,
+    updatedSeq: anchor.seq,
+    turn: anchor.turn,
+    step: anchor.step,
     text,
     streaming: true,
   }
@@ -407,7 +431,7 @@ export function foldConversationProjection(
   state: ConversationProjectionState,
   event: SessionEvent,
 ): ConversationProjectionState {
-  if (event.type === 'assistant/message' && isTurnRetraction(event)) return retractTurn(state, event.data.turn)
+  if (event.type === 'system/message' && isTurnRetraction(event)) return retractTurn(state, event.data.turn)
   switch (event.type) {
     case 'turn/start':
       if (state.retractedTurns.includes(event.data.turn)) return state
@@ -454,21 +478,31 @@ export function foldConversationProjection(
         images: imagesOf(event.data.content),
       })
     }
-    case 'assistant/chunk': {
-      const { turn, step, chunk } = event.data
+    case 'assistant/attempt': {
+      // Harness `0.1.5` persists failed or superseded attempts as one event
+      // embedding its compact stream; expand it and run the same chunk
+      // machine the live frames drive. Successful attempts settle as
+      // `assistant/message`, whose content finalizes the entries directly.
+      const { turn, step, stream } = event.data
       if (state.retractedTurns.includes(turn)) return state
       const key = stepKey(turn, step)
       if (state.interruptedTurns.includes(turn) || state.finalizedSteps.includes(key)) return state
-      if (chunk.type === 'finish'
-        || chunk.type === 'tool-call-delta'
-        || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')
-        || (chunk.type === 'block-end' && chunk.block.type === 'reasoning')) return pauseThinking(state, event.seq)
-      if (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta') return state
-      if (chunk.text === '') return state
-      const opened = openStreamingStep(state, turn, step, event.seq)
-      return chunk.type === 'reasoning-delta'
-        ? applyReasoningChunk(opened, event, chunk.text)
-        : applyTextChunk(opened, event, chunk.text)
+      const anchor: StreamAnchor = { seq: event.seq, time: event.time, turn, step }
+      let next = openStreamingStep(state, turn, step, event.seq)
+      for (const { chunk } of expandTimed(stream)) {
+        if (chunk.type === 'finish'
+          || chunk.type === 'tool-call-delta'
+          || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')
+          || (chunk.type === 'block-end' && chunk.block.type === 'reasoning')) {
+          next = pauseThinking(next, anchor.seq)
+          continue
+        }
+        if ((chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta') || chunk.text === '') continue
+        next = chunk.type === 'reasoning-delta'
+          ? applyReasoningChunk(next, anchor, chunk.text)
+          : applyTextChunk(next, anchor, chunk.text)
+      }
+      return next
     }
     case 'assistant/message':
       return state.retractedTurns.includes(event.data.turn) || !isAppendSurfaceEvent(event)

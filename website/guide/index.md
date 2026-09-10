@@ -1,7 +1,7 @@
 # 快速上手
 
 ::: info 当前发布线
-`v0.1.0-alpha.4` 是当前预览版，并发布到 npm **`latest`**。普通安装不写 dist-tag；CI 和可复现环境应锁定 Mayfly `0.1.0-alpha.4` 与 Harness `0.1.2-alpha.5`。本页是用户安装路径；贡献者的本地开发安装见[贡献本仓库](/plugins/contributing)。
+`v0.1.0-alpha.4` 是当前预览版，并发布到 npm **`latest`**。普通安装不写 dist-tag；CI 和可复现环境应锁定 Mayfly `0.1.0-alpha.4` 与 Harness `0.1.5-rc.1`。本页是用户安装路径；贡献者的本地开发安装见[贡献本仓库](/plugins/contributing)。
 :::
 
 ## 前置条件
@@ -10,7 +10,7 @@
 | --- | --- |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | pnpm | 11（首次装配、升级和 `plugin` 管理需要；日常启动已校准的 profile 不会重复检查。推荐先执行 `npm i -g pnpm@11`，或 `corepack enable && corepack prepare pnpm@11.7.0 --activate`） |
-| dsh CLI | 推荐的 `mayfly` 启动器已内含精确版本 `0.1.2-alpha.5`；只有下方“dsh 直装”路径需要单独安装 |
+| dsh CLI | 推荐的 `mayfly` 启动器已内含精确版本 `0.1.5-rc.1`；只有下方“dsh 直装”路径需要单独安装 |
 
 ## 安装（预览版）
 

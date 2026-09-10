@@ -60,7 +60,7 @@ async function mount(options: {
   appExit?: (code: number) => void
   agentStatus?: 'idle' | 'running'
   attach?: boolean
-  persistence?: { list(signal?: AbortSignal): Promise<SessionHeader[]> }
+  persistence?: { list(options?: { signal?: AbortSignal }): Promise<{ header: SessionHeader }[]> }
   sessionQuery?: TitleQueryFake
   locale?: 'en' | 'zh'
 } = {}): Promise<{
@@ -123,13 +123,16 @@ function provideAppBoundary(ctx: Context): void {
 /** The cwd the picker scopes to: the test runner's own directory. */
 const HERE = process.cwd()
 
-function header(id: string, createdAt: number, cwd?: string, parentSession?: string): SessionHeader {
+/** One persistence-list snapshot carrying a stored header. */
+function header(id: string, createdAt: number, cwd?: string, parentSession?: string): { header: SessionHeader } {
   return {
-    version: 1,
-    id: SessionId(id),
-    createdAt,
-    ...cwd === undefined ? {} : { cwd },
-    ...parentSession === undefined ? {} : { parentSession: SessionId(parentSession) },
+    header: {
+      version: 1,
+      id: SessionId(id),
+      createdAt,
+      ...cwd === undefined ? {} : { cwd },
+      ...parentSession === undefined ? {} : { parentSession: SessionId(parentSession) },
+    },
   }
 }
 
@@ -586,14 +589,14 @@ describe('mayfly-commands plugin', () => {
     })
     await ctx.commands.execute(agent, '/sessions', [], signal())
     expect(calls).toEqual([
-      headers.slice(0, 8).map(item => String(item.id)),
-      headers.slice(8).map(item => String(item.id)),
+      headers.slice(0, 8).map(item => String(item.header.id)),
+      headers.slice(8).map(item => String(item.header.id)),
     ])
     const panel = overlay(ctx, 'mayfly.sessions')
     for (let index = 0; index < 6; index += 1) panel.handleInput(KEY.down)
     expect(calls).toHaveLength(2)
-    expect(calls[1]).toEqual(headers.slice(8).map(item => String(item.id)))
-    secondPage.resolve(headers.slice(8).map(item => titled(String(item.id), `Title ${String(item.id)}`)))
+    expect(calls[1]).toEqual(headers.slice(8).map(item => String(item.header.id)))
+    secondPage.resolve(headers.slice(8).map(item => titled(String(item.header.id), `Title ${String(item.header.id)}`)))
     await vi.waitFor(() => expect(panel.render(80).some(row => row.includes('Title s-8'))).toBe(true))
     const rows = panel.render(80)
     expect(rows.some(row => row.includes('Title s-8'))).toBe(true)
@@ -696,7 +699,7 @@ describe('mayfly-commands plugin', () => {
   })
 
   it('/sessions shows no overlay when the fiber unloads while the listing is in flight', async () => {
-    const gate = Promise.withResolvers<SessionHeader[]>()
+    const gate = Promise.withResolvers<{ header: SessionHeader }[]>()
     const { ctx, agent, fiber } = await mount({
       persistence: { list: () => gate.promise },
     })

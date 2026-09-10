@@ -19,7 +19,6 @@ import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
-import { decodeStorageRecord } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { TranscriptItem, TranscriptToolItem } from '../transcript/index.ts'
@@ -31,6 +30,7 @@ import type {} from '../app/index.ts'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { copyTextToClipboard } from './clipboard-write.ts'
+import { attemptStreamText } from './trace-format.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
 /** The key-arg whitelist for the tool-call hint, in priority order (the
  * present.ts list — the export keeps the same hint the card shows). */
@@ -277,9 +277,9 @@ function formatContentBlocksFull(content: readonly ContentBlock[]): string {
   return parts.join('\n\n')
 }
 
-/** One event's full-export section, in seq order. `assistant/chunk` rows
- * are the raw material of the assembled message and stay out (the message
- * carries the whole text). */
+/** One event's full-export section, in seq order. An `assistant/attempt` is
+ * a settled stream without a surface message; its prefix exists nowhere else
+ * and stays in. */
 function formatFullEvent(event: SessionEvent): string {
   const lines: string[] = []
   switch (event.type) {
@@ -330,10 +330,19 @@ function formatFullEvent(event: SessionEvent): string {
     case 'step/end':
       lines.push('#### step/end', '')
       break
-    case 'assistant/chunk':
-      // Raw stream material; the assembled assistant/message carries the
-      // whole text, so the chunks add nothing but noise.
-      return ''
+    case 'assistant/attempt': {
+      // A settled attempt with no surface message (failed, retried, or
+      // cancelled): its stream exists nowhere else, so the full export keeps
+      // the delivered prefix. A boundary-only attempt is noise and stays out.
+      const parts = attemptStreamText(event.data.stream)
+      if (parts.reasoning.trim().length === 0 && parts.text.trim().length === 0) return ''
+      lines.push('#### assistant attempt', '')
+      if (parts.reasoning.trim().length > 0) {
+        lines.push('<details><summary>Thinking</summary>', '', parts.reasoning, '', '</details>', '')
+      }
+      if (parts.text.trim().length > 0) lines.push(parts.text, '')
+      break
+    }
     case 'turn/end': {
       const reason = event.data.reason
       const failure = reason.kind === 'error' && reason.error !== undefined
@@ -469,9 +478,9 @@ export function registerExportCommands(ctx: Context): () => void {
   }
 
   /**
-   * The shared read path: the current session's raw artifact plus its current
-   * official conversation projection. Resolves `undefined` when no session is live yet;
-   * throws the classified failure for every other stop.
+   * The shared read path: the current session's durable events plus its
+   * current official conversation projection. Resolves `undefined` when no
+   * session is live yet; throws the classified failure for every other stop.
    * @param signal - the dispatching UI request's cancellation signal.
    */
   async function readSessionSource(signal: AbortSignal): Promise<SessionExportSource | undefined> {
@@ -479,26 +488,20 @@ export function registerExportCommands(ctx: Context): () => void {
     if (agent === null) return undefined
     const persistence = ctx.get('sessionPersistence')
     if (persistence === undefined) throw new Error('session persistence is unavailable')
-    if (persistence.supportsRawArtifacts === false) {
-      throw new Error('this session persistence backend does not expose raw artifacts')
-    }
     // The persistence coordinator drains asynchronously (`session/event`
     // write-behind), so a durable read must flush first — the SessionStore's
     // documented pre-read channel (`ctx.get`, never the inject proxy).
     // Safe with no store, no listener (flush returns false), or any backend.
     await ctx.sessions.flush(agent.session)
-    const raw = await persistence.readRaw(agent.id, signal)
-    if (raw === undefined) throw new Error('the session has no stored artifact yet')
-    const events: SessionEvent[] = []
-    for (const line of raw.content.split('\n')) {
-      if (line.trim() === '') continue
-      let value: unknown
-      try {
-        value = JSON.parse(line)
-      } catch {
-        throw new Error('corrupt session log: invalid JSONL line')
-      }
-      events.push(...decodeStorageRecord(value))
+    // Harness `0.1.5` replaces the raw-artifact channel with read handles:
+    // the backend decodes its own storage format, so the full export reads
+    // the validated event log instead of parsing JSONL lines here.
+    const handle = await persistence.open(agent.id, 'read', { signal })
+    let events: SessionEvent[] = []
+    try {
+      events = [...(await handle.read(undefined, undefined, { signal })).events]
+    } finally {
+      await handle.close()
     }
     const projection = ctx.sessionProjections.snapshot(agent.session, ['mayflyConversation']).values.mayflyConversation
     const items = isConversationProjection(projection) ? projectionItems(projection) : []

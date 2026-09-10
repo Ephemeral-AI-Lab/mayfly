@@ -23,8 +23,6 @@
   disabled: true
 - id: tool-fs-search
   disabled: true
-- id: tool-str-replace-editor
-  disabled: true
 - id: skill-filesystem
   disabled: true
 - id: tool-skill
@@ -86,6 +84,16 @@
 
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
+
+    # Harness 0.1.5 makes the Session controller require the browser file
+    # upload service (staged receipts ride prompts). Mirroring the upstream
+    # web composition: the Connection plugin registers the upload route lazily
+    # and stays quiet in a TUI host with no web server.
+    - id: connection
+      name: '@deepseek-ai/dsh-client-connection'
+
+    - id: file-upload
+      name: '@deepseek-ai/dsh-client-file-upload'
 
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'

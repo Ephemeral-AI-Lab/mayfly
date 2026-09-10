@@ -12,6 +12,7 @@ import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-title/types'
+import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
 import type { ConversationFacts } from '../conversation/index.ts'
 import { initialConversationFacts } from '../conversation/index.ts'
 
@@ -35,7 +36,9 @@ declare module '@deepseek-ai/cordis' {
 /** Session-scoped facts bridge for status and dock model producers. */
 export class SessionFactsService extends Service {
   private agent: Agent | null = null
+  private durable: ConversationFacts = initialConversationFacts()
   private facts: ConversationFacts = initialConversationFacts()
+  private live: LiveAssistantDraft | undefined
   private title: string | undefined
   private goal: GoalProjection | null = null
   private readonly listeners = new Set<(facts: ConversationFacts) => void>()
@@ -46,8 +49,9 @@ export class SessionFactsService extends Service {
   private readonly children = new Map<string, ChildSessionFacts>()
   private readonly offProjection: () => void
   private readonly offAgent: () => void
+  private readonly offLive: () => void
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, liveStream?: LiveAssistantStreamService) {
     super(ctx, 'mayflySessionFacts')
     this.offProjection = ctx.sessionProjections.onChanged((session, key, value) => {
       if (session === this.agent?.session) {
@@ -61,7 +65,18 @@ export class SessionFactsService extends Service {
       }
     })
     this.offAgent = ctx.mayflyCurrentAgent.subscribe(next => { this.attach(next) })
-  }
+    // Harness `0.1.5` streams live deltas as transient Agent frames; the
+    // durable facts projection settles only at attempt boundaries. The draft
+    // overlays the streaming phase and output progress of the current Agent.
+    this.offLive = liveStream === undefined
+      ? () => {}
+      : liveStream.subscribe(() => {
+        const draft = this.agent === null ? undefined : liveStream.get(String(this.agent.session.id))
+        if (draft === this.live && draft?.outputProgress === this.live?.outputProgress) return
+        this.live = draft
+        this.facts = this.merged()
+        for (const listener of this.listeners) listener(this.facts)
+      })  }
 
   /** Current facts; the returned object is projection-owned readonly data. */
   get current(): ConversationFacts {
@@ -143,6 +158,7 @@ export class SessionFactsService extends Service {
   dispose(): void {
     this.offProjection()
     this.offAgent()
+    this.offLive()
     this.listeners.clear()
     this.titleListeners.clear()
     this.goalListeners.clear()
@@ -150,14 +166,33 @@ export class SessionFactsService extends Service {
     this.childListeners.clear()
     this.children.clear()
     this.agent = null
+    this.durable = initialConversationFacts()
     this.facts = initialConversationFacts()
+    this.live = undefined
     this.title = undefined
     this.goal = null
   }
 
+  /** Durable facts overlaid with the current Agent's live streaming draft. */
+  private merged(): ConversationFacts {
+    const draft = this.live
+    if (draft === undefined || this.agent === null || draft.sessionId !== String(this.agent.session.id)) return this.durable
+    const phase = draft.phase === 'waiting' ? this.durable.phase : draft.phase
+    return {
+      ...this.durable,
+      active: true,
+      phase,
+      activity: draft.phase === 'waiting' ? this.durable.activity : { kind: draft.phase === 'thinking' ? 'reasoning' : 'text' },
+      outputProgress: draft.outputProgress,
+    }
+  }
+
   private publish(next: ConversationFacts): void {
-    this.facts = next
-    for (const listener of this.listeners) listener(next)
+    this.durable = next
+    const merged = this.merged()
+    if (merged === this.facts) return
+    this.facts = merged
+    for (const listener of this.listeners) listener(merged)
   }
 
   private publishTitle(next: string | undefined): void {

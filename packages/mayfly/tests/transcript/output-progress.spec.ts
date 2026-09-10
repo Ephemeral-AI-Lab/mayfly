@@ -6,7 +6,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { AssistantStreamRecord, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { appendOutputProgress, outputProgressSchema } from '../../src/conversation/output-progress.ts'
 import { foldConversationFacts, initialConversationFacts, conversationFactsSchema } from '../../src/conversation/facts.ts'
 import { foldConversationProjection, initialConversationState, conversationProjectionStateSchema } from '../../src/conversation/projection.ts'
@@ -26,16 +26,23 @@ afterEach(() => {
   resetSeq()
 })
 
-function chunk(value: StreamChunk, time: number, step = 1, turn = 1): SessionEvent<'assistant/chunk'> {
-  return event('assistant/chunk', { turn, step, chunk: value }, time)
+/** One attempt event carrying a raw (non-delta) stream record. */
+function chunk(value: StreamChunk, time: number, step = 1, turn = 1): SessionEvent<'assistant/attempt'> {
+  return attempt([{ type: 'chunk', time, chunk: value }], time, step, turn)
 }
 
-function reasoning(text: string, time: number, step = 1, turn = 1): SessionEvent<'assistant/chunk'> {
-  return chunk({ type: 'reasoning-delta', index: 0, text }, time, step, turn)
+/** One attempt event carrying a packed reasoning run at an explicit time. */
+function reasoning(text: string, time: number, step = 1, turn = 1): SessionEvent<'assistant/attempt'> {
+  return attempt([{ type: 'reasoning-chunks', time0: time, index: 0, dt: [], texts: [text] }], time, step, turn)
 }
 
-function answer(text: string, time: number, step = 1, turn = 1): SessionEvent<'assistant/chunk'> {
-  return chunk({ type: 'text-delta', index: 1, text }, time, step, turn)
+/** One attempt event carrying a packed text run at an explicit time. */
+function answer(text: string, time: number, step = 1, turn = 1): SessionEvent<'assistant/attempt'> {
+  return attempt([{ type: 'text-chunks', time0: time, index: 0, dt: [], texts: [text] }], time, step, turn)
+}
+
+function attempt(stream: readonly AssistantStreamRecord[], time: number, step: number, turn: number): SessionEvent<'assistant/attempt'> {
+  return event('assistant/attempt', { turn, step, stream }, time)
 }
 
 describe('phase-local output', () => {

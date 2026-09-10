@@ -1,4 +1,4 @@
-/** Tests for transcript-compatible grouping of assistant stream chunks. */
+/** Tests for transcript-compatible grouping of embedded assistant attempt streams. */
 
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
@@ -15,20 +15,25 @@ function event(seq: number, type: string, data: unknown): SessionEvent {
   return { seq, time: seq, type, data } as unknown as SessionEvent
 }
 
+/** One attempt event whose compact stream holds a single packed run. */
+function attempt(seq: number, kind: 'text-chunks' | 'reasoning-chunks', text: string): SessionEvent {
+  return event(seq, 'assistant/attempt', { turn: 1, step: 1, stream: [{ type: kind, time0: seq, index: 0, dt: [], texts: [text] }] })
+}
+
 describe('aggregateTraceItems', () => {
-  it('merges reasoning and text deltas per turn and step', () => {
+  it('merges reasoning and text runs per turn and step', () => {
     const records = [
-      record(1, 'assistant/chunk'), record(2, 'assistant/chunk'),
-      record(3, 'assistant/chunk'), record(4, 'assistant/chunk'),
-      record(5, 'assistant/message'), record(6, 'assistant/chunk'),
+      record(1, 'assistant/attempt'), record(2, 'assistant/attempt'),
+      record(3, 'assistant/attempt'), record(4, 'assistant/attempt'),
+      record(5, 'assistant/message'), record(6, 'assistant/attempt'),
     ]
     const events = [
-      event(1, 'assistant/chunk', { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'No' } }),
-      event(2, 'assistant/chunk', { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: ' need' } }),
-      event(3, 'assistant/chunk', { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'answer' } }),
-      event(4, 'assistant/chunk', { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: ' now' } }),
-      event(5, 'assistant/message', { turn: 1, step: 1, message: { content: [] } }),
-      event(6, 'assistant/chunk', { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'ignored' } }),
+      attempt(1, 'reasoning-chunks', 'No'),
+      attempt(2, 'reasoning-chunks', ' need'),
+      attempt(3, 'text-chunks', 'answer'),
+      attempt(4, 'text-chunks', ' now'),
+      event(5, 'assistant/message', { turn: 1, step: 1, message: { content: [] }, stream: [] }),
+      attempt(6, 'reasoning-chunks', 'ignored'),
     ]
     expect(aggregateTraceItems(records, events)).toMatchObject([
       { seq: 1, lastSeq: 2, eventSeqs: [1, 2], title: 'Thinking', summary: 'No need' },
@@ -38,7 +43,7 @@ describe('aggregateTraceItems', () => {
   })
 
   it('keeps unknown and unpaired records as individual items', () => {
-    const records = [record(1, 'custom/event'), record(2, 'assistant/chunk')]
+    const records = [record(1, 'custom/event'), record(2, 'assistant/attempt')]
     const events = [event(1, 'custom/event', { value: 1 })]
     const items = aggregateTraceItems(records, events)
     expect(items).toHaveLength(2)
@@ -46,9 +51,9 @@ describe('aggregateTraceItems', () => {
     expect(items[1]).toMatchObject({ seq: 2, summary: '' })
   })
 
-  it('ignores unsupported stream chunk kinds', () => {
-    const records = [record(1, 'assistant/chunk')]
-    const events = [event(1, 'assistant/chunk', { turn: 1, step: 1, chunk: { type: 'block-start', index: 0, blockType: 'text' } })]
+  it('ignores attempt records without delta runs', () => {
+    const records = [record(1, 'assistant/attempt')]
+    const events = [event(1, 'assistant/attempt', { turn: 1, step: 1, stream: [{ type: 'chunk', time: 1, chunk: { type: 'block-start', index: 0, blockType: 'text' } }] })]
     expect(aggregateTraceItems(records, events)).toEqual([])
   })
 })

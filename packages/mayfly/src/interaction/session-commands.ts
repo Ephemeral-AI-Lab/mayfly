@@ -19,7 +19,7 @@ export const name = 'mayfly-session-information'
 export const inject = ['commands', 'mayflyOverlays']
 export interface Config { readonly displayVersion?: string }
 const KEYS = ['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown', 'modelSelection'] as const
-const HARNESS_LINE = '0.1.2-alpha.5'
+const HARNESS_LINE = '0.1.5-rc.1'
 
 /** One native snapshot gives every displayed projection the same session cursor. */
 export function sessionInfoFacts(ctx: Context, agent: Agent): SessionInfoFacts {

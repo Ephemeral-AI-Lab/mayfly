@@ -38,14 +38,37 @@ function event<T extends SessionEvent['type']>(
 ): SessionEvent<T> {
   const seq = nextSeq
   nextSeq += 1
+  // Harness 0.1.5 assistant messages embed their stream; fixtures that do not
+  // care about streaming carry the empty stream.
+  const resolved = type === 'assistant/message' && data !== null && typeof data === 'object' && !('stream' in data)
+    ? { ...(data as object), stream: [] }
+    : data
   return {
     type,
     seq,
     time: options.time ?? 1_700_000_000_000 + seq,
-    data,
+    data: resolved,
     ...(options.append ? { surfaceOp: 'append' } : {}),
-    ...(options.replace ? { surfaceOp: { op: 'replace', start: 0, end: 0 } } : {}),
+    ...(options.replace ? { surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 } } : {}),
   } as SessionEvent<T>
+}
+
+/** One `assistant/attempt` whose compact stream holds a single packed run. */
+function attemptEvent(turn: number, step: number, kind: 'reasoning' | 'text', text: string): SessionEvent<'assistant/attempt'> {
+  return event('assistant/attempt', {
+    turn,
+    step,
+    stream: [{ type: kind === 'reasoning' ? 'reasoning-chunks' : 'text-chunks', time0: 1_700_000_000_000, index: 0, dt: [], texts: [text] }],
+  })
+}
+
+/** Mayfly's durable retraction marker: an empty plugin-attributed system replacement. */
+function retractionMarker(turn: number, step: number): SessionEvent<'system/message'> {
+  return event('system/message', {
+    turn,
+    step,
+    message: { id: MessageId(`retraction-${String(nextSeq)}`), role: 'system', content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+  }, { replace: true })
 }
 
 function userMessage(text: string, content: readonly ContentBlock[] = [], source: UserMessage['source'] = { kind: 'user' }): UserMessage {
@@ -85,10 +108,10 @@ describe('mayflyConversation projection', () => {
       event('turn/start', { turn: 2 }),
       event('user/message', userMessage('hello'), { append: true }),
       event('step/start', { turn: 2, step: 0 }),
-      event('assistant/chunk', { turn: 2, step: 0, chunk: { type: 'reasoning-delta', index: 0, text: '  ' } }),
-      event('assistant/chunk', { turn: 2, step: 0, chunk: { type: 'reasoning-delta', index: 0, text: 'think' } }),
-      event('assistant/chunk', { turn: 2, step: 0, chunk: { type: 'text-delta', index: 1, text: 'draft' } }),
-      event('assistant/chunk', { turn: 2, step: 0, chunk: { type: 'text-delta', index: 1, text: ' answer' } }),
+      attemptEvent(2, 0, 'reasoning', '  '),
+      attemptEvent(2, 0, 'reasoning', 'think'),
+      attemptEvent(2, 0, 'text', 'draft'),
+      attemptEvent(2, 0, 'text', ' answer'),
       event('assistant/message', {
         turn: 2,
         step: 0,
@@ -183,11 +206,11 @@ describe('mayflyConversation projection', () => {
     let state = fold([
       event('turn/start', { turn: 3 }),
       event('step/start', { turn: 3, step: 0 }),
-      event('assistant/chunk', { turn: 3, step: 0, chunk: { type: 'text-delta', index: 0, text: 'partial' } }),
+      attemptEvent(3, 0, 'text', 'partial'),
       event('assistant/message', { turn: 3, step: 0, message: assistantMessage([{ type: 'text', text: 'done' }]) }, { append: true }),
     ])
     const finalized = state
-    state = foldConversationProjection(state, event('assistant/chunk', { turn: 3, step: 0, chunk: { type: 'text-delta', index: 0, text: 'late' } }))
+    state = foldConversationProjection(state, attemptEvent(3, 0, 'text', 'late'))
     expect(state).toBe(finalized)
 
     state = foldConversationProjection(state, event('tool/result', {
@@ -215,7 +238,7 @@ describe('mayflyConversation projection', () => {
       reason: { kind: 'aborted', reason: { kind: 'user' } },
     }))
     const interrupted = state
-    state = foldConversationProjection(state, event('assistant/chunk', { turn: 3, step: 2, chunk: { type: 'reasoning-delta', index: 0, text: 'late' } }))
+    state = foldConversationProjection(state, attemptEvent(3, 2, 'reasoning', 'late'))
     expect(state).toBe(interrupted)
     state = foldConversationProjection(state, event('turn/end', {
       turn: 3,
@@ -244,8 +267,8 @@ describe('mayflyConversation projection', () => {
       event('turn/start', { turn: 6 }),
       event('user/message', userMessage('revise this'), { append: true }),
       event('step/start', { turn: 6, step: 0 }),
-      event('assistant/chunk', { turn: 6, step: 0, chunk: { type: 'reasoning-delta', index: 0, text: 'partial thought' } }),
-      event('assistant/chunk', { turn: 6, step: 0, chunk: { type: 'text-delta', index: 1, text: 'partial answer' } }),
+      attemptEvent(6, 0, 'reasoning', 'partial thought'),
+      attemptEvent(6, 0, 'text', 'partial answer'),
       event('assistant/message', {
         turn: 6,
         step: 0,
@@ -258,12 +281,7 @@ describe('mayflyConversation projection', () => {
     ])
     expect(state.entries.map(entry => entry.kind)).toEqual(['user', 'thinking', 'assistant', 'interrupted'])
 
-    const marker = event('assistant/message', {
-      turn: 6,
-      step: 0,
-      message: assistantMessage([]),
-      interrupted: true,
-    }, { replace: true })
+    const marker = retractionMarker(6, 0)
     expect(isTurnRetraction(marker)).toBe(true)
     state = foldConversationProjection(state, marker)
     expect(state.entries).toEqual([])
@@ -276,9 +294,7 @@ describe('mayflyConversation projection', () => {
     state = foldConversationProjection(state, event('turn/start', { turn: 6 }))
     state = foldConversationProjection(state, event('step/start', { turn: 6, step: 1 }))
     state = foldConversationProjection(state, event('user/message', userMessage('late user'), { append: true }))
-    state = foldConversationProjection(state, event('assistant/chunk', {
-      turn: 6, step: 0, chunk: { type: 'text-delta', index: 0, text: 'late answer' },
-    }))
+    state = foldConversationProjection(state, attemptEvent(6, 0, 'text', 'late answer'))
     state = foldConversationProjection(state, event('assistant/message', {
       turn: 6, step: 0, message: assistantMessage([{ type: 'text', text: 'late final' }]),
     }, { append: true }))
@@ -289,34 +305,38 @@ describe('mayflyConversation projection', () => {
       turn: 6, reason: { kind: 'interrupted' },
     }))
     expect(state).toBe(retracted)
-    expect(isTurnRetraction(event('assistant/message', {
-      turn: 7, step: 0, message: assistantMessage([]), interrupted: true,
+    expect(isTurnRetraction(event('system/message', {
+      turn: 7, step: 0,
+      message: { id: MessageId('appended'), role: 'system', content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
     }, { append: true }))).toBe(false)
     expect(foldConversationProjection(state, marker)).toBe(state)
   })
 
   it('recognizes only the exact retraction marker and preserves other active turns', () => {
     expect(isTurnRetraction(event('turn/start', { turn: 1 }))).toBe(false)
+    // An assistant replacement is never the marker (0.1.5 forbids its provenance).
     expect(isTurnRetraction(event('assistant/message', {
-      turn: 1, step: 0, message: assistantMessage([]), interrupted: false,
+      turn: 1, step: 0, message: assistantMessage([]),
     }, { replace: true }))).toBe(false)
-    expect(isTurnRetraction(event('assistant/message', {
-      turn: 1, step: 0, message: assistantMessage([{ type: 'text', text: 'kept' }]), interrupted: true,
+    // A system replacement with content is a prompt rewrite, not a retraction.
+    expect(isTurnRetraction(event('system/message', {
+      turn: 1, step: 0,
+      message: { id: MessageId('sys-kept'), role: 'system', content: [{ type: 'text', text: 'kept' }], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
     }, { replace: true }))).toBe(false)
-    expect(isTurnRetraction(event('assistant/message', {
-      turn: 1, step: 0, message: assistantMessage([]), interrupted: true,
+    // Without the replacement op the marker is an ordinary empty system message.
+    expect(isTurnRetraction(event('system/message', {
+      turn: 1, step: 0,
+      message: { id: MessageId('sys-plain'), role: 'system', content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
     }))).toBe(false)
 
     const active = fold([
       event('turn/start', { turn: 8 }),
       event('step/start', { turn: 8, step: 0 }),
-      event('assistant/chunk', { turn: 8, step: 0, chunk: { type: 'reasoning-delta', index: 0, text: 'kept thought' } }),
-      event('assistant/chunk', { turn: 8, step: 0, chunk: { type: 'text-delta', index: 1, text: 'kept answer' } }),
+      attemptEvent(8, 0, 'reasoning', 'kept thought'),
+      attemptEvent(8, 0, 'text', 'kept answer'),
       event('tool/call', { turn: 8, step: 0, callId: ToolCallId('kept-tool'), name: 'read', arguments: '{}' }),
     ])
-    const retracted = foldConversationProjection(active, event('assistant/message', {
-      turn: 7, step: 0, message: assistantMessage([]), interrupted: true,
-    }, { replace: true }))
+    const retracted = foldConversationProjection(active, retractionMarker(7, 0))
     expect(retracted.active).toBe(true)
     expect(retracted.streamingStep).toBe(active.streamingStep)
     expect(retracted.streamingAssistantId).toBe(active.streamingAssistantId)
@@ -330,17 +350,60 @@ describe('mayflyConversation projection', () => {
     const active = fold([
       event('turn/start', { turn: 9 }),
       event('step/start', { turn: 9, step: 0 }),
-      event('assistant/chunk', { turn: 9, step: 0, chunk: { type: 'reasoning-delta', index: 0, text: 'thought' } }),
-      event('assistant/chunk', { turn: 9, step: 0, chunk: { type: 'text-delta', index: 1, text: 'answer' } }),
+      attemptEvent(9, 0, 'reasoning', 'thought'),
+      attemptEvent(9, 0, 'text', 'answer'),
       event('tool/call', { turn: 9, step: 0, callId: ToolCallId('removed-tool'), name: 'read', arguments: '{}' }),
     ])
-    const retracted = foldConversationProjection(active, event('assistant/message', {
-      turn: 9, step: 0, message: assistantMessage([]), interrupted: true,
-    }, { replace: true }))
+    const retracted = foldConversationProjection(active, retractionMarker(9, 0))
     expect(retracted).toMatchObject({
       entries: [], active: false, streamingStep: null,
       streamingAssistantId: null, streamingThinkingId: null,
       pendingReasoning: '', toolEntryIds: {}, retractedTurns: [9],
+    })
+  })
+
+  it('folds foreign or malformed attempt streams without entries', () => {
+    let state = foldConversationProjection(initialConversationState(), event('turn/start', { turn: 9 }))
+    state = foldConversationProjection(state, event('step/start', { turn: 9, step: 0 }))
+    // No stream at all folds empty.
+    state = foldConversationProjection(state, event('assistant/attempt', { turn: 9, step: 0 } as never))
+    expect(state.entries).toEqual([])
+    // A malformed packed record folds empty rather than throwing.
+    state = foldConversationProjection(state, event('assistant/attempt', {
+      turn: 9, step: 0, stream: [{ type: 'reasoning-chunks', time0: 1, index: 0, dt: [], texts: ['a', 'b'] }],
+    }))
+    expect(state.entries).toEqual([])
+    // Empty-text deltas contribute nothing.
+    state = foldConversationProjection(state, attemptEvent(9, 0, 'text', ''))
+    expect(state.entries).toEqual([])
+    expect(state.streamingStep).toBe('9:0')
+  })
+
+  it('runs boundary records and re-opens a parked thinking entry from the attempt fold', () => {
+    let state = fold([
+      event('turn/start', { turn: 10 }),
+      event('step/start', { turn: 10, step: 0 }),
+      attemptEvent(10, 0, 'reasoning', 'first'),
+    ])
+    // Raw boundary records: finish parks the streaming entry; block-end
+    // reasoning and block-start text exercise the remaining sides.
+    state = foldConversationProjection(state, event('assistant/attempt', {
+      turn: 10, step: 0,
+      stream: [
+        { type: 'chunk', time: 5, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'first' } } },
+        { type: 'chunk', time: 6, chunk: { type: 'block-start', index: 1, blockType: 'text' } },
+        { type: 'chunk', time: 7, chunk: { type: 'finish', index: 2 } },
+      ],
+    }))
+    const parked = state.entries.find(entry => entry.kind === 'thinking')
+    expect(parked).toMatchObject({ text: 'first', streaming: false })
+    // A later reasoning delta in the same step re-opens the parked entry and
+    // restarts the measured window.
+    state = foldConversationProjection(state, attemptEvent(10, 0, 'reasoning', ' more'))
+    expect(state.entries.find(entry => entry.kind === 'thinking')).toMatchObject({
+      text: 'first more',
+      streaming: true,
+      outputProgress: { chars: 5, startedAt: 1_700_000_000_004 },
     })
   })
 
@@ -350,23 +413,15 @@ describe('mayflyConversation projection', () => {
     expect(foldConversationProjection(state, unrelated)).toBe(state)
     state = foldConversationProjection(state, event('turn/start', { turn: 7 }))
     state = foldConversationProjection(state, event('step/start', { turn: 7, step: 0 }))
-    state = foldConversationProjection(state, event('assistant/chunk', {
-      turn: 7,
-      step: 0,
-      chunk: { type: 'usage', usage: { inputTokens: 1, outputTokens: 2 } },
+    // An attempt whose stream holds only a boundary record contributes no
+    // delta text — the unrelated-chunk case of the packed stream world.
+    state = foldConversationProjection(state, event('assistant/attempt', {
+      turn: 7, step: 0, stream: [{ type: 'chunk', time: 1, chunk: { type: 'block-start', index: 0, blockType: 'text' } }],
     }))
-    state = foldConversationProjection(state, event('assistant/chunk', {
-      turn: 7,
-      step: 0,
-      chunk: { type: 'reasoning-delta', index: 0, text: ' ' },
-    }))
+    state = foldConversationProjection(state, attemptEvent(7, 0, 'reasoning', ' '))
     const beforeWhitespace = state
     expect(state.pendingReasoning).toBe(' ')
-    state = foldConversationProjection(state, event('assistant/chunk', {
-      turn: 7,
-      step: 0,
-      chunk: { type: 'text-delta', index: 0, text: '' },
-    }))
+    state = foldConversationProjection(state, attemptEvent(7, 0, 'text', ''))
     state = foldConversationProjection(state, event('step/start', { turn: 7, step: 1 }))
     expect(state.streamingStep).toBeNull()
     expect(state.pendingReasoning).toBe('')
@@ -407,15 +462,9 @@ describe('mayflyConversation projection', () => {
     expect(state).toBe(finalized)
 
     state = foldConversationProjection(state, event('turn/start', { turn: 9 }))
-    state = foldConversationProjection(state, event('assistant/chunk', {
-      turn: 9, step: 0, chunk: { type: 'text-delta', index: 0, text: 'answer first' },
-    }))
-    state = foldConversationProjection(state, event('assistant/chunk', {
-      turn: 9, step: 0, chunk: { type: 'reasoning-delta', index: 1, text: 'thought after' },
-    }))
-    state = foldConversationProjection(state, event('assistant/chunk', {
-      turn: 9, step: 0, chunk: { type: 'reasoning-delta', index: 1, text: ' continued' },
-    }))
+    state = foldConversationProjection(state, attemptEvent(9, 0, 'text', 'answer first'))
+    state = foldConversationProjection(state, attemptEvent(9, 0, 'reasoning', 'thought after'))
+    state = foldConversationProjection(state, attemptEvent(9, 0, 'reasoning', ' continued'))
     state = foldConversationProjection(state, event('step/start', { turn: 9, step: 1 }))
     expect(state.entries.slice(-2)).toMatchObject([
       { kind: 'thinking', text: 'thought after continued', streaming: false },
@@ -445,13 +494,9 @@ describe('mayflyConversation projection', () => {
       streamingThinkingId: 'assistant-id',
       streamingAssistantId: 'thinking-id',
     }
-    const crossedReasoning = foldConversationProjection(crossed, event('assistant/chunk', {
-      turn: 1, step: 0, chunk: { type: 'reasoning-delta', index: 0, text: 'ignored kind' },
-    }))
+    const crossedReasoning = foldConversationProjection(crossed, attemptEvent(1, 0, 'reasoning', 'ignored kind'))
     expect(crossedReasoning.entries).toEqual(crossed.entries)
-    const crossedText = foldConversationProjection(crossed, event('assistant/chunk', {
-      turn: 1, step: 0, chunk: { type: 'text-delta', index: 0, text: 'ignored kind' },
-    }))
+    const crossedText = foldConversationProjection(crossed, attemptEvent(1, 0, 'text', 'ignored kind'))
     expect(crossedText.entries).toEqual(crossed.entries)
     const settled = foldConversationProjection(crossed, event('step/start', { turn: 1, step: 1 }))
     expect(settled.streamingThinkingId).toBeNull()
@@ -471,9 +516,7 @@ describe('mayflyConversation projection', () => {
     }, { append: true }))
     expect(crossedFinal.finalizedSteps).toContain('1:0')
 
-    let answerFirst = foldConversationProjection(initialConversationState(), event('assistant/chunk', {
-      turn: 10, step: 0, chunk: { type: 'text-delta', index: 0, text: 'draft' },
-    }))
+    let answerFirst = foldConversationProjection(initialConversationState(), attemptEvent(10, 0, 'text', 'draft'))
     answerFirst = foldConversationProjection(answerFirst, event('assistant/message', {
       turn: 10,
       step: 0,
@@ -515,7 +558,7 @@ describe('SessionProjectionRegistry integration', () => {
       if (changedSession === session && key === 'mayflyConversation') changes.push(seq)
     })
     session.append('step/start', { turn: 0, step: 0 })
-    session.append('assistant/chunk', { turn: 0, step: 0, chunk: { type: 'text-delta', index: 0, text: 'live' } })
+    session.append('assistant/attempt', { turn: 0, step: 0, stream: [{ type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['live'] }] })
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
