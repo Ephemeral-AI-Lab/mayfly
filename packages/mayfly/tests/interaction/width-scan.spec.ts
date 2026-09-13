@@ -103,7 +103,9 @@ describe('interaction width-scan', () => {
       } finally { await bench.ctx.fiber.dispose() }
     })
 
-    it(`paged job output survives ${name}`, async () => {
+    // Give each width its own test budget: full pages at all nine widths
+    // otherwise share one timeout under coverage and concurrent CI workers.
+    for (const width of SCAN_WIDTHS) it(`paged job output survives ${name} at width ${width}`, async () => {
       const bench = await requestFixture()
       const read = { snapshot: { id: 'large', label: 'Large output', status: 'completed' } as JobSnapshot, text: `${text}\n`.repeat(Math.ceil(13_000 / (text.length + 1))) }
       const pages = documentPages(read.text)
@@ -111,11 +113,11 @@ describe('interaction width-scan', () => {
         for (const page of pages.keys()) {
           const handle = bench.ctx.mayflyOverlays.open({ id: 'job-output', capturing: true }, jobOutputNode(read, pages, page + 1, key => key))
           const model = bench.ctx.mayflyUiInteraction.get('overlay', 'job-output')!
-          const viewport = { columns: 80, rows: 20 }
+          const viewport = { columns: width, rows: 20 }
           const renderer = renderRequest(model, viewport)
           try {
-            for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
-              viewport.columns = width; viewport.rows = height
+            for (const height of [20, 7, 3]) {
+              viewport.rows = height
               const rows = renderer.component.render(width)
               expectLinesFit(`job-output/${name}/${page}/${height}`, rows, width)
               expect(rows.length).toBeLessThanOrEqual(height)
