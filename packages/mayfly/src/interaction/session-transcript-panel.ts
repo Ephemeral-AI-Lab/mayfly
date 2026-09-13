@@ -85,7 +85,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       liveDraftsOf(ctx),
     )
     if (live === undefined) void this.loadCold(tools)
-    else this.source.attach(live)
+    else this.source.attach(live, undefined, childAgent)
   }
 
   get focused(): boolean { return this.shell.focused }

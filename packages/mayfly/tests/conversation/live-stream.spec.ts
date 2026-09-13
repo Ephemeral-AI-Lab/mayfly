@@ -11,7 +11,7 @@ import { fakeAgent } from '../transcript/status-fakes.ts'
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 
-/** fakeAgent sessions carry no id; the draft store keys by session id. */
+/** fakeAgent sessions carry no id; drafts expose the durable session id. */
 function agentWithSessionId(id: string): Agent {
   const agent = fakeAgent([])
   ;(agent.session as { id?: string }).id = id
@@ -28,36 +28,36 @@ function boot(agent: Agent = agentWithSessionId('live-boot')): { ctx: Context, s
 }
 
 describe('LiveAssistantStreamService', () => {
-  it('folds start, deltas, and boundaries into one per-session draft', () => {
+  it('folds start, deltas, and boundaries into one exact-Agent draft', () => {
     const agent = agentWithSessionId('live-main')
     const { service, frame } = boot(agent)
     const listener = vi.fn()
     service.subscribe(listener)
     const key = String(agent.session.id)
     frame({ type: 'start', attemptId: 'a1' as never, revision: 1, turn: 2, step: 1 })
-    expect(service.get(key)).toMatchObject({ sessionId: key, turn: 2, step: 1, phase: 'thinking', reasoning: '', text: '' })
+    expect(service.get(agent)).toMatchObject({ sessionId: key, turn: 2, step: 1, phase: 'thinking', reasoning: '', text: '' })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 0, time: 100, chunk: { type: 'reasoning-delta', index: 0, text: 'think' } })
-    expect(service.get(key)).toMatchObject({ phase: 'thinking', reasoning: 'think', outputProgress: { chars: 5, initialChars: 5, startedAt: 100, updatedAt: 100 } })
+    expect(service.get(agent)).toMatchObject({ phase: 'thinking', reasoning: 'think', outputProgress: { chars: 5, initialChars: 5, startedAt: 100, updatedAt: 100 } })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 1, time: 110, chunk: { type: 'reasoning-delta', index: 0, text: '' } })
-    expect(service.get(key)?.reasoning).toBe('think')
+    expect(service.get(agent)?.reasoning).toBe('think')
     // An empty text delta parks nothing either.
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 2, time: 111, chunk: { type: 'text-delta', index: 1, text: '' } })
-    expect(service.get(key)).toMatchObject({ reasoning: 'think', text: '' })
+    expect(service.get(agent)).toMatchObject({ reasoning: 'think', text: '' })
     // A reasoning block ending in the thinking phase parks the draft.
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 2, time: 120, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'think' } } })
-    expect(service.get(key)).toMatchObject({ phase: 'waiting' })
+    expect(service.get(agent)).toMatchObject({ phase: 'waiting' })
     // Text deltas compose the answer and reset the measured progress window.
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 3, time: 130, chunk: { type: 'text-delta', index: 1, text: 'answer' } })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 4, time: 140, chunk: { type: 'text-delta', index: 1, text: ' now' } })
-    expect(service.get(key)).toMatchObject({ phase: 'composing', text: 'answer now', outputProgress: { chars: 10, initialChars: 6, startedAt: 130 } })
+    expect(service.get(agent)).toMatchObject({ phase: 'composing', text: 'answer now', outputProgress: { chars: 10, initialChars: 6, startedAt: 130 } })
     // Boundary records that are not reasoning text park the phase.
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 5, time: 150, chunk: { type: 'block-end', index: 1, block: { type: 'text', text: 'answer now' } } })
-    expect(service.get(key)).toMatchObject({ phase: 'waiting' })
+    expect(service.get(agent)).toMatchObject({ phase: 'waiting' })
     // Reasoning resuming outside the thinking phase restarts the window.
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 6, time: 160, chunk: { type: 'reasoning-delta', index: 2, text: 'rethink' } })
-    expect(service.get(key)).toMatchObject({ phase: 'thinking', outputProgress: { chars: 7, initialChars: 7, startedAt: 160 } })
+    expect(service.get(agent)).toMatchObject({ phase: 'thinking', outputProgress: { chars: 7, initialChars: 7, startedAt: 160 } })
     expect(listener).toHaveBeenCalled()
-    expect(service.get('other-session')).toBeUndefined()
+    expect(service.get(agentWithSessionId('other-session'))).toBeUndefined()
   })
 
   it('ignores non-delta chunk kinds without touching the draft', () => {
@@ -66,17 +66,17 @@ describe('LiveAssistantStreamService', () => {
     frame({ type: 'start', attemptId: 'a1' as never, revision: 1, turn: 1, step: 0 })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 0, time: 1, chunk: { type: 'block-start', index: 0, blockType: 'reasoning' } })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 1, time: 2, chunk: { type: 'tool-call-delta', index: 0, id: 'c' as never, delta: '' } })
-    const before = service.get(String(agent.session.id))
+    const before = service.get(agent)
     // block-end of reasoning while NOT thinking leaves the phase alone.
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 2, time: 3, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: '' } } })
-    expect(service.get(String(agent.session.id))).toBe(before)
+    expect(service.get(agent)).toBe(before)
   })
 
   it('ignores chunks of an attempt it never saw start', () => {
     const agent = agentWithSessionId('live-main')
     const { service, frame } = boot(agent)
     frame({ type: 'chunk', attemptId: 'unknown' as never, revision: 1, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'orphan' } })
-    expect(service.get(String(agent.session.id))).toBeUndefined()
+    expect(service.get(agent)).toBeUndefined()
   })
 
   it('replaces the draft when a new attempt starts and clears on end', () => {
@@ -85,13 +85,13 @@ describe('LiveAssistantStreamService', () => {
     frame({ type: 'start', attemptId: 'a1' as never, revision: 1, turn: 1, step: 0 })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 1, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'first' } })
     frame({ type: 'start', attemptId: 'a2' as never, revision: 2, turn: 1, step: 0 })
-    expect(service.get(String(agent.session.id))).toMatchObject({ reasoning: '', text: '' })
+    expect(service.get(agent)).toMatchObject({ reasoning: '', text: '' })
     frame({ type: 'chunk', attemptId: 'a2' as never, revision: 2, index: 0, time: 2, chunk: { type: 'reasoning-delta', index: 0, text: 'retry' } })
     frame({ type: 'end', attemptId: 'a2' as never, revision: 2, index: 1, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 9 as never } })
-    expect(service.get(String(agent.session.id))).toBeUndefined()
+    expect(service.get(agent)).toBeUndefined()
     // An abandoned end with no draft is a quiet no-op.
     frame({ type: 'end', attemptId: 'a3' as never, revision: 3, index: 0, outcome: { kind: 'abandoned' } })
-    expect(service.get(String(agent.session.id))).toBeUndefined()
+    expect(service.get(agent)).toBeUndefined()
   })
 
   it('keeps drafts per session and drops them on agent disposal', () => {
@@ -100,11 +100,51 @@ describe('LiveAssistantStreamService', () => {
     const { ctx, service } = boot(first)
     ctx.emit('agent/assistant-stream', { agent: first, frame: { type: 'start', attemptId: 'a' as never, revision: 1, turn: 1, step: 0 } } as never)
     ctx.emit('agent/assistant-stream', { agent: second, frame: { type: 'start', attemptId: 'b' as never, revision: 1, turn: 3, step: 0 } } as never)
-    expect(service.get(String(first.session.id))).toMatchObject({ turn: 1 })
-    expect(service.get(String(second.session.id))).toMatchObject({ turn: 3 })
+    expect(service.get(first)).toMatchObject({ turn: 1 })
+    expect(service.get(second)).toMatchObject({ turn: 3 })
     ctx.emit('agent/disposed', { agent: second } as never)
-    expect(service.get(String(second.session.id))).toBeUndefined()
-    expect(service.get(String(first.session.id))).toBeDefined()
+    expect(service.get(second)).toBeUndefined()
+    expect(service.get(first)).toBeDefined()
+  })
+
+  it('isolates replacement Agents even when their session and attempt ids match', () => {
+    const first = agentWithSessionId('shared-session')
+    const second = agentWithSessionId('shared-session')
+    const { ctx, service } = boot(first)
+    const emit = (agent: Agent, frame: AssistantStreamFrame) => ctx.emit('agent/assistant-stream', { agent, frame } as never)
+    const start = { type: 'start', attemptId: 'same' as never, revision: 1, turn: 1, step: 0 } as const
+    const chunk = { type: 'chunk', attemptId: 'same' as never, revision: 1, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'replacement' } } as const
+    emit(first, start)
+    emit(second, start)
+    emit(second, chunk)
+    const draft = service.get(second)
+    emit(first, { ...chunk, chunk: { ...chunk.chunk, text: 'obsolete' } })
+    emit(first, { ...start, revision: 2 })
+    emit(first, { type: 'end', attemptId: 'same' as never, revision: 2, index: 0, outcome: { kind: 'abandoned' } })
+    ctx.emit('agent/disposed', { agent: first } as never)
+    emit(first, { ...start, revision: 3 })
+    expect(service.get(first)).toBeUndefined()
+    expect(service.get(second)).toBe(draft)
+    expect(draft?.text).toBe('replacement')
+  })
+
+  it('rejects superseded attempt frames and replayed starts after settlement', () => {
+    const agent = agentWithSessionId('live-main')
+    const { service, frame } = boot(agent)
+    frame({ type: 'start', attemptId: 'old' as never, revision: 1, turn: 1, step: 0 })
+    frame({ type: 'start', attemptId: 'new' as never, revision: 2, turn: 1, step: 0 })
+    const chunk = { type: 'chunk', attemptId: 'new' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'new' } } as const
+    frame(chunk)
+    const draft = service.get(agent)
+    frame({ ...chunk, attemptId: 'old' as never })
+    frame({ ...chunk, revision: 1 })
+    frame({ type: 'end', attemptId: 'old' as never, revision: 1, index: 1, outcome: { kind: 'abandoned' } })
+    frame({ type: 'start', attemptId: 'old' as never, revision: 1, turn: 1, step: 0 })
+    expect(service.get(agent)).toBe(draft)
+    frame({ type: 'end', attemptId: 'new' as never, revision: 2, index: 1, outcome: { kind: 'abandoned' } })
+    frame(chunk)
+    frame({ type: 'start', attemptId: 'new' as never, revision: 2, turn: 1, step: 0 })
+    expect(service.get(agent)).toBeUndefined()
   })
 
   it('dispose stops frame handling and subscriptions', async () => {
@@ -115,7 +155,7 @@ describe('LiveAssistantStreamService', () => {
     off()
     service.dispose()
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'a' as never, revision: 1, turn: 1, step: 0 } } as never)
-    expect(service.get(String(agent.session.id))).toBeUndefined()
+    expect(service.get(agent)).toBeUndefined()
     expect(listener).not.toHaveBeenCalled()
   })
 })

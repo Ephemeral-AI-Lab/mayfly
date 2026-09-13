@@ -141,13 +141,13 @@ export function apply(ctx: Context): void {
   }
 
   // Live assistant frames precede every facts consumer here: the service
-  // folds transient agent/assistant-stream publications into per-session
+  // folds transient agent/assistant-stream publications into exact-Agent
   // drafts both the facts bridge and the transcript source overlay.
   const liveStream = new LiveAssistantStreamService(ctx)
   ctx.effect(() => () => liveStream.dispose())
   const liveDrafts: LiveDraftSource = {
     subscribe: listener => liveStream.subscribe(listener),
-    get: sessionId => liveStream.get(sessionId),
+    get: agent => liveStream.get(agent),
   }
   const sessionFacts = new SessionFactsService(ctx, liveStream)
   ctx.effect(() => () => sessionFacts.dispose())
@@ -185,11 +185,11 @@ export function apply(ctx: Context): void {
       : undefined
   }
   let selectedAgent = ctx.mayflyCurrentAgent.current()
-  officialSource.attach(selectedAgent?.session ?? null, transcriptAfterSeq())
+  officialSource.attach(selectedAgent?.session ?? null, transcriptAfterSeq(), selectedAgent ?? undefined)
   const offAgent = ctx.mayflyCurrentAgent.subscribe((next) => {
     if (next === selectedAgent) return
     selectedAgent = next
-    officialSource.attach(next?.session ?? null, transcriptAfterSeq())
+    officialSource.attach(next?.session ?? null, transcriptAfterSeq(), next ?? undefined)
   })
   ctx.effect(() => () => offAgent())
   const footer = new StatusFooterComponent(

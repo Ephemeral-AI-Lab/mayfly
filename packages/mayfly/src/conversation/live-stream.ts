@@ -2,8 +2,8 @@
  * Renderer-neutral live assistant-stream drafts. Harness `0.1.5` publishes
  * streaming deltas as transient process-local `agent/assistant-stream`
  * frames; durable session events now carry only the settled attempt stream.
- * This service folds the frames of every live Agent into one draft per
- * session so status and transcript consumers can present streaming text the
+ * This service folds the frames of every live Agent into an identity-scoped
+ * draft so status and transcript consumers can present streaming text the
  * durable projections no longer see. Drafts are facts derived from event
  * timestamps; they never mutate projection state and are cleared on the
  * attempt end frame, agent disposal, or Fiber teardown.
@@ -16,7 +16,7 @@ import type { Agent, AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import type { OutputProgress } from './types.ts'
 import { appendOutputProgress } from './output-progress.ts'
 
-/** One live streaming attempt draft, keyed by its session. */
+/** One live streaming attempt draft; Agent identity stays outside the wire value. */
 export interface LiveAssistantDraft {
   readonly sessionId: string
   readonly turn: number
@@ -36,7 +36,9 @@ declare module '@deepseek-ai/cordis' {
 
 /** Live-frame draft store over every Agent this Fiber observes. */
 export class LiveAssistantStreamService extends Service {
-  private readonly drafts = new Map<string, LiveAssistantDraft>()
+  private readonly drafts = new Map<Agent, LiveAssistantDraft>()
+  private readonly attempts = new WeakMap<Agent, { readonly attemptId: AssistantStreamFrame['attemptId'], readonly revision: number }>()
+  private readonly disposedAgents = new WeakSet<Agent>()
   private readonly listeners = new Set<() => void>()
   private readonly offFrame: () => void
   private readonly offDisposed: () => void
@@ -47,13 +49,14 @@ export class LiveAssistantStreamService extends Service {
       this.fold(agent, frame)
     })
     this.offDisposed = ctx.on('agent/disposed', ({ agent }) => {
-      this.clear(String(agent.session.id))
+      this.disposedAgents.add(agent)
+      this.clear(agent)
     })
   }
 
-  /** Draft of one session, or undefined while nothing streams. */
-  get(sessionId: string): LiveAssistantDraft | undefined {
-    return this.drafts.get(sessionId)
+  /** Draft of the exact Agent, or undefined while nothing streams. */
+  get(agent: Agent): LiveAssistantDraft | undefined {
+    return this.drafts.get(agent)
   }
 
   /** Subscribe to draft changes; the current state is read via {@link get}. */
@@ -70,27 +73,32 @@ export class LiveAssistantStreamService extends Service {
   }
 
   private fold(agent: Agent, frame: AssistantStreamFrame): void {
+    if (this.disposedAgents.has(agent)) return
+    const attempt = this.attempts.get(agent)
     const key = String(agent.session.id)
     if (frame.type === 'start') {
-      this.drafts.set(key, {
+      if (attempt !== undefined && frame.revision <= attempt.revision) return
+      this.attempts.set(agent, { attemptId: frame.attemptId, revision: frame.revision })
+      this.drafts.set(agent, {
         sessionId: key, turn: frame.turn, step: frame.step, phase: 'thinking',
         reasoning: '', text: '', outputProgress: undefined, updatedAt: 0,
       })
       this.publish()
       return
     }
+    if (attempt === undefined || frame.attemptId !== attempt.attemptId || frame.revision !== attempt.revision) return
     if (frame.type === 'end') {
       // The committed settlement (when one exists) is already durable at this
       // point; an abandoned attempt simply never happened visibly.
-      this.clear(key)
+      this.clear(agent)
       return
     }
-    const draft = this.drafts.get(key)
+    const draft = this.drafts.get(agent)
     if (draft === undefined) return
     const chunk = frame.chunk
     if (chunk.type === 'reasoning-delta') {
       if (chunk.text === '') return
-      this.drafts.set(key, {
+      this.drafts.set(agent, {
         ...draft,
         phase: 'thinking',
         reasoning: draft.reasoning + chunk.text,
@@ -102,7 +110,7 @@ export class LiveAssistantStreamService extends Service {
     }
     if (chunk.type === 'text-delta') {
       if (chunk.text === '') return
-      this.drafts.set(key, {
+      this.drafts.set(agent, {
         ...draft,
         phase: 'composing',
         text: draft.text + chunk.text,
@@ -116,13 +124,13 @@ export class LiveAssistantStreamService extends Service {
       || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')
       || (chunk.type === 'block-end' && ((chunk.block.type === 'reasoning' && draft.phase === 'thinking')
         || (chunk.block.type === 'text' && draft.phase === 'composing')))) {
-      this.drafts.set(key, { ...draft, phase: 'waiting', updatedAt: frame.time })
+      this.drafts.set(agent, { ...draft, phase: 'waiting', updatedAt: frame.time })
       this.publish()
     }
   }
 
-  private clear(sessionId: string): void {
-    if (!this.drafts.delete(sessionId)) return
+  private clear(agent: Agent): void {
+    if (!this.drafts.delete(agent)) return
     this.publish()
   }
 
