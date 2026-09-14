@@ -314,7 +314,7 @@ describe('mayflyConversation projection', () => {
 
   it('recognizes only the exact retraction marker and preserves other active turns', () => {
     expect(isTurnRetraction(event('turn/start', { turn: 1 }))).toBe(false)
-    // An assistant replacement is never the marker (0.1.5 forbids its provenance).
+    // An ordinary assistant replacement is not a retraction.
     expect(isTurnRetraction(event('assistant/message', {
       turn: 1, step: 0, message: assistantMessage([]),
     }, { replace: true }))).toBe(false)
@@ -344,6 +344,35 @@ describe('mayflyConversation projection', () => {
     expect(retracted.pendingReasoning).toBe(active.pendingReasoning)
     expect(retracted.toolEntryIds).toEqual(active.toolEntryIds)
     expect(retracted.entries).toEqual(active.entries)
+  })
+
+  it('replays historical assistant retractions without restoring the removed turn', () => {
+    const history = [
+      event('turn/start', { turn: 1 }),
+      event('user/message', userMessage('withdrawn prompt'), { append: true }),
+      event('step/start', { turn: 1, step: 1 }),
+      attemptEvent(1, 1, 'reasoning', 'withdrawn thought'),
+      event('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
+    ]
+    // The storage boundary has translated coordinates and removed assistant
+    // provenance; the historical interrupted empty replacement still survives.
+    const marker = event('assistant/message', {
+      turn: 1, step: 1, message: assistantMessage([]), stream: [], interrupted: true,
+    }, { replace: true })
+    expect(isTurnRetraction(marker)).toBe(true)
+    const retracted = fold([...history, marker])
+    expect(retracted.entries).toEqual([])
+    expect(retracted.retractedTurns).toEqual([1])
+    expect(foldConversationProjection(retracted, attemptEvent(1, 1, 'text', 'late prefix'))).toBe(retracted)
+    const resumed = foldConversationProjection(retracted, event('turn/start', { turn: 2 }))
+    const current = foldConversationProjection(resumed, event('user/message', userMessage('new prompt'), { append: true }))
+    expect(current.entries).toMatchObject([{ kind: 'user', turn: 2, text: 'new prompt' }])
+    expect(isTurnRetraction(event('assistant/message', {
+      turn: 2, step: 1, message: assistantMessage([{ type: 'text', text: 'visible prefix' }]), interrupted: true, stream: [],
+    }, { replace: true }))).toBe(false)
+    expect(isTurnRetraction(event('assistant/message', {
+      turn: 2, step: 1, message: assistantMessage([]), interrupted: true, stream: [],
+    }, { append: true }))).toBe(false)
   })
 
   it('clears active streaming lookup state when retracting before turn end', () => {
@@ -432,7 +461,7 @@ describe('mayflyConversation projection', () => {
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(4)
+    expect(conversationProjectionDefinition.stateVersion).toBe(5)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -562,7 +591,10 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 4, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 5, seq: 3 })
+    const obsolete = { ...checkpoint, mayflyConversation: { ...checkpoint.mayflyConversation!, ver: 4 } }
+    expect(ctx.sessionProjections.restoreFloor(obsolete)).toBe(0)
+    expect(ctx.sessionProjections.viewCheckpoint(obsolete)).not.toHaveProperty('mayflyConversation')
     expect(ctx.sessionProjections.viewCheckpoint(checkpoint)).toMatchObject({
       mayflyConversation: { entries: expect.arrayContaining([expect.objectContaining({ kind: 'assistant', text: 'live' })]) },
     })

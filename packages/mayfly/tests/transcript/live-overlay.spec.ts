@@ -38,7 +38,7 @@ class ProjectionFake {
 
 /** An agent whose session carries an id the draft store keys on, with a
  * switchable current-Agent slot the test can null out. */
-function liveAgent(ctx: Context, id: string): { agent: Agent, session: Session, detach: () => void } {
+function liveAgent(ctx: Context, id: string): { agent: Agent, session: Session, select: (agent: Agent | null) => void, detach: () => void } {
   const base = fakeAgent([])
   const session = { ...base.session, id } as unknown as Session
   const agent = { ...base, session } as unknown as Agent
@@ -49,7 +49,8 @@ function liveAgent(ctx: Context, id: string): { agent: Agent, session: Session, 
     listener(current)
     return () => {}
   } })
-  return { agent, session, detach: () => { current = null; delivered?.(null) } }
+  const select = (agent: Agent | null) => { current = agent; delivered?.(agent) }
+  return { agent, session, select, detach: () => { select(null) } }
 }
 
 function projection(entries: ConversationProjection['entries'], streaming = false): ConversationProjection {
@@ -67,7 +68,7 @@ describe('live draft overlays', () => {
     const { agent, session } = liveAgent(ctx, 'overlay-transcript')
     projections.set(session, {})
     const source = new OfficialConversationModelSource(projections as never, tools, publish, drafts)
-    source.attach(session)
+    source.attach(session, undefined, agent)
     expect(publish).toHaveBeenCalled()
 
     // A baseline settled entry and the live draft for the SAME step: the
@@ -123,7 +124,7 @@ describe('live draft overlays', () => {
       subscribe: listener => live.subscribe(listener),
       get: id => live.get(id),
     })
-    source.attach(session)
+    source.attach(session, undefined, agent)
     // A durable failed attempt left a streaming entry for step 0.
     projections.emit(session, 'mayflyConversation', projection([
       { kind: 'assistant', id: 'assistant:1:0', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'abandoned prefix', streaming: true },
@@ -191,6 +192,50 @@ describe('live draft overlays', () => {
     live.dispose()
   })
 
+  it('binds transcript and facts to exact replacement Agents and replays existing drafts on selection', async () => {
+    const ctx = new Context()
+    const live = new LiveAssistantStreamService(ctx)
+    const holder = liveAgent(ctx, 'same-session')
+    const first = holder.agent
+    const replacement = { ...first } as Agent
+    const projections = new ProjectionFake()
+    projections.set(holder.session, { mayflyConversation: projection([]), mayflyConversationFacts: initialConversationFacts() })
+    ctx.provide('sessionProjections', projections as never)
+    ctx.provide('sessions', { list: () => [] })
+    const facts = new SessionFactsService(ctx, live)
+    const source = new OfficialConversationModelSource(projections as never, { get: () => undefined }, () => {}, liveDraftsOf(ctx))
+    source.attach(holder.session, undefined, first)
+    const emitDraft = (agent: Agent, text: string) => {
+      ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'same' as never, revision: 1, turn: 1, step: 0 } } as never)
+      ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'same' as never, revision: 1, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text } } } as never)
+    }
+    emitDraft(first, 'old text')
+    expect(facts.current.phase).toBe('composing')
+    expect(JSON.stringify(source.snapshot().entries)).toContain('old text')
+    holder.select(replacement)
+    source.attach(holder.session, undefined, replacement)
+    expect(facts.current).toMatchObject({ phase: 'idle', active: false })
+    expect(source.snapshot().entries).toEqual([])
+    emitDraft(replacement, 'new text')
+    const currentFacts = facts.current
+    const currentModel = source.snapshot()
+    ctx.emit('agent/assistant-stream', { agent: first, frame: { type: 'end', attemptId: 'same' as never, revision: 1, index: 1, outcome: { kind: 'abandoned' } } } as never)
+    ctx.emit('agent/disposed', { agent: first } as never)
+    expect(facts.current).toBe(currentFacts)
+    expect(source.snapshot()).toBe(currentModel)
+    expect(JSON.stringify(currentModel.entries)).toContain('new text')
+    holder.detach()
+    holder.select(replacement)
+    expect(facts.current.phase).toBe('composing')
+    expect(facts.current.outputProgress?.chars).toBe(8)
+    source.attach(null)
+    expect(source.snapshot().entries).toEqual([])
+    source.dispose()
+    facts.dispose()
+    live.dispose()
+    await ctx.fiber.dispose()
+  })
+
   it('adapts the optional ctx live-stream service into a draft source', () => {
     const bare = new Context()
     expect(liveDraftsOf(bare as never)).toBeUndefined()
@@ -200,7 +245,7 @@ describe('live draft overlays', () => {
     const drafts = liveDraftsOf(ctx)
     expect(drafts).toBeDefined()
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'a' as never, revision: 1, turn: 1, step: 0 } } as never)
-    expect(drafts!.get('overlay-adapter')).toMatchObject({ turn: 1, step: 0 })
+    expect(drafts!.get(agent)).toMatchObject({ turn: 1, step: 0 })
     const listener = vi.fn()
     const off = drafts!.subscribe(listener)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 1, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'x' } } } as never)

@@ -51,7 +51,7 @@ export class SessionFactsService extends Service {
   private readonly offAgent: () => void
   private readonly offLive: () => void
 
-  constructor(ctx: Context, liveStream?: LiveAssistantStreamService) {
+  constructor(ctx: Context, private readonly liveStream?: LiveAssistantStreamService) {
     super(ctx, 'mayflySessionFacts')
     this.offProjection = ctx.sessionProjections.onChanged((session, key, value) => {
       if (session === this.agent?.session) {
@@ -71,7 +71,7 @@ export class SessionFactsService extends Service {
     this.offLive = liveStream === undefined
       ? () => {}
       : liveStream.subscribe(() => {
-        const draft = this.agent === null ? undefined : liveStream.get(String(this.agent.session.id))
+        const draft = this.agent === null ? undefined : liveStream.get(this.agent)
         if (draft === this.live && draft?.outputProgress === this.live?.outputProgress) return
         this.live = draft
         this.facts = this.merged()
@@ -138,6 +138,7 @@ export class SessionFactsService extends Service {
     for (const listener of this.agentListeners) listener(agent)
     if (!switched) return
 
+    this.live = agent === null ? undefined : this.liveStream?.get(agent)
     this.children.clear()
     const snapshot = agent === null
       ? undefined

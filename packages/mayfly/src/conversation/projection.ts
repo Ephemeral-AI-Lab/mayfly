@@ -216,12 +216,14 @@ function appendEntry(state: ConversationProjectionState, entry: ConversationEntr
  * messages (they embed their own stream), so the empty replacement marker
  * rides a system/message that derives to no model-visible message. */
 export function isTurnRetraction(event: SessionEvent): boolean {
-  return event.type === 'system/message'
-    && event.data.message.content.length === 0
-    && event.data.message.source.kind === 'plugin'
-    && event.data.message.source.plugin === 'mayfly-retraction'
-    && event.surfaceOp !== undefined
-    && event.surfaceOp !== 'append'
+  if ((event.type !== 'system/message' && event.type !== 'assistant/message')
+    || event.data.message.content.length !== 0
+    || event.surfaceOp === undefined || event.surfaceOp === 'append') return false
+  // Historical assistant replacements retain their interrupted marker after
+  // storage migration, even though new assistant events cannot cite sources.
+  return event.type === 'assistant/message'
+    ? event.data.interrupted === true
+    : event.data.message.source.kind === 'plugin' && event.data.message.source.plugin === 'mayfly-retraction'
 }
 
 /** Remove one safely retracted turn and suppress any late events from reopening it. */
@@ -431,7 +433,7 @@ export function foldConversationProjection(
   state: ConversationProjectionState,
   event: SessionEvent,
 ): ConversationProjectionState {
-  if (event.type === 'system/message' && isTurnRetraction(event)) return retractTurn(state, event.data.turn)
+  if ((event.type === 'system/message' || event.type === 'assistant/message') && isTurnRetraction(event)) return retractTurn(state, event.data.turn)
   switch (event.type) {
     case 'turn/start':
       if (state.retractedTurns.includes(event.data.turn)) return state
@@ -553,5 +555,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
     viewSchema: conversationProjectionSchema,
     view: state => ({ entries: state.entries, streaming: state.active }),
   },
-  stateVersion: 4,
+  stateVersion: 5,
 }

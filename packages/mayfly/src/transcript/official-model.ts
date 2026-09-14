@@ -8,6 +8,7 @@
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import {
@@ -30,7 +31,7 @@ import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type
  */
 export interface LiveDraftSource {
   subscribe(listener: () => void): () => void
-  get(sessionId: string): LiveAssistantDraft | undefined
+  get(agent: Agent): LiveAssistantDraft | undefined
 }
 
 /** Adapt the optional ctx live-stream service into a draft source. */
@@ -39,7 +40,7 @@ export function liveDraftsOf(ctx: { get(name: 'mayflyLiveAssistantStream'): unkn
   if (service === undefined) return undefined
   return {
     subscribe: listener => service.subscribe(listener),
-    get: sessionId => service.get(sessionId),
+    get: agent => service.get(agent),
   }
 }
 
@@ -374,6 +375,7 @@ function visibleProjection(
 export class OfficialConversationModelSource {
   private model: TranscriptModel = createTranscriptModel('official-conversation', [], false)
   private session: Session | null = null
+  private agent: Agent | undefined
   private generation = 0
   private watermark = -1
   private pending: PendingProjection | undefined
@@ -403,7 +405,7 @@ export class OfficialConversationModelSource {
 
   /** Convert the latest unread native value once, then reuse its model. */
   snapshot(): TranscriptModel {
-    const draft = this.session === null ? undefined : this.live?.get(String(this.session.id))
+    const draft = this.agent === undefined ? undefined : this.live?.get(this.agent)
     const pending = this.pending
     if (pending !== undefined) {
       this.pending = undefined
@@ -422,9 +424,10 @@ export class OfficialConversationModelSource {
   }
 
   /** Attach to the app's current session, clearing stale content first. */
-  attach(session: Session | null, transcriptAfterSeq?: number): void {
+  attach(session: Session | null, transcriptAfterSeq?: number, agent?: Agent): void {
     if (this.disposed) return
     this.session = session
+    this.agent = agent?.session === session ? agent : undefined
     this.transcriptAfterSeq = transcriptAfterSeq
     this.generation += 1
     this.watermark = -1
@@ -449,6 +452,7 @@ export class OfficialConversationModelSource {
     this.offChanged()
     this.offLive()
     this.session = null
+    this.agent = undefined
     this.pending = undefined
     this.lastVisible = undefined
     this.lastDraft = undefined
