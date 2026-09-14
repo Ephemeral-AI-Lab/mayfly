@@ -77,7 +77,8 @@ export class LiveAssistantStreamService extends Service {
     const attempt = this.attempts.get(agent)
     const key = String(agent.session.id)
     if (frame.type === 'start') {
-      if (attempt !== undefined && frame.revision <= attempt.revision) return
+      if (attempt !== undefined
+        && (frame.revision <= attempt.revision || frame.attemptId === attempt.attemptId)) return
       this.attempts.set(agent, { attemptId: frame.attemptId, revision: frame.revision })
       this.drafts.set(agent, {
         sessionId: key, turn: frame.turn, step: frame.step, phase: 'thinking',
@@ -86,7 +87,8 @@ export class LiveAssistantStreamService extends Service {
       this.publish()
       return
     }
-    if (attempt === undefined || frame.attemptId !== attempt.attemptId || frame.revision !== attempt.revision) return
+    if (attempt === undefined || frame.attemptId !== attempt.attemptId || frame.revision <= attempt.revision) return
+    this.attempts.set(agent, { attemptId: frame.attemptId, revision: frame.revision })
     if (frame.type === 'end') {
       // The committed settlement (when one exists) is already durable at this
       // point; an abandoned attempt simply never happened visibly.
