@@ -400,7 +400,14 @@ export class OfficialConversationModelSource {
       this.pending = { value, seq }
       if (notify) this.publish()
     })
-    this.offLive = live === undefined ? () => {} : live.subscribe(() => { this.publish() })
+    this.offLive = live === undefined ? () => {} : live.subscribe(() => {
+      // Live notifications cover every Agent. Repaint only when the exact
+      // selected Agent's draft identity changed; this keeps unrelated child
+      // streams from invalidating the main transcript while still waking it
+      // for every reasoning/text delta and for draft removal on end.
+      const draft = this.agent === undefined ? undefined : live.get(this.agent)
+      if (draft !== this.lastDraft) this.publish()
+    })
   }
 
   /** Convert the latest unread native value once, then reuse its model. */

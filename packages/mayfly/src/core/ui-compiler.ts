@@ -746,7 +746,7 @@ function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOpt
   const primary = active.kind === 'text'
     ? actionHint(options, ACTION_SUBMIT, 'Enter', 'edit', 100)
     : active.kind === 'select'
-      ? actionHint(options, ACTION_SUBMIT, 'Enter', 'adjust', 100)
+      ? actionsHint(options, 'adjust', [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SUBMIT], '←→/Enter', 'adjust', 100, '←→/Enter')
       : active.kind === 'toggle'
         ? actionsHint(options, 'activate', [ACTION_TOGGLE, ACTION_SUBMIT], 'Space/Enter', 'toggle', 100, 'Enter')
         : active.kind === 'field-action'
@@ -2127,6 +2127,21 @@ class CompiledSurface implements MayflyEditorShellComponent {
         : matchesKeyAction(this.options.keymap, data, ACTION_SEGMENT_LEFT) ? 'left'
           : matchesKeyAction(this.options.keymap, data, ACTION_SEGMENT_RIGHT) ? 'right'
             : undefined
+    /* v8 ignore next -- renderer integration covers this defensive branch. */
+    if (active.kind === 'select' && this.state.editingKey === undefined && direction !== undefined) {
+      const address = this.surfaceRuntime.fieldAddress(active.key)
+      const model = this.surfaceRuntime.interaction
+      if (address === undefined || model === undefined) return
+      this.state.beginSelectEditing(active.field, active.key)
+      model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'move', direction: direction === 'left' || direction === 'up' ? -1 : 1, count: 1 } })
+      const focusedId = model.form(address)?.fields[address.fieldId]?.picker?.focusedId
+      if (focusedId !== undefined && active.field.kind === 'select') {
+        model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'select', ids: [focusedId] } })
+        this.state.finishSelectEditing(active.field, active.key, false)
+      }
+      return
+    }
+    /* v8 ignore stop */
     if (active.kind === 'select' && this.state.editingKey === active.key) {
       const address = this.surfaceRuntime.fieldAddress(active.key)
       const model = this.surfaceRuntime.interaction

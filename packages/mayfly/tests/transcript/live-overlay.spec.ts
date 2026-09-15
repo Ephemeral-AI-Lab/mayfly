@@ -68,6 +68,8 @@ describe('live draft overlays', () => {
     const { agent, session } = liveAgent(ctx, 'overlay-transcript')
     projections.set(session, {})
     const source = new OfficialConversationModelSource(projections as never, tools, publish, drafts)
+    // A live frame may arrive before the source has selected an Agent.
+    ctx.emit('agent/assistant-stream', { agent: { ...agent }, frame: { type: 'start', attemptId: 'pre-attach' as never, revision: 1, turn: 0, step: 0 } } as never)
     source.attach(session, undefined, agent)
     expect(publish).toHaveBeenCalled()
 
@@ -91,22 +93,32 @@ describe('live draft overlays', () => {
     expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant', 'transcript-thinking', 'transcript-assistant'])
     expect(JSON.stringify(model.entries)).toContain('thinking now')
 
-    // A reasoning-only draft overlays just the thinking entry.
+    // Each reasoning delta is visible on the next render; it must not wait
+    // for the final assistant/message settlement.
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'end', attemptId: 'b' as never, revision: 6, index: 2, outcome: { kind: 'abandoned' } } } as never)
-    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'c' as never, revision: 7, turn: 1, step: 2 } } as never)
-    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'c' as never, revision: 8, index: 0, time: 4, chunk: { type: 'reasoning-delta', index: 0, text: 'quiet thought' } } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'streaming' as never, revision: 7, turn: 2, step: 0 } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'streaming' as never, revision: 8, index: 0, time: 4, chunk: { type: 'reasoning-delta', index: 0, text: 'first ' } } } as never)
+    model = source.snapshot()
+    expect(JSON.stringify(model.entries)).toContain('first ')
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'streaming' as never, revision: 9, index: 1, time: 5, chunk: { type: 'reasoning-delta', index: 0, text: 'second' } } } as never)
+    model = source.snapshot()
+    expect(JSON.stringify(model.entries)).toContain('first second')
+
+    // A reasoning-only draft overlays just the thinking entry.
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'c' as never, revision: 10, turn: 1, step: 2 } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'c' as never, revision: 11, index: 0, time: 4, chunk: { type: 'reasoning-delta', index: 0, text: 'quiet thought' } } } as never)
     model = source.snapshot()
     expect(model.entries.filter(entry => entry.kind === 'transcript-assistant')).toHaveLength(1)
     expect(JSON.stringify(model.entries)).toContain('quiet thought')
 
     // The end frame clears the draft; the model falls back to the projection.
-    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'end', attemptId: 'c' as never, revision: 9, index: 1, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 9 as never } } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'end', attemptId: 'c' as never, revision: 12, index: 1, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 9 as never } } } as never)
     model = source.snapshot()
     expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant'])
     source.dispose()
     // Late draft activity after dispose never republishes.
     const calls = publish.mock.calls.length
-    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'c' as never, revision: 10, turn: 2, step: 0 } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'c' as never, revision: 13, turn: 2, step: 0 } } as never)
     expect(publish).toHaveBeenCalledTimes(calls)
     // Dispose replaces the model with a fresh empty one; late frames never
     // rebuild it.

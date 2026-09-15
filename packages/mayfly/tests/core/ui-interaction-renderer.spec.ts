@@ -431,7 +431,22 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('keeps form focus navigable and applies select adjustments only with Enter', async () => {
+  it('starts every select picker on the first arrow key', async () => {
+    const { compile, model } = await setup(ui.form({ id: 'form', fields: [
+      { kind: 'select', id: 'effort', label: 'Thinking effort', value: 'default', options: [
+        { id: 'default', label: 'Provider default' }, { id: 'low', label: 'low' }, { id: 'high', label: 'high' },
+      ] },
+    ] }))
+    const renderer = compile()
+    renderer.compiled.component.render(80)
+    renderer.input('\x1b[C')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.effort!.value).toBe('low')
+    renderer.input('\x1b[B')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.effort!.value).toBe('high')
+    renderer.runtime.dispose()
+  })
+
+  it('keeps form focus navigable while arrows adjust a select', async () => {
     const { compile, model } = await setup(ui.form({ id: 'form', fields: [
       { kind: 'input', id: 'name', label: 'Name', value: '' },
       { kind: 'select', id: 'mode', label: 'Mode', value: 'a', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] },
@@ -444,16 +459,12 @@ describe('shared interaction compiler', () => {
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'name' })
     renderer.input('\x1b[B')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'mode' })
-    renderer.input('\x1b[B')
-    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'tail' })
-    renderer.input('\x1b[A')
-    renderer.input('\r')
     renderer.input('\x1b[C')
     renderer.input('\t')
-    expect(model.form({ pagePath: [], formId: 'form' })!.fields.mode!.value).toBe('a')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.mode!.value).toBe('b')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'tail' })
-    renderer.input('\x1b[A')
-    renderer.input('\x1b[A')
+    renderer.input('\x1b[Z')
+    renderer.input('\x1b[Z')
     renderer.input('\r')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'name', editing: true })
     renderer.input('\x1b\r')
@@ -462,9 +473,7 @@ describe('shared interaction compiler', () => {
     renderer.input('\r')
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.value).toBe('Ada')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'mode' })
-    renderer.input('\r')
     renderer.input('\x1b[C')
-    renderer.input('\r')
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.mode!.value).toBe('b')
     renderer.runtime.dispose()
   })

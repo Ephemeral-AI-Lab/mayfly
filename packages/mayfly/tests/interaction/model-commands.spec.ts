@@ -498,6 +498,18 @@ describe('model-family commands', () => {
     expect(writes[0]).toMatchObject({ reasoningEffort: 'high' as never })
   })
 
+  it('/effort adjusts the focused segment with arrows without entering it first', async () => {
+    const { ctx, screen, agent } = await mount()
+    await ctx.commands.execute(agent, '/effort', [], signal())
+    const options = ctx.mayflyUiInteraction.get('overlay', 'mayfly.model.options')!
+    expect(options.form({ pagePath: [], formId: 'model-options' })?.fields.effort?.value).toBe('default')
+    overlay(screen).render(80)
+    overlay(screen).handleInput(KEY.right)
+    expect(options.form({ pagePath: [], formId: 'model-options' })?.fields.effort?.value).toBe('low')
+    overlay(screen).handleInput(KEY.down)
+    expect(options.form({ pagePath: [], formId: 'model-options' })?.fields.effort?.value).toBe('high')
+  })
+
   it('/effort direct: valid level, default, and the invalid-level listing', async () => {
     const { ctx, agent, writes } = await mount()
     const execution = await ctx.commands.execute(agent, '/effort low', [], signal())
