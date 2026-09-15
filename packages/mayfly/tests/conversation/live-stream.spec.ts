@@ -28,7 +28,113 @@ function boot(agent: Agent = agentWithSessionId('live-boot')): { ctx: Context, s
 }
 
 describe('LiveAssistantStreamService', () => {
-  it('folds start, deltas, and boundaries into one exact-Agent draft', () => {
+  const activeBaseline = {
+    revision: 2,
+    activeAttempt: {
+      attemptId: 'baseline-attempt',
+      startedAfterSeq: 0,
+      turn: 4,
+      step: 1,
+      nextIndex: 1,
+      stream: [{ type: 'text-chunks', time0: 100, index: 0, dt: [], texts: ['seed'] }],
+    },
+  } as never
+
+  it('restores an active attempt from a compact reconnect baseline and fences indexes', () => {
+    const agent = agentWithSessionId('baseline')
+    const { service, frame } = boot(agent)
+    service.ensure(agent, activeBaseline)
+    expect(service.get(agent)).toMatchObject({ attemptId: 'baseline-attempt', revision: 2, turn: 4, step: 1, text: 'seed' })
+    frame({ type: 'chunk', attemptId: 'baseline-attempt' as never, revision: 3, index: 1, time: 110, chunk: { type: 'text-delta', index: 0, text: ' more' } })
+    expect(service.get(agent)?.text).toBe('seed more')
+    const before = service.get(agent)
+    frame({ type: 'chunk', attemptId: 'baseline-attempt' as never, revision: 4, index: 3, time: 120, chunk: { type: 'text-delta', index: 0, text: ' gap' } })
+    expect(service.get(agent)).toBe(before)
+  })
+
+  it('buffers exact-Agent frames until the follow opening baseline arrives', async () => {
+    const agent = agentWithSessionId('reconnect')
+    const { service, frame } = boot(agent)
+    let release!: () => void
+    const opening = new Promise<void>(resolve => { release = resolve })
+    const dispose = service.watch(agent, {
+      current: () => true,
+      open: async function* () {
+        await opening
+        yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: { revision: 0 } } as never
+      },
+    })
+    frame({ type: 'start', attemptId: 'queued' as never, revision: 1, turn: 1, step: 0 })
+    frame({ type: 'chunk', attemptId: 'queued' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'replayed' } })
+    expect(service.get(agent)).toBeUndefined()
+    release()
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(service.get(agent)?.text).toBe('replayed')
+    dispose()
+  })
+
+  it('rejects stale baselines, gaps, bad terminal indexes, and preserves identity', () => {
+    const agent = agentWithSessionId('fence')
+    const replacement = agentWithSessionId('fence')
+    const { service, frame } = boot(agent)
+    service.ensure(agent, activeBaseline)
+    const seeded = service.get(agent)
+    service.ensure(agent, { revision: 1 })
+    expect(service.get(agent)).toBe(seeded)
+    frame({ type: 'chunk', attemptId: 'baseline-attempt' as never, revision: 4, index: 1, time: 1, chunk: { type: 'text-delta', index: 0, text: 'gap' } })
+    expect(service.get(agent)).toBe(seeded)
+    frame({ type: 'end', attemptId: 'baseline-attempt' as never, revision: 3, index: 99, outcome: { kind: 'abandoned' } })
+    expect(service.get(agent)).toBe(seeded)
+    frame({ type: 'chunk', attemptId: 'baseline-attempt' as never, revision: 3, index: 1, time: 1, chunk: { type: 'text-delta', index: 0, text: 'ok' } })
+    expect(service.get(agent)?.text).toBe('seedok')
+    const before = service.get(agent)
+    service.ensure(replacement, activeBaseline)
+    expect(service.get(replacement)).not.toBe(before)
+  })
+
+  it('shares watched recovery references and fences stale follow results', async () => {
+    const agent = agentWithSessionId('refs')
+    const { service } = boot(agent)
+    let current = true
+    let openCalls = 0
+    const follow = { current: () => current, open: async function* () {
+      openCalls += 1
+      yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
+    } }
+    const first = service.watch(agent, follow)
+    const second = service.watch(agent, follow)
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(openCalls).toBe(1)
+    first()
+    expect(service.get(agent)).toBeDefined()
+    current = false
+    second()
+    expect(service.get(agent)).toBeDefined()
+  })
+
+  it('keeps a draft when follow fails and stops retries after release', async () => {
+    vi.useFakeTimers()
+    try {
+      const agent = agentWithSessionId('retry')
+      const { service } = boot(agent)
+      let calls = 0
+      const dispose = service.watch(agent, { current: () => true, open: async function* () {
+        calls += 1
+        throw new Error('offline')
+      } })
+      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(50)
+      expect(calls).toBeGreaterThanOrEqual(2)
+      dispose()
+      const before = calls
+      await vi.advanceTimersByTimeAsync(200)
+      expect(calls).toBe(before)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('folds start, deltas, and boundaries into one exact-Agent draft', async () => {
     const agent = agentWithSessionId('live-main')
     const { service, frame } = boot(agent)
     const listener = vi.fn()
@@ -56,6 +162,7 @@ describe('LiveAssistantStreamService', () => {
     // Reasoning resuming outside the thinking phase restarts the window.
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 9, index: 7, time: 160, chunk: { type: 'reasoning-delta', index: 2, text: 'rethink' } })
     expect(service.get(agent)).toMatchObject({ phase: 'thinking', outputProgress: { chars: 7, initialChars: 7, startedAt: 160 } })
+    await Promise.resolve()
     expect(listener).toHaveBeenCalled()
     expect(service.get(agentWithSessionId('other-session'))).toBeUndefined()
   })

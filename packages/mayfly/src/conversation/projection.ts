@@ -7,13 +7,12 @@
  */
 
 import type { ContentBlock, ImageBlock } from '@deepseek-ai/dsh-llm'
-import { expandAssistantStream, type AssistantStreamRecord, type TimedStreamChunk } from '@deepseek-ai/dsh-llm'
 import { isAppendSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
-import { appendOutputProgress, outputProgressSchema } from './output-progress.ts'
+import { outputProgressSchema } from './output-progress.ts'
+import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
 import type {
-  ConversationAssistantEntry,
   ConversationEntry,
   ConversationImage,
   ConversationJson,
@@ -22,25 +21,6 @@ import type {
   ConversationThinkingEntry,
   ConversationToolEntry,
 } from './types.ts'
-
-/** Position anchor of one stream application: durable event or live frame. */
-interface StreamAnchor {
-  readonly seq: number
-  readonly time: number
-  readonly turn: number
-  readonly step: number
-}
-
-/** Records of one durable attempt stream, expanded to timed chunks. Foreign
- * or malformed streams fold as empty rather than breaking the projection. */
-function expandTimed(stream: readonly AssistantStreamRecord[] | undefined): readonly TimedStreamChunk[] {
-  if (!Array.isArray(stream)) return []
-  try {
-    return expandAssistantStream(stream)
-  } catch {
-    return []
-  }
-}
 
 const jsonSchema: z.ZodType<ConversationJson> = z.lazy(() => z.union([
   z.null(),
@@ -97,6 +77,7 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
 export const conversationProjectionSchema = z.object({
   entries: conversationEntriesSchema,
   streaming: z.boolean(),
+  settledSteps: z.array(z.string()),
 }) satisfies z.ZodType<ConversationProjection>
 
 /** Runtime schema for persisted projection checkpoints. */
@@ -257,10 +238,15 @@ function retractTurn(state: ConversationProjectionState, turn: number): Conversa
 
 function openStreamingStep(state: ConversationProjectionState, turn: number, step: number, updatedSeq: number): ConversationProjectionState {
   const key = stepKey(turn, step)
-  if (state.streamingStep === key) return state
+  // Each durable assistant/attempt is one complete (possibly failed) model
+  // attempt. Reopening the same step replaces a prior failed attempt instead
+  // of appending its text and accidentally concatenating retries.
   const settled = settleStreaming(state, updatedSeq)
+  const entries = settled.entries.filter(entry => !((entry.kind === 'assistant' || entry.kind === 'thinking')
+    && entry.turn === turn && entry.step === step))
   return {
     ...settled,
+    entries,
     currentTurn: turn,
     active: true,
     streamingStep: key,
@@ -268,64 +254,6 @@ function openStreamingStep(state: ConversationProjectionState, turn: number, ste
     streamingThinkingId: null,
     pendingReasoning: '',
   }
-}
-
-function applyReasoningChunk(
-  state: ConversationProjectionState,
-  anchor: StreamAnchor,
-  text: string,
-): ConversationProjectionState {
-  if (state.streamingThinkingId !== null) {
-    return replaceEntry(state, state.streamingThinkingId, anchor.seq, entry => entry.kind === 'thinking'
-      ? {
-          ...entry, text: entry.text + text, streaming: entry.streaming || text.trim() !== '',
-          outputProgress: appendOutputProgress(entry.streaming ? entry.outputProgress : undefined, text.length, anchor.time),
-        }
-      : entry)
-  }
-  const pendingReasoning = state.pendingReasoning + text
-  if (pendingReasoning.trim() === '') return { ...state, pendingReasoning }
-  const id = `thinking:${stepKey(anchor.turn, anchor.step)}`
-  const entry: ConversationThinkingEntry = {
-    kind: 'thinking',
-    id,
-    seq: anchor.seq,
-    updatedSeq: anchor.seq,
-    turn: anchor.turn,
-    step: anchor.step,
-    text: pendingReasoning,
-    streaming: true,
-    outputProgress: appendOutputProgress(undefined, pendingReasoning.length, anchor.time),
-  }
-  const entries = [...state.entries]
-  const assistantIndex = entryIndex(entries, state.streamingAssistantId)
-  entries.splice(assistantIndex < 0 ? entries.length : assistantIndex, 0, entry)
-  return { ...state, entries, streamingThinkingId: id, pendingReasoning: '' }
-}
-
-function applyTextChunk(
-  state: ConversationProjectionState,
-  anchor: StreamAnchor,
-  text: string,
-): ConversationProjectionState {
-  state = pauseThinking(state, anchor.seq)
-  if (state.streamingAssistantId !== null) {
-    return replaceEntry(state, state.streamingAssistantId, anchor.seq, entry => entry.kind === 'assistant'
-      ? { ...entry, text: entry.text + text }
-      : entry)
-  }
-  const id = `assistant:${stepKey(anchor.turn, anchor.step)}`
-  const entry: ConversationAssistantEntry = {
-    kind: 'assistant',
-    id,
-    seq: anchor.seq,
-    updatedSeq: anchor.seq,
-    turn: anchor.turn,
-    step: anchor.step,
-    text,
-    streaming: true,
-  }
-  return { ...appendEntry(state, entry), streamingAssistantId: id }
 }
 
 /** Retain the entry id so the final authoritative message still rewrites it. */
@@ -489,22 +417,26 @@ export function foldConversationProjection(
       if (state.retractedTurns.includes(turn)) return state
       const key = stepKey(turn, step)
       if (state.interruptedTurns.includes(turn) || state.finalizedSteps.includes(key)) return state
-      const anchor: StreamAnchor = { seq: event.seq, time: event.time, turn, step }
-      let next = openStreamingStep(state, turn, step, event.seq)
-      for (const { chunk } of expandTimed(stream)) {
-        if (chunk.type === 'finish'
-          || chunk.type === 'tool-call-delta'
-          || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')
-          || (chunk.type === 'block-end' && chunk.block.type === 'reasoning')) {
-          next = pauseThinking(next, anchor.seq)
-          continue
-        }
-        if ((chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta') || chunk.text === '') continue
-        next = chunk.type === 'reasoning-delta'
-          ? applyReasoningChunk(next, anchor, chunk.text)
-          : applyTextChunk(next, anchor, chunk.text)
-      }
-      return next
+      // A restored checkpoint may contain crossed stream ids. Keep it intact
+      // rather than allowing a new attempt to rewrite unrelated entries.
+      const thinking = state.streamingThinkingId === null ? undefined : state.entries[entryIndex(state.entries, state.streamingThinkingId)]
+      const assistant = state.streamingAssistantId === null ? undefined : state.entries[entryIndex(state.entries, state.streamingAssistantId)]
+      if ((thinking !== undefined && thinking.kind !== 'thinking') || (assistant !== undefined && assistant.kind !== 'assistant')) return state
+      const draft = foldAssistantStreamRecords(initialAssistantStream(), stream)
+      const next = openStreamingStep(state, turn, step, event.seq)
+      const entries: ConversationEntry[] = [...next.entries]
+      const thinkingId = draft.reasoning.trim() === '' ? null : `thinking:${key}`
+      const assistantId = draft.text === '' ? null : `assistant:${key}`
+      if (thinkingId !== null) entries.push({
+        kind: 'thinking', id: thinkingId, seq: event.seq, updatedSeq: event.seq, turn, step,
+        text: draft.reasoning, streaming: draft.phase === 'thinking',
+        ...(draft.phase === 'thinking' ? { outputProgress: draft.outputProgress } : {}),
+      })
+      if (assistantId !== null) entries.push({
+        kind: 'assistant', id: assistantId, seq: event.seq, updatedSeq: event.seq, turn, step,
+        text: draft.text, streaming: draft.phase === 'composing',
+      })
+      return { ...next, entries, streamingThinkingId: thinkingId, streamingAssistantId: assistantId, pendingReasoning: thinkingId === null ? draft.reasoning : '' }
     }
     case 'assistant/message':
       return state.retractedTurns.includes(event.data.turn) || !isAppendSurfaceEvent(event)
@@ -553,7 +485,7 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
   apply: foldConversationProjection,
   wire: {
     viewSchema: conversationProjectionSchema,
-    view: state => ({ entries: state.entries, streaming: state.active }),
+    view: state => ({ entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }),
   },
-  stateVersion: 5,
+  stateVersion: 6,
 }

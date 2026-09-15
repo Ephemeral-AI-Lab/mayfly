@@ -113,6 +113,8 @@ export type ConversationEntry =
 export interface ConversationProjection {
   readonly entries: readonly ConversationEntry[]
   readonly streaming: boolean
+  /** Step keys whose assistant settlement is authoritative. */
+  readonly settledSteps: readonly string[]
 }
 
 /** Plain-JSON internal fold state checkpointed by the registry. */
