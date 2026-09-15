@@ -30,8 +30,10 @@ it('handles cloned native snapshots, multi-entry settlement, retraction, and lat
   source.attach(session)
   const baseline = ctx.sessionProjections.snapshot(session, ['mayflyConversation']).values.mayflyConversation as ConversationProjection
   session.append('step/start', { turn: 0, step: 0 })
-  session.append('assistant/attempt', { turn: 0, step: 0, stream: [{ type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['partial'] }] })
-  session.append('assistant/attempt', { turn: 0, step: 0, stream: [{ type: 'reasoning-chunks', time0: 2, index: 0, dt: [], texts: ['thought'] }] })
+  session.append('assistant/attempt', { turn: 0, step: 0, stream: [
+    { type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['partial'] },
+    { type: 'reasoning-chunks', time0: 2, index: 1, dt: [], texts: ['thought'] },
+  ] })
   expect(values[0]!.entries[0]).toEqual(baseline.entries[0])
   expect(values[0]!.entries[0]).not.toBe(baseline.entries[0])
   expect(values[1]!.entries[0]).not.toBe(values[0]!.entries[0])

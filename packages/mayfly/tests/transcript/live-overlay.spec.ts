@@ -11,6 +11,7 @@ import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import { liveDraftsOf, OfficialConversationModelSource, type LiveDraftSource } from '../../src/transcript/official-model.ts'
 import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import type { ConversationProjection } from '../../src/conversation/types.ts'
+import { materializeTranscriptEntries } from '../../src/frontend/models.ts'
 import { fakeAgent } from './status-fakes.ts'
 
 class ProjectionFake {
@@ -53,8 +54,8 @@ function liveAgent(ctx: Context, id: string): { agent: Agent, session: Session, 
   return { agent, session, select, detach: () => { select(null) } }
 }
 
-function projection(entries: ConversationProjection['entries'], streaming = false): ConversationProjection {
-  return { entries, streaming }
+function projection(entries: ConversationProjection['entries'], streaming = false, settledSteps: readonly string[] = []): ConversationProjection {
+  return { entries, streaming, settledSteps }
 }
 
 describe('live draft overlays', () => {
@@ -78,20 +79,20 @@ describe('live draft overlays', () => {
     projections.emit(session, 'mayflyConversation', projection([
       { kind: 'user', id: 'user:2', seq: 2, updatedSeq: 2, turn: 1, text: 'question', images: [] },
       { kind: 'assistant', id: 'assistant:1:0', seq: 3, updatedSeq: 3, turn: 1, step: 0, text: 'settled', streaming: false },
-    ]))
+    ], false, ['1:0']))
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'a' as never, revision: 1, turn: 1, step: 0 } } as never)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'draft' } } } as never)
     let model = source.snapshot()
-    expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant'])
-    expect(JSON.stringify(model.entries)).toContain('settled')
+    expect(materializeTranscriptEntries(model).map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant'])
+    expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('settled')
 
     // A draft for a NEW step overlays streaming entries after the baseline.
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'b' as never, revision: 3, turn: 1, step: 1 } } as never)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'b' as never, revision: 4, index: 0, time: 2, chunk: { type: 'reasoning-delta', index: 0, text: 'thinking now' } } } as never)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'b' as never, revision: 5, index: 1, time: 3, chunk: { type: 'text-delta', index: 1, text: 'answer' } } } as never)
     model = source.snapshot()
-    expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant', 'transcript-thinking', 'transcript-assistant'])
-    expect(JSON.stringify(model.entries)).toContain('thinking now')
+    expect(materializeTranscriptEntries(model).map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant', 'transcript-thinking', 'transcript-assistant'])
+    expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('thinking now')
 
     // Each reasoning delta is visible on the next render; it must not wait
     // for the final assistant/message settlement.
@@ -99,22 +100,22 @@ describe('live draft overlays', () => {
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'streaming' as never, revision: 7, turn: 2, step: 0 } } as never)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'streaming' as never, revision: 8, index: 0, time: 4, chunk: { type: 'reasoning-delta', index: 0, text: 'first ' } } } as never)
     model = source.snapshot()
-    expect(JSON.stringify(model.entries)).toContain('first ')
+    expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('first ')
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'streaming' as never, revision: 9, index: 1, time: 5, chunk: { type: 'reasoning-delta', index: 0, text: 'second' } } } as never)
     model = source.snapshot()
-    expect(JSON.stringify(model.entries)).toContain('first second')
+    expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('first second')
 
     // A reasoning-only draft overlays just the thinking entry.
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'c' as never, revision: 10, turn: 1, step: 2 } } as never)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'c' as never, revision: 11, index: 0, time: 4, chunk: { type: 'reasoning-delta', index: 0, text: 'quiet thought' } } } as never)
     model = source.snapshot()
-    expect(model.entries.filter(entry => entry.kind === 'transcript-assistant')).toHaveLength(1)
-    expect(JSON.stringify(model.entries)).toContain('quiet thought')
+    expect(materializeTranscriptEntries(model).filter(entry => entry.kind === 'transcript-assistant')).toHaveLength(1)
+    expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('quiet thought')
 
     // The end frame clears the draft; the model falls back to the projection.
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'end', attemptId: 'c' as never, revision: 12, index: 1, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 9 as never } } } as never)
     model = source.snapshot()
-    expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant'])
+    expect(materializeTranscriptEntries(model).map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant'])
     source.dispose()
     // Late draft activity after dispose never republishes.
     const calls = publish.mock.calls.length
@@ -122,7 +123,7 @@ describe('live draft overlays', () => {
     expect(publish).toHaveBeenCalledTimes(calls)
     // Dispose replaces the model with a fresh empty one; late frames never
     // rebuild it.
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
     live.dispose()
   })
 
@@ -145,13 +146,13 @@ describe('live draft overlays', () => {
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'r' as never, revision: 1, turn: 1, step: 0 } } as never)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'r' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'retry draft' } } } as never)
     const model = source.snapshot()
-    expect(model.entries.filter(entry => entry.kind === 'transcript-assistant')).toHaveLength(1)
-    expect(JSON.stringify(model.entries)).toContain('retry draft')
+    expect(materializeTranscriptEntries(model).filter(entry => entry.kind === 'transcript-assistant')).toHaveLength(1)
+    expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('retry draft')
     source.dispose()
     live.dispose()
   })
 
-  it('overlays the current Agent draft onto the session facts phase', () => {
+  it('overlays the current Agent draft onto the session facts phase', async () => {
     const ctx = new Context()
     const live = new LiveAssistantStreamService(ctx)
     const projections = new ProjectionFake()
@@ -177,20 +178,25 @@ describe('live draft overlays', () => {
     // The current Agent's draft overlays the streaming phase.
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'a' as never, revision: 1, turn: 1, step: 0 } } as never)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 2, index: 0, time: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'think' } } } as never)
+    await Promise.resolve()
     expect(service.current).toMatchObject({ phase: 'thinking', active: true, activity: { kind: 'reasoning' } })
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 3, index: 1, time: 2, chunk: { type: 'text-delta', index: 1, text: 'answering' } } } as never)
+    await Promise.resolve()
     expect(service.current).toMatchObject({ phase: 'composing', activity: { kind: 'text' }, outputProgress: { chars: 9 } })
 
     // A boundary parks the phase back onto the durable facts.
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 4, index: 2, time: 3, chunk: { type: 'finish', index: 2 } } } as never)
+    await Promise.resolve()
     expect(service.current.phase).toBe('waiting')
     // The end frame drops the overlay entirely.
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'end', attemptId: 'a' as never, revision: 5, index: 3, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 9 as never } } } as never)
+    await Promise.resolve()
     expect(service.current).toMatchObject({ phase: 'waiting' })
     expect(service.current.outputProgress).toBeUndefined()
 
     // A draft of ANOTHER session never leaks into the current Agent's facts.
     ctx.emit('agent/assistant-stream', { agent: foreignAgent, frame: { type: 'start', attemptId: 'x' as never, revision: 1, turn: 9, step: 0 } } as never)
+    await Promise.resolve()
     expect(service.current.phase).toBe('waiting')
 
     // With no current Agent at all, live frames fold nothing and the facts
@@ -198,6 +204,7 @@ describe('live draft overlays', () => {
     const { detach } = holder
     detach()
     ctx.emit('agent/assistant-stream', { agent: foreignAgent, frame: { type: 'chunk', attemptId: 'x' as never, revision: 2, index: 0, time: 10, chunk: { type: 'text-delta', index: 0, text: 'nowhere' } } } as never)
+    await Promise.resolve()
     expect(service.current).toMatchObject({ phase: 'idle', active: false })
     off()
     service.dispose()
@@ -222,33 +229,36 @@ describe('live draft overlays', () => {
       ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'same' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text } } } as never)
     }
     emitDraft(first, 'old text')
+    await Promise.resolve()
     expect(facts.current.phase).toBe('composing')
-    expect(JSON.stringify(source.snapshot().entries)).toContain('old text')
+    expect(JSON.stringify(materializeTranscriptEntries(source.snapshot()))).toContain('old text')
     holder.select(replacement)
     source.attach(holder.session, undefined, replacement)
     expect(facts.current).toMatchObject({ phase: 'idle', active: false })
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
     emitDraft(replacement, 'new text')
+    await Promise.resolve()
     const currentFacts = facts.current
     const currentModel = source.snapshot()
     ctx.emit('agent/assistant-stream', { agent: first, frame: { type: 'end', attemptId: 'same' as never, revision: 3, index: 1, outcome: { kind: 'abandoned' } } } as never)
     ctx.emit('agent/disposed', { agent: first } as never)
+    await Promise.resolve()
     expect(facts.current).toBe(currentFacts)
     expect(source.snapshot()).toBe(currentModel)
-    expect(JSON.stringify(currentModel.entries)).toContain('new text')
+    expect(JSON.stringify(materializeTranscriptEntries(currentModel))).toContain('new text')
     holder.detach()
     holder.select(replacement)
     expect(facts.current.phase).toBe('composing')
     expect(facts.current.outputProgress?.chars).toBe(8)
     source.attach(null)
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
     source.dispose()
     facts.dispose()
     live.dispose()
     await ctx.fiber.dispose()
   })
 
-  it('adapts the optional ctx live-stream service into a draft source', () => {
+  it('adapts the optional ctx live-stream service into a draft source', async () => {
     const bare = new Context()
     expect(liveDraftsOf(bare as never)).toBeUndefined()
     const ctx = new Context()
@@ -261,6 +271,7 @@ describe('live draft overlays', () => {
     const listener = vi.fn()
     const off = drafts!.subscribe(listener)
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'x' } } } as never)
+    await Promise.resolve()
     expect(listener).toHaveBeenCalled()
     off()
     live.dispose()

@@ -46,7 +46,7 @@ function toolResult(callId: string, content: unknown[], isError = false): unknow
 
 describe('mayflyConversationFacts projection', () => {
   it('invalidates checkpoints after phase-local output measurements change', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(3)
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(4)
   })
 
   it('folds lifecycle, streaming, usage, todos, request metadata, and agents', () => {
@@ -74,7 +74,7 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ phase: 'waiting', active: true })
     state = foldConversationFacts(state, attempt(1, 0, 'reasoning', 'think'))
     state = foldConversationFacts(state, attempt(1, 0, 'text', 'answer'))
-    expect(foldConversationFacts(state, event('assistant/attempt', { turn: 1, step: 0, stream: [{ type: 'chunk', time: 1, chunk: { type: 'finish', index: 0 } }] }))).toMatchObject({ phase: 'waiting' })
+    expect(foldConversationFacts(state, event('assistant/attempt', { turn: 1, step: 0, stream: [{ type: 'chunk', time: 1, chunk: { type: 'finish', reason: 'stop' } }] }))).toMatchObject({ phase: 'waiting' })
     expect(state).toMatchObject({ phase: 'composing', flowDownChars: 11 })
     expect(foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: undefined }))).toMatchObject({ phase: 'waiting', outputProgress: undefined })
     state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
@@ -130,6 +130,16 @@ describe('mayflyConversationFacts projection', () => {
       turn: 1, step: 1, stream: [{ type: 'chunk', time: 2, chunk: { type: 'finish', index: 0 } }],
     }))
     expect(state.phase).toBe('waiting')
+  })
+
+  it('ignores settlements and lifecycle endings after a run has already ended', () => {
+    let state = foldConversationFacts(initialConversationFacts(), event('turn/start', { turn: 3 }))
+    state = foldConversationFacts(state, event('turn/end', { turn: 3, reason: { kind: 'completed' } }))
+    const settled = state
+    expect(foldConversationFacts(state, event('assistant/message', { turn: 3, step: 0, stream: [] } as never))).toBe(settled)
+    expect(foldConversationFacts(state, event('step/end', { turn: 3, step: 0 }))).toBe(settled)
+    expect(foldConversationFacts(state, event('turn/end', { turn: 3, reason: { kind: 'interrupted' } }))).toBe(settled)
+    expect(foldConversationFacts(state, event('step/end', { turn: 2, step: 0 }))).toBe(settled)
   })
 
   it('guards malformed tool results and validates the wire value', () => {

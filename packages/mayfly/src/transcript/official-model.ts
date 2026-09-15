@@ -18,7 +18,7 @@ import {
   type ConversationToolEntry,
 } from '../conversation/index.ts'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
-import type { ReadCallModel, SearchCallModel, TranscriptEntryModel, TranscriptModel, TranscriptReadGroupModel, TranscriptSearchGroupModel } from '../frontend/index.ts'
+import { freezeModel, type ReadCallModel, type SearchCallModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel } from '../frontend/index.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
@@ -314,6 +314,7 @@ export function conversationTranscriptModel(
   projection: ConversationProjection,
   tools: ToolPresentationSource,
   generation = 0,
+  renderRevision?: string,
 ): TranscriptModel {
   const entries: TranscriptEntryModel[] = []
   let run: ResolvedTool[] = []
@@ -348,7 +349,8 @@ export function conversationTranscriptModel(
     runFamily = family
   }
   flushRun()
-  return createTranscriptModel('official-conversation', entries, projection.streaming, generation)
+  const renderedEntries = renderRevision === undefined ? entries : entries.map(entry => ({ ...entry, renderRevision: `${renderRevision}:${String(entry.updatedSeq)}` }))
+  return createTranscriptModel('official-conversation', renderedEntries, projection.streaming, generation)
 }
 
 /** Native projections validate the complete wire and preserve all entries. */
@@ -367,7 +369,7 @@ function visibleProjection(
       if (candidate.seq > transcriptAfterSeq) entries.push(candidate)
     }
   }
-  const parsed = conversationProjectionSchema.safeParse({ entries, streaming: envelope.streaming })
+  const parsed = conversationProjectionSchema.safeParse({ entries, streaming: envelope.streaming, settledSteps: envelope.settledSteps })
   return parsed.success ? parsed.data : undefined
 }
 
@@ -379,7 +381,11 @@ export class OfficialConversationModelSource {
   private generation = 0
   private watermark = -1
   private pending: PendingProjection | undefined
+  private durableModel: TranscriptModel | undefined
   private lastVisible: ConversationProjection | undefined
+  private settledSteps = new Set<string>()
+  private liveSeq = 0
+  private toolsRevision = 0
   private lastDraft: LiveAssistantDraft | undefined
   private transcriptAfterSeq: number | undefined
   private disposed = false
@@ -420,14 +426,30 @@ export class OfficialConversationModelSource {
       if (visible !== undefined) {
         this.watermark = pending.seq
         this.lastVisible = visible
+        this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation)
+        this.settledSteps = new Set(visible.settledSteps)
+        this.liveSeq = visible.entries.reduce((seq, entry) => Math.max(seq, entry.seq), pending.seq) + 1
         this.lastDraft = draft
-        this.model = conversationTranscriptModel(withLiveDraft(visible, draft, pending.seq), this.tools, this.generation)
+        this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark)
       }
-    } else if (draft !== this.lastDraft && this.lastVisible !== undefined) {
+    } else if (draft !== this.lastDraft && this.durableModel !== undefined) {
       this.lastDraft = draft
-      this.model = conversationTranscriptModel(withLiveDraft(this.lastVisible, draft, this.watermark), this.tools, this.generation)
+      this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark)
     }
     return this.model
+  }
+
+  /** Re-resolve durable tool presenters without changing session generation. */
+  invalidateTools(): void {
+    if (this.disposed) return
+    if (this.lastVisible !== undefined) {
+      this.toolsRevision += 1
+      this.durableModel = conversationTranscriptModel(this.lastVisible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`)
+      const draft = this.agent === undefined ? undefined : this.live?.get(this.agent)
+      this.lastDraft = draft
+      this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark)
+    }
+    this.publish()
   }
 
   /** Attach to the app's current session, clearing stale content first. */
@@ -439,7 +461,9 @@ export class OfficialConversationModelSource {
     this.generation += 1
     this.watermark = -1
     this.pending = undefined
+    this.durableModel = undefined
     this.lastVisible = undefined
+    this.settledSteps.clear()
     this.lastDraft = undefined
     this.model = createTranscriptModel('official-conversation', [], false, this.generation)
     if (session === null) {
@@ -461,7 +485,9 @@ export class OfficialConversationModelSource {
     this.session = null
     this.agent = undefined
     this.pending = undefined
+    this.durableModel = undefined
     this.lastVisible = undefined
+    this.settledSteps.clear()
     this.lastDraft = undefined
     this.transcriptAfterSeq = undefined
     this.model = createTranscriptModel('official-conversation', [], false)
@@ -469,48 +495,46 @@ export class OfficialConversationModelSource {
 }
 
 /**
- * Overlay the live streaming draft onto one visible projection value. Draft
- * entries reuse the projection's streaming entry ids for their step so the
- * settlement rewrite replaces them; superseded projection streaming entries
- * for the same step are dropped first. Returns the visible value unchanged
- * when nothing streams or the step already settled.
+ * Overlay only the current step onto the already-mapped durable model. Stable
+ * history entries retain identity and never rerun their tool presenters during
+ * token updates. Live revision tokens remain separate from durable event seqs.
  */
 function withLiveDraft(
-  visible: ConversationProjection,
+  durable: TranscriptModel,
+  settledSteps: ReadonlySet<string>,
   draft: LiveAssistantDraft | undefined,
-  seqAnchor: number,
-): ConversationProjection {
-  if (draft === undefined) return visible
-  const settled = visible.entries.some(entry => (entry.kind === 'assistant' || entry.kind === 'thinking')
-    && entry.turn === draft.turn && entry.step === draft.step && !entry.streaming)
-  if (settled) return visible
-  const seq = Math.max(seqAnchor, ...visible.entries.map(entry => entry.seq)) + 1
-  const entries = visible.entries.filter(entry => !((entry.kind === 'assistant' || entry.kind === 'thinking')
-    && entry.turn === draft.turn && entry.step === draft.step))
+  seq: number,
+  updatedSeq: number,
+): TranscriptModel {
+  if (draft === undefined || settledSteps.has(`${String(draft.turn)}:${String(draft.step)}`)) return durable
+  const renderRevision = `live:${draft.attemptId}:${String(draft.revision)}`
+  const liveEntries: TranscriptEntryModel[] = []
   if (draft.reasoning.trim() !== '') {
-    entries.push({
-      kind: 'thinking',
+    liveEntries.push({
+      kind: 'transcript-thinking',
       id: `thinking:${String(draft.turn)}:${String(draft.step)}`,
       seq,
-      updatedSeq: seq,
+      updatedSeq,
+      renderRevision,
       turn: draft.turn,
       step: draft.step,
       text: draft.reasoning,
-      streaming: true,
-      outputProgress: draft.outputProgress,
+      streaming: draft.phase === 'thinking',
+      ...(draft.phase === 'thinking' ? { outputProgress: draft.outputProgress } : {}),
     })
   }
   if (draft.text !== '') {
-    entries.push({
-      kind: 'assistant',
+    liveEntries.push({
+      kind: 'transcript-assistant',
       id: `assistant:${String(draft.turn)}:${String(draft.step)}`,
       seq,
-      updatedSeq: seq,
+      updatedSeq,
+      renderRevision,
       turn: draft.turn,
       step: draft.step,
       text: draft.text,
       streaming: true,
     })
   }
-  return { ...visible, entries }
+  return freezeModel({ ...durable, entries: durable.entries, live: { turn: draft.turn, step: draft.step, entries: liveEntries }, streaming: true }) as TranscriptModel
 }

@@ -9,11 +9,12 @@
 
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { expandAssistantStream, type AssistantStreamRecord, type TimedStreamChunk } from '@deepseek-ai/dsh-llm'
+import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tool-todo'
 import { z } from 'zod'
-import { appendOutputProgress, outputProgressSchema } from './output-progress.ts'
+import { outputProgressSchema } from './output-progress.ts'
 import type { ConversationFactsState } from './types.ts'
+import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
 
 const todoSchema = z.object({
   content: z.string(),
@@ -79,47 +80,17 @@ function foldStreamChunks(
   step: number,
   stream: readonly AssistantStreamRecord[],
 ): ConversationFactsState {
-  let next = state
-  for (const { time, chunk } of expandTimed(stream)) {
-    if (chunk.type === 'finish'
-      || (chunk.type === 'block-end' && ((chunk.block.type === 'reasoning' && next.phase === 'thinking')
-        || (chunk.block.type === 'text' && next.phase === 'composing')))
-      || chunk.type === 'tool-call-delta'
-      || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')) {
-      if (next.phase === 'waiting') continue
-      next = { ...next, phase: 'waiting', outputProgress: undefined }
-      continue
-    }
-    if (chunk.type === 'reasoning-delta') {
-      if (chunk.text.trim() === '' && next.phase !== 'thinking') continue
-      if (chunk.text === '') continue
-      next = {
-        ...next, phase: 'thinking', active: true, turn, currentStep: step,
-        flowDownChars: next.flowDownChars + chunk.text.length, activity: { kind: 'reasoning' },
-        outputProgress: appendOutputProgress(next.phase === 'thinking' ? next.outputProgress : undefined, chunk.text.length, time),
-      }
-      continue
-    }
-    if (chunk.type === 'text-delta') {
-      if (chunk.text === '') continue
-      next = {
-        ...next, phase: 'composing', active: true, turn, currentStep: step,
-        flowDownChars: next.flowDownChars + chunk.text.length, activity: { kind: 'text' },
-        outputProgress: appendOutputProgress(next.phase === 'composing' ? next.outputProgress : undefined, chunk.text.length, time),
-      }
-    }
-  }
-  return next
-}
-
-/** Records of one durable stream event, expanded to timed chunks. Foreign or
- * malformed streams fold as empty rather than breaking the projection. */
-function expandTimed(stream: readonly AssistantStreamRecord[] | undefined): readonly TimedStreamChunk[] {
-  if (!Array.isArray(stream)) return []
-  try {
-    return expandAssistantStream(stream)
-  } catch {
-    return []
+  // Each durable assistant/attempt owns one complete compact stream. A retry
+  // for the same step must replace the previous attempt's measurements rather
+  // than inherit its phase or output-rate window.
+  const initial = initialAssistantStream()
+  const draft = foldAssistantStreamRecords(initial, stream)
+  if (draft.chars === 0 && draft.phase === 'waiting') return { ...state, phase: 'waiting', active: true, turn, currentStep: step, outputProgress: undefined }
+  return {
+    ...state, phase: draft.phase, active: true, turn, currentStep: step,
+    flowDownChars: state.flowDownChars + draft.chars,
+    activity: draft.phase === 'waiting' ? state.activity : { kind: draft.phase === 'thinking' ? 'reasoning' : 'text' },
+    outputProgress: draft.outputProgress,
   }
 }
 
@@ -157,13 +128,17 @@ export function foldConversationFacts(
     }
     case 'assistant/message': {
       if (event.data.turn < state.turn) return state
+      if (event.data.turn === state.turn && state.runOutcome !== undefined) return state
       let folded: ConversationFactsState = state
-      if (state.currentStep === undefined || event.data.step >= state.currentStep) {
+      const currentStep = state.currentStep === undefined || event.data.step >= state.currentStep
+      if (currentStep) {
         folded = { ...state, phase: 'waiting', outputProgress: undefined, currentStep: event.data.step, lastCompletedStep: event.data.step }
       }
       // The assembled message embeds its own compact stream; folding it keeps
       // flow-down and phase measurements over successful attempts too.
-      const streamed = foldStreamChunks(folded, event.data.turn, event.data.step, event.data.stream)
+      const streamed = currentStep
+        ? { ...foldStreamChunks(folded, event.data.turn, event.data.step, event.data.stream), phase: 'waiting' as const, outputProgress: undefined }
+        : folded
       const usage = event.data.usage
       if (usage === undefined) return streamed
       const used = contextTokens(usage)
@@ -214,8 +189,10 @@ export function foldConversationFacts(
       return { ...state, phase: 'tool', active: true, agentCalls }
     }
     case 'step/end':
+      if (event.data.turn < state.turn || (event.data.turn === state.turn && state.runOutcome !== undefined)) return state
       return { ...state, phase: 'waiting', active: true, turn: event.data.turn, outputProgress: undefined }
     case 'turn/end':
+      if (event.data.turn < state.turn || (event.data.turn === state.turn && state.runOutcome !== undefined)) return state
       return {
         ...state, phase: 'idle', active: false, turn: event.data.turn, outputProgress: undefined,
         runOutcome: event.data.reason.kind === 'completed' ? 'completed' : 'failed', endedAt: event.time,
@@ -256,5 +233,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 3,
+  stateVersion: 4,
 }

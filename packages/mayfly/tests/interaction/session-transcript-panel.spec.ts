@@ -88,6 +88,8 @@ describe('SessionTranscriptPanel', () => {
     const rendered = panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')
     expect(rendered).toContain('thinking...')
     expect(rendered).toContain('latest thought')
+    ctx.emit('tools/change')
+    expect(panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')).toContain('latest thought')
     const settled = assistantEvent(1, 1, [{ type: 'text', text: 'final live answer' }])
     events.push(settled)
     projections.emit(live, settled)
@@ -128,6 +130,9 @@ describe('SessionTranscriptPanel', () => {
     await vi.waitFor(() => {
       expect(panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')).toContain('cold answer')
     })
+    expect(observationDispose).toHaveBeenCalledOnce()
+    ctx.emit('tools/change')
+    expect(panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')).toContain('cold answer')
     expect(observationDispose).toHaveBeenCalledOnce()
     panel.dispose()
   })

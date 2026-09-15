@@ -8,9 +8,10 @@ import {
   type ConversationProjectionSource,
 } from '../../src/transcript/official-model.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
+import { materializeTranscriptEntries } from '../../src/frontend/models.ts'
 
 function projection(entries: ConversationProjection['entries'] = [], streaming = false): ConversationProjection {
-  return { entries: entries.map(entry => ({ ...entry, updatedSeq: entry.updatedSeq ?? entry.seq })), streaming }
+  return { entries: entries.map(entry => ({ ...entry, updatedSeq: entry.updatedSeq ?? entry.seq })), streaming, settledSteps: [] }
 }
 
 function toolSource(options: { readonly throws?: boolean } = {}): ToolPresentationSource {
@@ -457,7 +458,7 @@ describe('OfficialConversationModelSource', () => {
     const source = new OfficialConversationModelSource(fixture.source, { get }, publish)
     source.attach(fixture.session)
     expect(get).not.toHaveBeenCalled()
-    expect(source.snapshot().entries).toHaveLength(300)
+    expect(materializeTranscriptEntries(source.snapshot())).toHaveLength(300)
     get.mockClear()
     publish.mockClear()
     let reads = 0
@@ -468,7 +469,7 @@ describe('OfficialConversationModelSource', () => {
           return [...entries, { kind: 'thinking', id: 'live', seq: 300, updatedSeq: seq,
             turn: 1, step: 0, text: `thought ${String(seq)}`, streaming: seq < 1_299 }]
         },
-        streaming: seq < 1_299,
+        streaming: seq < 1_299, settledSteps: [],
       }
       fixture.emit('mayflyConversation', value, seq)
     }
@@ -503,11 +504,11 @@ describe('OfficialConversationModelSource', () => {
     expect(source.snapshot()).toMatchObject({ generation: 2, entries: [] })
     fixture.emit('mayflyConversation', projection([transcriptTool()]), 3, main)
     source.attach(null)
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
     source.attach(main)
     fixture.emit('mayflyConversation', projection([transcriptTool()]), 4, main)
     source.dispose()
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
   })
 
   it.each([1_000, 10_000, 100_000])('reads and admits the complete %i-entry history', length => {
@@ -524,18 +525,18 @@ describe('OfficialConversationModelSource', () => {
         return Reflect.get(target, key, receiver)
       },
     })
-    const fixture = sourceFixture({ entries: observed, streaming: false })
+    const fixture = sourceFixture({ entries: observed, streaming: false, settledSteps: [] })
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session)
     expect(reads).toBe(0)
-    expect(source.snapshot().entries).toHaveLength(length)
+    expect(materializeTranscriptEntries(source.snapshot())).toHaveLength(length)
     expect(reads).toBe(length)
-    expect(source.snapshot().entries[0]).toMatchObject({ id: '0' })
+    expect(materializeTranscriptEntries(source.snapshot())[0]).toMatchObject({ id: '0' })
     for (let seq = 1; seq <= 3; seq += 1) {
       reads = 0
-      fixture.emit('mayflyConversation', { entries: observed, streaming: true }, seq)
+      fixture.emit('mayflyConversation', { entries: observed, streaming: true, settledSteps: [] }, seq)
       expect(reads).toBe(0)
-      expect(source.snapshot().entries).toHaveLength(length)
+      expect(materializeTranscriptEntries(source.snapshot())).toHaveLength(length)
       expect(reads).toBe(length)
     }
     source.dispose()
@@ -550,12 +551,12 @@ describe('OfficialConversationModelSource', () => {
     const fixture = sourceFixture(value)
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session, 999)
-    expect(source.snapshot().entries).toHaveLength(250)
-    expect(source.snapshot().entries[0]).toMatchObject({ id: 'visible-0' })
-    expect(source.snapshot().entries.at(-1)).toMatchObject({ id: 'visible-249' })
-    expect(source.snapshot().entries).toEqual(conversationTranscriptModel(projection(eligible), toolSource()).entries)
+    expect(materializeTranscriptEntries(source.snapshot())).toHaveLength(250)
+    expect(materializeTranscriptEntries(source.snapshot())[0]).toMatchObject({ id: 'visible-0' })
+    expect(materializeTranscriptEntries(source.snapshot()).at(-1)).toMatchObject({ id: 'visible-249' })
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual(conversationTranscriptModel(projection(eligible), toolSource()).entries)
     source.attach(fixture.session, 10_000)
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
     source.dispose()
   })
 
@@ -594,7 +595,7 @@ describe('OfficialConversationModelSource', () => {
     const fixture = sourceFixture({ entries: [null, ...tail], streaming: false })
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session)
-    expect(source.snapshot().entries).toHaveLength(0)
+    expect(materializeTranscriptEntries(source.snapshot())).toHaveLength(0)
     source.dispose()
   })
 
@@ -632,9 +633,9 @@ describe('OfficialConversationModelSource', () => {
       { kind: 'thinking', id: 'two', seq: 2, updatedSeq: 3, turn: 0, step: 0, text: 'settled thought', streaming: false },
     ])
     fixture.emit('mayflyConversation', changed, 3)
-    expect(source.snapshot().entries).toEqual(conversationTranscriptModel(changed, toolSource()).entries)
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual(conversationTranscriptModel(changed, toolSource()).entries)
     fixture.emit('mayflyConversation', projection(), 4)
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
     const nextSession = { id: 'session-2' } as unknown as Session
     fixture.set(initial, 2)
     source.attach(nextSession)
@@ -643,13 +644,13 @@ describe('OfficialConversationModelSource', () => {
     fixture.emit('mayflyConversation', changed, 5)
     expect(source.snapshot()).toBe(before)
     fixture.emit('mayflyConversation', changed, 3, nextSession)
-    expect(source.snapshot().entries).toEqual(conversationTranscriptModel(changed, toolSource()).entries)
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual(conversationTranscriptModel(changed, toolSource()).entries)
     source.dispose()
     const count = publish.mock.calls.length
     fixture.emit('mayflyConversation', initial, 6, nextSession)
     source.attach(fixture.session)
     expect(publish).toHaveBeenCalledTimes(count)
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
   })
 
   it('publishes baseline and live whole values while rejecting stale and malformed changes', () => {
@@ -658,17 +659,17 @@ describe('OfficialConversationModelSource', () => {
     ]), 4)
     const published: string[] = []
     const source = new OfficialConversationModelSource(f.source, toolSource(), () => {
-      const entry = source.snapshot().entries[0]
+      const entry = materializeTranscriptEntries(source.snapshot())[0]
       published.push(entry?.kind === 'transcript-assistant' ? entry.text : 'empty')
     })
     source.attach(f.session)
-    expect(source.snapshot().entries[0]).toMatchObject({ text: 'baseline' })
+    expect(materializeTranscriptEntries(source.snapshot())[0]).toMatchObject({ text: 'baseline' })
     expect(published).toEqual(['baseline'])
 
     f.emit('mayflyConversation', projection([
       { kind: 'assistant', id: 'a-1', seq: 1, turn: 0, step: 0, text: 'baseline updated', streaming: true },
     ], true), 5)
-    expect(source.snapshot().entries[0]).toMatchObject({ text: 'baseline updated', streaming: true })
+    expect(materializeTranscriptEntries(source.snapshot())[0]).toMatchObject({ text: 'baseline updated', streaming: true })
     expect(published).toEqual(['baseline', 'baseline updated'])
 
     f.emit('other', projection(), 6)
@@ -694,7 +695,7 @@ describe('OfficialConversationModelSource', () => {
 
     f.set({ entries: 'bad', streaming: false }, 7)
     source.attach(f.session)
-    expect(source.snapshot().entries).toEqual([])
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
     source.attach(null)
     expect(published.at(-1)).toBe('empty')
     source.dispose()
@@ -710,7 +711,7 @@ describe('OfficialConversationModelSource', () => {
     ]), -1)
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session)
-    expect(source.snapshot().entries[0]).toMatchObject({ text: 'baseline' })
+    expect(materializeTranscriptEntries(source.snapshot())[0]).toMatchObject({ text: 'baseline' })
     source.dispose()
   })
 
@@ -723,10 +724,10 @@ describe('OfficialConversationModelSource', () => {
     ], true), 4)
     const published: string[][] = []
     const source = new OfficialConversationModelSource(f.source, toolSource(), () => {
-      published.push(source.snapshot().entries.map(entry => 'text' in entry ? entry.text : entry.kind))
+      published.push(materializeTranscriptEntries(source.snapshot()).map(entry => 'text' in entry ? entry.text : entry.kind))
     })
     source.attach(f.session, 2)
-    expect(source.snapshot().entries).toMatchObject([
+    expect(materializeTranscriptEntries(source.snapshot())).toMatchObject([
       { kind: 'transcript-user', text: 'side question' },
       { kind: 'transcript-assistant', text: 'side answer' },
     ])
@@ -736,11 +737,11 @@ describe('OfficialConversationModelSource', () => {
       { kind: 'user', id: 'btw-user', seq: 3, turn: 2, text: 'side question', images: [] },
       { kind: 'assistant', id: 'btw-answer', seq: 4, turn: 2, step: 0, text: 'side answer updated', streaming: false },
     ], false), 5)
-    expect(source.snapshot().entries).not.toEqual(expect.arrayContaining([expect.objectContaining({ text: 'main history' })]))
-    expect(source.snapshot().entries).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'side answer updated' })]))
+    expect(materializeTranscriptEntries(source.snapshot())).not.toEqual(expect.arrayContaining([expect.objectContaining({ text: 'main history' })]))
+    expect(materializeTranscriptEntries(source.snapshot())).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'side answer updated' })]))
     expect(published.at(-1)).toEqual(['side question', 'side answer updated'])
     source.attach(f.session)
-    expect(source.snapshot().entries).toHaveLength(4)
+    expect(materializeTranscriptEntries(source.snapshot())).toHaveLength(4)
     source.dispose()
   })
 })

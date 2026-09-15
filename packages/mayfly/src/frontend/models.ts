@@ -5,7 +5,14 @@ export type Action = Readonly<{ readonly kind: string; readonly [key: string]: u
 export interface ToolPresentationModel { readonly kind: 'tool'; readonly id: string; readonly name: string; readonly call?: MayflyUiNode; readonly result?: MayflyUiNode; readonly expanded?: boolean; readonly action?: Action }
 export interface ThemeModel { readonly kind: 'theme'; readonly id: string; readonly name: string; readonly colors: Readonly<Record<string, string>>; readonly dark: boolean }
 export interface TranscriptImageModel { readonly attachmentId: string; readonly mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; readonly bytes: number; readonly width: number; readonly height: number; readonly name?: string | undefined; readonly originalDimensions?: Readonly<{ readonly width: number; readonly height: number }> | undefined }
-interface TranscriptEntryBase { readonly id: string; readonly seq: number; readonly updatedSeq: number; readonly turn: number }
+interface TranscriptEntryBase {
+  readonly id: string
+  readonly seq: number
+  readonly updatedSeq: number
+  readonly turn: number
+  /** Presentation revision independent of the durable event sequence. */
+  readonly renderRevision?: string
+}
 export interface TranscriptUserModel extends TranscriptEntryBase { readonly kind: 'transcript-user'; readonly text: string; readonly images: readonly TranscriptImageModel[] }
 export interface TranscriptAssistantModel extends TranscriptEntryBase { readonly kind: 'transcript-assistant'; readonly step: number; readonly text: string; readonly streaming: boolean }
 export interface TranscriptThinkingModel extends TranscriptEntryBase { readonly kind: 'transcript-thinking'; readonly step: number; readonly text: string; readonly streaming: boolean; readonly outputProgress?: import('../conversation/types.ts').OutputProgress | undefined }
@@ -70,12 +77,38 @@ export interface TranscriptSearchGroupModel extends TranscriptEntryBase { readon
 export interface TranscriptErrorModel extends TranscriptEntryBase { readonly kind: 'transcript-error'; readonly message: string; readonly code?: string }
 export interface TranscriptInterruptedModel extends TranscriptEntryBase { readonly kind: 'transcript-interrupted' }
 export type TranscriptEntryModel = TranscriptUserModel | TranscriptAssistantModel | TranscriptThinkingModel | TranscriptToolModel | TranscriptReadGroupModel | TranscriptSearchGroupModel | TranscriptErrorModel | TranscriptInterruptedModel
-export interface TranscriptModel { readonly kind: 'transcript'; readonly id: string; readonly generation: number; readonly entries: readonly (MayflyUiNode | TranscriptEntryModel)[]; readonly streaming?: boolean }
+export interface TranscriptLiveOverlay {
+  readonly turn: number
+  readonly step: number
+  readonly entries: readonly TranscriptEntryModel[]
+}
+export interface TranscriptModel {
+  readonly kind: 'transcript'
+  readonly id: string
+  readonly generation: number
+  /** Durable entries. Live entries are carried separately to preserve identity. */
+  readonly entries: readonly (MayflyUiNode | TranscriptEntryModel)[]
+  readonly live?: TranscriptLiveOverlay
+  readonly streaming?: boolean
+}
+
+/** Materialize a complete view for consumers that need a flat entry list. */
+export function materializeTranscriptEntries(model: TranscriptModel): readonly (MayflyUiNode | TranscriptEntryModel)[] {
+  const live = model.live
+  if (live === undefined) return model.entries
+  const entries = model.entries.filter(entry => !((entry.kind === 'transcript-assistant' || entry.kind === 'transcript-thinking')
+    && entry.turn === live.turn && entry.step === live.step))
+  return [...entries, ...live.entries]
+}
+
+/** Only values deeply frozen here may skip a later recursive walk. */
+const frozenModels = new WeakSet<object>()
 
 export function freezeModel<T>(value: T): Readonly<T> {
-  if (value && typeof value === 'object') {
+  if (value && typeof value === 'object' && !frozenModels.has(value)) {
     Object.freeze(value)
     for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freezeModel(child)
+    frozenModels.add(value)
   }
   return value as Readonly<T>
 }

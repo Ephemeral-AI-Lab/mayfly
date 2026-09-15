@@ -66,7 +66,7 @@ describe('phase-local output', () => {
     const harness = await bootPanePlugin(activity, agent)
     let state = initialConversationState()
     const transcript = new TranscriptModelComponent(() => conversationTranscriptModel(
-      { entries: state.entries, streaming: state.active }, { get: () => undefined },
+      { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }, { get: () => undefined },
     ), {
       colors: COLORS, components: fakeMayflyComponents(), images: () => ({}), requestRender: () => {},
     })
@@ -74,28 +74,34 @@ describe('phase-local output', () => {
       state = foldConversationProjection(state, next)
       harness.ctx.emit('session/event', agent.session, next)
     }
+    // Rebuild each observed prefix from one complete compact attempt. A
+    // separate assistant/attempt never represents the next token of a retry.
+    const records: AssistantStreamRecord[] = []
+    const replay = (next: SessionEvent<'assistant/attempt'>): void => {
+      records.push(...next.data.stream)
+      const events = [turnStart(1), attempt([...records], next.time, 1, 1)]
+      state = events.reduce(foldConversationProjection, initialConversationState())
+      agent.session.events.splice(0, agent.session.events.length, ...events)
+      harness.ctx.emit('test/session-changed', agent as never)
+    }
     try {
-      send(turnStart(1))
-      send(reasoning('seed', 1_000))
+      replay(reasoning('seed', 1_000))
       expect(transcript.render(80).join('\n')).toContain('thinking... ↓1')
       expect(harness.screen.paneLines()).toEqual([])
       vi.setSystemTime(2_000)
-      send(reasoning('x'.repeat(168), 2_000))
+      replay(reasoning('x'.repeat(168), 2_000))
       expect(transcript.render(80).join('\n')).toContain('thinking... ↓43 · ≈42 tok/s')
       expect(harness.screen.paneLines()).toEqual([])
-
-      send(answer('', 2_010))
-      send(reasoning('\n', 2_020))
+      replay(answer('', 2_010))
+      replay(reasoning('\n', 2_020))
       expect(transcript.render(80).join('\n')).toContain('thinking...')
-      expect(harness.screen.paneLines()).toEqual([])
-
       vi.setSystemTime(3_000)
-      send(answer('seed', 3_000))
+      replay(answer('seed', 3_000))
       expect(transcript.render(80).join('\n')).not.toContain('thinking...')
       expect(harness.screen.paneLines()[0]).toContain('working... ↓1')
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
       vi.setSystemTime(4_000)
-      send(answer('y'.repeat(80), 4_000))
+      replay(answer('y'.repeat(80), 4_000))
       expect(harness.screen.paneLines()[0]).toContain('working... ↓21 · ≈20 tok/s')
       for (const width of SCAN_WIDTHS) expectLinesFit('Activity/TPS', harness.screen.paneLines(width), width)
       expect(harness.screen.paneLines(40)[0]).toContain('≈20 tok/s')
@@ -106,13 +112,14 @@ describe('phase-local output', () => {
 
       vi.advanceTimersByTime(2_100)
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
+
       const final = { ...assistantEvent(1, 1, [{ type: 'reasoning', text: 'corrected thought' }, { type: 'text', text: 'final answer' }]), surfaceOp: 'append' as const }
       send(final)
       expect(transcript.render(80).join('\n')).toContain('corrected thought')
-      expect(harness.screen.paneLines()[0]).not.toContain('working...')
+      expect(harness.screen.paneLines().join('\n')).not.toContain('working...')
       send(reasoning('late', 7_000))
       expect(transcript.render(80).join('\n')).not.toContain('thinking...')
-      expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
+      expect(harness.screen.paneLines().join('\n')).not.toContain('tok/s')
       send(turnEnd(1))
       send(answer('late', 8_000))
       expect(harness.screen.paneLines()).toEqual([''])
@@ -189,12 +196,9 @@ describe('phase-local output', () => {
     { type: 'tool-call-delta', index: 1, id: 'call' as never, name: 'read', argumentsDelta: '{}' },
     { type: 'finish', reason: 'stop' },
   ])('ends thinking on $type and preserves final correction', value => {
-    const seed = reasoning('seed', 1_000)
-    let state = foldConversationProjection(initialConversationState(), seed)
-    let facts = foldConversationFacts(initialConversationFacts(), seed)
-    const boundary = chunk(value, 2_000)
-    state = foldConversationProjection(state, boundary)
-    facts = foldConversationFacts(facts, boundary)
+    const boundary = attempt([...reasoning('seed', 1_000).data.stream, ...chunk(value, 2_000).data.stream], 2_000, 1, 1)
+    let state = foldConversationProjection(initialConversationState(), boundary)
+    const facts = foldConversationFacts(initialConversationFacts(), boundary)
     expect(state.entries[0]).toMatchObject({ streaming: false })
     expect(facts).toMatchObject({ phase: 'waiting', outputProgress: undefined })
     const final = { ...assistantEvent(1, 1, [{ type: 'reasoning', text: 'corrected' }]), surfaceOp: 'append' as const }
@@ -203,16 +207,18 @@ describe('phase-local output', () => {
     expect(state.entries[0]).toMatchObject({ text: 'corrected', streaming: false })
   })
 
-  it('ignores empty and unrelated chunks, and ends a text block without retaining its speed', () => {
+  it('parks independent empty attempts and ends a complete text stream without retaining its speed', () => {
     let facts = initialConversationFacts()
-    expect(foldConversationFacts(facts, reasoning('', 1_000))).toBe(facts)
-    expect(foldConversationFacts(facts, answer('', 1_000))).toBe(facts)
+    expect(foldConversationFacts(facts, reasoning('', 1_000))).toMatchObject({ phase: 'waiting', outputProgress: undefined, flowDownChars: 0 })
+    expect(foldConversationFacts(facts, answer('', 1_000))).toMatchObject({ phase: 'waiting', outputProgress: undefined, flowDownChars: 0 })
     facts = foldConversationFacts(facts, reasoning('thought', 1_000))
-    expect(foldConversationFacts(facts, reasoning('', 2_000))).toBe(facts)
-    expect(foldConversationFacts(facts, chunk({ type: 'block-start', index: 0, blockType: 'reasoning' }, 2_000))).toBe(facts)
-    expect(foldConversationFacts(facts, chunk({ type: 'block-end', index: 1, block: { type: 'text', text: '' } }, 2_000))).toBe(facts)
-    facts = foldConversationFacts(facts, answer('answer', 3_000))
-    facts = foldConversationFacts(facts, chunk({ type: 'block-end', index: 1, block: { type: 'text', text: 'answer' } }, 4_000))
+    for (const empty of [reasoning('', 2_000), chunk({ type: 'block-start', index: 0, blockType: 'reasoning' }, 2_000), chunk({ type: 'block-end', index: 1, block: { type: 'text', text: '' } }, 2_000)]) {
+      expect(foldConversationFacts(facts, empty)).toMatchObject({ phase: 'waiting', outputProgress: undefined })
+    }
+    facts = foldConversationFacts(facts, attempt([
+      ...answer('answer', 3_000).data.stream,
+      ...chunk({ type: 'block-end', index: 1, block: { type: 'text', text: 'answer' } }, 4_000).data.stream,
+    ], 4_000, 1, 1))
     expect(facts).toMatchObject({ phase: 'waiting', outputProgress: undefined })
   })
 

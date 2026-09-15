@@ -72,11 +72,12 @@ export class SessionFactsService extends Service {
       ? () => {}
       : liveStream.subscribe(() => {
         const draft = this.agent === null ? undefined : liveStream.get(this.agent)
-        if (draft === this.live && draft?.outputProgress === this.live?.outputProgress) return
+        if (draft === this.live) return
         this.live = draft
         this.facts = this.merged()
         for (const listener of this.listeners) listener(this.facts)
-      })  }
+      })
+  }
 
   /** Current facts; the returned object is projection-owned readonly data. */
   get current(): ConversationFacts {
@@ -178,12 +179,18 @@ export class SessionFactsService extends Service {
   private merged(): ConversationFacts {
     const draft = this.live
     if (draft === undefined || this.agent === null || draft.sessionId !== String(this.agent.session.id)) return this.durable
-    const phase = draft.phase === 'waiting' ? this.durable.phase : draft.phase
+    if (draft.turn < this.durable.turn || (draft.turn === this.durable.turn
+      && (this.durable.runOutcome !== undefined
+        || (this.durable.currentStep !== undefined && draft.step < this.durable.currentStep)
+        || (this.durable.lastCompletedStep !== undefined && draft.step <= this.durable.lastCompletedStep)))) return this.durable
     return {
       ...this.durable,
       active: true,
-      phase,
+      turn: draft.turn,
+      currentStep: draft.step,
+      phase: draft.phase,
       activity: draft.phase === 'waiting' ? this.durable.activity : { kind: draft.phase === 'thinking' ? 'reasoning' : 'text' },
+      flowDownChars: this.durable.flowDownChars + draft.chars,
       outputProgress: draft.outputProgress,
     }
   }

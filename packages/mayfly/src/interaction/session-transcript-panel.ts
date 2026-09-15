@@ -10,7 +10,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type { MayflyFocusable } from '../core/index.ts'
 import { ScrollablePanel } from '../core/scrollable-panel.ts'
-import { conversationProjectionSchema } from '../conversation/index.ts'
+import { conversationProjectionSchema, type ConversationProjection } from '../conversation/index.ts'
 import type { MayflyAuxiliaryView } from '../app/current-agent.ts'
 import {
   conversationTranscriptModel,
@@ -24,6 +24,7 @@ import {
 } from '../transcript/transcript-model.ts'
 import type { ToolPresentationSource } from '../transcript/present.ts'
 import type { TranscriptModel } from '../frontend/index.ts'
+import { watchAssistantStream } from '../frontend/assistant-stream.ts'
 import { ACTION_CANCEL, ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from './keys.ts'
 
 type SubagentView = Extract<MayflyAuxiliaryView, { readonly kind: 'subagent' }>
@@ -39,6 +40,9 @@ export class SessionTranscriptPanel implements MayflyFocusable {
   private readonly source: OfficialConversationModelSource
   private readonly body: TranscriptModelComponent
   private readonly shell: ScrollablePanel
+  private readonly offTools: () => void
+  private readonly offStream: () => void
+  private coldProjection: ConversationProjection | undefined
 
   constructor(
     private readonly ctx: Context,
@@ -84,6 +88,15 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       () => screen.requestRender(),
       liveDraftsOf(ctx),
     )
+    this.offTools = ctx.on('tools/change', () => {
+      this.source.invalidateTools()
+      if (this.coldProjection !== undefined) {
+        this.generation += 1
+        this.model = conversationTranscriptModel(this.coldProjection, tools, this.generation)
+        this.shell.invalidate()
+      }
+    })
+    this.offStream = childAgent === undefined ? () => {} : watchAssistantStream(ctx, childAgent)
     if (live === undefined) void this.loadCold(tools)
     else this.source.attach(live, undefined, childAgent)
   }
@@ -99,6 +112,8 @@ export class SessionTranscriptPanel implements MayflyFocusable {
     if (this.disposed) return
     this.disposed = true
     this.abort.abort()
+    this.offTools()
+    this.offStream()
     this.source.dispose()
     this.shell.dispose()
   }
@@ -122,6 +137,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
           return
         }
         this.generation += 1
+        this.coldProjection = parsed.data
         this.model = conversationTranscriptModel(parsed.data, tools, this.generation)
         this.shell.invalidate()
       } finally {

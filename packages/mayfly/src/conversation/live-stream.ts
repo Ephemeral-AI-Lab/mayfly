@@ -1,8 +1,6 @@
 /**
- * Renderer-neutral live assistant-stream drafts. Harness assistant frames are
- * transient, so this service keeps exact Agent identity and can seed an
- * in-flight attempt from a session-controller follow baseline after a UI
- * Fiber reload.
+ * Exact-Agent transient assistant drafts and recovery from native follow
+ * opening baselines. Durable session history remains owned by Harness.
  *
  * @module @ephemeral-ai/mayfly/conversation/live-stream
  */
@@ -10,24 +8,31 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { Agent, AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import type { SessionAssistantStreamBaseline, SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { OutputProgress } from './types.ts'
 import { foldAssistantStreamChunk, foldAssistantStreamRecords, initialAssistantStream, type AssistantStreamState } from './stream-accumulator.ts'
 
 const MAX_RECOVERY_BUFFER = 256
+const RECOVERY_TIMEOUT_MS = 3000
 
-/** One live streaming attempt draft; Agent identity stays outside the wire value. */
-export interface LiveAssistantDraft extends AssistantStreamState {
+/** Visible draft of one exact Agent's active attempt. */
+export interface LiveAssistantDraft {
   readonly sessionId: string
-  readonly attemptId: AssistantStreamFrame['attemptId']
-  /** Last accepted frame revision for this attempt. */
+  readonly attemptId: string
   readonly revision: number
   readonly turn: number
   readonly step: number
+  readonly phase: AssistantStreamState['phase']
+  readonly reasoning: string
+  readonly text: string
+  readonly outputProgress: OutputProgress | undefined
+  readonly chars: number
+  readonly updatedAt: number
 }
 
-/** Opening and follow stream shape needed by {@link LiveAssistantStreamService.watch}. */
+/** Native session follow reader, fenced by the caller's exact Agent identity. */
 export interface AssistantStreamFollow {
   open(signal: AbortSignal): AsyncIterable<SessionFollowFrame>
-  current?: () => boolean
+  current(): boolean
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -35,245 +40,263 @@ declare module '@deepseek-ai/cordis' {
 }
 
 interface Attempt {
-  readonly attemptId: AssistantStreamFrame['attemptId']
   readonly revision: number
+  readonly attemptId: string | undefined
   readonly nextIndex: number
-  readonly turn: number
-  readonly step: number
+  readonly draft: LiveAssistantDraft | undefined
   readonly state: AssistantStreamState
 }
 
-interface Recovery {
-  readonly generation: number
-  readonly queue: AssistantStreamFrame[]
-  ready: boolean
-  abort: AbortController
-  refs: number
-  readonly follow: AssistantStreamFollow
-  retryTimer?: ReturnType<typeof setTimeout> | undefined
+interface Opening {
+  readonly controller: AbortController
+  readonly frames: AssistantStreamFrame[]
 }
 
-/** Live-frame draft store over every Agent this Fiber observes. */
+interface Recovery {
+  readonly follow: AssistantStreamFollow
+  refs: number
+  waiting: boolean
+  delay: number
+  opening: Opening | undefined
+  timer: ReturnType<typeof setTimeout> | undefined
+}
+
+/** Stable frontend service; renderer Fibers consume immutable current drafts. */
 export class LiveAssistantStreamService extends Service {
-  private readonly drafts = new Map<Agent, LiveAssistantDraft>()
   private readonly attempts = new WeakMap<Agent, Attempt>()
   private readonly recoveries = new Map<Agent, Recovery>()
-  private readonly disposedAgents = new WeakSet<Agent>()
+  private readonly retired = new WeakSet<Agent>()
   private readonly listeners = new Set<() => void>()
-  private notifyQueued = false
+  private pendingNotification = false
   private disposed = false
   private readonly offFrame: () => void
   private readonly offDisposed: () => void
 
   constructor(ctx: Context) {
     super(ctx, 'mayflyLiveAssistantStream')
-    this.offFrame = ctx.on('agent/assistant-stream', ({ agent, frame }) => { this.accept(agent, frame) })
+    this.offFrame = ctx.on('agent/assistant-stream', ({ agent, frame }) => this.accept(agent, frame))
     this.offDisposed = ctx.on('agent/disposed', ({ agent }) => {
-      this.disposedAgents.add(agent)
-      this.recoveries.get(agent)?.abort.abort()
-      this.recoveries.delete(agent)
+      this.retired.add(agent)
+      const recovery = this.recoveries.get(agent)
+      if (recovery !== undefined) this.close(agent, recovery)
+      const hadDraft = this.get(agent) !== undefined
       this.attempts.delete(agent)
-      this.clear(agent)
+      if (hadDraft) this.publish()
     })
   }
 
-  /** Draft of the exact Agent, or undefined while nothing streams. */
-  get(agent: Agent): LiveAssistantDraft | undefined { return this.drafts.get(agent) }
+  /** Latest draft is readable synchronously, before batched notifications. */
+  get(agent: Agent): LiveAssistantDraft | undefined {
+    return this.disposed ? undefined : this.attempts.get(agent)?.draft
+  }
 
-  /** Subscribe to draft changes; the current state is read via {@link get}. */
+  /** Observe one notification per microtask; read the latest draft with get. */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
   }
 
-  /** Accept a frame from a native or reconnect follow source. */
-  accept(agent: Agent, frame: AssistantStreamFrame): void {
-    if (this.disposed || this.disposedAgents.has(agent)) return
-    const recovery = this.recoveries.get(agent)
-    if (recovery !== undefined && !recovery.ready) {
-      if (recovery.queue.length < MAX_RECOVERY_BUFFER) recovery.queue.push(frame)
-      return
-    }
-    this.fold(agent, frame)
-  }
-
-  /** Start a reconnecting follow; the returned disposer aborts that follow. */
+  /** Retain recovery for one exact Agent; the final release aborts its work. */
   watch(agent: Agent, follow: AssistantStreamFollow): () => void {
-    if (this.disposed || this.disposedAgents.has(agent)) return () => {}
-    const previous = this.recoveries.get(agent)
-    if (previous !== undefined) {
-      previous.refs += 1
-      return () => this.releaseRecovery(agent, previous)
+    if (this.disposed || this.retired.has(agent) || !follow.current()) return () => {}
+    let recovery = this.recoveries.get(agent)
+    if (recovery === undefined) {
+      recovery = { follow, refs: 0, waiting: true, delay: 50, opening: undefined, timer: undefined }
+      this.recoveries.set(agent, recovery)
+      this.recover(agent, recovery)
     }
-    const recovery: Recovery = {
-      generation: 1,
-      queue: [],
-      ready: false,
-      abort: new AbortController(),
-      refs: 1,
-      follow,
-    }
-    this.recoveries.set(agent, recovery)
-    void this.runFollow(agent, recovery)
+    recovery.refs += 1
+    const owned = recovery
+    let released = false
     return () => {
-      if (this.recoveries.get(agent) !== recovery) return
-      recovery.abort.abort()
-      if (recovery.retryTimer !== undefined) clearTimeout(recovery.retryTimer)
-      this.recoveries.delete(agent)
+      if (released) return
+      released = true
+      owned.refs -= 1
+      if (owned.refs === 0) this.close(agent, owned)
     }
   }
 
-  /** Seed an Agent from a reconnect opening baseline. */
-  ensure(agent: Agent, baseline: SessionAssistantStreamBaseline): void {
-    if (this.disposed || this.disposedAgents.has(agent)) return
-    const current = this.attempts.get(agent)
-    if (current !== undefined && baseline.revision < current.revision) return
-    this.seed(agent, baseline)
-    const recovery = this.recoveries.get(agent)
-    if (recovery === undefined || recovery.ready) return
-    recovery.ready = true
-    const queued = recovery.queue.splice(0)
-    for (const frame of queued.sort((a, b) => a.revision - b.revision)) this.fold(agent, frame)
+  /** Seed a native baseline without overwriting a newer locally observed cut. */
+  ensure(agent: Agent, baseline: SessionAssistantStreamBaseline): boolean {
+    if (this.disposed || this.retired.has(agent)) return false
+    const previous = this.attempts.get(agent)
+    if (previous !== undefined && baseline.revision < previous.revision) return false
+    const active = baseline.activeAttempt
+    const state = active === undefined ? initialAssistantStream()
+      : foldAssistantStreamRecords(initialAssistantStream(), active.stream as never)
+    const draft = active === undefined ? undefined
+      : this.makeDraft(agent, String(active.attemptId), baseline.revision, active.turn, active.step, state)
+    this.attempts.set(agent, {
+      revision: baseline.revision,
+      attemptId: active === undefined ? undefined : String(active.attemptId),
+      nextIndex: active?.nextIndex ?? 0,
+      draft,
+      state,
+    })
+    if (previous?.draft !== draft) this.publish()
+    return true
   }
 
+  /** Admit only exact-Agent native frames; session follow frames are never used. */
+  accept(agent: Agent, frame: AssistantStreamFrame): void {
+    if (this.disposed || this.retired.has(agent)) return
+    const recovery = this.recoveries.get(agent)
+    if (recovery !== undefined) {
+      if (!recovery.follow.current()) {
+        this.close(agent, recovery)
+        return
+      }
+      if (recovery.waiting) {
+        const opening = recovery.opening
+        if (opening !== undefined) {
+          if (opening.frames.length < MAX_RECOVERY_BUFFER) opening.frames.push(frame)
+          else {
+            opening.controller.abort()
+            recovery.opening = undefined
+            this.retry(agent, recovery)
+          }
+        }
+        return
+      }
+    }
+    if (!this.fold(agent, frame) && recovery !== undefined) {
+      recovery.waiting = true
+      this.recover(agent, recovery)
+    }
+  }
+
+  /** Abort all owned reads and timers; queued notifications become inert. */
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
     this.offFrame()
     this.offDisposed()
-    for (const recovery of this.recoveries.values()) {
-      recovery.abort.abort()
-      if (recovery.retryTimer !== undefined) clearTimeout(recovery.retryTimer)
-    }
-    this.recoveries.clear()
+    for (const [agent, recovery] of this.recoveries) this.close(agent, recovery)
     this.listeners.clear()
-    this.drafts.clear()
-    this.notifyQueued = false
   }
 
-  private async runFollow(agent: Agent, recovery: Recovery): Promise<void> {
+  private close(agent: Agent, recovery: Recovery): void {
+    recovery.opening?.controller.abort()
+    if (recovery.timer !== undefined) clearTimeout(recovery.timer)
+    if (this.recoveries.get(agent) === recovery) this.recoveries.delete(agent)
+  }
+
+  private recover(agent: Agent, recovery: Recovery): void {
+    const opening: Opening = { controller: new AbortController(), frames: [] }
+    recovery.opening = opening
+    void this.readOpening(agent, recovery, opening)
+  }
+
+  private async readOpening(agent: Agent, recovery: Recovery, opening: Opening): Promise<void> {
+    const signal = opening.controller.signal
+    let iterator: AsyncIterator<SessionFollowFrame> | undefined
+    let timeout: ReturnType<typeof setTimeout> | undefined
     try {
-      if (recovery.follow.current?.() === false) return
-      for await (const item of recovery.follow.open(recovery.abort.signal)) {
-        if (this.recoveries.get(agent) !== recovery || this.disposedAgents.has(agent) || recovery.follow.current?.() === false) return
-        if (item.type === 'snapshot') {
-          this.ensure(agent, item.assistantStream ?? { revision: 0 })
+      iterator = recovery.follow.open(signal)[Symbol.asyncIterator]()
+      const timedOut = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => { opening.controller.abort(); reject(new Error('assistant stream baseline timed out')) }, RECOVERY_TIMEOUT_MS)
+      })
+      const aborted = new Promise<never>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('assistant stream opening aborted')), { once: true })
+      })
+      const item = await Promise.race([iterator.next(), timedOut, aborted])
+      if (!this.isCurrent(agent, recovery, opening)) return
+      if (item.done || item.value.type !== 'snapshot' || item.value.assistantStream === undefined) {
+        throw new Error('assistant stream opening baseline is unavailable')
+      }
+      if (!this.ensure(agent, item.value.assistantStream)) throw new Error('assistant stream baseline is stale')
+      recovery.waiting = false
+      recovery.delay = 50
+      for (const frame of opening.frames) {
+        if (!this.fold(agent, frame)) {
+          recovery.waiting = true
+          this.retry(agent, recovery)
           break
         }
       }
     } catch {
-      if (this.recoveries.get(agent) !== recovery) return
-      recovery.ready = true
-      this.retry(agent, recovery)
+      if (this.isCurrent(agent, recovery, opening)) this.retry(agent, recovery)
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout)
+      opening.controller.abort()
+      if (recovery.opening === opening) recovery.opening = undefined
+      // Closing a native generator unwinds its listeners. A foreign iterator
+      // may reject or ignore cancellation; neither can publish after this cut.
+      if (iterator?.return !== undefined) {
+        void Promise.resolve().then(() => iterator!.return!()).catch(() => {})
+      }
     }
+  }
+
+  private isCurrent(agent: Agent, recovery: Recovery, opening: Opening): boolean {
+    return this.recoveries.get(agent) === recovery
+      && recovery.opening === opening
+      && recovery.follow.current()
   }
 
   private retry(agent: Agent, recovery: Recovery): void {
-    if (this.disposed || this.recoveries.get(agent) !== recovery || recovery.follow.current?.() === false) return
-    if (recovery.retryTimer !== undefined) return
-    recovery.retryTimer = setTimeout(() => {
-      recovery.retryTimer = undefined
-      recovery.ready = false
-      recovery.queue.length = 0
-      void this.runFollow(agent, recovery)
-    }, 50)
+    recovery.waiting = true
+    if (recovery.timer !== undefined) return
+    const delay = recovery.delay
+    recovery.delay = Math.min(2000, delay * 2)
+    recovery.timer = setTimeout(() => {
+      recovery.timer = undefined
+      if (recovery.follow.current()) this.recover(agent, recovery)
+    }, delay)
   }
 
-  private releaseRecovery(agent: Agent, recovery: Recovery): void {
-    if (this.recoveries.get(agent) !== recovery) return
-    recovery.refs -= 1
-    if (recovery.refs > 0) return
-    recovery.abort.abort()
-    if (recovery.retryTimer !== undefined) clearTimeout(recovery.retryTimer)
-    this.recoveries.delete(agent)
-  }
-
-  private refresh(agent: Agent): void {
-    const recovery = this.recoveries.get(agent)
-    if (recovery === undefined || this.disposed || recovery.follow.current?.() === false) return
-    recovery.ready = false
-    if (recovery.queue.length >= MAX_RECOVERY_BUFFER) recovery.queue.length = 0
-    void this.runFollow(agent, recovery)
-  }
-
-  private seed(agent: Agent, baseline: SessionAssistantStreamBaseline): void {
-    const active = baseline.activeAttempt
-    if (active === undefined) {
-      this.attempts.set(agent, {
-        attemptId: '' as AssistantStreamFrame['attemptId'], revision: baseline.revision,
-        nextIndex: 0, turn: 0, step: 0, state: initialAssistantStream(),
-      })
-      this.clear(agent)
-      return
-    }
-    const state = foldAssistantStreamRecords(initialAssistantStream(), active.stream as never)
-    this.attempts.set(agent, {
-      attemptId: active.attemptId as AssistantStreamFrame['attemptId'], revision: baseline.revision,
-      nextIndex: active.nextIndex, turn: active.turn, step: active.step, state,
-    })
-    this.drafts.set(agent, this.toDraft(agent, baseline.revision, active.attemptId as AssistantStreamFrame['attemptId'], active.turn, active.step, state))
-    this.publish()
-  }
-
-  private fold(agent: Agent, frame: AssistantStreamFrame): void {
-    const current = this.attempts.get(agent)
+  /** False denotes a continuity gap, requiring a new native opening baseline. */
+  private fold(agent: Agent, frame: AssistantStreamFrame): boolean {
+    const previous = this.attempts.get(agent)
+    if (previous !== undefined && frame.revision <= previous.revision) return true
     if (frame.type === 'start') {
-      if (current !== undefined && frame.revision !== current.revision + 1) {
-        this.refresh(agent)
-        return
-      }
-      if (current !== undefined && frame.attemptId === current.attemptId) return
+      if (previous !== undefined && frame.attemptId === previous.attemptId) return true
+      if (previous !== undefined && frame.revision !== previous.revision + 1) return false
       const state = initialAssistantStream()
-      this.attempts.set(agent, {
-        attemptId: frame.attemptId, revision: frame.revision, nextIndex: 0,
-        turn: frame.turn, step: frame.step, state,
-      })
-      this.drafts.set(agent, this.toDraft(agent, frame.revision, frame.attemptId, frame.turn, frame.step, { ...state, phase: 'thinking' }))
+      const draft = this.makeDraft(agent, String(frame.attemptId), frame.revision, frame.turn, frame.step, state)
+      this.attempts.set(agent, { attemptId: String(frame.attemptId), revision: frame.revision, nextIndex: 0, state, draft })
       this.publish()
-      return
+      return true
     }
-    if (current === undefined || current.attemptId === ('' as AssistantStreamFrame['attemptId'])
-      || frame.attemptId !== current.attemptId || frame.revision !== current.revision + 1) {
-      this.refresh(agent)
-      return
-    }
-    if (frame.type === 'chunk' && frame.index !== current.nextIndex) {
-      this.refresh(agent)
-      return
-    }
-    if (frame.type === 'end' && frame.index !== current.nextIndex) {
-      this.refresh(agent)
-      return
-    }
-    const nextIndex = frame.type === 'chunk' ? current.nextIndex + 1 : current.nextIndex
+    if (previous === undefined) return false
+    if (frame.attemptId !== previous.attemptId) return true
+    if (frame.revision !== previous.revision + 1 || frame.index !== previous.nextIndex) return false
     if (frame.type === 'end') {
-      this.attempts.set(agent, { ...current, revision: frame.revision, nextIndex })
-      this.clear(agent)
-      return
+      this.attempts.set(agent, { ...previous, revision: frame.revision, attemptId: undefined, draft: undefined })
+      this.publish()
+      return true
     }
-    const state = foldAssistantStreamChunk(current.state, frame.chunk, frame.time)
-    this.attempts.set(agent, { ...current, revision: frame.revision, nextIndex, state })
-    const draft = this.drafts.get(agent)
-    if (draft === undefined) return
-    if (state === current.state) return
-    this.drafts.set(agent, Object.freeze({ ...draft, revision: frame.revision, ...state }))
-    this.publish()
+    const state = foldAssistantStreamChunk(previous.state, frame.chunk, frame.time)
+    // An active attempt always owns a draft; only end removes both together.
+    const draft = previous.draft!
+    this.attempts.set(agent, {
+      ...previous,
+      revision: frame.revision,
+      nextIndex: previous.nextIndex + 1,
+      state,
+      draft: state === previous.state ? draft
+        : this.makeDraft(agent, draft.attemptId, frame.revision, draft.turn, draft.step, state),
+    })
+    if (state !== previous.state) this.publish()
+    return true
   }
 
-  private toDraft(agent: Agent, revision: number, attemptId: AssistantStreamFrame['attemptId'], turn: number, step: number, state: AssistantStreamState): LiveAssistantDraft {
-    return Object.freeze({ ...state, sessionId: String(agent.session.id), attemptId, revision, turn, step })
-  }
-
-  private clear(agent: Agent): void {
-    if (!this.drafts.delete(agent)) return
-    this.publish()
+  private makeDraft(agent: Agent, attemptId: string, revision: number, turn: number, step: number, state: AssistantStreamState): LiveAssistantDraft {
+    const progress = state.outputProgress
+    return Object.freeze({
+      sessionId: String(agent.session.id), attemptId, revision, turn, step,
+      phase: state.phase, reasoning: state.reasoning, text: state.text,
+      outputProgress: progress === undefined ? undefined : Object.freeze({ ...progress }),
+      chars: state.chars,
+      updatedAt: state.updatedAt,
+    })
   }
 
   private publish(): void {
-    if (this.notifyQueued) return
-    this.notifyQueued = true
+    if (this.pendingNotification) return
+    this.pendingNotification = true
     queueMicrotask(() => {
-      this.notifyQueued = false
+      this.pendingNotification = false
       if (this.disposed) return
       for (const listener of this.listeners) listener()
     })

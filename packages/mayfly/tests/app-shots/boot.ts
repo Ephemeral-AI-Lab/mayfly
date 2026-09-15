@@ -244,6 +244,9 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   // creates REAL store sessions so projections, facts, and the transcript all
   // fold genuine events.
   ctx.provide('sessionController', {
+    async *follow() {
+      yield { type: 'snapshot', assistantStream: { revision: 0 } }
+    },
     create: (input: { cwd?: string }) => {
       const session = ctx.sessions.create(SessionId(SHOT_MAIN_ID), {
         // The fixed parent lineage is invisible outside the `/sessions`

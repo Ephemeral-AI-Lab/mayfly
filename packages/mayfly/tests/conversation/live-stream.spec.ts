@@ -27,6 +27,26 @@ function boot(agent: Agent = agentWithSessionId('live-boot')): { ctx: Context, s
   return { ctx, service, frame, disposed }
 }
 
+function pendingFollow(current = (): boolean => true) {
+  return {
+    current,
+    open: () => ({
+      next: () => new Promise<IteratorResult<never>>(() => {}),
+      [Symbol.asyncIterator]() { return this },
+    }),
+  }
+}
+
+function failingFollow(current = (): boolean => true) {
+  return {
+    current,
+    open: () => ({
+      next: async (): Promise<IteratorResult<never>> => { throw new Error('offline') },
+      [Symbol.asyncIterator]() { return this },
+    }),
+  }
+}
+
 describe('LiveAssistantStreamService', () => {
   const activeBaseline = {
     revision: 2,
@@ -118,10 +138,11 @@ describe('LiveAssistantStreamService', () => {
       const agent = agentWithSessionId('retry')
       const { service } = boot(agent)
       let calls = 0
-      const dispose = service.watch(agent, { current: () => true, open: async function* () {
-        calls += 1
-        throw new Error('offline')
-      } })
+      const failing = failingFollow()
+      const dispose = service.watch(agent, { ...failing, open: () => ({
+        ...failing.open(),
+        next: async (): Promise<IteratorResult<never>> => { calls += 1; throw new Error('offline') },
+      }) })
       await Promise.resolve()
       await vi.advanceTimersByTimeAsync(50)
       expect(calls).toBeGreaterThanOrEqual(2)
@@ -134,6 +155,240 @@ describe('LiveAssistantStreamService', () => {
     }
   })
 
+  it('reopens after a continuity gap and after an unavailable opening', async () => {
+    const agent = agentWithSessionId('reopen')
+    const { service, frame } = boot(agent)
+    let calls = 0
+    const follow = {
+      current: () => true,
+      open: async function* () {
+        calls += 1
+        if (calls === 1) yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
+        else yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: { revision: 2, activeAttempt: activeBaseline.activeAttempt } } as never
+      },
+    }
+    const dispose = service.watch(agent, follow)
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    frame({ type: 'chunk', attemptId: 'baseline-attempt' as never, revision: 4, index: 1, time: 1, chunk: { type: 'text-delta', index: 0, text: 'gap' } })
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(calls).toBeGreaterThanOrEqual(2)
+    dispose()
+  })
+
+  it('bounds frames while an opening is pending and retries after overflow', async () => {
+    vi.useFakeTimers()
+    try {
+      const agent = agentWithSessionId('overflow')
+      const { service, frame } = boot(agent)
+      let calls = 0
+      const follow = { current: () => true, open: async function* () {
+        calls += 1
+        if (calls > 1) yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: { revision: 0 } } as never
+        await new Promise<void>(() => {})
+      } }
+      const dispose = service.watch(agent, follow)
+      for (let index = 1; index <= 260; index += 1) frame({ type: 'start', attemptId: `attempt-${String(index)}` as never, revision: index, turn: 1, step: 0 })
+      await vi.advanceTimersByTimeAsync(50)
+      expect(calls).toBeGreaterThanOrEqual(2)
+      dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('closes a watch when its exact-Agent guard retires', async () => {
+    const agent = agentWithSessionId('retire-watch')
+    const { service, frame } = boot(agent)
+    let current = true
+    const dispose = service.watch(agent, { current: () => current, open: async function* () {
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
+      yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
+    } })
+    current = false
+    frame({ type: 'start', attemptId: 'late' as never, revision: 1, turn: 1, step: 0 })
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    dispose()
+    expect(service.get(agent)).toBeUndefined()
+  })
+
+  it('returns an idempotent no-op watcher for a retired or disposed service', () => {
+    const agent = agentWithSessionId('noop')
+    const { service } = boot(agent)
+    const noOp = service.watch(agent, pendingFollow(() => false))
+    noOp()
+    service.dispose()
+    service.watch(agent, pendingFollow())()
+  })
+
+  it('aborts a hung opening at the recovery timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const agent = agentWithSessionId('timeout')
+      const { service } = boot(agent)
+      const dispose = service.watch(agent, pendingFollow())
+      await vi.advanceTimersByTimeAsync(3000)
+      dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('closes the native opening iterator after consuming its snapshot', async () => {
+    const agent = agentWithSessionId('iterator-close')
+    const { service } = boot(agent)
+    const returned = vi.fn(async () => ({ done: true, value: undefined }))
+    const snapshot = { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
+    const iterator = {
+      next: async () => ({ done: false, value: snapshot }),
+      return: returned,
+      [Symbol.asyncIterator]() { return this },
+    }
+    const dispose = service.watch(agent, { current: () => true, open: () => iterator })
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    await Promise.resolve()
+    expect(returned).toHaveBeenCalled()
+    dispose()
+  })
+
+  it('contains a failed iterator close after a successful snapshot', async () => {
+    const agent = agentWithSessionId('iterator-failure')
+    const { service } = boot(agent)
+    const snapshot = { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
+    const iterator = {
+      next: async () => ({ done: false, value: snapshot }),
+      return: async () => { throw new Error('already closed') },
+      [Symbol.asyncIterator]() { return this },
+    }
+    const dispose = service.watch(agent, { current: () => true, open: () => iterator })
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(service.get(agent)?.text).toBe('seed')
+    dispose()
+  })
+
+  it('retires watched Agents and disposes pending work idempotently', async () => {
+    const agent = agentWithSessionId('watched-disposal')
+    const { ctx, service } = boot(agent)
+    const follow = pendingFollow()
+    const release = service.watch(agent, follow)
+    ctx.emit('agent/disposed', { agent } as never)
+    release()
+    release()
+    expect(service.ensure(agent, activeBaseline)).toBe(false)
+    const other = agentWithSessionId('other-watched')
+    service.watch(other, follow)
+    service.ensure(other, activeBaseline)
+    service.dispose()
+    service.dispose()
+    expect(service.ensure(other, activeBaseline)).toBe(false)
+    await Promise.resolve()
+  })
+
+  it('drops a snapshot that arrives after the exact Agent guard changes', async () => {
+    const agent = agentWithSessionId('late-opening')
+    const { service } = boot(agent)
+    let current = true
+    let release!: () => void
+    const pending = new Promise<void>(resolve => { release = resolve })
+    const dispose = service.watch(agent, { current: () => current, open: async function* () {
+      await pending
+      yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
+    } })
+    current = false
+    release()
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(service.get(agent)).toBeUndefined()
+    dispose()
+  })
+
+  it('contains synchronous opening failures and stops retrying a replaced Agent', async () => {
+    vi.useFakeTimers()
+    try {
+      const agent = agentWithSessionId('synchronous-failure')
+      const { service } = boot(agent)
+      let current = true
+      const open = vi.fn(() => { throw new Error('reader unavailable') })
+      const dispose = service.watch(agent, { current: () => current, open })
+      current = false
+      await vi.advanceTimersByTimeAsync(100)
+      expect(open).toHaveBeenCalledOnce()
+      dispose()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('accepts an opening iterator without an optional return method', async () => {
+    const agent = agentWithSessionId('bare-iterator')
+    const { service } = boot(agent)
+    const value = { type: 'snapshot', assistantStream: activeBaseline } as never
+    const iterator = { next: async () => ({ done: false as const, value }), [Symbol.asyncIterator]() { return this } }
+    const dispose = service.watch(agent, { current: () => true, open: () => iterator })
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(service.get(agent)?.text).toBe('seed')
+    dispose()
+  })
+
+  it('coalesces overlapping retry timers for one recovery lease', async () => {
+    vi.useFakeTimers()
+    try {
+      const agent = agentWithSessionId('retry-coalesce')
+      const { service } = boot(agent)
+      const dispose = service.watch(agent, pendingFollow())
+      await Promise.resolve()
+      const internal = service as unknown as { recoveries: Map<Agent, unknown>; retry: (agent: Agent, recovery: unknown) => void }
+      const recovery = internal.recoveries.get(agent)
+      internal.retry(agent, recovery)
+      internal.retry(agent, recovery)
+      await vi.advanceTimersByTimeAsync(50)
+      dispose()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('rejects a baseline older than locally accepted data and retries', async () => {
+    const agent = agentWithSessionId('older-opening')
+    const { service } = boot(agent)
+    service.ensure(agent, activeBaseline)
+    const release = service.watch(agent, { current: () => true, open: async function* () {
+      yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: { revision: 0 } } as never
+    } })
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+    expect(service.get(agent)?.text).toBe('seed')
+    release()
+  })
+
+  it('retries a follow that closes without a snapshot and a queued gap', async () => {
+    vi.useFakeTimers()
+    try {
+      const agent = agentWithSessionId('empty-opening')
+      const { service } = boot(agent)
+      let calls = 0
+      const follow = { current: () => true, open: async function* () {
+        calls += 1
+        if (calls === 1) {
+          yield { type: 'event', event: {} } as never
+          return
+        }
+        yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: { revision: 0 } } as never
+      } }
+      const dispose = service.watch(agent, follow)
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(50)
+      expect(calls).toBeGreaterThanOrEqual(2)
+      dispose()
+
+      const agent2 = agentWithSessionId('queued-gap')
+      const second = boot(agent2)
+      const follow2 = { current: () => true, open: async function* () {
+        yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: { revision: 0 } } as never
+      } }
+      const dispose2 = second.service.watch(agent2, follow2)
+      second.frame({ type: 'start', attemptId: 'queued' as never, revision: 1, turn: 1, step: 0 })
+      second.frame({ type: 'chunk', attemptId: 'queued' as never, revision: 2, index: 99, time: 1, chunk: { type: 'text-delta', index: 0, text: 'bad' } })
+      await vi.advanceTimersByTimeAsync(0)
+      dispose2()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('folds start, deltas, and boundaries into one exact-Agent draft', async () => {
     const agent = agentWithSessionId('live-main')
     const { service, frame } = boot(agent)
@@ -141,7 +396,7 @@ describe('LiveAssistantStreamService', () => {
     service.subscribe(listener)
     const key = String(agent.session.id)
     frame({ type: 'start', attemptId: 'a1' as never, revision: 1, turn: 2, step: 1 })
-    expect(service.get(agent)).toMatchObject({ sessionId: key, turn: 2, step: 1, phase: 'thinking', reasoning: '', text: '' })
+    expect(service.get(agent)).toMatchObject({ sessionId: key, turn: 2, step: 1, phase: 'waiting', reasoning: '', text: '' })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 2, index: 0, time: 100, chunk: { type: 'reasoning-delta', index: 0, text: 'think' } })
     expect(service.get(agent)).toMatchObject({ phase: 'thinking', reasoning: 'think', outputProgress: { chars: 5, initialChars: 5, startedAt: 100, updatedAt: 100 } })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 3, index: 1, time: 110, chunk: { type: 'reasoning-delta', index: 0, text: '' } })

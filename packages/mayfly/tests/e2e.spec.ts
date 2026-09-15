@@ -4,6 +4,8 @@
 
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
+import { symbols } from '@deepseek-ai/cordis'
 import { waitForRender } from './core/fake-terminal.ts'
 import {
   bootDirectMayfly,
@@ -104,13 +106,53 @@ describe('Mayfly direct-service whole tree', () => {
     await tree.ctx.loader.update(entry!.id, { disabled: true })
     await tree.ctx.loader.await()
     expect(tree.ctx.get('mayflyScreen')).toBeUndefined()
-    expect(tree.ctx.mayflyPanes.list().map(pane => pane.id)).toEqual(['e2e.renderer-independent'])
+    expect(tree.ctx.mayflyPanes.list().map(pane => pane.id)).toEqual(['e2e.direct-pane', 'e2e.renderer-independent'])
     await tree.ctx.loader.update(entry!.id, { disabled: false })
     await tree.ctx.loader.await()
     tree.ctx.mayflyScreen.requestRender(true)
     await waitForRender()
     expect(tree.ctx.mayflyPanes.list().map(pane => pane.id)).toContain('e2e.renderer-independent')
     expect(tree.terminal.output).toContain('registry survives renderer gaps')
+  })
+
+  it.each(['mayfly-core', 'mayfly-theme-dark'])('keeps the exact Agent and active stream through a %s reload', async (row) => {
+    const tree = await bootDirectMayfly()
+    const agent = await currentAgent(tree)
+    const selection = tree.ctx.mayflyCurrentAgent
+    const stream = tree.ctx.mayflyLiveAssistantStream
+    const facts = tree.ctx.mayflySessionFacts
+    const emit = (frame: AssistantStreamFrame) => tree.ctx.emit('agent/assistant-stream', { agent, frame })
+    emit({ type: 'start', attemptId: 'reload' as never, revision: 1, turn: 1, step: 0 })
+    emit({ type: 'chunk', attemptId: 'reload' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'before ' } })
+    await waitForRender()
+    expect(tree.terminal.output).toContain('before')
+
+    const entry = [...tree.ctx.loader.entries()].find(candidate => candidate.options.id === row)!
+    await tree.ctx.loader.update(entry.id, { disabled: true })
+    await tree.ctx.loader.await()
+    emit({ type: 'chunk', attemptId: 'reload' as never, revision: 3, index: 1, time: 2, chunk: { type: 'text-delta', index: 0, text: 'during ' } })
+    await tree.ctx.loader.update(entry.id, { disabled: false })
+    await tree.ctx.loader.await()
+    emit({ type: 'chunk', attemptId: 'reload' as never, revision: 4, index: 2, time: 3, chunk: { type: 'text-delta', index: 0, text: 'after' } })
+    await waitForRender()
+    expect(Reflect.get(tree.ctx.mayflyCurrentAgent, symbols.original) === Reflect.get(selection, symbols.original)).toBe(true)
+    expect(selection.current()).toBe(agent)
+    expect(tree.controller.created).toHaveLength(1)
+    expect(Reflect.get(tree.ctx.mayflyLiveAssistantStream, symbols.original) === Reflect.get(stream, symbols.original)).toBe(true)
+    expect(Reflect.get(tree.ctx.mayflySessionFacts, symbols.original) === Reflect.get(facts, symbols.original)).toBe(true)
+    expect(stream.get(agent)?.text).toBe('before during after')
+    expect(tree.terminal.output).toContain('before during after')
+
+    tree.projections.publish(agent.session, {
+      entries: [{ kind: 'assistant', id: 'assistant:1:0', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'authoritative final', streaming: false }],
+      streaming: false,
+      settledSteps: ['1:0'],
+    }, 1)
+    emit({ type: 'end', attemptId: 'reload' as never, revision: 5, index: 3, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 1 as never } })
+    tree.terminal.resize(40, 24)
+    await waitForRender()
+    expect(stream.get(agent)).toBeUndefined()
+    expect(tree.terminal.output).toContain('authoritative final')
   })
 
   it('passes every newly selected exact Agent to native scoped services', async () => {

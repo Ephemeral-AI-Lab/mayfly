@@ -20,9 +20,7 @@ import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
 import { TranscriptController } from './transcript-model.ts'
-import { SessionFactsService } from './session-facts.ts'
 import { OfficialConversationModelSource, type LiveDraftSource } from './official-model.ts'
-import { LiveAssistantStreamService } from '../conversation/live-stream.ts'
 import {
   DEFAULT_EXPAND_TURNS,
   TranscriptPresentationPolicy,
@@ -92,7 +90,7 @@ export {
 export const name = 'mayfly-transcript'
 
 /** Services the plugin requires before it can mount. */
-export const inject = ['mayflyConversationReady', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'tools']
+export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'tools']
 
 /** The global action toggling tool-output expansion (Ctrl-O). */
 export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
@@ -140,17 +138,12 @@ export function apply(ctx: Context): void {
     }
   }
 
-  // Live assistant frames precede every facts consumer here: the service
-  // folds transient agent/assistant-stream publications into exact-Agent
-  // drafts both the facts bridge and the transcript source overlay.
-  const liveStream = new LiveAssistantStreamService(ctx)
-  ctx.effect(() => () => liveStream.dispose())
+  // Frontend owns live drafts across renderer/theme reloads.
+  const liveStream = ctx.mayflyLiveAssistantStream
   const liveDrafts: LiveDraftSource = {
     subscribe: listener => liveStream.subscribe(listener),
     get: agent => liveStream.get(agent),
   }
-  const sessionFacts = new SessionFactsService(ctx, liveStream)
-  ctx.effect(() => () => sessionFacts.dispose())
   const transcript = new TranscriptController(ctx, undefined, {
     renderer: {
       colors,
@@ -177,6 +170,7 @@ export function apply(ctx: Context): void {
     liveDrafts,
   )
   ctx.effect(() => () => officialSource.dispose())
+  ctx.on('tools/change', () => officialSource.invalidateTools())
   transcript.setSource(() => officialSource.snapshot())
   const transcriptAfterSeq = (): number | undefined => {
     const view = ctx.mayflyCurrentAgent.view()
@@ -185,13 +179,20 @@ export function apply(ctx: Context): void {
       : undefined
   }
   let selectedAgent = ctx.mayflyCurrentAgent.current()
-  officialSource.attach(selectedAgent?.session ?? null, transcriptAfterSeq(), selectedAgent ?? undefined)
-  const offAgent = ctx.mayflyCurrentAgent.subscribe((next) => {
-    if (next === selectedAgent) return
+  let afterSeq = transcriptAfterSeq()
+  officialSource.attach(selectedAgent?.session ?? null, afterSeq, selectedAgent ?? undefined)
+  const syncSelection = (): void => {
+    const next = ctx.mayflyCurrentAgent.current()
+    const cutoff = transcriptAfterSeq()
+    if (next === selectedAgent && cutoff === afterSeq) return
     selectedAgent = next
-    officialSource.attach(next?.session ?? null, transcriptAfterSeq(), next ?? undefined)
-  })
+    afterSeq = cutoff
+    officialSource.attach(next?.session ?? null, cutoff, next ?? undefined)
+  }
+  const offAgent = ctx.mayflyCurrentAgent.subscribe(syncSelection)
+  const offView = ctx.mayflyCurrentAgent.subscribeView(syncSelection)
   ctx.effect(() => () => offAgent())
+  ctx.effect(() => () => offView())
   const footer = new StatusFooterComponent(
     ctx.mayflyStatus,
     ctx.mayflyComponents,

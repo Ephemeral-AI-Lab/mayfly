@@ -18,6 +18,10 @@ import type {
 } from '../../ui/src/contracts.ts'
 import * as appPlugin from '../src/app/index.ts'
 import * as frontendPlugin from '../src/frontend/index.ts'
+import * as transcriptPlugin from '../src/transcript/index.ts'
+import { initialConversationFacts } from '../src/conversation/facts.ts'
+import type { ConversationProjection } from '../src/conversation/types.ts'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { MayflyCurrentAgentService } from '../src/app/current-agent.ts'
 import {
   MayflyComponentsService,
@@ -54,16 +58,31 @@ class CommandServiceProbe extends Service {
 
 class ProjectionServiceProbe extends Service {
   readonly calls: Array<{ readonly session: unknown, readonly keys: readonly string[] }> = []
+  private readonly values = new Map<unknown, { value: ConversationProjection, seq: number }>()
+  private readonly listeners = new Set<(session: Session, key: string, value: unknown, seq: number) => void>()
   constructor(ctx: Context) { super(ctx, 'sessionProjections') }
   snapshot(session: unknown, keys: readonly string[]): Readonly<Record<string, unknown>> {
     this.calls.push({ session, keys })
-    return Object.freeze({})
+    const current = this.values.get(session)
+    return Object.freeze({ asOfSeq: current?.seq ?? 0, values: {
+      mayflyConversation: current?.value ?? { entries: [], streaming: false, settledSteps: [] },
+      mayflyConversationFacts: initialConversationFacts(),
+    } })
+  }
+  onChanged(listener: (session: Session, key: string, value: unknown, seq: number) => void): () => void {
+    this.listeners.add(listener)
+    return this.ctx.effect(() => () => { this.listeners.delete(listener) })
+  }
+  publish(session: Session, value: ConversationProjection, seq: number): void {
+    this.values.set(session, { value, seq })
+    for (const listener of this.listeners) listener(session, 'mayflyConversation', value, seq)
   }
 }
 
 class ToolServiceProbe extends Service {
   readonly scopes: Agent[] = []
   constructor(ctx: Context) { super(ctx, 'tools') }
+  get(): undefined { return undefined }
   schemas(agent: Agent): readonly unknown[] {
     this.scopes.push(agent)
     return []
@@ -85,6 +104,7 @@ interface FakeSession {
   readonly id: string
   readonly events: unknown[]
   readonly header: { readonly cwd: string }
+  readonly seq: number
   readonly surface: { readonly nodes: readonly unknown[] }
   requestHeader(): undefined
 }
@@ -97,6 +117,7 @@ function fakeAgent(id: string): FakeAgent {
   const session: FakeSession = {
     id,
     events: [],
+    seq: 1,
     header: { cwd: process.cwd() },
     surface: { nodes: [] },
     requestHeader: () => undefined,
@@ -123,6 +144,8 @@ interface DirectHooks {
   readonly themeApply: typeof themeDarkPlugin.apply
   readonly appApply: typeof appPlugin.apply
   readonly appInject: typeof appPlugin.inject
+  readonly transcriptApply: typeof transcriptPlugin.apply
+  readonly transcriptInject: typeof transcriptPlugin.inject
   coreApply(ctx: Context): Promise<void>
   consumerApply(ctx: Context): void
 }
@@ -163,6 +186,8 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
     themeApply: themeDarkPlugin.apply,
     appApply: appPlugin.apply,
     appInject: appPlugin.inject,
+    transcriptApply: transcriptPlugin.apply,
+    transcriptInject: transcriptPlugin.inject,
     async coreApply(ctx) {
       const runtime = await startMayflyTerminal(terminal, () => Promise.resolve(undefined))
       const keymap = new MayflyKeymapService(ctx)
@@ -272,6 +297,12 @@ export const name = 'direct-sibling'
 export const inject = ['commands', 'sessionProjections', 'tools', 'jobs', 'subagents', 'sessions', 'mayflyCurrentAgent', 'mayflyPanes', 'mayflyStatus', 'mayflyOverlays', 'mayflyEditorExtensions']
 export const apply = ctx => globalThis.__mayflyDirectE2E.consumerApply(ctx)
 `)}`,
+    '- id: mayfly-transcript',
+    `  name: ${fixture('mayfly-transcript.mjs', `
+export const name = 'mayfly-transcript'
+export const inject = globalThis.__mayflyDirectE2E.transcriptInject
+export const apply = ctx => globalThis.__mayflyDirectE2E.transcriptApply(ctx)
+`)}`,
     '',
   ]
   writeFileSync(join(dir, 'cordis.yml'), rows.join('\n'))
@@ -290,6 +321,9 @@ export const apply = ctx => globalThis.__mayflyDirectE2E.consumerApply(ctx)
   const controller = {
     created,
     forks,
+    async *follow() {
+      yield { type: 'snapshot', assistantStream: { revision: 0 } }
+    },
     async create() {
       const agent = createAgent('session')
       created.push(String(agent.id))
@@ -307,6 +341,7 @@ export const apply = ctx => globalThis.__mayflyDirectE2E.consumerApply(ctx)
   }
   ctx.provide('appExit', (code: number) => { exits.push(code) })
   ctx.provide('mayflyStartup', { task: undefined, resume: undefined } as never)
+  ctx.provide('mayflyConversationReady', { key: 'mayflyConversation' })
   ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)), list: () => [...agents.values()] } as never)
   ctx.provide('jobs', {
     list: () => [],

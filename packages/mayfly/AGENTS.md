@@ -17,6 +17,10 @@ slots, never arbitrary root components.
   Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
   reload. Renderer teardown releases editors/handles, not drafts or choice state.
   Registry observers dispose only models from registrations they own.
+  It also owns exact-Agent assistant drafts and the session-facts bridge;
+  neither depends on theme/core. Recovery reads native assistant-stream
+  baselines, fences Agent replacement and late continuations, and never folds
+  a second durable session log. App selection must survive renderer gaps.
 - Provider setup and application information survive current-Agent/skills/core
   gaps. Agent-specific model, tool, MCP, skills, approval, and question consumers
   bind to exact Agent identity, including same-session-ID replacements. Detail
@@ -28,6 +32,10 @@ slots, never arbitrary root components.
   lazy conversion of the latest unread native snapshot. Preserve complete
   cutoff-eligible history; BTW hides seeded history only in presentation. Do not
   rely on entry identity across native parsing or introduce a second session view.
+  Durable sequence numbers and transient presentation revisions are separate.
+  Live overlays share stable history; completion comes from explicit settled
+  steps, never a reasoning block's animation flag. Verify through the actual
+  source-to-component path, including settlement and renderer reload.
 - `conversation/` owns phase-local output measurements from session timestamps.
   Renderer timers animate or expire labels; they do not measure domain progress.
 

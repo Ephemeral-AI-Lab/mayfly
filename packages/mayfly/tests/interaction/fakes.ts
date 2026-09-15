@@ -942,6 +942,9 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     },
   } as never)
   ctx.provide('sessionController', {
+    async *follow() {
+      yield { type: 'snapshot', assistantStream: { revision: 0 } }
+    },
     selectModel: async (request: { sessionId: string, provider: string, model: string, reasoningEffort?: string }) => {
       const state = testSession()
       if (state?.current === null || state?.modelRef === undefined) throw new Error('no session is live yet')

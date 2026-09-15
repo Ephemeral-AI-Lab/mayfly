@@ -19,6 +19,7 @@ import {
 } from '../core/index.ts'
 import {
   freezeModel,
+  materializeTranscriptEntries,
   type TranscriptEntryModel,
   type TranscriptImageModel,
   type TranscriptModel,
@@ -88,7 +89,7 @@ export function appendTranscriptNode(
   entry: MayflyUiNode | TranscriptEntryModel,
   streaming = model.streaming,
 ): TranscriptModel {
-  return createTranscriptModel(model.id, [...model.entries, entry], streaming, model.generation)
+  return createTranscriptModel(model.id, [...materializeTranscriptEntries(model), entry], streaming, model.generation)
 }
 
 function isSemantic(entry: MayflyUiNode | TranscriptEntryModel): entry is TranscriptEntryModel {
@@ -129,13 +130,13 @@ interface CachedComponent {
   readonly kind: TranscriptEntryModel['kind']
   readonly component: MayflyComponent
   readonly target: MayflyComponent
-  revision: number
+  revision: number | string
   rows: EntryRowsCache | undefined
   readonly update: (entry: TranscriptEntryModel) => boolean
 }
 
 interface EntryRowsCache {
-  readonly revision: number
+  readonly revision: number | string
   readonly width: number
   readonly expanded: boolean
   readonly policy: TranscriptPresentationSnapshot
@@ -150,8 +151,24 @@ interface RenderedRowsCache {
   readonly rows: string[]
 }
 
-function entryRevision(entry: TranscriptEntryModel): number {
-  return entry.updatedSeq ?? Number.NaN
+interface TranscriptRenderPlan {
+  readonly sourceEntries: TranscriptModel['entries']
+  readonly policy: TranscriptPresentationSnapshot
+  readonly liveTurn: number | undefined
+  readonly liveStep: number | undefined
+  readonly entries: TranscriptModel['entries']
+  readonly ids: ReadonlySet<string>
+  readonly expandableTurns: ReadonlySet<number>
+}
+
+interface DurableRowsCache {
+  readonly width: number
+  readonly expanded: boolean
+  readonly rows: string[]
+}
+
+function entryRevision(entry: TranscriptEntryModel): number | string {
+  return entry.renderRevision ?? entry.updatedSeq ?? Number.NaN
 }
 
 /** Bounded semantic transcript component with id-based reconciliation. */
@@ -161,6 +178,11 @@ export class TranscriptModelComponent implements MayflyComponent {
   private expanded = false
   private renderedRows: RenderedRowsCache | undefined
   private generation: number | undefined
+  private plan: TranscriptRenderPlan | undefined
+  private durableRows: DurableRowsCache | undefined
+  private frameRows: string[] | undefined
+  private frameBase: readonly string[] | undefined
+  private liveIds = new Set<string>()
 
   constructor(
     private readonly source: () => TranscriptModel | null,
@@ -174,6 +196,11 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.canonicalRows = new WeakMap()
       this.prune(new Set())
       this.generation = undefined
+      this.plan = undefined
+      this.durableRows = undefined
+      this.liveIds.clear()
+      this.frameRows = undefined
+      this.frameBase = undefined
       return []
     }
     if (this.generation !== model.generation) {
@@ -181,23 +208,60 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.canonicalRows = new WeakMap()
       this.prune(new Set())
       this.generation = model.generation
+      this.plan = undefined
+      this.durableRows = undefined
+      this.liveIds.clear()
+      this.frameRows = undefined
+      this.frameBase = undefined
     }
-    const bounded = model.entries
     const policy = this.presentation()
     const rendered = this.renderedRows
     if (rendered?.model === model
       && rendered.width === width
       && rendered.expanded === this.expanded
       && rendered.policy === policy) return rendered.rows
-    const turns = [...new Set(bounded.filter(isSemantic).map(entry => entry.turn))]
-    const visibleTurns = new Set(turns.slice(-policy.windowTurns))
-    const entries = bounded.filter(entry => !isSemantic(entry) || visibleTurns.has(entry.turn))
-    const expandableTurns = new Set(turns.slice(-policy.expandTurns))
-    const live = new Set(entries.filter(isSemantic).map(entry => entry.id))
-    this.prune(live)
-    const rows = entries.flatMap(entry => isSemantic(entry)
-      ? this.renderSemantic(entry, width, expandableTurns.has(entry.turn), policy)
-      : this.renderCanonical(entry, width))
+    const liveEntries = model.live?.entries ?? []
+    const liveIds = new Set(liveEntries.map(entry => entry.id))
+    let plan = this.plan
+    if (plan === undefined || plan.sourceEntries !== model.entries || plan.policy !== policy
+      || plan.liveTurn !== model.live?.turn || plan.liveStep !== model.live?.step) {
+      const bounded = model.live === undefined ? model.entries : model.entries.filter(entry => !((entry.kind === 'transcript-thinking' || entry.kind === 'transcript-assistant')
+        && entry.turn === model.live!.turn && entry.step === model.live!.step))
+      const turns = [...new Set([...bounded.filter(isSemantic).map(entry => entry.turn), ...(model.live === undefined ? [] : [model.live.turn])])]
+      const visibleTurns = new Set(turns.slice(-policy.windowTurns))
+      const entries = bounded.filter(entry => !isSemantic(entry) || visibleTurns.has(entry.turn))
+      const ids = new Set(entries.filter(isSemantic).map(entry => entry.id))
+      plan = { sourceEntries: model.entries, policy, liveTurn: model.live?.turn, liveStep: model.live?.step, entries, ids, expandableTurns: new Set(turns.slice(-policy.expandTurns)) }
+      this.plan = plan
+      this.durableRows = undefined
+      this.prune(new Set([...ids, ...liveIds]))
+    } else {
+      for (const id of this.liveIds) {
+        if (liveIds.has(id) || plan.ids.has(id)) continue
+        const cached = this.cached.get(id)
+        if (cached !== undefined) this.disposeComponent(cached.target)
+        this.cached.delete(id)
+      }
+    }
+    this.liveIds = liveIds
+    let durableRows = this.durableRows
+    if (durableRows === undefined || durableRows.width !== width || durableRows.expanded !== this.expanded) {
+      const rows = plan.entries.flatMap(entry => isSemantic(entry)
+        ? this.renderSemantic(entry, width, plan.expandableTurns.has(entry.turn), policy)
+        : this.renderCanonical(entry, width))
+      durableRows = { width, expanded: this.expanded, rows }
+      this.durableRows = durableRows
+    }
+    let rows = durableRows.rows
+    if (liveEntries.length !== 0) {
+      if (this.frameRows === undefined || this.frameBase !== durableRows.rows) {
+        this.frameRows = [...durableRows.rows]
+        this.frameBase = durableRows.rows
+      }
+      rows = this.frameRows
+      rows.length = durableRows.rows.length
+      rows.push(...liveEntries.flatMap(entry => this.renderSemantic(entry, width, plan.expandableTurns.has(entry.turn), policy)))
+    } else { this.frameRows = undefined; this.frameBase = undefined }
     this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
     return rows
   }
@@ -223,6 +287,9 @@ export class TranscriptModelComponent implements MayflyComponent {
     if (this.expanded === expanded) return
     this.expanded = expanded
     this.renderedRows = undefined
+    this.durableRows = undefined
+    this.frameRows = undefined
+    this.frameBase = undefined
     for (const cached of this.cached.values()) {
       cached.rows = undefined
       cached.target.invalidate()
@@ -231,6 +298,9 @@ export class TranscriptModelComponent implements MayflyComponent {
 
   invalidate(): void {
     this.renderedRows = undefined
+    this.durableRows = undefined
+    this.frameRows = undefined
+    this.frameBase = undefined
     this.canonicalRows = new WeakMap()
     for (const cached of this.cached.values()) {
       cached.rows = undefined
@@ -241,6 +311,11 @@ export class TranscriptModelComponent implements MayflyComponent {
   /** Dispose timers and async renderer resources held by cached components. */
   dispose(): void {
     this.renderedRows = undefined
+    this.durableRows = undefined
+    this.frameRows = undefined
+    this.frameBase = undefined
+    this.plan = undefined
+    this.liveIds.clear()
     this.canonicalRows = new WeakMap()
     this.prune(new Set())
   }
@@ -276,6 +351,7 @@ export class TranscriptModelComponent implements MayflyComponent {
     const cached = this.cached.get(id)
     if (cached !== undefined) cached.rows = undefined
     this.renderedRows = undefined
+    if (this.plan?.ids.has(id)) this.durableRows = undefined
   }
 
   /** Current tree policy, or immutable shipped defaults for standalone consumers. */

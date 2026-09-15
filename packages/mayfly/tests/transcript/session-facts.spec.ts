@@ -9,6 +9,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import { projectChildSessionFacts, SessionFactsService } from '../../src/transcript/session-facts.ts'
+import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 
 class ProjectionFake {
   private readonly values = new Map<Session, Record<string, unknown>>()
@@ -62,6 +63,43 @@ function goalProjection(phase: GoalPhase, message?: string): GoalProjection {
 }
 
 describe('SessionFactsService', () => {
+  it('uses live phase boundaries and never revives an older or settled step', async () => {
+    const ctx = new Context()
+    const liveSession = session('live')
+    const selected = agent(liveSession)
+    const projections = new ProjectionFake()
+    const baseline = { ...initialConversationFacts(), phase: 'thinking' as const, active: true, turn: 1, currentStep: 0 }
+    projections.set(liveSession, { mayflyConversationFacts: baseline })
+    ctx.reflect.provide('sessionProjections', projections)
+    ctx.reflect.provide('sessions', { list: () => [] })
+    ctx.reflect.provide('mayflyCurrentAgent', { subscribe(listener: (value: Agent) => void) { listener(selected); return () => {} } })
+    const live = new LiveAssistantStreamService(ctx)
+    const facts = new SessionFactsService(ctx, live)
+    live.accept(selected, { type: 'start', attemptId: 'active' as never, revision: 1, turn: 1, step: 0 })
+    live.accept(selected, { type: 'chunk', attemptId: 'active' as never, revision: 2, index: 0, time: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'thought' } })
+    await Promise.resolve()
+    expect(facts.current).toMatchObject({ phase: 'thinking', flowDownChars: 7 })
+    live.accept(selected, { type: 'chunk', attemptId: 'active' as never, revision: 3, index: 1, time: 2, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'thought' } } })
+    await Promise.resolve()
+    expect(facts.current.phase).toBe('waiting')
+    expect(facts.current.outputProgress).toBeUndefined()
+    live.accept(selected, { type: 'chunk', attemptId: 'active' as never, revision: 4, index: 2, time: 3, chunk: { type: 'text-delta', index: 1, text: 'answer' } })
+    await Promise.resolve()
+    expect(facts.current.phase).toBe('composing')
+    projections.emit(liveSession, 'mayflyConversationFacts', { ...baseline, phase: 'waiting', lastCompletedStep: 0 })
+    expect(facts.current.phase).toBe('waiting')
+    projections.emit(liveSession, 'mayflyConversationFacts', { ...baseline, phase: 'tool', currentStep: 1 })
+    expect(facts.current.phase).toBe('tool')
+    projections.emit(liveSession, 'mayflyConversationFacts', { ...baseline, phase: 'idle', active: false, runOutcome: 'completed' })
+    expect(facts.current.active).toBe(false)
+    projections.emit(liveSession, 'mayflyConversationFacts', { ...baseline, turn: 2, phase: 'waiting' })
+    expect(facts.current.turn).toBe(2)
+    expect(projectChildSessionFacts('live', { ...baseline, endedAt: 99 }).endedAt).toBe(99)
+    facts.dispose()
+    live.dispose()
+    await ctx.fiber.dispose()
+  })
+
   it('replays and follows native projections for the exact Agent and its direct children', () => {
     const ctx = new Context()
     const parentSession = session('parent')

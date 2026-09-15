@@ -16,7 +16,9 @@ import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandl
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
-import { ACTION_TOGGLE_COLLAPSE, apply } from '../../src/transcript/index.ts'
+import { ACTION_TOGGLE_COLLAPSE, apply, inject } from '../../src/transcript/index.ts'
+import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
+import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import * as statusBasicModel from '../../src/transcript/status-basic-model.ts'
 import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, textDelta, toolCallEvent, toolResultEvent, userEvent } from './helpers.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
@@ -140,7 +142,7 @@ async function bootTranscript(
   const entries = [
     {
       file: 'transcript.mjs', name: 'mayfly-transcript',
-      inject: ['mayflyConversationReady', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'tools'],
+      inject,
       global: '__mayflyTranscriptApply',
     },
     {
@@ -199,6 +201,11 @@ async function bootTranscript(
       listener(active as unknown as Agent | null, revision)
       return () => { listeners.delete(listener) }
     },
+    subscribeView(listener: () => void) {
+      listeners.add(listener)
+      listener()
+      return () => { listeners.delete(listener) }
+    },
   }
   const select = (agent: FakeAgent | null): void => {
     active = agent
@@ -235,6 +242,10 @@ async function bootTranscript(
   }
   for (const [name, value] of Object.entries(services)) ctx.reflect.provide(name, value)
   ctx.on('session/event', (session, event) => projections.emit(session, event))
+  const liveStream = new LiveAssistantStreamService(ctx)
+  const facts = new SessionFactsService(ctx, liveStream)
+  ctx.effect(() => () => facts.dispose())
+  ctx.effect(() => () => liveStream.dispose())
 
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
@@ -263,6 +274,8 @@ describe('mayfly-transcript through the real Loader', () => {
     const { ctx, screen } = await bootTranscript(agent)
     expect(ctx.mayflyCurrentAgent.current()).toBe(agent)
     expect(contentLines(screen).join('\n')).toContain('remember me')
+    expect(contentLines(screen).join('\n')).toContain('answer')
+    ctx.emit('tools/change')
     expect(contentLines(screen).join('\n')).toContain('answer')
     expect(footerLines(screen)[0]).toContain('deepseek-chat')
   })

@@ -149,7 +149,7 @@ describe('mayflyConversation projection', () => {
       { kind: 'tool', callId: 'todo-1', channel: 'todo' },
       { kind: 'tool', callId: 'agent-1', channel: 'agents' },
     ])
-    expect(conversationProjectionDefinition.wire.view(state)).toEqual({ entries: state.entries, streaming: false })
+    expect(conversationProjectionDefinition.wire.view(state)).toEqual({ entries: state.entries, streaming: false, settledSteps: ['2:0'] })
   })
 
   it('uses append-origin human rows and preserves durable image references', () => {
@@ -424,15 +424,13 @@ describe('mayflyConversation projection', () => {
         { type: 'chunk', time: 7, chunk: { type: 'finish', index: 2 } },
       ],
     }))
-    const parked = state.entries.find(entry => entry.kind === 'thinking')
-    expect(parked).toMatchObject({ text: 'first', streaming: false })
-    // A later reasoning delta in the same step re-opens the parked entry and
-    // restarts the measured window.
+    // A later boundary-only attempt replaces the parked attempt entirely.
+    expect(state.entries.find(entry => entry.kind === 'thinking')).toBeUndefined()
     state = foldConversationProjection(state, attemptEvent(10, 0, 'reasoning', ' more'))
     expect(state.entries.find(entry => entry.kind === 'thinking')).toMatchObject({
-      text: 'first more',
+      text: ' more',
       streaming: true,
-      outputProgress: { chars: 5, startedAt: 1_700_000_000_004 },
+      outputProgress: { chars: 5, startedAt: 1_700_000_000_000 },
     })
   })
 
@@ -457,11 +455,11 @@ describe('mayflyConversation projection', () => {
     expect(state.entries).toEqual([])
     expect(beforeWhitespace.streamingStep).toBe('7:0')
 
-    expect(conversationProjectionSchema.safeParse({ entries: state.entries, streaming: true }).success).toBe(true)
+    expect(conversationProjectionSchema.safeParse({ entries: state.entries, streaming: true, settledSteps: [] }).success).toBe(true)
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(5)
+    expect(conversationProjectionDefinition.stateVersion).toBe(6)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -491,9 +489,12 @@ describe('mayflyConversation projection', () => {
     expect(state).toBe(finalized)
 
     state = foldConversationProjection(state, event('turn/start', { turn: 9 }))
-    state = foldConversationProjection(state, attemptEvent(9, 0, 'text', 'answer first'))
-    state = foldConversationProjection(state, attemptEvent(9, 0, 'reasoning', 'thought after'))
-    state = foldConversationProjection(state, attemptEvent(9, 0, 'reasoning', ' continued'))
+    state = foldConversationProjection(state, event('assistant/attempt', {
+      turn: 9, step: 0, stream: [
+        { type: 'text-chunks', time0: 1, index: 1, dt: [], texts: ['answer first'] },
+        { type: 'reasoning-chunks', time0: 2, index: 0, dt: [1], texts: ['thought after', ' continued'] },
+      ],
+    }))
     state = foldConversationProjection(state, event('step/start', { turn: 9, step: 1 }))
     expect(state.entries.slice(-2)).toMatchObject([
       { kind: 'thinking', text: 'thought after continued', streaming: false },
@@ -565,6 +566,34 @@ describe('mayflyConversation projection', () => {
     }, { append: true }))
     expect(unchangedPair.entries).toEqual(badToolPair.entries)
   })
+
+  it('clears dangling stream ids when retracting a turn', () => {
+    const state: ConversationProjectionState = {
+      ...initialConversationState(), currentTurn: 4, active: true,
+      streamingStep: '4:0', streamingThinkingId: 'missing-thinking', streamingAssistantId: 'missing-assistant',
+      entries: [{ kind: 'thinking', id: 'missing-thinking', seq: 1, updatedSeq: 1, turn: 4, step: 0, text: 'x', streaming: true }],
+    }
+    const retraction = event('system/message', {
+      turn: 4, message: { content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+    }, { replace: true })
+    const next = foldConversationProjection(state, retraction)
+    expect(next.streamingThinkingId).toBeNull()
+    expect(next.streamingAssistantId).toBeNull()
+  })
+
+  it('pauses current reasoning on tool calls without losing its authoritative replacement id', () => {
+    let state = fold([
+      event('turn/start', { turn: 1 }),
+      attemptEvent(1, 0, 'reasoning', 'working'),
+    ])
+    state = foldConversationProjection(state, event('tool/call', { turn: 1, step: 0, callId: ToolCallId('pause'), name: 'read', arguments: '{}' }))
+    expect(state.entries[0]).toMatchObject({ kind: 'thinking', streaming: false, text: 'working' })
+    expect(state.streamingThinkingId).toBe('thinking:1:0')
+    state = foldConversationProjection(state, event('tool/call', { turn: 1, step: 0, callId: ToolCallId('still-paused'), name: 'read', arguments: '{}' }))
+    expect(state.entries[0]).toMatchObject({ kind: 'thinking', streaming: false, text: 'working' })
+    const retractedOther = foldConversationProjection(state, retractionMarker(2, 0))
+    expect(retractedOther.streamingThinkingId).toBe(state.streamingThinkingId)
+  })
 })
 
 describe('SessionProjectionRegistry integration', () => {
@@ -591,7 +620,7 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 5, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 6, seq: 3 })
     const obsolete = { ...checkpoint, mayflyConversation: { ...checkpoint.mayflyConversation!, ver: 4 } }
     expect(ctx.sessionProjections.restoreFloor(obsolete)).toBe(0)
     expect(ctx.sessionProjections.viewCheckpoint(obsolete)).not.toHaveProperty('mayflyConversation')

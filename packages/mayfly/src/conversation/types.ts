@@ -144,6 +144,8 @@ export interface ConversationFacts {
   readonly active: boolean
   readonly turn: number
   readonly flowUp?: number | undefined
+  readonly currentStep?: number | undefined
+  readonly lastCompletedStep?: number | undefined
   readonly flowDownChars: number
   /** Current reasoning or answer phase only; cleared at stream boundaries. */
   readonly outputProgress?: OutputProgress | undefined
@@ -187,10 +189,7 @@ export interface ConversationAgentCall {
 }
 
 /** Plain-JSON state checkpointed for {@link ConversationFacts}. */
-export interface ConversationFactsState extends ConversationFacts {
-  readonly currentStep?: number | undefined
-  readonly lastCompletedStep?: number | undefined
-}
+export type ConversationFactsState = ConversationFacts
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {

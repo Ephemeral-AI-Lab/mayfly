@@ -1,7 +1,7 @@
 // Interactive PTY smoke (D48, manual — not in CI): boots the real dsh CLI
 // with the Mayfly plugin under a real pseudo-terminal at a deliberately
 // narrow 40 columns and drives it through the raw-mode key path — a turn
-// against a local mock LLM, the slash-command dropdown (a WrappingSelectList
+// against a local mock LLM, followed by a theme switch, and the slash-command dropdown (a WrappingSelectList
 // width seat), double-Escape, and the double-Ctrl-C exit. Green means
 // exit 0 with no width-guard crash and no uncaught frames.
 // Run: pnpm smoke:pty (self-contained: installs its own throwaway profile)
@@ -49,11 +49,11 @@ const PATHOLOGICAL = `unbroken-${'x'.repeat(160)}`
 const { startMockLlmServer } = require('@deepseek-ai/dsh-llm-mock-server')
 const server = await startMockLlmServer({
   port: 0,
-  sequence: ['success'],
+  sequence: ['slow_success'],
   repeatLast: true,
-  successText: `${PATHOLOGICAL} done`,
+  successText: `stream-start\n${PATHOLOGICAL}\nstream-middle\n${PATHOLOGICAL}\nstream-complete`,
   chunkSize: 6,
-  chunkDelayMs: 5,
+  chunkDelayMs: 50,
 })
 
 console.log('==> PTY boot: dsh --profile mayfly-smoke-pty at 40x24')
@@ -93,7 +93,15 @@ const clean = () => cleanOutput(out)
 try {
   if (!(await waitFor(() => clean().includes('deepseek-flash'), 'the statusline boot frame'))) throw new Error('boot')
   term.write('ping\r')
-  if (!(await waitFor(() => clean().includes('unbroken-xxxx'), 'the streamed reply'))) throw new Error('reply')
+  if (!(await waitFor(() => clean().includes('stream-start'), 'the first streamed text'))) throw new Error('reply')
+  if (!(await waitFor(() => clean().includes('stream-middle'), 'continued live output'))) throw new Error('stream continuity')
+  if (!(await waitFor(() => clean().includes('stream-complete'), 'the authoritative final response'))) throw new Error('settlement')
+  term.write('/theme light\r')
+  // Theme replacement unloads the command's old renderer before its result
+  // notification can be painted. Query the replacement's actual state.
+  await sleep(500)
+  term.write('/theme\r')
+  if (!(await waitFor(() => clean().includes('light ← current'), 'the replacement theme state'))) throw new Error('theme')
   // The slash dropdown: WrappingSelectList at 40 columns.
   term.write('/')
   await waitFor(() => cleanOutput(out.slice(-4000)).includes('/'), 'the command dropdown')

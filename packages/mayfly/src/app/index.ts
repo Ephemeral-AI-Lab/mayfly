@@ -47,7 +47,7 @@ declare module '@deepseek-ai/cordis' {
 export const name = 'mayfly-app'
 
 /** Direct dsh services required by the startup coordinator. */
-export const inject = ['mayflyStartup', 'agents', 'sessionController', 'subagents', 'mayflyScreen']
+export const inject = ['mayflyStartup', 'agents', 'sessionController', 'subagents']
 
 /** Launch values resolved by the startup provider. */
 export interface Config {

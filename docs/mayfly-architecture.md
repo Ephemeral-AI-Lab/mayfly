@@ -50,7 +50,9 @@ flowchart TB
    与 Footer host。Feature 只领取 named slot lease；临时 notice/echo 进入 local
    activity region，不改变 terminal root 顺序。
 8. 普通 surface 按 provider revision 缓存；transcript 按
-   `(session generation, entry id, updatedSeq, width, presentation revision)` 缓存。
+   `(session generation, entry id, content revision, width, presentation revision)`
+   缓存。Durable entry 的 content revision 是 `updatedSeq`；实时 entry 使用
+   独立的 `renderRevision`，两者不共用数值时钟。
 
 ## 包边界
 
@@ -73,6 +75,7 @@ flowchart TB
 - app 持有主 Agent selection、单辅助槽与当前显示侧；它不重做 Harness
   command/tool/projection API。live 辅助会话成为精确 current Agent；one-shot 或
   cold child 由 core-owned 通用只读 transcript panel 展示。
+  App 不依赖 terminal screen，因此 core/theme 重载不会新建会话或重置 selection。
 - BTW Agent 仍携带完整 seed 作为模型上下文，但 `mayflyCurrentAgent` 的 BTW
   metadata 记录 seed cutoff，transcript source 只呈现 cutoff 之后的新问题、工具
   与回答。
@@ -82,16 +85,24 @@ flowchart TB
   Form、Choice、Tabs、Document、operation 与 feedback 状态。它分别观察 pane 和
   overlay registry，在 renderer 缺位时继续存活，并在 registration replace/remove
   或 provider unload 时清理对应实例。
+- frontend 同时持有 `mayflyLiveAssistantStream`。实时文本按精确 Agent、attempt、
+  revision 和 chunk index 接收；需要恢复时读取原生 session-controller 的
+  assistant-stream opening baseline，并对恢复期间收到的原生帧去重。
+  状态栏的 session-facts bridge 与 transcript 消费同一 draft，不随 theme/core
+  卸载，也不读取第二份持久化事件缓存。
+- `conversation` 的纯 stream accumulator 统一 live、baseline 和 durable attempt
+  的文本、phase 与 output-progress 语义。Projection wire 明确携带
+  `settledSteps`；reasoning block 结束不等于 assistant step 完成。
 - interaction 保留 prompt editor/autocomplete 与 submit transform 的专属状态。
   Editor presentation 是普通 `mayflyOverlays` registration；旧 panel/controller 栈
   已删除。业务只发布 readonly node，并通过结构化 action reply 写回权威 snapshot。
 - transcript 只有一个 selected-session conversation controller；session generation
   改变时会销毁旧 entry cache。
   原生 projection registry 校验完整值，transcript source 暂存最新尚未读取的
-  原生值，在绘制读取 snapshot 时才准入、转换全部符合 cutoff 的 entry，避免
-  突发 token 在一帧前反复转换历史。切换、detach 和 unload 丢弃待绘制值；
-  不假设 Zod 解析后 entry 对象身份仍然稳定。原生全值校验和每次绘制时的
-  转换仍可能随历史长度增长。
+  原生值，在下一次 snapshot 时转换符合 cutoff 的 durable entry。实时更新
+  单独携带当前 attempt 的 overlay，复用已转换历史与工具 presenter 结果；
+  renderer 缓存历史布局，只重绘受影响的 live entry。切换、detach 和 unload
+  丢弃待绘制值；不假设 Zod 解析前后的 entry 对象身份保持不变。
 - core 持有 named Screen Shell、terminal、focus、layout、editor binding、
   control/scroll handle、admission cache 与编译后的 renderer object；这些状态随
   renderer generation 失效，不进入公开 node，也不成为 draft 的第二来源。
