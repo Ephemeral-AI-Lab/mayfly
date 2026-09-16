@@ -165,7 +165,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
       action: (event, context) => event.kind === 'submit' ? handler(event.submission, 'save', context.signal)
         : event.kind === 'activate' && event.actionId === 'discover' && event.inputs !== undefined ? handler(event.inputs, 'discover', context.signal) : { kind: 'completed' },
     },
-  }, view(), signal)
+  }, view(), { signal, reopen: 'replace' })
   return handle
 }
 
@@ -202,8 +202,8 @@ export function openProviderSetup(ctx: Context, onCreated: (route: string) => vo
           else openEndpoint(ctx, route, onCreated, signal)
           return { kind: 'completed' }
         } },
-      }, ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: rows, filterable: true, empty: ui.empty({ title: t('No providers available') }) }), signal)
+      }, ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: rows, filterable: true, empty: ui.empty({ title: t('No providers available') }) }), { signal, reopen: 'focus' })
       return { kind: 'completed' }
     } },
-  }, ui.list({ id: 'provider-source', role: 'browse', selectedIds: [], items: [{ id: 'known', label: t('Known provider') }, { id: 'custom', label: t('Custom endpoint') }, { id: 'oauth', label: t('OAuth provider') }] }), signal)
+  }, ui.list({ id: 'provider-source', role: 'browse', selectedIds: [], items: [{ id: 'known', label: t('Known provider') }, { id: 'custom', label: t('Custom endpoint') }, { id: 'oauth', label: t('OAuth provider') }] }), { signal, reopen: 'focus' })
 }

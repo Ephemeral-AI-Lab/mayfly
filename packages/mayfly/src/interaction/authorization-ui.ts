@@ -91,7 +91,7 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
         answer = { operationId: context.operationId, value }
         return { kind: 'accepted', node: promptView(), source: [], dismiss: true }
       } },
-    }, promptView(), withdrawal)
+    }, promptView(), { signal: withdrawal, reopen: 'replace' })
     prompt = { handle: child, refresh: () => { child.set(promptView()) } }
     off = ctx.mayflyOverlays.subscribe(delta => {
       if (delta.kind === 'upsert' && delta.entry.id === promptId && delta.entry.update.reason === 'ack' && delta.entry.update.operationId === answer?.operationId) {
@@ -146,9 +146,6 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
         return { kind: 'failed', node: view(), message: t(authorized ? 'Signed in, but provider setup could not be completed' : 'Authorization could not be completed') }
       } finally { prompt?.handle.close(); prompt = undefined; if (!handle.closed) refresh() }
     } },
-  }, view(), signal)
-  const off = ctx.mayflyOverlays.subscribe(delta => {
-    if (delta.kind === 'remove' && delta.id === id && handle.closed) { notice = undefined; prompt?.handle.close(); prompt = undefined; off() }
-  })
+  }, view(), { signal, reopen: 'replace', onClosed: () => { notice = undefined; prompt?.handle.close(); prompt = undefined } })
   return handle
 }

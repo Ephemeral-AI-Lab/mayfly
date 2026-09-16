@@ -59,17 +59,14 @@ export function apply(ctx: Context, config: Config = {}): void {
     handler: invocation => {
       if (lifetime.signal.aborted || invocation.signal.aborted) return { kind: 'success' }
       const id = `mayfly.${command}`
-      if (ctx.mayflyOverlays.focus(id)) return { kind: 'success' }
       const view = () => frame(command === 'version' ? 'Version' : 'Changelog', command === 'version' ? versionNode(version) : changelogNode(CHANGELOG_ENTRIES, t), command !== 'version')
+      let offLocale: (() => void) | undefined
       const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: command }, onEvent: { action: event => {
-        if (event.kind === 'activate' && event.actionId === 'refresh') handle.set(view())
+        if (event.kind === 'activate' && event.actionId === 'refresh') handle?.set(view())
         return { kind: 'completed' }
-      } } }, view(), lifetime.signal)
-      const offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
-      let cleanup!: () => void
-      const off = ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === id && handle.closed) cleanup() })
-      cleanup = ctx.effect(() => () => { offLocale(); off() })
-      if (handle.closed) cleanup()
+      } } }, view(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => offLocale?.() })
+      if (handle === undefined) return { kind: 'success' }
+      offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
       return { kind: 'success' }
     },
   })
@@ -81,7 +78,6 @@ export function apply(ctx: Context, config: Config = {}): void {
         if (lifetime.signal.aborted || invocation.signal.aborted) return { kind: 'success' }
         if (owner.mayflyCurrentAgent.current() !== agent) return { kind: 'error', text: t('no session is live yet') }
         const id = `mayfly.${command}`
-        if (owner.mayflyOverlays.focus(id)) return { kind: 'success' }
         const read = () => {
           const title = command === 'status' ? 'Status' : 'Context'
           try {
@@ -110,7 +106,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           scope.on('agent/status', ({ agent: changed }) => { if (changed === agent) schedule() })
           scope.effect(() => observeInteractionLocale(scope, schedule))
           return event => event.kind === 'activate' && event.actionId === 'refresh' && !refresh() ? { kind: 'failed', message: t('Session information unavailable') } : { kind: 'completed' }
-        }, lifetime.signal)
+        }, { signal: lifetime.signal, reopen: 'focus' })
         if (invocation.signal.aborted) handle?.close()
         refresh()
         return { kind: 'success' }

@@ -8,7 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import type { WorkflowAgentInfo } from '@deepseek-ai/dsh-workflow'
-import { ui, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyListItem, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { formatTokens } from './usage.ts'
@@ -212,7 +212,7 @@ export function apply(ctx: Context): void {
     closeOpenBrowser?.()
     let entries = withLiveMetrics(ctx, listed, workflowLabels)
     let byId = new Map(entries.map(entry => [String(entry.id), entry]))
-    let handle!: ReturnType<typeof openUiOverlay>
+    let handle!: MayflyOverlayHandle
     const close = (): void => {
       offAgent()
       closeOpenBrowser = undefined
@@ -269,7 +269,7 @@ export function apply(ctx: Context): void {
         handle.set(view(selectedId))
       } catch { /* the native stop already completed; retain the last readable tree */ }
       return { kind: 'completed', feedback: { severity: 'success', message: result.text } }
-    } } }, view())
+    } } }, view(), { reopen: 'replace' })
     closeOpenBrowser = close
     return { kind: 'success' }
   }

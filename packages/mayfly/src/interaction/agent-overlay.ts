@@ -6,6 +6,19 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiActionHandler, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type {} from '../app/index.ts'
 
+/** Open-time policy for an Agent-scoped UI overlay registration. */
+export interface AgentOverlayOpenOptions {
+  /** Caller cancellation checked before and during the child-fiber mount. */
+  readonly signal?: AbortSignal | undefined
+  /**
+   * `'focus'` returns `undefined` and focuses the live overlay of the same id
+   * without mounting a new owner Fiber; `'replace'` closes a live same-id
+   * overlay first — the registry rejects a duplicate id — required for
+   * detail views that reuse one id across items.
+   */
+  readonly reopen: 'focus' | 'replace'
+}
+
 /** Own one interactive Agent view under a child Fiber with exact native authority. */
 export async function openAgentOverlay(
   ctx: Context,
@@ -13,8 +26,11 @@ export async function openAgentOverlay(
   definition: Omit<MayflyOverlayDefinition, 'scope' | 'onEvent'>,
   node: MayflyUiNode,
   handler: (ctx: Context) => MayflyUiActionHandler,
-  signal?: AbortSignal,
+  options: AgentOverlayOpenOptions,
 ): Promise<MayflyOverlayHandle | undefined> {
+  const { signal, reopen } = options
+  if (reopen === 'focus' && ctx.get('mayflyOverlays')?.focus(definition.id) === true) return undefined
+  if (reopen === 'replace') ctx.get('mayflyOverlays')?.close(definition.id)
   let owner: Fiber | undefined
   let handle: MayflyOverlayHandle | undefined
   let closed = false

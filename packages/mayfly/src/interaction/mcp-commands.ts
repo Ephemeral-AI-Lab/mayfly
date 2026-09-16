@@ -135,12 +135,12 @@ export function apply(ctx: Context): void {
             if (context.signal.aborted || !current()) return { kind: 'cancelled' }
             const tool = catalog.servers.find(server => server.entryId === selected.entryId)?.toolsVisible.find(tool => tool.name === event.selectedIds[0])
             return tool !== undefined && await openToolDetail(scope, agent, { id: 'mayfly.mcp.tool', name: tool.name, signal }) ? { kind: 'completed' } : { kind: 'failed', message: t('The tool is no longer available') }
-          }, signal)
+          }, { signal, reopen: 'replace' })
           if (handle !== undefined) server = { id: selected.entryId, handle, name: selected.serverName, node: mcpServerNode(selected, t) }
           publish()
           return { kind: 'completed' }
         }
-      }, signal)
+      }, { signal, reopen: 'focus' })
       await refresh()
       return { kind: 'success' }
     } catch (error) { return current() ? { kind: 'error', text: error instanceof Error ? error.message : String(error) } : { kind: 'success' } }

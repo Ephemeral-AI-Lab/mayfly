@@ -71,7 +71,7 @@ export function apply(ctx: Context): void {
           return { kind: 'accepted', node: node(), source: [], dismiss: true, feedback: { severity: 'success', message: t('DeepSeek API key saved') } }
         } catch { return { kind: 'failed', message: t('The API key could not be saved') } }
       } },
-    }, node(), lifetime.signal)
+    }, node(), { signal: lifetime.signal, reopen: 'focus' })
   }
   ctx.plugin({
     name: 'mayfly-onboarding-readiness', inject: ['mayflyCurrentAgent'],
@@ -81,7 +81,7 @@ export function apply(ctx: Context): void {
         void check().catch(() => {
           if (lifetime.signal.aborted || ctx.mayflyOverlays.focus('mayfly.provider.onboarding')) return
           const t = interactionTranslator(ctx)
-          openUiOverlay(ctx, { id: 'mayfly.provider.onboarding', title: t('Provider setup'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: DEEPSEEK_KEY } }, ui.empty({ title: t('Provider setup could not be checked'), actions: ui.actions({ id: 'setup-error-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }) }), lifetime.signal)
+          openUiOverlay(ctx, { id: 'mayfly.provider.onboarding', title: t('Provider setup'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: DEEPSEEK_KEY } }, ui.empty({ title: t('Provider setup could not be checked'), actions: ui.actions({ id: 'setup-error-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }) }), { signal: lifetime.signal, reopen: 'focus' })
         })
       })
       reader.effect(() => off)

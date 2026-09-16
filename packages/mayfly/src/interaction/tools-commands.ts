@@ -75,7 +75,7 @@ export async function openToolDetail(ctx: Context, agent: Agent, options: { read
     owner.on('tools/change', schedule)
     owner.effect(() => observeInteractionLocale(owner, refresh))
     return event => { if (event.kind === 'activate' && event.actionId === 'refresh') refresh(); return { kind: 'completed' } }
-  }, options.signal)
+  }, { signal: options.signal, reopen: 'replace' })
   refresh()
   return handle?.closed === false
 }
@@ -120,7 +120,7 @@ export function apply(ctx: Context): void {
         if (event.kind === 'activate' && event.actionId === 'refresh') refresh()
         return { kind: 'completed' }
       }
-    }, signal)
+    }, { signal, reopen: 'focus' })
     refresh()
     return { kind: 'success' }
   } })

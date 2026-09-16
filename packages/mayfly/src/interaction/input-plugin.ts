@@ -98,6 +98,23 @@ import { filterSlashCommands } from './slash-filter.ts'
 /** Window for the double Ctrl-C exit: presses farther apart re-arm the hint. */
 const INTERRUPT_DOUBLE_PRESS_MS = 1000
 
+/**
+ * Bare-command UI routes: a no-argument line may open a surface instead of
+ * dispatching to the registered handler (the S24b/D33 `/permission` preset
+ * picker). A route returning `false` falls through to `ctx.commands.execute`
+ * untouched, keeping the upstream argument path.
+ */
+const BARE_COMMAND_ROUTES: Readonly<Record<string, (ctx: Context) => boolean>> = {
+  permission: ctx => {
+    if (ctx.get('permissionPresets') === undefined) return false
+    openPermissionPanel(ctx)
+    return true
+  },
+}
+
+/** Commands whose result text never flashes the footer — the command's own UX already carries it. */
+const QUIET_COMMANDS: ReadonlySet<string> = new Set(['goal'])
+
 interface AttachmentReader {
   readImage(ref: Extract<ContentBlock, { readonly type: 'image' }>['attachment'], signal?: AbortSignal): Promise<StoredImageAttachment>
 }
@@ -387,16 +404,11 @@ export function apply(ctx: Context): void {
       // candidate and history retain exactly what the user submitted.
       return
     }
-    // A bare `/permission` opens the preset picker (S24b, D33) instead of
-    // the upstream command's text listing — only while the preset service
-    // is composed, so a bare line degrades to the command below otherwise.
-    // With an argument the line passes through untouched: `/permission
-    // <name>` stays the upstream write path the picker itself dispatches.
-    if (parsed.name === 'permission' && parsed.rawInput.trim().length === 0
-      && ctx.get('permissionPresets') !== undefined) {
-      openPermissionPanel(ctx)
-      return
-    }
+    // A bare command line may route to a surface instead of its handler —
+    // see BARE_COMMAND_ROUTES (`/permission` opens the preset picker; a
+    // `/permission <name>` argument passes through to the upstream write
+    // path the picker itself dispatches).
+    if (parsed.rawInput.trim().length === 0 && BARE_COMMAND_ROUTES[parsed.name]?.(ctx) === true) return
     // An alias line (`/q`) is rewritten to its canonical command before
     // dispatch — the kimi resolution: aliases are not registered commands,
     // the canonical name owns the handler and the session log. The raw
@@ -415,7 +427,7 @@ export function apply(ctx: Context): void {
         if (unloaded) return
         if (execution === undefined) showFeedback('command', `unknown command: ${line}`, 'error')
         else if (execution.result.kind === 'error') showFeedback('command', execution.result.text, 'error')
-        else if (execution.result.text !== undefined && commandName !== 'goal') showFeedback('command', execution.result.text, 'info')
+        else if (execution.result.text !== undefined && !QUIET_COMMANDS.has(commandName)) showFeedback('command', execution.result.text, 'info')
       },
       (error: unknown) => {
         if (unloaded) return

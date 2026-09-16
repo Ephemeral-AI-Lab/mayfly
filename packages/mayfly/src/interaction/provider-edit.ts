@@ -8,6 +8,7 @@ import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { deriveKeyRef, normalizeBaseURL, providerProfile, type ProviderProfile } from './provider-profile.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
+import { openUiOverlay } from './ui-overlay.ts'
 
 const NAMESPACE = 'llm-pi-ai'
 const address = (itemId: string): MayflyFormAddress => ({ pagePath: [{ controlId: 'provider-pages', itemId }], formId: 'provider' })
@@ -180,7 +181,6 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
       }
     }
     const loaded = await read()
-    if (overlays.focus(id)) { releaseLifetime(); return true }
     openedRef = initial.ref
     const offSettings = ctx.on('settings/document-updated', ns => { if (String(ns) === NAMESPACE) void refresh() })
     const offValues = ctx.on('settings/updated', ns => { if (String(ns) === NAMESPACE) void refresh() })
@@ -189,7 +189,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     })
     const offLocale = observeInteractionLocale(ctx, () => { void refresh() })
     cleanup = ctx.effect(() => () => { offSettings(); offValues(); offCredential(); offLocale(); releaseLifetime() })
-    handle = overlays.open({
+    handle = openUiOverlay(ctx, {
       id, title: t('Configure {route}', { route }), presentation: 'editor', capturing: true,
       scope: { kind: 'app', targetId: `${NAMESPACE}/${route}` }, source: source(loaded),
       onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
@@ -282,12 +282,8 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
               : { kind: 'failed', ...reply(await read()), ...(settingsWritten ? { acceptedFields: ops.map(op => ({ ...address('connection'), fieldId: op.path.at(-1) === 'displayName' ? 'name' : 'baseURL' })) } : {}), message: t(settingsWritten ? 'Provider settings saved, but the credential could not be saved' : 'Provider configuration could not be saved') }
         }
       } },
-    }, node(loaded))
-    const closeOnAbort = () => handle?.close()
-    cancellation.addEventListener('abort', closeOnAbort, { once: true })
-    const offOverlay = overlays.subscribe(delta => {
-      if (delta.kind === 'remove' && delta.id === id && handle!.closed) { cancellation.removeEventListener('abort', closeOnAbort); offOverlay(); cleanup() }
-    })
+    }, node(loaded), { signal: cancellation, reopen: 'focus', onClosed: () => cleanup() })
+    if (handle === undefined) { cleanup(); return true }
     return true
   } catch (error) { cleanup(); releaseLifetime(); throw error }
 }

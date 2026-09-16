@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { ui, type MayflyOverlayHandle, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
+import { openUiOverlay } from './ui-overlay.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { settingsOperations, settingsProjection, type SettingsChoices, type SettingsProjection } from './settings-model.ts'
 
@@ -59,7 +60,8 @@ export async function openSettingsNamespace(ctx: Context, ns: string, callerSign
     handle.set(nextSnapshot.node, { reason: 'data', source: nextSnapshot.source })
   }
   const initialSnapshot = snapshot(initial)
-  handle = registry.open({
+  let teardown: (() => void) | undefined
+  const opened = openUiOverlay(ctx, {
     id, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: `settings/${ns}` }, source: initialSnapshot.source,
     onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
       if (event.kind === 'activate' && event.actionId === 'refresh') { await refresh(); return { kind: 'completed' } }
@@ -91,7 +93,10 @@ export async function openSettingsNamespace(ctx: Context, ns: string, callerSign
           : { kind: 'failed', node, source, message: t('Settings could not be saved') }
       }
     } },
-  }, initialSnapshot.node)
+  }, initialSnapshot.node, { signal, reopen: 'focus', onClosed: () => teardown?.() })
+  /* v8 ignore next -- no await between the focus check and open; only a re-entrant listener could land a same-id overlay here */
+  if (opened === undefined) { releaseLifetime(); return true }
+  handle = opened
   let scheduled = false
   const schedule = () => {
     if (scheduled || handle.closed) return
@@ -102,12 +107,7 @@ export async function openSettingsNamespace(ctx: Context, ns: string, callerSign
   const offValue = ctx.on('settings/updated', changed => { if (String(changed) === ns) schedule() })
   const offLocale = observeInteractionLocale(ctx, schedule)
   const dynamicFibers = ['permissionPresets', 'agentPresets'].map(name => ctx.inject([name], owner => { schedule(); owner.effect(() => () => schedule()) }))
-  const abort = () => handle.close()
-  let cleanup!: () => void
-  const offRegistry = registry.subscribe(delta => { if (delta.kind === 'remove' && delta.id === id && handle.closed) cleanup() })
-  cleanup = ctx.effect(() => () => { offDocument(); offValue(); offLocale(); offRegistry(); for (const fiber of dynamicFibers) void fiber.dispose(); signal.removeEventListener('abort', abort); releaseLifetime() })
-  signal?.addEventListener('abort', abort, { once: true })
-  if (signal?.aborted || handle.closed) { handle.close(); cleanup() }
+  teardown = () => { offDocument(); offValue(); offLocale(); for (const fiber of dynamicFibers) void fiber.dispose(); releaseLifetime() }
   return true
 }
 
@@ -142,28 +142,26 @@ export function apply(ctx: Context): void {
   ctx.commands.register({
     name: 'settings', description: 'Edit user settings by namespace',
     handler: () => {
-      if (ctx.mayflyOverlays.focus(ROOT_ID)) return { kind: 'success' }
       const view = () => ui.surface({ child: ui.stack.column([
         ui.list({ id: 'namespaces', role: 'browse', selectedIds: [], filterable: true, items: ctx.settings.describe({ redactSecrets: true }).map(item => ({ id: String(item.ns), label: String(item.ns), ...item.applies === 'restart' ? { detail: t('restart to apply') } : {} })), empty: ui.empty({ title: t('No settings namespaces') }) }),
         ui.actions({ id: 'browser-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), disabled: !ctx.settings.writable }, { id: 'close', label: t('Close'), dismiss: true }] }),
       ]), title: t('Settings'), chrome: 'overlay', padding: 1 })
-      const handle = ctx.mayflyOverlays.open({
+      let teardown: (() => void) | undefined
+      const opened = openUiOverlay(ctx, {
         id: ROOT_ID, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'settings' },
         onEvent: { action: async (event, context) => {
           if (event.kind === 'selection-accept') return await openSettingsNamespace(ctx, event.selectedIds[0]!, lifetime.signal) ? { kind: 'completed' } : { kind: 'failed', message: t('Settings namespace is unavailable') }
           if (event.kind === 'activate' && event.actionId === 'open-file') return editDocument(ctx, context.signal)
-          if (event.kind === 'activate' && event.actionId === 'refresh') handle.set(view())
+          if (event.kind === 'activate' && event.actionId === 'refresh') opened?.set(view())
           return { kind: 'completed' }
         } },
-      }, view())
-      const refresh = () => { handle.set(view()) }
+      }, view(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => teardown?.() })
+      if (opened === undefined) return { kind: 'success' }
+      const refresh = () => { opened.set(view()) }
       const offValue = ctx.on('settings/updated', refresh)
       const offDocument = ctx.on('settings/document-updated', refresh)
       const offLocale = observeInteractionLocale(ctx, refresh)
-      let cleanup!: () => void
-      const offRegistry = ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === ROOT_ID && handle.closed) cleanup() })
-      cleanup = ctx.effect(() => () => { offValue(); offDocument(); offLocale(); offRegistry() })
-      if (handle.closed) cleanup()
+      teardown = () => { offValue(); offDocument(); offLocale() }
       return { kind: 'success' }
     },
   })

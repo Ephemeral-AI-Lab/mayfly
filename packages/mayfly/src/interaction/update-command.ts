@@ -159,7 +159,7 @@ function confirmUpdate(ctx: Context, fromVersion: string, toVersion: string, det
       ui.text(t('Update to v{version}?', { version: toVersion })),
       ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'muted' }),
       ui.actions({ id: 'update-confirm-actions', items: [{ id: 'yes', label: t('Yes'), intent: 'primary' }, { id: 'no', label: t('No'), defaultFocus: true }] }),
-    ]) }))
+    ]) }), { reopen: 'replace' })
     off = ctx.mayflyOverlays.subscribe(delta => {
       if (delta.kind === 'remove' && delta.id === id) finish(false)
     })
@@ -197,7 +197,7 @@ async function runSwapPanel(
         : { kind: 'completed' as const, dismiss: true }
     }
     return { kind: 'completed' as const }
-  } } }, updatePanelModel(state, input.fromVersion, input.toVersion, t))
+  } } }, updatePanelModel(state, input.fromVersion, input.toVersion, t), { reopen: 'replace' })
   // A throw out of the executor (ENOSPC mid-rename, a crashed spawn
   // wrapper) must still settle the panel — an unsettled panel refuses to
   // close and would strand the editor replacement forever.
@@ -439,5 +439,5 @@ function mountBlockedPanel(
   const t = interactionTranslator(ctx)
   const state = createUpdateProgressState()
   state.blockedMessage = message
-  openUiOverlay(ctx, { id: 'mayfly.update.blocked', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Update Mayfly'), scope: { kind: 'app', targetId: 'update-blocked' } }, updatePanelModel(state, fromVersion, target, t))
+  openUiOverlay(ctx, { id: 'mayfly.update.blocked', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Update Mayfly'), scope: { kind: 'app', targetId: 'update-blocked' } }, updatePanelModel(state, fromVersion, target, t), { reopen: 'replace' })
 }

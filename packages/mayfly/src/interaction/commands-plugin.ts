@@ -42,9 +42,10 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 // `session-query-sqlite` row with `openAt: never` keeps batch title reads
 // available); optional and resolved lazily like persistence.
 import type {} from '@deepseek-ai/dsh-session-query'
-import { ui } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import type { HelpSection } from './help.ts'
 import { helpNode } from './help.ts'
+import { cycleMode } from './mode-commands.ts'
 import { registerModelCommands } from './model-commands.ts'
 import { registerPluginCommand } from './plugin-commands.ts'
 import { registerExportCommands } from './session-export.ts'
@@ -186,7 +187,7 @@ export function apply(ctx: Context): void {
     const buildRows = () => sessionTreeItems(sorted, titleById, currentId === undefined ? undefined : String(currentId), formatDate)
     // Hydrate the first page before mounting so labels do not visibly change
     // from session ids to titles. Later pages are prefetched near page ends.
-    let handle!: ReturnType<typeof openUiOverlay>
+    let handle!: MayflyOverlayHandle
     const view = () => ui.surface({ title: 'Sessions', chrome: 'overlay', child: ui.list({ id: 'sessions', role: 'choose', tree: true, selectedIds: currentId === undefined ? [] : [String(currentId)], filterable: true, items: buildRows() }) })
     const loadPage = (page: number, query: NonNullable<ReturnType<typeof ctx.get<'sessionQuery'>>>): Promise<void> => {
       if (loadingPages.has(page) || loadedPages.has(page) || page * SESSION_TITLE_PAGE_SIZE >= sessionTitleLimit) return Promise.resolve()
@@ -207,6 +208,8 @@ export function apply(ctx: Context): void {
       clearLoadingNotice()
       return { kind: 'success' }
     }
+    // 'replace' is deliberate: re-running /sessions re-queries persistence and
+    // replaces the stale picker rather than focusing it.
     handle = openUiOverlay(ctx, { id: 'mayfly.sessions', presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Sessions', scope: { kind: 'app', targetId: 'sessions' }, onEvent: { action: event => {
         if (event.kind === 'selection-accept') {
         const id = event.selectedIds[0]
@@ -218,7 +221,7 @@ export function apply(ctx: Context): void {
         }
         return { kind: 'completed' as const }
       },
-    } }, view())
+    } }, view(), { signal, reopen: 'replace' })
     clearLoadingNotice()
     if (query !== undefined) void loadPage(1, query)
     return { kind: 'success' }
@@ -234,7 +237,6 @@ export function apply(ctx: Context): void {
     if (candidates.length === 0) return { kind: 'success', text: 'no user turns to rewind' }
     const first = candidates[0]!
     const id = 'mayfly.rewind'
-    if (ctx.mayflyOverlays.focus(id)) return { kind: 'success' }
     openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Rewind current session', scope: { kind: 'session', sessionId: active.id }, onEvent: { action: event => {
       if (event.kind === 'selection-accept' && event.selectedIds[0] !== undefined) {
         ctx.emit('mayfly/request-rewind', String(active.id), Number(event.selectedIds[0]))
@@ -244,7 +246,7 @@ export function apply(ctx: Context): void {
     } } }, ui.surface({ chrome: 'overlay', title: 'Rewind current session', child: ui.stack.column([
       ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: [String(first.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: `Turn ${String(candidate.turn)} · ${candidate.prompt}`, ...(candidate.response === undefined ? {} : { detail: `↳ ${candidate.response}` }) })) }),
       ui.text('The original session stays available in /sessions.', { tone: 'muted' }),
-    ]) }))
+    ]) }), { reopen: 'focus' })
     return { kind: 'success' }
   }
 
@@ -257,7 +259,6 @@ export function apply(ctx: Context): void {
   function showHelp(): CommandResult {
     const keymap = ctx.get('mayflyKeymap')
     if (keymap === undefined) return { kind: 'error', text: 'help is unavailable: the Mayfly keymap is not mounted' }
-    if (ctx.mayflyOverlays.focus('mayfly.help')) return { kind: 'success' }
     const sections = (): HelpSection[] => [
       {
         heading: 'Commands',
@@ -288,9 +289,10 @@ export function apply(ctx: Context): void {
       },
     ]
     const view = () => helpNode(sections(), t)
-    const handle = openUiOverlay(ctx, { id: 'mayfly.help', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('help'), scope: { kind: 'app', targetId: 'help' } }, view())
-    const offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
-    ctx.effect(() => () => offLocale())
+    let offLocale: (() => void) | undefined
+    const handle = openUiOverlay(ctx, { id: 'mayfly.help', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('help'), scope: { kind: 'app', targetId: 'help' } }, view(), { reopen: 'focus', onClosed: () => offLocale?.() })
+    if (handle === undefined) return { kind: 'success' }
+    offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
     return { kind: 'success' }
   }
 
@@ -370,6 +372,16 @@ export function apply(ctx: Context): void {
       description: 'Show available commands and key bindings',
       handler: () => showHelp(),
     })
+    // The palette entry for the Shift+Tab plan cycle (mode-commands): the
+    // hotkey stays the primary surface; the command exists for discovery.
+    const mode = ctx.commands.register({
+      name: 'mode',
+      description: 'Toggle plan mode (same as Shift+Tab)',
+      handler: () => {
+        void cycleMode(ctx, (id, feedback) => notifications.report(id, feedback))
+        return { kind: 'success' as const }
+      },
+    })
     const theme = registerThemeCommand(ctx)
     // The model-family commands (`/model`, `/effort`, later `/provider`)
     // live in their own module with the same lazy-service discipline.
@@ -395,6 +407,7 @@ export function apply(ctx: Context): void {
       sessions()
       sessionsAliases()
       help()
+      mode()
       theme()
       models()
       sessionExport()

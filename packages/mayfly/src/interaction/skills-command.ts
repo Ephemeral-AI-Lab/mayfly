@@ -78,11 +78,11 @@ export function apply(ctx: Context): void {
           scope.effect(() => catalog.subscribe(refreshDetail))
           scope.effect(() => observeInteractionLocale(scope, refreshDetail))
           return () => ({ kind: 'completed' })
-        }, lifetime.signal)
+        }, { signal: lifetime.signal, reopen: 'replace' })
         refreshDetail()
         return { kind: 'completed' }
       }
-    }, lifetime.signal)
+    }, { signal: lifetime.signal, reopen: 'focus' })
     if (invocation.signal.aborted) handle?.close()
     refresh()
     return { kind: 'success' }

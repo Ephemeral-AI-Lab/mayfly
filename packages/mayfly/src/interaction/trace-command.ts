@@ -124,10 +124,10 @@ export function registerTraceCommand(ctx: Context): () => void {
             page = Math.max(1, Math.min(pages.length, target))
             return { kind: 'accepted', node: traceDetailPanelModel(item, pages, page, t), source: [] }
           }
-        }, signal)
+        }, { signal, reopen: 'replace' })
         return { kind: 'completed' }
       }
-    }, signal)
+    }, { signal, reopen: 'focus' })
     return { kind: 'success' }
   }
   const command = ctx.commands.register({ name: 'trace', description: t('Browse and copy the current session execution trace'), input: { hint: '[copy <seq>|copy all]' }, handler: invocation => open(invocation.rawInput, invocation.signal) })
