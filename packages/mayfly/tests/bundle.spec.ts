@@ -135,6 +135,7 @@ describe('mayfly bundle', () => {
       'sessionProjections',
       'mayflyCurrentAgent',
       'mayflyOverlays',
+      'mayflyLiveAssistantStream',
       'tools',
     ])
     const dependencies = [

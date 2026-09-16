@@ -9,7 +9,7 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
-import type { Session } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-title/types'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
@@ -46,7 +46,7 @@ export class SessionFactsService extends Service {
   private readonly goalListeners = new Set<(goal: GoalProjection | null) => void>()
   private readonly agentListeners = new Set<(agent: Agent | null) => void>()
   private readonly childListeners = new Set<(children: readonly ChildSessionFacts[]) => void>()
-  private readonly children = new Map<string, ChildSessionFacts>()
+  private readonly children = new Map<string, { readonly facts: ConversationFacts, readonly draft: LiveAssistantDraft | undefined }>()
   private readonly offProjection: () => void
   private readonly offAgent: () => void
   private readonly offLive: () => void
@@ -67,15 +67,26 @@ export class SessionFactsService extends Service {
     this.offAgent = ctx.mayflyCurrentAgent.subscribe(next => { this.attach(next) })
     // Harness `0.1.5` streams live deltas as transient Agent frames; the
     // durable facts projection settles only at attempt boundaries. The draft
-    // overlays the streaming phase and output progress of the current Agent.
+    // overlays the streaming phase and output progress of the current Agent and
+    // each admitted child, so reasoning children report Thinking… while their
+    // durable facts still read waiting.
     this.offLive = liveStream === undefined
       ? () => {}
       : liveStream.subscribe(() => {
         const draft = this.agent === null ? undefined : liveStream.get(this.agent)
-        if (draft === this.live) return
-        this.live = draft
-        this.facts = this.merged()
-        for (const listener of this.listeners) listener(this.facts)
+        if (draft !== this.live) {
+          this.live = draft
+          this.facts = this.merged()
+          for (const listener of this.listeners) listener(this.facts)
+        }
+        let childrenChanged = false
+        for (const [id, record] of this.children) {
+          const next = this.childDraft(id)
+          if (next === record.draft) continue
+          this.children.set(id, { ...record, draft: next })
+          childrenChanged = true
+        }
+        if (childrenChanged) this.publishChildren()
       })
   }
 
@@ -152,7 +163,7 @@ export class SessionFactsService extends Service {
     this.publishGoal(isGoalProjection(goal) ? goal : null)
     for (const child of this.directChildren()) {
       const childFacts = this.ctx.sessionProjections.snapshot(child, ['mayflyConversationFacts']).values.mayflyConversationFacts
-      if (isFacts(childFacts)) this.children.set(String(child.id), projectChildSessionFacts(String(child.id), childFacts))
+      if (isFacts(childFacts)) this.children.set(String(child.id), { facts: childFacts, draft: this.childDraft(String(child.id)) })
     }
     this.publishChildren()
   }
@@ -216,7 +227,7 @@ export class SessionFactsService extends Service {
   }
 
   private publishChild(id: string, facts: ConversationFacts): void {
-    this.children.set(id, projectChildSessionFacts(id, facts))
+    this.children.set(id, { facts, draft: this.childDraft(id) })
     this.publishChildren()
   }
 
@@ -226,7 +237,13 @@ export class SessionFactsService extends Service {
   }
 
   private childrenForCurrentSession(): readonly ChildSessionFacts[] {
-    return [...this.children.values()]
+    return [...this.children.entries()].map(([id, record]) => projectChildSessionFacts(id, record.facts, record.draft))
+  }
+
+  /** Latest transient stream draft for a child session's resident Agent. */
+  private childDraft(id: string): LiveAssistantDraft | undefined {
+    const agent = this.ctx.get('agents')?.get(SessionId(id))
+    return agent === undefined ? undefined : this.liveStream?.get(agent)
   }
 
   private directChildren(): readonly Session[] {
@@ -244,16 +261,24 @@ export class SessionFactsService extends Service {
 }
 
 /** Convert one child session's official facts to renderer-neutral card facts. */
-export function projectChildSessionFacts(id: string, facts: ConversationFacts): ChildSessionFacts {
+export function projectChildSessionFacts(id: string, facts: ConversationFacts, draft?: LiveAssistantDraft): ChildSessionFacts {
+  const liveDraft = draft !== undefined && draft.sessionId === id
+    && !(draft.turn < facts.turn || (draft.turn === facts.turn
+      && (facts.runOutcome !== undefined
+        || (facts.currentStep !== undefined && draft.step < facts.currentStep)
+        || (facts.lastCompletedStep !== undefined && draft.step <= facts.lastCompletedStep))))
+    ? draft : undefined
   const phase = facts.active
-    ? facts.phase === 'waiting' ? 'waiting' : 'running'
+    ? liveDraft !== undefined && liveDraft.phase !== 'waiting' ? 'running' : facts.phase === 'waiting' ? 'waiting' : 'running'
     : facts.runOutcome ?? 'completed'
   const marker = facts.activity
-  const activity = marker?.kind === 'tool'
-    ? `Using ${marker.name ?? 'tool'}`
-    : marker?.kind === 'reasoning'
-      ? 'Thinking…'
-      : marker?.kind === 'text' ? 'Writing…' : facts.active ? 'Starting…' : undefined
+  const activity = liveDraft !== undefined && liveDraft.phase !== 'waiting'
+    ? liveDraft.phase === 'thinking' ? 'Thinking…' : 'Writing…'
+    : marker?.kind === 'tool'
+      ? `Using ${marker.name ?? 'tool'}`
+      : marker?.kind === 'reasoning'
+        ? 'Thinking…'
+        : marker?.kind === 'text' ? 'Writing…' : facts.active ? 'Starting…' : undefined
   return {
     id, phase, tokens: facts.epochTokens ?? 0, toolCount: facts.epochToolCount ?? 0,
     ...(facts.promptText === undefined ? {} : { promptText: facts.promptText }),

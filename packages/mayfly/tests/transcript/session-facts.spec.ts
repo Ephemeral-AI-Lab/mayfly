@@ -253,4 +253,55 @@ describe('SessionFactsService', () => {
       id: 'done', phase: 'completed', tokens: 0, toolCount: 0,
     })
   })
+
+  it('overlays a fresh child draft and rejects stale or foreign drafts', () => {
+    const base = { ...initialConversationFacts(), active: true, phase: 'waiting' as const, turn: 2, currentStep: 1 }
+    const draft = { sessionId: 'child', attemptId: 'a', revision: 4, turn: 2, step: 1, phase: 'thinking' as const, reasoning: 'r', text: '', outputProgress: undefined, chars: 9, updatedAt: 5 }
+    expect(projectChildSessionFacts('child', base, draft)).toMatchObject({ phase: 'running', activity: 'Thinking…' })
+    expect(projectChildSessionFacts('child', base, { ...draft, phase: 'composing' })).toMatchObject({ phase: 'running', activity: 'Writing…' })
+    expect(projectChildSessionFacts('child', base, { ...draft, phase: 'waiting' })).toMatchObject({ phase: 'waiting' })
+    expect(projectChildSessionFacts('child', base, { ...draft, sessionId: 'other' })).toMatchObject({ phase: 'waiting' })
+    expect(projectChildSessionFacts('child', base, { ...draft, turn: 1 })).toMatchObject({ phase: 'waiting' })
+    expect(projectChildSessionFacts('child', { ...base, active: false, runOutcome: 'completed' as const }, draft)).toMatchObject({ phase: 'completed' })
+    expect(projectChildSessionFacts('child', { ...base, currentStep: 2 }, draft)).toMatchObject({ phase: 'waiting' })
+    expect(projectChildSessionFacts('child', { ...base, lastCompletedStep: 1 }, draft)).toMatchObject({ phase: 'waiting' })
+  })
+
+  it('republishes children when a resident child draft changes phase', async () => {
+    const ctx = new Context()
+    const parentSession = session('parent')
+    const childSession = session('child', { origin: 'subagent', parentSession: 'parent' })
+    const current = agent(parentSession)
+    const childAgent = agent(childSession)
+    const projections = new ProjectionFake()
+    projections.set(parentSession, { mayflyConversationFacts: initialConversationFacts() })
+    projections.set(childSession, {
+      mayflyConversationFacts: { ...initialConversationFacts(), promptText: 'delegate', active: true, phase: 'waiting' as const, turn: 1, currentStep: 0 },
+    })
+    ctx.reflect.provide('sessionProjections', projections)
+    ctx.reflect.provide('sessions', { list: () => [parentSession, childSession] })
+    ctx.reflect.provide('agents', { get: (id: unknown) => String(id) === 'child' ? childAgent : undefined })
+    ctx.reflect.provide('mayflyCurrentAgent', { subscribe(listener: (value: Agent) => void) { listener(current); return () => {} } })
+    const live = new LiveAssistantStreamService(ctx)
+    const service = new SessionFactsService(ctx, live)
+    const children: Array<ReadonlyArray<{ readonly id: string, readonly activity?: string }>> = []
+    service.subscribeChildren(value => children.push(value))
+    expect(children.at(-1)).toEqual([{ id: 'child', activity: 'Starting…', phase: 'waiting', tokens: 0, toolCount: 0, promptText: 'delegate' }])
+    live.accept(childAgent, { type: 'start', attemptId: 'run' as never, revision: 1, turn: 1, step: 0 })
+    live.accept(childAgent, { type: 'chunk', attemptId: 'run' as never, revision: 2, index: 0, time: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'thinking' } })
+    await Promise.resolve()
+    expect(children.at(-1)?.[0]).toMatchObject({ phase: 'running', activity: 'Thinking…' })
+    const published = children.length
+    live.accept(current, { type: 'start', attemptId: 'parent-run' as never, revision: 1, turn: 1, step: 0 })
+    await Promise.resolve()
+    expect(children).toHaveLength(published)
+    expect(children.at(-1)?.[0]).toMatchObject({ phase: 'running', activity: 'Thinking…' })
+    live.accept(childAgent, { type: 'chunk', attemptId: 'run' as never, revision: 3, index: 1, time: 2, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'thinking' } } })
+    live.accept(childAgent, { type: 'chunk', attemptId: 'run' as never, revision: 4, index: 2, time: 3, chunk: { type: 'text-delta', index: 1, text: 'draft' } })
+    await Promise.resolve()
+    expect(children.at(-1)?.[0]).toMatchObject({ phase: 'running', activity: 'Writing…' })
+    service.dispose()
+    live.dispose()
+    await ctx.fiber.dispose()
+  })
 })

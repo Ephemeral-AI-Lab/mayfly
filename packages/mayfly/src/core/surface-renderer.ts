@@ -264,7 +264,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(translateHint === undefined ? {} : { translateHint }),
       interactive: true,
       runtime: record.runtime,
-      ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
+      ...surfaceTitle(entry, record.interaction),
     })
     record.renderedRevision = record.interaction.revision
     if (compiled === null) {
@@ -308,6 +308,11 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     schedulePane(record)
   }
 
+  /* A pending decision replaces the surface content; its node title carries the
+     confirm question, which must stay visible instead of the owner title. */
+  const surfaceTitle = (entry: { readonly definition: { readonly title?: string | undefined } }, interaction: { readonly decisionNode: unknown }): { readonly title?: string } =>
+    entry.definition.title === undefined || interaction.decisionNode !== undefined ? {} : { title: entry.definition.title }
+
   const addOverlay = (entry: MayflyOverlayEntry): void => {
     let record!: OverlayRecord
     const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)!
@@ -323,7 +328,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(translateHint === undefined ? {} : { translateHint }),
       interactive: entry.definition.capturing === true,
       runtime: surfaceRuntime,
-      ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
+      ...surfaceTitle(entry, interaction),
     })!
     const component = new OverlayComponent(compiled, () => overlayViewport(entry), runtime.requestRender)
     const handle = entry.definition.presentation === 'editor' ? undefined : runtime.showOverlay(component, {
@@ -352,7 +357,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(translateHint === undefined ? {} : { translateHint }),
       interactive: entry.definition.capturing === true,
       runtime: record.runtime,
-      ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
+      ...surfaceTitle(entry, record.interaction),
     })!
     record.renderedRevision = record.interaction.revision
     record.component.replace(compiled)

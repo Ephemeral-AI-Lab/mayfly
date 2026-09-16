@@ -8,6 +8,7 @@
 
 import type { MayflyFormField, MayflyInlineSpan, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
+import { displayKey } from './key-actions.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
@@ -328,7 +329,7 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
 function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly value: string, readonly focused: boolean, readonly active: boolean } {
   const busy = item.busy === true
   const focused = focus.focused && focus.key === item.id && item.disabled !== true && !busy
-  const label = `${busy ? '… ' : ''}${item.label}`
+  const label = `${busy ? '… ' : ''}${item.label}${item.key === undefined ? '' : ` (${displayKey(item.key)})`}`
   const framed = item.intent === 'primary' ? `[ ${label} ]` : item.intent === 'danger' ? `! ${label}` : label
   const content = item.disabled === true || busy ? colors.muted(framed) : item.intent === 'danger' ? colors.error(framed) : focused || item.intent === 'primary' ? colors.primary(framed) : colors.text(framed)
   const selection = focused ? colors.selectedBg(content) : content
