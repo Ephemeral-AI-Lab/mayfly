@@ -16,6 +16,8 @@ export interface UiChoiceState {
   readonly searchAnchor: string | undefined
   readonly matches: readonly number[] | undefined
   readonly expandedIds: readonly string[]
+  /** Per-row segment drafts keyed by item id; ephemeral and excluded from `dirty`. */
+  readonly segments?: Readonly<Record<string, string>>
   readonly treeIndex?: UiChoiceTreeIndex
   readonly visibleTreeIndices?: readonly number[]
 }
@@ -34,6 +36,7 @@ export type UiChoiceIntent =
   | { readonly kind: 'edge', readonly edge: 'first' | 'last' }
   | { readonly kind: 'toggle', readonly id: string }
   | { readonly kind: 'select', readonly ids: readonly string[] }
+  | { readonly kind: 'segment', readonly id: string, readonly direction: -1 | 1 }
   | { readonly kind: 'query', readonly query: string }
   | { readonly kind: 'stop-search' }
   | { readonly kind: 'clear-search' }
@@ -54,6 +57,7 @@ function freezeChoice(state: UiChoiceState): UiChoiceState {
     selectedIds: immutable(state.selectedIds),
     expandedIds: immutable(state.expandedIds),
     matches: state.matches === undefined ? undefined : immutable(state.matches),
+    ...(state.segments === undefined ? {} : { segments: Object.freeze({ ...state.segments }) }),
     ...(state.visibleTreeIndices === undefined ? {} : { visibleTreeIndices: immutable(state.visibleTreeIndices) }),
   })
 }
@@ -122,6 +126,7 @@ export function createChoiceState(definition: MayflyListNode): UiChoiceState {
     definition, focusedIndex, focusedPosition: matches === undefined ? Math.max(0, focusedIndex) : Math.max(0, matches.indexOf(focusedIndex)),
     focusedId: admittedListItem(definition.items, focusedIndex)?.id,
     selectedIds: definition.selectedIds, dirty: false, query, searching: false, searchAnchor: undefined, matches, expandedIds,
+    segments: {},
     ...(index === undefined ? {} : { treeIndex: index }),
   }))
 }
@@ -220,8 +225,12 @@ export function reconcileChoice(state: UiChoiceState, definition: MayflyListNode
   const focusedIndex = matches !== undefined
     ? matches.includes(anchored) ? anchored : matches[0] ?? -1
     : anchored < 0 ? firstReachable(definition, state.focusedIndex) : anchored
+  const segments = Object.fromEntries(Object.entries(state.segments ?? {}).filter(([id]) => {
+    const itemIndex = admittedListIndex(definition.items, id)
+    return itemIndex >= 0 && admittedListItem(definition.items, itemIndex)?.segment !== undefined
+  }))
   return freezeChoice(refreshTreeVisibility({
-    ...state, definition, focusedIndex,
+    ...state, definition, focusedIndex, segments,
     focusedPosition: matches === undefined ? Math.max(0, focusedIndex) : Math.max(0, matches.indexOf(focusedIndex)),
     matches, ...(index === undefined ? {} : { treeIndex: index }),
     focusedId: admittedListItem(definition.items, focusedIndex)?.id,
@@ -263,6 +272,18 @@ export function reduceChoice(state: UiChoiceState, intent: UiChoiceIntent): UiCh
     }))
   }
   if (intent.kind === 'stop-search') return state.searching ? freezeChoice({ ...state, searching: false }) : state
+  if (intent.kind === 'segment') {
+    const index = admittedListIndex(definition.items, intent.id)
+    const segment = index < 0 ? undefined : admittedListItem(definition.items, index)?.segment
+    if (segment === undefined) return state
+    const options = segment.options.filter(option => option.disabled !== true)
+    if (options.length < 2) return state
+    const current = choiceSegment(state, intent.id)!
+    const position = options.findIndex(option => option.id === current)
+    const next = options[Math.max(0, Math.min(options.length - 1, (position < 0 ? 0 : position) + intent.direction))]!
+    if (next.id === current) return state
+    return freezeChoice({ ...state, segments: { ...state.segments, [intent.id]: next.id } })
+  }
   if (intent.kind === 'expand') {
     const collapsing = state.expandedIds.includes(intent.id)
     const expandedIds = collapsing ? state.expandedIds.filter(id => id !== intent.id) : [...state.expandedIds, intent.id]
@@ -285,6 +306,18 @@ export function reduceChoice(state: UiChoiceState, intent: UiChoiceIntent): UiCh
   }
   const dirty = ids.length !== definition.selectedIds.length || ids.some(id => !definition.selectedIds.includes(id))
   return freezeChoice({ ...state, selectedIds: ids, dirty })
+}
+
+/** Resolve a row's effective segment option: draft, then the seeded `selectedId`, then the first enabled option. */
+export function choiceSegment(state: UiChoiceState, itemId: string): string | undefined {
+  const index = admittedListIndex(state.definition.items, itemId)
+  const segment = index < 0 ? undefined : admittedListItem(state.definition.items, index)?.segment
+  if (segment === undefined) return undefined
+  const draft = state.segments?.[itemId]
+  if (draft !== undefined && segment.options.some(option => option.id === draft)) return draft
+  return segment.selectedId !== undefined && segment.options.some(option => option.id === segment.selectedId)
+    ? segment.selectedId
+    : segment.options.find(option => option.disabled !== true)?.id
 }
 
 export function choiceError(state: UiChoiceState): string | undefined {

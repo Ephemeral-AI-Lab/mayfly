@@ -8,6 +8,7 @@ import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { deriveKeyRef, normalizeBaseURL, providerProfile, type ProviderProfile } from './provider-profile.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
+import { openUiOverlay } from './ui-overlay.ts'
 
 const NAMESPACE = 'llm-pi-ai'
 const address = (itemId: string): MayflyFormAddress => ({ pagePath: [{ controlId: 'provider-pages', itemId }], formId: 'provider' })
@@ -115,11 +116,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     const writable = settings.writable
     const selectedModels = [...new Set([...configuredIds(view.profile), ...customModels.keys()])]
     return ui.stack.column([
-      ui.tabs({ id: 'provider-pages', activeId: 'connection', items: [{ id: 'connection', label: t('Connection') }, { id: 'credentials', label: t('Credentials') }, { id: 'models', label: t('Models') }] }),
-      ui.child(ui.form({ id: 'provider', fields: [
-        { kind: 'input', id: 'name', label: t('Provider Name'), value: view.profile.displayName ?? route, required: true, disabled: !writable },
-        ...known ? [] : [{ kind: 'input' as const, id: 'baseURL', label: t('Base URL'), value: view.profile.baseURL ?? '', required: true, disabled: !writable }],
-      ] }), { tab: { controlId: 'provider-pages', itemId: 'connection' } }),
+      ui.tabs({ id: 'provider-pages', activeId: 'models', items: [{ id: 'models', label: t('Models') }, { id: 'connection', label: t('Connection') }, { id: 'credentials', label: t('Credentials') }] }),
       ui.child(ui.stack.column([
         ui.list({
           id: 'advertised-models', role: 'choose', mode: 'multiple', selectedIds: selectedModels,
@@ -131,12 +128,13 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
         }),
         ui.form({ id: 'provider', fields: [
           { kind: 'select', id: 'reasoning', label: t('Default thinking effort'), value: defaultEffort(view.profile), options: [{ id: PROVIDER_DEFAULT_EFFORT, label: t('Provider default') }, ...THINKING_LEVELS.map(level => ({ id: level, label: level }))], disabled: !writable },
-          { kind: 'input', id: 'custom-model-id', label: t('Custom model ID'), value: '', disabled: !writable },
-          { kind: 'number', id: 'custom-context', label: t('Custom context length'), value: null, min: 1, step: 1, unit: 'tokens', disabled: !writable },
-          { kind: 'multiselect', id: 'custom-efforts', label: t('Custom thinking efforts'), value: [], options: THINKING_LEVELS.map(level => ({ id: level, label: level })), disabled: !writable },
         ] }),
-        ui.actions({ id: 'model-actions', items: [{ id: 'add-custom-model', label: t('Add custom model'), submit: [address('models')], disabled: !writable }] }),
+        ui.actions({ id: 'model-actions', items: [{ id: 'add-custom-model', label: t('Add custom model'), disabled: !writable }] }),
       ], { gap: 1 }), { tab: { controlId: 'provider-pages', itemId: 'models' } }),
+      ui.child(ui.form({ id: 'provider', fields: [
+        { kind: 'input', id: 'name', label: t('Provider Name'), value: view.profile.displayName ?? route, required: true, disabled: !writable },
+        ...known ? [] : [{ kind: 'input' as const, id: 'baseURL', label: t('Base URL'), value: view.profile.baseURL ?? '', required: true, disabled: !writable }],
+      ] }), { tab: { controlId: 'provider-pages', itemId: 'connection' } }),
       ui.child(ui.stack.column([
         ui.fields([{ label: t('Credential'), value: [{ text: view.ref }] }, { label: t('Status'), value: [{ text: t(view.credential.configured ? 'Configured' : 'Not configured') }] }]),
         ui.form({ id: 'provider', fields: [{ kind: 'secret', id: 'key', label: t('API key'), value: '', placeholder: t('Leave unchanged'), disabled: !view.credential.writable }] }),
@@ -154,9 +152,51 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     const generation = ++refreshGeneration
     try {
       const view = await read()
-      if (cancellation.aborted || handle!.closed || generation !== refreshGeneration) return
-      handle!.set(node(view), { reason: view.ref !== openedRef ? 'replace' : 'data', source: source(view) })
+      if (cancellation.aborted || handle === undefined || handle.closed || generation !== refreshGeneration) return
+      handle.set(node(view), { reason: view.ref !== openedRef ? 'replace' : 'data', source: source(view) })
     } catch { /* explicit operations present failures; stale background reads cannot replace drafts */ }
+  }
+  const customModelId = `${id}.custom-model`
+  const customModelNode = (writable: boolean): MayflyUiNode => ui.stack.column([
+    ui.form({ id: 'custom-model', fields: [
+      { kind: 'input', id: 'custom-model-id', label: t('Model ID'), value: '', required: true, disabled: !writable },
+      { kind: 'number', id: 'custom-context', label: t('Context length'), value: null, min: 1, step: 1, unit: 'tokens', disabled: !writable },
+      { kind: 'multiselect', id: 'custom-efforts', label: t('Thinking efforts'), value: [], options: THINKING_LEVELS.map(level => ({ id: level, label: level })), disabled: !writable },
+    ] }),
+    ui.actions({ id: 'custom-model-actions', items: [
+      { id: 'add', label: t('Add model'), intent: 'primary', read: [{ pagePath: [], formId: 'custom-model' }], disabled: !writable },
+      { id: 'cancel', label: t('Cancel'), dismiss: true },
+    ] }),
+  ], { gap: 1 })
+  /** Stage one hand-declared model through a dedicated form; Save writes it. */
+  const openCustomModel = (): void => {
+    if (overlays.focus(customModelId)) return
+    const customHandle = openUiOverlay(ctx, {
+      id: customModelId, title: t('Add custom model'), presentation: 'editor', capturing: true,
+      scope: { kind: 'panel', parent: { kind: 'overlay', id } },
+      onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
+        if (event.kind !== 'activate' || event.actionId !== 'add' || event.inputs === undefined) return { kind: 'completed' }
+        /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+        if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
+        const fields = event.inputs.forms.flatMap(form => form.fields)
+        const modelId = String(fields.find(field => field.id === 'custom-model-id')?.value ?? '').trim()
+        if (modelId === '') return { kind: 'invalid', errors: [{ pagePath: [], formId: 'custom-model', fieldId: 'custom-model-id', message: t('Enter a model ID') }] }
+        const contextValue = fields.find(field => field.id === 'custom-context')?.value
+        const effortValue = fields.find(field => field.id === 'custom-efforts')?.value
+        customModels.set(modelId, {
+          ...(typeof contextValue === 'number' ? { contextWindow: contextValue } : {}),
+          ...(Array.isArray(effortValue) && effortValue.length > 0 ? { reasoningEfforts: Object.fromEntries(effortValue.map(level => [String(level), String(level)])) } : {}),
+        })
+        try {
+          const view = await read()
+          /* v8 ignore next -- a submission resolving after the editor closed finds its lifetime already released */
+          if (!cancellation.aborted && handle !== undefined && !handle.closed) handle.set(node(view), { reason: 'data', source: source(view) })
+        } catch { /* staging is in-memory; a failed re-read leaves the next refresh to repaint */ }
+        return { kind: 'completed', dismiss: true, feedback: { severity: 'success', message: t('Model "{model}" added', { model: modelId }) } }
+      } },
+    }, customModelNode(settings.writable), cancellation)
+    const offLocale = observeInteractionLocale(ctx, () => { if (!customHandle.closed) customHandle.set(customModelNode(settings.writable)) })
+    const offRemove = overlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === customModelId) { offLocale(); offRemove() } })
   }
   try {
     const initial = await read()
@@ -196,6 +236,10 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
         if (event.kind !== 'submit' && event.kind !== 'activate') return { kind: 'completed' }
         /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
         if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
+        if (event.kind === 'activate' && event.actionId === 'add-custom-model') {
+          openCustomModel()
+          return { kind: 'completed' }
+        }
         const view = await read()
         /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
         if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
@@ -226,18 +270,6 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
               ? { kind: 'conflict', ...reply(await read()), message: t('Provider settings changed elsewhere') }
               : { kind: 'failed', ...reply(await read()), message: t(settingsRemoved ? 'Provider removed, but the stored credential could not be cleared' : 'The stored credential could not be cleared') }
           }
-        }
-        if (event.kind === 'submit' && event.submission.actionId === 'add-custom-model') {
-          const fields = event.submission.forms.flatMap(form => form.fields)
-          const modelId = String(fields.find(field => field.id === 'custom-model-id')?.value ?? '').trim()
-          if (modelId === '') return { kind: 'invalid', errors: [{ ...address('models'), fieldId: 'custom-model-id', message: t('Enter a model ID') }] }
-          const contextValue = fields.find(field => field.id === 'custom-context')?.value
-          const effortValue = fields.find(field => field.id === 'custom-efforts')?.value
-          customModels.set(modelId, {
-            ...(typeof contextValue === 'number' ? { contextWindow: contextValue } : {}),
-            ...(Array.isArray(effortValue) && effortValue.length > 0 ? { reasoningEfforts: Object.fromEntries(effortValue.map(level => [String(level), String(level)])) } : {}),
-          })
-          return { kind: 'accepted', ...reply(view), feedback: { severity: 'success', message: t('Model "{model}" added', { model: modelId }) } }
         }
         const ops: SettingsPathOp[] = []
         let key: string | undefined

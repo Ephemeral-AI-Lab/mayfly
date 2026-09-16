@@ -16,6 +16,9 @@ import {
 } from '../../src/core/ui-compiler.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { choiceSegment } from '../../src/core/ui-interaction-choice.ts'
+import type { MayflyUiEvent } from '../../../ui/src/index.ts'
 import { ADVERSARIAL, expectLinesFit, SCAN_WIDTHS } from './width-scan.ts'
 
 const identity = (value: string): string => value
@@ -1385,6 +1388,61 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(f.events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'list', selectedIds: [] }])
     focus.handleInput?.(' ')
     expect(f.events.at(-1)).toEqual({ kind: 'selection-toggle', pagePath: [], controlId: 'list', selectedIds: ['a'] })
+  })
+
+  it('steps the focused list-row segment with arrow keys and reports it on acceptance', async () => {
+    const events: MayflyUiEvent[] = []
+    const model = new UiSurfaceModel('spec', {
+      id: 'spec', revision: 0, source: [], scope: { kind: 'app', targetId: 'spec' },
+      update: { reason: 'data' },
+      node: ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
+        { id: 'a', label: 'Alpha', segment: { label: 'Thinking', selectedId: 'default', options: [
+          { id: 'default', label: 'Default' },
+          { id: 'low', label: 'Low' },
+          { id: 'high', label: 'High' },
+        ] } },
+        { id: 'b', label: 'Beta' },
+      ] }),
+      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      definition: {},
+    })
+    const f = fixture()
+    const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    const focus = result.value.focusTarget!
+    focus.focused = true
+    expect(focus.render(80).join('\n')).toContain('‹ Default ›')
+    focus.handleInput?.('\x1b[C')
+    focus.handleInput?.('\x1b[C')
+    expect(focus.render(80).join('\n')).toContain('‹ High ›')
+    focus.handleInput?.('\x1b[D')
+    const choice = model.choice({ pagePath: [], controlId: 'models' })!
+    expect(choiceSegment(choice, 'a')).toBe('low')
+    focus.handleInput?.('\x1b[B')
+    expect(focus.render(80).join('\n')).not.toContain('‹')
+    focus.handleInput?.('\x1b[A')
+    focus.handleInput?.('\r')
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    expect(events[0]).toMatchObject({ kind: 'selection-accept', controlId: 'models', selectedIds: ['a'], segmentId: 'low' })
+    model.dispose()
+  })
+
+  it('seeds the segment strip without interaction and falls back to a generic hint label', () => {
+    const list = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
+      { id: 'a', label: 'Alpha', segment: { selectedId: 'low', options: [
+        { id: 'default', label: 'Default' },
+        { id: 'low', label: 'Low' },
+        { id: 'high', label: 'High' },
+      ] } },
+      { id: 'b', label: 'Beta' },
+    ] })
+    const f = fixture()
+    const result = compiledSurface(list, f.options)
+    result.focusTarget!.focused = true
+    expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
+    expect(focusedHint(list)).toContain('←/→ segment')
+    result.surfaceRuntime.dispose()
   })
 
   it('switches hints for text editing, select adjustment, and confirmation', () => {

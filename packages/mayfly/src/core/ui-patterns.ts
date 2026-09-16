@@ -6,7 +6,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-patterns
  */
 
-import type { MayflyFormField, MayflyInlineSpan, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
@@ -289,6 +289,50 @@ export function renderList(node: ListNode, width: number, height: number, focus:
   const focusRow = rows.findIndex(row => row.itemId === focus.key)
   const start = focusRow < 0 ? 0 : Math.min(Math.max(0, focusRow - Math.floor(limit / 2)), rows.length - limit)
   return rows.slice(start, start + limit).map(row => row.value)
+}
+
+/** The focused row's horizontal option strip; the selected option stays visible when the rest truncate. */
+export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string {
+  const available = safeWidth(width)
+  const tokens = segment.options.map(option => {
+    const active = option.id === selectedId
+    const text = active ? `‹ ${option.label} ›` : option.label
+    return { id: option.id, value: option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.textMuted(text) }
+  })
+  /** Options ahead of the active one keep their slots while they fit; the rest collapse into +N. */
+  const narrow = (prefix: string): { readonly body: string, readonly hidden: number } => {
+    const activeIndex = tokens.findIndex(token => token.id === selectedId)
+    const active = activeIndex < 0 ? undefined : tokens[activeIndex]!.value
+    const activeWidth = active === undefined ? 0 : visibleWidth(active)
+    const kept: string[] = []
+    let used = visibleWidth(prefix)
+    for (const token of tokens.slice(0, activeIndex < 0 ? tokens.length : activeIndex)) {
+      const next = used + (kept.length === 0 ? 0 : 2) + visibleWidth(token.value)
+      if (next + (activeWidth === 0 ? 0 : 2 + activeWidth) > available) break
+      kept.push(token.value)
+      used = next
+    }
+    return {
+      body: `${prefix}${[...kept, ...(active === undefined ? [] : [active])].join('  ')}`,
+      hidden: tokens.length - kept.length - (active === undefined ? 0 : 1),
+    }
+  }
+  const prefixes = [
+    `   ${segment.label === undefined ? '' : `${colors.textStrong(`${segment.label}:`)} `}`,
+    '   ',
+    '',
+  ]
+  const complete = `${prefixes[0]!}${tokens.map(token => token.value).join('  ')}`
+  if (visibleWidth(complete) <= available) return complete
+  const narrowed = prefixes.map(narrow)
+  // Keep the omitted-option count when a shorter prefix makes room for it.
+  for (const { body, hidden } of narrowed) {
+    const withHidden = `${body}${hidden > 0 ? `  +${String(hidden)}` : ''}`
+    if (visibleWidth(withHidden) <= available) return withHidden
+  }
+  // Then keep the active option itself, dropping the count when it cannot fit.
+  for (const { body } of narrowed) if (visibleWidth(body) <= available) return body
+  return fit(narrowed.at(-1)!.body, available)
 }
 
 export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {

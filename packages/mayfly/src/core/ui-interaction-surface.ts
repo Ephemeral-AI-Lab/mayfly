@@ -8,7 +8,7 @@ import type {
   MayflyScrollNode, MayflyTabsNode, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventEndpoint, MayflyUiNode, MayflyUiScope,
 } from '@ephemeral-ai/mayfly-ui'
 import { createFormState, formAddressKey, formDirty, inspectForm, reconcileForm, reduceForm, submitForm, validateForm, type UiFormIntent, type UiFormState } from './ui-interaction-form.ts'
-import { acknowledgeChoice, choiceError, createChoiceState, reconcileChoice, reduceChoice, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
+import { acknowledgeChoice, choiceError, choiceSegment, createChoiceState, reconcileChoice, reduceChoice, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
 import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls, type UiControlAddress } from './ui-interaction-tree.ts'
 import { admittedListIndex, admittedListItem, validateMayflyUiNode } from './ui-validator.ts'
 import { moveDocument, reconcileDocument, type UiDocumentAnchor, type UiDocumentState } from './ui-interaction-document.ts'
@@ -507,7 +507,8 @@ export class UiSurfaceModel {
       this.choices.set(key, next)
       if (error !== undefined) { this.report(key, { message: error, severity: 'error' }); return }
     }
-    if (!this.activeKeys.has(key)) this.start(key, { ...event, selectedIds: state.definition.role === 'browse' ? event.selectedIds : this.choices.get(key)!.selectedIds })
+    const segmentId = event.selectedIds.length === 1 && state.definition.mode !== 'multiple' ? choiceSegment(this.choices.get(key)!, event.selectedIds[0]!) : undefined
+    if (!this.activeKeys.has(key)) this.start(key, { ...event, selectedIds: state.definition.role === 'browse' ? event.selectedIds : this.choices.get(key)!.selectedIds, ...(segmentId === undefined ? {} : { segmentId }) })
   }
 
   requestClose(): void {

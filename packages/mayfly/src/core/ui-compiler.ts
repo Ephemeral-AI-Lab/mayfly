@@ -36,6 +36,7 @@ import {
   renderEmpty,
   renderFormField,
   renderList,
+  renderListSegment,
   renderLoader,
   renderProgress,
   renderSurfaceHead,
@@ -64,7 +65,7 @@ import {
 } from './ui-surface-state.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
-import { choiceError, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
+import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
@@ -720,6 +721,10 @@ function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOpt
   }
 
   const siblings = controls.filter(control => control.group === active.group)
+  const listSegment = active.kind === 'event' && active.listEntry !== undefined
+    ? admittedListItem(active.listEntry.node.items, active.listEntry.index)?.segment
+    : undefined
+  const segmentAdjustable = listSegment !== undefined && listSegment.options.filter(option => option.disabled !== true).length > 1
   const movement = siblings.length <= 1 && groupOrder(controls).length <= 1
     ? []
     : [actionsHint(
@@ -727,8 +732,10 @@ function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOpt
         'navigate',
         active.kind === 'event' && active.role === 'tab'
           ? [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT]
-          : [ACTION_MOVE_UP, ACTION_MOVE_DOWN, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT],
-        active.kind === 'event' && active.role === 'tab' ? '←→' : '↑↓←→',
+          : segmentAdjustable
+            ? [ACTION_MOVE_UP, ACTION_MOVE_DOWN]
+            : [ACTION_MOVE_UP, ACTION_MOVE_DOWN, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT],
+        active.kind === 'event' && active.role === 'tab' ? '←→' : segmentAdjustable ? '↑↓' : '↑↓←→',
         active.kind === 'event' && active.role === 'tab'
           ? 'tabs'
           : active.kind === 'event' && active.role === 'action'
@@ -768,6 +775,7 @@ function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOpt
     ...movement,
     ...(active.kind === 'event' && active.listEntry?.node.filterable === true ? [keyHint('search', 'Type', 'filter', 100)] : []),
     primary,
+    ...(segmentAdjustable ? [actionsHint(options, 'adjust', [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT], '←→', (listSegment.label ?? 'segment').toLowerCase(), 95)] : []),
     ...(active.kind === 'event' && active.listEntry?.node.tree === true ? [actionHint(options, ACTION_TOGGLE, 'Space', 'toggle branch', 95)] : []),
     ...(active.kind === 'event' && active.role === 'tab' ? [] : groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
     ...(escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 70)]),
@@ -1110,14 +1118,18 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const visibleCount = choice === undefined ? node.items.length : choiceVisibleCount(choice)
         const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
         const counter = visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
+        const focus = patternFocus(state, scopedControlGroup('list', node.id))
         const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted('No matches'), 0, width, true)] : empty?.render(width) ?? [] : renderList(
           { ...unfiltered, items, selectedIds: options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })?.selectedIds ?? node.selectedIds },
           width,
           Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1)),
-          patternFocus(state, scopedControlGroup('list', node.id)),
+          focus,
           options.colors,
         )
-        return [...(queryRows.length > 0 ? queryRows : query.length > 0 ? [sliceByColumn(`/ ${query}`, 0, width, true)] : []), ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body]
+        const focusedItem = focus.focused && focus.key !== '' ? entries.find(entry => entry.item.id === focus.key)?.item : undefined
+        const segment = focusedItem?.segment
+        const segmentRows = segment === undefined ? [] : [renderListSegment(segment, choice === undefined ? segment.selectedId : choiceSegment(choice, focusedItem!.id), width, options.colors)]
+        return [...(queryRows.length > 0 ? queryRows : query.length > 0 ? [sliceByColumn(`/ ${query}`, 0, width, true)] : []), ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body, ...segmentRows]
       }, options)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
       if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
@@ -2232,6 +2244,14 @@ class CompiledSurface implements MayflyEditorShellComponent {
         this.surfaceRuntime.interaction?.focusControl({ pagePath, controlId: active.listEntry.node.id, itemId: target.item.id })
         try { this.options.onFocusChange?.(focusIdentity(active.listEntry.node.id, target.item.id)) } catch { /* focus observers cannot escape input */ }
         return
+      }
+      if (direction === 'left' || direction === 'right') {
+        const item = admittedListItem(active.listEntry.node.items, active.listEntry.index)
+        if (item?.segment !== undefined && this.surfaceRuntime.interaction !== undefined) {
+          this.surfaceRuntime.interaction.updateChoice({ pagePath: active.identity.pagePath!, controlId: active.listEntry.node.id },
+            { kind: 'segment', id: item.id, direction: direction === 'left' ? -1 : 1 })
+          return
+        }
       }
     }
     if (direction !== undefined) {

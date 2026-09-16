@@ -72,7 +72,7 @@ export type MayflyUiObservationEvent = (
 ) & { readonly pagePath: MayflyPagePath }
 export type MayflyUiActionEvent = (
   | { readonly kind: 'activate', readonly controlId: string, readonly actionId: string, readonly itemId?: string, readonly inputs?: MayflySubmission }
-  | { readonly kind: 'selection-accept', readonly controlId: string, readonly selectedIds: readonly string[], readonly actionId?: string }
+  | { readonly kind: 'selection-accept', readonly controlId: string, readonly selectedIds: readonly string[], readonly actionId?: string, readonly segmentId?: string }
   | { readonly kind: 'submit', readonly controlId: string, readonly submission: MayflySubmission }
   | { readonly kind: 'dismiss' }
 ) & { readonly pagePath: MayflyPagePath }

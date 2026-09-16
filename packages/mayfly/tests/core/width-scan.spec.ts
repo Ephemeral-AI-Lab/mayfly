@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import type { SelectItem, SelectListTheme } from '@earendil-works/pi-tui'
 import { clampRowsToWidth, framePanel } from '../../src/core/chrome.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
+import { renderListSegment } from '../../src/core/ui-patterns.ts'
 import { GutterComponent } from '../../src/core/gutter.ts'
 import { renderMermaidRows } from '../../src/core/rich-document.ts'
 import { compileMayflyEditorShellNode, compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
@@ -168,6 +169,22 @@ describe('core width-scan', () => {
         const diagram = renderMermaidRows(mermaid, width)
         const documentRows = diagram ?? wrapTextWithAnsi(mermaid, Math.max(1, width))
         expectLinesFit(`Mermaid/${name}`, documentRows, width)
+      }
+    })
+
+    it(`list-row segment strip survives ${name}`, () => {
+      const segment = {
+        label: text.slice(0, 80),
+        selectedId: 'b',
+        options: [
+          { id: 'a', label: text.slice(0, 60) },
+          { id: 'b', label: `selected ${text.slice(0, 40)}` },
+          { id: 'c', label: 'tail option' },
+        ],
+      }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`ListSegment/${name}`, [renderListSegment(segment, 'b', width, statusColors as MayflySemanticColors)], width)
+        expectLinesFit(`ListSegment-none/${name}`, [renderListSegment(segment, undefined, width, statusColors as MayflySemanticColors)], width)
       }
     })
   }
