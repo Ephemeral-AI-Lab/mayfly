@@ -156,17 +156,23 @@ try {
   terminal.write('\x1b[B')
   await delay(100)
   terminal.write('\r')
-  await waitFor(() => view().includes('Endpoint protocol'), 'provider protocol picker')
-  terminal.write('\r')
-  await waitFor(() => view().includes('Custom endpoint') && view().includes('Base URL'), 'provider form')
+  await waitFor(() => view().includes('Custom endpoint') && view().includes('Protocol') && view().includes('Base URL'), 'provider form')
+  terminal.write('\t')
+  await delay(200)
   terminal.write('portable-form')
   await waitFor(() => view().includes('portable-form'), 'form editing')
+  terminal.write('\r')
+  await delay(200)
   terminal.write('\x7f')
   await waitFor(() => view().includes('portable-for') && !view().includes('portable-form'), 'form backspace')
-  for (let attempt = 0; attempt < 3 && view().includes('Provider Name'); attempt += 1) {
+  for (let attempt = 0; attempt < 4 && !view().includes('Discard unsaved changes'); attempt += 1) {
     terminal.write('\x1b')
     await delay(350)
   }
+  await waitFor(() => view().includes('Discard unsaved changes'), 'discard confirmation')
+  terminal.write('\x1b[C')
+  await delay(100)
+  terminal.write('\r')
   await waitFor(() => !view().includes('Provider Name'), 'provider form cancellation')
   scenarios.push('form-edit-cancel')
 
