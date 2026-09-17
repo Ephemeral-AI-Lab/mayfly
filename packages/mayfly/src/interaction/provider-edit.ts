@@ -198,28 +198,32 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     const offLocale = observeInteractionLocale(ctx, () => { if (!customHandle.closed) customHandle.set(customModelNode(settings.writable)) })
     const offRemove = overlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === customModelId) { offLocale(); offRemove() } })
   }
-  try {
-    const initial = await read()
-    if (initial.profile === undefined) { releaseLifetime(); return false }
+  /** Probe the endpoint's model listing after the editor opens; findings repaint the Models tab. */
+  const discover = (profile: ProviderProfile): void => {
     const llm = ctx.get('llm')
-    if (llm !== undefined) {
-      // The listing is an OpenAI-style `${base}/models` even when the route
-      // speaks another protocol, so probe the candidate bases with the one
-      // readable listing protocol; a catalog route with no baseURL answers
-      // from the adapter's own registry.
-      const bases = initial.profile.baseURL === undefined ? [] : discoveryBases(initial.profile.baseURL)
+    if (llm === undefined) return
+    // The listing is an OpenAI-style `${base}/models` even when the route
+    // speaks another protocol, so probe the candidate bases with the one
+    // readable listing protocol; a catalog route with no baseURL answers
+    // from the adapter's own registry.
+    const bases = profile.baseURL === undefined ? [] : discoveryBases(profile.baseURL)
+    void (async () => {
       for (const base of bases.length === 0 ? [undefined] : bases) {
+        if (cancellation.aborted) return
         try {
           const found = await llm.discoverModels(NAMESPACE, {
             provider: route,
             api: 'openai-completions',
             ...(base === undefined ? {} : { baseURL: base }),
           }, cancellation)
-          if (found.length > 0) { discoveredModels = found; break }
+          if (found.length > 0) { discoveredModels = found; await refresh(); return }
         } catch { /* discovery is advisory; an unreachable endpoint leaves stored configuration editable */ }
       }
-    }
-    const loaded = await read()
+    })()
+  }
+  try {
+    const initial = await read()
+    if (initial.profile === undefined) { releaseLifetime(); return false }
     if (overlays.focus(id)) { releaseLifetime(); return true }
     openedRef = initial.ref
     const offSettings = ctx.on('settings/document-updated', ns => { if (String(ns) === NAMESPACE) void refresh() })
@@ -231,7 +235,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     cleanup = ctx.effect(() => () => { offSettings(); offValues(); offCredential(); offLocale(); releaseLifetime() })
     handle = overlays.open({
       id, title: t('Configure {route}', { route }), presentation: 'editor', capturing: true,
-      scope: { kind: 'app', targetId: `${NAMESPACE}/${route}` }, source: source(loaded),
+      scope: { kind: 'app', targetId: `${NAMESPACE}/${route}` }, source: source(initial),
       onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
         if (event.kind !== 'submit' && event.kind !== 'activate') return { kind: 'completed' }
         /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
@@ -314,7 +318,8 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
               : { kind: 'failed', ...reply(await read()), ...(settingsWritten ? { acceptedFields: ops.map(op => ({ ...address('connection'), fieldId: op.path.at(-1) === 'displayName' ? 'name' : 'baseURL' })) } : {}), message: t(settingsWritten ? 'Provider settings saved, but the credential could not be saved' : 'Provider configuration could not be saved') }
         }
       } },
-    }, node(loaded))
+    }, node(initial))
+    discover(initial.profile)
     const closeOnAbort = () => handle?.close()
     cancellation.addEventListener('abort', closeOnAbort, { once: true })
     const offOverlay = overlays.subscribe(delta => {
