@@ -21,6 +21,7 @@ import { setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { choiceSegment } from '../../src/core/ui-interaction-choice.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { renderRequest } from './request-fixture.ts'
 
@@ -430,6 +431,68 @@ describe('model-family commands', () => {
     options.invoke('default')
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
     expect(writes).toEqual([{ provider: 'mock', model: 'mock-vision', reasoningEffort: 'low' as never }])
+  })
+
+  it('/model rows expose a thinking segment seeded at the live effort', async () => {
+    const { ctx, screen, agent } = await mount({ modelRef: fakeModelRef({ provider: 'mock', model: 'mock', reasoningEffort: 'low' as never }).ref })
+    await ctx.commands.execute(agent, '/model', [], signal())
+    const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
+    const address = { pagePath: [] as const, controlId: 'models' }
+    const mock = JSON.stringify(['mock', 'mock'])
+    const pro = JSON.stringify(['mock', 'mock-pro'])
+    const choice = () => picker.choice(address)!
+    expect(choiceSegment(choice(), mock)).toBe('low')
+    expect(choiceSegment(choice(), pro)).toBe('default')
+    overlay(screen).handleInput(KEY.down)
+    expect(overlay(screen).render(80).join('\n')).toContain('‹ Provider default ›')
+    overlay(screen).handleInput(KEY.up)
+    const rows = overlay(screen).render(80).join('\n')
+    expect(rows).toContain('‹ low ›')
+    expect(rows).toContain('Thinking:')
+  })
+
+  it('/model Enter carries the focused row segment into the options commit', async () => {
+    const { ctx, screen, agent, writes, saveSelection } = await mount()
+    await ctx.commands.execute(agent, '/model', [], signal())
+    const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
+    const mock = JSON.stringify(['mock', 'mock'])
+    const choice = () => picker.choice({ pagePath: [], controlId: 'models' })!
+    // Left clamps at the seeded default; two Rights land on high.
+    overlay(screen).handleInput(KEY.left)
+    expect(choiceSegment(choice(), mock)).toBe('default')
+    overlay(screen).handleInput(KEY.right)
+    overlay(screen).handleInput(KEY.right)
+    expect(choiceSegment(choice(), mock)).toBe('high')
+    overlay(screen).handleInput(KEY.enter)
+    const options = await vi.waitFor(() => {
+      const model = ctx.mayflyUiInteraction.get('overlay', 'mayfly.model.options')
+      expect(model).toBeDefined()
+      return model!
+    })
+    expect(options.form({ pagePath: [], formId: 'model-options' })?.fields.effort?.value).toBe('high')
+    options.invoke('session')
+    await vi.waitFor(() => { expect(writes).toHaveLength(1) })
+    expect(writes).toEqual([{ provider: 'mock', model: 'mock', reasoningEffort: 'high' as never }])
+    expect(saveSelection).not.toHaveBeenCalled()
+  })
+
+  it('/model omits the segment when a model exposes no efforts', async () => {
+    const { ctx, screen, agent, writes } = await mount({ catalog: { reasoning: null } })
+    await ctx.commands.execute(agent, '/model', [], signal())
+    const node = JSON.stringify(ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.models')?.node)
+    expect(node).not.toContain('segment')
+    overlay(screen).handleInput(KEY.right)
+    overlay(screen).handleInput(KEY.down)
+    overlay(screen).handleInput(KEY.enter)
+    const options = await vi.waitFor(() => {
+      const model = ctx.mayflyUiInteraction.get('overlay', 'mayfly.model.options')
+      expect(model).toBeDefined()
+      return model!
+    })
+    expect(options.form({ pagePath: [], formId: 'model-options' })?.fields.effort).toBeUndefined()
+    options.invoke('session')
+    await vi.waitFor(() => { expect(writes).toHaveLength(1) })
+    expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro' }])
   })
 
   it('rejects malformed picker actions without mutating the selection', async () => {

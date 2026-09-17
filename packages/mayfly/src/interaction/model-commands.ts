@@ -400,6 +400,11 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
       id: JSON.stringify([item.provider, item.id]), label: `${item.providerLabel}/${item.name}`, group: item.providerLabel,
       ...(item.contextWindow === undefined ? {} : { detail: `${formatContextWindow(item.contextWindow)} context` }),
       ...(item.provider === selection.read.provider && item.id === selection.read.model ? { badge: t('current') } : {}),
+      ...(item.efforts === undefined ? {} : { segment: {
+        label: t('Thinking'),
+        options: [{ id: 'default', label: t('Provider default') }, ...item.efforts.map(id => ({ id, label: id }))],
+        selectedId: item.provider === selection.read.provider && item.id === selection.read.model && selection.read.reasoningEffort !== undefined && item.efforts.includes(String(selection.read.reasoningEffort)) ? String(selection.read.reasoningEffort) : 'default',
+      } }),
     }))
     await openAgentOverlay(ctx, agent, { id: 'mayfly.models', title: t('Select a model'), presentation: 'editor', capturing: true }, ui.list({
       id: 'models', role: 'browse', selectedIds: [], items: rows, filterable: true,
@@ -408,7 +413,8 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
       if (event.kind !== 'selection-accept') return { kind: 'completed' }
       const item = byId.get(event.selectedIds[0]!)
       if (item === undefined) return { kind: 'failed', message: t('The model is no longer available') }
-      await modelOptions(ctx, agent, item, item.provider === selection.read.provider && item.id === selection.read.model ? String(selection.read.reasoningEffort ?? 'default') : undefined, signal)
+      const liveEffort = item.provider === selection.read.provider && item.id === selection.read.model ? String(selection.read.reasoningEffort ?? 'default') : undefined
+      await modelOptions(ctx, agent, item, event.segmentId ?? liveEffort, signal)
       return { kind: 'completed' }
     }, { signal, reopen: 'focus' })
     return { kind: 'success' }

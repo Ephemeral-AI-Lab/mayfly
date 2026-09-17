@@ -16,6 +16,8 @@ import type {
   MayflyFormField,
   MayflyInlineSpan,
   MayflyListItem,
+  MayflyListSegment,
+  MayflyListSegmentOption,
   MayflySection,
   MayflySectionContentNode,
   MayflyStatusChild,
@@ -255,6 +257,7 @@ function listItem(value: unknown, path: string, state: ValidationState): MayflyL
   return enter(value, path, state, object => {
     const disabledValue = own(object, 'disabled', path)
     const detailSpansValue = own(object, 'detailSpans', path)
+    const segmentValue = own(object, 'segment', path)
     return {
       id: text(required(object, 'id', path), `${path}.id`, state),
       label: text(required(object, 'label', path), `${path}.label`, state),
@@ -266,6 +269,35 @@ function listItem(value: unknown, path: string, state: ValidationState): MayflyL
       ...optional(optionalText(object, 'parentId', path, state), 'parentId'),
       ...optional(optionalText(object, 'searchText', path, state), 'searchText'),
       ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`), 'disabled'),
+      ...optional(segmentValue === undefined ? undefined : listSegment(segmentValue, `${path}.segment`, state), 'segment'),
+    }
+  })
+}
+
+function segmentOption(value: unknown, path: string, state: ValidationState): MayflyListSegmentOption {
+  return enter(value, path, state, object => {
+    const disabledValue = own(object, 'disabled', path)
+    return {
+      id: text(required(object, 'id', path), `${path}.id`, state),
+      label: text(required(object, 'label', path), `${path}.label`, state),
+      ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`), 'disabled'),
+      ...optional(optionalText(object, 'disabledReason', path, state), 'disabledReason'),
+    }
+  })
+}
+
+function listSegment(value: unknown, path: string, state: ValidationState): MayflyListSegment {
+  return enter(value, path, state, object => {
+    const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => segmentOption(item, `${path}.options[${String(index)}]`, state))
+    if (options.length === 0) invalid(`${path}.options must not be empty`)
+    uniqueIds(options, `${path}.options`)
+    const selectedIdValue = own(object, 'selectedId', path)
+    const selectedId = selectedIdValue === undefined ? undefined : text(selectedIdValue, `${path}.selectedId`, state)
+    if (selectedId !== undefined && !options.some(option => option.id === selectedId)) invalid(`${path}.selectedId is not an option`)
+    return {
+      options,
+      ...optional(optionalText(object, 'label', path, state), 'label'),
+      ...optional(selectedId, 'selectedId'),
     }
   })
 }

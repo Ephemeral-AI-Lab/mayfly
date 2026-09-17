@@ -56,7 +56,10 @@ export interface MayflySurfaceNode { readonly kind: 'surface', readonly title?: 
 export interface MayflyScrollNode { readonly kind: 'scroll', readonly id?: string, readonly child: MayflyUiNode, readonly follow?: 'none' | 'start' | 'end', readonly scrollbar?: boolean }
 export interface MayflyTabItem { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly count?: number, readonly backId?: string }
 export interface MayflyTabsNode { readonly kind: 'tabs', readonly id: string, readonly activeId: string, readonly items: readonly MayflyTabItem[], readonly mode?: 'tabs' | 'wizard' }
-export interface MayflyListItem { readonly id: string, readonly label: string, readonly detail?: string, readonly detailSpans?: readonly MayflyInlineSpan[], readonly badge?: string, readonly group?: string, readonly disabled?: boolean, readonly disabledReason?: string, readonly parentId?: string, readonly searchText?: string }
+export interface MayflyListSegmentOption { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly disabledReason?: string }
+/** A horizontal option strip bound to one list row; left/right steps it while the row is focused and `selection-accept` reports it as `segmentId`. */
+export interface MayflyListSegment { readonly label?: string, readonly options: readonly MayflyListSegmentOption[], readonly selectedId?: string }
+export interface MayflyListItem { readonly id: string, readonly label: string, readonly detail?: string, readonly detailSpans?: readonly MayflyInlineSpan[], readonly badge?: string, readonly group?: string, readonly disabled?: boolean, readonly disabledReason?: string, readonly parentId?: string, readonly searchText?: string, readonly segment?: MayflyListSegment }
 export interface MayflyListNode { readonly kind: 'list', readonly id: string, readonly role: 'browse' | 'choose', readonly mode?: 'single' | 'multiple', readonly selectedIds: readonly string[], readonly items: readonly MayflyListItem[], readonly filter?: string, readonly filterable?: boolean, readonly tree?: boolean, readonly minSelected?: number, readonly maxSelected?: number, readonly acceptActionId?: string, readonly empty?: MayflyUiNode }
 export interface MayflyFormFieldBase {
   readonly id: string

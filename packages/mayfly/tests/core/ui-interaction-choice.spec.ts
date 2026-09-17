@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { acknowledgeChoice, choiceError, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, decorateChoiceItem, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
+import { acknowledgeChoice, choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, decorateChoiceItem, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
 
 const tree = ui.list({ id: 'tree', role: 'choose', tree: true, selectedIds: [], filterable: true, items: [
   { id: 'root', label: 'Root' },
@@ -179,5 +179,102 @@ describe('flat choice reducer', () => {
     expect(choiceError({ ...createChoiceState(flat), selectedIds: ['disabled'] })).toBe('A selected option is unavailable')
     expect(choiceError(createChoiceState(flat))).toBeUndefined()
     expect(choiceError(createChoiceState(ui.list({ id: 'optional', role: 'choose', selectedIds: [], items: [] })))).toBeUndefined()
+  })
+})
+
+describe('row segment drafts', () => {
+  const segmented = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
+    { id: 'a', label: 'A', segment: { label: 'Thinking', selectedId: 'low', options: [
+      { id: 'default', label: 'Default' },
+      { id: 'low', label: 'Low' },
+      { id: 'high', label: 'High' },
+    ] } },
+    { id: 'b', label: 'B', segment: { options: [
+      { id: 'off', label: 'Off' },
+      { id: 'on', label: 'On', disabled: true },
+    ] } },
+    { id: 'c', label: 'C' },
+  ] })
+
+  it('resolves the seeded option, steps without wrapping, and stays out of selection', () => {
+    let state = createChoiceState(segmented)
+    expect(choiceSegment(state, 'a')).toBe('low')
+    state = reduceChoice(state, { kind: 'segment', id: 'a', direction: 1 })
+    expect(choiceSegment(state, 'a')).toBe('high')
+    expect(reduceChoice(state, { kind: 'segment', id: 'a', direction: 1 })).toBe(state)
+    state = reduceChoice(state, { kind: 'segment', id: 'a', direction: -1 })
+    state = reduceChoice(state, { kind: 'segment', id: 'a', direction: -1 })
+    expect(choiceSegment(state, 'a')).toBe('default')
+    expect(reduceChoice(state, { kind: 'segment', id: 'a', direction: -1 })).toBe(state)
+    expect(state.selectedIds).toEqual([])
+    expect(state.dirty).toBe(false)
+  })
+
+  it('ignores rows without enough enabled options and unknown ids', () => {
+    const state = createChoiceState(segmented)
+    expect(choiceSegment(state, 'b')).toBe('off')
+    expect(reduceChoice(state, { kind: 'segment', id: 'b', direction: 1 })).toBe(state)
+    expect(reduceChoice(state, { kind: 'segment', id: 'c', direction: 1 })).toBe(state)
+    expect(reduceChoice(state, { kind: 'segment', id: 'missing', direction: 1 })).toBe(state)
+    expect(choiceSegment(state, 'c')).toBeUndefined()
+    expect(choiceSegment(state, 'missing')).toBeUndefined()
+  })
+
+  it('keeps drafts for surviving rows and drops removed segments on reconcile', () => {
+    let state = reduceChoice(createChoiceState(segmented), { kind: 'segment', id: 'a', direction: -1 })
+    state = reduceChoice(state, { kind: 'segment', id: 'a', direction: -1 })
+    expect(choiceSegment(state, 'a')).toBe('default')
+    const updated = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B', segment: segmented.items[1]!.segment },
+      { id: 'c', label: 'C' },
+    ] })
+    state = reconcileChoice(state, updated)
+    expect(choiceSegment(state, 'a')).toBeUndefined()
+    expect(state.segments?.['a']).toBeUndefined()
+    const absent = reconcileChoice({ ...state, segments: { gone: 'x' } }, segmented)
+    expect(absent.segments?.['gone']).toBeUndefined()
+    expect(reconcileChoice(state, state.definition)).toBe(state)
+  })
+
+  it('falls back to the first enabled option when the seed is absent or unknown', () => {
+    const unseeded = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
+      { id: 'a', label: 'A', segment: { options: [
+        { id: 'off', label: 'Off', disabled: true },
+        { id: 'on', label: 'On' },
+      ] } },
+      { id: 'b', label: 'B', segment: { selectedId: 'gone', options: [
+        { id: 'off', label: 'Off' },
+        { id: 'on', label: 'On' },
+      ] } },
+    ] })
+    const state = createChoiceState(unseeded)
+    expect(choiceSegment(state, 'a')).toBe('on')
+    expect(choiceSegment(state, 'b')).toBe('off')
+    const staleDraft = reduceChoice({ ...state, segments: { b: 'gone' } }, { kind: 'segment', id: 'b', direction: 1 })
+    expect(choiceSegment(staleDraft, 'b')).toBe('on')
+  })
+
+  it('steps from a draft left on a disabled option', () => {
+    const list = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
+      { id: 'a', label: 'A', segment: { options: [
+        { id: 'x', label: 'X' },
+        { id: 'y', label: 'Y', disabled: true },
+        { id: 'z', label: 'Z' },
+      ] } },
+    ] })
+    const seeded = { ...createChoiceState(list), segments: { a: 'y' } }
+    expect(choiceSegment(seeded, 'a')).toBe('y')
+    expect(choiceSegment(reduceChoice(seeded, { kind: 'segment', id: 'a', direction: 1 }), 'a')).toBe('z')
+    expect(choiceSegment(reduceChoice(seeded, { kind: 'segment', id: 'a', direction: -1 }), 'a')).toBe('x')
+  })
+
+  it('tolerates choice state predating the segment map', () => {
+    const { segments: _segments, ...legacy } = createChoiceState(segmented)
+    const focused = reduceChoice(legacy, { kind: 'focus', id: 'c' })
+    expect(focused.segments).toBeUndefined()
+    expect(choiceSegment(reconcileChoice(legacy, { ...segmented }), 'a')).toBe('low')
+    const stepped = reduceChoice(legacy, { kind: 'segment', id: 'a', direction: -1 })
+    expect(choiceSegment(stepped, 'a')).toBe('default')
   })
 })

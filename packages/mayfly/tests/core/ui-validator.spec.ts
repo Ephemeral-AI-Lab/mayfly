@@ -393,6 +393,28 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode(ui.list({ role: 'choose', id: 'disabled-list', selectedIds: [], items: [{ id: 'disabled', label: 'Disabled', disabled: true }] })).ok).toBe(true)
   })
 
+  it('admits a list-row segment and rejects malformed option sets', () => {
+    const valid = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [{
+      id: 'a', label: 'A', segment: {
+        label: 'Thinking',
+        selectedId: 'low',
+        options: [{ id: 'default', label: 'Default' }, { id: 'low', label: 'Low', disabled: true, disabledReason: 'n/a' }],
+      },
+    }] })
+    expect(validateMayflyUiNode(valid)).toMatchObject({ ok: true })
+    const base = { kind: 'list' as const, id: 'models', role: 'browse' as const, selectedIds: [] }
+    expect(validateMayflyUiNode({ ...base, items: [{ id: 'a', label: 'A', segment: { options: [] } }] }))
+      .toMatchObject({ ok: false, message: expect.stringContaining('must not be empty') })
+    expect(validateMayflyUiNode({ ...base, items: [{ id: 'a', label: 'A', segment: { options: [{ id: 'x', label: 'X' }, { id: 'x', label: 'Again' }] } }] }))
+      .toMatchObject({ ok: false, message: expect.stringContaining('duplicate ids') })
+    expect(validateMayflyUiNode({ ...base, items: [{ id: 'a', label: 'A', segment: { selectedId: 'gone', options: [{ id: 'x', label: 'X' }] } }] }))
+      .toMatchObject({ ok: false, message: expect.stringContaining('selectedId is not an option') })
+    expect(validateMayflyUiNode({ ...base, items: [{ id: 'a', label: 'A', segment: { options: 'flat' } }] }))
+      .toMatchObject({ ok: false, message: expect.stringContaining('options') })
+    expect(validateMayflyUiNode({ ...base, items: [{ id: 'a', label: 'A', segment: { options: [{ id: 'x', label: 'X' }], label: 7 } }] }))
+      .toMatchObject({ ok: false, message: expect.stringContaining('string') })
+  })
+
   it('contains proxies/accessors, ignores unknown getters, and never freezes caller data', () => {
     const proxy = new Proxy({}, { getPrototypeOf: () => { throw new Error('boom') } })
     expect(validateMayflyUiNode(proxy)).toEqual({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly UI validation failed safely' })
