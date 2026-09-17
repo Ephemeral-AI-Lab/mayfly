@@ -18,6 +18,7 @@ import type {
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { foldConversationFacts, initialConversationFacts, type ConversationFacts } from '../../src/conversation/facts.ts'
 import { projectChildSessionFacts, type ChildSessionFacts } from '../../src/transcript/session-facts.ts'
+import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
 import { compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
@@ -134,6 +135,7 @@ export class FakeFactsService {
   private readonly sessionListeners = new Set<(session: FakeSessionSnapshot | null) => void>()
   private readonly agentListeners = new Set<(agent: FakeAgent | null) => void>()
   private readonly childStates = new Map<string, { parentId: string, facts: ConversationFacts }>()
+  private readonly childDrafts = new Map<string, LiveAssistantDraft>()
   private readonly childListeners = new Set<(facts: readonly ChildSessionFacts[]) => void>()
 
   constructor(private readonly ctx: Context, current: FakeAgent | null, private readonly titleProjection = true) {
@@ -229,6 +231,14 @@ export class FakeFactsService {
     return () => this.childListeners.delete(listener)
   }
 
+  /** Inject a resident child draft and republish, mirroring the live-stream subscription. */
+  setChildDraft(id: string, draft: LiveAssistantDraft | undefined): void {
+    if (draft === undefined) this.childDrafts.delete(id)
+    else this.childDrafts.set(id, draft)
+    const parentId = this.childStates.get(id)?.parentId
+    if (parentId !== undefined) this.publishChildren(parentId)
+  }
+
   private attach(agent: FakeAgent | null): void {
     this.agent = agent
     for (const listener of this.agentListeners) listener(agent)
@@ -280,7 +290,7 @@ export class FakeFactsService {
 
   private children(): readonly ChildSessionFacts[] {
     return [...this.childStates].filter(([, child]) => child.parentId === this.session?.id)
-      .map(([id, child]) => projectChildSessionFacts(id, child.facts))
+      .map(([id, child]) => projectChildSessionFacts(id, child.facts, this.childDrafts.get(id)))
   }
 }
 

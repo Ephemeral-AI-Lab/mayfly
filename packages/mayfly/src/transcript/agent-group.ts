@@ -49,6 +49,8 @@ export interface AgentMemberLive {
   readonly endedAt?: number
   /** Total tokens, once at least one usage record landed. */
   readonly tokens?: number
+  /** Streamed output chars of the live attempt; absent once it settles. */
+  readonly liveChars?: number
   /** Dispatched tool calls this epoch. */
   readonly toolCount: number
   /** The activity second line, non-terminal states only. */
@@ -321,6 +323,7 @@ export class AgentGroupComponent implements MayflyComponent {
     const stats: string[] = []
     if (snapshot.live?.model !== undefined) stats.push(sanitizePluginText(snapshot.live.model).replace(/[\r\n]+/gu, ' '))
     if (snapshot.live?.effort !== undefined) stats.push(sanitizePluginText(snapshot.live.effort).replace(/[\r\n]+/gu, ' '))
+    if (snapshot.live?.liveChars !== undefined) stats.push(`↓${formatTok(snapshot.live.liveChars)}`)
     if (snapshot.live !== undefined) stats.push(`${snapshot.live.toolCount} tool${snapshot.live.toolCount === 1 ? '' : 's'}`)
     stats.push(formatElapsed(snapshot.elapsedSeconds))
     if (snapshot.live?.tokens !== undefined) stats.push(`${formatTok(snapshot.live.tokens)} tok`)

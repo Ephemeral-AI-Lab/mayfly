@@ -53,6 +53,8 @@ describe('agent tree models', () => {
     expect(agentMetricsText({ toolCount: 1 }, 1_000)).toBe('1 tool')
     expect(agentMetricsText({ settledMs: 65_000 }, 1_000)).toBe('1m 5s')
     expect(agentMetricsText({ tokens: 100, settledMs: 5_000, activeSince: 500 }, 3_500)).toBe('100 tok · 3s')
+    expect(agentMetricsText({ liveChars: 2_200, toolCount: 0, tokens: 0, activeSince: 0 }, 20_000)).toBe('↓2.1k · 0 tools · 0 tok · 20s')
+    expect(agentMetricsText({ liveChars: 0 }, 1_000)).toBe('')
   })
 
   it('counts only live descendants inside the selected subtree', () => {
@@ -85,7 +87,7 @@ interface CommandHarness {
   readonly opened: unknown[]
   readonly drain: ReturnType<typeof vi.fn>
   readonly liveAgents: Map<string, Agent>
-  readonly liveDrafts: Map<string, { readonly phase: string }>
+  readonly liveDrafts: Map<string, { readonly phase: string, readonly chars?: number }>
   readonly facts: Record<string, unknown>
   readonly notifyProjection: (session: Session, key: string, value: unknown) => void
   readonly switchAgent: (agent: Agent | null) => void
@@ -633,18 +635,23 @@ describe('mayfly-agents-command', () => {
     rig.tree = [child('child', { label: 'worker' })]
     await execute(rig)
     const model = browser(rig)
-    rig.liveDrafts.set('child', { phase: 'thinking' })
-    rig.facts.epochTokens = 4_096
+    rig.liveDrafts.set('child', { phase: 'thinking', chars: 2_048 })
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     const rows = browserRows(rig)
     expect(rows).toContain('Thinking…')
-    expect(rows).toContain('4k tok')
-    rig.liveDrafts.set('child', { phase: 'composing' })
+    expect(rows).toContain('↓2k')
+    rig.facts.epochTokens = 4_096
+    rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
+    expect(browserRows(rig)).toContain('4k tok')
+    rig.liveDrafts.set('child', { phase: 'composing', chars: 3_072 })
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     expect(browserRows(rig)).toContain('Writing…')
+    expect(browserRows(rig)).toContain('↓3k')
     rig.liveDrafts.delete('child')
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
-    expect(browserRows(rig)).not.toContain('Writing…')
+    const settled = browserRows(rig)
+    expect(settled).not.toContain('Writing…')
+    expect(settled).not.toMatch(/↓\d/)
     rig.notifyProjection(rig.parent.session, 'mayflyConversationFacts', rig.facts)
     expect(model.disposed).toBe(false)
     await rig.fiber.dispose()

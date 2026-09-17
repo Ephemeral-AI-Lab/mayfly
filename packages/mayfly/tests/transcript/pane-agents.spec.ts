@@ -252,6 +252,33 @@ describe('mayfly-pane-agents plugin', () => {
     expect(text).toContain('Using read')
   })
 
+  it('shows live streamed output for a thinking child before tokens settle', async () => {
+    const rig = await boot([
+      turnStart(1),
+      stepStart(1, 1),
+      subagentCallEvent(1, 1, 'a1', 'subagent', 'Survey', 'survey', { time: T0 }),
+      toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 70 }),
+    ])
+    const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
+    rig.ctx.emit('session/event', child, childTurnStart())
+    rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', {
+      sessionId: '9f5c4086a0674b55b621c3eaf8b88c0e',
+      attemptId: 'a1', revision: 1, turn: 1, step: 0,
+      phase: 'thinking', reasoning: 'draft', text: '', outputProgress: undefined, chars: 2_048, updatedAt: T0 + 2_000,
+    })
+    const text = rig.screen.paneLines(140).join('\n')
+    expect(text).toContain('↓2k')
+    expect(text).toContain('Thinking…')
+    rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', undefined)
+    expect(rig.screen.paneLines(140).join('\n')).not.toMatch(/↓\d/)
+    rig.facts.setChildDraft('elsewhere', {
+      sessionId: 'elsewhere',
+      attemptId: 'a9', revision: 1, turn: 1, step: 0,
+      phase: 'thinking', reasoning: '', text: '', outputProgress: undefined, chars: 10, updatedAt: T0 + 2_000,
+    })
+    await rig.dispose()
+  })
+
   it('holds a fresh waiting phase as running for one second, then reveals it', async () => {
     vi.useFakeTimers()
     let now = T0

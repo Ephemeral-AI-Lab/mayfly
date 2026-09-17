@@ -23,6 +23,8 @@ export interface ChildSessionFacts {
   readonly phase: 'waiting' | 'running' | 'completed' | 'failed'
   readonly tokens: number
   readonly toolCount: number
+  /** Streamed output chars of the live attempt; undefined once it settles. */
+  readonly liveChars?: number | undefined
   readonly activity?: string | undefined
   readonly model?: string | undefined
   readonly effort?: string | undefined
@@ -281,6 +283,7 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
         : marker?.kind === 'text' ? 'Writing…' : facts.active ? 'Starting…' : undefined
   return {
     id, phase, tokens: facts.epochTokens ?? 0, toolCount: facts.epochToolCount ?? 0,
+    ...(liveDraft !== undefined && liveDraft.chars > 0 ? { liveChars: liveDraft.chars } : {}),
     ...(facts.promptText === undefined ? {} : { promptText: facts.promptText }),
     ...(activity === undefined ? {} : { activity }),
     ...(facts.model === undefined ? {} : { model: facts.model }),
