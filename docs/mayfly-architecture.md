@@ -117,8 +117,8 @@ Harness session event truth。
 ```mermaid
 flowchart TB
     BASE["dsh-base"]
-    subgraph GRAPH["flat Cordis sibling graph · 34 inserted rows"]
-        SUPPORT["dsh support · 6 rows<br/>subagent settings · presets · host runner<br/>workspace · session controller · title"]
+    subgraph GRAPH["flat Cordis sibling graph"]
+        SUPPORT["dsh support rows<br/>subagent settings · presets · host runner · workspace<br/>connection · file upload · session controller · title"]
         UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
         RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]
         PLUGINS["external Cordis plugins"]
@@ -134,9 +134,10 @@ flowchart TB
 ```
 <!-- END diagram:mayfly-composition -->
 
-`cordis.patch.yml` 插入 34 个普通 sibling：6 个 dsh 支撑行和 28 个 Mayfly
-product 行。YAML 顺序不代表启动顺序；所有顺序要求必须由 `inject` 表达。
-动态 Cordis plugin 与官方 Mayfly 行处在同一 service graph。
+`cordis.patch.yml` 在 `dsh-base` 上插入普通 sibling：一组 dsh 支撑行与全部
+Mayfly product 行；行清单以该文件为准。YAML 顺序不代表启动顺序；所有顺序
+要求必须由 `inject` 表达。动态 Cordis plugin 与官方 Mayfly 行处在同一
+service graph。
 
 ## 验证
 

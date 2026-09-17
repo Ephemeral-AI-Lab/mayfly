@@ -7,9 +7,9 @@
 - [mayfly-seams.md](./mayfly-seams.md)：dsh 原生服务、Mayfly UI 服务与
   `mayflyCurrentAgent` 的使用边界。
 
-发布维护见 [package-release.md](./package-release.md)。既有版本说明位于
-`release-notes/`，历史调研与验收记录位于 `history/`；这些文件只描述其
-当时时点，不定义当前 API。
+发布维护见 [package-release.md](./package-release.md)。历史调研与验收记录位于
+[audits/](./audits/)，交互设计与迁移方案位于 [design/](./design/)；这些文件
+只描述其当时时点，不定义当前 API。
 
 跨平台自动化与桌面验收清单见 [platform-acceptance.md](./platform-acceptance.md)。
 

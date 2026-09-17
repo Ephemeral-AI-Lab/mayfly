@@ -21,8 +21,8 @@ export function apply(ctx: Context): void {
 }
 ```
 
-`narrow` may be `bottom`, `overlay`, or `hidden`. The handle also exposes
-`set(null)` releases the lane until the next non-null snapshot.
+`narrow` may be `bottom`, `overlay`, or `hidden`. `set(null)` releases the
+lane until the next non-null snapshot.
 
 ## Overlay
 

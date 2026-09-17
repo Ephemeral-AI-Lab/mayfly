@@ -1,6 +1,6 @@
 # Mayfly service seams
 
-Mayfly 2.0 不再定义 capability facade。插件依据 Harness reference 直接声明并
+Mayfly 不再定义 capability facade。插件依据 Harness reference 直接声明并
 消费需要的 dsh service。
 
 ## dsh 原生服务

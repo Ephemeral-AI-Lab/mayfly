@@ -1,6 +1,6 @@
 # Official optional plugins
 
-The `dsh-base` default assembly (78 plugin rows) already covers the full capability set: all built-in tools (shell/files/search/subagents/todo/goal/web/workflow), sandbox & approval, permission presets, plan mode, context compaction, the repeat-tool-call reminder, skills, session titles, and more. **But the following capabilities ship officially while staying out of the default assembly** — they are the everyday features of Codex / Claude Code-style TUIs and need an explicit `dsh plugin --profile <name> add`.
+The `dsh-base` default assembly (84 plugin rows) already covers the full capability set: all built-in tools (shell/files/search/subagents/todo/goal/web/workflow), sandbox & approval, permission presets, plan mode, context compaction, the repeat-tool-call reminder, skills, session titles, and more. **But the following capabilities ship officially while staying out of the default assembly** — they are the everyday features of Codex / Claude Code-style TUIs and need an explicit `dsh plugin --profile <name> add`.
 
 ## The list
 

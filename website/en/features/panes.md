@@ -16,9 +16,9 @@ A mode machine over the attached session's event stream, telling you what the ag
 
 ## Queue pane
 
-Follow-ups you submit while the agent runs queue in the harness inbox — the pane lists them: one row per message with a `queued ↑ turn:|step:` prefix. Empty queue, zero rows.
+Follow-ups you submit while the agent runs queue in the harness inbox — the pane leads with a divider and lists one row per message: messages awaiting the next turn carry a `Queued:` prefix and steer messages carry a `Steer:` prefix (user messages only). Empty queue, zero rows.
 
-**Up recall**: with an empty editor buffer, pressing ↑ removes the most recent queued message and puts its text back into your draft (steer intent wins over next-turn). Without the queue pane, ↑ goes to editor history.
+↑/↓ always belong to editor history — the queue pane only displays pending messages and never takes over keys (see [Input editor](/en/features/editor)).
 
 ## Todo pane
 

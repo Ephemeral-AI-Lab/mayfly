@@ -1,6 +1,6 @@
 # 官方可选插件
 
-`dsh-base` 的默认装配（78 个插件行）已覆盖完整能力：全部内置工具（shell/文件/搜索/子代理/todo/goal/web/workflow）、沙箱与审批、权限预设、计划模式、上下文压缩、重复工具提醒、Skills、会话标题等。**但以下几类能力官方发布、默认不装**——它们是 Codex / Claude Code 这类 TUI 的常用能力，需要 `dsh plugin --profile <name> add` 显式加入。
+`dsh-base` 的默认装配（84 个插件行）已覆盖完整能力：全部内置工具（shell/文件/搜索/子代理/todo/goal/web/workflow）、沙箱与审批、权限预设、计划模式、上下文压缩、重复工具提醒、Skills、会话标题等。**但以下几类能力官方发布、默认不装**——它们是 Codex / Claude Code 这类 TUI 的常用能力，需要 `dsh plugin --profile <name> add` 显式加入。
 
 ## 清单
 

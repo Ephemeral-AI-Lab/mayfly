@@ -14,7 +14,7 @@ Three keywords:
 
 - **Bundle** — a set of plugins shipped with their own mount code, declaring its plugin rows through the package's `cordis.patch.yml`; `dsh-base` is the first layer of every profile.
 - **Profile** — a named assembly: the bundles it layers, its own patch overrides, and its independently installed plugins. See [Profiles & directories](/en/dsh/profiles).
-- **Mayfly** — is a bundle: it inserts six dsh support rows and 28 Mayfly rows over `dsh-base`. Built-in features and external plugins are ordinary Cordis siblings on the same service graph (see the [features overview](/en/features/)).
+- **Mayfly** — is a bundle: it inserts a set of dsh support rows and the Mayfly rows over `dsh-base`. Built-in features and external plugins are ordinary Cordis siblings on the same service graph (see the [features overview](/en/features/)).
 
 ## CLI cheat sheet
 

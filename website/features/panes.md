@@ -16,9 +16,9 @@
 
 ## 排队消息面板（queue）
 
-你在 agent 运行中提交的 follow-up 进入 harness inbox 排队——面板把队列列出来：每条一行 `queued ↑ turn:|step:` 前缀。队列空时零行。
+你在 agent 运行中提交的 follow-up 进入 harness inbox 排队——面板以 divider 起头、每条一行列出队列：等待下一 turn 的消息带 `Queued:` 前缀，转向当前 step 的消息带 `Steer:` 前缀（均只列用户消息）。队列空时零行。
 
-**Up 召回**：编辑器 buffer 为空时按 ↑，移除最近一条排队消息并把其文本放回草稿（steer 意图优先于 next-turn）。未加载 queue 面板时，↑ 归编辑器历史浏览。
+↑/↓ 始终归编辑器历史浏览——queue 面板只展示排队消息，不接管按键（见[输入编辑器](/features/editor)）。
 
 ## todo 面板（todo）
 

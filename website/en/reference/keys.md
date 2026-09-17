@@ -29,6 +29,7 @@ confirmation state:
 | `Escape` | Return / cancel / dismiss | Editing → content → nested tabs → outer tabs → close, one layer per press; once back in the Editor, the completion/retract/interrupt chain applies |
 | `↑` / `↓` | Navigate a vertical layer | Move inside lists and forms without wrapping; disabled rows are skipped |
 | `Space` | Toggle selection | Toggle the focused multi-select entry; `Enter` confirms the set |
+| `Ctrl-U` | Clear filter | Clear the current search query in a filterable list |
 
 ## Editor context
 

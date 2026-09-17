@@ -14,7 +14,7 @@ dsh 是一个**插件化的 agent 宿主**（harness）：模型适配、工具�
 
 - **Bundle（捆）** —— 一组自带挂载代码的插件集合，通过包内 `cordis.patch.yml` 声明自己的插件行；`dsh-base` 是一切 profile 的第一层。
 - **Profile（装配）** —— 具名的组装方案：列出叠放的 bundle、自己的 patch 覆盖、以及独立安装的插件。详见 [Profile 与目录](/dsh/profiles)。
-- **Mayfly** —— 就是一个 bundle：在 `dsh-base` 之上插入 6 条 dsh 支撑行和 28 条 Mayfly 行；所有官方功能与外部插件都是同一 service graph 上的普通 Cordis sibling（见[功能总览](/features/)）。
+- **Mayfly** —— 就是一个 bundle：在 `dsh-base` 之上插入一组 dsh 支撑行和全部 Mayfly 行；所有官方功能与外部插件都是同一 service graph 上的普通 Cordis sibling（见[功能总览](/features/)）。
 
 ## CLI 速查
 

@@ -3,8 +3,8 @@
 English | [中文](README.zh.md)
 
 The installable Mayfly terminal UI bundle for dsh. Its flat
-`cordis.patch.yml` composition adds 34 sibling rows over `dsh-base`: six
-dsh support rows and 28 Mayfly product rows.
+`cordis.patch.yml` composition adds ordinary sibling rows over `dsh-base`:
+a set of dsh support rows and the Mayfly product rows.
 
 Plugins inherit native dsh services directly and opt into terminal UI with
 `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and

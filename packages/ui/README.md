@@ -39,10 +39,12 @@ renderer safety when a plugin contributes the expanded tree.
 
 The root entry is side-effect free. The explicit `./provider` entry owns the four
 Fiber-scoped snapshot registries; handles publish with `set()` and remove with
-`dispose()`. A snapshot is frozen before its revision advances. Pane, overlay,
-and editor-extension callbacks can mark an event-owned update with
-`{ eventRevision: context.revision }`. The package has no dependency on Harness,
-core, pi-tui, or a terminal runtime.
+`dispose()`. A snapshot is frozen before its revision advances. `set()` is a
+data refresh (`reason: 'data'`) or a new instance boundary
+(`reason: 'replace'`, the only update that may change `scope`); callbacks do
+not create acknowledgements — action handlers return structured replies that
+core admits before a single-use publisher updates the original registration.
+The package has no dependency on Harness, core, pi-tui, or a terminal runtime.
 
 `ui.markdown(source)`, `ui.diagram(source)`, and `ui.chart({ chart, ...data })` preserve
 only renderer-neutral wire data. Mermaid and chart libraries are core-owned;

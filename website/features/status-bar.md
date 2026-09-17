@@ -8,6 +8,8 @@ service，并使用 renderer-neutral `MayflyStatusNode`。
 | agent-view | 0（center） | 有辅助会话时显示当前侧、辅助类型/标签，以及 `F7 switch · F8 close` |
 | basic | 0 | 当前 model |
 | mode | 2 | plan/yolo 状态 |
+| goal | 2 | 当前 goal 的 `Goal <phase> · <rounds>/<max> · <activation>`（按 phase 着色；无 goal 时隐藏） |
+| jobs | 3 | `⏵ N jobs`——live（running/stopping）后台任务数；没有时隐藏 |
 | cwd | 5 | 当前工作目录 |
 | git | 10 | branch 与变更摘要 |
 | context | 20 | context 占用 |

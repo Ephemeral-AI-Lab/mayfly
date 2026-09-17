@@ -14,8 +14,8 @@ transcript 层把会话事件流折叠为条目并渲染。本页描述你会看
 
 两个**专属卡片**通过 render intent 注册，工具的呈现视图声明 `diff` 或 `terminal` 时接管：
 
-- **diff 卡** —— 逐文件统一 diff，LCS 行级着色（新增/删除/强调/行号槽各有 token）；折叠时每文件 12 行，展开 200 行。
-- **终端卡** —— `$ command` 头（shellMode 色）+ cwd + exit 徽章（error/warning 着色）；输出行折叠 10 行、展开 120 行；完成但无输出的运行显示 `(no output)`。
+- **diff 卡** —— 逐文件统一 diff，LCS 行级着色（新增/删除/强调/行号槽各有 token）；折叠态整卡至多 12 行（call 视图 + `... (N more lines, ctrl+o to expand)` 提示），展开渲染完整 result 视图。
+- **终端卡** —— `$ command` 头（shellMode 色）+ cwd + exit 徽章（error/warning 着色）；折叠态同样至多 12 行，展开显示有界输出（超长原始输出的调试视图以 200 行为上限）；完成但无输出的运行显示 `(no output)`。
 
 未知工具、或未注册 presenter 的工具一律回退通用卡片——intent 解析永不抛错。
 

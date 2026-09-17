@@ -8,7 +8,7 @@
 | `header` | `mayflyPanes` | header lane |
 | `right-inspector` | `mayflyPanes` | right lane 与窄屏 bottom fallback |
 | `bottom-log` | `mayflyPanes` | passive bottom lane |
-| `overlay` | `commands`, `mayflyOverlays` | 原生 command 打开 capturing overlay |
+| `overlay` | `commands`, `settings`, `mayflyOverlays` | 原生 command 打开 capturing overlay |
 | `ui-gallery` | `mayflyPanes` | 公共 node builder 展示 |
 
 `@mayfly-example/ecosystem` 通过五条普通 Cordis row 一次启用五个

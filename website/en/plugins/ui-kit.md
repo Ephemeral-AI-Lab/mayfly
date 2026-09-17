@@ -1,9 +1,8 @@
 # Public UI kit
 
 `@ephemeral-ai/mayfly-ui` is the pure renderer-neutral construction layer. It
-exports `ui`, `defineMayflyComponent()`, and the wire types from
-`@ephemeral-ai/mayfly-ui`. It has no Cordis plugin, service registration, or
-terminal dependency.
+exports `ui`, `defineMayflyComponent()`, and all of its wire types. It has no
+Cordis plugin, service registration, or terminal dependency.
 
 ```ts
 import { ui } from '@ephemeral-ai/mayfly-ui'

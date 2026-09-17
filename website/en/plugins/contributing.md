@@ -1,8 +1,11 @@
 # Contributing to Mayfly
 
 Mayfly is a pnpm 11 workspace requiring Node
-`^22.19.0 || >=24.0.0`. The release set has ten packages: api, ui, frontend,
-conversation, app, core, transcript, interaction, bundle, and cli.
+`^22.19.0 || >=24.0.0`. The release set has three packages:
+`@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`, and
+`@ephemeral-ai/mayfly-cli` (frontend, conversation, app, core, transcript,
+and interaction are internal source areas of `mayfly`, no longer published
+individually).
 
 Read root `AGENTS.md` and the owning package's `AGENTS.md`. Develop
 user-visible behavior, public seams, and Website changes in a dedicated

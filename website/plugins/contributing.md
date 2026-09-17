@@ -1,8 +1,9 @@
 # 贡献 Mayfly
 
 Mayfly 是 pnpm 11 workspace，要求 Node `^22.19.0 || >=24.0.0`。当前发布集为
-10 个 package：api、ui、frontend、conversation、app、core、transcript、
-interaction、bundle 和 cli。
+三个 package：`@ephemeral-ai/mayfly-ui`、`@ephemeral-ai/mayfly` 与
+`@ephemeral-ai/mayfly-cli`（frontend、conversation、app、core、transcript、
+interaction 是 `mayfly` 内部的源码区域，不再单独发布）。
 
 先阅读根 `AGENTS.md` 与 owning package 的 `AGENTS.md`。用户可见行为、
 public seam 或 Website 变更必须在专用 worktree/branch 开发。

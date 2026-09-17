@@ -13,7 +13,9 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 | `/sessions` | `/resume` | `[<session-id>]` | List persisted sessions as a lineage tree and switch; an id resumes directly | `mayfly-commands` |
 | `/btw` | — | `<question>` | Create a temporary side Agent and switch the complete UI to it; empty input closes | `mayfly-btw-command` |
 | `/agents` | — | `[stop <id>]` | Browse the subagent tree, view a child, or stop a continuable child | `mayfly-agents-command` |
+| `/jobs` | — | — | Browse the current Agent's background jobs (list, detail, Read output) | `mayfly-jobs` |
 | `/help` | — | — | Show available commands and key bindings | `mayfly-commands` |
+| `/mode` | — | — | Toggle plan mode (same as `Shift+Tab`) | `mayfly-commands` |
 | `/model` | — | `[id]` | Switch the session model (no argument opens the picker) | `mayfly-commands` (model-commands) |
 | `/effort` | `/thinking` | `[level]` | Switch the thinking effort (no argument opens the selector) | `mayfly-commands` (model-commands) |
 | `/provider` | — | `[list \| switch <name> \| add]` | List providers, switch the route, or add one | `mayfly-commands` (model-commands) |

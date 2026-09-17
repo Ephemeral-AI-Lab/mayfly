@@ -9,7 +9,7 @@ plugins:
 | `header` | `mayflyPanes` | header lane |
 | `right-inspector` | `mayflyPanes` | right lane and narrow bottom fallback |
 | `bottom-log` | `mayflyPanes` | passive bottom lane |
-| `overlay` | `commands`, `mayflyOverlays` | native command opening a capturing overlay |
+| `overlay` | `commands`, `settings`, `mayflyOverlays` | native command opening a capturing overlay |
 | `ui-gallery` | `mayflyPanes` | public node builders |
 
 `@mayfly-example/ecosystem` activates all five runtime examples

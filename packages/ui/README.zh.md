@@ -35,9 +35,10 @@ render 的节点。它只是纯 package factory，不是 runtime registry。插�
 
 根入口没有副作用；显式 `./provider` 入口持有四个 Fiber-scoped snapshot registry，
 handle 通过 `set()` 发布、通过 `dispose()` 移除。snapshot 冻结成功后 revision 才
-递增；pane、overlay 与 editor-extension callback 可用
-`{ eventRevision: context.revision }` 标记事件自身的更新。本包不依赖 Harness、
-core、pi-tui 或任何终端 runtime。
+递增。`set()` 是数据刷新（`reason: 'data'`）或新实例边界
+（`reason: 'replace'`，也是唯一能改变 `scope` 的更新）；callback 不自行制造
+ack——action handler 返回结构化回执，core 准入后由一次性 publisher 更新原
+registration。本包不依赖 Harness、core、pi-tui 或任何终端 runtime。
 
 `ui.markdown(source)`、`ui.diagram(source)` 与 `ui.chart({ chart, ...data })` 只保留
 renderer-neutral wire data。Mermaid 与 chart 库由 core 持有；插件无需安装它们，

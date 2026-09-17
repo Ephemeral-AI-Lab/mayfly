@@ -156,7 +156,7 @@ The `/settings` panel writes the fields below. Every key is optional; defaults a
 ```yaml
 mayfly:
   updateCheck: true        # the boot update check (false is the offline switch)
-  updateChannel: rc        # the dist-tag the update check follows
+  updateChannel: latest    # the dist-tag the update check follows
   theme: dark              # persisted default theme: dark | light | ocean | paper | auto (applied at startup)
   collapseThinking: true   # thinking blocks start collapsed
   collapseToolCalls: true  # tool output starts collapsed (ctrl+o toggles in the session)

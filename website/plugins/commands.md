@@ -13,7 +13,7 @@ export function apply(ctx: Context): void {
   ctx.commands.register({
     name: 'health',
     description: 'Show build health',
-    handler: (_args, _options) => ({
+    handler: (_invocation) => ({
       kind: 'success',
       text: 'healthy',
     }),

@@ -7,4 +7,4 @@ dsh plugin --profile mayfly-dev add @mayfly-example/bottom-log
 ```
 
 示例没有 timer 或后台 reader；真实插件应在 `render()` 之外更新 domain 状态，
-再调用 pane registration 的 `refresh()`。
+再通过 pane registration 的 `set(node, { reason: 'data' })` 发布新 snapshot。

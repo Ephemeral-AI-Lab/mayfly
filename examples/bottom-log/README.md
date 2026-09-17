@@ -8,4 +8,5 @@ dsh plugin --profile mayfly-dev add @mayfly-example/bottom-log
 ```
 
 It has no timer or background reader; a real plugin would update domain state
-outside `render()` and call the pane registration's `refresh()`.
+outside `render()` and publish a new snapshot through the pane registration's
+`set(node, { reason: 'data' })`.

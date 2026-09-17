@@ -21,8 +21,8 @@ export function apply(ctx: Context): void {
 }
 ```
 
-`narrow` 可设为 `bottom`、`overlay` 或 `hidden`。Handle 另有
-`set(null)` 会释放 lane，直到下一次发布非 null snapshot。
+`narrow` 可设为 `bottom`、`overlay` 或 `hidden`。`set(null)` 会释放 lane，
+直到下一次发布非 null snapshot。
 
 ## Overlay
 

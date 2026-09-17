@@ -156,7 +156,7 @@ llm-pi-ai:
 ```yaml
 mayfly:
   updateCheck: true        # 启动时的 Mayfly 更新检查（false 即离线开关）
-  updateChannel: rc        # 更新检查跟踪的 dist-tag
+  updateChannel: latest    # 更新检查跟踪的 dist-tag
   theme: dark              # 持久默认主题：dark | light | ocean | paper | auto（启动时应用）
   collapseThinking: true   # thinking 块默认折叠
   collapseToolCalls: true  # 工具输出默认折叠（ctrl+o 在会话内切换）

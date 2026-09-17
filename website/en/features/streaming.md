@@ -14,8 +14,8 @@ Tool calls render as the **generic card** by default: a status dot — `○` run
 
 Two **dedicated cards** register through render intents and take over when a tool's presentation view declares `diff` or `terminal`:
 
-- **Diff card** — per-file unified diff with LCS line coloring (added/removed/strong/gutter tokens); 12 lines per file collapsed, 200 expanded.
-- **Terminal card** — `$ command` header (shellMode color) + cwd + exit badge (error/warning colored); output rows 10 collapsed, 120 expanded; a finished run with no output shows `(no output)`.
+- **Diff card** — per-file unified diff with LCS line coloring (added/removed/strong/gutter tokens); the collapsed card caps at 12 rows (call view plus a `... (N more lines, ctrl+o to expand)` hint), and expanding renders the complete result view.
+- **Terminal card** — `$ command` header (shellMode color) + cwd + exit badge (error/warning colored); the same 12-row collapsed cap applies, and expanding shows the bounded output (an oversized raw-output debug view caps at 200 lines); a finished run with no output shows `(no output)`.
 
 Unknown tools, or tools without presenters, always fall back to the generic card — intent resolution never throws.
 

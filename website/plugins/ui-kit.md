@@ -1,7 +1,7 @@
 # 公共 UI Kit
 
 `@ephemeral-ai/mayfly-ui` 是纯 renderer-neutral 构造层。它导出 `ui` builder、
-`defineMayflyComponent()`，并重导 `@ephemeral-ai/mayfly-ui` 的 wire type。它没有
+`defineMayflyComponent()`，并重导全部 wire type。它没有
 Cordis plugin、service registration 或终端依赖。
 
 ```ts

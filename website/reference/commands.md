@@ -13,7 +13,9 @@
 | `/sessions` | `/resume` | `[<session-id>]` | 以 lineage 树列出持久化会话并切换；带 id 直接恢复 | `mayfly-commands` |
 | `/btw` | — | `<question>` | 创建临时旁路 Agent，并把整套 UI 切到该会话；空参数关闭 | `mayfly-btw-command` |
 | `/agents` | — | `[stop <id>]` | 浏览 subagent 树、查看 child，或停止 continuable child | `mayfly-agents-command` |
+| `/jobs` | — | — | 浏览当前 Agent 的后台任务（列表 + 详情 + Read 输出） | `mayfly-jobs` |
 | `/help` | — | — | 显示可用命令与键位 | `mayfly-commands` |
+| `/mode` | — | — | 切换计划模式（等价于 `Shift+Tab`） | `mayfly-commands` |
 | `/model` | — | `[id]` | 切换会话模型；无参数打开选择面板 | `mayfly-commands`（model-commands） |
 | `/effort` | `/thinking` | `[level]` | 切换当前模型的思考力度；无参数打开横向选择器 | `mayfly-commands`（model-commands） |
 | `/provider` | — | `[list \| switch <name> \| add]` | 列出 provider、切换路由或新增 | `mayfly-commands`（model-commands） |

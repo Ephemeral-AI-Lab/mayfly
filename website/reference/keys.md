@@ -26,6 +26,7 @@
 | `Escape` | 返回 / 取消 / 关闭 | 编辑态 → 内容 → 内层 tabs → 外层 tabs → 关闭，每次只退一层；回到 Editor 后仍沿用补全、撤回与中断链 |
 | `↑` / `↓` | 垂直层内导航 | list 与 form 导航态，到边界不循环；disabled 行会跳过 |
 | `Space` | 多选切换 | 多选列表中切换聚焦项，`Enter` 确认整组 |
+| `Ctrl-U` | 清空筛选 | filterable list 中清空当前搜索 query |
 
 ## 编辑器语境
 
