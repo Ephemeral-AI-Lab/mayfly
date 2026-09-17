@@ -19,7 +19,7 @@ import {
   liveAgentDescendantCount,
   type MayflySubagentTreeEntry,
 } from '../../src/interaction/agents-command.ts'
-import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme, KEY } from './fakes.ts'
+import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes.ts'
 import { renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
 
@@ -50,8 +50,11 @@ describe('agent tree models', () => {
     expect(formatAgentElapsed(130_000)).toBe('2m 10s')
     expect(agentMetricsText({}, 1_000)).toBe('')
     expect(agentMetricsText({ tokens: 2_048 }, 1_000)).toBe('2k tok')
+    expect(agentMetricsText({ toolCount: 1 }, 1_000)).toBe('1 tool')
     expect(agentMetricsText({ settledMs: 65_000 }, 1_000)).toBe('1m 5s')
     expect(agentMetricsText({ tokens: 100, settledMs: 5_000, activeSince: 500 }, 3_500)).toBe('100 tok · 3s')
+    expect(agentMetricsText({ liveChars: 2_200, toolCount: 0, tokens: 0, activeSince: 0 }, 20_000)).toBe('↓2.1k · 0 tools · 0 tok · 20s')
+    expect(agentMetricsText({ liveChars: 0 }, 1_000)).toBe('')
   })
 
   it('counts only live descendants inside the selected subtree', () => {
@@ -84,6 +87,9 @@ interface CommandHarness {
   readonly opened: unknown[]
   readonly drain: ReturnType<typeof vi.fn>
   readonly liveAgents: Map<string, Agent>
+  readonly liveDrafts: Map<string, { readonly phase: string, readonly chars?: number }>
+  readonly facts: Record<string, unknown>
+  readonly notifyProjection: (session: Session, key: string, value: unknown) => void
   readonly switchAgent: (agent: Agent | null) => void
   readonly fiber: { dispose(): Promise<void> }
   tree: readonly SubagentDescendantListEntry[]
@@ -115,7 +121,7 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     id: SessionId('invalid'), header: { cwd: '/tmp', origin: 'subagent', parentSession: parentSession.id },
   } as unknown as Session
   const parent = { id: parentSession.id, session: parentSession, status: 'idle' } as unknown as Agent
-  const childAgent = { id: childSession.id, session: childSession, status: 'idle' } as unknown as Agent
+  const childAgent = { id: childSession.id, session: childSession, status: 'running' } as unknown as Agent
   const liveAgents = new Map<string, Agent>([[String(parent.id), parent], [String(childAgent.id), childAgent]])
   const sessionState: { current: Agent | null } = { current: options.current === false ? null : parent }
   const listeners = new Set<(agent: Agent | null, revision: number) => void>()
@@ -135,25 +141,32 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     closeAuxiliary: () => null,
   } as never)
   const projectionCalls: string[][] = []
+  const facts: Record<string, unknown> = { epochTokens: 2_048, epochToolCount: 3 }
+  let projectionListener: ((session: Session, key: string, value: unknown) => void) | undefined
   ctx.provide('sessionProjections', {
     snapshot: (session: Session, keys: readonly string[]) => {
       projectionCalls.push([...keys])
       return {
         asOfSeq: 2,
         values: session === invalidSession ? {
-          mayflyConversationFacts: { epochTokens: 'many' },
+          mayflyConversationFacts: { epochTokens: 'many', epochToolCount: 'few' },
           subagentTiming: { settledMs: 'later', active: { since: 'soon' } },
         } : {
           mayflyConversation: { entries: [], streaming: false },
-          mayflyConversationFacts: { epochTokens: 2_048 },
+          mayflyConversationFacts: facts,
           subagentTiming: { settledMs: 3_000, active: { since: 1_000 } },
         },
       }
     },
-    onChanged: () => () => {},
+    onChanged: (listener: (session: Session, key: string, value: unknown) => void) => { projectionListener = listener; return () => {} },
   } as never)
   ctx.provide('sessions', { list: () => [parentSession, childSession, invalidSession] } as never)
   ctx.provide('agents', { get: (id: unknown) => liveAgents.get(String(id)) } as never)
+  const liveDrafts = new Map<string, { readonly phase: string }>()
+  ctx.provide('mayflyLiveAssistantStream', {
+    get: (agent: Agent) => liveDrafts.get(String(agent.id)),
+    subscribe: () => () => {},
+  } as never)
   ctx.provide('tools', { get: () => undefined } as never)
   const harness = {
     ctx,
@@ -165,6 +178,9 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     opened,
     drain: vi.fn(async () => {}),
     liveAgents,
+    liveDrafts,
+    facts,
+    notifyProjection: (session: Session, key: string, value: unknown) => projectionListener?.(session, key, value),
     switchAgent(agent: Agent | null) {
       sessionState.current = agent
       for (const listener of listeners) listener(agent, 1)
@@ -202,15 +218,7 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     let compiled = renderRequest(model)
     const component: MayflyComponent = {
       render: width => { if (compiled.runtime.interaction?.revision !== model.revision) compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime); return compiled.component.render(width) },
-      handleInput: data => {
-        if (data === KEY.ctrlD && delta.entry.id === 'mayfly.agents') {
-          const choice = model.choice({ pagePath: [], controlId: 'subagents' })
-          const id = choice?.focusedId
-          if (id !== undefined) { model.updateChoice({ pagePath: [], controlId: 'subagents' }, { kind: 'select', ids: [id] }); model.invoke('stop') }
-          return
-        }
-        compiled.input(data)
-      },
+      handleInput: data => compiled.input(data),
       invalidate: () => compiled.component.invalidate(),
     }
     const handle = screen.showOverlay(component)
@@ -238,6 +246,10 @@ function browserRows(rig: CommandHarness, width = 100): string {
 async function selectBrowser(model: UiSurfaceModel, id: string): Promise<void> {
   model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: [id] })
   await flushRequests()
+}
+
+function focusBrowser(model: UiSurfaceModel, id: string): void {
+  model.updateChoice({ pagePath: [], controlId: 'subagents' }, { kind: 'focus', id })
 }
 
 describe('mayfly-agents-command', () => {
@@ -389,14 +401,13 @@ describe('mayfly-agents-command', () => {
     expect(await execute(rig)).toEqual({ kind: 'success' })
     const model = browser(rig)
     expect(browserRows(rig)).toContain('▸ ● explore')
+    expect(browserRows(rig)).toContain('3 tools')
     expect(browserRows(rig)).toContain('2k tok')
     expect(browserRows(rig)).not.toContain('○ nested')
     expect(rig.projectionCalls).toContainEqual(['mayflyConversationFacts', 'subagentTiming'])
     model.updateChoice({ pagePath: [], controlId: 'subagents' }, { kind: 'expand', id: 'child' })
     expect(browserRows(rig)).toContain('○ nested')
     await selectBrowser(model, 'child')
-    model.invoke('view')
-    await flushRequests()
     expect(model.disposed).toBe(true)
     expect(rig.opened).toEqual([{
       kind: 'subagent', sessionId: 'child', parentSessionId: 'parent', label: 'explore', mode: 'continuable',
@@ -409,7 +420,6 @@ describe('mayfly-agents-command', () => {
     rig.tree = [child('child', { label: 'worker' })]
     expect(await execute(rig)).toEqual({ kind: 'success' })
     const model = browser(rig)
-    await selectBrowser(model, 'child')
     model.invoke('stop')
     expect(JSON.stringify(model.decisionNode)).toContain('mayfly.decision.no')
     expect(JSON.stringify(model.decisionNode)).toContain('defaultFocus')
@@ -428,13 +438,41 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
+  it('stops the focused row through the q accelerator', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('first'), child('second')]
+    rig.liveAgents.set('first', { id: SessionId('first'), status: 'idle' } as Agent)
+    rig.liveAgents.set('second', { id: SessionId('second'), status: 'idle' } as Agent)
+    await execute(rig)
+    const model = browser(rig)
+    focusBrowser(model, 'second')
+    renderRequest(model).input('q')
+    await flushRequests()
+    expect(JSON.stringify(model.decisionNode)).toContain('Stop selected subagent?')
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(rig.drain).toHaveBeenCalledWith(rig.parent, [SessionId('second')]))
+    await rig.fiber.dispose()
+  })
+
+  it('types q into an open list search instead of stopping', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    await execute(rig)
+    const model = browser(rig)
+    const compiled = renderRequest(model)
+    model.updateChoice({ pagePath: [], controlId: 'subagents' }, { kind: 'query', query: 'x' })
+    compiled.input('q')
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.choice({ pagePath: [], controlId: 'subagents' })?.query).toBe('xq')
+    await rig.fiber.dispose()
+  })
+
   it('rechecks live descendants after browser confirmation', async () => {
     const rig = await mountCommand()
     rig.tree = [child('branch', { activity: 'running', hasChildren: false })]
     rig.liveAgents.set('branch', { id: SessionId('branch') } as Agent)
     await execute(rig)
     const model = browser(rig)
-    await selectBrowser(model, 'branch')
     model.invoke('stop')
     rig.tree = [
       child('branch', { activity: 'running', hasChildren: true }),
@@ -455,7 +493,6 @@ describe('mayfly-agents-command', () => {
       rig.tree = [child('child')]
       await execute(rig)
       const model = browser(rig)
-      await selectBrowser(model, 'child')
       let release!: () => void
       rig.deferred = new Promise(resolve => { release = resolve })
       model.invoke('stop')
@@ -480,7 +517,6 @@ describe('mayfly-agents-command', () => {
     rig.tree = [child('child')]
     await execute(rig)
     const model = browser(rig)
-    await selectBrowser(model, 'child')
     model.invoke('stop')
     const decision = model.decisionNode
     model.invoke('stop')
@@ -492,15 +528,14 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
-  it('uses the id in an unlabeled confirmation and reports browser stop failure', async () => {
+  it('reports browser stop failure after confirmation', async () => {
     const rig = await mountCommand()
     rig.tree = [child('child', { label: undefined })]
     rig.drain.mockRejectedValueOnce(new Error('cannot drain'))
     await execute(rig)
     const model = browser(rig)
-    await selectBrowser(model, 'child')
     model.invoke('stop')
-    expect(JSON.stringify(model.decisionNode)).toContain('Stop child')
+    expect(JSON.stringify(model.decisionNode)).toContain('Stop selected subagent?')
     model.answerDecision(true)
     await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
       expect.objectContaining({ severity: 'error', message: 'could not stop subagent child: cannot drain' }),
@@ -519,27 +554,31 @@ describe('mayfly-agents-command', () => {
     const entry = rig.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.agents')!
     const context = { surfaceId: entry.id, operationId: 'direct', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn() }
     expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: [] }, context)).toEqual({ kind: 'completed' })
-    expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: ['diagnostic'] }, context)).toMatchObject({ kind: 'accepted' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: ['diagnostic'] }, context)).toEqual({ kind: 'completed' })
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context)).toEqual({ kind: 'completed' })
-    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'view' }, context)).toMatchObject({ kind: 'failed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'stop' }, context)).toEqual({ kind: 'failed', message: 'Select a subagent first' })
     const diagnosticInput = { forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['diagnostic'] }] }
-    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'view', inputs: diagnosticInput }, context)).toMatchObject({ kind: 'failed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'stop', inputs: diagnosticInput }, context)).toEqual({ kind: 'failed', message: 'unknown subagent: diagnostic' })
     const viewInput = { forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['unlabeled'] }] }
-    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'view', inputs: viewInput }, context)).toEqual({ kind: 'completed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'stop', inputs: viewInput }, context)).toMatchObject({ kind: 'completed', feedback: { severity: 'success', message: 'stopped subagent unlabeled' } })
+    expect(rig.drain).toHaveBeenCalledWith(rig.parent, [SessionId('unlabeled')])
+    expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: ['unlabeled'] }, context)).toEqual({ kind: 'completed' })
     expect(rig.opened).toContainEqual(expect.objectContaining({ label: 'unlabeled' }))
     await rig.fiber.dispose()
   })
 
-  it('disables browser stop when the direct parent is not live', async () => {
+  it('reports a stop error when the direct parent is not live', async () => {
     const rig = await mountCommand()
     rig.tree = [child('orphan', { parentId: SessionId('offline-parent') })]
     rig.liveAgents.set('orphan', { id: SessionId('orphan') } as Agent)
     await execute(rig)
     const model = browser(rig)
-    await selectBrowser(model, 'orphan')
-    expect(model.availableActions()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionId: 'stop', disabledReason: 'cannot stop subagent orphan: its direct parent is not live' }),
-    ]))
+    model.invoke('stop')
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'error', message: 'cannot stop subagent orphan: its direct parent is not live' }),
+    ])))
+    expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
 
@@ -548,12 +587,11 @@ describe('mayfly-agents-command', () => {
     rig.tree = [child('once', { mode: 'one-shot' })]
     await execute(rig)
     const model = browser(rig)
-    await selectBrowser(model, 'once')
-    expect(model.availableActions()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionId: 'stop', enabled: false, disabledReason: 'subagent once is not continuable' }),
-    ]))
     model.invoke('stop')
-    expect(model.decisionNode).toBeUndefined()
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'error', message: 'subagent once is not continuable' }),
+    ])))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -568,29 +606,117 @@ describe('mayfly-agents-command', () => {
     rig.liveAgents.set('nested', { id: SessionId('nested') } as Agent)
     await execute(rig)
     const model = browser(rig)
-    await selectBrowser(model, 'branch')
-    expect(model.availableActions()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionId: 'stop', enabled: false, disabledReason: 'subagent branch owns 1 live descendant; stop its live descendants first' }),
-    ]))
     model.invoke('stop')
-    expect(model.decisionNode).toBeUndefined()
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'error', message: 'subagent branch owns 1 live descendant; stop its live descendants first' }),
+    ])))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
 
-  it('does not open stop confirmation for a cold continuable child', async () => {
+  it('reports a stop error for a cold continuable child', async () => {
     const rig = await mountCommand()
     rig.tree = [child('cold')]
     rig.liveAgents.delete('child')
     await execute(rig)
     const model = browser(rig)
-    await selectBrowser(model, 'cold')
-    expect(model.availableActions()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionId: 'stop', enabled: false, disabledReason: 'subagent cold is not live; there is no running Agent to stop' }),
-    ]))
     model.invoke('stop')
-    expect(model.decisionNode).toBeUndefined()
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'error', message: 'subagent cold is not live; there is no running Agent to stop' }),
+    ])))
     expect(rig.drain).not.toHaveBeenCalled()
+    await rig.fiber.dispose()
+  })
+
+  it('shows thinking state and live metrics, and refreshes on projection changes', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child', { label: 'worker' })]
+    await execute(rig)
+    const model = browser(rig)
+    rig.liveDrafts.set('child', { phase: 'thinking', chars: 2_048 })
+    rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
+    const rows = browserRows(rig)
+    expect(rows).toContain('Thinking…')
+    expect(rows).toContain('↓2k')
+    rig.facts.epochTokens = 4_096
+    rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
+    expect(browserRows(rig)).toContain('4k tok')
+    rig.liveDrafts.set('child', { phase: 'composing', chars: 3_072 })
+    rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
+    expect(browserRows(rig)).toContain('Writing…')
+    expect(browserRows(rig)).toContain('↓3k')
+    rig.liveDrafts.delete('child')
+    rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
+    const settled = browserRows(rig)
+    expect(settled).not.toContain('Writing…')
+    expect(settled).not.toMatch(/↓\d/)
+    rig.notifyProjection(rig.parent.session, 'mayflyConversationFacts', rig.facts)
+    expect(model.disposed).toBe(false)
+    await rig.fiber.dispose()
+  })
+
+  it('refreshes browser rows on child Agent lifecycle events', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    await execute(rig)
+    const model = browser(rig)
+    const freshSession = { id: SessionId('fresh'), header: { origin: 'subagent', parentSession: SessionId('parent') } } as unknown as Session
+    rig.tree = [child('child'), child('fresh', { label: 'fresh' })]
+    rig.liveAgents.set('fresh', { id: freshSession.id, session: freshSession, status: 'running' } as unknown as Agent)
+    rig.ctx.emit('agent/created', { agent: rig.liveAgents.get('fresh') })
+    await vi.waitFor(() => expect(browserRows(rig)).toContain('● fresh'))
+    const staleSession = { id: SessionId('stale'), header: { origin: 'subagent' } } as unknown as Session
+    rig.ctx.emit('agent/created', { agent: { id: staleSession.id, session: staleSession } as unknown as Agent })
+    rig.ctx.emit('agent/disposed', { agent: { id: SessionId('elsewhere') } as unknown as Agent })
+    expect(browserRows(rig)).toContain('● fresh')
+    rig.liveAgents.delete('fresh')
+    rig.ctx.emit('agent/disposed', { agent: { id: freshSession.id, session: freshSession } as unknown as Agent })
+    await vi.waitFor(() => expect(browserRows(rig)).toContain('○ fresh'))
+    expect(model.disposed).toBe(false)
+    await rig.fiber.dispose()
+  })
+
+  it('ticks live rows on an interval and stops ticking once nothing runs', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    await execute(rig)
+    expect(browserRows(rig)).toContain('2k tok')
+    rig.facts.epochTokens = 8_192
+    await vi.waitFor(() => expect(browserRows(rig)).toContain('8k tok'), { timeout: 3_000 })
+    rig.liveAgents.delete('child')
+    rig.ctx.emit('agent/disposed', { agent: { id: SessionId('child'), session: rig.childSession } as unknown as Agent })
+    expect(browserRows(rig)).toContain('○ child')
+    rig.facts.epochTokens = 16_384
+    await new Promise(resolve => setTimeout(resolve, 1_100))
+    expect(browserRows(rig)).toContain('8k tok')
+    await rig.fiber.dispose()
+  })
+
+  it('drops failed and stale relists and ignores non-subagent lifecycle events', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    await execute(rig)
+    const model = browser(rig)
+    const created = { id: SessionId('fresh'), session: { header: { origin: 'subagent', parentSession: SessionId('parent') } } } as unknown as Agent
+    rig.ctx.emit('agent/created', { agent: { id: SessionId('root'), session: { header: { origin: 'primary' } } } as unknown as Agent })
+    rig.listError = new Error('relist failed')
+    rig.ctx.emit('agent/created', { agent: created })
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(browserRows(rig)).toContain('child')
+    rig.listError = undefined
+    let release!: () => void
+    rig.deferred = new Promise(resolve => { release = resolve })
+    rig.ctx.emit('agent/created', { agent: created })
+    rig.switchAgent({ id: SessionId('replacement') } as Agent)
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(model.disposed).toBe(true)
     await rig.fiber.dispose()
   })
 

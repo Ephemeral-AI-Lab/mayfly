@@ -30,6 +30,7 @@ import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds } from '
 import type { AgentLiveLookup } from './agent-group.ts'
 import { trackChildAgentModels } from './child-agent-model.ts'
 import { parseToolArguments } from './present.ts'
+import { formatTokens } from './status-context.ts'
 import type { TranscriptToolItem } from './types.ts'
 
 /** Stable Cordis plugin name. */
@@ -139,6 +140,7 @@ function agentsNode(members: readonly PaneMember[], live: AgentLiveLookup | unde
     const metrics = [
       snapshot?.model,
       snapshot?.effort,
+      snapshot?.liveChars === undefined ? undefined : `↓${formatTokens(snapshot.liveChars)}`,
       snapshot?.toolCount === undefined ? undefined : `${String(snapshot.toolCount)} ${snapshot.toolCount === 1 ? 'tool' : 'tools'}`,
       formatElapsed(memberElapsed(member, live)),
       snapshot?.tokens === undefined ? undefined : `${String(snapshot.tokens)} tokens`,

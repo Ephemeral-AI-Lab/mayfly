@@ -34,6 +34,7 @@ export function childLiveSnapshot(child: ChildSessionFacts): AgentMemberLive {
     ...(child.endedAt === undefined ? {} : { endedAt: child.endedAt }),
     ...(child.tokens > 0 ? { tokens: child.tokens } : {}),
     toolCount: child.toolCount,
+    ...(child.liveChars === undefined ? {} : { liveChars: child.liveChars }),
     ...(child.activity === undefined ? {} : { activity: child.activity }),
     ...(child.model === undefined ? {} : { model: child.model }),
     ...(child.effort === undefined ? {} : { effort: child.effort }),

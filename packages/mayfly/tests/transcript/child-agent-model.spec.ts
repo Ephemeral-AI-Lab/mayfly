@@ -12,7 +12,7 @@ import type { TranscriptToolItem } from '../../src/transcript/types.ts'
 
 const child: ChildSessionFacts = {
   id: '9f5c4086a0674b55b621c3eaf8b88c0e', promptText: 'survey', phase: 'running',
-  tokens: 125, toolCount: 2, activity: 'Using read', model: 'deepseek-v4', effort: 'high',
+  tokens: 125, toolCount: 2, liveChars: 2_048, activity: 'Using read', model: 'deepseek-v4', effort: 'high',
 }
 
 function member(partial: Partial<TranscriptToolItem> = {}): TranscriptToolItem {
@@ -38,9 +38,9 @@ describe('child agent model', () => {
 
   it('maps every projected field into the agent-card snapshot', () => {
     expect(childLiveSnapshot(child)).toEqual({
-      phase: 'running', tokens: 125, toolCount: 2, activity: 'Using read', model: 'deepseek-v4', effort: 'high',
+      phase: 'running', tokens: 125, toolCount: 2, liveChars: 2_048, activity: 'Using read', model: 'deepseek-v4', effort: 'high',
     })
-    expect(childLiveSnapshot({ ...child, phase: 'completed', tokens: 0, activity: undefined, endedAt: 10 }))
+    expect(childLiveSnapshot({ ...child, phase: 'completed', tokens: 0, liveChars: undefined, activity: undefined, endedAt: 10 }))
       .toEqual({ phase: 'completed', toolCount: 2, model: 'deepseek-v4', effort: 'high', endedAt: 10 })
   })
 

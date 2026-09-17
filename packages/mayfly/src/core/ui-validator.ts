@@ -520,6 +520,7 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
       ...optional(optionalText(object, 'disabledReason', path, state), 'disabledReason'),
       ...optional(busyValue === undefined ? undefined : boolean(busyValue, `${path}.busy`), 'busy'),
       ...optional(optionalText(object, 'confirm', path, state), 'confirm'),
+      ...optional(optionalText(object, 'key', path, state), 'key'),
       ...optional(defaultFocus === undefined ? undefined : boolean(defaultFocus, `${path}.defaultFocus`), 'defaultFocus'),
       ...optional(dismiss === undefined ? undefined : boolean(dismiss, `${path}.dismiss`), 'dismiss'),
       ...optional(submit, 'submit'),

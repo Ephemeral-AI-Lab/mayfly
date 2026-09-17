@@ -4,6 +4,7 @@
  * @module @ephemeral-ai/mayfly/interaction/agents-command
  */
 
+import { isDeepStrictEqual } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
@@ -26,14 +27,18 @@ export const inject = [
   'sessionProjections',
   'mayflyCurrentAgent',
   'mayflyOverlays',
+  'mayflyLiveAssistantStream',
   'tools',
 ]
 
-/** Native row plus optional metrics from a currently resident child. */
+/** Native row plus optional metrics and stream phase from a currently resident child. */
 export type MayflySubagentTreeEntry = SubagentDescendantListEntry & {
   readonly tokens?: number | undefined
+  readonly toolCount?: number | undefined
+  readonly liveChars?: number | undefined
   readonly settledMs?: number | undefined
   readonly activeSince?: number | undefined
+  readonly streamPhase?: 'thinking' | 'composing' | undefined
 }
 
 /** Elapsed format used by agent browser rows. */
@@ -41,12 +46,14 @@ export function formatAgentElapsed(ms: number): string {
   return compactElapsedMs(ms)
 }
 
-/** Optional token and elapsed summary. */
+/** Optional live-output, tool, token, and elapsed summary. */
 export function agentMetricsText(
-  entry: { readonly tokens?: number | undefined, readonly settledMs?: number | undefined, readonly activeSince?: number | undefined },
+  entry: { readonly tokens?: number | undefined, readonly toolCount?: number | undefined, readonly liveChars?: number | undefined, readonly settledMs?: number | undefined, readonly activeSince?: number | undefined },
   now: number,
 ): string {
   const parts: string[] = []
+  if (entry.liveChars !== undefined && entry.liveChars > 0) parts.push(`↓${formatTokens(entry.liveChars)}`)
+  if (entry.toolCount !== undefined) parts.push(`${String(entry.toolCount)} ${entry.toolCount === 1 ? 'tool' : 'tools'}`)
   if (entry.tokens !== undefined) parts.push(`${formatTokens(entry.tokens)} tok`)
   const elapsed = entry.activeSince !== undefined ? now - entry.activeSince : entry.settledMs
   if (elapsed !== undefined) parts.push(formatAgentElapsed(elapsed))
@@ -65,10 +72,11 @@ export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now 
     }
     const label = entry.label ?? id
     const metrics = agentMetricsText(entry, now)
+    const stream = entry.streamPhase === 'thinking' ? 'Thinking…' : entry.streamPhase === 'composing' ? 'Writing…' : undefined
     return {
       id,
       label: `${entry.activity === 'running' ? '●' : '○'} ${label}`,
-      detail: [entry.mode, ...(metrics === '' ? [] : [metrics])].join(' · '),
+      detail: [entry.mode, ...(stream === undefined ? [] : [stream]), ...(metrics === '' ? [] : [metrics])].join(' · '),
       searchText: `${label} ${id} ${entry.mode}`,
       ...(ids.has(parentId) ? { parentId } : {}),
       ...(entry.activity === 'running' ? { badge: 'running' } : {}),
@@ -122,20 +130,34 @@ function withLiveMetrics(
   workflowLabels: ReadonlyMap<string, string>,
 ): readonly MayflySubagentTreeEntry[] {
   const sessions = new Map([...ctx.sessions.list()].map(session => [String(session.id), session]))
+  const liveStream = ctx.get('mayflyLiveAssistantStream')
   return entries.map(entry => {
     if (entry.kind !== 'child') return entry
     const workflowLabel = workflowLabels.get(String(entry.id))
     const labeled = entry.label === undefined && workflowLabel !== undefined
       ? { ...entry, label: workflowLabel }
       : entry
+    const agent = ctx.agents.get(entry.id)
+    const draft = agent === undefined ? undefined : liveStream?.get(agent)
+    /* The durable catalog marks activity from the resident registry; refresh it
+       per publish so a finishing child drops its running badge without relist.
+       The transient stream draft reports thinking/composing while durable
+       facts still read waiting. */
+    const resident = {
+      ...labeled,
+      activity: agent?.status === 'running' ? 'running' as const : 'inactive' as const,
+      ...(draft !== undefined && (draft.phase === 'thinking' || draft.phase === 'composing') ? { streamPhase: draft.phase } : {}),
+      ...(draft !== undefined && draft.chars > 0 ? { liveChars: draft.chars } : {}),
+    }
     const session = sessions.get(String(entry.id))
-    if (session === undefined) return labeled
+    if (session === undefined) return resident
     const values = ctx.sessionProjections.snapshot(session, ['mayflyConversationFacts', 'subagentTiming']).values
-    const facts = values.mayflyConversationFacts as { readonly epochTokens?: unknown } | undefined
+    const facts = values.mayflyConversationFacts as { readonly epochTokens?: unknown, readonly epochToolCount?: unknown } | undefined
     const timing = values.subagentTiming as { readonly settledMs?: unknown, readonly active?: { readonly since?: unknown } } | undefined
     return {
-      ...labeled,
+      ...resident,
       ...(typeof facts?.epochTokens === 'number' ? { tokens: facts.epochTokens } : {}),
+      ...(typeof facts?.epochToolCount === 'number' ? { toolCount: facts.epochToolCount } : {}),
       ...(typeof timing?.settledMs === 'number' ? { settledMs: timing.settledMs } : {}),
       ...(typeof timing?.active?.since === 'number' ? { activeSince: timing.active.since } : {}),
     }
@@ -212,64 +234,80 @@ export function apply(ctx: Context): void {
     closeOpenBrowser?.()
     let entries = withLiveMetrics(ctx, listed, workflowLabels)
     let byId = new Map(entries.map(entry => [String(entry.id), entry]))
-    let handle!: MayflyOverlayHandle
-    const close = (): void => {
-      offAgent()
+    let handle: MayflyOverlayHandle | undefined
+    let timer: ReturnType<typeof setInterval> | undefined
+    let closed = false
+    const lifetime = new AbortController()
+    const disposers: (() => void)[] = []
+    const teardown = (): void => {
+      if (closed) return
+      closed = true
       closeOpenBrowser = undefined
-      handle?.close()
+      lifetime.abort()
+      for (const dispose of disposers.splice(0)) dispose()
+      if (timer !== undefined) { clearInterval(timer); timer = undefined }
     }
-    const offAgent = ctx.mayflyCurrentAgent.subscribe(next => {
+    const close = (): void => { teardown(); handle?.close() }
+    disposers.push(ctx.mayflyCurrentAgent.subscribe(next => {
       if (next !== parent) close()
-    })
-    const stopReason = (selectedId: string | undefined): string | undefined => {
-      if (selectedId === undefined) return t('Select a subagent first')
-      const target = byId.get(selectedId)
-      if (target?.kind !== 'child') return t('The selected subagent is no longer available')
-      if (target.mode !== 'continuable') return `subagent ${selectedId} is not continuable`
-      const descendants = liveAgentDescendantCount(entries, selectedId, candidate => ctx.agents.get(candidate.id) !== undefined)
-      const nested = descendantStopError(target, descendants)
-      if (nested !== undefined) return nested.text
-      if (ctx.agents.get(target.id) === undefined) return `subagent ${selectedId} is not live; there is no running Agent to stop`
-      if (ctx.agents.get(target.parentId) === undefined) return `cannot stop subagent ${selectedId}: its direct parent is not live`
-      return undefined
-    }
-    const view = (selectedId?: string) => {
-      const reason = stopReason(selectedId)
-      const selected = selectedId === undefined ? undefined : byId.get(selectedId)
-      const confirm = selected?.kind === 'child' ? t('Stop {agent}?', { agent: selected.label ?? selectedId! }) : t('Stop selected subagent?')
-      return ui.surface({ title: t('Subagents'), chrome: 'overlay', child: ui.stack.column([
-      ui.list({ id: 'subagents', role: 'choose', tree: true, minSelected: 1, selectedIds: selectedId === undefined ? [] : [selectedId], filterable: true, items: agentTreeItems(entries) }),
+    }))
+    const view = () => ui.surface({ title: t('Subagents'), chrome: 'overlay', child: ui.stack.column([
+      ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, items: agentTreeItems(entries) }),
       ui.actions({ id: 'subagent-actions', items: [
-        { id: 'view', label: t('View selected'), selections: [{ pagePath: [], controlId: 'subagents' }] },
-        { id: 'stop', label: t('Stop selected'), intent: 'danger', confirm, selections: [{ pagePath: [], controlId: 'subagents' }], disabled: reason !== undefined, ...(reason === undefined ? {} : { disabledReason: reason }) },
+        { id: 'stop', label: t('Stop selected'), intent: 'danger', key: 'q', confirm: t('Stop selected subagent?'), selections: [{ pagePath: [], controlId: 'subagents' }] },
         { id: 'close', label: t('Close'), dismiss: true },
       ] }),
-      ]) })
+    ]) })
+    const publish = (force: boolean): void => {
+      /* v8 ignore next -- every publish caller is closed-fenced already; these checks only narrow the handle for the view write and fence a host-driven close race */
+      if (closed || handle === undefined || handle.closed) return
+      const next = withLiveMetrics(ctx, listed, workflowLabels)
+      if (force || !isDeepStrictEqual(next, entries)) {
+        entries = next
+        byId = new Map(next.map(entry => [String(entry.id), entry]))
+        handle.set(view())
+      }
+      const live = next.some(entry => entry.kind === 'child' && entry.activity === 'running')
+      if (live && timer === undefined) { timer = setInterval(() => publish(true), 1000); timer.unref() }
+      else if (!live && timer !== undefined) { clearInterval(timer); timer = undefined }
+    }
+    const relist = async (): Promise<void> => {
+      let next: readonly SubagentDescendantListEntry[]
+      try { next = await ctx.subagents.listDescendants(parent.id, lifetime.signal) } catch { return }
+      if (closed || unloaded || ctx.mayflyCurrentAgent.primary() !== parent) return
+      listed = next
+      publish(false)
     }
     handle = openUiOverlay(ctx, { id: 'mayfly.agents', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Subagents'), scope: { kind: 'session', sessionId: parent.id }, onEvent: { action: async (event, context) => {
       if (event.kind === 'selection-accept') {
         const selectedId = event.selectedIds[0]
-        return selectedId === undefined ? { kind: 'completed' } : { kind: 'accepted', node: view(selectedId), source: [] }
-      }
-      if (event.kind !== 'activate' || (event.actionId !== 'view' && event.actionId !== 'stop')) return { kind: 'completed' }
-      const selectedId = event.inputs?.selections?.find(selection => selection.controlId === 'subagents')?.selectedIds[0]
-      const entry = selectedId === undefined ? undefined : byId.get(selectedId)
-      if (entry?.kind !== 'child') return { kind: 'failed', message: t('The selected subagent is no longer available') }
-      if (event.actionId === 'view') {
+        const entry = selectedId === undefined ? undefined : byId.get(selectedId)
+        if (entry?.kind !== 'child') return { kind: 'completed' }
         close()
         ctx.mayflyCurrentAgent.openAuxiliary({ kind: 'subagent', sessionId: String(entry.id), parentSessionId: String(entry.parentId), label: entry.label ?? String(entry.id), mode: entry.mode })
         return { kind: 'completed' }
       }
-      const result = await stopEntry(selectedId!, context.signal)
+      if (event.kind !== 'activate' || event.actionId !== 'stop') return { kind: 'completed' }
+      const selectedId = event.inputs?.selections?.find(selection => selection.controlId === 'subagents')?.selectedIds[0]
+      if (selectedId === undefined) return { kind: 'failed', message: t('Select a subagent first') }
+      const result = await stopEntry(selectedId, context.signal)
       if (result.kind === 'error') return { kind: 'failed', message: result.text }
       try {
         listed = await ctx.subagents.listDescendants(parent.id, context.signal)
-        entries = withLiveMetrics(ctx, listed, workflowLabels)
-        byId = new Map(entries.map(entry => [String(entry.id), entry]))
-        handle.set(view(selectedId))
+        publish(false)
       } catch { /* the native stop already completed; retain the last readable tree */ }
       return { kind: 'completed', feedback: { severity: 'success', message: result.text } }
-    } } }, view(), { reopen: 'replace' })
+    } } }, view(), { reopen: 'replace', onClosed: teardown })
+    disposers.push(ctx.sessionProjections.onChanged(session => {
+      if (!closed && byId.has(String(session.id))) publish(false)
+    }))
+    disposers.push(ctx.on('agent/created', ({ agent }) => {
+      if (!closed && agent.session.header.origin === 'subagent') void relist()
+    }))
+    disposers.push(ctx.on('agent/disposed', ({ agent }) => {
+      if (!closed && byId.has(String(agent.id))) publish(false)
+    }))
+    publish(false)
     closeOpenBrowser = close
     return { kind: 'success' }
   }

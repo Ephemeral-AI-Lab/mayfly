@@ -322,12 +322,12 @@ describe('AgentGroupComponent', () => {
       settle(acked, 35)
       const group = new AgentGroupComponent(
         acked, tagged(), fakeMayflyComponents(), undefined,
-        liveTable({ c1: { phase: 'running', toolCount: 2, activity: 'Using read', model: 'deepseek-v4', effort: 'high' } }),
+        liveTable({ c1: { phase: 'running', toolCount: 2, liveChars: 2_048, activity: 'Using read', model: 'deepseek-v4', effort: 'high' } }),
       )
       expect(group.render(140)).toEqual([
         '',
         '● \x1b[1m[P]Running 1 agents (1 running)[/P]\x1b[22m[M] · 20s[/M]',
-        `  └─ [P]subagent[/P][M] · Survey tests · deepseek-v4 · high · 2 tools · 20s[/M][P] · Running[/P]`,
+        `  └─ [P]subagent[/P][M] · Survey tests · deepseek-v4 · high · ↓2k · 2 tools · 20s[/M][P] · Running[/P]`,
         `  ${'   '}    [M]Using read[/M]`,
       ])
     })
