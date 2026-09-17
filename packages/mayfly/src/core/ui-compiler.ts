@@ -22,7 +22,7 @@ import type {
   MayflyFieldValue,
   MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
-import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
+import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component, type KeyId, matchesKey } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { hintRow } from './chrome.ts'
@@ -267,6 +267,8 @@ type ControlDescriptor =
       readonly event: MayflyUiEvent
       readonly commitEvent?: MayflyUiEvent
       readonly listEntry?: { readonly node: MayflyListNode, readonly index: number }
+      /** Declared surface-local accelerator; fires the same activate event while the surface holds focus. */
+      readonly keyed?: { readonly key: string, readonly label: string }
     })
   | (ControlBase & { readonly kind: 'text', readonly field: TextField })
   | (ControlBase & { readonly kind: 'select', readonly field: SelectField })
@@ -745,9 +747,14 @@ function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOpt
               : 'options',
         90,
       )]
+  const keyedHints = controls.flatMap((control): ContextKeyHint[] =>
+    control.kind === 'event' && control.keyed !== undefined
+      ? [keyHint(`keyed:${control.keyed.key}`, displayKey(control.keyed.key), control.keyed.label, 96)]
+      : [])
   if (active.kind === 'list') return [
     ...(active.node.filterable ? [keyHint('search', 'Type', 'filter', 100), actionHint(options, ACTION_CLEAR_SEARCH, 'Ctrl+U', 'clear', 90)] : []),
     ...(active.node.role === 'choose' ? [actionHint(options, ACTION_SUBMIT, 'Enter', 'choose', 95)] : []),
+    ...keyedHints,
     ...(escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 80)]),
   ]
   const primary = active.kind === 'text'
@@ -763,7 +770,7 @@ function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOpt
           : active.role === 'tab'
             ? actionHint(options, ACTION_SUBMIT, 'Enter', 'open', 100)
             : active.role === 'list-single'
-              ? actionHint(options, ACTION_SUBMIT, 'Enter', 'choose', 100)
+              ? actionHint(options, ACTION_SUBMIT, 'Enter', active.listEntry?.node.role === 'browse' ? 'open' : 'choose', 100)
               : active.role === 'list-multiple'
                 ? actionsHint(options, 'activate', [ACTION_TOGGLE, ACTION_SUBMIT], 'Space / Enter', 'toggle / confirm', 100, 'Space/Enter')
                 : active.role === 'cancel'
@@ -777,6 +784,7 @@ function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOpt
     primary,
     ...(segmentAdjustable ? [actionsHint(options, 'adjust', [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT], '←→', (listSegment.label ?? 'segment').toLowerCase(), 95)] : []),
     ...(active.kind === 'event' && active.listEntry?.node.tree === true ? [actionHint(options, ACTION_TOGGLE, 'Space', 'toggle branch', 95)] : []),
+    ...keyedHints,
     ...(active.kind === 'event' && active.role === 'tab' ? [] : groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
     ...(escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 70)]),
   ]
@@ -959,7 +967,7 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('form-cancel', current.id), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
       case 'actions':
-        for (const item of current.items) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id } })
+        for (const item of current.items) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
         break
       case 'loader':
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
@@ -2009,19 +2017,25 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const active = controls[this.state.lastIndex]
     const groups = controlGroups(controls)
     const list = active?.kind === 'list' ? active.node : active?.kind === 'event' ? active.listEntry?.node : undefined
+    /* Action-declared accelerators are surface-local: they win over idle
+       type-to-filter but never interrupt an open search or text entry. */
+    const keyed = controls.find((control): control is Extract<ControlDescriptor, { readonly kind: 'event' }> =>
+      control.kind === 'event' && control.keyed !== undefined && matchesKey(data, control.keyed.key as KeyId))
+    let searching = false
     if (list?.filterable === true) {
       const address = { pagePath: this.surfaceRuntime.pagePath(list), controlId: list.id }
       const choice = this.surfaceRuntime.interaction?.choice(address)
       if (choice !== undefined) {
+        searching = choice.searching
         const search = this.surfaceRuntime.search(list)
         if (matchesKeyAction(this.options.keymap, data, ACTION_CANCEL) && choice.searching) { this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'stop-search' }); return }
         if (matchesKeyAction(this.options.keymap, data, ACTION_CLEAR_SEARCH)) { search.clear(); this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'clear-search' }); return }
         if (data === '/' && !choice.searching) { this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'query', query: choice.query }); return }
         /* While searching, printable input filters except for the explicit submit key.
-           Outside search, any bound list action wins over type-to-filter. */
+           Outside search, any bound list action or declared accelerator wins over type-to-filter. */
         const reservedAction = choice.searching
           ? matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)
-          : LIST_FILTER_RESERVED_ACTIONS.some(actionId => matchesKeyAction(this.options.keymap, data, actionId))
+          : keyed !== undefined || LIST_FILTER_RESERVED_ACTIONS.some(actionId => matchesKeyAction(this.options.keymap, data, actionId))
         if (!reservedAction && (data !== ' ' || choice.searching) && search.handleInput(data, data === '\x7f' || data === '\b')) {
           this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'query', query: search.text })
           return
@@ -2085,6 +2099,14 @@ class CompiledSurface implements MayflyEditorShellComponent {
         }
       }
       this.options.onUnhandledEscape?.()
+      return
+    }
+    if (keyed !== undefined
+      && !searching
+      && active?.kind !== 'editor'
+      && !(active?.kind === 'text' && this.state.editingKey === active.key)
+      && !(active?.kind === 'select' && this.state.editingKey === active.key)) {
+      this.state.emit(keyed.event)
       return
     }
     if (active === undefined) return

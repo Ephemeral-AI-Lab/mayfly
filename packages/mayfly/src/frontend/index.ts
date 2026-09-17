@@ -35,7 +35,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.plugin(assistantStreamRecovery)
   ctx.plugin({
     name: 'mayfly-session-facts',
-    inject: ['mayflyLiveAssistantStream', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'mayflyConversationReady'],
+    inject: ['mayflyLiveAssistantStream', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'agents', 'mayflyConversationReady'],
     apply(owner: Context) {
       const facts = new SessionFactsService(owner, owner.mayflyLiveAssistantStream)
       owner.effect(() => () => facts.dispose())

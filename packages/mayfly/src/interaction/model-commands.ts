@@ -367,7 +367,7 @@ async function modelOptions(ctx: Context, agent: Agent, item: ModelPickerItem, c
     return result.state === 'failed' || result.state === 'unavailable'
       ? { kind: 'failed', node: latest, source: [], acceptedFields: event.submission.forms.flatMap(form => form.fields.map(field => ({ pagePath: form.pagePath, formId: form.formId, fieldId: field.id }))), message: result.text }
       : { kind: 'accepted', node: latest, source: [], dismiss: true, feedback: { severity: 'success', message: result.text } }
-  }, signal)
+  }, { signal, reopen: 'focus' })
   return true
 }
 
@@ -416,7 +416,7 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
       const liveEffort = item.provider === selection.read.provider && item.id === selection.read.model ? String(selection.read.reasoningEffort ?? 'default') : undefined
       await modelOptions(ctx, agent, item, event.segmentId ?? liveEffort, signal)
       return { kind: 'completed' }
-    }, signal)
+    }, { signal, reopen: 'focus' })
     return { kind: 'success' }
   } catch (error) {
     return combined.aborted ? { kind: 'success' } : { kind: 'error', text: describe(error) }

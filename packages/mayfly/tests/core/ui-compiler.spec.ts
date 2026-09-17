@@ -1324,6 +1324,8 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(focusedHint(ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }), [], { onUnhandledEscape: () => {} }))
       .toBe('  ←/→ tabs · Enter open · Esc close')
     expect(focusedHint(ui.list({ id: 'list', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })))
+      .toBe('  ↑/↓/←/→ options · Enter open')
+    expect(focusedHint(ui.list({ id: 'pick', role: 'choose', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })))
       .toBe('  ↑/↓/←/→ options · Enter choose')
     expect(focusedHint(ui.loader({ message: 'Working', cancelActionId: 'cancel' })))
       .toBe('  Enter cancel')
@@ -1482,6 +1484,52 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
 
     const confirm = ui.actions({ id: 'commands', items: [{ id: 'delete', label: 'Delete', confirm: 'Delete?' }] })
     expect(focusedHint(confirm, ['\r'])).toBe('  Enter run')
+  })
+
+  it('fires a declared action accelerator, shows it in hints and the action row', () => {
+    const f = fixture()
+    const result = compiledSurface(ui.stack.column([
+      ui.list({ id: 'items', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }),
+      ui.actions({ id: 'commands', items: [{ id: 'stop', label: 'Stop', key: 'q' }, { id: 'close', label: 'Close' }] }),
+    ]), f.options)
+    const focus = result.focusTarget!
+    focus.focused = true
+    const rows = focus.render(120)
+    expect(rows.join('\n')).toContain('(Q)')
+    expect(rows.at(-1)).toContain('Q Stop')
+    focus.handleInput?.('q')
+    expect(f.events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'stop', actionId: 'stop' }])
+    focus.handleInput?.('x')
+    expect(f.events).toHaveLength(1)
+  })
+
+  it('keeps a declared accelerator out of field editing but fires it while a field is idle', () => {
+    const f = fixture()
+    const result = compiledSurface(ui.stack.column([
+      ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }),
+      ui.actions({ id: 'commands', items: [{ id: 'stop', label: 'Stop', key: 'q' }] }),
+    ]), f.options)
+    const focus = result.focusTarget!
+    focus.focused = true
+    focus.handleInput?.('q')
+    expect(f.events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'stop', actionId: 'stop' }])
+    focus.handleInput?.('\r')
+    focus.handleInput?.('q')
+    expect(f.events).toHaveLength(1)
+    expect(focus.render(60).join('\n')).toContain('Esc leave')
+
+    const selectFixture = fixture()
+    const select = compiledSurface(ui.stack.column([
+      ui.form({ id: 'form', fields: [{ kind: 'select', id: 'mode', label: 'Mode', value: null, options: [{ id: 'a', label: 'A' }] }] }),
+      ui.actions({ id: 'commands', items: [{ id: 'stop', label: 'Stop', key: 'q' }] }),
+    ]), selectFixture.options)
+    const selectFocus = select.focusTarget!
+    selectFocus.focused = true
+    selectFocus.handleInput?.('q')
+    expect(selectFixture.events).toHaveLength(1)
+    selectFocus.handleInput?.('\r')
+    selectFocus.handleInput?.('q')
+    expect(selectFixture.events).toHaveLength(1)
   })
 
   it('filters unavailable controls and degrades through complete width-safe tokens', () => {

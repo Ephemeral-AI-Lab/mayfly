@@ -15,13 +15,16 @@
 
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import * as themeAuto from '../core/theme-auto.ts'
 import * as themeCustom from '../core/theme-custom.ts'
 import * as themeDark from '../core/theme-dark.ts'
 import * as themeLight from '../core/theme-light.ts'
 import * as themeOcean from '../core/theme-ocean.ts'
 import * as themePaper from '../core/theme-paper.ts'
+import { interactionTranslator } from './locale.ts'
 import { CURRENT_MARK } from './symbols.ts'
+import { openUiOverlay } from './ui-overlay.ts'
 
 /** Usage text returned for malformed `/theme` invocations. */
 const USAGE = 'usage: /theme [dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]'
@@ -51,14 +54,42 @@ const CUSTOM: ThemeTarget = { key: 'custom', module: themeCustom }
 const KNOWN_KEYS = ['dark', 'light', 'ocean', 'paper', 'auto', 'custom'] as const
 
 /**
- * The `/theme` listing: every known key, the live one marked with the
- * shared `← current` selector mark (the same vocabulary as the session
- * picker's badge).
- * @returns the listing text.
+ * The bare `/theme` picker: a choose-list overlay over the known keys with
+ * the live row carrying the shared `← current` badge (the same vocabulary
+ * as the session picker). Selecting a row swaps the provider; the `custom`
+ * row only flashes the usage hint since it needs a path argument. The
+ * registration lives on the commands fiber, which does not inject
+ * `mayflyTheme`, so the picker survives the swap it triggers.
+ * @param ctx - plugin context.
+ * @returns the command outcome.
  */
-function listText(ctx: Context): string {
-  const entries = KNOWN_KEYS.map(key => key === ctx.mayflyInteractionState.currentThemeKey ? `${key} ${CURRENT_MARK}` : key)
-  return `themes: ${entries.join(', ')}`
+function openThemePicker(ctx: Context): CommandResult {
+  const t = interactionTranslator(ctx)
+  const current = ctx.mayflyInteractionState.currentThemeKey
+  openUiOverlay(ctx, {
+    id: 'mayfly.theme', title: t('Select a theme'), presentation: 'editor', capturing: true, dismissal: 'discard',
+    scope: { kind: 'app', targetId: 'theme' },
+    onEvent: { action: async event => {
+      if (event.kind !== 'selection-accept') return { kind: 'completed' }
+      const key = event.selectedIds[0]
+      if (key === undefined || key === ctx.mayflyInteractionState.currentThemeKey) return { kind: 'completed', dismiss: true }
+      if (key === 'custom') return { kind: 'completed', feedback: { severity: 'info', message: USAGE } }
+      const target = BUILTIN.get(key)
+      if (target === undefined) return { kind: 'failed', message: t('unknown theme "{key}"', { key }) }
+      const result = await switchTheme(ctx, target)
+      if (result.kind === 'error') return { kind: 'failed', message: result.text }
+      /* v8 ignore next -- switchTheme success always carries the "switched to" text */
+      return { kind: 'completed', dismiss: true, ...(result.text === undefined ? {} : { feedback: { severity: 'success' as const, message: result.text } }) }
+    } },
+  }, ui.surface({ chrome: 'overlay', title: t('Select a theme'), child: ui.list({
+    id: 'themes', role: 'choose', selectedIds: [current],
+    items: KNOWN_KEYS.map(key => ({
+      id: key, label: key,
+      ...(key === current ? { badge: CURRENT_MARK } : {}),
+      ...(key === 'custom' ? { detail: USAGE } : {}),
+    })),
+  }) }), { reopen: 'replace' })
+  return { kind: 'success' }
 }
 
 /**
@@ -120,7 +151,7 @@ export function registerThemeCommand(ctx: Context): () => void {
       const trimmed = invocation.rawInput.trim()
       const args = trimmed.length === 0 ? [] : trimmed.split(/\s+/)
       const name = args.shift()
-      if (name === undefined) return { kind: 'success', text: listText(ctx) }
+      if (name === undefined) return openThemePicker(ctx)
       const builtin = BUILTIN.get(name)
       if (builtin !== undefined) {
         if (args.length > 0) return { kind: 'error', text: USAGE }

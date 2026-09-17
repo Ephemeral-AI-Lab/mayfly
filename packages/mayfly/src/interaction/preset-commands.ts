@@ -63,7 +63,9 @@ export function apply(ctx: Context): void {
           ]) })
         }
         let handle: MayflyOverlayHandle | undefined
-        handle = await openAgentOverlay(ctx, agent, { id: ID, presentation: 'editor', capturing: true }, view(), () => async (event, context) => {
+        handle = await openAgentOverlay(ctx, agent, { id: ID, presentation: 'editor', capturing: true }, view(), owner => {
+          owner.effect(() => observeInteractionLocale(owner, () => { if (handle?.closed === false) handle.set(view()) }))
+          return async (event, context) => {
           if (event.kind === 'selection-accept' && event.controlId === 'presets') {
             const selected = event.selectedIds[0]
             if (selected === undefined || !catalog.some(preset => preset.id === selected && preset.broken === undefined)) return { kind: 'failed', message: t('The preset is no longer available') }
@@ -84,12 +86,8 @@ export function apply(ctx: Context): void {
             handle?.set(view())
           }
           return { kind: 'completed' }
-        }, signal)
-        if (handle === undefined || handle.closed) return { kind: 'success' }
-        const offLocale = observeInteractionLocale(ctx, () => { handle!.set(view()) })
-        let cleanup!: () => void
-        const offRegistry = ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === ID && handle!.closed) cleanup() })
-        cleanup = ctx.effect(() => () => { offLocale(); offRegistry() })
+        }
+        }, { signal, reopen: 'focus' })
         return { kind: 'success' }
       } catch (error) { return signal.aborted || !current(agent) ? { kind: 'success' } : { kind: 'error', text: message(error) } }
     },

@@ -100,8 +100,18 @@ try {
   // Theme replacement unloads the command's old renderer before its result
   // notification can be painted. Query the replacement's actual state.
   await sleep(500)
+  // Bare /theme opens the choose-list picker; the live row carries the badge.
   term.write('/theme\r')
-  if (!(await waitFor(() => clean().includes('light ← current'), 'the replacement theme state'))) throw new Error('theme')
+  if (!(await waitFor(() => clean().includes('light [← current]'), 'the theme picker live row'))) throw new Error('theme')
+  term.write('\x1b')
+  await sleep(300)
+  // /mode is the palette entry for the Shift+Tab plan cycle: it toggles the
+  // native plan selection, so toggle it back off before leaving.
+  term.write('/mode\r')
+  if (!(await waitFor(() => clean().includes('Plan mode on'), 'the /mode plan toggle'))) throw new Error('mode')
+  await sleep(300)
+  term.write('/mode\r')
+  await sleep(400)
   // The slash dropdown: WrappingSelectList at 40 columns.
   term.write('/')
   await waitFor(() => cleanOutput(out.slice(-4000)).includes('/'), 'the command dropdown')
@@ -110,10 +120,12 @@ try {
   await sleep(250)
   term.write('\x1b')
   await sleep(250)
-  // The double-Ctrl-C exit path.
-  term.write('\x03')
-  await sleep(400)
-  term.write('\x03')
+  // The double-Ctrl-C exit path; a first press can be spent dismissing a
+  // notification or a recalled draft, so press until the session exits.
+  for (let press = 0; press < 4 && exitCode === null; press++) {
+    term.write('\x03')
+    await sleep(700)
+  }
   if (!(await waitFor(() => exitCode !== null, 'clean exit'))) throw new Error('exit')
 } catch (error) {
   console.error(`FAIL: ${error.message}`)

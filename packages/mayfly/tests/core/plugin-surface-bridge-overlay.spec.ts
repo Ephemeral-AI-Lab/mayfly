@@ -447,6 +447,23 @@ describe('direct overlay surface renderer', () => {
     }
   })
 
+  it('renders a pending confirm question as the dialog title on a titled overlay', async () => {
+    const f = await fixture()
+    try {
+      const confirmed = f.open({ id: 'titled-confirm', capturing: true, title: 'Jobs', render: () => actionNode('stop', 'Stop selected job?') })
+      await flush()
+      const component = f.stack()[0]!.component
+      expect(component.render(80).join('\n')).toContain('Jobs')
+      await settleInput(component, '\r')
+      const decided = component.render(80).join('\n')
+      expect(decided).toContain('Stop selected job?')
+      expect(decided).not.toContain('Jobs')
+      expect(confirmed.closed).toBe(false)
+    } finally {
+      await f.dispose()
+    }
+  })
+
   it('maps anchors and computes responsive geometry from the live terminal', async () => {
     const f = await fixture(80, 24)
     try {

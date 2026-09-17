@@ -16,7 +16,7 @@
 
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import { openUiOverlay } from './ui-overlay.ts'
-import { ui, type MayflyInlineSpan, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyInlineSpan, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { currentMayflySettings } from './settings.ts'
 import { DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, type CatalogResult } from './plugin-market/catalog.ts'
@@ -364,7 +364,7 @@ export function registerPluginCommand(ctx: Context): () => void {
       ]) })
     }
 
-    let handle!: ReturnType<typeof openUiOverlay>
+    let handle!: MayflyOverlayHandle
     /** Install or remove the entry selected by an explicit surface action. */
     const runOperation = async (id: string, action: 'install' | 'uninstall', reporter: OperationReporter): Promise<boolean> => {
       const entry = findEntry(id)
@@ -418,13 +418,10 @@ export function registerPluginCommand(ctx: Context): () => void {
             dismissal: 'discard',
             title: entry.displayName,
             scope: { kind: 'panel', parent: { kind: 'overlay', id: 'mayfly.plugin-market' } },
-          }, view(), browseLifetime.signal)
-          const offLocale = observeInteractionLocale(scope, () => { detail.set(view()) })
-          const offRegistry = scope.mayflyOverlays.subscribe(delta => {
-            if (delta.kind === 'remove' && delta.id === detailId && detail.closed) { closed = true; void owner?.dispose() }
-          })
-          scope.effect(() => () => { offLocale(); offRegistry(); detail.close(); detailOwners.delete(owner!) })
-          if (detail.closed) closed = true
+          }, view(), { signal: browseLifetime.signal, reopen: 'focus', onClosed: () => { closed = true; void owner?.dispose() } })
+          const offLocale = observeInteractionLocale(scope, () => { detail?.set(view()) })
+          scope.effect(() => () => { offLocale(); detail?.close(); detailOwners.delete(owner!) })
+          if (detail === undefined || detail.closed) closed = true
         },
       })
       if (closed || browseLifetime.signal.aborted) await owner.dispose()
@@ -444,6 +441,7 @@ export function registerPluginCommand(ctx: Context): () => void {
           return result.status !== 'offline'
     }
 
+    let offLocale: (() => void) | undefined
     handle = openUiOverlay(ctx, { id: 'mayfly.plugin-market', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Plugin marketplace'), scope: { kind: 'app', targetId: 'plugin-market' }, onEvent: {
       action: async (event, context) => {
         if (event.kind === 'selection-accept' && event.selectedIds[0] !== undefined) await openDetail(event.selectedIds[0])
@@ -475,19 +473,13 @@ export function registerPluginCommand(ctx: Context): () => void {
         }
         return { kind: 'completed' as const }
       },
-    } }, marketNode())
-    const offLocale = observeInteractionLocale(ctx, () => { handle.set(marketNode()) })
-    let cleanupBrowse!: () => void
-    const offBrowse = ctx.mayflyOverlays.subscribe(delta => {
-      if (delta.kind === 'remove' && delta.id === 'mayfly.plugin-market' && handle.closed) cleanupBrowse()
-    })
-    cleanupBrowse = ctx.effect(() => () => {
-      offLocale()
-      offBrowse()
+    } }, marketNode(), { reopen: 'replace', onClosed: () => {
+      offLocale?.()
       browseLifetime.abort()
       for (const owner of detailOwners) void owner.dispose()
       detailOwners.clear()
-    })
+    } })
+    offLocale = observeInteractionLocale(ctx, () => { handle.set(marketNode()) })
     // The panel mounts immediately with the loading document when the caller
     // opened before the first load settled; swap in the data when it arrives.
     if (catalog === undefined) {
@@ -529,11 +521,10 @@ export function registerPluginCommand(ctx: Context): () => void {
         if (unloaded) return { kind: 'success' }
         const entry = findEntry(id)
         if (entry === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
-        let offLocale: () => void
+        let offLocale: (() => void) | undefined
         const view = () => detailNode(entry, states()[entry.id])
-        const handle = openUiOverlay(ctx, { id: `mayfly.plugin-detail.${entry.id}`, presentation: 'editor', capturing: true, dismissal: 'discard', title: entry.displayName, scope: { kind: 'app', targetId: `plugin/${entry.id}` } }, view())
+        const handle = openUiOverlay(ctx, { id: `mayfly.plugin-detail.${entry.id}`, presentation: 'editor', capturing: true, dismissal: 'discard', title: entry.displayName, scope: { kind: 'app', targetId: `plugin/${entry.id}` } }, view(), { reopen: 'replace', onClosed: () => offLocale?.() })
         offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
-        ctx.effect(() => () => offLocale())
         return { kind: 'success' }
       }
       if (verb === 'install' || verb === 'uninstall') {

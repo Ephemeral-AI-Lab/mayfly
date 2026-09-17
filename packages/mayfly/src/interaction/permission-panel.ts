@@ -27,7 +27,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { ui } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import { CURRENT_MARK } from './symbols.ts'
 
 /** The sandbox + approval bundle one preset resolves to. */
@@ -113,27 +113,28 @@ export function openPermissionPanel(ctx: Context): void {
     )
   }
 
-  let picker!: ReturnType<typeof openUiOverlay>
+  let picker!: MayflyOverlayHandle
   const confirmDanger = (name: string): void => {
     const t = interactionTranslator(ctx)
     const id = 'mayfly.permission.confirm'
-    if (overlays.focus(id)) return
-    const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Full access'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
+    const handle: MayflyOverlayHandle | undefined = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Full access'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
       if (event.kind === 'activate' && event.actionId === 'yes') {
-        handle.close(); picker.close()
+        handle?.close(); picker.close()
         if (currentAgents.current() !== agent) {
           notifications.report('dispatch', { message: 'permission target changed; action cancelled', severity: 'warning' })
         } else dispatch(name)
       }
-      else if (event.kind === 'activate' && event.actionId === 'no') handle.close()
+      else if (event.kind === 'activate' && event.actionId === 'no') handle?.close()
       return { kind: 'completed' as const }
     } } }, ui.surface({ chrome: 'overlay', title: t('Full access'), child: ui.stack.column([
       ui.text(t('Enable {preset}?', { preset: presets.optionOf(name).name })),
       ui.text(presets.resolve(name).approval === 'never' ? t('Disable the file sandbox. Requests that still require approval will be rejected without prompting.') : t('Disable the file sandbox. Requests that require approval will still prompt.'), { tone: 'warning' }),
       ui.actions({ id: 'permission-confirm-actions', items: [{ id: 'yes', label: t('Yes'), intent: 'danger' }, { id: 'no', label: t('No'), defaultFocus: true }] }),
-    ]) }))
+    ]) }), { reopen: 'focus' })
   }
 
+  // 'replace' re-reads the preset table on every invocation, so a stale
+  // picker never shows an outdated current mark.
   picker = openUiOverlay(ctx, { id: 'mayfly.permission', presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Permissions', scope: { kind: 'app', targetId: 'permission' }, onEvent: { action: event => {
     if (event.kind !== 'selection-accept') return { kind: 'completed' as const }
     const name = event.selectedIds[0]
@@ -142,5 +143,5 @@ export function openPermissionPanel(ctx: Context): void {
     if (presets.resolve(name).sandbox === 'danger-full-access') confirmDanger(name)
     else { picker.close(); dispatch(name) }
     return { kind: 'completed' as const }
-  } } }, ui.surface({ chrome: 'overlay', title: 'Permissions', child: ui.list({ id: 'permissions', role: 'choose', selectedIds: current === 'custom' ? [] : [current], items: rows }) }))
+  } } }, ui.surface({ chrome: 'overlay', title: 'Permissions', child: ui.list({ id: 'permissions', role: 'choose', selectedIds: current === 'custom' ? [] : [current], items: rows }) }), { reopen: 'replace' })
 }

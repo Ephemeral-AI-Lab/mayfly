@@ -194,7 +194,9 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
         } catch { /* staging is in-memory; a failed re-read leaves the next refresh to repaint */ }
         return { kind: 'completed', dismiss: true, feedback: { severity: 'success', message: t('Model "{model}" added', { model: modelId }) } }
       } },
-    }, customModelNode(settings.writable), cancellation)
+    }, customModelNode(settings.writable), { signal: cancellation, reopen: 'focus' })
+    /* v8 ignore next -- the focus check above already returned; undefined means a same-id editor won the race and was focused instead */
+    if (customHandle === undefined) return
     const offLocale = observeInteractionLocale(ctx, () => { if (!customHandle.closed) customHandle.set(customModelNode(settings.writable)) })
     const offRemove = overlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === customModelId) { offLocale(); offRemove() } })
   }
@@ -224,7 +226,6 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
   try {
     const initial = await read()
     if (initial.profile === undefined) { releaseLifetime(); return false }
-    if (overlays.focus(id)) { releaseLifetime(); return true }
     openedRef = initial.ref
     const offSettings = ctx.on('settings/document-updated', ns => { if (String(ns) === NAMESPACE) void refresh() })
     const offValues = ctx.on('settings/updated', ns => { if (String(ns) === NAMESPACE) void refresh() })
@@ -233,7 +234,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     })
     const offLocale = observeInteractionLocale(ctx, () => { void refresh() })
     cleanup = ctx.effect(() => () => { offSettings(); offValues(); offCredential(); offLocale(); releaseLifetime() })
-    handle = overlays.open({
+    handle = openUiOverlay(ctx, {
       id, title: t('Configure {route}', { route }), presentation: 'editor', capturing: true,
       scope: { kind: 'app', targetId: `${NAMESPACE}/${route}` }, source: source(initial),
       onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
@@ -318,13 +319,9 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
               : { kind: 'failed', ...reply(await read()), ...(settingsWritten ? { acceptedFields: ops.map(op => ({ ...address('connection'), fieldId: op.path.at(-1) === 'displayName' ? 'name' : 'baseURL' })) } : {}), message: t(settingsWritten ? 'Provider settings saved, but the credential could not be saved' : 'Provider configuration could not be saved') }
         }
       } },
-    }, node(initial))
+    }, node(initial), { signal: cancellation, reopen: 'focus', onClosed: () => cleanup() })
+    if (handle === undefined) { cleanup(); return true }
     discover(initial.profile)
-    const closeOnAbort = () => handle?.close()
-    cancellation.addEventListener('abort', closeOnAbort, { once: true })
-    const offOverlay = overlays.subscribe(delta => {
-      if (delta.kind === 'remove' && delta.id === id && handle!.closed) { cancellation.removeEventListener('abort', closeOnAbort); offOverlay(); cleanup() }
-    })
     return true
   } catch (error) { cleanup(); releaseLifetime(); throw error }
 }

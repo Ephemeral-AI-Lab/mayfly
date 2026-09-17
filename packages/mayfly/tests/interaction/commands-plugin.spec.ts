@@ -232,6 +232,12 @@ describe('mayfly-commands plugin', () => {
     expect(await ctx.commands.execute(agent, '/q', [], signal())).toBeUndefined()
   })
 
+  it('/mode runs the Shift+Tab plan cycle through the command surface', async () => {
+    const { ctx, agent } = await mount()
+    const execution = await ctx.commands.execute(agent, '/mode', [], signal())
+    expect(execution?.result).toEqual({ kind: 'success' })
+  })
+
   it('/sessions <id> emits mayfly/request-resume with the trimmed id', async () => {
     const { ctx, agent } = await mount()
     const onResume = vi.fn()
@@ -774,8 +780,12 @@ describe('mayfly-commands plugin', () => {
     expect(rows.join('\n')).toContain('/plugin')
     expect(rows.join('\n')).toContain('/update')
     expect(rows.join('\n')).toContain('/effort (/thinking)')
+    expect(rows.join('\n')).toContain('/mode')
     expect(rows.some(row => row.includes('Keys'))).toBe(true)
-    expect(rows.some(row => row.includes('enter') && row.includes('Submit input'))).toBe(true)
+    // The command roster grew past the first window; scroll down to the
+    // Keys rows the window no longer shows on the first paint.
+    for (let i = 0; i < 5; i += 1) panel.handleInput(KEY.down)
+    expect(panel.render(80).some(row => row.includes('enter') && row.includes('Submit input'))).toBe(true)
     panel.invalidate()
     panel.handleInput(KEY.escape)
     await flushCommands()
@@ -870,11 +880,11 @@ describe('mayfly-commands plugin', () => {
 
   it('unregisters every command when the fiber disposes', async () => {
     const { ctx, agent, fiber } = await mount({ appExit: () => {} })
-    for (const name of ['quit', 'new', 'fork', 'sessions', 'help', 'theme']) {
+    for (const name of ['quit', 'new', 'fork', 'sessions', 'help', 'theme', 'mode']) {
       expect(ctx.commands.find(agent, name)).toBeDefined()
     }
     await fiber.dispose()
-    for (const name of ['quit', 'new', 'fork', 'sessions', 'help', 'theme']) {
+    for (const name of ['quit', 'new', 'fork', 'sessions', 'help', 'theme', 'mode']) {
       expect(ctx.commands.find(agent, name)).toBeUndefined()
     }
     // The alias metadata follows the fiber: the relation is gone too, so a

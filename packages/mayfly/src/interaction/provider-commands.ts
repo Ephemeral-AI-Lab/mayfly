@@ -10,6 +10,7 @@ import { openProviderEditor } from './provider-edit.ts'
 import { openModelPicker } from './model-commands.ts'
 import { interactionTranslator } from './locale.ts'
 import { openProviderSetup } from './provider-add.ts'
+import { openUiOverlay } from './ui-overlay.ts'
 
 export const name = 'mayfly-provider-commands'
 export const inject = ['commands', 'settings', 'credentials', 'mayflyOverlays']
@@ -39,12 +40,12 @@ export function apply(ctx: Context): void {
           ? { kind: 'success' } : { kind: 'error', text: t('The provider has no editable configuration') }
       }
       if (argument !== '' && argument !== 'list') return { kind: 'error', text: 'usage: /provider [list | edit <provider> | switch <provider> | add]' }
-      if (ctx.mayflyOverlays.focus('mayfly.providers')) return { kind: 'success' }
       const build = () => ui.stack.column([
         ui.list({ id: 'providers', role: 'browse', selectedIds: [], filterable: true, items: (ctx.get('llm')?.listProviders() ?? []).map(provider => ({ id: provider.id, label: provider.name || provider.id })), empty: ui.empty({ title: t('No configured providers') }) }),
         ui.actions({ id: 'provider-list-actions', items: [{ id: 'add', label: t('Add provider') }, { id: 'close', label: t('Close'), dismiss: true }] }),
       ])
-      const handle = ctx.mayflyOverlays.open({
+      let offSettings: (() => void) | undefined
+      const handle = openUiOverlay(ctx, {
         id: 'mayfly.providers', title: t('Providers'), presentation: 'editor', capturing: true,
         scope: { kind: 'app', targetId: 'provider-configuration' },
         onEvent: { action: async (event, context) => {
@@ -56,12 +57,9 @@ export function apply(ctx: Context): void {
           }
           return { kind: 'completed' }
         } },
-      }, build())
-      const offSettings = ctx.on('settings/updated', () => { handle.set(build()) })
-      const offOverlay = ctx.mayflyOverlays.subscribe(delta => {
-        if (delta.kind === 'remove' && delta.id === handleId && handle.closed) { offSettings(); offOverlay() }
-      })
-      const handleId = 'mayfly.providers'
+      }, build(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => offSettings?.() })
+      if (handle === undefined) return { kind: 'success' }
+      offSettings = ctx.on('settings/updated', () => { handle.set(build()) })
       return { kind: 'success' }
     },
   })

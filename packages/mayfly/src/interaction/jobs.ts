@@ -94,7 +94,7 @@ async function showOutput(ctx: Context, agent: Agent, read: JobRead, signal: Abo
       const target = action === 'first' ? 1 : action === 'last' ? pages.length : action === 'previous' ? page - 1 : action === 'next' ? page + 1 : page
       return { kind: 'accepted', node: jobOutputNode(read, pages, Math.max(1, Math.min(pages.length, target)), t), source: [] }
     }
-  }, signal)
+  }, { signal, reopen: 'replace' })
 }
 
 export function apply(ctx: Context): void {
@@ -160,12 +160,12 @@ export function apply(ctx: Context): void {
             return { kind: 'completed' }
           }
           return { kind: 'completed' }
-        }, signal)
+        }, { signal, reopen: 'replace' })
         if (handle !== undefined) detail = { id, handle, node }
         refresh()
         return { kind: 'completed' }
       }
-    }, signal)
+    }, { signal, reopen: 'focus' })
     refresh()
     return { kind: 'success' }
   } })
