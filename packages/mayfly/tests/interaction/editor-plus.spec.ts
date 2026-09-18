@@ -37,7 +37,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale?: 'en' | 'zh' } = {}): Promise<{
+async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale?: 'en' | 'zh', locals?: { append(component: MayflyComponent): () => void } } = {}): Promise<{
   ctx: Context
   screen: FakeScreen
   components: FakeMayflyComponents
@@ -54,6 +54,7 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
     ? undefined
     : new MayflyLocaleService(ctx, { systemLocale: options.locale })
   locale?.register('interaction', INTERACTION_LOCALE)
+  if (options.locals !== undefined) ctx.provide('mayflyTranscriptLocals', options.locals)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('editor-plus-spec'))
@@ -188,6 +189,28 @@ describe('mayfly-editor-plus input modes', () => {
     expect(followup).toHaveBeenCalledOnce()
     await inputFiber.dispose()
     expect(echoes(screen)).toEqual([])
+  })
+
+  it('anchors the echo into the conversation flow when the transcript seam exists', async () => {
+    const appended: MayflyComponent[] = []
+    const { screen, editor, inputFiber } = await mount({
+      locals: {
+        append(component) {
+          appended.push(component)
+          return () => { const index = appended.indexOf(component); if (index >= 0) appended.splice(index, 1) }
+        },
+      },
+    })
+    editorPlus.setShellExecutor(() => Promise.resolve({ code: 0, stdout: 'hi there\n', stderr: '' }))
+    type(editor, '!')
+    type(editor, 'echo hi')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(appended).toHaveLength(1) })
+    expect(appended[0]!.render(80)).toEqual(['$$ $echo hi', '_hi there_'])
+    // The echo never entered the pinned local-slot region above the editor.
+    expect(echoes(screen)).toHaveLength(0)
+    await inputFiber.dispose()
+    expect(appended).toEqual([])
   })
 
   it('requests a render when the shell echo mounts, not only on the next keypress', async () => {

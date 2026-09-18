@@ -3,7 +3,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponent, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/index.ts'
-import { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptModelComponent, type TranscriptModelRenderer } from '../../src/transcript/transcript-model.ts'
+import { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptLocalsService, TranscriptModelComponent, type TranscriptModelRenderer } from '../../src/transcript/transcript-model.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 import { ToolCallComponent } from '../../src/transcript/components.ts'
 import { DEFAULT_TRANSCRIPT_PRESENTATION, TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
 import { setThinkingTimers } from '../../src/transcript/thinking.ts'
@@ -472,5 +473,90 @@ describe('TranscriptController', () => {
   it('reports the shipped presentation policy without a renderer', () => {
     const service = new TranscriptController(new Context())
     expect(service.presentationPolicy()).toEqual(DEFAULT_TRANSCRIPT_PRESENTATION)
+  })
+
+  it('anchors ephemeral local entries into the durable flow and scrolls them up with later history', () => {
+    const f = fixture()
+    const entries = (): TranscriptEntryModel[] => [
+      { kind: 'transcript-assistant', id: 'a1', seq: 1, turn: 1, step: 0, text: 'first', streaming: false },
+      { kind: 'transcript-assistant', id: 'a2', seq: 2, turn: 1, step: 1, text: 'second', streaming: false },
+    ]
+    let current = model('anchored', entries())
+    const service = new TranscriptController(new Context(), f.screen, { renderer: plainRenderer() })
+    service.setSource(() => current)
+    const component = f.children[0] as TranscriptModelComponent
+    const echo: MayflyComponent = { render: () => ['$ echo hi'], invalidate: () => {} }
+    const remove = service.appendLocal(echo)
+    // The echo lands after the durable tail, inside the transcript gutter.
+    expect(component.render(40)).toEqual(['first', 'second', ' $ echo hi'])
+    // Later durable entries render below it — the anchor scrolls up with history.
+    current = model('anchored', [...entries(), { kind: 'transcript-assistant', id: 'a3', seq: 3, turn: 2, step: 0, text: 'third', streaming: false }])
+    expect(component.render(40)).toEqual(['first', 'second', ' $ echo hi', 'third'])
+    remove()
+    expect(component.render(40)).toEqual(['first', 'second', 'third'])
+    service.dispose()
+  })
+
+  it('anchors locals at their seq boundary, orders siblings, and drops them on generation change', () => {
+    const view = (generation: number): TranscriptModel => model('gen', [
+      { kind: 'transcript-user', id: 'u', seq: 5, turn: 1, text: 'user text', images: [] },
+      { kind: 'transcript-assistant', id: 'a', seq: 9, turn: 1, step: 0, text: 'assistant text', streaming: false },
+    ], generation)
+    let current = view(0)
+    const component = new TranscriptModelComponent(() => current, plainRenderer())
+    const local = (text: string): MayflyComponent => ({ render: () => [text], invalidate: () => {} })
+    component.appendAnchored('tail', local('tail'), 99)
+    component.appendAnchored('head', local('head'), 0)
+    component.appendAnchored('mid-a', local('mid a'), 5)
+    component.appendAnchored('mid-b', local('mid b'), 5)
+    expect(component.render(40)).toEqual([' head', 'user text', ' mid a', ' mid b', 'assistant text', ' tail'])
+    component.removeAnchored('mid-a')
+    component.removeAnchored('missing')
+    expect(component.render(40)).toEqual([' head', 'user text', ' mid b', 'assistant text', ' tail'])
+    // Invalidate forwards the cache drop to anchored components too.
+    const invalidations = vi.fn()
+    component.appendAnchored('invalid', { render: () => ['inv'], invalidate: invalidations }, 9)
+    component.invalidate()
+    expect(invalidations).toHaveBeenCalledOnce()
+    expect(component.render(40)).toEqual([' head', 'user text', ' mid b', 'assistant text', ' inv', ' tail'])
+    current = view(1)
+    expect(component.render(40)).toEqual(['user text', 'assistant text'])
+    component.dispose()
+  })
+
+  it('renders anchored locals above the live overlay and within the render width', () => {
+    const component = new TranscriptModelComponent(() => ({
+      kind: 'transcript', id: 'live', generation: 0,
+      entries: [{ kind: 'transcript-user', id: 'u', seq: 1, turn: 1, text: 'user text', images: [] }],
+      live: { turn: 1, step: 0, entries: [{ kind: 'transcript-assistant', id: 'live-a', seq: 2, turn: 1, step: 0, text: 'streaming', streaming: true }] },
+    }), plainRenderer())
+    component.appendAnchored('echo', { render: width => ['x'.repeat(width)], invalidate: () => {} }, 1)
+    expect(component.render(40)).toEqual(['user text', ` ${'x'.repeat(38)}`, 'streaming'])
+    for (const width of [2, 3, 6, 40]) {
+      for (const row of component.render(width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+    }
+    component.dispose()
+  })
+
+  it('serves ephemeral locals through ctx.mayflyTranscriptLocals and no-ops when unmounted', () => {
+    const ctx = new Context()
+    const service = new TranscriptController(ctx, undefined, { renderer: plainRenderer() })
+    const locals = new TranscriptLocalsService(ctx, service)
+    expect(ctx.get('mayflyTranscriptLocals')).toBeInstanceOf(TranscriptLocalsService)
+    const missing = locals.append({ render: () => ['x'], invalidate: () => {} })
+    expect(() => missing()).not.toThrow()
+    const f = fixture()
+    service.attach(f.screen)
+    service.setSource(model('slot'))
+    const remove = locals.append({ render: () => ['local'], invalidate: () => {} })
+    expect((f.children[0] as TranscriptModelComponent).render(40)).toEqual(['entry', ' local'])
+    // A function source reporting no session still resolves a null model.
+    service.setSource(() => null)
+    const empty = locals.append({ render: () => ['head'], invalidate: () => {} })
+    expect((f.children[0] as TranscriptModelComponent).render(40)).toEqual([])
+    service.dispose()
+    remove()
+    remove()
+    empty()
   })
 })
