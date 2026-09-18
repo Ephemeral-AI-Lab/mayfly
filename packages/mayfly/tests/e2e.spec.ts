@@ -53,6 +53,9 @@ describe('Mayfly direct-service whole tree', () => {
       mayflyOverlays: true,
       mayflyEditorExtensions: true,
     })
+    // The transcript plugin mounts after the sibling; its ephemeral-local
+    // seam resolves through the shared store once the tree has settled.
+    expect(tree.ctx.get('mayflyTranscriptLocals')).toBeDefined()
     expect(tree.projections.calls.at(-1)).toEqual({ session: agent.session, keys: ['mayflyConversation'] })
     expect(tree.tools.scopes.at(-1)).toBe(agent)
   })

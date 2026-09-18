@@ -7,7 +7,7 @@
  * @module @ephemeral-ai/mayfly/transcript/transcript-model
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@deepseek-ai/cordis'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import {
@@ -167,6 +167,18 @@ interface DurableRowsCache {
   readonly rows: string[]
 }
 
+/**
+ * One ephemeral component anchored into the durable flow: it renders after the
+ * last durable entry whose seq does not exceed `seq`, orders among siblings by
+ * `order`, and drops on generation change or explicit removal.
+ */
+interface AnchoredContent {
+  readonly component: MayflyComponent
+  readonly seq: number
+  readonly order: number
+  cached: { readonly width: number, readonly rows: string[] } | undefined
+}
+
 function entryRevision(entry: TranscriptEntryModel): number | string {
   return entry.renderRevision ?? entry.updatedSeq ?? Number.NaN
 }
@@ -174,6 +186,7 @@ function entryRevision(entry: TranscriptEntryModel): number | string {
 /** Bounded semantic transcript component with id-based reconciliation. */
 export class TranscriptModelComponent implements MayflyComponent {
   private readonly cached = new Map<string, CachedComponent>()
+  private readonly anchored = new Map<string, AnchoredContent>()
   private canonicalRows = new WeakMap<object, { readonly width: number, readonly rows: string[] }>()
   private expanded = false
   private renderedRows: RenderedRowsCache | undefined
@@ -183,6 +196,7 @@ export class TranscriptModelComponent implements MayflyComponent {
   private frameRows: string[] | undefined
   private frameBase: readonly string[] | undefined
   private liveIds = new Set<string>()
+  private anchorOrder = 0
 
   constructor(
     private readonly source: () => TranscriptModel | null,
@@ -195,6 +209,7 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.renderedRows = undefined
       this.canonicalRows = new WeakMap()
       this.prune(new Set())
+      this.clearAnchored()
       this.generation = undefined
       this.plan = undefined
       this.durableRows = undefined
@@ -207,6 +222,9 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.renderedRows = undefined
       this.canonicalRows = new WeakMap()
       this.prune(new Set())
+      // Anchors appended since the last render keep their position on the
+      // first pass; a real generation change (new session content) drops them.
+      if (this.generation !== undefined) this.clearAnchored()
       this.generation = model.generation
       this.plan = undefined
       this.durableRows = undefined
@@ -246,9 +264,16 @@ export class TranscriptModelComponent implements MayflyComponent {
     this.liveIds = liveIds
     let durableRows = this.durableRows
     if (durableRows === undefined || durableRows.width !== width || durableRows.expanded !== this.expanded) {
-      const rows = plan.entries.flatMap(entry => isSemantic(entry)
-        ? this.renderSemantic(entry, width, plan.expandableTurns.has(entry.turn), policy)
-        : this.renderCanonical(entry, width))
+      const insertions = this.anchoredInsertions(plan.entries)
+      const rows = insertions === undefined
+        ? plan.entries.flatMap(entry => this.renderPlanEntry(entry, width, plan, policy))
+        : [
+            ...this.anchoredRowsAt(insertions, 0, width),
+            ...plan.entries.flatMap((entry, index) => [
+              ...this.renderPlanEntry(entry, width, plan, policy),
+              ...this.anchoredRowsAt(insertions, index + 1, width),
+            ]),
+          ]
       durableRows = { width, expanded: this.expanded, rows }
       this.durableRows = durableRows
     }
@@ -272,6 +297,84 @@ export class TranscriptModelComponent implements MayflyComponent {
     const rows = renderCanonicalNode(entry, width, this.renderer)
     this.canonicalRows.set(entry, { width, rows })
     return rows
+  }
+
+  /**
+   * Anchor an ephemeral component into the durable flow after the last visible
+   * entry whose seq does not exceed `seq`. Anchored content is presentation-only
+   * and drops on generation change, a null source, or `removeAnchored`.
+   */
+  appendAnchored(id: string, component: MayflyComponent, seq: number): void {
+    this.anchored.set(id, { component: new GutterComponent(component), seq, order: this.anchorOrder, cached: undefined })
+    this.anchorOrder += 1
+    this.dropRows()
+  }
+
+  /** Remove one anchored component early; unknown ids are ignored. */
+  removeAnchored(id: string): void {
+    const item = this.anchored.get(id)
+    if (item === undefined) return
+    this.anchored.delete(id)
+    this.disposeComponent(item.component)
+    this.dropRows()
+  }
+
+  /**
+   * Group anchored items by the durable-entry index they render before. A
+   * canonical node inherits the seq of the preceding semantic entry (leading
+   * canonicals keep header position), so an anchor past every seq lands at
+   * the tail of whatever entries are visible.
+   */
+  private anchoredInsertions(entries: TranscriptModel['entries']): Map<number, AnchoredContent[]> | undefined {
+    if (this.anchored.size === 0) return undefined
+    const insertions = new Map<number, AnchoredContent[]>()
+    const items = [...this.anchored.values()].sort((a, b) => a.seq - b.seq || a.order - b.order)
+    for (const item of items) {
+      let index = 0
+      let lastSeq = Number.NEGATIVE_INFINITY
+      for (let at = 0; at < entries.length; at += 1) {
+        const entry = entries[at]!
+        if (isSemantic(entry)) lastSeq = entry.seq
+        if (lastSeq <= item.seq) index = at + 1
+      }
+      const list = insertions.get(index)
+      if (list === undefined) insertions.set(index, [item])
+      else list.push(item)
+    }
+    return insertions
+  }
+
+  /** Render every anchored item parked at one insertion index, cached per width. */
+  private anchoredRowsAt(insertions: Map<number, AnchoredContent[]>, index: number, width: number): string[] {
+    const items = insertions.get(index)
+    if (items === undefined) return []
+    return items.flatMap(item => {
+      if (item.cached?.width !== width) item.cached = { width, rows: item.component.render(width) }
+      return item.cached.rows
+    })
+  }
+
+  private renderPlanEntry(
+    entry: TranscriptModel['entries'][number],
+    width: number,
+    plan: TranscriptRenderPlan,
+    policy: TranscriptPresentationSnapshot,
+  ): string[] {
+    return isSemantic(entry)
+      ? this.renderSemantic(entry, width, plan.expandableTurns.has(entry.turn), policy)
+      : this.renderCanonical(entry, width)
+  }
+
+  private clearAnchored(): void {
+    for (const item of this.anchored.values()) this.disposeComponent(item.component)
+    this.anchored.clear()
+  }
+
+  private dropRows(): void {
+    this.renderedRows = undefined
+    this.durableRows = undefined
+    this.frameRows = undefined
+    this.frameBase = undefined
   }
 
   renderWindow(width: number, offset: number, rows: number): { readonly rows: string[], readonly total: number } {
@@ -306,6 +409,10 @@ export class TranscriptModelComponent implements MayflyComponent {
       cached.rows = undefined
       cached.component.invalidate()
     }
+    for (const item of this.anchored.values()) {
+      item.cached = undefined
+      item.component.invalidate()
+    }
   }
 
   /** Dispose timers and async renderer resources held by cached components. */
@@ -317,6 +424,7 @@ export class TranscriptModelComponent implements MayflyComponent {
     this.plan = undefined
     this.liveIds.clear()
     this.canonicalRows = new WeakMap()
+    this.clearAnchored()
     this.prune(new Set())
   }
 
@@ -516,6 +624,7 @@ export class TranscriptController {
   private mounted: MountedTranscript | undefined
   private screen: MayflyScreen | undefined
   private expanded = false
+  private localSerial = 0
 
   constructor(
     private readonly owner: Context,
@@ -568,6 +677,37 @@ export class TranscriptController {
     return this.options.renderer?.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
   }
 
+  /**
+   * Append an ephemeral component into the conversation flow at the current
+   * durable tail: later durable entries render below it and it scrolls up with
+   * the transcript instead of pinning above the editor. The entry never becomes
+   * session data and drops on generation change or explicit removal.
+   * @param component - the component to mount; the transcript applies its gutter.
+   * @returns a disposer removing the entry early; a no-op when nothing is mounted.
+   */
+  appendLocal(component: MayflyComponent): () => void {
+    const mounted = this.mounted
+    if (mounted === undefined) return () => {}
+    // `mounted` implies `setSource` ran, so the source exists; a function
+    // source may still report a null model (no session attached).
+    const source = this.source!
+    const model = typeof source === 'function' ? source() : source
+    let seq = -1
+    for (const entry of model?.entries ?? []) {
+      if (isSemantic(entry) && entry.seq > seq) seq = entry.seq
+    }
+    const id = `local.${this.localSerial += 1}`
+    mounted.component.appendAnchored(id, component, seq)
+    this.refresh()
+    let live = true
+    return () => {
+      if (!live) return
+      live = false
+      mounted.component.removeAnchored(id)
+      this.screen?.requestRender()
+    }
+  }
+
   dispose(): void {
     this.unmount()
     this.source = undefined
@@ -595,5 +735,27 @@ export class TranscriptController {
     mounted.component.dispose()
     mounted.unmount()
     this.mounted = undefined
+  }
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Context { mayflyTranscriptLocals: TranscriptLocalsService }
+}
+
+/**
+ * `ctx.mayflyTranscriptLocals` — appends ephemeral local components into the
+ * mounted conversation flow. Entries render where they were appended and
+ * scroll up with the transcript instead of pinning to its tail; they are
+ * presentation-only and never become session events. Consumers resolve the
+ * service through `ctx.get` and fall back to local content slots when absent.
+ */
+export class TranscriptLocalsService extends Service {
+  constructor(ctx: Context, private readonly controller: TranscriptController) {
+    super(ctx, 'mayflyTranscriptLocals')
+  }
+
+  /** Append one ephemeral component at the current durable tail. */
+  append(component: MayflyComponent): () => void {
+    return this.controller.appendLocal(component)
   }
 }

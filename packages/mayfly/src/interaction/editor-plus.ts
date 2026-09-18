@@ -44,6 +44,7 @@ import type {
   MayflySemanticColors,
 } from '../core/index.ts'
 import type { MayflyTranslate } from '../frontend/index.ts'
+import type { TranscriptLocalsService } from '../transcript/index.ts'
 import {
   ENHANCEMENT_EDITOR_PLUS,
   markEditorEnhancement,
@@ -306,8 +307,9 @@ function createAutocompleteProvider(
  * stdout and stderr below — stderr in `error` when the exit code marks
  * failure, `textMuted` otherwise — a muted truncation row when the caps cut
  * either stream, and an error-colored exit-code row on failure. Mounted
- * into the scroll region; deliberately not part of the session transcript
- * (P2 intent).
+ * through the transcript's ephemeral-local seam so it scrolls up with later
+ * history (a local scroll-region slot when that seam is absent); deliberately
+ * not part of the durable session transcript (P2 intent).
  */
 class ShellEchoComponent implements MayflyComponent {
   /**
@@ -383,7 +385,7 @@ function capOutput(output: string): { text: string, truncated: boolean } {
 }
 
 /**
- * Run one bash-mode command and mount its echo into the scroll region.
+ * Run one bash-mode command and mount its echo into the conversation flow.
  * @param ctx - plugin context carrying the Mayfly services.
  * @param command - the shell command line.
  * @param isUnloaded - reports whether this fiber unloaded while the shell
@@ -405,12 +407,18 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
       result.code,
       interactionTranslator(ctx),
     )
-    // Effect-bound so unloading this fiber also removes its echoes. The
+    // Effect-bound so unloading this fiber also removes its echoes. When the
+    // transcript plugin is mounted the echo anchors into the conversation
+    // flow — it lands after the durable tail and later history pushes it up
+    // like an ordinary message instead of pinning above the editor;
+    // compositions without the seam fall back to a local content slot. The
     // mount lands after the input-driven frame — the shell settles
     // asynchronously and the renderer only paints on request — so the
     // render must be asked for here or the echo stays invisible until the
     // next keypress.
     ctx.effect(() => {
+      const locals = ctx.get('mayflyTranscriptLocals') as TranscriptLocalsService | undefined
+      if (locals !== undefined) return locals.append(echo)
       const slot = ctx.mayflyScreen.mountContentSlot(`local.shell.${randomUUID()}`, echo)
       ctx.mayflyScreen.requestRender()
       return () => slot.dispose()

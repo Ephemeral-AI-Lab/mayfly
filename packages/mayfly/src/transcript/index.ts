@@ -19,7 +19,7 @@ import type {} from '../app/index.ts'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
-import { TranscriptController } from './transcript-model.ts'
+import { TranscriptController, TranscriptLocalsService } from './transcript-model.ts'
 import { OfficialConversationModelSource, type LiveDraftSource } from './official-model.ts'
 import {
   DEFAULT_EXPAND_TURNS,
@@ -58,7 +58,7 @@ export { ellipsize, parseToolArguments, summarizeToolCall, TOOL_ARG_PAIR_LIMIT, 
 export { SessionFactsService } from './session-facts.ts'
 export { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, ToolModelComponent } from './tool-model.ts'
 export type { ToolPresentationFacts } from './tool-model.ts'
-export { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptModelComponent } from './transcript-model.ts'
+export { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptLocalsService, TranscriptModelComponent } from './transcript-model.ts'
 export type { TranscriptModelRenderer } from './transcript-model.ts'
 export {
   BRAILLE_SPINNER_FRAMES,
@@ -156,6 +156,10 @@ export function apply(ctx: Context): void {
     },
   })
   ctx.effect(() => () => transcript.dispose())
+  // Ephemeral local entries (e.g. `!` shell echoes) anchor into the mounted
+  // conversation flow through this seam and scroll up with later history;
+  // the service unregisters when this fiber unloads.
+  new TranscriptLocalsService(ctx, transcript)
   const officialSource = new OfficialConversationModelSource(
     ctx.sessionProjections,
     { get: toolName => {
