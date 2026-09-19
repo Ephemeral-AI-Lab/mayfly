@@ -13,26 +13,67 @@ const path = (id: string) => [{ controlId: 'questions', itemId: id }]
 // A single-question prompt mounts its one page at the surface root, so those
 // tests address it through [] rather than the wizard tab path.
 const field = (id: string, fieldId: string, pagePath = path(id)) => ({ pagePath, formId: 'answer', fieldId })
+const options = (id: string, pagePath = path(id)) => ({ pagePath, controlId: 'options' })
+const accept = (id: string, ids: readonly string[], pagePath = path(id)) =>
+  ({ kind: 'selection-accept' as const, pagePath, controlId: 'options', selectedIds: ids })
 
 describe('shared questionnaire', () => {
-  it('keeps each question draft and invalidates a completed step when revisited and edited', async () => {
+  it('advances on Enter, switches pages with arrow keys, and restores the list row on revisit', async () => {
     const bench = await setup()
-    const questions = [{ id: 'one', question: 'Pick one', options: [{ label: 'Alpha' }, { label: 'Beta' }] }, { id: 'two', question: 'Why?' }]
-    const pending = bench.ctx.userQuestions.ask({ questions })
+    const pending = bench.ctx.userQuestions.ask({ questions: [
+      { id: 'one', question: 'Pick one', options: [{ label: 'Alpha' }, { label: 'Beta' }] },
+      { id: 'two', question: 'Pick two', options: [{ label: 'Gamma' }] },
+    ] })
+    const model = bench.model()
+    const renderer = renderRequest(model)
+    renderer.component.render(80)
+    expect(model.focus).toMatchObject({ pagePath: path('one'), controlId: 'options', itemId: '0' })
+    renderer.input('\x1b[B')
+    renderer.input('\r')
+    expect(model.choice(options('one'))!.selectedIds).toEqual(['1'])
+    expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBe('two')
+    expect(model.completedSteps({ pagePath: [], controlId: 'questions' })).toEqual(['one'])
+    expect(renderer.component.render(80).join('\n')).toContain('✓ Q1')
+    expect(model.focus).toMatchObject({ pagePath: path('two'), controlId: 'options', itemId: '0' })
+    renderer.input('\x1b[D')
+    expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBe('one')
+    expect(model.focus).toMatchObject({ pagePath: path('one'), controlId: 'options', itemId: '1' })
+    renderer.input('\x1b[C')
+    expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBe('two')
+    renderer.runtime.dispose()
+    model.invoke('submit-answers')
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'one', selected: ['Beta'] }, { id: 'two', selected: [] }] })
+  })
+
+  it('submits from the last question list on Enter', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [
+      { id: 'one', question: 'Pick one', options: [{ label: 'Alpha' }] },
+      { id: 'two', question: 'Pick two', options: [{ label: 'Beta' }, { label: 'Gamma' }] },
+    ] })
+    const model = bench.model()
+    model.emit(accept('one', ['0']))
+    model.emit(accept('two', ['1']))
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'one', selected: ['Alpha'] }, { id: 'two', selected: ['Gamma'] }] })
+    expect(model.disposed).toBe(true)
+  })
+
+  it('invalidates a completed step when its choice or custom answer changes', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [
+      { id: 'one', question: 'Pick one', options: [{ label: 'Alpha' }, { label: 'Beta' }] },
+      { id: 'two', question: 'Why?' },
+    ] })
     const completed = vi.fn()
     void pending.then(completed)
     const model = bench.model()
-    model.edit(field('one', 'selected'), '1')
-    model.invoke('next', path('one'))
+    model.emit(accept('one', ['1']))
     expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBe('two')
     expect(model.completedSteps({ pagePath: [], controlId: 'questions' })).toEqual(['one'])
-    const renderer = renderRequest(model)
-    expect(renderer.component.render(80).join('\n')).toContain('✓ Q1')
-    renderer.runtime.dispose()
     model.edit(field('two', 'custom'), 'because')
     model.invoke('previous', path('two'))
-    expect(model.form(field('one', 'selected'))!.fields.selected!.value).toBe('1')
-    model.edit(field('one', 'selected'), '0')
+    expect(model.choice(options('one'))!.selectedIds).toEqual(['1'])
+    model.updateChoice(options('one'), { kind: 'select', ids: ['0'] })
     expect(model.completedSteps({ pagePath: [], controlId: 'questions' })).toEqual([])
     model.activateTab({ pagePath: [], controlId: 'questions' }, 'two')
     await flushRequests()
@@ -47,7 +88,7 @@ describe('shared questionnaire', () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [{ id: 'q', question: 'Pick', options: [{ label: '原始 A' }, { label: 'Original B' }], multiSelect }] })
     const model = bench.model()
-    model.edit(field('q', 'selected', []), multiSelect ? ['1', '0'] : '1')
+    model.updateChoice(options('q', []), { kind: 'select', ids: multiSelect ? ['1', '0'] : ['1'] })
     model.edit(field('q', 'custom', []), '  custom\ntext  ')
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
@@ -63,8 +104,8 @@ describe('shared questionnaire', () => {
       { id: 'text', question: 'Why?' },
     ] })
     const model = bench.model()
-    model.edit(field('q', 'selected'), ['0'])
-    model.edit(field('q', 'selected'), [])
+    model.updateChoice(options('q'), { kind: 'select', ids: ['0'] })
+    model.updateChoice(options('q'), { kind: 'select', ids: [] })
     model.invoke('submit-answers')
     await expect(pending).resolves.toEqual({ answers: [{ id: 'q', selected: [] }, { id: 's', selected: [] }, { id: 'text', selected: [] }] })
   })
@@ -88,20 +129,24 @@ describe('shared questionnaire', () => {
     renderer.runtime.dispose()
   })
 
-  it('can withdraw a prior single choice through the ordinary picker', async () => {
+  it('can withdraw a prior single choice through the trailing No selection row', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [{ id: 'q', question: 'Pick', options: [{ label: 'A' }] }] })
     const model = bench.model()
-    model.edit(field('q', 'selected', []), '0')
-    model.focusControl({ pagePath: [], controlId: 'selected' })
-    const renderer = renderRequest(model)
-    renderer.input('\r')
-    renderer.input('\x1b[A')
-    renderer.input('\r')
-    expect(model.form(field('q', 'selected', []))!.fields.selected!.value).toBe('none')
+    model.updateChoice(options('q', []), { kind: 'select', ids: ['0'] })
+    model.updateChoice(options('q', []), { kind: 'select', ids: ['none'] })
+    expect(model.choice(options('q', []))!.selectedIds).toEqual(['none'])
     model.invoke('submit-answers')
     await expect(pending).resolves.toEqual({ answers: [{ id: 'q', selected: [] }] })
-    renderer.runtime.dispose()
+  })
+
+  it('submits an all-text wizard without selection targets', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [{ id: 'one', question: 'First?' }, { id: 'two', question: 'Second?' }] })
+    const model = bench.model()
+    model.edit(field('two', 'custom'), 'answer')
+    model.invoke('submit-answers')
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'one', selected: [] }, { id: 'two', selected: [], custom: 'answer' }] })
   })
 
   it('rejects missing question data and ignores observation events', () => {
@@ -115,7 +160,7 @@ describe('shared questionnaire', () => {
     const questions = [{ id: 'q', question: 'Pick', options: [{ label: 'Original' }] }]
     const pending = bench.ctx.userQuestions.ask({ questions })
     const model = bench.model()
-    model.edit(field('q', 'selected', []), '0')
+    model.updateChoice(options('q', []), { kind: 'select', ids: ['0'] })
     questions[0]!.options[0]!.label = 'Changed'
     questions[0]!.id = 'different'
     model.invoke('submit-answers')
