@@ -15,7 +15,7 @@ title: Installing & updating
 /plugin refresh         # force an index refresh
 ```
 
-In the list, **Enter** opens the detail panel; `i` installs, `u` removes, `r` refreshes; type to filter.
+In the list, **Enter** opens the detail panel; `i` installs, `u` removes (with confirmation), `r` refreshes; other printable keys filter.
 
 ## With the dsh CLI (any profile)
 
