@@ -62,7 +62,10 @@ describe('shared plan review', () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [{ ...question, options: [...question.options!, { label: 'Later' }] }] })
     const model = bench.model()
-    expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBe('plan')
+    // The fallback is a single-question questionnaire: no wizard tabs, the
+    // answer form mounts at the surface root.
+    expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBeUndefined()
+    expect(model.form({ pagePath: [], formId: 'answer', fieldId: 'selected' })).toBeDefined()
     model.invoke('submit-answers')
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [] }] })
   })

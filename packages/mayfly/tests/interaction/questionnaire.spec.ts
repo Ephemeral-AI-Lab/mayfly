@@ -10,7 +10,9 @@ const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 async function setup() { const ctx = new Context(); contexts.push(ctx); return requestFixture(ctx) }
 const path = (id: string) => [{ controlId: 'questions', itemId: id }]
-const field = (id: string, fieldId: string) => ({ pagePath: path(id), formId: 'answer', fieldId })
+// A single-question prompt mounts its one page at the surface root, so those
+// tests address it through [] rather than the wizard tab path.
+const field = (id: string, fieldId: string, pagePath = path(id)) => ({ pagePath, formId: 'answer', fieldId })
 
 describe('shared questionnaire', () => {
   it('keeps each question draft and invalidates a completed step when revisited and edited', async () => {
@@ -45,8 +47,8 @@ describe('shared questionnaire', () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [{ id: 'q', question: 'Pick', options: [{ label: '原始 A' }, { label: 'Original B' }], multiSelect }] })
     const model = bench.model()
-    model.edit(field('q', 'selected'), multiSelect ? ['1', '0'] : '1')
-    model.edit(field('q', 'custom'), '  custom\ntext  ')
+    model.edit(field('q', 'selected', []), multiSelect ? ['1', '0'] : '1')
+    model.edit(field('q', 'custom', []), '  custom\ntext  ')
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
     model.invoke('submit-answers')
@@ -71,7 +73,7 @@ describe('shared questionnaire', () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [{ id: 'q', question: 'Answer?' }] })
     const model = bench.model()
-    model.focusControl({ pagePath: path('q'), controlId: 'custom' })
+    model.focusControl({ pagePath: [], controlId: 'custom' })
     let renderer = renderRequest(model)
     renderer.component.render(80)
     renderer.input('text')
@@ -90,13 +92,13 @@ describe('shared questionnaire', () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [{ id: 'q', question: 'Pick', options: [{ label: 'A' }] }] })
     const model = bench.model()
-    model.edit(field('q', 'selected'), '0')
-    model.focusControl({ pagePath: path('q'), controlId: 'selected' })
+    model.edit(field('q', 'selected', []), '0')
+    model.focusControl({ pagePath: [], controlId: 'selected' })
     const renderer = renderRequest(model)
     renderer.input('\r')
     renderer.input('\x1b[A')
     renderer.input('\r')
-    expect(model.form(field('q', 'selected'))!.fields.selected!.value).toBe('none')
+    expect(model.form(field('q', 'selected', []))!.fields.selected!.value).toBe('none')
     model.invoke('submit-answers')
     await expect(pending).resolves.toEqual({ answers: [{ id: 'q', selected: [] }] })
     renderer.runtime.dispose()
@@ -113,7 +115,7 @@ describe('shared questionnaire', () => {
     const questions = [{ id: 'q', question: 'Pick', options: [{ label: 'Original' }] }]
     const pending = bench.ctx.userQuestions.ask({ questions })
     const model = bench.model()
-    model.edit(field('q', 'selected'), '0')
+    model.edit(field('q', 'selected', []), '0')
     questions[0]!.options[0]!.label = 'Changed'
     questions[0]!.id = 'different'
     model.invoke('submit-answers')

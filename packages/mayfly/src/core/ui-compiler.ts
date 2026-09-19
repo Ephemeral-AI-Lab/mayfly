@@ -516,12 +516,10 @@ function safePaint(colors: MayflySemanticColors, tone: MayflyTone | undefined, v
 function patternFocus(state: FocusState, prefix: string): PatternFocus {
   const controls = state.controls()
   const active = controls.find(control => control.group === prefix && control.key === state.activeKey)
-  const adjusting = controls.find(control => control.group === prefix && control.key === state.editingKey && control.kind === 'select')
   return {
     key: active?.renderKey ?? '',
     focused: state.focused,
     marker: state.layoutPass ? `${CURSOR_MARKER} ` : FOCUS_SENTINEL,
-    ...(adjusting === undefined ? {} : { adjustingKey: adjusting.renderKey }),
   }
 }
 

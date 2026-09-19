@@ -25,7 +25,6 @@ export interface PatternFocus {
   readonly key: string
   readonly focused: boolean
   readonly marker: string
-  readonly adjustingKey?: string
   readonly optionId?: string
 }
 
@@ -339,29 +338,30 @@ export function renderListSegment(segment: MayflyListSegment, selectedId: string
 export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
   const focused = focus.focused && focus.key === field.id && field.disabled !== true
-  const adjusting = focused && (field.kind === 'select' || field.kind === 'multiselect') && focus.adjustingKey === field.id
+  const expandable = field.kind === 'select' || field.kind === 'multiselect'
+  const expanded = expandable && field.disabled !== true && field.options.length > 0
   let value: string
   let placeholder = false
   if (field.kind === 'toggle') value = field.value ? '[on]' : '[off]'
-  else if (field.kind === 'select') {
-    const selected = field.value === null ? 'Choose…' : field.options.find(option => option.id === field.value)?.label ?? field.value
-    value = adjusting ? `‹ ${selected} ›` : selected
-  }
+  else if (field.kind === 'select') value = field.value === null ? 'Choose…' : field.options.find(option => option.id === field.value)?.label ?? field.value
   else if (field.kind === 'multiselect') value = field.options.filter(option => field.value.includes(option.id)).map(option => option.label).join(', ') || 'None selected'
   else if (field.kind === 'number') value = `${field.value ?? ''}${field.unit === undefined ? '' : ` ${field.unit}`}`
   else if (field.kind === 'secret') value = field.value.length === 0 ? field.placeholder ?? '' : '•'.repeat(field.value.length)
   else value = field.value.length === 0 ? field.placeholder ?? '' : field.value
   if (field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret') placeholder = field.value.length === 0 && field.placeholder !== undefined
   const prefix = interactivePrefix({ key: field.id, focused, marker: focus.marker })
+  // Expanded selects show the label as a group header; the option rows carry the value.
+  const body = expanded ? field.label : `${field.label}: ${value}`
   const row = field.disabled === true
-    ? colors.muted(`${prefix}${field.label}: ${value}`)
-    : focused ? colors.primary(`${prefix}${field.label}: ${value}`)
-      : `${prefix}${colors.textStrong(`${field.label}:`)} ${placeholder ? colors.textMuted(value) : colors.text(value)}`
+    ? colors.muted(`${prefix}${body}`)
+    : focused ? colors.primary(`${prefix}${body}`)
+      : expanded ? `${prefix}${colors.textStrong(field.label)}`
+        : `${prefix}${colors.textStrong(`${field.label}:`)} ${placeholder ? colors.textMuted(value) : colors.text(value)}`
   const rows = [fit(row, available)]
-  if (adjusting && (field.kind === 'select' || field.kind === 'multiselect')) {
+  if (expanded) {
     for (const option of field.options) {
       const selected = field.kind === 'select' ? field.value === option.id : field.value.includes(option.id)
-      const active = (focus.optionId ?? (field.kind === 'select' ? field.value : field.value[0])) === option.id
+      const active = focused && (focus.optionId ?? (field.kind === 'select' ? field.value : field.value[0]) ?? field.options[0]?.id) === option.id
       const text = `${active ? ' >' : '  '} ${selected ? '[x]' : '[ ]'} ${option.label}${option.disabledReason === undefined ? '' : `: ${option.disabledReason}`}`
       rows.push(fit(option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.text(text), available))
     }
