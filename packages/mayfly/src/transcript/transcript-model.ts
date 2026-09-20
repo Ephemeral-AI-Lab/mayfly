@@ -193,8 +193,6 @@ export class TranscriptModelComponent implements MayflyComponent {
   private generation: number | undefined
   private plan: TranscriptRenderPlan | undefined
   private durableRows: DurableRowsCache | undefined
-  private frameRows: string[] | undefined
-  private frameBase: readonly string[] | undefined
   private liveIds = new Set<string>()
   private anchorOrder = 0
 
@@ -214,8 +212,6 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.plan = undefined
       this.durableRows = undefined
       this.liveIds.clear()
-      this.frameRows = undefined
-      this.frameBase = undefined
       return []
     }
     if (this.generation !== model.generation) {
@@ -229,8 +225,6 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.plan = undefined
       this.durableRows = undefined
       this.liveIds.clear()
-      this.frameRows = undefined
-      this.frameBase = undefined
     }
     const policy = this.presentation()
     const rendered = this.renderedRows
@@ -277,16 +271,11 @@ export class TranscriptModelComponent implements MayflyComponent {
       durableRows = { width, expanded: this.expanded, rows }
       this.durableRows = durableRows
     }
-    let rows = durableRows.rows
-    if (liveEntries.length !== 0) {
-      if (this.frameRows === undefined || this.frameBase !== durableRows.rows) {
-        this.frameRows = [...durableRows.rows]
-        this.frameBase = durableRows.rows
-      }
-      rows = this.frameRows
-      rows.length = durableRows.rows.length
-      rows.push(...liveEntries.flatMap(entry => this.renderSemantic(entry, width, plan.expandableTurns.has(entry.turn), policy)))
-    } else { this.frameRows = undefined; this.frameBase = undefined }
+    // A live frame is a fresh array over the shared durable rows: identity
+    // caches downstream (the frame clamp) see the change without a scan.
+    const rows = liveEntries.length === 0
+      ? durableRows.rows
+      : [...durableRows.rows, ...liveEntries.flatMap(entry => this.renderSemantic(entry, width, plan.expandableTurns.has(entry.turn), policy))]
     this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
     return rows
   }
@@ -373,8 +362,6 @@ export class TranscriptModelComponent implements MayflyComponent {
   private dropRows(): void {
     this.renderedRows = undefined
     this.durableRows = undefined
-    this.frameRows = undefined
-    this.frameBase = undefined
   }
 
   renderWindow(width: number, offset: number, rows: number): { readonly rows: string[], readonly total: number } {
@@ -391,8 +378,6 @@ export class TranscriptModelComponent implements MayflyComponent {
     this.expanded = expanded
     this.renderedRows = undefined
     this.durableRows = undefined
-    this.frameRows = undefined
-    this.frameBase = undefined
     for (const cached of this.cached.values()) {
       cached.rows = undefined
       cached.target.invalidate()
@@ -402,8 +387,6 @@ export class TranscriptModelComponent implements MayflyComponent {
   invalidate(): void {
     this.renderedRows = undefined
     this.durableRows = undefined
-    this.frameRows = undefined
-    this.frameBase = undefined
     this.canonicalRows = new WeakMap()
     for (const cached of this.cached.values()) {
       cached.rows = undefined
@@ -419,8 +402,6 @@ export class TranscriptModelComponent implements MayflyComponent {
   dispose(): void {
     this.renderedRows = undefined
     this.durableRows = undefined
-    this.frameRows = undefined
-    this.frameBase = undefined
     this.plan = undefined
     this.liveIds.clear()
     this.canonicalRows = new WeakMap()

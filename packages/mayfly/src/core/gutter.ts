@@ -16,9 +16,13 @@ import { clampRowsToWidth, padColumns } from './chrome.ts'
 import { truncateToWidth } from './width.ts'
 
 /**
- * Renders one wrapped child inside the kimi one-column gutter.
+ * Renders one wrapped child inside the kimi one-column gutter. The padded
+ * rows are reused by identity while the child returns the same array at the
+ * same width, so a cached child stays cached through the wrapper.
  */
 export class GutterComponent implements MayflyComponent {
+  private cached: { readonly width: number, readonly source: readonly string[], readonly rows: string[] } | undefined
+
   /**
    * @param child - the component to inset; a passive surface (no input).
    * @param n - the gutter width in columns; defaults to 1.
@@ -40,9 +44,15 @@ export class GutterComponent implements MayflyComponent {
    */
   render(width: number): string[] {
     const inner = Math.max(1, width - 2 * this.n)
-    const rows = padColumns(this.child.render(inner), this.n)
-    if (width >= 2 * this.n + 2) return rows
-    return clampRowsToWidth(rows, Math.max(1, width), (text, target) => truncateToWidth(text, target))
+    const source = this.child.render(inner)
+    const cached = this.cached
+    if (cached?.width === width && cached.source === source) return cached.rows
+    const padded = padColumns(source, this.n)
+    const rows = width >= 2 * this.n + 2
+      ? padded
+      : clampRowsToWidth(padded, Math.max(1, width), (text, target) => truncateToWidth(text, target))
+    this.cached = { width, source, rows }
+    return rows
   }
 
   /** Forward the cache drop to the wrapped child. */

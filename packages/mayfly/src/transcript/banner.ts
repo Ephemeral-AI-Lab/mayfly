@@ -219,14 +219,16 @@ export function composeBannerLines(
 }
 
 /**
- * The welcome banner: every render re-composes from the current content,
- * so it tracks viewport resizes; the model row tracks the live selection
- * through {@link BannerComponent.update} (the cwd stays the boot snapshot
- * — the S24a dogfood ruling only pulled the model line into the live
- * tier).
+ * The welcome banner: the rows re-compose when the width or the content
+ * changes and are otherwise returned by identity, so the prelude never
+ * invalidates the content frame on a pure scroll; the model row tracks the
+ * live selection through {@link BannerComponent.update} (the cwd stays the
+ * boot snapshot — the S24a dogfood ruling only pulled the model line into
+ * the live tier).
  */
 class BannerComponent implements MayflyComponent {
   private content: BannerContent
+  private cache: { readonly width: number, readonly content: BannerContent, readonly lines: string[] } | undefined
 
   /**
    * @param colors - the semantic color table.
@@ -252,17 +254,23 @@ class BannerComponent implements MayflyComponent {
    * @returns the banner lines; none below {@link BANNER_MIN_WIDTH}.
    */
   render(width: number): string[] {
-    return composeBannerLines({
+    const cached = this.cache
+    if (cached?.width === width && cached.content === this.content) return cached.lines
+    const lines = composeBannerLines({
       colors: this.colors,
       strong: text => this.components.strong(text),
       truncate: (text, target) => this.components.truncateToWidth(text, target),
       visibleWidth: text => this.components.visibleWidth(text),
       t: this.t,
     }, this.content, width)
+    this.cache = { width, content: this.content, lines }
+    return lines
   }
 
-  /** Stateless render; nothing to drop. */
-  invalidate(): void {}
+  /** Drop the composed rows; the next render re-reads the translator. */
+  invalidate(): void {
+    this.cache = undefined
+  }
 }
 
 /**

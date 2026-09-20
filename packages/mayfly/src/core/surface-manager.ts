@@ -197,16 +197,48 @@ export function renderSurfaceLane(lane: SurfaceLaneLayout | undefined, width: nu
   return [...tabs, ...body].slice(0, Math.max(0, finiteInteger(maxRows, 0)))
 }
 
-/** In-memory manager; persistence adapters consume and replace its frozen user state. */
+/**
+ * In-memory manager; persistence adapters consume and replace its frozen user
+ * state. Layouts are pure functions of the registry state and one viewport, so
+ * both layout flavours are memoized per viewport until the next mutation: one
+ * frame asks for the layout from several lanes, callbacks, and measurements.
+ */
 export class SurfaceManager {
   private readonly entries = new Map<string, RegisteredSurface>()
   private readonly collapsed: Record<'left' | 'right', boolean> = { left: false, right: false }
+  private readonly layouts = new Map<string, SurfaceLayout>()
+  private readonly linearLayouts = new Map<string, SurfaceLayout>()
+  private revision = 0
   private userStateValue: SurfaceUserLayoutState
   private focusedIdValue: string | undefined
   private activeIdValue: string | undefined
 
   constructor(private readonly options: SurfaceManagerOptions = {}) {
     this.userStateValue = freezeUserState(options.userState)
+  }
+
+  /** Drop memoized layouts after any registry, user-state, focus, or activation change. */
+  private touch(): void {
+    this.revision += 1
+    this.layouts.clear()
+    this.linearLayouts.clear()
+  }
+
+  /**
+   * Flip one side's collapse flag. The flag carries hysteresis across
+   * viewports, so a change invalidates every memoized layout; the mutating
+   * `layout()` call itself fails its revision check and recomputes next time.
+   */
+  private setCollapsed(placement: 'left' | 'right', collapsed: boolean): void {
+    if (this.collapsed[placement] === collapsed) return
+    this.collapsed[placement] = collapsed
+    this.touch()
+  }
+
+  /** Invalidate memoized layouts, then notify the renderer. */
+  private changed(): void {
+    this.touch()
+    this.options.onChange?.()
   }
 
   get userState(): SurfaceUserLayoutState {
@@ -229,7 +261,7 @@ export class SurfaceManager {
     if (this.entries.has(contribution.id)) throw new Error(`Duplicate surface id: ${contribution.id}`)
     const registered: RegisteredSurface = { contribution, hidden: false }
     this.entries.set(contribution.id, registered)
-    this.options.onChange?.()
+    this.changed()
     let disposed = false
     return {
       get disposed() {
@@ -238,13 +270,14 @@ export class SurfaceManager {
       setHidden: hidden => {
         if (disposed || registered.hidden === hidden) return
         registered.hidden = hidden
+        if (hidden && this.activeIdValue === contribution.id) this.activeIdValue = undefined
         if (hidden && this.focusedIdValue === contribution.id) {
           this.focusedIdValue = undefined
+          this.touch()
           const previous = contributionFocusTarget(registered.contribution)
           if (previous !== null) this.options.onSurfaceFocusTransition?.(previous, null)
         }
-        if (hidden && this.activeIdValue === contribution.id) this.activeIdValue = undefined
-        this.options.onChange?.()
+        this.changed()
       },
       replace: (component, focusTarget) => {
         const previous = contributionFocusTarget(registered.contribution)
@@ -258,9 +291,9 @@ export class SurfaceManager {
           : { ...metadata, component, focusTarget }
         if (this.focusedIdValue === contribution.id) {
           if (next === null) this.focusedIdValue = undefined
-          this.options.onChange?.()
+          this.changed()
           if (previous !== null) this.options.onSurfaceFocusTransition?.(previous, next)
-        } else this.options.onChange?.()
+        } else this.changed()
       },
       dispose: () => {
         if (disposed) return
@@ -284,13 +317,14 @@ export class SurfaceManager {
           this.setUserState({ ...this.userStateValue, active })
         } else {
           focusSuccessor = this.activationCandidates(placement)[0]
-          this.options.onChange?.()
+          this.changed()
         }
         if (wasFocused) {
           const nextFocus = focusSuccessor === undefined ? null : contributionFocusTarget(focusSuccessor)
           this.focusedIdValue = nextFocus === null ? undefined : focusSuccessor?.id
           if (previousFocus !== null) this.options.onSurfaceFocusTransition?.(previousFocus, nextFocus)
         }
+        this.touch()
       },
     }
   }
@@ -304,7 +338,7 @@ export class SurfaceManager {
     this.focusedIdValue = undefined
     this.activeIdValue = undefined
     if (focused !== null) this.options.onSurfaceFocusTransition?.(focused, null)
-    this.options.onChange?.()
+    this.changed()
   }
 
   activate(placement: SurfacePlacement, id: string): boolean {
@@ -325,6 +359,7 @@ export class SurfaceManager {
       this.focusedIdValue = nextFocus === null ? undefined : next.id
       if (previousFocus !== null) this.options.onSurfaceFocusTransition?.(previousFocus, nextFocus)
     }
+    this.touch()
     return true
   }
 
@@ -332,7 +367,7 @@ export class SurfaceManager {
     if (id !== undefined && !this.visibleEntries().some(entry => entry.id === id)) return false
     if (this.focusedIdValue === id) return true
     this.focusedIdValue = id
-    this.options.onChange?.()
+    this.changed()
     return true
   }
 
@@ -344,24 +379,35 @@ export class SurfaceManager {
   }
 
   linearLayout(columns: number, rows: number): SurfaceLayout {
+    const key = `${String(safeDimension(columns))}:${String(safeDimension(rows))}`
+    const memo = this.linearLayouts.get(key)
+    if (memo !== undefined) return memo
     const grouped = this.groupedEntries()
     const sides = (['left', 'right'] as const).flatMap(placement => {
       const lane = this.lane(placement, grouped[placement])
       return lane === undefined ? [] : [{ placement, lane, width: this.sideWidth(lane.active) }]
     })
-    return this.finishLayout(safeDimension(columns), safeDimension(rows), grouped, sides, [])
+    const layout = this.finishLayout(safeDimension(columns), safeDimension(rows), grouped, sides, [])
+    this.linearLayouts.set(key, layout)
+    return layout
   }
 
   layout(columns: number, rows: number): SurfaceLayout {
     const safeColumns = safeDimension(columns)
     const safeRows = safeDimension(rows)
+    const key = `${String(safeColumns)}:${String(safeRows)}`
+    const memo = this.layouts.get(key)
+    if (memo !== undefined) return memo
+    // Focus retirement below and any nested mutation invalidate mid-flight;
+    // the result is then kept only when the revision it started from survives.
+    const revision = this.revision
     const grouped = this.groupedEntries()
     const sideLanes = (['left', 'right'] as const).flatMap(placement => {
       const lane = this.lane(placement, grouped[placement])
       return lane === undefined ? [] : [{ placement, lane, width: this.sideWidth(lane.active) }]
     })
     for (const placement of ['left', 'right'] as const) {
-      if (grouped[placement].length === 0) this.collapsed[placement] = false
+      if (grouped[placement].length === 0) this.setCollapsed(placement, false)
     }
 
     const retained = sideLanes.filter(side => !this.collapsed[side.placement])
@@ -370,7 +416,7 @@ export class SurfaceManager {
     for (const side of collapsed) {
       const trial = [...retained, side]
       if (this.transcriptWidth(safeColumns, trial) >= SURFACE_TRANSCRIPT_REOPEN_COLUMNS) {
-        this.collapsed[side.placement] = false
+        this.setCollapsed(side.placement, false)
         retained.push(side)
       }
     }
@@ -386,15 +432,15 @@ export class SurfaceManager {
       const replacementTranscriptWidth = this.transcriptWidth(safeColumns, retained)
         + weakestRetained.width - strongestCollapsed.width
       if (replacementTranscriptWidth >= SURFACE_TRANSCRIPT_MIN_COLUMNS) {
-        this.collapsed[weakestRetained.placement] = true
-        this.collapsed[strongestCollapsed.placement] = false
+        this.setCollapsed(weakestRetained.placement, true)
+        this.setCollapsed(strongestCollapsed.placement, false)
         retained.splice(retained.indexOf(weakestRetained), 1, strongestCollapsed)
       }
     }
     retained.sort((left, right) => left.placement.localeCompare(right.placement))
     while (retained.length > 0 && this.transcriptWidth(safeColumns, retained) < SURFACE_TRANSCRIPT_MIN_COLUMNS) {
       const weakest = [...retained].sort((left, right) => this.compareSideStrength(left.lane, right.lane)).at(0)!
-      this.collapsed[weakest.placement] = true
+      this.setCollapsed(weakest.placement, true)
       retained.splice(retained.indexOf(weakest), 1)
     }
 
@@ -411,23 +457,29 @@ export class SurfaceManager {
     const unavailableFocused = overflow.find(item => item.entry.id === this.focusedIdValue)
     if (unavailableFocused !== undefined) {
       this.focusedIdValue = undefined
+      this.touch()
       const previous = contributionFocusTarget(unavailableFocused.entry)
       if (previous !== null) this.options.onSurfaceFocusTransition?.(previous, null)
     }
-    if (overflow.some(item => item.entry.id === this.activeIdValue)) this.activeIdValue = undefined
+    if (overflow.some(item => item.entry.id === this.activeIdValue)) {
+      this.activeIdValue = undefined
+      this.touch()
+    }
     const effectiveGroups = {
       ...grouped,
       left: retained.find(side => side.placement === 'left')?.lane.entries ?? [],
       right: retained.find(side => side.placement === 'right')?.lane.entries ?? [],
       bottom: this.sortEntries([...grouped.bottom, ...fallback]),
     }
-    return this.finishLayout(safeColumns, safeRows, effectiveGroups, retained, overflow)
+    const layout = this.finishLayout(safeColumns, safeRows, effectiveGroups, retained, overflow)
+    if (revision === this.revision) this.layouts.set(key, layout)
+    return layout
   }
 
   private setUserState(state: SurfaceUserLayoutInput): void {
     this.userStateValue = freezeUserState(state)
     this.options.onUserStateChange?.(this.userStateValue)
-    this.options.onChange?.()
+    this.changed()
   }
 
   private activationCandidates(placement: SurfacePlacement): SurfaceLaneEntry[] {
