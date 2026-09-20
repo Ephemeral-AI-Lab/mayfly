@@ -253,7 +253,11 @@ function field(value: unknown, path: string, state: ValidationState): MayflyFiel
   }))
 }
 
-function listItem(value: unknown, path: string, state: ValidationState): MayflyListItem {
+function listItem(value: unknown, path: string): MayflyListItem {
+  // Item collections are unbounded data rows: each admits under its own
+  // quota — the same isolation lazy list admission already applies — so the
+  // aggregate row text of a large picker cannot exhaust the tree budget.
+  const state = validationState()
   return enter(value, path, state, object => {
     const disabledValue = own(object, 'disabled', path)
     const detailSpansValue = own(object, 'detailSpans', path)
@@ -461,7 +465,7 @@ function lazyListItems(value: unknown, path: string): readonly MayflyListItem[] 
       }
       let admitted: MayflyListItem
       try {
-        admitted = listItem(raw(index), `${path}[${String(index)}]`, validationState())
+        admitted = listItem(raw(index), `${path}[${String(index)}]`)
         const owner = owners.get(admitted.id)
         if (owner !== undefined && owner !== index) invalid(`${path} contains duplicate ids`)
         owners.set(admitted.id, index)
@@ -754,7 +758,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
     }
     if (kind === 'select' || kind === 'multiselect') {
       const raw = required(object, 'value', path)
-      const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`, state))
+      const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`))
       uniqueIds(options, `${path}.options`)
       if (kind === 'multiselect') return { kind, ...common, value: parseValue(raw, `${path}.value`) as readonly string[], options, ...selectionBounds(object, path) }
       if (raw !== null && typeof raw !== 'string') invalid(`${path}.value must be a string or null`)
@@ -906,7 +910,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           : 0
         const items = itemCount > MAYFLY_UI_MAX_COLLECTION
           ? lazyListItems(itemsValue, `${path}.items`)
-          : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`, state))
+          : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`))
         if (itemCount <= MAYFLY_UI_MAX_COLLECTION) uniqueIds(items, `${path}.items`)
         const selectedIds = collection(required(object, 'selectedIds', path), `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
