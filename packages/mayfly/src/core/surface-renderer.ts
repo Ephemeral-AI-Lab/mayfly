@@ -52,9 +52,10 @@ function compile(
     readonly title?: string
   },
 ): MayflyCompiledUi | null {
+  /* Failure nodes are plain text; the surface compiler owns the
+     chrome-preserving title merge for admitted nodes. */
   const framed = (value: MayflyUiNode): MayflyUiNode => {
     if (options.title === undefined) return value
-    if (value.kind === 'surface' && value.chrome === 'overlay') return { ...value, title: options.title }
     return { kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: value }
   }
   if (node === null) {
@@ -85,23 +86,24 @@ function compile(
     },
     ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
   }
-  if (!options.interactive) {
-    const candidate = compileMayflyUiNode(framed(node), compilerOptions) as Extract<ReturnType<typeof compileMayflyUiNode>, { readonly ok: true }>
-    if (candidate.value.focusTarget !== null) {
-      options.runtime.deactivate()
-      const fallbackNode = safeFailureNode(kind, 'non-capturing overlays cannot contain interactive controls')
-      const fallback = compileMayflyUiNode(framed(fallbackNode), compilerOptions)
-      /* v8 ignore next -- the admitted constant fallback text cannot fail compilation. */
-      return fallback.ok ? fallback.value : { node: fallbackNode, component: fallback.errorComponent, focusTarget: null }
-    }
-  }
   const result = compileMayflyUiSurfaceNode(node, {
     ...compilerOptions,
     surfaceRuntime: options.runtime,
     ...(options.title === undefined ? {} : { title: options.title }),
     ...(options.escapeHint === undefined ? {} : { escapeHint: options.escapeHint }),
   })
-  return (result as Extract<typeof result, { readonly ok: true }>).value
+  /* A non-capturing surface compiles once: the surface compile itself
+     reports the interactive controls that disqualify it, so the old
+     detection pass (a second full validate+compile) is gone. */
+  const compiled = (result as Extract<typeof result, { readonly ok: true }>).value
+  if (!options.interactive && compiled.focusTarget !== null) {
+    options.runtime.deactivate()
+    const fallbackNode = safeFailureNode(kind, 'non-capturing overlays cannot contain interactive controls')
+    const fallback = compileMayflyUiNode(framed(fallbackNode), compilerOptions)
+    /* v8 ignore next -- the admitted constant fallback text cannot fail compilation. */
+    return fallback.ok ? fallback.value : { node: fallbackNode, component: fallback.errorComponent, focusTarget: null }
+  }
+  return compiled
 }
 
 function setCompiledFocus(compiled: MayflyCompiledUi | null, focused: boolean): void {
@@ -394,8 +396,21 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     }
     for (const entry of snapshot.panes) {
       const record = panes.get(entry.id)
+      const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)
+      /* A pending snapshot can outlive its model: registration removal
+         publishes before the queued drain runs, so a stale entry here may
+         already have no interaction model. */
+      if (interaction === undefined) {
+        if (record !== undefined) {
+          record.runtime.dispose()
+          record.component.dispose()
+          record.registration?.dispose()
+          panes.delete(entry.id)
+        }
+        continue
+      }
       if (record === undefined) { addPane(entry); continue }
-      if (record.interaction !== ctx.mayflyUiInteraction.get('pane', entry.id)) {
+      if (record.interaction !== interaction) {
         record.runtime.dispose()
         record.component.dispose()
         record.registration?.dispose()
@@ -417,8 +432,18 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     }
     for (const entry of [...snapshot.overlays].sort((left, right) => left.order - right.order)) {
       const record = overlays.get(entry.id)
+      const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)
+      if (interaction === undefined) {
+        if (record !== undefined) {
+          record.runtime.dispose()
+          record.component.dispose()
+          record.handle?.hide()
+          overlays.delete(entry.id)
+        }
+        continue
+      }
       if (record === undefined) { addOverlay(entry); continue }
-      if (record.interaction !== ctx.mayflyUiInteraction.get('overlay', entry.id)) {
+      if (record.interaction !== interaction) {
         record.runtime.dispose()
         record.component.dispose()
         record.handle?.hide()

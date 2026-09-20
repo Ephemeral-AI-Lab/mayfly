@@ -513,21 +513,19 @@ describe('direct pane surface renderer', () => {
       expect(tasks).toHaveLength(2)
       tasks.splice(1, 1)[0]!()
       tasks.shift()!()
+      tasks.shift()!()
       expect(entry(f.runtime.surfaces, 'scheduled-pane').component.render(80)).toEqual(['third'])
 
       handle.set(ui.text('retained-a'))
       tasks.shift()!()
       handle.set(ui.text('retained-b'))
-      tasks.shift()!()
-      tasks.shift()!()
-      tasks.shift()!()
+      while (tasks.length > 0) tasks.shift()!()
       expect(entry(f.runtime.surfaces, 'scheduled-pane').component.render(80)).toEqual(['retained-b'])
 
       handle.set(ui.text('removed'))
       tasks.shift()!()
       handle.dispose()
-      tasks.shift()!()
-      tasks.shift()!()
+      while (tasks.length > 0) tasks.shift()!()
       expect(entries(f.runtime.surfaces).map(item => item.id)).not.toContain('scheduled-pane')
       queue.mockRestore()
     } finally {
@@ -872,6 +870,90 @@ describe('direct pane surface renderer', () => {
       await flush()
       expect(entries(f.runtime.surfaces)).toEqual([])
     } finally {
+      await f.dispose()
+    }
+  })
+
+  it('skips a pending pane whose interaction model retired before the drain', async () => {
+    const f = await fixture()
+    try {
+      let disarm = false
+      f.root.mayflyUiInteraction.subscribe(() => {
+        if (disarm) return
+        disarm = true
+        f.root.mayflyUiInteraction.remove('pane', 'stale-pane')
+      })
+      f.register({ id: 'stale-pane', render: () => ui.text('stale') })
+      await flush()
+      expect(entries(f.runtime.surfaces).some(candidate => candidate.id === 'stale-pane')).toBe(false)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('disposes a rendered pane whose interaction model retires mid-flush', async () => {
+    const f = await fixture()
+    try {
+      const handle = f.register({ id: 'retired-pane', render: () => ui.text('retired') })
+      await flush()
+      expect(entries(f.runtime.surfaces).some(candidate => candidate.id === 'retired-pane')).toBe(true)
+      let disarm = false
+      f.root.mayflyUiInteraction.subscribe(() => {
+        if (disarm) return
+        disarm = true
+        f.root.mayflyUiInteraction.remove('pane', 'retired-pane')
+      })
+      handle.set(ui.text('updated'))
+      await flush()
+      expect(entries(f.runtime.surfaces).some(candidate => candidate.id === 'retired-pane')).toBe(false)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('drops a queued drain when the renderer disposes mid-notification', async () => {
+    const f = await fixture()
+    try {
+      let disarm = false
+      f.root.mayflyUiInteraction.subscribe(() => {
+        if (disarm) return
+        disarm = true
+        f.owner.dispose()
+      })
+      f.register({ id: 'late-pane', render: () => ui.text('late') })
+      await flush()
+      expect(entries(f.runtime.surfaces)).toHaveLength(0)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('drops a queued pane render once a newer pending snapshot removes the pane', async () => {
+    const f = await fixture()
+    try {
+      const handle = f.register({ id: 'stale-render-pane', render: () => ui.text('initial') })
+      await flush()
+      const tasks: VoidFunction[] = []
+      const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { tasks.push(task) })
+
+      handle.set(ui.text('second'))
+      tasks.shift()!()
+      tasks.shift()!()
+      // A second update re-schedules while the first render is still queued.
+      handle.set(ui.text('third'))
+      const render = tasks.shift()!
+      tasks.shift()!()
+      tasks.shift()!()
+      handle.dispose()
+      // The removal publish lands inside the notify task; once it runs, the
+      // still-queued render sees a pending snapshot that no longer lists it.
+      tasks.shift()!()
+      render()
+      while (tasks.length > 0) tasks.shift()!()
+      expect(entries(f.runtime.surfaces).map(item => item.id)).not.toContain('stale-render-pane')
+      queue.mockRestore()
+    } finally {
+      vi.restoreAllMocks()
       await f.dispose()
     }
   })

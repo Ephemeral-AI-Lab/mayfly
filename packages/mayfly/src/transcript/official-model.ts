@@ -12,7 +12,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import {
-  conversationProjectionSchema,
   type ConversationEntry,
   type ConversationProjection,
   type ConversationToolEntry,
@@ -68,7 +67,7 @@ export const SEARCH_PREVIEW_MATCH_LIMIT = 3
 export const SEARCH_PATH_LIMIT = 16
 
 /** One tool entry with its presenter views resolved exactly once. */
-interface ResolvedTool {
+export interface ResolvedTool {
   readonly entry: ConversationToolEntry
   readonly args: unknown
   readonly outcome: ToolResult | undefined
@@ -78,10 +77,12 @@ interface ResolvedTool {
 
 function toolResult(entry: ConversationToolEntry): ToolResult | undefined {
   if (entry.result === undefined) return undefined
+  /* Presenter inputs are deep-copied: a mutating presenter must not corrupt
+     the registry-owned wire view this entry belongs to. */
   return {
-    content: entry.result.content as unknown as ContentBlock[],
+    content: structuredClone(entry.result.content) as unknown as ContentBlock[],
     isError: entry.result.isError,
-    ...(entry.result.meta === undefined ? {} : { meta: entry.result.meta }),
+    ...(entry.result.meta === undefined ? {} : { meta: structuredClone(entry.result.meta) }),
   }
 }
 
@@ -315,6 +316,7 @@ export function conversationTranscriptModel(
   tools: ToolPresentationSource,
   generation = 0,
   renderRevision?: string,
+  resolvedTools?: Map<string, ResolvedTool>,
 ): TranscriptModel {
   const entries: TranscriptEntryModel[] = []
   let run: ResolvedTool[] = []
@@ -335,7 +337,14 @@ export function conversationTranscriptModel(
       continue
     }
     if (entry.channel !== 'transcript') continue
-    const resolved = resolveTool(entry, tools)
+    /* Presenters re-resolve on every pending value; keying on the durable
+       entry id + its last-update seq makes steady-state mapping O(changed). */
+    const key = JSON.stringify([entry.id, entry.updatedSeq])
+    let resolved = resolvedTools?.get(key)
+    if (resolved === undefined) {
+      resolved = resolveTool(entry, tools)
+      resolvedTools?.set(key, resolved)
+    }
     const family = toolFamily(resolved)
     const continuesRun = runFamily !== undefined
       && family === runFamily
@@ -353,24 +362,39 @@ export function conversationTranscriptModel(
   return createTranscriptModel('official-conversation', renderedEntries, projection.streaming, generation)
 }
 
-/** Native projections validate the complete wire and preserve all entries. */
+/** Entry kinds the mapper dereferences; anything else is not our wire value. */
+const ADMITTED_KINDS = new Set(['user', 'assistant', 'thinking', 'tool', 'error', 'interrupted'])
+
+/** The entry fields this mapper dereferences; the rest stay opaque here. */
+function admissibleEntry(candidate: unknown): candidate is ConversationEntry {
+  if (candidate === null || typeof candidate !== 'object') return false
+  const kind = (candidate as { kind?: unknown }).kind
+  const seq = (candidate as { seq?: unknown }).seq
+  return typeof kind === 'string' && ADMITTED_KINDS.has(kind)
+    && typeof seq === 'number' && Number.isSafeInteger(seq)
+}
+
+/**
+ * The registry schema-validates the complete wire value before publishing,
+ * so admission here only checks the envelope and the entry fields this
+ * mapper dereferences, then slices history when a resume cutoff applies.
+ */
 function visibleProjection(
   value: unknown,
   transcriptAfterSeq: number | undefined,
 ): ConversationProjection | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const envelope = value as Record<string, unknown>
-  if (!Array.isArray(envelope.entries) || typeof envelope.streaming !== 'boolean') return undefined
-  let entries: unknown[] = envelope.entries
-  if (transcriptAfterSeq !== undefined) {
-    entries = []
-    for (const candidate of envelope.entries) {
-      if (candidate === null || typeof candidate !== 'object' || !('seq' in candidate) || typeof candidate.seq !== 'number' || !Number.isSafeInteger(candidate.seq)) return undefined
-      if (candidate.seq > transcriptAfterSeq) entries.push(candidate)
-    }
+  const envelope = value as { entries?: unknown, streaming?: unknown, settledSteps?: unknown }
+  if (!Array.isArray(envelope.entries) || typeof envelope.streaming !== 'boolean' || !Array.isArray(envelope.settledSteps)) return undefined
+  /* One pass over the wire array: admit every entry and cut off inherited
+     history at the same time. Downstream mapping works on this copy, so the
+     published array is never re-read (see the history-read-count specs). */
+  const entries: ConversationEntry[] = []
+  for (const candidate of envelope.entries) {
+    if (!admissibleEntry(candidate)) return undefined
+    if (transcriptAfterSeq === undefined || candidate.seq > transcriptAfterSeq) entries.push(candidate)
   }
-  const parsed = conversationProjectionSchema.safeParse({ entries, streaming: envelope.streaming, settledSteps: envelope.settledSteps })
-  return parsed.success ? parsed.data : undefined
+  return { entries, streaming: envelope.streaming, settledSteps: envelope.settledSteps as string[] }
 }
 
 /** Projection-to-model source scoped to one frontend tree and provider Fiber. */
@@ -388,6 +412,7 @@ export class OfficialConversationModelSource {
   private toolsRevision = 0
   private lastDraft: LiveAssistantDraft | undefined
   private transcriptAfterSeq: number | undefined
+  private readonly resolvedTools = new Map<string, ResolvedTool>()
   private disposed = false
   private readonly offChanged: () => void
   private readonly offLive: () => void
@@ -426,7 +451,7 @@ export class OfficialConversationModelSource {
       if (visible !== undefined) {
         this.watermark = pending.seq
         this.lastVisible = visible
-        this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation)
+        this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, undefined, this.resolvedTools)
         this.settledSteps = new Set(visible.settledSteps)
         this.liveSeq = visible.entries.reduce((seq, entry) => Math.max(seq, entry.seq), pending.seq) + 1
         this.lastDraft = draft
@@ -444,7 +469,8 @@ export class OfficialConversationModelSource {
     if (this.disposed) return
     if (this.lastVisible !== undefined) {
       this.toolsRevision += 1
-      this.durableModel = conversationTranscriptModel(this.lastVisible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`)
+      this.resolvedTools.clear()
+      this.durableModel = conversationTranscriptModel(this.lastVisible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`, this.resolvedTools)
       const draft = this.agent === undefined ? undefined : this.live?.get(this.agent)
       this.lastDraft = draft
       this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark)
@@ -463,6 +489,7 @@ export class OfficialConversationModelSource {
     this.pending = undefined
     this.durableModel = undefined
     this.lastVisible = undefined
+    this.resolvedTools.clear()
     this.settledSteps.clear()
     this.lastDraft = undefined
     this.model = createTranscriptModel('official-conversation', [], false, this.generation)
@@ -487,6 +514,7 @@ export class OfficialConversationModelSource {
     this.pending = undefined
     this.durableModel = undefined
     this.lastVisible = undefined
+    this.resolvedTools.clear()
     this.settledSteps.clear()
     this.lastDraft = undefined
     this.transcriptAfterSeq = undefined
