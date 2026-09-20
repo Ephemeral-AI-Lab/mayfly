@@ -217,6 +217,25 @@ describe('validateMayflyUiNode', () => {
     expect(result.value.items[0]).toMatchObject({ id: '0' })
   })
 
+  it('bounds each admitted list item and select option by its own text quota', () => {
+    const row = (index: number) => ({
+      id: `session-${String(index)}`,
+      label: `Session title ${String(index)}`,
+      detail: 'd'.repeat(80),
+      searchText: 's'.repeat(80),
+    })
+    // 120 rows × ~190 chars ≈ 23k aggregate — over the shared tree budget but
+    // each item far under it; per-item quotas admit the picker (the /sessions
+    // regression: a populated directory rejected its own session list).
+    const items = Array.from({ length: 120 }, (_, index) => row(index))
+    expect(validateMayflyUiNode(ui.list({ role: 'choose', id: 'sessions', selectedIds: [], items })).ok).toBe(true)
+    const options = Array.from({ length: 120 }, (_, index) => row(index))
+    expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [{ kind: 'select', id: 's', label: 'S', value: null, options }] }).ok).toBe(true)
+    // The per-item quota still applies to the item itself.
+    const oversized = [{ id: 'a', label: 'A'.repeat(MAYFLY_UI_MAX_TEXT + 1) }]
+    expect(validateMayflyUiNode(ui.list({ role: 'choose', id: 'x', selectedIds: [], items: oversized }))).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
+  })
+
   it('contains sparse, accessor, throwing, and subclassed large list inputs', () => {
     const sparse = Array.from({ length: 201 }, (_, index) => ({ id: String(index), label: 'ok' }))
     delete sparse[200]
