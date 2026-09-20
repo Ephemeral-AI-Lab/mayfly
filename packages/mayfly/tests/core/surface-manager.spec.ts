@@ -212,6 +212,82 @@ describe('SurfaceManager', () => {
     expect(SURFACE_HEADER_MAX_ROWS).toBe(4)
   })
 
+  it('memoizes both layouts per viewport until the registry, user state, focus, or activation changes', () => {
+    const manager = new SurfaceManager()
+    const a = manager.register(contribution('a', 'header'))
+    const b = manager.register(contribution('b', 'bottom', {}, { focused: false, render: () => ['b'], invalidate: () => {} } as MayflyComponent))
+    manager.register(contribution('c', 'bottom', {}, { focused: false, render: () => ['c'], invalidate: () => {} } as MayflyComponent))
+
+    // Same viewport: identity-stable results; another viewport is memoized separately.
+    const layout = manager.layout(80, 24)
+    expect(manager.layout(80, 24)).toBe(layout)
+    const narrow = manager.layout(60, 24)
+    expect(narrow).not.toBe(layout)
+    expect(manager.layout(60, 24)).toBe(narrow)
+    expect(manager.layout(80, 24)).toBe(layout)
+    const linear = manager.linearLayout(80, 24)
+    expect(manager.linearLayout(80, 24)).toBe(linear)
+    expect(manager.linearLayout(80, 30)).not.toBe(linear)
+
+    // Every mutation path drops the memo and the fresh layout reflects it.
+    expect(manager.setFocused('b')).toBe(true)
+    expect(manager.setFocused('b')).toBe(true)
+    const focused = manager.layout(80, 24)
+    expect(focused).not.toBe(layout)
+    expect(focused.bottom?.active.id).toBe('b')
+    expect(manager.linearLayout(80, 24)).not.toBe(linear)
+    expect(manager.activate('bottom', 'c')).toBe(true)
+    expect(manager.layout(80, 24).bottom?.active.id).toBe('c')
+    expect(manager.focusedId).toBe('c')
+    b.setHidden(true)
+    expect(manager.layout(80, 24).bottom?.entries.map(entry => entry.id)).toEqual(['c'])
+    b.setHidden(false)
+    const before = manager.layout(80, 24)
+    a.replace(component('a2'))
+    expect(manager.layout(80, 24)).not.toBe(before)
+    expect(manager.layout(80, 24).header?.active.component.render(10)).toEqual(['a2'])
+    const beforeDispose = manager.layout(80, 24)
+    a.dispose()
+    expect(manager.layout(80, 24)).not.toBe(beforeDispose)
+    expect(manager.layout(80, 24).header).toBeUndefined()
+    const beforeState = manager.layout(80, 24)
+    manager.replaceUserState({ hiddenIds: ['c'] })
+    expect(manager.layout(80, 24)).not.toBe(beforeState)
+    expect(manager.layout(80, 24).bottom?.entries.map(entry => entry.id)).toEqual(['b'])
+    // Retiring an unavailable focus inside layout() invalidates mid-flight, so
+    // the returned frame is recomputed once more before it memoizes.
+    const side = manager.register(contribution('side', 'left', { narrow: 'hidden' }, { focused: false, render: () => ['side'], invalidate: () => {} } as MayflyComponent))
+    manager.replaceUserState({})
+    expect(manager.setFocused('side')).toBe(true)
+    const retired = manager.layout(30, 10)
+    expect(retired.overflow.map(item => item.entry.id)).toEqual(['side'])
+    expect(manager.focusedId).toBeUndefined()
+    expect(manager.layout(30, 10)).not.toBe(retired)
+    expect(manager.layout(30, 10)).toBe(manager.layout(30, 10))
+    side.dispose()
+  })
+
+  it('keeps collapse hysteresis exact: a flag flip in one viewport invalidates every memo', () => {
+    const manager = new SurfaceManager()
+    manager.register(contribution('left', 'left'))
+    // 73 columns leaves the transcript at 40: open stays open, closed stays closed.
+    expect(manager.layout(73, 24).left).toBeDefined()
+    expect(manager.layout(73, 24)).toBe(manager.layout(73, 24))
+    // 30 columns collapses the side into bottom fallback — and drops the 73 memo.
+    const collapsed = manager.layout(30, 10)
+    expect(collapsed.left).toBeUndefined()
+    expect(collapsed.bottom?.entries.map(entry => entry.id)).toEqual(['left'])
+    expect(manager.layout(30, 10)).toBe(manager.layout(30, 10))
+    // Back at 73 a stale memo must not resurrect the open lane: the collapse
+    // flag survives below the 44-column reopen threshold.
+    const hysteresis = manager.layout(73, 24)
+    expect(hysteresis.left).toBeUndefined()
+    expect(manager.layout(73, 24)).toBe(hysteresis)
+    // 77 columns reopens the side (transcript 44); the flip is memo-visible.
+    expect(manager.layout(77, 24).left).toBeDefined()
+    expect(manager.layout(73, 24).left).toBeDefined()
+  })
+
   it('separates provider visibility from user state and handles registration lifecycle', () => {
     const changes = vi.fn()
     const saves = vi.fn()

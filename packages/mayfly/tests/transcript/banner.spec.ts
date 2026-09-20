@@ -356,8 +356,17 @@ describe('mayfly-banner plugin', () => {
     const budget = banner.bannerLayout(98)!.valueWidth
     const row = `${banner.DIRECTORY_LABEL}${shortenHome(process.cwd(), homedir())}`
     expect(joined).toContain(truncateToWidth(row, budget))
-    // The banner is stateless; invalidation is a covered no-op.
-    expect(() => screen.children[0]?.invalidate()).not.toThrow()
+    // Composed rows keep their identity across frames at one width (the
+    // content frame above caches by identity); a new width or an explicit
+    // invalidation re-composes.
+    const mounted = screen.children[0]!
+    const rows = mounted.render(100)
+    expect(mounted.render(100)).toBe(rows)
+    expect(mounted.render(90)).not.toBe(rows)
+    mounted.invalidate()
+    const recomposed = mounted.render(100)
+    expect(recomposed).not.toBe(rows)
+    expect(recomposed).toEqual(rows)
   })
 
   it('shows a profile-local identity without changing the release version', async () => {

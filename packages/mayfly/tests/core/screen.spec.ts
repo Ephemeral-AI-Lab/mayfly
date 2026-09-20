@@ -208,6 +208,51 @@ describe('MayflyScreenService', () => {
     expect(runtime.titles).toEqual(['fix the login bug'])
   })
 
+  it('returns identity-stable rows from empty hosts and a quiet local region', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    const [prelude, , region] = runtime.added as [MayflyComponent, MayflyComponent, MayflyComponent]
+
+    // An unclaimed host and the empty region hand back one shared empty array.
+    const empty = prelude.render(20)
+    expect(empty).toEqual([])
+    expect(prelude.render(20)).toBe(empty)
+    expect(region.render(20)).toBe(empty)
+    expect(Object.isFrozen(empty)).toBe(true)
+
+    // One stable child: the region returns that child's array by identity.
+    const first = ['echo one']
+    const one = screen.mountContentSlot('local.one', { render: () => first, invalidate: () => {} })
+    expect(region.render(20)).toBe(first)
+    expect(region.render(20)).toBe(first)
+
+    // Two stable children: the concatenation is computed once per change.
+    const second = ['echo two', 'more']
+    const two = screen.mountContentSlot('local.two', { render: () => second, invalidate: () => {} })
+    const joined = region.render(20)
+    expect(joined).toEqual(['echo one', 'echo two', 'more'])
+    expect(region.render(20)).toBe(joined)
+    expect(region.render(30)).not.toBe(joined)
+    expect(region.render(30)).toEqual(joined)
+
+    // A child handing back a new array recomputes; a removed child shrinks the set.
+    let fresh = ['fresh']
+    const three = screen.mountContentSlot('local.three', { render: () => fresh, invalidate: () => {} })
+    const withFresh = region.render(20)
+    expect(withFresh).toEqual(['echo one', 'echo two', 'more', 'fresh'])
+    fresh = ['fresher']
+    expect(region.render(20)).not.toBe(withFresh)
+    expect(region.render(20).at(-1)).toBe('fresher')
+    three.dispose()
+    two.dispose()
+    expect(region.render(20)).toBe(first)
+    one.dispose()
+    expect(region.render(20)).toBe(empty)
+    await ctx.fiber.dispose()
+  })
+
   it('keeps focus on the stable slot while replacing focusable targets', async () => {
     const runtime = recordingRuntime()
     const ctx = new Context()

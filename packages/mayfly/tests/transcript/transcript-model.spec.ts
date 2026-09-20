@@ -282,6 +282,34 @@ describe('TranscriptController', () => {
     component.dispose()
   })
 
+  it('returns a fresh row array for every changed live frame over shared durable rows', () => {
+    const durable: TranscriptEntryModel[] = [
+      { kind: 'transcript-user', id: 'u1', seq: 1, updatedSeq: 1, turn: 1, text: 'question', images: [] },
+    ]
+    const live = (text: string, revision: number): TranscriptModel => ({
+      kind: 'transcript', id: 'live-identity', generation: 0, entries: durable, streaming: true,
+      live: { turn: 1, step: 0, entries: [{ kind: 'transcript-assistant', id: 'a1', seq: 2, updatedSeq: 1, renderRevision: `live:${String(revision)}`, turn: 1, step: 0, text, streaming: true }] },
+    })
+    let current = live('a', 1)
+    const component = new TranscriptModelComponent(() => current, renderer())
+    const first = component.render(80)
+    // A pure scroll (same model) reuses the frame by identity.
+    expect(component.render(80)).toBe(first)
+    current = live('ab', 2)
+    const second = component.render(80)
+    // Identity-keyed consumers must see the change without scanning rows.
+    expect(second).not.toBe(first)
+    expect(first.join('\n')).toContain('a')
+    expect(first.join('\n')).not.toContain('ab')
+    expect(second.join('\n')).toContain('ab')
+    // Settling the live step returns the shared durable rows themselves.
+    current = { kind: 'transcript', id: 'live-identity', generation: 0, entries: durable, streaming: false }
+    const settled = component.render(80)
+    expect(component.render(80)).toBe(settled)
+    expect(settled.join('\n')).toContain('question')
+    component.dispose()
+  })
+
   it('renders only the assistant entry whose updatedSeq changed', () => {
     const components = fakeMayflyComponents()
     const createMarkdown = components.createMarkdown.bind(components)

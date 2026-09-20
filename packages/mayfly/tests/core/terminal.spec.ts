@@ -652,6 +652,31 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
+  it('remeasures a lane when its rendered layout is invalidated mid-frame', async () => {
+    const terminal = new AltScreenTerminal(80, 8)
+    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    runtime.addChild(textComponent('transcript'))
+    runtime.addBottomChild(textComponent('editor'))
+    runtime.surfaces.register({ id: 'header', placement: 'header', component: textComponent('header') })
+    runtime.surfaces.register({ id: 'side', placement: 'right', narrow: 'hidden', component: focusableComponent('side') })
+    runtime.requestRender(true)
+    await waitForRender()
+    runtime.surfaces.setFocused('side')
+    await waitForRender()
+
+    // Shrinking below the transcript floor collapses the focused side into
+    // hidden overflow; the layout() call inside the header lane's render
+    // retires the focus mid-flight, so the dock's header measurement reads a
+    // different layout object and falls back to a fresh lane render.
+    terminal.resize(30, 8)
+    await waitForRender()
+    expect(runtime.surfaces.focusedId).toBeUndefined()
+    expect((await terminal.screen()).some(row => row.trim() === 'header')).toBe(true)
+
+    await runtime.stop()
+    terminal.dispose()
+  })
+
   it('can register a collapsed side at 40 columns and recover its HStack at 120', async () => {
     const terminal = new AltScreenTerminal(40, 8)
     const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
@@ -1294,6 +1319,98 @@ describe('alternate-screen runtime', () => {
     runtime.requestRender()
     await waitForRender()
     expect(overflows).toHaveLength(scanned)
+
+    await runtime.stop()
+    terminal.dispose()
+  })
+
+  it('rescans only the child whose row array changed and reports frame-relative indexes', async () => {
+    const terminal = new AltScreenTerminal(40, 10)
+    const overflows: FrameOverflowEntry[] = []
+    let stable = ['stable', 'y'.repeat(50)]
+    let volatileRenders = 0
+    const runtime = await startMayflyTerminal(
+      terminal,
+      noProbe,
+      undefined,
+      { record: entry => overflows.push(entry) },
+      'alternate',
+    )
+    runtime.addChild({ render: () => stable, invalidate: () => {} })
+    // A stateless child hands back a fresh array every frame.
+    runtime.addChild({ render: () => { volatileRenders += 1; return ['fresh', 'z'.repeat(50)] }, invalidate: () => {} })
+    const indexes = (): number[] => overflows.map(entry => entry.index)
+    runtime.requestRender(true)
+    await waitForRender()
+    expect(volatileRenders).toBeGreaterThan(0)
+    // The stable child scanned once (frame row 1); the fresh child on every frame (row 3).
+    expect(indexes().filter(index => index === 1)).toHaveLength(1)
+    expect(indexes().filter(index => index === 3)).toHaveLength(volatileRenders)
+    expect(indexes().every(index => index === 1 || index === 3)).toBe(true)
+
+    const framesBefore = volatileRenders
+    runtime.requestRender()
+    await waitForRender()
+    expect(volatileRenders).toBeGreaterThan(framesBefore)
+    expect(indexes().filter(index => index === 1)).toHaveLength(1)
+    expect(indexes().filter(index => index === 3)).toHaveLength(volatileRenders)
+    expect(stripWriterWrappers(terminal.output)).toContain('y'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('z'.repeat(40))
+
+    // A replaced row array is the change signal: the stable child rescans once more.
+    stable = ['stable', 'x'.repeat(45)]
+    runtime.requestRender()
+    await waitForRender()
+    expect(indexes().filter(index => index === 1)).toHaveLength(2)
+    expect(stripWriterWrappers(terminal.output)).toContain('x'.repeat(40))
+    await runtime.stop()
+    terminal.dispose()
+  })
+
+  it('keeps a stable transcript out of the per-frame clamp in the screen composition', async () => {
+    const { Context } = await import('@deepseek-ai/cordis')
+    const { MayflyScreenService } = await import('../../src/core/screen.ts')
+    const terminal = new AltScreenTerminal(40, 12)
+    const overflows: FrameOverflowEntry[] = []
+    const runtime = await startMayflyTerminal(
+      terminal,
+      noProbe,
+      undefined,
+      { record: entry => overflows.push(entry) },
+      'alternate',
+    )
+    const screen = new MayflyScreenService(new Context(), runtime)
+    // The prelude re-composes every render, like the stateless banner used to.
+    screen.mountContentSlot('transcript.prelude', { render: () => ['prelude'], invalidate: () => {} })
+    const transcript = Array.from({ length: 60 }, (_, index) => `row ${String(index)}`)
+    transcript[30] = 'w'.repeat(50)
+    let transcriptRenders = 0
+    screen.mountContentSlot('transcript.conversation', { render: () => { transcriptRenders += 1; return transcript }, invalidate: () => {} })
+    runtime.requestRender(true)
+    await waitForRender()
+    expect(overflows).toHaveLength(1)
+    expect(overflows[0]!.index).toBe(31)
+
+    for (let step = 0; step < 4; step += 1) {
+      expect(runtime.scrollContent('up', 3)).toBe(true)
+      await waitForRender()
+    }
+    // Four scroll frames rendered the transcript again without rescanning it.
+    expect(transcriptRenders).toBeGreaterThan(4)
+    expect(overflows).toHaveLength(1)
+
+    // A local echo joins the flow below the transcript; the transcript stays warm
+    // and the echo is clamped once at its frame-relative row.
+    const echo = ['echo', 'v'.repeat(50)]
+    const local = screen.mountContentSlot('local.echo', { render: () => echo, invalidate: () => {} })
+    await waitForRender()
+    runtime.requestRender()
+    await waitForRender()
+    expect(overflows).toHaveLength(2)
+    expect(overflows[1]!.index).toBe(62)
+    local.dispose()
+    await waitForRender()
+    expect(overflows).toHaveLength(2)
 
     await runtime.stop()
     terminal.dispose()

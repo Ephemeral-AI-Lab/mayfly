@@ -68,12 +68,28 @@ const NORMALIZED_NAVIGATION_INPUT = new Map<string, string>([
 /** Renderer choice kept inside core's L0 boundary. */
 export type MayflyScreenMode = 'main' | 'alternate'
 
-/** Container-level width backstop used by both alternate-screen layout bands. */
+/** One child's latest clamped rows, keyed on the row array the child returned. */
+interface ClampedChildRows {
+  readonly width: number
+  readonly source: readonly string[]
+  readonly rows: string[]
+}
+
+/**
+ * Container-level width backstop used by both alternate-screen layout bands.
+ * Children are clamped independently: a child is rescanned only when it hands
+ * back a different row array or the width changes, so a stable transcript
+ * costs nothing per frame while an uncached sibling (a stateless banner, the
+ * local activity region) rescans only its own rows. The concatenated frame is
+ * reused while every child part is unchanged. Children must therefore return
+ * a new array whenever their rows change; same-identity mutation is invisible.
+ */
 class FrameClampedContainer extends Container {
+  private readonly clampedChildren = new WeakMap<Component, ClampedChildRows>()
   private cached: {
     readonly width: number
     readonly children: readonly Component[]
-    readonly childRows: readonly string[][]
+    readonly parts: readonly string[][]
     readonly rows: string[]
   } | undefined
 
@@ -83,15 +99,31 @@ class FrameClampedContainer extends Container {
 
   override render(width: number): string[] {
     const children = [...this.children]
-    const childRows = children.map(child => child.render(width))
     const cached = this.cached
-    if (cached?.width === width
-      && cached.children.length === children.length
-      && children.every((child, index) => cached.children[index] === child && cached.childRows[index] === childRows[index])) {
-      return cached.rows
-    }
-    const rows = clampFrame(childRows.flat(), width, this.overflow)
-    this.cached = { width, children, childRows, rows }
+    let reusable = cached !== undefined && cached.width === width && cached.children.length === children.length
+    let offset = 0
+    const parts = children.map((child, index) => {
+      const part = this.clampChild(child, width, offset)
+      offset += part.length
+      if (reusable && (cached!.children[index] !== child || cached!.parts[index] !== part)) reusable = false
+      return part
+    })
+    if (reusable) return cached!.rows
+    const rows = parts.length === 1 ? parts[0]! : parts.flat()
+    this.cached = { width, children, parts, rows }
+    return rows
+  }
+
+  /** Clamp one child's rows, reporting overflow at frame-relative indexes. */
+  private clampChild(child: Component, width: number, offset: number): string[] {
+    const source = child.render(width)
+    const previous = this.clampedChildren.get(child)
+    if (previous?.width === width && previous.source === source) return previous.rows
+    const sink: OverflowSink = offset === 0
+      ? this.overflow
+      : { record: entry => this.overflow.record({ ...entry, index: entry.index + offset }) }
+    const rows = clampFrame(source, width, sink)
+    this.clampedChildren.set(child, { width, source, rows })
     return rows
   }
 }
@@ -105,6 +137,7 @@ class SurfaceLaneContainer implements Component {
     },
     invalidate: () => this.manager.invalidate(),
   }
+  private measured: { readonly width: number, readonly layout: SurfaceLayout, readonly rows: number } | undefined
 
   constructor(
     private readonly manager: SurfaceManager,
@@ -114,7 +147,23 @@ class SurfaceLaneContainer implements Component {
   ) {}
 
   render(width: number): string[] {
-    return renderSurfaceLane(this.getLayout()[this.placement], width, this.maxRows())
+    const layout = this.getLayout()
+    const rows = renderSurfaceLane(layout[this.placement], width, this.maxRows())
+    this.measured = { width, layout, rows: rows.length }
+    return rows
+  }
+
+  /**
+   * Row count of this lane for the current layout. pi-tui measures every
+   * root band before it lays out the dock, so the dock's budget reads the
+   * count this frame's own render produced instead of rendering the panes a
+   * second time; an unmeasured combination falls back to a render.
+   */
+  measureRows(width: number): number {
+    const layout = this.getLayout()
+    if (layout[this.placement] === undefined) return 0
+    const measured = this.measured
+    return measured?.width === width && measured.layout === layout ? measured.rows : this.render(width).length
   }
 
   invalidate(): void {
@@ -585,7 +634,7 @@ export async function startMayflyTerminal(
     },
     invalidate: () => surfaces.invalidate(),
   })
-  const alternateLanes: Record<SurfacePlacement, Component> = {
+  const alternateLanes: Record<SurfacePlacement, SurfaceLaneContainer> = {
     header: new SurfaceLaneContainer(surfaces, 'header', () => surfaces.layout(terminal.columns, terminal.rows), () => SURFACE_HEADER_MAX_ROWS),
     left: new SurfaceLaneContainer(surfaces, 'left', () => surfaces.layout(terminal.columns, terminal.rows), () => Number.MAX_SAFE_INTEGER),
     right: new SurfaceLaneContainer(surfaces, 'right', () => surfaces.layout(terminal.columns, terminal.rows), () => Number.MAX_SAFE_INTEGER),
@@ -598,19 +647,11 @@ export async function startMayflyTerminal(
     bottom: linearLaneComponent('bottom'),
   }
   surfaceHeaderRows = () => {
-    lastSurfaceHeaderRows = renderSurfaceLane(
-      surfaces.layout(terminal.columns, terminal.rows).header,
-      terminal.columns,
-      SURFACE_HEADER_MAX_ROWS,
-    ).length
+    lastSurfaceHeaderRows = alternateLanes.header.measureRows(terminal.columns)
     return lastSurfaceHeaderRows
   }
   surfaceBottomRows = () => {
-    lastSurfaceBottomRows = renderSurfaceLane(
-      surfaces.layout(terminal.columns, terminal.rows).bottom,
-      terminal.columns,
-      Math.floor(terminal.rows / 3),
-    ).length
+    lastSurfaceBottomRows = alternateLanes.bottom.measureRows(terminal.columns)
     return lastSurfaceBottomRows
   }
 

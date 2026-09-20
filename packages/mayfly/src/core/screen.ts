@@ -15,6 +15,12 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/**
+ * Shared empty row set. Hosts without a target and the empty local region
+ * return it so identity-keyed frame caches stay warm across frames.
+ */
+const NO_ROWS = Object.freeze([]) as unknown as string[]
+
 class StableSlotHost implements MayflyFocusable {
   private active = true
   private focusedValue = false
@@ -60,7 +66,7 @@ class StableSlotHost implements MayflyFocusable {
     this.runtime.setFocus(this)
   }
 
-  render(width: number): string[] { return this.currentTarget()?.render(width) ?? [] }
+  render(width: number): string[] { return this.currentTarget()?.render(width) ?? NO_ROWS }
   invalidate(): void { this.currentTarget()?.invalidate() }
   handleInput(data: string): void { this.currentTarget()?.handleInput?.(data) }
 
@@ -111,13 +117,28 @@ class ScreenSlotLease implements MayflyScreenSlot {
   }
 }
 
-/** Fixed root region containing ephemeral local notices and shell echoes. */
+/**
+ * Fixed root region containing ephemeral local notices and shell echoes. The
+ * concatenated rows keep their identity while every child returns the same
+ * array, so a quiet region never invalidates the content frame above it.
+ */
 class LocalActivityRegion implements MayflyComponent {
   private readonly children = new Map<string, StableSlotHost>()
+  private cached: { readonly width: number, readonly parts: readonly string[][], readonly rows: string[] } | undefined
 
   add(id: string, child: StableSlotHost): void { this.children.set(id, child) }
   remove(id: string): void { this.children.delete(id) }
-  render(width: number): string[] { return [...this.children.values()].flatMap(child => child.render(width)) }
+
+  render(width: number): string[] {
+    const parts = [...this.children.values()].map(child => child.render(width))
+    const cached = this.cached
+    if (cached !== undefined && cached.width === width && cached.parts.length === parts.length
+      && parts.every((part, index) => cached.parts[index] === part)) return cached.rows
+    const rows = parts.length === 0 ? NO_ROWS : parts.length === 1 ? parts[0]! : parts.flat()
+    this.cached = { width, parts, rows }
+    return rows
+  }
+
   invalidate(): void { for (const child of this.children.values()) child.invalidate() }
 }
 
