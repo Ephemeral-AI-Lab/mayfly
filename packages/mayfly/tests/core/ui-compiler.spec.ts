@@ -1229,10 +1229,11 @@ describe('compileMayflyUiNode', () => {
     const overwideComponents = { ...components, wrapText: () => ['overwide row'] } as MayflyComponents
     expect(compiled(ui.richText([{ text: 'x' }]), fixture({ components: overwideComponents }).options).component.render(4).every(row => visibleWidth(row) <= 4)).toBe(true)
 
-    const brokenRoot = compiled(ui.stack.column([ui.text('x')]), fixture().options).component as unknown as { root: { render: (width: number) => string[] }, render: (width: number) => string[] }
+    const brokenRoot = compiled(ui.stack.column([ui.text('x')]), fixture().options).component as unknown as { root: { render: (width: number) => string[] }, render: (width: number) => string[], invalidate: () => void }
     brokenRoot.root.render = () => { throw new Error('root exploded') }
     expect(brokenRoot.render(20).join('')).toContain('root exploded')
     brokenRoot.root.render = () => { throw 'root non-error' }
+    brokenRoot.invalidate()
     expect(brokenRoot.render(20).join('')).toContain('unknown')
   })
 

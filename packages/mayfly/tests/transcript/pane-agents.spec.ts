@@ -93,6 +93,19 @@ describe('mayfly-pane-agents plugin', () => {
     expect(text).toContain('running subagent')
   })
 
+  it('reuses the cached error line while a failed member persists', async () => {
+    const rig = await boot([
+      turnStart(1),
+      stepStart(1, 1),
+      toolCallEvent(1, 1, 'a1', 'subagent', JSON.stringify({ description: 'Broken' })),
+      toolResultEvent(1, 1, 'a1', 'boom', { isError: true, time: T0 + 1_000 }),
+    ])
+    expect(rig.screen.paneLines(140).join('\n')).toContain('Error: boom')
+    // A same-turn notification re-queries the failed row; the cached error line serves it.
+    rig.ctx.emit('session/event', rig.agent.session, { ...stepStart(1, 2), seq: 50, time: T0 + 8_000 })
+    expect(rig.screen.paneLines(140).join('\n')).toContain('Error: boom')
+  })
+
   it('ignores ordinary tool calls and keeps an unacked group across turns', async () => {
     const rig = await boot([
       turnStart(1),
@@ -200,6 +213,25 @@ describe('mayfly-pane-agents plugin', () => {
     expect(rig.screen.paneLines(140)).toEqual([])
   })
 
+  it('prunes dropped member rows while a live survivor keeps its cache', async () => {
+    const rig = await boot([
+      turnStart(1),
+      stepStart(1, 1),
+      subagentCallEvent(1, 1, 'a1', 'subagent', 'Survey', 'survey', { time: T0 }),
+      subagentCallEvent(1, 1, 'a2', 'subagent', 'Map docs', 'map', { time: T0 }),
+      toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 5_000 }),
+      toolResultEvent(1, 1, 'a2', 'started subagent bd317666afec47f4777c7ca701c1779e', { time: T0 + 5_000 }),
+    ])
+    const child = childSession('bd317666afec47f4777c7ca701c1779e')
+    rig.ctx.emit('session/event', child, childTurnStart())
+    // a1's child never starts: it drops at the boundary while a2 stays
+    // live-running — the prune keeps the survivor's cached row nodes.
+    rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
+    const text = rig.screen.paneLines(140).join('\n')
+    expect(text).toContain('running Map docs')
+    expect(text).not.toContain('Survey')
+  })
+
   it('keeps a live-running group across the turn boundary, then clears once done', async () => {
     const rig = await boot([
       turnStart(1),
@@ -279,6 +311,52 @@ describe('mayfly-pane-agents plugin', () => {
     await rig.dispose()
   })
 
+  it('coalesces volatile streamed-chars churn onto the pane tick', async () => {
+    vi.useFakeTimers()
+    const rig = await boot([
+      turnStart(1),
+      stepStart(1, 1),
+      subagentCallEvent(1, 1, 'a1', 'subagent', 'Survey', 'survey', { time: T0 }),
+      subagentCallEvent(1, 1, 'a2', 'subagent', 'Map docs', 'map', { time: T0 }),
+      toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 70 }),
+      toolResultEvent(1, 1, 'a2', 'started subagent bd317666afec47f4777c7ca701c1779e', { time: T0 + 80 }),
+    ])
+    const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
+    rig.ctx.emit('session/event', child, childTurnStart())
+    const entry = () => rig.ctx.mayflyPanes.list().find(candidate => candidate.id === 'mayfly.pane.agents')!
+    const draft = (chars: number) => ({
+      sessionId: '9f5c4086a0674b55b621c3eaf8b88c0e',
+      attemptId: 'a1', revision: 1, turn: 1, step: 0,
+      phase: 'thinking' as const, reasoning: 'draft', text: '', outputProgress: undefined, chars, updatedAt: T0 + 2_000,
+    })
+    rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', draft(2_048))
+    expect(rig.screen.paneLines(140).join('\n')).toContain('↓2k')
+    const revision = entry().revision
+    rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', draft(4_096))
+    // Only volatile metrics changed — the republish waits for the tick.
+    expect(rig.screen.paneLines(140).join('\n')).toContain('↓2k')
+    expect(entry().revision).toBe(revision)
+    vi.advanceTimersByTime(paneAgents.PANE_TICK_MS)
+    expect(rig.screen.paneLines(140).join('\n')).toContain('↓4k')
+    expect(entry().revision).toBeGreaterThan(revision)
+    await rig.dispose()
+  })
+
+  it('skips republishing when a facts notification changes nothing', async () => {
+    const rig = await boot([
+      turnStart(1),
+      stepStart(1, 1),
+      subagentCallEvent(1, 1, 'a1', 'subagent', 'Survey', 'survey', { time: T0 }),
+      toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 5_000 }),
+    ])
+    expect(rig.screen.paneLines(140).join('\n')).toContain('done Survey')
+    const revision = () => rig.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.agents')!.revision
+    const before = revision()
+    rig.ctx.emit('session/event', rig.agent.session, { ...stepStart(1, 2), seq: 50, time: T0 + 8_000 })
+    expect(revision()).toBe(before)
+    await rig.dispose()
+  })
+
   it('holds a fresh waiting phase as running for one second, then reveals it', async () => {
     vi.useFakeTimers()
     let now = T0
@@ -337,7 +415,7 @@ describe('mayfly-pane-agents plugin', () => {
       stepStart(1, 1),
       subagentCallEvent(1, 1, 'a1', 'subagent', 'Pending', 'pending', { time: T0 }),
     ])
-    const tick = intervals.mock.calls.find(([, ms]) => ms === 1_000)?.[0] as (() => void) | undefined
+    const tick = intervals.mock.calls.find(([, ms]) => ms === paneAgents.PANE_TICK_MS)?.[0] as (() => void) | undefined
     expect(tick).toBeTypeOf('function')
     const next = fakeAgent([])
     ;(next as unknown as { id: string }).id = 'parent-next'

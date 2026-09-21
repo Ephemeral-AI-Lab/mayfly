@@ -57,7 +57,15 @@ export function apply(ctx: Context): void {
   derive()
   const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'default' }
   const status = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0 }, node())
-  const refresh = (): void => { derive(); status.set(node()) }
+  let published = text
+  const refresh = (): void => {
+    derive()
+    /* Facts notifications fire per session event; the row only republishes
+       when its rendered text actually changed. */
+    if (text === published) return
+    published = text
+    status.set(node())
+  }
   const offFacts = factsService.subscribe(next => { facts = next; refresh() })
   const offAgent = factsService.subscribeAgent(next => { agent = next; refresh() })
   const offProjection = ctx.sessionProjections.onChanged((session, key) => {

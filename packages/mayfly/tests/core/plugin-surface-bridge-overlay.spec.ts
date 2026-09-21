@@ -611,21 +611,19 @@ describe('direct overlay surface renderer', () => {
       expect(tasks).toHaveLength(2)
       tasks.splice(1, 1)[0]!()
       tasks.shift()!()
+      tasks.shift()!()
       expect(f.stack()[0]!.component.render(80)).toEqual(['third'])
 
       handle.set(ui.text('retained-a'))
       tasks.shift()!()
       handle.set(ui.text('retained-b'))
-      tasks.shift()!()
-      tasks.shift()!()
-      tasks.shift()!()
+      while (tasks.length > 0) tasks.shift()!()
       expect(f.stack()[0]!.component.render(80)).toEqual(['retained-b'])
 
       handle.set(ui.text('removed'))
       tasks.shift()!()
       handle.close()
-      tasks.shift()!()
-      tasks.shift()!()
+      while (tasks.length > 0) tasks.shift()!()
       expect(f.stack()).toEqual([])
       queue.mockRestore()
     } finally {
@@ -932,6 +930,73 @@ describe('direct overlay surface renderer', () => {
       expect(f.root.mayflyOverlays.list().map(entry => entry.id)).toEqual(['outer', 'inner'])
       expect(f.stack().map(entry => entry.component.render(40))).toEqual([['outer'], ['inner']])
     } finally {
+      await f.dispose()
+    }
+  })
+
+  it('skips a pending overlay whose interaction model retired before the drain', async () => {
+    const f = await fixture()
+    try {
+      let disarm = false
+      f.root.mayflyUiInteraction.subscribe(() => {
+        if (disarm) return
+        disarm = true
+        f.root.mayflyUiInteraction.remove('overlay', 'stale-overlay')
+      })
+      f.open({ id: 'stale-overlay', render: () => ui.text('stale') })
+      await flush()
+      expect(f.stack()).toHaveLength(0)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('disposes a rendered overlay whose interaction model retires mid-flush', async () => {
+    const f = await fixture()
+    try {
+      const handle = f.open({ id: 'retired-overlay', render: () => ui.text('retired') })
+      await flush()
+      expect(f.stack()).toHaveLength(1)
+      let disarm = false
+      f.root.mayflyUiInteraction.subscribe(() => {
+        if (disarm) return
+        disarm = true
+        f.root.mayflyUiInteraction.remove('overlay', 'retired-overlay')
+      })
+      handle.refresh()
+      await flush()
+      expect(f.stack()).toHaveLength(0)
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('drops a queued overlay render once a newer pending snapshot removes the overlay', async () => {
+    const f = await fixture()
+    try {
+      const handle = f.open({ id: 'stale-render-overlay', render: () => ui.text('initial') })
+      await flush()
+      const tasks: VoidFunction[] = []
+      const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { tasks.push(task) })
+
+      handle.set(ui.text('second'))
+      tasks.shift()!()
+      tasks.shift()!()
+      // A second update re-schedules while the first render is still queued.
+      handle.set(ui.text('third'))
+      const render = tasks.shift()!
+      tasks.shift()!()
+      tasks.shift()!()
+      handle.close()
+      // The removal publish lands inside the notify task; once it runs, the
+      // still-queued render sees a pending snapshot that no longer lists it.
+      tasks.shift()!()
+      render()
+      while (tasks.length > 0) tasks.shift()!()
+      expect(f.stack()).toEqual([])
+      queue.mockRestore()
+    } finally {
+      vi.restoreAllMocks()
       await f.dispose()
     }
   })

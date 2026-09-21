@@ -41,7 +41,7 @@ const approvedPresentation = new Set([
   "border:packages/mayfly/src/interaction/session-tree.ts:visit(child, depth + 1, index === shown.length - 1 ? '└─' : '├─')",
   "border:packages/mayfly/src/transcript/agent-group.ts:const branch = isLast ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/agent-group.ts:const prefix = isLast ? '   ' : '│  '",
-  "border:packages/mayfly/src/transcript/pane-agents.ts:children.push({ node: { kind: 'text', content: `  ${index === members.length - 1 ? '   ' : '│  '}    ${phase.label === 'failed' ? `Error: ${detailLine}` : detailLine}`, tone: phase.label === 'failed' ? 'danger' : 'muted' } })",
+  "border:packages/mayfly/src/transcript/pane-agents.ts:return [row, ui.text(`  ${view.last ? '   ' : '│  '}    ${failed ? `Error: ${view.detailLine}` : view.detailLine}`, { tone: failed ? 'danger' : 'muted' })]",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:return last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:export function agentTreeBranch(last: boolean): '└─' | '├─' {",
   "border:packages/mayfly/src/transcript/read-group.ts:const branch = last ? '└─' : '├─'",

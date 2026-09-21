@@ -478,6 +478,12 @@ type ConversationProjectionDefinition = Omit<
   'wire'
 > & { wire: NonNullable<ProjectionDefinition<'mayflyConversation', ConversationProjectionState>['wire']> }
 
+/* The registry compares successive wire views with `Object.is` and skips the
+   schema parse plus every listener wakeup when the object repeats. States are
+   immutable fold results, so one memoized view per state object is exact —
+   unchanged states answer the identical view for the lifetime of the state. */
+const conversationViewCache = new WeakMap<ConversationProjectionState, ConversationProjection>()
+
 export const conversationProjectionDefinition: ConversationProjectionDefinition = {
   key: 'mayflyConversation',
   stateSchema: conversationProjectionStateSchema,
@@ -485,7 +491,14 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
   apply: foldConversationProjection,
   wire: {
     viewSchema: conversationProjectionSchema,
-    view: state => ({ entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }),
+    view: state => {
+      let view = conversationViewCache.get(state)
+      if (view === undefined) {
+        view = { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }
+        conversationViewCache.set(state, view)
+      }
+      return view
+    },
   },
   stateVersion: 6,
 }

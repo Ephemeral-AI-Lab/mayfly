@@ -1762,6 +1762,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
 
   get focused(): boolean { return this.state.focused }
   set focused(value: boolean) {
+    this.frameResult = undefined
     if (!this.surfaceRuntime.current(this.generation)) return
     this.surfaceRuntime.setFocused(value)
     if (!value && this.editor !== undefined) this.editor.focused = false
@@ -1792,6 +1793,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   }
 
   restoreFocusIdentity(identity: MayflyFocusIdentity): boolean {
+    this.frameResult = undefined
     if (!this.surfaceRuntime.current(this.generation)) return false
     this.viewport = safeViewport(this.options.getViewport)
     const controls = this.state.controls()
@@ -1908,11 +1910,43 @@ class CompiledSurface implements MayflyEditorShellComponent {
     }
   }
 
+  /* pi-tui measures a surface before painting it inside one synchronous
+     pass, so identical renderFrame calls reuse the previous result. The
+     key covers every input the frame reads from outside itself: runtime
+     liveness (a rebind retires this surface), the caller-owned viewport
+     object, and the interaction revision that bumps on every model
+     mutation. Internal state changes — focus, input, scroll — all flow
+     through the entry points below, which clear the memo eagerly. */
+  private frameResult: {
+    readonly current: boolean
+    readonly width: number
+    readonly maxRows: number | undefined
+    readonly columns: number
+    readonly rows: number
+    readonly revision: number | undefined
+    readonly result: MayflyStatusRenderResult
+  } | undefined
+
+  private renderFrameOnce(width: number, maxRows: number | undefined): MayflyStatusRenderResult {
+    const current = this.surfaceRuntime.current(this.generation)
+    const viewport = safeViewport(this.options.getViewport)
+    const revision = this.surfaceRuntime.interaction?.revision
+    const cached = this.frameResult
+    if (cached !== undefined
+      && cached.current === current && cached.width === width && cached.maxRows === maxRows
+      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision) {
+      return cached.result
+    }
+    const result = this.renderFrame(width, maxRows)
+    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, result }
+    return result
+  }
+
   render(width: number): string[] { return this.renderChecked(width).rows }
 
   renderChecked(width: number, options: MayflyEditorShellRenderOptions = {}): MayflyEditorShellRenderResult {
     if (options.dryRun !== true) {
-      const rendered = this.renderFrame(width, undefined)
+      const rendered = this.renderFrameOnce(width, undefined)
       return rendered.runtimeFailure === undefined
         ? { rows: rendered.rows }
         : { rows: rendered.rows, runtimeFailure: rendered.runtimeFailure }
@@ -1960,6 +1994,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   }
 
   focusEditor(): void {
+    this.frameResult = undefined
     if (!this.surfaceRuntime.current(this.generation)) return
     this.viewport = safeViewport(this.options.getViewport)
     const controls = this.state.controls()
@@ -1973,7 +2008,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   }
 
   /** Render a passive status surface with a fixed row budget and overflow signal. */
-  renderStatus(width: number, maxRows: number): MayflyStatusRenderResult { return this.renderFrame(width, maxRows) }
+  renderStatus(width: number, maxRows: number): MayflyStatusRenderResult { return this.renderFrameOnce(width, maxRows) }
 
   private controlRectangles(controls: readonly ControlDescriptor[]): Map<string, LayoutRect> {
     const rectangles = new Map<string, LayoutRect>()
@@ -2011,6 +2046,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   }
 
   handleInput(data: string): void {
+    this.frameResult = undefined
     if (!this.surfaceRuntime.current(this.generation)) return
     this.viewport = safeViewport(this.options.getViewport)
     const controls = reconcile(this.state)
@@ -2338,7 +2374,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.state.emit(eventControl.event)
   }
 
-  invalidate(): void { if (this.surfaceRuntime.current(this.generation)) this.root.invalidate?.() }
+  invalidate(): void {
+    this.frameResult = undefined
+    if (this.surfaceRuntime.current(this.generation)) this.root.invalidate?.()
+  }
 }
 
 /** Passive facade that deliberately does not expose focus or input methods. */

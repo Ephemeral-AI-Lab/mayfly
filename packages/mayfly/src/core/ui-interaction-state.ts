@@ -26,10 +26,11 @@ export class UiInteractionService extends Service {
   private readonly records = new Map<string, SurfaceRecord>()
   private readonly listeners = new Set<() => void>()
   private readonly notifications: UiNotificationStore
+  private notifyScheduled = false
 
   constructor(ctx: Context) {
     super(ctx, 'mayflyUiInteraction')
-    this.notifications = new UiNotificationStore(() => this.changed())
+    this.notifications = new UiNotificationStore(() => this.notify())
   }
 
   private key(kind: UiSurfaceKind, id: string): string { return JSON.stringify([kind, id]) }
@@ -77,7 +78,28 @@ export class UiInteractionService extends Service {
     return this.ctx.effect(() => () => { this.listeners.delete(listener) })
   }
 
+  /**
+   * Observers re-read current state at notify time, so a burst of surface
+   * updates coalesces into one notification per microtask (the
+   * LiveAssistantStreamService precedent). Models still receive every
+   * snapshot synchronously; only the fan-out is latest-wins.
+   */
   private changed(): void {
+    if (!this.live || this.notifyScheduled) return
+    this.notifyScheduled = true
+    queueMicrotask(() => {
+      this.notifyScheduled = false
+      this.notify()
+    })
+  }
+
+  /**
+   * Notification reports are low-frequency and human-facing, so they keep
+   * synchronous fan-out: observer work may reentrantly report feedback and
+   * relies on synchronous reentrancy guards (e.g. the prompt hint refresh)
+   * to converge instead of rescheduling.
+   */
+  private notify(): void {
     if (!this.live) return
     for (const listener of this.listeners) {
       try { listener() } catch (error) { this.ctx.logger.warn('UI interaction observer failed', error) }
@@ -87,6 +109,7 @@ export class UiInteractionService extends Service {
   dispose(): void {
     if (!this.live) return
     this.live = false
+    this.notifyScheduled = false
     for (const record of this.records.values()) { record.unsubscribe(); record.model.dispose() }
     this.records.clear()
     this.notifications.dispose()

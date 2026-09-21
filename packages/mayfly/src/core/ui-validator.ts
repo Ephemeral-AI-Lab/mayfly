@@ -94,14 +94,33 @@ function intrinsicPrototypeShape(prototype: object): string {
   }))
 }
 
+/**
+ * Own-realm reference shapes, read once per process. Admission compares every
+ * object and array in a tree against them, and `Array.prototype` alone carries
+ * more than forty descriptors: recomputing the reference per node made the
+ * probe the dominant cost of publishing a snapshot.
+ */
+const INTRINSIC_PROTOTYPES: Readonly<Record<'Object' | 'Array', object>> = {
+  Object: Object.prototype,
+  Array: Array.prototype,
+}
+
+const INTRINSIC_SHAPES: Readonly<Record<'Object' | 'Array', string>> = {
+  Object: intrinsicPrototypeShape(Object.prototype),
+  Array: intrinsicPrototypeShape(Array.prototype),
+}
+
 function hasRealmConstructor(prototype: object, name: 'Object' | 'Array'): boolean {
+  // Own-realm wire data is the overwhelming majority and needs no structural
+  // comparison; a foreign realm's intrinsic still passes the full probe below.
+  if (prototype === INTRINSIC_PROTOTYPES[name]) return true
   const descriptor = Object.getOwnPropertyDescriptor(prototype, 'constructor')
   if (descriptor === undefined || !('value' in descriptor) || typeof descriptor.value !== 'function') return false
   const constructor = descriptor.value
   return constructor.name === name
     && constructor.prototype === prototype
     && Function.prototype.toString.call(constructor) === `function ${name}() { [native code] }`
-    && intrinsicPrototypeShape(prototype) === intrinsicPrototypeShape(name === 'Object' ? Object.prototype : Array.prototype)
+    && intrinsicPrototypeShape(prototype) === INTRINSIC_SHAPES[name]
 }
 
 function record(value: unknown, path: string): Record<string, unknown> {

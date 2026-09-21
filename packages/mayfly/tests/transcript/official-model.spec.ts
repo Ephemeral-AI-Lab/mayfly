@@ -482,7 +482,9 @@ describe('OfficialConversationModelSource', () => {
     expect(current.entries).toHaveLength(301)
     expect(current.entries.at(-1)).toMatchObject({ text: 'thought 1299', streaming: false })
     expect(current.streaming).toBe(false)
-    expect(get).toHaveBeenCalledTimes(300)
+    // Unchanged entries reuse their resolved presenters; only the appended
+    // thinking entry maps, and it declares no tool.
+    expect(get).not.toHaveBeenCalled()
     expect(reads).toBe(2)
     expect(source.snapshot()).toBe(current)
     expect(reads).toBe(2)
@@ -564,6 +566,12 @@ describe('OfficialConversationModelSource', () => {
     null, undefined, 'bad', [], {}, { entries: [], streaming: 'bad' },
     { entries: [null], streaming: false },
     { entries: [{ kind: 'assistant', seq: 1 }], streaming: false },
+    { entries: [null], streaming: false, settledSteps: [] },
+    { entries: [42], streaming: false, settledSteps: [] },
+    { entries: [{ kind: 42, seq: 1 }], streaming: false, settledSteps: [] },
+    { entries: [{ kind: 'bogus', seq: 1 }], streaming: false, settledSteps: [] },
+    { entries: [{ kind: 'assistant', seq: 'x' }], streaming: false, settledSteps: [] },
+    { entries: [{ kind: 'assistant', seq: 1.5 }], streaming: false, settledSteps: [] },
   ])('rejects malformed envelopes and visible entries: %j', value => {
     const fixture = sourceFixture(projection())
     const publish = vi.fn()
@@ -616,6 +624,28 @@ describe('OfficialConversationModelSource', () => {
     expect(Object.isFrozen(content)).toBe(false)
     content[0]!.text = 'changed'
     expect(presented.content[0]).toEqual({ type: 'text', text: 'raw' })
+    source.dispose()
+  })
+
+  it('re-resolves only changed tool entries across pending values', () => {
+    const presentCall = vi.fn(() => undefined)
+    const tools = { get: () => ({ presentCall }) } as unknown as ToolPresentationSource
+    const fixture = sourceFixture(projection([transcriptTool()]))
+    const source = new OfficialConversationModelSource(fixture.source, tools, () => undefined)
+    source.attach(fixture.session)
+    source.snapshot()
+    expect(presentCall).toHaveBeenCalledTimes(1)
+    fixture.emit('mayflyConversation', projection([
+      transcriptTool(),
+      { kind: 'assistant' as const, id: 'a-2', seq: 5, turn: 1, step: 0, text: 'follow-up', streaming: false },
+    ]), 2)
+    source.snapshot()
+    expect(presentCall).toHaveBeenCalledTimes(1)
+    fixture.emit('mayflyConversation', projection([transcriptTool({ updatedSeq: 9 })]), 3)
+    source.snapshot()
+    expect(presentCall).toHaveBeenCalledTimes(2)
+    source.invalidateTools()
+    expect(presentCall).toHaveBeenCalledTimes(3)
     source.dispose()
   })
 

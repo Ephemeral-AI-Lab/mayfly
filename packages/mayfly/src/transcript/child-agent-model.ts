@@ -46,15 +46,47 @@ export function trackChildAgentModels(
   facts: SessionFactsService,
   changed: () => void,
 ): { snapshot(member: TranscriptToolItem): AgentMemberLive | undefined; dispose(): void } {
-  let children: readonly ChildSessionFacts[] = []
+  /* Member lookups resolve through per-publication maps instead of scanning
+     every child per member: the child-id regex and prompt read run once per
+     member item, and each children refresh pays O(children) once. */
+  let byId = new Map<string, AgentMemberLive>()
+  let byPrompt = new Map<string, AgentMemberLive>()
+  const resolved = new WeakMap<TranscriptToolItem, string | undefined>()
+  const promptCache = new WeakMap<TranscriptToolItem, string | undefined>()
+  const childIdOf = (member: TranscriptToolItem): string | undefined => {
+    if (resolved.has(member)) return resolved.get(member)
+    const id = childIdOfResult(member)
+    resolved.set(member, id)
+    return id
+  }
+  const promptOf = (member: TranscriptToolItem): string | undefined => {
+    if (promptCache.has(member)) return promptCache.get(member)
+    const args = member.parsedArguments
+    const prompt = typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)['prompt']
+      : undefined
+    const value = typeof prompt === 'string' ? prompt : undefined
+    promptCache.set(member, value)
+    return value
+  }
   const dispose = facts.subscribeChildren(next => {
-    children = next
+    const ids = new Map<string, AgentMemberLive>()
+    const prompts = new Map<string, AgentMemberLive>()
+    for (const child of next) {
+      const live = childLiveSnapshot(child)
+      if (!ids.has(child.id)) ids.set(child.id, live)
+      if (child.promptText !== undefined && !prompts.has(child.promptText)) prompts.set(child.promptText, live)
+    }
+    byId = ids
+    byPrompt = prompts
     changed()
   })
   return {
     snapshot(member) {
-      const child = children.find(candidate => correlateChild(candidate, member))
-      return child === undefined ? undefined : childLiveSnapshot(child)
+      const id = childIdOf(member)
+      if (id !== undefined) return byId.get(id)
+      const prompt = promptOf(member)
+      return prompt === undefined ? undefined : byPrompt.get(prompt)
     },
     dispose,
   }

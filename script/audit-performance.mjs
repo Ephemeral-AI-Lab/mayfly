@@ -110,7 +110,7 @@ try {
 
     const entries = Array.from({ length: size }, (_, index) => ({ kind: 'assistant', id: String(index),
       seq: index, updatedSeq: index, turn: index, step: 0, text: 'hello', streaming: false }))
-    let value = { entries, streaming: true }
+    let value = { entries, streaming: true, settledSteps: [] }
     let seq = size
     let changed
     const session = {}
@@ -149,6 +149,29 @@ try {
       const next = reconcileDocument(anchoredDocument, document(`head${text}`))
       if (next.anchor?.offset !== Math.floor(size / 2) + 4) throw new Error('document prepend lost the anchor')
     })
+  }
+
+  /* Concurrent subagent activity publishes many pane snapshots per frame;
+     a swarm burst covers the admit+compile path that storms hit. */
+  for (const agents of [8, 32]) {
+    const swarm = Array.from({ length: agents }, (_, index) => ctx.mayflyPanes.register({ id: `audit.swarm.${index}`, placement: 'bottom' }))
+    const memberNode = index => ui.stack.column([
+      ui.fields([{ label: 'agent', value: [{ text: `swarm-${index}` }] }]),
+      ui.list({ id: `swarm-${index}`, role: 'browse', selectedIds: [], items: Array.from({ length: 8 }, (_, item) => ({ id: String(item), label: `tool ${item}` })) }),
+    ])
+    const swarmPublished = index => ctx.mayflyPanes.list().find(entry => entry.id === `audit.swarm.${index}`).node
+    const swarmInteraction = index => ctx.mayflyUiInteraction.get('pane', `audit.swarm.${index}`)
+    await measure(agents, 'swarm.publish-burst', () => {
+      for (const [index, pane] of swarm.entries()) pane.set(memberNode(index))
+    })
+    await measure(agents, 'swarm.publish-compile-burst', () => {
+      for (const [index, pane] of swarm.entries()) { pane.set(memberNode(index)); compile(swarmPublished(index), swarmInteraction(index)) }
+    })
+    const compiledSwarm = swarm.map((_, index) => compile(swarmPublished(index), swarmInteraction(index)))
+    await measure(agents, 'swarm.steady-state-frame', () => {
+      for (const surface of compiledSwarm) surface.component.render(80)
+    })
+    for (const pane of swarm) pane.dispose()
   }
   console.log(JSON.stringify({ node: process.version, platform: process.platform, arch: process.arch,
     samples, gc: typeof global.gc === 'function', note: 'Headless synthetic timings, not terminal FPS. Heap growth is not total allocation.', results }, null, 2))

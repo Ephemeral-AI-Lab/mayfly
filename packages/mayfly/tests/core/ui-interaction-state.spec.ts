@@ -510,6 +510,7 @@ it('projects registry entries and contains observers across service disposal', a
   const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
   ctx.mayflyUiInteraction.subscribe(() => { throw new Error('observer failed') })
   owner.report('again', { kind: 'app', targetId: 'test' }, { severity: 'info', message: 'Again' })
+  await flush()
   expect(warn).toHaveBeenCalledWith('UI interaction observer failed', expect.any(Error))
 
   const snapshot = model.registration
@@ -519,6 +520,33 @@ it('projects registry entries and contains observers across service disposal', a
   off()
   expect(() => ctx.mayflyUiInteraction.upsert('pane', snapshot)).toThrow('disposed')
   ;(ctx.mayflyUiInteraction as unknown as { changed(): void }).changed()
+})
+
+it('coalesces a burst of surface updates into one latest-state notification', async () => {
+  const { ctx, handle, model } = await setup('pane')
+  let deliveries = 0
+  let seenRevision = -1
+  ctx.mayflyUiInteraction.subscribe(() => { deliveries += 1; seenRevision = model.revision })
+  handle.set(definition('B'))
+  handle.set(definition('C'))
+  handle.set(definition('D'))
+  expect(deliveries).toBe(0)
+  // Every snapshot still reaches the model synchronously; only the
+  // observer fan-out collapses onto the latest state.
+  expect(model.form(address())!.fields.name!.value).toBe('D')
+  await flush()
+  expect(deliveries).toBe(1)
+  expect(seenRevision).toBe(model.revision)
+})
+
+it('drops a pending observer notification on service disposal', async () => {
+  const { ctx, handle } = await setup('pane')
+  const listener = vi.fn()
+  ctx.mayflyUiInteraction.subscribe(listener)
+  handle.set(definition('B'))
+  ctx.mayflyUiInteraction.dispose()
+  await flush()
+  expect(listener).not.toHaveBeenCalled()
 })
 
 it('handles null snapshots and exposes an inert endpoint after disposal', async () => {
