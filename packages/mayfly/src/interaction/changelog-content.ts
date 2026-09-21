@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.0-alpha.5',
+    summary: 'Faster rendering under concurrent subagent activity, and fixes for large pickers and shell output.',
+    highlights: [
+      'Responsive swarms - coalesce and memoize the publish, projection, and render path so concurrent subagent updates hold steady-state frame costs near zero.',
+      'Stable scroll frames - scroll-only frames diff the viewport instead of rescanning stable transcript content.',
+      'Large pickers - validate each list item under its own text quota, so populated pickers like /sessions open instead of tripping the shared tree budget.',
+      'Shell echo - anchor ! output at the transcript tail so newer entries push it up instead of leaving it pinned above the editor.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.4',
     summary: 'One interaction model for built-in and external Mayfly surfaces.',
     highlights: [
