@@ -227,6 +227,21 @@ describe('mayfly-input plugin', () => {
     expect(editor.getText()).toBe('')
   })
 
+  it('abortPrompt interrupts a running flow and preserves the draft', async () => {
+    const { ctx, editor, cancel } = await mount({ running: true })
+    type(editor, 'keep me')
+    getSharedEditor(ctx)?.abortPrompt?.()
+    expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+    expect(editor.getText()).toBe('keep me')
+  })
+
+  it('abortPrompt clears the draft when no session is attached', async () => {
+    const { ctx, editor } = await mount({ withAgent: false })
+    type(editor, 'no session draft')
+    getSharedEditor(ctx)?.abortPrompt?.()
+    expect(editor.getText()).toBe('')
+  })
+
   it('clears input-owned navigation feedback when the session switch settles', async () => {
     const { ctx, hint, agent } = await mount()
     getSharedEditor(ctx)?.report?.('navigation', { message: 'creating rewind branch...', severity: 'info' })
@@ -617,7 +632,7 @@ describe('mayfly-input plugin', () => {
       revision: 3,
     }
     const { editor, cancel } = await mount({ running: true, view, subagents: { prompt, interruptByParent } })
-    editor.handleInput(KEY.ctrlC)
+    editor.handleInput(KEY.escape)
     expect(interruptByParent).toHaveBeenCalledWith('input-spec', 'parent', 'continuable')
     expect(cancel).not.toHaveBeenCalled()
   })
@@ -634,7 +649,7 @@ describe('mayfly-input plugin', () => {
     } as never)
     ctx.set('subagents', { interrupt, interruptByParent: vi.fn(), prompt: vi.fn() } as never)
 
-    expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+    expect(editor.onKey?.(KEY.escape)).toBe(true)
     expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
     expect(interrupt).toHaveBeenCalledWith(child.id, { kind: 'ancestor', agent })
   })
@@ -654,7 +669,7 @@ describe('mayfly-input plugin', () => {
       prompt: vi.fn(),
     } as never)
 
-    expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+    expect(editor.onKey?.(KEY.escape)).toBe(true)
     expect(cancel).not.toHaveBeenCalled()
     expect(hint.render(100).join('\n')).toContain('interrupt requested with failures: subagent running-child: child refused')
   })
@@ -1141,8 +1156,23 @@ describe('mayfly-input plugin', () => {
   })
 
   describe('editor-context keys', () => {
-    it('clears the buffer on Escape when text is present', async () => {
+    it('interrupts a running agent on Escape and preserves the draft', async () => {
       const { editor, cancel } = await mount({ running: true })
+      type(editor, 'draft')
+      expect(editor.onKey?.(KEY.escape)).toBe(true)
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(editor.getText()).toBe('draft')
+    })
+
+    it('latches the app-owned stop request when Escape interrupts', async () => {
+      const { ctx, editor } = await mount({ running: true })
+      expect(ctx.mayflyRequests.stopPending()).toBe(false)
+      expect(editor.onKey?.(KEY.escape)).toBe(true)
+      expect(ctx.mayflyRequests.stopPending()).toBe(true)
+    })
+
+    it('clears the buffer on Escape when text is present and the agent is idle', async () => {
+      const { editor, cancel } = await mount()
       type(editor, 'draft')
       editor.handleInput(KEY.escape)
       expect(editor.getText()).toBe('')
@@ -1174,6 +1204,20 @@ describe('mayfly-input plugin', () => {
       expect(cancel).not.toHaveBeenCalled()
     })
 
+    it('interrupts without retracting on Escape when a draft is present', async () => {
+      const retract = vi.fn(() => true)
+      const { editor, followup, cancel } = await mount({ running: true, retract })
+      type(editor, 'first message')
+      editor.handleInput(KEY.enter)
+      expect(followup).toHaveBeenCalledOnce()
+      type(editor, 'new draft')
+
+      expect(editor.onKey?.(KEY.escape)).toBe(true)
+      expect(retract).not.toHaveBeenCalled()
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(editor.getText()).toBe('new draft')
+    })
+
     it('passes Escape through with an empty buffer and an idle agent', async () => {
       const { editor, cancel } = await mount()
       expect(editor.onKey?.(KEY.escape)).toBe(false)
@@ -1194,18 +1238,34 @@ describe('mayfly-input plugin', () => {
       expect(cancel).not.toHaveBeenCalled()
     })
 
-    it('interrupts before clearing and preserves a next-message draft on Ctrl-C', async () => {
+    it('clears a next-message draft on Ctrl-C without interrupting the running flow', async () => {
       const { editor, cancel } = await mount({ running: true })
       type(editor, 'draft')
-      editor.handleInput(KEY.ctrlC)
-      expect(editor.getText()).toBe('draft')
-      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+      expect(editor.getText()).toBe('')
+      expect(cancel).not.toHaveBeenCalled()
     })
 
     it('interrupts a running agent on Ctrl-C with an empty buffer', async () => {
-      const { editor, cancel } = await mount({ running: true })
+      const { ctx, editor, cancel } = await mount({ running: true })
       expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
       expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(ctx.mayflyRequests.stopPending()).toBe(true)
+    })
+
+    it('never arms the exit while a session flow is in progress', async () => {
+      const exit = vi.fn()
+      const { editor } = await mount({ running: true, appExit: exit })
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(5_000_000)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+        vi.setSystemTime(5_000_500)
+        expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
+        expect(exit).not.toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('never retracts the submitted message on Ctrl-C', async () => {
@@ -1223,11 +1283,12 @@ describe('mayfly-input plugin', () => {
     })
 
     it('still clears an idle draft when there is no work to interrupt', async () => {
-      const { editor, cancel } = await mount()
+      const { ctx, editor, cancel } = await mount()
       type(editor, 'idle draft')
       editor.handleInput(KEY.ctrlC)
       expect(editor.getText()).toBe('')
       expect(cancel).not.toHaveBeenCalled()
+      expect(ctx.mayflyRequests.stopPending()).toBe(false)
     })
 
     it('flashes the exit hint on the first idle Ctrl-C', async () => {

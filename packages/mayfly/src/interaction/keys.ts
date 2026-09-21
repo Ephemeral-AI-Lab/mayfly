@@ -50,7 +50,7 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_HOME, keys: 'home', description: 'Move to the first item' },
   { id: ACTION_END, keys: 'end', description: 'Move to the last item' },
   { id: ACTION_TOGGLE, keys: 'space', description: 'Toggle the focused choice in a multi-select' },
-  { id: ACTION_INTERRUPT, keys: 'ctrl+c', description: 'Clear input / interrupt the agent / press twice to exit' },
+  { id: ACTION_INTERRUPT, keys: 'ctrl+c', description: 'Clear input / interrupt with an empty buffer / press twice to exit' },
   { id: ACTION_STEER, keys: 'ctrl+s', description: 'Steer the current turn with the draft' },
   { id: ACTION_BACKSPACE, keys: 'backspace', description: 'Delete backward / exit bash mode on an empty prompt' },
   { id: ACTION_DELETE, keys: ['delete', 'ctrl+d'], description: 'Delete the selected entity or character ahead' },

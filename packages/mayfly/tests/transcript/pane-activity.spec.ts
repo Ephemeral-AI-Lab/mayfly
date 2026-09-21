@@ -6,7 +6,7 @@
  * width guards, and unload cleanup.
  */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as activity from '../../src/transcript/pane-activity.ts'
 import { buildTipRotation } from '../../src/transcript/status-tips.ts'
 import { MOON_SPINNER_FRAMES, MOON_SPINNER_INTERVAL_MS } from '../../src/transcript/spinners.ts'
@@ -33,6 +33,7 @@ import { initialConversationFacts } from '../../src/conversation/facts.ts'
 class FakeTimers implements activity.ActivityTimers {
   readonly ticks: (() => void)[] = []
   readonly intervals: number[] = []
+  readonly timeouts: { readonly ms: number, fire(): void }[] = []
   cleared = 0
 
   setInterval(callback: () => void, ms: number): ReturnType<typeof setInterval> {
@@ -42,6 +43,16 @@ class FakeTimers implements activity.ActivityTimers {
   }
 
   clearInterval(_handle: ReturnType<typeof setInterval>): void {
+    this.cleared += 1
+  }
+
+  setTimeout(callback: () => void, ms: number): ReturnType<typeof setTimeout> {
+    const entry = { ms, fire: callback }
+    this.timeouts.push(entry)
+    return this.timeouts.length as unknown as ReturnType<typeof setTimeout>
+  }
+
+  clearTimeout(_handle: ReturnType<typeof setTimeout>): void {
     this.cleared += 1
   }
 }
@@ -172,6 +183,161 @@ describe('mayfly-pane-activity', () => {
     expect(harness.screen.paneLines()[0]).toContain(' · 提示：')
     await localeFiber.dispose()
     await harness.dispose()
+  })
+
+  it('shows the static interrupting row while a stop request drains', async () => {
+    const timers = new FakeTimers()
+    activity.setActivityTimers(timers)
+    let pending = false
+    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])), {
+      mayflyRequests: { stopPending: () => pending },
+    })
+    const { ctx, screen, dispose } = harness
+    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} · Tip: ${FIRST_TIP}`])
+    expect(timers.intervals).toEqual([120])
+
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(10_000)
+      pending = true
+      ctx.emit('mayfly/request-stop-changed', true)
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      // The static row never arms the spinner: the animation timer stops and a
+      // late tick cannot make the accepted interrupt look ignored again.
+      expect(timers.cleared).toBe(1)
+      expect(timers.intervals).toEqual([120])
+      timers.ticks[0]!()
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      for (const width of [18, 12, 4]) {
+        expect(screen.paneLines(width).every(line => visibleWidth(line) <= width)).toBe(true)
+      }
+
+      // The turn settles immediately: the acknowledgment holds for the rest of
+      // its minimum visible duration instead of losing the render race.
+      vi.setSystemTime(10_050)
+      pending = false
+      ctx.emit('mayfly/request-stop-changed', false)
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(timers.timeouts).toHaveLength(1)
+      expect(timers.timeouts[0]!.ms).toBe(550)
+
+      // A second release inside the hold does not stack another timer.
+      ctx.emit('mayfly/request-stop-changed', false)
+      expect(timers.timeouts).toHaveLength(1)
+
+      // A fresh stop while the hold runs cancels it and restarts the clock.
+      vi.setSystemTime(10_400)
+      pending = true
+      ctx.emit('mayfly/request-stop-changed', true)
+      expect(timers.cleared).toBe(2)
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      vi.setSystemTime(10_450)
+      pending = false
+      ctx.emit('mayfly/request-stop-changed', false)
+      expect(timers.timeouts).toHaveLength(2)
+      expect(timers.timeouts[1]!.ms).toBe(550)
+
+      timers.timeouts[1]!.fire()
+      // The moon kind re-enters, so the rotation advances to its next slot and
+      // the shared frame counter survived the stopping detour.
+      expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[1]!} · Tip: ${buildTipRotation(STATUS_TIPS)[1]!.text}`])
+      expect(timers.intervals).toEqual([120, 120])
+    } finally {
+      vi.useRealTimers()
+    }
+    await dispose()
+  })
+
+  it('holds and releases the stopping row through the process timers', async () => {
+    // No injected fake here: the default timer primitives run under vi's clock.
+    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])))
+    const { ctx, screen, dispose } = harness
+    let pending = true
+    vi.useFakeTimers()
+    try {
+      ctx.emit('mayfly/request-stop-changed', true)
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      pending = false
+      ctx.emit('mayfly/request-stop-changed', false)
+      // The turn settled at once; the acknowledgment holds out its minimum.
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      // A fresh stop cancels the pending hold through the default clearTimeout.
+      pending = true
+      ctx.emit('mayfly/request-stop-changed', true)
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      vi.advanceTimersByTime(600)
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      pending = false
+      ctx.emit('mayfly/request-stop-changed', false)
+      vi.advanceTimersByTime(600)
+      expect(screen.paneLines()[0]).toContain(' · Tip: ')
+    } finally {
+      vi.useRealTimers()
+    }
+    await dispose()
+  })
+
+  it('cancels a pending stopping hold when the pane unloads', async () => {
+    const timers = new FakeTimers()
+    activity.setActivityTimers(timers)
+    let pending = false
+    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])), {
+      mayflyRequests: { stopPending: () => pending },
+    })
+    const { ctx, dispose } = harness
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(30_000)
+      pending = true
+      ctx.emit('mayfly/request-stop-changed', true)
+      pending = false
+      ctx.emit('mayfly/request-stop-changed', false)
+      expect(timers.timeouts).toHaveLength(1)
+      const clearedBefore = timers.cleared
+      await dispose()
+      // The unload clears the hold, so its callback can never fire late.
+      expect(timers.cleared).toBe(clearedBefore + 1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('starts in the stopping row when a stop is already draining at mount', async () => {
+    const timers = new FakeTimers()
+    activity.setActivityTimers(timers)
+    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])), {
+      mayflyRequests: { stopPending: () => true },
+    })
+    const { screen, dispose } = harness
+    expect(screen.paneLines()).toEqual(['■ interrupting...'])
+    await dispose()
+  })
+
+  it('releases the stopping row at once when the hold already elapsed', async () => {
+    const timers = new FakeTimers()
+    activity.setActivityTimers(timers)
+    let pending = false
+    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])), {
+      mayflyRequests: { stopPending: () => pending },
+    })
+    const { ctx, screen, dispose } = harness
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(20_000)
+      pending = true
+      ctx.emit('mayfly/request-stop-changed', true)
+      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+
+      // A drain that outlasts the hold releases on the event itself.
+      vi.setSystemTime(20_900)
+      pending = false
+      ctx.emit('mayfly/request-stop-changed', false)
+      expect(timers.timeouts).toEqual([])
+      expect(screen.paneLines()[0]).toContain(' · Tip: ')
+    } finally {
+      vi.useRealTimers()
+    }
+    await dispose()
   })
 
   it('shows the kimi working row with a fresh tip while composing', async () => {

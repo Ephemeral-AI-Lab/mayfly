@@ -39,6 +39,7 @@ export const TRANSCRIPT_LOCALE = identityCatalog({
 export const ACTIVITY_LOCALE = identityCatalog({
   ' · Tip: ': ' · 提示：',
   ' working...': ' 工作中...',
+  ' interrupting...': ' 正在中断...',
 })
 
 /**

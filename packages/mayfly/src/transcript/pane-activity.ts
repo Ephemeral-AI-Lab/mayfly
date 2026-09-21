@@ -3,7 +3,11 @@
  * spinner; composing shows working, phase-local output count and estimated
  * rate. Responsive variants drop the tip, rate, then counters as space shrinks.
  * Thinking owns its own transcript spinner and metrics, so this pane hides.
- * Idle holds a spacer; editor dialogs hide the pane.
+ * Idle holds a spacer; editor dialogs hide the pane. A latched user interrupt
+ * (the app-owned stop request still draining) renders one static `■
+ * interrupting...` row — held for a minimum visible duration, because a plain
+ * abort settles within one render frame — so the keypress reads as accepted
+ * while the native turn unwinds.
  *
  * The phase comes from the `mayflySessionFacts` bridge over the official
  * `mayflyConversationFacts` projection, so replay and live updates share one
@@ -51,18 +55,34 @@ const TIP_LEAD = ' · Tip: '
 /** The composing row's base: one frame cell, a space, the kimi label. */
 const WORKING_LABEL = ' working...'
 
+/** The stopping row's label; the `■` marker rides in error red beside it. */
+const STOPPING_LABEL = ' interrupting...'
+
+/**
+ * Minimum time the stopping acknowledgment stays up. A plain-text abort
+ * settles within one render frame, so without a hold the row could lose the
+ * race and never paint — the keypress must always read as accepted.
+ */
+const STOPPING_MIN_MS = 600
+
 /** The timer primitives behind the spinner animation; replaceable in tests. */
 export interface ActivityTimers {
   /** Start a repeating callback; mirrors the global `setInterval`. */
   setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
   /** Stop a repeating callback; mirrors the global `clearInterval`. */
   clearInterval: (handle: ReturnType<typeof setInterval>) => void
+  /** Start a one-shot callback; mirrors the global `setTimeout`. */
+  setTimeout: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
+  /** Stop a one-shot callback; mirrors the global `clearTimeout`. */
+  clearTimeout: (handle: ReturnType<typeof setTimeout>) => void
 }
 
 /** The process timer primitives. */
 const defaultActivityTimers: ActivityTimers = {
   setInterval: (callback, ms) => setInterval(callback, ms),
   clearInterval: handle => clearInterval(handle),
+  setTimeout: (callback, ms) => setTimeout(callback, ms),
+  clearTimeout: handle => clearTimeout(handle),
 }
 
 let activityTimers: ActivityTimers = defaultActivityTimers
@@ -76,7 +96,7 @@ export function setActivityTimers(timers: ActivityTimers | undefined): void {
 }
 
 /** What the pane renders; `hidden` covers the dialog hangup. */
-export type ActivityPaneMode = 'hidden' | 'waiting' | 'thinking' | 'composing' | 'tool' | 'idle'
+export type ActivityPaneMode = 'hidden' | 'waiting' | 'thinking' | 'composing' | 'tool' | 'stopping' | 'idle'
 
 /** The loading kinds that carry a teaching tip (kimi `loadingTipKind`). */
 type TipKind = 'moon' | 'composing'
@@ -120,6 +140,17 @@ function flowCounter(flow: TurnFlow): string {
 /** Build the one-row canonical activity node for the current state. */
 function activityNode(state: ActivityState, t: MayflyTranslate, components: MayflyComponents): MayflyUiNode {
   if (state.mode === 'idle') return { kind: 'spacer' }
+  // The latched interrupt is static by design: no frame advances, so the row
+  // cannot read as the spinner that ignored the keypress.
+  if (state.mode === 'stopping') {
+    return {
+      kind: 'rich-text',
+      spans: [
+        { text: '■', tone: 'danger', styles: ['strong'] },
+        { text: t(STOPPING_LABEL), tone: 'muted' },
+      ],
+    }
+  }
   const moon = state.mode === 'waiting' || state.mode === 'tool'
   const frame = moon
     ? MOON_SPINNER_FRAMES[state.frame % MOON_SPINNER_FRAMES.length]!
@@ -152,17 +183,22 @@ function activityNode(state: ActivityState, t: MayflyTranslate, components: Mayf
   }
 }
 
-/** Resolve the pane mode from editor occupancy, projection activity, and Agent status. */
-function activityMode(state: ActivityState, facts: ConversationFacts, statusActive: boolean): ActivityPaneMode {
+/** Resolve the pane mode from editor occupancy, the stop latch, projection activity, and Agent status. */
+function activityMode(state: ActivityState, facts: ConversationFacts, statusActive: boolean, stopPending: boolean): ActivityPaneMode {
   if (state.dialog) return 'hidden'
+  // A latched interrupt outranks the projection phase: the user's stop is the
+  // most recent truth even while the native turn drains.
+  if (stopPending) return 'stopping'
   if (facts.active) return facts.phase
   return statusActive ? 'waiting' : 'idle'
 }
 
 /**
- * Mount the activity pane. The row reconciles against three facts: the
- * editor-slot occupancy (dialogs hide the pane), the current session's
- * admitted status (idle parks the placeholder), and the projection-backed phase. The
+ * Mount the activity pane. The row reconciles against four facts: the
+ * editor-slot occupancy (dialogs hide the pane), the app-owned stop latch
+ * (a latched interrupt renders the static stopping row), the current
+ * session's admitted status (idle parks the placeholder), and the
+ * projection-backed phase. The
  * frame timer runs only while a spinner
  * state is live, at the style's interval (moon 120 ms, braille 80 ms); each
  * tick advances the shared frame counter and requests a redraw. `sync`
@@ -184,6 +220,13 @@ export function apply(ctx: Context): void {
     phase: 'idle', active: false, turn: 0, flowDownChars: 0, todos: [], contextTokens: 0, agentCalls: [],
   }
   let statusActive = factsService?.currentAgent?.status === 'running'
+  // Best-effort initial read: the latch lives on the app-owned request
+  // controller, which may not be provided in a thin-host construction.
+  let stopPending = ctx.get('mayflyRequests')?.stopPending() ?? false
+  /** When the current stopping acknowledgment started, for the minimum hold. */
+  let stoppingSince = stopPending ? Date.now() : 0
+  /** Deferred release of a stopping acknowledgment still inside its hold. */
+  let stoppingHold: ReturnType<typeof setTimeout> | undefined
   let timer: ReturnType<typeof setInterval> | undefined
   let timerMs = 0
   let tipKind: TipKind | undefined
@@ -218,9 +261,9 @@ export function apply(ctx: Context): void {
     }, ms)
   }
 
-  /** Reconcile the row (mode, tip, timer) with the pane's three facts. */
+  /** Reconcile the row (mode, tip, timer) with the pane's four facts. */
   const sync = (): void => {
-    const mode = activityMode(state, facts, statusActive)
+    const mode = activityMode(state, facts, statusActive, stopPending)
     const kind: TipKind | undefined = mode === 'composing'
       ? 'composing'
       : mode === 'waiting' || mode === 'tool' ? 'moon' : undefined
@@ -261,8 +304,35 @@ export function apply(ctx: Context): void {
     statusActive = agent?.status === 'running'
     sync()
   })
+  const offStop = ctx.on('mayfly/request-stop-changed', (pending) => {
+    if (pending) {
+      if (stoppingHold !== undefined) {
+        activityTimers.clearTimeout(stoppingHold)
+        stoppingHold = undefined
+      }
+      stopPending = true
+      stoppingSince = Date.now()
+    } else {
+      // The native turn settled. A stop that lands inside the hold keeps the
+      // acknowledgment up for the rest of its minimum visible duration.
+      const remaining = STOPPING_MIN_MS - (Date.now() - stoppingSince)
+      if (remaining > 0) {
+        if (stoppingHold === undefined) {
+          stoppingHold = activityTimers.setTimeout(() => {
+            stoppingHold = undefined
+            stopPending = false
+            sync()
+          }, remaining)
+        }
+        return
+      }
+      stopPending = false
+    }
+    sync()
+  })
   ctx.effect(() => () => offFacts?.())
   ctx.effect(() => () => offAgent?.())
+  ctx.effect(() => offStop)
   ctx.on('mayfly/editor-slot-swapped', (occupied) => {
     state.dialog = occupied
     sync()
@@ -272,9 +342,14 @@ export function apply(ctx: Context): void {
     publish()
   })
   ctx.effect(() => offLocale)
-  // Effect-bound so unloading this fiber stops the animation.
+  // Effect-bound so unloading this fiber stops the animation and any pending
+  // stopping hold.
   ctx.effect(() => () => {
     stopTimer()
+    if (stoppingHold !== undefined) {
+      activityTimers.clearTimeout(stoppingHold)
+      stoppingHold = undefined
+    }
     pane.dispose()
   })
 }
