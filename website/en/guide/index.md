@@ -1,7 +1,7 @@
 # Quickstart
 
 ::: info Current release line
-`v0.1.0-alpha.4` is the current preview and is published to npm **`latest`**. Ordinary installs omit the dist-tag; plugins, CI, and reproducible environments should pin Mayfly `0.1.0-alpha.4` and Harness `0.1.5-rc.2`. The harness dependency line now tracks the npm RC release channel. This page is the user install path; the contributor development install (checkout, link install, iteration loop) lives in the developer manual under [Contributing to Mayfly](/en/plugins/contributing).
+`v0.1.0-alpha.5` is the current preview and is published to npm **`latest`**. Ordinary installs omit the dist-tag; plugins, CI, and reproducible environments should pin Mayfly `0.1.0-alpha.5` and Harness `0.1.5-rc.2`. The harness dependency line now tracks the npm RC release channel. This page is the user install path; the contributor development install (checkout, link install, iteration loop) lives in the developer manual under [Contributing to Mayfly](/en/plugins/contributing).
 :::
 
 ## Prerequisites
