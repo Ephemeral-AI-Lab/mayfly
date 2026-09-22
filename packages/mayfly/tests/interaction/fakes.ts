@@ -972,6 +972,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   } as never)
   let requestEpoch = 0
   let activeRequest: { sessionEpoch: number, requestEpoch: number, scope: 'main' | 'btw' | 'subagent' } | undefined
+  let stopRequested = false
   ctx.provide('mayflyRequests', {
     sessionEpoch: 0,
     active: () => activeRequest,
@@ -983,7 +984,10 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
       if (ref === activeRequest && ['completed', 'failed', 'aborted', 'interrupted'].includes(state)) activeRequest = undefined
     },
     interrupt: () => { activeRequest = undefined },
-    commitSession: () => { activeRequest = undefined; return 0 },
+    commitSession: () => { activeRequest = undefined; stopRequested = false; return 0 },
+    stopPending: () => stopRequested,
+    requestStop: () => { stopRequested = true },
+    clearStop: () => { stopRequested = false },
   } as never)
   ctx.provide('mayflyRetractions', { tryRetract: () => false })
   ctx.on('test/session-changed', publishAgent)

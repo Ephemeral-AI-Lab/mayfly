@@ -88,4 +88,43 @@ describe('Mayfly request lifecycle', () => {
     expect(events).toHaveLength(1)
     expect(requests.active()).toBeDefined()
   })
+
+  it('latches and releases the stop request, emitting each edge once', () => {
+    const ctx = new Context()
+    const stops: boolean[] = []
+    ctx.on('mayfly/request-stop-changed', pending => { stops.push(pending) })
+    const requests = createMayflyRequestController(ctx)
+    expect(requests.stopPending()).toBe(false)
+    requests.requestStop()
+    requests.requestStop()
+    expect(requests.stopPending()).toBe(true)
+    requests.clearStop()
+    requests.clearStop()
+    expect(requests.stopPending()).toBe(false)
+    expect(stops).toEqual([true, false])
+  })
+
+  it('releases the stop latch on a session switch and on fiber disposal', async () => {
+    const ctx = new Context()
+    const requests = createMayflyRequestController(ctx)
+    requests.requestStop()
+    expect(requests.stopPending()).toBe(true)
+    requests.commitSession()
+    expect(requests.stopPending()).toBe(false)
+
+    requests.requestStop()
+    await ctx.fiber.dispose()
+    expect(requests.stopPending()).toBe(false)
+  })
+
+  it('emits no stop edge after its Cordis fiber is disposed', async () => {
+    const ctx = new Context()
+    const stops: boolean[] = []
+    ctx.on('mayfly/request-stop-changed', pending => { stops.push(pending) })
+    const requests = createMayflyRequestController(ctx)
+    await ctx.fiber.dispose()
+    requests.requestStop()
+    requests.clearStop()
+    expect(stops).toEqual([])
+  })
 })

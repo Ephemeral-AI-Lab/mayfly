@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
-import { interruptAgentTree } from '../../src/app/agent-interrupt.ts'
+import { hasRunningAgentWork, interruptAgentTree } from '../../src/app/agent-interrupt.ts'
 import type { MayflyAgentViewSnapshot } from '../../src/app/current-agent.ts'
 
 function fakeAgent(id: string, status: 'idle' | 'running', parentId?: string): Agent {
@@ -109,5 +109,30 @@ describe('interruptAgentTree', () => {
       failures: ['current Agent: root refused', 'subagent child: child refused'],
     })
     expect(root.cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
+  })
+})
+
+describe('hasRunningAgentWork', () => {
+  it('reports the running selected Agent', () => {
+    const root = fakeAgent('root', 'running')
+    const ctx = harness([root])
+    expect(hasRunningAgentWork(ctx, root)).toBe(true)
+  })
+
+  it('reports a running descendant of an idle selected Agent', () => {
+    const root = fakeAgent('root', 'idle')
+    const child = fakeAgent('child', 'running', 'root')
+    const nested = fakeAgent('nested', 'running', 'child')
+    const idle = fakeAgent('idle', 'idle', 'root')
+    const ctx = harness([root, child, nested, idle])
+    expect(hasRunningAgentWork(ctx, root)).toBe(true)
+  })
+
+  it('reports nothing when the selected subtree is idle', () => {
+    const root = fakeAgent('root', 'idle')
+    const child = fakeAgent('child', 'idle', 'root')
+    const unrelated = fakeAgent('unrelated', 'running')
+    const ctx = harness([root, child, unrelated])
+    expect(hasRunningAgentWork(ctx, root)).toBe(false)
   })
 })

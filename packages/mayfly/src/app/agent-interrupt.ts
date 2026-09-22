@@ -43,6 +43,19 @@ function liveDescendants(ctx: Context, ancestor: Agent): readonly Agent[] {
   })
 }
 
+/** Live descendants of the selected Agent that currently run work. */
+function runningDescendants(ctx: Context, ancestor: Agent): readonly Agent[] {
+  return liveDescendants(ctx, ancestor).filter(candidate => candidate.status === 'running')
+}
+
+/**
+ * Whether the selected Agent or any live descendant currently runs work —
+ * the exact condition {@link interruptAgentTree} acts on, without the write.
+ */
+export function hasRunningAgentWork(ctx: Context, agent: Agent): boolean {
+  return agent.status === 'running' || runningDescendants(ctx, agent).length > 0
+}
+
 /**
  * Interrupt the selected Agent plus every running descendant. Descendants use
  * the native exact-ancestor authority so continuable children stay resumable.
@@ -53,7 +66,7 @@ export function interruptAgentTree(
   view: MayflyAgentViewSnapshot,
   options: AgentTreeInterruptOptions = {},
 ): AgentTreeInterruptResult {
-  const descendants = liveDescendants(ctx, agent).filter(candidate => candidate.status === 'running')
+  const descendants = runningDescendants(ctx, agent)
   const selfRunning = agent.status === 'running'
   if (!selfRunning && descendants.length === 0) return { requested: false, failures: [] }
 

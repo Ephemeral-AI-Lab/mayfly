@@ -23,7 +23,7 @@
 | `←` / `→` | 水平层内导航 | 在 tabs、actions 与 select 调整态内移动，到边界不循环 |
 | `Enter` | 下钻 / 提交 / 确认 | 在 tab 条进入下一层；激活列表、action 或输入确认 |
 | `Tab` / `Shift-Tab` | 切换内容组 | 只在内容层循环 list/form/actions 等语义组并记忆组内焦点；在 tab 条上无动作 |
-| `Escape` | 返回 / 取消 / 关闭 | 编辑态 → 内容 → 内层 tabs → 外层 tabs → 关闭，每次只退一层；回到 Editor 后仍沿用补全、撤回与中断链 |
+| `Escape` | 返回 / 取消 / 关闭 | 编辑态 → 内容 → 内层 tabs → 外层 tabs → 关闭，每次只退一层；回到 Editor 后仍沿用补全、中断与撤回链 |
 | `↑` / `↓` | 垂直层内导航 | list 与 form 导航态，到边界不循环；disabled 行会跳过 |
 | `Space` | 多选切换 | 多选列表中切换聚焦项，`Enter` 确认整组 |
 | `Ctrl-U` | 清空筛选 | filterable list 中清空当前搜索 query |
@@ -34,7 +34,8 @@
 
 | 键 | 动作 | 说明 |
 | --- | --- | --- |
-| `Ctrl-C` | 中断 → 清空 → 退出 | 中断当前 Agent 与所有 running continuable 后代；整棵选择子树无工作时清空草稿；**1 秒内第二次按下**退出 Mayfly |
+| `Escape` | 中断会话流 / 清空草稿 | 会话流进行中（所选 Agent 或 live 后代运行中）中断该流：buffer 为空且刚提交的消息可安全撤回时优先撤回并恢复进编辑器，草稿保留；空闲时清空草稿；补全弹层打开时只关弹层 |
+| `Ctrl-C` | 清空草稿 → 中断 → 退出 | 有草稿时只清空草稿、流继续；空 buffer 且会话流进行中时中断当前 Agent 与所有 running continuable 后代；整棵树空闲且 buffer 为空时 **1 秒内第二次按下**退出 Mayfly |
 | `Ctrl-S` | steer 注入 | 把非空草稿作为转向指令注入当前 turn，并清空 buffer |
 | `Ctrl-V` | 粘贴图片 | 剪贴板图片入附件库，光标处插入 `[image #N]` 标记 |
 | `Ctrl-G` | 外部编辑器 | 草稿交给外部编辑器全屏编辑（`mayfly.editorCommand` 设置 → `$VISUAL` → `$EDITOR`；Mayfly 挂起让出终端）；以 `:cq` 退出则草稿原样保留 |

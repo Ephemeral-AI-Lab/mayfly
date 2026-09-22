@@ -21,8 +21,10 @@
  * key-affordance row: kimi teaches affordances through the footer's
  * rotating tips instead, and the tips pool already covers every fragment
  * the row carried). The editor-context key chain (Escape
- * clear/retract/interrupt, Ctrl-C selected-Agent-tree interrupt/clear/double-press exit, Ctrl-S
- * steer, Ctrl-G external
+ * interrupts a running session flow — safe retraction first when the buffer
+ * is empty and eligible — and clears an idle draft; Ctrl-C empties the box
+ * while a flow runs, interrupts with an empty buffer, and owns the idle
+ * double-press-exit chain; Ctrl-S steer, Ctrl-G external
  * editor) resolves through
  * `ctx.mayflyKeymap` in the editor's `onKey` hook, which runs before the
  * pi-tui Editor sees the sequence. The mounted editor and the submit router
@@ -62,7 +64,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
-import { interruptAgentTree } from '../app/agent-interrupt.ts'
+import { hasRunningAgentWork, interruptAgentTree } from '../app/agent-interrupt.ts'
 // Empty type import carries the `permissionPresets` Context merge the
 // bare-/permission interception probes (the service rides dsh-base).
 import type {} from '@deepseek-ai/dsh-permission-presets'
@@ -496,38 +498,60 @@ export function apply(ctx: Context): void {
     const result = interruptAgentTree(ctx, agent, ctx.mayflyCurrentAgent.view())
     if (!result.requested) return false
     ctx.mayflyRequests.interrupt()
+    // The activity row answers the keypress on this frame: the native turn
+    // keeps draining a started tool for a while, and the spinner must not
+    // sit there looking ignored while it does.
+    ctx.mayflyRequests.requestStop()
     showFeedback('interrupt', result.failures.length === 0
       ? 'interrupt requested'
       : `interrupt requested with failures: ${result.failures.join('; ')}`, result.failures.length === 0 ? 'info' : 'warning')
     return true
   }
 
-  /** Interrupt current work first, then clear a draft only when idle. */
+  /** Whether the selected Agent or a live descendant currently runs work. */
+  function sessionFlowInProgress(): boolean {
+    const agent = ctx.mayflyCurrentAgent.current()
+    return agent !== null && hasRunningAgentWork(ctx, agent)
+  }
+
+  /**
+   * Interrupt current work first, then clear a draft only when idle — the
+   * programmatic `abortPrompt` seam. The editor keys split that behavior:
+   * Escape interrupts a running flow, Ctrl-C only empties the box.
+   */
   function interruptOrClear(): boolean {
     if (interrupt()) return true
     return clearDraft()
   }
 
-  /** Escape clears a draft, then attempts safe retraction before interruption. */
-  function escapeClearOrRetract(): boolean {
-    if (clearDraft()) return true
-    if (ctx.mayflyCurrentAgent.current()?.status === 'running') {
-      const candidate = retractionCandidate
-      if (candidate !== undefined
-        && ctx.mayflyRetractions.tryRetract(candidate.messageId)) {
-        candidate.rollback?.()
-        editor.removeLatestHistory?.(candidate.historyText)
-        draft.stashHistory(editor.getHistory())
-        editor.setText(candidate.editorText)
-        currentText = editor.getText()
-        draft.stashDraft(currentText)
-        retractionCandidate = undefined
-        refreshHint()
-        screen.requestRender()
-        return true
+  /**
+   * Escape: a running session flow is interrupted — safe retraction first
+   * when the buffer is empty and the just-submitted message is eligible —
+   * and the draft is never touched. Idle, it clears the draft.
+   */
+  function escapeInterruptOrClear(): boolean {
+    if (sessionFlowInProgress()) {
+      // Retraction rewrites the editor text, so it only runs on an empty
+      // buffer — a non-empty draft must never be clobbered by the restore.
+      if (editor.getText().length === 0) {
+        const candidate = retractionCandidate
+        if (candidate !== undefined
+          && ctx.mayflyRetractions.tryRetract(candidate.messageId)) {
+          candidate.rollback?.()
+          editor.removeLatestHistory?.(candidate.historyText)
+          draft.stashHistory(editor.getHistory())
+          editor.setText(candidate.editorText)
+          currentText = editor.getText()
+          draft.stashDraft(currentText)
+          retractionCandidate = undefined
+          refreshHint()
+          screen.requestRender()
+          return true
+        }
       }
+      return interrupt()
     }
-    return interrupt()
+    return clearDraft()
   }
 
   /**
@@ -540,16 +564,19 @@ export function apply(ctx: Context): void {
   function handleEditorKey(data: string): boolean {
     const keymap = ctx.mayflyKeymap
     // Escape: an open autocomplete dropdown owns the key (the Editor closes
-    // it); otherwise clear the draft, then interrupt a running agent.
+    // it); otherwise interrupt a running flow — safe retraction first when
+    // eligible — or clear an idle draft.
     if (keymap.matches(data, ACTION_CANCEL)) {
       if (editor.isShowingAutocomplete()) return false
-      return escapeClearOrRetract()
+      return escapeInterruptOrClear()
     }
-    // Ctrl-C never enters Escape's retraction path. It first requests an
-    // ordinary interrupt even when a next-message draft is present, then uses
-    // the idle clear/double-press-exit chain when there is no work to stop.
+    // Ctrl-C never enters Escape's retraction path. A draft is the only
+    // thing it touches while a flow runs: it empties the box and the flow
+    // continues. With an empty buffer it requests the ordinary interrupt
+    // (latching the stopping row); idle, it arms the double-press exit.
     if (keymap.matches(data, ACTION_INTERRUPT)) {
-      if (interruptOrClear()) return true
+      if (clearDraft()) return true
+      if (sessionFlowInProgress()) return interrupt()
       const now = Date.now()
       if (now - lastInterruptAt < INTERRUPT_DOUBLE_PRESS_MS) {
         lastInterruptAt = 0

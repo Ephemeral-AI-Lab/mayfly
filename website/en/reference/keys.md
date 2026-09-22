@@ -26,7 +26,7 @@ confirmation state:
 | `←` / `→` | Navigate a horizontal layer | Move inside tabs, actions, and select adjustment without wrapping |
 | `Enter` | Descend / submit / confirm | Descend from a tab strip or activate a list, action, or input confirmation |
 | `Tab` / `Shift-Tab` | Switch content groups | Cycle list/form/action semantic groups and remember in-group focus; inert on tab strips |
-| `Escape` | Return / cancel / dismiss | Editing → content → nested tabs → outer tabs → close, one layer per press; once back in the Editor, the completion/retract/interrupt chain applies |
+| `Escape` | Return / cancel / dismiss | Editing → content → nested tabs → outer tabs → close, one layer per press; once back in the Editor, the completion/interrupt/retract chain applies |
 | `↑` / `↓` | Navigate a vertical layer | Move inside lists and forms without wrapping; disabled rows are skipped |
 | `Space` | Toggle selection | Toggle the focused multi-select entry; `Enter` confirms the set |
 | `Ctrl-U` | Clear filter | Clear the current search query in a filterable list |
@@ -37,7 +37,8 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 
 | Key | Action | Description |
 | --- | --- | --- |
-| `Ctrl-C` | Interrupt → clear → exit | Interrupts the selected Agent and all running continuable descendants; clears a draft only when the selected subtree is idle; a **second press within 1 second** exits Mayfly |
+| `Escape` | Interrupt the flow / clear the draft | While a session flow is in progress (the selected Agent or a live descendant runs), interrupt it: safe retraction of the just-submitted message first when the buffer is empty and eligible, restoring it into the editor, with the draft preserved; idle, it clears the draft; an open completion popup only closes |
+| `Ctrl-C` | Clear draft → interrupt → exit | With a draft it only empties the box and the flow continues; with an empty buffer while a session flow is in progress it interrupts the selected Agent and all running continuable descendants; when the whole tree is idle and the buffer is empty, a **second press within 1 second** exits Mayfly |
 | `Ctrl-S` | Steer | Inject the non-empty draft as a steering instruction into the current turn, clearing the buffer |
 | `Ctrl-V` | Paste image | Store the clipboard image in the attachment library, inserting an `[image #N]` marker at the cursor |
 | `Ctrl-G` | External editor | Hand the draft to an external editor for full-screen editing (`mayfly.editorCommand` setting → `$VISUAL` → `$EDITOR`; Mayfly suspends and yields the terminal); quitting with `:cq` leaves the draft untouched |

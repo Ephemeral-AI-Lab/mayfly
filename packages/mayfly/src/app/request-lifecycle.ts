@@ -33,6 +33,12 @@ export interface MayflyRequestController {
   transition(ref: MayflyRequestRef, state: MayflyRequestState, reason?: string): void
   interrupt(ref?: MayflyRequestRef): void
   commitSession(): number
+  /** Whether a user interrupt is still draining — the turn has not settled. */
+  stopPending(): boolean
+  /** Latch the user's interrupt so presentation reacts before the native unwind. */
+  requestStop(): void
+  /** Release the latch once the selected tree settles, the session switches, or the fiber unloads. */
+  clearStop(): void
 }
 
 /** Create and provide a Fiber-owned lifecycle controller. */
@@ -51,8 +57,14 @@ export function createMayflyRequestController(ctx: Context): MayflyRequestContro
     ['interrupted', new Set()],
   ])
   let state: MayflyRequestState | undefined
+  let stopRequested = false
   const emit = (lifecycle: MayflyRequestLifecycle): void => {
     if (!disposed) ctx.emit('mayfly/request-state-changed', lifecycle)
+  }
+  const setStop = (pending: boolean): void => {
+    if (stopRequested === pending) return
+    stopRequested = pending
+    if (!disposed) ctx.emit('mayfly/request-stop-changed', pending)
   }
   const controller: MayflyRequestController = {
     get sessionEpoch() {
@@ -82,14 +94,25 @@ export function createMayflyRequestController(ctx: Context): MayflyRequestContro
       sessionEpoch += 1
       active = undefined
       state = undefined
+      setStop(false)
       ctx.emit('mayfly/session-epoch-changed', sessionEpoch)
       return sessionEpoch
+    },
+    stopPending() {
+      return stopRequested
+    },
+    requestStop() {
+      setStop(true)
+    },
+    clearStop() {
+      setStop(false)
     },
   }
   ctx.provide('mayflyRequests', controller)
   ctx.effect(() => () => {
     disposed = true
     active = undefined
+    stopRequested = false
   })
   return controller
 }

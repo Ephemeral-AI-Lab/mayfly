@@ -128,6 +128,9 @@ export const apply = ctx => globalThis.__mayflyInteractionFixtures.interactionAp
     transition: () => {},
     interrupt: () => {},
     commitSession: () => 0,
+    stopPending: () => false,
+    requestStop: () => {},
+    clearStop: () => {},
   } as never)
   ctx.provide('mayflyRetractions', { tryRetract: () => false })
   await ctx.plugin(Loader)

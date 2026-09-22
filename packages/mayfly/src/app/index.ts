@@ -16,7 +16,7 @@ import type { MayflyRequestLifecycle } from './request-lifecycle.ts'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
 import { MayflyCurrentAgentService } from './current-agent.ts'
-import { interruptAgentTree } from './agent-interrupt.ts'
+import { hasRunningAgentWork, interruptAgentTree } from './agent-interrupt.ts'
 import { armExitEpitaph, epitaphFor } from './exit-epitaph.ts'
 import { profileNameFromArgv } from '../internal/profile.ts'
 import { createMayflyRequestController } from './request-lifecycle.ts'
@@ -35,6 +35,7 @@ export type { MayflyRequestLifecycle, MayflyRequestRef, MayflyRequestState } fro
 declare module '@deepseek-ai/cordis' {
   interface Events {
     'mayfly/request-state-changed'(lifecycle: MayflyRequestLifecycle): void
+    'mayfly/request-stop-changed'(pending: boolean): void
     'mayfly/session-epoch-changed'(sessionEpoch: number): void
     'mayfly/request-resume'(sessionId: string): void
     'mayfly/request-new'(): void
@@ -108,6 +109,8 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('session/event', (session, event) => {
     if (session !== current.current()?.session || event.type !== 'turn/end') return
+    // The displayed session settled: a stop request can no longer be draining.
+    requests.clearStop()
     const ref = requests.active()
     if (ref === undefined) return
     const reason = event.data.reason.kind
@@ -120,6 +123,16 @@ export function apply(ctx: Context, config: Config): void {
           : 'completed',
       reason,
     )
+  })
+
+  // A descendant-only interrupt (the selected Agent already idle) settles
+  // through the child's own status edge, so the latch retires when the whole
+  // selected tree stops running. The registry walk runs only while a stop is
+  // actually draining.
+  ctx.on('agent/status', () => {
+    if (!requests.stopPending()) return
+    const agent = current.current()
+    if (agent !== null && !hasRunningAgentWork(ctx, agent)) requests.clearStop()
   })
 
   ctx.effect(() => () => {
