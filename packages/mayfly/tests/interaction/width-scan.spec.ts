@@ -196,12 +196,21 @@ describe('interaction width-scan', () => {
             expectLinesFit(`${kind}/${name}/${height}`, rows, width)
             expect(rows.length).toBeLessThanOrEqual(height)
           }
+          if (kind === 'plan') {
+            const document = bench.screen.slotTargets.get('local.mayfly.questions.1.document')
+            expect(document).toBeDefined()
+            for (const width of SCAN_WIDTHS) expectLinesFit(`plan-document/${name}`, document!.render(width), width)
+          }
           if (kind !== 'questionnaire') {
-            model.invoke(kind === 'approval' ? 'feedback' : 'revise', [{ controlId: kind === 'approval' ? 'approval' : 'review', itemId: 'decision' }])
+            if (kind === 'plan') {
+              model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
+              await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
+            } else model.invoke('feedback', [{ controlId: 'approval', itemId: 'decision' }])
             const feedbackRenderer = renderRequest(model, viewport)
             for (const width of SCAN_WIDTHS) expectLinesFit(`${kind}-feedback/${name}`, feedbackRenderer.component.render(width), width)
             feedbackRenderer.runtime.dispose()
-            model.back()
+            if (kind === 'plan') model.invoke('back', [])
+            else model.back()
           }
           model.requestClose()
           await cancelled

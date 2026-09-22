@@ -145,6 +145,7 @@ function validateOverlayDefinition(definition: unknown): void {
   validateOverlaySize(definition.width, 'overlay width')
   validateOverlaySize(definition.maxHeight, 'overlay maxHeight')
   optionalNonNegativeInteger(definition.minWidth, 'overlay minWidth')
+  optionalBoolean(definition.contentScroll, 'overlay contentScroll')
   optionalEventHandlers(definition.onEvent, 'overlay onEvent')
   optionalCallback(definition.load, 'overlay load')
 }

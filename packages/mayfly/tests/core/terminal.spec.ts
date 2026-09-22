@@ -19,6 +19,7 @@ import {
   normalizeNavigationInput,
   normalizeWheelInput,
   startMayflyTerminal,
+  wheelReport,
 } from '../../src/core/terminal.ts'
 import type { FrameOverflowEntry } from '../../src/core/frame-clamp.ts'
 import type { AmbientOutputStream } from '../../src/core/output-recovery.ts'
@@ -1257,6 +1258,72 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
+  it('routes wheel reports by pointer position over a focused dock surface', async () => {
+    const terminal = new AltScreenTerminal(40, 10)
+    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const received: string[] = []
+    const dock: MayflyFocusable & { handleInput(data: string): void } = {
+      focused: false,
+      render: () => ['dock'],
+      invalidate: () => {},
+      handleInput: data => received.push(data),
+    }
+    runtime.addBottomChild(dock)
+    runtime.addChild({
+      render: () => Array.from({ length: 20 }, (_, index) => `row-${index}`),
+      invalidate: () => {},
+    })
+    runtime.setFocus(dock)
+    runtime.requestRender(true)
+    await waitForRender()
+
+    const before = (runtime.tui as TUI & { viewportTop?: number }).viewportTop ?? 0
+    expect(before).toBeGreaterThan(0)
+    terminal.sendInput('\x1b[<64;1;1M')
+    await waitForRender()
+    expect((runtime.tui as TUI & { viewportTop?: number }).viewportTop).toBe(before - 3)
+    expect(received).toEqual([])
+
+    terminal.sendInput('\x1b[<64;1;10M')
+    await waitForRender()
+    expect(received).toEqual(['\x1b[A'])
+    expect((runtime.tui as TUI & { viewportTop?: number }).viewportTop).toBe(before - 3)
+
+    // Horizontal wheel reports never normalize into direction keys.
+    terminal.sendInput('\x1b[<66;1;10M')
+    await waitForRender()
+    expect(received).toEqual(['\x1b[A'])
+
+    await runtime.stop()
+    terminal.dispose()
+  })
+
+  it('leaves wheel input raw for a focused component outside the dock and surfaces', async () => {
+    const terminal = new AltScreenTerminal(40, 10)
+    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const received: string[] = []
+    const content: MayflyFocusable & { handleInput(data: string): void } = {
+      focused: false,
+      render: () => Array.from({ length: 20 }, (_, index) => `row-${index}`),
+      invalidate: () => {},
+      handleInput: data => received.push(data),
+    }
+    runtime.addChild(content)
+    runtime.setFocus(content)
+    runtime.requestRender(true)
+    await waitForRender()
+
+    const before = (runtime.tui as TUI & { viewportTop?: number }).viewportTop ?? 0
+    expect(before).toBeGreaterThan(0)
+    terminal.sendInput('\x1b[<64;1;1M')
+    await waitForRender()
+    expect((runtime.tui as TUI & { viewportTop?: number }).viewportTop).toBe(before - 3)
+    expect(received).toEqual([])
+
+    await runtime.stop()
+    terminal.dispose()
+  })
+
   it('keeps the dock fixed while wheel input scrolls the transcript by three rows', async () => {
     const terminal = new AltScreenTerminal(40, 10)
     const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
@@ -1429,10 +1496,12 @@ describe('alternate-screen runtime', () => {
     runtime.addBottomChild(panel)
     runtime.setFocus(panel)
     runtime.setContentScrollHandler(() => false)
+    runtime.requestRender(true)
+    await waitForRender()
 
     terminal.sendInput('\x1b[A')
     terminal.sendInput('\x1b[B')
-    terminal.sendInput('\x1b[<65;1;1M')
+    terminal.sendInput('\x1b[<65;1;10M')
     terminal.sendInput('\x1b[6~')
     terminal.sendInput('\x1b[57419;1:1u')
     terminal.sendInput('\x1b[57420;1:1u')
@@ -1813,6 +1882,13 @@ describe('input listeners on the stable reference', () => {
     expect(normalizeWheelInput(`\x1b[M${String.fromCharCode(96)}${String.fromCharCode(33)}${String.fromCharCode(33)}`)).toBe('\x1b[A')
     expect(normalizeWheelInput('\x1b[<0;10;4M')).toBeUndefined()
     expect(normalizeWheelInput('\x1b[<66;10;4M')).toBeUndefined()
+  })
+
+  it('decodes wheel report positions at the core input boundary', () => {
+    expect(wheelReport('\x1b[<64;10;4M')).toEqual({ button: 64, x: 10, y: 4 })
+    expect(wheelReport(`\x1b[M${String.fromCharCode(96)}${String.fromCharCode(33)}${String.fromCharCode(33)}`)).toEqual({ button: 64, x: 1, y: 1 })
+    expect(wheelReport('\x1b[<66;10;4M')).toEqual({ button: 66, x: 10, y: 4 })
+    expect(wheelReport('\x1b[Z')).toBeUndefined()
   })
 
   it('routes normalized wheel input to the focused component', async () => {

@@ -14,7 +14,7 @@ import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth, truncateToWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
-import { FakeMayflyMarkdown } from './fakes.ts'
+import { FakeMayflyComponents, FakeMayflyMarkdown, FakeScreen, FakeTheme } from './fakes.ts'
 
 const identity = (text: string) => text
 const colors = new Proxy({}, { get: (_, key) => key === 'logoGradient' ? [identity] : identity }) as MayflySemanticColors
@@ -31,6 +31,14 @@ export async function requestFixture(ctx = new Context()) {
   ctx.mayflyCurrentAgent.select(agent)
   await ctx.plugin(uiProvider)
   await ctx.plugin(UserQuestionService)
+  /* questions-plugin mounts plan documents through the screen/components/theme
+     seam; provide the recording fakes so its inject resolves headlessly. */
+  const screen = new FakeScreen()
+  const theme = new FakeTheme()
+  const fakeComponents = new FakeMayflyComponents()
+  ctx.provide('mayflyScreen', screen as never)
+  ctx.provide('mayflyTheme', theme as never)
+  ctx.provide('mayflyComponents', fakeComponents as never)
   const front = await ctx.plugin(frontend)
   await flushRequests()
   const model = (prefix = 'mayfly.questions.') => {
@@ -41,7 +49,7 @@ export async function requestFixture(ctx = new Context()) {
     return model
   }
   const approve = (extra: Partial<ApprovalRequest> = {}) => ctx.waterfall('approval/request', { agent, toolName: 'bash', ...extra }, () => Promise.resolve<ApprovalOutcome>('unavailable'))
-  return { ctx, agent, other, agents, steer, app, front, model, approve }
+  return { ctx, agent, other, agents, steer, app, front, model, approve, screen, theme, fakeComponents }
 }
 
 export function renderRequest(
