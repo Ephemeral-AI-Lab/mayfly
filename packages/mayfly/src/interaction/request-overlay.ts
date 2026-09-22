@@ -3,7 +3,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiActionEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyOverlayHandle, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { observeInteractionLocale } from './locale.ts'
 
 export interface RequestOverlayOptions<Result> {
@@ -12,11 +12,12 @@ export interface RequestOverlayOptions<Result> {
   readonly agent?: Agent
   readonly signal?: AbortSignal
   readonly dismissal?: 'confirm-dirty' | 'discard'
-  readonly presentation?: MayflyOverlayDefinition['presentation']
-  readonly width?: MayflyOverlayDefinition['width']
-  readonly maxHeight?: MayflyOverlayDefinition['maxHeight']
+  /** Yield scroll keys the surface does not need to the content region behind it. */
+  readonly contentScroll?: boolean
   readonly view: () => MayflyUiNode
   readonly answer: (event: MayflyUiActionEvent) => Result | undefined
+  /** Auxiliary settlement for events `answer` leaves open, e.g. navigation or side-effecting actions. */
+  readonly onAction?: (event: MayflyUiActionEvent, context: MayflyUiEventContext) => MayflyUiActionReply | undefined | Promise<MayflyUiActionReply | undefined>
   readonly accepted?: (answer: Result) => void
   readonly cancelled: (reason: 'dismiss' | 'abort' | 'unload' | 'stale') => Result
 }
@@ -43,21 +44,27 @@ export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOpti
     if (options.signal?.aborted) { stop('abort'); return }
     if (!isCurrent()) { stop('stale'); return }
     const source = [{ resourceId: options.id, revision: 1 }]
-    const snapshot = (): MayflyUiNode => ({ kind: 'surface', chrome: 'overlay', padding: 1, title: typeof options.title === 'string' ? options.title : options.title(), child: options.view() })
+    const frame = (child: MayflyUiNode): MayflyUiNode => ({ kind: 'surface', chrome: 'overlay', padding: 1, title: typeof options.title === 'string' ? options.title : options.title(), child })
+    const snapshot = (): MayflyUiNode => frame(options.view())
     handle = ctx.mayflyOverlays.open({
-      id: options.id, presentation: options.presentation ?? 'editor', capturing: true,
+      id: options.id, presentation: 'editor', capturing: true,
       ...options.dismissal === undefined ? {} : { dismissal: options.dismissal },
-      ...options.width === undefined ? {} : { width: options.width },
-      ...options.maxHeight === undefined ? {} : { maxHeight: options.maxHeight },
+      ...options.contentScroll === undefined ? {} : { contentScroll: options.contentScroll },
       scope: options.agent === undefined ? { kind: 'app', targetId: options.id } : { kind: 'session', sessionId: options.agent.id },
       source,
-      onEvent: { action: (event, context) => {
+      onEvent: { action: async (event, context) => {
         if (settled || context.signal.aborted) return { kind: 'cancelled' }
         if (options.signal?.aborted || !isCurrent()) { stop(options.signal?.aborted ? 'abort' : 'stale'); return { kind: 'cancelled' } }
         if (event.kind === 'dismiss') { stop('dismiss'); return { kind: 'cancelled' } }
         if (candidate !== undefined && !candidate.signal.aborted) return { kind: 'cancelled' }
         const value = options.answer(event)
-        if (value === undefined) return { kind: 'completed' }
+        if (value === undefined) {
+          const reply = await options.onAction?.(event, context)
+          /* Auxiliary replies publish bare content nodes; the request chrome
+             (frame + title) is part of the overlay, not of the view. */
+          if (reply !== undefined && 'node' in reply && reply.node !== undefined && reply.node !== null && reply.node.kind !== 'surface') return { ...reply, node: frame(reply.node) }
+          return reply ?? { kind: 'completed' }
+        }
         candidate = { operationId: context.operationId, value, signal: context.signal }
         return { kind: 'accepted', node: snapshot(), source, dismiss: true }
       } },

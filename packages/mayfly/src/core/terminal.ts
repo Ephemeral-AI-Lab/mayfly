@@ -287,17 +287,36 @@ class DockLayoutContainer extends Container {
  *   input is not a supported wheel report.
  */
 export function normalizeWheelInput(data: string): string | undefined {
+  const report = wheelReport(data)
+  if (report === undefined) return undefined
+  const direction = report.button & 3
+  return direction === 0 ? KEY_UP : direction === 1 ? KEY_DOWN : undefined
+}
+
+/**
+ * Decode a terminal wheel report into its button bits and cell position. The
+ * position lets the router keep reports over the content region raw for the
+ * ScrollView while reports over the dock still normalize to direction keys.
+ * @param data - one decoded terminal input sequence.
+ * @returns the wheel report, or `undefined` when the input is not a wheel report.
+ */
+export function wheelReport(data: string): { readonly button: number, readonly x: number, readonly y: number } | undefined {
   let button: number
+  let x: number
+  let y: number
   if (data.length === 6 && data.startsWith('\x1b[M')) {
     button = data.charCodeAt(3) - 32
+    x = data.charCodeAt(4) - 32
+    y = data.charCodeAt(5) - 32
   } else {
-    const match = /^\x1b\[<(\d+);\d+;\d+[Mm]$/.exec(data)
+    const match = /^\x1b\[<(\d+);(\d+);(\d+)[Mm]$/.exec(data)
     if (match === null) return undefined
     button = Number.parseInt(match[1]!, 10)
+    x = Number.parseInt(match[2]!, 10)
+    y = Number.parseInt(match[3]!, 10)
   }
   if ((button & 64) === 0) return undefined
-  const direction = button & 3
-  return direction === 0 ? KEY_UP : direction === 1 ? KEY_DOWN : undefined
+  return { button, x, y }
 }
 
 /**
@@ -552,13 +571,21 @@ export async function startMayflyTerminal(
   // transforming every wheel event here prevents pi-tui from scrolling when
   // no focused-editor handler is active.
   const removeWheelNormalizer = current.addInputListener(data => {
-    const normalized = normalizeWheelInput(data)
-    if (normalized === undefined) return undefined
+    const report = wheelReport(data)
+    if (report === undefined) return undefined
+    const direction = report.button & 3
+    if (direction !== 0 && direction !== 1) return undefined
+    const normalized = direction === 0 ? KEY_UP : KEY_DOWN
     if (!(current instanceof TuiAltScreen)) return { data: normalized }
     const focused = current.getFocusedComponent()
-    return focused !== null && (bottomChildren.has(focused as MayflyComponent) || surfaces.focusedId !== undefined)
-      ? { data: normalized }
-      : undefined
+    if (focused === null) return undefined
+    if (!bottomChildren.has(focused as MayflyComponent)) {
+      return surfaces.focusedId !== undefined ? { data: normalized } : undefined
+    }
+    /* A focused dock surface still leaves wheel reports over the content
+       region raw, so the ScrollView pages the transcript under the pointer;
+       only reports landing inside the dock become direction keys. */
+    return report.y <= terminal.rows - lastDockRows ? undefined : { data: normalized }
   })
   const removeViewportInput = viewportInput === undefined
     ? () => {}

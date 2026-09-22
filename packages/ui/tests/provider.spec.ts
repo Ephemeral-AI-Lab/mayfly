@@ -362,6 +362,7 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-width', width: '120%' as never }, { kind: 'text', content: 'bad' })).toThrow('width')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-anchor', anchor: 'diagonal' as never }, { kind: 'text', content: 'bad' })).toThrow('anchor')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-capturing', capturing: 'yes' as never }, { kind: 'text', content: 'bad' })).toThrow('capturing')
+    expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-content-scroll', contentScroll: 'yes' as never }, { kind: 'text', content: 'bad' })).toThrow('contentScroll')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-presentation', presentation: 'dialog' as never }, { kind: 'text', content: 'bad' })).toThrow('presentation')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.editor-without-capture', presentation: 'editor' }, { kind: 'text', content: 'bad' })).toThrow('capture')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-min-width', minWidth: -1 }, { kind: 'text', content: 'bad' })).toThrow('non-negative')

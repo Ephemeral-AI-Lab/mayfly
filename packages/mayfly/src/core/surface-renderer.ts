@@ -8,9 +8,11 @@ import {
 } from '@ephemeral-ai/mayfly-ui'
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
+import { matchesKey, type KeyId } from '@earendil-works/pi-tui'
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
+import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
@@ -155,6 +157,7 @@ class OverlayComponent implements MayflyFocusable {
     compiled: MayflyCompiledUi,
     private readonly viewport: () => MayflyUiViewport,
     private readonly requestRender: () => void,
+    private readonly scrollKeys?: (data: string) => boolean,
   ) { this.targetValue = compiled }
   get focused(): boolean { return this.live && this.focusedValue }
   set focused(value: boolean) {
@@ -184,7 +187,11 @@ class OverlayComponent implements MayflyFocusable {
     return renderLayoutFrame(this.targetValue.component, width, height, this.requestRender).lines
   }
   invalidate(): void { if (this.live) this.targetValue?.component.invalidate() }
-  handleInput(data: string): void { if (this.live) this.targetValue?.component.handleInput?.(data) }
+  handleInput(data: string): void {
+    if (!this.live) return
+    if (this.scrollKeys?.(data) === true) return
+    this.targetValue?.component.handleInput?.(data)
+  }
 }
 
 interface PaneRecord {
@@ -332,7 +339,19 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       runtime: surfaceRuntime,
       ...surfaceTitle(entry, interaction),
     })!
-    const component = new OverlayComponent(compiled, () => overlayViewport(entry), runtime.requestRender)
+    /* Document-in-flow surfaces keep the page flowing: scroll keys the surface
+       does not need page the content region instead of the control list. */
+    const scrollKeys = entry.definition.contentScroll === true
+      ? (data: string): boolean => {
+          const page = Math.max(1, runtime.rows - 4)
+          if (matchesKeyAction(ctx.mayflyKeymap, data, ACTION_PAGE_UP)) return runtime.scrollContent('up', page)
+          if (matchesKeyAction(ctx.mayflyKeymap, data, ACTION_PAGE_DOWN)) return runtime.scrollContent('down', page)
+          if (matchesKey(data, 'shift+up' as KeyId)) return runtime.scrollContent('up', 3)
+          if (matchesKey(data, 'shift+down' as KeyId)) return runtime.scrollContent('down', 3)
+          return false
+        }
+      : undefined
+    const component = new OverlayComponent(compiled, () => overlayViewport(entry), runtime.requestRender, scrollKeys)
     const handle = entry.definition.presentation === 'editor' ? undefined : runtime.showOverlay(component, {
       width: entry.definition.width ?? OVERLAY_DEFAULT_WIDTH,
       ...(entry.definition.minWidth === undefined ? {} : { minWidth: entry.definition.minWidth }),

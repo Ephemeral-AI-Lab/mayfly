@@ -200,6 +200,45 @@ it('presents registered editor overlays in the fixed dock and restores drafts af
   } finally { await bench.dispose() }
 })
 
+it('yields scroll keys to the content region only for content-scroll overlays', async () => {
+  const bench = await fixture(80, 24)
+  try {
+    const scroll = vi.spyOn(bench.runtime, 'scrollContent').mockReturnValue(true)
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+    const handle = bench.open({
+      id: 'scroll-doc', title: 'Document review', presentation: 'editor', capturing: true, contentScroll: true,
+      render: () => ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }),
+    })
+    await flush()
+    slot.component.handleInput?.('\x1b[5~')
+    expect(scroll).toHaveBeenCalledWith('up', 20)
+    slot.component.handleInput?.('\x1b[6~')
+    expect(scroll).toHaveBeenCalledWith('down', 20)
+    slot.component.handleInput?.('\x1b[1;2A')
+    expect(scroll).toHaveBeenCalledWith('up', 3)
+    slot.component.handleInput?.('\x1b[1;2B')
+    expect(scroll).toHaveBeenCalledWith('down', 3)
+    // Ordinary keys fall through to the surface unchanged.
+    slot.component.handleInput?.('x')
+    expect(scroll).toHaveBeenCalledTimes(4)
+    handle.refresh()
+    await flush()
+    handle.close()
+    await flush()
+
+    scroll.mockClear()
+    const plain = bench.open({
+      id: 'plain-doc', title: 'Plain', presentation: 'editor', capturing: true,
+      render: () => ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }),
+    })
+    await flush()
+    slot.component.handleInput?.('\x1b[5~')
+    expect(scroll).not.toHaveBeenCalled()
+    plain.close()
+    slot.dispose()
+  } finally { await bench.dispose() }
+})
+
 it('coalesces root overlay chrome and bounds editor presentations by the overlay height', async () => {
   const bench = await fixture(80, 24)
   try {

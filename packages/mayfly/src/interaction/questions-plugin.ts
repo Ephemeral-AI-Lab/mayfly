@@ -4,13 +4,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { UserQuestionError } from '@deepseek-ai/dsh-user-questions'
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
-import { planReviewAnswer, planReviewChoices, planReviewView } from './plan-review-panel.ts'
+import { mountPlanDocument, planDocumentNode } from './plan-document.ts'
+import { planReviewAction, planReviewAnswer, planReviewChoices, planReviewControls } from './plan-review-panel.ts'
 import { questionnaireAnswer, questionnaireView } from './questionnaire.ts'
 import { interactionTranslator, mountInteractionLocale } from './locale.ts'
 import { requestOverlay } from './request-overlay.ts'
 
 export const name = 'mayfly-questions'
-export const inject = ['mayflyOverlays', 'mayflyCurrentAgent', 'userQuestions']
+export const inject = ['mayflyOverlays', 'mayflyCurrentAgent', 'userQuestions', 'mayflyScreen', 'mayflyComponents', 'mayflyTheme']
 
 export function apply(ctx: Context): void {
   mountInteractionLocale(ctx)
@@ -21,14 +22,19 @@ export function apply(ctx: Context): void {
     const single = questions.length === 1 ? questions[0] : undefined
     const choices = single === undefined ? undefined : planReviewChoices(single)
     const t = interactionTranslator(ctx)
+    const id = `mayfly.questions.${++sequence}`
+    /* A plan review mounts its document into the scrollable content flow and
+       keeps only the decision controls in the editor dock. */
+    const document = single !== undefined && choices !== undefined ? mountPlanDocument(ctx, `${id}.document`, () => planDocumentNode(single, t)) : undefined
     return requestOverlay(ctx, {
-      id: `mayfly.questions.${++sequence}`, title: () => single !== undefined && choices !== undefined ? single.header ?? t('Plan review') : t('Questions'),
-      ...choices === undefined ? {} : { dismissal: 'discard', presentation: 'overlay', width: '90%', maxHeight: '80%' },
+      id, title: () => single !== undefined && choices !== undefined ? single.header ?? t('Plan review') : t('Questions'),
+      ...choices === undefined ? {} : { dismissal: 'discard', contentScroll: true },
       ...request.agent === undefined ? {} : { agent: request.agent },
       ...request.signal === undefined ? {} : { signal: request.signal },
-      view: () => single !== undefined && choices !== undefined ? planReviewView(single, choices, t) : questionnaireView(questions, t),
+      view: () => single !== undefined && choices !== undefined ? planReviewControls(single, choices, t) : questionnaireView(questions, t),
       answer: event => single !== undefined && choices !== undefined ? planReviewAnswer(single, choices, event) : questionnaireAnswer(questions, event),
+      ...choices === undefined ? {} : { onAction: event => planReviewAction(single!, choices, event, t) },
       cancelled: reason => { throw new UserQuestionError(reason === 'dismiss' ? 'ask_user_question was dismissed' : 'ask_user_question was aborted before the user answered', reason === 'dismiss' ? 'ASK_CANCELLED' : 'ASK_ABORTED') },
-    }).result
+    }).result.finally(() => { document?.dispose() })
   })
 }

@@ -3,7 +3,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ui, type MayflyUiEventContext, type MayflyUiNode } from '../../../ui/src/index.ts'
+import { ui, type MayflyUiActionEvent, type MayflyUiEventContext, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { requestOverlay } from '../../src/interaction/request-overlay.ts'
 import { requestFixture, flushRequests } from './request-fixture.ts'
 import * as uiProvider from '../../../ui/src/provider.ts'
@@ -112,11 +112,11 @@ describe('request overlay lifecycle', () => {
   it('supports dynamic titles, explicit dismissal policy, ignored actions, and dismiss settlement', async () => {
     const bench = await setup()
     const request = requestOverlay(bench.ctx, {
-      id: 'request', title: () => 'Dynamic request', dismissal: 'discard', view: () => node,
+      id: 'request', title: () => 'Dynamic request', dismissal: 'discard', contentScroll: true, view: () => node,
       answer: () => undefined, cancelled: reason => reason,
     })
     const entry = bench.ctx.mayflyOverlays.list()[0]!
-    expect(entry.definition).toMatchObject({ dismissal: 'discard', presentation: 'editor' })
+    expect(entry.definition).toMatchObject({ dismissal: 'discard', presentation: 'editor', contentScroll: true })
     expect(JSON.stringify(entry.node)).toContain('Dynamic request')
     const action = entry.definition.onEvent!.action!
     expect(await action({ kind: 'activate', pagePath: [], controlId: 'other', actionId: 'other' }, context())).toEqual({ kind: 'completed' })
@@ -125,14 +125,28 @@ describe('request overlay lifecycle', () => {
     expect(await action({ kind: 'dismiss', pagePath: [] }, context())).toEqual({ kind: 'cancelled' })
   })
 
-  it('forwards floating presentation and bounds to the overlay definition', async () => {
+  it('routes unanswered events through the auxiliary action hook without settling', async () => {
     const bench = await setup()
+    const bare = ui.text('bare content')
+    const framed = { kind: 'surface' as const, chrome: 'overlay' as const, title: 'Already framed', child: bare }
+    const onAction = vi.fn(async (event: MayflyUiActionEvent) => {
+      if (event.kind !== 'activate') return undefined
+      if (event.actionId === 'other') return { kind: 'completed' as const, feedback: { message: 'aux' } }
+      if (event.actionId === 'accept') return { kind: 'accepted' as const, node: bare, source: [] }
+      return { kind: 'accepted' as const, node: framed, source: [] }
+    })
     const request = requestOverlay(bench.ctx, {
-      id: 'request', title: 'Request', presentation: 'overlay', width: '90%', maxHeight: '80%', view: () => node,
-      answer: () => undefined, cancelled: reason => reason,
+      id: 'request', title: 'Request', view: () => node, answer: () => undefined, onAction, cancelled: reason => reason,
     })
     const entry = bench.ctx.mayflyOverlays.list()[0]!
-    expect(entry.definition).toMatchObject({ presentation: 'overlay', width: '90%', maxHeight: '80%', capturing: true })
+    const action = entry.definition.onEvent!.action!
+    expect(await action({ kind: 'activate', pagePath: [], controlId: 'other', actionId: 'other' }, context())).toEqual({ kind: 'completed', feedback: { message: 'aux' } })
+    /* Bare nodes from auxiliary replies adopt the request chrome; nodes that
+       already carry a surface frame pass through untouched. */
+    expect(await action({ kind: 'activate', pagePath: [], controlId: 'accept', actionId: 'accept' }, context())).toMatchObject({ kind: 'accepted', node: { kind: 'surface', title: 'Request', child: bare } })
+    expect(await action({ kind: 'activate', pagePath: [], controlId: 'extra', actionId: 'extra' }, context())).toMatchObject({ kind: 'accepted', node: framed })
+    expect(onAction).toHaveBeenCalledTimes(3)
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
     bench.ctx.mayflyOverlays.close('request')
     await expect(request.result).resolves.toBe('unload')
   })
