@@ -18,7 +18,7 @@ describe('native questions provider', () => {
     await expect(first).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
     const second = bench.ctx.userQuestions.ask({ questions })
     const model = bench.model()
-    model.edit({ pagePath: [{ controlId: 'questions', itemId: 'q' }], formId: 'answer', fieldId: 'custom' }, 'draft')
+    model.edit({ pagePath: [], formId: 'answer', fieldId: 'custom' }, 'draft')
     model.requestClose()
     expect(model.decisionNode).toBeDefined()
     model.answerDecision(false)

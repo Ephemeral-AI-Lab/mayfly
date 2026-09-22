@@ -411,6 +411,8 @@ describe('shared interaction compiler', () => {
     let renderer = compile()
     renderer.input('\r')
     renderer.input('\x1b[B')
+    renderer.input('\x1b[A')
+    renderer.input('\x1b[B')
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Beta')
     renderer.input('\r')
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.one!.value).toBe('b')
@@ -500,6 +502,49 @@ describe('shared interaction compiler', () => {
     renderer.input('\r')
     renderer.input('\r')
     expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc back')
+    renderer.runtime.dispose()
+  })
+
+  it('skips an empty choose list when restoring focus after wizard navigation', async () => {
+    const { compile, model } = await setup(ui.stack.column([
+      ui.tabs({ id: 'pages', mode: 'wizard', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }),
+      ui.child(ui.stack.column([
+        ui.form({ id: 'a', fields: [
+          { kind: 'input', id: 'x', label: 'X', value: '' },
+          { kind: 'input', id: 'y', label: 'Y', value: '' },
+        ] }),
+        ui.form({ id: 'b', fields: [{ kind: 'input', id: 'z', label: 'Z', value: '' }] }),
+        ui.actions({ id: 'nav', items: [{ id: 'next', label: 'Next', read: [
+          { pagePath: [{ controlId: 'pages', itemId: 'one' }], formId: 'a' },
+          { pagePath: [{ controlId: 'pages', itemId: 'one' }], formId: 'b' },
+        ], navigate: [{ controlId: 'pages', itemId: 'two' }] }] }),
+      ]), { tab: { controlId: 'pages', itemId: 'one' } }),
+      ui.child(ui.stack.column([
+        ui.list({ id: 'empty', role: 'choose', selectedIds: [], filter: 'nomatch', items: [{ id: 'x', label: 'X', disabled: true }] }),
+        ui.form({ id: 'c', fields: [{ kind: 'input', id: 'w', label: 'W', value: '' }] }),
+      ]), { tab: { controlId: 'pages', itemId: 'two' } }),
+    ]))
+    const renderer = compile()
+    renderer.compiled.component.render(80)
+    model.invoke('next', [{ controlId: 'pages', itemId: 'one' }])
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
+    expect(model.completedSteps({ pagePath: [], controlId: 'pages' })).toEqual(['one'])
+    expect(model.focus).toMatchObject({ pagePath: [{ controlId: 'pages', itemId: 'two' }], controlId: 'w' })
+    renderer.runtime.dispose()
+  })
+
+  it('pins the chrome frame of a surface root and compiles empty-node actions', async () => {
+    const { compile, model, viewport } = await setup(ui.surface({ chrome: 'surface', title: 'Panel', child: ui.stack.column([
+      ...Array.from({ length: 30 }, (_, index) => ui.text(`row ${index}`)),
+      ui.empty({ title: 'Nothing', actions: ui.actions({ id: 'acts', items: [{ id: 'retry', label: 'Retry' }] }) }),
+    ]) }))
+    viewport.rows = 3
+    const renderer = compile()
+    const frame = renderer.compiled.component.render(80)
+    expect(frame.at(0)).toContain('Panel')
+    expect(frame.length).toBeLessThanOrEqual(3)
+    model.invoke('retry')
+    expect(model.feedback).toBeUndefined()
     renderer.runtime.dispose()
   })
 

@@ -329,7 +329,7 @@ export function registerPluginCommand(ctx: Context): () => void {
       if (catalog.status === 'offline') {
         return ui.surface({ title: t('Plugin marketplace'), chrome: 'overlay', child: ui.stack.column([
           ui.text(t('marketplace is offline: {message}', { message: catalog.message }), { tone: 'danger' }),
-          ui.actions({ id: 'plugin-market-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+          ui.actions({ id: 'plugin-market-actions', items: [{ id: 'refresh', label: t('Refresh'), key: 'r' }, { id: 'close', label: t('Close'), dismiss: true }] }),
         ]) })
       }
       const items = marketItems()
@@ -352,15 +352,15 @@ export function registerPluginCommand(ctx: Context): () => void {
           }),
           ui.actions({ id: `plugin-market-${group}-actions`, items: [
             { id: 'details', label: t('Details'), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
-            { id: 'install', label: t(group === 'installed' ? 'Update / repair' : 'Install'), ...(group === 'installed' && !canRepair ? { disabled: true, disabledReason: t('Already installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
-            { id: 'remove', label: t('Remove'), ...(group === 'not-installed' ? { disabled: true, disabledReason: t('Not installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
+            { id: 'install', label: t(group === 'installed' ? 'Update / repair' : 'Install'), intent: 'primary', key: 'i', ...(group === 'installed' && !canRepair ? { disabled: true, disabledReason: t('Already installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
+            { id: 'remove', label: t('Remove'), intent: 'danger', key: 'u', confirm: t('Remove the selected plugin?'), ...(group === 'not-installed' ? { disabled: true, disabledReason: t('Not installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
           ] }),
         ]), { tab: { controlId: 'plugin-market-tabs', itemId: group } })
       })
       return ui.surface({ title: t('Plugin marketplace'), chrome: 'overlay', child: ui.stack.column([
         ui.tabs({ id: 'plugin-market-tabs', activeId: initialGroup, items: groupIds.map(group => ({ id: group, label: t(group === 'installed' ? 'Installed' : 'Not installed'), count: items.filter(entry => (hasInstalledRows(entry) ? 'installed' : 'not-installed') === group).length })) }),
         ...groups,
-        ui.actions({ id: 'plugin-market-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+        ui.actions({ id: 'plugin-market-actions', items: [{ id: 'refresh', label: t('Refresh'), key: 'r' }, { id: 'close', label: t('Close'), dismiss: true }] }),
       ]) })
     }
 

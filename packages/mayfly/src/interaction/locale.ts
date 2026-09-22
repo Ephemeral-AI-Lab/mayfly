@@ -398,6 +398,7 @@ const zh: Readonly<Record<string, string>> = {
   'checking "{name}" compatibility...': '正在检查 "{name}" 兼容性…',
   'rolling back "{name}"...': '正在回滚 "{name}"…',
   'no plugins installed': '尚未安装插件',
+  'Remove the selected plugin?': '移除选中的插件？',
   'Overview': '概览',
   'Surfaces': '前端贡献',
   'Provides': '提供',

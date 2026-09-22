@@ -629,7 +629,7 @@ describe('/plugin browse panel', () => {
       { id: 'not-installed', count: 1 },
     ] })
     expect(JSON.stringify(node)).toContain('Install')
-    expect(controller.render(80).join('\n')).toContain('Details  Install  Remove')
+    expect(controller.render(80).join('\n')).toContain('Details  [ Install (I) ]  ! Remove (U)')
     expect(controller.render(36).join('\n')).toContain('Details')
     world.dispose()
   })
@@ -923,6 +923,8 @@ describe('/plugin surface actions', () => {
     selectBrowserTab(model, 'installed')
     expect(model.activeTab({ pagePath: [], controlId: 'plugin-market-tabs' })).toBe('installed')
     invokeMarketAction(model, 'remove')
+    expect(JSON.stringify(model.decisionNode)).toContain('Remove the selected plugin?')
+    model.answerDecision(true)
     await vi.waitFor(() => expect(marketFeedback(model)).toContain('removed; restart Mayfly'))
     expect(browserTabs(panel)).toMatchObject({ items: [{ id: 'installed', count: 0 }, { id: 'not-installed', count: 1 }] })
     world.dispose()
@@ -935,7 +937,9 @@ describe('/plugin surface actions', () => {
       installedVersions: { 'dsh-loop': '0.1.4' },
     })
     await world.run('/plugin list')
-    invokeMarketAction(world.surface()!, 'remove')
+    const model = world.surface()!
+    invokeMarketAction(model, 'remove')
+    model.answerDecision(true)
     await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
     world.dispose()
   })
@@ -1040,6 +1044,7 @@ describe('/plugin surface actions', () => {
       expect.objectContaining({ actionId: 'install', pagePath: marketPage(model), enabled: false, disabledReason: 'Already installed in this profile' }),
     ]))
     invokeMarketAction(model, 'remove')
+    model.answerDecision(true)
     await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
     expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true)
     expect(await world.run('/plugin uninstall mixed')).toEqual({ kind: 'success' })
@@ -1067,6 +1072,7 @@ describe('/plugin surface actions', () => {
       { id: 'installed', count: 1 }, { id: 'not-installed', count: 0 },
     ] })
     invokeMarketAction(model, 'remove')
+    model.answerDecision(true)
     await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
     expect(world.spawns.find(spawn => spawn.args.includes('remove'))?.args)
       .toEqual(['plugin', '--profile', 'mayfly', 'remove', 'multi-a'])
@@ -1154,19 +1160,25 @@ describe('/plugin coverage corners', () => {
     world.dispose()
   })
 
-  it('refreshes through its action and treats printable action letters as search text', async () => {
+  it('runs the i/r accelerators and keeps typing into an open search', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
     const model = world.surface()!
-    invokeMarketAction(model, 'refresh')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refreshed 1 entries'))
-    expect(updaterInternals.fetchText).toHaveBeenCalled()
-    const before = world.spawns.length
     const panel = world.overlay() as BrowserPanel
     panel.handleInput(KEY.tab)
-    for (const key of 'iur') panel.handleInput(key)
-    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('iur')
-    expect(world.spawns).toHaveLength(before)
+    panel.handleInput('i')
+    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(true))
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installed; restart Mayfly'))
+    panel.handleInput('r')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refreshed 1 entries'))
+    expect(updaterInternals.fetchText).toHaveBeenCalled()
+    // Remove is disabled on the not-installed tab, so 'u' is unbound there and
+    // falls back to opening the list search.
+    panel.handleInput('u')
+    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('u')
+    // Once the search is open even bound letters filter instead of firing.
+    panel.handleInput('i')
+    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('ui')
     world.dispose()
   })
 

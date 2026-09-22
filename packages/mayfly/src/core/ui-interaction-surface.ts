@@ -162,8 +162,15 @@ export class UiSurfaceModel {
 
   private stepRevision(pagePath: MayflyPagePath): string {
     const path = JSON.stringify(pagePath)
-    return JSON.stringify([...this.forms].filter(([, form]) => JSON.stringify(form.address.pagePath.slice(0, pagePath.length)) === path)
-      .map(([key, form]) => [key, form.draftRevision, form.schemaRevision, Object.values(form.fields).map(field => [field.definition.id, field.revision, field.conflict, field.error !== undefined]).toSorted((left, right) => String(left[0]).localeCompare(String(right[0])))]).toSorted((left, right) => String(left[0]).localeCompare(String(right[0]))))
+    const prefix = JSON.stringify(pagePath.map(segment => [segment.controlId, segment.itemId]))
+    return JSON.stringify([
+      [...this.forms].filter(([, form]) => JSON.stringify(form.address.pagePath.slice(0, pagePath.length)) === path)
+        .map(([key, form]) => [key, form.draftRevision, form.schemaRevision, Object.values(form.fields).map(field => [field.definition.id, field.revision, field.conflict, field.error !== undefined]).toSorted((left, right) => String(left[0]).localeCompare(String(right[0])))]).toSorted((left, right) => String(left[0]).localeCompare(String(right[0]))),
+      [...this.choices].flatMap(([key, choice]) => {
+        const segments = JSON.parse(key)[0] as [string, string][]
+        return JSON.stringify(segments.slice(0, pagePath.length)) === prefix ? [[key, choice.selectedIds]] : []
+      }),
+    ])
   }
   feedbackSnapshot(): readonly MayflyFeedbackRecord[] { return this.notifications.snapshot() }
   setVisible(visible: boolean): void { if (this.live) this.notifications.setVisible(visible) }
@@ -224,11 +231,21 @@ export class UiSurfaceModel {
     this.admissionError = undefined
     this.notifications.clear('snapshot', false)
     const sourceChanged = !sameUiSource(this.input.source, snapshot.source)
+    const firstAdmit = this.admittedNode === null
     this.rawNode = snapshot.node
     this.admittedNode = admitted.value
     this.input = snapshot
     if (this.decision !== undefined && sourceChanged) this.decision = undefined
     this.reconcileControls(snapshot.update)
+    /* A freshly admitted surface mirrors navigate()'s focus preference on its
+       active page — a default-focus action or a choose list's focused row —
+       so keyboard users start on the options instead of the tab strip. */
+    if (firstAdmit && this.selectedControl === undefined) {
+      const pagePath = this.activePagePath()
+      const preferred = [...this.actions.values()].find(action => action.item.defaultFocus === true && JSON.stringify(action.pagePath) === JSON.stringify(pagePath))
+      const seed = preferred !== undefined ? { pagePath, controlId: preferred.item.id } : this.chooseFocus(pagePath)
+      if (seed !== undefined) this.selectedControl = seed
+    }
     this.changed()
   }
 
@@ -370,12 +387,34 @@ export class UiSurfaceModel {
     return pagePath.length > 0 && pagePath.every((segment, index) => this.tabs.get(uiControlKey({ pagePath: pagePath.slice(0, index), controlId: segment.controlId }))?.definition.items.some(item => item.id === segment.itemId && item.disabled !== true))
   }
 
+  /** The deepest page path whose tab segments are all currently active. */
+  private activePagePath(): MayflyPagePath {
+    let target: MayflyPagePath = []
+    visitUiControls(this.admittedNode!, (_node, pagePath) => {
+      if (pagePath.length <= target.length) return
+      if (!pagePath.every((segment, index) => this.activeTab({ pagePath: pagePath.slice(0, index), controlId: segment.controlId }) === segment.itemId)) return
+      target = pagePath
+    })
+    return target
+  }
+
+  /** The focused row of a choose list living on the given page, if any. */
+  private chooseFocus(pagePath: MayflyPagePath): UiControlAddress | undefined {
+    let choice: UiControlAddress | undefined
+    visitUiControls(this.admittedNode!, (node, path) => {
+      if (choice !== undefined || node.kind !== 'list' || node.role !== 'choose' || JSON.stringify(path) !== JSON.stringify(pagePath)) return
+      const itemId = this.choices.get(uiControlKey({ pagePath: path, controlId: node.id }))?.focusedId ?? node.items.find(item => item.disabled !== true)?.id
+      if (itemId !== undefined) choice = { pagePath: path, controlId: node.id, itemId }
+    })
+    return choice
+  }
+
   private navigate(pagePath: MayflyPagePath): boolean {
     if (!this.canNavigate(pagePath)) return false
     for (const [index, segment] of pagePath.entries()) this.activateTab({ pagePath: pagePath.slice(0, index), controlId: segment.controlId }, segment.itemId)
     const preferred = [...this.actions.values()].find(action => action.item.defaultFocus === true && JSON.stringify(action.pagePath) === JSON.stringify(pagePath))
     const field = [...this.forms.values()].find(form => JSON.stringify(form.address.pagePath) === JSON.stringify(pagePath))?.definition.fields.find(field => field.disabled !== true)
-    this.focusControl(preferred !== undefined ? { pagePath, controlId: preferred.item.id } : field !== undefined ? { pagePath, controlId: field.id } : { pagePath: pagePath.slice(0, -1), controlId: pagePath.at(-1)!.controlId, itemId: pagePath.at(-1)!.itemId })
+    this.focusControl(preferred !== undefined ? { pagePath, controlId: preferred.item.id } : this.chooseFocus(pagePath) ?? (field !== undefined ? { pagePath, controlId: field.id } : { pagePath: pagePath.slice(0, -1), controlId: pagePath.at(-1)!.controlId, itemId: pagePath.at(-1)!.itemId }))
     return true
   }
 
@@ -507,6 +546,10 @@ export class UiSurfaceModel {
       this.choices.set(key, next)
       if (error !== undefined) { this.report(key, { message: error, severity: 'error' }); return }
     }
+    /* A declared accept action runs the ordinary invoke pipeline instead of
+       reporting the event, so Enter shares validation, confirmation, and
+       navigation with its action item. */
+    if (state.definition.acceptActionId !== undefined) { this.invoke(state.definition.acceptActionId, event.pagePath); return }
     const segmentId = event.selectedIds.length === 1 && state.definition.mode !== 'multiple' ? choiceSegment(this.choices.get(key)!, event.selectedIds[0]!) : undefined
     if (!this.activeKeys.has(key)) this.start(key, { ...event, selectedIds: state.definition.role === 'browse' ? event.selectedIds : this.choices.get(key)!.selectedIds, ...(segmentId === undefined ? {} : { segmentId }) })
   }

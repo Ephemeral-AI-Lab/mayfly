@@ -223,8 +223,13 @@ describe('private UI pattern painters', () => {
     expect(renderFormField({ kind: 'secret', id: 'secret', label: 'Secret', value: '' }, 20, idle, colors)[0]).toBe('   Secret: ')
     expect(renderFormField({ kind: 'secret', id: 'secret', label: 'Secret', value: 'abc' }, 20, idle, colors)[0]).toContain('•••')
     expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: null, options: [] }, 20, idle, colors)[0]).toContain('Choose…')
-    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, idle, colors)[0]).toContain('Alpha')
-    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, { key: 'select', focused: true, marker: '|', adjustingKey: 'select' }, colors)[0]).toContain('‹ Alpha ›')
+    const unfocusedSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, idle, colors)
+    expect(unfocusedSelect[0]).toContain('Select')
+    expect(unfocusedSelect[0]).not.toContain('Alpha')
+    expect(unfocusedSelect.join('\n')).toContain('[x] Alpha')
+    expect(unfocusedSelect.join('\n')).not.toContain('>')
+    const focusedSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, { key: 'select', focused: true, marker: '|' }, colors)
+    expect(focusedSelect.join('\n')).toContain('> [x] Alpha')
     expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'missing', options: [] }, 20, idle, colors)[0]).toContain('missing')
     expect(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: true }, 20, idle, colors)[0]).toContain('[on]')
     expect(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: false, disabled: true }, 5, idle, colors)[0]).toHaveLength(5)
@@ -295,13 +300,21 @@ describe('private UI pattern painters', () => {
     expect(renderFormField({ kind: 'number', id: 'count', label: 'Count', value: null }, 30, idle, colors)[0]).toContain('Count:')
     const select = renderFormField({
       kind: 'select', id: 'mode', label: 'Mode', value: 'one', options: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two', disabled: true, disabledReason: 'Unavailable' }],
-    }, 40, { key: 'mode', focused: true, marker: '|', adjustingKey: 'mode', optionId: 'two' }, colors)
+    }, 40, { key: 'mode', focused: true, marker: '|', optionId: 'two' }, colors)
     expect(select).toHaveLength(3)
     expect(select.join('\n')).toContain('[x] One')
     expect(select.join('\n')).toContain('> [ ] Two: Unavailable')
     const multiple = renderFormField({
       kind: 'multiselect', id: 'levels', label: 'Levels', value: ['one'], options: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }],
-    }, 40, { key: 'levels', focused: true, marker: '|', adjustingKey: 'levels' }, colors)
+    }, 40, { key: 'levels', focused: true, marker: '|' }, colors)
     expect(multiple.join('\n')).toContain('> [x] One')
+    const choosing = renderFormField({
+      kind: 'select', id: 'pick', label: 'Pick', value: null, options: [{ id: 'a', label: 'A' }],
+    }, 40, { key: 'pick', focused: true, marker: '|' }, colors)
+    expect(choosing.join('\n')).toContain('> [ ] A')
+    const locked = renderFormField({
+      kind: 'select', id: 'lock', label: 'Lock', value: 'a', disabled: true, options: [{ id: 'a', label: 'A' }],
+    }, 40, idle, colors)
+    expect(locked).toHaveLength(1)
   })
 })
