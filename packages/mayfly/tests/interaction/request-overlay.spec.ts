@@ -116,13 +116,25 @@ describe('request overlay lifecycle', () => {
       answer: () => undefined, cancelled: reason => reason,
     })
     const entry = bench.ctx.mayflyOverlays.list()[0]!
-    expect(entry.definition).toMatchObject({ dismissal: 'discard' })
+    expect(entry.definition).toMatchObject({ dismissal: 'discard', presentation: 'editor' })
     expect(JSON.stringify(entry.node)).toContain('Dynamic request')
     const action = entry.definition.onEvent!.action!
     expect(await action({ kind: 'activate', pagePath: [], controlId: 'other', actionId: 'other' }, context())).toEqual({ kind: 'completed' })
     expect(await action({ kind: 'dismiss', pagePath: [] }, context())).toEqual({ kind: 'cancelled' })
     await expect(request.result).resolves.toBe('dismiss')
     expect(await action({ kind: 'dismiss', pagePath: [] }, context())).toEqual({ kind: 'cancelled' })
+  })
+
+  it('forwards floating presentation and bounds to the overlay definition', async () => {
+    const bench = await setup()
+    const request = requestOverlay(bench.ctx, {
+      id: 'request', title: 'Request', presentation: 'overlay', width: '90%', maxHeight: '80%', view: () => node,
+      answer: () => undefined, cancelled: reason => reason,
+    })
+    const entry = bench.ctx.mayflyOverlays.list()[0]!
+    expect(entry.definition).toMatchObject({ presentation: 'overlay', width: '90%', maxHeight: '80%', capturing: true })
+    bench.ctx.mayflyOverlays.close('request')
+    await expect(request.result).resolves.toBe('unload')
   })
 
   it('rejects an action when native Agent authority changed without a notification', async () => {

@@ -23,7 +23,7 @@ export function apply(ctx: Context): void {
     const t = interactionTranslator(ctx)
     return requestOverlay(ctx, {
       id: `mayfly.questions.${++sequence}`, title: () => single !== undefined && choices !== undefined ? single.header ?? t('Plan review') : t('Questions'),
-      ...choices === undefined ? {} : { dismissal: 'discard' },
+      ...choices === undefined ? {} : { dismissal: 'discard', presentation: 'overlay', width: '90%', maxHeight: '80%' },
       ...request.agent === undefined ? {} : { agent: request.agent },
       ...request.signal === undefined ? {} : { signal: request.signal },
       view: () => single !== undefined && choices !== undefined ? planReviewView(single, choices, t) : questionnaireView(questions, t),

@@ -3,7 +3,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { MayflyOverlayHandle, MayflyUiActionEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiActionEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { observeInteractionLocale } from './locale.ts'
 
 export interface RequestOverlayOptions<Result> {
@@ -12,6 +12,9 @@ export interface RequestOverlayOptions<Result> {
   readonly agent?: Agent
   readonly signal?: AbortSignal
   readonly dismissal?: 'confirm-dirty' | 'discard'
+  readonly presentation?: MayflyOverlayDefinition['presentation']
+  readonly width?: MayflyOverlayDefinition['width']
+  readonly maxHeight?: MayflyOverlayDefinition['maxHeight']
   readonly view: () => MayflyUiNode
   readonly answer: (event: MayflyUiActionEvent) => Result | undefined
   readonly accepted?: (answer: Result) => void
@@ -42,8 +45,10 @@ export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOpti
     const source = [{ resourceId: options.id, revision: 1 }]
     const snapshot = (): MayflyUiNode => ({ kind: 'surface', chrome: 'overlay', padding: 1, title: typeof options.title === 'string' ? options.title : options.title(), child: options.view() })
     handle = ctx.mayflyOverlays.open({
-      id: options.id, presentation: 'editor', capturing: true,
+      id: options.id, presentation: options.presentation ?? 'editor', capturing: true,
       ...options.dismissal === undefined ? {} : { dismissal: options.dismissal },
+      ...options.width === undefined ? {} : { width: options.width },
+      ...options.maxHeight === undefined ? {} : { maxHeight: options.maxHeight },
       scope: options.agent === undefined ? { kind: 'app', targetId: options.id } : { kind: 'session', sessionId: options.agent.id },
       source,
       onEvent: { action: (event, context) => {

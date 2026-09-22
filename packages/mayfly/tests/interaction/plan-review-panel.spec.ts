@@ -15,6 +15,22 @@ const decision = [{ controlId: 'review', itemId: 'decision' }]
 const feedback = [{ controlId: 'review', itemId: 'feedback' }]
 
 describe('shared plan review', () => {
+  it('opens as a floating overlay while the questionnaire stays in the editor slot', async () => {
+    const bench = await setup()
+    const review = bench.ctx.userQuestions.ask({ questions: [question] })
+    const entry = bench.ctx.mayflyOverlays.list().findLast(candidate => candidate.id.startsWith('mayfly.questions.'))!
+    expect(entry.definition).toMatchObject({ presentation: 'overlay', width: '90%', maxHeight: '80%', dismissal: 'discard', capturing: true })
+    bench.model().requestClose()
+    await expect(review).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+    const plain = bench.ctx.userQuestions.ask({ questions: [{ id: 'q', question: 'Why?' }] })
+    const plainEntry = bench.ctx.mayflyOverlays.list().findLast(candidate => candidate.id.startsWith('mayfly.questions.'))!
+    expect(plainEntry.definition.presentation).toBe('editor')
+    expect(plainEntry.definition.width).toBeUndefined()
+    expect(plainEntry.definition.maxHeight).toBeUndefined()
+    bench.model().requestClose()
+    await expect(plain).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+  })
+
   it('defaults to the native declining label regardless of option order', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
