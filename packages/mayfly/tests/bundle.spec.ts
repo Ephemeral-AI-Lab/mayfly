@@ -178,9 +178,9 @@ describe('mayfly bundle', () => {
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
     }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.1.7-alpha.2')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset']).toBe('0.1.7-alpha.2')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset-registry']).toBe('0.1.7-alpha.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.1.7-rc.1')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset']).toBe('0.1.7-rc.1')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset-registry']).toBe('0.1.7-rc.1')
     expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-presets']).toBeUndefined()
   })
 
@@ -218,7 +218,7 @@ describe('mayfly bundle', () => {
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
     }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.1.7-alpha.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.1.7-rc.1')
   })
 
   it('keeps the host fallback persona valid for agents without preset model variables', () => {

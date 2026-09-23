@@ -68,7 +68,7 @@ describe('Mayfly preset roster', () => {
     ])
   })
 
-  it('vendors the alpha.2 shipped presets verbatim and adds mayfly-cordis without aliases', () => {
+  it('vendors the shipped presets verbatim and adds mayfly-cordis without aliases', () => {
     const upstreamRoot = join(dirname(require.resolve('@deepseek-ai/dsh-web-app/package.json')), 'presets')
     const mayflyRoot = new URL('../presets/', import.meta.url)
     for (const id of ['standard', 'ptc', 'minimal', 'cordis']) {
