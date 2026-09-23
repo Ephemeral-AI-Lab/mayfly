@@ -2,31 +2,46 @@
  * @module @ephemeral-ai/mayfly/tests/interaction/preset-commands
  */
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
-import AgentPresets, { type AgentPreset } from '@deepseek-ai/dsh-agent-presets'
+import type { AgentPreset } from '@deepseek-ai/dsh-agent-preset-registry'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { presetItems } from '../../src/interaction/preset-commands.ts'
 import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 
-const preset = (id: string, options: Partial<AgentPreset> = {}): AgentPreset => ({ id, trust: 'system', path: `/presets/${id}/cordis.yml`, ...options })
+const preset = (id: string, options: Partial<AgentPreset> = {}): AgentPreset => ({ id, ...options })
 
-class FixturePresets extends AgentPresets {
+/** Mirrors the native registry's `select` contract over an in-memory roster. */
+class FixturePresets {
+  constructor(private readonly ctx: Context) {}
   catalog: AgentPreset[] = [preset('standard', { name: 'Standard' }), preset('minimal', { name: 'Minimal' })]
   selected = new Map<Context, string>()
+  private readonly switches = new Map<string, Promise<unknown>>()
   readonly recomposeCalls = vi.fn(async (ctx: Context, id: string): Promise<AgentPreset> => {
     const preset = this.catalog.find(item => item.id === id)
     if (preset === undefined || preset.broken !== undefined) throw new Error('Preset unavailable')
     this.selected.set(ctx, id)
     return preset
   })
-  constructor(ctx: Context) { super(ctx, { default: 'standard', roots: [], includeShippedRoot: false, includeUserRoot: false }) }
-  override async list() { return this.catalog }
-  override composedPreset(ctx: Context) { return this.selected.get(ctx) }
-  override recompose(ctx: Context, id: string) { return this.recomposeCalls(ctx, id) }
+  async list() { return this.catalog }
+  composedPreset(ctx: Context) { return this.selected.get(ctx) }
+  recompose(ctx: Context, id: string) { return this.recomposeCalls(ctx, id) }
+  async select(agent: Agent, agentPreset: string): Promise<string> {
+    const turn = (this.switches.get(agent.id) ?? Promise.resolve()).then(async () => {
+      const boundary = this.ctx.sessionProjections.stateOf(agent.session, 'turnBoundary') as { openTurnStartSeq: number | null, lastTurn: number } | undefined
+      if (boundary !== undefined && (boundary.openTurnStartSeq !== null || boundary.lastTurn > 0)) throw new Error('This session has already started')
+      const selected = await this.recompose(agent.ctx, agentPreset)
+      agent.session.append('agent-preset/selected', { agentPreset: selected.id })
+      return selected.id
+    })
+    const guard = turn.catch(() => undefined)
+    this.switches.set(agent.id, guard)
+    try { return await turn } finally { if (this.switches.get(agent.id) === guard) this.switches.delete(agent.id) }
+  }
 }
 
 const contexts: Context[] = []
@@ -42,7 +57,7 @@ async function setup() {
   Object.assign(bench.agent, { session, status: 'idle', ctx: new Context() })
   const rosterOwner = await ctx.plugin({ name: 'native-roster', inject: ['sessionProjections'], apply(owner: Context) {
     owner.sessionProjections.register(turnBoundaryProjectionDefinition)
-    new FixturePresets(owner.extend({ baseUrl: import.meta.url }))
+    owner.provide('agentPresets', new FixturePresets(owner))
   } })
   await flushRequests()
   const run = (line = '/preset', signal = new AbortController().signal) => ctx.commands.execute(bench.agent, line, [], signal)
@@ -67,7 +82,7 @@ describe('native preset selection UI', () => {
   })
 
   it('projects stable ordered choices, native labels, and disabled failures', () => {
-    const rows = presetItems([preset('z'), preset('broken', { trust: 'user', broken: 'Bad composition', order: 1 }), preset('first', { name: 'First', order: 0, description: 'Description' })], 'first', key => key)
+    const rows = presetItems([preset('z'), preset('broken', { broken: 'Bad composition', order: 1 }), preset('first', { name: 'First', order: 0, description: 'Description' })], 'first', key => key)
     expect(rows.map(row => row.id)).toEqual(['first', 'broken', 'z'])
     expect(rows[0]).toMatchObject({ label: 'First', detail: 'Description', badge: 'current' })
     expect(rows[1]).toMatchObject({ disabled: true, disabledReason: 'Bad composition' })
@@ -131,7 +146,7 @@ describe('native preset selection UI', () => {
 
   it('retains search across refresh/repaint and blocks broken or removed choices', async () => {
     const bench = await setup()
-    bench.roster.catalog.push(preset('broken', { trust: 'user', broken: 'Invalid' }))
+    bench.roster.catalog.push(preset('broken', { broken: 'Invalid' }))
     await bench.run()
     const model = bench.model('mayfly.presets')
     const renderer = renderRequest(model)

@@ -67,7 +67,7 @@ describe('mayfly-pane-queue', () => {
   })
 
   it('excludes internal runtime messages without modifying the native inbox', async () => {
-    const policy = createUserMessage({ content: [{ type: 'text', text: 'Policy changed' }], source: { kind: 'plugin', plugin: 'approval' } })
+    const policy = createUserMessage({ content: [{ type: 'text', text: 'Policy changed' }], source: { kind: 'system-prompt' } })
     const inbox = fakeInbox([], [policy])
     const world = await mount(true, inbox)
     expect(world.entry()?.node).toBeNull()

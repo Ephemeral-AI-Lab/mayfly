@@ -9,10 +9,10 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { AgentHandle } from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-agent-presets'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { buildForkSeed, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type {} from '../app/index.ts'
 
 /** Stable Cordis plugin name. */
@@ -88,11 +88,15 @@ export function apply(ctx: Context): void {
     let handle: AgentHandle
     let transcriptAfterSeq: number | undefined
     try {
-      const seed = parent.session.snapshotEvents()
-      transcriptAfterSeq = seed.length === 0 ? undefined : seed.at(-1)!.seq
+      // Inherit the parent's whole log: `buildForkSeed` tags the inherited cut
+      // and closes any open tail, so a side question may start mid-turn.
+      const events = parent.session.snapshotEvents()
+      const lastSeq = events.at(-1)?.seq
+      const seed = lastSeq === undefined ? [] : buildForkSeed(events, lastSeq)
+      transcriptAfterSeq = lastSeq
       const selected = parent.session.requestHeader()?.config ?? defaultModel.currentSelection()
       let preset = parent.session.header.agentPreset
-      for (const event of seed) {
+      for (const event of events) {
         if (event.type === 'agent-preset/selected') preset = event.data.agentPreset
       }
       handle = await agents.create({
@@ -100,9 +104,9 @@ export function apply(ctx: Context): void {
         meta: {
           cwd: parent.session.header.cwd ?? process.cwd(),
           parentSession: parent.id,
-          ...(seed.length === 0 ? {} : { isSeeded: true }),
+          ...(events.length === 0 ? {} : { isSeeded: true }),
         },
-        ...(seed.length === 0 ? {} : { inheritedEventCount: SessionLogOffset(seed.length) }),
+        ...(events.length === 0 ? {} : { inheritedEventCount: SessionLogOffset(events.length) }),
         seed,
         signal: controller.signal,
         agentOptions: {

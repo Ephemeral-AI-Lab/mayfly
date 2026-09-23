@@ -24,7 +24,6 @@ import { interactionTranslator } from './locale.ts'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { join } from 'node:path'
 import { openUiOverlay } from './ui-overlay.ts'
-import type { UpdateSettings } from './updater/check.ts'
 import { writeUpdateCheckState } from './updater/check.ts'
 import { updaterInternals } from './updater/io.ts'
 import { backupDir, findDshCommand, profileRoot, readProfileFacts } from './updater/profile.ts'
@@ -228,10 +227,8 @@ async function runSwapPanel(
 
 /** The channel the command follows: the `mayfly` settings section's value. */
 function updateChannelOf(ctx: Context): string {
-  const value = ctx.get('settings')?.get('mayfly') as Partial<UpdateSettings> | undefined
-  return typeof value?.updateChannel === 'string' && value.updateChannel !== ''
-    ? value.updateChannel
-    : 'latest'
+  const value = ctx.get('mayflyInteractionState')?.settingsSource()
+  return value !== undefined && value.updateChannel !== '' ? value.updateChannel : 'latest'
 }
 
 /** Probe the installed dsh CLI's version output; `undefined` when unreadable. */

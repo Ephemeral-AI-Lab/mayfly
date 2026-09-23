@@ -40,12 +40,11 @@ describe('native settings projections', () => {
 
   it('preserves dynamic select field kinds when the native choice service is absent', () => {
     const schema = Schema.object({ defaultPreset: Schema.string().default('safe') })
-    const descriptor: SettingsDescriptor = { ns: 'permission' as never, revision: 0, applies: 'restart', schema: schema.toJSON(), value: { defaultPreset: 'safe' } }
+    const descriptor: SettingsDescriptor = { ns: 'permission' as never, revision: 0, applies: 'live', schema: schema.toJSON(), value: { defaultPreset: 'safe' } }
     const absent = settingsProjection(descriptor, true, {}, key => key)
     const present = settingsProjection(descriptor, true, { permission: ['safe', 'full'] }, key => key)
     expect(absent.bindings.get(settingsField('defaultPreset').fieldId)!.field).toMatchObject({ kind: 'select', disabled: true })
     expect(present.bindings.get(settingsField('defaultPreset').fieldId)!.field).toMatchObject({ kind: 'select', disabled: false })
-    expect(JSON.stringify(present.node)).toContain('restart to apply')
   })
 
   it('rejects undeclared or disabled writes and decodes typed enum values', () => {
@@ -70,7 +69,7 @@ describe('native settings projections', () => {
       requiredFlag: Schema.boolean().required(),
     })
     const projection = settingsProjection({
-      ns: 'agent-presets' as never, revision: 0, applies: 'live', schema: schema.toJSON(),
+      ns: 'agent-preset-registry' as never, revision: 0, applies: 'live', schema: schema.toJSON(),
       value: { literal: 'fixed', text: 'body', many: ['b'], requiredFlag: true },
       base: { many: ['a'] },
     }, true, { agentPresets: ['one', 'two'] }, key => key)
@@ -80,7 +79,7 @@ describe('native settings projections', () => {
     expect(projection.bindings.get(settingsField('requiredFlag').fieldId)!.field).toMatchObject({ kind: 'toggle' })
 
     const presets = settingsProjection({
-      ns: 'agent-presets' as never, revision: 0, applies: 'live',
+      ns: 'agent-preset-registry' as never, revision: 0, applies: 'live',
       schema: Schema.object({ default: Schema.string().default('one') }).toJSON(), value: { default: 'one' },
     }, true, { agentPresets: ['one', 'two'] }, key => key)
     expect(presets.bindings.get(settingsField('default').fieldId)!.field).toMatchObject({ kind: 'select', disabled: false })

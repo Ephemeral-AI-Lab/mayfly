@@ -179,7 +179,7 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   } as never)
   ctx.provide('jobs', {
     list: () => [],
-    onJobsChanged: () => () => {},
+    events: { subscribe: () => () => {} },
   } as never)
   ctx.provide('subagents', {
     prompt: () => Promise.resolve({ messageId: 'shot-subagent-message' }),

@@ -80,11 +80,11 @@ describe('message retraction', () => {
     await Promise.resolve()
     const marker = test.session.snapshotEvents().at(-1)!
     expect(marker).toMatchObject({
-      type: 'system/message',
+      type: 'developer/message',
       data: {
         turn: 1,
         step: 1,
-        message: { content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+        message: { content: [], source: { kind: 'mayfly-retraction' } },
       },
       surfaceOp: { op: 'replace' },
     })

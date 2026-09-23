@@ -115,27 +115,27 @@ describe('provider onboarding', () => {
 
   it('enumerates native providers and ignores malformed configured references', async () => {
     const bench = await setup({}, false, { listProviders: () => [{ id: 'anthropic', name: 'Anthropic' }] })
-    const get = vi.spyOn(bench.settings, 'get').mockReturnValue({ providers: {
+    const describe = vi.spyOn(bench.settings, 'describe').mockReturnValue([{ ns: 'llm-pi-ai', value: { providers: {
       missing: null,
       primitive: 'invalid',
       numeric: { apiKeyEnv: 42 },
       empty: { apiKeyEnv: '' },
       valid: { apiKeyEnv: 'EXTRA_KEY' },
-    } })
-    const describe = vi.spyOn(bench.credentials, 'describe').mockImplementation(async ref => {
+    } } } as never])
+    const credentials = vi.spyOn(bench.credentials, 'describe').mockImplementation(async ref => {
       if (String(ref) === 'ANTHROPIC_API_KEY') throw new Error('unreadable')
       return { configured: false, writable: true, source: 'memory' }
     })
     bench.ctx.mayflyCurrentAgent.select(bench.agent)
     await flush()
-    expect(get).toHaveBeenCalledWith('llm-pi-ai')
-    expect(describe.mock.calls.map(([ref]) => String(ref))).toEqual(expect.arrayContaining([DEEPSEEK_KEY, 'ANTHROPIC_API_KEY', 'EXTRA_KEY']))
+    expect(describe).toHaveBeenCalled()
+    expect(credentials.mock.calls.map(([ref]) => String(ref))).toEqual(expect.arrayContaining([DEEPSEEK_KEY, 'ANTHROPIC_API_KEY', 'EXTRA_KEY']))
     expect(bench.model()).toBeDefined()
   })
 
   it.each([null, 42, { providers: null }, { providers: 'invalid' }])('treats malformed settings as having no extra references (%j)', async section => {
     const bench = await setup()
-    vi.spyOn(bench.settings, 'get').mockReturnValue(section as never)
+    vi.spyOn(bench.settings, 'describe').mockReturnValue([{ ns: 'llm-pi-ai', value: section } as never])
     bench.ctx.mayflyCurrentAgent.select(bench.agent)
     await flush()
     expect(bench.model()).toBeDefined()
@@ -205,7 +205,7 @@ describe('provider onboarding', () => {
 
   it('shows a fallback surface when readiness cannot inspect settings', async () => {
     const bench = await setup()
-    vi.spyOn(bench.settings, 'get').mockImplementation(() => { throw new Error('unavailable') })
+    vi.spyOn(bench.settings, 'describe').mockImplementation(() => { throw new Error('unavailable') })
     bench.ctx.mayflyCurrentAgent.select(bench.agent)
     await flush()
     expect(JSON.stringify(bench.model()!.node)).toContain('Provider setup could not be checked')
@@ -214,7 +214,7 @@ describe('provider onboarding', () => {
   it('focuses an existing fallback surface after a readiness failure', async () => {
     const bench = await setup()
     const existing = bench.ctx.mayflyOverlays.open({ id: 'mayfly.provider.onboarding', title: 'Existing', presentation: 'editor', capturing: true }, { kind: 'text', content: 'existing' })
-    vi.spyOn(bench.settings, 'get').mockImplementation(() => { throw new Error('unavailable') })
+    vi.spyOn(bench.settings, 'describe').mockImplementation(() => { throw new Error('unavailable') })
     bench.ctx.mayflyCurrentAgent.select(bench.agent)
     await flush()
     expect(bench.ctx.mayflyOverlays.list().find(item => item.id === existing.events.id)?.focusRevision).toBe(1)

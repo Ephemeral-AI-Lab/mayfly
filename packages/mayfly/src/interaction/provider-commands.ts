@@ -75,7 +75,7 @@ export function apply(ctx: Context): void {
         } },
       }, await build(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => offSettings?.() })
       if (handle === undefined) return { kind: 'success' }
-      offSettings = ctx.on('settings/updated', () => { void build().then(node => { if (!handle.closed) handle.set(node) }) })
+      offSettings = ctx.on('settings/document-updated', () => { void build().then(node => { if (!handle.closed) handle.set(node) }) })
       return { kind: 'success' }
     },
   })

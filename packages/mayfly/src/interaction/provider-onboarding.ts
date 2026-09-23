@@ -19,7 +19,7 @@ export const inject = ['credentials', 'mayflyOverlays']
 function credentialRefs(ctx: Context): string[] {
   const refs = new Set([DEEPSEEK_KEY])
   for (const provider of ctx.get('llm')?.listProviders() ?? []) refs.add(deriveKeyRef(provider.id))
-  const section = ctx.get('settings')?.get('llm-pi-ai')
+  const section = ctx.get('settings')?.describe().find(item => String(item.ns) === 'llm-pi-ai')?.value
   const providers = section !== null && typeof section === 'object' ? (section as { readonly providers?: unknown }).providers : undefined
   if (providers !== null && typeof providers === 'object') for (const profile of Object.values(providers)) {
     const ref = profile !== null && typeof profile === 'object' ? (profile as { readonly apiKeyEnv?: unknown }).apiKeyEnv : undefined

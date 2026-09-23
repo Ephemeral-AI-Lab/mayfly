@@ -117,7 +117,7 @@ describe('mayfly bundle', () => {
     expect(patch).not.toContain("name: '@ephemeral-ai/mayfly/official-model'")
     expect(patch).not.toContain("name: '@ephemeral-ai/mayfly/editor-plus'")
     expect(patch).not.toMatch(/- id: mayfly-(?:context|conversation|transcript-official|openpencil|lark)\n\s+name:[^\n]+\n\s+disabled: true/gu)
-    expect(patch).toContain("name: '@deepseek-ai/dsh-agent-presets'")
+    expect(patch).toContain("name: '@deepseek-ai/dsh-agent-preset-registry'")
     expect(insertedRows.some(row => row.group === true)).toBe(false)
     expect(insertedRows.find(row => row.id === 'mayfly-app')?.inject).toBeUndefined()
   })
@@ -162,30 +162,34 @@ describe('mayfly bundle', () => {
     expect(patch).not.toContain('@mayfly-example/')
   })
 
-  it('extends the upstream agent-presets roster with only Mayfly\'s system root', () => {
+  it('mounts the preset registry and declares presets as bundle patch files', () => {
     expect(patch).toContain('- id: subagent-model-selection-settings')
     expect(patch).toContain("name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'")
-    expect(patch).toContain('- id: agent-presets')
-    expect(patch).toContain("name: '@deepseek-ai/dsh-agent-presets'")
+    expect(patch).toContain('- id: agent-preset-registry')
+    expect(patch).toContain("name: '@deepseek-ai/dsh-agent-preset-registry'")
     expect(patch).toContain('default: standard')
-    expect(patch).toContain('includeShippedRoot: true')
-    expect(patch).toContain('includeUserRoot: true')
-    expect(patch).not.toContain('- id: mayfly-agent-presets')
-    expect(patch).toContain("resolve('@ephemeral-ai/mayfly/package.json')")
-    expect(patch.indexOf('- id: subagent-model-selection-settings')).toBeLessThan(patch.indexOf('- id: agent-presets'))
-    expect(patch.indexOf('- id: agent-presets')).toBeLessThan(patch.indexOf('- id: mayfly-core'))
-    expect(patch.indexOf('- id: agent-presets')).toBeLessThan(patch.indexOf('- id: mayfly-app'))
+    expect(patch).not.toContain('includeShippedRoot')
+    expect(patch).not.toContain('includeUserRoot')
+    expect(patch).not.toContain('roots:')
+    expect(patch.indexOf('- id: subagent-model-selection-settings')).toBeLessThan(patch.indexOf('- id: agent-preset-registry'))
+    expect(patch.indexOf('- id: agent-preset-registry')).toBeLessThan(patch.indexOf('- id: mayfly-core'))
+    expect(patch.indexOf('- id: agent-preset-registry')).toBeLessThan(patch.indexOf('- id: mayfly-app'))
 
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
     }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.1.5-rc.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.1.7-alpha.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset']).toBe('0.1.7-alpha.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset-registry']).toBe('0.1.7-alpha.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-presets']).toBeUndefined()
   })
 
   it('keeps the host fallback persona valid for agents without preset model variables', () => {
-    const persona = /^- id: system-prompt\n {2}config:\n {4}persona: >-\n {6}([^\n]+)$/m.exec(patch)?.[1]
-    expect(persona).toBe('You are a coding agent. Your working directory is {{cwd}}.')
-    expect(persona).not.toContain('{{model}}')
+    const prefix = /^- id: system-prompt\n {2}config:\n {4}personaPrefix: ([^\n]+)$/m.exec(patch)?.[1]
+    const suffix = /^ {4}personaSuffix: ([^\n]+)$/m.exec(patch)?.[1]
+    expect(prefix).toBe('You are a coding agent.')
+    expect(suffix).toBe('Your working directory is {{cwd}}.')
+    expect(prefix).not.toContain('{{model}}')
   })
 
   it('inserts the cordis host-runner required by upstream cordis and mayfly-cordis', () => {
@@ -214,13 +218,15 @@ describe('mayfly bundle', () => {
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
     }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.1.5-rc.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.1.7-alpha.2')
   })
 
   it('keeps the host fallback persona valid for agents without preset model variables', () => {
-    const persona = /^- id: system-prompt\n {2}config:\n {4}persona: >-\n {6}([^\n]+)$/m.exec(patch)?.[1]
-    expect(persona).toBe('You are a coding agent. Your working directory is {{cwd}}.')
-    expect(persona).not.toContain('{{model}}')
+    const prefix = /^- id: system-prompt\n {2}config:\n {4}personaPrefix: ([^\n]+)$/m.exec(patch)?.[1]
+    const suffix = /^ {4}personaSuffix: ([^\n]+)$/m.exec(patch)?.[1]
+    expect(prefix).toBe('You are a coding agent.')
+    expect(suffix).toBe('Your working directory is {{cwd}}.')
+    expect(prefix).not.toContain('{{model}}')
   })
 
   it('disables exactly the web-app bundle\'s thin-host agent-plane list, every id addressing a real base row', () => {

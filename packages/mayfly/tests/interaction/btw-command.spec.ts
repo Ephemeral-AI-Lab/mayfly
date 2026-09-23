@@ -165,30 +165,32 @@ describe('mayfly-btw-command', () => {
 
   it('inherits the active model and latest preset while bounding the view label', async () => {
     const test = await boot()
-    const seed = [
-      { type: 'session/start', seq: 7, data: {} },
-      { type: 'agent-preset/selected', seq: 8, data: { agentPreset: 'reviewer' } },
+    const events = [
+      { type: 'session/start', seq: 0, time: 1, data: {} },
+      { type: 'agent-preset/selected', seq: 1, time: 2, data: { agentPreset: 'reviewer' } },
     ]
     Object.assign(test.parent.session, {
-      snapshotEvents: () => seed,
+      snapshotEvents: () => events,
       requestHeader: () => ({ config: { provider: 'provider-x', model: 'model-y', reasoningEffort: 'high' } }),
     })
     const question = `first line\n${'x'.repeat(80)}`
     expect(await test.commands.run('btw', question)).toMatchObject({ kind: 'success' })
     const request = test.create.mock.calls[0]![0] as unknown as {
-      readonly seed: unknown[]
+      readonly seed: { readonly type: string }[]
       readonly inheritedEventCount: number
       readonly meta: { readonly isSeeded: boolean }
       readonly agentOptions: { readonly provider: string, readonly model: string, readonly reasoningEffort: string }
       readonly setup: (ctx: Context) => Promise<void>
     }
+    // buildForkSeed retains the source events and tags the inherited cut.
+    expect(request.seed.slice(0, 2)).toEqual(events)
+    expect(request.seed[2]).toMatchObject({ type: 'session/end-seed' })
     expect(request).toMatchObject({
-      seed,
       inheritedEventCount: 2,
       meta: { isSeeded: true },
       agentOptions: { provider: 'provider-x', model: 'model-y', reasoningEffort: 'high' },
     })
-    expect(test.current.view().auxiliary).toMatchObject({ transcriptAfterSeq: 8 })
+    expect(test.current.view().auxiliary).toMatchObject({ transcriptAfterSeq: 1 })
     const agentCtx = new Context()
     await request.setup(agentCtx)
     expect(test.presetMount).toHaveBeenCalledWith(agentCtx, 'reviewer')

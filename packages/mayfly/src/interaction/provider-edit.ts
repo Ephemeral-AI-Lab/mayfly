@@ -219,12 +219,11 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     if (initial.profile === undefined) { releaseLifetime(); return false }
     openedRef = initial.ref
     const offSettings = ctx.on('settings/document-updated', ns => { if (String(ns) === NAMESPACE) void refresh() })
-    const offValues = ctx.on('settings/updated', ns => { if (String(ns) === NAMESPACE) void refresh() })
     const offCredential = ctx.on('credentials/reference-updated', ref => {
       if (String(ref) === openedRef) { credentialRevision += 1; void refresh() }
     })
     const offLocale = observeInteractionLocale(ctx, () => { void refresh() })
-    cleanup = ctx.effect(() => () => { offSettings(); offValues(); offCredential(); offLocale(); releaseLifetime() })
+    cleanup = ctx.effect(() => () => { offSettings(); offCredential(); offLocale(); releaseLifetime() })
     handle = openUiOverlay(ctx, {
       id, title: t('Configure {route}', { route }), presentation: 'editor', capturing: true,
       scope: { kind: 'app', targetId: `${NAMESPACE}/${route}` }, source: source(initial),

@@ -345,7 +345,7 @@ export const apply = ctx => globalThis.__mayflyDirectE2E.transcriptApply(ctx)
   ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)), list: () => [...agents.values()] } as never)
   ctx.provide('jobs', {
     list: () => [],
-    onJobsChanged: () => () => {},
+    events: { subscribe: () => () => {} },
   } as never)
   ctx.provide('subagents', { listDescendants: async () => [] } as never)
   ctx.provide('sessions', { list: () => [...agents.values()].map(agent => agent.session) } as never)

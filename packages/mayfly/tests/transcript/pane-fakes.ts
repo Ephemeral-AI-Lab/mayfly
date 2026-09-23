@@ -221,9 +221,9 @@ export class FakeProjectionService {
   }
   private reduce(state: ConversationProjectionState, event: import('@deepseek-ai/dsh-session').SessionEvent): ConversationProjectionState {
     if (event.type === 'tool/result') {
-      const message = event.data.message as { readonly content?: unknown } | undefined
-      const block = Array.isArray(message?.content) ? message.content[0] as { readonly toolCallId?: unknown, readonly content?: unknown } | undefined : undefined
-      if (block?.toolCallId === undefined || !Array.isArray(block.content)) return state
+      // The call identity lives on the first-class tool message itself.
+      const message = event.data.message as { readonly toolCallId?: unknown, readonly content?: unknown } | undefined
+      if (message?.toolCallId === undefined || !Array.isArray(message.content)) return state
     }
     const projectedEvent = event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result'
       ? { ...event, surfaceOp: event.surfaceOp ?? 'append' } as import('@deepseek-ai/dsh-session').SessionEvent

@@ -315,10 +315,9 @@ function formatFullEvent(event: SessionEvent): string {
       break
     }
     case 'tool/result': {
-      const block = event.data.message.content[0]
       const resultText = typeof event.data.meta === 'string' && event.data.meta.trim() !== ''
         ? event.data.meta
-        : contentText(block.content)
+        : contentText(event.data.message.content)
       const error = event.data.error
       const errorTail = error === undefined
         ? ''

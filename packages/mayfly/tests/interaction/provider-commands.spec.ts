@@ -84,7 +84,7 @@ describe('provider commands', () => {
     )
     expect(unrelated.reply).toEqual({ kind: 'completed' })
 
-    bench.ctx.emit('settings/updated', 'llm-pi-ai')
+    bench.ctx.emit('settings/document-updated', 'llm-pi-ai' as never, 1)
     bench.ctx.mayflyOverlays.close('mayfly.providers')
     await bench.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', 'custom', 'displayName'], value: 'After close' }])
     await flush()

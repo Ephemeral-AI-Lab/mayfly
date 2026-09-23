@@ -91,7 +91,9 @@ export function auditAgentDocs(root, options = {}) {
       const source = readFileSync(join(skillRoot, skill, 'SKILL.md'), 'utf8')
       if (!new RegExp(`^name: ${skill}$`, 'mu').test(source)) problems.push(`${skill} frontmatter name differs from its directory`)
     }
-    const composition = readFileSync(join(presetRoot, 'agent.cordis.yml'), 'utf8')
+    // The dsh-agent-preset registry folds preset persona and skills into one
+    // patch file; the guidance strings live in its persona rows now.
+    const composition = readFileSync(join(root, 'packages', 'mayfly', 'presets', 'mayfly-cordis.patch.yml'), 'utf8')
     if (/mayfly-plugin-development[^\n]*changing Mayfly code/iu.test(composition)) {
       problems.push('mayfly-cordis routes Mayfly source changes to the external plugin author skill')
     }

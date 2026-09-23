@@ -4,7 +4,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-commands'
-import { JobId, type JobRead, type JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import { JobId, type JobOutputRead, type JobView } from '@deepseek-ai/dsh-jobs'
 import { isDeepStrictEqual } from 'node:util'
 import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
@@ -15,11 +15,11 @@ import { documentPages } from './document-pages.ts'
 export const name = 'mayfly-jobs'
 export const inject = ['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays']
 const PAGE_FORM = { pagePath: [], formId: 'output-page' } as const
-const jobSource = (job: JobSnapshot) => [{ resourceId: `job/${job.id}`, revision: JSON.stringify([job.status, job.reported, job.finishedAt ?? null]) }]
+const jobSource = (job: JobView) => [{ resourceId: `job/${job.id}`, revision: JSON.stringify([job.status, job.finishedAt ?? null]) }]
 
-export function isLiveJob(job: JobSnapshot): boolean { return job.status === 'running' || job.status === 'stopping' }
+export function isLiveJob(job: JobView): boolean { return job.status === 'running' || job.status === 'stopping' }
 
-export function sortJobs(jobs: readonly JobSnapshot[]): readonly JobSnapshot[] {
+export function sortJobs(jobs: readonly JobView[]): readonly JobView[] {
   return [...jobs.filter(isLiveJob).toSorted((a, b) => a.startedAt - b.startedAt), ...jobs.filter(job => !isLiveJob(job)).toSorted((a, b) => (b.finishedAt ?? b.startedAt) - (a.finishedAt ?? a.startedAt))]
 }
 
@@ -32,18 +32,17 @@ export function formatJobDuration(startedAt: number, now: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`
 }
 
-export function jobItems(jobs: readonly JobSnapshot[], now: number, t: MayflyTranslate): readonly MayflyListItem[] {
+export function jobItems(jobs: readonly JobView[], now: number, t: MayflyTranslate): readonly MayflyListItem[] {
   return sortJobs(jobs).map(job => ({ id: String(job.id), label: job.label, badge: t(job.status), detail: `${job.id} · ${formatJobDuration(job.startedAt, job.finishedAt ?? now)}${job.detail === undefined ? '' : ` · ${job.detail}`}` }))
 }
 
-export function jobDetailsNode(job: JobSnapshot, t: MayflyTranslate): MayflyUiNode {
+export function jobDetailsNode(job: JobView, t: MayflyTranslate): MayflyUiNode {
   return ui.surface({ title: t('Job {id}', { id: String(job.id) }), chrome: 'overlay', padding: 1, child: ui.stack.column([
     ui.fields([
       { label: t('Name'), value: [{ text: job.label }] },
       { label: t('Status'), value: [{ text: t(job.status) }] },
       ...job.detail === undefined ? [] : [{ label: t('Detail'), value: [{ text: job.detail }] }],
     ]),
-    ...isLiveJob(job) ? [ui.text(t("Reading a live job consumes the model's output cursor; the model will not see this output again."), { tone: 'warning' })] : [],
     ui.actions({ id: 'job-actions', items: [
       { id: 'read', label: t('Read output') },
       { id: 'stop', label: t('Stop job'), intent: 'danger', disabled: job.status !== 'running', confirm: t('Stop {job}?', { job: job.label }) },
@@ -52,11 +51,12 @@ export function jobDetailsNode(job: JobSnapshot, t: MayflyTranslate): MayflyUiNo
   ]) })
 }
 
-export function jobOutputNode(read: JobRead, pages: readonly string[], page: number, t: MayflyTranslate): MayflyUiNode {
+export function jobOutputNode(job: JobView, read: JobOutputRead, pages: readonly string[], page: number, t: MayflyTranslate): MayflyUiNode {
   const text = pages[page - 1]!
-  return ui.surface({ title: t('Job {id}', { id: String(read.snapshot.id) }), chrome: 'overlay', padding: 1, child: ui.stack.column([
-    ui.fields([{ label: t('Status at read'), value: [{ text: t(read.snapshot.status) }] }]),
-    ui.child(ui.scroll(text === '' ? ui.text(t(isLiveJob(read.snapshot) ? '(no new output yet)' : '(no output)'), { tone: 'muted' }) : ui.code(text), { id: `job-output-document/${String(page)}`, scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
+  return ui.surface({ title: t('Job {id}', { id: String(job.id) }), chrome: 'overlay', padding: 1, child: ui.stack.column([
+    ui.fields([{ label: t('Status at read'), value: [{ text: t(job.status) }] }]),
+    ...read.lossy ? [ui.text(t('(earlier output was dropped by retention)'), { tone: 'muted' })] : [],
+    ui.child(ui.scroll(text === '' ? ui.text(t(isLiveJob(job) ? '(no output yet)' : '(no output)'), { tone: 'muted' }) : ui.code(text), { id: `job-output-document/${String(page)}`, scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
     ...pages.length === 1 ? [] : [
       ui.form({ id: PAGE_FORM.formId, fields: [{ kind: 'number', id: 'page', label: t('Page'), value: page, min: 1, max: pages.length, step: 1, required: true }] }),
       ui.actions({ id: 'page-actions', items: [
@@ -72,11 +72,11 @@ export function jobOutputNode(read: JobRead, pages: readonly string[], page: num
 }
 
 /** A read result is retained in its child Fiber, never reread by rendering or paging. */
-async function showOutput(ctx: Context, agent: Agent, read: JobRead, signal: AbortSignal, t: MayflyTranslate): Promise<void> {
-  const pages = documentPages(read.text)
+async function showOutput(ctx: Context, agent: Agent, job: JobView, read: JobOutputRead, signal: AbortSignal, t: MayflyTranslate): Promise<void> {
+  const pages = documentPages(read.chunks.map(chunk => chunk.text).join(''))
   ctx.mayflyOverlays.close('mayfly.jobs.output')
   let handle: MayflyOverlayHandle | undefined
-  handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.jobs.output', presentation: 'editor', capturing: true }, jobOutputNode(read, pages, 1, t), owner => {
+  handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.jobs.output', presentation: 'editor', capturing: true }, jobOutputNode(job, read, pages, 1, t), owner => {
     owner.effect(() => observeInteractionLocale(owner, () => {
       if (handle?.closed !== false) return
       // Locale updates reuse the published baseline; the shared form retains any draft.
@@ -84,7 +84,7 @@ async function showOutput(ctx: Context, agent: Agent, read: JobRead, signal: Abo
       if (node.kind !== 'surface' || node.child.kind !== 'stack') return
       const form = node.child.children.map(child => child.node).find(node => node.kind === 'form')
       const page = form?.fields.find(field => field.id === 'page')?.value ?? 1
-      handle.set(jobOutputNode(read, pages, Number(page), t))
+      handle.set(jobOutputNode(job, read, pages, Number(page), t))
     }))
     return event => {
       if (event.kind !== 'submit') return { kind: 'completed' }
@@ -92,7 +92,7 @@ async function showOutput(ctx: Context, agent: Agent, read: JobRead, signal: Abo
       if (typeof page !== 'number' || !Number.isInteger(page)) return { kind: 'failed', message: t('Invalid page') }
       const action = event.submission.actionId
       const target = action === 'first' ? 1 : action === 'last' ? pages.length : action === 'previous' ? page - 1 : action === 'next' ? page + 1 : page
-      return { kind: 'accepted', node: jobOutputNode(read, pages, Math.max(1, Math.min(pages.length, target)), t), source: [] }
+      return { kind: 'accepted', node: jobOutputNode(job, read, pages, Math.max(1, Math.min(pages.length, target)), t), source: [] }
     }
   }, { signal, reopen: 'replace' })
 }
@@ -113,15 +113,15 @@ export function apply(ctx: Context): void {
     let detail: { readonly id: JobId, readonly handle: MayflyOverlayHandle, node: MayflyUiNode } | undefined
     let timer: ReturnType<typeof setInterval> | undefined
     const stopTimer = () => { if (timer !== undefined) { clearInterval(timer); timer = undefined } }
-    const readList = () => jobs.list(agent)
-    const view = (rows: readonly JobSnapshot[], available = true) => ui.surface({ title: t('Jobs'), chrome: 'overlay', padding: 1, child: ui.stack.column([
+    const readList = () => jobs.list(agent.id)
+    const view = (rows: readonly JobView[], available = true) => ui.surface({ title: t('Jobs'), chrome: 'overlay', padding: 1, child: ui.stack.column([
       ...available ? [] : [ui.text(t('Job registry unavailable'), { tone: 'danger' })],
       ui.list({ id: 'jobs', role: 'browse', filterable: true, selectedIds: [], items: jobItems(rows, Date.now(), t), empty: ui.empty({ title: t('no background jobs') }) }),
       ui.actions({ id: 'jobs-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
     ]) })
     const refresh = () => {
       if (root?.closed !== false || !current()) { stopTimer(); return }
-      let rows: readonly JobSnapshot[]
+      let rows: readonly JobView[]
       try { rows = readList() } catch { root.set(view([], false)); stopTimer(); return }
       root.set(view(rows))
       if (rows.some(isLiveJob)) { if (timer === undefined) { timer = setInterval(refresh, 1000); timer.unref() } }
@@ -135,27 +135,27 @@ export function apply(ctx: Context): void {
     let initial: MayflyUiNode
     try { initial = view(readList()) } catch { initial = view([], false) }
     root = await openAgentOverlay(ctx, agent, { id: 'mayfly.jobs', presentation: 'editor', capturing: true }, initial, owner => {
-      const off = jobs.onJobsChanged(changed => { if (changed === undefined || changed === agent) refresh() })
+      const off = jobs.events.subscribe({ owner: agent.id }, () => refresh())
       owner.effect(() => () => { off(); stopTimer() })
       owner.effect(() => observeInteractionLocale(owner, refresh))
       return async (event, context) => {
         if (event.kind === 'activate' && event.actionId === 'refresh') { refresh(); return { kind: 'completed' } }
         if (event.kind !== 'selection-accept' || event.controlId !== 'jobs' || context.signal.aborted) return { kind: 'completed' }
         const id = JobId(event.selectedIds[0] ?? '')
-        const job = jobs.get(id, agent)
+        const job = jobs.get(id, agent.id)
         ctx.mayflyOverlays.close('mayfly.jobs.detail')
         const node = jobDetailsNode(job, t)
         const handle = await openAgentOverlay(owner, agent, { id: 'mayfly.jobs.detail', presentation: 'editor', capturing: true, source: jobSource(job) }, node, scope => async (event, context) => {
           if (event.kind !== 'activate' || context.signal.aborted) return { kind: 'completed' }
           if (event.actionId === 'read') {
-            const output = jobs.read(id, agent)
+            const output = jobs.readAt(id, 0, agent.id)
             if (context.signal.aborted || !current()) return { kind: 'cancelled' }
-            await showOutput(scope, agent, output, signal, t)
+            await showOutput(scope, agent, job, output, signal, t)
             return { kind: 'completed' }
           }
           if (event.actionId === 'stop') {
-            if (jobs.get(id, agent).status !== 'running') return { kind: 'completed' }
-            jobs.kill(id, agent, 'stopped from the Mayfly /jobs view')
+            if (jobs.get(id, agent.id).status !== 'running') return { kind: 'completed' }
+            jobs.kill(id, agent.id, 'stopped from the Mayfly /jobs view')
             refresh()
             return { kind: 'completed' }
           }

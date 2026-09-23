@@ -62,12 +62,12 @@ function attemptEvent(turn: number, step: number, kind: 'reasoning' | 'text', te
   })
 }
 
-/** Mayfly's durable retraction marker: an empty plugin-attributed system replacement. */
-function retractionMarker(turn: number, step: number): SessionEvent<'system/message'> {
-  return event('system/message', {
+/** Mayfly's durable retraction marker: an empty mayfly-attributed developer replacement. */
+function retractionMarker(turn: number, step: number): SessionEvent<'developer/message'> {
+  return event('developer/message', {
     turn,
     step,
-    message: { id: MessageId(`retraction-${String(nextSeq)}`), role: 'system', content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+    message: { id: MessageId(`retraction-${String(nextSeq)}`), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
   }, { replace: true })
 }
 
@@ -92,8 +92,10 @@ function assistantMessage(content: readonly ContentBlock[]): AssistantMessage {
 function toolResultMessage(callId: string, content: readonly ContentBlock[], isError = false): ToolResultMessage {
   return {
     id: MessageId(`result-${String(nextSeq)}`),
-    role: 'user',
-    content: [{ type: 'tool-result', toolCallId: ToolCallId(callId), content: [...content], isError }],
+    role: 'tool',
+    content: [...content],
+    toolCallId: ToolCallId(callId),
+    isError,
     source: { kind: 'tool', callId: ToolCallId(callId) },
   }
 }
@@ -179,7 +181,7 @@ describe('mayflyConversation projection', () => {
       }]), { append: true }),
       event('user/message', userMessage(''), { append: true }),
       event('user/message', userMessage('replacement'), { replace: true }),
-      event('user/message', userMessage('plugin', [], { kind: 'plugin', plugin: 'spec' } as UserMessage['source']), { append: true }),
+      event('user/message', userMessage('injected', [], { kind: 'system-prompt' }), { append: true }),
       event('assistant/message', { turn: 1, step: 0, message: assistantMessage([{ type: 'text', text: 'hidden' }]) }, { replace: true }),
       event('assistant/message', { turn: 1, step: 0, message: assistantMessage([{ type: 'image', attachment: image.attachment }]) }, { append: true }),
     ])
@@ -305,9 +307,9 @@ describe('mayflyConversation projection', () => {
       turn: 6, reason: { kind: 'interrupted' },
     }))
     expect(state).toBe(retracted)
-    expect(isTurnRetraction(event('system/message', {
+    expect(isTurnRetraction(event('developer/message', {
       turn: 7, step: 0,
-      message: { id: MessageId('appended'), role: 'system', content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+      message: { id: MessageId('appended'), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
     }, { append: true }))).toBe(false)
     expect(foldConversationProjection(state, marker)).toBe(state)
   })
@@ -318,15 +320,15 @@ describe('mayflyConversation projection', () => {
     expect(isTurnRetraction(event('assistant/message', {
       turn: 1, step: 0, message: assistantMessage([]),
     }, { replace: true }))).toBe(false)
-    // A system replacement with content is a prompt rewrite, not a retraction.
-    expect(isTurnRetraction(event('system/message', {
+    // A developer replacement with content is an incremental change, not a retraction.
+    expect(isTurnRetraction(event('developer/message', {
       turn: 1, step: 0,
-      message: { id: MessageId('sys-kept'), role: 'system', content: [{ type: 'text', text: 'kept' }], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+      message: { id: MessageId('sys-kept'), role: 'developer', content: [{ type: 'text', text: 'kept' }], source: { kind: 'mayfly-retraction' } },
     }, { replace: true }))).toBe(false)
-    // Without the replacement op the marker is an ordinary empty system message.
-    expect(isTurnRetraction(event('system/message', {
+    // Without the replacement op the marker is an ordinary empty developer message.
+    expect(isTurnRetraction(event('developer/message', {
       turn: 1, step: 0,
-      message: { id: MessageId('sys-plain'), role: 'system', content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+      message: { id: MessageId('sys-plain'), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
     }))).toBe(false)
 
     const active = fold([
@@ -504,14 +506,12 @@ describe('mayflyConversation projection', () => {
     state = foldConversationProjection(state, event('tool/result', {
       turn: 9,
       step: 1,
-      message: toolResultMessage('nested', [{
-        type: 'tool-result',
-        toolCallId: ToolCallId('inner'),
-        content: [{ type: 'text', text: 'nested text' }],
-        isError: false,
-      }]),
+      message: toolResultMessage('nested', [
+        { type: 'image', attachment: { attachmentId: 'img-nested' as never, mediaType: 'image/png', bytes: 1, width: 1, height: 1 } },
+        { type: 'text', text: 'nested text' },
+      ]),
     }, { append: true }))
-    expect(state.entries.at(-1)).toMatchObject({ kind: 'tool', result: { text: 'nested text' } })
+    expect(state.entries.at(-1)).toMatchObject({ kind: 'tool', result: { text: '[image]\nnested text' } })
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
 
     const crossed: ConversationProjectionState = {
@@ -573,8 +573,8 @@ describe('mayflyConversation projection', () => {
       streamingStep: '4:0', streamingThinkingId: 'missing-thinking', streamingAssistantId: 'missing-assistant',
       entries: [{ kind: 'thinking', id: 'missing-thinking', seq: 1, updatedSeq: 1, turn: 4, step: 0, text: 'x', streaming: true }],
     }
-    const retraction = event('system/message', {
-      turn: 4, message: { content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+    const retraction = event('developer/message', {
+      turn: 4, step: 0, message: { id: MessageId('retraction-4'), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
     }, { replace: true })
     const next = foldConversationProjection(state, retraction)
     expect(next.streamingThinkingId).toBeNull()

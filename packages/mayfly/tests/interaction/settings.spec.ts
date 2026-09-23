@@ -1,6 +1,6 @@
 /**
  * Tests for the `mayfly-settings` plugin: the schema defaults, the single
- * `mayfly` namespace registration, the shared thunk reflecting user
+ * `mayfly` namespace descriptor, the shared source reflecting user
  * overrides, and the persisted-theme applier (the session-attach-gated
  * initial apply, the immediate path when a session is already attached,
  * commit-follow, pre-attach commit silence, failure restore, and the
@@ -15,9 +15,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 // Empty type import carries the `settings` Context merge and the
-// 'settings/updated' Events merge the emit below uses.
+// 'settings/document-updated' Events merge the emits below use.
 import type {} from '@deepseek-ai/dsh-settings'
-import SettingsProvider, { type SettingsNamespace } from '@deepseek-ai/dsh-settings'
+import { type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 // Empty type import carries the app-owned `mayflySession` Context merge and
 // the 'test/session-changed' Events merge the attach helper emits.
 import type {} from '../../src/app/index.ts'
@@ -27,6 +27,14 @@ import * as themePaper from '../../src/core/theme-paper.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { applyTheme } from '../../src/interaction/theme-switch.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
+import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Test-side current-Agent switch broadcast for the subscribe fake. */
+    'test/session-changed'(agent: Agent | null): void
+  }
+}
 
 /**
  * The theme applier's failure branch needs a swap that actually fails; a
@@ -48,23 +56,14 @@ vi.mock('../../src/interaction/theme-switch.ts', async (importOriginal) => {
   }
 })
 
-/** A settings provider with the stored document as its constructor config. */
-class MemorySettings extends SettingsProvider {
-  readonly writable = true
-  private readonly doc: Record<string, unknown>
+/** The volatile-cell Config output read back as a plain value. */
+function resolveConfig(raw: Record<string, unknown> = {}): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(settingsPlugin.Config(raw) as Record<string, { get(): unknown }>).map(([key, cell]) => [key, cell.get()]))
+}
 
-  constructor(ctx: Context, doc?: Record<string, unknown>) {
-    super(ctx)
-    this.doc = doc ?? {}
-  }
-
-  protected async load(): Promise<Record<string, unknown>> {
-    return this.doc
-  }
-
-  protected async persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-    this.doc[String(ns)] = section
-  }
+/** Seed the `mayfly` namespace the way the Loader row does in a real host. */
+function registerMayfly(settings: MemorySettings): void {
+  settings.register('mayfly', settingsPlugin.Config)
 }
 
 /** Create one isolated frontend tree with interaction runtime state. */
@@ -94,7 +93,7 @@ function provideSessionReader(ctx: Context, session: { current: Agent | null }):
 /** Mount the provider, a null-current `mayflySession` ref, and the settings plugin. */
 async function mount(doc: Record<string, unknown> = {}): Promise<{
   ctx: Context
-  settings: SettingsProvider
+  settings: MemorySettings
   attach: () => void
   ready: unknown[]
 }> {
@@ -102,6 +101,7 @@ async function mount(doc: Record<string, unknown> = {}): Promise<{
   const ready: unknown[] = []
   ctx.on('mayfly/settings-source-ready', value => ready.push(value))
   await ctx.plugin(MemorySettings, doc)
+  registerMayfly(ctx.settings as unknown as MemorySettings)
   // The real app updates `mayflySession.current` before broadcasting the
   // switch event; the fake mirrors that contract by staying mutable.
   const session = { current: null as Agent | null }
@@ -111,7 +111,7 @@ async function mount(doc: Record<string, unknown> = {}): Promise<{
   await settle()
   return {
     ctx,
-    settings: ctx.get('settings')!,
+    settings: ctx.get('settings') as unknown as MemorySettings,
     ready,
     attach: () => {
       const agent = { id: 'settings-spec' } as unknown as Agent
@@ -130,7 +130,7 @@ describe('mayfly-settings schema and registration', () => {
   it('resolves every schema default and starts on the composition defaults', () => {
     const ctx = createContext()
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual(settingsPlugin.DEFAULT_SETTINGS)
-    expect(settingsPlugin.Config({})).toEqual(settingsPlugin.DEFAULT_SETTINGS)
+    expect(resolveConfig()).toEqual(settingsPlugin.DEFAULT_SETTINGS)
     expect(settingsPlugin.DEFAULT_SETTINGS).toEqual({
       updateCheck: true,
       updateChannel: 'latest',
@@ -155,12 +155,21 @@ describe('mayfly-settings schema and registration', () => {
       web: 'inherit',
       other: 'inherit',
     })
-    expect(settingsPlugin.Config({ transcript: { command: 'full', read: 'collapsed' } }).transcript)
+    expect(resolveConfig({ transcript: { command: 'full', read: 'collapsed' } }).transcript)
       .toEqual({ ...settingsPlugin.DEFAULT_TRANSCRIPT_SETTINGS, command: 'full', read: 'collapsed' })
     expect(settingsPlugin.name).toBe('mayfly-settings')
   })
 
-  it('registers the mayfly namespace exactly once and reflects user overrides', async () => {
+  it('reads only declared fields out of a partially populated plugin config', async () => {
+    const ctx = createContext()
+    const session = { current: null as Agent | null }
+    provideSessionReader(ctx, session)
+    await ctx.plugin({ name: settingsPlugin.name, inject: settingsPlugin.inject, apply: settingsPlugin.apply }, { theme: 'ocean' })
+    expect(settingsPlugin.currentMayflySettings(ctx)).toEqual({ ...settingsPlugin.DEFAULT_SETTINGS, theme: 'ocean' })
+    await ctx.fiber.dispose()
+  })
+
+  it('describes the mayfly namespace exactly once and reflects user overrides', async () => {
     const { ctx, settings, ready } = await mount({ mayfly: {
       updateCheck: false,
       updateChannel: 'beta',
@@ -169,8 +178,8 @@ describe('mayfly-settings schema and registration', () => {
     const mayfly = settings.describe().filter(descriptor => String(descriptor.ns) === 'mayfly')
     expect(mayfly).toHaveLength(1)
     // The namespace is taken: a second registration fails loud upstream.
-    expect(() => settings.register('mayfly', settingsPlugin.Config)).toThrow(/already registered/u)
-    // The thunk resolves schema defaults layered with the user document.
+    expect(() => registerMayfly(settings)).toThrow(/already registered/u)
+    // The source resolves schema defaults layered with the user document.
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual({
       updateCheck: false,
       updateChannel: 'beta',
@@ -188,7 +197,7 @@ describe('mayfly-settings schema and registration', () => {
     expect(ready.at(-1)).toMatchObject({ editorCommand: 'my-editor --wait' })
 
     const updated: string[] = []
-    ctx.on('settings/updated', ns => updated.push(String(ns)))
+    ctx.on('settings/document-updated', ns => updated.push(String(ns)))
     await settings.update('mayfly', { editorCommand: 'still-editor' })
     expect(settingsPlugin.currentMayflySettings(ctx).editorCommand).toBe('still-editor')
     expect(updated).toContain('mayfly')
@@ -231,7 +240,7 @@ describe('mayfly-settings theme applier', () => {
     expect(themeMock.calls).toEqual(['ocean'])
 
     // A foreign-namespace commit is filtered out entirely.
-    ctx.emit('settings/updated', 'shell' as SettingsNamespace, {}, {}, 'update')
+    ctx.emit('settings/document-updated', 'shell' as SettingsNamespace, 1)
     await settle()
     expect(themeMock.calls).toEqual(['ocean'])
 
@@ -251,7 +260,7 @@ describe('mayfly-settings theme applier', () => {
   it('reads the current value at attach: a pre-attach commit needs no follow', async () => {
     themeMock.calls.length = 0
     const { ctx, settings, attach } = await mount({ mayfly: { theme: 'ocean' } })
-    // The settings/updated handler is gated on the attach: this commit
+    // The document-updated handler is gated on the attach: this commit
     // moves the persisted theme without any swap.
     await settings.update('mayfly', { theme: 'paper' })
     await settle()
@@ -273,6 +282,7 @@ describe('mayfly-settings theme applier', () => {
     themeMock.calls.length = 0
     const ctx = createContext()
     await ctx.plugin(MemorySettings, { mayfly: { theme: 'ocean' } })
+    registerMayfly(ctx.settings as unknown as MemorySettings)
     const session = { current: { id: 'settings-spec' } as unknown as Agent }
     ctx.provide('testSession', session)
     provideSessionReader(ctx, session)
@@ -282,7 +292,7 @@ describe('mayfly-settings theme applier', () => {
     })
     expect(themeMock.calls).toEqual(['ocean'])
     // Back to the baseline: later cases start from dark.
-    await ctx.get('settings')!.update('mayfly', { theme: 'dark' })
+    await (ctx.get('settings') as unknown as MemorySettings).update('mayfly', { theme: 'dark' })
     await vi.waitFor(() => {
       expect(ctx.get('mayflyTheme')?.colors).toBe(themeDark.DARK_COLORS)
     })
@@ -294,12 +304,13 @@ describe('mayfly-settings theme applier', () => {
       const ctx = createContext()
       const warn = vi.spyOn(ctx.logger, 'warn')
       await ctx.plugin(MemorySettings, { mayfly: { theme: 'ocean' } })
+      registerMayfly(ctx.settings as unknown as MemorySettings)
       const session = { current: null as Agent | null }
       ctx.provide('testSession', session)
       provideSessionReader(ctx, session)
       await ctx.plugin(settingsPlugin)
-      // Let the settings inject resolve before the attach: the prime reads
-      // the resolved scope.
+      // Let the plugin settle before the attach: the prime reads the
+      // resolved source.
       await settle()
       const agent = { id: 'settings-spec' } as unknown as Agent
       session.current = agent
@@ -317,6 +328,7 @@ describe('mayfly-settings theme applier', () => {
   it('never attaches once the fiber unloaded before the first session', async () => {
     const ctx = createContext()
     await ctx.plugin(MemorySettings, { mayfly: { theme: 'ocean' } })
+    registerMayfly(ctx.settings as unknown as MemorySettings)
     const session = { current: null as Agent | null }
     ctx.provide('testSession', session)
     provideSessionReader(ctx, session)

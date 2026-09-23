@@ -200,7 +200,7 @@ export interface ReleaseFacts {
   /** The single package managed by the updater. */
   readonly names: readonly string[]
   /**
-   * The exact pinned harness line (`@deepseek-ai/dsh-agent-presets`); a
+   * The exact pinned harness line (`@deepseek-ai/dsh-agent-preset-registry`); a
    * range spec carries no pin and reads as absent.
    */
   readonly harnessLine: string | undefined
@@ -222,7 +222,7 @@ export async function releaseFacts(packument: Packument, version: string): Promi
   if (deps === undefined) {
     deps = await viewDependencies(version)
   }
-  const spec = deps?.['@deepseek-ai/dsh-agent-presets']
+  const spec = deps?.['@deepseek-ai/dsh-agent-preset-registry']
   return {
     names: [MAYFLY_PACKAGE],
     harnessLine: spec === undefined ? undefined : /^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(spec)?.[1],

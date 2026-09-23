@@ -47,11 +47,13 @@ export async function providerFixture(ctx: Context, profiles: Record<string, unk
   await ctx.plugin(MemoryCredentials)
   await ctx.plugin(ProviderCommands)
   const namespace = options?.registerNamespace === false ? undefined : await ctx.plugin({ name: 'native-profile', inject: ['settings'], apply(owner: Context) {
-    owner.settings.register('llm-pi-ai', z.object({ providers: z.dict(z.any()).default({}) }))
+    // The test double keeps the Loader-shaped registration seam the real
+    // settings service no longer exposes on its public type.
+    ;(owner.settings as unknown as MemorySettings).register('llm-pi-ai', z.object({ providers: z.dict(z.any()).default({}).volatile() }), { owner })
   } })
   if (Object.keys(profiles).length > 0) await ctx.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers'], value: profiles }])
   if (llm !== undefined) ctx.provide('llm', llm as never)
   await ctx.plugin(uiProvider)
   const front = await ctx.plugin(frontend)
-  return { ctx, front, namespace, settings: ctx.settings as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands }
+  return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands }
 }

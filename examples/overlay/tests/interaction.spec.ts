@@ -33,8 +33,12 @@ async function setup(open = true) {
   await ctx.plugin(frontend)
   const consumer = await ctx.plugin(overlay)
   const commands = ctx.commands as unknown as Commands
+  const settings = ctx.settings as unknown as MemorySettings
+  // The Loader row id is the namespace in a real host; the double's
+  // fiber-scoped registration stands in for it.
+  settings.register(overlay.SETTINGS_NAMESPACE, overlay.Config, { owner: consumer.ctx })
   if (open) commands.open!()
-  return { ctx, consumer, commands, settings: ctx.settings as MemorySettings, model: () => ctx.mayflyUiInteraction.get('overlay', overlay.overlayRequest.id) }
+  return { ctx, consumer, commands, settings, model: () => ctx.mayflyUiInteraction.get('overlay', overlay.overlayRequest.id) }
 }
 
 const requestContext = (entry: MayflyOverlayEntry, signal = new AbortController().signal) => ({
@@ -120,8 +124,7 @@ describe('external settings overlay', () => {
   it('refreshes only its namespace before, during, and after an active overlay', async () => {
     const bench = await setup(false)
     await bench.settings.mutate(overlay.SETTINGS_NAMESPACE, [{ op: 'set', path: ['connection', 'name'], value: 'Before open' }])
-    bench.ctx.emit('settings/updated', 'other' as never)
-    bench.ctx.emit('settings/document-updated', 'other' as never)
+    bench.ctx.emit('settings/document-updated', 'other' as never, 1)
     expect(bench.model()).toBeUndefined()
     bench.commands.open!()
     const initial = bench.ctx.mayflyOverlays.list()[0]!

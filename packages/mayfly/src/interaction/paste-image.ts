@@ -42,7 +42,7 @@ import type {
 } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 // Empty type import carries the `settings` Context merge and the
-// 'settings/updated' Events merge the backend override subscribes to.
+// 'settings/document-updated' Events merge the backend override subscribes to.
 import type {} from '@deepseek-ai/dsh-settings'
 import {
   getSharedEditor,
@@ -615,7 +615,7 @@ export function apply(ctx: Context, config: Config): void {
     ctx.mayflyInteractionState.pasteImage.backendOverride = raw === 'auto' || raw === 'wayland' || raw === 'x11' ? raw : undefined
   }
   syncBackendOverride()
-  ctx.on('settings/updated', (ns) => {
+  ctx.on('settings/document-updated', (ns) => {
     if (String(ns) === 'mayfly') syncBackendOverride()
   })
   ctx.effect(() => () => {

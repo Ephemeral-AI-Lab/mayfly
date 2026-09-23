@@ -8,9 +8,10 @@
  * queued-message pane with app-owned live refresh as the
  * `./pane-queue` subpath plugin (`mayfly-pane-queue`). The session-title
  * terminal mirror (`mayfly-terminal-title`, the OSC 0 window title over the
- * upstream session-title fold), the consolidated `mayfly` settings namespace
- * (`mayfly-settings`), and the
- * boot-time update check (`mayfly-update-check`). All
+ * upstream session-title fold), and the boot-time update check
+ * (`mayfly-update-check`). The consolidated `mayfly` settings namespace is its
+ * own patch row (`mayfly-settings`), mounted by the Loader so
+ * `settings.describe()` sees it. All
  * registrations are effect-bound, so unloading the fiber reverts every
  * contribution.
  *
@@ -23,7 +24,6 @@ import * as commandsPlugin from './commands-plugin.ts'
 import * as inputPlugin from './input-plugin.ts'
 import * as keysPlugin from './keys.ts'
 import * as sessionTranscriptPanelPlugin from './session-transcript-panel.ts'
-import * as settingsPlugin from './settings.ts'
 import * as terminalTitlePlugin from './terminal-title.ts'
 import * as updateCheckPlugin from './updater/check.ts'
 import { PromptEditorController } from './editor-instance.ts'
@@ -56,6 +56,5 @@ export function apply(ctx: Context): void {
   ctx.plugin(inputPlugin)
   ctx.plugin(sessionTranscriptPanelPlugin)
   ctx.plugin(terminalTitlePlugin)
-  ctx.plugin(settingsPlugin)
   ctx.plugin(updateCheckPlugin)
 }
