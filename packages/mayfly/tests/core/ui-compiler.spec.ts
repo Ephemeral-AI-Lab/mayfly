@@ -1424,6 +1424,8 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(choiceSegment(choice, 'a')).toBe('low')
     focus.handleInput?.('\x1b[B')
     expect(focus.render(80).join('\n')).not.toContain('‹')
+    focus.handleInput?.('\x1b[C')
+    focus.handleInput?.('\x1b[D')
     focus.handleInput?.('\x1b[A')
     focus.handleInput?.('\r')
     await vi.waitFor(() => expect(events).toHaveLength(1))
@@ -1443,6 +1445,9 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const f = fixture()
     const result = compiledSurface(list, f.options)
     result.focusTarget!.focused = true
+    expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
+    result.focusTarget!.handleInput?.('\x1b[C')
+    result.focusTarget!.handleInput?.('\x1b[D')
     expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
     expect(focusedHint(list)).toContain('←/→ segment')
     result.surfaceRuntime.dispose()

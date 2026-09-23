@@ -38,42 +38,43 @@ async function setup() {
   return { ...bench, agent, other, app, llm, select, save }
 }
 
+const two = JSON.stringify(['p', 'two'])
+
 describe('native model selection UI', () => {
   it('chooses a model and effort through shared controls without persisting a session-only selection', async () => {
     const bench = await setup()
     await openModelPicker(bench.ctx, new AbortController().signal)
     const picker = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
-    picker.emit({ kind: 'selection-accept', pagePath: [], controlId: 'models', selectedIds: [JSON.stringify(['p', 'two'])] })
-    await flush()
-    const options = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.model.options')!
-    options.edit({ pagePath: [], formId: 'model-options', fieldId: 'effort' }, 'high')
+    picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'focus', id: two })
+    picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: two, direction: 1 })
+    picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: two, direction: 1 })
     expect(bench.select).not.toHaveBeenCalled()
-    options.invoke('session')
-    options.invoke('session')
+    picker.invoke('session')
+    picker.invoke('session')
     await flush()
     expect(bench.select).toHaveBeenCalledOnce()
     expect(bench.select).toHaveBeenCalledWith({ sessionId: bench.agent.id, provider: 'p', model: 'two', reasoningEffort: 'high' })
     expect(bench.save).not.toHaveBeenCalled()
-    expect(options.disposed).toBe(true)
+    expect(picker.disposed).toBe(true)
   })
 
   it('reports default persistence failure and retries it without repeating the session write', async () => {
     const bench = await setup()
     bench.save.mockRejectedValueOnce(new Error('disk unavailable'))
     await openModelPicker(bench.ctx, new AbortController().signal)
-    bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!.emit({ kind: 'selection-accept', pagePath: [], controlId: 'models', selectedIds: [JSON.stringify(['p', 'two'])] })
+    const picker = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
+    picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'focus', id: two })
+    picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: two, direction: 1 })
+    picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: two, direction: 1 })
+    picker.invoke('default')
     await flush()
-    const options = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.model.options')!
-    options.edit({ pagePath: [], formId: 'model-options', fieldId: 'effort' }, 'high')
-    options.invoke('default')
-    await flush()
-    expect(options.disposed).toBe(false)
-    expect(options.feedbackSnapshot().at(-1)?.severity).toBe('error')
-    options.invoke('default')
+    expect(picker.disposed).toBe(false)
+    expect(picker.feedbackSnapshot().at(-1)?.severity).toBe('error')
+    picker.invoke('default')
     await flush()
     expect(bench.select).toHaveBeenCalledOnce()
     expect(bench.save).toHaveBeenCalledTimes(2)
-    expect(options.disposed).toBe(true)
+    expect(picker.disposed).toBe(true)
   })
 
   it('retires registrations when selection changes and cannot use their old callbacks', async () => {
@@ -83,10 +84,9 @@ describe('native model selection UI', () => {
     bench.ctx.mayflyCurrentAgent.select(bench.other)
     await flush()
     expect(picker.disposed).toBe(true)
-    picker.emit({ kind: 'selection-accept', pagePath: [], controlId: 'models', selectedIds: [JSON.stringify(['p', 'two'])] })
+    picker.invoke('default')
     await flush()
     expect(bench.select).not.toHaveBeenCalled()
-    expect(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.model.options')).toBeUndefined()
   })
 
   it('does not revive an Agent-dependent picker after its app service is reloaded', async () => {

@@ -80,6 +80,7 @@ const SEQUENCE_BY_KEY_ID: Record<string, string> = {
   'ctrl+g': '\x07',
   'ctrl+v': '\x16',
   'alt+m': '\x1bm',
+  'alt+enter': '\x1b\r',
   'shift+tab': '\x1b[Z',
 }
 
@@ -100,6 +101,7 @@ export const KEY = {
   ctrlS: '\x13',
   ctrlG: '\x07',
   ctrlV: '\x16',
+  altEnter: '\x1b\r',
 } as const
 
 /**
