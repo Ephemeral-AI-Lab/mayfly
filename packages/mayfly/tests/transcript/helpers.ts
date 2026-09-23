@@ -106,8 +106,10 @@ function assistantMessage(content: ContentBlock[]): AssistantMessage {
 function toolResultMessage(callId: string, text: string, isError = false): ToolResultMessage {
   return {
     id: MessageId(`m-${seq}`),
-    role: 'user',
-    content: [{ type: 'tool-result', toolCallId: ToolCallId(callId), content: [{ type: 'text', text }], isError }],
+    role: 'tool',
+    content: [{ type: 'text', text }],
+    toolCallId: ToolCallId(callId),
+    isError,
     source: { kind: 'tool', callId: ToolCallId(callId) },
   }
 }
@@ -185,12 +187,12 @@ export function assistantEvent(turn: number, step: number, content: ContentBlock
 }
 
 /** Mayfly's durable empty surface replacement for one retracted turn. */
-export function retractionEvent(turn: number, step: number, start: number, end: number): SessionEvent<'system/message'> {
+export function retractionEvent(turn: number, step: number, start: number, end: number): SessionEvent<'developer/message'> {
   return {
-    ...event('system/message', {
+    ...event('developer/message', {
       turn,
       step,
-      message: { id: MessageId(`m-${seq}`), role: 'system', content: [], source: { kind: 'plugin', plugin: 'mayfly-retraction' } },
+      message: { id: MessageId(`m-${seq}`), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
     }),
     surfaceOp: { op: 'replace', startSeq: start, endSeq: end },
     sourceEventSeqs: [start, end].filter((seq, index, values) => values.indexOf(seq) === index),

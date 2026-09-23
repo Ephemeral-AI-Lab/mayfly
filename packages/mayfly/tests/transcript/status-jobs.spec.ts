@@ -3,35 +3,43 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { JobId, type JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import { JobId, type JobEvent, type JobEventFilter, type JobEventListener, type JobView } from '@deepseek-ai/dsh-jobs'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import * as jobs from '../../src/transcript/status-jobs.ts'
 import { bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
 
-function job(id: string, status: JobSnapshot['status']): JobSnapshot {
-  return { id: JobId(id), kind: 'bash', label: id, status, startedAt: 1, reported: false }
+function job(id: string, status: JobView['status'], owner?: SessionId): JobView {
+  return { id: JobId(id), kind: 'bash', label: id, status, startedAt: 1, output: { total: 0, earliest: 0 }, ...owner === undefined ? {} : { owner } }
 }
 
-function fakeJobs(initial: readonly JobSnapshot[] = []) {
+function fakeJobs(initial: readonly JobView[] = []) {
   let rows = [...initial]
   let throwOnList: unknown
-  const listeners = new Set<(owner: Agent | undefined) => void>()
+  const listeners = new Set<JobEventListener>()
   const service = {
     list: vi.fn(() => {
       if (throwOnList !== undefined) throw throwOnList
       return [...rows]
     }),
-    onJobsChanged(listener: (owner: Agent | undefined) => void) {
-      listeners.add(listener)
-      return () => { listeners.delete(listener) }
+    events: {
+      subscribe(_filter: JobEventFilter, listener: JobEventListener) {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
     },
   }
   return {
     service,
     listenerCount: () => listeners.size,
-    publish(next: readonly JobSnapshot[], owner?: Agent) {
+    publish(next: readonly JobView[], owner?: SessionId) {
       rows = [...next]
-      for (const listener of listeners) listener(owner)
+      const event: JobEvent = { type: 'registered', job: job('changed', 'running', owner) }
+      for (const listener of listeners) listener(event)
+    },
+    output(owner?: SessionId) {
+      const event: JobEvent = { type: 'output', id: JobId('changed'), total: 1, ...owner === undefined ? {} : { owner } }
+      for (const listener of listeners) listener(event)
     },
     fail(error: unknown) { throwOnList = error },
   }
@@ -66,9 +74,9 @@ describe('mayfly-status-jobs', () => {
       },
     })
     expect(harness.entry.id).toBe('')
-    registry.publish([job('a', 'running')], foreign)
+    registry.publish([job('a', 'running')], foreign.id)
     expect(harness.entry.id).toBe('')
-    registry.publish([job('a', 'running')], current as unknown as Agent)
+    registry.publish([job('a', 'running')], current.id)
     expect(harness.entry.id).toBe('mayfly.status.jobs')
     expect(harness.entry.priority).toBe(3)
     expect(harness.entry.render(80)).toBe('[Ac]⏵ 1 jobs[/Ac]')
@@ -81,6 +89,33 @@ describe('mayfly-status-jobs', () => {
     expect(harness.entry.id).toBe('')
     await harness.dispose()
     expect(registry.listenerCount()).toBe(0)
+  })
+
+  it('refreshes on owned and unowned output events but ignores foreign owners', async () => {
+    const current = fakeAgent([])
+    const foreign = fakeAgent([]) as unknown as Agent
+    const registry = fakeJobs()
+    const harness = await bootStatusPlugin(jobs, current, {
+      services: {
+        jobs: registry.service,
+        mayflyCurrentAgent: {
+          current: () => current as unknown as Agent,
+          subscribe(listener: (agent: Agent | null, revision: number) => void) {
+            listener(current as unknown as Agent, 0)
+            return () => {}
+          },
+        },
+      },
+    })
+    const listed = () => registry.service.list.mock.calls.length
+    const baseline = listed()
+    registry.output(foreign.id)
+    expect(listed()).toBe(baseline)
+    registry.output(current.id)
+    expect(listed()).toBe(baseline + 1)
+    registry.output()
+    expect(listed()).toBe(baseline + 2)
+    await harness.dispose()
   })
 
   it('contains list failures and treats a missing current Agent as empty', async () => {

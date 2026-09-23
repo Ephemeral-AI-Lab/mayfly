@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempTracked, registerTempDirCleanup } from '../../mayfly/tests/core/temp-dir.ts'
 import { cliInternals, type SpawnOutcome } from '../src/internals.ts'
 import { main, shellVersion } from '../src/main.ts'
+import { HARNESS_LINE } from '../src/runtime.ts'
 
 registerTempDirCleanup()
 
@@ -48,17 +49,17 @@ const OK: SpawnOutcome = { code: 0, signal: null, stdout: '', stderr: '', timedO
 function fixtureLauncher(): { calls: { once: Call[], inherit: Call[] }, root: string, hostBin: string } {
   const home = mkdtempTracked('mayfly-cli-main-home-')
   const root = join(home, 'profiles', 'mayfly')
-  const runtime = join(home, 'cache', 'mayfly-cli-runtime', `${PIN}-0.1.5-rc.2-${process.platform}-${process.arch}`, 'node_modules')
+  const runtime = join(home, 'cache', 'mayfly-cli-runtime', `${PIN}-${HARNESS_LINE}-${process.platform}-${process.arch}`, 'node_modules')
   const host = join(runtime, '@deepseek-ai', 'dsh')
   const hostBin = join(host, 'lib', 'bin.js')
   mkdirSync(root, { recursive: true })
   mkdirSync(join(host, 'lib'), { recursive: true })
   writeFileSync(hostBin, '/* fixture */')
   writeFileSync(join(runtime, '.mayfly-runtime.json'), JSON.stringify({
-    platform: process.platform, arch: process.arch, harness: '0.1.5-rc.2',
+    platform: process.platform, arch: process.arch, harness: HARNESS_LINE,
     files: [{ path: 'node_modules/@deepseek-ai/dsh/lib/bin.js', size: 13 }],
   }))
-  writeFileSync(join(host, 'package.json'), JSON.stringify({ version: '0.1.5-rc.2', bin: { dsh: 'lib/bin.js' } }))
+  writeFileSync(join(host, 'package.json'), JSON.stringify({ version: HARNESS_LINE, bin: { dsh: 'lib/bin.js' } }))
   cliInternals.env = { DSH_HOME: home }
   captures.out = []
   captures.err = []
@@ -81,7 +82,7 @@ describe('main', () => {
   it('answers -V with the shell, Mayfly pin, and harness line in one line', async () => {
     fixtureLauncher()
     await main(['-V'])
-    expect(captures.out).toEqual([`mayfly ${PIN} (Mayfly @ephemeral-ai/mayfly@${PIN} · harness @deepseek-ai/dsh@0.1.5-rc.2)\n`])
+    expect(captures.out).toEqual([`mayfly ${PIN} (Mayfly @ephemeral-ai/mayfly@${PIN} · harness @deepseek-ai/dsh@${HARNESS_LINE})\n`])
     expect(captures.exits).toEqual([])
   })
 

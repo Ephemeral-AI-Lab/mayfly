@@ -18,8 +18,13 @@ import { createRequire } from 'node:module'
 
 const [bundleDir, profileDir, dshBin] = process.argv.slice(2)
 
-const patch = readFileSync(join(bundleDir, 'cordis.patch.yml'), 'utf8')
 const manifest = JSON.parse(readFileSync(join(bundleDir, 'package.json'), 'utf8'))
+// `dsh.bundle.patch` is a file path or a list of file paths, applied in order.
+const declared = manifest.dsh?.bundle?.patch ?? './cordis.patch.yml'
+const patchFiles = typeof declared === 'string' ? [declared] : declared
+const patch = patchFiles
+  .map(file => readFileSync(join(bundleDir, file), 'utf8'))
+  .join('\n')
 const versions = {
   ...manifest.dependencies,
   ...manifest.peerDependencies,

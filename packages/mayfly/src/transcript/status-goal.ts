@@ -59,7 +59,7 @@ export function apply(ctx: Context): void {
   ctx.on('goal/changed', ({ agent }) => {
     if (agent === ctx.mayflyCurrentAgent.current()) derive()
   })
-  ctx.on('agent/session-start', ({ agent }) => {
+  ctx.on('agent/created', ({ agent }) => {
     if (agent === ctx.mayflyCurrentAgent.current()) derive()
   })
   ctx.effect(() => () => {

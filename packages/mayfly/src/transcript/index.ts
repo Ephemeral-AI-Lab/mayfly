@@ -122,7 +122,7 @@ export function apply(ctx: Context): void {
   const presentation = new TranscriptPresentationPolicy()
 
   const MAYFLY_NS = 'mayfly' as SettingsNamespace
-  presentation.apply(ctx.get('settings')?.get(MAYFLY_NS))
+  presentation.apply(ctx.get('mayflyInteractionState')?.settingsSource())
 
   // Optional image wiring is renderer-owned; the projected model carries only
   // durable references and the byte loader stays in this terminal layer.
@@ -249,8 +249,8 @@ export function apply(ctx: Context): void {
   const applyFoldSettings = (value: unknown): void => {
     if (presentation.apply(value)) transcript.refreshPresentationPolicy()
   }
-  ctx.on('settings/updated', (ns, next) => {
-    if (ns === MAYFLY_NS) applyFoldSettings(next)
+  ctx.on('settings/document-updated', (ns) => {
+    if (ns === MAYFLY_NS) applyFoldSettings(ctx.get('mayflyInteractionState')?.settingsSource())
   })
 
   const offLocale = observeTranscriptLocale(ctx, () => {

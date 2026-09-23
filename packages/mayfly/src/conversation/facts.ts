@@ -9,7 +9,7 @@
 
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
+import type { AssistantStreamRecord, ContentBlock } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tool-todo'
 import { z } from 'zod'
 import { outputProgressSchema } from './output-progress.ts'
@@ -172,18 +172,19 @@ export function foldConversationFacts(
         activity: { kind: 'tool', name: event.data.name },
       }
     case 'tool/result': {
+      // Tool results are first-class tool-role messages; logs written before
+      // that promotion wrapped them in a tool-result content block instead.
       const message = event.data.message
-      const block = message === undefined || typeof message !== 'object' || !Array.isArray(message.content) ? undefined : message.content[0]
-      if (block === undefined || typeof block !== 'object' || block === null || block.type !== 'tool-result' || typeof block.toolCallId !== 'string') return state
-      const callId = block.toolCallId
+      if (message === undefined || typeof message !== 'object' || typeof message.toolCallId !== 'string') return state
+      const callId = String(message.toolCallId)
       const index = state.agentCalls.findIndex(call => call.callId === callId)
       if (index < 0) return state
-      const content = Array.isArray(block.content) ? block.content : []
+      const content = Array.isArray(message.content) ? message.content : []
       const text = content
-        .filter((item): item is Extract<typeof item, { type: 'text' }> => typeof item === 'object' && item !== null && item.type === 'text')
+        .filter((item): item is Extract<ContentBlock, { type: 'text' }> => typeof item === 'object' && item !== null && item.type === 'text')
         .map(item => item.text)
         .join('\n')
-      const result = { text, isError: block.isError === true || event.data.error !== undefined, endedAt: event.time }
+      const result = { text, isError: message.isError === true || event.data.error !== undefined, endedAt: event.time }
       const agentCalls = [...state.agentCalls]
       agentCalls[index] = { ...agentCalls[index]!, result }
       return { ...state, phase: 'tool', active: true, agentCalls }

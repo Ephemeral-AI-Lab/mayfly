@@ -117,7 +117,6 @@ function visibleText(content: readonly ContentBlock[]): string {
   for (const block of content) {
     if (block.type === 'text' && block.text !== '') parts.push(block.text)
     else if (block.type === 'image') parts.push('[image]')
-    else if (block.type === 'tool-result') parts.push(visibleText(block.content))
   }
   return parts.filter(Boolean).join('\n')
 }
@@ -192,19 +191,19 @@ function appendEntry(state: ConversationProjectionState, entry: ConversationEntr
   return { ...state, entries: [...state.entries, entry] }
 }
 
-/** Whether an empty plugin-attributed system replacement is Mayfly's durable
- * retraction marker. Harness `0.1.5` forbids source citations on assistant
+/** Whether an empty plugin-attributed developer replacement is Mayfly's durable
+ * retraction marker. Harness forbids source citations on assistant
  * messages (they embed their own stream), so the empty replacement marker
- * rides a system/message that derives to no model-visible message. */
+ * rides a developer/message that derives to no model-visible message. */
 export function isTurnRetraction(event: SessionEvent): boolean {
-  if ((event.type !== 'system/message' && event.type !== 'assistant/message')
+  if ((event.type !== 'developer/message' && event.type !== 'assistant/message')
     || event.data.message.content.length !== 0
     || event.surfaceOp === undefined || event.surfaceOp === 'append') return false
   // Historical assistant replacements retain their interrupted marker after
   // storage migration, even though new assistant events cannot cite sources.
   return event.type === 'assistant/message'
     ? event.data.interrupted === true
-    : event.data.message.source.kind === 'plugin' && event.data.message.source.plugin === 'mayfly-retraction'
+    : event.data.message.source.kind === 'mayfly-retraction'
 }
 
 /** Remove one safely retracted turn and suppress any late events from reopening it. */
@@ -315,14 +314,16 @@ function applyToolResult(
   state: ConversationProjectionState,
   event: SessionEvent<'tool/result'>,
 ): ConversationProjectionState {
-  const block = event.data.message.content[0]
-  const callId = String(block.toolCallId)
-  const isError = block.isError === true || event.data.error !== undefined
+  // Tool results are first-class tool-role messages: the call identity and
+  // error flag live on the message, and its content blocks are the result.
+  const message = event.data.message
+  const callId = String(message.toolCallId)
+  const isError = message.isError === true || event.data.error !== undefined
   const text = typeof event.data.meta === 'string' && event.data.meta.trim() !== ''
     ? event.data.meta
-    : visibleText(block.content)
+    : visibleText(message.content)
   const result = {
-    content: block.content as unknown as readonly ConversationJson[],
+    content: message.content as unknown as readonly ConversationJson[],
     text,
     isError,
     endedAt: event.time,
@@ -361,7 +362,7 @@ export function foldConversationProjection(
   state: ConversationProjectionState,
   event: SessionEvent,
 ): ConversationProjectionState {
-  if ((event.type === 'system/message' || event.type === 'assistant/message') && isTurnRetraction(event)) return retractTurn(state, event.data.turn)
+  if ((event.type === 'developer/message' || event.type === 'assistant/message') && isTurnRetraction(event)) return retractTurn(state, event.data.turn)
   switch (event.type) {
     case 'turn/start':
       if (state.retractedTurns.includes(event.data.turn)) return state

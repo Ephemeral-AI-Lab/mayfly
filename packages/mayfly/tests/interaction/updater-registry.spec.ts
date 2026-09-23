@@ -20,16 +20,16 @@ const RAW_DOCUMENT = {
   name: '@ephemeral-ai/mayfly',
   'dist-tags': { rc: '0.1.0-rc.2', latest: '0.1.0-rc.2', broken: 7 },
   versions: {
-    '0.1.0-rc.1': { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.1' } },
+    '0.1.0-rc.1': { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.1' } },
     '0.1.0-rc.2': {
       dependencies: {
         '@ephemeral-ai/mayfly-ui': '0.1.0-rc.2',
-        '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2',
+        '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2',
       },
     },
     '0.2.0': 'not-a-manifest',
     '0.3.0': { dependencies: 'not-an-object' },
-    '0.4.0': { dependencies: { '@deepseek-ai/dsh-agent-presets': '^0.1.1-rc.2' } },
+    '0.4.0': { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '^0.1.1-rc.2' } },
   },
   time: {
     created: '2026-08-20T00:00:00.000Z',
@@ -70,7 +70,7 @@ describe('updater/registry normalizePackument', () => {
     expect(packument?.tags).toEqual({ rc: '0.1.0-rc.2', latest: '0.1.0-rc.2' })
     expect(packument?.versions['0.1.0-rc.2']).toEqual({
       '@ephemeral-ai/mayfly-ui': '0.1.0-rc.2',
-      '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2',
+      '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2',
     })
     expect(packument?.versions['0.2.0']).toBeUndefined()
     expect(packument?.versions['0.3.0']).toBeUndefined()
@@ -299,7 +299,7 @@ describe('updater/registry releaseFacts', () => {
     const queries: string[][] = []
     const dependencies = {
       '@ephemeral-ai/mayfly-ui': '0.1.0-rc.3',
-      '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.3',
+      '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.3',
     }
     updaterInternals.spawnOnce = (cmd, args) => {
       queries.push([...args])
@@ -352,8 +352,8 @@ describe('updater/registry releaseFacts', () => {
 
   it('does not select a harness pin from multiple dependency results', async () => {
     updaterInternals.spawnOnce = () => viewOk(JSON.stringify([
-      { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' },
-      { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.3' },
+      { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' },
+      { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.3' },
     ]))
     const listed = normalizePackument({ 'dist-tags': {}, versions: ['0.1.0-rc.3'], time: {} })!
     expect((await releaseFacts(listed, '0.1.0-rc.3')).harnessLine).toBeUndefined()

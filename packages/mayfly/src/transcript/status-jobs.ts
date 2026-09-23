@@ -5,7 +5,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import type { JobView } from '@deepseek-ai/dsh-jobs'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 
 /** Stable Cordis plugin name. */
@@ -15,7 +15,7 @@ export const name = 'mayfly-status-jobs'
 export const inject = ['mayflyStatus', 'mayflyCurrentAgent', 'jobs']
 
 /** Count jobs still occupying the background queue. */
-export function liveJobCount(jobs: readonly JobSnapshot[]): number {
+export function liveJobCount(jobs: readonly JobView[]): number {
   return jobs.filter(job => job.status === 'running' || job.status === 'stopping').length
 }
 
@@ -28,7 +28,7 @@ export function apply(ctx: Context): void {
     const agent = ctx.mayflyCurrentAgent.current()
     let count = 0
     try {
-      count = agent === null ? 0 : liveJobCount(ctx.jobs.list(agent))
+      count = agent === null ? 0 : liveJobCount(ctx.jobs.list(agent.id))
     } catch (error) {
       ctx.logger.warn(`could not list background jobs for status: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -41,9 +41,10 @@ export function apply(ctx: Context): void {
     id: 'mayfly.status.jobs',
     priority: 3,
   }, node())
-  const offJobs = ctx.jobs.onJobsChanged((owner) => {
+  const offJobs = ctx.jobs.events.subscribe({ owners: 'scope' }, event => {
+    const owner = event.type === 'output' ? event.owner : event.job.owner
     const current = ctx.mayflyCurrentAgent.current()
-    if (owner === undefined || owner === current) refresh()
+    if (owner === undefined || owner === current?.id) refresh()
   })
   const offAgent = ctx.mayflyCurrentAgent.subscribe(() => refresh())
   ctx.effect(() => () => {

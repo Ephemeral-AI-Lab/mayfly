@@ -27,8 +27,8 @@ const PACKUMENT: Packument = normalizePackument({
   'dist-tags': { rc: '0.1.0-rc.3', latest: '0.1.0-rc.2' },
   versions: {
     '0.1.0-rc.1': { dependencies: {} },
-    '0.1.0-rc.2': { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
-    '0.1.0-rc.3': { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
+    '0.1.0-rc.2': { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } },
+    '0.1.0-rc.3': { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } },
   },
   time: {
     '0.1.0-rc.2': '2026-08-20T00:00:00.000Z',

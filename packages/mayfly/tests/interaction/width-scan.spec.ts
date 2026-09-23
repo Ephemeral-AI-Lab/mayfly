@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { ui } from '../../../ui/src/index.ts'
-import type { JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
@@ -107,11 +107,13 @@ describe('interaction width-scan', () => {
     // otherwise share one timeout under coverage and concurrent CI workers.
     for (const width of SCAN_WIDTHS) it(`paged job output survives ${name} at width ${width}`, async () => {
       const bench = await requestFixture()
-      const read = { snapshot: { id: 'large', label: 'Large output', status: 'completed' } as JobSnapshot, text: `${text}\n`.repeat(Math.ceil(13_000 / (text.length + 1))) }
-      const pages = documentPages(read.text)
+      const job = { id: 'large', kind: 'bash', label: 'Large output', status: 'completed', startedAt: 1, output: { total: 0, earliest: 0 } } as JobView
+      const text2 = `${text}\n`.repeat(Math.ceil(13_000 / (text.length + 1)))
+      const read = { chunks: [{ at: 0, text: text2 }], next: text2.length, lossy: false }
+      const pages = documentPages(text2)
       try {
         for (const page of pages.keys()) {
-          const handle = bench.ctx.mayflyOverlays.open({ id: 'job-output', capturing: true }, jobOutputNode(read, pages, page + 1, key => key))
+          const handle = bench.ctx.mayflyOverlays.open({ id: 'job-output', capturing: true }, jobOutputNode(job, read, pages, page + 1, key => key))
           const model = bench.ctx.mayflyUiInteraction.get('overlay', 'job-output')!
           const viewport = { columns: width, rows: 20 }
           const renderer = renderRequest(model, viewport)
@@ -136,13 +138,13 @@ describe('interaction width-scan', () => {
         startedAt: 1,
         finishedAt: 2,
         detail: text,
-        reported: false,
-      } as JobSnapshot
+        output: { total: 0, earliest: 0 },
+      } as JobView
       const bench = await requestFixture()
       const nodes = [
         ui.list({ id: 'jobs', role: 'browse', selectedIds: [], items: jobItems([job], 61_000, key => key) }),
         jobDetailsNode(job, key => key),
-        jobOutputNode({ snapshot: job, text }, [text], 1, key => key),
+        jobOutputNode(job, { chunks: [{ at: 0, text }], next: text.length, lossy: false }, [text], 1, key => key),
       ]
       try {
         for (const [index, node] of nodes.entries()) {
