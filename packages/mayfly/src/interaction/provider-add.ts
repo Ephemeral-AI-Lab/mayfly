@@ -46,65 +46,90 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
   let advertised: readonly LlmDiscoveredModel[] = []
   let listingBase: string | undefined
   let metadata = new Map<string, { readonly contextWindow?: number, readonly maxTokens?: number, readonly reasoningEfforts?: Record<string, string> | false }>()
+  /** Hand-declared models pending the first save, keyed by model id. */
+  const customModels = new Map<string, { readonly contextWindow?: number, readonly maxTokens?: number, readonly reasoningEfforts?: Record<string, string> | false }>()
   let created: { readonly route: string, readonly profile: Record<string, unknown> } | undefined
+  /** The Models step stays disabled until the connection page validates once. */
+  let unlocked = false
+  let discoveryState: 'idle' | 'running' | 'failed' | 'done' = 'idle'
+  let discoveryError = ''
+  let discoveryGeneration = 0
+  let discoveryAbort: AbortController | undefined
   let handle: MayflyOverlayHandle
   const descriptor = () => settings.describe().find(item => String(item.ns) === NAMESPACE)!
   const source = () => [{ resourceId: NAMESPACE, revision: descriptor().revision }]
+  const modelsPagePath = [{ controlId: 'provider-tabs', itemId: 'models' }]
+  const customModelAddress: MayflyFormAddress = { pagePath: modelsPagePath, formId: 'custom-model' }
+  const modelRows = () => [...advertised.map(model => ({ id: model.id, label: model.id, ...(model.contextWindow === undefined ? {} : { detail: `${model.contextWindow} tokens` }) })),
+    ...[...customModels.entries()].map(([modelId, facts]) => ({ id: modelId, label: modelId, ...(facts.contextWindow === undefined ? {} : { detail: `${facts.contextWindow} tokens` }) }))]
   const view = (): MayflyUiNode => ui.stack.column([
     ui.tabs({ id: 'provider-tabs', activeId: 'connection', items: [
-      { id: 'connection', label: t('Connection') }, ...known === undefined ? [{ id: 'models', label: t('Models') }] : [], { id: 'credentials', label: t('Credentials') },
+      { id: 'connection', label: t('Connection') }, ...known === undefined ? [{ id: 'models', label: t('Models'), disabled: !unlocked }] : [],
     ] }),
-    ui.child(ui.form({ id: 'connection', fields: [
-      { kind: 'input', id: 'route', label: t('Provider Name'), value: known ?? created?.route ?? '', required: true, disabled: known !== undefined || created !== undefined },
-      ...known === undefined ? [
-        { kind: 'select' as const, id: 'protocol', label: t('Protocol'), value: String(created?.profile.api ?? 'openai-completions'), options: ENDPOINT_PROTOCOLS.map(protocol => ({ id: protocol, label: protocol })), disabled: created !== undefined },
-        { kind: 'input' as const, id: 'baseURL', label: t('Base URL'), value: String(created?.profile.baseURL ?? ''), required: true, disabled: created !== undefined },
-      ] : [],
-    ] }), { tab: { controlId: 'provider-tabs', itemId: 'connection' } }),
+    ui.child(ui.stack.column([
+      ui.form({ id: 'connection', fields: [
+        { kind: 'input', id: 'route', label: t('Provider Name'), value: known ?? created?.route ?? '', required: true, disabled: known !== undefined || created !== undefined },
+        ...known === undefined ? [
+          { kind: 'select' as const, id: 'protocol', label: t('Protocol'), value: String(created?.profile.api ?? 'openai-completions'), options: ENDPOINT_PROTOCOLS.map(protocol => ({ id: protocol, label: protocol })), disabled: created !== undefined },
+          { kind: 'input' as const, id: 'baseURL', label: t('Base URL'), value: String(created?.profile.baseURL ?? ''), required: true, disabled: created !== undefined },
+        ] : [],
+        { kind: 'secret' as const, id: 'key', label: t('API key'), value: '', required: true },
+      ] }),
+      ...known === undefined ? [ui.actions({ id: 'connection-actions', items: [
+        { id: 'next', label: t('Next'), intent: 'primary', read: [address('connection')], disabled: created !== undefined },
+      ] })] : [],
+    ], { gap: 1 }), { tab: { controlId: 'provider-tabs', itemId: 'connection' } }),
     ...known !== undefined ? [] : [ui.child(ui.stack.column([
-      ui.list({ id: 'advertised-models', role: 'choose', mode: 'multiple', minSelected: 1, selectedIds: created === undefined ? [] : (created.profile.models as { id: string }[]).map(model => model.id), items: advertised.map(model => ({ id: model.id, label: model.id, ...(model.contextWindow === undefined ? {} : { detail: `${model.contextWindow} tokens` }) })), empty: ui.empty({ title: t('No models discovered') }) }),
+      ...discoveryState === 'running' ? [ui.loader({ message: t('discovering models…') })]
+        : discoveryState === 'failed' ? [ui.text(`${t('model discovery unavailable — add models by id below')} — ${discoveryError}`, { tone: 'muted' })]
+        : unlocked && discoveryState === 'idle' ? [ui.text(t('The connection changed — run discovery again'), { tone: 'muted' })] : [],
+      ui.list({ id: 'advertised-models', role: 'choose', mode: 'multiple', minSelected: 1, filterable: true,
+        selectedIds: created === undefined ? [...advertised.map(model => model.id), ...customModels.keys()] : (created.profile.models as { id: string }[]).map(model => model.id),
+        items: modelRows(), empty: ui.empty({ title: t('No models discovered') }) }),
       ui.form({ id: 'models', fields: [
         { kind: 'number', id: 'context', label: t('Default context window'), value: null, min: 1, step: 1, unit: 'tokens' },
         { kind: 'multiselect', id: 'efforts', label: t('Thinking efforts'), value: [], options: THINKING_LEVELS.map(level => ({ id: level, label: level })) },
       ] }),
+      ui.form({ id: 'custom-model', fields: [
+        { kind: 'input', id: 'model-id', label: t('+ model id'), value: '', placeholder: t('model id'), disabled: created !== undefined },
+      ] }),
+      ui.actions({ id: 'model-actions', items: [
+        { id: 'add-model', label: t('Add model'), submit: [customModelAddress], disabled: created !== undefined },
+        { id: 'discover', label: t('Discover models'), read: [address('connection')], disabled: created !== undefined },
+      ] }),
     ]), { tab: { controlId: 'provider-tabs', itemId: 'models' } })],
-    ui.child(ui.form({ id: 'credentials', fields: [{ kind: 'secret', id: 'key', label: t('API key'), value: '', required: true }] }), { tab: { controlId: 'provider-tabs', itemId: 'credentials' } }),
     ui.actions({ id: 'provider-setup-actions', items: [
-      ...known === undefined ? [{ id: 'discover', label: t('Discover models'), read: [address('connection'), address('credentials')], disabled: created !== undefined }] : [],
-      { id: 'save', label: t('Save'), intent: 'primary', submit: [address('connection'), ...known === undefined ? [address('models')] : [], address('credentials')], ...(known === undefined ? { selections: [{ pagePath: [{ controlId: 'provider-tabs', itemId: 'models' }], controlId: 'advertised-models' }] } : {}), disabled: known === undefined && advertised.length === 0 },
+      { id: 'save', label: t('Save'), intent: 'primary', submit: [address('connection'), ...known === undefined ? [address('models')] : []], ...(known === undefined ? { selections: [{ pagePath: modelsPagePath, controlId: 'advertised-models' }] } : {}) },
       { id: 'cancel', label: t('Cancel'), dismiss: true },
     ] }),
   ], { gap: 1 })
-  const handler = async (submission: MayflySubmission, operation: 'discover' | 'save', cancellation: AbortSignal): Promise<MayflyUiActionReply> => {
-    const connection = values(submission, 'connection')
-    const secret = values(submission, 'credentials')
-    const route = known ?? String(connection.route ?? '').trim()
-    const key = String(secret.key ?? '')
-    const protocol = known === undefined ? String(connection.protocol) : undefined
-    const baseURL = String(connection.baseURL ?? '')
-    if (!ROUTE_ID.test(route)) return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'route', message: t('Provider names use lowercase letters, digits, and hyphens') }] }
-    const current = descriptor()
-    if (created === undefined && providerProfile(current.value, route) !== undefined) return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'route', message: t('This provider already exists') }] }
-    if (known === undefined) {
-      try { const url = new URL(baseURL); if (!['http:', 'https:'].includes(url.protocol)) throw new Error('protocol') }
-      catch { return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'baseURL', message: t('Enter an HTTP or HTTPS URL') }] } }
-    }
-    if (operation === 'discover') {
-      let found: readonly LlmDiscoveredModel[] | undefined
-      let failure: unknown
-      for (const api of new Set([protocol === 'anthropic-messages' ? 'openai-completions' : protocol!, 'openai-completions'])) {
-        for (const base of discoveryBases(baseURL)) {
-          try {
-            const models = await llm.discoverModels(NAMESPACE, { api, baseURL: base, apiKey: key }, cancellation)
-            cancellation.throwIfAborted()
-            if (models.length > 0) { found = models; listingBase = base; break }
-          } catch (error) { if (cancellation.aborted) return { kind: 'cancelled' }; failure ??= error }
-        }
-        if (found !== undefined) break
+  /** Probe the endpoint outside the action task so the Models page shows live progress. */
+  const runDiscovery = async (input: { readonly protocol: string, readonly baseURL: string, readonly key: string }): Promise<void> => {
+    discoveryAbort?.abort()
+    const controller = new AbortController()
+    discoveryAbort = controller
+    const generation = ++discoveryGeneration
+    discoveryState = 'running'
+    discoveryError = ''
+    const combined = signal === undefined ? controller.signal : AbortSignal.any([controller.signal, signal])
+    let found: readonly LlmDiscoveredModel[] | undefined
+    let failure: unknown
+    for (const api of new Set([input.protocol === 'anthropic-messages' ? 'openai-completions' : input.protocol, 'openai-completions'])) {
+      for (const base of discoveryBases(input.baseURL)) {
+        try {
+          const models = await llm.discoverModels(NAMESPACE, { api, baseURL: base, apiKey: input.key }, combined)
+          if (models.length > 0) { found = models; listingBase = base; break }
+        } catch (error) { if (combined.aborted) return; failure ??= error }
       }
-      if (found === undefined) return { kind: 'failed', message: describeFailure(failure, key) }
-      const catalog = await loadModelsDevIndex(ctx, cancellation)
-      if (cancellation.aborted) return { kind: 'cancelled' }
+      if (found !== undefined) break
+    }
+    if (generation !== discoveryGeneration || combined.aborted) return
+    if (found === undefined) {
+      discoveryState = 'failed'
+      discoveryError = describeFailure(failure, input.key)
+    } else {
+      const catalog = await loadModelsDevIndex(ctx, combined)
+      if (generation !== discoveryGeneration || combined.aborted) return
       advertised = found
       metadata = new Map(found.map(model => {
         const matched = catalog?.lookup(model.id)
@@ -116,7 +141,49 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
           ...(matched?.efforts !== undefined ? { reasoningEfforts: Object.fromEntries(matched.efforts.map(level => [level, level])) } : matched?.nonReasoning === true ? { reasoningEfforts: false as const } : {}),
         }]
       }))
-      return { kind: 'accepted', node: view(), source: source(), navigate: [{ controlId: 'provider-tabs', itemId: 'models' }] }
+      discoveryState = 'done'
+    }
+    /* Closed handles make set() a no-op, so repainting is safe unconditionally. */
+    handle.set(view(), { source: source() })
+  }
+  /** Stage one hand-declared model; the first save writes it with any catalog facts. */
+  const addModel = async (fields: readonly { id: string, value?: unknown }[], cancellation: AbortSignal): Promise<MayflyUiActionReply> => {
+    const modelId = String(fields.find(field => field.id === 'model-id')?.value ?? '').trim()
+    const field = { ...customModelAddress, fieldId: 'model-id' }
+    if (modelId === '') return { kind: 'invalid', errors: [{ ...field, message: t('Enter a model ID') }] }
+    if (customModels.has(modelId) || advertised.some(model => model.id === modelId)) return { kind: 'invalid', errors: [{ ...field, message: t('Already listed') }] }
+    const matched = (await loadModelsDevIndex(ctx, cancellation))?.lookup(modelId)
+    if (cancellation.aborted) return { kind: 'cancelled' }
+    customModels.set(modelId, {
+      ...(matched?.contextWindow === undefined ? {} : { contextWindow: matched.contextWindow }),
+      ...(matched?.maxTokens === undefined ? {} : { maxTokens: matched.maxTokens }),
+      ...(matched?.efforts !== undefined ? { reasoningEfforts: Object.fromEntries(matched.efforts.map(level => [level, level])) } : matched?.nonReasoning === true ? { reasoningEfforts: false as const } : {}),
+    })
+    return { kind: 'accepted', node: view(), source: source(), feedback: { severity: 'success', message: t('Model "{model}" added — save to persist', { model: modelId }) } }
+  }
+  const handler = async (submission: MayflySubmission, operation: 'discover' | 'save', cancellation: AbortSignal): Promise<MayflyUiActionReply> => {
+    const connection = values(submission, 'connection')
+    const route = known ?? String(connection.route ?? '').trim()
+    const key = String(connection.key ?? '')
+    const protocol = known === undefined ? String(connection.protocol) : undefined
+    const baseURL = String(connection.baseURL ?? '')
+    if (!ROUTE_ID.test(route)) return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'route', message: t('Provider names use lowercase letters, digits, and hyphens') }] }
+    const current = descriptor()
+    if (created === undefined && providerProfile(current.value, route) !== undefined) return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'route', message: t('This provider already exists') }] }
+    if (known === undefined) {
+      try { const url = new URL(baseURL); if (!['http:', 'https:'].includes(url.protocol)) throw new Error('protocol') }
+      catch { return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'baseURL', message: t('Enter an HTTP or HTTPS URL') }] } }
+    }
+    if (operation === 'discover') {
+      unlocked = true
+      void runDiscovery({ protocol: protocol!, baseURL, key })
+      /* A reply's snapshot publishes only after this handler returns, so an
+       * `accepted` frame here could land after the probe's own `handle.set`
+       * and revert the settled result. Publish the unlocked/loading frame
+       * directly and answer `completed`: every later repaint flows through
+       * the same handle in call order. */
+      handle.set(view(), { source: source() })
+      return { kind: 'completed', navigate: modelsPagePath }
     }
     const expected = submission.source.find(stamp => stamp.resourceId === NAMESPACE)?.revision
     if (typeof expected !== 'number' || expected !== current.revision) return { kind: 'conflict', node: view(), source: source(), message: t('Provider settings changed elsewhere') }
@@ -129,7 +196,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
     const profile: Record<string, unknown> = known === undefined ? {
       api: protocol, baseURL: normalizeBaseURL(protocol!, baseURL, listingBase), apiKeyEnv: deriveKeyRef(route),
       models: selected.map(id => {
-        const facts = metadata.get(id) ?? {}
+        const facts = metadata.get(id) ?? customModels.get(id) ?? {}
         const contextWindow = facts.contextWindow ?? (typeof modelDefaults.context === 'number' ? modelDefaults.context : undefined)
         const reasoningEfforts = facts.reasoningEfforts ?? (Array.isArray(modelDefaults.efforts) && modelDefaults.efforts.length > 0 ? Object.fromEntries(modelDefaults.efforts.map(level => [level, level])) : undefined)
         return { id, ...facts, ...(contextWindow === undefined ? {} : { contextWindow }), ...(reasoningEfforts === undefined ? {} : { reasoningEfforts }) }
@@ -149,7 +216,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
       if (cancellation.aborted) return { kind: 'cancelled' }
       return error instanceof SettingsConflictError
         ? { kind: 'conflict', node: view(), source: source(), message: t('Provider settings changed elsewhere') }
-        : { kind: 'failed', node: view(), source: source(), ...(created === undefined ? {} : { acceptedFields: submission.forms.filter(form => form.formId === 'connection').flatMap(form => form.fields.map(field => ({ ...address('connection'), fieldId: field.id }))) }), message: t(created === undefined ? 'Provider could not be added' : 'Provider created, but its credential could not be saved') }
+        : { kind: 'failed', node: view(), source: source(), ...(created === undefined ? {} : { acceptedFields: submission.forms.filter(form => form.formId === 'connection').flatMap(form => form.fields.filter(field => field.id !== 'key').map(field => ({ ...address('connection'), fieldId: field.id }))) }), message: t(created === undefined ? 'Provider could not be added' : 'Provider created, but its credential could not be saved') }
     }
   }
   handle = openUiOverlay(ctx, {
@@ -157,15 +224,21 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
     scope: { kind: 'app', targetId: known ?? 'provider-creation' }, source: source(),
     onEvent: {
       observe: event => {
-      if (event.kind === 'value-change' && known === undefined && created === undefined && ['protocol', 'baseURL', 'key'].includes(event.controlId) && advertised.length > 0) {
-        advertised = []; metadata.clear(); listingBase = undefined
-        if (!handle.closed) handle.set(view(), { source: source() })
+      if (event.kind === 'value-change' && known === undefined && created === undefined && ['protocol', 'baseURL', 'key'].includes(event.controlId) && (advertised.length > 0 || discoveryState !== 'idle')) {
+        advertised = []; metadata.clear(); listingBase = undefined; discoveryState = 'idle'; discoveryError = ''
+        discoveryGeneration += 1; discoveryAbort?.abort()
+        handle.set(view(), { source: source() })
       }
       },
-      action: (event, context) => event.kind === 'submit' ? handler(event.submission, 'save', context.signal)
-        : event.kind === 'activate' && event.actionId === 'discover' && event.inputs !== undefined ? handler(event.inputs, 'discover', context.signal) : { kind: 'completed' },
+      action: (event, context) => {
+        if (event.kind === 'submit') return event.submission.actionId === 'add-model'
+          ? addModel(event.submission.forms.flatMap(form => form.fields), context.signal)
+          : handler(event.submission, 'save', context.signal)
+        return event.kind === 'activate' && (event.actionId === 'next' || event.actionId === 'discover') && event.inputs !== undefined
+          ? handler(event.inputs, 'discover', context.signal) : { kind: 'completed' }
+      },
     },
-  }, view(), { signal, reopen: 'replace' })
+  }, view(), { signal, reopen: 'replace', onClosed: () => discoveryAbort?.abort() })
   return handle
 }
 
@@ -205,5 +278,5 @@ export function openProviderSetup(ctx: Context, onCreated: (route: string) => vo
       }, ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: rows, filterable: true, empty: ui.empty({ title: t('No providers available') }) }), { signal, reopen: 'focus' })
       return { kind: 'completed' }
     } },
-  }, ui.list({ id: 'provider-source', role: 'browse', selectedIds: [], items: [{ id: 'known', label: t('Known provider') }, { id: 'custom', label: t('Custom endpoint') }, { id: 'oauth', label: t('OAuth provider') }] }), { signal, reopen: 'focus' })
+  }, ui.list({ id: 'provider-source', role: 'browse', numbered: true, selectedIds: [], items: [{ id: 'known', label: t('Known provider') }, { id: 'custom', label: t('Custom endpoint') }, { id: 'oauth', label: t('OAuth provider') }] }), { signal, reopen: 'focus' })
 }

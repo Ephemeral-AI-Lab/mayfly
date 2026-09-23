@@ -9,6 +9,8 @@ export interface RewindCandidate {
   readonly boundarySeq: number
   readonly prompt: string
   readonly response?: string
+  /** User/assistant messages the new branch would drop after this boundary. */
+  readonly discarded: number
 }
 
 interface MessageLike {
@@ -28,14 +30,24 @@ function preview(message: MessageLike): string {
 /** Return direct-user turn boundaries in newest-first order. */
 export function rewindCandidates(events: readonly SessionEvent[]): readonly RewindCandidate[] {
   const rows: RewindCandidate[] = []
+  // Suffix count of conversation messages: `messagesAfter[i]` counts
+  // user/assistant events at index i or later, so a boundary at index b
+  // discards `messagesAfter[b + 1]` messages.
+  const messagesAfter = new Array<number>(events.length + 1).fill(0)
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const type = events[index]?.type
+    messagesAfter[index] = messagesAfter[index + 1]! + (type === 'user/message' || type === 'assistant/message' ? 1 : 0)
+  }
   let turn = 0
   let boundarySeq = 0
+  let boundaryIndex = 0
   for (let index = 0; index < events.length; index += 1) {
     const event = events[index]
     if (event === undefined) continue
     if (event.type === 'turn/start') {
       turn = event.data.turn
       boundarySeq = event.seq
+      boundaryIndex = index
     }
     if (event.type !== 'user/message') continue
     const message = event.data as unknown as MessageLike
@@ -62,6 +74,7 @@ export function rewindCandidates(events: readonly SessionEvent[]): readonly Rewi
       boundarySeq,
       prompt: preview(message) || '(empty prompt)',
       ...(response === undefined ? {} : { response }),
+      discarded: messagesAfter[boundaryIndex + 1]!,
     })
   }
   return rows.reverse()

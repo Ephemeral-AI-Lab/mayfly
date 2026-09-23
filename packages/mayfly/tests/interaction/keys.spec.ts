@@ -20,6 +20,7 @@ describe('interaction keys', () => {
     expect(keymap.matches('\x1b[H', keys.ACTION_HOME)).toBe(true)
     expect(keymap.matches('\x1b[F', keys.ACTION_END)).toBe(true)
     expect(keymap.matches('\x04', keys.ACTION_DELETE)).toBe(true)
+    expect(keymap.matches('\x05', keys.ACTION_EXPAND)).toBe(true)
     expect(keymap.matches('\x1b[18~', keys.ACTION_TOGGLE_AGENT_VIEW)).toBe(true)
     expect(keys.interactionKeyHint(keymap, keys.ACTION_DELETE, 'Delete')).toBe('Delete/Ctrl+D')
     expect(keys.interactionKeyHint(keymap, 'missing', 'Fallback')).toBe('Fallback')

@@ -4,13 +4,16 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-settings'
-import type {} from '@deepseek-ai/dsh-credentials'
-import { ui } from '@ephemeral-ai/mayfly-ui'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { openProviderEditor } from './provider-edit.ts'
 import { openModelPicker } from './model-commands.ts'
+import { deriveKeyRef, providerProfile } from './provider-profile.ts'
 import { interactionTranslator } from './locale.ts'
 import { openProviderSetup } from './provider-add.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+
+const NAMESPACE = 'llm-pi-ai'
 
 export const name = 'mayfly-provider-commands'
 export const inject = ['commands', 'settings', 'credentials', 'mayflyOverlays']
@@ -40,10 +43,23 @@ export function apply(ctx: Context): void {
           ? { kind: 'success' } : { kind: 'error', text: t('The provider has no editable configuration') }
       }
       if (argument !== '' && argument !== 'list') return { kind: 'error', text: 'usage: /provider [list | edit <provider> | switch <provider> | add]' }
-      const build = () => ui.stack.column([
-        ui.list({ id: 'providers', role: 'browse', selectedIds: [], filterable: true, items: (ctx.get('llm')?.listProviders() ?? []).map(provider => ({ id: provider.id, label: provider.name || provider.id })), empty: ui.empty({ title: t('No configured providers') }) }),
-        ui.actions({ id: 'provider-list-actions', items: [{ id: 'add', label: t('Add provider') }, { id: 'close', label: t('Close'), dismiss: true }] }),
-      ])
+      const build = async (): Promise<MayflyUiNode> => {
+        const descriptor = ctx.get('settings')?.describe().find(item => String(item.ns) === NAMESPACE)
+        const credentials = ctx.get('credentials')
+        const items = await Promise.all((ctx.get('llm')?.listProviders() ?? []).map(async provider => {
+          const profile = descriptor === undefined ? undefined : providerProfile(descriptor.value, provider.id)
+          const credential = await credentials?.describe(credentialRef(profile?.apiKeyEnv ?? deriveKeyRef(provider.id))).catch(() => undefined)
+          const parts = [
+            profile?.models === undefined ? undefined : profile.models.length === 0 ? t('no models') : t('{count} models', { count: profile.models.length }),
+            credential === undefined || (profile === undefined && !credential.configured) ? undefined : t(credential.configured ? 'key configured' : 'no key set'),
+          ].filter(part => part !== undefined)
+          return { id: provider.id, label: provider.name || provider.id, ...(parts.length === 0 ? {} : { detail: parts.join(' · ') }) }
+        }))
+        return ui.stack.column([
+          ui.list({ id: 'providers', role: 'browse', selectedIds: [], filterable: true, items, empty: ui.empty({ title: t('No configured providers') }) }),
+          ui.actions({ id: 'provider-list-actions', items: [{ id: 'add', label: t('Add provider') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+        ])
+      }
       let offSettings: (() => void) | undefined
       const handle = openUiOverlay(ctx, {
         id: 'mayfly.providers', title: t('Providers'), presentation: 'editor', capturing: true,
@@ -57,9 +73,9 @@ export function apply(ctx: Context): void {
           }
           return { kind: 'completed' }
         } },
-      }, build(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => offSettings?.() })
+      }, await build(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => offSettings?.() })
       if (handle === undefined) return { kind: 'success' }
-      offSettings = ctx.on('settings/document-updated', () => { handle.set(build()) })
+      offSettings = ctx.on('settings/document-updated', () => { void build().then(node => { if (!handle.closed) handle.set(node) }) })
       return { kind: 'success' }
     },
   })

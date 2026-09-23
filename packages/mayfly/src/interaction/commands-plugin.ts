@@ -184,7 +184,18 @@ export function apply(ctx: Context): void {
     const titleById = new Map<string, string>()
     const loadingPages = new Set<number>()
     const loadedPages = new Set<number>()
-    const buildRows = () => sessionTreeItems(sorted, titleById, currentId === undefined ? undefined : String(currentId), formatDate)
+    const buildRows = () => {
+      const pending = new Set<string>()
+      // `loadedPages` wins over `loadingPages`: a resolving page is briefly in
+      // both sets while its rows repaint, and untitled rows must not keep the
+      // `…` placeholder after their read has settled.
+      for (const page of loadingPages) {
+        if (loadedPages.has(page)) continue
+        for (const header of sorted.slice(page * SESSION_TITLE_PAGE_SIZE, (page + 1) * SESSION_TITLE_PAGE_SIZE))
+          pending.add(String(header.id))
+      }
+      return sessionTreeItems(sorted, titleById, currentId === undefined ? undefined : String(currentId), formatDate, pending)
+    }
     // Hydrate the first page before mounting so labels do not visibly change
     // from session ids to titles. Later pages are prefetched near page ends.
     let handle!: MayflyOverlayHandle
@@ -223,7 +234,12 @@ export function apply(ctx: Context): void {
       },
     } }, view(), { signal, reopen: 'replace' })
     clearLoadingNotice()
-    if (query !== undefined) void loadPage(1, query)
+    if (query !== undefined) {
+      void loadPage(1, query)
+      // Page one resolves asynchronously: repaint now so its rows show the
+      // muted `…` placeholder until their titles land.
+      handle.set(view())
+    }
     return { kind: 'success' }
   }
 
@@ -244,7 +260,7 @@ export function apply(ctx: Context): void {
       }
       return { kind: 'completed' as const }
     } } }, ui.surface({ chrome: 'overlay', title: 'Rewind current session', child: ui.stack.column([
-      ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: [String(first.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: `Turn ${String(candidate.turn)} · ${candidate.prompt}`, ...(candidate.response === undefined ? {} : { detail: `↳ ${candidate.response}` }) })) }),
+      ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: [String(first.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: `Turn ${String(candidate.turn)} · ${candidate.prompt}`, detail: `${candidate.response === undefined ? '' : `↳ ${candidate.response} · `}rewinds ${String(candidate.discarded)} ${candidate.discarded === 1 ? 'message' : 'messages'}` })) }),
       ui.text('The original session stays available in /sessions.', { tone: 'muted' }),
     ]) }), { reopen: 'focus' })
     return { kind: 'success' }

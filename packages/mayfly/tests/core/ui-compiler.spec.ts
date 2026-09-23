@@ -415,6 +415,104 @@ describe('compileMayflyUiNode', () => {
     runtime.dispose()
   })
 
+  it('expands a focused scroll view with Ctrl+E and restores the surface on collapse', () => {
+    const runtime = new MayflyUiSurfaceRuntime()
+    const f = fixture({ getViewport: () => ({ columns: 20, rows: 5 }) })
+    const surface = compiledSurface(ui.stack.column([
+      ui.scroll(ui.stack.column(Array.from({ length: 10 }, (_, index) => ui.text(`line-${index}`)))),
+      ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }),
+    ]), f.options, runtime)
+    const focus = surface.focusTarget!
+    focus.focused = true
+
+    focus.handleInput?.('\x05')
+    const expanded = surface.component.render(20)
+    expect(expanded).toHaveLength(5)
+    expect(expanded.join('\n')).toContain('line-0')
+    expect(expanded.join('\n')).not.toContain('Run')
+    for (const row of expanded) expect(visibleWidth(stripTerminalSequences(row))).toBeLessThanOrEqual(20)
+
+    focus.handleInput?.('\x1b[6~')
+    const paged = surface.component.render(20)
+    expect(paged.join('\n')).toContain('line-5')
+    expect(paged.join('\n')).not.toContain('line-0')
+    focus.handleInput?.('x')
+    expect(surface.component.render(20)).toEqual(paged)
+    focus.handleInput?.('\x1b[H')
+    expect(surface.component.render(20).join('\n')).toContain('line-0')
+    focus.handleInput?.('\x1b[B')
+    expect(surface.component.render(20).join('\n')).toContain('line-1')
+    focus.handleInput?.('\x1b[A')
+    expect(surface.component.render(20).join('\n')).toContain('line-0')
+    focus.handleInput?.('\x1b[F')
+    expect(surface.component.render(20).join('\n')).toContain('line-9')
+    focus.handleInput?.('\x1b[5~')
+    const repaged = surface.component.render(20)
+    expect(repaged.join('\n')).toContain('line-2')
+    expect(repaged.join('\n')).not.toContain('line-9')
+
+    focus.handleInput?.('\x1b')
+    expect(surface.surfaceRuntime.state.expandedKey).toBeUndefined()
+    const collapsed = surface.component.render(20)
+    expect(collapsed.join('\n')).toContain('line-0')
+
+    focus.handleInput?.('\x05')
+    expect(surface.surfaceRuntime.state.expandedKey).not.toBeUndefined()
+    expect(surface.component.render(20).join('\n')).toContain('line-2')
+    focus.handleInput?.('\x05')
+    expect(surface.surfaceRuntime.state.expandedKey).toBeUndefined()
+  })
+
+  it('drops a stale expansion when the scroll view is rebound away', () => {
+    const runtime = new MayflyUiSurfaceRuntime()
+    const f = fixture({ getViewport: () => ({ columns: 20, rows: 5 }) })
+    const scrollNode = ui.scroll(ui.text('doc'))
+    const actionsNode = ui.actions({ id: 'a', items: [{ id: 'run', label: 'Run' }] })
+    const surface = compiledSurface(scrollNode, f.options, runtime)
+    surface.focusTarget!.focused = true
+    surface.focusTarget!.handleInput?.('\x05')
+    expect(runtime.state.expandedKey).not.toBeUndefined()
+
+    const rendered = compiledSurface(actionsNode, f.options, runtime)
+    rendered.component.render(20)
+    expect(runtime.state.expandedKey).toBeUndefined()
+
+    compiledSurface(scrollNode, f.options, runtime).focusTarget!.handleInput?.('\x05')
+    expect(runtime.state.expandedKey).not.toBeUndefined()
+    compiledSurface(actionsNode, f.options, runtime).focusTarget!.handleInput?.('x')
+    expect(runtime.state.expandedKey).toBeUndefined()
+  })
+
+  it('expands a scroll view without context hints to the plain frame', () => {
+    const f = fixture({ getViewport: () => ({ columns: 20, rows: 5 }) })
+    const surface = compiled(ui.scroll(ui.stack.column(Array.from({ length: 8 }, (_, index) => ui.text(`line-${index}`)))), f.options)
+    const focus = surface.focusTarget!
+    focus.focused = true
+
+    focus.handleInput?.('\x05')
+    const rows = surface.component.render(20)
+    expect(rows).toHaveLength(5)
+    expect(rows.join('\n')).toContain('line-0')
+    expect(rows.join('\n')).toContain('line-4')
+    focus.handleInput?.('\x1b')
+    expect(surface.component.render(20).join('\n')).toContain('line-0')
+  })
+
+  it('ignores Ctrl+E outside a focused scroll control', () => {
+    const runtime = new MayflyUiSurfaceRuntime()
+    const f = fixture({ getViewport: () => ({ columns: 20, rows: 5 }) })
+    const surface = compiledSurface(ui.stack.column([
+      ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }),
+      ui.scroll(ui.text('tail')),
+    ]), f.options, runtime)
+    const focus = surface.focusTarget!
+    focus.focused = true
+
+    const before = surface.component.render(20)
+    focus.handleInput?.('\x05')
+    expect(surface.component.render(20)).toEqual(before)
+  })
+
   it('degrades row stacks into MainScreen document order', () => {
     const { options } = fixture({ screenMode: 'main' })
     const result = compiled(ui.stack.row([ui.text('first'), ui.text('second'), ui.text('third')]), options)
@@ -454,6 +552,68 @@ describe('compileMayflyUiNode', () => {
     focus.handleInput?.('\x1b[D')
     focus.handleInput?.(' ')
     expect(events.at(-1)).toEqual({ kind: 'activate', pagePath: [], controlId: 'one', actionId: 'one' })
+  })
+
+  it('emits the Nth visible row event on numbered lists and renders N. labels', () => {
+    const { options, events } = fixture()
+    const result = compiled(ui.list({ id: 'pick', role: 'browse', numbered: true, selectedIds: [], items: [
+      { id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'three', label: 'Three' },
+    ] }), options)
+    const focus = result.focusTarget!
+    focus.focused = true
+    const frame = focus.render(60).join('\n')
+    expect(frame).toContain('1. One')
+    expect(frame).toContain('2. Two')
+    expect(frame).toContain('3. Three')
+    focus.handleInput?.('2')
+    expect(events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'pick', selectedIds: ['two'] }])
+    focus.handleInput?.('9')
+    expect(events).toHaveLength(1)
+    focus.handleInput?.('x')
+    expect(events).toHaveLength(1)
+  })
+
+  it('toggles the Nth row on numbered multi-select lists', () => {
+    const { options, events } = fixture()
+    const result = compiled(ui.list({ id: 'pick', role: 'choose', mode: 'multiple', numbered: true, selectedIds: ['one'], items: [
+      { id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'three', label: 'Three' },
+    ] }), options)
+    const focus = result.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('2')
+    expect(events).toEqual([{ kind: 'selection-toggle', pagePath: [], controlId: 'pick', selectedIds: ['one', 'two'] }])
+    focus.handleInput?.('1')
+    expect(events.at(-1)).toEqual({ kind: 'selection-toggle', pagePath: [], controlId: 'pick', selectedIds: [] })
+  })
+
+  it('routes digits to the filter while a numbered filterable list is searching', async () => {
+    const events: MayflyUiEvent[] = []
+    const model = new UiSurfaceModel('spec', {
+      id: 'spec', revision: 0, source: [], scope: { kind: 'app', targetId: 'spec' },
+      update: { reason: 'data' },
+      node: ui.list({ id: 'pick', role: 'choose', numbered: true, filterable: true, selectedIds: [], items: [
+        { id: 'one', label: 'One' }, { id: 'two', label: 'Two 2' },
+      ] }),
+      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      definition: {},
+    })
+    const f = fixture()
+    const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    const focus = result.value.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('/')
+    focus.handleInput?.('2')
+    expect(events).toEqual([])
+    expect(model.choice({ pagePath: [], controlId: 'pick' })?.query).toBe('2')
+    focus.handleInput?.('\x1b')
+    focus.handleInput?.('1')
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    expect(events[0]).toMatchObject({ kind: 'selection-accept', controlId: 'pick', selectedIds: ['two'] })
+    model.dispose()
   })
 
   it('reconciles focus deterministically when a responsive child disappears', () => {
@@ -630,6 +790,110 @@ describe('compileMayflyUiNode', () => {
     restored.value.focusTarget!.focused = true
     restored.value.focusTarget!.handleInput?.('\r')
     expect(f.events.at(-1)).toEqual({ kind: 'activate', pagePath: [], controlId: 'fallback', actionId: 'fallback' })
+  })
+
+  it('switches tabs with alt+arrows from content and lands inside the new tab', async () => {
+    const events: MayflyUiEvent[] = []
+    const model = new UiSurfaceModel('spec', {
+      id: 'spec', revision: 0, source: [], scope: { kind: 'app', targetId: 'spec' },
+      update: { reason: 'data' },
+      node: ui.stack.column([
+        ui.tabs({ id: 'pages', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'three', label: 'Three' }] }),
+        ui.child(ui.list({ id: 'first', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'Alpha' }] }), { tab: { controlId: 'pages', itemId: 'one' } }),
+        ui.child(ui.list({ id: 'second', role: 'browse', selectedIds: [], items: [{ id: 'b', label: 'Beta' }] }), { tab: { controlId: 'pages', itemId: 'two' } }),
+        ui.child(ui.form({ id: 'note', fields: [
+          { kind: 'select', id: 'effort', label: 'Effort', value: 'low', options: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }] },
+          { kind: 'input', id: 'text', label: 'Text', value: '' },
+        ] }), { tab: { controlId: 'pages', itemId: 'two' } }),
+        ui.child(ui.text('nothing'), { tab: { controlId: 'pages', itemId: 'three' } }),
+        ui.actions({ id: 'page-actions', items: [{ id: 'go', label: 'Go' }] }),
+      ]),
+      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      definition: { onEvent: {} },
+    })
+    const f = fixture()
+    const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    const focus = result.value.focusTarget!
+    focus.focused = true
+    focus.render(80)
+    focus.handleInput?.('\t')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'first', itemId: 'a' })
+    focus.handleInput?.('\x1b[1;3C')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'second', itemId: 'b' })
+    expect(result.value.component.render(80).join('\n')).toContain('Beta')
+    await vi.waitFor(() => expect(events).toContainEqual({ kind: 'tab-change', pagePath: [], controlId: 'pages', tabId: 'two' }))
+    focus.handleInput?.('\x1b[1;3D')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('one')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'first', itemId: 'a' })
+    focus.handleInput?.('\x1b[Z')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'pages', itemId: 'one' })
+    focus.handleInput?.('\x1b[1;3C')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'pages', itemId: 'two' })
+    focus.handleInput?.('\t')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'second', itemId: 'b' })
+    focus.handleInput?.('\x1b[1;3C')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('three')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'go' })
+    focus.handleInput?.('\x1b[1;3C')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('three')
+    focus.handleInput?.('\x1b[1;3D')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'second', itemId: 'b' })
+    focus.handleInput?.('\x1b[Z')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'pages', itemId: 'two' })
+    focus.handleInput?.('\t')
+    focus.handleInput?.('\t')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'effort' })
+    focus.handleInput?.('\r')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'effort', editing: true })
+    expect(result.value.component.render(80).join('\n')).toContain('[x] Low')
+    focus.handleInput?.('\x1b[1;3C')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
+    focus.handleInput?.('\x1b')
+    focus.handleInput?.('\t')
+    focus.handleInput?.('x')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'text', editing: true })
+    focus.handleInput?.('\x1b[1;3D')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
+    focus.handleInput?.('\r')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'go' })
+    focus.handleInput?.('\x1b[1;3C')
+    expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('three')
+    model.dispose()
+  })
+
+  it('keeps a picker with no options collapsed', () => {
+    const model = new UiSurfaceModel('spec', {
+      id: 'spec', revision: 0, source: [], scope: { kind: 'app', targetId: 'spec' },
+      update: { reason: 'data' },
+      node: ui.form({ id: 'form', fields: [{ kind: 'select', id: 'pick', label: 'Pick', value: null, options: [] }] }),
+      events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) },
+      definition: { onEvent: {} },
+    })
+    const f = fixture()
+    const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    const focus = result.value.focusTarget!
+    focus.focused = true
+    focus.render(40)
+    focus.handleInput?.('\r')
+    const frame = result.value.component.render(40).join('\n')
+    expect(frame).toContain('Pick: Choose…')
+    model.dispose()
+  })
+
+  it('keeps alt+arrows a no-op off tabbed pages', () => {
+    const f = fixture()
+    const plain = compiledSurface(ui.actions({ id: 'commands', items: [{ id: 'go', label: 'Go' }] }), f.options)
+    plain.focusTarget!.focused = true
+    plain.focusTarget!.handleInput?.('\x1b[1;3D')
+    plain.focusTarget!.handleInput?.('\x1b[1;3C')
+    expect(f.events).toHaveLength(0)
   })
 
   it('does not admit a responsive subtree until it becomes visible', () => {
@@ -1345,14 +1609,18 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }, { id: 'stop', label: 'Stop' }] }),
       ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }] }),
     ])
-    expect(focusedHint(groups)).toBe('  ↑/↓/←/→ actions · Enter run · Tab/Shift+Tab groups')
+    expect(focusedHint(groups)).toBe('  ↑/↓/←/→ actions · Enter run · Alt+←/Alt+→ tabs')
 
     const scrollGroups = ui.stack.column([
       ui.scroll(ui.text('abcdefgh')),
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }] }),
     ])
     expect(focusedHint(scrollGroups, [], { onUnhandledEscape: () => {} }))
-      .toBe('  ↑/↓/PgUp/PgDn scroll · Esc back · Tab/Shift+Tab groups')
+      .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E expand · Esc back')
+    expect(focusedHint(scrollGroups, []))
+      .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E expand · Tab/Shift+Tab groups')
+    expect(focusedHint(scrollGroups, ['\x05'], { onUnhandledEscape: () => {} }))
+      .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E/Esc collapse')
   })
 
   it('derives empty-list, passive, field, and explicit dismissal hints', () => {
@@ -1386,7 +1654,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     focus.handleInput?.('\r')
     expect(f.events).toEqual([])
 
-    expect(focus.render(120).at(-1)).toBe('  ↑/↓/←/→ options · Space/Enter toggle / confirm · Tab/Shift+Tab groups')
+    expect(focus.render(120).at(-1)).toBe('  ↑/↓/←/→ options · Space/Enter toggle / confirm · Alt+←/Alt+→ tabs')
     focus.handleInput?.('\r')
     expect(f.events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'list', selectedIds: [] }])
     focus.handleInput?.(' ')
@@ -1424,6 +1692,8 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(choiceSegment(choice, 'a')).toBe('low')
     focus.handleInput?.('\x1b[B')
     expect(focus.render(80).join('\n')).not.toContain('‹')
+    focus.handleInput?.('\x1b[C')
+    focus.handleInput?.('\x1b[D')
     focus.handleInput?.('\x1b[A')
     focus.handleInput?.('\r')
     await vi.waitFor(() => expect(events).toHaveLength(1))
@@ -1444,8 +1714,99 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const result = compiledSurface(list, f.options)
     result.focusTarget!.focused = true
     expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
+    result.focusTarget!.handleInput?.('\x1b[C')
+    result.focusTarget!.handleInput?.('\x1b[D')
+    expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
     expect(focusedHint(list)).toContain('←/→ segment')
     result.surfaceRuntime.dispose()
+  })
+
+  it('submits the named action on Enter when a form declares enterSubmits', async () => {
+    const events: MayflyUiEvent[] = []
+    const model = new UiSurfaceModel('spec', {
+      id: 'spec', revision: 0, source: [], scope: { kind: 'app', targetId: 'spec' },
+      update: { reason: 'data' },
+      node: ui.stack.column([
+        ui.form({ id: 'answer', enterSubmits: 'save', fields: [{ kind: 'input', id: 'value', label: 'Value', value: '' }] }),
+        ui.actions({ id: 'commands', items: [{ id: 'save', label: 'Save', submit: [{ pagePath: [], formId: 'answer' }] }] }),
+      ]),
+      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      definition: {},
+    })
+    const f = fixture()
+    const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    const focus = result.value.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('x')
+    focus.handleInput?.('\r')
+    await vi.waitFor(() => expect(events.some(event => event.kind === 'submit')).toBe(true))
+    const submit = events.find((event): event is Extract<MayflyUiEvent, { readonly kind: 'submit' }> => event.kind === 'submit')!
+    expect(submit.submission.forms[0]?.fields.find(field => field.id === 'value')?.value).toBe('x')
+    focus.handleInput?.('\r')
+    await vi.waitFor(() => expect(events.filter(event => event.kind === 'submit')).toHaveLength(2))
+    model.dispose()
+  })
+
+  it('lets an enterSubmits textarea submit on Enter and keep Alt+Enter for newlines', async () => {
+    const events: MayflyUiEvent[] = []
+    const model = new UiSurfaceModel('spec', {
+      id: 'spec', revision: 0, source: [], scope: { kind: 'app', targetId: 'spec' },
+      update: { reason: 'data' },
+      node: ui.stack.column([
+        ui.form({ id: 'answer', enterSubmits: 'send', fields: [{ kind: 'textarea', id: 'value', label: 'Value', value: '' }] }),
+        ui.actions({ id: 'commands', items: [{ id: 'send', label: 'Send', submit: [{ pagePath: [], formId: 'answer' }] }] }),
+      ]),
+      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      definition: {},
+    })
+    const f = fixture()
+    const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    const focus = result.value.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('a')
+    focus.handleInput?.('\x1b\r')
+    focus.handleInput?.('b')
+    focus.handleInput?.('\r')
+    await vi.waitFor(() => expect(events.some(event => event.kind === 'submit')).toBe(true))
+    const submit = events.find((event): event is Extract<MayflyUiEvent, { readonly kind: 'submit' }> => event.kind === 'submit')!
+    expect(submit.submission.forms[0]?.fields.find(field => field.id === 'value')?.value).toBe('a\nb')
+    model.dispose()
+  })
+
+  it('marks the invoking action busy until its reply lands', async () => {
+    let release!: () => void
+    let prepares = 0
+    const model = new UiSurfaceModel('spec', {
+      id: 'spec', revision: 0, source: [], scope: { kind: 'app', targetId: 'spec' },
+      update: { reason: 'data' },
+      node: ui.actions({ id: 'commands', items: [{ id: 'go', label: 'Go' }, { id: 'stay', label: 'Stay' }] }),
+      events: { prepare: () => { prepares += 1; return new Promise(resolve => { release = () => resolve({ reply: { kind: 'completed' as const }, publish: () => true }) }) } },
+      definition: {},
+    })
+    const f = fixture()
+    const renderBusy = () => {
+      const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error(result.message)
+      return result.value.component.render(60).join('\n')
+    }
+    model.invoke('go')
+    expect(model.actionPending({ pagePath: [], controlId: 'go' })).toBe(true)
+    model.invoke('go')
+    expect(prepares).toBe(1)
+    const busy = renderBusy()
+    expect(busy).toContain('… Go')
+    expect(busy).not.toContain('… Stay')
+    release()
+    await vi.waitFor(() => expect(model.actionPending({ pagePath: [], controlId: 'go' })).toBe(false))
+    expect(renderBusy()).not.toContain('… Go')
+    model.dispose()
   })
 
   it('switches hints for text editing, select adjustment, and confirmation', () => {
@@ -1462,6 +1823,12 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     ])
     expect(focusedHint(textareaGroups, ['\r']))
       .toBe('  Enter/Alt+Enter newline · Esc leave · Tab/Shift+Tab groups')
+
+    const submittingTextarea = ui.form({ id: 'form', enterSubmits: 'send', fields: [{ kind: 'textarea', id: 'notes', label: 'Notes', value: '' }] })
+    expect(focusedHint(submittingTextarea, ['a'])).toBe('  Enter submit · Alt+Enter newline · Esc leave')
+
+    const submittingInput = ui.form({ id: 'form', enterSubmits: 'send', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })
+    expect(focusedHint(submittingInput, ['a'])).toBe('  Enter submit · Esc leave')
 
     const select = ui.form({ id: 'form', fields: [{ kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [
       { id: 'dark', label: 'Dark' },
@@ -1555,8 +1922,8 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     ])
     const widths = compiledSurface(wideTree, fixture({ onUnhandledEscape: () => {} }).options)
     widths.focusTarget!.focused = true
-    expect(widths.component.render(80).at(-1)).toBe('  ↑/↓/←/→ actions · Enter run · Tab/Shift+Tab groups')
-    expect(widths.component.render(40).at(-1)).toBe('  ↑/↓/←/→ · Enter · Tab')
+    expect(widths.component.render(80).at(-1)).toBe('  ↑/↓/←/→ actions · Enter run · Alt+←/Alt+→ tabs')
+    expect(widths.component.render(40).at(-1)).toBe('  ↑/↓/←/→ · Enter · Alt+←→')
     expect(widths.component.render(18).at(-1)).toBe('  ↑/↓/←/→ · Enter')
     expect(widths.component.render(8).at(-1)).toBe('  Enter')
     expect(widths.component.render(6).join('\n')).not.toContain('Ent')

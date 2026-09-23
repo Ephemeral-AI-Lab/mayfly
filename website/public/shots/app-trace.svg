@@ -88,11 +88,11 @@
 <text x="45.6" y="432" textLength="109.2" lengthAdjust="spacingAndGlyphs" fill="#5c6476">↑/↓/PgUp/PgDn</text>
 <text x="163.2" y="432" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">scroll</text>
 <text x="222" y="432" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">·</text>
-<text x="238.8" y="432" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#5c6476">Esc</text>
-<text x="272.4" y="432" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#5c6476">back</text>
-<text x="314.4" y="432" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">·</text>
-<text x="331.2" y="432" textLength="109.2" lengthAdjust="spacingAndGlyphs" fill="#5c6476">Tab/Shift+Tab</text>
-<text x="448.8" y="432" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">groups</text>
+<text x="238.8" y="432" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">Ctrl+E</text>
+<text x="297.6" y="432" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">expand</text>
+<text x="356.4" y="432" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">·</text>
+<text x="373.2" y="432" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#5c6476">Esc</text>
+<text x="406.8" y="432" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#5c6476">back</text>
 <text x="675.6" y="432" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#dcd7f2">│</text>
 <text x="12" y="451" textLength="672" lengthAdjust="spacingAndGlyphs" fill="#dcd7f2">╰──────────────────────────────────────────────────────────────────────────────╯</text>
 <text x="20.4" y="470" textLength="109.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">deepseek-chat</text>

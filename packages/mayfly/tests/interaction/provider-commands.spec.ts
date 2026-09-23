@@ -15,6 +15,7 @@ function llm() {
     listProviders: () => [
       { id: 'custom', name: 'Custom API' },
       { id: 'fallback', name: '' },
+      { id: 'ghost', name: 'Ghost' },
     ],
     listConfigurableProviders: () => [
       { settingsNs: 'llm-pi-ai', provider: 'anthropic', displayName: 'Anthropic' },
@@ -27,8 +28,8 @@ async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
   return providerFixture(ctx, {
-    custom: { displayName: 'Custom API', api: 'openai-completions', baseURL: 'https://custom.example/v1', apiKeyEnv: 'CUSTOM_KEY' },
-    fallback: { api: 'openai-completions', baseURL: 'https://fallback.example/v1', apiKeyEnv: 'FALLBACK_KEY' },
+    custom: { displayName: 'Custom API', api: 'openai-completions', baseURL: 'https://custom.example/v1', apiKeyEnv: 'CUSTOM_KEY', models: [{ id: 'one' }, { id: 'two' }] },
+    fallback: { api: 'openai-completions', baseURL: 'https://fallback.example/v1', apiKeyEnv: 'FALLBACK_KEY', models: [] },
   }, llm())
 }
 
@@ -53,6 +54,9 @@ describe('provider commands', () => {
     const initial = bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.providers')!
     expect(JSON.stringify(initial.node)).toContain('Custom API')
     expect(JSON.stringify(initial.node)).toContain('fallback')
+    // Rows carry a model count when the profile lists models plus a key hint.
+    expect(JSON.stringify(initial.node)).toContain('2 models · key configured')
+    expect(JSON.stringify(initial.node)).toContain('no models · no key set')
 
     expect(await invoke(bench, 'list')).toEqual({ kind: 'success' })
     expect(bench.ctx.mayflyOverlays.list().filter(entry => entry.id === 'mayfly.providers')).toHaveLength(1)
@@ -80,10 +84,21 @@ describe('provider commands', () => {
     )
     expect(unrelated.reply).toEqual({ kind: 'completed' })
 
+    bench.ctx.emit('settings/document-updated', 'llm-pi-ai' as never, 1)
     bench.ctx.mayflyOverlays.close('mayfly.providers')
     await bench.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', 'custom', 'displayName'], value: 'After close' }])
     await flush()
     expect(bench.ctx.mayflyOverlays.list().some(entry => entry.id === 'mayfly.providers')).toBe(false)
+  })
+
+  it('renders rows without details when the settings namespace is absent', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const bench = await providerFixture(ctx, {}, llm(), { registerNamespace: false })
+    expect(await bench.commands.entries.get('provider')!.handler({ rawInput: '', signal: signal() } as never)).toEqual({ kind: 'success' })
+    const node = JSON.stringify(ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.providers')!.node)
+    expect(node).toContain('Custom API')
+    expect(node).not.toContain('key configured')
   })
 
   it('opens provider setup from both command and browser actions', async () => {
@@ -110,10 +125,25 @@ describe('provider commands', () => {
     })
     await flush()
     const endpoint = bench.ctx.mayflyUiInteraction.get('overlay', `mayfly.provider.add.${Buffer.from('anthropic').toString('hex')}`)!
-    endpoint.edit({ pagePath: [{ controlId: 'provider-tabs', itemId: 'credentials' }], formId: 'credentials', fieldId: 'key' }, 'new-key')
+    endpoint.edit({ pagePath: [{ controlId: 'provider-tabs', itemId: 'connection' }], formId: 'connection', fieldId: 'key' }, 'new-key')
     endpoint.invoke('save')
     await flush()
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { anthropic: { apiKeyEnv: 'ANTHROPIC_API_KEY' } } })
+  })
+
+  it('shows a configured-key hint for profile-less providers and tolerates describe failures', async () => {
+    const bench = await setup()
+    bench.credentials.values.set('GHOST_API_KEY', 'ghost-secret')
+    expect(await invoke(bench, '')).toEqual({ kind: 'success' })
+    const node = JSON.stringify(bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.providers')!.node)
+    expect(node).toContain('key configured')
+    bench.ctx.mayflyOverlays.close('mayfly.providers')
+
+    vi.spyOn(bench.credentials, 'describe').mockRejectedValue(new Error('unavailable'))
+    expect(await invoke(bench, '')).toEqual({ kind: 'success' })
+    const degraded = JSON.stringify(bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.providers')!.node)
+    expect(degraded).toContain('Custom API')
+    expect(degraded).not.toContain('key configured')
   })
 
   it('renders an empty browser when the optional llm service is absent', async () => {

@@ -196,6 +196,9 @@ export class UiSurfaceModel {
   }
   inspect() { return freezeWire({ id: this.id, instanceId: this.instanceId, scope: this.scope, revision: this.revision, forms: [...this.forms.values()].map(inspectForm), operations: this.operationSnapshot() }) }
 
+  /** True while the addressed action has a handled invoke in flight. */
+  actionPending(address: UiControlAddress): boolean { return this.activeKeys.has(uiControlKey(address)) }
+
   focusControl(address: UiControlAddress): void {
     const previous = this.focus
     if (!this.live || (previous !== undefined && uiControlKey(previous) === uiControlKey(address) && previous.itemId === address.itemId)) return
@@ -526,7 +529,11 @@ export class UiSurfaceModel {
       this.navigate(action.item.navigate)
       return
     }
-    const inputs = targets === undefined && selections.length === 0 ? undefined : freezeWire({ actionId, draftRevision: this.revision, source: this.source, forms: forms.map(form => submitForm(form!)), selections: selections.map(selection => ({ ...selection.address, selectedIds: selection.state!.selectedIds })) })
+    const inputs = targets === undefined && selections.length === 0 ? undefined : freezeWire({ actionId, draftRevision: this.revision, source: this.source, forms: forms.map(form => submitForm(form!)), selections: selections.map(selection => {
+      const selected = selection.state!
+      const segmentId = selected.selectedIds.length === 1 && selected.definition.mode !== 'multiple' ? choiceSegment(selected, selected.selectedIds[0]!) : undefined
+      return segmentId === undefined ? { ...selection.address, selectedIds: selected.selectedIds } : { ...selection.address, selectedIds: selected.selectedIds, segmentId }
+    }) })
     const submission = action.item.submit === undefined ? undefined : inputs
     this.start(key, submission !== undefined ? { kind: 'submit', pagePath, controlId: forms[0]!.definition.id, submission }
       : inputs !== undefined ? { kind: 'activate', pagePath, controlId: actionId, actionId, inputs } : event, submission)

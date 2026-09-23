@@ -143,5 +143,5 @@ export function openPermissionPanel(ctx: Context): void {
     if (presets.resolve(name).sandbox === 'danger-full-access') confirmDanger(name)
     else { picker.close(); dispatch(name) }
     return { kind: 'completed' as const }
-  } } }, ui.surface({ chrome: 'overlay', title: 'Permissions', child: ui.list({ id: 'permissions', role: 'choose', selectedIds: current === 'custom' ? [] : [current], items: rows }) }), { reopen: 'replace' })
+  } } }, ui.surface({ chrome: 'overlay', title: 'Permissions', child: ui.list({ id: 'permissions', role: 'choose', numbered: true, selectedIds: current === 'custom' ? [] : [current], items: rows }) }), { reopen: 'replace' })
 }

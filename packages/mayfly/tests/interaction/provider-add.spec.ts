@@ -20,6 +20,7 @@ const address = (formId: string) => ({ pagePath: [{ controlId: 'provider-tabs', 
 async function setup(
   discover = vi.fn().mockResolvedValue([{ id: 'one', contextWindow: 4000 }, { id: 'two' }]),
   listProviders = () => [] as { id: string, name: string }[],
+  lifetime?: AbortSignal,
 ) {
   const ctx = new Context()
   contexts.push(ctx)
@@ -31,7 +32,7 @@ async function setup(
   }
   const bench = await providerFixture(ctx, {}, llm)
   const created = vi.fn()
-  openProviderSetup(ctx, created)
+  openProviderSetup(ctx, created, lifetime)
   const choose = async (kind: string) => {
     ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.add')!.emit({ kind: 'selection-accept', pagePath: [], controlId: 'provider-source', selectedIds: [kind] })
     await flush()
@@ -41,7 +42,7 @@ async function setup(
     const model = ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.add.custom')!
     model.edit({ ...address('connection'), fieldId: 'route' }, 'gateway')
     model.edit({ ...address('connection'), fieldId: 'baseURL' }, 'https://gateway.example/v1')
-    model.edit({ ...address('credentials'), fieldId: 'key' }, 'private-key')
+    model.edit({ ...address('connection'), fieldId: 'key' }, 'private-key')
     await flush()
     return model
   }
@@ -66,13 +67,11 @@ function submission(entry: ReturnType<Context['mayflyOverlays']['list']>[number]
         { id: 'route', value: 'route' in options ? options.route : 'gateway', change: 'set' as const },
         { id: 'protocol', value: 'openai-completions', change: 'set' as const },
         { id: 'baseURL', value: 'baseURL' in options ? options.baseURL : 'https://gateway.example/v1', change: 'set' as const },
+        { id: 'key', value: 'key' in options ? options.key : 'private-key', change: 'set' as const },
       ] },
       { pagePath: address('models').pagePath, formId: 'models', fields: [
         { id: 'context', value: null, change: 'unchanged' as const },
         { id: 'efforts', value: [], change: 'unchanged' as const },
-      ] },
-      { pagePath: address('credentials').pagePath, formId: 'credentials', fields: [
-        { id: 'key', value: 'key' in options ? options.key : 'private-key', change: 'set' as const },
       ] },
     ],
     selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: options.selectedIds ?? ['one'] }],
@@ -106,7 +105,7 @@ describe('provider creation', () => {
     picker.emit({ kind: 'selection-accept', pagePath: [], controlId: 'providers', selectedIds: ['anthropic'] })
     await flush()
     const model = bench.ctx.mayflyUiInteraction.get('overlay', `mayfly.provider.add.${Buffer.from('anthropic').toString('hex')}`)!
-    model.edit({ ...address('credentials'), fieldId: 'key' }, 'vendor-key')
+    model.edit({ ...address('connection'), fieldId: 'key' }, 'vendor-key')
     expect(bench.settings.writes).toBe(0)
     model.invoke('save')
     model.invoke('save')
@@ -120,18 +119,19 @@ describe('provider creation', () => {
   it('discovers without writing and saves the actual selected models with typed defaults', async () => {
     const bench = await setup()
     const model = await bench.custom()
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     expect(bench.discover).toHaveBeenCalledWith('llm-pi-ai', { api: 'openai-completions', baseURL: 'https://gateway.example/v1', apiKey: 'private-key' }, expect.any(AbortSignal))
     expect(bench.settings.writes).toBe(0)
-    expect(model.form(address('credentials'))!.fields.key!.value).toBe('private-key')
+    expect(model.form(address('connection'))!.fields.key!.value).toBe('private-key')
     expect(model.activeTab({ pagePath: [], controlId: 'provider-tabs' })).toBe('models')
-    model.invoke('save')
-    await flush()
-    expect(bench.settings.writes).toBe(0)
     model.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['one', 'two'] })
     model.edit({ ...address('models'), fieldId: 'context' }, '8000')
     model.edit({ ...address('models'), fieldId: 'efforts' }, ['high'])
+    model.edit({ pagePath: address('models').pagePath, formId: 'custom-model', fieldId: 'model-id' }, 'one')
+    model.invoke('add-model', address('models').pagePath)
+    await flush()
+    expect(model.form({ pagePath: address('models').pagePath, formId: 'custom-model' })!.fields['model-id']!.error).toBe('Already listed')
     model.invoke('save')
     await flush()
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { gateway: { api: 'openai-completions', baseURL: 'https://gateway.example/v1', apiKeyEnv: 'GATEWAY_API_KEY', models: [
@@ -141,31 +141,101 @@ describe('provider creation', () => {
     expect(model.disposed).toBe(true)
   })
 
-  it('retains input on discovery failure and redacts the key from provider errors', async () => {
-    const bench = await setup(vi.fn().mockRejectedValue(new Error('Rejected private-key')))
+  it('gates the Models step until the connection validates and stages manual models inline', async () => {
+    const bench = await setup(vi.fn().mockRejectedValue(new Error('unreachable')))
+    setModelsDevLoader(async () => buildIndex({ vendor: { models: { solo: { limit: { context: 1234, output: 256 }, reasoning_options: [{ type: 'effort', values: ['high'] }] }, nr: { reasoning: false } } } }))
     const model = await bench.custom()
-    model.invoke('discover')
+    const entry = () => bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.add.custom')!
+    expect(JSON.stringify(entry().node)).toContain('"id":"models","label":"Models","disabled":true')
+    model.invoke('next', address('connection').pagePath)
     await flush()
-    expect(model.form(address('credentials'))!.fields.key!.value).toBe('private-key')
-    expect(model.feedbackSnapshot().at(-1)?.message).toContain('[redacted]')
-    expect(JSON.stringify(model.feedbackSnapshot())).not.toContain('private-key')
+    await flush()
+    expect(JSON.stringify(entry().node)).not.toContain('"id":"models","label":"Models","disabled":true')
+    expect(model.activeTab({ pagePath: [], controlId: 'provider-tabs' })).toBe('models')
+    expect(JSON.stringify(entry().node)).toContain('model discovery unavailable')
+
+    model.invoke('add-model', address('models').pagePath)
+    await flush()
+    expect(model.form({ pagePath: address('models').pagePath, formId: 'custom-model' })!.fields['model-id']!.error).toBe('Enter a model ID')
+    model.edit({ pagePath: address('models').pagePath, formId: 'custom-model', fieldId: 'model-id' }, 'solo')
+    model.invoke('add-model', address('models').pagePath)
+    await flush()
+    expect(JSON.stringify(entry().node)).toContain('solo')
+    model.edit({ pagePath: address('models').pagePath, formId: 'custom-model', fieldId: 'model-id' }, 'solo')
+    model.invoke('add-model', address('models').pagePath)
+    await flush()
+    expect(model.form({ pagePath: address('models').pagePath, formId: 'custom-model' })!.fields['model-id']!.error).toBe('Already listed')
+    model.edit({ pagePath: address('models').pagePath, formId: 'custom-model', fieldId: 'model-id' }, 'nr')
+    model.invoke('add-model', address('models').pagePath)
+    await flush()
+    model.edit({ pagePath: address('models').pagePath, formId: 'custom-model', fieldId: 'model-id' }, 'bare')
+    model.invoke('add-model', address('models').pagePath)
+    await flush()
+    model.invoke('save')
+    await flush()
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { gateway: { models: [
+      { id: 'solo', contextWindow: 1234, maxTokens: 256, reasoningEfforts: { high: 'high' } }, { id: 'nr', reasoningEfforts: false }, { id: 'bare' },
+    ] } } })
+    expect(bench.credentials.values.get('GATEWAY_API_KEY')).toBe('private-key')
+  })
+
+  it('defends inline model staging against missing fields and aborted continuations', async () => {
+    const bench = await setup()
+    const entry = await customEntry(bench)
+    const action = entry.definition.onEvent!.action!
+    const add = (fields: { id: string, value?: unknown }[], actionSignal = new AbortController().signal) => action(
+      { kind: 'submit', submission: { actionId: 'add-model', source: entry.source, forms: [{ pagePath: address('models').pagePath, formId: 'custom-model', fields }] } },
+      context(entry, actionSignal),
+    )
+    expect(await add([])).toMatchObject({ kind: 'invalid' })
+    const aborted = new AbortController()
+    aborted.abort()
+    expect(await add([{ id: 'model-id', value: 'x' }], aborted.signal)).toEqual({ kind: 'cancelled' })
+  })
+
+  it('retains input on discovery failure and redacts the key from provider errors', async () => {
+    const bench = await setup(vi.fn().mockResolvedValueOnce([]).mockRejectedValue(new Error('Rejected private-key')), undefined, new AbortController().signal)
+    const model = await bench.custom()
+    model.invoke('next', address('connection').pagePath)
+    await flush()
+    await flush()
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.add.custom')!
+    expect(model.form(address('connection'))!.fields.key!.value).toBe('private-key')
+    expect(JSON.stringify(entry.node)).toContain('[redacted]')
+    expect(JSON.stringify(entry.node)).not.toContain('private-key')
     expect(bench.settings.writes).toBe(0)
   })
 
   it('cancels a superseded discovery and prevents its late catalog from being published', async () => {
     const old = Promise.withResolvers<{ id: string }[]>()
-    const discover = vi.fn().mockReturnValueOnce(old.promise).mockResolvedValue([{ id: 'new' }])
+    const stale = Promise.withResolvers<{ id: string }[]>()
+    const discover = vi.fn()
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce([{ id: 'new' }])
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValue([{ id: 'new' }])
     const bench = await setup(discover)
     const model = await bench.custom()
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     const signal = discover.mock.calls[0]![2] as AbortSignal
     model.edit({ ...address('connection'), fieldId: 'baseURL' }, 'https://new.example/v1')
+    await flush()
     expect(signal.aborted).toBe(true)
+    model.invoke('discover', address('models').pagePath)
     await flush()
-    model.invoke('discover')
+    old.reject(new Error('stale'))
     await flush()
-    old.resolve([{ id: 'old' }])
+    expect(model.choice({ pagePath: address('models').pagePath, controlId: 'advertised-models' })!.definition.items.map(item => item.id)).toEqual(['new'])
+    model.invoke('discover', address('models').pagePath)
+    await flush()
+    const staleSignal = discover.mock.calls[2]![2] as AbortSignal
+    model.edit({ ...address('connection'), fieldId: 'baseURL' }, 'https://newest.example/v1')
+    await flush()
+    expect(staleSignal.aborted).toBe(true)
+    model.invoke('discover', address('models').pagePath)
+    await flush()
+    stale.resolve([{ id: 'stale' }])
     await flush()
     expect(model.choice({ pagePath: address('models').pagePath, controlId: 'advertised-models' })!.definition.items.map(item => item.id)).toEqual(['new'])
     expect(bench.settings.writes).toBe(0)
@@ -174,10 +244,10 @@ describe('provider creation', () => {
   it('requires renewed discovery when its endpoint inputs change', async () => {
     const bench = await setup()
     const model = await bench.custom()
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     model.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['one'] })
-    model.edit({ ...address('credentials'), fieldId: 'key' }, 'new-key')
+    model.edit({ ...address('connection'), fieldId: 'key' }, 'new-key')
     await flush()
     model.invoke('save')
     await flush()
@@ -188,14 +258,14 @@ describe('provider creation', () => {
   it('keeps the created profile after credential failure and retries only the unfinished write', async () => {
     const bench = await setup()
     const model = await bench.custom()
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     model.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['one'] })
     bench.credentials.failWrite = true
     model.invoke('save')
     await flush()
     expect(bench.settings.writes).toBe(1)
-    expect(model.form(address('credentials'))!.fields.key!.value).toBe('private-key')
+    expect(model.form(address('connection'))!.fields.key!.value).toBe('private-key')
     expect(model.form(address('connection'))!.fields.route!.change).toBe('unchanged')
     expect(bench.created).not.toHaveBeenCalled()
     bench.credentials.failWrite = false
@@ -211,7 +281,8 @@ describe('provider creation', () => {
     const bench = await setup(discover)
     const model = await bench.custom()
     model.edit({ ...address('connection'), fieldId: 'protocol' }, 'anthropic-messages')
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
+    await flush()
     await flush()
     expect(discover.mock.calls[0]![1].api).toBe('openai-completions')
     model.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['one'] })
@@ -224,7 +295,7 @@ describe('provider creation', () => {
     const bench = await setup()
     setModelsDevLoader(async () => buildIndex({ vendor: { models: { two: { limit: { context: 32000, output: 1000 }, reasoning: false } } } }))
     const model = await bench.custom()
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     model.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['two'] })
     model.edit({ ...address('models'), fieldId: 'context' }, '100')
@@ -237,16 +308,16 @@ describe('provider creation', () => {
     const bench = await setup()
     const model = await bench.custom()
     model.edit({ ...address('connection'), fieldId: 'route' }, 'INVALID')
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     expect(bench.discover).not.toHaveBeenCalled()
     model.edit({ ...address('connection'), fieldId: 'route' }, 'gateway')
     model.edit({ ...address('connection'), fieldId: 'baseURL' }, 'file:///tmp/x')
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     expect(bench.discover).not.toHaveBeenCalled()
     model.edit({ ...address('connection'), fieldId: 'baseURL' }, 'https://valid.example')
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     model.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['one'] })
     await bench.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', 'gateway'], value: { displayName: 'External' } }])
@@ -326,7 +397,11 @@ describe('provider creation', () => {
       { kind: 'activate', pagePath: [], controlId: 'provider-setup-actions', actionId: 'discover', inputs: submission(entry, { key: null }) },
       context(entry),
     )
-    expect(failed).toEqual({ kind: 'failed', message: 'Model discovery failed' })
+    expect(failed).toMatchObject({ kind: 'completed', navigate: [{ controlId: 'provider-tabs', itemId: 'models' }] })
+    await flush()
+    await flush()
+    const settled = bench.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!
+    expect(JSON.stringify(settled.node)).toContain('Model discovery failed')
   })
 
   it('contains cancellation after catalog loading and both persistence boundaries', async () => {
@@ -335,15 +410,16 @@ describe('provider creation', () => {
     const discovery = await setup()
     setModelsDevLoader(load)
     const discoveryEntry = await customEntry(discovery)
-    const discoveryAbort = new AbortController()
-    const discoveryResult = discoveryEntry.definition.onEvent!.action!(
+    const reply = await discoveryEntry.definition.onEvent!.action!(
       { kind: 'activate', pagePath: [], controlId: 'provider-setup-actions', actionId: 'discover', inputs: submission(discoveryEntry) },
-      context(discoveryEntry, discoveryAbort.signal),
+      context(discoveryEntry),
     )
+    expect(reply).toMatchObject({ kind: 'completed' })
     await vi.waitFor(() => expect(load).toHaveBeenCalled())
-    discoveryAbort.abort()
+    discovery.ctx.mayflyOverlays.close(discoveryEntry.id)
     catalog.resolve(buildIndex({}))
-    expect(await discoveryResult).toEqual({ kind: 'cancelled' })
+    await flush()
+    expect(discovery.ctx.mayflyOverlays.list().some(item => item.id === discoveryEntry.id)).toBe(false)
 
     setModelsDevLoader(async () => undefined)
     const afterSettings = await setup()
@@ -422,7 +498,7 @@ describe('provider creation', () => {
 
     const changed = await setup()
     const model = await changed.custom()
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     model.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['one'] })
     changed.credentials.failWrite = true
@@ -446,7 +522,7 @@ describe('provider creation', () => {
     const bench = await setup()
     setModelsDevLoader(async () => buildIndex({ vendor: { models: { one: { reasoning_options: [{ type: 'effort', values: ['low', 'high'] }] } } } }))
     const model = await bench.custom()
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     model.updateChoice({ pagePath: address('models').pagePath, controlId: 'advertised-models' }, { kind: 'select', ids: ['one'] })
     model.invoke('save')
@@ -465,7 +541,7 @@ describe('provider creation', () => {
   it('contains matching observations after the endpoint closes', async () => {
     const bench = await setup()
     const model = await bench.custom()
-    model.invoke('discover')
+    model.invoke('next', address('connection').pagePath)
     await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.add.custom')!
     const observe = entry.definition.onEvent!.observe!

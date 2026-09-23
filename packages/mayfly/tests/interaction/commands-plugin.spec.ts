@@ -334,6 +334,11 @@ describe('mayfly-commands plugin', () => {
       },
     }, { surfaceOp: 'append' })
     agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    agent.session.append('turn/start', { turn: 2 })
+    agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'second ask' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
     const onRewind = vi.fn()
     ctx.on('mayfly/request-rewind', onRewind)
     const execution = await ctx.commands.execute(agent, '/rewind', [], signal())
@@ -342,14 +347,14 @@ describe('mayfly-commands plugin', () => {
     expect((await ctx.commands.execute(agent, '/rewind', [], signal()))?.result).toEqual({ kind: 'success' })
     expect(ctx.mayflyOverlays.list().find(entry => entry.id === opened.id)!.focusRevision).toBeGreaterThan(opened.focusRevision)
     const panel = overlay(ctx, 'mayfly.rewind')
-    const rows = panel.render(72)
+    const rows = panel.render(100)
     expect(rows.some(row => row.includes('Rewind current session'))).toBe(true)
-    expect(rows.some(row => row.includes('Turn 1 · fix the login flow'))).toBe(true)
-    expect(rows.some(row => row.includes('login flow fixed'))).toBe(true)
+    expect(rows.some(row => row.includes('Turn 2 · second ask') && row.includes('rewinds 1 message'))).toBe(true)
+    expect(rows.some(row => row.includes('Turn 1 · fix the login flow') && row.includes('login flow fixed') && row.includes('rewinds 3 messages'))).toBe(true)
     expect(rows.some(row => row.includes('The original session stays available'))).toBe(true)
     panel.handleInput(KEY.enter)
     await flushCommands()
-    expect(onRewind).toHaveBeenCalledWith(String(agent.id), 0)
+    expect(onRewind).toHaveBeenCalledWith(String(agent.id), 4)
     expect(panel.closed).toBe(true)
   })
 
@@ -468,6 +473,41 @@ describe('mayfly-commands plugin', () => {
     const plainRow = rows.find(row => row.includes('s-plain · 1970-01-01 00:00'))
     expect(plainRow).toBeDefined()
     expect(plainRow).toContain('s-plain · 1970-01-01 00:00')
+  })
+
+  it('/sessions tails rows of a still-loading title page with a muted …', async () => {
+    const headers = Array.from({ length: 10 }, (_, index) =>
+      header(`s-${String(9 - index)}`, 10_000 - index * 1_000, HERE))
+    type Batch = ReturnType<TitleQueryFake['readTitleSnapshots']>
+    let calls = 0
+    let resolvePage!: (results: Awaited<Batch>) => void
+    const pending = new Promise<Awaited<Batch>>(resolve => { resolvePage = resolve })
+    const { ctx, agent } = await mount({
+      persistence: { list: () => Promise.resolve(headers) },
+      sessionQuery: {
+        readTitleSnapshots: ids => {
+          calls += 1
+          // Page zero resolves up front; page one hangs until the test lets it land.
+          return calls === 1 ? Promise.resolve(ids.map(id => titled(String(id), `Title ${String(id)}`))) : pending
+        },
+      },
+    })
+    await ctx.commands.execute(agent, '/sessions', [], signal())
+    await flushCommands()
+    const panel = overlay(ctx, 'mayfly.sessions')
+    const loading = panel.render(88)
+    // Page one (s-1, s-0) is still resolving: the id rows carry the `…` tail.
+    expect(loading.some(row => row.includes('s-1 · 1970-01-01') && row.includes('…'))).toBe(true)
+    expect(loading.some(row => row.includes('s-0 · 1970-01-01') && row.includes('…'))).toBe(true)
+    expect(loading.some(row => row.includes('s-2 · 1970-01-01') && row.includes('…'))).toBe(false)
+    resolvePage([titled('s-1', 'Late title'), rejected('s-0')])
+    await flushCommands()
+    const settled = panel.render(88)
+    expect(settled.some(row => row.includes('Late title'))).toBe(true)
+    expect(settled.some(row => row.includes('s-1 · 1970-01-01') && row.includes('…'))).toBe(false)
+    // A settled-but-untitled row drops the placeholder and keeps the id form.
+    expect(settled.some(row => row.includes('s-0 · 1970-01-01'))).toBe(true)
+    expect(settled.some(row => row.includes('s-0 · 1970-01-01') && row.includes('…'))).toBe(false)
   })
 
   it('/sessions renders persisted parentSession lineage as a tree', async () => {

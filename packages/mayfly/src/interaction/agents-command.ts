@@ -254,7 +254,7 @@ export function apply(ctx: Context): void {
     const view = () => ui.surface({ title: t('Subagents'), chrome: 'overlay', child: ui.stack.column([
       ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, items: agentTreeItems(entries) }),
       ui.actions({ id: 'subagent-actions', items: [
-        { id: 'stop', label: t('Stop selected'), intent: 'danger', key: 'q', confirm: t('Stop selected subagent?'), selections: [{ pagePath: [], controlId: 'subagents' }] },
+        { id: 'stop', label: t('Stop selected'), intent: 'danger', confirm: t('Stop selected subagent?'), selections: [{ pagePath: [], controlId: 'subagents' }] },
         { id: 'close', label: t('Close'), dismiss: true },
       ] }),
     ]) })

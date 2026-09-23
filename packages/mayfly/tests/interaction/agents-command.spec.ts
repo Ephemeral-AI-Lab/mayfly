@@ -438,7 +438,7 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
-  it('stops the focused row through the q accelerator', async () => {
+  it('stops the focused row through the declared action', async () => {
     const rig = await mountCommand()
     rig.tree = [child('first'), child('second')]
     rig.liveAgents.set('first', { id: SessionId('first'), status: 'idle' } as Agent)
@@ -446,7 +446,7 @@ describe('mayfly-agents-command', () => {
     await execute(rig)
     const model = browser(rig)
     focusBrowser(model, 'second')
-    renderRequest(model).input('q')
+    model.invoke('stop')
     await flushRequests()
     expect(JSON.stringify(model.decisionNode)).toContain('Stop selected subagent?')
     model.answerDecision(true)
@@ -454,16 +454,17 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
-  it('types q into an open list search instead of stopping', async () => {
+  it('types q into the list search instead of stopping', async () => {
     const rig = await mountCommand()
     rig.tree = [child('child')]
     await execute(rig)
     const model = browser(rig)
     const compiled = renderRequest(model)
-    model.updateChoice({ pagePath: [], controlId: 'subagents' }, { kind: 'query', query: 'x' })
     compiled.input('q')
     expect(model.decisionNode).toBeUndefined()
-    expect(model.choice({ pagePath: [], controlId: 'subagents' })?.query).toBe('xq')
+    expect(model.choice({ pagePath: [], controlId: 'subagents' })?.query).toBe('q')
+    compiled.input('q')
+    expect(model.choice({ pagePath: [], controlId: 'subagents' })?.query).toBe('qq')
     await rig.fiber.dispose()
   })
 

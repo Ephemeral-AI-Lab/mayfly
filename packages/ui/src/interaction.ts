@@ -29,7 +29,7 @@ export interface MayflySubmission {
   readonly draftRevision: number
   readonly forms: readonly MayflySubmittedForm[]
   readonly source: readonly MayflySourceStamp[]
-  readonly selections?: readonly (MayflySelectionAddress & { readonly selectedIds: readonly string[] })[]
+  readonly selections?: readonly (MayflySelectionAddress & { readonly selectedIds: readonly string[], readonly segmentId?: string })[]
 }
 export interface MayflyFieldError extends MayflyFieldAddress { readonly message: string }
 export interface MayflyFeedback {

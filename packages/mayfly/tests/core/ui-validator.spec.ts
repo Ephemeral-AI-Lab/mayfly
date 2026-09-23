@@ -405,6 +405,7 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [{ kind: 'input', id: '', label: 'Empty', value: '' }] })).toMatchObject({ ok: false, message: expect.stringContaining('empty') })
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [{ kind: 'input', id: 'f', label: 'Duplicate', value: '' }] })).toMatchObject({ ok: false, message: expect.stringContaining('duplicated') })
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [], submitActionId: 'submit', cancelActionId: 'submit' })).toMatchObject({ ok: false, message: expect.stringContaining('duplicated') })
+    expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [], enterSubmits: ' ' })).toMatchObject({ ok: false, message: expect.stringContaining('must not be empty') })
     expect(validateMayflyUiNode(ui.stack.column([ui.actions({ id: 'a', items: [{ id: 'cancel', label: 'Cancel' }] }), ui.loader({ message: 'load', cancelActionId: 'cancel' })]))).toMatchObject({ ok: false, message: expect.stringContaining('duplicated') })
     expect(validateMayflyUiNode(ui.loader({ message: 'load' })).ok).toBe(true)
     expect(validateMayflyUiNode(ui.scroll(ui.text('plain'))).ok).toBe(true)

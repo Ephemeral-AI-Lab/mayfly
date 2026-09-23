@@ -29,10 +29,10 @@ export function questionnaireView(questions: readonly AskUserQuestionItem[], t: 
       return ui.child(ui.stack.column([
         ui.text(question.question, { tone: 'accent' }),
         ...question.detail === undefined ? [] : [ui.scroll(ui.markdown(question.detail), { scrollbar: true })],
-        ...options.length === 0 ? [] : [ui.list({ id: 'options', role: 'choose', ...question.multiSelect === true ? { mode: 'multiple' as const } : {}, selectedIds: [],
+        ...options.length === 0 ? [] : [ui.list({ id: 'options', role: 'choose', numbered: true, ...question.multiSelect === true ? { mode: 'multiple' as const } : {}, selectedIds: [],
           items: question.multiSelect === true ? options : [...options, { id: 'none', label: t('No selection') }],
           acceptActionId: last ? 'submit-answers' : 'next' })],
-        ui.form({ id: 'answer', fields: [{ kind: 'textarea', id: 'custom', label: t(options.length === 0 ? 'Answer' : 'Other'), value: '' }] }),
+        ui.form({ id: 'answer', enterSubmits: last ? 'submit-answers' : 'next', fields: [{ kind: 'textarea', id: 'custom', label: t(options.length === 0 ? 'Answer' : 'Other'), value: '' }] }),
         ...navigation.length === 0 ? [] : [ui.actions({ id: 'navigation', items: navigation })],
       ]), questions.length === 1 ? {} : { tab: { controlId: STEPS, itemId: question.id } })
     }),

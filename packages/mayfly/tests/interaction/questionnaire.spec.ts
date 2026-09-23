@@ -110,22 +110,18 @@ describe('shared questionnaire', () => {
     await expect(pending).resolves.toEqual({ answers: [{ id: 'q', selected: [] }, { id: 's', selected: [] }, { id: 'text', selected: [] }] })
   })
 
-  it('has no per-field Enter submission and survives compiler reconstruction at the last question', async () => {
+  it('submits the answers on Enter in the answer field and keeps Alt+Enter for newlines', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [{ id: 'q', question: 'Answer?' }] })
     const model = bench.model()
     model.focusControl({ pagePath: [], controlId: 'custom' })
-    let renderer = renderRequest(model)
+    const renderer = renderRequest(model)
     renderer.component.render(80)
     renderer.input('text')
+    renderer.input('\x1b\r')
+    renderer.input('more')
     renderer.input('\r')
-    await flushRequests()
-    expect(model.disposed).toBe(false)
-    renderer.runtime.dispose()
-    renderer = renderRequest(model)
-    expect(renderer.component.render(80).join('\n')).toContain('text')
-    model.invoke('submit-answers')
-    await expect(pending).resolves.toMatchObject({ answers: [{ id: 'q', custom: 'text\n' }] })
+    await expect(pending).resolves.toMatchObject({ answers: [{ id: 'q', custom: 'text\nmore' }] })
     renderer.runtime.dispose()
   })
 

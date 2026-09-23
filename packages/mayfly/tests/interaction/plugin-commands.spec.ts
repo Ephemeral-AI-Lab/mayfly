@@ -629,7 +629,7 @@ describe('/plugin browse panel', () => {
       { id: 'not-installed', count: 1 },
     ] })
     expect(JSON.stringify(node)).toContain('Install')
-    expect(controller.render(80).join('\n')).toContain('Details  [ Install (I) ]  ! Remove (U)')
+    expect(controller.render(80).join('\n')).toContain('Details  [ Install ]  ! Remove')
     expect(controller.render(36).join('\n')).toContain('Details')
     world.dispose()
   })
@@ -997,6 +997,63 @@ describe('/plugin surface actions', () => {
     world.dispose()
   })
 
+  it('installs and removes from the detail panel and re-renders the browse tabs', async () => {
+    const web = entry({ id: 'web', displayName: 'Web', surfaces: { web: { clientModule: true } }, install: { rows: [{ name: 'dsh-web', npm: { spec: 'dsh-web' } }] } })
+    const world = await mountWorld({ index: [entry(), web] })
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
+      if (cmd === process.execPath) return ok()
+      const manifestPath = join(world.root, 'package.json')
+      const manifest = JSON.parse(updaterInternals.readTextFile(manifestPath) ?? '{}') as { dependencies: Record<string, string> }
+      const added = ['dsh-loop', 'dsh-web'].find(name => args.includes('add') && args.includes(name))
+      const removed = ['dsh-loop', 'dsh-web'].find(name => args.includes('remove') && args.includes(name))
+      if (added !== undefined) {
+        manifest.dependencies[added] = '0.1.4'
+        mkdirSync(join(world.root, 'node_modules', added), { recursive: true })
+        writeFileSync(join(world.root, 'node_modules', added, 'package.json'), JSON.stringify({ version: '0.1.4' }))
+      } else if (removed !== undefined) delete manifest.dependencies[removed]
+      writeFileSync(manifestPath, JSON.stringify(manifest))
+      return ok()
+    })
+    await world.run('/plugin')
+    const browse = world.surface()!
+    const marketTabs = () => browserTabs({ currentNode: () => world.surface('mayfly.plugin-market')!.node } as BrowserPanel)
+
+    focusBrowserRow(browse, 'loop')
+    invokeMarketAction(browse, 'details')
+    await vi.waitFor(() => expect(world.surface('mayfly.plugin-detail.loop')).toBeDefined())
+    const detail = world.surface('mayfly.plugin-detail.loop')!
+    expect(detail.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'install', enabled: true })]))
+    detail.invoke('install')
+    await vi.waitFor(() => expect(marketFeedback(detail)).toContain('installed; restart Mayfly'))
+    expect(marketTabs()).toMatchObject({ items: [{ id: 'installed', count: 1 }, { id: 'not-installed', count: 1 }] })
+
+    expect(detail.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'remove', enabled: true })]))
+    detail.invoke('remove')
+    expect(JSON.stringify(detail.decisionNode)).toContain('Remove the selected plugin?')
+    detail.answerDecision(true)
+    await vi.waitFor(() => expect(marketFeedback(detail)).toContain('removed; restart Mayfly'))
+    expect(marketTabs()).toMatchObject({ items: [{ id: 'installed', count: 0 }, { id: 'not-installed', count: 2 }] })
+
+    const overlay = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.loop')!
+    const reports: string[] = []
+    const context = { surfaceId: overlay.id, operationId: 'detail-spec', source: overlay.source, revision: overlay.revision, signal: new AbortController().signal, report: (feedback: { message: string }) => reports.push(feedback.message) }
+    const activate = (actionId: string) => ({ kind: 'activate' as const, pagePath: [], controlId: 'plugin-detail-actions', actionId, inputs: { forms: [], source: [], selections: [] } })
+    expect(await overlay.definition.onEvent!.action!(activate('remove'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('not installed') })
+    expect(await overlay.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugin-detail-actions', selectedIds: ['loop'] }, context)).toEqual({ kind: 'completed' })
+    expect(await overlay.definition.onEvent!.action!(activate('close'), context)).toEqual({ kind: 'completed' })
+
+    focusBrowserRow(browse, 'web')
+    invokeMarketAction(browse, 'details')
+    await vi.waitFor(() => expect(world.surface('mayfly.plugin-detail.web')).toBeDefined())
+    const webOverlay = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.web')!
+    const webReports: string[] = []
+    const webContext = { ...context, surfaceId: webOverlay.id, report: (feedback: { message: string }) => webReports.push(feedback.message) }
+    expect(await webOverlay.definition.onEvent!.action!(activate('install'), webContext)).toMatchObject({ kind: 'accepted' })
+    expect(webReports).toContain('web-only plugin: it contributes nothing in this terminal frontend')
+    world.dispose()
+  })
+
   it('contains detail creation after the browse parent closes', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
@@ -1160,25 +1217,22 @@ describe('/plugin coverage corners', () => {
     world.dispose()
   })
 
-  it('runs the i/r accelerators and keeps typing into an open search', async () => {
+  it('filters on printable keys and refreshes through ctrl+r', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin')
     const model = world.surface()!
     const panel = world.overlay() as BrowserPanel
     panel.handleInput(KEY.tab)
-    panel.handleInput('i')
-    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(true))
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installed; restart Mayfly'))
-    panel.handleInput('r')
+    panel.handleInput('\x12')
     await vi.waitFor(() => expect(marketFeedback(model)).toContain('refreshed 1 entries'))
     expect(updaterInternals.fetchText).toHaveBeenCalled()
-    // Remove is disabled on the not-installed tab, so 'u' is unbound there and
-    // falls back to opening the list search.
-    panel.handleInput('u')
-    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('u')
-    // Once the search is open even bound letters filter instead of firing.
+    // Printable letters always reach the list filter: no install/remove/refresh
+    // accelerators compete with type-to-filter on this surface.
     panel.handleInput('i')
-    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('ui')
+    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('i')
+    expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(false)
+    panel.handleInput('u')
+    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('iu')
     world.dispose()
   })
 
