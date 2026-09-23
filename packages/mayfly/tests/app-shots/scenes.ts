@@ -47,8 +47,10 @@ function assistantMessage(content: ContentBlock[]): AssistantMessage {
 function toolResultMessage(callId: string, text: string): ToolResultMessage {
   return {
     id: MessageId(`shot-m-${String(++messageSeq)}`),
-    role: 'user',
-    content: [{ type: 'tool-result', toolCallId: ToolCallId(callId), content: [{ type: 'text', text }], isError: false }],
+    role: 'tool',
+    content: [{ type: 'text', text }],
+    toolCallId: ToolCallId(callId),
+    isError: false,
     source: { kind: 'tool', callId: ToolCallId(callId) },
   }
 }

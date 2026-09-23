@@ -3,7 +3,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { JobId, type JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import { JobId, type JobView } from '@deepseek-ai/dsh-jobs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
 import * as agentOverlay from '../../src/interaction/agent-overlay.ts'
@@ -24,7 +24,7 @@ async function setup() { const ctx = new Context(); contexts.push(ctx); return j
 const action = (model: UiSurfaceModel, id: string, controlId = 'job-actions') => model.emit({ kind: 'activate', pagePath: [], controlId, actionId: id })
 const select = (model: UiSurfaceModel, id: string) => model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'jobs', selectedIds: [id] })
 const pageAddress = { pagePath: [], formId: 'output-page' } as const
-const job = (id: string, status: JobSnapshot['status'], options: Partial<JobSnapshot> = {}): JobSnapshot => ({ id: JobId(id), kind: 'bash', label: `Job ${id}`, startedAt: 1_000, status, reported: false, ...options })
+const job = (id: string, status: JobView['status'], options: Partial<JobView> = {}): JobView => ({ id: JobId(id), kind: 'bash', label: `Job ${id}`, startedAt: 1_000, status, output: { total: 0, earliest: 0 }, ...options })
 async function prepare(model: UiSurfaceModel, event: MayflyUiEvent) {
   const abort = new AbortController()
   try { return (await model.endpoint.prepare(event, { surfaceId: model.id, source: model.source, revision: model.revision, operationId: 'test-request', signal: abort.signal, report: vi.fn() })).reply }
@@ -34,6 +34,7 @@ async function prepare(model: UiSurfaceModel, event: MayflyUiEvent) {
 describe('shared jobs browsing', () => {
   it('keeps the browser usable when an overlay opening is withdrawn before returning a handle', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start()
     await bench.run('/jobs')
     const browser = bench.model('mayfly.jobs')
@@ -45,11 +46,12 @@ describe('shared jobs browsing', () => {
     select(browser, source.id)
     await flushRequests()
     expect(bench.model('mayfly.jobs.detail')).toBeDefined()
-    expect(source.readOutput).not.toHaveBeenCalled()
+    expect(readAt).not.toHaveBeenCalled()
   })
 
   it.each([ui.text('Content unavailable'), ui.surface({ child: ui.text('Content unavailable') })])('does not overwrite an unexpected registry document during locale refresh', async replacement => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: 'original output' })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
@@ -63,11 +65,12 @@ describe('shared jobs browsing', () => {
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
     expect(output.node).toBe(node)
-    expect(source.readOutput).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledOnce()
   })
 
-  it.each([false, true])('relocalizes output without resetting its published page or consuming again (paged=%s)', async paged => {
+  it.each([false, true])('relocalizes output without resetting its published page or reading again (paged=%s)', async paged => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: paged ? 'x'.repeat(36_001) : 'only page' })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
@@ -83,11 +86,24 @@ describe('shared jobs browsing', () => {
     await flushRequests()
     expect(JSON.stringify(output.node)).toContain('\u8bfb\u53d6\u65f6\u72b6\u6001')
     if (paged) expect(output.form(pageAddress)!.fields.page).toMatchObject({ baseline: 2, value: '3', change: 'set' })
-    expect(source.readOutput).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledOnce()
+  })
+
+  it('marks a retained-tail read when the ring dropped earlier output', async () => {
+    const bench = await setup()
+    vi.spyOn(bench.registry, 'readAt').mockReturnValueOnce({ chunks: [{ at: 0, text: 'tail' }], next: 4, lossy: true })
+    const source = bench.start()
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    action(bench.model('mayfly.jobs.detail'), 'read')
+    await flushRequests()
+    expect(JSON.stringify(bench.model('mayfly.jobs.output').node)).toContain('earlier output was dropped by retention')
   })
 
   it('rejects malformed output submissions and ignores obsolete inspector actions at the registration boundary', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: 'x'.repeat(24_001) })
     await bench.run('/jobs')
     const browser = bench.model('mayfly.jobs')
@@ -106,23 +122,24 @@ describe('shared jobs browsing', () => {
     await source.finish({ status: 'completed' })
     expect(await prepare(detail, { kind: 'activate', pagePath: [], controlId: 'job-actions', actionId: 'stop' })).toMatchObject({ kind: 'completed' })
     expect(source.cancel).not.toHaveBeenCalled()
-    expect(source.readOutput).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledOnce()
   })
 
   it('does not open detail after the exact Agent changes during native inspection', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start()
     await bench.run('/jobs')
     const get = bench.registry.get.bind(bench.registry)
     vi.spyOn(bench.registry, 'get').mockImplementationOnce((id, caller) => {
-      const snapshot = get(id, caller)
+      const view = get(id, caller)
       bench.ctx.mayflyCurrentAgent.select(bench.other)
-      return snapshot
+      return view
     })
     select(bench.model('mayfly.jobs'), source.id)
     await flushRequests()
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
-    expect(source.readOutput).not.toHaveBeenCalled()
+    expect(readAt).not.toHaveBeenCalled()
   })
 
   it('keeps native dispatch for a different selected Agent from opening stale UI', async () => {
@@ -132,8 +149,9 @@ describe('shared jobs browsing', () => {
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
   })
 
-  it('recovers from native list failure through Refresh without consuming output', async () => {
+  it('recovers from native list failure through Refresh without reading output', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start()
     const list = vi.spyOn(bench.registry, 'list').mockImplementation(() => { throw new Error('Registry unavailable') })
     await bench.run('/jobs')
@@ -144,11 +162,12 @@ describe('shared jobs browsing', () => {
     await flushRequests()
     expect(JSON.stringify(browser.node)).not.toContain('Job registry unavailable')
     expect(browser.choice({ pagePath: [], controlId: 'jobs' })!.definition.items.map(item => item.id)).toEqual([source.id])
-    expect(source.readOutput).not.toHaveBeenCalled()
+    expect(readAt).not.toHaveBeenCalled()
   })
 
   it('ignores foreign changes and retires a detail when native owner teardown removes its record', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start()
     await bench.run('/jobs')
     const browser = bench.model('mayfly.jobs')
@@ -164,13 +183,16 @@ describe('shared jobs browsing', () => {
     await flushRequests()
     expect(detail.disposed).toBe(true)
     expect(browser.choice({ pagePath: [], controlId: 'jobs' })!.definition.items.map(item => item.label)).toEqual(['Unowned'])
-    expect(source.readOutput).not.toHaveBeenCalled()
+    expect(readAt).not.toHaveBeenCalled()
   })
 
-  it('withdraws an in-flight consuming read when the producer changes the selected Agent', async () => {
+  it('withdraws an in-flight read when the read itself changes the selected Agent', async () => {
     const bench = await setup()
     const source = bench.start()
-    source.readOutput.mockImplementationOnce(() => { bench.ctx.mayflyCurrentAgent.select(bench.other); return 'old Agent output' })
+    const readAt = vi.spyOn(bench.registry, 'readAt').mockImplementationOnce(() => {
+      bench.ctx.mayflyCurrentAgent.select(bench.other)
+      return { chunks: [{ at: 0, text: 'old Agent output' }], next: 16, lossy: false }
+    })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
     await flushRequests()
@@ -179,11 +201,12 @@ describe('shared jobs browsing', () => {
     await flushRequests()
     expect(detail.disposed).toBe(true)
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
-    expect(source.readOutput).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledOnce()
   })
 
   it('cancels the full UI tree when its command signal aborts and can reopen independently', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start()
     const signal = new AbortController()
     await bench.ctx.commands.execute(bench.agent, '/jobs', [], signal.signal)
@@ -195,11 +218,12 @@ describe('shared jobs browsing', () => {
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
     await bench.run('/jobs')
     expect(bench.model('mayfly.jobs').instanceId).not.toBe(old.instanceId)
-    expect(source.readOutput).not.toHaveBeenCalled()
+    expect(readAt).not.toHaveBeenCalled()
   })
 
   it('relocalizes live job metadata without replacing the inspection state', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start()
     await bench.run('/jobs')
     const browser = bench.model('mayfly.jobs')
@@ -213,11 +237,12 @@ describe('shared jobs browsing', () => {
     expect(JSON.stringify(detail.node)).toContain('\u8bfb\u53d6\u8f93\u51fa')
     expect(JSON.stringify(browser.node)).toContain('\u8fd0\u884c\u4e2d')
     expect(detail.decisionNode).toBeDefined()
-    expect(source.readOutput).not.toHaveBeenCalled()
+    expect(readAt).not.toHaveBeenCalled()
   })
 
   it('lists only accessible jobs and opens non-consuming inspectors through native commands', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const own = bench.start({ label: 'Owned', output: 'unread' })
     bench.start({ label: 'Foreign', owner: bench.other })
     bench.start({ label: 'Shared', owner: null })
@@ -227,24 +252,24 @@ describe('shared jobs browsing', () => {
     select(browser, own.id)
     await flushRequests()
     const detail = bench.model('mayfly.jobs.detail')
-    expect(JSON.stringify(detail.node)).toContain('output cursor')
-    expect(own.readOutput).not.toHaveBeenCalled()
-    expect(bench.registry.get(own.id, bench.agent).reported).toBe(false)
+    expect(JSON.stringify(detail.node)).toContain('Read output')
+    expect(readAt).not.toHaveBeenCalled()
     detail.requestClose()
     await flushRequests()
     await bench.run('/jobs')
     expect(bench.model('mayfly.jobs')).toBe(browser)
-    expect(own.readOutput).not.toHaveBeenCalled()
+    expect(readAt).not.toHaveBeenCalled()
   })
 
-  it('consumes exactly one stream delta per explicit read and leaves browsing and rendering passive', async () => {
+  it('serves explicit reads without touching the model cursor and leaves browsing and rendering passive', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: 'first delta' })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
     await flushRequests()
     const detail = bench.model('mayfly.jobs.detail')
-    action(detail, 'read'); action(detail, 'read')
+    action(detail, 'read')
     await flushRequests()
     const output = bench.model('mayfly.jobs.output')
     expect(JSON.stringify(output.node)).toContain('first delta')
@@ -253,39 +278,43 @@ describe('shared jobs browsing', () => {
     rendered.component.render(80)
     rendered.component.render(40)
     rendered.runtime.dispose()
-    expect(source.readOutput).toHaveBeenCalledOnce()
-    expect(bench.registry.read(source.id, bench.agent).text).toBe('second delta')
+    expect(readAt).toHaveBeenCalledOnce()
     output.requestClose()
     await flushRequests()
     action(detail, 'read')
     await flushRequests()
-    expect(JSON.stringify(bench.model('mayfly.jobs.output').node)).toContain('(no new output yet)')
-    expect(source.readOutput).toHaveBeenCalledTimes(3)
+    const second = bench.model('mayfly.jobs.output')
+    expect(JSON.stringify(second.node)).toContain('first delta')
+    expect(JSON.stringify(second.node)).toContain('second delta')
+    expect(readAt).toHaveBeenCalledTimes(2)
+    const modelRead = bench.registry.read(source.id, bench.agent.id)
+    expect(modelRead.chunks.map(chunk => chunk.text).join('')).toBe('first deltasecond delta')
   })
 
-  it('retains a terminal final-only result across explicit reads while marking it reported', async () => {
+  it('keeps a terminal result for the model read while observer reads stay non-consuming', async () => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ finalOnly: true })
-    await source.finish({ status: 'completed', output: 'final result', detail: 'exit 0' })
+    await source.finish({ status: 'completed', result: 'final result', detail: 'exit 0' })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
     await flushRequests()
     const detail = bench.model('mayfly.jobs.detail')
-    expect(bench.registry.get(source.id, bench.agent).reported).toBe(false)
     for (let index = 0; index < 2; index += 1) {
       action(detail, 'read')
       await flushRequests()
       const output = bench.model('mayfly.jobs.output')
-      expect(JSON.stringify(output.node)).toContain('final result')
+      expect(JSON.stringify(output.node)).toContain('(no output)')
       output.requestClose()
       await flushRequests()
     }
-    expect(bench.registry.get(source.id, bench.agent).reported).toBe(true)
-    expect(source.readOutput).not.toHaveBeenCalled()
-    expect(bench.registry.read(source.id, bench.agent).text).toBe('final result')
+    expect(readAt).toHaveBeenCalledTimes(2)
+    const modelRead = bench.registry.read(source.id, bench.agent.id)
+    expect(modelRead.result).toBe('final result')
+    expect(modelRead.chunks).toEqual([])
   })
 
-  it('preserves stream cursor semantics even after terminal settlement', async () => {
+  it('leaves the model cursor untouched by reads after terminal settlement', async () => {
     const bench = await setup()
     const source = bench.start({ output: 'last chunk' })
     await source.finish({ status: 'failed', detail: 'exit 3' })
@@ -296,8 +325,8 @@ describe('shared jobs browsing', () => {
     action(detail, 'read')
     await flushRequests()
     expect(JSON.stringify(bench.model('mayfly.jobs.output').node)).toContain('last chunk')
-    expect(bench.registry.read(source.id, bench.agent).text).toBe('')
-    expect(bench.registry.get(source.id, bench.agent).reported).toBe(true)
+    const modelRead = bench.registry.read(source.id, bench.agent.id)
+    expect(modelRead.chunks.map(chunk => chunk.text).join('')).toBe('last chunk')
   })
 
   it.each([
@@ -306,6 +335,7 @@ describe('shared jobs browsing', () => {
     '中文'.repeat(12_001),
   ])('reconstructs full large output using shared page submissions without rereading', async text => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: text })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
@@ -349,7 +379,7 @@ describe('shared jobs browsing', () => {
     output.edit({ ...pageAddress, fieldId: 'page' }, '0')
     action(output, 'go', 'page-actions'); await flushRequests()
     expect(output.form(pageAddress)!.fields.page!.error).toBeDefined()
-    expect(source.readOutput).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledOnce()
   })
 
   it('confirms Stop with No selected, preserves cancellation, and follows native terminal status', async () => {
@@ -368,7 +398,7 @@ describe('shared jobs browsing', () => {
     detail.answerDecision(true)
     await flushRequests()
     expect(source.cancel).toHaveBeenCalledOnce()
-    expect(bench.registry.get(source.id, bench.agent).status).toBe('killed')
+    expect(bench.registry.get(source.id, bench.agent.id).status).toBe('killed')
     expect(JSON.stringify(detail.node)).toContain('killed')
     expect(detail.operationSnapshot().at(-1)?.phase).toBe('succeeded')
     action(detail, 'stop')
@@ -403,16 +433,16 @@ describe('shared jobs browsing', () => {
     await flushRequests()
     expect(detail.disposed).toBe(false)
     expect(detail.feedbackSnapshot()).toContainEqual(expect.objectContaining({ message: 'Stop failed', severity: 'error' }))
-    expect(bench.registry.get(source.id, bench.agent).status).toBe('running')
+    expect(bench.registry.get(source.id, bench.agent.id).status).toBe('running')
     action(detail, 'stop'); detail.answerDecision(true)
     await flushRequests()
-    expect(bench.registry.get(source.id, bench.agent).status).toBe('killed')
+    expect(bench.registry.get(source.id, bench.agent.id).status).toBe('killed')
   })
 
-  it('contains output producer failures without advancing its cursor or closing the inspector', async () => {
+  it('contains output read failures without closing the inspector', async () => {
     const bench = await setup()
     const source = bench.start({ output: 'retained' })
-    source.readOutput.mockImplementationOnce(() => { throw new Error('Read failed') })
+    vi.spyOn(bench.registry, 'readAt').mockImplementationOnce(() => { throw new Error('Read failed') })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
     await flushRequests()
@@ -426,6 +456,7 @@ describe('shared jobs browsing', () => {
 
   it.each(['agent', 'same-id', 'parent', 'consumer', 'provider'] as const)('releases the view tree on %s withdrawal without retaining active confirmation', async reason => {
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: 'owned output' })
     await bench.run('/jobs')
     const browser = bench.model('mayfly.jobs')
@@ -447,12 +478,13 @@ describe('shared jobs browsing', () => {
     expect(output.disposed).toBe(true)
     detail.answerDecision(true)
     expect(source.cancel).toHaveBeenCalledTimes(reason === 'provider' ? 1 : 0)
-    expect(source.readOutput).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledOnce()
   })
 
   it('updates elapsed labels only while jobs are live and preserves search and confirmation', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
     const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ label: 'Searchable job' })
     await bench.run('/jobs')
     const browser = bench.model('mayfly.jobs')
@@ -468,7 +500,7 @@ describe('shared jobs browsing', () => {
     const revision = browser.registration.revision
     vi.advanceTimersByTime(120_000)
     expect(browser.registration.revision).toBe(revision)
-    expect(source.readOutput).not.toHaveBeenCalled()
+    expect(readAt).not.toHaveBeenCalled()
   })
 })
 
@@ -491,8 +523,9 @@ describe('jobs readonly projections', () => {
       expect(pages.join('')).toBe(text)
       for (const page of pages) { expect(page.length).toBeLessThanOrEqual(12_000); expect(page.isWellFormed()).toBe(true) }
     }
-    expect(JSON.stringify(jobOutputNode({ snapshot: job('empty', 'completed'), text: '' }, [''], 1, key => key))).toContain('(no output)')
-    expect(JSON.stringify(jobOutputNode({ snapshot: job('live', 'running'), text: '' }, [''], 1, key => key))).toContain('(no new output yet)')
+    const emptyRead = { chunks: [], next: 0, lossy: false }
+    expect(JSON.stringify(jobOutputNode(job('empty', 'completed'), emptyRead, [''], 1, key => key))).toContain('(no output)')
+    expect(JSON.stringify(jobOutputNode(job('live', 'running'), emptyRead, [''], 1, key => key))).toContain('(no output yet)')
     expect(validateMayflyUiNode(jobDetailsNode(job('done', 'completed'), key => key)).ok).toBe(true)
   })
 })

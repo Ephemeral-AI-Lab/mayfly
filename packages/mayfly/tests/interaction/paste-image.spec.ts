@@ -24,7 +24,7 @@ import {
 import { applyReversibleSubmitTransformers, applySubmitTransformers } from '../../src/interaction/prompt-submit-pipeline.ts'
 import { clearSharedEditor, setSharedEditor } from '../../src/interaction/editor-instance.ts'
 // The value import carries the `settings` Context merge and the
-// 'settings/updated' Events merge the override spec below uses.
+// 'settings/document-updated' Events merge the override spec below uses.
 import * as pasteImage from '../../src/interaction/paste-image.ts'
 import { ACTION_IMAGE_PASTE, type ClipboardImageResult } from '../../src/interaction/paste-image.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeKeymap } from './fakes.ts'
@@ -857,7 +857,7 @@ exit 1
       present = true
       user = next
     }
-    const mayflyNs = 'mayfly'
+    const mayflyNs = 'mayfly' as SettingsNamespace
     /** One paste, awaited by its outcome notice (after the 'pasting image...' lead-in). */
     const pasteAndSettle = async (): Promise<void> => {
       const before = notices.length
@@ -886,46 +886,46 @@ exit 1
 
     // A mayfly commit re-reads the layer: strict wayland fails the paste.
     setUser({ pasteImageBackend: 'wayland' })
-    ctx.emit('settings/updated', mayflyNs, {}, {}, 'update')
+    ctx.emit('settings/document-updated', mayflyNs, 2)
     await pasteAndSettle()
     expect(notices.at(-1)).toBe('clipboard read failed: wl-paste exited with code 1')
 
     // 'auto' returns to the session-aware order — x11 first with DISPLAY
     // set — and the paste reads the clipboard again.
     setUser({ pasteImageBackend: 'auto' })
-    ctx.emit('settings/updated', mayflyNs, {}, {}, 'update')
+    ctx.emit('settings/document-updated', mayflyNs, 2)
     await pasteAndSave(2)
     expect(saveImage.mock.calls[1]![0]).toMatchObject({ mediaType: 'image/png' })
 
     // An invalid value clears the override: the composition's strict
     // wayland applies again.
     setUser({ pasteImageBackend: 'bogus' })
-    ctx.emit('settings/updated', mayflyNs, {}, {}, 'update')
+    ctx.emit('settings/document-updated', mayflyNs, 2)
     await pasteAndSettle()
     expect(notices.at(-1)).toBe('clipboard read failed: wl-paste exited with code 1')
 
     // A null user layer clears it likewise.
     user = null
-    ctx.emit('settings/updated', mayflyNs, {}, {}, 'update')
+    ctx.emit('settings/document-updated', mayflyNs, 2)
     await pasteAndSettle()
     expect(notices.at(-1)).toBe('clipboard read failed: wl-paste exited with code 1')
 
     // A non-object user layer clears it too.
     setUser('junk')
-    ctx.emit('settings/updated', mayflyNs, {}, {}, 'update')
+    ctx.emit('settings/document-updated', mayflyNs, 2)
     await pasteAndSettle()
     expect(notices.at(-1)).toBe('clipboard read failed: wl-paste exited with code 1')
 
     // Another namespace's commit is ignored even with a valid override
     // sitting in the user layer.
     setUser({ pasteImageBackend: 'x11' })
-    ctx.emit('settings/updated', 'shell' as SettingsNamespace, {}, {}, 'update')
+    ctx.emit('settings/document-updated', 'shell' as SettingsNamespace, 2)
     await pasteAndSettle()
     expect(notices.at(-1)).toBe('clipboard read failed: wl-paste exited with code 1')
 
     // The mayfly descriptor itself gone: same as no user layer.
     present = false
-    ctx.emit('settings/updated', mayflyNs, {}, {}, 'update')
+    ctx.emit('settings/document-updated', mayflyNs, 2)
     await pasteAndSettle()
     expect(notices.at(-1)).toBe('clipboard read failed: wl-paste exited with code 1')
   })

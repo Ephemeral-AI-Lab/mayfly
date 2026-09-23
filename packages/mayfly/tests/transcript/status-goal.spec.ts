@@ -89,9 +89,9 @@ describe('mayfly-status-goal', () => {
     expect(harness.entry.render(80)).toBe('Goal complete · 2/8 · disarmed')
 
     views.set(first, goal('active', { activation: 'armed' }))
-    harness.ctx.emit('agent/session-start', { agent: foreign } as never)
+    harness.ctx.emit('agent/created', { agent: foreign, source: 'resume' } as never)
     expect(harness.entry.render(80)).toBe('Goal complete · 2/8 · disarmed')
-    harness.ctx.emit('agent/session-start', { agent: first } as never)
+    harness.ctx.emit('agent/created', { agent: first, source: 'resume' } as never)
     expect(harness.entry.render(80)).toBe('Goal active · 2/8 · armed')
 
     views.set(second, goal('paused', { rounds: 1, activation: 'disarmed' }))

@@ -2,10 +2,11 @@
 # services directly and opt into terminal UI through mayflyPanes, mayflyStatus,
 # mayflyOverlays, and mayflyEditorExtensions.
 
+# The deployment persona is the fallback for agents whose preset declares none.
 - id: system-prompt
   config:
-    persona: >-
-      You are a coding agent. Your working directory is {{cwd}}.
+    personaPrefix: You are a coding agent.
+    personaSuffix: Your working directory is {{cwd}}.
 
 - id: hmr
   disabled: true
@@ -13,6 +14,8 @@
 # Move the model-facing agent plane behind dsh agent presets, matching the
 # upstream Web composition. Host registries and controllers remain ordinary
 # root services shared by Mayfly and external Cordis plugins.
+- id: tool-plugin-manager
+  disabled: true
 - id: tool-bash
   disabled: true
 - id: tool-pwsh
@@ -47,7 +50,7 @@
   disabled: true
 - id: tool-subagent-fork
   disabled: true
-- id: workflow-worker-thread
+- id: workflow-ptc
   disabled: true
 - id: tool-workflow
   disabled: true
@@ -67,15 +70,14 @@
     - id: subagent-model-selection-settings
       name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
 
-    - id: agent-presets
-      name: '@deepseek-ai/dsh-agent-presets'
+    # The preset selection registry. Harness 0.1.7 declares each preset as one
+    # `@deepseek-ai/dsh-agent-preset` row in a bundle patch file — the shipped
+    # declarations follow as separate patch files under `presets/`, listed after
+    # this file in `package.json` `dsh.bundle.patch`.
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
       config:
         default: standard
-        roots:
-          - path: !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@ephemeral-ai/mayfly/package.json')), 'presets')"
-            trust: system
-        includeShippedRoot: true
-        includeUserRoot: true
 
     # Dynamic Cordis plugins enter the same service graph as official Mayfly
     # code. There is no private realm, service deny-list, or Mayfly host facade.
@@ -181,3 +183,9 @@
 
     - id: mayfly-interaction
       name: '@ephemeral-ai/mayfly/interaction'
+
+    # The `mayfly` settings namespace: this row's id is the namespace and the
+    # plugin's volatile Config is the live-applied form projected by
+    # `settings.describe()`.
+    - id: mayfly
+      name: '@ephemeral-ai/mayfly/interaction/settings'

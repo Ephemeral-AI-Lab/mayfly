@@ -222,7 +222,7 @@ describe('buildExportMarkdown', () => {
         { type: 'image', attachment: { attachmentId: 'a1', mediaType: 'image/png', bytes: 4, width: 1, height: 1 } },
         { type: 'audio', data: 'zzz' },
         { type: 'text', text: 'CONTEXT-SECRET' },
-      ], source: { kind: 'plugin', plugin: 'agent-context' } } },
+      ], source: { kind: 'user-approval' } } },
       { type: 'step/start', seq: 5, time: 5, data: { turn: 0, step: 0 } },
       // A settled attempt without a surface message renders its own section.
       { type: 'assistant/attempt', seq: 6, time: 6, data: { turn: 0, step: 0, stream: [{ type: 'text-chunks', time0: 6, index: 0, dt: [], texts: ['draft prefix'] }] } },
@@ -241,7 +241,7 @@ describe('buildExportMarkdown', () => {
         usage: { inputTokens: 2097152, outputTokens: 9216, cacheReadTokens: 61440, cacheWriteTokens: 4096 },
       } },
       { type: 'tool/call', seq: 8, time: 8, data: { turn: 0, step: 0, callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' } },
-      { type: 'tool/result', seq: 9, time: 9, data: { message: { content: [{ toolCallId: 'c1', content: [{ type: 'text', text: 'file1' }] }] } } },
+      { type: 'tool/result', seq: 9, time: 9, data: { message: { toolCallId: 'c1', content: [{ type: 'text', text: 'file1' }] } } },
       { type: 'step/end', seq: 10, time: 10, data: { turn: 0, step: 0 } },
       { type: 'turn/end', seq: 11, time: 11, data: { turn: 0, reason: { kind: 'completed' } } },
       { type: 'turn/start', seq: 12, time: 12, data: { turn: 1 } },
@@ -261,11 +261,11 @@ describe('buildExportMarkdown', () => {
       } },
       // A string meta result with empty content, then a structured meta
       // result that failed, then a fully empty result (header only).
-      { type: 'tool/result', seq: 16, time: 16, data: { message: { content: [{ toolCallId: 'c2', content: [] }] }, meta: 'raw meta' } },
-      { type: 'tool/result', seq: 17, time: 17, data: { message: { content: [{ toolCallId: 'c3', content: [{ type: 'text', text: 'x' }] }] }, meta: { structured: true }, error: { name: 'ToolError', code: 'E_TOOL' } } },
-      { type: 'tool/result', seq: 18, time: 18, data: { message: { content: [{ toolCallId: 'c4', content: [] }] } } },
+      { type: 'tool/result', seq: 16, time: 16, data: { message: { toolCallId: 'c2', content: [] }, meta: 'raw meta' } },
+      { type: 'tool/result', seq: 17, time: 17, data: { message: { toolCallId: 'c3', content: [{ type: 'text', text: 'x' }] }, meta: { structured: true }, error: { name: 'ToolError', code: 'E_TOOL' } } },
+      { type: 'tool/result', seq: 18, time: 18, data: { message: { toolCallId: 'c4', content: [] } } },
       // A failure whose name is empty renders the code alone.
-      { type: 'tool/result', seq: 19, time: 19, data: { message: { content: [{ toolCallId: 'c5', content: [{ type: 'text', text: 'y' }] }] }, error: { name: '', code: 'E_BARE' } } },
+      { type: 'tool/result', seq: 19, time: 19, data: { message: { toolCallId: 'c5', content: [{ type: 'text', text: 'y' }] }, error: { name: '', code: 'E_BARE' } } },
       // A failed turn whose error carries no machine code.
       { type: 'turn/end', seq: 20, time: 20, data: { turn: 1, reason: { kind: 'error', error: { message: 'no code' } } } },
     ] as unknown as SessionEvent[]
@@ -283,7 +283,7 @@ describe('buildExportMarkdown', () => {
     // The injection appears with its source labeled (no D28 filtering);
     // the empty text block stays out, the image and unknown blocks become
     // markers.
-    expect(markdown).toContain('#### user (plugin)')
+    expect(markdown).toContain('#### user (user-approval)')
     expect(markdown).toContain('CONTEXT-SECRET')
     expect(markdown).toContain('[image]')
     expect(markdown).toContain('[audio]')

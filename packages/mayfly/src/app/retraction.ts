@@ -8,7 +8,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { createSystemMessage } from '@deepseek-ai/dsh-llm'
+import { createDeveloperMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { MayflyRequestController, MayflyRequestRef } from './request-lifecycle.ts'
 
@@ -25,6 +25,13 @@ export interface MayflyRetractionService { tryRetract(messageId: string): boolea
 declare module '@deepseek-ai/cordis' {
   interface Context { mayflyRetractions: MayflyRetractionService }
   interface Events { 'mayfly/turn-retracted'(retraction: MayflyTurnRetraction): void }
+}
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Source of Mayfly's durable empty retraction marker. */
+    'mayfly-retraction': { kind: 'mayfly-retraction' }
+  }
 }
 
 /** One open turn reconstructed from the append-only boundary log. */
@@ -96,15 +103,15 @@ export function installRetractionService(
       /* v8 ignore next -- a matched human surface message guarantees at least one node before turn/end */
       if (nodes.length === 0) return
       try {
-        // Harness `0.1.5` forbids source citations on assistant messages (they
-        // embed their own stream), so the durable retraction marker is an
-        // empty plugin-attributed system/message replacing the shadowed range:
+        // Harness forbids source citations on assistant messages (they embed
+        // their own stream), so the durable retraction marker is an empty
+        // mayfly-attributed developer/message replacing the shadowed range:
         // it derives to no model-visible message while provenance cites every
         // removed node.
-        entry.session.append('system/message', {
+        entry.session.append('developer/message', {
           turn: entry.turn,
           step: entry.step,
-          message: createSystemMessage('', 'mayfly-retraction'),
+          message: createDeveloperMessage({ content: [], source: { kind: 'mayfly-retraction' } }),
         }, {
           surfaceOp: { op: 'replace', startSeq: nodes[0]!, endSeq: nodes.at(-1)! },
           sourceEventSeqs: nodes,
