@@ -26,6 +26,8 @@ export interface PatternFocus {
   readonly focused: boolean
   readonly marker: string
   readonly optionId?: string
+  /** True while the field's option picker is open; selects stay one row otherwise. */
+  readonly editing?: boolean
 }
 
 const PARTIAL_BLOCKS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const
@@ -258,6 +260,7 @@ export function renderList(node: ListNode, width: number, height: number, focus:
   const rows: { readonly value: string, readonly itemId?: string }[] = []
   if (node.filter !== undefined) rows.push({ value: fit(colors.textMuted(`/ ${node.filter}`), available) })
   let group: string | undefined
+  let rowNumber = 0
   for (const item of node.items) {
     if (item.group !== undefined && item.group !== group) {
       group = item.group
@@ -268,21 +271,22 @@ export function renderList(node: ListNode, width: number, height: number, focus:
     const enabledFocus = focused && item.disabled !== true
     const marker = enabledFocus ? focus.marker : ' '
     const pointerGlyph = enabledFocus ? '→' : selected ? '●' : node.mode === 'multiple' ? '○' : ' '
+    const number = node.numbered === true && rowNumber < 9 ? `${String(++rowNumber)}. ` : ''
     const detail = available > 40 ? paintListDetail(item, colors) : ''
     const badge = item.badge === undefined ? '' : ` [${item.badge}]`
     if (item.disabled === true) {
-      rows.push({ value: fit(colors.muted(`${marker}${pointerGlyph} ${item.label}${badge}${detail}`), available), itemId: item.id })
+      rows.push({ value: fit(colors.muted(`${marker}${pointerGlyph} ${number}${item.label}${badge}${detail}`), available), itemId: item.id })
       continue
     }
     if (enabledFocus) {
       const focusedRow = item.detailSpans === undefined
-        ? colors.primary(`${marker}${pointerGlyph} ${item.label}${badge}${item.detail === undefined || available <= 40 ? '' : ` — ${item.detail}`}`)
-        : `${colors.primary(`${marker}${pointerGlyph} ${item.label}`)}${colors.text(badge)}${detail}`
+        ? colors.primary(`${marker}${pointerGlyph} ${number}${item.label}${badge}${item.detail === undefined || available <= 40 ? '' : ` — ${item.detail}`}`)
+        : `${colors.primary(`${marker}${pointerGlyph} ${number}${item.label}`)}${colors.text(badge)}${detail}`
       rows.push({ value: colors.selectedBg(pad(focusedRow, available)), itemId: item.id })
       continue
     }
     const pointer = selected ? colors.primary(pointerGlyph) : colors.textMuted(pointerGlyph)
-    rows.push({ value: fit(`${marker}${pointer} ${colors.text(item.label)}${colors.text(badge)}${detail}`, available), itemId: item.id })
+    rows.push({ value: fit(`${marker}${pointer} ${colors.text(number)}${colors.text(item.label)}${colors.text(badge)}${detail}`, available), itemId: item.id })
   }
   const limit = Math.max(1, Number.isFinite(height) ? Math.floor(height) : 1)
   if (rows.length <= limit) return rows.map(row => row.value)
@@ -339,7 +343,7 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
   const available = safeWidth(width)
   const focused = focus.focused && focus.key === field.id && field.disabled !== true
   const expandable = field.kind === 'select' || field.kind === 'multiselect'
-  const expanded = expandable && field.disabled !== true && field.options.length > 0
+  const expanded = expandable && field.disabled !== true && field.options.length > 0 && focus.editing === true
   let value: string
   let placeholder = false
   if (field.kind === 'toggle') value = field.value ? '[on]' : '[off]'
@@ -351,7 +355,9 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
   if (field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret') placeholder = field.value.length === 0 && field.placeholder !== undefined
   const prefix = interactivePrefix({ key: field.id, focused, marker: focus.marker })
   // Expanded selects show the label as a group header; the option rows carry the value.
-  const body = expanded ? field.label : `${field.label}: ${value}`
+  // A trailing ‹ › on the focused row advertises the in-place ←→ cycle.
+  const adjustable = expandable && field.disabled !== true && field.options.length > 0
+  const body = expanded ? `${field.label}${focused ? ' ‹ ›' : ''}` : `${field.label}: ${value}${focused && adjustable ? ' ‹ ›' : ''}`
   const row = field.disabled === true
     ? colors.muted(`${prefix}${body}`)
     : focused ? colors.primary(`${prefix}${body}`)

@@ -45,7 +45,7 @@ export function apply(ctx: Context): void {
     const t = interactionTranslator(ctx)
     let observedConfigured = false
     const node = () => ui.stack.column([
-      ui.form({ id: 'onboarding', fields: [{ kind: 'secret', id: 'key', label: DEEPSEEK_KEY, value: '', required: true }] }),
+      ui.form({ id: 'onboarding', enterSubmits: 'save', fields: [{ kind: 'secret', id: 'key', label: DEEPSEEK_KEY, value: '', required: true }] }),
       ui.actions({ id: 'onboarding-actions', items: [
         { id: 'save', label: t('Save'), submit: [{ pagePath: [], formId: 'onboarding' }] },
         { id: 'cancel', label: t('Cancel'), dismiss: true },

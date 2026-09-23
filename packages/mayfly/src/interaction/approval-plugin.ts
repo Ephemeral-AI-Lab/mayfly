@@ -28,7 +28,7 @@ function view(request: ApprovalRequest, t: MayflyTranslate) {
       { id: 'feedback', label: t('Reject with feedback'), navigate: feedbackPath },
     ] }), { tab: decisionPath[0]! }),
     ui.child(ui.stack.column([
-      ui.form({ id: 'feedback-form', fields: [{ kind: 'textarea', id: 'reason', label: t('Reason'), value: '' }] }),
+      ui.form({ id: 'feedback-form', enterSubmits: 'send-feedback', fields: [{ kind: 'textarea', id: 'reason', label: t('Reason'), value: '' }] }),
       ui.actions({ id: 'feedback-actions', items: [
         { id: 'send-feedback', label: t('Reject with feedback'), submit: [{ pagePath: feedbackPath, formId: 'feedback-form' }] },
         { id: 'back', label: t('Back'), navigate: decisionPath },

@@ -21,16 +21,16 @@ import { createInteractionNotificationOwner } from './notifications.ts'
 import {
   ACTION_BACKSPACE, ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_CLOSE_AGENT_VIEW, ACTION_CYCLE_MODEL,
   ACTION_DELETE, ACTION_END, ACTION_EXTERNAL_EDITOR, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
-  ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
-  ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_STEER, ACTION_SUBMIT,
-  ACTION_TOGGLE, ACTION_TOGGLE_AGENT_VIEW, displayKey,
+  ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
+  ACTION_EXPAND, ACTION_PREV_TAB, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_STEER,
+  ACTION_SUBMIT, ACTION_TOGGLE, ACTION_TOGGLE_AGENT_VIEW, displayKey,
 } from '../core/key-actions.ts'
 export {
   ACTION_BACKSPACE, ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_CLOSE_AGENT_VIEW, ACTION_CYCLE_MODEL,
   ACTION_DELETE, ACTION_END, ACTION_EXTERNAL_EDITOR, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
-  ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
-  ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_STEER, ACTION_SUBMIT,
-  ACTION_TOGGLE, ACTION_TOGGLE_AGENT_VIEW,
+  ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
+  ACTION_EXPAND, ACTION_PREV_TAB, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_STEER,
+  ACTION_SUBMIT, ACTION_TOGGLE, ACTION_TOGGLE_AGENT_VIEW,
 } from '../core/key-actions.ts'
 
 /** Resolve a hint from the registered action keys, retaining a stable fallback. */
@@ -56,10 +56,13 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_DELETE, keys: ['delete', 'ctrl+d'], description: 'Delete the selected entity or character ahead' },
   { id: ACTION_SEGMENT_LEFT, keys: 'left', description: 'Step the segment control left (contextual)' },
   { id: ACTION_SEGMENT_RIGHT, keys: 'right', description: 'Step the segment control right (contextual)' },
+  { id: ACTION_PREV_TAB, keys: 'alt+left', description: 'Switch to the previous tab (contextual)' },
+  { id: ACTION_NEXT_TAB, keys: 'alt+right', description: 'Switch to the next tab (contextual)' },
   { id: ACTION_NEXT_CONTROL, keys: 'tab', description: 'Move to the next control' },
   { id: ACTION_SHIFT_TAB, keys: 'shift+tab', description: 'Move to the previous control / toggle plan mode in the editor' },
   { id: ACTION_NEWLINE, keys: 'alt+enter', description: 'Insert a newline in a multiline field' },
   { id: ACTION_CLEAR_SEARCH, keys: 'ctrl+u', description: 'Clear the active search query' },
+  { id: ACTION_EXPAND, keys: 'ctrl+e', description: 'Expand the focused content to a full-screen view' },
   { id: ACTION_EXTERNAL_EDITOR, keys: 'ctrl+g', description: 'Edit the draft in your external editor ($VISUAL/$EDITOR)' },
   { id: ACTION_CYCLE_MODEL, keys: 'alt+m', description: 'Cycle the session model within the current provider (contextual)' },
   { id: ACTION_TOGGLE_AGENT_VIEW, keys: 'f7', description: 'Toggle the primary and auxiliary conversation' },

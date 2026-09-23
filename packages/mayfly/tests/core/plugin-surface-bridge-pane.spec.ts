@@ -234,7 +234,8 @@ describe('direct pane surface renderer', () => {
       target.handleInput?.('\r')
       await flush()
       expect(action).toHaveBeenCalledOnce()
-      expect(entry(f.runtime.surfaces, 'event-pane').component.render(80).join('\n')).toContain('translated:run')
+      expect(entry(f.runtime.surfaces, 'event-pane').component.render(80).join('\n'))
+        .toContain('translated:run')
       handle.set(ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run again' }] }))
       await flush()
       target = entry(f.runtime.surfaces, 'event-pane').focusTarget!

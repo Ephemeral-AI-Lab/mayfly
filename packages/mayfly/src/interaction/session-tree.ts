@@ -40,12 +40,17 @@ export interface SessionTreeProjection {
   toggle(id: string): void
 }
 
-/** Build full declaration-order tree items for the shared Choice reducer. */
+/**
+ * Build full declaration-order tree items for the shared Choice reducer.
+ * @param pendingTitles - ids whose persisted title is still resolving; those
+ *   rows carry a muted `…` tail so an id label never silently swaps later.
+ */
 export function sessionTreeItems(
   headers: readonly SessionHeader[],
   titles: ReadonlyMap<string, string>,
   currentId: string | undefined,
   formatDate: (createdAt: number) => string,
+  pendingTitles?: ReadonlySet<string>,
 ): readonly MayflyListItem[] {
   const byId = new Map(headers.map(header => [String(header.id), header]))
   const parent = new Map<string, string>()
@@ -86,7 +91,9 @@ export function sessionTreeItems(
     items.push({
       id,
       label: title ?? id,
-      detail: `${id} · ${date}`,
+      ...(title === undefined && pendingTitles?.has(id) === true
+        ? { detailSpans: [{ text: `${id} · ${date} ` }, { text: '…', tone: 'muted' as const }] }
+        : { detail: `${id} · ${date}` }),
       searchText: `${title ?? ''} ${id} ${date}`,
       ...(owner === undefined ? {} : { parentId: owner }),
       ...(id === currentId ? { badge: '← current' } : {}),

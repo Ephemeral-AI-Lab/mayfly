@@ -30,10 +30,10 @@ export function planReviewControls(question: AskUserQuestionItem, choices: PlanR
     ui.text(question.question),
     /* Seeding 'reject' places the cursor on the decline row while marking the
        still-unapproved plan as the current state — Enter must never approve. */
-    ui.list({ id: 'decision', role: 'choose', selectedIds: ['reject'], items: [
-      { id: 'approve', label: `1. ${choices.approve.label}`, ...choices.approve.description === undefined ? {} : { detail: choices.approve.description } },
-      { id: 'reject', label: `2. ${choices.decline.label}`, ...choices.decline.description === undefined ? {} : { detail: choices.decline.description } },
-      { id: 'other', label: `3. ${t('Other')}`, detail: t('Type feedback to revise the plan') },
+    ui.list({ id: 'decision', role: 'choose', numbered: true, selectedIds: ['reject'], items: [
+      { id: 'approve', label: choices.approve.label, ...choices.approve.description === undefined ? {} : { detail: choices.approve.description } },
+      { id: 'reject', label: choices.decline.label, ...choices.decline.description === undefined ? {} : { detail: choices.decline.description } },
+      { id: 'other', label: t('Other'), detail: t('Type feedback to revise the plan') },
     ] }),
     ui.actions({ id: 'decision-actions', items: [
       { id: 'copy-plan', label: t('Copy plan'), key: 'c' },
@@ -50,7 +50,7 @@ export function planReviewControls(question: AskUserQuestionItem, choices: PlanR
 export function planReviewFeedback(t: MayflyTranslate): MayflyUiNode {
   return ui.stack.column([
     ui.text(t('Tell the model what to change')),
-    ui.form({ id: 'revision', fields: [{ kind: 'textarea', id: 'reason', label: t('Feedback'), value: '' }] }),
+    ui.form({ id: 'revision', enterSubmits: 'send-feedback', fields: [{ kind: 'textarea', id: 'reason', label: t('Feedback'), value: '' }] }),
     ui.actions({ id: 'feedback-actions', items: [
       /* Reading the field keeps the submission an ordinary activate event:
          a submit acknowledgement could never swap the form back out. */

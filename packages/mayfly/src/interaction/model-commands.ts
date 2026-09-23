@@ -386,7 +386,7 @@ async function openPickerOverlay(
   agent: Agent,
   overlayId: string,
   title: string,
-  options: { readonly items: readonly MayflyListItem[], readonly filterable?: boolean, readonly empty?: MayflyUiNode },
+  options: { readonly items: readonly MayflyListItem[], readonly filterable?: boolean, readonly numbered?: boolean, readonly empty?: MayflyUiNode },
   signal: AbortSignal,
   commit: (scope: Context, selectedId: string | undefined, segmentId: string | undefined, persist: boolean, eventSignal: AbortSignal) => Promise<MayflyUiActionReply>,
 ): Promise<MayflyOverlayHandle | undefined> {
@@ -395,6 +395,7 @@ async function openPickerOverlay(
     ui.list({
       id: 'selection', role: 'browse', selectedIds: [], items: options.items, acceptActionId: 'default',
       ...(options.filterable === undefined ? {} : { filterable: options.filterable }),
+      ...(options.numbered === undefined ? {} : { numbered: options.numbered }),
       ...(options.empty === undefined ? {} : { empty: options.empty }),
     }),
     ui.actions({ id: `${overlayId}-actions`, items: [
@@ -543,7 +544,7 @@ export function registerModelCommands(ctx: Context): () => void {
         { id: 'default', label: t('Provider default'), ...(activeEffort === 'default' ? { badge: t('current') } : {}) },
         ...efforts.map(effort => ({ id: String(effort.id), label: String(effort.id), ...(activeEffort === String(effort.id) ? { badge: t('current') } : {}) })),
       ]
-      const opened = await openPickerOverlay(ctx, agent, 'mayfly.effort', `${providerDisplayName(llm, current.provider)}/${current.model}`, { items }, signal,
+      const opened = await openPickerOverlay(ctx, agent, 'mayfly.effort', `${providerDisplayName(llm, current.provider)}/${current.model}`, { items, numbered: true }, signal,
         (scope, selectedId, _segmentId, persist, eventSignal) => {
           const effort = items.find(item => item.id === selectedId)
           return commitPickerRow(scope, effort === undefined ? undefined : { provider: current.provider, providerLabel: providerDisplayName(llm, current.provider), id: current.model, name: current.model }, effort?.id, persist, eventSignal, t)

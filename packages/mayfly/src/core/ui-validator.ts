@@ -935,6 +935,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
         if ((modeValue ?? 'single') === 'single' && selectedIds.length > 1) invalid(`${path}.selectedIds has more than one id in single mode`)
         const filterable = own(object, 'filterable', path)
+        const numbered = own(object, 'numbered', path)
         const tree = own(object, 'tree', path)
         if (tree === true && itemCount <= MAYFLY_UI_MAX_COLLECTION) {
           const byId = new Map(items.map(item => [item.id, item]))
@@ -949,7 +950,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
             }
           }
         }
-        return { kind, role, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
+        return { kind, role, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(numbered === undefined ? undefined : boolean(numbered, `${path}.numbered`), 'numbered'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
       }
       case 'form': {
         const fields = collection(required(object, 'fields', path), `${path}.fields`).map((item, index) => formField(item, `${path}.fields[${String(index)}]`, state))
@@ -965,7 +966,9 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         for (const actionId of [submitActionId, cancelActionId]) if (actionId !== undefined) {
           if (actionId.trim().length === 0) invalid(`${path} action id must not be empty`)
         }
-        return { kind, id, fields, ...optional(submitActionId, 'submitActionId'), ...optional(cancelActionId, 'cancelActionId') }
+        const enterSubmits = optionalText(object, 'enterSubmits', path, state)
+        if (enterSubmits !== undefined && enterSubmits.trim().length === 0) invalid(`${path}.enterSubmits must not be empty`)
+        return { kind, id, fields, ...optional(submitActionId, 'submitActionId'), ...optional(cancelActionId, 'cancelActionId'), ...optional(enterSubmits, 'enterSubmits') }
       }
       case 'actions': {
         const items = collection(required(object, 'items', path), `${path}.items`).map((item, index) => actionItem(item, `${path}.items[${String(index)}]`, state))

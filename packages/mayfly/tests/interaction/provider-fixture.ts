@@ -42,11 +42,11 @@ export class ProviderCommands extends Service {
   }
 }
 
-export async function providerFixture(ctx: Context, profiles: Record<string, unknown> = {}, llm?: unknown) {
+export async function providerFixture(ctx: Context, profiles: Record<string, unknown> = {}, llm?: unknown, options?: { readonly registerNamespace?: boolean }) {
   await ctx.plugin(MemorySettings)
   await ctx.plugin(MemoryCredentials)
   await ctx.plugin(ProviderCommands)
-  const namespace = await ctx.plugin({ name: 'native-profile', inject: ['settings'], apply(owner: Context) {
+  const namespace = options?.registerNamespace === false ? undefined : await ctx.plugin({ name: 'native-profile', inject: ['settings'], apply(owner: Context) {
     owner.settings.register('llm-pi-ai', z.object({ providers: z.dict(z.any()).default({}) }))
   } })
   if (Object.keys(profiles).length > 0) await ctx.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers'], value: profiles }])

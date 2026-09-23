@@ -73,8 +73,8 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
       instructions(notice), copyActions(),
       ui.text(request.message),
       request.kind === 'select'
-        ? ui.list({ id: 'authorization-options', role: 'choose', selectedIds: answer === undefined ? [] : [answer.value], minSelected: 1, items: request.options.map(option => ({ id: option.id, label: option.label, ...(option.description === undefined ? {} : { detail: option.description }) })), empty: ui.empty({ title: t('No authorization options are available') }) })
-        : ui.form({ id: 'authorization-answer', fields: [{ kind: request.kind === 'secret' ? 'secret' : 'input', id: 'answer', label: t('Answer'), value: '', required: true, ...(request.placeholder === undefined ? {} : { placeholder: request.placeholder }) }] }),
+        ? ui.list({ id: 'authorization-options', role: 'choose', numbered: true, selectedIds: answer === undefined ? [] : [answer.value], minSelected: 1, items: request.options.map(option => ({ id: option.id, label: option.label, ...(option.description === undefined ? {} : { detail: option.description }) })), empty: ui.empty({ title: t('No authorization options are available') }) })
+        : ui.form({ id: 'authorization-answer', enterSubmits: 'submit-answer', fields: [{ kind: request.kind === 'secret' ? 'secret' : 'input', id: 'answer', label: t('Answer'), value: '', required: true, ...(request.placeholder === undefined ? {} : { placeholder: request.placeholder }) }] }),
       ui.actions({ id: 'authorization-prompt-actions', items: [
         ...(request.kind === 'select' ? [] : [{ id: 'submit-answer', label: t('Continue'), submit: [{ pagePath: [], formId: 'authorization-answer' }] }]),
         { id: 'cancel', label: t('Cancel'), dismiss: true },

@@ -110,8 +110,8 @@ describe('rewindCandidates', () => {
     ] as unknown as SessionEvent[]
 
     expect(rewindCandidates(events)).toEqual([
-      { turn: 2, boundarySeq: 9, prompt: 'latest prompt' },
-      { turn: 1, boundarySeq: 1, prompt: '(empty prompt) / second prompt / (empty prompt)', response: 'second response' },
+      { turn: 2, boundarySeq: 9, prompt: 'latest prompt', discarded: 1 },
+      { turn: 1, boundarySeq: 1, prompt: '(empty prompt) / second prompt / (empty prompt)', response: 'second response', discarded: 7 },
     ])
   })
 
@@ -119,6 +119,6 @@ describe('rewindCandidates', () => {
     expect(rewindCandidates([
       event('turn/start', 0, { turn: 1 }),
       user(1, undefined),
-    ])).toEqual([{ turn: 1, boundarySeq: 0, prompt: '(empty prompt)' }])
+    ])).toEqual([{ turn: 1, boundarySeq: 0, prompt: '(empty prompt)', discarded: 1 }])
   })
 })

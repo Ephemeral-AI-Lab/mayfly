@@ -19,10 +19,13 @@ export const ACTION_BACKSPACE = 'mayfly.interaction.backspace'
 export const ACTION_DELETE = 'mayfly.interaction.delete'
 export const ACTION_SEGMENT_LEFT = 'mayfly.interaction.segment-left'
 export const ACTION_SEGMENT_RIGHT = 'mayfly.interaction.segment-right'
+export const ACTION_PREV_TAB = 'mayfly.interaction.prev-tab'
+export const ACTION_NEXT_TAB = 'mayfly.interaction.next-tab'
 export const ACTION_NEXT_CONTROL = 'mayfly.interaction.next-control'
 export const ACTION_SHIFT_TAB = 'mayfly.interaction.shift-tab'
 export const ACTION_NEWLINE = 'mayfly.interaction.newline'
 export const ACTION_CLEAR_SEARCH = 'mayfly.interaction.clear-search'
+export const ACTION_EXPAND = 'mayfly.interaction.expand'
 export const ACTION_EXTERNAL_EDITOR = 'mayfly.interaction.external-editor'
 export const ACTION_CYCLE_MODEL = 'mayfly.interaction.cycle-model'
 export const ACTION_TOGGLE_AGENT_VIEW = 'mayfly.interaction.toggle-agent-view'
@@ -42,8 +45,11 @@ const FALLBACK_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze
   [ACTION_SHIFT_TAB]: ['shift+tab'],
   [ACTION_SEGMENT_LEFT]: ['left'],
   [ACTION_SEGMENT_RIGHT]: ['right'],
+  [ACTION_PREV_TAB]: ['alt+left'],
+  [ACTION_NEXT_TAB]: ['alt+right'],
   [ACTION_NEWLINE]: ['alt+enter'],
   [ACTION_CLEAR_SEARCH]: ['ctrl+u'],
+  [ACTION_EXPAND]: ['ctrl+e'],
 })
 
 const DISPLAY_KEY_BY_ID: Readonly<Record<string, string>> = {

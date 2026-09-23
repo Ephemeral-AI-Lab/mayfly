@@ -122,7 +122,8 @@ core/ui-patterns.ts ─────── 渲染原语（renderList/renderForm/r
 | 键 | 语义 | 归属层 | 副作用范围 |
 | --- | --- | --- | --- |
 | ↑↓ | 组内移动 / 滚动 / picker 选项 | 编译器 | 视图 |
-| ←→ | tab 切换 / list segment / select 即时循环 | 编译器 | 视图/草稿 |
+| ←→ | tab 切换（条聚焦时）/ list segment / select 即时循环 | 编译器 | 视图/草稿 |
+| Alt+←→ | 全局切 tab（内容区可用，编辑态除外） | 编译器 | 视图 |
 | PgUp/PgDn | 翻页（scroll、list、文档） | 编译器 | 视图 |
 | Home/End | 首/尾（list、scroll、文档） | 编译器 | 视图 |
 | Space | 树折叠、multiselect 勾选、toggle、field-action | 编译器 | 草稿/视图 |
@@ -251,6 +252,7 @@ Protocol: openai-*   → Protocol: openai-*      → Protocol
 ```
 
 - ←→ 切 tab（发 tab-change 观测，handler 可重投影内容）；Enter 跳入页内首控件；Esc 在有 tab 组时先回 tab 组。
+- **Alt+←→ 全局切 tab**：内容区任意控件聚焦时可用（文本/select 编辑态除外），切完焦点落进新 tab 的记忆/首个内容控件；焦点在 tab 条上时落在新条目的 strip 位。提示 `Alt+←→ tabs`。
 - wizard 的 Back/Next 由 surface 的 `back()`/navigate 驱动，Esc=back。
 
 ### 4.7 scroll 文档

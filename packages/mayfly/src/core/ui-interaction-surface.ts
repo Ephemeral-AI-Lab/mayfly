@@ -196,6 +196,9 @@ export class UiSurfaceModel {
   }
   inspect() { return freezeWire({ id: this.id, instanceId: this.instanceId, scope: this.scope, revision: this.revision, forms: [...this.forms.values()].map(inspectForm), operations: this.operationSnapshot() }) }
 
+  /** True while the addressed action has a handled invoke in flight. */
+  actionPending(address: UiControlAddress): boolean { return this.activeKeys.has(uiControlKey(address)) }
+
   focusControl(address: UiControlAddress): void {
     const previous = this.focus
     if (!this.live || (previous !== undefined && uiControlKey(previous) === uiControlKey(address) && previous.itemId === address.itemId)) return

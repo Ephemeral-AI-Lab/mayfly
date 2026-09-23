@@ -7,9 +7,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import type { MayflyOverlayEntry } from '../../../ui/src/contracts.ts'
 import { providerFixture } from './provider-fixture.ts'
+import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { openProviderEditor } from '../../src/interaction/provider-edit.ts'
 const contexts: Context[] = []
-afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+afterEach(async () => { setModelsDevLoader(undefined); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const address = (itemId: string) => ({ pagePath: [{ controlId: 'provider-pages', itemId }], formId: 'provider' })
 const profile = { displayName: 'Original', api: 'openai-completions', baseURL: 'https://old.example/v1', apiKeyEnv: 'CUSTOM_KEY', models: [{ id: 'one', contextWindow: 4000 }], headers: { untouched: 'value' } }
@@ -66,28 +67,46 @@ async function directSetup(options: {
 }
 
 describe('provider editor', () => {
-  const openCustomModel = async (bench: Awaited<ReturnType<typeof directSetup>>) => {
-    const entry = bench.entry!
-    const reply = await entry.definition.onEvent!.action!({
-      kind: 'activate', pagePath: address('models').pagePath, controlId: 'add-custom-model', actionId: 'add-custom-model',
+  /** Drive the inline `+ model id` row on the Models tab; the reply is asserted, not published. */
+  const addModel = async (bench: Awaited<ReturnType<typeof directSetup>>, modelId: string | undefined) => {
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === bench.entry!.id)!
+    return entry.definition.onEvent!.action!({
+      kind: 'submit', submission: { actionId: 'add-model', source: entry.source,
+        forms: [{ pagePath: address('models').pagePath, formId: 'custom-model', fields: modelId === undefined ? [] : [{ id: 'model-id', value: modelId, change: 'set' as const }] }],
+        selections: [] },
     }, requestContext(entry))
-    expect(reply).toMatchObject({ kind: 'completed' })
-    const custom = bench.ctx.mayflyOverlays.list().find(item => item.id === `${entry.id}.custom-model`)
-    expect(custom).toBeDefined()
-    return custom!
+  }
+  /** Type the inline row and press Add through the real surface so the reply publishes. */
+  const addInline = async (bench: Awaited<ReturnType<typeof directSetup>>, modelId: string) => {
+    bench.model!.edit({ pagePath: address('models').pagePath, formId: 'custom-model', fieldId: 'model-id' }, modelId)
+    bench.model!.invoke('add-model', address('models').pagePath)
+    await flush()
   }
 
-  it('opens on the Models tab with configured and discovered models plus the custom action', async () => {
+  it('opens on the Models tab with configured and discovered models plus the inline add row', async () => {
     const discover = vi.fn(async () => [{ id: 'one', name: 'One' }, { id: 'loaded', name: 'Loaded' }])
     const bench = await directSetup({ llm: { listConfigurableProviders: () => [], discoverModels: discover } })
     const initial = JSON.stringify(bench.entry!.node)
     expect(initial).toContain('"activeId":"models"')
-    expect(initial).toContain('"id":"add-custom-model"')
+    expect(initial).toContain('"id":"add-model"')
+    expect(initial).toContain('"id":"model-id"')
     expect(initial).toContain('one')
-    expect(initial).not.toContain('custom-model-id')
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
     await flush()
     const node = JSON.stringify(bench.ctx.mayflyOverlays.list().find(item => item.id === bench.entry!.id)!.node)
     expect(node).toContain('loaded')
+  })
+
+  it('shows the discovery probe while it runs and a muted note when it fails', async () => {
+    const gate = Promise.withResolvers<never>()
+    const pending = await directSetup({ llm: { listConfigurableProviders: () => [], discoverModels: vi.fn(() => gate.promise) } })
+    await flush()
+    expect(JSON.stringify(pending.ctx.mayflyOverlays.list().find(item => item.id === pending.entry!.id)!.node)).toContain('discovering models')
+    pending.ctx.mayflyOverlays.close(pending.entry!.id)
+
+    const failing = await directSetup({ llm: { listConfigurableProviders: () => [], discoverModels: vi.fn(async () => { throw new Error('endpoint unreachable') }) } })
+    await flush()
+    expect(JSON.stringify(failing.ctx.mayflyOverlays.list().find(item => item.id === failing.entry!.id)!.node)).toContain('model discovery unavailable')
   })
 
   it('discovers endpoint models and saves the selected set while retaining stored metadata', async () => {
@@ -139,88 +158,73 @@ describe('provider editor', () => {
     expect(JSON.stringify(bench.ctx.mayflyOverlays.list().find(item => item.id === bench.entry!.id)?.node)).toContain('catalog')
   })
 
-  it('stages a custom model through its own form and writes it with the next save', async () => {
+  it('skips the failed-discovery repaint once the editor lifetime ends', async () => {
+    const pending = Promise.withResolvers<readonly { id: string }[]>()
+    const lifetime = new AbortController()
+    const bench = await directSetup({
+      signal: lifetime.signal,
+      profiles: { custom: { api: 'openai-completions', apiKeyEnv: 'CUSTOM_KEY', models: [{ id: 'one' }] } },
+      llm: { discoverModels: vi.fn(() => pending.promise), listConfigurableProviders: () => [] },
+    })
+    await flush()
+    expect(bench.opened).toBe(true)
+    lifetime.abort()
+    pending.reject(new Error('gone'))
+    await flush()
+  })
+
+  it('stages a custom model through the inline row and writes catalog facts with the next save', async () => {
+    setModelsDevLoader(async () => buildIndex({ vendor: { models: {
+      'custom-x': { limit: { context: 8192, output: 2048 }, reasoning_options: [{ type: 'effort', values: ['low', 'high'] }] },
+      'custom-nr': { reasoning: false },
+    } } }))
     const bench = await directSetup()
     const entry = bench.entry!
-    const custom = await openCustomModel(bench)
-    const node = JSON.stringify(custom.node)
-    expect(node).toContain('custom-model-id')
-    expect(node).toContain('custom-context')
-    expect(node).toContain('custom-efforts')
-    const added = await custom.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'add', actionId: 'add', inputs: {
-      actionId: 'add', source: custom.source,
-      forms: [{ pagePath: [], formId: 'custom-model', fields: [
-        { id: 'custom-model-id', value: 'custom-x', change: 'set' as const },
-        { id: 'custom-context', value: 8192, change: 'set' as const },
-        { id: 'custom-efforts', value: ['low', 'high'], change: 'set' as const },
-      ] }],
-    } }, requestContext(custom))
-    expect(added).toMatchObject({ kind: 'completed', dismiss: true, feedback: { message: 'Model "custom-x" added' } })
-    await flush()
+    await addInline(bench, 'custom-x')
+    await addInline(bench, 'custom-nr')
     const current = bench.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!
     expect(JSON.stringify(current.node)).toContain('custom-x')
+    expect(bench.model!.feedbackSnapshot().map(item => item.message)).toContain('Model "custom-nr" added — save to persist')
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'one', contextWindow: 4000 }] } } })
 
     expect(await current.definition.onEvent!.action!({ kind: 'submit', submission: {
       actionId: 'save', source: current.source, forms: [],
-      selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['one', 'custom-x'] }],
+      selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['one', 'custom-x', 'custom-nr'] }],
     } }, requestContext(current))).toMatchObject({ kind: 'accepted' })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [
       { id: 'one', contextWindow: 4000 },
-      { id: 'custom-x', contextWindow: 8192, reasoningEfforts: { low: 'low', high: 'high' } },
+      { id: 'custom-x', contextWindow: 8192, maxTokens: 2048, reasoningEfforts: { low: 'low', high: 'high' } },
+      { id: 'custom-nr', reasoningEfforts: false },
     ] } } })
   })
 
-  it('rejects a custom model with a blank id and keeps the editor usable', async () => {
-    const bench = await directSetup()
-    const custom = await openCustomModel(bench)
-    expect(await custom.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'add', actionId: 'add', inputs: {
-      actionId: 'add', source: custom.source,
-      forms: [{ pagePath: [], formId: 'custom-model', fields: [] }],
-    } }, requestContext(custom))).toMatchObject({ kind: 'invalid', errors: [expect.objectContaining({ fieldId: 'custom-model-id' })] })
-  })
-
-  it('stages a hand-added model with only an id', async () => {
+  it('rejects blank and duplicate inline model ids and ignores unrelated activations', async () => {
+    setModelsDevLoader(async () => undefined)
     const bench = await directSetup()
     const entry = bench.entry!
-    const custom = await openCustomModel(bench)
-    expect(await custom.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'add', actionId: 'add', inputs: {
-      actionId: 'add', source: custom.source,
-      forms: [{ pagePath: [], formId: 'custom-model', fields: [{ id: 'custom-model-id', value: 'solo', change: 'set' as const }] }],
-    } }, requestContext(custom))).toMatchObject({ kind: 'completed' })
-    await flush()
+    expect(await addModel(bench, undefined)).toMatchObject({ kind: 'invalid', errors: [expect.objectContaining({ fieldId: 'model-id' })] })
+    expect(await addModel(bench, '  ')).toMatchObject({ kind: 'invalid', errors: [expect.objectContaining({ fieldId: 'model-id' })] })
+    await addInline(bench, 'solo')
+    expect(await addModel(bench, 'solo')).toMatchObject({ kind: 'invalid', errors: [expect.objectContaining({ message: 'Already listed' })] })
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: address('models').pagePath, controlId: 'model-actions', actionId: 'noop' }, requestContext(entry))).toEqual({ kind: 'completed' })
+    expect(JSON.stringify(bench.ctx.mayflyOverlays.list().find(item => item.id === entry.id)?.node)).toContain('solo')
+  })
+
+  it('stages a hand-added model with only an id and survives a stale repaint', async () => {
+    setModelsDevLoader(async () => undefined)
+    const bench = await directSetup()
+    const entry = bench.entry!
+    await addInline(bench, 'solo')
     const current = bench.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!
     expect(await current.definition.onEvent!.action!({ kind: 'submit', submission: {
       actionId: 'save', source: current.source, forms: [],
       selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['one', 'solo'] }],
     } }, requestContext(current))).toMatchObject({ kind: 'accepted' })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'one', contextWindow: 4000 }, { id: 'solo' }] } } })
-  })
 
-  it('focuses an open custom-model form and ignores unrelated submissions', async () => {
-    const bench = await directSetup()
-    const entry = bench.entry!
-    const custom = await openCustomModel(bench)
-    const before = bench.ctx.mayflyOverlays.list().length
-    // Re-activating the action focuses the live form instead of stacking another.
-    const reply = await entry.definition.onEvent!.action!({
-      kind: 'activate', pagePath: address('models').pagePath, controlId: 'add-custom-model', actionId: 'add-custom-model',
-    }, requestContext(entry))
-    expect(reply).toMatchObject({ kind: 'completed' })
-    expect(bench.ctx.mayflyOverlays.list().length).toBe(before)
-    // A non-'add' activation is inert; the staged model map stays empty.
-    expect(await custom.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'cancel', actionId: 'cancel' }, requestContext(custom))).toMatchObject({ kind: 'completed' })
-    expect(JSON.stringify(bench.ctx.mayflyOverlays.list().find(item => item.id === entry.id)?.node)).not.toContain('solo')
-  })
-
-  it('closes the custom-model form with the editor', async () => {
-    const bench = await directSetup()
-    const entry = bench.entry!
-    const custom = await openCustomModel(bench)
-    expect(bench.ctx.mayflyOverlays.list().some(item => item.id === custom.id)).toBe(true)
-    bench.ctx.mayflyOverlays.close(entry.id)
-    await flush()
-    expect(bench.ctx.mayflyOverlays.list().some(item => item.id === custom.id)).toBe(false)
+    const broken = await directSetup()
+    vi.spyOn(broken.settings, 'describe').mockImplementation(() => { throw new Error('settings gone') })
+    expect(await addModel(broken, 'staged-anyway')).toMatchObject({ kind: 'completed', feedback: { severity: 'success' } })
   })
 
   it('saves and clears the route default thinking effort', async () => {
