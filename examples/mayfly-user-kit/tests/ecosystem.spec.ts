@@ -80,6 +80,7 @@ describe('direct plugin services and lifecycle', () => {
       await ctx.plugin(CommandProbe)
       await ctx.plugin(MemorySettings)
       const fiber = await ctx.plugin(overlay)
+      ;(ctx.settings as unknown as MemorySettings).register(overlay.SETTINGS_NAMESPACE, overlay.Config, { owner: fiber.ctx })
       const commands = ctx.commands as unknown as CommandProbe
       const command = commands.find('example-overlay')
       expect(command).toMatchObject({ name: 'example-overlay' })

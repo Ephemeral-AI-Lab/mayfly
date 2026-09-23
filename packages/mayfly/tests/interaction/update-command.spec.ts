@@ -18,7 +18,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { inc } from 'semver'
 import { Context } from '@deepseek-ai/cordis'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import SettingsProvider, { type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
@@ -41,6 +40,7 @@ import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/u
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
+import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 import { checkCooldown, checkHostLine, repairRecipe } from '../../src/interaction/updater/preflight.ts'
 import { classifyInstallFailure } from '../../src/interaction/updater/swap.ts'
 import { renderRequest } from './request-fixture.ts'
@@ -100,12 +100,12 @@ class FakeChild implements InteractiveChild {
 function packumentJson(options: { channelTag?: string; time?: Record<string, string> } = {}): string {
   // The dependency blocks mirror the consolidated bundle: Mayfly UI is a
   // normal dependency, not an independently coordinated update target.
-  const dshDeps = { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' }
+  const dshDeps = { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' }
   const rc2Deps = { ...dshDeps, '@ephemeral-ai/mayfly-ui': `^${CURRENT_VERSION}` }
   return JSON.stringify({
     'dist-tags': { latest: options.channelTag ?? CURRENT_VERSION },
     versions: {
-      '0.1.0-alpha.0': { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.1' } },
+      '0.1.0-alpha.0': { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.1' } },
       [AHEAD_VERSION]: { dependencies: { ...rc2Deps, '@ephemeral-ai/mayfly-ui': `^${AHEAD_VERSION}` } },
       [CURRENT_VERSION]: { dependencies: { ...rc2Deps, '@ephemeral-ai/mayfly-ui': `^${CURRENT_VERSION}` } },
       [TARGET_VERSION]: { dependencies: { ...rc2Deps, '@ephemeral-ai/mayfly-ui': `^${TARGET_VERSION}` } },
@@ -456,7 +456,7 @@ describe('/update early verdicts', () => {
         versions: [CURRENT_VERSION, TARGET_VERSION],
         time: { [TARGET_VERSION]: '2026-08-23T00:00:00.000Z' },
       }]),
-      dependencies: JSON.stringify([{ '@deepseek-ai/dsh-agent-presets': '0.1.5-rc.2' }]),
+      dependencies: JSON.stringify([{ '@deepseek-ai/dsh-agent-preset-registry': '0.1.5-rc.2' }]),
       hostVersion: 'dsh 0.1.2-alpha.4',
     })
     expect(await world.run(command)).toEqual({ kind: 'success' })
@@ -483,17 +483,8 @@ describe('/update early verdicts', () => {
 
   it('follows the settings channel when one is configured', async () => {
     const world = await mountWorld()
-    class MemorySettings extends SettingsProvider {
-      readonly writable = true
-      private doc: Record<string, unknown> = {}
-      protected async load(): Promise<Record<string, unknown>> {
-        return this.doc
-      }
-      protected async persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-        this.doc[String(ns)] = section
-      }
-    }
     const settings = new MemorySettings(world.ctx)
+    settings.register('mayfly', settingsPlugin.Config)
     settingsPlugin.apply(world.ctx)
     updateCheck.apply(world.ctx)
     await new Promise(resolve => setTimeout(resolve, 5))
@@ -543,7 +534,7 @@ describe('/update confirm and swap', () => {
       versions: [CURRENT_VERSION, TARGET_VERSION],
       time: { [TARGET_VERSION]: '2026-08-23T00:00:00.000Z' },
     }
-    const dependencies = { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' }
+    const dependencies = { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' }
     const world = await mountWorld({
       packument: JSON.stringify(format === 'array' ? [document] : document),
       dependencies: JSON.stringify(format === 'array' ? [dependencies] : dependencies),
@@ -646,9 +637,9 @@ describe('/update confirm and swap', () => {
     const noTimePackument = JSON.stringify({
       'dist-tags': { latest: TARGET_VERSION },
       versions: {
-        [CURRENT_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
-        [AHEAD_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
-        [TARGET_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
+        [CURRENT_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } },
+        [AHEAD_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } },
+        [TARGET_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } },
       },
       time: { [CURRENT_VERSION]: '2026-08-20T00:00:00.000Z' },
     })
@@ -877,20 +868,11 @@ describe('/update confirm and swap', () => {
 
   it('falls back to the latest channel when the settings channel is blank', async () => {
     const world = await mountWorld()
-    class MemorySettings extends SettingsProvider {
-      readonly writable = true
-      private doc: Record<string, unknown> = {}
-      protected async load(): Promise<Record<string, unknown>> {
-        return this.doc
-      }
-      protected async persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-        this.doc[String(ns)] = section
-      }
-    }
     const settings = new MemorySettings(world.ctx)
-    // apply() registers the 'mayfly' settings namespace; the boot check's
-    // notice mounts as a dock child, never an overlay, so it cannot race
-    // the confirm form below.
+    // The double's registration stands in for the 'mayfly' patch row; the
+    // boot check's notice mounts as a dock child, never an overlay, so it
+    // cannot race the confirm form below.
+    settings.register('mayfly', settingsPlugin.Config)
     settingsPlugin.apply(world.ctx)
     updateCheck.apply(world.ctx)
     await new Promise(resolve => setTimeout(resolve, 5))

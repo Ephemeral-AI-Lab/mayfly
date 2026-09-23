@@ -117,7 +117,7 @@ function makeWorld(fromVersion = '0.1.0-rc.2') {
     // The real bundle's inserted dsh row — overlaps the declared runtime
     // deps on purpose (the sweep dedupes the two sources).
     "- id: agent-presets",
-    "  name: '@deepseek-ai/dsh-agent-presets'",
+    "  name: '@deepseek-ai/dsh-agent-preset-registry'",
     '',
   ].join('\n'))
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'profile', dependencies: { '@ephemeral-ai/mayfly': fromVersion } }))
@@ -130,7 +130,7 @@ function makeWorld(fromVersion = '0.1.0-rc.2') {
       // sweep reads; sibling manifests are bare.
       writeFileSync(join(dir, 'package.json'), JSON.stringify(
         name === '@ephemeral-ai/mayfly'
-          ? { name, version, dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } }
+          ? { name, version, dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } }
           : { name, version },
       ))
     }
@@ -225,16 +225,16 @@ describe('updater/swap patchEntrySpecs', () => {
       '@ephemeral-ai/mayfly-ui',
       '@ephemeral-ai/mayfly/core',
       '@ephemeral-ai/mayfly/theme-dark',
-      '@deepseek-ai/dsh-agent-presets',
+      '@deepseek-ai/dsh-agent-preset-registry',
     ])
   })
 
   it('falls back to the declared deps alone when the patch file is missing', () => {
     const world = makeWorld()
     writeFileSync(join(world.root, 'node_modules', '@ephemeral-ai', 'mayfly', 'cordis.patch.yml'), 'no entries here\n')
-    expect(patchEntrySpecs(world.root)).toEqual(['@deepseek-ai/dsh-agent-presets'])
+    expect(patchEntrySpecs(world.root)).toEqual(['@deepseek-ai/dsh-agent-preset-registry'])
     rmSync(join(world.root, 'node_modules', '@ephemeral-ai', 'mayfly', 'cordis.patch.yml'))
-    expect(patchEntrySpecs(world.root)).toEqual(['@deepseek-ai/dsh-agent-presets'])
+    expect(patchEntrySpecs(world.root)).toEqual(['@deepseek-ai/dsh-agent-preset-registry'])
     rmSync(join(world.root, 'node_modules', '@ephemeral-ai', 'mayfly', 'package.json'))
     expect(patchEntrySpecs(world.root)).toEqual([])
   })
@@ -243,7 +243,7 @@ describe('updater/swap patchEntrySpecs', () => {
 describe('updater/swap declaredRuntimeDeps', () => {
   it('reads the declared dsh deps and tolerates foreign manifests', () => {
     const world = makeWorld()
-    expect(declaredRuntimeDeps(world.root)).toEqual(['@deepseek-ai/dsh-agent-presets'])
+    expect(declaredRuntimeDeps(world.root)).toEqual(['@deepseek-ai/dsh-agent-preset-registry'])
     const manifest = join(world.root, 'node_modules', '@ephemeral-ai', 'mayfly', 'package.json')
     writeFileSync(manifest, '{nope')
     expect(declaredRuntimeDeps(world.root)).toEqual([])

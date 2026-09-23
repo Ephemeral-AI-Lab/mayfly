@@ -9,6 +9,8 @@ import { join } from 'node:path'
 import { openSettingsNamespace } from '../../src/interaction/settings-command.ts'
 import { setExternalEditorLauncher } from '../../src/interaction/external-editor.ts'
 import { settingsFixture, settingsField } from './settings-fixture.ts'
+import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
+import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import { renderRequest, flushRequests } from './request-fixture.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import type { MayflyOverlayEntry } from '../../../ui/src/contracts.ts'
@@ -80,7 +82,9 @@ describe('native settings UI', () => {
     expect(model.form(field('name'))!.fields[name]).toMatchObject({ value: 'composition', change: 'reset' })
     model.invoke('save')
     await flushRequests()
-    expect(bench.settings.describe().find(item => item.ns === 'test-settings')!.user).not.toHaveProperty('name')
+    // The native unset restores the inherited layer as an explicit equal-value
+    // override rather than deleting the user key.
+    expect(bench.settings.describe().find(item => item.ns === 'test-settings')!.user).toMatchObject({ name: 'composition' })
     expect(bench.settings.get('test-settings')).toMatchObject({ name: 'composition' })
     expect(model.dirty).toBe(false)
     renderer.runtime.dispose()
@@ -90,11 +94,11 @@ describe('native settings UI', () => {
     const bench = await setup()
     const model = await bench.open()
     const values = vi.fn()
-    bench.ctx.on('settings/updated', values)
+    bench.ctx.on('settings/document-updated', values)
     model.edit(field('name'), 'local')
     await bench.settings.mutate('test-settings', [{ op: 'set', path: ['enabled'], value: true }])
     await flushRequests()
-    expect(values).not.toHaveBeenCalled()
+    expect(values).toHaveBeenCalledWith('test-settings', 1)
     expect(model.source).toContainEqual({ resourceId: 'settings/test-settings', revision: 1 })
     expect(model.form(field('name'))!.fields[field('name').fieldId]!.value).toBe('local')
     model.invoke('save')
@@ -145,7 +149,7 @@ describe('native settings UI', () => {
     const model = await bench.open()
     model.edit(field('name'), 'local')
     await bench.owner.dispose()
-    await bench.ctx.plugin({ name: 'replacement-namespace', inject: ['settings'], apply(ctx: Context) { ctx.settings.register('test-settings', Schema.object({ name: Schema.string().default('new') })) } })
+    await bench.ctx.plugin({ name: 'replacement-namespace', inject: ['settings'], apply(ctx: Context) { (ctx.settings as unknown as MemorySettings).register('test-settings', Schema.object({ name: Schema.string().default('new') }).volatile(), { owner: ctx }) } })
     model.invoke('save')
     await flushRequests()
     expect(bench.settings.writes).toBe(0)
@@ -196,7 +200,7 @@ describe('native settings UI', () => {
   it('preserves drafts after persistence failure and validates numeric intermediate input before writing', async () => {
     const bench = await setup()
     const model = await bench.open()
-    const persist = vi.spyOn(bench.settings as unknown as { persist: () => Promise<void> }, 'persist')
+    const persist = vi.spyOn(bench.settings, 'mutate')
     model.edit(field('count'), '-')
     model.invoke('save')
     await flushRequests()
@@ -342,8 +346,7 @@ describe('native settings UI', () => {
     expect(await action(save(entry), actionContext(entry))).toMatchObject({ kind: 'accepted' })
     expect(await action({ kind: 'submit', submission: { actionId: 'save', source: entry.source, forms: [] } }, actionContext(entry))).toMatchObject({ kind: 'failed' })
 
-    bench.ctx.emit('settings/updated', 'other' as never)
-    bench.ctx.emit('settings/document-updated', 'other' as never)
+    bench.ctx.emit('settings/document-updated', 'other' as never, 1)
     await bench.owner.dispose()
     expect(await action(save(entry), actionContext(entry))).toMatchObject({ kind: 'cancelled', dismiss: true })
   })
@@ -393,6 +396,14 @@ describe('native settings UI', () => {
     expect(await vanishedResult).toMatchObject({ kind: 'cancelled', dismiss: true })
   })
 
+  it('answers a native conflict when the service rejects the commit revision', async () => {
+    const bench = await setup()
+    await openSettingsNamespace(bench.ctx, 'test-settings')
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id.includes(Buffer.from('test-settings').toString('hex')))!
+    vi.spyOn(bench.settings, 'mutate').mockRejectedValueOnce(new SettingsConflictError('test-settings' as never, 0, 1))
+    expect(await entry.definition.onEvent!.action!(save(entry, [{ id: field('name').fieldId, change: 'set', value: 'changed' }]), actionContext(entry))).toMatchObject({ kind: 'conflict', message: 'Settings changed elsewhere; review before saving' })
+  })
+
   it('refreshes dynamic providers and contains superseded or closed refreshes', async () => {
     const bench = await setup()
     await openSettingsNamespace(bench.ctx, 'test-settings')
@@ -402,14 +413,13 @@ describe('native settings UI', () => {
     const list = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise).mockResolvedValue([])
     bench.ctx.provide('agentPresets', { list } as never)
     await flushRequests()
-    bench.ctx.emit('settings/updated', 'test-settings' as never)
-    bench.ctx.emit('settings/document-updated', 'test-settings' as never)
+    bench.ctx.emit('settings/document-updated', 'test-settings' as never, 1)
     await vi.waitFor(() => expect(list).toHaveBeenCalled())
     second.resolve([])
     first.resolve([])
     await flushRequests()
     bench.ctx.mayflyOverlays.close(id)
-    bench.ctx.emit('settings/updated', 'test-settings' as never)
+    bench.ctx.emit('settings/document-updated', 'test-settings' as never, 2)
     await flushRequests()
     expect(bench.ctx.mayflyOverlays.list().some(entry => entry.id === id)).toBe(false)
   })
@@ -430,8 +440,9 @@ describe('native settings UI', () => {
     vi.stubEnv('VISUAL', '')
     vi.stubEnv('EDITOR', '')
     expect(await openFile()).toMatchObject({ kind: 'failed', message: 'no editor configured ($VISUAL/$EDITOR)' })
-    vi.spyOn(bench.settings, 'get').mockReturnValue({ editorCommand: 'test-editor' })
-    vi.spyOn(bench.settings, 'prepareDocument').mockResolvedValue(undefined)
+    // The mayfly.editorCommand setting resolves through the shared tree source.
+    bench.ctx.provide('mayflyInteractionState', { settingsSource: () => ({ editorCommand: 'test-editor' }) } as never)
+    vi.spyOn(bench.settings, 'prepareDocument').mockResolvedValue(undefined as never)
     expect(await openFile()).toMatchObject({ kind: 'failed', message: 'settings file unavailable' })
 
     const dir = mkdtempTracked('settings-document-failure-')
@@ -474,10 +485,14 @@ describe('native settings UI', () => {
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
   })
 
-  it('marks restart-only namespaces in the browser', async () => {
+  it('omits namespaces without live-editable fields from the browser', async () => {
     const bench = await setup()
-    await bench.ctx.plugin({ name: 'restart-settings', inject: ['settings'], apply(ctx: Context) { ctx.settings.register('restart-settings', Schema.object({ value: Schema.string() }), { applies: 'restart' }) } })
+    // Every field ordinary: the row is not a configurable settings entry.
+    await bench.ctx.plugin({ name: 'static-settings', inject: ['settings'], apply(ctx: Context) { (ctx.settings as unknown as MemorySettings).register('static-settings', Schema.object({ value: Schema.string() })) } })
     bench.commands.entries.get('settings')!.handler({} as never)
-    expect(JSON.stringify(bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.settings')!.node)).toContain('restart to apply')
+    const browser = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.settings')!
+    const listed = JSON.stringify(browser.node)
+    expect(listed).toContain('test-settings')
+    expect(listed).not.toContain('static-settings')
   })
 })

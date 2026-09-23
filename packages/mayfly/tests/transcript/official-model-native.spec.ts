@@ -59,11 +59,11 @@ it('handles cloned native snapshots, multi-entry settlement, retraction, and lat
   source.attach(null)
   source.attach(session)
   expect(source.snapshot().entries).toEqual(conversationTranscriptModel(checkpointView, tools).entries)
-  session.append('system/message', {
+  session.append('developer/message', {
     turn: 0, step: 0,
     message: {
-      id: MessageId('retraction'), role: 'system', content: [],
-      source: { kind: 'plugin', plugin: 'mayfly-retraction' },
+      id: MessageId('retraction'), role: 'developer', content: [],
+      source: { kind: 'mayfly-retraction' },
     },
   }, { surfaceOp: { op: 'replace', startSeq: settledSeq, endSeq: settledSeq }, sourceEventSeqs: [settledSeq] })
   expect(source.snapshot().entries).toEqual([])

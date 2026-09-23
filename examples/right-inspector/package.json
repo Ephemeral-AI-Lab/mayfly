@@ -12,6 +12,6 @@
   "license": "MIT",
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
   "dependencies": { "@ephemeral-ai/mayfly-ui": "workspace:*", "@ephemeral-ai/mayfly-ui": "workspace:*", "@mayfly-example/user-kit": "workspace:*" },
-  "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2" },
-  "devDependencies": { "@deepseek-ai/cordis": "4.0.2" }
+  "peerDependencies": { "@deepseek-ai/cordis": "^4.0.4" },
+  "devDependencies": { "@deepseek-ai/cordis": "4.0.4" }
 }

@@ -142,7 +142,7 @@ try {
   }
 
   const dependencies = Object.fromEntries([...tarballs].map(([name, tarball]) => [name, `file:${tarball}`]))
-  dependencies['@deepseek-ai/cordis'] = '4.0.2'
+  dependencies['@deepseek-ai/cordis'] = '4.0.4'
   dependencies['@deepseek-ai/dsh-commands'] = harnessLine
   dependencies['@deepseek-ai/dsh-settings'] = harnessLine
   const workspace = parseYaml(readFileSync(join(ROOT, 'pnpm-workspace.yaml'), 'utf8'))
@@ -178,14 +178,9 @@ try {
 
   const fixtureRequire = createRequire(join(fixtureRoot, 'fixture.mjs'))
   const load = name => import(pathToFileURL(fixtureRequire.resolve(name)).href)
-  const { default: SettingsProvider } = await load('@deepseek-ai/dsh-settings')
-  class MemorySettings extends SettingsProvider {
-    writable = true
-    async load() { return {} }
-    async persist() {}
-  }
-  const [cordis, provider, kit, header, inspector, bottomLog, overlay, gallery] = await Promise.all([
+  const [cordis, dshSettings, provider, kit, header, inspector, bottomLog, overlay, gallery] = await Promise.all([
     load('@deepseek-ai/cordis'),
+    load('@deepseek-ai/dsh-settings'),
     load('@ephemeral-ai/mayfly-ui/provider'),
     load('@mayfly-example/user-kit'),
     load('@mayfly-example/header'),
@@ -194,6 +189,57 @@ try {
     load('@mayfly-example/overlay'),
     load('@mayfly-example/ui-gallery'),
   ])
+  /** Plain-value unwrap: volatile config cells implement the shared `.get()` protocol. */
+  const plain = value => value !== null && typeof value?.get === 'function' ? plain(value.get())
+    : Array.isArray(value) ? value.map(plain)
+    : value !== null && typeof value === 'object'
+      ? Object.fromEntries(Object.entries(value).map(([key, child]) => [key, plain(child)]))
+      : value
+  /** The `settings` service double: `register()` stands in for a Loader patch row. */
+  class MemorySettings extends cordis.Service {
+    writable = true
+    documentPath = ''
+    entries = new Map()
+    constructor(ctx) { super(ctx, 'settings') }
+    register(ns, schema, owner) {
+      if (this.entries.has(ns)) throw new Error(`settings namespace "${ns}" already registered`)
+      const entry = { schema, user: {}, revision: 0 }
+      this.entries.set(ns, entry)
+      this.ctx.emit('settings/document-updated', ns, 0)
+      owner?.effect?.(() => () => {
+        this.entries.delete(ns)
+        entry.revision += 1
+        this.ctx.emit('settings/document-updated', ns, entry.revision)
+      })
+    }
+    resolved(entry) { return plain(entry.schema(entry.user)) }
+    get(ns) { return this.resolved(this.entries.get(ns)) }
+    describe() {
+      return [...this.entries].map(([ns, entry]) => ({
+        ns, autoGenerate: true, schema: {}, revision: entry.revision, applies: 'live',
+        value: this.resolved(entry), user: { ...entry.user },
+      }))
+    }
+    async mutate(ns, ops, expected) {
+      const entry = this.entries.get(ns)
+      if (entry === undefined) throw new Error(`No configurable plugin entry "${ns}"`)
+      if (expected !== undefined && entry.revision !== expected) throw new dshSettings.SettingsConflictError(ns, expected, entry.revision)
+      for (const op of ops) {
+        let node = entry.user
+        for (const segment of op.path.slice(0, -1)) {
+          const child = node[segment]
+          node = child !== null && typeof child === 'object' ? child : (node[segment] = {})
+        }
+        const key = op.path.at(-1)
+        if (op.op === 'set') node[key] = op.value
+        else delete node[key]
+      }
+      entry.revision += 1
+      this.ctx.emit('settings/document-updated', ns, entry.revision)
+    }
+    async prepareDocument() { return this.documentPath }
+    configure() { return () => {} }
+  }
 
   await scenario('composition.five-direct-rows', async () => {
     const root = join(fixtureRoot, 'node_modules', '@mayfly-example', 'ecosystem')
@@ -251,6 +297,7 @@ try {
       register(definition) { command = definition; return () => { command = undefined } },
     })
     const pluginFiber = await ctx.plugin(overlay)
+    ctx.settings.register(overlay.SETTINGS_NAMESPACE, overlay.Config, pluginFiber.ctx)
     ensure(command?.name === 'example-overlay', 'EXAMPLES_DSH_COMMAND', 'overlay did not register through dsh commands')
     const result = await command.handler({ rawInput: '' })
     ensure(result.kind === 'success' && ctx.mayflyOverlays.list()[0]?.id === overlay.overlayRequest.id, 'EXAMPLES_OVERLAY_DIRECT', 'command did not open the direct overlay')

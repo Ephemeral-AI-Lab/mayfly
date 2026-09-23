@@ -139,14 +139,16 @@ describe('mayfly-pane-agents plugin', () => {
     })
     expect(rig.screen.paneLines(140).join('\n')).toContain('running subagent')
     // A result pairing into it with a non-text block yields empty text;
-    // a block without a content field pairs the same empty way.
+    // a message without a content field pairs the same empty way.
     rig.ctx.emit('session/event', agent.session, {
       type: 'tool/result', seq: 52, time: T0 + 3_000,
       data: {
         turn: 1, step: 1,
         message: {
-          role: 'user',
-          content: [{ type: 'tool-result', toolCallId: 'bad1', content: [{ type: 'image', attachment: { id: 'x' } }], isError: false }],
+          role: 'tool',
+          toolCallId: 'bad1',
+          content: [{ type: 'image', attachment: { id: 'x' } }],
+          isError: false,
         },
       },
     })
@@ -159,7 +161,7 @@ describe('mayfly-pane-agents plugin', () => {
       type: 'tool/result', seq: 54, time: T0 + 5_000,
       data: {
         turn: 1, step: 1,
-        message: { role: 'user', content: [{ type: 'tool-result', toolCallId: 'bad2', isError: false }] },
+        message: { role: 'tool', toolCallId: 'bad2', isError: false },
       },
     })
     expect(rig.screen.paneLines(140).join('\n')).toContain('2 agents finished')
@@ -168,13 +170,13 @@ describe('mayfly-pane-agents plugin', () => {
   it('boots without an agent and survives a malformed result event', async () => {
     const harness = await bootPanePlugin(paneAgents, null)
     expect(harness.screen.paneLines(80)).toEqual([])
-    // A result event without a toolCallId block pairs nothing and throws
+    // A result event without a toolCallId pairs nothing and throws
     // nothing (the pane's defensive guard).
     const agent = fakeAgent([turnStart(1)])
     harness.ctx.emit('test/session-changed', agent)
     harness.ctx.emit('session/event', agent.session, {
       type: 'tool/result', seq: 50, time: T0 + 1_000,
-      data: { turn: 1, step: 1, message: { role: 'user', content: [] } },
+      data: { turn: 1, step: 1, message: { role: 'tool', content: [] } },
     })
     expect(harness.screen.paneLines(80)).toEqual([])
   })

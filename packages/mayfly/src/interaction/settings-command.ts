@@ -4,7 +4,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { SettingsConflictError, type SettingsDescriptor } from '@deepseek-ai/dsh-settings'
-import type {} from '@deepseek-ai/dsh-agent-presets'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { ui, type MayflyOverlayHandle, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
@@ -104,10 +104,9 @@ export async function openSettingsNamespace(ctx: Context, ns: string, callerSign
     queueMicrotask(() => { scheduled = false; if (!handle.closed) void refresh() })
   }
   const offDocument = ctx.on('settings/document-updated', changed => { if (String(changed) === ns) schedule() })
-  const offValue = ctx.on('settings/updated', changed => { if (String(changed) === ns) schedule() })
   const offLocale = observeInteractionLocale(ctx, schedule)
   const dynamicFibers = ['permissionPresets', 'agentPresets'].map(name => ctx.inject([name], owner => { schedule(); owner.effect(() => () => schedule()) }))
-  teardown = () => { offDocument(); offValue(); offLocale(); for (const fiber of dynamicFibers) void fiber.dispose(); releaseLifetime() }
+  teardown = () => { offDocument(); offLocale(); for (const fiber of dynamicFibers) void fiber.dispose(); releaseLifetime() }
   return true
 }
 
@@ -116,13 +115,13 @@ async function editDocument(ctx: Context, signal: AbortSignal): Promise<MayflyUi
   if (!ctx.settings.writable) return { kind: 'failed', message: t('Settings are read-only') }
   const screen = ctx.get('mayflyScreen')
   if (screen === undefined) return { kind: 'failed', message: t('The terminal is unavailable') }
-  const config = ctx.settings.get('mayfly') as { readonly editorCommand?: unknown } | undefined
-  const command = resolveExternalEditorCommand(process.env, typeof config?.editorCommand === 'string' ? config.editorCommand : '')
+  const config = ctx.get('mayflyInteractionState')?.settingsSource()
+  const command = resolveExternalEditorCommand(process.env, config?.editorCommand ?? '')
   if (command === undefined) return { kind: 'failed', message: t('no editor configured ($VISUAL/$EDITOR)') }
   try {
-    const path = await ctx.settings.prepareDocument()
-    if (path === undefined) return { kind: 'failed', message: t('settings file unavailable') }
+    const path: string | undefined = await ctx.settings.prepareDocument()
     signal.throwIfAborted()
+    if (path === undefined) return { kind: 'failed', message: t('settings file unavailable') }
     const text = await readFile(path, 'utf8')
     const edited = await screen.suspend(() => runExternalEditor(text, command))
     if (signal.aborted) return { kind: 'cancelled' }
@@ -143,7 +142,7 @@ export function apply(ctx: Context): void {
     name: 'settings', description: 'Edit user settings by namespace',
     handler: () => {
       const view = () => ui.surface({ child: ui.stack.column([
-        ui.list({ id: 'namespaces', role: 'browse', selectedIds: [], filterable: true, items: ctx.settings.describe({ redactSecrets: true }).map(item => ({ id: String(item.ns), label: String(item.ns), ...item.applies === 'restart' ? { detail: t('restart to apply') } : {} })), empty: ui.empty({ title: t('No settings namespaces') }) }),
+        ui.list({ id: 'namespaces', role: 'browse', selectedIds: [], filterable: true, items: ctx.settings.describe({ redactSecrets: true }).map(item => ({ id: String(item.ns), label: String(item.ns) })), empty: ui.empty({ title: t('No settings namespaces') }) }),
         ui.actions({ id: 'browser-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), disabled: !ctx.settings.writable }, { id: 'close', label: t('Close'), dismiss: true }] }),
       ]), title: t('Settings'), chrome: 'overlay', padding: 1 })
       let teardown: (() => void) | undefined
@@ -158,10 +157,9 @@ export function apply(ctx: Context): void {
       }, view(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => teardown?.() })
       if (opened === undefined) return { kind: 'success' }
       const refresh = () => { opened.set(view()) }
-      const offValue = ctx.on('settings/updated', refresh)
       const offDocument = ctx.on('settings/document-updated', refresh)
       const offLocale = observeInteractionLocale(ctx, refresh)
-      teardown = () => { offValue(); offDocument(); offLocale() }
+      teardown = () => { offDocument(); offLocale() }
       return { kind: 'success' }
     },
   })

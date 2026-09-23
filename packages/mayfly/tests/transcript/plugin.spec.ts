@@ -121,6 +121,7 @@ interface Harness {
   readonly keymap: FakeKeymap
   readonly select: (agent: FakeAgent | null) => void
   readonly selectAuxiliary: (agent: FakeAgent, transcriptAfterSeq: number) => void
+  readonly setMayflySettings: (value: unknown) => void
 }
 
 function fixtureApply(ctx: Context): void {
@@ -227,17 +228,20 @@ async function bootTranscript(
     revision += 1
     for (const listener of listeners) listener(agent as unknown as Agent, revision)
   }
+  // The tree-scoped settings source stands in for the `mayfly` patch row:
+  // the transcript reads it on every `settings/document-updated` commit.
+  const mayflyState = { settings: options.settings?.['mayfly'] }
   const services: Record<string, unknown> = {
     mayflyScreen: screen,
     mayflyTheme: { colors: COLORS },
     mayflyComponents: fakeMayflyComponents(),
     mayflyKeymap: keymap,
     mayflyCurrentAgent: currentAgent,
+    mayflyInteractionState: { settingsSource: () => mayflyState.settings },
     sessionProjections: projections,
     sessions: { list: () => active === null ? [] : [active.session] },
     mayflyConversationReady: { key: 'mayflyConversation' },
     tools: options.tools ?? { get: () => undefined },
-    ...(options.settings === undefined ? {} : { settings: { get: (ns: string) => options.settings?.[ns] } }),
     ...(options.attachments === undefined ? {} : { attachments: options.attachments }),
   }
   for (const [name, value] of Object.entries(services)) ctx.reflect.provide(name, value)
@@ -252,7 +256,7 @@ async function bootTranscript(
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
   disposers.push(async () => { await ctx.fiber.dispose() })
-  return { ctx, screen, keymap, select, selectAuxiliary }
+  return { ctx, screen, keymap, select, selectAuxiliary, setMayflySettings: value => { mayflyState.settings = value } }
 }
 
 function stripGutter(lines: string[]): string[] {
@@ -429,15 +433,15 @@ describe('mayfly-transcript through the real Loader', () => {
   })
 
   it('applies settings, reprojects locale copy, and unloads every Fiber-owned registration', async () => {
-    const { ctx, screen, keymap } = await bootTranscript(null, {
+    const { ctx, screen, keymap, setMayflySettings } = await bootTranscript(null, {
       settings: { mayfly: { collapseToolCalls: false, expandTurns: 2, userFoldLines: 12 } },
     })
     const settingsBaseline = screen.renderRequests.length
-    ctx.emit('settings/updated', 'mayfly' as SettingsNamespace, { expandTurns: 4, userFoldChars: 700 }, {}, 'provider')
+    setMayflySettings({ collapseToolCalls: false, expandTurns: 4, userFoldChars: 700 })
+    ctx.emit('settings/document-updated', 'mayfly' as SettingsNamespace, 1)
     expect(screen.renderRequests.length).toBeGreaterThan(settingsBaseline)
-    expect(screen.renderRequests.at(-1)).toBe(true)
-    ctx.emit('settings/updated', 'mayfly' as SettingsNamespace, { expandTurns: 4, userFoldChars: 700 }, {}, 'provider')
-    ctx.emit('settings/updated', 'other' as SettingsNamespace, { expandTurns: 8 }, {}, 'provider')
+    ctx.emit('settings/document-updated', 'mayfly' as SettingsNamespace, 2)
+    ctx.emit('settings/document-updated', 'other' as SettingsNamespace, 1)
 
     const toggle = keymap.actions.find(action => action.id === ACTION_TOGGLE_COLLAPSE)
     const baseline = screen.renderRequests.length

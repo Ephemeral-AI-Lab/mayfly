@@ -34,13 +34,11 @@ function attempt(turn: number, step: number, kind: 'reasoning' | 'text', text: s
   })
 }
 
-function toolResult(callId: string, content: unknown[], isError = false): unknown {
+function toolResult(callId: string, content: unknown[] | null, isError = false): unknown {
   return {
     turn: 1,
     step: 0,
-    message: {
-      content: [{ type: 'tool-result', toolCallId: callId, content, isError }],
-    },
+    message: { toolCallId: callId, content, isError },
   }
 }
 
@@ -103,7 +101,7 @@ describe('mayflyConversationFacts projection', () => {
     state = foldConversationFacts(state, event('tool/result', {
       turn: 1,
       step: 0,
-      message: { content: [{ type: 'tool-result', toolCallId: 'agent-1', content: null }] },
+      message: { toolCallId: 'agent-1', content: null },
     }, 102))
     expect(state.agentCalls[0]?.result).toMatchObject({ text: '', isError: false, endedAt: 102 })
     const unchangedResult = foldConversationFacts(state, event('tool/result', toolResult('missing', [{ type: 'text', text: 'ignored' }])))

@@ -10,7 +10,6 @@ import { chmodSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import SettingsProvider, { type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import {
@@ -20,6 +19,7 @@ import {
   setExternalEditorLauncher,
 } from '../../src/interaction/external-editor.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
+import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 
 registerTempDirCleanup()
 
@@ -53,6 +53,7 @@ describe('resolveExternalEditorCommand', () => {
       subscribe: () => () => {},
     } as never)
     await ctx.plugin(MemorySettings, { mayfly: { editorCommand: '  my-editor --wait  ' } })
+    ;(ctx.settings as unknown as MemorySettings).register('mayfly', settingsPlugin.Config)
     await ctx.plugin(settingsPlugin)
     await vi.waitFor(() => {
       expect(resolveExternalEditorCommand(
@@ -62,25 +63,6 @@ describe('resolveExternalEditorCommand', () => {
     })
   })
 })
-
-/** A settings provider with the stored document as its constructor config. */
-class MemorySettings extends SettingsProvider {
-  readonly writable = true
-  private readonly doc: Record<string, unknown>
-
-  constructor(ctx: Context, doc?: Record<string, unknown>) {
-    super(ctx)
-    this.doc = doc ?? {}
-  }
-
-  protected async load(): Promise<Record<string, unknown>> {
-    return this.doc
-  }
-
-  protected async persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-    this.doc[String(ns)] = section
-  }
-}
 
 describe('quoteShellArg', () => {
   it('single-quotes plain POSIX arguments', () => {

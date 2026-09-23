@@ -59,7 +59,7 @@ export function apply(ctx: Context): void {
         } },
       }, build(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => offSettings?.() })
       if (handle === undefined) return { kind: 'success' }
-      offSettings = ctx.on('settings/updated', () => { handle.set(build()) })
+      offSettings = ctx.on('settings/document-updated', () => { handle.set(build()) })
       return { kind: 'success' }
     },
   })

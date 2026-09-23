@@ -14,5 +14,5 @@
   "files": ["lib/**/*"],
   "license": "MIT",
   "peerDependencies": { "@ephemeral-ai/mayfly-ui": "workspace:*" },
-  "devDependencies": { "@deepseek-ai/cordis": "4.0.2", "@ephemeral-ai/mayfly": "workspace:*", "@ephemeral-ai/mayfly-ui": "workspace:*" }
+  "devDependencies": { "@deepseek-ai/cordis": "4.0.4", "@ephemeral-ai/mayfly": "workspace:*", "@ephemeral-ai/mayfly-ui": "workspace:*" }
 }

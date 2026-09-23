@@ -9,7 +9,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import SettingsProvider, { type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { Context } from '@deepseek-ai/cordis'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
@@ -18,7 +17,8 @@ import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { fakeMayflyContext } from './fakes.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { updaterInternals } from '../../src/interaction/updater/io.ts'
-import { apply as applySettings, DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
+import { apply as applySettings, Config as MAYFLY_SETTINGS_CONFIG, DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
+import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 import {
   apply,
   name,
@@ -43,9 +43,9 @@ const OFFER_VERSION = '0.2.0-alpha.2'
 const OFFER_JSON = JSON.stringify({
   'dist-tags': { latest: OFFER_VERSION },
   versions: {
-    '0.1.0-rc.6': { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
-    [MAYFLY_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
-    [OFFER_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-presets': '0.1.1-rc.2' } },
+    '0.1.0-rc.6': { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } },
+    [MAYFLY_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } },
+    [OFFER_VERSION]: { dependencies: { '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.2' } },
   },
   time: {
     '0.1.0-rc.6': '2026-08-20T00:00:00.000Z',
@@ -335,29 +335,6 @@ describe('updater/check state reader', () => {
 })
 
 describe('updater/check apply', () => {
-  /**
-   * A minimal in-memory settings provider, mounted as a class plugin with
-   * the stored document as its config so init publishes it before the
-   * `mayfly-settings` attach resolves.
-   */
-  class MemorySettings extends SettingsProvider {
-    readonly writable = true
-    private readonly doc: Record<string, unknown>
-
-    constructor(ctx: Context, doc?: Record<string, unknown>) {
-      super(ctx)
-      this.doc = doc ?? {}
-    }
-
-    protected async load(): Promise<Record<string, unknown>> {
-      return this.doc
-    }
-
-    protected async persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-      this.doc[String(ns)] = section
-    }
-  }
-
   it('mounts the check with defaults when no settings service exists', async () => {
     const world = makeCheck()
     apply(world.ctx)
@@ -367,9 +344,10 @@ describe('updater/check apply', () => {
     expect(name).toBe('mayfly-update-check')
   })
 
-  it('reads the off switch through the shared mayfly-settings thunk', async () => {
+  it('reads the off switch through the shared mayfly-settings source', async () => {
     const world = makeCheck()
     await world.ctx.plugin(MemorySettings, { mayfly: { updateCheck: false } })
+    ;(world.ctx.settings as unknown as MemorySettings).register('mayfly', MAYFLY_SETTINGS_CONFIG)
     applySettings(world.ctx)
     apply(world.ctx)
     await new Promise(resolve => setTimeout(resolve, 20))
@@ -377,9 +355,10 @@ describe('updater/check apply', () => {
     expect(world.notifications()).toHaveLength(0)
   })
 
-  it('runs the check when the shared thunk leaves the switch on', async () => {
+  it('runs the check when the shared source leaves the switch on', async () => {
     const world = makeCheck()
     await world.ctx.plugin(MemorySettings, { mayfly: { updateCheck: true } })
+    ;(world.ctx.settings as unknown as MemorySettings).register('mayfly', MAYFLY_SETTINGS_CONFIG)
     applySettings(world.ctx)
     apply(world.ctx)
     await new Promise(resolve => setTimeout(resolve, 20))

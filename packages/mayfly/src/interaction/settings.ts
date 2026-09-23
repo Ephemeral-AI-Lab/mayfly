@@ -1,21 +1,22 @@
 /**
- * `mayfly-settings` plugin: the consolidated `mayfly` settings namespace. This
- * is the tree's ONE `settings.installSection` registration for the `mayfly`
- * namespace — every consumer (the boot update check, the
- * `/settings` panel, the `/update` channel read) resolves the tree-scoped
- * {@link currentMayflySettings} source instead of registering its own section, so a
- * host's settings service sees exactly one `mayfly` schema. Until a settings
- * service layers user overrides the thunk answers the composition defaults.
+ * `mayfly-settings` plugin: the consolidated `mayfly` settings namespace. The
+ * patch row of that name loads this module, so the row's Config schema is the
+ * one `settings.describe()` projects into a form and `settings.mutate()`
+ * commits against. Every field is `.volatile()` — writes reconcile through the
+ * Loader into the same volatile cells this fiber holds, which is what makes
+ * the whole namespace live-apply without a remount. Every consumer (the boot
+ * update check, the `/settings` panel, the `/update` channel read) resolves
+ * the tree-scoped {@link currentMayflySettings} source, which reads those
+ * cells instead of caching a snapshot.
  *
  * The plugin also owns the persisted default theme: the initial apply is
  * gated on Agent attach — when `mayflyCurrentAgent.current()` is non-null the
- * swap runs as soon as the resolved settings scope goes live (the section
- * installer's `onChange`, one inject-beat after apply), otherwise the
- * first reader notification arms it (the app publishes that snapshot only
- * after `boot()` returns, so disposing the baseline theme fiber can never
- * race the loader's activation assertion; session-less headless hosts
- * never swap — there is no UI to paint). After the attach the plugin
- * re-reads on every `settings/updated` commit of the `mayfly` namespace.
+ * swap runs at apply (the app publishes that snapshot only after `boot()`
+ * returns, so disposing the baseline theme fiber can never race the loader's
+ * activation assertion), otherwise the first attach notification arms it;
+ * session-less headless hosts never swap — there is no UI to paint. After the
+ * attach the plugin re-reads on every `settings/document-updated` commit of
+ * the `mayfly` namespace.
  * The swap goes through `./theme-switch.ts`'s `applyTheme` — the same
  * provider exchange `/theme` drives — so the command's live-provider
  * record stays honest. A session-level `/theme` pick survives unrelated
@@ -30,7 +31,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 // Empty type import carries the `settings` Context merge and the
-// 'settings/updated' Events merge this plugin subscribes to.
+// 'settings/document-updated' Events merge this plugin subscribes to.
 import type {} from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 // Empty type import carries the app-owned current-Agent Context merge.
@@ -75,20 +76,20 @@ export interface MayflySettings {
 }
 
 /** The settings schema; defaults double as the composition base. */
-export const Config: z<MayflySettings> = z.object({
-  updateCheck: z.boolean().default(true),
-  updateChannel: z.string().default('latest'),
-  theme: z.union([z.const('dark'), z.const('light'), z.const('ocean'), z.const('paper'), z.const('auto')]).default('dark'),
-  collapseThinking: z.boolean().default(true),
-  collapseToolCalls: z.boolean().default(true),
-  windowTurns: z.number().step(1).min(1).default(15),
-  recentStepsRetention: z.number().step(1).min(1).default(30),
-  expandTurns: z.number().step(1).min(1).default(3),
-  userFoldLines: z.number().step(1).min(1).default(10),
-  userFoldChars: z.number().step(1).min(1).default(1000),
-  editorCommand: z.string().default(''),
-  pasteImageBackend: z.union([z.const('auto'), z.const('wayland'), z.const('x11')]).default('auto'),
-  marketIndexUrl: z.string().default(''),
+export const Config = z.object({
+  updateCheck: z.boolean().default(true).volatile(),
+  updateChannel: z.string().default('latest').volatile(),
+  theme: z.union([z.const('dark'), z.const('light'), z.const('ocean'), z.const('paper'), z.const('auto')]).default('dark').volatile(),
+  collapseThinking: z.boolean().default(true).volatile(),
+  collapseToolCalls: z.boolean().default(true).volatile(),
+  windowTurns: z.number().step(1).min(1).default(15).volatile(),
+  recentStepsRetention: z.number().step(1).min(1).default(30).volatile(),
+  expandTurns: z.number().step(1).min(1).default(3).volatile(),
+  userFoldLines: z.number().step(1).min(1).default(10).volatile(),
+  userFoldChars: z.number().step(1).min(1).default(1000).volatile(),
+  editorCommand: z.string().default('').volatile(),
+  pasteImageBackend: z.union([z.const('auto'), z.const('wayland'), z.const('x11')]).default('auto').volatile(),
+  marketIndexUrl: z.string().default('').volatile(),
 })
 
 /** The resolved defaults, used until a settings service layers overrides. */
@@ -114,14 +115,30 @@ export const name = 'mayfly-settings'
 export const inject = ['mayflyInteractionState', 'mayflyCurrentAgent']
 
 /**
- * Read the current `mayfly` settings: schema defaults layered with the user
- * document while a settings service is attached, the composition defaults
- * otherwise.
+ * Read the current `mayfly` settings: the row's volatile Config cells, which
+ * carry schema defaults layered with the composition base and the user
+ * document, reconciled in place on every committed write.
  * @returns the resolved Mayfly settings.
  */
 export function currentMayflySettings(ctx: Context): MayflySettings {
   return ctx.mayflyInteractionState.settingsSource()
 }
+
+/** Unwrap a volatile config cell, or pass an ordinary value through. */
+const cell = (value: unknown): unknown =>
+  typeof (value as { get?: unknown } | null | undefined)?.get === 'function' ? (value as { get(): unknown }).get() : value
+
+/** Pick the declared `mayfly` fields out of an arbitrary resolved/config object. */
+function pick(value: unknown): Partial<MayflySettings> {
+  const out: Partial<Mutable<MayflySettings>> = {}
+  if (value === null || typeof value !== 'object') return out
+  for (const key of Object.keys(DEFAULT_SETTINGS) as readonly (keyof MayflySettings)[]) {
+    const field = cell((value as Record<string, unknown>)[key])
+    if (field !== undefined) (out as Record<string, unknown>)[key] = field
+  }
+  return out
+}
+type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 /**
  * The theme this plugin last applied itself. Initialized to the baseline
@@ -153,9 +170,9 @@ async function syncTheme(ctx: Context, isUnloaded: () => boolean): Promise<void>
 }
 
 /**
- * Mount the settings consolidation: register the `mayfly` section (the
- * thunk flips to the resolved scope while a settings service lives), apply
- * the persisted theme at session attach, and follow later commits.
+ * Mount the settings owner: publish the volatile-cell reader as the tree's
+ * settings source, apply the persisted theme at session attach, and follow
+ * later commits.
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
@@ -163,46 +180,41 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => {
     unloaded = true
   })
+  // The source resolves on every call: the `mayfly` descriptor's projected
+  // value when a settings service lists the row, this fiber's own resolved
+  // Config while the row is still activating (or under a host that enumerates
+  // no entries), and the composition defaults underneath either.
+  ctx.mayflyInteractionState.settingsSource = () => ({
+    ...DEFAULT_SETTINGS,
+    ...pick(ctx.fiber.config),
+    ...pick(ctx.get('settings')?.describe().find(entry => String(entry.ns) === 'mayfly')?.value),
+  })
+  ctx.emit('mayfly/settings-source-ready', ctx.mayflyInteractionState.settingsSource())
+  // Swaps serialize through this chain (the theme-auto precedent): a commit
+  // landing mid-swap re-reads the persisted theme after the in-flight apply
+  // settles instead of comparing against a stale `lastAppliedTheme` and
+  // dropping the update.
+  let swap: Promise<void> = Promise.resolve()
   const sync = (): void => {
     /* v8 ignore next 1 -- the defensive catch; syncTheme never rejects */
-    void syncTheme(ctx, () => unloaded).catch(() => {})
+    swap = swap.then(() => syncTheme(ctx, () => unloaded)).catch(() => {})
   }
-  // `settings/updated` commits landing before the first attach need no
-  // follow: the attach-time sync reads the current value.
+  // `settings/document-updated` commits landing before the first attach need
+  // no follow: the attach-time sync reads the current value.
   let attached = ctx.mayflyCurrentAgent.current() !== null
-  // The initial sync must read the resolved scope, which goes live one
-  // inject-beat after apply — settings.installSection fires onChange then,
-  // and re-fires it on every mayfly commit through the scope watch, so
-  // `primed` keeps that watch from doubling the settings/updated channel.
-  let primed = false
-  const prime = (): void => {
-    if (primed || !attached) return
-    primed = true
-    sync()
-  }
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, 'mayfly', Config, DEFAULT_SETTINGS, {
-      setSource: next => {
-        ctx.mayflyInteractionState.settingsSource = next
-        ctx.emit('mayfly/settings-source-ready', next())
-      },
-      onChange: prime,
-    })
-  })
-  ctx.on('settings/updated', (ns) => {
+  ctx.on('settings/document-updated', (ns) => {
     if (String(ns) !== 'mayfly' || !attached) return
     sync()
   })
   // Session attach is the post-boot signal (the terminal-title precedent):
   // the app publishes the first non-null reader snapshot only after boot()
-  // returns, so the
-  // swap can never race the loader's entry-activation assertion. An
-  // already-attached session skips the wait: the onChange prime above
-  // carries the initial sync.
+  // returns, so the swap can never race the loader's entry-activation
+  // assertion. An already-attached session skips the wait.
   const registration = ctx.mayflyCurrentAgent.subscribe((agent) => {
     if (attached || agent === null) return
     attached = true
-    prime()
+    sync()
   })
   ctx.effect(() => registration)
+  if (attached) sync()
 }

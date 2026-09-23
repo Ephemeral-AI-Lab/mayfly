@@ -9,7 +9,10 @@ import { ui, type MayflyFormAddress, type MayflyOverlayDefinition, type MayflyOv
 
 export const name = '@mayfly-example/overlay'
 export const inject = ['commands', 'settings', 'mayflyOverlays']
-export const SETTINGS_NAMESPACE = 'mayfly-example-overlay'
+/** The native settings namespace: the Loader entry id this plugin mounts under. */
+export const SETTINGS_NAMESPACE = '@mayfly-example/overlay'
+/** Source-stamp id correlating snapshots and submissions; wire ids reject `@`. */
+const SETTINGS_STAMP = 'mayfly-example-overlay.settings'
 
 interface Settings {
   readonly connection: { readonly name: string, readonly transport: 'local' | 'remote', readonly enabled: boolean }
@@ -20,9 +23,10 @@ const defaults: Settings = Object.freeze({
   connection: Object.freeze({ name: 'Default', transport: 'local', enabled: true }),
   workspace: Object.freeze({ name: 'Workspace', limit: 100 }),
 })
-const schema: z<Settings> = z.object({
-  connection: z.object({ name: z.string().default(defaults.connection.name), transport: z.union([z.const('local'), z.const('remote')]).default(defaults.connection.transport), enabled: z.boolean().default(defaults.connection.enabled) }).default(defaults.connection),
-  workspace: z.object({ name: z.string().default(defaults.workspace.name), limit: z.number().min(1).max(10000).step(1).default(defaults.workspace.limit) }).default(defaults.workspace),
+/** The row's Config: volatile sections are what `settings.describe()` projects and `settings.mutate()` commits live. */
+export const Config = z.object({
+  connection: z.object({ name: z.string().default(defaults.connection.name), transport: z.union([z.const('local'), z.const('remote')]).default(defaults.connection.transport), enabled: z.boolean().default(defaults.connection.enabled) }).default(defaults.connection).volatile(),
+  workspace: z.object({ name: z.string().default(defaults.workspace.name), limit: z.number().min(1).max(10000).step(1).default(defaults.workspace.limit) }).default(defaults.workspace).volatile(),
 })
 const address = (itemId: string): MayflyFormAddress => ({ pagePath: [{ controlId: 'settings-pages', itemId }], formId: 'settings' })
 
@@ -58,22 +62,20 @@ export const overlayRequest: MayflyOverlayDefinition & { readonly node: MayflyUi
   node: settingsNode(defaults, true),
 }
 
-/** Register a native settings namespace and an ordinary command on this plugin Fiber. */
+/** Register an ordinary command; the `mayfly-example-overlay` patch row owns the settings namespace. */
 export function apply(ctx: Context): void {
-  const settings = ctx.settings.register(SETTINGS_NAMESPACE, schema)
   let active: MayflyOverlayHandle | undefined
   const snapshot = () => {
     const descriptor = ctx.settings.describe().find(entry => String(entry.ns) === SETTINGS_NAMESPACE)!
-    return { node: settingsNode(settings.get(), ctx.settings.writable), source: [{ resourceId: SETTINGS_NAMESPACE, revision: descriptor.revision }] }
+    return { node: settingsNode(descriptor.value as Settings, ctx.settings.writable), source: [{ resourceId: SETTINGS_STAMP, revision: descriptor.revision }] }
   }
   const refresh = () => {
     if (active === undefined || active.closed) return
     const next = snapshot()
     active.set(next.node, { reason: 'data', source: next.source })
   }
-  const offValues = ctx.on('settings/updated', ns => { if (String(ns) === SETTINGS_NAMESPACE) refresh() })
   const offDocument = ctx.on('settings/document-updated', ns => { if (String(ns) === SETTINGS_NAMESPACE) refresh() })
-  ctx.effect(() => () => { offValues(); offDocument(); active = undefined })
+  ctx.effect(() => () => { offDocument(); active = undefined })
   ctx.commands.register({
     name: 'example-overlay',
     description: 'Edit the example settings',
@@ -87,7 +89,7 @@ export function apply(ctx: Context): void {
           onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
             if (event.kind !== 'submit') return { kind: 'completed' }
             if (context.signal.aborted) return { kind: 'cancelled' }
-            const revision = event.submission.source.find(stamp => stamp.resourceId === SETTINGS_NAMESPACE)?.revision
+            const revision = event.submission.source.find(stamp => stamp.resourceId === SETTINGS_STAMP)?.revision
             if (typeof revision !== 'number') return { kind: 'conflict', ...snapshot(), message: 'Settings must be refreshed before saving' }
             const ops: SettingsPathOp[] = []
             for (const form of event.submission.forms) {

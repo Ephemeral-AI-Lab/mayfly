@@ -173,7 +173,6 @@ function contentText(content: readonly ContentBlock[] | undefined): string | und
       case 'reasoning': return block.text
       case 'image': return '[image]'
       case 'tool-call': return summarizeToolCall(block.name, block.arguments)
-      case 'tool-result': return contentText(block.content) ?? '[tool result]'
       default: return `[${String((block as { type: unknown }).type)}]`
     }
   }).join('\n')

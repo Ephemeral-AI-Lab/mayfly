@@ -216,7 +216,10 @@ for (const relativeDir of PACKAGE_DIRS) {
     if (payloads.length !== cliRuntime.archives.length) fail(`${sourceManifest.name}: expected ${cliRuntime.archives.length} runtime archives, got ${payloads.length}`)
     const payloadBytes = payloads.reduce((sum, file) => sum + file.size, 0)
     if (payloadBytes !== cliRuntime.bytes) fail(`${sourceManifest.name}: runtime archives changed after assembly`)
-    if (cliRuntime.bytes > 150_000_000) fail(`${sourceManifest.name}: runtime archives exceed the 150 MB budget`)
+    // The 0.1.7 host closure carries the LibreOffice, sherpa-onnx, and sharp
+    // natives a real dsh install pulls (~730 MB across the seven archives);
+    // retain about 10% headroom while still catching accidental payload growth.
+    if (cliRuntime.bytes > 800_000_000) fail(`${sourceManifest.name}: runtime archives exceed the 800 MB budget`)
   } else {
     libraryFiles += files.filter(file => file.path.startsWith('lib/')).length
     libraryBytes += files.filter(file => file.path.startsWith('lib/')).reduce((sum, file) => sum + file.size, 0)

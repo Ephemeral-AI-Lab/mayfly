@@ -18,7 +18,8 @@ const LABELS: Readonly<Record<string, string>> = {
   'agent-loop.maxParallelToolCalls': 'Max parallel tool calls', 'agent-default-model.reasoningEffort': 'Default reasoning effort',
   'llm-deepseek.thinking': 'DeepSeek thinking', 'web-search-deepseek.maxUses': 'Web search max uses',
   'web-search-deepseek.maxTokens': 'Web search max tokens', 'permission.defaultPreset': 'Default permission preset',
-  'agent-presets.default': 'Default agent preset',
+  'agent-preset-registry.default': 'Default agent preset', 'agent-preset-registry.selectedDefault': 'Default agent preset',
+  'agent-preset-registry.modeSelectionEnabled': 'Preset chooser',
 }
 
 interface SettingBinding { readonly path: readonly string[], readonly field: MayflyFormField, readonly encoded: boolean }
@@ -65,7 +66,7 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     const base = { id, label, origin, disabled, required: schema.meta.required === true }
     let field: MayflyFormField | undefined
     let encoded = false
-    const dynamicKind = descriptor.ns === 'permission' && key === 'defaultPreset' ? 'permission' : descriptor.ns === 'agent-presets' && key === 'default' ? 'agentPresets' : undefined
+    const dynamicKind = descriptor.ns === 'permission' && key === 'defaultPreset' ? 'permission' : descriptor.ns === 'agent-preset-registry' && (key === 'default' || key === 'selectedDefault') ? 'agentPresets' : undefined
     const dynamic = dynamicKind === undefined ? undefined : choices[dynamicKind] ?? []
     const options = dynamic ?? candidates(schema)
     if (schema.meta.role === 'secret') {
@@ -100,7 +101,6 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     field.kind === 'number' ? [field.min, field.max, field.step] : field.kind === 'multiselect' ? [field.minSelected, field.maxSelected] : 'minLength' in field || 'maxLength' in field ? [field.minLength, field.maxLength] : undefined,
   ]))).digest('hex')
   return { bindings, revision, node: ui.stack.column([
-    ...descriptor.applies === 'restart' ? [ui.text(t('restart to apply'), { tone: 'muted' })] : [],
     ui.form({ id: 'settings-form', fields: [...bindings.values()].map(binding => binding.field) }),
     ...readonly,
     ui.actions({ id: 'settings-actions', items: [
