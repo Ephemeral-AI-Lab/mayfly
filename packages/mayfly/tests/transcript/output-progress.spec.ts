@@ -11,6 +11,7 @@ import { appendOutputProgress, outputProgressSchema } from '../../src/conversati
 import { foldConversationFacts, initialConversationFacts, conversationFactsSchema } from '../../src/conversation/facts.ts'
 import { foldConversationProjection, initialConversationState, conversationProjectionStateSchema } from '../../src/conversation/projection.ts'
 import { conversationTranscriptModel } from '../../src/transcript/official-model.ts'
+import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
 import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { outputRate } from '../../src/transcript/output-rate.ts'
 import * as activity from '../../src/transcript/pane-activity.ts'
@@ -65,10 +66,12 @@ describe('phase-local output', () => {
     agent.status = 'running'
     const harness = await bootPanePlugin(activity, agent)
     let state = initialConversationState()
+    const presentation = new TranscriptPresentationPolicy()
+    presentation.apply({ transcript: { default: 'collapsed' } })
     const transcript = new TranscriptModelComponent(() => conversationTranscriptModel(
       { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }, { get: () => undefined },
     ), {
-      colors: COLORS, components: fakeMayflyComponents(), images: () => ({}), requestRender: () => {},
+      colors: COLORS, components: fakeMayflyComponents(), images: () => ({}), requestRender: () => {}, presentation,
     })
     const send = (next: SessionEvent): void => {
       state = foldConversationProjection(state, next)

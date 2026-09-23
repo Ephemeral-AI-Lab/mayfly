@@ -231,6 +231,25 @@ describe('SearchGroupComponent', () => {
     for (const row of narrow) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(24)
   })
 
+  it('renders compact as the header plus failed-pattern rows only', () => {
+    const model = group([
+      search({ callId: 'a', pattern: 'const', shape: 'matches', files: [{ path: 'a.ts', count: 2, previews: [{ lineNumber: 1, line: 'const hit' }] }] }),
+      search({ callId: 'b', pattern: '*.ts', shape: 'paths', paths: ['a.ts'], pathsTotal: 1, total: 1 }),
+      search({ callId: 'c', pattern: 'gone', state: 'error', error: 'invalid pattern' }),
+    ])
+    const compact = new SearchGroupComponent(model, tagged(), COMPONENTS, () => 'compact')
+    const rows = compact.render(140)
+    expect(rows[1]).toContain('Searched 3 patterns')
+    expect(rows[1]).toContain('1 failed')
+    expect(rows).toHaveLength(3)
+    expect(rows[2]).toContain('gone')
+    expect(rows[2]).toContain('invalid pattern')
+    expect(rows.join('\n')).not.toContain('const hit')
+    // Ctrl-O still opens the complete tree from compact.
+    compact.setExpanded(true)
+    expect(compact.render(80).join('\n')).toContain('const hit')
+  })
+
   it('replaces its immutable snapshot and invalidates cached rows', () => {
     const component = new SearchGroupComponent(group([
       search({ callId: 'before', pattern: 'before', state: 'ok' }),

@@ -244,6 +244,26 @@ describe('ThinkingComponent', () => {
     expect(rebuilt.length).toBeGreaterThan(0)
   })
 
+  it('renders compact as a spinner row while streaming and nothing once settled', () => {
+    const timers = new FakeTimers()
+    setThinkingTimers(timers)
+    const compact = (): 'compact' => 'compact'
+    const item = thinkingItem({ text: `${SIX_WORDS}\nmore\nreasoning`, streaming: true })
+    const component = new ThinkingComponent(item, COLORS, fakeMayflyComponents(), undefined, compact)
+    try {
+      const live = component.render(40)
+      expect(live).toEqual(['', '⠋ thinking...'])
+      expect(live.join('\n')).not.toContain('reasoning')
+      item.streaming = false
+      expect(component.render(40)).toEqual([])
+      // Ctrl-O still opens the complete body from the compact settled state.
+      component.setExpanded(true)
+      expect(component.render(40).join('\n')).toContain('reasoning')
+    } finally {
+      component.dispose()
+    }
+  })
+
   it('starts no timer for a finalized item and animates with the default timers', async () => {
     const timers = new FakeTimers()
     setThinkingTimers(timers)

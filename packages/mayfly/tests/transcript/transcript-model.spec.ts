@@ -35,16 +35,16 @@ const semanticEntries = (): TranscriptEntryModel[] => [
   { kind: 'transcript-assistant', id: 'assistant', seq: 2, turn: 1, step: 0, text: 'assistant text', streaming: false },
   { kind: 'transcript-thinking', id: 'thinking', seq: 3, turn: 1, step: 0, text: 'thinking text', streaming: false },
   {
-    kind: 'transcript-tool', id: 'tool-result', seq: 4, turn: 1, step: 0, callId: 'call-1', name: 'read', arguments: '{}', startedAt: 100,
+    kind: 'transcript-tool', id: 'tool-result', seq: 4, turn: 1, step: 0, callId: 'call-1', name: 'read', family: 'read', arguments: '{}', startedAt: 100,
     result: { text: 'result summary', fullText: 'result full', isError: false, endedAt: 120 },
   },
   {
-    kind: 'transcript-tool', id: 'tool-text', seq: 5, turn: 1, step: 0, callId: 'call-2', name: 'bash', arguments: '{"command":"pwd"}', startedAt: 130,
+    kind: 'transcript-tool', id: 'tool-text', seq: 5, turn: 1, step: 0, callId: 'call-2', name: 'bash', family: 'command', arguments: '{"command":"pwd"}', startedAt: 130,
     result: { text: 'text only', isError: false, endedAt: 140 },
   },
-  { kind: 'transcript-tool', id: 'tool-pending', seq: 6, turn: 1, step: 0, callId: 'call-3', name: 'custom', arguments: '{bad', startedAt: 150 },
+  { kind: 'transcript-tool', id: 'tool-pending', seq: 6, turn: 1, step: 0, callId: 'call-3', name: 'custom', family: 'other', arguments: '{bad', startedAt: 150 },
   {
-    kind: 'transcript-tool', id: 'tool-presented', seq: 7, turn: 1, step: 0, callId: 'call-4', name: 'read', arguments: '{}', startedAt: 160,
+    kind: 'transcript-tool', id: 'tool-presented', seq: 7, turn: 1, step: 0, callId: 'call-4', name: 'read', family: 'read', arguments: '{}', startedAt: 160,
     presentation: { kind: 'tool', id: 'presentation', name: 'read', call: { kind: 'text', content: 'call view' }, result: { kind: 'text', content: 'result view' } },
   },
   { kind: 'transcript-error', id: 'error-code', seq: 8, turn: 1, message: 'down', code: 'HTTP_404' },
@@ -71,6 +71,13 @@ function renderer(
 }
 
 const plainRenderer = (): TranscriptModelRenderer => renderer(() => {}, undefined, false)
+
+/** A policy pinning every family at collapsed — the pre-compact-default baseline. */
+const collapsedPolicy = (): TranscriptPresentationPolicy => {
+  const policy = new TranscriptPresentationPolicy()
+  policy.apply({ transcript: { default: 'collapsed' } })
+  return policy
+}
 
 afterEach(() => {
   setThinkingTimers(undefined)
@@ -134,10 +141,10 @@ describe('TranscriptController', () => {
     const envelope = '<path>src/a.ts</path>\n<type>file</type>\n<content>\n1: x\n\n(Showing lines 1-1 of 9. Use offset=2 to continue.)\n</content>'
     const entries: TranscriptEntryModel[] = [
       {
-        kind: 'transcript-tool', id: 'enveloped', seq: 1, turn: 1, step: 0, callId: 'c1', name: 'read', arguments: '{}', startedAt: 1,
+        kind: 'transcript-tool', id: 'enveloped', seq: 1, turn: 1, step: 0, callId: 'c1', name: 'read', family: 'read', arguments: '{}', startedAt: 1,
         result: { text: envelope, isError: false, endedAt: 2 },
       },
-      { kind: 'transcript-tool', id: 'argish', seq: 2, turn: 1, step: 0, callId: 'c2', name: 'write', arguments: '{"file_path":"a.ts"}', startedAt: 3 },
+      { kind: 'transcript-tool', id: 'argish', seq: 2, turn: 1, step: 0, callId: 'c2', name: 'write', family: 'edit', arguments: '{"file_path":"a.ts"}', startedAt: 3 },
     ]
     const rows = new TranscriptModelComponent(() => model('plain', entries), plainRenderer()).render(80)
     expect(rows).toContain('src/a.ts · lines 1-1 of 9')
@@ -154,7 +161,7 @@ describe('TranscriptController', () => {
         { callId: 'r3', seq: 6, turn: 1, step: 0, path: 'gone.ts', state: 'error', error: 'file not found' },
       ],
     }
-    const collapsedRows = new TranscriptModelComponent(() => model('reads', [groupEntry]), renderer()).render(80)
+    const collapsedRows = new TranscriptModelComponent(() => model('reads', [groupEntry]), renderer(() => {}, collapsedPolicy())).render(80)
     expect(collapsedRows.join('\n')).toContain('Reading 2 files')
     expect(collapsedRows.join('\n')).toContain('├─ src/a.ts')
     expect(collapsedRows.join('\n')).toContain('└─ gone.ts')
@@ -167,6 +174,21 @@ describe('TranscriptController', () => {
     expect(expandedText).toContain('1  first line')
 
     const plain = new TranscriptModelComponent(() => model('reads', [groupEntry]), plainRenderer()).render(80).join('\n')
+    const plainCommands = new TranscriptModelComponent(() => model('commands', [{
+      kind: 'transcript-command-group', id: 'command-group:c1', seq: 7, turn: 1, step: 0,
+      commands: [
+        { callId: 'c1', seq: 7, turn: 1, step: 0, command: 'one', state: 'ok' },
+        { callId: 'c2', seq: 8, turn: 1, step: 0, command: 'two', state: 'ok' },
+        { callId: 'c3', seq: 9, turn: 1, step: 0, command: 'three', state: 'ok' },
+        { callId: 'c4', seq: 10, turn: 1, step: 0, command: 'four', state: 'ok' },
+      ],
+    }]), plainRenderer()).render(80).join('\n')
+    expect(plainCommands).toContain('Ran 4 commands: one, two, three…')
+    const plainOneCommand = new TranscriptModelComponent(() => model('commands', [{
+      kind: 'transcript-command-group', id: 'command-group:c9', seq: 7, turn: 1, step: 0,
+      commands: [{ callId: 'c9', seq: 7, turn: 1, step: 0, command: 'solo', state: 'ok' }],
+    }]), plainRenderer()).render(80).join('\n')
+    expect(plainOneCommand).toContain('Ran 1 command: solo')
     expect(plain).toContain('Read 3 calls: src/a.ts, gone.ts')
     const plainSingle = new TranscriptModelComponent(() => model('reads', [{
       kind: 'transcript-read-group', id: 'read-group:solo', seq: 1, turn: 1, step: 0,
@@ -189,7 +211,7 @@ describe('TranscriptController', () => {
         { callId: 's2', seq: 4, turn: 1, step: 0, pattern: '*.ts', shape: 'paths', paths: ['a.ts'], pathsTotal: 2, total: 2, state: 'ok' },
       ],
     }
-    const collapsedText = new TranscriptModelComponent(() => model('searches', [searchEntry]), renderer()).render(80).join('\n')
+    const collapsedText = new TranscriptModelComponent(() => model('searches', [searchEntry]), renderer(() => {}, collapsedPolicy())).render(80).join('\n')
     expect(collapsedText).toContain('Searched 2 patterns')
     expect(collapsedText).toContain('├─ "const" · 1 file, 2 matches')
     expect(collapsedText).not.toContain('const hit')
@@ -207,6 +229,66 @@ describe('TranscriptController', () => {
       searches: [{ callId: 'bare', seq: 1, turn: 1, step: 0, state: 'ok' }],
     }]), plainRenderer()).render(80).join('\n')
     expect(plainBare).toContain('Searched 1 time: search')
+  })
+
+  it('renders command groups through the tree component with family detail', () => {
+    const groupEntry: TranscriptEntryModel = {
+      kind: 'transcript-command-group', id: 'command-group:c1', seq: 4, turn: 1, step: 0,
+      commands: [
+        { callId: 'c1', seq: 4, updatedSeq: 4, turn: 1, step: 0, command: 'pnpm test', state: 'ok', exitCode: 0, previewLines: ['8 passed'] },
+        { callId: 'c2', seq: 5, updatedSeq: 5, turn: 1, step: 0, command: 'pnpm build', state: 'error', exitCode: 1, error: 'TS2304: nope' },
+      ],
+    }
+    // Default policy is compact: header plus the failed member only.
+    const compactRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer()).render(80)
+    expect(compactRows.join('\n')).toContain('Ran 2 commands')
+    expect(compactRows.join('\n')).toContain('pnpm build')
+    expect(compactRows.join('\n')).not.toContain('8 passed')
+    expect(compactRows.join('\n')).not.toContain('pnpm test ✓')
+
+    const collapsedRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer(() => {}, collapsedPolicy())).render(80)
+    expect(collapsedRows.join('\n')).toContain('├─ pnpm test')
+    expect(collapsedRows.join('\n')).toContain('└─ pnpm build')
+    expect(collapsedRows.join('\n')).not.toContain('8 passed')
+
+    const fullPolicy = new TranscriptPresentationPolicy()
+    fullPolicy.apply({ transcript: { default: 'full' } })
+    const fullRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer(() => {}, fullPolicy)).render(80)
+    expect(fullRows.join('\n')).toContain('8 passed')
+
+    const plain = new TranscriptModelComponent(() => model('commands', [groupEntry]), plainRenderer()).render(80).join('\n')
+    expect(plain).toContain('Ran 2 commands: pnpm test, pnpm build')
+  })
+
+  it('wires per-family detail from the policy and lets Ctrl-O override compact', () => {
+    const policy = new TranscriptPresentationPolicy()
+    policy.apply({ transcript: { default: 'compact', thinking: 'full', read: 'collapsed' } })
+    const entries: TranscriptEntryModel[] = [
+      { kind: 'transcript-thinking', id: 'thinking', seq: 1, turn: 1, step: 0, text: 'deep thought line one\nline two\nline three', streaming: false },
+      {
+        kind: 'transcript-read-group', id: 'read-group:r1', seq: 2, turn: 1, step: 0,
+        reads: [{ callId: 'r1', seq: 2, turn: 1, step: 0, path: 'a.ts', range: { first: 1, last: 2 }, state: 'ok', previewLines: [{ number: 1, text: 'preview' }] }],
+      },
+      {
+        kind: 'transcript-tool', id: 'tool', seq: 3, turn: 1, step: 0, callId: 'c', name: 'fetch', family: 'web', arguments: '{}', startedAt: 1,
+        result: { text: 'web body', fullText: 'web body', isError: false, endedAt: 2 },
+      },
+    ]
+    const component = new TranscriptModelComponent(() => model('families', entries), renderer(() => {}, policy))
+    const text = component.render(80).join('\n')
+    // thinking:full renders the complete body; read:collapsed the bounded tree;
+    // web:compact keeps only the tool header.
+    expect(text).toContain('line three')
+    expect(text).toContain('└─ a.ts')
+    expect(text).not.toContain('preview')
+    expect(text).toContain('Used')
+    expect(text).not.toContain('web body')
+    // Ctrl-O opens every recent-turn expandable entry regardless of detail.
+    component.setExpanded(true)
+    const opened = component.render(80).join('\n')
+    expect(opened).toContain('preview')
+    expect(opened).toContain('web body')
+    component.dispose()
   })
 
   it('reconciles semantic renderer components, forwards expansion, and disposes retired entries', () => {
@@ -396,7 +478,7 @@ describe('TranscriptController', () => {
       },
     ])
     let current = view(1, 'before')
-    const component = new TranscriptModelComponent(() => current, renderer())
+    const component = new TranscriptModelComponent(() => current, renderer(() => {}, collapsedPolicy()))
     expect(component.render(80).join('\n')).toContain('before')
 
     current = view(2, 'after')
@@ -455,7 +537,7 @@ describe('TranscriptController', () => {
 
   it('applies tree-local turn windows and recent Ctrl-O expansion', () => {
     const policy = new TranscriptPresentationPolicy()
-    policy.apply({ windowTurns: 2, expandTurns: 1 })
+    policy.apply({ transcript: { default: 'collapsed' }, windowTurns: 2, expandTurns: 1 })
     const entries: TranscriptEntryModel[] = [
       { kind: 'transcript-assistant', id: 'old', seq: 1, turn: 1, step: 0, text: 'old answer', streaming: false },
       { kind: 'transcript-thinking', id: 'middle', seq: 2, turn: 2, step: 0, text: 'middle one\nmiddle two\nmiddle three\nmiddle four', streaming: false },

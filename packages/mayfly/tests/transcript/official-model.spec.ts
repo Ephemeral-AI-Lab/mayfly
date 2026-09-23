@@ -445,7 +445,156 @@ describe('official conversation model mapping', () => {
     ]), combinedSource())
     expect(split.entries.map(entry => entry.kind)).toEqual(['transcript-search-group', 'transcript-read-group', 'transcript-search-group'])
   })
+
+  it('groups consecutive terminal-card calls into one command group', () => {
+    const model = conversationTranscriptModel(projection([
+      bash('b1', 'c-b1', 1, 'pnpm test', commandResult('8 passed', { exitCode: 0 })),
+      { kind: 'thinking', id: 't1', seq: 2, turn: 1, step: 1, text: 'check git', streaming: false },
+      bash('b2', 'c-b2', 3, 'git status', commandResult('clean', { exitCode: 0 })),
+      bash('b3', 'c-b3', 4, 'pnpm build', commandResult('error TS2304\nboom', { exitCode: 1 }, true)),
+      bash('b4', 'c-b4', 5, 'pnpm lint', undefined),
+    ]), commandSource())
+    expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-thinking', 'transcript-command-group'])
+    const group = model.entries[1] as unknown as { kind: string; id: string; commands: Array<Record<string, unknown>> }
+    expect(group).toMatchObject({ kind: 'transcript-command-group', id: 'command-group:b1', seq: 1, turn: 1, step: 0 })
+    expect(group.commands).toHaveLength(4)
+    expect(group.commands[0]).toMatchObject({ callId: 'c-b1', command: 'pnpm test', state: 'ok', exitCode: 0, previewLines: ['8 passed'] })
+    expect(group.commands[2]).toMatchObject({ callId: 'c-b3', command: 'pnpm build', state: 'error', exitCode: 1, error: 'error TS2304' })
+    expect(group.commands[3]).toMatchObject({ callId: 'c-b4', command: 'pnpm lint', state: 'pending' })
+    expect(Object.isFrozen(group)).toBe(true)
+  })
+
+  it('keeps a lone command a plain tool card and splits runs on families and turns', () => {
+    const single = conversationTranscriptModel(projection([
+      bash('b1', 'c-b1', 1, 'ls', commandResult('ok', { exitCode: 0 })),
+    ]), commandSource())
+    expect(single.entries).toHaveLength(1)
+    expect(single.entries[0]).toMatchObject({ kind: 'transcript-tool', family: 'command' })
+
+    const split = conversationTranscriptModel(projection([
+      bash('b1', 'c-b1', 1, 'one', commandResult('x', {})),
+      transcriptTool({ id: 'r1', callId: 'c-r1', seq: 2, name: 'read', arguments: '{"file_path":"a.ts"}' }),
+      bash('b2', 'c-b2', 3, 'two', commandResult('x', {})),
+      bash('b3', 'c-b3', 4, 'three', commandResult('x', {})),
+    ]), combinedCommandSource())
+    expect(split.entries.map(entry => entry.kind)).toEqual(['transcript-tool', 'transcript-read-group', 'transcript-command-group'])
+
+    const crossTurn = conversationTranscriptModel(projection([
+      bash('b1', 'c-b1', 1, 'one', commandResult('x', {})),
+      { ...bash('b2', 'c-b2', 2, 'two', commandResult('x', {})), turn: 2 },
+    ]), commandSource())
+    expect(crossTurn.entries.map(entry => entry.kind)).toEqual(['transcript-tool', 'transcript-tool'])
+  })
+
+  it('maps lone tool cards to their presenter family', () => {
+    const model = conversationTranscriptModel(projection([
+      transcriptTool({ id: 'd1', callId: 'c-d1', seq: 1, name: 'edit', result: { content: [{ type: 'text', text: 'done' }], text: 'done', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'w1', callId: 'c-w1', seq: 2, name: 'fetch', result: { content: [{ type: 'text', text: 'html' }], text: 'html', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'g1', callId: 'c-g1', seq: 3, name: 'misc', result: { content: [{ type: 'text', text: 'ok' }], text: 'ok', isError: false, endedAt: 1 } }),
+    ]), {
+      get(name: string) {
+        if (name === 'edit') return { presentResult: () => ({ card: 'diff', diffs: [{ path: 'a.ts', oldText: 'a', newText: 'b' }] }) } as never
+        if (name === 'fetch') return { presentResult: () => ({ card: 'web', kind: 'fetch', url: 'https://x', statusCode: 200, truncated: false }) } as never
+        return undefined
+      },
+    } as Pick<ToolRuntime, 'get'>)
+    expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-tool', 'transcript-tool', 'transcript-tool'])
+    expect(model.entries.map(entry => (entry as { family: string }).family)).toEqual(['edit', 'web', 'other'])
+  })
+
+  it('falls back through result title, command argument, and tool name for command labels', () => {
+    // A result-only terminal card: the call view never exists, so the
+    // label chain is result title → args.command → tool name.
+    const resultOnly = {
+      get(name: string) {
+        if (name !== 'bash') return undefined
+        return {
+          presentResult: (_args: unknown, result: { readonly meta?: unknown }) => {
+            const meta = result.meta as { readonly title?: string; readonly output?: string; readonly signal?: string } | undefined
+            return {
+              card: 'terminal',
+              ...(meta?.title === undefined ? {} : { title: meta.title }),
+              ...(meta?.output === undefined ? {} : { output: meta.output }),
+              ...(meta?.signal === undefined ? {} : { signal: meta.signal }),
+            }
+          },
+        } as never
+      },
+    } as Pick<ToolRuntime, 'get'>
+    const titled = commandResult('out', {})
+    const model = conversationTranscriptModel(projection([
+      bash('b1', 'c1', 1, 'ignored', { ...titled, meta: { output: 'out', title: 'titled run' } }),
+      bash('b2', 'c2', 2, 'ls -la', commandResult('out', {})),
+      { ...bash('b3', 'c3', 3, 'x', commandResult('out', { signal: 'SIGTERM' })), arguments: '{}' },
+      bash('b4', 'c4', 4, 'nope', commandResult('  \n', {}, true)),
+      // A terminal result without its own output: the raw result text
+      // becomes the preview source.
+      bash('b5', 'c5', 5, 'raw', { ...commandResult('text body', {}), meta: {} }),
+    ]), resultOnly)
+    const group = model.entries[0] as unknown as { commands: Array<Record<string, unknown>> }
+    expect(model.entries).toHaveLength(1)
+    expect(group.commands).toEqual([
+      expect.objectContaining({ command: 'titled run' }),
+      expect.objectContaining({ command: 'ls -la' }),
+      expect.objectContaining({ command: 'bash', signal: 'SIGTERM' }),
+      expect.objectContaining({ command: 'nope', state: 'error', error: 'command failed' }),
+      expect.objectContaining({ command: 'raw', previewLines: ['text body'] }),
+    ])
+  })
 })
+
+/** A presenter vocabulary that declares commands: terminal call and result cards. */
+function commandSource(): ToolPresentationSource {
+  return {
+    get(name: string) {
+      if (name !== 'bash') return undefined
+      return {
+        presentCall: (args: unknown) => ({
+          card: 'terminal',
+          title: String((args as { command?: string }).command ?? 'bash'),
+        }),
+        presentResult: (_args: unknown, result: { readonly isError: boolean; readonly meta?: unknown }) => {
+          const meta = result.meta as { readonly output?: string; readonly exitCode?: number; readonly signal?: string } | undefined
+          return {
+            card: 'terminal',
+            ...(meta?.output === undefined ? {} : { output: meta.output }),
+            ...(meta?.exitCode === undefined ? {} : { exitCode: meta.exitCode }),
+            ...(meta?.signal === undefined ? {} : { signal: meta.signal }),
+          }
+        },
+      } as never
+    },
+  } as Pick<ToolRuntime, 'get'>
+}
+
+/** A registry resolving commands and reads for mixed-family fixtures. */
+function combinedCommandSource(): ToolPresentationSource {
+  const command = commandSource()
+  const read = readSource()
+  return {
+    get(name: string) {
+      return command.get(name) ?? read.get(name)
+    },
+  } as Pick<ToolRuntime, 'get'>
+}
+
+function bash(id: string, callId: string, seq: number, command: string, result: ConversationToolEntry['result'] | undefined): ConversationToolEntry {
+  return transcriptTool({
+    id, callId, seq, name: 'bash',
+    arguments: JSON.stringify({ command }),
+    ...(result === undefined ? {} : { result }),
+  })
+}
+
+function commandResult(output: string, meta: { readonly exitCode?: number; readonly signal?: string; readonly output?: string }, isError = false): ConversationToolEntry['result'] {
+  return {
+    content: [{ type: 'text', text: output }],
+    text: output,
+    isError,
+    endedAt: 180,
+    meta: { output, ...meta },
+  }
+}
 
 describe('OfficialConversationModelSource', () => {
   it('coalesces a token burst before parsing history or invoking tool presenters', () => {

@@ -659,6 +659,51 @@ describe('ToolCallComponent', () => {
     expect(component.render(80)).toHaveLength(1 + 1 + 12)
   })
 
+  it('renders compact as a header row, inlining the bash command and keeping failure lines', () => {
+    const compact = (): 'compact' => 'compact'
+    // Settled bash: the header inlines the command the body would have shown.
+    const settled = new ToolCallComponent(
+      toolItem({ parsedArguments: { command: 'pnpm test' }, result: { text: 'ok\n8 passed', fullText: 'ok\n8 passed', isError: false, endedAt: 2 } }),
+      tagged(), setup(), undefined, undefined, compact,
+    )
+    const rows = settled.render(80)
+    expect(rows).toHaveLength(2)
+    expect(rows[1]).toContain('Ran a command')
+    expect(rows[1]).toContain('(pnpm test)')
+    expect(rows.join('\n')).not.toContain('8 passed')
+    expect(rows.join('\n')).toContain('2 lines')
+
+    // A failed call keeps its first non-empty error line under the header.
+    const failed = new ToolCallComponent(
+      toolItem({ parsedArguments: { command: 'pnpm build' }, result: { text: '\nerror TS2304\nmore', isError: true, endedAt: 2 } }),
+      tagged(), setup(), undefined, undefined, compact,
+    )
+    const failedRows = failed.render(80)
+    expect(failedRows).toHaveLength(3)
+    expect(failedRows[2]).toContain('[E]')
+    expect(failedRows[2]).toContain('error TS2304')
+    expect(failedRows.join('\n')).not.toContain('more')
+
+    // A non-bash card keeps its key arg; Ctrl-O still opens the body.
+    const edit = new ToolCallComponent(
+      toolItem({ name: 'edit', parsedArguments: { file_path: 'a.ts' }, result: { text: 'done', isError: false, endedAt: 2 } }),
+      tagged(), setup(), undefined, '+3 −2', compact,
+    )
+    const editRows = edit.render(80)
+    expect(editRows).toHaveLength(2)
+    expect(editRows[1]).toContain('(a.ts)')
+    expect(editRows[1]).toContain('+3 −2')
+    edit.setExpanded(true)
+    expect(edit.render(80).join('\n')).toContain('done')
+
+    // A declined plan review keeps the warning tone on its compact error line.
+    const declined = new ToolCallComponent(
+      toolItem({ name: 'exit_plan_mode', result: { text: 'keep planning', isError: true, endedAt: 2 } }),
+      tagged(), setup(), undefined, undefined, compact,
+    )
+    expect(declined.render(80)[2]).toBe('  [W]keep planning[/W]')
+  })
+
   it('omits the command preview for non-bash and malformed arguments', () => {
     // A non-bash card ignores a command argument entirely.
     const probe = toolItem({ name: 'probe', parsedArguments: { command: 'ls' } })

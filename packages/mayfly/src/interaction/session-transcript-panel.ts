@@ -22,6 +22,7 @@ import {
   TranscriptModelComponent,
   type TranscriptModelRenderer,
 } from '../transcript/transcript-model.ts'
+import { TranscriptPresentationPolicy } from '../transcript/presentation-policy.ts'
 import type { ToolPresentationSource } from '../transcript/present.ts'
 import type { TranscriptModel } from '../frontend/index.ts'
 import { watchAssistantStream } from '../frontend/assistant-stream.ts'
@@ -53,6 +54,10 @@ export class SessionTranscriptPanel implements MayflyFocusable {
     const childAgent = ctx.agents.get(SessionId(target.sessionId))
     const live = childAgent?.session ?? [...ctx.sessions.list()].find(session => String(session.id) === target.sessionId)
     const tools: ToolPresentationSource = { get: name => ctx.tools.get(name, childAgent) }
+    // The panel is a deliberate inspection surface — it keeps the collapsed
+    // baseline regardless of the main transcript's compact default.
+    const presentation = new TranscriptPresentationPolicy()
+    presentation.apply({ transcript: { default: 'collapsed' } })
     const renderer: TranscriptModelRenderer = {
       colors: ctx.mayflyTheme.colors,
       components: ctx.mayflyComponents,
@@ -65,6 +70,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
         }
       },
       requestRender: () => screen.requestRender(),
+      presentation,
     }
     this.body = new TranscriptModelComponent(
       live === undefined ? () => this.model : () => this.source.snapshot(),

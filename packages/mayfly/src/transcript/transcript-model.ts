@@ -38,12 +38,14 @@ import { ThinkingComponent } from './thinking.ts'
 import { ToolModelComponent, toolResultChip } from './tool-model.ts'
 import { ReadGroupComponent, groupReadsByFile } from './read-group.ts'
 import { SearchGroupComponent } from './search-group.ts'
+import { CommandGroupComponent } from './command-group.ts'
 import { parseToolArguments, summarizeToolCall } from './present.ts'
 import { summarizeToolText } from './envelope.ts'
 import { renderCanonicalNode, type CanonicalNodeRenderer } from './canonical-node-renderer.ts'
 import type { TranscriptToolItem } from './types.ts'
 import {
   DEFAULT_TRANSCRIPT_PRESENTATION,
+  type TranscriptFamily,
   type TranscriptPresentationPolicy,
   type TranscriptPresentationSnapshot,
 } from './presentation-policy.ts'
@@ -448,15 +450,23 @@ export class TranscriptModelComponent implements MayflyComponent {
     return this.renderer?.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
   }
 
-  /** Compose Ctrl-O's recent-turn override over category defaults. */
+  /** The configured family an entry renders under, or `undefined` for non-tool kinds. */
+  private familyOf(entry: TranscriptEntryModel): TranscriptFamily | undefined {
+    switch (entry.kind) {
+      case 'transcript-thinking': return 'thinking'
+      case 'transcript-command-group': return 'command'
+      case 'transcript-read-group': return 'read'
+      case 'transcript-search-group': return 'search'
+      case 'transcript-tool': return entry.family
+      default: return undefined
+    }
+  }
+
+  /** Compose Ctrl-O's recent-turn override over per-family detail defaults. */
   private applyExpansion(target: MayflyComponent, entry: TranscriptEntryModel, expandable: boolean, policy: TranscriptPresentationSnapshot): boolean {
-    const expanded = this.expanded && expandable
-      ? true
-      : entry.kind === 'transcript-thinking'
-        ? policy.thinkingExpanded
-        : entry.kind === 'transcript-tool' || entry.kind === 'transcript-read-group' || entry.kind === 'transcript-search-group'
-          ? policy.toolsExpanded
-          : false
+    const family = this.familyOf(entry)
+    const expanded = (this.expanded && expandable)
+      || (family !== undefined && policy.detail[family] === 'full')
     ;(target as ExpandableComponent).setExpanded?.(expanded)
     return expanded
   }
@@ -498,7 +508,7 @@ export class TranscriptModelComponent implements MayflyComponent {
         target = new ThinkingComponent(item, renderer.colors, renderer.components, () => {
           this.invalidateEntry(entry.id)
           renderer.requestRender()
-        })
+        }, () => this.presentation().detail.thinking)
         update = (next): boolean => {
           const thinking = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-thinking' }>
           item.text = thinking.text
@@ -511,8 +521,9 @@ export class TranscriptModelComponent implements MayflyComponent {
       }
       case 'transcript-tool': {
         let tool = entry
+        const family = entry.family
         const body = new ToolModelComponent(() => tool.presentation ?? null, renderer)
-        const component = new ToolCallComponent(asToolItem(entry), renderer.colors, renderer.components, body, toolResultChip(entry.presentation))
+        const component = new ToolCallComponent(asToolItem(entry), renderer.colors, renderer.components, body, toolResultChip(entry.presentation), () => this.presentation().detail[family])
         target = component
         update = (next): boolean => {
           tool = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
@@ -522,7 +533,7 @@ export class TranscriptModelComponent implements MayflyComponent {
         break
       }
       case 'transcript-read-group': {
-        const group = new ReadGroupComponent(entry, renderer.colors, renderer.components)
+        const group = new ReadGroupComponent(entry, renderer.colors, renderer.components, () => this.presentation().detail.read)
         target = group
         update = (next): boolean => {
           group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-read-group' }>)
@@ -531,10 +542,19 @@ export class TranscriptModelComponent implements MayflyComponent {
         break
       }
       case 'transcript-search-group': {
-        const group = new SearchGroupComponent(entry, renderer.colors, renderer.components)
+        const group = new SearchGroupComponent(entry, renderer.colors, renderer.components, () => this.presentation().detail.search)
         target = group
         update = (next): boolean => {
           group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-search-group' }>)
+          return true
+        }
+        break
+      }
+      case 'transcript-command-group': {
+        const group = new CommandGroupComponent(entry, renderer.colors, renderer.components, () => this.presentation().detail.command)
+        target = group
+        update = (next): boolean => {
+          group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-command-group' }>)
           return true
         }
         break
@@ -575,6 +595,10 @@ export class TranscriptModelComponent implements MayflyComponent {
       case 'transcript-search-group': {
         const patterns = entry.searches.map(call => call.pattern ?? 'search')
         return `Searched ${String(entry.searches.length)} ${entry.searches.length === 1 ? 'time' : 'times'}: ${patterns.join(', ')}`
+      }
+      case 'transcript-command-group': {
+        const commands = entry.commands.slice(0, 3).map(call => call.command)
+        return `Ran ${String(entry.commands.length)} ${entry.commands.length === 1 ? 'command' : 'commands'}: ${commands.join(', ')}${entry.commands.length > 3 ? '…' : ''}`
       }
       case 'transcript-error': return entry.code === undefined ? entry.message : `${entry.message} (${entry.code})`
       case 'transcript-interrupted': return 'Interrupted'

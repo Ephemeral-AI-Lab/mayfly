@@ -17,7 +17,14 @@ export interface TranscriptUserModel extends TranscriptEntryBase { readonly kind
 export interface TranscriptAssistantModel extends TranscriptEntryBase { readonly kind: 'transcript-assistant'; readonly step: number; readonly text: string; readonly streaming: boolean }
 export interface TranscriptThinkingModel extends TranscriptEntryBase { readonly kind: 'transcript-thinking'; readonly step: number; readonly text: string; readonly streaming: boolean; readonly outputProgress?: import('../conversation/types.ts').OutputProgress | undefined }
 export interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
-export interface TranscriptToolModel extends TranscriptEntryBase { readonly kind: 'transcript-tool'; readonly step: number; readonly callId: string; readonly name: string; readonly arguments: string; readonly startedAt: number; readonly result?: TranscriptToolResultModel; readonly presentation?: ToolPresentationModel }
+/**
+ * The presenter-card family a lone tool card belongs to, for the per-family
+ * detail policy: `command` covers terminal cards, `edit` diff cards, `web`
+ * web cards, and `other` everything else. Read/search calls group into their
+ * own entry kinds and never carry this field.
+ */
+export type TranscriptToolFamily = 'command' | 'edit' | 'web' | 'other'
+export interface TranscriptToolModel extends TranscriptEntryBase { readonly kind: 'transcript-tool'; readonly step: number; readonly callId: string; readonly name: string; readonly family: TranscriptToolFamily; readonly arguments: string; readonly startedAt: number; readonly result?: TranscriptToolResultModel; readonly presentation?: ToolPresentationModel }
 /** One bounded preview line carried for a read window's expanded view. */
 export interface ReadPreviewLine { readonly number: number; readonly text: string }
 /**
@@ -74,9 +81,30 @@ export interface SearchCallModel {
 }
 /** A run of consecutive search calls collapsed into one transcript entry. */
 export interface TranscriptSearchGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-search-group'; readonly step: number; readonly searches: readonly SearchCallModel[] }
+/**
+ * One terminal-card call's renderer-neutral facts: the command line, its
+ * settlement state and exit status, a one-line error on failure, and a
+ * bounded output tail for the group's expanded view.
+ */
+export interface CommandCallModel {
+  readonly callId: string
+  readonly seq: number
+  readonly updatedSeq: number
+  readonly turn: number
+  readonly step: number
+  /** The command line (the terminal call view's title, or the `command` argument). */
+  readonly command: string
+  readonly state: 'pending' | 'ok' | 'error'
+  readonly exitCode?: number
+  readonly signal?: string
+  readonly error?: string
+  readonly previewLines?: readonly string[]
+}
+/** A run of consecutive terminal-card calls collapsed into one transcript entry. */
+export interface TranscriptCommandGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-command-group'; readonly step: number; readonly commands: readonly CommandCallModel[] }
 export interface TranscriptErrorModel extends TranscriptEntryBase { readonly kind: 'transcript-error'; readonly message: string; readonly code?: string }
 export interface TranscriptInterruptedModel extends TranscriptEntryBase { readonly kind: 'transcript-interrupted' }
-export type TranscriptEntryModel = TranscriptUserModel | TranscriptAssistantModel | TranscriptThinkingModel | TranscriptToolModel | TranscriptReadGroupModel | TranscriptSearchGroupModel | TranscriptErrorModel | TranscriptInterruptedModel
+export type TranscriptEntryModel = TranscriptUserModel | TranscriptAssistantModel | TranscriptThinkingModel | TranscriptToolModel | TranscriptReadGroupModel | TranscriptSearchGroupModel | TranscriptCommandGroupModel | TranscriptErrorModel | TranscriptInterruptedModel
 export interface TranscriptLiveOverlay {
   readonly turn: number
   readonly step: number

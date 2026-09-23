@@ -24,6 +24,7 @@ import {
   UserMessageComponent,
 } from '../../src/transcript/components.ts'
 import { AgentGroupComponent } from '../../src/transcript/agent-group.ts'
+import { CommandGroupComponent } from '../../src/transcript/command-group.ts'
 import { ReadGroupComponent } from '../../src/transcript/read-group.ts'
 import { SearchGroupComponent } from '../../src/transcript/search-group.ts'
 import { ThinkingComponent } from '../../src/transcript/thinking.ts'
@@ -161,6 +162,11 @@ describe('transcript width-scan', () => {
       const components = fakeMayflyComponents()
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`ToolCall/${name}`, new ToolCallComponent(bashItem(text), colors, components).render(width), width)
+        const compact = new ToolCallComponent({
+          ...bashItem(text),
+          result: { text, fullText: text, isError: true, endedAt: 2 },
+        }, colors, components, undefined, undefined, () => 'compact')
+        expectLinesFit(`ToolCallCompact/${name}`, compact.render(width), width)
       }
     })
 
@@ -183,6 +189,7 @@ describe('transcript width-scan', () => {
         const expanded = new ReadGroupComponent(model, colors, components)
         expanded.setExpanded(true)
         expectLinesFit(`ReadGroupExpanded/${name}`, expanded.render(width), width)
+        expectLinesFit(`ReadGroupCompact/${name}`, new ReadGroupComponent(model, colors, components, () => 'compact').render(width), width)
       }
     })
 
@@ -206,6 +213,31 @@ describe('transcript width-scan', () => {
         const expanded = new SearchGroupComponent(model, colors, components)
         expanded.setExpanded(true)
         expectLinesFit(`SearchGroupExpanded/${name}`, expanded.render(width), width)
+        expectLinesFit(`SearchGroupCompact/${name}`, new SearchGroupComponent(model, colors, components, () => 'compact').render(width), width)
+      }
+    })
+
+    it(`CommandGroupComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const model = {
+        kind: 'transcript-command-group' as const,
+        id: 'command-group:c1',
+        seq: 1,
+        turn: 1,
+        step: 0,
+        commands: [
+          { callId: 'c1', seq: 1, updatedSeq: 1, turn: 1, step: 0, command: text, state: 'ok' as const, exitCode: 0, previewLines: [text, text] },
+          { callId: 'c2', seq: 2, updatedSeq: 2, turn: 1, step: 0, command: text, state: 'pending' as const },
+          { callId: 'c3', seq: 3, updatedSeq: 3, turn: 1, step: 0, command: text, state: 'error' as const, exitCode: 1, error: text },
+        ],
+      }
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`CommandGroup/${name}`, new CommandGroupComponent(model, colors, components).render(width), width)
+        const expanded = new CommandGroupComponent(model, colors, components)
+        expanded.setExpanded(true)
+        expectLinesFit(`CommandGroupExpanded/${name}`, expanded.render(width), width)
+        expectLinesFit(`CommandGroupCompact/${name}`, new CommandGroupComponent(model, colors, components, () => 'compact').render(width), width)
+        expectLinesFit(`CommandGroupFull/${name}`, new CommandGroupComponent(model, colors, components, () => 'full').render(width), width)
       }
     })
 
@@ -234,8 +266,14 @@ describe('transcript width-scan', () => {
     it(`ThinkingComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
       const item = { kind: 'thinking', seq: 1, turn: 1, step: 1, text, streaming: false }
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`Thinking/${name}`, new ThinkingComponent(item, colors, components).render(width), width)
+      const streaming = new ThinkingComponent({ ...item, streaming: true }, colors, components, undefined, () => 'compact')
+      try {
+        for (const width of SCAN_WIDTHS) {
+          expectLinesFit(`Thinking/${name}`, new ThinkingComponent(item, colors, components).render(width), width)
+          expectLinesFit(`ThinkingCompact/${name}`, streaming.render(width), width)
+        }
+      } finally {
+        streaming.dispose()
       }
     })
 
@@ -246,12 +284,19 @@ describe('transcript width-scan', () => {
         { kind: 'transcript-assistant', id: 'assistant', seq: 2, turn: 1, step: 0, text, streaming: false },
         { kind: 'transcript-thinking', id: 'thinking', seq: 3, turn: 1, step: 0, text, streaming: false },
         {
-          kind: 'transcript-tool', id: 'tool', seq: 4, turn: 1, step: 0, callId: 'call', name: 'custom',
+          kind: 'transcript-tool', id: 'tool', seq: 4, turn: 1, step: 0, callId: 'call', name: 'custom', family: 'other',
           arguments: '{}', startedAt: 1, result: { text, fullText: text, isError: false, endedAt: 2 },
         },
         {
-          kind: 'transcript-tool', id: 'presented', seq: 5, turn: 1, step: 0, callId: 'presented', name: 'custom',
+          kind: 'transcript-tool', id: 'presented', seq: 5, turn: 1, step: 0, callId: 'presented', name: 'custom', family: 'other',
           arguments: '{}', startedAt: 1, presentation: { kind: 'tool', id: 'presented', name: 'custom', result: { kind: 'text', content: text } },
+        },
+        {
+          kind: 'transcript-command-group', id: 'command-group:cg', seq: 8, turn: 1, step: 0,
+          commands: [
+            { callId: 'cg1', seq: 8, updatedSeq: 8, turn: 1, step: 0, command: text, state: 'ok', previewLines: [text] },
+            { callId: 'cg2', seq: 9, updatedSeq: 9, turn: 1, step: 0, command: text, state: 'error', error: text },
+          ],
         },
         { kind: 'transcript-error', id: 'error', seq: 6, turn: 1, message: text },
         { kind: 'transcript-interrupted', id: 'interrupted', seq: 7, turn: 1 },

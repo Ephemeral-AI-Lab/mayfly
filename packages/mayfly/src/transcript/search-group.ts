@@ -11,6 +11,7 @@
 
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import type { SearchCallModel, TranscriptSearchGroupModel } from '../frontend/index.ts'
+import type { TranscriptDetail } from './presentation-policy.ts'
 
 /** Tree rows kept in the collapsed card before the expand hint. */
 export const SEARCH_GROUP_ROW_LIMIT = 8
@@ -39,6 +40,8 @@ export class SearchGroupComponent implements MayflyComponent {
     private model: TranscriptSearchGroupModel,
     private readonly colors: MayflySemanticColors,
     private readonly components: MayflyComponents,
+    /** The `search` family's current detail level; `compact` renders the header plus failed-pattern rows only. */
+    private readonly detail: () => TranscriptDetail = () => 'collapsed',
   ) {}
 
   /** Switch between the collapsed pattern rows and the expanded detail tree. */
@@ -52,24 +55,31 @@ export class SearchGroupComponent implements MayflyComponent {
 
   /** @param width - current viewport width in columns. @returns the rows. */
   render(width: number): string[] {
-    const key = `${String(width)}:${String(this.expanded)}`
+    const detail = this.detail()
+    const open = this.expanded || detail === 'full'
+    const key = `${String(width)}:${String(open)}:${detail}`
     if (this.cache?.key === key) return this.cache.lines
-    const lines = this.renderTree(width)
+    const lines = this.renderTree(width, detail, open)
     this.cache = { key, lines }
     return lines
   }
 
-  private renderTree(width: number): string[] {
+  private renderTree(width: number, detail: TranscriptDetail, open: boolean): string[] {
     const deps: RenderDeps = { colors: this.colors, components: this.components }
     const cut = (row: string): string => this.components.truncateToWidth(row, width)
     const clamp = (rows: string[]): string[] => rows.map(cut)
-    const tree = this.renderPatternRows(deps, cut)
-    if (this.expanded) return clamp(['', this.renderHeader(width), ...tree])
+    const header = this.renderHeader(width)
+    if (detail === 'compact' && !open) {
+      const failed = this.model.searches.filter(call => call.state === 'error')
+      return clamp(['', header, ...this.renderPatternRows(deps, cut, open, failed)])
+    }
+    const tree = this.renderPatternRows(deps, cut, open)
+    if (open) return clamp(['', header, ...tree])
     const limit = SEARCH_GROUP_ROW_LIMIT
-    if (tree.length <= limit) return clamp(['', this.renderHeader(width), ...tree])
+    if (tree.length <= limit) return clamp(['', header, ...tree])
     const hidden = tree.length - (limit - 1)
     const hint = `... (${String(hidden)} more, ctrl+o to expand)`
-    return clamp(['', this.renderHeader(width), ...tree.slice(0, limit - 1), this.colors.textMuted(cut(hint))])
+    return clamp(['', header, ...tree.slice(0, limit - 1), this.colors.textMuted(cut(hint))])
   }
 
   private renderHeader(width: number): string {
@@ -96,9 +106,8 @@ export class SearchGroupComponent implements MayflyComponent {
     return components.truncateToWidth(header, width)
   }
 
-  private renderPatternRows(deps: RenderDeps, cut: (row: string) => string): string[] {
+  private renderPatternRows(deps: RenderDeps, cut: (row: string) => string, open: boolean, searches: readonly SearchCallModel[] = this.model.searches): string[] {
     const rows: string[] = []
-    const searches = this.model.searches
     searches.forEach((call, index) => {
       const last = index === searches.length - 1
       const branch = last ? '└─' : '├─'
@@ -124,7 +133,7 @@ export class SearchGroupComponent implements MayflyComponent {
         row = `  ${String(branch)} ${String(label)} ${deps.colors.success('✓')}`
       }
       rows.push(cut(row))
-      if (this.expanded && call.state === 'ok') {
+      if (open && call.state === 'ok') {
         rows.push(...this.renderCallDetail(call, continuation, deps, cut))
       }
     })

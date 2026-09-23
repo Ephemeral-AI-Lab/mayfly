@@ -9,7 +9,11 @@ import type { MayflyTranslate } from '../frontend/index.ts'
 
 const LABELS: Readonly<Record<string, string>> = {
   'locale.preference': 'Language', 'mayfly.updateCheck': 'Update check', 'mayfly.updateChannel': 'Update channel',
-  'mayfly.theme': 'Theme', 'mayfly.collapseThinking': 'Collapse thinking', 'mayfly.collapseToolCalls': 'Collapse tool calls',
+  'mayfly.theme': 'Theme',
+  'mayfly.transcript.default': 'Transcript detail', 'mayfly.transcript.thinking': 'Thinking detail',
+  'mayfly.transcript.command': 'Command detail', 'mayfly.transcript.read': 'Read detail',
+  'mayfly.transcript.search': 'Search detail', 'mayfly.transcript.edit': 'Edit detail',
+  'mayfly.transcript.web': 'Web detail', 'mayfly.transcript.other': 'Other tools detail',
   'mayfly.windowTurns': 'Transcript window (turns)', 'mayfly.recentStepsRetention': 'Recent steps kept',
   'mayfly.expandTurns': 'Ctrl-O range (turns)', 'mayfly.userFoldLines': 'User fold lines', 'mayfly.userFoldChars': 'User fold chars',
   'mayfly.editorCommand': 'External editor', 'mayfly.pasteImageBackend': 'Paste backend', 'mayfly.marketIndexUrl': 'Plugin market index',

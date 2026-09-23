@@ -282,7 +282,9 @@ describe('mayfly-transcript through the real Loader', () => {
 
   it('switches exact Agents and follows native projection updates only for the selected session', async () => {
     resetSeq()
-    const { ctx, screen, select } = await bootTranscript()
+    const { ctx, screen, select } = await bootTranscript(null, {
+      settings: { mayfly: { transcript: { default: 'collapsed' } } },
+    })
     const agent = fakeAgent([userEvent('work'), toolCallEvent(1, 1, 'c1', 'bash', '{"command":"ls"}')])
     select(agent)
     expect(contentLines(screen).join('\n')).toContain('work')
@@ -374,7 +376,10 @@ describe('mayfly-transcript through the real Loader', () => {
       toolResultEvent(1, 1, 'presented-call', 'done'),
       toolCallEvent(1, 1, 'plain-call', 'plain', '{}'),
     ])
-    const { screen } = await bootTranscript(agent, { tools: { get } })
+    const { screen } = await bootTranscript(agent, {
+      tools: { get },
+      settings: { mayfly: { transcript: { default: 'collapsed' } } },
+    })
     contentLines(screen)
     expect(get).toHaveBeenCalledWith('presented', agent)
     expect(get).toHaveBeenCalledWith('plain', agent)
@@ -392,7 +397,9 @@ describe('mayfly-transcript through the real Loader', () => {
       clearInterval() {},
     })
     const agent = fakeAgent([userEvent('think')])
-    const { ctx, screen } = await bootTranscript(agent)
+    const { ctx, screen } = await bootTranscript(agent, {
+      settings: { mayfly: { transcript: { default: 'collapsed' } } },
+    })
     ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
     expect(contentLines(screen).join('\n')).toContain('working')
     const baseline = screen.renderRequests.length
@@ -430,7 +437,7 @@ describe('mayfly-transcript through the real Loader', () => {
 
   it('applies settings, reprojects locale copy, and unloads every Fiber-owned registration', async () => {
     const { ctx, screen, keymap } = await bootTranscript(null, {
-      settings: { mayfly: { collapseToolCalls: false, expandTurns: 2, userFoldLines: 12 } },
+      settings: { mayfly: { transcript: { default: 'full' }, expandTurns: 2, userFoldLines: 12 } },
     })
     const settingsBaseline = screen.renderRequests.length
     ctx.emit('settings/updated', 'mayfly' as SettingsNamespace, { expandTurns: 4, userFoldChars: 700 }, {}, 'provider')

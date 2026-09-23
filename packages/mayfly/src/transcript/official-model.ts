@@ -17,7 +17,7 @@ import {
   type ConversationToolEntry,
 } from '../conversation/index.ts'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
-import { freezeModel, type ReadCallModel, type SearchCallModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel } from '../frontend/index.ts'
+import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptToolFamily } from '../frontend/index.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
@@ -65,6 +65,9 @@ export const SEARCH_PREVIEW_MATCH_LIMIT = 3
 
 /** Path rows a search group's glob call carries when expanded. */
 export const SEARCH_PATH_LIMIT = 16
+
+/** Output-tail rows a command group's member carries when expanded. */
+export const COMMAND_PREVIEW_LINE_LIMIT = 4
 
 /** One tool entry with its presenter views resolved exactly once. */
 export interface ResolvedTool {
@@ -116,13 +119,34 @@ function isSearchTool(resolved: ResolvedTool): boolean {
   return resolved.result?.card === 'search'
 }
 
-/** The card family a tool entry groups into, or `undefined` when it stays a lone card. */
-type ToolFamily = 'read' | 'search'
+/**
+ * Whether a tool entry presents as a command — by presenter vocabulary: the
+ * pending call or the settled result declares the terminal card.
+ */
+function isCommandTool(resolved: ResolvedTool): boolean {
+  return resolved.call?.card === 'terminal' || resolved.result?.card === 'terminal'
+}
 
-function toolFamily(resolved: ResolvedTool): ToolFamily | undefined {
+/** Whether a tool entry presents as a file mutation — the diff card. */
+function isEditTool(resolved: ResolvedTool): boolean {
+  return resolved.call?.card === 'diff' || resolved.result?.card === 'diff'
+}
+
+/** Whether a tool entry presents as a web fetch/search — the result-only web card. */
+function isWebTool(resolved: ResolvedTool): boolean {
+  return resolved.result?.card === 'web'
+}
+
+/** The card family a tool entry presents as; read/search/command group, the rest stay lone cards. */
+type ToolFamily = 'read' | 'search' | TranscriptToolFamily
+
+function toolFamily(resolved: ResolvedTool): ToolFamily {
   if (isReadTool(resolved)) return 'read'
   if (isSearchTool(resolved)) return 'search'
-  return undefined
+  if (isCommandTool(resolved)) return 'command'
+  if (isEditTool(resolved)) return 'edit'
+  if (isWebTool(resolved)) return 'web'
+  return 'other'
 }
 
 /** The read arguments this mapper understands, degraded to unknowns. */
@@ -238,7 +262,54 @@ function searchGroupModel(run: readonly ResolvedTool[]): TranscriptSearchGroupMo
   }
 }
 
-function toolModel(resolved: ResolvedTool): TranscriptEntryModel {
+/** The bounded output tail one command member carries for the expanded view. */
+function commandPreviewLines(output: string): string[] | undefined {
+  const lines = output.replace(/\n+$/, '').split('\n')
+  if (lines.length === 0 || lines.every(line => line.trim() === '')) return undefined
+  return lines.slice(-COMMAND_PREVIEW_LINE_LIMIT).map(line => ellipsize(line, 160))
+}
+
+/** Build one command call's renderer-neutral facts from entry, arguments, and views. */
+function commandCallModel(resolved: ResolvedTool): CommandCallModel {
+  const { entry, args, outcome, call, result } = resolved
+  const record = readArgumentRecord(args)
+  const callView = call?.card === 'terminal' ? call : undefined
+  const resultView = result?.card === 'terminal' ? result : undefined
+  const argCommand = typeof record['command'] === 'string' && record['command'] !== '' ? record['command'] : undefined
+  const command = callView?.title ?? resultView?.title ?? argCommand ?? entry.name
+  const output = resultView?.output ?? (entry.result === undefined ? undefined : entry.result.text)
+  const state = outcome === undefined ? 'pending' : outcome.isError ? 'error' : 'ok'
+  const previewLines = output === undefined ? undefined : commandPreviewLines(output)
+  return {
+    callId: entry.callId,
+    seq: entry.seq,
+    updatedSeq: entry.updatedSeq,
+    turn: entry.turn,
+    step: entry.step,
+    command: ellipsize(command, 120),
+    state,
+    ...(resultView?.exitCode === undefined ? {} : { exitCode: resultView.exitCode }),
+    ...(resultView?.signal === undefined ? {} : { signal: resultView.signal }),
+    ...(state === 'error' ? { error: ellipsize(firstNonEmptyLine(entry.result!.text) ?? 'command failed', 120) } : {}),
+    ...(previewLines === undefined ? {} : { previewLines }),
+  }
+}
+
+/** Fold a run of resolved command entries into one group model. */
+function commandGroupModel(run: readonly ResolvedTool[]): TranscriptCommandGroupModel {
+  const first = run[0]!
+  return {
+    kind: 'transcript-command-group',
+    id: `command-group:${String(first.entry.id)}`,
+    seq: first.entry.seq,
+    updatedSeq: Math.max(...run.map(item => item.entry.updatedSeq)),
+    turn: first.entry.turn,
+    step: first.entry.step,
+    commands: run.map(commandCallModel),
+  }
+}
+
+function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): TranscriptEntryModel {
   const { entry, outcome, call, result } = resolved
   const presentation = call === undefined && result === undefined
     ? undefined
@@ -258,6 +329,7 @@ function toolModel(resolved: ResolvedTool): TranscriptEntryModel {
     step: entry.step,
     callId: entry.callId,
     name: entry.name,
+    family,
     arguments: entry.arguments,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : {
@@ -323,14 +395,20 @@ export function conversationTranscriptModel(
   let runFamily: ToolFamily | undefined
   const flushRun = (): void => {
     if (run.length === 0) return
-    entries.push(runFamily === 'search' ? searchGroupModel(run) : readGroupModel(run))
+    /* A single command keeps its lone card — the output preview carries more
+       than a one-member group header would. */
+    if (runFamily === 'command' && run.length === 1) entries.push(toolModel(run[0]!, 'command'))
+    else entries.push(
+      runFamily === 'search' ? searchGroupModel(run)
+        : runFamily === 'command' ? commandGroupModel(run)
+          : readGroupModel(run))
     run = []
     runFamily = undefined
   }
   for (const entry of projection.entries) {
     if (entry.kind !== 'tool') {
       // Thinking is meta, not content: it neither renders into the run nor
-      // breaks it — reads and searches stay grouped across the model's
+      // breaks it — grouped families stay grouped across the model's
       // reasoning.
       if (entry.kind !== 'thinking') flushRun()
       entries.push(entryModel(entry))
@@ -350,12 +428,12 @@ export function conversationTranscriptModel(
       && family === runFamily
       && entry.turn === run[0]!.entry.turn
     if (!continuesRun) flushRun()
-    if (family === undefined) {
-      entries.push(toolModel(resolved))
+    if (family === 'read' || family === 'search' || family === 'command') {
+      run.push(resolved)
+      runFamily = family
       continue
     }
-    run.push(resolved)
-    runFamily = family
+    entries.push(toolModel(resolved, family))
   }
   flushRun()
   const renderedEntries = renderRevision === undefined ? entries : entries.map(entry => ({ ...entry, renderRevision: `${renderRevision}:${String(entry.updatedSeq)}` }))

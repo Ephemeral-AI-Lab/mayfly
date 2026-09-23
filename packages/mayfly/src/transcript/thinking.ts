@@ -13,7 +13,9 @@
  * `... (N more lines, ctrl+o to expand)` hint until the shared Ctrl-O
  * expansion toggle opens it. A finalized item whose authoritative reasoning
  * is blank renders zero rows — a stream that turned out to carry no visible
- * thinking leaves nothing behind.
+ * thinking leaves nothing behind. Under the `compact` detail level the live
+ * block renders only the spinner row and the settled block renders nothing —
+ * the Ctrl-O toggle still expands it.
  *
  * @module @ephemeral-ai/mayfly/transcript/thinking
  */
@@ -21,6 +23,7 @@
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from './spinners.ts'
 import { STREAMING_RENDER_MAX_CHARS } from './components.ts'
+import type { TranscriptDetail } from './presentation-policy.ts'
 import type { TranscriptThinkingItem } from './types.ts'
 import { formatTokens } from './status-context.ts'
 import { outputRate } from './output-rate.ts'
@@ -79,6 +82,7 @@ export class ThinkingComponent implements MayflyComponent {
   private readonly colors: MayflySemanticColors
   private readonly components: MayflyComponents
   private readonly requestRender: (() => void) | undefined
+  private readonly detail: () => TranscriptDetail
   private expanded = false
   private spinnerFrame = 0
   private spinnerTimer: ReturnType<typeof setInterval> | undefined
@@ -92,17 +96,21 @@ export class ThinkingComponent implements MayflyComponent {
    * @param components - the component factory providing the width helpers.
    * @param requestRender - the redraw nudge for spinner ticks; absent in
    *   unit tests, where frames advance only through explicit renders.
+   * @param detail - the `thinking` family's current detail level; `compact`
+   *   renders only the live spinner row and nothing once settled.
    */
   constructor(
     item: TranscriptThinkingItem,
     colors: MayflySemanticColors,
     components: MayflyComponents,
     requestRender?: (() => void) | undefined,
+    detail: () => TranscriptDetail = () => 'collapsed',
   ) {
     this.item = item
     this.colors = colors
     this.components = components
     this.requestRender = requestRender
+    this.detail = detail
     if (item.streaming) this.startSpinner()
   }
 
@@ -134,12 +142,13 @@ export class ThinkingComponent implements MayflyComponent {
     const { streaming } = this.item
     if (streaming && this.spinnerTimer === undefined) this.startSpinner()
     if (!streaming) this.stopSpinner()
+    const detail = this.detail()
     const rate = streaming ? outputRate(this.item.outputProgress, Date.now()) : ''
     const count = this.item.outputProgress === undefined ? '' : ` ↓${formatTokens(Math.floor(this.item.text.length / 4))}`
     const text = this.item.text.length > STREAMING_RENDER_MAX_CHARS
       ? streamingTextWindow(this.item.text)
       : sanitizePluginText(this.item.text)
-    const key = `${width}:${streaming}:${this.expanded}:${rate}:${count}:${text}`
+    const key = `${width}:${streaming}:${this.expanded}:${detail}:${rate}:${count}:${text}`
     if (this.cache?.key === key) return this.cache.lines
 
     const contentWidth = Math.max(1, width - THINKING_INDENT.length)
@@ -149,23 +158,30 @@ export class ThinkingComponent implements MayflyComponent {
     this.wrapped = { text, width: contentWidth, lines: contentLines }
     let lines: string[]
     if (streaming) {
-      // Live: the spinner row over the reasoning's rolling tail window.
-      const tail = contentLines.length > THINKING_PREVIEW_LINES
-        ? contentLines.slice(contentLines.length - THINKING_PREVIEW_LINES)
-        : contentLines
       const frame = BRAILLE_SPINNER_FRAMES[this.spinnerFrame % BRAILLE_SPINNER_FRAMES.length]!
       let label = 'thinking...'
       if (this.components.visibleWidth(`${frame} ${label}${count}`) <= width) {
         label += count
         if (rate !== '' && this.components.visibleWidth(`${frame} ${label} · ${rate}`) <= width) label += ` · ${rate}`
       }
-      lines = [
-        '',
-        `${this.colors.muted(frame)} ${this.colors.muted(label)}`,
-        ...tail.map(line => THINKING_INDENT + this.styled(line)),
-      ]
-    } else if (text.trim() === '') {
-      // A finalized rewrite with no visible reasoning renders nothing.
+      if (detail === 'compact' && !this.expanded) {
+        // Compact keeps only the live spinner row; the reasoning tail stays hidden.
+        lines = ['', `${this.colors.muted(frame)} ${this.colors.muted(label)}`]
+      } else {
+        // Live: the spinner row over the reasoning's rolling tail window.
+        const tail = contentLines.length > THINKING_PREVIEW_LINES
+          ? contentLines.slice(contentLines.length - THINKING_PREVIEW_LINES)
+          : contentLines
+        lines = [
+          '',
+          `${this.colors.muted(frame)} ${this.colors.muted(label)}`,
+          ...tail.map(line => THINKING_INDENT + this.styled(line)),
+        ]
+      }
+    } else if (text.trim() === '' || (detail === 'compact' && !this.expanded)) {
+      // A finalized rewrite with no visible reasoning renders nothing; a
+      // compact-detail settled block leaves nothing behind either (Ctrl-O
+      // still expands it).
       lines = []
     } else {
       const body = contentLines.map((line, index) =>

@@ -158,8 +158,15 @@ mayfly:
   updateCheck: true        # 启动时的 Mayfly 更新检查（false 即离线开关）
   updateChannel: latest    # 更新检查跟踪的 dist-tag
   theme: dark              # 持久默认主题：dark | light | ocean | paper | auto（启动时应用）
-  collapseThinking: true   # thinking 块默认折叠
-  collapseToolCalls: true  # 工具输出默认折叠（ctrl+o 在会话内切换）
+  transcript:              # transcript 各条目族的展示密度
+    default: compact       # 兜底密度：full | collapsed | compact
+    thinking: inherit      # 思考内容（inherit = 跟随 default，以下各键同）
+    command: inherit       # bash 等终端命令族（连发调用折叠成命令组）
+    read: inherit          # 文件读取组
+    search: inherit        # 搜索组
+    edit: inherit          # write/edit 等 diff 卡片
+    web: inherit           # 网络工具卡片
+    other: inherit         # 其余单条工具卡片
   windowTurns: 15          # transcript 窗口：只挂载最近 N 个已完成回合
   recentStepsRetention: 30 # 回合内步骤折叠：保留最近 N 步的卡片展开
   expandTurns: 3           # ctrl+o 展开的作用范围（自末尾起的回合数）
@@ -169,7 +176,9 @@ mayfly:
   pasteImageBackend: auto  # Linux 剪贴板后端：auto | wayland | x11
 ```
 
-面板分两级：第一级从 `locale` 开始，并按命名空间分组（`mayfly`、`shell`、`agent-loop`、`web-search-deepseek:` 等宿主段在内），Enter 进入第二级逐行调整，`Enter`/`Space` 步进预设值、每次改动即落盘；语言切换与 `mayfly.theme` 都实时生效（`/theme` 仍是会话级切换，见[主题](/guide/theme)），折叠默认与 transcript 数值项的改动同样立即作用于当前会话（Ctrl-O 的全局展开状态优先）。第一级末行可在 `$EDITOR` 里打开整份 settings.yaml。
+`transcript` 的三档语义：`full` 渲染完整正文；`collapsed` 渲染有界预览（thinking 两行、卡片预览、组内成员树）；`compact` 只留一行摘要——thinking 流式期间只剩 spinner 行、结束后不再渲染，组内仍保留失败成员行。`Ctrl-O` 始终能把最近 `expandTurns` 轮覆盖展开到 `full`，不受配置档影响。subagent/agent 状态行没有展开语义，不参与分档。
+
+面板分两级：第一级从 `locale` 开始，并按命名空间分组（`mayfly`、`shell`、`agent-loop`、`web-search-deepseek:` 等宿主段在内），Enter 进入第二级逐行调整，`Enter`/`Space` 步进预设值、每次改动即落盘；语言切换与 `mayfly.theme` 都实时生效（`/theme` 仍是会话级切换，见[主题](/guide/theme)），`transcript` 密度与数值项的改动同样立即作用于当前会话（Ctrl-O 的全局展开状态优先）。第一级末行可在 `$EDITOR` 里打开整份 settings.yaml。
 
 ### 改完怎么验证
 

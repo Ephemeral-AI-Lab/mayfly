@@ -123,6 +123,28 @@ describe('native settings projections', () => {
     expect(notConfigured.bindings.get(settingsField('secret').fieldId)!.field).toMatchObject({ placeholder: 'Not configured' })
   })
 
+  it('projects nested object fields and writes path-addressed operations', () => {
+    const projection = project(Schema.object({
+      transcript: Schema.object({
+        default: Schema.union(['full', 'collapsed', 'compact']).default('compact'),
+        command: Schema.union(['inherit', 'full', 'collapsed', 'compact']).default('inherit'),
+      }).default({ default: 'compact', command: 'inherit' }),
+    }), { transcript: { default: 'compact', command: 'full' } })
+    const nested = projection.bindings.get(settingsField('transcript', 'command').fieldId)
+    expect(nested?.field).toMatchObject({
+      kind: 'select',
+      value: '"full"',
+      resetValue: '"inherit"',
+      options: [{ id: '"inherit"' }, { id: '"full"' }, { id: '"collapsed"' }, { id: '"compact"' }],
+    })
+    const form = { pagePath: [], formId: 'settings-form', draftRevision: 0 }
+    const id = settingsField('transcript', 'command').fieldId
+    expect(settingsOperations(projection, { ...form, fields: [{ id, change: 'set', value: '"collapsed"' }] }))
+      .toEqual([{ op: 'set', path: ['transcript', 'command'], value: 'collapsed' }])
+    expect(settingsOperations(projection, { ...form, fields: [{ id, change: 'reset' }] }))
+      .toEqual([{ op: 'unset', path: ['transcript', 'command'] }])
+  })
+
   it('emits unchanged, reset, encoded array, and raw settings operations', () => {
     const projection = project(Schema.object({
       text: Schema.string().default('base'),
