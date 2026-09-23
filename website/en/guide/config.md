@@ -158,8 +158,15 @@ mayfly:
   updateCheck: true        # the boot update check (false is the offline switch)
   updateChannel: latest    # the dist-tag the update check follows
   theme: dark              # persisted default theme: dark | light | ocean | paper | auto (applied at startup)
-  collapseThinking: true   # thinking blocks start collapsed
-  collapseToolCalls: true  # tool output starts collapsed (ctrl+o toggles in the session)
+  transcript:              # presentation density per transcript entry family
+    default: compact       # fallback density: full | collapsed | compact
+    thinking: inherit      # thinking content (inherit = follow default, same below)
+    command: inherit       # terminal command family like bash (runs fold into a command group)
+    read: inherit          # file read groups
+    search: inherit        # search groups
+    edit: inherit          # write/edit diff cards
+    web: inherit           # web tool cards
+    other: inherit         # remaining lone tool cards
   windowTurns: 15          # transcript window: only the newest N completed turns stay mounted
   recentStepsRetention: 30 # in-turn step folding: keep the newest N steps' cards expanded
   expandTurns: 3           # ctrl+o expansion scope (turns counted from the end)
@@ -169,7 +176,9 @@ mayfly:
   pasteImageBackend: auto  # Linux clipboard backend: auto | wayland | x11
 ```
 
-The panel is two-level: level one starts with `locale` and groups rows by namespace (host sections like `shell:`, `agent-loop:`, and `web-search-deepseek:` included), Enter steps into level two's per-key rows, and `Enter`/`Space` there steps the preset value with every change landing on disk; language and `mayfly.theme` changes both apply live (`/theme` stays the session-level switch — see [Theming](/en/guide/theme)), and folding-default and transcript-number changes apply to the running session just as immediately (an active Ctrl-O expansion still dominates). Level one's last row opens the whole settings.yaml in `$EDITOR`.
+The three `transcript` levels: `full` renders complete bodies; `collapsed` renders bounded previews (two thinking lines, card previews, group member trees); `compact` keeps only a one-line summary — thinking shows just a spinner while streaming and nothing once settled, and groups still surface failed members. `Ctrl-O` always expands the most recent `expandTurns` turns to `full`, regardless of the configured level. Subagent/agent status rows have no expandable body and are not tiered.
+
+The panel is two-level: level one starts with `locale` and groups rows by namespace (host sections like `shell:`, `agent-loop:`, and `web-search-deepseek:` included), Enter steps into level two's per-key rows, and `Enter`/`Space` there steps the preset value with every change landing on disk; language and `mayfly.theme` changes both apply live (`/theme` stays the session-level switch — see [Theming](/en/guide/theme)), and `transcript` density and number changes apply to the running session just as immediately (an active Ctrl-O expansion still dominates). Level one's last row opens the whole settings.yaml in `$EDITOR`.
 
 ### Verifying your edits
 

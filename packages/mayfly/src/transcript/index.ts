@@ -50,7 +50,8 @@ export {
 export { AgentGroupComponent, setAgentGroupTimers, type AgentGroupTimers } from './agent-group.ts'
 export { ReadGroupComponent, groupReadsByFile, READ_GROUP_ROW_LIMIT, READ_GROUP_EXPANDED_ROW_LIMIT, type ReadFileGroup } from './read-group.ts'
 export { SearchGroupComponent, SEARCH_GROUP_ROW_LIMIT, SEARCH_GROUP_EXPANDED_ROW_LIMIT } from './search-group.ts'
-export { READ_PREVIEW_LINE_LIMIT, SEARCH_PREVIEW_MATCH_LIMIT, SEARCH_PATH_LIMIT } from './official-model.ts'
+export { CommandGroupComponent, COMMAND_GROUP_ROW_LIMIT } from './command-group.ts'
+export { READ_PREVIEW_LINE_LIMIT, SEARCH_PREVIEW_MATCH_LIMIT, SEARCH_PATH_LIMIT, COMMAND_PREVIEW_LINE_LIMIT } from './official-model.ts'
 export { conversationTranscriptModel } from './official-model.ts'
 export type { ToolPresentationSource } from './present.ts'
 export { parseXmlEnvelope, summarizeToolText, type EnvelopePair } from './envelope.ts'
@@ -79,12 +80,15 @@ export type {
 export {
   DEFAULT_EXPAND_TURNS,
   DEFAULT_RECENT_STEPS_RETENTION,
+  DEFAULT_TRANSCRIPT_DETAIL,
   DEFAULT_TRANSCRIPT_PRESENTATION,
   DEFAULT_USER_FOLD_CHARS,
   DEFAULT_USER_FOLD_LINES,
   DEFAULT_WINDOW_TURNS,
+  TRANSCRIPT_FAMILIES,
   TranscriptPresentationPolicy,
 } from './presentation-policy.ts'
+export type { TranscriptDetail, TranscriptFamily, TranscriptPresentationSnapshot } from './presentation-policy.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-transcript'
@@ -235,8 +239,8 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => offKeymap())
 
   // Mayfly settings ride the host settings document: the resolved `mayfly`
-  // namespace (schema owned by interaction) carries the fold defaults
-  // (`collapseThinking` / `collapseToolCalls`) and the transcript tunables
+  // namespace (schema owned by interaction) carries the per-family detail
+  // levels (`transcript.thinking` / `transcript.command` / …) and the transcript tunables
   // (`windowTurns` / `recentStepsRetention` / `expandTurns` /
   // `userFoldLines` / `userFoldChars`). The service is optional and its
   // value unknown here, so every read parses defensively — absent keys or

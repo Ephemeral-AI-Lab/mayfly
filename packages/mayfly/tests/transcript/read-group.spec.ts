@@ -205,6 +205,32 @@ describe('ReadGroupComponent', () => {
     for (const row of narrow) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(24)
   })
 
+  it('renders compact as the header plus failed-member rows only', () => {
+    const model = group([
+      read({ callId: 'a', path: 'src/foo.ts', range: { first: 1, last: 100 }, previewLines: [{ number: 1, text: 'first' }] }),
+      read({ callId: 'b', path: 'src/bar.ts', range: { first: 1, last: 40 } }),
+      read({ callId: 'c', path: 'gone.ts', state: 'error', error: 'file not found' }),
+    ])
+    const compact = new ReadGroupComponent(model, tagged(), COMPONENTS, () => 'compact')
+    const rows = compact.render(80)
+    expect(rows).toEqual([
+      '',
+      '[S]✓ [/S]\x1b[1m[P]Read 3 files[/P]\x1b[22m[E] · 1 failed[/E]',
+      '  └─ gone.ts [E]✗[/E] [E]file not found[/E]',
+    ])
+    // Ctrl-O still opens the complete tree from compact.
+    compact.setExpanded(true)
+    const expanded = compact.render(80).join('\n')
+    expect(expanded).toContain('src/foo.ts')
+    expect(expanded).toContain('first')
+    // A clean run compacts to the header alone.
+    const clean = new ReadGroupComponent(group([
+      read({ callId: 'a', path: 'one.ts' }),
+      read({ callId: 'b', path: 'two.ts' }),
+    ]), IDENTITY, COMPONENTS, () => 'compact')
+    expect(clean.render(80)).toEqual(['', '✓ \x1b[1mRead 2 files\x1b[22m'])
+  })
+
   it('replaces its immutable snapshot and invalidates cached rows', () => {
     const component = new ReadGroupComponent(group([
       read({ callId: 'before', path: 'before.ts', state: 'ok' }),

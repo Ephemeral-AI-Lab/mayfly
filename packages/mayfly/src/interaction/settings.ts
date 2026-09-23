@@ -36,6 +36,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 // Empty type import carries the app-owned current-Agent Context merge.
 import type {} from '../app/index.ts'
+import type { TranscriptDetail } from '../transcript/presentation-policy.ts'
 import { applyTheme } from './theme-switch.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -43,6 +44,29 @@ declare module '@deepseek-ai/cordis' {
     /** The consolidated Mayfly settings source became readable in this tree. */
     'mayfly/settings-source-ready'(value: unknown): void
   }
+}
+
+/** A per-family transcript detail override: `inherit` follows `transcript.default`. */
+export type TranscriptFamilyDetail = TranscriptDetail | 'inherit'
+
+/** Per-family transcript detail levels (`full` | `collapsed` | `compact`, or `inherit`). */
+export interface TranscriptDetailSettings {
+  /** The fallback level for families left at `inherit`. */
+  readonly default: TranscriptDetail
+  /** Reasoning blocks: `compact` hides settled thinking entirely. */
+  readonly thinking: TranscriptFamilyDetail
+  /** Terminal-card calls (bash & friends): grouped runs and lone cards. */
+  readonly command: TranscriptFamilyDetail
+  /** Grouped file-read calls. */
+  readonly read: TranscriptFamilyDetail
+  /** Grouped search calls (grep & glob). */
+  readonly search: TranscriptFamilyDetail
+  /** Diff-card calls (write & edit). */
+  readonly edit: TranscriptFamilyDetail
+  /** Web fetch/search calls. */
+  readonly web: TranscriptFamilyDetail
+  /** Every other lone tool card. */
+  readonly other: TranscriptFamilyDetail
 }
 
 /** The user-tunable Mayfly settings (the `mayfly` settings namespace). */
@@ -53,10 +77,8 @@ export interface MayflySettings {
   readonly updateChannel: string
   /** The default theme, applied at startup; `/theme` overrides per session. */
   readonly theme: 'dark' | 'light' | 'ocean' | 'paper' | 'auto'
-  /** Whether thinking blocks start collapsed. */
-  readonly collapseThinking: boolean
-  /** Whether tool output starts collapsed (ctrl+o toggles in the session). */
-  readonly collapseToolCalls: boolean
+  /** Per-family transcript detail levels; `compact` is a one-line summary. */
+  readonly transcript: TranscriptDetailSettings
   /** Completed turns kept mounted in the transcript window (mirrors transcript's DEFAULT_WINDOW_TURNS). */
   readonly windowTurns: number
   /** Recent steps of a turn keeping their cards before step folding (mirrors DEFAULT_RECENT_STEPS_RETENTION). */
@@ -75,13 +97,41 @@ export interface MayflySettings {
   readonly marketIndexUrl: string
 }
 
+/** A transcript detail level's schema: full bodies, bounded previews, or a one-line summary. */
+const transcriptDetail = () => z.union([z.const('full'), z.const('collapsed'), z.const('compact')])
+
+/** A family override's schema: a level, or `inherit` to follow `transcript.default`. */
+const transcriptFamilyDetail = () => z.union([
+  z.const('inherit'), z.const('full'), z.const('collapsed'), z.const('compact'),
+]).default('inherit')
+
+/** The shipped transcript detail levels: everything follows the compact default until overridden. */
+export const DEFAULT_TRANSCRIPT_SETTINGS: TranscriptDetailSettings = {
+  default: 'compact',
+  thinking: 'inherit',
+  command: 'inherit',
+  read: 'inherit',
+  search: 'inherit',
+  edit: 'inherit',
+  web: 'inherit',
+  other: 'inherit',
+}
+
 /** The settings schema; defaults double as the composition base. */
 export const Config = z.object({
   updateCheck: z.boolean().default(true).volatile(),
   updateChannel: z.string().default('latest').volatile(),
   theme: z.union([z.const('dark'), z.const('light'), z.const('ocean'), z.const('paper'), z.const('auto')]).default('dark').volatile(),
-  collapseThinking: z.boolean().default(true).volatile(),
-  collapseToolCalls: z.boolean().default(true).volatile(),
+  transcript: z.object({
+    default: transcriptDetail().default('compact'),
+    thinking: transcriptFamilyDetail(),
+    command: transcriptFamilyDetail(),
+    read: transcriptFamilyDetail(),
+    search: transcriptFamilyDetail(),
+    edit: transcriptFamilyDetail(),
+    web: transcriptFamilyDetail(),
+    other: transcriptFamilyDetail(),
+  }).default(DEFAULT_TRANSCRIPT_SETTINGS).volatile(),
   windowTurns: z.number().step(1).min(1).default(15).volatile(),
   recentStepsRetention: z.number().step(1).min(1).default(30).volatile(),
   expandTurns: z.number().step(1).min(1).default(3).volatile(),
@@ -97,8 +147,7 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   updateCheck: true,
   updateChannel: 'latest',
   theme: 'dark',
-  collapseThinking: true,
-  collapseToolCalls: true,
+  transcript: DEFAULT_TRANSCRIPT_SETTINGS,
   windowTurns: 15,
   recentStepsRetention: 30,
   expandTurns: 3,

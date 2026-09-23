@@ -27,6 +27,7 @@ import {
   DEFAULT_USER_FOLD_CHARS,
   DEFAULT_USER_FOLD_LINES,
   DEFAULT_TRANSCRIPT_PRESENTATION,
+  type TranscriptDetail,
   type TranscriptPresentationSnapshot,
 } from './presentation-policy.ts'
 import type {
@@ -381,6 +382,7 @@ export class ToolCallComponent implements MayflyComponent {
   private item: TranscriptToolItem
   private readonly colors: MayflySemanticColors
   private readonly components: MayflyComponents
+  private readonly detail: () => TranscriptDetail
   private expanded = false
   private cache: RenderCache | null = null
 
@@ -389,6 +391,8 @@ export class ToolCallComponent implements MayflyComponent {
    *   `tool/result` folds in.
    * @param colors - the semantic color table.
    * @param components - the component factory providing the width helpers.
+   * @param detail - the tool family's current detail level; `compact` renders
+   *   only the header row (plus a one-line error on failure).
    */
   constructor(
     item: TranscriptToolItem,
@@ -396,10 +400,12 @@ export class ToolCallComponent implements MayflyComponent {
     components: MayflyComponents,
     private readonly presentedBody?: MayflyComponent & { setExpanded?(expanded: boolean): void },
     private resultChip?: string,
+    detail?: () => TranscriptDetail,
   ) {
     this.item = item
     this.colors = colors
     this.components = components
+    this.detail = detail ?? (() => 'collapsed')
   }
 
   /** Drop the cached lines; the next render rebuilds from the item. */
@@ -450,6 +456,9 @@ export class ToolCallComponent implements MayflyComponent {
     if (toolName === 'bash') {
       const label = result === undefined ? 'Running a command' : 'Ran a command'
       header = `${bullet}${this.components.strong(colors.primary(label))}`
+      // Compact drops the command's body row, so the header carries it inline.
+      const keyArg = this.isCompact() ? extractKeyArgument(this.item) : undefined
+      if (keyArg !== undefined) header += colors.muted(` (${sanitizePluginText(keyArg).replace(/[\r\n]+/gu, ' ')})`)
     } else {
       const verb = result === undefined ? 'Using' : 'Used'
       const name = this.components.strong(colors.primary(toolName))
@@ -555,19 +564,38 @@ export class ToolCallComponent implements MayflyComponent {
     return lines
   }
 
+  /** Whether the family's detail level is compact and Ctrl-O hasn't opened the card. */
+  private isCompact(): boolean {
+    return !this.expanded && this.detail() === 'compact'
+  }
+
   /**
    * @param width - current viewport width in columns.
    * @returns the rendered rows.
    */
   render(width: number): string[] {
     const { result } = this.item
+    const compact = this.isCompact()
     const body = result === undefined ? '' : sanitizePluginText(result.fullText ?? result.text)
-    const key = `${width}:${this.expanded}:${result ? `${result.isError}:${body}` : 'pending'}`
+    const key = `${width}:${this.expanded}:${compact}:${result ? `${result.isError}:${body}` : 'pending'}`
     if (this.cache?.key === key) return this.cache.lines
-    const presentedWidth = Math.max(1, width - this.components.visibleWidth(PREVIEW_INDENT))
-    const presentedRows = this.presentedBody?.render(presentedWidth)
-      .map(row => this.components.truncateToWidth(`${PREVIEW_INDENT}${row}`, width))
-    const lines = ['', this.renderHeader(width), ...(presentedRows !== undefined && presentedRows.length > 0 ? presentedRows : this.renderBody(width, result))]
+    let lines: string[]
+    if (compact) {
+      lines = ['', this.renderHeader(width)]
+      // Failures stay legible in compact: one error line under the header.
+      const first = result?.isError === true
+        ? body.split('\n').find(line => line.trim() !== '')
+        : undefined
+      if (first !== undefined) {
+        const paint = isPlanDecline(this.item) ? this.colors.warning(first) : this.colors.error(first)
+        lines.push(this.components.truncateToWidth(`${PREVIEW_INDENT}${paint}`, width))
+      }
+    } else {
+      const presentedWidth = Math.max(1, width - this.components.visibleWidth(PREVIEW_INDENT))
+      const presentedRows = this.presentedBody?.render(presentedWidth)
+        .map(row => this.components.truncateToWidth(`${PREVIEW_INDENT}${row}`, width))
+      lines = ['', this.renderHeader(width), ...(presentedRows !== undefined && presentedRows.length > 0 ? presentedRows : this.renderBody(width, result))]
+    }
     this.cache = { key, lines }
     return lines
   }

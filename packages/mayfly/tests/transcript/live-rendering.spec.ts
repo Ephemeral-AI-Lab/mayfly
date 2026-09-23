@@ -12,9 +12,17 @@ import * as conversationPlugin from '../../src/conversation/index.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptModel } from '../../src/frontend/models.ts'
 import { conversationTranscriptModel, OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
+import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
 import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
+
+/** The collapsed baseline these content-visibility assertions were written against. */
+const collapsedPolicy = (): TranscriptPresentationPolicy => {
+  const policy = new TranscriptPresentationPolicy()
+  policy.apply({ transcript: { default: 'collapsed' } })
+  return policy
+}
 
 async function rig(id: string) {
   const ctx = new Context()
@@ -29,7 +37,7 @@ async function rig(id: string) {
   const publish = vi.fn()
   const source = new OfficialConversationModelSource(ctx.sessionProjections, { get: () => undefined }, publish, live)
   source.attach(session, undefined, agent)
-  const renderer = { colors: COLORS, components: fakeMayflyComponents(), viewportRows: () => 24, images: () => ({}), requestRender: () => {} }
+  const renderer = { colors: COLORS, components: fakeMayflyComponents(), viewportRows: () => 24, images: () => ({}), requestRender: () => {}, presentation: collapsedPolicy() }
   const component = new TranscriptModelComponent(() => source.snapshot(), renderer)
   let revision = 0
   let index = 0
@@ -156,7 +164,7 @@ it('invalidates tool presentation rows without changing session generation', asy
   }, { get: () => ({ presentCall }) as never }, () => {})
   source.invalidateTools()
   source.attach(session, undefined, agent)
-  const component = new TranscriptModelComponent(() => source.snapshot(), { colors: COLORS, components: fakeMayflyComponents(), viewportRows: () => 24, images: () => ({}), requestRender: () => {} })
+  const component = new TranscriptModelComponent(() => source.snapshot(), { colors: COLORS, components: fakeMayflyComponents(), viewportRows: () => 24, images: () => ({}), requestRender: () => {}, presentation: collapsedPolicy() })
   const generation = source.snapshot().generation
   expect(component.render(80).join('\n')).toContain('old presentation')
   expect(presentCall).toHaveBeenCalledTimes(1)
