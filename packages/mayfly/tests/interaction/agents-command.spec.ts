@@ -409,6 +409,7 @@ describe('mayfly-agents-command', () => {
     expect(browserRows(rig)).toContain('○ nested')
     await selectBrowser(model, 'child')
     expect(model.disposed).toBe(true)
+    await new Promise<void>(resolve => setImmediate(resolve))
     expect(rig.opened).toEqual([{
       kind: 'subagent', sessionId: 'child', parentSessionId: 'parent', label: 'explore', mode: 'continuable',
     }])
@@ -564,6 +565,7 @@ describe('mayfly-agents-command', () => {
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'stop', inputs: viewInput }, context)).toMatchObject({ kind: 'completed', feedback: { severity: 'success', message: 'stopped subagent unlabeled' } })
     expect(rig.drain).toHaveBeenCalledWith(rig.parent, [SessionId('unlabeled')])
     expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: ['unlabeled'] }, context)).toEqual({ kind: 'completed' })
+    await new Promise<void>(resolve => setImmediate(resolve))
     expect(rig.opened).toContainEqual(expect.objectContaining({ label: 'unlabeled' }))
     await rig.fiber.dispose()
   })

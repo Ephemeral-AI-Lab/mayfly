@@ -303,7 +303,7 @@ export function apply(ctx: Context): void {
   ): boolean {
     const view = currentAgent.view()
     const target = view.displayed === 'auxiliary' ? view.auxiliary : null
-    if (target?.kind !== 'subagent' || target.mode !== 'continuable' || target.access !== 'interactive') {
+    if (target?.kind !== 'subagent' || target.mode !== 'continuable' || target.access === 'readonly') {
       restoreSubagentSubmission(value, historyText, transformed, 'the subagent is no longer available for input')
       return false
     }

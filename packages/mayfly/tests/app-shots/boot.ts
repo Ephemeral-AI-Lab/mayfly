@@ -148,9 +148,9 @@ export interface AppShotTree {
   readonly ctx: Context
   readonly terminal: VtTerminal
   readonly exits: number[]
-  /** Swap the headers the fake `sessionPersistence` lists (the `/sessions` scene). */
+  /** Swap the native session-summary headers used by the `/sessions` scene. */
   setPersistedHeaders(headers: readonly SessionHeader[]): void
-  /** Swap the titles the fake `sessionQuery` resolves (id → title). */
+  /** Swap the native session-summary titles (id → title). */
   setPersistedTitles(titles: ReadonlyMap<string, string>): void
   /** Resolve once startup has selected the main Agent. */
   currentAgent(): Promise<Agent>
@@ -243,7 +243,14 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   // The session controller is the one factory path the app plugin uses; it
   // creates REAL store sessions so projections, facts, and the transcript all
   // fold genuine events.
+  ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   ctx.provide('sessionController', {
+    list: async () => ({ items: persistedHeaders.map(header => ({
+      sessionId: header.id, cwd: header.cwd, updatedAt: header.createdAt, running: false, blank: false,
+      agentAvailable: agents.has(String(header.id)),
+      ...(header.parentSession === undefined ? {} : { parentSessionId: header.parentSession }),
+      projections: { kind: 'cached', asOfSeq: 0, values: { title: persistedTitles.get(String(header.id)) ?? null } },
+    })) }),
     async *follow() {
       yield { type: 'snapshot', assistantStream: { revision: 0 } }
     },

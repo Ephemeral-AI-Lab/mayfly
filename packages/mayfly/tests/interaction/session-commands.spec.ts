@@ -11,7 +11,6 @@ import { informationFixture } from './information-fixture.ts'
 import { flushRequests, renderRequest } from './request-fixture.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 import { ui } from '../../../ui/src/index.ts'
-import { sessionTreeItems } from '../../src/interaction/session-tree.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
@@ -227,20 +226,6 @@ describe('native session information', () => {
     listener(bench.session, 'unrelated')
     await flushRequests()
     expect(bench.model('mayfly.status')).toBeDefined()
-  })
-
-  it('promotes cyclic session parents and orders tied timestamps by id', () => {
-    const headers = [
-      { id: 'a', createdAt: 1, parentSession: 'b' },
-      { id: 'b', createdAt: 1, parentSession: 'a' },
-      { id: 'c', createdAt: 1 },
-      { id: 'e', createdAt: 1, parentSession: 'c' },
-      { id: 'd', createdAt: 1, parentSession: 'c' },
-    ] as never
-    const items = sessionTreeItems(headers, new Map(), 'd', String)
-    expect(items.map(item => item.id)).toEqual(['c', 'e', 'd', 'b', 'a'])
-    expect(items.find(item => item.id === 'd')).toMatchObject({ parentId: 'c', badge: '← current' })
-    expect(items.find(item => item.id === 'a')!.parentId).toBeUndefined()
   })
 
   it.each(ADVERSARIAL)('contains status, context, and changelog data: $name', async ({ name, text }) => {

@@ -38,7 +38,6 @@ const approvedWidthMath = new Set([
 ])
 
 const approvedPresentation = new Set([
-  "border:packages/mayfly/src/interaction/session-tree.ts:visit(child, depth + 1, index === shown.length - 1 ? '└─' : '├─')",
   "border:packages/mayfly/src/transcript/agent-group.ts:const branch = isLast ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/agent-group.ts:const prefix = isLast ? '   ' : '│  '",
   "border:packages/mayfly/src/transcript/pane-agents.ts:return [row, ui.text(`  ${view.last ? '   ' : '│  '}    ${failed ? `Error: ${view.detailLine}` : view.detailLine}`, { tone: failed ? 'danger' : 'muted' })]",
@@ -54,7 +53,6 @@ const approvedPresentation = new Set([
   "border:packages/mayfly/src/transcript/search-group.ts:const branch = last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/search-group.ts:const childContinuation = `${String(continuation)}${last ? '   ' : '│  '}`",
   "border:packages/mayfly/src/transcript/search-group.ts:const continuation = last ? '   ' : '│  '",
-  "padding:packages/mayfly/src/interaction/session-tree.ts:const prefix = depth === 0 ? '' : `${'  '.repeat(depth - 1)}${branch} `",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",

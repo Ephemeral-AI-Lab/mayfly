@@ -186,11 +186,11 @@ export class ThinkingComponent implements MayflyComponent {
     } else {
       const body = contentLines.map((line, index) =>
         (index === 0 ? this.colors.muted(THINKING_MARKER) : THINKING_INDENT) + this.styled(line))
-      if (this.expanded || contentLines.length <= THINKING_PREVIEW_LINES) {
+      if (this.expanded || contentLines.length <= 1) {
         lines = ['', ...body]
       } else {
-        const folded = body.slice(0, THINKING_PREVIEW_LINES)
-        const remaining = contentLines.length - THINKING_PREVIEW_LINES
+        const folded = body.slice(0, 1)
+        const remaining = contentLines.length - 1
         const hint = `... (${remaining} more lines, ctrl+o to expand)`
         const hintWidth = Math.max(0, width - THINKING_INDENT.length)
         folded.push(THINKING_INDENT + this.colors.textMuted(

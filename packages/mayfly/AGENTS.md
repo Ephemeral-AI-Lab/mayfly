@@ -10,8 +10,8 @@ slots, never arbitrary root components.
 ## State and lifetime ownership
 
 - `app/` owns primary/current-Agent selection, one auxiliary-view slot, and
-  startup. Live auxiliary Agents become the exact current Agent; cold/one-shot
-  children use the shared readonly transcript panel. Interrupt descendants
+  startup. Live auxiliary Agents become the exact current Agent; one-shot children use the shared readonly transcript panel. Cold continuable
+  children use addressed native history and explicit reply-to-resume. Interrupt descendants
   through native ancestor authority without draining retained Activations/inbox.
 - `frontend/index.ts` owns `mayflyUiInteraction` and independent consumer Fibers.
   Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
@@ -36,6 +36,9 @@ slots, never arbitrary root components.
   Live overlays share stable history; completion comes from explicit settled
   steps, never a reasoning block's animation flag. Verify through the actual
   source-to-component path, including settlement and renderer reload.
+- Core retains the cold-conversation editor layer beneath registered editor overlays.
+  Registry refreshes must never clear the retained conversation; a submitted reply
+  acknowledges its form snapshot before dismissal.
 - `conversation/` owns phase-local output measurements from session timestamps.
   Renderer timers animate or expire labels; they do not measure domain progress.
 
@@ -61,6 +64,12 @@ must retire visible and queued requests before they grant or steer. OAuth
 instructions belong only to the live authorization surface.
 
 ## Native writes and sensitive data
+
+- `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation
+  and removal apply after restart; HMR stays disabled in the default bundle.
+- The default bundle mounts native `agentTeams` and its tools once. Shipped presets
+  omit overlapping ordinary delegation tools. Team state comes from `agentTeam`;
+  its panel is readonly and navigation uses ordinary addressed subagents.
 
 - Settings use shared forms and explicit native path-op commits. Bind writes to
   descriptor revision and exposed field projection; rehydrate with Schemastery.

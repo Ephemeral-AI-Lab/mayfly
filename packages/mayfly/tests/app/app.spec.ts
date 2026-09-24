@@ -448,7 +448,7 @@ describe('MayflyCurrentAgentService', () => {
     ])
   })
 
-  it('keeps one-shot and inactive continuable auxiliaries readonly', () => {
+  it('keeps one-shot history readonly and cold continuable children resumable', () => {
     const ctx = new Context()
     const primary = fakeAgent('primary')
     const oneShot = fakeAgent('one-shot')
@@ -465,7 +465,7 @@ describe('MayflyCurrentAgentService', () => {
       kind: 'subagent', sessionId: 'cold', parentSessionId: String(primary.id), label: 'cold', mode: 'continuable',
     })
     expect(service.current()).toBe(primary)
-    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { sessionId: 'cold', access: 'readonly' } })
+    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { sessionId: 'cold', access: 'resumable' } })
   })
 
   it('downgrades a disposed continuable child and upgrades its next live identity', () => {
@@ -482,7 +482,7 @@ describe('MayflyCurrentAgentService', () => {
     agents.delete(String(child.id))
     ctx.emit('agent/disposed', { agent: child } as never)
     expect(service.current()).toBe(primary)
-    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'readonly' } })
+    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'resumable' } })
 
     const resumed = fakeAgent('child')
     agents.set(String(resumed.id), resumed)

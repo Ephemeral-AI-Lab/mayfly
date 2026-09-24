@@ -11,6 +11,7 @@ import type { OutputProgress } from './types.ts'
 
 /** Visible output of one attempt; transport identity stays with its owner. */
 export interface AssistantStreamState {
+  readonly preparing?: readonly { readonly id: string, readonly name: string, readonly characters: number }[]
   readonly reasoning: string
   readonly text: string
   readonly phase: 'waiting' | 'thinking' | 'composing'
@@ -26,6 +27,14 @@ export function initialAssistantStream(): AssistantStreamState {
 
 /** Fold one trusted chunk using its original producer timestamp. */
 export function foldAssistantStreamChunk(state: AssistantStreamState, chunk: StreamChunk, time: number): AssistantStreamState {
+  if (chunk.type === 'tool-call-delta') {
+    const calls = state.preparing ?? []
+    const previous = calls.find(call => call.id === chunk.id)
+    const name = chunk.name ?? previous?.name
+    if (name === undefined) return state
+    const call = { id: chunk.id, name, characters: (previous?.characters ?? 0) + chunk.argumentsDelta.length }
+    return { ...state, preparing: previous === undefined ? [...calls, call] : calls.map(item => item.id === call.id ? call : item), phase: 'waiting', outputProgress: undefined, updatedAt: Math.max(state.updatedAt, time) }
+  }
   if (chunk.type === 'reasoning-delta' || chunk.type === 'text-delta') {
     if (chunk.text === '') return state
     const reasoning = chunk.type === 'reasoning-delta'
@@ -42,7 +51,7 @@ export function foldAssistantStreamChunk(state: AssistantStreamState, chunk: Str
       updatedAt: Math.max(state.updatedAt, time),
     }
   }
-  if (chunk.type === 'finish' || chunk.type === 'tool-call-delta'
+  if (chunk.type === 'finish'
     || (chunk.type === 'block-start' && chunk.blockType !== 'reasoning')
     || (chunk.type === 'block-end' && ((chunk.block.type === 'reasoning' && state.phase === 'thinking')
       || (chunk.block.type === 'text' && state.phase === 'composing')))) {

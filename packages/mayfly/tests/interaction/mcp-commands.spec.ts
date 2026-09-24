@@ -304,3 +304,18 @@ describe('shared MCP browser', () => {
     }
   })
 })
+
+it('opens resource and template catalogs from the native server panel', async () => {
+  const bench = await setup()
+  const execute = vi.spyOn(bench.ctx.tools, 'execute').mockResolvedValue({ isError: false, value: { result: { resources: [], resourceTemplates: [] } }, content: [] } as never)
+  await bench.run('/mcp')
+  bench.model('mayfly.mcp').emit(selectServer)
+  await flushRequests()
+  const server = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.mcp.server')!
+  for (const action of ['resources', 'templates']) {
+    server.invoke(action); await flushRequests()
+    expect(bench.ctx.mayflyOverlays.list().some(item => item.id === 'mayfly.mcp.resources')).toBe(true)
+    bench.ctx.mayflyOverlays.close('mayfly.mcp.resources'); await flushRequests()
+  }
+  expect(execute).toHaveBeenCalledTimes(2)
+})

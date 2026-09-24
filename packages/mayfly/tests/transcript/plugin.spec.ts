@@ -287,7 +287,7 @@ describe('mayfly-transcript through the real Loader', () => {
   it('switches exact Agents and follows native projection updates only for the selected session', async () => {
     resetSeq()
     const { ctx, screen, select } = await bootTranscript(null, {
-      settings: { mayfly: { transcript: { default: 'collapsed' } } },
+      settings: { mayfly: { transcriptView: 'verbose' } },
     })
     const agent = fakeAgent([userEvent('work'), toolCallEvent(1, 1, 'c1', 'bash', '{"command":"ls"}')])
     select(agent)
@@ -382,7 +382,7 @@ describe('mayfly-transcript through the real Loader', () => {
     ])
     const { screen } = await bootTranscript(agent, {
       tools: { get },
-      settings: { mayfly: { transcript: { default: 'collapsed' } } },
+      settings: { mayfly: { transcriptView: 'verbose' } },
     })
     contentLines(screen)
     expect(get).toHaveBeenCalledWith('presented', agent)
@@ -402,7 +402,7 @@ describe('mayfly-transcript through the real Loader', () => {
     })
     const agent = fakeAgent([userEvent('think')])
     const { ctx, screen } = await bootTranscript(agent, {
-      settings: { mayfly: { transcript: { default: 'collapsed' } } },
+      settings: { mayfly: { transcriptView: 'verbose' } },
     })
     ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
     expect(contentLines(screen).join('\n')).toContain('working')
@@ -441,7 +441,7 @@ describe('mayfly-transcript through the real Loader', () => {
 
   it('applies settings, reprojects locale copy, and unloads every Fiber-owned registration', async () => {
     const { ctx, screen, keymap, setMayflySettings } = await bootTranscript(null, {
-      settings: { mayfly: { transcript: { default: 'full' }, expandTurns: 2, userFoldLines: 12 } },
+      settings: { mayfly: { transcriptView: 'verbose', expandTurns: 2, userFoldLines: 12 } },
     })
     const settingsBaseline = screen.renderRequests.length
     setMayflySettings({ expandTurns: 4, userFoldChars: 700 })

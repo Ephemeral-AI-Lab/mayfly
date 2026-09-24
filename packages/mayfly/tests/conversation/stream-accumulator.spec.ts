@@ -41,3 +41,16 @@ describe('assistant stream accumulator', () => {
     expect(state).toMatchObject({ reasoning: 'ab', text: 'c', phase: 'composing', chars: 3 })
   })
 })
+
+it('retains named tool preparation through content generation without treating it as execution', () => {
+  const state = initialAssistantStream()
+  expect(foldAssistantStreamChunk(state, { type: 'tool-call-delta', index: 0, id: 'c' as never, argumentsDelta: '{' }, 1)).toBe(state)
+  const first = foldAssistantStreamChunk(state, { type: 'tool-call-delta', index: 0, id: 'c' as never, name: 'write', argumentsDelta: '{' }, 2)
+  const next = foldAssistantStreamChunk(first, { type: 'tool-call-delta', index: 0, id: 'c' as never, argumentsDelta: '"content":' }, 3)
+  expect(next.preparing).toEqual([{ id: 'c', name: 'write', characters: 11 }])
+  expect(next.phase).toBe('waiting')
+  const second = foldAssistantStreamChunk(next, { type: 'tool-call-delta', index: 1, id: 'd' as never, name: 'edit', argumentsDelta: '' }, 4)
+  expect(second.preparing).toHaveLength(2)
+  const third = foldAssistantStreamChunk(second, { type: 'tool-call-delta', index: 0, id: 'c' as never, argumentsDelta: 'x' }, 5)
+  expect(third.preparing?.map(call => call.id)).toEqual(['c', 'd'])
+})

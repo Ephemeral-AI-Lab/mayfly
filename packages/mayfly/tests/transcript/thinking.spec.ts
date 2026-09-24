@@ -157,7 +157,6 @@ describe('ThinkingComponent', () => {
     expect(narrow).toEqual([
       '',
       '● \x1b[3ml0\x1b[23m',
-      '  \x1b[3ml1\x1b[23m',
       '  ..\x1b[0m…\x1b[0m',
     ])
     // Expansion opens the full body; short bodies never fold.

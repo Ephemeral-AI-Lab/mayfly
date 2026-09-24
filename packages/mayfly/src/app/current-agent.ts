@@ -30,7 +30,7 @@ export type MayflyAuxiliaryView = Readonly<{
 export interface MayflyAgentViewSnapshot {
   readonly primarySessionId: string | null
   readonly displayed: 'primary' | 'auxiliary'
-  readonly auxiliary: (MayflyAuxiliaryView & { readonly access: 'interactive' | 'readonly' }) | null
+  readonly auxiliary: (MayflyAuxiliaryView & { readonly access: 'interactive' | 'resumable' | 'readonly' }) | null
   readonly revision: number
 }
 
@@ -113,7 +113,7 @@ export class MayflyCurrentAgentService extends Service {
       displayed: auxiliary !== null && this.auxiliaryDisplayed ? 'auxiliary' : 'primary',
       auxiliary: auxiliary === null ? null : Object.freeze({
         ...auxiliary,
-        access: this.auxiliaryAgent(auxiliary) === null ? 'readonly' : 'interactive',
+        access: this.auxiliaryAgent(auxiliary) !== null ? 'interactive' : auxiliary.kind === 'subagent' && auxiliary.mode === 'continuable' ? 'resumable' : 'readonly',
       }),
       revision: this.viewRevision,
     })

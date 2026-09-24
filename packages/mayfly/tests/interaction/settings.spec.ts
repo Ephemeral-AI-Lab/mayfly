@@ -135,7 +135,7 @@ describe('mayfly-settings schema and registration', () => {
       updateCheck: true,
       updateChannel: 'latest',
       theme: 'dark',
-      transcript: settingsPlugin.DEFAULT_TRANSCRIPT_SETTINGS,
+      transcriptView: 'standard',
       windowTurns: 15,
       recentStepsRetention: 30,
       expandTurns: 3,
@@ -145,19 +145,7 @@ describe('mayfly-settings schema and registration', () => {
       pasteImageBackend: 'auto',
       marketIndexUrl: '',
     })
-    expect(settingsPlugin.DEFAULT_TRANSCRIPT_SETTINGS).toEqual({
-      default: 'compact',
-      thinking: 'inherit',
-      command: 'inherit',
-      read: 'inherit',
-      search: 'inherit',
-      edit: 'inherit',
-      web: 'inherit',
-      other: 'inherit',
-    })
-    expect(resolveConfig({ transcript: { command: 'full', read: 'collapsed' } }).transcript)
-      .toEqual({ ...settingsPlugin.DEFAULT_TRANSCRIPT_SETTINGS, command: 'full', read: 'collapsed' })
-    expect(settingsPlugin.name).toBe('mayfly-settings')
+    expect(resolveConfig({ transcriptView: 'verbose' }).transcriptView).toBe('verbose')
   })
 
   it('reads only declared fields out of a partially populated plugin config', async () => {
@@ -184,7 +172,7 @@ describe('mayfly-settings schema and registration', () => {
       updateCheck: false,
       updateChannel: 'beta',
       theme: 'dark',
-      transcript: settingsPlugin.DEFAULT_TRANSCRIPT_SETTINGS,
+      transcriptView: 'standard',
       windowTurns: 15,
       recentStepsRetention: 30,
       expandTurns: 3,

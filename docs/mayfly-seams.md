@@ -78,7 +78,7 @@ if (agent !== null) {
 `subscribe()` replay 精确 Agent selection。`view()` / `subscribeView()` 暴露一个
 主会话加一个辅助槽的 readonly metadata，以及当前展示侧和
 `interactive | readonly` access。只有 registry 中仍存活的精确 Agent 能进入
-`current()`：live BTW/continuable child 直接驱动整套既有 UI，one-shot 或 cold
+`current()`：live BTW/continuable child 直接驱动整套既有 UI，one-shot
 child 保留主 Agent 并交给通用只读 transcript panel。`F7` 切换显示侧，`F8`
 关闭辅助槽；关闭 BTW 会额外释放其临时 Agent，关闭普通 subagent 只 detach。
 BTW 的 seed 只用于模型上下文；其 `transcriptAfterSeq` cutoff 让用户看到的流从
@@ -105,3 +105,6 @@ Renderer 暂时缺位时 registry snapshot 仍可存在；renderer 恢复后通�
 Overlay registration 的 title 提供宿主外框；根节点若已是 `chrome: 'overlay'` 的
 surface，core 将两者合并为一个外框。普通 overlay 与 `presentation: 'editor'` 都遵守
 `maxHeight`，未声明时最多使用终端高度的三分之一；短内容保持自然高度。
+
+Cold continuable child 的历史读取和显式回复使用 Harness addressed-subagent API；
+浏览历史不激活 Agent，发送回复才恢复。`resumable` 与 `readonly` 分别表示可恢复与只读。
