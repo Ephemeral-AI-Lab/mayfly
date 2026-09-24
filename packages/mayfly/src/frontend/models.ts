@@ -24,7 +24,7 @@ export interface TranscriptToolResultModel { readonly text: string; readonly ful
  * own entry kinds and never carry this field.
  */
 export type TranscriptToolFamily = 'command' | 'edit' | 'web' | 'other'
-export interface TranscriptToolModel extends TranscriptEntryBase { readonly kind: 'transcript-tool'; readonly step: number; readonly callId: string; readonly name: string; readonly family: TranscriptToolFamily; readonly arguments: string; readonly startedAt: number; readonly result?: TranscriptToolResultModel; readonly presentation?: ToolPresentationModel }
+export interface TranscriptToolModel extends TranscriptEntryBase { readonly kind: 'transcript-tool'; readonly preparing?: { readonly characters: number }; readonly step: number; readonly callId: string; readonly name: string; readonly family: TranscriptToolFamily; readonly arguments: string; readonly startedAt: number; readonly result?: TranscriptToolResultModel; readonly presentation?: ToolPresentationModel }
 /** One bounded preview line carried for a read window's expanded view. */
 export interface ReadPreviewLine { readonly number: number; readonly text: string }
 /**

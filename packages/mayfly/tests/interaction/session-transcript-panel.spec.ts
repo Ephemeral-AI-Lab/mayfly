@@ -51,16 +51,18 @@ function context(options: {
   ctx.reflect.provide('sessionProjections', projections)
   ctx.reflect.provide('sessions', { list: () => options.live === undefined ? [] : [options.live] })
   ctx.reflect.provide('agents', { get: () => options.agentSession === undefined ? undefined : { session: options.agentSession } })
+  ctx.reflect.provide('subagents', { prompt: vi.fn() })
+  ctx.reflect.provide('mayflyOverlays', {})
   ctx.reflect.provide('tools', { get: options.toolGet ?? (() => undefined) })
   if (options.readImage !== undefined) ctx.reflect.provide('attachments', { readImage: options.readImage })
   const observationDispose = vi.fn()
   const coldCut = options.cold === undefined ? undefined : projections.snapshot(options.cold as never)
   if (options.query !== false) {
-    ctx.reflect.provide('sessionQuery', {
-      observeSession: () => options.observe ?? Promise.resolve({
-        projections: coldCut,
-        [Symbol.dispose]: observationDispose,
-      }),
+    ctx.reflect.provide('sessionController', {
+      follow: async function* () {
+        const observation = await (options.observe ?? Promise.resolve({ projections: coldCut, [Symbol.dispose]: observationDispose })) as { projections: unknown, [Symbol.dispose](): void }
+        try { yield { type: 'snapshot', projections: observation.projections } } finally { observation[Symbol.dispose]() }
+      },
     })
   }
   return { ctx, screen, projections, observationDispose }
@@ -184,7 +186,7 @@ describe('SessionTranscriptPanel', () => {
   it('renders contained cold-read failures', async () => {
     const noQuery = context({ query: false })
     const missing = new SessionTranscriptPanel(noQuery.ctx, target('missing'), () => {})
-    await vi.waitFor(() => expect(missing.render(80).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')).toContain('no session query service'))
+    await vi.waitFor(() => expect(missing.render(80).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')).toContain('session controller is unavailable'))
     missing.dispose()
 
     const observationDispose = vi.fn()
@@ -215,6 +217,7 @@ describe('SessionTranscriptPanel', () => {
     gate.resolve({ projections: { values: {} }, [Symbol.dispose]: observationDispose })
     await vi.waitFor(() => expect(observationDispose).toHaveBeenCalledOnce())
     expect(panel.render(80)).toEqual([])
+    panel.handleInput('i')
 
     const rejectedGate = Promise.withResolvers<unknown>()
     const rejectedContext = context({ observe: rejectedGate.promise })
@@ -316,4 +319,47 @@ describe('mayfly-session-transcript-panel plugin', () => {
     expect(listeners).toHaveLength(0)
     expect(unmounts).toBe(3)
   })
+})
+
+it('resumes a cold continuable child only after explicit human Send', async () => {
+  const ctx = new Context()
+  const { informationFixture } = await import('./information-fixture.ts')
+  const { nativeAction, activate } = await import('./native-action-fixture.ts')
+  const { flushRequests } = await import('./request-fixture.ts')
+  const bench = await informationFixture(ctx)
+  ctx.provide('mayflyKeymap', new FakeKeymap() as never)
+  ctx.provide('tools', { get: () => undefined } as never)
+  ctx.provide('sessionController', { follow: async function* () { yield { type: 'event' }; yield { type: 'snapshot', projections: { values: { mayflyConversation: { entries: [], streaming: false, settledSteps: [] } } } } } } as never)
+  const prompt = vi.fn(async () => ({ messageId: 'accepted' }))
+  ctx.provide('subagents', { prompt } as never)
+  await ctx.plugin(await import('../../src/interaction/subagent-reply.ts'))
+  ctx.mayflyCurrentAgent.openAuxiliary({ kind: 'subagent', sessionId: 'cold', parentSessionId: 'current', label: 'Cold', mode: 'continuable' })
+  const panel = new SessionTranscriptPanel(ctx, { kind: 'subagent', sessionId: 'cold', parentSessionId: 'current', label: 'Cold', mode: 'continuable' }, () => {})
+  try {
+    await flushRequests()
+    expect(prompt).not.toHaveBeenCalled()
+    panel.handleInput('i')
+    const model = ctx.mayflyUiInteraction.get('overlay', 'mayfly.subagent.reply')!
+    expect(await nativeAction(model, activate('unknown'))).toMatchObject({ kind: 'completed' })
+    model.invoke('send'); await flushRequests()
+    expect(prompt).not.toHaveBeenCalled()
+    model.edit({ pagePath: [], formId: 'reply', fieldId: 'message' }, 'Human follow-up')
+    panel.dispose()
+    expect(model.disposed).toBe(false)
+    for (const error of [new Error('Resume unavailable'), 'Resume unavailable']) {
+      prompt.mockRejectedValueOnce(error)
+      model.invoke('send'); await flushRequests()
+      expect(model.feedbackSnapshot().some(item => item.message === 'Resume unavailable')).toBe(true)
+    }
+    model.invoke('send'); await flushRequests()
+    expect(model.disposed).toBe(true)
+    expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ parentSessionId: 'current', childSessionId: 'cold', mode: 'continuable', delivery: 'queue', content: [{ type: 'text', text: 'Human follow-up' }] }), expect.any(AbortSignal))
+    expect(bench.steer).not.toHaveBeenCalled()
+    ctx.emit('mayfly/request-subagent-reply', { kind: 'subagent', sessionId: 'cold', parentSessionId: 'current', label: 'Cold', mode: 'continuable' })
+    const stale = ctx.mayflyUiInteraction.get('overlay', 'mayfly.subagent.reply')!
+    stale.edit({ pagePath: [], formId: 'reply', fieldId: 'message' }, 'Late')
+    ctx.mayflyCurrentAgent.closeAuxiliary()
+    stale.invoke('send'); await flushRequests()
+    expect(prompt).toHaveBeenCalledTimes(3)
+  } finally { panel.dispose(); await ctx.fiber.dispose() }
 })

@@ -28,13 +28,13 @@ export function apply(ctx: Context): void {
             { text: 'MAIN', tone: 'accent', styles: ['strong'] },
             { text: controls, tone: 'muted' },
             { text: ` ⇄ ${kind} · ${auxiliary.label}`, tone: 'muted' },
-            ...(auxiliary.access === 'readonly' ? [{ text: ' · read-only', tone: 'muted' as const }] : []),
+            ...(auxiliary.access === 'interactive' ? [] : [{ text: auxiliary.access === 'resumable' ? ' · reply to resume' : ' · read-only', tone: 'muted' as const }]),
           ]
         : [
             { text: kind, tone: 'accent', styles: ['strong'] },
             { text: controls, tone: 'muted' },
             { text: ` · ${auxiliary.label} ⇄ MAIN`, tone: 'muted' },
-            ...(auxiliary.access === 'readonly' ? [{ text: ' · read-only', tone: 'muted' as const }] : []),
+            ...(auxiliary.access === 'interactive' ? [] : [{ text: auxiliary.access === 'resumable' ? ' · reply to resume' : ' · read-only', tone: 'muted' as const }]),
           ],
     }
   }

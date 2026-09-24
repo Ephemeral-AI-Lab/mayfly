@@ -13,3 +13,8 @@
 `mayfly-cordis` preset 包含临时原型、普通持久 Cordis 插件开发与 composition
 编辑 skill。不需要专用 Mayfly manifest、capability host、adapter 或插件作者
 CLI。
+
+Agent Team 已内置于 Mayfly 默认分发，在用户明确要求团队协作时使用。
+`/plugin` 保留原有插件市场。Team 会话导航、提醒、交付文件和 MCP 资源见
+[Harness 功能适配](../../docs/native-harness-adaptation.md)。
+`mayfly.transcriptView` 替代原有的分类型显示设置。

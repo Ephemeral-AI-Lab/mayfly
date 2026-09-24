@@ -73,8 +73,8 @@ flowchart TB
 - Harness 的 Agent、Session、command、tool 与 projection 状态仍由 Harness
   package 持有。
 - app 持有主 Agent selection、单辅助槽与当前显示侧；它不重做 Harness
-  command/tool/projection API。live 辅助会话成为精确 current Agent；one-shot 或
-  cold child 由 core-owned 通用只读 transcript panel 展示。
+  command/tool/projection API。live 辅助会话成为精确 current Agent；one-shot
+  child 由 core-owned 通用只读 transcript panel 展示。
   App 不依赖 terminal screen，因此 core/theme 重载不会新建会话或重置 selection。
 - BTW Agent 仍携带完整 seed 作为模型上下文，但 `mayflyCurrentAgent` 的 BTW
   metadata 记录 seed cutoff，transcript source 只呈现 cutoff 之后的新问题、工具
@@ -145,3 +145,10 @@ whole-tree bundle 测试必须证明原生 command/projection/tool service 可�
 current Agent identity 精确、四个 UI service 可注册、Fiber unload 会清理、
 core reload 后 registry 仍可重挂 renderer。宽度敏感组件继续接受
 `packages/mayfly/tests/{core,transcript,interaction}/width-scan.spec.ts` 检查。
+
+Cold continuable child 的历史读取和显式回复使用 Harness addressed-subagent API；
+浏览历史不激活 Agent，发送回复才恢复。`resumable` 与 `readonly` 分别表示可恢复与只读。
+
+默认 composition 同时装配原生 `agentTeams` 和 Team tools；工具策略只在用户明确要求时创建队友。
+各 preset 去除与 Team 同名的普通子 Agent 控制工具，保留自身其它能力。插件市场仍通过
+原有 CLI installer 修改 profile，默认 HMR 关闭，安装/移除后重启生效。

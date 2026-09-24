@@ -488,6 +488,7 @@ export class OfficialConversationModelSource {
   private settledSteps = new Set<string>()
   private liveSeq = 0
   private toolsRevision = 0
+  private dispatchedCalls: ReadonlySet<string> = new Set()
   private lastDraft: LiveAssistantDraft | undefined
   private transcriptAfterSeq: number | undefined
   private readonly resolvedTools = new Map<string, ResolvedTool>()
@@ -530,14 +531,15 @@ export class OfficialConversationModelSource {
         this.watermark = pending.seq
         this.lastVisible = visible
         this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, undefined, this.resolvedTools)
+        this.dispatchedCalls = new Set(visible.entries.flatMap(entry => entry.kind === 'tool' ? [entry.callId] : []))
         this.settledSteps = new Set(visible.settledSteps)
         this.liveSeq = visible.entries.reduce((seq, entry) => Math.max(seq, entry.seq), pending.seq) + 1
         this.lastDraft = draft
-        this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark)
+        this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
       }
     } else if (draft !== this.lastDraft && this.durableModel !== undefined) {
       this.lastDraft = draft
-      this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark)
+      this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
     }
     return this.model
   }
@@ -551,7 +553,7 @@ export class OfficialConversationModelSource {
       this.durableModel = conversationTranscriptModel(this.lastVisible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`, this.resolvedTools)
       const draft = this.agent === undefined ? undefined : this.live?.get(this.agent)
       this.lastDraft = draft
-      this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark)
+      this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
     }
     this.publish()
   }
@@ -611,6 +613,7 @@ function withLiveDraft(
   draft: LiveAssistantDraft | undefined,
   seq: number,
   updatedSeq: number,
+  dispatched: ReadonlySet<string>,
 ): TranscriptModel {
   if (draft === undefined || settledSteps.has(`${String(draft.turn)}:${String(draft.step)}`)) return durable
   const renderRevision = `live:${draft.attemptId}:${String(draft.revision)}`
@@ -640,6 +643,13 @@ function withLiveDraft(
       step: draft.step,
       text: draft.text,
       streaming: true,
+    })
+  }
+  for (const call of draft.preparing ?? []) {
+    if (dispatched.has(call.id)) continue
+    liveEntries.push({ kind: 'transcript-tool', id: `preparing:${call.id}`, seq, updatedSeq, renderRevision,
+      turn: draft.turn, step: draft.step, callId: call.id, name: call.name, family: 'other', arguments: '', startedAt: draft.updatedAt,
+      preparing: { characters: call.characters },
     })
   }
   return freezeModel({ ...durable, entries: durable.entries, live: { turn: draft.turn, step: draft.step, entries: liveEntries }, streaming: true }) as TranscriptModel

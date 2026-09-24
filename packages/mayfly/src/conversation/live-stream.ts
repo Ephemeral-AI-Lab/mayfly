@@ -21,6 +21,7 @@ export interface LiveAssistantDraft {
   readonly revision: number
   readonly turn: number
   readonly step: number
+  readonly preparing?: AssistantStreamState['preparing']
   readonly phase: AssistantStreamState['phase']
   readonly reasoning: string
   readonly text: string
@@ -287,6 +288,7 @@ export class LiveAssistantStreamService extends Service {
       sessionId: String(agent.session.id), attemptId, revision, turn, step,
       phase: state.phase, reasoning: state.reasoning, text: state.text,
       outputProgress: progress === undefined ? undefined : Object.freeze({ ...progress }),
+      preparing: state.preparing,
       chars: state.chars,
       updatedAt: state.updatedAt,
     })

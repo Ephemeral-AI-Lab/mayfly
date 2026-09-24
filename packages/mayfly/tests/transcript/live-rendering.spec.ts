@@ -20,7 +20,7 @@ import { COLORS } from './status-fakes.ts'
 /** The collapsed baseline these content-visibility assertions were written against. */
 const collapsedPolicy = (): TranscriptPresentationPolicy => {
   const policy = new TranscriptPresentationPolicy()
-  policy.apply({ transcript: { default: 'collapsed' } })
+  policy.apply({ transcriptView: 'verbose' })
   return policy
 }
 
@@ -217,4 +217,21 @@ it('reuses canonical rows and safely retires a live semantic id absent from the 
   model = { ...model, live: { turn: 1, step: 0, entries: [] } }
   expect(component.render(80)).toEqual(['canonical'])
   component.dispose()
+})
+
+it('renders preparation and retires it when the matching native call is dispatched', async () => {
+  const r = await rig('preparation')
+  try {
+    r.start()
+    r.chunk({ type: 'tool-call-delta', index: 0, id: 'preparing-call', name: 'write', argumentsDelta: '{"content":' })
+    expect(r.component.render(80).join('\n')).toContain('Preparing write')
+    r.chunk({ type: 'tool-call-delta', index: 0, id: 'preparing-call', argumentsDelta: '"hello"}' })
+    expect(r.component.render(80).join('\n')).toContain('19 characters')
+    r.session.append('tool/call', { turn: 1, step: 0, callId: 'preparing-call' as never, name: 'write', arguments: '{}' } as never)
+    expect(r.component.render(80).join('\n')).not.toContain('Preparing write')
+    r.session.append('tool/call', { turn: 1, step: 0, callId: 'read-call' as never, name: 'read', arguments: '{"path":"a"}' } as never)
+    r.session.append('tool/call', { turn: 1, step: 0, callId: 'grep-call' as never, name: 'grep', arguments: '{"pattern":"a"}' } as never)
+    r.session.append('tool/call', { turn: 1, step: 0, callId: 'bash-call' as never, name: 'bash', arguments: '{"command":"pwd"}' } as never)
+    r.component.render(80)
+  } finally { await r.dispose() }
 })

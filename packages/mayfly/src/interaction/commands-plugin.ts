@@ -1,56 +1,22 @@
-/**
- * `mayfly-commands` plugin: the built-in slash commands. `/quit` requests
- * process exit through the launcher-owned `ctx.appExit`; `/sessions`
- * lists this directory's persisted sessions in a type-to-filter picker
- * — rows carry the session title (the S30① all-prompts naming, resolved
- * through the optional `sessionQuery` batch title read) with the
- * `← current` badge on the live one, and an id argument emits
- * `mayfly/request-resume` directly (`/resume` is its alias — the S24a
- * dogfood ruling: one command, both surfaces); `/new` emits
- * `mayfly/request-new`, and `/fork` emits `mayfly/request-fork` for the app
- * layer to perform the switch (`/clear` is `/new`'s alias — the kimi
- * naming, one command wearing both names); `/help` lists
- * the registered commands and key bindings in an overlay; `/theme` swaps
- * the live theme provider (see `./theme-switch.ts`); the Shift+Tab native
- * plan/permission cycle lives in `./mode-commands.ts`; the
- * `/init` (the canned AGENTS.md prompt) lives in `./session-init.ts`; and
- * `/plugin` (the marketplace browser over the dsh-plugins index) lives in
- * `./plugin-commands.ts`.
- * Registrations are
- * effect-bound, so unloading the fiber removes them. Only `commands` is
- * injected: the overlay commands read the Mayfly display services through
- * `ctx.get`, because injecting `mayflyTheme` would make this fiber a theme
- * dependent — `/theme` would then dispose its own handler's fiber mid-swap
- * and the remount would throw on the dead context. The `/sessions` listing
- * await can still span a tree unload, so its continuation gates on the
- * fiber's unload flag before touching the context again.
- *
+/** Native command entry points, terminal help, and app-owned session selection.
+ * Session catalog and archive behavior are delegated to Harness.
  * @module @ephemeral-ai/mayfly/interaction/commands-plugin
  */
 
-import { resolve } from 'node:path'
+import { registerPluginCommand } from './plugin-commands.ts'
+import { openSessions } from './native-sessions.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
-import type { SessionHeader } from '@deepseek-ai/dsh-session'
 // Empty type import carries the app-owned session reader/actions Context
 // merges and the `'mayfly/request-*'` Events merges this plugin emits.
 import type {} from '../app/index.ts'
-// Empty type import carries the `sessionPersistence` Context merge; the
-// service itself is optional and resolved lazily.
-import type {} from '@deepseek-ai/dsh-session-persistence'
-// Empty type import carries the `sessionQuery` Context merge (the dsh-base
-// `session-query-sqlite` row with `openAt: never` keeps batch title reads
-// available); optional and resolved lazily like persistence.
-import type {} from '@deepseek-ai/dsh-session-query'
-import { ui, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { HelpSection } from './help.ts'
 import { helpNode } from './help.ts'
 import { cycleMode } from './mode-commands.ts'
 import { registerModelCommands } from './model-commands.ts'
-import { registerPluginCommand } from './plugin-commands.ts'
 import { registerExportCommands } from './session-export.ts'
 import { registerInitCommand } from './session-init.ts'
-import { sessionTreeItems } from './session-tree.ts'
 import { registerThemeCommand } from './theme-switch.ts'
 import { registerUpdateCommand } from './update-command.ts'
 import { registerTraceCommand } from './trace-command.ts'
@@ -74,40 +40,6 @@ export const inject = [
   'tools',
 ]
 
-/** Render one failure reason for an error result. */
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-/** Format a session creation timestamp as a picker-row date (`YYYY-MM-DD HH:mm`, UTC). */
-function formatDate(createdAt: number): string {
-  return new Date(createdAt).toISOString().replace('T', ' ').slice(0, 16)
-}
-
-/**
- * Default count of newest sessions whose titles resolve when the picker
- * opens. Each persisted title is one full event-log parse behind the
- * batch read (4-way concurrent), so the cap bounds the open cost for a
- * directory with a long session history; older rows keep the id form.
- */
-export const DEFAULT_SESSION_TITLE_LIMIT = 100
-const SESSION_TITLE_PAGE_SIZE = 8
-
-let sessionTitleLimit = DEFAULT_SESSION_TITLE_LIMIT
-
-/**
- * Replace the title-resolution cap (tests inject small bounds here).
- * @param n - the replacement, or `undefined` to restore the default.
- */
-export function setSessionTitleLimit(n: number | undefined): void {
-  sessionTitleLimit = n ?? DEFAULT_SESSION_TITLE_LIMIT
-}
-
-/** The active title-resolution cap. */
-export function currentSessionTitleLimit(): number {
-  return sessionTitleLimit
-}
-
 /**
  * Register the built-in commands on `ctx.commands`.
  * @param ctx - plugin context.
@@ -118,22 +50,6 @@ export function apply(ctx: Context): void {
   const aliasRegistry = ctx.mayflyInteractionState.aliases
   const notifications = createInteractionNotificationOwner(ctx, 'mayfly.commands', 'commands')
   /**
-   * Set when this fiber unloads: the `/sessions` listing can still be in
-   * flight (a tree unload lands between `list()` and the overlay mount),
-   * and the continuation must not reach for services through the dead
-   * context.
-   */
-  let unloaded = false
-  let loadingNoticeActive = false
-  ctx.effect(() => () => {
-    unloaded = true
-    if (loadingNoticeActive) {
-      loadingNoticeActive = false
-      notifications.clear('session-list')
-    }
-  })
-
-  /**
    * The `/sessions` handler: list this directory's persisted sessions
    * newest-first with their titles (the optional batch title read) and
    * offer them in a type-to-filter picker; picking another session emits
@@ -142,105 +58,7 @@ export function apply(ctx: Context): void {
    * @returns the command outcome.
    */
   async function listSessions(signal: AbortSignal): Promise<CommandResult> {
-    const primary = ctx.mayflyCurrentAgent.primary()
-    ctx.mayflyCurrentAgent.closeAuxiliary()
-    // A persistence scan can be slow on large profiles. Acknowledge it before
-    // the first await so the user is not left staring at an unchanged editor.
-    notifications.report('session-list', { message: 'loading sessions...', severity: 'info', purpose: 'progress' })
-    loadingNoticeActive = true
-    const clearLoadingNotice = (): void => {
-      if (!loadingNoticeActive) return
-      loadingNoticeActive = false
-      notifications.clear('session-list')
-    }
-    const persistence = ctx.get('sessionPersistence')
-    if (persistence === undefined) {
-      clearLoadingNotice()
-      return { kind: 'error', text: 'session persistence is unavailable' }
-    }
-    let headers: SessionHeader[]
-    try {
-      headers = (await persistence.list({ signal })).map(snapshot => snapshot.header)
-    } catch (error) {
-      clearLoadingNotice()
-      return { kind: 'error', text: `could not list sessions: ${describe(error)}` }
-    }
-    if (unloaded) {
-      clearLoadingNotice()
-      return { kind: 'success' }
-    }
-    // The cwd scope (D46): only this directory's sessions — a global list
-    // mixes every project the harness ever ran in. Exact match after
-    // normalization, no subtree spread; headerless-cwd rows stay hidden.
-    const here = resolve(process.cwd())
-    const sorted = headers
-      .filter(header => header.cwd !== undefined && resolve(header.cwd) === here)
-      .sort((a, b) => b.createdAt - a.createdAt)
-    if (sorted.length === 0) {
-      clearLoadingNotice()
-      return { kind: 'success', text: 'no sessions in this directory' }
-    }
-    const currentId = primary?.id
-    const titleById = new Map<string, string>()
-    const loadingPages = new Set<number>()
-    const loadedPages = new Set<number>()
-    const buildRows = () => {
-      const pending = new Set<string>()
-      // `loadedPages` wins over `loadingPages`: a resolving page is briefly in
-      // both sets while its rows repaint, and untitled rows must not keep the
-      // `…` placeholder after their read has settled.
-      for (const page of loadingPages) {
-        if (loadedPages.has(page)) continue
-        for (const header of sorted.slice(page * SESSION_TITLE_PAGE_SIZE, (page + 1) * SESSION_TITLE_PAGE_SIZE))
-          pending.add(String(header.id))
-      }
-      return sessionTreeItems(sorted, titleById, currentId === undefined ? undefined : String(currentId), formatDate, pending)
-    }
-    // Hydrate the first page before mounting so labels do not visibly change
-    // from session ids to titles. Later pages are prefetched near page ends.
-    let handle!: MayflyOverlayHandle
-    const view = () => ui.surface({ title: 'Sessions', chrome: 'overlay', child: ui.list({ id: 'sessions', role: 'choose', tree: true, selectedIds: currentId === undefined ? [] : [String(currentId)], filterable: true, items: buildRows() }) })
-    const loadPage = (page: number, query: NonNullable<ReturnType<typeof ctx.get<'sessionQuery'>>>): Promise<void> => {
-      if (loadingPages.has(page) || loadedPages.has(page) || page * SESSION_TITLE_PAGE_SIZE >= sessionTitleLimit) return Promise.resolve()
-      loadingPages.add(page)
-      const ids = sorted.slice(page * SESSION_TITLE_PAGE_SIZE, Math.min((page + 1) * SESSION_TITLE_PAGE_SIZE, sessionTitleLimit)).map(header => header.id)
-      return query.readTitleSnapshots(ids, signal).then(results => {
-        if (unloaded) return
-        for (const result of results ?? []) {
-          if (result.status === 'fulfilled' && result.value.title !== undefined) titleById.set(String(result.sessionId), result.value.title.title)
-        }
-        loadedPages.add(page)
-        if (!handle.closed) handle.set(view())
-      }).catch(() => undefined).finally(() => loadingPages.delete(page))
-    }
-    const query = ctx.get('sessionQuery')
-    if (query !== undefined) await loadPage(0, query)
-    if (unloaded) {
-      clearLoadingNotice()
-      return { kind: 'success' }
-    }
-    // 'replace' is deliberate: re-running /sessions re-queries persistence and
-    // replaces the stale picker rather than focusing it.
-    handle = openUiOverlay(ctx, { id: 'mayfly.sessions', presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Sessions', scope: { kind: 'app', targetId: 'sessions' }, onEvent: { action: event => {
-        if (event.kind === 'selection-accept') {
-        const id = event.selectedIds[0]
-        if (id === String(currentId)) return { kind: 'completed' as const, feedback: { severity: 'info' as const, message: 'Already the current session' } }
-        if (id !== undefined) {
-          ctx.emit('mayfly/request-resume', id)
-          return { kind: 'completed' as const, dismiss: true }
-        }
-        }
-        return { kind: 'completed' as const }
-      },
-    } }, view(), { signal, reopen: 'replace' })
-    clearLoadingNotice()
-    if (query !== undefined) {
-      void loadPage(1, query)
-      // Page one resolves asynchronously: repaint now so its rows show the
-      // muted `…` placeholder until their titles land.
-      handle.set(view())
-    }
-    return { kind: 'success' }
+    return openSessions(ctx, signal)
   }
 
   /** Open a picker of safe branch points from the live session. */

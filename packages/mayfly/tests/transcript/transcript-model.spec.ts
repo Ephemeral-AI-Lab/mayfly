@@ -75,7 +75,7 @@ const plainRenderer = (): TranscriptModelRenderer => renderer(() => {}, undefine
 /** A policy pinning every family at collapsed — the pre-compact-default baseline. */
 const collapsedPolicy = (): TranscriptPresentationPolicy => {
   const policy = new TranscriptPresentationPolicy()
-  policy.apply({ transcript: { default: 'collapsed' } })
+  policy.apply({ transcriptView: 'verbose' })
   return policy
 }
 
@@ -240,7 +240,9 @@ describe('TranscriptController', () => {
       ],
     }
     // Default policy is compact: header plus the failed member only.
-    const compactRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer()).render(80)
+    const compactPolicy = new TranscriptPresentationPolicy()
+    compactPolicy.apply({ transcriptView: 'compact' })
+    const compactRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer(() => {}, compactPolicy)).render(80)
     expect(compactRows.join('\n')).toContain('Ran 2 commands')
     expect(compactRows.join('\n')).toContain('pnpm build')
     expect(compactRows.join('\n')).not.toContain('8 passed')
@@ -252,8 +254,10 @@ describe('TranscriptController', () => {
     expect(collapsedRows.join('\n')).not.toContain('8 passed')
 
     const fullPolicy = new TranscriptPresentationPolicy()
-    fullPolicy.apply({ transcript: { default: 'full' } })
-    const fullRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer(() => {}, fullPolicy)).render(80)
+    fullPolicy.apply({ transcriptView: 'verbose' })
+    const fullComponent = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer(() => {}, fullPolicy))
+    fullComponent.setExpanded(true)
+    const fullRows = fullComponent.render(80)
     expect(fullRows.join('\n')).toContain('8 passed')
 
     const plain = new TranscriptModelComponent(() => model('commands', [groupEntry]), plainRenderer()).render(80).join('\n')
@@ -262,7 +266,7 @@ describe('TranscriptController', () => {
 
   it('wires per-family detail from the policy and lets Ctrl-O override compact', () => {
     const policy = new TranscriptPresentationPolicy()
-    policy.apply({ transcript: { default: 'compact', thinking: 'full', read: 'collapsed' } })
+    policy.apply({ transcriptView: 'compact' })
     const entries: TranscriptEntryModel[] = [
       { kind: 'transcript-thinking', id: 'thinking', seq: 1, turn: 1, step: 0, text: 'deep thought line one\nline two\nline three', streaming: false },
       {
@@ -278,8 +282,8 @@ describe('TranscriptController', () => {
     const text = component.render(80).join('\n')
     // thinking:full renders the complete body; read:collapsed the bounded tree;
     // web:compact keeps only the tool header.
-    expect(text).toContain('line three')
-    expect(text).toContain('└─ a.ts')
+    expect(text).not.toContain('line three')
+    expect(text).not.toContain('└─ a.ts')
     expect(text).not.toContain('preview')
     expect(text).toContain('Used')
     expect(text).not.toContain('web body')
@@ -408,7 +412,7 @@ describe('TranscriptController', () => {
       ...(third ? [{ kind: 'transcript-assistant' as const, id: 'a3', seq: 3, updatedSeq: 3, turn: 1, step: 2, text: 'appended', streaming: true }] : []),
     ], true)
     let current = view('partial', 2)
-    const component = new TranscriptModelComponent(() => current, { ...renderer(), components })
+    const component = new TranscriptModelComponent(() => current, { ...renderer(() => {}, collapsedPolicy()), components })
     const first = component.render(80)
     expect(markdownRenders).toBe(2)
     expect(component.render(80)).toBe(first)
@@ -502,7 +506,7 @@ describe('TranscriptController', () => {
     const current = createTranscriptModel('thinking-stream', [{
       kind: 'transcript-thinking', id: 'thinking-stream', seq: 1, turn: 1, step: 0, text: 'live', streaming: true,
     }], true)
-    const component = new TranscriptModelComponent(() => current, renderer(requestRender))
+    const component = new TranscriptModelComponent(() => current, renderer(requestRender, collapsedPolicy()))
     const first = component.render(80)
 
     tick?.()
@@ -537,7 +541,7 @@ describe('TranscriptController', () => {
 
   it('applies tree-local turn windows and recent Ctrl-O expansion', () => {
     const policy = new TranscriptPresentationPolicy()
-    policy.apply({ transcript: { default: 'collapsed' }, windowTurns: 2, expandTurns: 1 })
+    policy.apply({ transcriptView: 'verbose', windowTurns: 2, expandTurns: 1 })
     const entries: TranscriptEntryModel[] = [
       { kind: 'transcript-assistant', id: 'old', seq: 1, turn: 1, step: 0, text: 'old answer', streaming: false },
       { kind: 'transcript-thinking', id: 'middle', seq: 2, turn: 2, step: 0, text: 'middle one\nmiddle two\nmiddle three\nmiddle four', streaming: false },

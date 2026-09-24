@@ -223,6 +223,13 @@ describe.each(['pane', 'overlay'] as const)('%s frontend interaction', kind => {
     model.invoke('open')
     await flush()
     expect(received).toEqual([['one']])
+    handle.set(ui.stack.column([
+      ui.list({ id: 'catalog', role: 'choose', selectedIds: ['two'], items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }),
+      ui.actions({ id: 'actions', items: [{ id: 'open', label: 'Open', selections: [list] }] }),
+    ]))
+    model.invoke('open')
+    await flush()
+    expect(received.at(-1)).toEqual(['two'])
     expect(model.operationSnapshot().find(operation => operation.actionId === 'open')?.phase).toBe('succeeded')
   })
 

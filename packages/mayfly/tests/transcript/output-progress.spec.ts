@@ -67,7 +67,7 @@ describe('phase-local output', () => {
     const harness = await bootPanePlugin(activity, agent)
     let state = initialConversationState()
     const presentation = new TranscriptPresentationPolicy()
-    presentation.apply({ transcript: { default: 'collapsed' } })
+    presentation.apply({ transcriptView: 'verbose' })
     const transcript = new TranscriptModelComponent(() => conversationTranscriptModel(
       { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }, { get: () => undefined },
     ), {

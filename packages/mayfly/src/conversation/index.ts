@@ -7,6 +7,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import { deliverablesProjection } from './deliverables.ts'
 import { conversationFactsProjectionDefinition } from './facts.ts'
 import { conversationProjectionDefinition } from './projection.ts'
 import type { MayflyConversationReady } from './types.ts'
@@ -24,6 +25,7 @@ export const inject = ['sessionProjections']
 /** Register the state-versioned projection in the caller's Fiber. */
 export function apply(ctx: Context): void {
   ctx.sessionProjections.register(conversationProjectionDefinition)
+  ctx.sessionProjections.register(deliverablesProjection)
   ctx.sessionProjections.register(conversationFactsProjectionDefinition)
   const ready: MayflyConversationReady = { key: 'mayflyConversation' }
   ctx.provide('mayflyConversationReady', ready)

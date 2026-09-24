@@ -7,6 +7,7 @@
  * @module @ephemeral-ai/mayfly/transcript/transcript-model
  */
 
+import { workDetailEntries } from './work-details.ts'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
@@ -261,8 +262,9 @@ export class TranscriptModelComponent implements MayflyComponent {
     let durableRows = this.durableRows
     if (durableRows === undefined || durableRows.width !== width || durableRows.expanded !== this.expanded) {
       const insertions = this.anchoredInsertions(plan.entries)
+      const displayEntries = model.streaming === undefined || this.renderer.semantic === false ? plan.entries : workDetailEntries(plan.entries, model.streaming, policy.mode, this.expanded)
       const rows = insertions === undefined
-        ? plan.entries.flatMap(entry => this.renderPlanEntry(entry, width, plan, policy))
+        ? displayEntries.flatMap(entry => this.renderPlanEntry(entry, width, plan, policy))
         : [
             ...this.anchoredRowsAt(insertions, 0, width),
             ...plan.entries.flatMap((entry, index) => [
@@ -412,6 +414,9 @@ export class TranscriptModelComponent implements MayflyComponent {
   }
 
   private renderSemantic(entry: TranscriptEntryModel, width: number, expandable: boolean, policy: TranscriptPresentationSnapshot): string[] {
+    if (entry.kind === 'transcript-tool' && entry.preparing !== undefined) {
+      return renderCanonicalNode({ kind: 'text', content: `Preparing ${entry.name} · ${entry.preparing.characters} characters`, tone: 'muted' }, width, this.renderer)
+    }
     if (this.renderer.semantic === false) return renderCanonicalNode({ kind: 'text', content: this.plainText(entry) }, width, this.renderer)
     const revision = entryRevision(entry)
     let cached = this.cached.get(entry.id)

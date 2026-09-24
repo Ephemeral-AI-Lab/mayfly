@@ -14,3 +14,9 @@ Plugins inherit native dsh services directly and opt into terminal UI with
 The `mayfly-cordis` preset includes skills for temporary prototyping, durable
 ordinary Cordis plugin authoring, and composition editing. No special Mayfly
 manifest, capability host, adapter, or plugin-author CLI is required.
+
+Agent Team ships in the default Mayfly bundle and is used when explicitly
+requested. The existing `/plugin` marketplace stays available. Team navigation,
+reminders, delivered files, and MCP resources are documented in
+[Harness features](../../docs/native-harness-adaptation.md).
+`mayfly.transcriptView` replaces the old per-family transcript settings.

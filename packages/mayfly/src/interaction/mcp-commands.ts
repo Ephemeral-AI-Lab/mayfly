@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 import { ui, type MayflyField, type MayflyListItem, type MayflyOverlayHandle, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { collectMcpServers, type McpCatalog, type McpServerView, type McpStatus } from './mcp-servers.ts'
+import { openMcpResources } from './mcp-resources.ts'
 import { firstSentence, openToolDetail } from './tools-commands.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
@@ -57,7 +58,7 @@ export function mcpServerNode(server: McpServerView, t: MayflyTranslate): Mayfly
     ui.tabs({ id: 'server-pages', activeId: 'tools', items: [{ id: 'tools', label: t('Tools'), count: server.toolsVisible.length }, { id: 'config', label: t('Configuration') }] }),
     ui.child(ui.list({ id: 'tools', role: 'browse', filterable: true, selectedIds: [], items: server.toolsVisible.map(schema => ({ id: schema.name, label: schema.name.slice(prefix.length), detail: firstSentence(schema.description) })), empty: ui.empty({ title: t(server.registeredCount > 0 ? 'No tools visible to this session' : 'No tools registered') }) }), { tab: { controlId: 'server-pages', itemId: 'tools' } }),
     ui.child(ui.scroll(serverConfigNode(server, t), { scrollbar: true }), { tab: { controlId: 'server-pages', itemId: 'config' }, basis: 0, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'server-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+    ui.actions({ id: 'server-actions', items: [{ id: 'resources', label: 'Resources' }, { id: 'templates', label: 'Templates' }, { id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
   ]) })
 }
 
@@ -129,6 +130,10 @@ export function apply(ctx: Context): void {
           if (selected === undefined) return { kind: 'failed', message: t('The MCP server is no longer available') }
           ctx.mayflyOverlays.close('mayfly.mcp.server')
           const handle = await openAgentOverlay(owner, agent, { id: 'mayfly.mcp.server', presentation: 'editor', capturing: true }, mcpServerNode(selected, t), scope => async (event, context) => {
+            if (event.kind === 'activate' && (event.actionId === 'resources' || event.actionId === 'templates')) {
+              await openMcpResources(scope, agent, selected.serverName, event.actionId === 'templates', signal)
+              return { kind: 'completed' }
+            }
             if (event.kind === 'activate' && event.actionId === 'refresh') { await refresh(); return { kind: 'completed' } }
             if (event.kind !== 'selection-accept' || event.controlId !== 'tools') return { kind: 'completed' }
             await refresh()

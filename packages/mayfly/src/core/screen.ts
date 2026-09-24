@@ -152,6 +152,7 @@ const DOCK_HOSTS = ['editor.prompt', 'status.footer'] as const
  */
 export class MayflyScreenService extends Service implements MayflyScreen {
   private readonly runtime: MayflyTerminalRuntime
+  private readonly editorLayers: Record<'overlay' | 'conversation', MayflyFocusable | null> = { overlay: null, conversation: null }
   private readonly fixed = new Map<string, StableSlotHost>()
   private readonly claimed = new Set<string>()
   private readonly local = new LocalActivityRegion()
@@ -201,10 +202,11 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1) }
   }
 
-  /** Present the active registered editor overlay without replacing the prompt's lease. */
-  setEditorReplacement(component: MayflyFocusable | null): void {
+  /** Registered overlays take precedence over a retained cold conversation and the prompt. */
+  setEditorReplacement(component: MayflyFocusable | null, layer: 'overlay' | 'conversation' = 'overlay'): void {
+    this.editorLayers[layer] = component
     const host = this.fixed.get('editor.prompt')!
-    if (host.replaceEditor(component) && !this.runtime.hasCapturingOverlay()) host.focus()
+    if (host.replaceEditor(this.editorLayers.overlay ?? this.editorLayers.conversation) && !this.runtime.hasCapturingOverlay()) host.focus()
   }
 
   mountContentSlot(id: string, component: MayflyComponent | null): MayflyScreenSlot {

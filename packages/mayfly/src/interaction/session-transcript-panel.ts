@@ -5,6 +5,7 @@
  * @module @ephemeral-ai/mayfly/interaction/session-transcript-panel
  */
 
+import type {} from './subagent-reply.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-query'
@@ -57,7 +58,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
     // The panel is a deliberate inspection surface — it keeps the collapsed
     // baseline regardless of the main transcript's compact default.
     const presentation = new TranscriptPresentationPolicy()
-    presentation.apply({ transcript: { default: 'collapsed' } })
+    presentation.apply({ transcriptView: 'verbose' })
     const renderer: TranscriptModelRenderer = {
       colors: ctx.mayflyTheme.colors,
       components: ctx.mayflyComponents,
@@ -82,7 +83,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       colors: ctx.mayflyTheme.colors,
       body: this.body,
       title: () => `Subagent · ${target.label}`,
-      hint: () => `${target.mode} · read-only`,
+      hint: () => target.mode === 'continuable' ? 'continuable · i to reply' : 'one-shot · read-only',
       footer: () => [
         `${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} toggle · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} close · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CANCEL, 'Esc')} close`,
       ],
@@ -110,7 +111,11 @@ export class SessionTranscriptPanel implements MayflyFocusable {
   get focused(): boolean { return this.shell.focused }
   set focused(value: boolean) { this.shell.focused = value }
 
-  handleInput(data: string): void { this.shell.handleInput(data) }
+  handleInput(data: string): void {
+    if (this.disposed) return
+    if (data === 'i' && this.target.mode === 'continuable') this.ctx.emit('mayfly/request-subagent-reply', this.target)
+    else this.shell.handleInput(data)
+  }
   invalidate(): void { this.shell.invalidate() }
   render(width: number): string[] { return this.shell.render(width) }
 
@@ -125,19 +130,17 @@ export class SessionTranscriptPanel implements MayflyFocusable {
   }
 
   private async loadCold(tools: ToolPresentationSource): Promise<void> {
-    const query = this.ctx.get('sessionQuery')
-    if (query === undefined) {
-      this.fail('the subagent session is not live and no session query service is available')
+    const controller = this.ctx.get('sessionController')
+    if (controller === undefined) {
+      this.fail('the session controller is unavailable')
       return
     }
     try {
-      const observation = await query.observeSession(SessionId(this.target.sessionId), {
-        projectionMode: 'all',
-        signal: this.abort.signal,
-      })
-      try {
+      const stream = controller.follow({ address: { kind: 'subagent', parentSessionId: SessionId(this.target.parentSessionId), childSessionId: SessionId(this.target.sessionId), mode: this.target.mode } }, this.abort.signal)
+      for await (const frame of stream) {
         if (this.disposed) return
-        const parsed = conversationProjectionSchema.safeParse(observation.projections?.values['mayflyConversation'])
+        if (frame.type !== 'snapshot') continue
+        const parsed = conversationProjectionSchema.safeParse(frame.projections.values['mayflyConversation'])
         if (!parsed.success) {
           this.fail('the stored subagent conversation is unavailable')
           return
@@ -146,8 +149,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
         this.coldProjection = parsed.data
         this.model = conversationTranscriptModel(parsed.data, tools, this.generation)
         this.shell.invalidate()
-      } finally {
-        observation[Symbol.dispose]()
+        break
       }
     } catch (error) {
       if (this.disposed) return
@@ -167,7 +169,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
 /** Stable child-plugin name. */
 export const name = 'mayfly-session-transcript-panel'
 /** Renderer, projection, and editor-slot services required by the fallback. */
-export const inject = ['mayflyCurrentAgent', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'sessionProjections', 'sessions', 'tools', 'agents']
+export const inject = ['mayflyCurrentAgent', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'sessionProjections', 'sessions', 'tools', 'agents', 'sessionController']
 
 /** Mount the retained readonly auxiliary when it is the displayed view. */
 export function apply(ctx: Context): void {
@@ -176,13 +178,13 @@ export function apply(ctx: Context): void {
   const clear = (): void => {
     const current = retained
     retained = undefined
-    if (current?.shown === true) ctx.mayflyScreen.setEditorReplacement(null)
+    if (current?.shown === true) ctx.mayflyScreen.setEditorReplacement(null, 'conversation')
     current?.panel.dispose()
   }
   const sync = (): void => {
     const snapshot = ctx.mayflyCurrentAgent.view()
     const target = snapshot.auxiliary
-    if (target?.kind !== 'subagent' || target.access !== 'readonly') {
+    if (target?.kind !== 'subagent' || target.access === 'interactive') {
       clear()
       return
     }
@@ -202,10 +204,10 @@ export function apply(ctx: Context): void {
       }
     }
     if (snapshot.displayed === 'auxiliary' && retained.shown === false) {
-      ctx.mayflyScreen.setEditorReplacement(retained.panel)
+      ctx.mayflyScreen.setEditorReplacement(retained.panel, 'conversation')
       retained.shown = true
     } else if (snapshot.displayed === 'primary' && retained.shown === true) {
-      ctx.mayflyScreen.setEditorReplacement(null)
+      ctx.mayflyScreen.setEditorReplacement(null, 'conversation')
       retained.shown = false
     }
   }

@@ -1,7 +1,5 @@
 /**
- * Mayfly's agent-preset declarations: upstream's shipped roster is vendored as
- * patch files while this package contributes exactly one uniquely named
- * creative preset.
+ * Mayfly presets retain upstream capabilities and use the shared native Team tools.
  *
  * @module @ephemeral-ai/mayfly/tests/presets
  */
@@ -25,7 +23,7 @@ interface AuthorSkillEvals {
 const require = createRequire(import.meta.url)
 const skillFilesystemRoot = dirname(require.resolve('@deepseek-ai/dsh-skill-filesystem/package.json'))
 const { parse } = createRequire(join(skillFilesystemRoot, 'package.json'))('yaml') as {
-  parse(source: string): unknown
+  parse(source: string, options?: unknown): unknown
 }
 
 function skillFrontmatter(source: string): SkillFrontmatter {
@@ -34,9 +32,17 @@ function skillFrontmatter(source: string): SkillFrontmatter {
   return parse(match![1]!) as SkillFrontmatter
 }
 
-/** A preset patch's rows, ignoring its leading comment header. */
-function rows(source: string): string {
-  return source.split('\n').filter(line => !line.startsWith('#') && line.trim() !== '').join('\n')
+const legacyDelegationIds = new Set(['tool-subagent-control', 'tool-subagent-list-agents', 'tool-subagent', 'tool-subagent-fork'])
+
+function preset(source: string): unknown {
+  return parse(source, { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }] })
+}
+
+/** Compare all other upstream configuration while deliberately excluding replaced delegation rows. */
+function withoutLegacyDelegation(value: unknown): unknown {
+  if (Array.isArray(value)) return value.filter(entry => !(entry !== null && typeof entry === 'object' && legacyDelegationIds.has(entry.id))).map(withoutLegacyDelegation)
+  if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, withoutLegacyDelegation(entry)]))
+  return value
 }
 
 describe('Mayfly preset roster', () => {
@@ -68,25 +74,24 @@ describe('Mayfly preset roster', () => {
     ])
   })
 
-  it('vendors the shipped presets verbatim and adds mayfly-cordis without aliases', () => {
+  it('retains upstream preset capabilities while replacing overlapping delegation with host Team tools', () => {
     const upstreamRoot = join(dirname(require.resolve('@deepseek-ai/dsh-web-app/package.json')), 'presets')
     const mayflyRoot = new URL('../presets/', import.meta.url)
     for (const id of ['standard', 'ptc', 'minimal', 'cordis']) {
       const upstream = readFileSync(join(upstreamRoot, `${id}.patch.yml`), 'utf8')
       const mayfly = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
-      expect(rows(mayfly), `presets/${id}.patch.yml must match the upstream declaration`).toBe(rows(upstream))
+      expect(preset(mayfly), `presets/${id}.patch.yml changes only overlapping delegation`).toEqual(withoutLegacyDelegation(preset(upstream)))
       expect(mayfly).toContain(`id: ${id}\n`)
     }
 
     const mayfly = readFileSync(new URL('mayfly-cordis.patch.yml', mayflyRoot), 'utf8')
     const upstreamCordis = readFileSync(join(upstreamRoot, 'cordis.patch.yml'), 'utf8')
-    for (const alphaRow of ['- id: command-goal', 'modelSelectionSettings: true', 'fetch: true']) {
+    for (const alphaRow of ['- id: command-goal', 'fetch: true']) {
       expect(upstreamCordis).toContain(alphaRow)
       expect(mayfly).toContain(alphaRow)
     }
     expect(mayfly).toContain('agent preset id `mayfly-cordis`')
-    // The creative preset shares the shipped row set; only the persona, the
-    // Cordis toolset, and the skills wiring differ.
+    // The creative preset keeps its persona, Cordis tools, and skills wiring.
     for (const rowId of ['persona', 'agent-instructions', 'tool-cordis', 'skill-filesystem', 'tool-skill', 'tool-plugin-manager']) {
       expect(mayfly).toContain(`- id: ${rowId}`)
     }
@@ -153,4 +158,18 @@ describe('Mayfly preset roster', () => {
       '@ephemeral-ai/mayfly-ui',
     ])
   })
+})
+
+it('ships native Team services once and keeps all preset tool names conflict-free', () => {
+  const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  for (const id of ['agent-team', 'tool-agent-team']) expect(patch.match(new RegExp(`^    - id: ${id}$`, 'gm'))).toHaveLength(1)
+  expect(patch).toContain("name: '@deepseek-ai/dsh-experimental-agent-team'")
+  expect(patch).toContain("name: '@deepseek-ai/dsh-experimental-tool-agent-team'")
+  expect(patch).toContain('- id: hmr\n  disabled: true')
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  for (const name of ['@deepseek-ai/dsh-experimental-agent-team', '@deepseek-ai/dsh-experimental-tool-agent-team']) expect(manifest.dependencies[name]).toBe('0.1.7-rc.1')
+  for (const id of ['standard', 'ptc', 'minimal', 'cordis', 'mayfly-cordis']) {
+    const source = readFileSync(new URL(`../presets/${id}.patch.yml`, import.meta.url), 'utf8')
+    for (const retired of legacyDelegationIds) expect(source).not.toMatch(new RegExp(`- id: ${retired}\\s*\n`))
+  }
 })

@@ -297,3 +297,25 @@ describe('MayflyScreenService', () => {
     expect(slot.component.render(20)).toEqual([])
   })
 })
+it('retains cold conversation ownership underneath editor overlays and unrelated registry refreshes', async () => {
+  const ctx = new Context()
+  await ctx.plugin(MayflyScreenService, recordingRuntime())
+  const screen = ctx.mayflyScreen
+  const prompt = { focused: false, render: () => ['prompt'], invalidate() {} }
+  const cold = { focused: false, render: () => ['cold history'], invalidate() {} }
+  const reply = { focused: false, render: () => ['reply'], invalidate() {} }
+  const slot = screen.mountDockSlot('editor.prompt', prompt)
+  screen.setEditorReplacement(cold, 'conversation')
+  screen.setEditorReplacement(null)
+  expect(slot.component.render(80)).toEqual(['cold history'])
+  screen.setEditorReplacement(reply)
+  expect(slot.component.render(80)).toEqual(['reply'])
+  screen.setEditorReplacement(null)
+  expect(slot.component.render(80)).toEqual(['cold history'])
+  screen.setEditorReplacement(reply)
+  screen.setEditorReplacement(null, 'conversation')
+  expect(slot.component.render(80)).toEqual(['reply'])
+  screen.setEditorReplacement(null)
+  expect(slot.component.render(80)).toEqual(['prompt'])
+  await ctx.fiber.dispose()
+})
