@@ -149,6 +149,6 @@ core reload 后 registry 仍可重挂 renderer。宽度敏感组件继续接受
 Cold continuable child 的历史读取和显式回复使用 Harness addressed-subagent API；
 浏览历史不激活 Agent，发送回复才恢复。`resumable` 与 `readonly` 分别表示可恢复与只读。
 
-默认 composition 同时装配原生 `agentTeams` 和 Team tools；工具策略只在用户明确要求时创建队友。
-各 preset 去除与 Team 同名的普通子 Agent 控制工具，保留自身其它能力。插件市场仍通过
+Agent Team 由 `dsh-plugins` 中的可选插件提供独立 `team` preset；默认 composition
+和现有 preset 不安装 Team 工具或提示词，普通委派保持上游配置。插件市场仍通过
 原有 CLI installer 修改 profile，默认 HMR 关闭，安装/移除后重启生效。

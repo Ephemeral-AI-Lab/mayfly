@@ -12,7 +12,9 @@ objects, or mutable product state.
   Only this module's `freezeWire` snapshots may retain object identity. Keep
   trust weakly held and private; arbitrary frozen data must still be cloned.
 - Preserve handwritten wire shapes. Stacks normalize nodes to `{ node }`;
-  sizing/viewport options require `ui.child`. No hidden layout metadata or
+  sizing/viewport options require `ui.child`. `tabWhen` gates tab visibility
+  by viewport while retaining the same semantic page and control identities;
+  it requires `tab` and is unavailable in status/editor decorations. No hidden layout metadata or
   renderer callbacks. Rich document builders expose data, not renderer libraries,
   and stay outside the narrower status/editor-extension/section unions.
 - `defineMayflyComponent` validates the id/render function and freezes output;

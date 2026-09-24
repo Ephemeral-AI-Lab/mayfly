@@ -67,9 +67,11 @@ instructions belong only to the live authorization surface.
 
 - `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation
   and removal apply after restart; HMR stays disabled in the default bundle.
-- The default bundle mounts native `agentTeams` and its tools once. Shipped presets
-  omit overlapping ordinary delegation tools. Team state comes from `agentTeam`;
-  its panel is readonly and navigation uses ordinary addressed subagents.
+- Optional collaboration plugins own their preset, tools, and UI contributions.
+  The default bundle and shipped presets do not mount Agent Team. Keep upstream
+  ordinary delegation available. Generic child navigation and the shared
+  `mayfly/request-subagent-reply` event remain app/interaction-owned; replies
+  explicitly choose Queue or Steer and fence exact-Agent replacement.
 
 - Settings use shared forms and explicit native path-op commits. Bind writes to
   descriptor revision and exposed field projection; rehydrate with Schemastery.

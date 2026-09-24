@@ -31,6 +31,6 @@ External plugins and built-ins use the same services and Fiber lifecycle.
 - [Input editor](/en/features/editor)
 - [Approvals and questionnaires](/en/features/approval)
 - [Status bar](/en/features/status-bar)
-- [Built-in Agent Team](/en/features/team)
+- [Optional Agent Team](/en/features/team)
 - [Session modes](/en/features/modes)
 - [Bottom panes](/en/features/panes)
