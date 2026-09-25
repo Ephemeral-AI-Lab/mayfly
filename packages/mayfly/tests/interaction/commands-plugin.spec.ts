@@ -117,6 +117,7 @@ function provideAppBoundary(ctx: Context): void {
   ctx.provide('sessionProjections', { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: () => () => {} } as never)
   ctx.provide('sessionController', { selectModel: async () => { throw new Error('no session') } } as never)
   ctx.provide('tools', { schemas: () => [] } as never)
+  ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
 }
 
 interface SurfaceDriver {
@@ -214,7 +215,60 @@ describe('mayfly-commands plugin', () => {
     ctx.on('mayfly/request-new', onNew)
     const execution = await ctx.commands.execute(agent, '/new', [], signal())
     expect(onNew).toHaveBeenCalledOnce()
+    expect(onNew).toHaveBeenCalledWith(undefined)
     expect(execution?.result).toEqual({ kind: 'success', text: 'starting a new session' })
+  })
+
+  it('/new <preset> emits with the preset after roster validation', async () => {
+    const { ctx, agent } = await mount()
+    ctx.provide('agentPresets', { list: async () => [{ id: 'minimal', name: 'Minimal' }, { id: 'broken', broken: 'Invalid' }] } as never)
+    const onNew = vi.fn()
+    ctx.on('mayfly/request-new', onNew)
+    const execution = await ctx.commands.execute(agent, '/new minimal', [], signal())
+    expect(onNew).toHaveBeenCalledWith('minimal')
+    expect(execution?.result).toEqual({ kind: 'success', text: 'starting a new session' })
+  })
+
+  it('/new refuses unknown and broken presets without emitting', async () => {
+    const { ctx, agent } = await mount()
+    ctx.provide('agentPresets', { list: async () => [{ id: 'minimal' }, { id: 'broken', broken: 'Invalid' }] } as never)
+    const onNew = vi.fn()
+    ctx.on('mayfly/request-new', onNew)
+    expect(await ctx.commands.execute(agent, '/new bogus', [], signal())).toMatchObject({ result: { kind: 'error', text: 'unknown agent preset bogus' } })
+    expect(await ctx.commands.execute(agent, '/new broken', [], signal())).toMatchObject({ result: { kind: 'error', text: 'unknown agent preset broken' } })
+    expect(onNew).not.toHaveBeenCalled()
+    // No roster mounted: no preset can be proven usable.
+    const bare = await mount()
+    const bareNew = vi.fn()
+    bare.ctx.on('mayfly/request-new', bareNew)
+    expect(await bare.ctx.commands.execute(bare.agent, '/new minimal', [], signal())).toMatchObject({ result: { kind: 'error' } })
+    expect(bareNew).not.toHaveBeenCalled()
+  })
+
+  it('/new reports roster discovery failures as command errors', async () => {
+    const { ctx, agent } = await mount()
+    ctx.provide('agentPresets', { list: async () => { throw new Error('roster offline') } } as never)
+    const onNew = vi.fn()
+    ctx.on('mayfly/request-new', onNew)
+    expect(await ctx.commands.execute(agent, '/new minimal', [], signal())).toMatchObject({ result: { kind: 'error', text: 'roster offline' } })
+    expect(onNew).not.toHaveBeenCalled()
+    const bare = await mount()
+    bare.ctx.provide('agentPresets', { list: async () => { throw 'roster offline' } } as never)
+    expect(await bare.ctx.commands.execute(bare.agent, '/new minimal', [], signal())).toMatchObject({ result: { kind: 'error', text: 'roster offline' } })
+  })
+
+  it('/new emits nothing when its signal aborts around validation', async () => {
+    const { ctx, agent } = await mount()
+    const onNew = vi.fn()
+    ctx.on('mayfly/request-new', onNew)
+    const command = ctx.commands.find(agent, 'new')!
+    const aborted = new AbortController()
+    aborted.abort()
+    expect(await command.handler({ agent, rawInput: 'minimal', signal: aborted.signal } as never)).toEqual({ kind: 'success' })
+    const during = new AbortController()
+    ctx.provide('agentPresets', { list: async () => { during.abort(); return [{ id: 'minimal' }] } } as never)
+    expect(await command.handler({ agent, rawInput: 'minimal', signal: during.signal } as never)).toEqual({ kind: 'success' })
+    expect(onNew).not.toHaveBeenCalled()
   })
 
   it('/clear is the /new alias, not a registration', async () => {
@@ -456,7 +510,6 @@ describe('mayfly-commands plugin', () => {
 it('opens the native session browser from the bare sessions command', async () => {
   const bench = await mount()
   Object.assign(bench.ctx.sessionController, { list: async () => ({ items: [] }) })
-  bench.ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   const result = await bench.ctx.commands.execute(bench.agent, '/sessions', [], signal())
   expect(result?.result).toEqual({ kind: 'success' })
   expect(bench.ctx.mayflyOverlays.list().some(item => item.id === 'mayfly.sessions')).toBe(true)

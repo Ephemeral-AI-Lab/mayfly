@@ -18,6 +18,8 @@ import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import { teamNode } from '../../src/interaction/team-command.ts'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
+import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
+import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
 import { documentPages } from '../../src/interaction/document-pages.ts'
@@ -246,9 +248,17 @@ describe('interaction width-scan', () => {
 for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name}`, async () => {
   const bench = await requestFixture()
   try {
+    const reminders = [{ id: 'schedule', prompt: text, kind: 'every', everySeconds: 300, scheduledAt: '2099-01-01T00:00:00Z' }] as never
     const nodes = [
       teamNode({ members: [{ id: text as never, name: text, role: 'lead', phase: 'active' }], tasks: [], failure: text }, '', new Map(), new Map()),
-      scheduleNode([{ id: 'schedule', prompt: text, scheduledAt: '2099-01-01T00:00:00Z' }] as never),
+      ...(['en', 'zh'] as const).flatMap((locale: MayflyLocaleId) => {
+        const t = (key: string, values?: Record<string, string | number>) => interpolateLocaleMessage(INTERACTION_LOCALE[locale][key] ?? INTERACTION_LOCALE.en[key] ?? key, values)
+        return [
+          scheduleNode(reminders, Date.now(), t, locale),
+          scheduleNode([], Date.now(), t, locale),
+          scheduleNode(undefined, Date.now(), t, locale),
+        ]
+      }),
     ]
     for (const node of nodes) {
       const handle = bench.ctx.mayflyOverlays.open({ id: 'native-width', capturing: true }, node)

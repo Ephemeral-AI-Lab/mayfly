@@ -8,6 +8,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { informationFixture } from './information-fixture.ts'
 import { flushRequests as flushOneRequest } from './request-fixture.ts'
 import { openSessions } from '../../src/interaction/native-sessions.ts'
+import { interactionTranslator } from '../../src/interaction/locale.ts'
 
 const flushRequests = async () => { await flushOneRequest(); await flushOneRequest() }
 const contexts: Context[] = []
@@ -18,7 +19,7 @@ async function setup() {
   const controller = {
     list: vi.fn(async () => ({ items: [
       { sessionId: 'current', cwd: '/repo', running: false, projections: { values: { title: 'Current' } } },
-      { sessionId: 'other', running: true },
+      { sessionId: 'other', running: true, projections: { values: { schedule: [{ id: 'r1' }] } } },
       { sessionId: 'child', origin: 'subagent', parentSessionId: 'current', running: false },
     ] })),
     search: vi.fn(async () => ({ items: [{ sessionId: 'other', snippet: 'matching text' }], hasMore: true })),
@@ -28,7 +29,7 @@ async function setup() {
   ctx.provide('sessionController', controller as never)
   ctx.provide('workspaceRegistry', registry as never)
   ctx.provide('subagents', subagents as never)
-  const open = () => openSessions(ctx, new AbortController().signal)
+  const open = () => openSessions(ctx, new AbortController().signal, interactionTranslator(ctx))
   const model = (id = 'mayfly.sessions') => ctx.mayflyUiInteraction.get('overlay', id)!
   const select = async (id: string) => { model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'sessions', selectedIds: [id] }); await flushRequests() }
   const act = async (id: string, detail = true) => { model(detail ? 'mayfly.sessions.detail' : 'mayfly.sessions').invoke(id); await flushRequests() }
@@ -39,6 +40,7 @@ it('lists native summaries, searches explicitly, and preserves title filtering o
   const bench = await setup()
   expect(await bench.open()).toEqual({ kind: 'success' })
   expect(JSON.stringify(bench.model().node)).toContain('Current')
+  expect(JSON.stringify(bench.model().node)).toContain('Reminders')
   expect(bench.controller.search).not.toHaveBeenCalled()
   await bench.act('search', false)
   expect(bench.controller.search).not.toHaveBeenCalled()
@@ -83,7 +85,7 @@ it('contains read failures and cancels a late opening', async () => {
   const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.list>>>()
   bench.controller.list.mockReturnValueOnce(gate.promise)
   const abort = new AbortController()
-  const opening = openSessions(bench.ctx, abort.signal)
+  const opening = openSessions(bench.ctx, abort.signal, interactionTranslator(bench.ctx))
   abort.abort(); gate.resolve({ items: [] })
   await opening
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)

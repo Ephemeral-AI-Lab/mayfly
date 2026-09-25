@@ -38,7 +38,7 @@ declare module '@deepseek-ai/cordis' {
     'mayfly/request-stop-changed'(pending: boolean): void
     'mayfly/session-epoch-changed'(sessionEpoch: number): void
     'mayfly/request-resume'(sessionId: string): void
-    'mayfly/request-new'(): void
+    'mayfly/request-new'(agentPreset?: string): void
     'mayfly/request-fork'(): void
     'mayfly/request-rewind'(sessionId: string, atSeq: number): void
   }
@@ -157,8 +157,11 @@ export function apply(ctx: Context, config: Config): void {
     return resolvedAgent(await controller.resolveAgent(SessionId(sessionId)))
   }
 
-  const create = async (): Promise<Agent> => {
-    const created = await controller.create({ cwd: process.cwd() })
+  const create = async (agentPreset?: string): Promise<Agent> => {
+    const created = await controller.create({
+      cwd: process.cwd(),
+      ...agentPreset === undefined ? {} : { agentPreset },
+    })
     return resolve(String(created.sessionId))
   }
 
@@ -189,10 +192,10 @@ export function apply(ctx: Context, config: Config): void {
     })
   })
 
-  ctx.on('mayfly/request-new', () => {
+  ctx.on('mayfly/request-new', (agentPreset) => {
     enqueue(async () => {
       current.closeAuxiliary()
-      try { select(await create()) }
+      try { select(await create(agentPreset)) }
       catch (error) { io.stderr.write(`dsh: could not start a new session: ${describe(error)}\n`) }
     })
   })
