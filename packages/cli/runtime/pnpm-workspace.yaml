@@ -20,6 +20,24 @@ allowBuilds:
   node-pty: false
   protobufjs: false
 
+# The Mayfly composition never mounts dsh-skill-office/office-to-pdf or the
+# opt-in voice-input bundle, so the LibreOffice and sherpa-onnx platform
+# natives are dead payload. They would also push the published CLI tarball past
+# npm's ~400 MB publish ceiling (the registry PUT base64-encodes the tarball
+# into a V8 string). sharp/libvips stay: attachment-local needs them.
+ignoredOptionalDependencies:
+  - '@deepseek-ai/libreoffice-kit-darwin-arm64'
+  - '@deepseek-ai/libreoffice-kit-darwin-x64'
+  - '@deepseek-ai/libreoffice-kit-wasm'
+  - '@deepseek-ai/libreoffice-kit-win32-arm64'
+  - '@deepseek-ai/libreoffice-kit-win32-x64'
+  - sherpa-onnx-darwin-arm64
+  - sherpa-onnx-darwin-x64
+  - sherpa-onnx-linux-arm64
+  - sherpa-onnx-linux-x64
+  - sherpa-onnx-win-ia32
+  - sherpa-onnx-win-x64
+
 # The use-sync-external-store override that pinned the 0.1.x web closure's
 # React 19 peers is gone: the runtime seed's own direct dependency already
 # pins react 19.2.8 with use-sync-external-store 1.6.0, so no override is

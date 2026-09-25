@@ -2461,35 +2461,6 @@ packages:
     resolution: {integrity: sha512-O1K076aCmqE+h4fB5J+mi3twNSAnh26OqHepaqvS5f1tccFnxhVyGpUmjcncVM5x1SX4niznmvsGrsRo9p733A==}
     hasBin: true
 
-  '@deepseek-ai/libreoffice-kit-darwin-arm64@0.1.0':
-    resolution: {integrity: sha512-VtFKOp6CdNp9yfxkqxSg+tc3/od+E1BDiageJpQ2gBXKEVZAZDJLgn9ogf5tsgPKrADSoClWEUtQGrKpRove2Q==}
-    engines: {node: '>=22.19.0'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@deepseek-ai/libreoffice-kit-darwin-x64@0.1.0':
-    resolution: {integrity: sha512-TI+7wsPAj7lE4q+Mhl+cAJwmJYr7zJi2L1pIGicOZm3NFXrdLfv5Enp8MqU9tUDX2B2rofCPVkohq0g7db6VXQ==}
-    engines: {node: '>=22.19.0'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@deepseek-ai/libreoffice-kit-wasm@0.1.0':
-    resolution: {integrity: sha512-xIZGPIeFAGnU8g7ChtFfW1JeOZ3T7sNaITvXpnGjZkwUhxiv/YqCO7KoWKD4ImVObNI0jiDtusAQKwbtgJiibQ==}
-    engines: {node: '>=22.19.0'}
-    os: [linux]
-
-  '@deepseek-ai/libreoffice-kit-win32-arm64@0.1.0':
-    resolution: {integrity: sha512-zt2T2V86ulIIPckok5aYQAh5HLD+WiQrMwI9gbbLHm2gfj+1Z36x4b6BbQxkkADZZnc0hitYcEaqdxymThvIjQ==}
-    engines: {node: '>=22.19.0'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@deepseek-ai/libreoffice-kit-win32-x64@0.1.0':
-    resolution: {integrity: sha512-+lwdDltKEmvsldWHcFxIDsS7jQ7LNNhTOa7+JSN8E1oQKCPChkUGzovbgwvufNJ1R4aceJW60v2vQ0qp35pvvQ==}
-    engines: {node: '>=22.19.0'}
-    cpu: [x64]
-    os: [win32]
-
   '@deepseek-ai/libreoffice-kit@0.1.0':
     resolution: {integrity: sha512-Q54S/ydM4OKirhwoE8g/FEJtVjViKZvDp/01Y//eXq5f2OgJTRPXxuvDEgYwFXq0xwzwSShag6t3sDOEKcc2eg==}
     engines: {node: '>=22.19.0'}
@@ -3768,38 +3739,8 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  sherpa-onnx-darwin-arm64@1.13.8:
-    resolution: {integrity: sha512-FPNgJMgnWVl/KhRTIhG3KL3A4Om63Rn4YKXc9/uHY7SzLcvqLJLc/h7UBWJwduXvv7K18t5NpxHR6XgXn4sjWw==}
-    cpu: [arm64]
-    os: [darwin]
-
-  sherpa-onnx-darwin-x64@1.13.8:
-    resolution: {integrity: sha512-7BLRpjM6w4f9W46/nmkmq8lEKUayhebvcpslCVQ+6QN2uReYlZEMDZlSpXMjme+hUFrPfRz8P3UNq8ep/4d19g==}
-    cpu: [x64]
-    os: [darwin]
-
-  sherpa-onnx-linux-arm64@1.13.8:
-    resolution: {integrity: sha512-Tlg7a70b/Wge3OF8IgTHF9jhSVCsLyKQKhwc4BsJ5A+dL/SrFtGBjzuHp4XeLhiiOT7afCxX5PdSn/D4c8Lnuw==}
-    cpu: [arm64]
-    os: [linux]
-
-  sherpa-onnx-linux-x64@1.13.8:
-    resolution: {integrity: sha512-6plnhjagsSeTntCgnlag86hWbs/uZE9Crms1LgOb68/1nKsIQjMd+WG519m+aPwT6TrsBOiEMzrx41t8sL5L5g==}
-    cpu: [x64]
-    os: [linux]
-
   sherpa-onnx-node@1.13.8:
     resolution: {integrity: sha512-MsDMBdhLFTZ1GwvcGSSQhnS7g/EA8OMH6IYysCVUOM7j8Icty9KRc0E6YT1A5fWBsZwRfKOeh88QC95aRvS8ag==}
-
-  sherpa-onnx-win-ia32@1.13.8:
-    resolution: {integrity: sha512-H0Ojln9hfvM+pxWqW0cnjB/XK8/JPq4/k0IWu2JpY5Z458M3zv+XC3Hu+wmot3AoH/K1Bgt23n/tTKtPV9x8qg==}
-    cpu: [ia32]
-    os: [win32]
-
-  sherpa-onnx-win-x64@1.13.8:
-    resolution: {integrity: sha512-oZF1c9VPOKtMwn83Bboc5XSWL+76BRoyB3eUuVnCknBKxwSULZU2Foia9VHWzU+n4I12rPsP6z6H9Rp1hD9o8g==}
-    cpu: [x64]
-    os: [win32]
 
   side-channel-list@1.0.1:
     resolution: {integrity: sha512-mjn/0bi/oUURjc5Xl7IaWi/OJJJumuoJFQJfDDyO46+hBWsfaVM65TBHq2eoZBhzl9EchxOijpkbRC8SVBQU0w==}
@@ -3938,6 +3879,19 @@ packages:
 
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
+ignoredOptionalDependencies:
+  - '@deepseek-ai/libreoffice-kit-darwin-arm64'
+  - '@deepseek-ai/libreoffice-kit-darwin-x64'
+  - '@deepseek-ai/libreoffice-kit-wasm'
+  - '@deepseek-ai/libreoffice-kit-win32-arm64'
+  - '@deepseek-ai/libreoffice-kit-win32-x64'
+  - sherpa-onnx-darwin-arm64
+  - sherpa-onnx-darwin-x64
+  - sherpa-onnx-linux-arm64
+  - sherpa-onnx-linux-x64
+  - sherpa-onnx-win-ia32
+  - sherpa-onnx-win-x64
 
 snapshots:
 
@@ -7119,32 +7073,11 @@ snapshots:
       - ws
       - zod
 
-  '@deepseek-ai/libreoffice-kit-darwin-arm64@0.1.0':
-    optional: true
-
-  '@deepseek-ai/libreoffice-kit-darwin-x64@0.1.0':
-    optional: true
-
-  '@deepseek-ai/libreoffice-kit-wasm@0.1.0':
-    optional: true
-
-  '@deepseek-ai/libreoffice-kit-win32-arm64@0.1.0':
-    optional: true
-
-  '@deepseek-ai/libreoffice-kit-win32-x64@0.1.0':
-    optional: true
-
   '@deepseek-ai/libreoffice-kit@0.1.0':
     dependencies:
       fflate: 0.8.2
       fontkit: 2.0.4
       saxes: 6.0.0
-    optionalDependencies:
-      '@deepseek-ai/libreoffice-kit-darwin-arm64': 0.1.0
-      '@deepseek-ai/libreoffice-kit-darwin-x64': 0.1.0
-      '@deepseek-ai/libreoffice-kit-wasm': 0.1.0
-      '@deepseek-ai/libreoffice-kit-win32-arm64': 0.1.0
-      '@deepseek-ai/libreoffice-kit-win32-x64': 0.1.0
 
   '@deepseek-ai/node-addon-system-darwin-arm64@0.1.2':
     optional: true
@@ -8444,32 +8377,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  sherpa-onnx-darwin-arm64@1.13.8:
-    optional: true
-
-  sherpa-onnx-darwin-x64@1.13.8:
-    optional: true
-
-  sherpa-onnx-linux-arm64@1.13.8:
-    optional: true
-
-  sherpa-onnx-linux-x64@1.13.8:
-    optional: true
-
-  sherpa-onnx-node@1.13.8:
-    optionalDependencies:
-      sherpa-onnx-darwin-arm64: 1.13.8
-      sherpa-onnx-darwin-x64: 1.13.8
-      sherpa-onnx-linux-arm64: 1.13.8
-      sherpa-onnx-linux-x64: 1.13.8
-      sherpa-onnx-win-ia32: 1.13.8
-      sherpa-onnx-win-x64: 1.13.8
-
-  sherpa-onnx-win-ia32@1.13.8:
-    optional: true
-
-  sherpa-onnx-win-x64@1.13.8:
-    optional: true
+  sherpa-onnx-node@1.13.8: {}
 
   side-channel-list@1.0.1:
     dependencies:

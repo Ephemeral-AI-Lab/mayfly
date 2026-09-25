@@ -24,7 +24,10 @@ archives. Product arguments and creative-mode preset behavior belong to Mayfly.
 `runtime/` is a private, independently locked seed. `script/pack-cli-runtime.mjs`
 installs it with scripts disabled and a hoisted layout, then emits common plus
 six OS/architecture archives. `check:pack` owns payload budgets, native sentinels,
-executable/shebang checks, and the exact Harness line.
+executable/shebang checks, and the exact Harness line. The seed's
+`ignoredOptionalDependencies` exclude the LibreOffice and sherpa-onnx natives
+the Mayfly composition never mounts; npm publish cannot carry a tarball past
+its ~400 MB base64-string ceiling, so keep the payload budget under it.
 
 Extraction uses bounded synchronous tar reads into a prepared directory under
 `$DSH_HOME/cache/mayfly-cli-runtime/`. Validate the host and native file sizes
