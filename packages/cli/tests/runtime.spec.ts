@@ -10,7 +10,7 @@ import { bundledDsh, HARNESS_LINE } from '../src/runtime.ts'
 registerTempDirCleanup()
 
 const REAL = { ...cliInternals }
-const VERSION = '0.1.0-alpha.5'
+const VERSION = '0.1.0-alpha.6'
 
 afterEach(() => {
   Object.assign(cliInternals, REAL)
