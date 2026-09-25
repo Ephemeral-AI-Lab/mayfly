@@ -44,8 +44,6 @@ export interface MayflyUiChild {
   readonly node: MayflyUiNode
   readonly id?: string
   readonly tab?: MayflyPageSegment
-  /** Apply the tab's visibility gate only in matching viewports; page identity is always retained. Requires tab. */
-  readonly tabWhen?: MayflyViewportCondition
   readonly basis?: number | 'auto'
   readonly grow?: number
   readonly shrink?: number
@@ -121,7 +119,7 @@ export interface MayflyOverlayHandle extends MayflyRegistration { readonly revis
 export interface MayflyOverlayRegistry { open(definition: MayflyOverlayDefinition, initialNode: MayflyUiNode): MayflyOverlayHandle, close(id: string): boolean, focus(id: string): boolean, list(): readonly MayflyOverlayEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyOverlayEntry>) => void): () => void }
 
 export type MayflyStatusNode = MayflyTextNode | MayflyRichTextNode | MayflyFieldsNode | MayflyProgressNode | MayflyStatusStackNode
-export interface MayflyStatusChild extends Omit<MayflyUiChild, 'node' | 'tab' | 'tabWhen'> { readonly node: MayflyStatusNode }
+export interface MayflyStatusChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyStatusNode }
 export interface MayflyStatusStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyStatusChild[] }
 export interface MayflyStatusDefinition { readonly id: string, readonly priority?: number, readonly band?: 'left' | 'center' | 'right', readonly row?: 1 | 2, readonly overflow?: 'truncate' | 'hide' }
 export interface MayflyStatusEntry { readonly id: string, readonly definition: MayflyStatusDefinition, readonly node: MayflyStatusNode | null, readonly revision: number }
@@ -136,7 +134,7 @@ export interface MayflyEditorSubmitRequest { readonly text: string, readonly att
 export interface MayflyEditorSubmitValue { readonly text: string }
 export type MayflyEditorContentNode = Exclude<MayflyContentNode, MayflyDiagramNode | MayflyChartNode>
 export type MayflyEditorExtensionNode = MayflyEditorContentNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyEditorExtensionStackNode | MayflyEditorExtensionSurfaceNode
-export interface MayflyEditorExtensionChild extends Omit<MayflyUiChild, 'node' | 'tab' | 'tabWhen'> { readonly node: MayflyEditorExtensionNode }
+export interface MayflyEditorExtensionChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyEditorExtensionNode }
 export interface MayflyEditorExtensionStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyEditorExtensionChild[] }
 export interface MayflyEditorExtensionSurfaceNode extends Omit<MayflySurfaceNode, 'child' | 'footer'> { readonly child: MayflyEditorExtensionNode, readonly footer?: MayflyEditorExtensionNode }
 export interface MayflyEditorDecoration { readonly before?: MayflyEditorExtensionNode, readonly after?: MayflyEditorExtensionNode, readonly hint?: string, readonly diagnostics?: readonly MayflyEditorDiagnostic[], readonly actions?: readonly MayflyActionItem[] }

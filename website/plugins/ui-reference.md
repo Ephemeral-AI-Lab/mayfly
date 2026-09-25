@@ -339,7 +339,6 @@ status、editor extension 或 section-content 树。
 ```ts
 ui.child(node: MayflyUiNode, options?: {
   tab?: { controlId: string, itemId: string }
-  tabWhen?: MayflyViewportCondition
   basis?: number | 'auto'
   grow?: number
   shrink?: number
@@ -372,10 +371,8 @@ ui.stack.column([
 
 *宽度 40 不满足 `minWidth: 48`，`Wide-only detail` 离树。*
 
-`tab` 为 child 指定稳定的页面身份。`tabWhen` 仅在视口条件匹配时应用活动页签的
-可见性筛选。例如 `tabWhen: { maxWidth: 91 }` 在窄视口只显示当前页，在宽 row 中
-允许同时展示两页，表单和列表仍保留同一份状态。它必须与 `tab` 一起使用，
-不适用于 status 或 editor decoration 树。
+`tab` 为 child 指定稳定的页面身份，归属某个 `tabs` 控件。仅活动页可见，
+隐藏页保留原有的表单和列表状态。它不适用于 status 或 editor decoration 树。
 
 ### `stack.row` / `stack.column`
 

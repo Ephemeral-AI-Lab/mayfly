@@ -89,8 +89,8 @@ BTW 自己的第一条提问开始，不重复主会话历史。
 用户提交时显式选择 Queue/Steer，写入仍走原生 addressed-subagent 路径，并检查主 Agent
 和在线子 Agent 的精确身份。未加载子会话的浏览和草稿编辑保持只读。
 
-`ui.child(..., { tab, tabWhen })` 可以在窄视口使用页签筛选，在宽视口同时显示页面，
-而不替换 `pagePath` 或复制列表/表单状态。视口匹配与可见宽度仍由 core 决定。
+`ui.child(..., { tab })` 为页面提供稳定的 `pagePath`，隐藏页保留列表/表单状态。
+视口匹配与可见宽度仍由 core 决定；需要在宽视口并排展示时使用 `stack.row`。
 
 用户中断当前 Agent 时，Mayfly 同步遍历 live `agents` 的 `parentSession` lineage，并通过
 `subagents.interrupt(..., { kind: 'ancestor', agent })` 向所有 running continuable

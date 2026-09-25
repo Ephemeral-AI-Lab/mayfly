@@ -359,7 +359,6 @@ status, editor-extension, or section-content trees.
 ```ts
 ui.child(node: MayflyUiNode, options?: {
   tab?: { controlId: string, itemId: string }
-  tabWhen?: MayflyViewportCondition
   basis?: number | 'auto'
   grow?: number
   shrink?: number
@@ -396,11 +395,9 @@ the tree, and only the heading row remains:
 
 *Width 40 fails `minWidth: 48`; `Wide-only detail` leaves the tree.*
 
-`tab` gives a child a stable page identity. With `tabWhen`, the active-tab
-visibility gate applies only when that viewport condition matches. For example,
-`tabWhen: { maxWidth: 91 }` shows just the active page in a narrow viewport and
-allows both pages in a wide row, retaining their existing form/list state.
-It requires `tab` and is unavailable in status or editor-decoration trees.
+`tab` gives a child a stable page identity under a `tabs` control. Only the
+active page is visible, and hidden pages retain their existing form/list state.
+It is unavailable in status or editor-decoration trees.
 
 ### `stack.row` / `stack.column`
 

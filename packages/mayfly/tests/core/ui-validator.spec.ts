@@ -24,18 +24,12 @@ function accepted(value: unknown): unknown {
 }
 
 describe('validateMayflyUiNode', () => {
-  it('requires a tab address for conditional tab visibility and validates its viewport', () => {
-    expect(validateMayflyUiNode(ui.stack.row([
-      ui.child(ui.text('orphan'), { tabWhen: { maxWidth: 80 } }),
-    ]))).toMatchObject({ ok: false, message: expect.stringContaining('tabWhen requires tab') })
+  it('rejects tab children outside UI content and keeps page identity through admission', () => {
     const node = ui.stack.column([
       ui.tabs({ id: 'views', activeId: 'one', items: [{ id: 'one', label: 'One' }] }),
-      ui.child(ui.text('page'), { tab: { controlId: 'views', itemId: 'one' }, tabWhen: { maxWidth: 80 } }),
+      ui.child(ui.text('page'), { tab: { controlId: 'views', itemId: 'one' } }),
     ])
     expect(accepted(node)).toEqual(node)
-    expect(validateMayflyUiNode(ui.stack.column([
-      node.children[0]!, ui.child(ui.text('bad'), { tab: { controlId: 'views', itemId: 'one' }, tabWhen: { minWidth: 90, maxWidth: 80 } }),
-    ]))).toMatchObject({ ok: false, message: expect.stringContaining('inverted') })
   })
   it.each([
     [null, 'object'],

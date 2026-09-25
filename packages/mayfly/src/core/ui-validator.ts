@@ -690,9 +690,6 @@ function uiChild<Node>(
     const tabValue = own(object, 'tab', path)
     if (tabValue !== undefined && deferWhen === undefined) invalid(`${path}.tab is only supported in UI content`)
     const tab = tabValue === undefined ? undefined : pageSegment(tabValue, `${path}.tab`, state)
-    const tabWhenValue = own(object, 'tabWhen', path)
-    if (tabWhenValue !== undefined && tab === undefined) invalid(`${path}.tabWhen requires tab`)
-    const tabWhen = tabWhenValue === undefined ? undefined : viewportCondition(tabWhenValue, `${path}.tabWhen`)
     const minSize = minValue === undefined ? undefined : finiteInteger(minValue, `${path}.minSize`)
     const maxSize = maxValue === undefined ? undefined : finiteInteger(maxValue, `${path}.maxSize`)
     if (minSize !== undefined && maxSize !== undefined && minSize > maxSize) invalid(`${path} size range is inverted`)
@@ -712,7 +709,6 @@ function uiChild<Node>(
       node: child,
       ...optional(idValue === undefined ? undefined : identifier(idValue, `${path}.id`, state), 'id'),
       ...optional(tab, 'tab'),
-      ...optional(tabWhen, 'tabWhen'),
       ...optional(basis, 'basis'),
       ...optional(growValue === undefined ? undefined : finiteInteger(growValue, `${path}.grow`), 'grow'),
       ...optional(shrinkValue === undefined ? undefined : finiteInteger(shrinkValue, `${path}.shrink`), 'shrink'),
