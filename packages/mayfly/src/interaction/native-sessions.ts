@@ -7,9 +7,10 @@ import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import { ui, type MayflyOverlayHandle, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyTranslate } from '../frontend/index.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
-export async function openSessions(ctx: Context, signal: AbortSignal): Promise<CommandResult> {
+export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyTranslate): Promise<CommandResult> {
   const lifetime = new AbortController()
   const abort = AbortSignal.any([signal, lifetime.signal])
   const cleanup = ctx.effect(() => () => lifetime.abort())
@@ -19,11 +20,15 @@ export async function openSessions(ctx: Context, signal: AbortSignal): Promise<C
   let searchRows: readonly MayflyListItem[] | undefined
   let message = ''
   const refresh = async () => { sessions = (await ctx.sessionController.list({}, abort)).items }
-  const rows = (): readonly MayflyListItem[] => searchRows ?? sessions.map(session => ({
-    id: session.sessionId, label: session.projections?.values.title ?? session.sessionId,
-    detail: `${session.cwd ?? ''} · ${session.running ? 'running' : 'inactive'}${ctx.workspaceRegistry.archivedSessionIds.includes(session.sessionId) ? ' · archived' : ''}`,
-    ...(session.parentSessionId === undefined ? {} : { parentId: session.parentSessionId }),
-  }))
+  const rows = (): readonly MayflyListItem[] => searchRows ?? sessions.map(session => {
+    const reminders = session.projections?.values.schedule
+    return {
+      id: session.sessionId, label: session.projections?.values.title ?? session.sessionId,
+      detail: `${session.cwd ?? ''} · ${session.running ? 'running' : 'inactive'}${ctx.workspaceRegistry.archivedSessionIds.includes(session.sessionId) ? ' · archived' : ''}`,
+      ...(session.parentSessionId === undefined ? {} : { parentId: session.parentSessionId }),
+      ...(Array.isArray(reminders) && reminders.length > 0 ? { badge: t('Reminders') } : {}),
+    }
+  })
   const node = () => ui.surface({ title: 'Sessions', chrome: 'overlay', child: ui.stack.column([
     ...(message === '' ? [] : [ui.text(message)]),
     ui.form({ id: 'content-search', fields: [{ kind: 'input', id: 'query', label: 'Search conversation contents', value: '' }] }),

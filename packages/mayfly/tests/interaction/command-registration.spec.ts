@@ -33,6 +33,7 @@ async function setup() {
   ctx.provide('sessionProjections', { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: () => () => {} } as never)
   ctx.provide('sessionController', {} as never)
   ctx.provide('tools', { schemas: () => [] } as never)
+  ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   await ctx.plugin({ name: 'test-interaction-state', apply(owner: Context) { new InteractionStateService(owner, DEFAULT_SETTINGS) } })
   await ctx.plugin(frontend)
   const consumer = await ctx.plugin(commands)

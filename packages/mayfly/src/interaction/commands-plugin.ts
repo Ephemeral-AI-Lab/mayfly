@@ -6,6 +6,7 @@
 import { registerPluginCommand } from './plugin-commands.ts'
 import { openSessions } from './native-sessions.ts'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 // Empty type import carries the app-owned session reader/actions Context
 // merges and the `'mayfly/request-*'` Events merges this plugin emits.
@@ -38,6 +39,7 @@ export const inject = [
   'sessionProjections',
   'sessions',
   'tools',
+  'workspaceRegistry',
 ]
 
 /**
@@ -58,7 +60,7 @@ export function apply(ctx: Context): void {
    * @returns the command outcome.
    */
   async function listSessions(signal: AbortSignal): Promise<CommandResult> {
-    return openSessions(ctx, signal)
+    return openSessions(ctx, signal, t)
   }
 
   /** Open a picker of safe branch points from the live session. */
@@ -154,8 +156,22 @@ export function apply(ctx: Context): void {
     const fresh = ctx.commands.register({
       name: 'new',
       description: 'Start a new session',
-      handler: () => {
-        ctx.emit('mayfly/request-new')
+      input: { hint: '[preset]' },
+      handler: async invocation => {
+        const preset = invocation.rawInput.trim()
+        if (preset !== '') {
+          if (invocation.signal.aborted) return { kind: 'success' as const }
+          try {
+            const roster = ctx.get('agentPresets')
+            const usable = roster !== undefined
+              && (await roster.list()).some(item => item.id === preset && item.broken === undefined)
+            if (!usable) return { kind: 'error' as const, text: t('unknown agent preset {preset}', { preset }) }
+          } catch (error) {
+            return { kind: 'error' as const, text: error instanceof Error ? error.message : String(error) }
+          }
+          if (invocation.signal.aborted) return { kind: 'success' as const }
+        }
+        ctx.emit('mayfly/request-new', preset === '' ? undefined : preset)
         return { kind: 'success' as const, text: 'starting a new session' }
       },
     })
