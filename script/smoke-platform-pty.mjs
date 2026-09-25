@@ -161,10 +161,10 @@ try {
   await delay(200)
   terminal.write('portable-form')
   await waitFor(() => view().includes('portable-form'), 'form editing')
-  terminal.write('\r')
-  await delay(200)
   terminal.write('\x7f')
   await waitFor(() => view().includes('portable-for') && !view().includes('portable-form'), 'form backspace')
+  terminal.write('\r')
+  await delay(200)
   for (let attempt = 0; attempt < 4 && !view().includes('Discard unsaved changes'); attempt += 1) {
     terminal.write('\x1b')
     await delay(350)
