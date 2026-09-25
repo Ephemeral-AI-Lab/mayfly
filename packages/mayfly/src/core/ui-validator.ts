@@ -1060,7 +1060,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           if (cancelActionId.trim().length === 0) invalid(`${path}.cancelActionId must not be empty`)
           reserveControl(cancelActionId, state)
         }
-        return { kind, message: text(required(object, 'message', path), `${path}.message`, state), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['braille', 'tide'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId') }
+        return { kind, message: text(required(object, 'message', path), `${path}.message`, state), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['braille', 'tide'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel') }
       }
       case 'empty': {
         const actionsValue = own(object, 'actions', path)

@@ -1210,7 +1210,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       stack.addChild(staticComponent(width => renderLoader(node, width, options.colors), options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
       }

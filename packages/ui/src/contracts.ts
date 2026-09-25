@@ -135,7 +135,7 @@ export interface MayflyActionItem {
   readonly key?: string
 }
 export interface MayflyActionsNode { readonly kind: 'actions', readonly id: string, readonly items: readonly MayflyActionItem[] }
-export interface MayflyLoaderNode { readonly kind: 'loader', readonly message: string, readonly variant?: 'braille' | 'tide', readonly elapsedMs?: number, readonly cancelActionId?: string }
+export interface MayflyLoaderNode { readonly kind: 'loader', readonly message: string, readonly variant?: 'braille' | 'tide', readonly elapsedMs?: number, readonly cancelActionId?: string, readonly cancelLabel?: string }
 export interface MayflyEmptyNode { readonly kind: 'empty', readonly title: string, readonly description?: string, readonly actions?: MayflyActionsNode }
 export interface MayflyProgressNode { readonly kind: 'progress', readonly label?: string, readonly value: number, readonly max: number }
 export interface MayflySpacerNode { readonly kind: 'spacer', readonly size?: 1 | 2 }

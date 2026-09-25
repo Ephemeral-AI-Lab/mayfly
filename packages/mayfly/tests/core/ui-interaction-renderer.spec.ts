@@ -667,6 +667,7 @@ describe('shared interaction compiler', () => {
         { kind: 'multiselect', id: 'tags', label: 'Tags', value: [], options: [{ id: 't', label: 'T' }] },
       ], submitActionId: 'save', cancelActionId: 'close' }),
       ui.list({ id: 'rows', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'a', label: 'alpha' }] }),
+      ui.loader({ message: 'Working', cancelActionId: 'stop', cancelLabel: 'Stop now' }),
     ]), undefined, 'alternate', undefined, { translate: (key: string, values?: Readonly<Record<string, string | number>>) => `zh:${key}${values === undefined ? '' : JSON.stringify(values)}` })
     const renderer = compile()
     const rows = renderer.compiled.component.render(100).join('\n')
@@ -675,6 +676,7 @@ describe('shared interaction compiler', () => {
     expect(rows).toContain('zh:Cancel')
     expect(rows).toContain('zh:Choose…')
     expect(rows).toContain('zh:None selected')
+    expect(rows).toContain('Stop now')
     renderer.runtime.dispose()
   })
 
