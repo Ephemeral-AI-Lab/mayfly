@@ -933,7 +933,8 @@ should not repeat generic keyboard teaching in a surface footer:
 
 - Focus descends through outer tabs → nested tabs → content groups → editing.
 - A tab strip uses non-wrapping Left/Right and Enter to descend. Tab/Shift-Tab
-  is inert on tab strips and cycles semantic groups only in content, remembering
+  moves between control groups — from a tab strip it descends into the active
+  tab's content, and within content it cycles semantic groups, remembering
   the last focused item in each group.
 - Directional content movement does not wrap and disabled items cannot receive
   focus. Single lists activate with Enter; multiple lists toggle with Space and

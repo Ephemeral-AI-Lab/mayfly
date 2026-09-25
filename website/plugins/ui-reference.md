@@ -879,7 +879,8 @@ surface footer 里重复写通用按键教学：
 
 - 焦点按外层 tabs → 内层 tabs → 内容语义组 → 编辑态逐层下钻。
 - tab 条用不循环的 `←` / `→` 移动，`Enter` 下钻；`Tab` / `Shift-Tab`
-  在 tab 条上无动作，只在内容层循环语义组并记住组内焦点。
+  在控制组间移动——在 tab 条上会下钻到当前 tab 的内容，在内容层则循环
+  语义组并记住组内焦点。
 - 内容方向移动不循环；disabled item 不可聚焦。single list 用 `Enter`
   激活，multiple list 用 `Space` 切换、`Enter` 确认，action 用 `Enter` 或 `Space`。
 - text/select 进入编辑或调整态后用 `Enter` 确认，非法值保持原字段；`Tab` 保留文本

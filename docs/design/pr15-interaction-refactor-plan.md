@@ -1,14 +1,16 @@
 # PR #15 interaction refactor detailed implementation plan
 
-Status: target plan and implementation-gap re-review; release acceptance not
-yet complete. Draft date: 2026-09-06; re-review date: 2026-09-07. Problem
-baseline: `b82acd2`, i.e. main after PR #15 merged; also checked against the
-uncommitted implementation in the `refactor/ui-interaction` worktree. Pinned
-Harness version: `0.1.2-alpha.5`.
+Status: executed — the refactor merged into main (`5fbbdc8`, 2026-09-08) and
+the candidate worktree was retired. This document is kept as the design
+record of the shipped interaction model; §3–§8 describe the protocol and
+semantics the implementation follows. Draft date: 2026-09-06; re-review date:
+2026-09-07. Problem baseline: `b82acd2`, i.e. main after PR #15 merged; also
+checked against the uncommitted implementation in the
+`refactor/ui-interaction` worktree. Pinned Harness version: `0.1.2-alpha.5`.
 
 This document builds on [PR #15](https://github.com/Ephemeral-AI-Lab/mayfly/pull/15),
 the [unified model design](./ui-ux-unification.md), and the
-[batched implementation plan](./ui-ux-implementation.md), filling in
+batched implementation plan, filling in
 code-level decisions, models, consumers, interaction timing, and delivery
 gates. Type fragments express the target protocol — they are not usage
 examples of a released SDK; parts where the candidate implementation already
@@ -29,7 +31,7 @@ the current state of an independent worktree.
 | Rewritten consumers | Provider/OAuth/first-run/model, questionnaire/approval/plan, settings/preset, Tools/MCP, session info/Skills already use shared nodes | "Rewritten" does not mean lifecycle, coverage, and release closure have passed |
 | Jobs | Migrated real native-registry tests and the old width scan: 37 behavior tests and 16 sizing cases pass; jobs.ts is at 100% on all four metrics | The base consumer is closed; full Document in-page anchors still depend on the later shared implementation |
 | Not yet closed | Help, marketplace, sessions/agents, permission and update/trace paths, editor extensions, the old generic stack, complete notifications, and action routing | Wire in item by item per the consumer table below, deleting old paths |
-| Verification record | The [progress record](./ui-interaction-progress.md) last recorded 41 related files and 572 tests passing, plus 18 old-protocol type errors and insufficient coverage; that checkpoint predates the Jobs rewrite | Those tests were not rerun this time; the numbers are not a current whole-worktree pass proof |
+| Verification record | A migration progress record (retired after the merge) last recorded 41 related files and 572 tests passing, plus 18 old-protocol type errors and insufficient coverage; that checkpoint predates the Jobs rewrite | Those tests were not rerun this time; the numbers are not a current whole-worktree pass proof |
 | Release status | Full build/lib/pack/full gate not done; no new profile/PTY/manual acceptance | The existing mixed `lib/` cannot be installed as this refactor's acceptance build |
 
 This re-review only perfects the plan document. Later execution follows the

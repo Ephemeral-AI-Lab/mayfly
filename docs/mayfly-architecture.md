@@ -85,8 +85,9 @@ plugin bridge, and no app session facade.
 - App holds the primary Agent selection, the single auxiliary slot, and the
   currently displayed side; it does not reimplement the Harness
   command/tool/projection APIs. A live auxiliary session becomes the exact
-  current Agent; a one-shot child is shown by the core-owned generic readonly
-  transcript panel.
+  current Agent; a one-shot child is shown by the shared readonly transcript
+  panel, which lives in `interaction/` and is projected into a core-owned
+  editor host slot.
   App does not depend on the terminal screen, so a core/theme reload creates no
   new session and resets no selection.
 - A BTW Agent still carries the complete seed as model context, but

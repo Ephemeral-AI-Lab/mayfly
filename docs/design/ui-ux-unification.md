@@ -1,8 +1,11 @@
 # Mayfly UI/UX unified model design proposal
 
-Status: analysis and design proposal, not yet implemented. This document does
-not replace the current architecture documents, and does not mean the
-internal types, events, or APIs proposed below already exist.
+Status: implemented — the unified model merged into main (`5fbbdc8`).
+Sections 2–3 describe the pre-migration baseline (`bd171aa`/`b57eb0d`) and
+the controller code they cite has since been deleted; the later sections are
+the design rationale the shipped `ui-interaction-*`/`ui-compiler`
+implementation follows. This document does not replace the current
+architecture documents.
 
 Review date: 2026-09-06. Original audit baseline: `bd171aa`, which included
 the plan/YOLO decoupling, the permission picker fix, and Yes/No confirmation.
@@ -18,11 +21,9 @@ rules.
 Related evidence: [first interaction review](../audits/2026-09-06-interaction-ux.md),
 [notification audit](../audits/2026-09-06-notifications.md).
 
-Coding delivery is covered by the
-[UI/UX interaction refactor implementation plan](./ui-ux-implementation.md).
-This round fills in the public protocol, the stable owner, authorization
-guidance, and pilot gates; the added protocols are all proposed designs, not
-existing APIs.
+The detailed execution plan that implemented this design is preserved in
+[the PR #15 refactor plan](./pr15-interaction-refactor-plan.md); the per-step
+process documents were retired after the merge.
 
 ## 1. Conclusion and goals
 
@@ -878,8 +879,8 @@ not keep expanding to the marketplace, questionnaire, or all forms. If the
 shared reducer and instance owner already meet the goals, the coordination
 layer does not centralize more business flows just for the sake of "one
 model". Confirmed, independently verifiable P1 fixes may ship first; the
-concrete coding batches, dependencies, and acceptance are in the
-[implementation plan](./ui-ux-implementation.md).
+concrete coding batches, dependencies, and acceptance were recorded in the
+implementation plan (retired with the migration's process documents).
 
 The public-contract migration for each control kind completes together with
 that kind — third-party entry points are not deferred to the end. Pilots or

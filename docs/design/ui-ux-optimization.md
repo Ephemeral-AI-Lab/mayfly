@@ -1,31 +1,36 @@
 # Mayfly terminal UX optimization design: aligning every surface under the unified interaction model
 
-- Status: design document (based on the already-implemented unified
-  interaction architecture; does not include merged runtime changes)
-- Baseline: `867082e` (main)
+- Status: mostly implemented — contract increments M1–M6 and the §7 command
+  changes shipped (feat/ux-interaction, merged `a1ca2d5`); M7 and the listed
+  polish items remain open. Sections that describe "current" behavior were
+  written against baseline `867082e`; the Implementation status notes call
+  out what has since landed.
+- Baseline: `867082e` (main at design time)
 - Scope: all implemented surfaces, commands, editor state, and key routing
 - Related documents: `ui-ux-unification.md` (shared interaction contract),
-  `ui-interaction-progress.md` (refactor completion record),
+  `pr15-interaction-refactor-plan.md` (refactor design record),
   `packages/mayfly/AGENTS.md`, `packages/ui/AGENTS.md`
 
 ## 0. Summary
 
 The unified interaction architecture is complete (Steps 1–20): every overlay
 goes through `UiSurfaceModel` + compiler key dispatch, and no private
-controllers remain. What is left are **experience-layer** problems, grouped
-into five categories:
+controllers remain. At the baseline this document listed five
+**experience-layer** problem categories — all since addressed by the shipped
+implementation:
 
-1. **Missing direct-access keys**: decision lists (provider kind, effort,
-   approval, plan) rely on ↑↓ + Enter with no numeric shortcut.
-2. **Nested popups**: `/model` opens a second-level form to re-pick effort
-   after Enter; provider edit's add-model is a separate popup.
-3. **Implicit flows**: provider add's tab order contradicts the actual
-   dependency order (key → discover → pick models → save); a disabled Save
-   gives no reason.
-4. **Poor discoverability**: inline ←→ effort adjust on segment rows is
-   implemented but has no hint; select's arrow-key instant cycle has no hint.
-5. **Input-state conflicts**: bare-letter shortcuts bound on a filterable list
-   swallow the first character of type-to-filter.
+1. **Missing direct-access keys** — resolved by M1 `numbered` lists on
+   provider kind, effort, plan, and questionnaire surfaces (approval
+   deliberately keeps an actions row; see §12).
+2. **Nested popups** — resolved: `/model` commits from one picker with inline
+   effort and the second-level options overlay is deleted.
+3. **Implicit flows** — resolved: provider add runs an ordered wizard with
+   inline model discovery, and disabled actions carry `disabledReason`.
+4. **Poor discoverability** — resolved: a focused select row renders the
+   `‹ ›` cycle hint (M3) and segments show the effort hint.
+5. **Input-state conflicts** — resolved: the bare-letter `i/u/r`/`q` bindings
+   were removed from filterable surfaces; M7's registration-time warning is
+   the remaining enforcement.
 
 This document first pins down the "facts of the current state" (§1–2), then
 gives the global key grammar (§3), the control spec (§4), the lifecycle spec
@@ -78,34 +83,42 @@ Key points:
 
 ### 1.3 Key-dispatch priority (compiler fact)
 
-`handleInput`'s decision order — higher priority consumes first:
+`handleInput`'s decision order — higher priority consumes first (updated to
+the shipped order, which now includes the Ctrl+E, numbered, and Alt+←→
+branches added by M1/M6):
 
 ```
+0. Ctrl+E-expanded scroll view owns the whole frame: Ctrl+E/Esc collapse,
+   scroll keys move the shared viewport, every other key is swallowed;
+   Ctrl+E on a focused scroll control expands it
 1. Focused control belongs to a filterable list:
      searching:  Esc→exit search  Ctrl+U→clear  printable→into query (except Enter)
-     !searching: '/'→enter search   declared shortcut/reserved action→first
+     !searching: '/'→enter search   declared shortcut/numbered/reserved action→first
                  other printable→type-to-filter
 2. Esc chain: select picker cancel → wizard back() → dismissal='discard' passthrough
           → with tabs, jump back to parent tab group → onUnhandledEscape (close overlay/interrupt)
-3. Declared shortcuts (keyed accelerators): only when !searching && !editor &&
+3. Numbered list: `1-9` moves to and emits the Nth visible row (only when !searching)
+4. Alt+←→ → switch the enclosing/remembered tab group from any content control
+   (not while a text/select is being edited)
+5. Declared shortcuts (keyed accelerators): only when !searching && !editor &&
    no text/select editing in progress
-4. Empty list + Enter → selection-accept
-5. Tab/Shift+Tab → first commit in-progress text/select editing, then moveGroup(±1)
+6. Empty list + Enter → selection-accept
+7. Tab/Shift+Tab → first commit in-progress text/select editing, then moveGroup(±1)
                    (when the surface has exactly one editor, Tab passes through to the editor=completion)
-6. editor control → editor.handleInput (completion/history/rewrite belong to pi-tui)
-7. text field editing → editor; Enter=commit single line and move out / textarea newline; Alt+Enter=newline
-8. select not editing + arrow keys → instant cycle (begin+move+select+finish in one step)
-9. select editing → picker (↑↓ move, Space checks multiselect, Enter accepts and exits)
-10. scroll control → ↑↓/PgUp/PgDn/Home/End
-11. tab control → ←→ switch tabs (emits tab-change observation); Enter → jump to next control group
-12. list row → Space=tree expand/collapse; ↑↓/PgUp/PgDn/Home/End=move; ←→=segment adjust
-13. arrow keys → move within the same-axis group, else the geometrically nearest control
-14. text field not editing → Enter or printable → enter editing
-15. select not editing → Enter → enter picker
-16. field-action → Enter/Space → emit form intent
-17. toggle → Enter/Space → flip
-18. submit → Enter/Space → invoke (confirm/validate/handler chain)
-19. event control → Enter/Space → emit activate event
+8. editor control → editor.handleInput (completion/history/rewrite belong to pi-tui)
+9. text field editing → editor; Enter=commit single line and move out / textarea newline; Alt+Enter=newline
+10. select not editing + arrow keys → instant cycle (begin+move+select+finish in one step)
+11. select editing → picker (↑↓ move, Space checks multiselect, Enter accepts and exits)
+12. scroll control → ↑↓/PgUp/PgDn/Home/End
+13. tab control → ←→ switch tabs (emits tab-change observation); Enter → jump to next control group
+14. list row → Space=tree expand/collapse; ↑↓/PgUp/PgDn/Home/End=move; ←→=segment adjust
+15. arrow keys → move within the same-axis group, else the geometrically nearest control
+16. text field not editing → Enter or printable → enter editing
+17. select not editing → Enter → enter picker
+18. field-action → Enter/Space → emit form intent
+19. toggle → Enter/Space → flip
+20. submit → Enter/Space → invoke (confirm/validate/handler chain)
+21. event control → Enter/Space → emit activate event
 ```
 
 Three corollaries:
@@ -134,18 +147,18 @@ Three corollaries:
 
 | Kimi convention | Mayfly status | Adaptation |
 | --- | --- | --- |
-| Numbered direct access (1./2./3. pick an action) | No `numbered`; plan review hand-writes `1. Approve` into labels | **M1**: `MayflyListNode.numbered`; the compiler maps `1-9` to row selection *[contract+compiler]* |
+| Numbered direct access (1./2./3. pick an action) | **implemented** (M1): `MayflyListNode.numbered`; the compiler maps `1-9` to row selection | keep |
 | `!` prefix enters bash | implemented (editor-plus, including empty-bash Backspace/Esc to exit) | keep |
 | `@` file mention / `#` skill | implemented | keep |
 | Argument ghost hints `/cmd [args]` | implemented (`input.hint` → ghost) | keep |
 | Tab/Shift+Tab move between groups | implemented (moveGroup) | keep |
 | Esc steps out level by level (completion→edit→search→wizard→surface) | implemented | keep |
-| Enter=confirm / Alt+Enter=newline or secondary action | Enter=confirm implemented; Alt+Enter only does textarea newline | **M2**: `Alt+Enter` as "alternate submit" (/model session-only) *[contract+compiler]* |
+| Enter=confirm / Alt+Enter=newline or secondary action | **implemented** (M2): `Alt+Enter` is the alternate submit (/model session-only) | keep |
 | Search: type to filter | implemented (type-to-filter + `/` explicit search + Ctrl+U clear + Esc exit) | keep |
 | Dangerous actions confirm twice, safe option focused by default | implemented (shared decision, No focused by default) | keep |
 | Double Ctrl+C to quit | implemented (2s window + hint) | keep |
 | Minimal status bar, single-line actions row | implemented | keep |
-| Long content expands in place | none | **M6**: `Ctrl+E` promotes the focused long text/url/code into a fullscreen readonly viewer *[compiler]* |
+| Long content expands in place | **implemented** (M6): `Ctrl+E` promotes the focused scrollable content into a fullscreen readonly viewer | keep |
 
 ## 3. Global key grammar
 
@@ -165,8 +178,8 @@ Three corollaries:
 | Esc | Step out level by level: picker→search→wizard→tab→surface | compiler | view/may trigger dirty decision |
 | `/` | Enter list search (filterable) | compiler | view |
 | Ctrl+U | Clear search and return to the anchor | compiler | view |
-| `1-9` | **proposed**: numbered-list direct access | compiler (M1) | selection |
-| `Ctrl+E` | **proposed**: expand long content fullscreen | compiler (M6) | view |
+| `1-9` | numbered-list direct access (M1) | compiler | selection |
+| `Ctrl+E` | expand the focused scrollable content fullscreen / collapse (M6) | compiler | view |
 | Declared shortcuts (e.g. `c`/`r`/`o`) | action `key` field | declared by the surface, dispatched by the compiler | triggers handler |
 
 ### 3.2 Editor-specific
@@ -195,8 +208,9 @@ Three corollaries:
 - **Rule (decided §12)**: a filterable list's surface **must not** bind
   printable-character shortcuts (they swallow the first type-to-filter
   character); an action that needs a shortcut either binds a non-printable key
-  or lives in the actions row reachable by Tab. *[compiler: warn at
-  registration when a filterable surface binds a printable key]*
+  or lives in the actions row reachable by Tab. **Open (M7)**: the
+  registration-time warning when a filterable surface binds a printable key is
+  not yet implemented.
 - The hint line (the muted footer line of a surface) lists only keys usable in
   the **current state**, formatted `key action · key action`, with priority:
   danger/exit > search > primary op > navigation. While filtering, a
@@ -280,7 +294,7 @@ the focused row *[compiler rendering]*.
   returns to the anchor; `Esc` exits search.
 - `acceptActionId`: the action Enter triggers in choose mode.
 
-### 4.5 numbered choose (proposal M1)
+### 4.5 numbered choose (M1 — implemented)
 
 ```
 ╭ Add provider · step 1/3 ────────────────────────────────╮
@@ -292,8 +306,9 @@ the focused row *[compiler rendering]*.
 ╰──────────────────────────────────────────────────────────╯
 ```
 
-Number keys jump directly; ↑↓+Enter stays equivalent. Use for decision lists
-of ≤9 items: provider kind, effort, approval options, plan decisions.
+Number keys jump directly; ↑↓+Enter stays equivalent. Used for decision lists
+of ≤9 items: provider kind, effort, plan decisions, and questionnaire
+options. Approval deliberately kept its actions row (see §12).
 
 ### 4.6 tabs / wizard
 
@@ -540,16 +555,12 @@ filterable here, safe) — consistent with the "reading docs" mental model.
 No UI; equivalent to the Shift+Tab plan cycle, confirmed on the notification
 row. Keep.
 
-### 7.4 `/model` (main rework)
+### 7.4 `/model`
 
-Current: filterable browse list (provider groups + `current` badge + segment
-`Thinking:`); Enter→**a second-level overlay** to re-pick effort +
-[Set as default]/[Use for this session]/[Cancel].
-
-Gaps: effort is picked twice, there's an extra popup layer, and segment has
-no hint.
-
-Target:
+**Implemented** (M2): the baseline shape was a filterable browse list whose
+Enter opened a second-level overlay to re-pick effort; that popup is deleted
+and the picker now looks and behaves as below — Enter commits the inline
+effort and writes the default, Alt+Enter applies session-only:
 
 ```
 ╭ Select a model ─────────────────────────────────────────╮
@@ -567,21 +578,16 @@ Target:
 
 - **Enter = inline effort + write default** (the original Set-as-default
   path).
-- **Alt+Enter = session-only**: needs `inputs.selections[]` to carry
-  `segmentId` (a contract delta — currently only the selection-accept event
-  carries it); the `session` action declares `key:'alt+enter'` +
-  `selections:[models]`.
-- Delete the second-level `modelOptions` overlay; `/provider switch <id>`
-  reuses the same picker (filterProvider already exists).
-
-Cost: *[contract (segmentId into selections) + compiler (Alt+Enter as a keyed
-accelerator) + projection (delete the popup)]*. Decided §12: Enter writes the
-default directly, no scope dialog kept.
+- **Alt+Enter = session-only**: `inputs.selections[]` carries `segmentId`
+  (M2 contract delta — shipped) and the `session` action declares
+  `key:'alt+enter'` + `selections:[models]`.
+- The second-level `modelOptions` overlay is deleted; `/provider switch <id>`
+  reuses the same picker.
 
 ### 7.5 `/effort` (`/thinking` alias)
 
-Current: reuses the modelOptions form popup. Target: numbered choose (M1),
-≤9 levels direct:
+**Implemented** (M1): the baseline reused the modelOptions form popup; it is
+now a numbered choose list, ≤9 levels direct:
 
 ```
 ╭ Thinking effort — deepseek-v4-pro ──────────────────────╮
@@ -591,16 +597,18 @@ Current: reuses the modelOptions form popup. Target: numbered choose (M1),
 ╰──────────────────────────────────────────────────────────╯
 ```
 
-Cost: *[M1 + projection]*.
-
 ### 7.6 `/provider` (list/edit/switch/add + onboarding + OAuth)
 
-**List**: add a detail per row (`N models · key configured/no key set`), use
-the warning tone when key is missing; `Add provider` stays in the actions row
-(no bare letters on filterable). *[projection]*
+**Implemented** (all sub-flows below landed with the ux-interaction merge):
+row details, the ordered add wizard, inline model add, disabledReason hints,
+and OAuth/onboarding enterSubmits.
 
-**add**: switch to an explicit wizard (`mode:'wizard'` already has completion
-tracking), fixing the reversed "Models before Credentials" order:
+**List**: a detail per row (`N models · key configured/no key set`), warning
+tone when the key is missing; `Add provider` stays in the actions row
+(no bare letters on filterable).
+
+**add**: an explicit wizard (`mode:'wizard'` completion tracking), fixing the
+reversed "Models before Credentials" order:
 
 ```
 step1  numbered kind ──→ step2  Connection (name/protocol/   ──→ step3  Models
@@ -619,14 +627,10 @@ step1  numbered kind ──→ step2  Connection (name/protocol/   ──→ ste
 - Success→dismiss+feedback+auto-open that provider's /model picker
   (onCreated already exists).
 
-Cost: *[mostly projection; the enterSubmits contract serves OAuth child
-prompts]*.
-
 **edit**: isomorphic three-page tabs (Models/Connection/Credentials); the
 `Add custom model` popup→an inline `+ model id` row on the Models page;
-background discovery probe shows a loader row (currently fails silently);
-`Delete`/`Clear key` go through the shared decision (confirm already); when
-`!dirty`, Save is dimmed + `No changes`. *[projection]*
+background discovery probe shows a loader row; `Delete`/`Clear key` go
+through the shared decision; when `!dirty`, Save is dimmed + `No changes`.
 
 **OAuth** (authorization-ui): notice scroll + URL/code + copy actions +
 loader + Start/Cancel:
@@ -643,10 +647,10 @@ loader + Start/Cancel:
 
 Bare letters `c`/`y` are safe (no filterable); `Ctrl+E` expands the long URL
 fullscreen (M6). Child prompts (code/password) use a single field +
-enterSubmits. *[M6 + enterSubmits + projection]*
+enterSubmits (M5).
 
-**onboarding**: a single secret field + enterSubmits, Enter=Save, Esc=skip.
-*[contract+projection]*
+**onboarding**: a single secret field + enterSubmits, Enter=Save, Esc=skip
+(M5).
 
 ### 7.7 `/settings`
 
@@ -685,19 +689,15 @@ All three share the "list→detail" shape: a uniform detail footer
 
 ### 7.11 `/plugin` (marketplace)
 
-Current: tabs Installed/Not installed → per-group filterable browse list +
-actions (Details + `i` install / `u` remove + `r` refresh + Close) → detail
-overlay (scroll sections + Close); install/remove report progress + remove
-confirms.
+Tabs Installed/Not installed → per-group filterable browse list + actions
+(Details + install / remove + refresh + Close) → detail overlay (scroll
+sections + Close); install/remove report progress + remove confirms.
 
-Gap: `i`/`u`/`r` are **bare-letter keys bound on a filterable list** — typing
-`i` to filter for "install" triggers install first.
-
-Target (decided §12): the actions row keeps
-Details/Install/Remove/Refresh/Close, **the bare `i`/`u`/`r` keys are
-deleted**, reaching actions via Tab + ←→ + Enter; search goes entirely to
-type-to-filter. The high-frequency Refresh can rebind to the non-printable
-`Ctrl+R`.
+Baseline gap — resolved (§12 decision shipped): the `i`/`u`/`r` bare-letter
+keys on the filterable list are **deleted**, actions are reached via
+Tab + ←→ + Enter, search goes entirely to type-to-filter, and Refresh is
+rebound to the non-printable `Ctrl+R`. What remains open is only the M7
+registration-time warning that would codify the rule for future surfaces.
 
 ```
 ╭ Plugins ────────────────────────────────────────────────╮
@@ -710,9 +710,6 @@ type-to-filter. The high-frequency Refresh can rebind to the non-printable
 │ Type filter · ↑↓ · Tab actions · Esc                     │
 ╰──────────────────────────────────────────────────────────╯
 ```
-
-Cost: *[projection removes the key fields]*; paired with §3.3's registration
-warning *[compiler]*.
 
 ### 7.12 `/update`
 
@@ -761,21 +758,20 @@ status is re-checked before Stop.
 ╰──────────────────────────────────────────────────────────╯
 ```
 
-Gap: running rows do not refresh automatically. Proposal: the list page runs
-a 5s polling refresh (a surface `load` refetch, fenced by revision); or the
-row detail notes "snapshot · Refresh to update". *[projection]*
+Implemented, at a tighter cadence than proposed: the list page polls
+approximately every second (a Fiber-owned refresh fenced by revision and
+generation) rather than the 5s suggested here, so running rows update live.
 
 ### 7.15 `/agents`
 
 subagent tree browser (filterable; running badge + a metrics row:
 `3 tools · 12k tok · 1m04s`; diagnostic rows disabled) → Enter opens that
-child Agent's aux view; `q` stop with confirm.
+child Agent's aux view; a `[ Stop selected ]` action with confirm.
 
-Gap: bare `q` vs filterable — same as §7.11, except here the list items'
-searchText contains label/id/mode, so with `q` bound it cannot be used to
-filter. Decided (§12): remove the `q` key, keep `[ Stop selected ]` in the
-actions row reachable by Tab, and restore searchText as fully filterable.
-*[projection]*
+Implemented (§12 decision shipped): the baseline bound `q` to stop, which
+conflicted with filtering on rows whose searchText contains label/id/mode.
+The `q` key is removed and stop lives in the actions row reachable by Tab,
+so searchText is fully filterable.
 
 ### 7.16 `/btw` + auxiliary view
 
@@ -792,16 +788,17 @@ close`; cold/one-shot child sessions use the shared readonly transcript panel
 ╰──────────────────────────────────────────────────────────╯
 ```
 
-In good shape. Proposal: while the aux view is open, the main editor's hint
-line shows `⇄ BTW active · F7` (currently only shown on the aux side).
-*[projection]*
+In good shape. Implemented: while the aux view is open, the F7/F8 hint is
+rendered on both the primary and auxiliary sides (the proposal asked for the
+main-side hint; both sides show it).
 
 ### 7.17 Plan/approval/questionnaire/authorization (Agent-initiated surfaces)
 
 **plan review** (plan-review-panel + plan-document): the plan markdown goes
-into the content flow; the decision control sits in the editor dock —
-hand-written `1./2./3.` numbered labels + `c` copy / `o` other + `PgUp/PgDn ·
-⇧↑↓ scroll` hints.
+into the content flow; the decision control sits in the editor dock. The
+baseline hand-wrote `1./2./3.` into labels; it is now a `numbered` list (M1)
+so number keys dispatch directly, with `c` copy / `o` other and the feedback
+subform on enterSubmits (M5).
 
 ```
 content flow:                editor dock:
@@ -812,9 +809,6 @@ content flow:                editor dock:
 │                           │ c copy · o other · PgDn plan │
 │                           ╰──────────────────────────────╯
 ```
-
-Proposal: migrate to `numbered` (M1), number keys dispatch directly; the
-feedback subform uses enterSubmits. *[M1+contract+projection]*
 
 **Approval** (approval-plugin): tabs `Decision`/`Reject with feedback`;
 actions [Reject][Allow once][Allow X for session][Reject with feedback].
@@ -827,14 +821,15 @@ actions [Reject][Allow once][Allow X for session][Reject with feedback].
 ╰──────────────────────────────────────────────────────────╯
 ```
 
-Proposal: numbered (1=Reject, safe default already focused on the leftmost
-danger). Approval is high-frequency — numeric direct access pays off most.
-*[M1+projection]*
+Deviation from the proposal (see §12): approval was **not** converted to a
+numbered list. It keeps the actions row with `Reject` as the focused safe
+default — the proposal's `1=Reject` numbering would have made a single digit
+approve nothing while `2`/`3` granted access, which read poorly for a
+permission gate.
 
 **Questionnaire** (questionnaire/AskUserQuestion): wizard tabs + choose list
-+ `Other:` textarea + Back/Next + Submit/Cancel. Already canonical; proposal:
-Enter on a focused Other field submits the current page (enterSubmits).
-*[contract]*
++ `Other:` textarea + Back/Next + Submit/Cancel. Implemented (M5): Enter on
+a focused Other field submits the current page (enterSubmits).
 
 ### 7.18 Info overlays: `/status /context /version /changelog /export /copy /init`
 
@@ -851,7 +846,7 @@ Enter on a focused Other field submits the current page (enterSubmits).
 | Component | Current | Proposal |
 | --- | --- | --- |
 | pane-queue | shows `Queued:`/`Steer:` rows when non-empty | keep |
-| agent-view-status | `MAIN⇄AUX·F7·F8` | also hint on the main side while aux is open (§7.16) |
+| agent-view-status | `MAIN⇄AUX·F7·F8` | implemented: the hint renders on both sides while aux is open (§7.16) |
 | mode-status | `plan`/`yolo` shown only when non-default | keep |
 | notification row | severity→tone, app/session scope, newest of highest severity | keep; operation notifications aggregate by `operationId` (already) |
 | terminal-title | mirrors the session title | keep |
@@ -869,39 +864,41 @@ goes through width-scan (`render(width)` with no line overflowing).
 
 ## 9. Contract and compiler delta list
 
-| ID | Delta | Serving scenario | Layer |
-| --- | --- | --- | --- |
-| M1 | `MayflyListNode.numbered: true` → rows render an `N.` prefix + `1-9` keys jump directly | provider kind, effort, approval, plan | contract+compiler+rendering |
-| M2 | `inputs.selections[]` carries `segmentId`; `Alt+Enter` usable as a `key` | /model session scope | contract+compiler |
-| M3 | a focused select row renders a `‹ ›` cycle hint at its end | provider edit/add, settings | compiler rendering |
-| M4 | auto-mark the initiating action busy during invoke (cleared on reply landing) | discovery, Save, install, retry | compiler |
-| M5 | `MayflyFormNode.enterSubmits?: actionId` → single-field Enter submits directly | onboarding, OAuth prompt, plan feedback, questionnaire Other | contract+compiler |
-| M6 | `Ctrl+E` promotes the focused long text/URL/code into a fullscreen readonly viewer (Esc returns) | OAuth URL, approval reason, plan, trace | compiler (biggest item) |
-| M7 | warn at registration when a filterable surface binds a printable shortcut (dev-time) | marketplace, agents | compiler/keymap |
-
-M1–M5 are small; M6 needs a fullscreen readonly presentation variant (can
-reuse the scroll control + `chrome:'overlay'`).
+| ID | Delta | Serving scenario | Layer | Status |
+| --- | --- | --- | --- | --- |
+| M1 | `MayflyListNode.numbered: true` → rows render an `N.` prefix + `1-9` keys jump directly | provider kind, effort, plan, questionnaire | contract+compiler+rendering | shipped |
+| M2 | `inputs.selections[]` carries `segmentId`; `Alt+Enter` usable as a `key` | /model session scope | contract+compiler | shipped |
+| M3 | a focused select row renders a `‹ ›` cycle hint at its end | provider edit/add, settings | compiler rendering | shipped |
+| M4 | auto-mark the initiating action busy during invoke (cleared on reply landing) | discovery, Save, install, retry | compiler | shipped |
+| M5 | `MayflyFormNode.enterSubmits?: actionId` → single-field Enter submits directly | onboarding, OAuth prompt, plan feedback, questionnaire Other | contract+compiler | shipped |
+| M6 | `Ctrl+E` promotes the focused scrollable content into a fullscreen readonly viewer (Esc/Ctrl+E returns) | OAuth URL, approval reason, plan, trace | compiler | shipped (any scroll control, not a separate presentation variant) |
+| M7 | warn at registration when a filterable surface binds a printable shortcut (dev-time) | marketplace, agents | compiler/keymap | **open** |
 
 ## 10. Migration priorities
 
-| # | Content | Reason |
+Historical execution order — items 1–7 all landed in the ux-interaction
+merge; item 8 is partially done:
+
+| # | Content | Status |
 | --- | --- | --- |
-| 1 | `/model` (M2 + delete the second-level popup + segment hint M3) | used daily, smallest change |
-| 2 | `/provider edit` inline model add + list detail | high frequency, mostly done in the projection layer |
-| 3 | `/provider add` wizard reorder + auto discovery + retry | flow correctness |
-| 4 | M1 numbered → provider kind, effort, approval, plan | one compiler change benefits many places |
-| 5 | marketplace/agents bare-letter cleanup (M7) | fixes the input conflict |
-| 6 | M4 auto busy marking | unifies the async feel |
-| 7 | OAuth/onboarding (M5+M6) | low frequency but closes the loop |
-| 8 | jobs polling, sessions placeholder, rewind count, and other polish | wrap-up |
+| 1 | `/model` (M2 + delete the second-level popup + segment hint M3) | landed |
+| 2 | `/provider edit` inline model add + list detail | landed |
+| 3 | `/provider add` wizard reorder + auto discovery + retry | landed |
+| 4 | M1 numbered → provider kind, effort, plan, questionnaire (approval excluded, §12) | landed |
+| 5 | marketplace/agents bare-letter cleanup | landed (M7 warning still open) |
+| 6 | M4 auto busy marking | landed |
+| 7 | OAuth/onboarding (M5+M6) | landed |
+| 8 | jobs polling, sessions placeholder, rewind count, and other polish | partially: jobs polls ~1s; `/help` `q` close, `/trace` `[c]`, sessions ellipsis placeholder, and settings/preset/MCP row-detail polish remain open |
 
 ## 11. Acceptance
 
 Document changes: no runtime acceptance needed (docs/** are documentation).
 
-Later implementation follows the root AGENTS: `verify:changed -- --plan` →
-`verify:changed`; touching the compiler/contracts (M1–M7) counts as an
-architecture change → `verify:full` + width-scan updates + a dedicated-profile
+The implementation landed on main via the ux-interaction merge and passed
+the full deterministic gate. Remaining work (M7 and the open polish items in
+§10 row 8) follows the root AGENTS: `verify:changed -- --plan` →
+`verify:changed`; touching the compiler/contracts counts as an architecture
+change → `verify:full` + width-scan updates + a dedicated-profile
 PTY acceptance (covering the main flow, narrow widths, and lifecycle
 regressions). Contract changes go through the full `packages/ui` gate
 (replay/replacement/duplicate/cancellation/late/Fiber-cleanup tests).
@@ -919,12 +916,18 @@ Decided:
    marketplace `i`/`u`/`r` and agents `q` are deleted, with the actions kept
    in the actions row reachable by Tab; high-frequency actions may bind
    non-printable keys (e.g. Refresh on `Ctrl+R`). The M7 registration-time
-   warning codifies this rule; the alternative (letters only go to input
-   after an explicit `/` enters search) was rejected as a two-layer rule that
-   is hard to teach.
+   warning codifies this rule and remains open; the alternative (letters only
+   go to input after an explicit `/` enters search) was rejected as a
+   two-layer rule that is hard to teach.
+3. **Approval keeps its actions row** (deviation from §7.17's numbering
+   proposal): `Reject` stays the focused safe default rather than mapping
+   digits to allow/deny — a permission gate reads better with an explicit
+   focused action than a `1=Reject, 2=Allow` numeric shortcut.
 
-Pending:
+Resolved during implementation:
 
-3. **Scope of `Ctrl+E` expansion**: the proposal is to do "long readonly
-   content" first (URL/code/reason), not editing-state text fields (the
-   editor's Ctrl+G external editor already covers that need).
+4. **Scope of `Ctrl+E` expansion**: shipped for any focused scroll control —
+   the expanded view owns the whole frame until Esc/Ctrl+E (§1.3 step 0) —
+   not just the proposed long readonly text/URL/code case, and not
+   editing-state text fields (the editor's Ctrl+G external editor already
+   covers that need).
