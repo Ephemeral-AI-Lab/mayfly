@@ -7,7 +7,7 @@
 | 命令 | 别名 | 参数 | 描述 | 来源 |
 | --- | --- | --- | --- | --- |
 | `/quit` | `/q` `/exit` | — | 退出 Mayfly | `mayfly-commands` |
-| `/new` | `/clear` | — | 开始新会话 | `mayfly-commands` |
+| `/new` | `/clear` | `[preset]` | 开始新会话（可选指定 agent 预设） | `mayfly-commands` |
 | `/fork` | — | — | 把当前会话 fork 成新会话 | `mayfly-commands` |
 | `/rewind` | — | — | 从当前会话较早的用户回合创建安全分支 | `mayfly-commands` |
 | `/sessions` | `/resume` | `[<session-id>]` | 以 lineage 树列出持久化会话并切换；带 id 直接恢复 | `mayfly-commands` |
@@ -45,7 +45,7 @@
 - **`/btw` / `/agents`** —— 共用一个辅助会话槽。live BTW/continuable child 复用完整主布局和编辑器，one-shot child 使用全保真只读 transcript panel；状态栏显式显示 `F7 switch · F8 close`。`/agents stop <id>` 只接受没有 live 后代的 live continuable child，浏览器里的停止需在 Yes / No 确认中选择 Yes；cold/inactive child 不会被误报为已停止，父节点需先从叶子向上停止，避免 Harness 的递归 teardown 扩大操作范围。
 - **`/model` / `/effort`** —— 无参数分别打开模型选择面板与横向力度选择器；面板用不循环的 `←` `→` 移动 provider/effort tabs、`Enter` 下钻、内容态 `Tab` 切到 action。选择 **`Set as default`** 会切换并持久化；选择 **`Use for this session`** 只改变当前会话。带参数直接切换并持久化为新默认。免开面板的快路：**`Alt+M`** 在当前 provider 的模型列表里逐个切换（仅本会话，草稿保留；见[键位参考](/reference/keys)）。
 - **`/provider`** —— 三条子命令：`list` 列出可用 provider 与当前路由；`switch <name>` 切换；`add` 进入新增 provider 流程。
-- **`/preset`** —— 在薄宿主预设名册（上游 `standard` / `minimal` / `ptc` / `cordis`，以及 Mayfly `mayfly-cordis`）上切换 agent 组合：工具面、人格与 plan 模式都来自当前预设。没有 `code` alias。仅在**空会话**允许切换——已开始的会话返回 `cannot switch presets: this session has already started (blank sessions only)`。
+- **`/preset`** —— 在薄宿主预设名册（上游 `standard` / `minimal` / `ptc` / `cordis`，以及 Mayfly `mayfly-cordis`）上切换 agent 组合：工具面、人格与 plan 模式都来自当前预设。没有 `code` alias。仅在**空会话**允许切换——已开始的会话返回 `cannot switch presets: this session has already started (blank sessions only)`。提醒工具（`schedule_*`）在 Agent 创建时绑定到其自身 scope，切换预设既不能收回也不能授予——若目标预设与当前会话的 schedule 能力不一致，`/preset` 会拒绝并提示用 `/new <preset>` 新建对应组合的会话。
 
 ## 模式与审批
 
@@ -74,4 +74,4 @@
 - `/diff`（未提交变更面板）、审批 diff 全屏预览 —— 发版后随 dogfood 反馈同评
 - `/debug` —— 需上游诊断导出面
 
-安装 Agent Team 插件并选择 `team` preset 后，`/team` 查看只读成员表与任务板；`/schedule` 查看原生会话提醒；`/files` 查看已交付文件。cold continuable child 历史支持 `i` 回复，发送才通过原生子会话地址恢复 Agent；浏览不激活。见 [Team 配置](/features/team)。
+安装 Agent Team 插件并选择 `team` preset 后，`/team` 查看只读成员表与任务板；`/schedule` 查看当前 Agent 的原生会话提醒（逾期优先排序、只读；提醒工具仅随 `standard` 预设启用，其余预设不含）；`/files` 查看已交付文件。cold continuable child 历史支持 `i` 回复，发送才通过原生子会话地址恢复 Agent；浏览不激活。见 [Team 配置](/features/team)。

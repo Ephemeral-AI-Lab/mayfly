@@ -25,7 +25,7 @@ interface AuthorSkillEvals {
 const require = createRequire(import.meta.url)
 const skillFilesystemRoot = dirname(require.resolve('@deepseek-ai/dsh-skill-filesystem/package.json'))
 const { parse } = createRequire(join(skillFilesystemRoot, 'package.json'))('yaml') as {
-  parse(source: string): unknown
+  parse(source: string, options?: unknown): unknown
 }
 
 function skillFrontmatter(source: string): SkillFrontmatter {
@@ -34,9 +34,17 @@ function skillFrontmatter(source: string): SkillFrontmatter {
   return parse(match![1]!) as SkillFrontmatter
 }
 
-/** A preset patch's rows, ignoring its leading comment header. */
-function rows(source: string): string {
-  return source.split('\n').filter(line => !line.startsWith('#') && line.trim() !== '').join('\n')
+function preset(source: string): unknown {
+  return parse(source, { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }] })
+}
+
+const mayflyOnlyRowIds = new Set(['schedule', 'time-context'])
+
+/** Exclude Mayfly's additive preset rows so the remaining composition tracks upstream exactly. */
+function withoutMayflyAdditions(value: unknown): unknown {
+  if (Array.isArray(value)) return value.filter(entry => !(entry !== null && typeof entry === 'object' && mayflyOnlyRowIds.has(entry.id))).map(withoutMayflyAdditions)
+  if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, withoutMayflyAdditions(entry)]))
+  return value
 }
 
 describe('Mayfly preset roster', () => {
@@ -68,13 +76,13 @@ describe('Mayfly preset roster', () => {
     ])
   })
 
-  it('vendors the shipped presets verbatim and adds mayfly-cordis without aliases', () => {
+  it('vendors the shipped presets with only Mayfly additive rows and adds mayfly-cordis without aliases', () => {
     const upstreamRoot = join(dirname(require.resolve('@deepseek-ai/dsh-web-app/package.json')), 'presets')
     const mayflyRoot = new URL('../presets/', import.meta.url)
     for (const id of ['standard', 'ptc', 'minimal', 'cordis']) {
       const upstream = readFileSync(join(upstreamRoot, `${id}.patch.yml`), 'utf8')
       const mayfly = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
-      expect(rows(mayfly), `presets/${id}.patch.yml must match the upstream declaration`).toBe(rows(upstream))
+      expect(withoutMayflyAdditions(preset(mayfly)), `presets/${id}.patch.yml adds only Mayfly rows`).toEqual(preset(upstream))
       expect(mayfly).toContain(`id: ${id}\n`)
     }
 
@@ -90,6 +98,29 @@ describe('Mayfly preset roster', () => {
     for (const rowId of ['persona', 'agent-instructions', 'tool-cordis', 'skill-filesystem', 'tool-skill', 'tool-plugin-manager']) {
       expect(mayfly).toContain(`- id: ${rowId}`)
     }
+  })
+
+  it('scopes the Schedule capability to the standard preset only', () => {
+    const mayflyRoot = new URL('../presets/', import.meta.url)
+    const standard = preset(readFileSync(new URL('standard.patch.yml', mayflyRoot), 'utf8')) as readonly {
+      readonly insert?: readonly { readonly id?: unknown; readonly config?: { readonly plugins?: readonly { readonly id?: unknown; readonly name?: unknown; readonly disabled?: unknown; readonly config?: unknown }[] } }[]
+    }[]
+    const rows = standard.flatMap(entry => entry.insert ?? []).find(row => row.id === 'preset-standard')?.config?.plugins ?? []
+    const schedule = rows.find(row => row.id === 'schedule')
+    expect(schedule?.name).toBe('@deepseek-ai/dsh-schedule')
+    expect(schedule?.disabled).toBeUndefined()
+    const timeContext = rows.find(row => row.id === 'time-context')
+    expect(timeContext?.name).toBe('@deepseek-ai/dsh-time-context')
+    expect(timeContext?.config).toEqual({ refreshIntervalMs: 300000 })
+    // No other preset may reference the capability: scoped event flow is the
+    // only isolation mechanism, and a dormant row elsewhere could not be
+    // flipped through profile patches anyway.
+    for (const id of ['minimal', 'ptc', 'cordis', 'mayfly-cordis']) {
+      const source = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
+      expect(source).not.toContain('dsh-schedule')
+      expect(source).not.toContain('dsh-time-context')
+    }
+    expect(readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')).not.toContain('dsh-schedule')
   })
 
   it('ships discoverable creative skills with valid frontmatter', () => {

@@ -991,6 +991,58 @@ describe('compileMayflyUiNode', () => {
     expect(editors[0]!.focused).toBe(false)
   })
 
+  it('keeps text editing and cursor position through draft recompilation', () => {
+    const form = ui.form({ id: 'form', fields: [
+      { kind: 'input', id: 'name', label: 'Name', value: 'Ada' },
+      { kind: 'input', id: 'other', label: 'Other', value: '' },
+    ] })
+    const model = new UiSurfaceModel('spec', {
+      id: 'spec', revision: 0, source: [], scope: { kind: 'app', targetId: 'spec' },
+      update: { reason: 'data' }, node: form,
+      events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) },
+      definition: {},
+    })
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    model.focusControl({ pagePath: [], controlId: 'name' })
+    const options = fixture().options
+    const compile = () => {
+      const result = compiledSurface(model.node!, options, runtime)
+      result.focusTarget!.focused = true
+      result.component.render(80)
+      return result.focusTarget!
+    }
+    let focus = compile()
+    focus.handleInput?.('\r')
+    focus.handleInput?.('\x1b[D')
+    focus.handleInput?.('\x7f')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.value).toBe('Aa')
+
+    focus = compile()
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'name', editing: true })
+    focus.handleInput?.('x')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.value).toBe('Axa')
+    focus = compile()
+    focus.handleInput?.('\x7f')
+    focus = compile()
+    focus.handleInput?.('\x7f')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.value).toBe('a')
+    focus = compile()
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'name', editing: true })
+    focus.handleInput?.('\t')
+    expect(compile().captureFocusIdentity?.()).toMatchObject({ controlId: 'other' })
+    expect(runtime.state.editingKey).toBeUndefined()
+
+    model.focusControl({ pagePath: [], controlId: 'name' })
+    focus = compile()
+    focus.handleInput?.('\r')
+    model.focusControl({ pagePath: [], controlId: 'other' })
+    focus = compile()
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'other' })
+    expect(runtime.state.editingKey).toBeUndefined()
+    runtime.dispose()
+    model.dispose()
+  })
+
   it('fences editor callbacks and every compiled facade across runtime generations', () => {
     const runtime = new MayflyUiSurfaceRuntime()
     const editors: MayflyEditor[] = []

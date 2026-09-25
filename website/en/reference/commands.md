@@ -7,7 +7,7 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 | Command | Aliases | Arguments | Description | Source |
 | --- | --- | --- | --- | --- |
 | `/quit` | `/q` `/exit` | — | Exit Mayfly | `mayfly-commands` |
-| `/new` | `/clear` | — | Start a new session | `mayfly-commands` |
+| `/new` | `/clear` | `[preset]` | Start a new session (optionally under a chosen agent preset) | `mayfly-commands` |
 | `/fork` | — | — | Fork the current session into a new one | `mayfly-commands` |
 | `/rewind` | — | — | Create a safe branch from an earlier user turn | `mayfly-commands` |
 | `/sessions` | `/resume` | `[<session-id>]` | List persisted sessions as a lineage tree and switch; an id resumes directly | `mayfly-commands` |
@@ -45,7 +45,7 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 - **`/btw` / `/agents`** — share one auxiliary slot. A live BTW/continuable child reuses the complete main layout and editor; a one-shot or cold child uses the full-fidelity readonly transcript panel. The status bar explicitly shows `F7 switch · F8 close`. `/agents stop <id>` accepts only live continuable children without live descendants, while browser stops require selecting Yes in a Yes / No confirmation; cold/inactive children are not falsely reported as stopped, and parents must be stopped leaf-first so Harness recursive teardown cannot widen the operation.
 - **`/model` / `/effort`** — no argument opens the model picker or horizontal effort selector. Non-wrapping `←` `→` moves provider/effort tabs, `Enter` descends, and content-level Tab reaches actions. Choose **`Set as default`** to switch and persist, or **`Use for this session`** to change only the live session. With an argument they switch directly and persist. The panel-free shortcut **`Alt+M`** cycles through the current provider's models (session-only, draft preserved; see the [key reference](/en/reference/keys)).
 - **`/provider`** — three subcommands: `list` shows providers and the current route; `switch <name>` switches; `add` starts the add-provider flow.
-- **`/preset`** — switches the agent composition over the thin-host roster (upstream `standard` / `minimal` / `ptc` / `cordis`, plus Mayfly `mayfly-cordis`): a session's tool surface, persona, and plan mode come from its preset. There is no `code` alias. Switching is allowed only on **blank sessions** — a started one returns `cannot switch presets: this session has already started (blank sessions only)`.
+- **`/preset`** — switches the agent composition over the thin-host roster (upstream `standard` / `minimal` / `ptc` / `cordis`, plus Mayfly `mayfly-cordis`): a session's tool surface, persona, and plan mode come from its preset. There is no `code` alias. Switching is allowed only on **blank sessions** — a started one returns `cannot switch presets: this session has already started (blank sessions only)`. Reminder tools (`schedule_*`) bind to the Agent's own scope when it is created, so a preset switch can neither retract nor grant them — when the target preset's schedule capability differs from the session's, `/preset` refuses and points to `/new <preset>` for a session composed under that preset.
 
 ## Modes and approval
 
@@ -74,4 +74,4 @@ These commands exist in the reference products (kimi/Claude Code); Mayfly **deli
 - `/diff` (uncommitted-changes panel) and the full-screen approval diff preview — re-evaluated with dogfood feedback after release
 - `/debug` — needs an upstream diagnostics-export surface
 
-After installing the Agent Team plugin and selecting its `team` preset, `/team` inspects the readonly roster and task board. `/schedule` lists native session reminders. `/files` opens recorded file deliveries. Cold continuable child history offers `i` to reply through the native child address; browsing does not activate it. See [Team configuration](/en/features/team).
+After installing the Agent Team plugin and selecting its `team` preset, `/team` inspects the readonly roster and task board. `/schedule` lists the current Agent's native session reminders (overdue first, readonly; reminder tools ship with the `standard` preset only). `/files` opens recorded file deliveries. Cold continuable child history offers `i` to reply through the native child address; browsing does not activate it. See [Team configuration](/en/features/team).

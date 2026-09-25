@@ -13,10 +13,24 @@ presentation and current-Agent selection.
   when native full-text search is configured, and archives/restores sessions.
   Active work requires an explicit Stop activity and archive decision. Archive
   does not delete the session log.
-- `/schedule` displays active native reminders. Creation/cancellation stays in
-  the conversation. Delivery requires a live root Agent; overdue reminders resume
-  when their session resumes. Mount `@deepseek-ai/dsh-schedule` in profile files
-  before creating/resuming that Agent. There is no independent background daemon.
+- `/schedule` displays the current Agent's active reminders, overdue first,
+  with local and relative times. Creation/cancellation stays in the
+  conversation. The shipped `standard` preset mounts
+  `@deepseek-ai/dsh-schedule` inside its own composition, so the
+  `schedule_create`/`schedule_list`/`schedule_delete` tools and the reminder
+  runtime exist only for Agents under that preset — `minimal`, `ptc`,
+  `mayfly-cordis`, and other presets carry no row and get no tools — `/schedule`
+  there reports the capability as unavailable rather than an empty list. A
+  custom preset opts in by adding the same row to its own `config.plugins`. The same
+  composition mounts `@deepseek-ai/dsh-time-context` with a five-minute
+  durable-injection throttle; terminal sessions carry no browser timezone
+  metadata, so timestamps fall back to the process zone. Delivery requires a
+  live root Agent; overdue reminders resume when their session resumes. There
+  is no independent background daemon. Reminder tools register on the Agent's
+  own scope at creation, so a `/preset` switch can neither retract nor grant
+  them: the command refuses selections that would flip schedule capability
+  against the target composition, and `/new <preset>` starts a session that
+  composes the chosen preset instead.
 - `/files` displays native `present` deliveries. Preview reads at most 256 KiB;
   binary and rich documents use an explicit external Open action where available.
 - `/mcp` server details expose Resources and Templates. Listing reads metadata;

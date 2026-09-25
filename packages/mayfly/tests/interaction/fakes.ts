@@ -966,6 +966,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     },
   } as never)
   ctx.provide('tools', { schemas: () => [] } as never)
+  ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   ctx.provide('subagents', {
     prompt: async () => ({ messageId: 'fake-subagent-message' }),
     interrupt: () => {},

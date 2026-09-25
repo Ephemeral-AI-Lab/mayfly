@@ -22,6 +22,18 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.0-alpha.6',
+    summary: 'Native Agent Team workflows, a unified interaction model, and richer overlay surfaces on dsh 0.1.7-rc.1.',
+    highlights: [
+      'Agent Teams - mount the native agentTeams service and tools in the default bundle, with a readonly team panel over addressed subagents.',
+      'Unified interaction - align forms, choices, tabs, pickers, and overlays to the shared interaction model across built-in and external surfaces.',
+      'Conversation overlays - mount plan reviews and wide choice questions inside the conversation flow.',
+      'Detail tiers - fold tool and thinking transcript rows into per-family detail tiers.',
+      'Session flow - swap editor Esc/Ctrl-C for a running session flow, commit /model from one picker with inline effort, and add a preset-scoped /schedule with a preset-aware /new.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.5',
     summary: 'Faster rendering under concurrent subagent activity, and fixes for large pickers and shell output.',
     highlights: [
