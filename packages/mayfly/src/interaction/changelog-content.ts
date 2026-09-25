@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.0-alpha.8',
+    summary: 'The alpha.7 feature set on a much leaner CLI runtime.',
+    highlights: [
+      'Lean runtime - the bundled Harness runtime no longer ships LibreOffice and sherpa-onnx native payloads, cutting the CLI package from ~710 MB to ~125 MB; the TUI never mounted those optional Office/PDF and voice-input capabilities.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.7',
     summary: 'Native Agent Team workflows, a unified interaction model, and richer overlay surfaces on dsh 0.1.7-rc.1.',
     highlights: [

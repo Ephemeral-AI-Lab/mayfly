@@ -39,7 +39,7 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
   `default | muted | accent | success | warning | danger`。
 - `emphasis` 是 `normal | strong`；省略时按普通文本处理。
 
-下面的“默认”描述 `0.1.0-alpha.7` 当前 Mayfly TUI。wire contract 只承诺字段语义，
+下面的“默认”描述 `0.1.0-alpha.8` 当前 Mayfly TUI。wire contract 只承诺字段语义，
 不会承诺具体边框字符、颜色值或按键绑定。
 
 ### 从 alpha.3 迁移
