@@ -74,4 +74,4 @@ These commands exist in the reference products (kimi/Claude Code); Mayfly **deli
 - `/diff` (uncommitted-changes panel) and the full-screen approval diff preview — re-evaluated with dogfood feedback after release
 - `/debug` — needs an upstream diagnostics-export surface
 
-`/team` inspects the readonly Team roster and task board. `/schedule` lists the current Agent's native session reminders (overdue first, readonly; reminder tools ship with the `standard` preset only). `/files` opens recorded file deliveries. Cold continuable child history offers `i` to reply through the native child address; browsing does not activate it. See [Team configuration](/en/features/team).
+After installing the Agent Team plugin and selecting its `team` preset, `/team` inspects the readonly roster and task board. `/schedule` lists the current Agent's native session reminders (overdue first, readonly; reminder tools ship with the `standard` preset only). `/files` opens recorded file deliveries. Cold continuable child history offers `i` to reply through the native child address; browsing does not activate it. See [Team configuration](/en/features/team).

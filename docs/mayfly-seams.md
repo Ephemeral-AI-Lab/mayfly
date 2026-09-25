@@ -77,12 +77,20 @@ if (agent !== null) {
 `current()` 返回当前展示的 `Agent | null`，`primary()` 保留主会话；
 `subscribe()` replay 精确 Agent selection。`view()` / `subscribeView()` 暴露一个
 主会话加一个辅助槽的 readonly metadata，以及当前展示侧和
-`interactive | readonly` access。只有 registry 中仍存活的精确 Agent 能进入
+`interactive | resumable | readonly` access。只有 registry 中仍存活的精确 Agent 能进入
 `current()`：live BTW/continuable child 直接驱动整套既有 UI，one-shot
 child 保留主 Agent 并交给通用只读 transcript panel。`F7` 切换显示侧，`F8`
 关闭辅助槽；关闭 BTW 会额外释放其临时 Agent，关闭普通 subagent 只 detach。
 BTW 的 seed 只用于模型上下文；其 `transcriptAfterSeq` cutoff 让用户看到的流从
 BTW 自己的第一条提问开始，不重复主会话历史。
+
+`@ephemeral-ai/mayfly/app` 声明 `mayfly/request-subagent-reply` 事件。外部插件可以为
+当前展示的 continuable 子会话请求共用回复表单；此事件本身不发送消息或恢复 Agent。
+用户提交时显式选择 Queue/Steer，写入仍走原生 addressed-subagent 路径，并检查主 Agent
+和在线子 Agent 的精确身份。未加载子会话的浏览和草稿编辑保持只读。
+
+`ui.child(..., { tab, tabWhen })` 可以在窄视口使用页签筛选，在宽视口同时显示页面，
+而不替换 `pagePath` 或复制列表/表单状态。视口匹配与可见宽度仍由 core 决定。
 
 用户中断当前 Agent 时，Mayfly 同步遍历 live `agents` 的 `parentSession` lineage，并通过
 `subagents.interrupt(..., { kind: 'ancestor', agent })` 向所有 running continuable

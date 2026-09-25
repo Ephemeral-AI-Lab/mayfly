@@ -29,6 +29,6 @@ Mayfly `0.1.0-alpha.6` 是 `dsh-base` 上的 flat Cordis plugin tree。Bundle
 - [输入编辑器](/features/editor)
 - [审批与问卷](/features/approval)
 - [状态栏](/features/status-bar)
-- [内置 Agent Team](/features/team)
+- [可选 Agent Team](/features/team)
 - [会话模式](/features/modes)
 - [底部面板](/features/panes)

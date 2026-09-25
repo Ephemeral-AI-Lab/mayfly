@@ -17,6 +17,7 @@ import type {
   MayflyTone,
   MayflyUiEvent,
   MayflyUiNode,
+  MayflyUiChild,
   MayflyViewportCondition,
   MayflyFieldAddress,
   MayflyFieldValue,
@@ -342,6 +343,11 @@ function safeViewport(getViewport: () => MayflyUiViewport): MayflyUiViewport {
   } catch {
     return { columns: 1, rows: 1 }
   }
+}
+
+function tabVisible(child: Pick<MayflyUiChild, 'tab' | 'tabWhen'>, viewport: MayflyUiViewport, pagePath: MayflyPagePath, options: RuntimeCompilerOptions): boolean {
+  return child.tab === undefined || !conditionMatches(child.tabWhen, viewport)
+    || options.listRuntime.activeTab({ pagePath, controlId: child.tab.controlId }) === child.tab.itemId
 }
 
 function conditionMatches(condition: MayflyViewportCondition | undefined, viewport: MayflyUiViewport): boolean {
@@ -928,7 +934,7 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
         break
       case 'stack':
         for (const [index, child] of current.children.entries()) {
-          const visible = conditionMatches(child.when, safeViewport(options.getViewport)) && (child.tab === undefined || options.listRuntime.activeTab({ pagePath, controlId: child.tab.controlId }) === child.tab.itemId)
+          const visible = conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, safeViewport(options.getViewport), pagePath, options)
           if (visible) visit(child.node, `${currentPath}.${String(index)}`)
           else if (includeHidden) {
             const admitted = materializedDeferredUiNode(child.node as MayflyUiNode)
@@ -1090,7 +1096,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       for (const [index, child] of node.children.entries()) {
         const compiled = compileNode(child.node, state, options, `${path}.${String(index)}`, mode)
         const layout = !spatial
-          ? { visible: () => conditionMatches(child.when, safeViewport(options.getViewport)) && (child.tab === undefined || options.listRuntime.activeTab({ pagePath, controlId: child.tab.controlId }) === child.tab.itemId) }
+          ? { visible: () => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, safeViewport(options.getViewport), pagePath, options) }
           : {
               ...(child.basis === undefined || child.basis === 'auto' ? (child.basis === 'auto' ? { basis: 'auto' as const } : {}) : { basis: Math.min(child.basis, LAYOUT_VALUE_MAX) }),
               ...(child.grow === undefined ? {} : { grow: Math.min(child.grow, LAYOUT_VALUE_MAX) }),
@@ -1105,7 +1111,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
                   state.setLayoutViewport(current)
                   reconcile(state)
                 }
-                return conditionMatches(child.when, current) && (child.tab === undefined || options.listRuntime.activeTab({ pagePath, controlId: child.tab.controlId }) === child.tab.itemId)
+                return conditionMatches(child.when, current) && tabVisible(child, current, pagePath, options)
               },
             }
         stack.addChild(compiled, layout)

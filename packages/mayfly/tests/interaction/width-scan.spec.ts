@@ -16,7 +16,6 @@ import Schema from '@deepseek-ai/schemastery'
 import { ui } from '../../../ui/src/index.ts'
 import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
-import { teamNode } from '../../src/interaction/team-command.ts'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
@@ -250,7 +249,6 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
   try {
     const reminders = [{ id: 'schedule', prompt: text, kind: 'every', everySeconds: 300, scheduledAt: '2099-01-01T00:00:00Z' }] as never
     const nodes = [
-      teamNode({ members: [{ id: text as never, name: text, role: 'lead', phase: 'active' }], tasks: [], failure: text }, '', new Map(), new Map()),
       ...(['en', 'zh'] as const).flatMap((locale: MayflyLocaleId) => {
         const t = (key: string, values?: Record<string, string | number>) => interpolateLocaleMessage(INTERACTION_LOCALE[locale][key] ?? INTERACTION_LOCALE.en[key] ?? key, values)
         return [

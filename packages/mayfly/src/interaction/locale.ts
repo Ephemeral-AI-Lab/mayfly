@@ -16,6 +16,17 @@ import {
 } from '../frontend/index.ts'
 
 const zh: Readonly<Record<string, string>> = {
+  'Reply to {name}': '回复 {name}',
+  'Message': '消息',
+  'Delivery': '发送方式',
+  'Queue': '排队',
+  'Steer': '引导',
+  'Send': '发送',
+  'Process after the current turn': '本轮完成后处理',
+  'Process at the next step boundary': '在下一个步骤边界处理',
+  'Sending resumes this member. Browsing and drafting do not.': '发送才会恢复此成员；浏览和输入草稿不会启动它。',
+  'Enter a message': '请输入消息',
+  'Choose Queue or Steer': '请选择排队或引导',
   ...OPERATION_ZH,
   'Yes': '是',
   'No': '否',

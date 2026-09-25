@@ -122,6 +122,43 @@ function compiled(value: unknown, options: MayflyUiCompilerOptions) {
   return result.value
 }
 
+it('keeps list selection and search while responsive pages change between tabs and columns', async () => {
+  const f = fixture()
+  const events: MayflyUiEvent[] = []
+  const memberPath = [{ controlId: 'views', itemId: 'members' }]
+  const taskPath = [{ controlId: 'views', itemId: 'tasks' }]
+  const model = new UiSurfaceModel('adaptive-pages', {
+    scope: { kind: 'app', targetId: 'adaptive-pages' }, source: [], revision: 1, update: { reason: 'data' },
+    node: ui.stack.column([
+      ui.tabs({ id: 'views', activeId: 'members', items: [{ id: 'members', label: 'Members' }, { id: 'tasks', label: 'Tasks' }] }),
+      ui.stack.row([
+        ui.child(ui.list({ id: 'people', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'lead', label: 'Lead' }, { id: 'reviewer', label: 'Reviewer' }] }), { tab: memberPath[0]!, tabWhen: { maxWidth: 91 }, basis: 0, grow: 1 }),
+        ui.child(ui.list({ id: 'work', role: 'browse', selectedIds: [], items: [{ id: 'task', label: 'Review changes' }] }), { tab: taskPath[0]!, tabWhen: { maxWidth: 91 }, basis: 0, grow: 1 }),
+      ]),
+    ]),
+    events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } }, definition: { onEvent: {} },
+  })
+  const runtime = new MayflyUiSurfaceRuntime(model)
+  const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: runtime })
+  if (!result.ok) throw new Error(result.message)
+  f.viewport.columns = 100
+  const wide = result.value.component.render(100).join('\n')
+  expect(wide).toContain('Reviewer')
+  expect(wide).toContain('Review changes')
+  model.updateChoice({ pagePath: memberPath, controlId: 'people' }, { kind: 'query', query: 'Reviewer' })
+  f.viewport.columns = 40
+  expect(result.value.component.render(40).join('\n')).not.toContain('Review changes')
+  model.activateTab({ pagePath: [], controlId: 'views' }, 'tasks')
+  expect(result.value.component.render(40).join('\n')).toContain('Review changes')
+  model.emit({ kind: 'selection-accept', pagePath: taskPath, controlId: 'work', selectedIds: ['task'] })
+  await vi.waitFor(() => expect(events.some(event => event.kind === 'selection-accept')).toBe(true))
+  f.viewport.columns = 100
+  expect(result.value.component.render(100).join('\n')).toContain('Reviewer')
+  expect(model.choice({ pagePath: memberPath, controlId: 'people' })).toMatchObject({ query: 'Reviewer', focusedId: 'reviewer' })
+  runtime.dispose()
+  model.dispose()
+})
+
 function compiledSurface(value: unknown, options: MayflyUiCompilerOptions, surfaceRuntime = new MayflyUiSurfaceRuntime()) {
   const result = compileMayflyUiSurfaceNode(value, { ...options, surfaceRuntime })
   expect(result.ok).toBe(true)

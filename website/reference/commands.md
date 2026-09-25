@@ -74,4 +74,4 @@
 - `/diff`（未提交变更面板）、审批 diff 全屏预览 —— 发版后随 dogfood 反馈同评
 - `/debug` —— 需上游诊断导出面
 
-`/team` 查看只读 Team 成员表与任务板；`/schedule` 查看当前 Agent 的原生会话提醒（逾期优先排序、只读；提醒工具仅随 `standard` 预设启用，其余预设不含）；`/files` 查看已交付文件。cold continuable child 历史支持 `i` 回复，发送才通过原生子会话地址恢复 Agent；浏览不激活。见 [Team 配置](/features/team)。
+安装 Agent Team 插件并选择 `team` preset 后，`/team` 查看只读成员表与任务板；`/schedule` 查看当前 Agent 的原生会话提醒（逾期优先排序、只读；提醒工具仅随 `standard` 预设启用，其余预设不含）；`/files` 查看已交付文件。cold continuable child 历史支持 `i` 回复，发送才通过原生子会话地址恢复 Agent；浏览不激活。见 [Team 配置](/features/team)。

@@ -67,23 +67,6 @@
   disabled: true
 
 - insert:
-    # Team services and their exact-Agent tools are part of the default bundle.
-    # The native policy creates teammates only after explicit user delegation.
-    - id: agent-team
-      name: '@deepseek-ai/dsh-experimental-agent-team'
-      config:
-        maxMembers: 8
-        maxTasks: 256
-        maxPendingMessagesPerMember: 64
-        maxMessageBytes: 65536
-        disposalTimeoutMs: 5000
-
-    - id: tool-agent-team
-      name: '@deepseek-ai/dsh-experimental-tool-agent-team'
-      config:
-        freshProvider: spawn
-        forkProvider: fork
-
     - id: subagent-model-selection-settings
       name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
 

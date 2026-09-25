@@ -43,37 +43,39 @@ presentation and current-Agent selection.
 These changes do not automatically rewrite user configuration or delete user data.
 Remove obsolete keys from settings files when updating.
 
-## Built-in Agent Team
+## Optional Agent Team
 
-Agent Team ships in the default Mayfly bundle. Start Mayfly normally:
+Agent Team is provided by the `agent-team` marketplace entry from
+`Ephemeral-AI-Lab/dsh-plugins` (`plugins/mayfly-agent-team`). Install it through
+`/plugin install agent-team`, restart, create a new session, and select the
+`team` preset with `/preset team`. The preset starts from `standard` capabilities;
+installation does not change the default or existing presets.
 
-```sh
-mayfly
-```
+Only Team-preset roots and their native teammates receive the Team tools,
+policy, `/team`, and Team UI contributions. Ordinary presets retain upstream
+subagent delegation. The plugin consumes native Team projections and owns the
+readonly roster/task panel, overlap notices, and conversation actions.
 
-The default composition mounts native Team services and tools once. All shipped
-presets use those Team tools instead of overlapping ordinary subagent controls;
-the presets retain their remaining differences, including PTC and creative tools.
-No separate Team profile, optional bundle, or copied patch is required.
+Ask the Lead explicitly to use Agent Team. `/team` opens members and tasks;
+wide layouts show both columns, while narrow layouts use tabs with retained
+selection and search. Task details can open the owner's conversation.
 
-The Team UI follows the official Web panel: roster, shared tasks, and ordinary
-member-conversation navigation. Task creation and coordination belong to native
-Team tools. The panel has no task editor or configuration wizard.
+Generic Mayfly navigation owns exact-Agent selection, F7 switching, and F8
+view closure. The public `mayfly/request-subagent-reply` event opens the shared
+reply form for the displayed continuable child. Queue waits until the current
+turn ends; Steer delivers at the next step boundary. Browsing cold history and
+editing drafts do not resume a child; only Send uses the native addressed prompt.
+Closing a view does not stop a teammate.
 
-Ask the Lead explicitly to use Agent Team, then open `/team`. Select a member to
-inspect its conversation, and select the Lead to return. F7 switches the retained
-views; F8 closes the auxiliary view. Cold continuable history offers `i` to reply;
-only Send resumes the child through Harness's addressed-subagent path. One-shot
-history remains read-only. Closing a view does not stop a teammate.
-
-Team write scopes are advisory. Members share a checkout, as in upstream. Team
-remains experimental, including upstream's one-shot Workflow tool-visibility
-limitation.
+Team write scopes are advisory. Members share a checkout and the upstream
+Team runtime remains experimental. Missing Team plugins on historical-session
+resume must be resolved by reinstalling the matching plugin, not by replacing
+the saved preset or deleting its log.
 
 ## Development acceptance
 
 Use dedicated `mayfly-<tag>` profiles, never production `mayfly`. Exercise the
-existing marketplace install/remove flow and its restart boundary; default Team
+existing marketplace install/remove flow and its restart boundary; optional Team
 roster/task updates and live/cold navigation; narrow terminal layouts; reminder
 visibility; explicit resource/file reads; and archive refusal followed by explicit
 stop-and-archive. Verify configuration and user data survive each workflow.

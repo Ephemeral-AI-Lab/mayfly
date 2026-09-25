@@ -125,6 +125,7 @@ type MayflyStackBareNode = MayflyUiNode & {
   readonly maxSize?: never
   readonly when?: never
   readonly tab?: never
+  readonly tabWhen?: never
 }
 export type MayflyStackItem = MayflyStackBareNode | (MayflyUiChild & { readonly kind?: never })
 

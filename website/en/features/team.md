@@ -4,16 +4,48 @@ title: Agent Team
 
 # Agent Team
 
-Agent Team is included in the default Mayfly distribution. Start Mayfly normally; no separate Team profile or optional bundle is needed.
+Agent Team is an optional marketplace plugin providing a separate collaboration
+preset and Mayfly terminal UI. Existing presets keep ordinary delegation;
+installing the plugin does not enable Team in them or change the default.
 
-```sh
-mayfly
+## Install and use
+
+```text
+/plugin install agent-team
 ```
 
-Explicitly ask the Lead to use Agent Team. For example: “Use Agent Team for a read-only repository review. Create two teammates, one for architecture and one for tests, and put their tasks on the shared task board.” Ordinary requests do not automatically create teammates.
+Restart Mayfly, start a new session, and choose the preset:
 
-The panel follows official Web behavior: `/team` shows members and shared tasks, and selecting a member opens its conversation. Agents own spawning, messaging, and task updates. All shipped presets use the native Team tools while retaining their other capabilities.
+```text
+/preset team
+```
 
-F7 switches the retained conversations; F8 closes the auxiliary view. Cold continuable history offers `i` to reply; only Send resumes the child. Reply drafts survive renderer reload. Task write scopes are advisory and teammates share a checkout.
+`team` builds on the ordinary `standard` coding preset. The normal / plan
+execution mode remains independent. Explicitly ask the Lead to create teammates,
+for example: “Use Agent Team: have reviewer check permissions and tester inspect
+tests, record the work on the shared board, then wait and summarize.”
 
-Plugin management continues through the existing `/plugin` marketplace, with restart required after installation/removal.
+## Terminal UI
+
+`/team` displays members and shared tasks. Wide terminals show both columns;
+narrow terminals use tabs while retaining search and selection. Lists show
+activity, owners and blockers; overlapping write scopes are visible in the
+overview. Task details can open the owner's conversation.
+Native Agent tools create teammates, exchange messages and modify tasks;
+the board remains read-only.
+
+Select a teammate to open its conversation. F7 switches the retained primary
+and auxiliary views; F8 closes the auxiliary view without stopping the teammate.
+Replies offer Queue (after the current turn) and Steer (at the next step boundary).
+An unloaded member first opens as history; press `i` to reply. Only Send resumes
+it. Drafts survive renderer reloads.
+
+## Boundaries
+
+Members share a working directory; write scopes are advisory, not filesystem
+locks. Team supplies no separate worktrees or automatic merging.
+Install, remove and update follow the existing `/plugin` restart boundary.
+Removing the plugin does not delete Team session logs; reinstall it before
+resuming those sessions.
+
+Source: [Ephemeral-AI-Lab/dsh-plugins](https://github.com/Ephemeral-AI-Lab/dsh-plugins/tree/main/plugins/mayfly-agent-team).
