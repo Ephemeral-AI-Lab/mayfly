@@ -103,7 +103,8 @@ export function classifyChanges(inputFiles) {
       || file.startsWith('docs/skills/') || file.endsWith('/mayfly-skills-plan.md')) {
       agentDocs = true
     }
-    if (file.startsWith('docs/diagrams/') || file === 'README.md' || file === 'README.zh.md' || file === 'docs/mayfly-architecture.md') diagrams = true
+    if (file.startsWith('docs/diagrams/') || file === 'README.md' || file === 'README.zh.md'
+      || file === 'docs/mayfly-architecture.md') diagrams = true
     if (file.startsWith('website/')) website = true
     if (file.startsWith('packages/mayfly/presets/mayfly-cordis/')) {
       authorDocs = true

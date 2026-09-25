@@ -121,7 +121,7 @@ frontend、conversation、app、core、transcript 与 interaction 继续作为
 `@ephemeral-ai/mayfly` 内部的源码所有权区域和 Cordis row，不再独立发布。
 
 <!-- BEGIN diagram:mayfly-layers -->
-<!-- single source 单一来源: docs/diagrams/mayfly-layers.zh.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
+<!-- single source: docs/diagrams/mayfly-layers.zh.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
     ROOT["一个 dsh 进程 · 一张 Cordis service graph"]

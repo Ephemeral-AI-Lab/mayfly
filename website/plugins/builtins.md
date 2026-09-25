@@ -5,7 +5,7 @@ Mayfly bundle 在 `dsh-base` 上插入普通 Cordis sibling：一组 dsh 支撑�
 group/isolate 或私有 service realm。
 
 <!-- BEGIN diagram:mayfly-composition -->
-<!-- single source 单一来源: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
+<!-- single source: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
     BASE["dsh-base"]

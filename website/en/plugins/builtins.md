@@ -5,7 +5,7 @@ dsh support rows and the Mayfly product rows (`cordis.patch.yml` is the row
 list of record). There is no group/isolate or private service realm.
 
 <!-- BEGIN diagram:mayfly-composition -->
-<!-- single source 单一来源: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
+<!-- single source: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
     BASE["dsh-base"]

@@ -133,7 +133,7 @@ ownership areas and Cordis rows inside `@ephemeral-ai/mayfly`; they are not
 independently published packages.
 
 <!-- BEGIN diagram:mayfly-layers -->
-<!-- single source 单一来源: docs/diagrams/mayfly-layers.en.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
+<!-- single source: docs/diagrams/mayfly-layers.en.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
     ROOT["one dsh process · one Cordis service graph"]
