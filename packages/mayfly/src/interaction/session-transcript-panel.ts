@@ -82,6 +82,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
       body: this.body,
+      keymap: ctx.mayflyKeymap,
       title: () => `Subagent · ${target.label}`,
       hint: () => target.mode === 'continuable' ? 'continuable · i to reply' : 'one-shot · read-only',
       footer: () => [
