@@ -3,6 +3,7 @@
  */
 import type { MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import { admittedListIndex, admittedListItem } from './ui-validator.ts'
+import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
 
 export interface UiChoiceState {
   readonly definition: MayflyListNode
@@ -358,13 +359,13 @@ export function choiceSegment(state: UiChoiceState, itemId: string): string | un
     : segment.options.find(option => option.disabled !== true)?.id
 }
 
-export function choiceError(state: UiChoiceState): string | undefined {
+export function choiceError(state: UiChoiceState, t: UiTranslate = untranslated): string | undefined {
   const { definition, selectedIds } = state
-  if (selectedIds.length < (definition.minSelected ?? 0)) return `Select at least ${definition.minSelected} options`
-  if (definition.maxSelected !== undefined && selectedIds.length > definition.maxSelected) return `Select at most ${definition.maxSelected} options`
+  if (selectedIds.length < (definition.minSelected ?? 0)) return t('Select at least {count} options', { count: definition.minSelected! })
+  if (definition.maxSelected !== undefined && selectedIds.length > definition.maxSelected) return t('Select at most {count} options', { count: definition.maxSelected })
   for (const id of selectedIds) {
     const item = admittedListItem(definition.items, admittedListIndex(definition.items, id))
-    if (item === undefined || item.disabled === true) return 'A selected option is unavailable'
+    if (item === undefined || item.disabled === true) return t('A selected option is unavailable')
   }
   return undefined
 }

@@ -274,7 +274,7 @@ export function renderList(node: ListNode, width: number, height: number, focus:
     const pointerGlyph = enabledFocus ? '→' : selected ? '●' : node.mode === 'multiple' ? '○' : ' '
     const position = numberFrom + ordinal
     const number = numbered && position < 9 ? `${String(position + 1)}. ` : ''
-    const detail = available > 40 ? paintListDetail(item, colors) : ''
+    const detail = available > 40 ? paintListDetail(item.disabled === true && item.detail === undefined && item.detailSpans === undefined && item.disabledReason !== undefined ? { ...item, detail: item.disabledReason } : item, colors) : ''
     const badge = item.badge === undefined ? '' : ` [${item.badge}]`
     if (item.disabled === true) {
       rows.push({ value: fit(colors.muted(`${marker}${pointerGlyph} ${number}${item.label}${badge}${detail}`), available), itemId: item.id })
@@ -341,7 +341,7 @@ export function renderListSegment(segment: MayflyListSegment, selectedId: string
   return fit(narrowed.at(-1)!.body, available)
 }
 
-export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
+export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key): string[] {
   const available = safeWidth(width)
   const focused = focus.focused && focus.key === field.id && field.disabled !== true
   const expandable = field.kind === 'select' || field.kind === 'multiselect'
@@ -349,8 +349,8 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
   let value: string
   let placeholder = false
   if (field.kind === 'toggle') value = field.value ? '[on]' : '[off]'
-  else if (field.kind === 'select') value = field.value === null ? 'Choose…' : field.options.find(option => option.id === field.value)?.label ?? field.value
-  else if (field.kind === 'multiselect') value = field.options.filter(option => field.value.includes(option.id)).map(option => option.label).join(', ') || 'None selected'
+  else if (field.kind === 'select') value = field.value === null ? text('Choose…') : field.options.find(option => option.id === field.value)?.label ?? field.value
+  else if (field.kind === 'multiselect') value = field.options.filter(option => field.value.includes(option.id)).map(option => option.label).join(', ') || text('None selected')
   else if (field.kind === 'number') value = `${field.value ?? ''}${field.unit === undefined ? '' : ` ${field.unit}`}`
   else if (field.kind === 'secret') value = field.value.length === 0 ? field.placeholder ?? '' : '•'.repeat(field.value.length)
   else value = field.value.length === 0 ? field.placeholder ?? '' : field.value
@@ -380,8 +380,9 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
 
 function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly value: string, readonly focused: boolean, readonly active: boolean } {
   const busy = item.busy === true
-  const focused = focus.focused && focus.key === item.id && item.disabled !== true && !busy
-  const label = `${busy ? '… ' : ''}${item.label}${item.key === undefined ? '' : ` (${displayKey(item.key)})`}`
+  const focused = focus.focused && focus.key === item.id && item.disabled !== true
+  const reason = item.disabled === true && item.disabledReason !== undefined ? ` — ${item.disabledReason}` : ''
+  const label = `${busy ? '… ' : ''}${item.label}${item.key === undefined ? '' : ` (${displayKey(item.key)})`}${reason}`
   const framed = item.intent === 'primary' ? `[ ${label} ]` : item.intent === 'danger' ? `! ${label}` : label
   const content = item.disabled === true || busy ? colors.muted(framed) : item.intent === 'danger' ? colors.error(framed) : focused || item.intent === 'primary' ? colors.primary(framed) : colors.text(framed)
   const selection = focused ? colors.selectedBg(content) : content

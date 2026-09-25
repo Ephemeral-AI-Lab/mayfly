@@ -7,6 +7,7 @@
  */
 
 import type {
+  MayflyActionItem,
   MayflyChartNode,
   MayflyDiagramNode,
   MayflyFormField,
@@ -68,6 +69,7 @@ import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
+import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
@@ -117,7 +119,7 @@ export interface MayflyUiCompilerOptions {
     readonly enabled?: boolean
     readonly suppressAuto?: boolean
     readonly focusWithoutControls?: boolean
-    readonly translate?: (key: string) => string
+    readonly translate?: (key: string, values?: UiTranslateValues) => string
     readonly extra?: () => readonly {
       readonly id: string
       readonly keys: string
@@ -495,9 +497,11 @@ function editorFieldComponent(field: TextField, key: string, state: FocusState, 
         const contentWidth = stacked ? available : available - labelWidth
         const placeholder = 'placeholder' in field ? field.placeholder : undefined
         const emptyPlaceholder = editor.getExpandedText().length === 0 && placeholder !== undefined
-        const body = emptyPlaceholder && !editor.focused
+        const content = emptyPlaceholder && !editor.focused
           ? [options.colors.textMuted(placeholder!)]
           : editor.renderContent(contentWidth, field.kind === 'secret')
+        const unit = field.kind === 'number' && field.unit !== undefined ? options.colors.textMuted(` ${field.unit}`) : ''
+        const body = content.map((row, index) => index === 0 ? `${row}${unit}` : row)
         const indent = ' '.repeat(Math.min(available, labelWidth))
         let rows = stacked
           ? [sliceByColumn(label, 0, available, true), ...body.map(row => sliceByColumn(row, 0, available, true))]
@@ -686,6 +690,17 @@ interface ContextKeyHint {
 
 type EscapeLabel = 'close' | 'leave'
 
+/** Translate a core-owned string through the host catalog, falling back to English interpolation. */
+function coreText(options: Pick<MayflyUiCompilerOptions, 'contextHints'> | undefined, key: string, values?: UiTranslateValues): string {
+  try { return options?.contextHints?.translate?.(key, values) ?? untranslated(key, values) } catch { return untranslated(key, values) }
+}
+
+/** An action a targeted selection row declares unavailable renders disabled with that row's reason. */
+function effectiveActionItem(item: MayflyActionItem, options: RuntimeCompilerOptions): MayflyActionItem {
+  const reason = options.listRuntime.interaction?.unavailableReason(item)
+  return reason === undefined ? item : { ...item, disabled: true, disabledReason: reason }
+}
+
 /** Summarize the focused control and its surroundings for the shared key grammar. */
 function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): GrammarState {
   const runtime = options.listRuntime
@@ -768,7 +783,8 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
   const withoutControls = active === undefined && options.contextHints?.focusWithoutControls !== true
   if (options.contextHints?.suppressAuto !== true && !withoutControls) {
     for (const hint of grammarHints(keyGrammar(grammarStateFor(state, options, controls, active, mode, escapeLabel)))) {
-      const keys = hint.keys ?? hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId)).map(displayKey).join('/')
+      // Literal key words (the "Type" of type-to-filter) are prose; key names are not translated.
+      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId)).map(displayKey).join('/')
       merged.set(hint.id, { id: hint.id, keys, label: hint.label, compact: hint.compact ?? keys, priority: hint.priority })
     }
   }
@@ -953,7 +969,7 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('form-cancel', current.id), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
       case 'actions':
-        for (const item of current.items) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
+        for (const item of current.items.map(entry => effectiveActionItem(entry, options))) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
         break
       case 'loader':
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
@@ -1113,7 +1129,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
         const counter = visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
         const focus = patternFocus(state, scopedControlGroup('list', node.id))
-        const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted('No matches'), 0, width, true)] : empty?.render(width) ?? [] : renderList(
+        const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? [] : renderList(
           { ...unfiltered, items, selectedIds: options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })?.selectedIds ?? node.selectedIds },
           width,
           Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1)),
@@ -1141,7 +1157,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
             const address = options.listRuntime.fieldAddress(key)!
             const picker = options.listRuntime.interaction?.form(address)?.fields[field.id]?.picker
             const editing = picker === undefined ? {} : { editing: true as const, ...(picker.focusedId === undefined ? {} : { optionId: picker.focusedId }) }
-            return renderFormField(state.field(field, key), width, { ...patternFocus(state, scopedControlGroup('form', node.id)), ...editing }, options.colors)
+            return renderFormField(state.field(field, key), width, { ...patternFocus(state, scopedControlGroup('form', node.id)), ...editing }, options.colors, key => coreText(options, key))
           }, options)
         stack.addChild(component)
         if (field.disabled !== true) state.bindControls([key], { component, axis: 'none' })
@@ -1158,12 +1174,12 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         }
       }
       if (node.submitActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitActionId!, intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Submit'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('form-submit', node.id)], { component, axis: 'none' })
       }
       if (node.cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'cancel', label: node.cancelActionId! }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('form-cancel', node.id)], { component, axis: 'none' })
       }
@@ -1173,9 +1189,20 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       const vertical = options.screenMode === 'main'
       /* An action with a handled invoke in flight renders as busy until the
          reply lands, matching the disabled-side effect at control level. */
-      const items = node.items.map(item => item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item)
-      const component = staticComponent(width => renderActions({ ...node, items }, width, patternFocus(state, actionGroup(node, pagePath)), options.colors, vertical), options)
-      state.bindControls(items.filter(item => item.disabled !== true && item.busy !== true).map(item => scopedControlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
+      /* Busy and row-unavailable states follow the live model, so they are read per frame. */
+      const items = () => node.items.map(entry => {
+        const item = effectiveActionItem(entry, options)
+        return item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item
+      })
+      const bind = (current: readonly MayflyActionItem[]): void => {
+        state.bindControls(current.filter(item => item.disabled !== true && item.busy !== true).map(item => scopedControlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
+      }
+      const component: MayflyComponent = staticComponent(width => {
+        const current = items()
+        bind(current)
+        return renderActions({ ...node, items: current }, width, patternFocus(state, actionGroup(node, pagePath)), options.colors, vertical)
+      }, options)
+      bind(items())
       return component
     }
     case 'loader': {
@@ -1183,7 +1210,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       stack.addChild(staticComponent(width => renderLoader(node, width, options.colors), options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: cancelActionId }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
       }
@@ -1409,11 +1436,13 @@ export class MayflyUiSurfaceRuntime {
         const picker = draft?.picker
         const value = picker === undefined ? fieldValue(field, key) : field.kind === 'multiselect' ? picker.selectedIds : picker.selectedIds[0] ?? null
         const origin = draft?.change === 'reset' || (draft?.change ?? 'unchanged') === 'unchanged' && field.origin === 'inherited' ? 'Inherited' : 'Override'
+        const text = (key: string, values?: UiTranslateValues) => coreText(this.options, key, values)
+        const pickerError = picker === undefined ? undefined : choiceError(picker, text)
         return { ...field, value: field.kind === 'number' ? field.value : value,
-          ...field.origin === undefined ? {} : { label: `${field.label} (${this.options?.contextHints?.translate?.(origin) ?? origin})` },
+          ...field.origin === undefined ? {} : { label: `${field.label} (${text(origin)})` },
           ...(draft?.error === undefined ? {} : { error: draft.error }),
-          ...(draft?.conflict ? { error: 'Resolve the changed value before saving' } : {}),
-          ...(picker === undefined || choiceError(picker) === undefined ? {} : { error: choiceError(picker) }),
+          ...(draft?.conflict ? { error: text('Resolve the changed value before saving') } : {}),
+          ...(pickerError === undefined ? {} : { error: pickerError }),
           ...(form?.pending === undefined ? {} : { disabled: true }),
         } as MayflyFormField
       },

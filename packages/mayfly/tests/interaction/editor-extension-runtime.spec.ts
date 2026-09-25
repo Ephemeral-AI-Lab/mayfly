@@ -967,20 +967,29 @@ describe('editor extension shell and actions', () => {
     runtime.dispose()
   })
 
-  it('omits decoration actions without a modifier accelerator and reports why', () => {
-    const { runtime, notices } = runtimeFixture([{
+  it('omits decoration actions without a free modifier accelerator and reports why', () => {
+    const { ctx, runtime, notices } = runtimeFixture([{
       id: 'acme.keys',
       actions: [
         { id: 'bare', label: 'Bare' },
         { id: 'printable', label: 'Printable', key: 'q' },
         { id: 'chord', label: 'Chord', key: 'alt+r' },
       ],
+    }, {
+      id: 'acme.late',
+      actions: [
+        { id: 'again', label: 'Again', key: 'Alt+R' },
+        { id: 'steer', label: 'Steer', key: 'ctrl+s' },
+      ],
     }])
+    ctx.mayflyKeymap.register([{ id: 'test.steer', keys: 'ctrl+s' }])
+    runtime.refreshPresentation()
     const output = runtime.render(80).join('\n')
     expect(output).toContain('Chord')
-    expect(output).not.toContain('Bare')
-    expect(output).not.toContain('Printable')
-    expect(notices.filter(notice => notice.includes('modifier key'))).toHaveLength(2)
+    for (const label of ['Bare', 'Printable', 'Again', 'Steer']) expect(output).not.toContain(label)
+    expect(notices.filter(notice => notice.includes('modifier key'))).toHaveLength(4)
+    expect(notices).toContain('editor extension action key "Alt+R" is already bound')
+    expect(notices).toContain('editor extension action key "ctrl+s" is already bound')
     runtime.dispose()
   })
 
@@ -1076,7 +1085,7 @@ describe('editor extension shell and actions', () => {
       } },
     }, {
       id: 'acme.no-handler',
-      actions: [{ id: 'idle', label: 'Idle' , key: 'ctrl+r' }],
+      actions: [{ id: 'idle', label: 'Idle', key: 'alt+i' }],
     }]
     const { runtime, notices, replace } = runtimeFixture(entries)
     privateDispatch(runtime, { kind: 'change', controlId: 'extension-0-0', value: 'ignored' })

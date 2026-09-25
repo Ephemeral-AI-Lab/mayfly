@@ -7,7 +7,7 @@ import { ui } from '../../../ui/src/index.ts'
 import * as provider from '../../../ui/src/provider.ts'
 import type { MayflyUiEventHandlers, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
 import type { MayflyComponents, MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
@@ -27,7 +27,7 @@ const scrollViews = (box: LayoutBox): ScrollView[] => [
   ...box.children.flatMap(scrollViews),
 ]
 
-async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, screenMode: 'main' | 'alternate' = 'alternate', keymap?: MayflyKeymap) {
+async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, screenMode: 'main' | 'alternate' = 'alternate', keymap?: MayflyKeymap, contextHints?: MayflyUiCompilerOptions['contextHints']) {
   const ctx = new Context()
   const api = await ctx.plugin(provider)
   cleanups.push(() => api.dispose())
@@ -39,7 +39,7 @@ async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, screen
   const viewport = { columns: 80, rows: 20 }
   const compile = () => {
     const runtime = new MayflyUiSurfaceRuntime(model)
-    const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, { surfaceRuntime: runtime, components, colors, getViewport: () => viewport, screenMode, ...(keymap === undefined ? {} : { keymap }), emit: event => model.emit(event), onUnhandledEscape: () => model.emit({ kind: 'dismiss', pagePath: [] }) })
+    const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, { surfaceRuntime: runtime, components, colors, getViewport: () => viewport, screenMode, ...(keymap === undefined ? {} : { keymap }), ...(contextHints === undefined ? {} : { contextHints }), emit: event => model.emit(event), onUnhandledEscape: () => model.emit({ kind: 'dismiss', pagePath: [] }) })
     if (!result.ok) throw new Error(result.message)
     const compiled = result.value
     compiled.focusTarget!.focused = true
@@ -631,6 +631,60 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
+  it('shows why a row cannot run an action and keeps that action out of focus', async () => {
+    const { compile } = await setup(ui.stack.column([
+      ui.list({ id: 'agents', role: 'browse', selectedIds: [], items: [
+        { id: 'one-shot', label: 'One-shot', unavailableActions: { stop: 'Only continuable subagents can stop' } },
+        { id: 'broken', label: 'Broken', disabled: true, disabledReason: 'Diagnostics only' },
+        { id: 'live', label: 'Live' },
+      ] }),
+      ui.actions({ id: 'actions', items: [
+        { id: 'stop', label: 'Stop', selections: [{ pagePath: [], controlId: 'agents' }] },
+        { id: 'close', label: 'Close', dismiss: true },
+      ] }),
+    ]))
+    const renderer = compile()
+    const rows = renderer.compiled.component.render(100).join('\n')
+    expect(rows).toContain('Stop — Only continuable subagents can stop')
+    expect(rows).toContain('Broken — Diagnostics only')
+    renderer.input('\t')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'close' })
+    renderer.input('\x1b[Z')
+    renderer.input('\x1b[B')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ itemId: 'live' })
+    expect(renderer.compiled.component.render(100).join('\n')).not.toContain('Stop —')
+    renderer.input('\t')
+    renderer.input('\x1b[D')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'stop' })
+    renderer.runtime.dispose()
+  })
+
+  it('renders number units, default form buttons, and translated core placeholders', async () => {
+    const { compile } = await setup(ui.stack.column([
+      ui.form({ id: 'form', fields: [
+        { kind: 'number', id: 'context', label: 'Context', value: 128, unit: 'tokens' },
+        { kind: 'select', id: 'mode', label: 'Mode', value: null, options: [{ id: 'a', label: 'A' }] },
+        { kind: 'multiselect', id: 'tags', label: 'Tags', value: [], options: [{ id: 't', label: 'T' }] },
+      ], submitActionId: 'save', cancelActionId: 'close' }),
+      ui.list({ id: 'rows', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'a', label: 'alpha' }] }),
+    ]), undefined, 'alternate', undefined, { translate: (key: string, values?: Readonly<Record<string, string | number>>) => `zh:${key}${values === undefined ? '' : JSON.stringify(values)}` })
+    const renderer = compile()
+    const rows = renderer.compiled.component.render(100).join('\n')
+    expect(rows).toContain('128 tokens')
+    expect(rows).toContain('zh:Submit')
+    expect(rows).toContain('zh:Cancel')
+    expect(rows).toContain('zh:Choose…')
+    expect(rows).toContain('zh:None selected')
+    renderer.runtime.dispose()
+  })
+
+  it('falls back to English core strings when the host translator throws', async () => {
+    const { compile } = await setup(ui.form({ id: 'form', fields: [], submitActionId: 'save' }), undefined, 'alternate', undefined, { translate: () => { throw new Error('catalog unavailable') } })
+    const renderer = compile()
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Submit')
+    renderer.runtime.dispose()
+  })
+
   it('treats Ctrl+C as the outermost Escape, including the dirty-form confirmation', async () => {
     const { compile, model } = await setup(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }))
     const renderer = compile()
@@ -798,12 +852,12 @@ describe('shared interaction compiler', () => {
   })
 
   it('keeps Save reachable in a short viewport and renders failed-operation feedback while the form stays open', async () => {
-    const { compile, viewport, model } = await setup(ui.form({ id: 'form', fields: Array.from({ length: 8 }, (_, index) => ({ kind: 'input' as const, id: `field-${index}`, label: `Field ${index}`, value: '' })), submitActionId: 'save', cancelActionId: 'cancel' }), { action: event => event.kind === 'submit' ? { kind: 'failed', message: 'Settings are unavailable' } : { kind: 'completed' } })
+    const { compile, viewport, model } = await setup(ui.form({ id: 'form', fields: Array.from({ length: 8 }, (_, index) => ({ kind: 'input' as const, id: `field-${index}`, label: `Field ${index}`, value: '' })), submitActionId: 'save', submitLabel: 'Save', cancelActionId: 'cancel' }), { action: event => event.kind === 'submit' ? { kind: 'failed', message: 'Settings are unavailable' } : { kind: 'completed' } })
     viewport.rows = 4
     const renderer = compile()
     renderer.input('draft')
     for (let index = 0; index < 8; index += 1) renderer.input('\t')
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('save')
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Save')
     renderer.input('\r')
     await flush()
     const rows = renderer.compiled.component.render(80)

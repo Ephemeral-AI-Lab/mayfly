@@ -3,7 +3,7 @@
  */
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type {
-  MayflyActionItem, MayflyFeedback, MayflyFeedbackRecord, MayflyFieldAddress, MayflyFieldValue, MayflyFormAddress,
+  MayflyActionItem, MayflyConfirmation, MayflyFeedback, MayflyFieldError, MayflyFeedbackRecord, MayflyFieldAddress, MayflyFieldValue, MayflyFormAddress,
   MayflyFormNode, MayflyPagePath, MayflySnapshotChange, MayflySourceStamp, MayflySubmission,
   MayflyScrollNode, MayflyTabsNode, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventEndpoint, MayflyUiNode, MayflyUiScope,
 } from '@ephemeral-ai/mayfly-ui'
@@ -13,6 +13,7 @@ import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls, type UiC
 import { admittedListIndex, admittedListItem, validateMayflyUiNode } from './ui-validator.ts'
 import { moveDocument, reconcileDocument, type UiDocumentAnchor, type UiDocumentState } from './ui-interaction-document.ts'
 import { admitNotificationMessage, UiNotificationStore } from './ui-interaction-notifications.ts'
+import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
 
 export interface UiSurfaceSnapshot {
   readonly id: string
@@ -60,7 +61,7 @@ interface UiTask {
 }
 
 interface UiDecision {
-  readonly question: string
+  readonly confirmation: MayflyConfirmation
   readonly event: Extract<MayflyUiEvent, { readonly kind: 'activate' }> | undefined
   readonly source: readonly MayflySourceStamp[]
   readonly focus?: UiControlAddress
@@ -69,6 +70,8 @@ interface UiDecision {
 export interface UiSurfaceBindings {
   readonly close?: () => void
   readonly onObserverError?: (error: unknown) => void
+  /** Locale lookup for core-owned strings; English interpolation when absent. */
+  readonly translate?: UiTranslate
 }
 
 const DECISION_NO = 'mayfly.decision.no'
@@ -132,11 +135,18 @@ export class UiSurfaceModel {
   get dirty(): boolean { return [...this.forms.values()].some(formDirty) || [...this.choices.values()].some(choice => choice.dirty) }
   get decisionNode(): MayflyUiNode | undefined {
     if (this.decision === undefined) return undefined
-    return freezeWire({ kind: 'surface', chrome: 'overlay', title: this.decision.question, child: {
-      kind: 'actions', id: 'mayfly.decision', items: [
-        { id: DECISION_NO, label: 'No', defaultFocus: true }, { id: DECISION_YES, label: 'Yes' },
-      ],
+    const { title, detail, confirmLabel, cancelLabel, tone } = this.decision.confirmation
+    const actions: MayflyUiNode = { kind: 'actions', id: 'mayfly.decision', items: [
+      { id: DECISION_NO, label: cancelLabel ?? this.t('No'), defaultFocus: true },
+      { id: DECISION_YES, label: confirmLabel ?? this.t('Yes'), ...(tone === 'danger' ? { intent: 'danger' as const } : {}) },
+    ] }
+    return freezeWire({ kind: 'surface', chrome: 'overlay', title, child: detail === undefined ? actions : {
+      kind: 'stack', direction: 'column', gap: 1, children: [{ node: { kind: 'text', content: detail, tone: 'warning' } }, { node: actions }],
     } })
+  }
+
+  private t(key: string, values?: Readonly<Record<string, string | number>>): string {
+    return (this.bindings.translate ?? untranslated)(key, values)
   }
 
   subscribe(listener: () => void): () => void {
@@ -298,9 +308,9 @@ export class UiSurfaceModel {
         if (current.submitActionId !== undefined) {
           const actionKey = uiControlKey({ pagePath, controlId: current.submitActionId })
           const previousAction = this.actions.get(actionKey)
-          this.actions.set(actionKey, { pagePath, item: { id: current.submitActionId, label: 'Save', ...previousAction?.item, submit: previousAction?.item.submit ?? [address] } })
+          this.actions.set(actionKey, { pagePath, item: { id: current.submitActionId, label: current.submitLabel ?? 'Submit', ...previousAction?.item, submit: previousAction?.item.submit ?? [address] } })
         }
-        if (current.cancelActionId !== undefined) this.actions.set(uiControlKey({ pagePath, controlId: current.cancelActionId }), { pagePath, item: { id: current.cancelActionId, label: 'Cancel' }, close: true })
+        if (current.cancelActionId !== undefined) this.actions.set(uiControlKey({ pagePath, controlId: current.cancelActionId }), { pagePath, item: { id: current.cancelActionId, label: current.cancelLabel ?? 'Cancel' }, close: true })
       } else if (current.kind === 'list') {
         const key = uiControlKey({ pagePath, controlId: current.id })
         const previous = this.choices.get(key)
@@ -446,7 +456,7 @@ export class UiSurfaceModel {
     }
     switch (event.kind) {
       case 'value-change': this.edit({ pagePath: event.pagePath, formId: event.formId, fieldId: event.controlId }, event.value); break
-      case 'tab-change': this.activateTab(event, event.tabId); break
+      case 'tab-change': if (this.wizardStepValid(event, event.tabId)) this.activateTab(event, event.tabId); break
       case 'dismiss': this.requestClose(); break
       case 'selection-toggle':
         this.updateChoice(event, { kind: 'select', ids: event.selectedIds })
@@ -458,21 +468,32 @@ export class UiSurfaceModel {
     }
   }
 
-  invoke(actionId: string, pagePath: MayflyPagePath = [], confirmed = false, supplied?: Extract<MayflyUiEvent, { readonly kind: 'activate' }>): void {
+  invoke(actionId: string, requestedPath: MayflyPagePath = [], confirmed = false, supplied?: Extract<MayflyUiEvent, { readonly kind: 'activate' }>): void {
     if (!this.live || this.decision !== undefined) return
+    /* A nested page's accept or Enter binding may name an action declared on an enclosing page. */
+    let pagePath = requestedPath
+    while (pagePath.length > 0 && !this.actions.has(uiControlKey({ pagePath, controlId: actionId }))) pagePath = pagePath.slice(0, -1)
     const key = uiControlKey({ pagePath, controlId: actionId })
     const action = this.actions.get(key)
     if (action === undefined || action.item.disabled === true || action.item.busy === true || this.activeKeys.has(key)) return
     if (action.close || action.item.dismiss === true) { this.requestClose(); return }
     const event = supplied ?? { kind: 'activate' as const, pagePath, controlId: actionId, actionId }
-    if (!confirmed && action.item.confirm !== undefined) { this.decision = { question: action.item.confirm, event, source: this.source }; this.changed(); return }
+    /* Row availability is known before any confirmation: never ask to confirm an action the selection cannot run. */
+    const unavailable = this.unavailableReason(action.item)
+    if (unavailable !== undefined) { this.report(key, { message: unavailable, severity: 'warning' }); return }
+    if (!confirmed && action.item.confirm !== undefined) {
+      const confirm = action.item.confirm
+      this.decision = { confirmation: typeof confirm === 'string' ? { title: confirm } : confirm, event, source: this.source }
+      this.changed()
+      return
+    }
     const targets = action.item.submit ?? action.item.read
     if (targets !== undefined) {
       try {
         prepareUiForms(this.admittedNode!, targets)
         this.admitVisibleControls()
       } catch {
-        this.report(key, { message: 'A submitted form is unavailable or invalid', severity: 'error' })
+        this.report(key, { message: this.t('A submitted form is unavailable or invalid'), severity: 'error' })
         return
       }
       for (const address of targets) for (const field of Object.values(this.form(address)!.fields)) {
@@ -482,24 +503,13 @@ export class UiSurfaceModel {
     const forms = targets?.map(address => this.form(address)) ?? []
     if (forms.some(form => form === undefined || form.pending !== undefined)) return
     const validatedForms = new Set(forms.map(form => formAddressKey(form!.address)))
+    /* A new read or submit boundary retires older validations of the same forms: field validators and earlier read actions alike. */
     for (const task of this.tasks.values()) {
       if (task.event.kind === 'value-change' && validatedForms.has(formAddressKey({ pagePath: task.event.pagePath, formId: task.event.formId }))) task.controller.abort()
+      else if (task.submission === undefined && task.event.kind === 'activate' && [...task.formKeys].some(formKey => validatedForms.has(formKey))) task.controller.abort()
     }
-    const errors = forms.flatMap(form => validateForm(form!))
-    if (errors.length > 0) {
-      for (const error of errors) {
-        const field = this.form(error)!.fields[error.fieldId]!
-        this.updateForm(error, { kind: 'validated', fieldId: error.fieldId, revision: field.revision, error: error.message })
-      }
-      const first = errors[0]!
-      this.selectedControl = { pagePath: first.pagePath, controlId: first.fieldId }
-      for (const segment of first.pagePath) {
-        const parent = first.pagePath.slice(0, first.pagePath.indexOf(segment))
-        this.activateTab({ pagePath: parent, controlId: segment.controlId }, segment.itemId)
-      }
-      this.report(key, { message: errors[0]!.message, severity: 'error' })
-      return
-    }
+    const errors = forms.flatMap(form => validateForm(form!, this.t.bind(this)))
+    if (errors.length > 0) { this.showValidationErrors(key, errors); return }
     const selections = (action.item.selections ?? []).map(address => {
       const state = this.choice(address)
       if (state !== undefined && state.definition.role === 'browse' && state.selectedIds.length === 0 && state.focusedId !== undefined) {
@@ -508,11 +518,11 @@ export class UiSurfaceModel {
       return { address, state }
     })
     for (const selection of selections) {
-      const message = selection.state === undefined ? 'A selection is no longer available' : choiceError(selection.state)
+      const message = selection.state === undefined ? this.t('A selection is no longer available') : choiceError(selection.state, this.t.bind(this))
       if (message !== undefined) { this.focusControl(selection.address); this.report(key, { message, severity: 'error' }); return }
     }
     if (action.item.navigate !== undefined) {
-      if (!this.canNavigate(action.item.navigate)) { this.report(key, { message: 'The destination page is unavailable', severity: 'error' }); return }
+      if (!this.canNavigate(action.item.navigate)) { this.report(key, { message: this.t('The destination page is unavailable'), severity: 'error' }); return }
       if (targets !== undefined) for (const [index, segment] of pagePath.entries()) {
         const address = { pagePath: pagePath.slice(0, index), controlId: segment.controlId }
         const key = uiControlKey(address)
@@ -539,6 +549,36 @@ export class UiSurfaceModel {
       : inputs !== undefined ? { kind: 'activate', pagePath, controlId: actionId, actionId, inputs } : event, submission)
   }
 
+  private showValidationErrors(key: string, errors: readonly MayflyFieldError[]): void {
+    for (const error of errors) {
+      const field = this.form(error)!.fields[error.fieldId]!
+      this.updateForm(error, { kind: 'validated', fieldId: error.fieldId, revision: field.revision, error: error.message })
+    }
+    const first = errors[0]!
+    this.selectedControl = { pagePath: first.pagePath, controlId: first.fieldId }
+    for (const segment of first.pagePath) {
+      const parent = first.pagePath.slice(0, first.pagePath.indexOf(segment))
+      this.activateTab({ pagePath: parent, controlId: segment.controlId }, segment.itemId)
+    }
+    this.report(key, { message: first.message, severity: 'error' })
+  }
+
+  /** Moving forward through a wizard strip validates the step being left, like its Next read boundary. */
+  private wizardStepValid(address: UiControlAddress, tabId: string): boolean {
+    const key = uiControlKey(address)
+    const tabs = this.tabs.get(key)
+    if (tabs?.definition.mode !== 'wizard') return true
+    const items = tabs.definition.items
+    if (items.findIndex(item => item.id === tabId) <= items.findIndex(item => item.id === tabs.activeId)) return true
+    const stepPath = [...address.pagePath, { controlId: address.controlId, itemId: tabs.activeId }]
+    const prefix = JSON.stringify(stepPath)
+    const stepForms = [...this.forms.values()].filter(form => JSON.stringify(form.address.pagePath.slice(0, stepPath.length)) === prefix)
+    const errors = stepForms.flatMap(form => validateForm(form, this.t.bind(this)))
+    if (errors.length > 0) { this.showValidationErrors(key, errors); return false }
+    if (stepForms.length > 0) this.tabs.set(key, { ...tabs, completed: new Map(tabs.completed).set(tabs.activeId, this.stepRevision(stepPath)) })
+    return true
+  }
+
   private acceptSelection(event: Extract<MayflyUiEvent, { readonly kind: 'selection-toggle' | 'selection-accept' }>): void {
     const key = uiControlKey(event)
     const state = this.choices.get(key)
@@ -549,7 +589,7 @@ export class UiSurfaceModel {
       if (item === undefined || item.disabled === true) return
     } else {
       const next = reduceChoice(state, { kind: 'select', ids: event.selectedIds })
-      const error = choiceError(next)
+      const error = choiceError(next, this.t.bind(this))
       this.choices.set(key, next)
       if (error !== undefined) { this.report(key, { message: error, severity: 'error' }); return }
     }
@@ -561,11 +601,24 @@ export class UiSurfaceModel {
     if (!this.activeKeys.has(key)) this.start(key, { ...event, selectedIds: state.definition.role === 'browse' ? event.selectedIds : this.choices.get(key)!.selectedIds, ...(segmentId === undefined ? {} : { segmentId }) })
   }
 
+  /** Close the surface; Back is Escape's job, so dismiss actions never navigate. */
   requestClose(): void {
     if (!this.live) return
-    if (this.back()) return
-    if (this.dirty && this.input.definition.dismissal !== 'discard') { this.decision = { question: 'Discard unsaved changes?', event: undefined, source: this.source }; this.changed() }
+    if (this.dirty && this.input.definition.dismissal !== 'discard') { this.decision = { confirmation: { title: this.t('Discard unsaved changes?') }, event: undefined, source: this.source }; this.changed() }
     else this.finishClose()
+  }
+
+  /** The reason a targeted selection row declares this action unavailable, if any. */
+  unavailableReason(item: MayflyActionItem): string | undefined {
+    for (const address of item.selections ?? []) {
+      const state = this.choice(address)
+      const ids = state === undefined ? [] : state.definition.role === 'browse' && state.selectedIds.length === 0 && state.focusedId !== undefined ? [state.focusedId] : state.selectedIds
+      for (const id of ids) {
+        const reason = admittedListItem(state!.definition.items, admittedListIndex(state!.definition.items, id))?.unavailableActions?.[item.id]
+        if (reason !== undefined) return reason
+      }
+    }
+    return undefined
   }
 
   answerDecision(yes: boolean): void {
@@ -640,7 +693,7 @@ export class UiSurfaceModel {
           : (reply.source?.length ?? 0) === 0 && currentData === baselineData(publication.admitted)
         if (dataChanged && !confirmsCurrent) {
           this.setPhase(task, reply.kind === 'accepted' ? 'succeeded' : 'failed')
-          this.report(task.id, { message: reply.kind === 'accepted' ? 'The action completed, but newer data must be reviewed' : reply.message, severity: reply.kind === 'accepted' ? 'warning' : 'error' })
+          this.report(task.id, { message: reply.kind === 'accepted' ? this.t('The action completed, but newer data must be reviewed') : reply.message, severity: reply.kind === 'accepted' ? 'warning' : 'error' })
           return
         }
       }
@@ -669,7 +722,7 @@ export class UiSurfaceModel {
     } catch (error) {
       if (this.live && !task.controller.signal.aborted) {
         this.setPhase(task, nativeAccepted ? 'succeeded' : 'failed')
-        this.report(task.id, { message: nativeAccepted ? 'The action completed, but its result could not be displayed' : task.submission === undefined && task.event.kind !== 'value-change' && error instanceof Error ? error.message : 'The action could not be completed', severity: 'error' })
+        this.report(task.id, { message: nativeAccepted ? this.t('The action completed, but its result could not be displayed') : task.submission === undefined && task.event.kind !== 'value-change' && error instanceof Error ? error.message : this.t('The action could not be completed'), severity: 'error' })
       }
     } finally {
       if (this.live) {

@@ -6,6 +6,7 @@ import {
   contextHintTranslator,
   mountContextHintLocale,
 } from '../../src/core/context-hint-locale.ts'
+import { untranslated } from '../../src/core/ui-interaction-locale.ts'
 
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
 
@@ -20,6 +21,11 @@ function localePlugin(systemLocale: 'en' | 'zh') {
 }
 
 describe('context hint locale lifecycle', () => {
+  it('interpolates known placeholders and leaves unknown ones in the core fallback', () => {
+    expect(untranslated('Select at least {count} of {total}', { count: 2 })).toBe('Select at least 2 of {total}')
+    expect(untranslated('plain')).toBe('plain')
+  })
+
   it('falls back to English keys and interpolation without a provider', () => {
     const t = contextHintTranslator(new Context())
     expect(t('run')).toBe('run')
@@ -46,6 +52,8 @@ describe('context hint locale lifecycle', () => {
     const second = await ctx.plugin(localePlugin('zh'))
     await settle()
     expect(t('close')).toBe('关闭')
+    expect(t('Discard unsaved changes?')).toBe('放弃未保存的修改？')
+    expect(t('Minimum: {value}', { value: 3 })).toBe('最小值：3')
     await second.dispose()
   })
 })

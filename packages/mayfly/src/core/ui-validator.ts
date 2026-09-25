@@ -29,8 +29,10 @@ import type {
   MayflyPagePath,
   MayflyPageSegment,
   MayflyFieldValue,
+  MayflyConfirmation,
 } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult } from './ui-contracts.ts'
+import { printableKey } from './key-actions.ts'
 
 /** Maximum aggregate UTF-16 source units accepted in one tree. */
 export const MAYFLY_UI_MAX_TEXT = 20_000
@@ -70,6 +72,11 @@ interface ValidationBudget {
   readonly controlIds: Set<string>
   readonly tabs: Map<string, ReadonlySet<string>>
   readonly pages: { readonly path: MayflyPagePath, readonly tab: MayflyPageSegment }[]
+  /** Accelerator keys already bound per page. */
+  readonly actionKeys: Set<string>
+  /** The first printable accelerator, rejected once a filterable list is admitted. */
+  printableKey?: string
+  filterable: boolean
 }
 
 function invalid(message: string): never {
@@ -272,6 +279,13 @@ function field(value: unknown, path: string, state: ValidationState): MayflyFiel
   }))
 }
 
+function unavailableActions(value: unknown, path: string, state: ValidationState): Readonly<Record<string, string>> {
+  return enter(value, path, state, object => Object.fromEntries(Object.keys(object).map(actionId => {
+    if (actionId.trim().length === 0) invalid(`${path} action ids must not be empty`)
+    return [actionId, text(own(object, actionId, path), `${path}.${actionId}`, state)] as const
+  })))
+}
+
 function listItem(value: unknown, path: string): MayflyListItem {
   // Item collections are unbounded data rows: each admits under its own
   // quota — the same isolation lazy list admission already applies — so the
@@ -281,6 +295,7 @@ function listItem(value: unknown, path: string): MayflyListItem {
     const disabledValue = own(object, 'disabled', path)
     const detailSpansValue = own(object, 'detailSpans', path)
     const segmentValue = own(object, 'segment', path)
+    const unavailableValue = own(object, 'unavailableActions', path)
     return {
       id: text(required(object, 'id', path), `${path}.id`, state),
       label: text(required(object, 'label', path), `${path}.label`, state),
@@ -293,6 +308,7 @@ function listItem(value: unknown, path: string): MayflyListItem {
       ...optional(optionalText(object, 'searchText', path, state), 'searchText'),
       ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`), 'disabled'),
       ...optional(segmentValue === undefined ? undefined : listSegment(segmentValue, `${path}.segment`, state), 'segment'),
+      ...optional(unavailableValue === undefined ? undefined : unavailableActions(unavailableValue, `${path}.unavailableActions`, state), 'unavailableActions'),
     }
   })
 }
@@ -344,6 +360,8 @@ function validationState(budget: ValidationBudget = {
   controlIds: new Set(),
   tabs: new Map(),
   pages: [],
+  actionKeys: new Set(),
+  filterable: false,
 }): ValidationState {
   return {
     active: new WeakSet(),
@@ -540,6 +558,48 @@ export function admittedListIndex(items: readonly MayflyListItem[], id: string):
   return lazyLists.get(items)?.indexOf(id) ?? items.findIndex(item => item.id === id)
 }
 
+const NAMED_KEYS = new Set([
+  'enter', 'escape', 'tab', 'space', 'backspace', 'delete', 'insert', 'up', 'down', 'left', 'right',
+  'pageup', 'pagedown', 'home', 'end', ...Array.from({ length: 12 }, (_, index) => `f${String(index + 1)}`),
+])
+/** Keys the shared grammar owns on every surface; an accelerator on them would hijack navigation or editing. */
+const RESERVED_KEYS = new Set([
+  'enter', 'escape', 'tab', 'shift+tab', 'space', 'backspace', 'up', 'down', 'left', 'right',
+  'pageup', 'pagedown', 'home', 'end', 'alt+left', 'alt+right', 'ctrl+c', 'ctrl+e', 'ctrl+u',
+])
+
+function actionKey(value: string, path: string, state: ValidationState): string {
+  const parts = value.split('+')
+  const base = parts.at(-1)!
+  const modifiers = parts.slice(0, -1).map(part => part.toLowerCase())
+  const named = base.length > 1
+  if (base.length === 0 || (named && !NAMED_KEYS.has(base.toLowerCase())) || (!named && /[\x00-\x20\x7f]/u.test(base))
+    || modifiers.some(modifier => !['ctrl', 'alt', 'shift', 'meta'].includes(modifier)) || new Set(modifiers).size !== modifiers.length) {
+    invalid(`${path}.key "${value}" is not a key id`)
+  }
+  const normalized = [...modifiers, named ? base.toLowerCase() : base].join('+').toLowerCase()
+  if (RESERVED_KEYS.has(normalized)) invalid(`${path}.key "${value}" is reserved for shared navigation`)
+  const slot = pageControl(state.pagePath, normalized)
+  if (state.budget.actionKeys.has(slot)) invalid(`${path}.key "${value}" is already bound on this page`)
+  state.budget.actionKeys.add(slot)
+  if (printableKey(value)) state.budget.printableKey ??= `${path}.key "${value}"`
+  return value
+}
+
+function confirmation(value: unknown, path: string, state: ValidationState): string | MayflyConfirmation {
+  if (typeof value === 'string') return text(value, path, state)
+  return enter(value, path, state, object => {
+    const tone = own(object, 'tone', path)
+    return {
+      title: text(required(object, 'title', path), `${path}.title`, state),
+      ...optional(optionalText(object, 'detail', path, state), 'detail'),
+      ...optional(optionalText(object, 'confirmLabel', path, state), 'confirmLabel'),
+      ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel'),
+      ...optional(tone === undefined ? undefined : enumeration(tone, ['danger'], `${path}.tone`), 'tone'),
+    }
+  })
+}
+
 function actionItem(value: unknown, path: string, state: ValidationState): MayflyActionItem {
   return enter(value, path, state, object => {
     const intentValue = own(object, 'intent', path)
@@ -547,6 +607,8 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
     const busyValue = own(object, 'busy', path)
     const defaultFocus = own(object, 'defaultFocus', path)
     const dismiss = own(object, 'dismiss', path)
+    const confirmValue = own(object, 'confirm', path)
+    const keyValue = optionalText(object, 'key', path, state)
     const submitValue = own(object, 'submit', path)
     const submit = submitValue === undefined ? undefined : collection(submitValue, `${path}.submit`).map((entry, index) => enter(entry, `${path}.submit[${index}]`, state, target => ({
       formId: identifier(required(target, 'formId', path), `${path}.submit[${index}].formId`, state),
@@ -574,8 +636,8 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
       ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`), 'disabled'),
       ...optional(optionalText(object, 'disabledReason', path, state), 'disabledReason'),
       ...optional(busyValue === undefined ? undefined : boolean(busyValue, `${path}.busy`), 'busy'),
-      ...optional(optionalText(object, 'confirm', path, state), 'confirm'),
-      ...optional(optionalText(object, 'key', path, state), 'key'),
+      ...optional(confirmValue === undefined ? undefined : confirmation(confirmValue, `${path}.confirm`, state), 'confirm'),
+      ...optional(keyValue === undefined ? undefined : actionKey(keyValue, path, state), 'key'),
       ...optional(defaultFocus === undefined ? undefined : boolean(defaultFocus, `${path}.defaultFocus`), 'defaultFocus'),
       ...optional(dismiss === undefined ? undefined : boolean(dismiss, `${path}.dismiss`), 'dismiss'),
       ...optional(submit, 'submit'),
@@ -941,6 +1003,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
         if ((modeValue ?? 'single') === 'single' && selectedIds.length > 1) invalid(`${path}.selectedIds has more than one id in single mode`)
         const filterable = own(object, 'filterable', path)
+        if (filterable === true) state.budget.filterable = true
         const numbered = own(object, 'numbered', path)
         const tree = own(object, 'tree', path)
         if (tree === true && itemCount <= MAYFLY_UI_MAX_COLLECTION) {
@@ -974,13 +1037,14 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         }
         const enterSubmits = optionalText(object, 'enterSubmits', path, state)
         if (enterSubmits !== undefined && enterSubmits.trim().length === 0) invalid(`${path}.enterSubmits must not be empty`)
-        return { kind, id, fields, ...optional(submitActionId, 'submitActionId'), ...optional(cancelActionId, 'cancelActionId'), ...optional(enterSubmits, 'enterSubmits') }
+        return { kind, id, fields, ...optional(submitActionId, 'submitActionId'), ...optional(optionalText(object, 'submitLabel', path, state), 'submitLabel'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel'), ...optional(enterSubmits, 'enterSubmits') }
       }
       case 'actions': {
         const items = collection(required(object, 'items', path), `${path}.items`).map((item, index) => actionItem(item, `${path}.items[${String(index)}]`, state))
         uniqueIds(items, `${path}.items`)
         for (const item of items) {
           if (item.id.trim().length === 0) invalid(`${path}.items id must not be empty`)
+          if (mode === 'editor' && (item.key === undefined || printableKey(item.key))) invalid(`${path}.items key is required: the editor owns unmodified keys, so a shell action needs a modifier accelerator`)
           reserveControl(item.id, state)
         }
         return { kind, id: text(required(object, 'id', path), `${path}.id`, state), items }
@@ -1133,6 +1197,7 @@ function validate<Value>(value: unknown, mode: ValidationMode): MayflyValidation
       assertEditorControlVisible(result as MayflyEditorShellNode)
     }
     validatePages(state.budget)
+    if (state.budget.filterable && state.budget.printableKey !== undefined) invalid(`${state.budget.printableKey} would swallow typed filter text; use a modifier key`)
     return { ok: true, value: freeze(result) as Value }
   } catch (error) {
     if (error instanceof ValidationFault) return { ok: false, code: error.code, message: error.message }

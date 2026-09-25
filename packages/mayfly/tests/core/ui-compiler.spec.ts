@@ -1949,7 +1949,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
   it('fires a declared action accelerator, shows it in hints and the action row', () => {
     const f = fixture()
     const result = compiledSurface(ui.stack.column([
-      ui.list({ id: 'items', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }),
+      ui.list({ id: 'items', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }),
       ui.actions({ id: 'commands', items: [{ id: 'stop', label: 'Stop', key: 'q' }, { id: 'close', label: 'Close' }] }),
     ]), f.options)
     const focus = result.focusTarget!

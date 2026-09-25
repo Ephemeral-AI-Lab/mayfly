@@ -5,6 +5,8 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type { MayflyFeedbackRecord, MayflyOverlayEntry, MayflyPaneEntry } from '@ephemeral-ai/mayfly-ui'
 import { UiSurfaceModel, type UiSurfaceBindings, type UiSurfaceSnapshot } from './ui-interaction-surface.ts'
 import { UiNotificationOwner, UiNotificationStore } from './ui-interaction-notifications.ts'
+import { contextHintTranslator } from './context-hint-locale.ts'
+import type { UiTranslate } from './ui-interaction-locale.ts'
 
 export type UiSurfaceKind = 'pane' | 'overlay' | 'editor-panel'
 
@@ -27,10 +29,12 @@ export class UiInteractionService extends Service {
   private readonly listeners = new Set<() => void>()
   private readonly notifications: UiNotificationStore
   private notifyScheduled = false
+  private readonly translate: UiTranslate
 
   constructor(ctx: Context) {
     super(ctx, 'mayflyUiInteraction')
     this.notifications = new UiNotificationStore(() => this.notify())
+    this.translate = contextHintTranslator(ctx)
   }
 
   private key(kind: UiSurfaceKind, id: string): string { return JSON.stringify([kind, id]) }
@@ -44,7 +48,7 @@ export class UiInteractionService extends Service {
       return previous.model
     }
     this.remove(kind, snapshot.id)
-    const model = new UiSurfaceModel(`${kind}/${++this.serial}`, snapshot, bindings)
+    const model = new UiSurfaceModel(`${kind}/${++this.serial}`, snapshot, { translate: this.translate, ...bindings })
     const unsubscribe = model.subscribe(() => this.changed())
     this.records.set(key, { kind, model, unsubscribe })
     this.changed()

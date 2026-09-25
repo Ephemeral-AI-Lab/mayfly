@@ -260,8 +260,11 @@ describe('private UI pattern painters', () => {
     expect(vertical.join('\n')).toContain('! Delete')
     expect(renderActions(node, 40, { key: 'danger', focused: true, marker: '|' }, colors, true).join('\n')).toContain('|! Delete')
     expect(vertical.join('\n')).toContain('… Wait')
-    expect(renderActions(node, 80, { key: 'busy', focused: true, marker: '|', pendingKey: 'busy' }, colors, true).join('')).not.toContain('|')
+    // A pending action keeps its cursor so focus does not vanish while it runs; disabled ones never hold it.
+    expect(renderActions(node, 80, { key: 'busy', focused: true, marker: '|', pendingKey: 'busy' }, colors, true).join('')).toContain('|… Wait')
     expect(renderActions(node, 80, { key: 'disabled', focused: true, marker: '|', pendingKey: 'disabled' }, colors, true).join('')).not.toContain('|')
+    const reasoned = ui.actions({ id: 'reasoned', items: [{ id: 'install', label: 'Install', disabled: true, disabledReason: 'Already installed' }] })
+    expect(renderActions(reasoned, 80, { key: '', focused: false, marker: '|' }, colors, false).join('')).toContain('Install — Already installed')
     const selectedBg = vi.fn((value: string) => `<selected>${value}</selected>`)
     const actionPalette = new Proxy(colors, { get: (target, key, receiver) => {
       if (key === 'primary') return (value: string) => `<primary>${value}</primary>`

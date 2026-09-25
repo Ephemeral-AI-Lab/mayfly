@@ -787,7 +787,7 @@ it('receives null, cached, invalid, and source-changing snapshots directly', () 
   expect(direct.model.node).toBeNull()
 })
 
-it('backs out of nested tabs before closing and keeps the nearest return target', async () => {
+it('keeps the nearest return target for Back while dismissal always closes', async () => {
   const node = ui.stack.column([
     ui.tabs({ id: 'outer', activeId: 'two', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two', backId: 'one' }] }),
     ui.child(ui.stack.column([
@@ -798,10 +798,9 @@ it('backs out of nested tabs before closing and keeps the nearest return target'
   const close = vi.fn()
   const direct = directSurface(node, async () => ({ reply: undefined, publish: () => false }), { close })
   expect(direct.model.backTarget()).toEqual([{ controlId: 'outer', itemId: 'two' }, { controlId: 'inner', itemId: 'a' }])
-  direct.model.requestClose()
+  expect(direct.model.back()).toBe(true)
   expect(direct.model.activeTab({ pagePath: [{ controlId: 'outer', itemId: 'two' }], controlId: 'inner' })).toBe('a')
   expect(close).not.toHaveBeenCalled()
-  direct.model.emit({ kind: 'tab-change', pagePath: [], controlId: 'outer', tabId: 'one' })
   direct.model.emit({ kind: 'dismiss', pagePath: [] })
   await flush()
   expect(close).toHaveBeenCalledOnce()
@@ -930,7 +929,7 @@ it('routes choice, browse, close, picker, missing-form, and back controls', asyn
   direct.model.invoke('tab-read', page)
   expect(direct.model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('one')
   direct.model.activateTab({ pagePath: [], controlId: 'pages' }, 'two')
-  direct.model.requestClose()
+  expect(direct.model.back()).toBe(true)
   expect(direct.model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('one')
   direct.model.invoke('close')
   direct.model.answerDecision(true)
@@ -1062,4 +1061,116 @@ it('cancels an acknowledgement when a hidden submitted form reveals a newer sche
   expect(publish).not.toHaveBeenCalled()
   expect(direct.model.form(target)!.fields.note).toBeDefined()
   expect(direct.model.operationSnapshot()).toMatchObject([{ phase: 'unknown' }])
+})
+
+describe('structured decisions, availability, and validation boundaries', () => {
+  const completed = async () => ({ reply: { kind: 'completed' as const }, publish: () => true })
+
+  it('renders confirmation details, labels, and danger tone with No focused first', async () => {
+    const prepare = vi.fn(completed)
+    const { model } = directSurface(ui.actions({ id: 'actions', items: [
+      { id: 'stop', label: 'Stop', confirm: { title: 'Stop build?', detail: 'Output stops streaming.', confirmLabel: 'Stop', cancelLabel: 'Keep running', tone: 'danger' } },
+      { id: 'plain', label: 'Plain', confirm: 'Plain?' },
+    ] }), prepare, { translate: key => `zh:${key}` })
+    model.invoke('stop')
+    expect(model.decisionNode).toMatchObject({ title: 'Stop build?', child: { kind: 'stack', children: [
+      { node: { kind: 'text', content: 'Output stops streaming.', tone: 'warning' } },
+      { node: { kind: 'actions', items: [{ label: 'Keep running', defaultFocus: true }, { label: 'Stop', intent: 'danger' }] } },
+    ] } })
+    model.answerDecision(false)
+    model.invoke('plain')
+    expect(model.decisionNode).toMatchObject({ title: 'Plain?', child: { kind: 'actions', items: [{ label: 'zh:No' }, { label: 'zh:Yes' }] } })
+    model.answerDecision(true)
+    await flush()
+    expect(prepare).toHaveBeenCalledOnce()
+  })
+
+  it('refuses an action its targeted row declares unavailable before asking to confirm it', async () => {
+    const prepare = vi.fn(completed)
+    const stop = { id: 'stop', label: 'Stop', confirm: 'Stop?', selections: [{ pagePath: [], controlId: 'rows' }] }
+    const { model } = directSurface(ui.stack.column([
+      ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [{ id: 'idle', label: 'Idle', unavailableActions: { stop: 'Not running' } }, { id: 'busy', label: 'Busy' }] }),
+      ui.list({ id: 'picked', role: 'choose', selectedIds: ['gone'], items: [{ id: 'gone', label: 'Gone', unavailableActions: { stop: 'Already stopped' } }] }),
+      ui.actions({ id: 'actions', items: [stop] }),
+    ]), prepare)
+    expect(model.unavailableReason({ ...stop, selections: [{ pagePath: [], controlId: 'missing' }] })).toBeUndefined()
+    expect(model.unavailableReason({ ...stop, selections: [{ pagePath: [], controlId: 'picked' }] })).toBe('Already stopped')
+    model.invoke('stop')
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.feedbackSnapshot().at(-1)).toMatchObject({ message: 'Not running', severity: 'warning' })
+    model.updateChoice({ pagePath: [], controlId: 'rows' }, { kind: 'move', direction: 1, count: 1 })
+    model.invoke('stop')
+    expect(model.decisionNode).toMatchObject({ title: 'Stop?' })
+  })
+
+  it('retires an older read validation when a newer submit of the same form starts', async () => {
+    const read = Promise.withResolvers<{ readonly reply: MayflyUiActionReply, readonly publish: () => boolean }>()
+    const error = (message: string) => ({ kind: 'invalid' as const, errors: [{ pagePath: [], formId: 'form', fieldId: 'name', message }] })
+    const { model } = directSurface(ui.stack.column([
+      ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }),
+      ui.actions({ id: 'actions', items: [
+        { id: 'check', label: 'Check', read: [{ pagePath: [], formId: 'form' }] },
+        { id: 'save', label: 'Save', submit: [{ pagePath: [], formId: 'form' }] },
+      ] }),
+    ]), event => event.kind === 'activate' ? read.promise : Promise.resolve({ reply: error('SAVE error'), publish: () => true }))
+    model.invoke('check')
+    model.invoke('save')
+    await flush()
+    read.resolve({ reply: error('older READ error'), publish: () => true })
+    await flush()
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.error).toBe('SAVE error')
+  })
+
+  it('validates the step being left before a wizard strip moves forward', () => {
+    const steps = { controlId: 'steps', pagePath: [] }
+    const { model } = directSurface(ui.stack.column([
+      ui.tabs({ id: 'steps', mode: 'wizard', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }),
+      ui.child(ui.form({ id: 'answer', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '', required: true }] }), { tab: { controlId: 'steps', itemId: 'one' } }),
+      ui.child(ui.text('done'), { tab: { controlId: 'steps', itemId: 'two' } }),
+    ]), completed, { translate: key => `zh:${key}` })
+    model.emit({ kind: 'tab-change', ...steps, tabId: 'two' })
+    expect(model.activeTab(steps)).toBe('one')
+    expect(model.form({ pagePath: [{ controlId: 'steps', itemId: 'one' }], formId: 'answer' })!.fields.name!.error).toBe('zh:A value is required')
+    model.edit({ pagePath: [{ controlId: 'steps', itemId: 'one' }], formId: 'answer', fieldId: 'name' }, 'Ada')
+    model.emit({ kind: 'tab-change', ...steps, tabId: 'two' })
+    expect(model.activeTab(steps)).toBe('two')
+    expect(model.completedSteps(steps)).toEqual(['one'])
+    model.emit({ kind: 'tab-change', ...steps, tabId: 'one' })
+    expect(model.activeTab(steps)).toBe('one')
+
+    const formless = directSurface(ui.stack.column([
+      ui.tabs({ id: 'steps', mode: 'wizard', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }),
+      ui.child(ui.text('intro'), { tab: { controlId: 'steps', itemId: 'one' } }),
+    ]), completed).model
+    formless.emit({ kind: 'tab-change', ...steps, tabId: 'two' })
+    expect(formless.activeTab(steps)).toBe('two')
+    expect(formless.completedSteps(steps)).toEqual([])
+  })
+
+  it('ignores edits for unknown forms and while a decision is open', () => {
+    const address = { pagePath: [], formId: 'form', fieldId: 'name' }
+    const { model } = directSurface(ui.stack.column([
+      ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }),
+      ui.actions({ id: 'actions', items: [{ id: 'reset', label: 'Reset', confirm: 'Reset?' }] }),
+    ]), completed)
+    model.edit({ ...address, formId: 'missing' }, 'lost')
+    model.invoke('reset')
+    model.edit(address, 'blocked')
+    expect(model.form(address)!.fields.name!.value).toBe('')
+  })
+
+  it('resolves a nested page binding to an action declared on an enclosing page', async () => {
+    const prepare = vi.fn(completed)
+    const page = [{ controlId: 'pages', itemId: 'one' }]
+    const { model } = directSurface(ui.stack.column([
+      ui.tabs({ id: 'pages', activeId: 'one', items: [{ id: 'one', label: 'One' }] }),
+      ui.child(ui.text('page'), { tab: page[0]! }),
+      ui.actions({ id: 'actions', items: [{ id: 'send', label: 'Send' }] }),
+    ]), prepare)
+    model.invoke('send', page)
+    model.invoke('missing', page)
+    await flush()
+    expect(prepare).toHaveBeenCalledOnce()
+    expect(prepare.mock.calls[0]![0]).toMatchObject({ kind: 'activate', actionId: 'send', pagePath: [] })
+  })
 })
