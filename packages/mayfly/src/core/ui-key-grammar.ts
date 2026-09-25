@@ -122,8 +122,8 @@ const ESCAPE_LABEL: Readonly<Record<EscapeStep, string>> = {
   collapse: 'collapse', cancel: 'cancel', done: 'done', 'end-search': 'end search', back: 'back', close: 'close', leave: 'leave',
 }
 
-/** Hint priorities: Escape is reserved, then the primary operation, then navigation. */
-const PRIORITY = { escape: 120, primary: 100, accelerator: 96, adjust: 95, navigate: 90, secondary: 85, group: 80 } as const
+/** Hint priorities: Escape is reserved, then the primary operation, then navigation; digits repeat Enter, so they yield to arrows. */
+const PRIORITY = { escape: 120, primary: 100, accelerator: 96, adjust: 95, navigate: 90, numbered: 88, secondary: 85, group: 80 } as const
 
 const action = (id: string): GrammarMatch => ({ kind: 'action', action: id })
 
@@ -273,7 +273,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   // Printable accelerators never pre-empt a control that consumes typed text.
   accelerators(bindings, state, control.kind !== 'text' && list?.filterable !== true)
   if (list?.numbered !== undefined && !list.searching && list.numbered.count > 0) {
-    push(bindings, { kind: 'digit' }, { kind: 'numbered' }, { id: 'numbered', keys: list.numbered.count === 1 ? '1' : `1-${String(list.numbered.count)}`, label: list.numbered.accept ? 'choose' : 'focus', priority: PRIORITY.accelerator })
+    push(bindings, { kind: 'digit' }, { kind: 'numbered' }, { id: 'numbered', keys: list.numbered.count === 1 ? '1' : `1-${String(list.numbered.count)}`, label: list.numbered.accept ? 'choose' : 'focus', priority: PRIORITY.numbered })
   }
   tabSwitches(bindings, state, control.kind !== 'tab')
   groupMoves(bindings, state, control.kind !== 'tab')
