@@ -75,6 +75,8 @@ export interface MayflyListItem {
   readonly segment?: MayflyListSegment
   /** Actions (by id) that cannot run while this row is the selection they target, with the reason shown in place of the action. */
   readonly unavailableActions?: Readonly<Record<string, string>>
+  /** Shared decision shown before accepting this single row. */
+  readonly confirm?: string | MayflyConfirmation
 }
 export interface MayflyListNode { readonly kind: 'list', readonly id: string, readonly role: 'browse' | 'choose', readonly mode?: 'single' | 'multiple', readonly selectedIds: readonly string[], readonly items: readonly MayflyListItem[], readonly filter?: string, readonly filterable?: boolean, readonly tree?: boolean, readonly numbered?: boolean | 'focus', readonly minSelected?: number, readonly maxSelected?: number, readonly acceptActionId?: string, readonly empty?: MayflyUiNode }
 export interface MayflyFormFieldBase {

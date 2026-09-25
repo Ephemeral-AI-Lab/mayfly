@@ -346,3 +346,24 @@ export function grammarHints(bindings: readonly GrammarBinding[]): readonly Gram
   }
   return hints
 }
+
+/**
+ * Reader-facing summary of the shared surface grammar with default keys. It
+ * is maintained beside `keyGrammar`; /help renders it and the Website key
+ * reference is checked against it, so all three describe the same behavior.
+ */
+export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly action: string }[] = Object.freeze([
+  { keys: '↑/↓', action: 'Move between rows and fields; scroll documents' },
+  { keys: '←/→', action: 'Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip' },
+  { keys: 'Alt+←/→', action: 'Switch tabs from anywhere on the surface; wizards validate the step being left' },
+  { keys: 'PgUp/PgDn, Home/End', action: 'Page or jump in lists and documents' },
+  { keys: 'Enter', action: 'Choose, run, open a picker, apply it, or start editing a field' },
+  { keys: 'Space', action: 'Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch' },
+  { keys: 'Tab/Shift+Tab', action: 'Move to the next or previous control group, committing text and pickers' },
+  { keys: 'Esc', action: 'Leave the innermost layer: picker, editing, search, back, then close' },
+  { keys: 'Ctrl+C', action: 'Close the surface, asking first when there are unsaved changes' },
+  { keys: 'Type or /', action: 'Filter a filterable list; Ctrl+U clears the filter' },
+  { keys: '1-9', action: 'Pick a numbered row' },
+  { keys: 'Ctrl+E', action: 'Expand focused scrollable content to full screen' },
+  { keys: 'Alt+Enter', action: 'Insert a newline in a multi-line field' },
+])

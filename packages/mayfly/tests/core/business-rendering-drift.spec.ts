@@ -68,7 +68,7 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/status-model.ts:? ' '.repeat(Math.max(0, width - rightWidth)) + rightText",
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, centerStart - leftWidth))",
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))",
-  "pointer:packages/mayfly/src/interaction/update-command.ts:ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'muted' }),",
+  "pointer:packages/mayfly/src/interaction/update-command.ts:ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'warning' }),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} → v${toVersion}` },",
 ])
 

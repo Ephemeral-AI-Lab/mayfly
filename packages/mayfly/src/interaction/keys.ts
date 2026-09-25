@@ -20,14 +20,14 @@ import type {} from '../app/current-agent.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
 import {
   ACTION_BACKSPACE, ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_CLOSE_AGENT_VIEW, ACTION_CYCLE_MODEL,
-  ACTION_DELETE, ACTION_END, ACTION_EXTERNAL_EDITOR, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
+  ACTION_END, ACTION_EXTERNAL_EDITOR, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
   ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
   ACTION_EXPAND, ACTION_PREV_TAB, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_STEER,
   ACTION_SUBMIT, ACTION_TOGGLE, ACTION_TOGGLE_AGENT_VIEW, displayKey,
 } from '../core/key-actions.ts'
 export {
   ACTION_BACKSPACE, ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_CLOSE_AGENT_VIEW, ACTION_CYCLE_MODEL,
-  ACTION_DELETE, ACTION_END, ACTION_EXTERNAL_EDITOR, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
+  ACTION_END, ACTION_EXTERNAL_EDITOR, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
   ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
   ACTION_EXPAND, ACTION_PREV_TAB, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_STEER,
   ACTION_SUBMIT, ACTION_TOGGLE, ACTION_TOGGLE_AGENT_VIEW,
@@ -53,7 +53,6 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_INTERRUPT, keys: 'ctrl+c', description: 'Clear input / interrupt with an empty buffer / press twice to exit' },
   { id: ACTION_STEER, keys: 'ctrl+s', description: 'Steer the current turn with the draft' },
   { id: ACTION_BACKSPACE, keys: 'backspace', description: 'Delete backward / exit bash mode on an empty prompt' },
-  { id: ACTION_DELETE, keys: ['delete', 'ctrl+d'], description: 'Delete the selected entity or character ahead' },
   { id: ACTION_SEGMENT_LEFT, keys: 'left', description: 'Step the segment control left (contextual)' },
   { id: ACTION_SEGMENT_RIGHT, keys: 'right', description: 'Step the segment control right (contextual)' },
   { id: ACTION_PREV_TAB, keys: 'alt+left', description: 'Switch to the previous tab (contextual)' },

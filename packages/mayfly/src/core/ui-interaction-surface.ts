@@ -62,7 +62,8 @@ interface UiTask {
 
 interface UiDecision {
   readonly confirmation: MayflyConfirmation
-  readonly event: Extract<MayflyUiEvent, { readonly kind: 'activate' }> | undefined
+  /** The action or single-row acceptance that runs on Yes; undefined confirms closing a dirty surface. */
+  readonly event: Extract<MayflyUiEvent, { readonly kind: 'activate' | 'selection-accept' }> | undefined
   readonly source: readonly MayflySourceStamp[]
   readonly focus?: UiControlAddress
 }
@@ -189,6 +190,8 @@ export class UiSurfaceModel {
     return freezeWire([...this.actions.values()].map(action => {
       const key = uiControlKey({ pagePath: action.pagePath, controlId: action.item.id })
       const pending = this.activeKeys.has(key) || action.item.busy === true
+      const unavailable = this.unavailableReason(action.item)
+      const disabledReason = action.item.disabledReason ?? unavailable
       const verb = action.close || action.item.dismiss === true ? 'dismiss'
         : action.item.submit !== undefined ? 'submit'
           : action.item.read !== undefined ? 'read'
@@ -197,10 +200,10 @@ export class UiSurfaceModel {
         actionId: action.item.id,
         pagePath: action.pagePath,
         verb,
-        enabled: action.item.disabled !== true && !pending,
+        enabled: action.item.disabled !== true && unavailable === undefined && !pending,
         pending,
         targetRevision: this.revision,
-        ...(action.item.disabledReason === undefined ? {} : { disabledReason: action.item.disabledReason }),
+        ...(disabledReason === undefined ? {} : { disabledReason }),
       }
     }))
   }
@@ -462,7 +465,7 @@ export class UiSurfaceModel {
         this.updateChoice(event, { kind: 'select', ids: event.selectedIds })
         this.observe(event)
         break
-      case 'selection-accept': this.acceptSelection(event); break
+      case 'selection-accept': this.acceptSelection(event, false); break
       case 'submit': this.invoke(event.submission.actionId, event.pagePath); break
       case 'activate': this.invoke(event.actionId, event.pagePath, false, event); break
     }
@@ -579,14 +582,19 @@ export class UiSurfaceModel {
     return true
   }
 
-  private acceptSelection(event: Extract<MayflyUiEvent, { readonly kind: 'selection-toggle' | 'selection-accept' }>): void {
+  private acceptSelection(event: Extract<MayflyUiEvent, { readonly kind: 'selection-accept' }>, confirmed: boolean): void {
     const key = uiControlKey(event)
     const state = this.choices.get(key)
     if (state === undefined) return
+    const single = event.selectedIds.length === 1 ? admittedListItem(state.definition.items, admittedListIndex(state.definition.items, event.selectedIds[0]!)) : undefined
+    /* A row that asks for confirmation shows the shared decision before its selection changes. */
+    if (!confirmed && single?.confirm !== undefined && single.disabled !== true) {
+      this.decision = { confirmation: typeof single.confirm === 'string' ? { title: single.confirm } : single.confirm, event, source: this.source }
+      this.changed()
+      return
+    }
     if (state.definition.role === 'browse') {
-      const id = event.selectedIds[0]
-      const item = id === undefined ? undefined : admittedListItem(state.definition.items, admittedListIndex(state.definition.items, id))
-      if (item === undefined || item.disabled === true) return
+      if (single === undefined || single.disabled === true) return
     } else {
       const next = reduceChoice(state, { kind: 'select', ids: event.selectedIds })
       const error = choiceError(next, this.t.bind(this))
@@ -601,9 +609,10 @@ export class UiSurfaceModel {
     if (!this.activeKeys.has(key)) this.start(key, { ...event, selectedIds: state.definition.role === 'browse' ? event.selectedIds : this.choices.get(key)!.selectedIds, ...(segmentId === undefined ? {} : { segmentId }) })
   }
 
-  /** Close the surface; Back is Escape's job, so dismiss actions never navigate. */
+  /** Close the surface; Back is Escape's job, so dismiss actions never navigate. An open decision answers No first. */
   requestClose(): void {
     if (!this.live) return
+    if (this.decision !== undefined) { this.answerDecision(false); return }
     if (this.dirty && this.input.definition.dismissal !== 'discard') { this.decision = { confirmation: { title: this.t('Discard unsaved changes?') }, event: undefined, source: this.source }; this.changed() }
     else this.finishClose()
   }
@@ -628,6 +637,7 @@ export class UiSurfaceModel {
     this.changed()
     if (!yes || !sameUiSource(decision.source, this.source)) return
     if (decision.event === undefined) this.finishClose()
+    else if (decision.event.kind === 'selection-accept') this.acceptSelection(decision.event, true)
     else this.invoke(decision.event.actionId, decision.event.pagePath, true, decision.event)
   }
 

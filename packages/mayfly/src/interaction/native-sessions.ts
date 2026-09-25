@@ -66,7 +66,7 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
         ui.actions({ id: 'session-detail-actions', items: [
           { id: 'open', label: 'Open conversation', disabled: archived, ...(archived ? { disabledReason: 'Restore the session first' } : {}) },
           { id: archived ? 'restore' : 'archive', label: archived ? 'Restore' : 'Archive', confirm: archived ? 'Restore this session?' : 'Archive this session?' },
-          ...(activity === '' ? [] : [{ id: 'stop-archive', label: 'Stop activity and archive', intent: 'danger' as const, confirm: `Stop this session’s activity and archive it?\n${activity}` }]),
+          ...(activity === '' ? [] : [{ id: 'stop-archive', label: 'Stop activity and archive', intent: 'danger' as const, confirm: { title: 'Stop this session’s activity and archive it?', detail: activity, confirmLabel: 'Stop and archive', tone: 'danger' as const } }]),
           { id: 'close', label: 'Close', dismiss: true },
         ] }),
       ]) })

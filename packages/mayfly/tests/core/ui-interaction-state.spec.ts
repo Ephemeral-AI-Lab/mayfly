@@ -1085,6 +1085,27 @@ describe('structured decisions, availability, and validation boundaries', () => 
     expect(prepare).toHaveBeenCalledOnce()
   })
 
+  it('asks a row confirmation before accepting that row and runs it only on Yes', async () => {
+    const prepare = vi.fn(completed)
+    const address = { pagePath: [], controlId: 'rows' }
+    const { model } = directSurface(ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [
+      { id: 'reset', label: 'Reset', confirm: 'Reset everything?' },
+      { id: 'locked', label: 'Locked', disabled: true, confirm: 'Never asked' },
+    ] }), prepare)
+    model.emit({ kind: 'selection-accept', ...address, selectedIds: ['locked'] })
+    expect(model.decisionNode).toBeUndefined()
+    model.emit({ kind: 'selection-accept', ...address, selectedIds: ['reset'] })
+    expect(model.decisionNode).toMatchObject({ title: 'Reset everything?' })
+    model.answerDecision(false)
+    await flush()
+    expect(prepare).not.toHaveBeenCalled()
+    model.emit({ kind: 'selection-accept', ...address, selectedIds: ['reset'] })
+    model.answerDecision(true)
+    await flush()
+    expect(prepare).toHaveBeenCalledOnce()
+    expect(prepare.mock.calls[0]![0]).toMatchObject({ kind: 'selection-accept', selectedIds: ['reset'] })
+  })
+
   it('refuses an action its targeted row declares unavailable before asking to confirm it', async () => {
     const prepare = vi.fn(completed)
     const stop = { id: 'stop', label: 'Stop', confirm: 'Stop?', selections: [{ pagePath: [], controlId: 'rows' }] }

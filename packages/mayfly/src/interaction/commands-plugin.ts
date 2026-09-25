@@ -25,6 +25,8 @@ import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { rewindCandidates } from './rewind.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
+import { displayKey } from '../core/key-actions.ts'
+import { SHARED_KEY_REFERENCE } from '../core/ui-key-grammar.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-commands'
@@ -119,9 +121,14 @@ export function apply(ctx: Context): void {
         heading: 'Keys',
         labelTone: 'warning',
         rows: keymap.list().map(action => ({
-          label: [action.keys].flat().join('/'),
+          label: [action.keys].flat().map(displayKey).join('/'),
           description: t(action.description ?? action.id),
         })),
+      },
+      {
+        heading: 'Panels and pickers',
+        labelTone: 'warning',
+        rows: SHARED_KEY_REFERENCE.map(row => ({ label: t(row.keys), description: t(row.action) })),
       },
     ]
     const view = () => helpNode(sections(), t)

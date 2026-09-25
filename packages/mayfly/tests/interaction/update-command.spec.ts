@@ -508,7 +508,7 @@ describe('/update confirm and swap', () => {
     const form = overlay as { handleInput(data: string): void, render(width: number): string[] }
     // The subtitle carries the publish age and host line.
     expect(form.render(100).join('\n')).toContain('published')
-    form.handleInput(KEY.left)
+    form.handleInput(KEY.right)
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result?.kind).toBe('success')
@@ -575,7 +575,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.left)
+    form.handleInput(KEY.right)
     form.handleInput(KEY.enter)
     const execution = await pending
     // The result line stays a short summary; the panel carries the recipe.
@@ -593,7 +593,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.left)
+    form.handleInput(KEY.right)
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
@@ -806,7 +806,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.left)
+    form.handleInput(KEY.right)
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
@@ -829,7 +829,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.left)
+    form.handleInput(KEY.right)
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
@@ -911,7 +911,7 @@ describe('/update confirm and swap', () => {
     // The downgrade warning rides the subtitle's tail; render wide enough
     // that the publish-age and host-line parts do not truncate it away.
     expect(form.render(260).join('\n')).toContain('downgrade reinstalls @ephemeral-ai/mayfly')
-    form.handleInput(KEY.left)
+    form.handleInput(KEY.right)
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result?.kind).toBe('success')
@@ -946,7 +946,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.left)
+    form.handleInput(KEY.right)
     form.handleInput(KEY.enter)
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: `update failed — rolled back to v${CURRENT_VERSION}` })

@@ -296,6 +296,7 @@ function listItem(value: unknown, path: string): MayflyListItem {
     const detailSpansValue = own(object, 'detailSpans', path)
     const segmentValue = own(object, 'segment', path)
     const unavailableValue = own(object, 'unavailableActions', path)
+    const confirmValue = own(object, 'confirm', path)
     return {
       id: text(required(object, 'id', path), `${path}.id`, state),
       label: text(required(object, 'label', path), `${path}.label`, state),
@@ -309,6 +310,7 @@ function listItem(value: unknown, path: string): MayflyListItem {
       ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`), 'disabled'),
       ...optional(segmentValue === undefined ? undefined : listSegment(segmentValue, `${path}.segment`, state), 'segment'),
       ...optional(unavailableValue === undefined ? undefined : unavailableActions(unavailableValue, `${path}.unavailableActions`, state), 'unavailableActions'),
+      ...optional(confirmValue === undefined ? undefined : confirmation(confirmValue, `${path}.confirm`, state), 'confirm'),
     }
   })
 }
