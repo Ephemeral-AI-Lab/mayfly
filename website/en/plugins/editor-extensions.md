@@ -33,3 +33,20 @@ Late results after unload, generation change, or abort are discarded.
 Extension nodes are a restricted tree without editor-control. Render, event,
 diagnostic, and action content is admitted again. Registrations expose
 `set(decoration)/dispose()` and follow the Fiber.
+
+## Keys and actions
+
+The editor owns every key in its slot: Escape (interrupt, retract, clear),
+Tab (completion), Shift+Tab (plan toggle), arrows, and all typed characters —
+also while a decoration or a notice is shown around it. Decoration `actions`
+are therefore reached only through their `key`, which must be a modifier
+accelerator such as `alt+r` or `ctrl+shift+k`. Mayfly omits, and reports, an
+action without a key, with a printable key, or with a key another Mayfly
+binding or an earlier decoration already claims:
+
+```ts
+ctx.mayflyEditorExtensions.register({ id: 'acme.issue-links' }, {
+  hint: 'Alt+I inserts the current issue',
+  actions: [{ id: 'insert-issue', label: 'Insert issue', key: 'alt+i' }],
+})
+```

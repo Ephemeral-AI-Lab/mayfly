@@ -4,66 +4,66 @@ When the agent needs a human decision, Mayfly answers with full-width pull-up pa
 
 ## Approval panel
 
-When a tool call needs authorization, a four-choice panel opens: an amber rule + `▶ Approve {tool}?` title + numbered choices:
+When a tool call needs authorization, a panel titled `Approve {tool}?` opens with the tool's reason (scrollable when long) and one row of choices:
 
 ```
-1. Allow once
-2. Allow {tool} for this session
-3. Reject
-4. Reject with feedback
+[ Reject ]  Allow once  Allow {tool} for this session  Reject with feedback
 ```
 
-(Number keys select directly; non-wrapping ↑↓ navigates and Enter confirms; the selected row carries a `▶` pointer.)
-
-- **Session-level remember** — choice 2 records the tool in a session allowance table; later requests for the same agent + tool skip the panel entirely and pass through.
-- **Reject with feedback** — choice 4 swaps the menu for an inline reason editor; submitting steers the agent with a user message (`User rejected …: <reason>`), so the agent sees why. An empty reason is a plain Reject (no steering).
-- **Escape rejects**; an aborted request signal settles as cancelled.
+- **Reject is focused first**, so an accidental Enter never grants access. `←` / `→` or `Tab` move between choices and `Enter` runs one; there are no digit shortcuts on this gate.
+- **Session-level remember** — *Allow {tool} for this session* records the tool for this Agent; later requests for the same Agent and tool pass without a panel. The allowance survives switching the displayed view (for example with `F7`) and ends when that Agent is disposed.
+- **Reject with feedback** opens a reason field on a second page; `Enter` sends, `Alt+Enter` adds a line, `Esc` ends editing and a second `Esc` returns to the choices. Sending steers the agent with a user message (`User rejected …: <reason>`), so it sees why; an empty reason is a plain Reject.
+- **Escape rejects**; an aborted request settles as cancelled.
 - **FIFO serialization** — concurrent approval requests queue; one panel shows at a time.
 
-Requests from other agents (not the one mounted in the UI) don't open a panel — they pass down the waterfall to the next answerer.
+Requests from other agents (not the one displayed) don't open a panel — they pass down the waterfall to the next answerer.
 
 ## Questionnaire panel
 
-`ctx.userQuestions` requests (clarifying questions and the like) open a per-question panel that focuses one question at a time:
+`ctx.userQuestions` requests (clarifying questions and the like) open one panel with a page per question:
 
-- the panel title reads `Question {i} of {N}`; the first row carries the progress `{i}/{N}` followed by every question's header (or `Q{i+1}`) — `●` current, `✓` answered, `○` unanswered;
-- the question tab strip uses non-wrapping **Left / Right**, with Enter descending into content; Tab / Shift-Tab is inert on the question tabs and switches semantic groups only inside content. Unsubmitted editor text is kept as a per-question draft and restored on return; Enter records the answer and jumps to the next unanswered question;
-- single-choice via ↑↓ + Enter, multi-choice via Space + Enter; the cursor row is highlighted full-width (the Other row included);
-- every question ends with a fixed **Other** pseudo-entry that opens a compact single-line input — a highlighted `> Answer` row; multi-line text is flattened to one line;
-- questions without options go straight to the same single-line input;
-- the footer follows the state: editing shows confirmation and return operations; the option list adds `space toggle` only for multi-choice;
-- answering everything resolves automatically. Escape rejects the whole request — though inside the Other editor, Escape first saves the draft and returns to the option list; an aborted signal closes and rejects it too.
+- a tab per question (its header, or `Q{n}`) shows progress; answered steps carry `✓`. `←` / `→` on the tab strip or `Alt+←` / `Alt+→` anywhere switch questions, and moving forward validates the current one, like **Next**;
+- options are numbered: `1`–`9` or ↑↓ + `Enter` choose, and a single choice advances to the next question (the last one submits). Single-choice questions end with **No selection**; multi-choice toggles with `Space` and confirms with `Enter`;
+- every question has an **Other** field (the only field when there are no options): typing starts an answer, `Enter` advances or submits, `Alt+Enter` adds a line;
+- **Back** and **Next** buttons sit under each question; **Submit answers** and **Cancel** sit under the panel;
+- `Esc` ends editing first; leaving with unsaved answers asks the shared *Discard unsaved changes?* decision, and discarding rejects the request. An aborted signal closes and rejects it too.
 
 Questionnaire answers enter the session as user-visible content the model can see.
 
 ## Confirmations
 
-Full access, stopping a subagent, deleting a provider, and updating Mayfly use explicit **Yes / No** buttons. No is focused initially. Select Yes to proceed, or No or Esc to cancel. The panel names the target and consequences without requiring a fixed text response. Cancelling a permission or subagent confirmation returns to the original list; cancelling provider deletion returns to the edit form with its draft preserved.
+Every confirmation — full access, stopping a subagent, removing a plugin, deleting a provider, archiving an active session, discarding unsaved changes — is the same shared decision: the question as the title, an optional sentence about consequences, then **No** (focused) and **Yes** (or a specific label such as *Enable* or *Stop*). `Enter` on No, `Esc`, or `Ctrl+C` cancel and return to the original surface with its state intact; only Yes proceeds. `/update` uses the same shape before it starts.
+
+When an action cannot run for the selected row — a one-shot or cold subagent, a plugin that is already installed — the action shows why next to its label and is never offered for confirmation.
 
 ## Multi-field forms
 
-Custom provider onboarding and configuration editing use a multi-field form panel:
+Provider onboarding, provider and settings editing, and similar panels use one form model:
 
-- each field starts on one compact `label · hint: value` row; the selected row carries `→`, and wrapped values continue under that row;
-- non-wrapping **Up / Down** moves between fields in navigation and remains available for cursor movement while editing; typing or the first **Enter** enters edit mode, and Enter confirms and advances; a select applies its candidate only with Enter, while Tab discards an unconfirmed adjustment and moves to the next group; invalid input stays active, and **Escape** climbs one layer at a time;
+- each field is a compact `label: value` row; the focused row carries `→`, and wrapped values continue under it;
+- **Up / Down** always move between fields; typing or **Enter** starts editing text, and **Enter** confirms and advances (`Alt+Enter` adds a line in multi-line fields);
+- a select changes directly with **Left / Right** (disabled options are skipped) or opens its list with **Enter**; a multiselect opens with **Enter** or **Space**; **Tab** applies an open list or text edit and moves to the next group;
+- **Escape** ends editing first; leaving a form with unsaved changes asks before discarding them;
 - a validation error renders directly below the failing field without closing the panel; any edit clears it;
 - values truncate to the panel width, so long pasted keys never break the frame.
 
 ## Plan-review panel
 
-When the agent calls `exit_plan_mode` to wrap up a plan, the review request opens in a dedicated question shape (the `plan-review` intent over `ctx.userQuestions`): a **framed, scrollable window with the full rendered plan** plus a numbered triple:
+When the agent calls `exit_plan_mode` to wrap up a plan, the plan renders into the conversation and the review decision opens in the editor slot:
 
 ```
-1. Approve
-2. Reject
-3. Revise (inline feedback editor)
+1. <approve label>
+2. <decline label>
+3. Other — type feedback to revise the plan
 ```
 
-- the **Revise** row carries the feedback input; submitting answers with a decline-with-feedback (the harness folds it into "their feedback: …"), so the agent iterates on the plan with the notes; an empty submission equals a plain Reject;
-- Approve/Reject settle directly; an aborted signal closes the panel with the cancellation code (`ASK_CANCELLED`).
+- the decline row is focused first; digits `1`–`3` or ↑↓ only move between decisions, and `Enter` confirms the focused one, so approving always takes an explicit Enter;
+- `c` copies the plan, `o` opens the feedback field; `PageUp` / `PageDown` / `Shift+↑↓` scroll the plan above;
+- feedback submits with `Enter` and becomes a decline-with-feedback (the harness folds it into "their feedback: …"), so the agent iterates on the plan; an empty submission returns to the decisions;
+- an aborted signal closes the panel with the cancellation code (`ASK_CANCELLED`).
 
 `Shift+Tab` toggles only normal and plan (see [Session modes](/en/features/modes)), preserving current permissions. YOLO is controlled separately through `/permission` and does not skip plan review; the footer can show plan and yolo together.
 
 ## Permission-preset panel
 
-`/permission` opens the permission-preset selector (the same single-select list shape as `/sessions` and `/preset`): one row per preset (a named bundle of sandbox mode + approval policy), the active one marked `← current`; Enter switches through the host's same write path, and a **danger-level preset uses a Yes / No confirmation with No focused initially**. A bare invocation is intercepted by the input layer to open the panel; the command itself is registered by the upstream `dsh-permission-presets`, and argumented calls pass through.
+`/permission` opens the permission-preset selector (the same single-select list shape as `/sessions` and `/preset`): one numbered row per preset (a named bundle of sandbox mode + approval policy), the active one marked `← current`. `1`–`9` or ↑↓ + `Enter` switch through the host's same write path; full access first asks the shared decision with its sandbox consequence spelled out. The derived `custom` state is shown but cannot be chosen, and says why. A bare invocation is intercepted by the input layer to open the panel; the command itself is registered by the upstream `dsh-permission-presets`, and argumented calls pass through.

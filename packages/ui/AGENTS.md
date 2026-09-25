@@ -41,6 +41,11 @@ objects, or mutable product state.
   paths. Unsuccessful replies cannot dismiss feedback; ordinary dirty dismissal
   uses confirmation, while explicit `discard` supports native decision outcomes.
   `presentation: 'editor'` uses the same overlay lifecycle and activation order.
+- Contract fields stay additive and renderer-neutral: action `key` is a key id
+  that core validates (no shared navigation keys, no repeats per page, no
+  printable keys beside filterable lists, modifiers only in editor
+  decorations); confirmations, row availability, numbering mode, and button
+  labels are plain data.
 
 ## Verification
 

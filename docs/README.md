@@ -1,11 +1,15 @@
 # Mayfly documentation index
 
-The current runtime has exactly two architecture documents:
+The current runtime is described by three architecture documents:
 
 - [mayfly-architecture.md](./mayfly-architecture.md): package boundaries, state
   ownership, and the flat Cordis composition.
 - [mayfly-seams.md](./mayfly-seams.md): usage boundaries for the native dsh
   services, the Mayfly UI services, and `mayflyCurrentAgent`.
+- [interaction-model.md](./interaction-model.md): input routing, the shared key
+  grammar, the Escape ladder, focus and search rules, hints, and the
+  confirmation and availability contract for panes, overlays, and editor
+  extensions.
 
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.
@@ -18,22 +22,12 @@ only describe their point in time and do not define the current API.
 See [platform-acceptance.md](./platform-acceptance.md) for the cross-platform
 automation and desktop acceptance checklist.
 
-The design rationale for the interaction architecture is in the
-[UI/UX unified model design](./design/ui-ux-unification.md): a consistency
-review of notifications, forms, lists, tabs, input routing, and hints, plus the
-target state model. The current implementation is defined by the architecture
-documents, public types, and tests.
-
-[The detailed PR #15 implementation plan](./design/pr15-interaction-refactor-plan.md)
-records the baseline problems, model types, consumer wiring, concurrent
-write-back, interaction logic, and the OAuth lifecycle as the design record for
-the shipped interaction model.
-
-The follow-up [terminal UX optimization design](./design/ui-ux-optimization.md)
-defines the global key grammar, control behaviors, and per-surface inventory.
-Its contract increments M1–M6 are implemented; M7 (registration-time warning
-for printable shortcuts on filterable surfaces) and the listed polish items
-remain open.
+The documents in [design/](./design/) are historical records superseded by
+[interaction-model.md](./interaction-model.md): the
+[UI/UX unified model design](./design/ui-ux-unification.md), the
+[PR #15 implementation plan](./design/pr15-interaction-refactor-plan.md), and
+the [terminal UX optimization design](./design/ui-ux-optimization.md). They
+explain how the model came to be; they do not define current behavior.
 
 Plugin authors should start from the Website
 [developer manual](../website/plugins/index.md) and use the

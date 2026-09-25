@@ -52,7 +52,9 @@ flowchart TB
    first becomes visible, without exposing renderer scheduling state to
    plugins. Form, selection, page, document-anchor, action, and feedback state
    for panes and overlays is held by the frontend `mayflyUiInteraction`
-   instance, so a core/theme reload does not lose valid drafts.
+   instance, so a core/theme reload does not lose valid drafts. Key dispatch
+   and contextual hints come from one grammar; see
+   [interaction-model.md](./interaction-model.md).
 7. At startup core prebuilds the prelude, conversation, local activity,
    EditorDock, and Footer hosts in a fixed order. Features only claim named
    slot leases; temporary notice/echo content enters the local activity region

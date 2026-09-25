@@ -69,7 +69,8 @@ data/replace update, unload, abort, or same-name reopen revokes handlers,
 reporters, and publishers that are no longer valid. Form drafts,
 single-flight, conflicts, confirmation, paging, and feedback belong to the
 frontend interaction owner; plugins are not required to echo `set()` calls
-inside their handlers.
+inside their handlers. Keys, focus, confirmations, and per-row action
+availability follow [interaction-model.md](./interaction-model.md).
 
 A null pane/status snapshot occupies no layout; overlays provide
 `focus/hide/show/close`, and `presentation: 'editor'` uses the existing editor
@@ -140,9 +141,10 @@ after the renderer returns, `subscribe()` replays the current upserts. When an
 external plugin unloads, the provider publishes a remove delta. An overlay
 registration's title provides the host frame; when the root node is already a
 `chrome: 'overlay'` surface, core merges the two into a single frame. Ordinary
-overlays and `presentation: 'editor'` both honor `maxHeight`, defaulting to at
-most one third of the terminal height when undeclared; short content keeps its
-natural height.
+overlays and `presentation: 'editor'` both honor `maxHeight`. When it is
+undeclared, ordinary overlays take at most one third of the terminal height and
+editor presentations at most half of it, with a ten-row floor; short content
+keeps its natural height.
 
 Cold continuable children use the Harness addressed-subagent API for history
 reads and explicit replies; browsing history does not activate the Agent, and
