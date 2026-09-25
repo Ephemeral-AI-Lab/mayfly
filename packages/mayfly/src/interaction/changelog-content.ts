@@ -22,7 +22,7 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
-    version: '0.1.0-alpha.6',
+    version: '0.1.0-alpha.7',
     summary: 'Native Agent Team workflows, a unified interaction model, and richer overlay surfaces on dsh 0.1.7-rc.1.',
     highlights: [
       'Agent Teams - mount the native agentTeams service and tools in the default bundle, with a readonly team panel over addressed subagents.',
