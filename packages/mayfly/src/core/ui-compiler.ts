@@ -1791,7 +1791,9 @@ class CompiledSurface implements MayflyEditorShellComponent {
     }
     reconcile(this.state)
     const remembered = this.surfaceRuntime.interaction?.focus
-    if (remembered !== undefined) this.restoreFocusIdentity(remembered)
+    const active = this.state.controls()[this.state.lastIndex]
+    // The model remembers the control, while editing and cursor state belong to this runtime.
+    if (remembered !== undefined && (active === undefined || !sameFocusIdentity(active.identity, remembered))) this.restoreFocusIdentity(remembered)
   }
 
   get focused(): boolean { return this.state.focused }
