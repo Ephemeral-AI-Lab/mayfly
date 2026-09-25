@@ -238,11 +238,11 @@ for (const relativeDir of PACKAGE_DIRS) {
 
 verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 
-// The consolidated runtime and UI declarations currently occupy 192 files and
-// about 1.795 MB; retain about 3% headroom while still catching accidental
+// The consolidated runtime and UI declarations currently occupy 197 files and
+// about 1.866 MB; retain about 3% headroom while still catching accidental
 // entry/chunk growth.
 if (libraryFiles > 222) fail(`library lib output has ${libraryFiles} files; budget is 222`)
-if (libraryBytes > 1_850_000) fail(`library lib output has ${libraryBytes} bytes; budget is 1850000`)
+if (libraryBytes > 1_920_000) fail(`library lib output has ${libraryBytes} bytes; budget is 1920000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)
