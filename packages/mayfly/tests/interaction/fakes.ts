@@ -100,6 +100,7 @@ export const KEY = {
   ctrlD: '\x04',
   ctrlS: '\x13',
   ctrlG: '\x07',
+  ctrlR: '\x12',
   ctrlV: '\x16',
   altEnter: '\x1b\r',
 } as const

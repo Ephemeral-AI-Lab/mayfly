@@ -33,6 +33,7 @@ import {
   type MayflyFocusable,
 } from '../core/index.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { printableKey } from '../core/key-actions.ts'
 import type { SubmitTransformation } from './prompt-submit-pipeline.ts'
 
 const MAX_COMPLETIONS = 200
@@ -412,8 +413,15 @@ export class EditorExtensionRuntime implements MayflyFocusable {
           rows.push(admitted.value)
         } catch (error) { this.report('definition', boundedMessage(error, 'editor extension diagnostic was rejected')) }
       }
-      if (Array.isArray(entry.actions) && entry.actions.length > 0) {
-        const admitted = validateMayflyUiNode({ kind: 'actions', id: `extension-actions-${String(entryIndex)}`, items: entry.actions })
+      /* The editor owns every unmodified key, so a decoration action is reachable only through a modifier accelerator. */
+      const reachable = Array.isArray(entry.actions) ? entry.actions.filter(action => {
+        const key = (action as { readonly key?: unknown }).key
+        if (typeof key === 'string' && key.length > 0 && !printableKey(key)) return true
+        this.report('definition', 'editor extension actions need a modifier key such as ctrl+r or alt+r')
+        return false
+      }) : []
+      if (reachable.length > 0) {
+        const admitted = validateMayflyUiNode({ kind: 'actions', id: `extension-actions-${String(entryIndex)}`, items: reachable })
         if (admitted.ok) {
           const actionNode = admitted.value as Extract<MayflyUiNode, { readonly kind: 'actions' }>
           const items = actionNode.items.map((action, actionIndex) => {

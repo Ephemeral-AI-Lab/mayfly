@@ -1076,7 +1076,6 @@ describe('compileMayflyUiNode', () => {
 
     const staleChange = editor.onChange!
     const staleSubmit = editor.onSubmit!
-    const checkpoint = runtime.checkpointEditorFocus()
     const refreshed = compileMayflyUiSurfaceNode(form, { ...f.options, surfaceRuntime: runtime })
     expect(refreshed.ok).toBe(true)
     if (!refreshed.ok) throw new Error(refreshed.message)
@@ -1093,7 +1092,6 @@ describe('compileMayflyUiNode', () => {
     if (!second.ok) throw new Error(second.message)
     second.value.component.render(40)
     expect(editors).toHaveLength(2)
-    checkpoint()
 
     const selectForm = ui.form({ id: 'form', fields: [{ kind: 'select', id: 'value', label: 'Value', value: null, options: [] }] })
     const replaced = compileMayflyUiSurfaceNode(selectForm, { ...f.options, surfaceRuntime: runtime })
@@ -1196,7 +1194,7 @@ describe('compileMayflyUiNode', () => {
     const emptyFixture = fixture()
     const empty = compiledSurface(ui.list({ id: 'empty', role: 'choose', filterable: true, selectedIds: [], items: [] }), emptyFixture.options)
     empty.focusTarget!.focused = true
-    expect(empty.component.render(40)).not.toEqual([])
+    expect(empty.component.render(40)).toEqual([])
     empty.focusTarget!.handleInput?.('/')
     empty.focusTarget!.handleInput?.('\r')
     expect(emptyFixture.events.at(-1)).toEqual({ kind: 'selection-accept', pagePath: [], controlId: 'empty', selectedIds: [] })
@@ -1678,15 +1676,20 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(focusedHint(ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }), [], { onUnhandledEscape: () => {} }))
       .toBe('  ←/→ tabs · Enter open · Esc close')
     expect(focusedHint(ui.list({ id: 'list', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })))
-      .toBe('  ↑/↓/←/→ options · Enter open')
+      .toBe('  ↑/↓ options · Enter open')
     expect(focusedHint(ui.list({ id: 'pick', role: 'choose', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })))
-      .toBe('  ↑/↓/←/→ options · Enter choose')
+      .toBe('  ↑/↓ options · Enter choose')
     expect(focusedHint(ui.loader({ message: 'Working', cancelActionId: 'cancel' })))
       .toBe('  Enter cancel')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })))
       .toBe('  Enter edit')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [{ id: 'dark', label: 'Dark' }] }] })))
-      .toBe('  ←/→/Enter adjust')
+      .toBe('  Enter pick')
+    expect(focusedHint(ui.form({ id: 'form', fields: [
+      { kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [{ id: 'dark', label: 'Dark' }, { id: 'light', label: 'Light' }] },
+      { kind: 'input', id: 'name', label: 'Name', value: '' },
+    ] })))
+      .toBe('  ↑/↓ fields · ←/→ adjust · Enter pick')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'toggle', id: 'enabled', label: 'Enabled', value: false }] })))
       .toBe('  Space/Enter toggle')
     expect(focusedHint(ui.form({ id: 'form', fields: [], submitActionId: 'Save' })))
@@ -1698,14 +1701,14 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }, { id: 'stop', label: 'Stop' }] }),
       ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }] }),
     ])
-    expect(focusedHint(groups)).toBe('  ↑/↓/←/→ actions · Enter run · Alt+←/Alt+→ tabs')
+    expect(focusedHint(groups)).toBe('  ↑/↓/←/→ actions · Enter run · Alt+←/Alt+→ tabs · Tab/Shift+Tab groups')
 
     const scrollGroups = ui.stack.column([
       ui.scroll(ui.text('abcdefgh')),
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }] }),
     ])
     expect(focusedHint(scrollGroups, [], { onUnhandledEscape: () => {} }))
-      .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E expand · Esc back')
+      .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E expand · Tab/Shift+Tab groups · Esc close')
     expect(focusedHint(scrollGroups, []))
       .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E expand · Tab/Shift+Tab groups')
     expect(focusedHint(scrollGroups, ['\x05'], { onUnhandledEscape: () => {} }))
@@ -1714,7 +1717,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
 
   it('derives empty-list, passive, field, and explicit dismissal hints', () => {
     expect(focusedHint(ui.list({ id: 'empty', role: 'choose', filterable: true, selectedIds: [], items: [] }), [], { onUnhandledEscape: () => {} }))
-      .toContain('Enter choose')
+      .toBe('  Esc close')
     expect(focusedHint(ui.list({ id: 'empty', role: 'browse', selectedIds: [], items: [] }))).toBe('')
     expect(focusedHint(ui.form({ id: 'form', fields: [
       { kind: 'toggle', id: 'one', label: 'One', value: false },
@@ -1743,7 +1746,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     focus.handleInput?.('\r')
     expect(f.events).toEqual([])
 
-    expect(focus.render(120).at(-1)).toBe('  ↑/↓/←/→ options · Space/Enter toggle / confirm · Alt+←/Alt+→ tabs')
+    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space/Enter toggle / confirm · Alt+←/Alt+→ tabs · Tab/Shift+Tab groups')
     focus.handleInput?.('\r')
     expect(f.events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'list', selectedIds: [] }])
     focus.handleInput?.(' ')
@@ -1900,7 +1903,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
 
   it('switches hints for text editing, select adjustment, and confirmation', () => {
     const input = ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })
-    expect(focusedHint(input, ['\r'])).toBe('  Enter next · Esc leave')
+    expect(focusedHint(input, ['\r'])).toBe('  Enter next · Esc done')
     const editingLayout = compiledSurface(input, fixture().options)
     editingLayout.focusTarget!.focused = true
     editingLayout.focusTarget!.handleInput?.('\r')
@@ -1911,20 +1914,20 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'save', label: 'Save' }] }),
     ])
     expect(focusedHint(textareaGroups, ['\r']))
-      .toBe('  Enter/Alt+Enter newline · Esc leave · Tab/Shift+Tab groups')
+      .toBe('  Enter/Alt+Enter newline · Tab/Shift+Tab groups · Esc done')
 
     const submittingTextarea = ui.form({ id: 'form', enterSubmits: 'send', fields: [{ kind: 'textarea', id: 'notes', label: 'Notes', value: '' }] })
-    expect(focusedHint(submittingTextarea, ['a'])).toBe('  Enter submit · Alt+Enter newline · Esc leave')
+    expect(focusedHint(submittingTextarea, ['a'])).toBe('  Enter submit · Alt+Enter newline · Esc done')
 
     const submittingInput = ui.form({ id: 'form', enterSubmits: 'send', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })
-    expect(focusedHint(submittingInput, ['a'])).toBe('  Enter submit · Esc leave')
+    expect(focusedHint(submittingInput, ['a'])).toBe('  Enter submit · Esc done')
 
     const select = ui.form({ id: 'form', fields: [{ kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [
       { id: 'dark', label: 'Dark' },
       { id: 'disabled', label: 'Disabled', disabled: true },
       { id: 'light', label: 'Light' },
     ] }] })
-    expect(focusedHint(select, ['\r'])).toBe('  ←/→ options · Enter apply · Esc cancel')
+    expect(focusedHint(select, ['\r'])).toBe('  ↑/↓ options · Enter apply · Esc cancel')
 
     const fixedSelect = ui.form({ id: 'form', fields: [{ kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [
       { id: 'dark', label: 'Dark' },
@@ -1937,7 +1940,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'save', label: 'Save' }] }),
     ])
     expect(focusedHint(selectGroups, ['\r']))
-      .toBe('  ←/→ options · Enter apply · Esc cancel')
+      .toBe('  ↑/↓ options · Enter apply · Tab/Shift+Tab groups · Esc cancel')
 
     const confirm = ui.actions({ id: 'commands', items: [{ id: 'delete', label: 'Delete', confirm: 'Delete?' }] })
     expect(focusedHint(confirm, ['\r'])).toBe('  Enter run')
@@ -1960,20 +1963,24 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(f.events).toHaveLength(1)
   })
 
-  it('keeps a declared accelerator out of field editing but fires it while a field is idle', () => {
+  it('lets text fields consume printable accelerators and keeps every accelerator out of editing', () => {
     const f = fixture()
     const result = compiledSurface(ui.stack.column([
       ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }),
-      ui.actions({ id: 'commands', items: [{ id: 'stop', label: 'Stop', key: 'q' }] }),
+      ui.actions({ id: 'commands', items: [{ id: 'stop', label: 'Stop', key: 'q' }, { id: 'reload', label: 'Reload', key: 'ctrl+r' }] }),
     ]), f.options)
     const focus = result.focusTarget!
     focus.focused = true
-    focus.handleInput?.('q')
-    expect(f.events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'stop', actionId: 'stop' }])
-    focus.handleInput?.('\r')
+    expect(focus.render(60).at(-1)).toContain('Ctrl+R Reload')
+    expect(focus.render(60).at(-1)).not.toContain('Q Stop')
+    focus.handleInput?.('\x12')
+    expect(f.events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'reload', actionId: 'reload' }])
     focus.handleInput?.('q')
     expect(f.events).toHaveLength(1)
-    expect(focus.render(60).join('\n')).toContain('Esc leave')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'name', editing: true })
+    focus.handleInput?.('\x12')
+    expect(f.events).toHaveLength(1)
+    expect(focus.render(60).join('\n')).toContain('Esc done')
 
     const selectFixture = fixture()
     const select = compiledSurface(ui.stack.column([
@@ -2003,7 +2010,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     result.focusTarget!.focused = true
     expect(result.component.render(80).at(-1)).toBe('  Enter run · Esc close')
     f.viewport.columns = 120
-    expect(result.component.render(120).at(-1)).toBe('  ↑/↓/←/→ actions · Enter run · Tab/Shift+Tab groups')
+    expect(result.component.render(120).at(-1)).toBe('  ↑/↓/←/→ actions · Enter run · Tab/Shift+Tab groups · Esc close')
 
     const wideTree = ui.stack.column([
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }, { id: 'stop', label: 'Stop' }] }),
@@ -2011,10 +2018,10 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     ])
     const widths = compiledSurface(wideTree, fixture({ onUnhandledEscape: () => {} }).options)
     widths.focusTarget!.focused = true
-    expect(widths.component.render(80).at(-1)).toBe('  ↑/↓/←/→ actions · Enter run · Alt+←/Alt+→ tabs')
-    expect(widths.component.render(40).at(-1)).toBe('  ↑/↓/←/→ · Enter · Alt+←→')
-    expect(widths.component.render(18).at(-1)).toBe('  ↑/↓/←/→ · Enter')
-    expect(widths.component.render(8).at(-1)).toBe('  Enter')
+    expect(widths.component.render(80).at(-1)).toBe('  ↑/↓/←/→ actions · Enter run · Alt+←/Alt+→ tabs · Esc close')
+    expect(widths.component.render(40).at(-1)).toBe('  ↑/↓/←/→ · Enter · Esc')
+    expect(widths.component.render(18).at(-1)).toBe('  Enter · Esc')
+    expect(widths.component.render(8).at(-1)).toBe('  Esc')
     expect(widths.component.render(6).join('\n')).not.toContain('Ent')
 
     const ansiColors = new Proxy({ logoGradient: [identity] }, {
@@ -2045,7 +2052,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
           { id: 'fallback', keys: 'F', label: 'fallback' },
         ],
       },
-    })).toBe('  Ctrl+L translated:launch · Enter translated:run · F fallback')
+    })).toBe('  Ctrl+L translated:launch · F fallback')
 
     expect(focusedHint(action, [], {
       contextHints: { extra: () => { throw new Error('hint provider unavailable') } },
@@ -2128,7 +2135,7 @@ describe('compileMayflyEditorShellNode', () => {
       children: [
         { node: ui.text('before') },
         { node: { kind: 'editor-control' } },
-        { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply' }] }) },
+        { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply', key: 'ctrl+r' }] }) },
       ],
     }
     const { events, result } = compiledEditorShell(shell, editor)
@@ -2146,21 +2153,22 @@ describe('compileMayflyEditorShellNode', () => {
     result.focusTarget.handleInput?.('!')
     expect(editor.getText()).toBe('draft!')
 
-    result.focusTarget.handleInput?.('\t')
-    result.component.render(40)
-    expect(editor.focused).toBe(false)
-    result.focusTarget.handleInput?.('\r')
-    expect(events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'apply', actionId: 'apply' }])
-
-    result.focusTarget.handleInput?.('\x1b[Z')
+    // Tab, Shift+Tab, and Escape stay with the editor; only the modifier accelerator reaches the action.
+    const forwarded = vi.spyOn(editor, 'handleInput')
+    for (const key of ['\t', '\x1b[Z', '\x1b', '\r']) result.focusTarget.handleInput?.(key)
+    expect(forwarded.mock.calls.map(call => call[0])).toEqual(['\t', '\x1b[Z', '\x1b', '\r'])
     result.component.render(40)
     expect(editor.focused).toBe(true)
+    expect(events).toEqual([])
+    result.focusTarget.handleInput?.('\x12')
+    expect(events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'apply', actionId: 'apply' }])
+    expect(forwarded).toHaveBeenCalledTimes(4)
     result.focusTarget.focused = false
     expect(editor.focused).toBe(false)
     result.component.invalidate()
   })
 
-  it('delegates Tab completion in an editor-only shell while multi-control shells keep roving', () => {
+  it('delegates Tab completion to the editor whether or not the shell carries actions', () => {
     const editorOnly = createTestEditor()
     const editorOnlyInput = vi.spyOn(editorOnly, 'handleInput')
     const root = compiledEditorShell({ kind: 'editor-control' }, editorOnly).result
@@ -2174,23 +2182,23 @@ describe('compileMayflyEditorShellNode', () => {
     expect(editorOnlyInput).toHaveBeenNthCalledWith(2, '\x1b[Z')
     expect(editorOnly.focused).toBe(true)
 
-    const rovingEditor = createTestEditor()
-    const rovingInput = vi.spyOn(rovingEditor, 'handleInput')
+    const decorated = createTestEditor()
+    const decoratedInput = vi.spyOn(decorated, 'handleInput')
     const shell = compiledEditorShell({
       kind: 'stack',
       direction: 'column',
       children: [
         { node: { kind: 'editor-control' } },
-        { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply' }] }) },
+        { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply', key: 'ctrl+r' }] }) },
       ],
-    }, rovingEditor).result
+    }, decorated).result
     shell.focusTarget.focused = true
 
     shell.focusTarget.handleInput?.('\t')
 
-    expect(rovingInput).not.toHaveBeenCalled()
+    expect(decoratedInput).toHaveBeenCalledWith('\t')
     shell.component.render(40)
-    expect(rovingEditor.focused).toBe(false)
+    expect(decorated.focused).toBe(true)
   })
 
   it('reports checked failures, preserves dry-run focus, and restores the editor roving target', () => {
@@ -2201,7 +2209,7 @@ describe('compileMayflyEditorShellNode', () => {
       direction: 'column',
       children: [
         { node: { kind: 'editor-control' } },
-        { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply' }] }) },
+        { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply', key: 'ctrl+r' }] }) },
       ],
     }
     const { events, result } = compiledEditorShell(shell, editor)
@@ -2209,15 +2217,12 @@ describe('compileMayflyEditorShellNode', () => {
     result.focusTarget.focused = true
     result.component.render(20)
     expect(editor.focused).toBe(true)
-    result.focusTarget.handleInput?.('\t')
-    result.component.render(20)
-    expect(editor.focused).toBe(false)
 
     const checked = result.component.renderChecked(2, { dryRun: true })
     expectLinesFit('editor shell checked dry render', checked.rows, 2)
     expect(result.focusTarget.focused).toBe(true)
-    expect(editor.focused).toBe(false)
-    result.focusTarget.handleInput?.('\r')
+    expect(editor.focused).toBe(true)
+    result.focusTarget.handleInput?.('\x12')
     expect(events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'apply', actionId: 'apply' }])
 
     result.focusTarget.focused = false
@@ -2248,95 +2253,18 @@ describe('compileMayflyEditorShellNode', () => {
     expect(broken.focused).toBe(true)
   })
 
-  it('restores pooled form editor focus after responsive dry runs', () => {
-    const shell = {
-      kind: 'stack',
-      direction: 'column',
-      children: [
-        { node: { kind: 'editor-control' } },
-        {
-          node: ui.form({ id: 'profile', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'Mayfly' }] }),
-          when: { minWidth: 60 },
-        },
-      ],
+  it('rejects focusable controls that would take keys from the host editor', () => {
+    const editor = createTestEditor()
+    for (const node of [
+      ui.form({ id: 'profile', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'Mayfly' }] }),
+      ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }] }),
+      ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }] }),
+      ui.loader({ message: 'Working', cancelActionId: 'cancel' }),
+    ]) {
+      const result = compileMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [{ node: { kind: 'editor-control' } }, { node }] }, { ...fixture().options, editor })
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.message).toContain('would take focus from the editor')
     }
-    const pooled: MayflyEditor[] = []
-    const localComponents = {
-      ...components,
-      createEditor: () => {
-        const editor = createTestEditor()
-        pooled.push(editor)
-        return editor
-      },
-    } as MayflyComponents
-    const current = compiledEditorShell(shell, createTestEditor(), { components: localComponents })
-    current.result.focusTarget.focused = true
-    current.result.component.render(80)
-    current.result.focusTarget.handleInput?.('\t')
-    current.result.focusTarget.handleInput?.('\r')
-    current.result.component.render(80)
-    expect(pooled).toHaveLength(1)
-    expect(pooled[0]!.focused).toBe(true)
-
-    current.viewport.columns = 40
-    current.result.component.renderChecked(40, { dryRun: true })
-    expect(pooled[0]!.focused).toBe(true)
-    current.viewport.columns = 80
-    current.result.component.renderChecked(80, { dryRun: true })
-    expect(pooled[0]!.focused).toBe(true)
-    current.result.component.render(80)
-    expect(pooled[0]!.focused).toBe(true)
-
-    const emptyRuntime = new MayflyUiSurfaceRuntime()
-    const restoreEmptyFocus = emptyRuntime.checkpointEditorFocus()
-    restoreEmptyFocus()
-    restoreEmptyFocus()
-
-    const createdDuringDryRun: MayflyEditor[] = []
-    const lateComponents = {
-      ...components,
-      createEditor: () => {
-        const editor = createTestEditor()
-        createdDuringDryRun.push(editor)
-        return editor
-      },
-    } as MayflyComponents
-    const late = compiledEditorShell(shell, createTestEditor(), { components: lateComponents })
-    late.viewport.columns = 40
-    late.result.focusTarget.focused = true
-    late.result.component.render(40)
-    expect(createdDuringDryRun).toEqual([])
-    late.viewport.columns = 80
-    late.result.component.renderChecked(80, { dryRun: true })
-    expect(createdDuringDryRun).toHaveLength(1)
-    expect(createdDuringDryRun[0]!.focused).toBe(false)
-
-    const resolved = createTestEditor()
-    resolved.focused = true
-    const resolvedLate = compiledEditorShell(shell, createTestEditor(), {
-      resolveTextEditor: () => resolved,
-    })
-    resolvedLate.viewport.columns = 40
-    resolvedLate.result.component.render(40)
-    resolvedLate.viewport.columns = 80
-    resolvedLate.result.component.renderChecked(80, { dryRun: true })
-    expect(resolved.focused).toBe(true)
-
-    const shared = createTestEditor()
-    shared.focused = true
-    const sharedResolver = compiledEditorShell({
-      kind: 'stack',
-      direction: 'column',
-      children: [
-        { node: { kind: 'editor-control' } },
-        { node: ui.form({ id: 'shared', fields: [
-          { kind: 'input', id: 'name', label: 'Name', value: 'Mayfly' },
-          { kind: 'input', id: 'alias', label: 'Alias', value: 'Dsh' },
-        ] }) },
-      ],
-    }, createTestEditor(), { resolveTextEditor: () => shared })
-    sharedResolver.result.component.renderChecked(80, { dryRun: true })
-    expect(shared.focused).toBe(true)
   })
 
   it('compiles a root slot and contains validation, setup, and editor render failures', () => {

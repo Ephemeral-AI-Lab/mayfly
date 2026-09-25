@@ -41,6 +41,7 @@ const FALLBACK_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze
   [ACTION_HOME]: ['home'],
   [ACTION_END]: ['end'],
   [ACTION_TOGGLE]: ['space'],
+  [ACTION_INTERRUPT]: ['ctrl+c'],
   [ACTION_NEXT_CONTROL]: ['tab'],
   [ACTION_SHIFT_TAB]: ['shift+tab'],
   [ACTION_SEGMENT_LEFT]: ['left'],
@@ -68,6 +69,15 @@ export function displayKey(key: string): string {
     if (part === 'meta') return 'Meta'
     return DISPLAY_KEY_BY_ID[part] ?? (part.length === 1 ? part.toUpperCase() : part)
   }).join('+')
+}
+
+/** A key id that inserts text rather than chording a modifier or naming a function key. */
+export function printableKey(key: string): boolean {
+  const normalized = key.toLowerCase()
+  if (normalized === 'space') return true
+  const parts = normalized.split('+')
+  const base = parts.at(-1)!
+  return base.length === 1 && parts.slice(0, -1).every(modifier => modifier === 'shift')
 }
 
 /** Resolve configured keys, falling back only for compiler use without a keymap fixture. */

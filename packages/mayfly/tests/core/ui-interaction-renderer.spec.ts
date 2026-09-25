@@ -242,8 +242,8 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('returns through nested tab groups before delegating Escape', async () => {
-    const { compile } = await setup(ui.stack.column([
+  it('closes from any tab depth instead of stopping on tab strips', async () => {
+    const { compile, handle } = await setup(ui.stack.column([
       ui.tabs({ id: 'outer', activeId: 'one', items: [{ id: 'one', label: 'One' }] }),
       ui.child(ui.stack.column([
         ui.tabs({ id: 'inner', activeId: 'a', items: [{ id: 'a', label: 'A' }] }),
@@ -253,13 +253,11 @@ describe('shared interaction compiler', () => {
     const renderer = compile()
     renderer.input('\t')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'inner' })
-    renderer.input('\x1b')
-    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'outer' })
-    renderer.input('\t')
     renderer.input('\t')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'run' })
+    expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc close')
     renderer.input('\x1b')
-    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'inner' })
+    await vi.waitFor(() => expect(handle.closed).toBe(true))
     renderer.runtime.dispose()
   })
 
@@ -433,18 +431,52 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('starts every select picker on the first arrow key', async () => {
+  it('cycles a select with left and right while up and down keep navigating fields', async () => {
     const { compile, model } = await setup(ui.form({ id: 'form', fields: [
       { kind: 'select', id: 'effort', label: 'Thinking effort', value: 'default', options: [
-        { id: 'default', label: 'Provider default' }, { id: 'low', label: 'low' }, { id: 'high', label: 'high' },
+        { id: 'default', label: 'Provider default' }, { id: 'low', label: 'low' }, { id: 'off', label: 'off', disabled: true }, { id: 'high', label: 'high' },
       ] },
+      { kind: 'select', id: 'unset', label: 'Unset', value: null, options: [{ id: 'first', label: 'First' }, { id: 'last', label: 'Last' }] },
     ] }))
+    const value = (field: string) => model.form({ pagePath: [], formId: 'form' })!.fields[field]!.value
     const renderer = compile()
     renderer.compiled.component.render(80)
     renderer.input('\x1b[C')
-    expect(model.form({ pagePath: [], formId: 'form' })!.fields.effort!.value).toBe('low')
+    expect(value('effort')).toBe('low')
+    renderer.input('\x1b[C')
+    expect(value('effort')).toBe('high')
+    renderer.input('\x1b[C')
+    expect(value('effort')).toBe('high')
     renderer.input('\x1b[B')
-    expect(model.form({ pagePath: [], formId: 'form' })!.fields.effort!.value).toBe('high')
+    expect(value('effort')).toBe('high')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'unset' })
+    renderer.input('\x1b[C')
+    expect(value('unset')).toBe('first')
+    model.updateForm({ pagePath: [], formId: 'form' }, { kind: 'edit', fieldId: 'unset', value: null })
+    renderer.input('\x1b[D')
+    expect(value('unset')).toBe('last')
+    renderer.input('\x1b[A')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'effort' })
+    renderer.runtime.dispose()
+  })
+
+  it('opens a multiselect picker only on request and commits its toggles on Tab', async () => {
+    const { compile, model } = await setup(ui.form({ id: 'form', fields: [
+      { kind: 'multiselect', id: 'efforts', label: 'Efforts', value: [], options: [{ id: 'low', label: 'low' }, { id: 'high', label: 'high' }] },
+      { kind: 'input', id: 'tail', label: 'Tail', value: '' },
+    ] }))
+    const renderer = compile()
+    renderer.input('\x1b[B')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'tail' })
+    renderer.input('\x1b[A')
+    renderer.input(' ')
+    expect(renderer.compiled.component.render(80).at(-1)).toContain('Space toggle')
+    renderer.input(' ')
+    renderer.input('\x1b[B')
+    renderer.input(' ')
+    renderer.input('\t')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.efforts!.value).toEqual(['low', 'high'])
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'tail' })
     renderer.runtime.dispose()
   })
 
@@ -501,7 +533,134 @@ describe('shared interaction compiler', () => {
     const renderer = compile()
     renderer.input('\r')
     renderer.input('\r')
+    expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc done')
+    renderer.input('\x1b')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'name' })
     expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc back')
+    renderer.runtime.dispose()
+  })
+
+  it('accepts the row the cursor shows after moving past a disabled tail', async () => {
+    const accepted: string[] = []
+    const { compile } = await setup(ui.list({ id: 'presets', role: 'choose', numbered: true, selectedIds: [], items: [
+      { id: 'read-only', label: 'Read only' },
+      { id: 'workspace', label: 'Workspace' },
+      { id: 'custom', label: 'Custom', disabled: true },
+    ] }), { action: event => { if (event.kind === 'selection-accept') accepted.push(event.selectedIds[0]!); return { kind: 'completed' } } })
+    const renderer = compile()
+    renderer.input('\x1b[F')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'presets', itemId: 'workspace' })
+    renderer.input('\x1b[B')
+    renderer.input('\r')
+    await vi.waitFor(() => expect(accepted).toEqual(['workspace']))
+    renderer.input('3')
+    renderer.input('9')
+    await flush()
+    expect(accepted).toEqual(['workspace'])
+    renderer.runtime.dispose()
+  })
+
+  it('moves to a numbered decision without accepting it when digits only focus', async () => {
+    const accepted: string[] = []
+    const { compile } = await setup(ui.list({ id: 'decision', role: 'choose', numbered: 'focus', selectedIds: ['reject'], items: [
+      { id: 'approve', label: 'Approve' }, { id: 'reject', label: 'Reject' },
+    ] }), { action: event => { if (event.kind === 'selection-accept') accepted.push(event.selectedIds[0]!); return { kind: 'completed' } } })
+    const renderer = compile()
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('1. Approve')
+    expect(renderer.compiled.component.render(80).at(-1)).toContain('1-2 focus')
+    renderer.input('1')
+    await flush()
+    expect(accepted).toEqual([])
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ itemId: 'approve' })
+    renderer.input('\r')
+    await vi.waitFor(() => expect(accepted).toEqual(['approve']))
+    renderer.runtime.dispose()
+  })
+
+  it('opens and closes tree branches with right and left', async () => {
+    const { compile, model } = await setup(ui.list({ id: 'tree', role: 'browse', tree: true, selectedIds: [], items: [
+      { id: 'root', label: 'Root' }, { id: 'leaf', label: 'Leaf', parentId: 'root' }, { id: 'other', label: 'Other' },
+    ] }))
+    const expanded = () => model.choice({ pagePath: [], controlId: 'tree' })!.expandedIds
+    const renderer = compile()
+    renderer.input('\x1b[D')
+    expect(expanded()).toEqual([])
+    renderer.input('\x1b[C')
+    expect(expanded()).toEqual(['root'])
+    renderer.input('\x1b[C')
+    expect(expanded()).toEqual(['root'])
+    renderer.input('\x1b[B')
+    renderer.input('\x1b[C')
+    expect(expanded()).toEqual(['root'])
+    renderer.input('\x1b[A')
+    renderer.input('\x1b[D')
+    expect(expanded()).toEqual([])
+    renderer.input(' ')
+    expect(expanded()).toEqual(['root'])
+    renderer.runtime.dispose()
+  })
+
+  it('ignores Space in a multiselect picker with nothing to focus', async () => {
+    const { compile, model } = await setup(ui.form({ id: 'form', fields: [{ kind: 'multiselect', id: 'none', label: 'None', value: [], options: [] }] }))
+    const renderer = compile()
+    renderer.input('\r')
+    renderer.input(' ')
+    renderer.input('\r')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.none!.value).toEqual([])
+    renderer.runtime.dispose()
+  })
+
+  it('keeps modifier accelerators live while filtering and printable keys in the query', async () => {
+    const activated: string[] = []
+    const { compile, model } = await setup(ui.stack.column([
+      ui.list({ id: 'models', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'alpha', label: 'alpha' }, { id: 'beta', label: 'beta' }] }),
+      ui.actions({ id: 'actions', items: [{ id: 'session', label: 'Use for this session', key: 'alt+enter', selections: [{ pagePath: [], controlId: 'models' }] }] }),
+    ]), { action: event => { if (event.kind === 'activate') activated.push(`${event.actionId}:${event.inputs?.selections?.[0]?.selectedIds.join()}`); return { kind: 'completed' } } })
+    const renderer = compile()
+    const choice = () => model.choice({ pagePath: [], controlId: 'models' })!
+    renderer.input('\x7f')
+    expect(choice().searching).toBe(false)
+    renderer.input('b')
+    expect(choice()).toMatchObject({ searching: true, query: 'b', focusedId: 'beta' })
+    expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc end search')
+    renderer.input('\x1b\r')
+    await vi.waitFor(() => expect(activated).toEqual(['session:beta']))
+    renderer.input('\x1b')
+    expect(choice()).toMatchObject({ searching: false, query: 'b' })
+    expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc close')
+    renderer.runtime.dispose()
+  })
+
+  it('treats Ctrl+C as the outermost Escape, including the dirty-form confirmation', async () => {
+    const { compile, model } = await setup(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }))
+    const renderer = compile()
+    renderer.input('draft')
+    renderer.input('\x03')
+    expect(model.decisionNode).toMatchObject({ title: 'Discard unsaved changes?' })
+    renderer.runtime.dispose()
+  })
+
+  it('toggles a multi-select row with Space even while its filter is being typed', async () => {
+    const { compile, model } = await setup(ui.list({ id: 'models', role: 'choose', mode: 'multiple', filterable: true, selectedIds: [], items: [
+      { id: 'gpt-a', label: 'gpt a' }, { id: 'gpt-b', label: 'gpt b' }, { id: 'other', label: 'other' },
+    ] }))
+    const renderer = compile()
+    renderer.input('gpt')
+    renderer.input(' ')
+    const choice = model.choice({ pagePath: [], controlId: 'models' })!
+    expect(choice).toMatchObject({ query: 'gpt', searching: true, selectedIds: ['gpt-a'] })
+    renderer.runtime.dispose()
+  })
+
+  it('numbers visible rows from the top of the collection while the window scrolls', async () => {
+    const { compile, viewport } = await setup(ui.list({ id: 'levels', role: 'choose', numbered: true, selectedIds: [], items: Array.from({ length: 9 }, (_, index) => ({ id: `level-${String(index + 1)}`, label: `Level ${String(index + 1)}` })) }))
+    viewport.rows = 4
+    const renderer = compile()
+    renderer.input('\x1b[F')
+    const rows = renderer.compiled.component.render(40).join('\n')
+    expect(rows).toContain('9. Level 9')
+    expect(rows).not.toContain('1. Level 9')
+    expect(renderer.compiled.component.render(80).at(-1)).toContain('1-9 choose')
     renderer.runtime.dispose()
   })
 
@@ -548,7 +707,7 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('handles textarea newlines, pending fields, disabled options, and select Tab cancellation', async () => {
+  it('handles textarea newlines, pending fields, disabled options, and select Tab commits', async () => {
     const view = ui.form({ id: 'form', fields: [
       { kind: 'textarea', id: 'notes', label: 'Notes', value: '' },
       { kind: 'select', id: 'mode', label: 'Mode', value: 'a', options: [
@@ -572,11 +731,14 @@ describe('shared interaction compiler', () => {
     renderer.input('\r')
     renderer.input('\x1b[C')
     renderer.input('\r')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.mode!.value).toBe('c')
+    renderer.input('\x1b[D')
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.mode!.value).toBe('a')
-    renderer.input('\x1b[C')
+    renderer.input('\r')
+    renderer.input('\x1b[B')
     renderer.input('x')
     renderer.input('\t')
-    expect(model.form({ pagePath: [], formId: 'form' })!.fields.mode!.value).toBe('a')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.mode!.value).toBe('c')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'tail' })
     renderer.compiled.focusTarget!.restoreFocusIdentity?.({ pagePath: [], controlId: 'mode' })
     const key = renderer.runtime.state.activeKey!

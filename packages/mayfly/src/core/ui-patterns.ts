@@ -255,13 +255,14 @@ export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, c
   return [compactTokens(tokens, width)]
 }
 
-export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
+/** Render list rows; `numberFrom` is the visible position of the first row so numbers stay stable while the window scrolls. */
+export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0): string[] {
   const available = safeWidth(width)
   const rows: { readonly value: string, readonly itemId?: string }[] = []
   if (node.filter !== undefined) rows.push({ value: fit(colors.textMuted(`/ ${node.filter}`), available) })
   let group: string | undefined
-  let rowNumber = 0
-  for (const item of node.items) {
+  const numbered = node.numbered !== undefined && node.numbered !== false
+  for (const [ordinal, item] of node.items.entries()) {
     if (item.group !== undefined && item.group !== group) {
       group = item.group
       rows.push({ value: fit(colors.muted(item.group), available) })
@@ -271,7 +272,8 @@ export function renderList(node: ListNode, width: number, height: number, focus:
     const enabledFocus = focused && item.disabled !== true
     const marker = enabledFocus ? focus.marker : ' '
     const pointerGlyph = enabledFocus ? '→' : selected ? '●' : node.mode === 'multiple' ? '○' : ' '
-    const number = node.numbered === true && rowNumber < 9 ? `${String(++rowNumber)}. ` : ''
+    const position = numberFrom + ordinal
+    const number = numbered && position < 9 ? `${String(position + 1)}. ` : ''
     const detail = available > 40 ? paintListDetail(item, colors) : ''
     const badge = item.badge === undefined ? '' : ` [${item.badge}]`
     if (item.disabled === true) {
