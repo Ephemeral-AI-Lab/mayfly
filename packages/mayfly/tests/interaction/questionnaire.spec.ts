@@ -18,7 +18,7 @@ const accept = (id: string, ids: readonly string[], pagePath = path(id)) =>
   ({ kind: 'selection-accept' as const, pagePath, controlId: 'options', selectedIds: ids })
 
 describe('shared questionnaire', () => {
-  it('advances on Enter, switches pages with arrow keys, and restores the list row on revisit', async () => {
+  it('advances on Enter, switches pages with Alt+arrows, and restores the list row on revisit', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [
       { id: 'one', question: 'Pick one', options: [{ label: 'Alpha' }, { label: 'Beta' }] },
@@ -35,11 +35,14 @@ describe('shared questionnaire', () => {
     expect(model.completedSteps({ pagePath: [], controlId: 'questions' })).toEqual(['one'])
     expect(renderer.component.render(80).join('\n')).toContain('✓ Q1')
     expect(model.focus).toMatchObject({ pagePath: path('two'), controlId: 'options', itemId: '0' })
-    renderer.input('\x1b[D')
+    // The surface renderer recompiles on every model revision, restoring the model's focus.
+    const recompiled = () => renderRequest(model, undefined, renderer.runtime)
+    recompiled().input('\x1b[1;3D')
     expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBe('one')
     expect(model.focus).toMatchObject({ pagePath: path('one'), controlId: 'options', itemId: '1' })
-    renderer.input('\x1b[C')
+    recompiled().input('\x1b[1;3C')
     expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBe('two')
+    expect(recompiled().component.render(80).join('\n').match(/Submit answers/gu)).toHaveLength(1)
     renderer.runtime.dispose()
     model.invoke('submit-answers')
     await expect(pending).resolves.toEqual({ answers: [{ id: 'one', selected: ['Beta'] }, { id: 'two', selected: [] }] })

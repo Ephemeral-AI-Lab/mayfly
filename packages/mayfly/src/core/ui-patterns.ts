@@ -255,13 +255,14 @@ export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, c
   return [compactTokens(tokens, width)]
 }
 
-export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
+/** Render list rows; `numberFrom` is the visible position of the first row so numbers stay stable while the window scrolls. */
+export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0): string[] {
   const available = safeWidth(width)
   const rows: { readonly value: string, readonly itemId?: string }[] = []
   if (node.filter !== undefined) rows.push({ value: fit(colors.textMuted(`/ ${node.filter}`), available) })
   let group: string | undefined
-  let rowNumber = 0
-  for (const item of node.items) {
+  const numbered = node.numbered !== undefined && node.numbered !== false
+  for (const [ordinal, item] of node.items.entries()) {
     if (item.group !== undefined && item.group !== group) {
       group = item.group
       rows.push({ value: fit(colors.muted(item.group), available) })
@@ -271,8 +272,9 @@ export function renderList(node: ListNode, width: number, height: number, focus:
     const enabledFocus = focused && item.disabled !== true
     const marker = enabledFocus ? focus.marker : ' '
     const pointerGlyph = enabledFocus ? '→' : selected ? '●' : node.mode === 'multiple' ? '○' : ' '
-    const number = node.numbered === true && rowNumber < 9 ? `${String(++rowNumber)}. ` : ''
-    const detail = available > 40 ? paintListDetail(item, colors) : ''
+    const position = numberFrom + ordinal
+    const number = numbered && position < 9 ? `${String(position + 1)}. ` : ''
+    const detail = available > 40 ? paintListDetail(item.disabled === true && item.detail === undefined && item.detailSpans === undefined && item.disabledReason !== undefined ? { ...item, detail: item.disabledReason } : item, colors) : ''
     const badge = item.badge === undefined ? '' : ` [${item.badge}]`
     if (item.disabled === true) {
       rows.push({ value: fit(colors.muted(`${marker}${pointerGlyph} ${number}${item.label}${badge}${detail}`), available), itemId: item.id })
@@ -339,7 +341,7 @@ export function renderListSegment(segment: MayflyListSegment, selectedId: string
   return fit(narrowed.at(-1)!.body, available)
 }
 
-export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
+export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key): string[] {
   const available = safeWidth(width)
   const focused = focus.focused && focus.key === field.id && field.disabled !== true
   const expandable = field.kind === 'select' || field.kind === 'multiselect'
@@ -347,17 +349,17 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
   let value: string
   let placeholder = false
   if (field.kind === 'toggle') value = field.value ? '[on]' : '[off]'
-  else if (field.kind === 'select') value = field.value === null ? 'Choose…' : field.options.find(option => option.id === field.value)?.label ?? field.value
-  else if (field.kind === 'multiselect') value = field.options.filter(option => field.value.includes(option.id)).map(option => option.label).join(', ') || 'None selected'
+  else if (field.kind === 'select') value = field.value === null ? text('Choose…') : field.options.find(option => option.id === field.value)?.label ?? field.value
+  else if (field.kind === 'multiselect') value = field.options.filter(option => field.value.includes(option.id)).map(option => option.label).join(', ') || text('None selected')
   else if (field.kind === 'number') value = `${field.value ?? ''}${field.unit === undefined ? '' : ` ${field.unit}`}`
   else if (field.kind === 'secret') value = field.value.length === 0 ? field.placeholder ?? '' : '•'.repeat(field.value.length)
   else value = field.value.length === 0 ? field.placeholder ?? '' : field.value
   if (field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret') placeholder = field.value.length === 0 && field.placeholder !== undefined
   const prefix = interactivePrefix({ key: field.id, focused, marker: focus.marker })
   // Expanded selects show the label as a group header; the option rows carry the value.
-  // A trailing ‹ › on the focused row advertises the in-place ←→ cycle.
-  const adjustable = expandable && field.disabled !== true && field.options.length > 0
-  const body = expanded ? `${field.label}${focused ? ' ‹ ›' : ''}` : `${field.label}: ${value}${focused && adjustable ? ' ‹ ›' : ''}`
+  // A focused single select wraps its value in ‹ › while ←→ can cycle it.
+  const cycles = focused && field.kind === 'select' && field.options.filter(option => option.disabled !== true).length > (field.value === null ? 0 : 1)
+  const body = expanded ? field.label : `${field.label}: ${cycles ? `‹ ${value} ›` : value}`
   const row = field.disabled === true
     ? colors.muted(`${prefix}${body}`)
     : focused ? colors.primary(`${prefix}${body}`)
@@ -378,8 +380,9 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
 
 function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly value: string, readonly focused: boolean, readonly active: boolean } {
   const busy = item.busy === true
-  const focused = focus.focused && focus.key === item.id && item.disabled !== true && !busy
-  const label = `${busy ? '… ' : ''}${item.label}${item.key === undefined ? '' : ` (${displayKey(item.key)})`}`
+  const focused = focus.focused && focus.key === item.id && item.disabled !== true
+  const reason = item.disabled === true && item.disabledReason !== undefined ? ` — ${item.disabledReason}` : ''
+  const label = `${busy ? '… ' : ''}${item.label}${item.key === undefined ? '' : ` (${displayKey(item.key)})`}${reason}`
   const framed = item.intent === 'primary' ? `[ ${label} ]` : item.intent === 'danger' ? `! ${label}` : label
   const content = item.disabled === true || busy ? colors.muted(framed) : item.intent === 'danger' ? colors.error(framed) : focused || item.intent === 'primary' ? colors.primary(framed) : colors.text(framed)
   const selection = focused ? colors.selectedBg(content) : content

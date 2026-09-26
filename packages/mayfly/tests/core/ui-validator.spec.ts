@@ -403,6 +403,58 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode({ ...valid, children: [{ node: ui.text('x'), basis: 3 }] }).ok).toBe(true)
   })
 
+  it('admits well-formed accelerators and rejects malformed, reserved, and duplicate ones', () => {
+    const actions = (...keys: string[]) => ui.actions({ id: 'actions', items: keys.map((key, index) => ({ id: `a${String(index)}`, label: `A${String(index)}`, key })) })
+    expect(accepted(actions('ctrl+r', 'alt+Enter', 'f5', 'Delete', 'q', 'shift+q', 'meta+alt+x'))).toMatchObject({ kind: 'actions' })
+    for (const key of ['', 'ctrl+', 'hyper+x', 'pageUpp', 'ctrl+ctrl+x', ' ', 'ctrl+\x01']) {
+      expect(validateMayflyUiNode(actions(key))).toMatchObject({ ok: false, message: expect.stringContaining('is not a key id') })
+    }
+    for (const key of ['enter', 'Tab', 'shift+tab', 'alt+left', 'ctrl+c', 'pageUp', 'space', 'escape']) {
+      expect(validateMayflyUiNode(actions(key))).toMatchObject({ ok: false, message: expect.stringContaining('reserved for shared navigation') })
+    }
+    expect(validateMayflyUiNode(actions('ctrl+r', 'Ctrl+R'))).toMatchObject({ ok: false, message: expect.stringContaining('already bound on this page') })
+    const tabs = ui.tabs({ id: 'pages', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] })
+    expect(accepted(ui.stack.column([
+      tabs,
+      ui.child(ui.actions({ id: 'first', items: [{ id: 'refresh-one', label: 'Refresh', key: 'ctrl+r' }] }), { tab: { controlId: 'pages', itemId: 'one' } }),
+      ui.child(ui.actions({ id: 'second', items: [{ id: 'refresh-two', label: 'Refresh', key: 'ctrl+r' }] }), { tab: { controlId: 'pages', itemId: 'two' } }),
+    ]))).toMatchObject({ kind: 'stack' })
+  })
+
+  it('rejects printable accelerators once a filterable list could swallow them', () => {
+    const list = (filterable: boolean) => ui.list({ id: 'rows', role: 'browse', selectedIds: [], filterable, items: [{ id: 'a', label: 'A' }] })
+    const stop = ui.actions({ id: 'actions', items: [{ id: 'stop', label: 'Stop', key: 'q' }] })
+    expect(accepted(ui.stack.column([list(false), stop]))).toMatchObject({ kind: 'stack' })
+    expect(validateMayflyUiNode(ui.stack.column([list(true), stop]))).toMatchObject({ ok: false, message: expect.stringContaining('would swallow typed filter text') })
+    expect(accepted(ui.stack.column([list(true), ui.actions({ id: 'actions', items: [{ id: 'stop', label: 'Stop', key: 'ctrl+q' }] })]))).toMatchObject({ kind: 'stack' })
+  })
+
+  it('requires modifier accelerators for editor-shell actions', () => {
+    const shell = (key?: string) => ({ kind: 'stack', direction: 'column', children: [
+      { node: { kind: 'editor-control' } },
+      { node: ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run', ...(key === undefined ? {} : { key }) }] }) },
+    ] })
+    expect(validateMayflyEditorShellNode(shell('ctrl+r'))).toMatchObject({ ok: true })
+    for (const key of [undefined, 'q']) {
+      expect(validateMayflyEditorShellNode(shell(key))).toMatchObject({ ok: false, message: expect.stringContaining('needs a modifier accelerator') })
+    }
+  })
+
+  it('canonicalizes structured confirmations, form labels, numbered focus, and row availability', () => {
+    const confirm = { title: 'Stop build?', detail: 'Output stops streaming.', confirmLabel: 'Stop', cancelLabel: 'Keep running', tone: 'danger' as const }
+    expect(accepted(ui.actions({ id: 'actions', items: [{ id: 'stop', label: 'Stop', confirm }] }))).toMatchObject({ items: [{ confirm }] })
+    expect(accepted(ui.actions({ id: 'actions', items: [{ id: 'stop', label: 'Stop', confirm: { title: 'Stop?' } }] }))).toMatchObject({ items: [{ confirm: { title: 'Stop?' } }] })
+    expect(validateMayflyUiNode(ui.actions({ id: 'actions', items: [{ id: 'stop', label: 'Stop', confirm: { detail: 'untitled' } as never }] }))).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode(ui.actions({ id: 'actions', items: [{ id: 'stop', label: 'Stop', confirm: { title: 'Stop?', tone: 'loud' } as never }] }))).toMatchObject({ ok: false })
+    expect(accepted(ui.form({ id: 'form', fields: [], submitActionId: 'save', submitLabel: 'Save', cancelActionId: 'close', cancelLabel: 'Close' })))
+      .toMatchObject({ submitLabel: 'Save', cancelLabel: 'Close' })
+    const rows = ui.list({ id: 'rows', role: 'browse', numbered: 'focus', selectedIds: [], items: [{ id: 'a', label: 'A', unavailableActions: { stop: 'Not running' } }] })
+    expect(accepted(rows)).toMatchObject({ numbered: 'focus', items: [{ unavailableActions: { stop: 'Not running' } }] })
+    expect(validateMayflyUiNode({ ...rows, numbered: 'accept' })).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode({ ...rows, items: [{ id: 'a', label: 'A', unavailableActions: { ' ': 'blank' } }] })).toMatchObject({ ok: false, message: expect.stringContaining('must not be empty') })
+    expect(validateMayflyUiNode({ ...rows, items: [{ id: 'a', label: 'A', unavailableActions: { stop: 1 } }] })).toMatchObject({ ok: false })
+  })
+
   it('rejects malformed field/action options and wrong empty actions', () => {
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [{ kind: 'select', id: 's', label: 'S', value: 1, options: [] }] })).toMatchObject({ ok: false, message: expect.stringContaining('string or null') })
     expect(validateMayflyUiNode({ kind: 'empty', title: 'x', actions: { kind: 'text', content: 'wrong' } })).toMatchObject({ ok: false, message: expect.stringContaining('actions node') })

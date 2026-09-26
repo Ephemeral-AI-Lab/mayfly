@@ -474,9 +474,10 @@ ui.surface({
 `chrome: 'overlay'` is only a visual intent. It does not create an overlay;
 use `api.overlays.open()` for the actual surface. When that surface is the
 registration root, core coalesces it with the registration title into one
-frame. Ordinary overlays and `presentation: 'editor'` both honor `maxHeight`,
-defaulting to at most one third of the terminal height. Short content keeps its
-natural height instead of stretching to that limit. The screenshot above
+frame. Ordinary overlays and `presentation: 'editor'` both honor `maxHeight`.
+When it is undeclared, ordinary overlays take at most one third of the terminal
+height and editor presentations at most half, with a ten-row floor. Short content
+keeps its natural height instead of stretching to that limit. The screenshot above
 renders exactly this node:
 
 ```ts
@@ -636,6 +637,7 @@ ui.list({
   filter?: string
   filterable?: boolean
   tree?: boolean
+  numbered?: boolean | 'focus'
   minSelected?: number
   maxSelected?: number
   acceptActionId?: string
@@ -653,6 +655,9 @@ type MayflyListItem = {
   disabledReason?: string
   parentId?: string
   searchText?: string
+  segment?: MayflyListSegment
+  unavailableActions?: Readonly<Record<string, string>>
+  confirm?: string | MayflyConfirmation
 }
 ```
 
@@ -676,10 +681,27 @@ ui.list({
 ```
 
 `filterable: true` enables shared search, while `filter` supplies its initial
-query. Mayfly matches and focuses the supplied items without starting network
-work. `tree: true` combines with `parentId` for shared expansion state. Large
-item arrays validate and render only around the current window. Empty items
-render the optional `empty` node.
+query. Typing a character or `/` starts a search; Escape ends it and keeps the
+query, and Ctrl+U clears it. Mayfly matches and focuses the supplied items
+without starting network work. `tree: true` combines with `parentId` for shared
+expansion state (Space, or Right/Left, opens and closes a branch). Large item
+arrays validate and render only around the current window. Empty items render
+the optional `empty` node.
+
+Disabled rows never take the cursor; movement steps over them, and a disabled
+row without a `detail` shows its `disabledReason` in that place.
+`numbered: true` prefixes the first nine visible rows with `1.`–`9.` and lets
+the digit choose that row; numbers follow the visible order and stay put while
+the list scrolls. `numbered: 'focus'` shows the same numbers but a digit only
+moves the cursor, which suits gates where accepting should take an explicit
+Enter.
+
+`unavailableActions` maps an action id to the reason that action cannot run
+while this row is the selection it targets (through the action's
+`selections`). The action then renders disabled with the reason, and Mayfly
+refuses it before any confirmation, so users never confirm something that
+would fail. `confirm` on a row shows the shared decision (see `actions`)
+before that single row is accepted; No leaves the selection unchanged.
 
 Multiple mode combines with `group`, `badge`, `detail`, and `disabled` for
 richer pickers:
@@ -718,7 +740,10 @@ ui.form({
   id: string
   fields: readonly MayflyFormField[]
   submitActionId?: string
+  submitLabel?: string
   cancelActionId?: string
+  cancelLabel?: string
+  enterSubmits?: string
 })
 ```
 
@@ -749,8 +774,10 @@ ui.form({
     ] },
     { kind: 'toggle', id: 'updates', label: 'Auto-update', value: true },
   ],
-  submitActionId: 'Create profile',
-  cancelActionId: 'Cancel',
+  submitActionId: 'create-profile',
+  submitLabel: 'Create profile',
+  cancelActionId: 'cancel',
+  cancelLabel: 'Cancel',
 })
 ```
 
@@ -760,7 +787,10 @@ plugin does not echo each keystroke as a snapshot. When an authoritative data
 snapshot changes, the model reconciles untouched values, drafts, and conflicts.
 Focused text fields remain in navigation until typing or Enter starts editing.
 Enter advances from a single-line input; Enter or Alt+Enter inserts a textarea
-newline.
+newline. With `enterSubmits: actionId`, Enter in any field of the form runs that
+action (Alt+Enter still inserts a textarea newline). Escape ends editing and
+keeps the draft; a second Escape leaves the surface. A number field renders its
+`unit` after the value.
 
 In the form below, focusing the Name field and typing `Ada Lovelace` leaves a
 draft. The shot shows the draft text and the
@@ -777,23 +807,27 @@ ui.form({
     { kind: 'input', id: 'name', label: 'Name', value: '' },
     { kind: 'toggle', id: 'updates', label: 'Auto-update', value: true },
   ],
-  submitActionId: 'Create profile',
+  submitActionId: 'create-profile',
+  submitLabel: 'Create profile',
 })
 ```
 
-Enter opens a shared Choice picker for select fields. Left/Right moves semantic
-focus, Enter accepts a single option, and Space toggles a multiselect option.
-Escape discards the picker and stays on the field. Tab also discards an
-unconfirmed picker adjustment, then moves to the next semantic group. The
-picker draft survives renderer rebuilds.
+Left and Right change a focused select directly, stepping over disabled options
+(from an unset value, Right picks the first option and Left the last); Up and
+Down always move to the neighbouring field. Enter opens the shared option list
+for a select, and Enter or Space opens it for a multiselect. Inside the list,
+arrows move, Space toggles a multiselect option, and Enter applies. Escape
+discards the open list and stays on the field; Tab applies the highlighted
+option (or the toggled set) and moves on. An open list survives renderer
+rebuilds. A focused select that can cycle shows its value between the cycle
+markers, as in `Theme: ‹ Dark ›`.
 
-In the form below, pressing Enter on the Theme field opens the adjustment
-state and one Right step moves the candidate to Light — `‹ Light ›` is the
-adjustment presentation:
+In the form below, pressing Enter on the Theme field opens the option list and
+one Right step moves the highlight to Light:
 
-![`form` select adjustment](/shots/form-select.svg)
+![`form` select option list](/shots/form-select.svg)
 
-*Adjustment state: `‹ Light ›` is the shared picker's semantic focus; Enter writes it into the field draft (width 64).*
+*Open option list: `>` marks the highlighted option and `[x]` the current value; Enter writes the highlight into the field draft (width 64).*
 
 ```ts
 ui.form({
@@ -805,14 +839,15 @@ ui.form({
       { id: 'light', label: 'Light' },
     ] },
   ],
-  submitActionId: 'Create profile',
+  submitActionId: 'create-profile',
+  submitLabel: 'Create profile',
 })
 ```
 
 `error` shows a validation message under the field; disabled fields do not
 enter focus navigation but remain in the submitted form. Required, length,
-numeric, and selection constraints run before an action starts. `origin` and
-`resetValue` produce shared override/reset tools:
+numeric, and selection constraints run before an action starts. The form below
+shows both states:
 
 ![`form` error and disabled states](/shots/form-validation.svg)
 
@@ -825,11 +860,22 @@ ui.form({
     { kind: 'input', id: 'name', label: 'Name', value: '', error: 'Name is required' },
     { kind: 'input', id: 'email', label: 'Email', value: 'ada@example.com', disabled: true },
   ],
-  submitActionId: 'Create profile',
+  submitActionId: 'create-profile',
+  submitLabel: 'Create profile',
 })
 ```
 
-`submitActionId` adds a submit control. An action's declared `submit` addresses
+`origin: 'inherited' | 'explicit'` adds `(Inherited)` or `(Override)` after
+the label; editing an inherited value overrides it. `resetValue` makes a changed
+or overriding field resettable: Delete on that field returns it to `resetValue`
+(the inherited value when the field has an `origin`), and the submitted field
+reports `change: 'reset'`. The hint row shows Delete only while a reset would
+change something; forms render no separate override or reset buttons. A field
+whose authoritative value changed under a draft asks for **Use current value**
+or **Keep my changes** before the form can be saved.
+
+`submitActionId` adds a submit control labelled `submitLabel` (a localized
+"Submit" when omitted); the id is never shown. An action's declared `submit` addresses
 collect one or more forms across pages and lock that action boundary:
 
 ```ts
@@ -848,8 +894,9 @@ collect one or more forms across pages and lock that action boundary:
 }
 ```
 
-`cancelActionId` adds a shared close control. A dirty form first opens the
-default-No discard decision.
+`cancelActionId` adds a shared close control labelled `cancelLabel` (a
+localized "Cancel" when omitted). A dirty form first opens the default-No
+discard decision. Close actions never navigate back; Escape owns Back.
 
 ### `actions`
 
@@ -867,22 +914,45 @@ ui.actions({
     disabled?: boolean
     disabledReason?: string
     busy?: boolean
-    confirm?: string
+    confirm?: string | MayflyConfirmation
     submit?: readonly MayflyFormAddress[]
     read?: readonly MayflyFormAddress[]
     selections?: readonly MayflySelectionAddress[]
     defaultFocus?: boolean
     dismiss?: boolean
     navigate?: MayflyPagePath
+    key?: string
   }[]
 })
+
+type MayflyConfirmation = {
+  title: string
+  detail?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  tone?: 'danger'
+}
 ```
 
 Activating an enabled item sends `activate` with `actionId`, `controlId`, and
 `pagePath` to `onEvent.action`.
 Disabled and busy items cannot activate; busy also communicates in-progress
-presentation. An action with `confirm` requires explicit Yes in a shared
-default-No decision; Escape or No returns to the original surface.
+presentation and keeps the cursor on the running action. A disabled item shows
+its `disabledReason` next to its label. An action with `confirm` requires
+explicit Yes in a shared default-No decision; Escape, Ctrl+C, or No returns to
+the original surface. A structured `confirm` adds a `detail` sentence about the
+consequences, custom `confirmLabel`/`cancelLabel` button text, and
+`tone: 'danger'`; the order is always No first (focused), then Yes. Use it
+instead of drawing your own Yes/No overlay.
+
+`key` declares an accelerator that fires the action while the surface has
+focus. It must be a key id (`ctrl+r`, `alt+enter`, `f5`, `q`); the shared
+navigation keys (Enter, Escape, Tab, Shift+Tab, Space, arrows, Page/Home/End,
+Alt+Left/Right, Backspace, Ctrl+C, Ctrl+E, Ctrl+U) are reserved; a key may be
+bound once per page; and a printable key is rejected on a surface that contains
+a filterable list, where it would swallow typed filter text. Printable keys
+never fire while a text field is focused — typing starts editing instead.
+Modifier accelerators keep working while a list filter is active.
 `intent` communicates semantic priority; the theme owns its appearance. The
 outer `actions.id` identifies the group, while an event's `controlId` is the
 activated item's `id`. Both screenshots render exactly this node:
@@ -925,30 +995,36 @@ ui.actions({
 
 ## Focus and contextual hints
 
-The TUI derives operations directly from canonical control roles. Plugins
-should not repeat generic keyboard teaching in a surface footer:
+The TUI derives operations directly from canonical control roles through one
+key grammar, and generates the hint row from the same grammar. Plugins should
+not repeat generic keyboard teaching in a surface footer:
 
-- Focus descends through outer tabs → nested tabs → content groups → editing.
-- A tab strip uses non-wrapping Left/Right and Enter to descend. Tab/Shift-Tab
-  is inert on tab strips and cycles semantic groups only in content, remembering
-  the last focused item in each group.
-- Directional content movement does not wrap and disabled items cannot receive
-  focus. Single lists activate with Enter; multiple lists toggle with Space and
-  confirm with Enter; actions accept Enter or Space.
-- Text/select editing confirms with Enter, while invalid input stays active.
-  Tab retains text drafts but discards an unconfirmed select adjustment before
-  moving to the next semantic group. Escape climbs editing → content → nested
-  tabs → outer tabs → close, one layer at a time.
-- A pending action confirmation changes the hint to `Enter confirm · Esc
-  cancel`. Read-only scroll regions are focusable and support arrows, Page,
-  Home, and End.
+- Tab/Shift-Tab moves between control groups (from a tab strip it descends into
+  the active page's content), remembering the last focused item in each group,
+  and commits text and open pickers on the way. Inside a form or action row it
+  steps control by control.
+- Up/Down move between rows and fields and never change a value. Left/Right
+  move along action rows and tab strips, adjust a focused select or row segment,
+  and open or close tree branches. Alt+Left/Right switch tabs from anywhere; in
+  a wizard, moving forward validates the step being left.
+- Movement does not wrap, and disabled items never receive focus. Single lists
+  activate with Enter; multiple lists toggle with Space and confirm with Enter;
+  actions accept Enter or Space.
+- Escape leaves one layer per press, identically on every surface: an open
+  picker is cancelled, text editing ends (the draft stays), an active search
+  ends (the query stays), a page with a `backId` goes back, and then the
+  surface closes. Tab strips are not a stop. Ctrl+C requests the same close.
+- A pending confirmation changes the hint to `Enter confirm · Esc cancel`.
+  Read-only scroll regions are focusable, support arrows, Page, Home, and End,
+  and Ctrl+E expands them to the full frame.
 
 The row appears only while a plugin pane owns focus or a capturing overlay is
-open. Escape is advertised only for a surface that can actually close; passive
-panes and non-capturing overlays do not show a false operation. At most three
-semantic fragments are shown. Narrow layouts first use complete compact key
-tokens, then remove whole fragments rather than clipping half an instruction.
-Local counts, progress, risk, and business status still belong in the footer.
+open, and lists only keys that act in the current state. Escape is always
+included when it does something; passive panes and non-capturing overlays do
+not show a false operation. Up to three fragments are shown below 80 columns
+and four from 80. Narrow layouts first use complete compact key tokens, then
+remove whole fragments rather than clipping half an instruction. Local counts,
+progress, risk, and business status still belong in the footer.
 
 ## Feedback and utility nodes
 
@@ -964,19 +1040,22 @@ ui.loader({
   variant?: 'braille' | 'tide'
   elapsedMs?: number
   cancelActionId?: string
+  cancelLabel?: string
 })
 ```
 
 `variant` defaults to `braille`. `elapsedMs` is a non-negative millisecond
 hint. The owning lifecycle manages animation timers; never start one in
-`render()`. A `cancelActionId` adds a control that emits `activate`. The
+`render()`. A `cancelActionId` adds a control that emits `activate`, labelled
+`cancelLabel` (a localized "Cancel" when omitted). The
 screenshot above renders exactly this node:
 
 ```ts
 ui.loader({
   message: 'Waiting for model',
   elapsedMs: 1200,
-  cancelActionId: 'Stop',
+  cancelActionId: 'stop',
+  cancelLabel: 'Stop',
 })
 ```
 

@@ -45,6 +45,8 @@ export class UiControlStore {
 
 export interface UiVirtualListEntry {
   readonly index: number
+  /** Position among the visible (filtered, disclosed) rows. */
+  readonly position: number
   readonly item: NonNullable<ReturnType<typeof admittedListItem>>
 }
 

@@ -13,7 +13,9 @@ import { renderChartRows } from '../../src/core/chart-renderer.ts'
 import { renderListSegment } from '../../src/core/ui-patterns.ts'
 import { GutterComponent } from '../../src/core/gutter.ts'
 import { renderMermaidRows } from '../../src/core/rich-document.ts'
-import { compileMayflyEditorShellNode, compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyEditorShellNode, compileMayflyStatusNode, compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { ui } from '../../../ui/src/index.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
 import { WrappingSelectList } from '../../src/core/wrapping-select-list.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -169,6 +171,38 @@ describe('core width-scan', () => {
         const diagram = renderMermaidRows(mermaid, width)
         const documentRows = diagram ?? wrapTextWithAnsi(mermaid, Math.max(1, width))
         expectLinesFit(`Mermaid/${name}`, documentRows, width)
+      }
+    })
+
+    it(`interaction reasons, labels, units, numbering, and decisions survive ${name}`, () => {
+      const reason = text.slice(0, 200)
+      const node = ui.stack.column([
+        ui.form({ id: 'form', fields: [
+          { kind: 'number', id: 'count', label: text.slice(0, 40), value: 12, unit: text.slice(0, 30) },
+          { kind: 'select', id: 'mode', label: 'Mode', value: null, options: [{ id: 'a', label: text.slice(0, 50) }] },
+        ], submitActionId: 'save', submitLabel: text.slice(0, 60), cancelActionId: 'close', cancelLabel: 'Cancel' }),
+        ui.list({ id: 'rows', role: 'choose', numbered: true, selectedIds: [], items: [
+          { id: 'a', label: text.slice(0, 60), unavailableActions: { stop: reason } },
+          { id: 'b', label: 'Disabled', disabled: true, disabledReason: reason },
+          ...Array.from({ length: 9 }, (_, index) => ({ id: `n${String(index)}`, label: `row ${String(index)}` })),
+        ] }),
+        ui.actions({ id: 'actions', items: [
+          { id: 'stop', label: 'Stop', selections: [{ pagePath: [], controlId: 'rows' }], confirm: { title: text.slice(0, 80), detail: reason, confirmLabel: text.slice(0, 20), tone: 'danger' } },
+          { id: 'off', label: 'Off', disabled: true, disabledReason: reason },
+        ] }),
+      ])
+      const model = new UiSurfaceModel('scan', { id: 'scan', revision: 0, node, source: [], scope: { kind: 'app', targetId: 'scan' }, update: { reason: 'replace' }, definition: {}, events: { prepare: async () => ({ reply: undefined, publish: () => false }) } })
+      const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, createEditor: () => scanEditor('') } as never
+      const options = { components: scanComponents, colors: statusColors as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), screenMode: 'alternate' as const, emit: () => {} }
+      const surface = compileMayflyUiNode(model.node, { ...options, interaction: model })
+      if (!surface.ok) throw new Error(surface.message)
+      model.updateChoice({ pagePath: [], controlId: 'rows' }, { kind: 'focus', id: 'n0' })
+      model.invoke('stop')
+      const decision = compileMayflyUiNode(model.decisionNode, { ...options, interaction: model })
+      if (!decision.ok) throw new Error(decision.message)
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`interaction-surface/${name}`, surface.value.component.render(width), width)
+        expectLinesFit(`decision/${name}`, decision.value.component.render(width), width)
       }
     })
 

@@ -1,71 +1,85 @@
 # Mayfly service seams
 
-Mayfly 不再定义 capability facade。插件依据 Harness reference 直接声明并
-消费需要的 dsh service。
+Mayfly no longer defines a capability facade. Plugins declare and consume the
+dsh services they need directly, per the Harness reference.
 
-## dsh 原生服务
+## Native dsh services
 
-常见依赖包括：
+Common dependencies include:
 
-| Service | 用途 |
+| Service | Purpose |
 | --- | --- |
-| `commands` | 注册和执行 dsh command |
-| `sessionProjections` | 注册 projection，或对一个 Agent 的 Session 读取 snapshot |
-| `tools` | 使用 dsh tool registry |
-| `agents`、`sessionController` | Agent/session 生命周期 |
-| `settings`、`skills` | 对应 dsh feature 的原生能力 |
-| `plan` projection、`/plan` command | 跨 Agent realm 读取和修改 plan 状态 |
+| `commands` | Register and execute dsh commands |
+| `sessionProjections` | Register a projection, or read a snapshot of an Agent's Session |
+| `tools` | Use the dsh tool registry |
+| `agents`, `sessionController` | Agent/session lifecycle |
+| `settings`, `skills` | Native capabilities of the corresponding dsh features |
+| `plan` projection, `/plan` command | Read and modify plan state across Agent realms |
 
-Mayfly 不包装这些接口，也不把它们改写为另外一种 result/error taxonomy。
-与 `planMode` 同 realm 组装的插件仍可直接 inject 该原生 service；根级 Mayfly
-插件不穿透 Agent 私有 realm，而是直接使用 Harness 为此提供的 projection 与
-command。
+Mayfly does not wrap these interfaces or rewrite them into a different
+result/error taxonomy. A plugin assembled in the same realm as `planMode` can
+still inject that native service directly; a root-level Mayfly plugin does not
+pierce an Agent-private realm but instead uses the projection and command that
+Harness provides for this purpose.
 
-## Mayfly UI 服务
+## Mayfly UI services
 
-| Service | 注册形态 | Renderer |
+| Service | Registration shape | Renderer |
 | --- | --- | --- |
-| `mayflyPanes` | `register(definition, node)` / `set(node \| null)` | core 的 header/left/right/bottom lanes |
+| `mayflyPanes` | `register(definition, node)` / `set(node \| null)` | core header/left/right/bottom lanes |
 | `mayflyStatus` | `register(definition, node)` / `set(node \| null)` | transcript footer |
 | `mayflyOverlays` | `open(definition, node)` / `set(node)` | core overlay stack |
 | `mayflyEditorExtensions` | `register(definition, decoration)` / `set(decoration)` | interaction editor |
 
-这些服务由 `@ephemeral-ai/mayfly-ui` 提供。贡献使用 renderer-neutral
-`MayflyUiNode`，可由 `@ephemeral-ai/mayfly-ui` 构造。core 在渲染前执行 schema、
-quota、控制字符与宽度校验。
+These services are provided by `@ephemeral-ai/mayfly-ui`. Contributions use the
+renderer-neutral `MayflyUiNode`, which can be constructed from
+`@ephemeral-ai/mayfly-ui`. Core validates schema, quota, control characters,
+and width before rendering.
 
-插件不需要选择 eager 或 lazy 模式：大型 `list.items` 仍是普通 readonly
-数组，core 只校验、编译和绘制当前 viewport 邻域；带 `when` 的隐藏子树在首次
-可见时才进入完整 admission。列表条目的局部错误由对应禁用行承载，响应式分支
-的错误限制在该分支内。其他非虚拟化集合继续使用类型化 quota。Mayfly 不公开
-range、overscan、cache、measurement 或 scroll controller API，插件仍负责自身
-的网络与数据库取数。
+Plugins do not choose between eager and lazy modes: a large `list.items` is
+still an ordinary readonly array, and core only validates, compiles, and paints
+the current viewport neighborhood; hidden subtrees gated by `when` enter full
+admission only when first visible. A local error in a list entry is carried by
+the corresponding disabled row, and an error in a reactive branch is confined
+to that branch. Other non-virtualized collections keep using typed quotas.
+Mayfly does not expose range, overscan, cache, measurement, or scroll
+controller APIs, and plugins remain responsible for their own network and
+database fetching.
 
-Provider 在 snapshot 成功冻结后为每次 `set()` 生成单调 revision，并通过
-upsert/remove delta 通知 frontend owner 与 core。`set(node, { reason: 'data',
-source })` 发布权威数据刷新；`reason: 'replace'` 建立新的 instance 边界，也是唯一
-允许改变 `scope` 的更新。旧 `eventRevision` 参数已经删除，插件不能自行制造 ack。
+After a snapshot is frozen successfully, the provider generates a monotonic
+revision for each `set()` and notifies the frontend owner and core through
+upsert/remove deltas. `set(node, { reason: 'data', source })` publishes an
+authoritative data refresh; `reason: 'replace'` establishes a new instance
+boundary and is the only update allowed to change `scope`. The old
+`eventRevision` parameter has been removed; plugins cannot fabricate their own
+acks.
 
-Pane、overlay 与 editor extension 的 `onEvent` 分为 `observe` 和 `action`。
-`observe` 只接收 value、selection toggle 与 tab change 事实，不能发布 snapshot、
-导航或关闭 surface；`action` 处理 activate、selection accept、submit 与 dismiss，
-每个已处理动作必须返回 `accepted`、`invalid`、`conflict`、`failed`、`completed`
-或 `cancelled` 的结构化回执。`MayflyUiEventContext` 提供当前 `source`、operation ID、
-revision、AbortSignal 与 progress reporter。
+`onEvent` for panes, overlays, and editor extensions splits into `observe` and
+`action`. `observe` only receives value, selection-toggle, and tab-change
+facts, and cannot publish a snapshot, navigate, or close a surface; `action`
+handles activate, selection accept, submit, and dismiss, and every handled
+action must return a structured receipt of `accepted`, `invalid`, `conflict`,
+`failed`, `completed`, or `cancelled`. `MayflyUiEventContext` provides the
+current `source`, operation ID, revision, AbortSignal, and progress reporter.
 
-`accepted` 及带 `acceptedFields` 的 partial failure 由 registration-bound endpoint
-生成一次性 publisher。Core 先准入回包，再由 publisher 以 ack 更新原 registration；
-data/replace、卸载、abort 或同名重开会撤销不再有效的 handler、reporter 和 publisher。
-表单草稿、single-flight、冲突、确认、页面与反馈属于 frontend interaction owner，
-不要求插件在 handler 内回声调用 `set()`。
+`accepted` and partial failures carrying `acceptedFields` generate a one-shot
+publisher from the registration-bound endpoint. Core admits the reply first,
+then the publisher updates the original registration with the ack; a
+data/replace update, unload, abort, or same-name reopen revokes handlers,
+reporters, and publishers that are no longer valid. Form drafts,
+single-flight, conflicts, confirmation, paging, and feedback belong to the
+frontend interaction owner; plugins are not required to echo `set()` calls
+inside their handlers. Keys, focus, confirmations, and per-row action
+availability follow [interaction-model.md](./interaction-model.md).
 
-Pane/status 的 null snapshot 不占布局；overlay 提供
-`focus/hide/show/close`，`presentation: 'editor'` 使用现有 editor host。
-即使调用方不手动 dispose，Cordis Fiber unload 也会清理 registration。
+A null pane/status snapshot occupies no layout; overlays provide
+`focus/hide/show/close`, and `presentation: 'editor'` uses the existing editor
+host. Even if the caller never disposes manually, Cordis Fiber unload cleans up
+the registration.
 
-## 当前 Agent
+## Current Agent
 
-`@ephemeral-ai/mayfly/app` 提供：
+`@ephemeral-ai/mayfly/app` provides:
 
 ```ts
 const agent = ctx.mayflyCurrentAgent.current()
@@ -74,45 +88,64 @@ if (agent !== null) {
 }
 ```
 
-`current()` 返回当前展示的 `Agent | null`，`primary()` 保留主会话；
-`subscribe()` replay 精确 Agent selection。`view()` / `subscribeView()` 暴露一个
-主会话加一个辅助槽的 readonly metadata，以及当前展示侧和
-`interactive | resumable | readonly` access。只有 registry 中仍存活的精确 Agent 能进入
-`current()`：live BTW/continuable child 直接驱动整套既有 UI，one-shot
-child 保留主 Agent 并交给通用只读 transcript panel。`F7` 切换显示侧，`F8`
-关闭辅助槽；关闭 BTW 会额外释放其临时 Agent，关闭普通 subagent 只 detach。
-BTW 的 seed 只用于模型上下文；其 `transcriptAfterSeq` cutoff 让用户看到的流从
-BTW 自己的第一条提问开始，不重复主会话历史。
+`current()` returns the currently displayed `Agent | null`; `primary()` retains
+the primary session. `subscribe()` replays the exact Agent selection.
+`view()` / `subscribeView()` expose readonly metadata for one primary session
+plus one auxiliary slot, together with the currently displayed side and
+`interactive | resumable | readonly` access. Only an exact Agent still alive in
+the registry can enter `current()`: a live BTW/continuable child drives the
+entire existing UI directly, while a one-shot child keeps the primary Agent and
+is handed to the generic readonly transcript panel. `F7` toggles the displayed
+side and `F8` closes the auxiliary slot; closing a BTW additionally releases
+its temporary Agent, while closing an ordinary subagent only detaches. A BTW
+seed is used only as model context; its `transcriptAfterSeq` cutoff makes the
+stream the user sees start from the BTW's own first question, without repeating
+primary-session history.
 
-`@ephemeral-ai/mayfly/app` 声明 `mayfly/request-subagent-reply` 事件。外部插件可以为
-当前展示的 continuable 子会话请求共用回复表单；此事件本身不发送消息或恢复 Agent。
-用户提交时显式选择 Queue/Steer，写入仍走原生 addressed-subagent 路径，并检查主 Agent
-和在线子 Agent 的精确身份。未加载子会话的浏览和草稿编辑保持只读。
+`@ephemeral-ai/mayfly/app` declares the `mayfly/request-subagent-reply` event.
+An external plugin can request the shared reply form for the currently
+displayed continuable child session; the event itself does not send a message
+or resume an Agent. On submit the user explicitly chooses Queue or Steer; the
+write still goes through the native addressed-subagent path and checks the
+exact identities of the primary Agent and the online child Agent. Browsing and
+draft editing of an unloaded child session stay readonly.
 
-`ui.child(..., { tab })` 为页面提供稳定的 `pagePath`，隐藏页保留列表/表单状态。
-视口匹配与可见宽度仍由 core 决定；需要在宽视口并排展示时使用 `stack.row`。
+`ui.child(..., { tab })` gives a page a stable `pagePath`; hidden pages retain
+list/form state. Viewport matching and visible width remain core's decision;
+use `stack.row` when pages should show side by side in a wide viewport.
 
-用户中断当前 Agent 时，Mayfly 同步遍历 live `agents` 的 `parentSession` lineage，并通过
-`subagents.interrupt(..., { kind: 'ancestor', agent })` 向所有 running continuable
-后代发出中断。该操作只取消当前 turn，保留 Activation 与未领取 inbox；它不使用
-会递归销毁子树的 drain API。
+When the user interrupts the current Agent, Mayfly synchronously walks the
+`parentSession` lineage of the live `agents` and issues an interrupt to every
+running continuable descendant via `subagents.interrupt(..., { kind:
+'ancestor', agent })`. The operation cancels only the current turn and
+preserves Activations and the unclaimed inbox; it does not use the drain API
+that would recursively destroy the subtree.
 
-需要 Agent identity 的插件 inject `mayflyCurrentAgent`。只贡献静态 UI 的插件
-不应增加这一依赖，因为 app 或 core reload 时 Cordis 会按依赖关系卸载 consumer。
+Plugins that need Agent identity inject `mayflyCurrentAgent`. A plugin that
+only contributes static UI should not take this dependency, because Cordis
+unloads consumers by dependency when app or core reloads.
 
-## 生命周期
+## Lifecycle
 
-所有 service 位于同一 Cordis graph。注册重复 id 或无效 definition 会直接抛出；
-dsh command handler 保持 dsh 自己的返回类型。没有 grant、manifest admission、
-gesture token、owner generation 或跨 realm proxy。Editor replacement 使用
-`presentation: 'editor'` 的普通 overlay；registry 保留 registration，core 在
-theme/input host 重建后重新投影同一 frontend instance 与语义焦点。
+All services live in the same Cordis graph. Registering a duplicate id or an
+invalid definition throws directly; dsh command handlers keep dsh's own return
+types. There is no grant, manifest admission, gesture token, owner generation,
+or cross-realm proxy. Editor replacement uses an ordinary overlay with
+`presentation: 'editor'`; the registry keeps the registration, and core
+re-projects the same frontend instance and semantic focus after a theme/input
+host rebuild.
 
-Renderer 暂时缺位时 registry snapshot 仍可存在；renderer 恢复后通过
-`subscribe()` replay 当前 upsert。外部插件卸载时 provider 发布 remove delta。
-Overlay registration 的 title 提供宿主外框；根节点若已是 `chrome: 'overlay'` 的
-surface，core 将两者合并为一个外框。普通 overlay 与 `presentation: 'editor'` 都遵守
-`maxHeight`，未声明时最多使用终端高度的三分之一；短内容保持自然高度。
+Registry snapshots can still exist while the renderer is temporarily absent;
+after the renderer returns, `subscribe()` replays the current upserts. When an
+external plugin unloads, the provider publishes a remove delta. An overlay
+registration's title provides the host frame; when the root node is already a
+`chrome: 'overlay'` surface, core merges the two into a single frame. Ordinary
+overlays and `presentation: 'editor'` both honor `maxHeight`. When it is
+undeclared, ordinary overlays take at most one third of the terminal height and
+editor presentations at most half of it, with a ten-row floor; short content
+keeps its natural height.
 
-Cold continuable child 的历史读取和显式回复使用 Harness addressed-subagent API；
-浏览历史不激活 Agent，发送回复才恢复。`resumable` 与 `readonly` 分别表示可恢复与只读。
+Cold continuable children use the Harness addressed-subagent API for history
+reads and explicit replies; browsing history does not activate the Agent, and
+only sending a reply resumes it. `resumable` and `readonly` mean resumable and
+readonly respectively.

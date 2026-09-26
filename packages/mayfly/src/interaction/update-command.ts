@@ -156,8 +156,9 @@ function confirmUpdate(ctx: Context, fromVersion: string, toVersion: string, det
       return { kind: 'completed' as const }
     } } }, ui.surface({ chrome: 'overlay', title: t('Update Mayfly'), child: ui.stack.column([
       ui.text(t('Update to v{version}?', { version: toVersion })),
-      ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'muted' }),
-      ui.actions({ id: 'update-confirm-actions', items: [{ id: 'yes', label: t('Yes'), intent: 'primary' }, { id: 'no', label: t('No'), defaultFocus: true }] }),
+      ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'warning' }),
+      /* Same shape as the shared decision: No first and focused, Yes second. */
+      ui.actions({ id: 'update-confirm-actions', items: [{ id: 'no', label: t('No'), defaultFocus: true }, { id: 'yes', label: t('Yes'), intent: 'primary' }] }),
     ]) }), { reopen: 'replace' })
     off = ctx.mayflyOverlays.subscribe(delta => {
       if (delta.kind === 'remove' && delta.id === id) finish(false)

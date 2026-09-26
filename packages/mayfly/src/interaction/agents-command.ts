@@ -60,8 +60,12 @@ export function agentMetricsText(
   return parts.join(' · ')
 }
 
-/** Full native tree declaration consumed by the shared Tree/Choice state. */
-export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now = Date.now()): readonly MayflyListItem[] {
+/**
+ * Full native tree declaration consumed by the shared Tree/Choice state.
+ * `stopBlocked` names why Stop cannot run for a row, so the action shows the
+ * reason instead of confirming a stop that the native check would refuse.
+ */
+export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now = Date.now(), stopBlocked?: (entry: Extract<MayflySubagentTreeEntry, { readonly kind: 'child' }>) => string | undefined): readonly MayflyListItem[] {
   const ids = new Set(entries.map(entry => String(entry.id)))
   return entries.map(entry => {
     const id = String(entry.id)
@@ -73,6 +77,7 @@ export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now 
     const label = entry.label ?? id
     const metrics = agentMetricsText(entry, now)
     const stream = entry.streamPhase === 'thinking' ? 'Thinking…' : entry.streamPhase === 'composing' ? 'Writing…' : undefined
+    const blocked = stopBlocked?.(entry)
     return {
       id,
       label: `${entry.activity === 'running' ? '●' : '○'} ${label}`,
@@ -80,6 +85,7 @@ export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now 
       searchText: `${label} ${id} ${entry.mode}`,
       ...(ids.has(parentId) ? { parentId } : {}),
       ...(entry.activity === 'running' ? { badge: 'running' } : {}),
+      ...(blocked === undefined ? {} : { unavailableActions: { stop: blocked } }),
     }
   })
 }
@@ -251,10 +257,18 @@ export function apply(ctx: Context): void {
     disposers.push(ctx.mayflyCurrentAgent.subscribe(next => {
       if (next !== parent) close()
     }))
+    /* Mirrors stopEntry's native checks so Stop explains itself per row. */
+    const stopBlocked = (entry: Extract<MayflySubagentTreeEntry, { readonly kind: 'child' }>): string | undefined => {
+      if (entry.mode !== 'continuable') return t('Only continuable subagents can be stopped')
+      if (ctx.agents.get(entry.id) === undefined) return t('Not live; there is nothing to stop')
+      return liveAgentDescendantCount(entries, String(entry.id), candidate => ctx.agents.get(candidate.id) !== undefined) > 0
+        ? t('Stop its live descendants first')
+        : undefined
+    }
     const view = () => ui.surface({ title: t('Subagents'), chrome: 'overlay', child: ui.stack.column([
-      ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, items: agentTreeItems(entries) }),
+      ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, items: agentTreeItems(entries, Date.now(), stopBlocked) }),
       ui.actions({ id: 'subagent-actions', items: [
-        { id: 'stop', label: t('Stop selected'), intent: 'danger', confirm: t('Stop selected subagent?'), selections: [{ pagePath: [], controlId: 'subagents' }] },
+        { id: 'stop', label: t('Stop selected'), intent: 'danger', confirm: { title: t('Stop selected subagent?'), detail: t('Its live Agent shuts down; the stored conversation stays browsable.'), confirmLabel: t('Stop'), tone: 'danger' }, selections: [{ pagePath: [], controlId: 'subagents' }] },
         { id: 'close', label: t('Close'), dismiss: true },
       ] }),
     ]) })

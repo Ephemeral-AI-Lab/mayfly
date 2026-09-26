@@ -225,8 +225,12 @@ describe('private UI pattern painters', () => {
     expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: null, options: [] }, 20, idle, colors)[0]).toContain('Choose…')
     const unfocusedSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, idle, colors)
     expect(unfocusedSelect).toEqual(['   Select: Alpha'])
-    const focusedSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, { key: 'select', focused: true, marker: '|' }, colors)
-    expect(focusedSelect).toEqual(['|→ Select: Alpha ‹ ›'])
+    const focusedSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors)
+    expect(focusedSelect).toEqual(['|→ Select: ‹ Alpha ›'])
+    // Nothing to cycle to: a lone chosen option, a disabled alternative, or a multiselect.
+    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta', disabled: true }] }, 24, { key: 'select', focused: true, marker: '|' }, colors)).toEqual(['|→ Select: Alpha'])
+    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: null, options: [{ id: 'a', label: 'Alpha' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors)).toEqual(['|→ Select: ‹ Choose… ›'])
+    expect(renderFormField({ kind: 'multiselect', id: 'select', label: 'Tags', value: ['a'], options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors)).toEqual(['|→ Tags: Alpha'])
     const editingSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, { key: 'select', focused: true, marker: '|', editing: true }, colors)
     expect(editingSelect.join('\n')).toContain('> [x] Alpha')
     const unfocusedEditing = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, { key: 'select', marker: '|', editing: true }, colors)
@@ -260,8 +264,11 @@ describe('private UI pattern painters', () => {
     expect(vertical.join('\n')).toContain('! Delete')
     expect(renderActions(node, 40, { key: 'danger', focused: true, marker: '|' }, colors, true).join('\n')).toContain('|! Delete')
     expect(vertical.join('\n')).toContain('… Wait')
-    expect(renderActions(node, 80, { key: 'busy', focused: true, marker: '|', pendingKey: 'busy' }, colors, true).join('')).not.toContain('|')
+    // A pending action keeps its cursor so focus does not vanish while it runs; disabled ones never hold it.
+    expect(renderActions(node, 80, { key: 'busy', focused: true, marker: '|', pendingKey: 'busy' }, colors, true).join('')).toContain('|… Wait')
     expect(renderActions(node, 80, { key: 'disabled', focused: true, marker: '|', pendingKey: 'disabled' }, colors, true).join('')).not.toContain('|')
+    const reasoned = ui.actions({ id: 'reasoned', items: [{ id: 'install', label: 'Install', disabled: true, disabledReason: 'Already installed' }] })
+    expect(renderActions(reasoned, 80, { key: '', focused: false, marker: '|' }, colors, false).join('')).toContain('Install — Already installed')
     const selectedBg = vi.fn((value: string) => `<selected>${value}</selected>`)
     const actionPalette = new Proxy(colors, { get: (target, key, receiver) => {
       if (key === 'primary') return (value: string) => `<primary>${value}</primary>`
