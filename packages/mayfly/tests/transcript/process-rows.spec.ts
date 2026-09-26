@@ -75,15 +75,17 @@ describe('TurnHeaderComponent', () => {
     expect(component.render(80)[1]).toBe('▾ Deep diving...')
     expect(timers.intervals).toHaveLength(0)
     timers.current = 12_000
-    component.update(header({ running: true, startedAt: 0 }))
-    component.update(header({ running: true, startedAt: 0 }))
+    // A running header carries no counts: the bottom dock owns live progress.
+    component.update(header({ running: true, startedAt: 0, toolCalls: 2, subagents: 1 }))
+    component.update(header({ running: true, startedAt: 0, toolCalls: 2, subagents: 1 }))
     expect(timers.intervals).toEqual([expect.objectContaining({ ms: TURN_CLOCK_INTERVAL_MS })])
     expect(component.render(80)[1]).toBe('▾ Deep diving for 12s')
     timers.intervals[0]!.callback()
     expect(ticks).toHaveLength(1)
     timers.current = 13_000
     expect(component.render(80)[1]).toBe('▾ Deep diving for 13s')
-    component.update(header({ startedAt: 0, endedAt: 14_000 }))
+    component.update(header({ startedAt: 0, endedAt: 14_000, toolCalls: 2, subagents: 1 }))
+    expect(component.render(80)[1]).toBe('▾ Took 14s · 2 tool calls · 1 subagent')
     expect(timers.clearedIntervals).toBe(1)
     component.dispose()
     expect(timers.clearedIntervals).toBe(1)

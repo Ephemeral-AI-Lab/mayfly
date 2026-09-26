@@ -9,8 +9,8 @@ A mode machine over the attached session's event stream, telling you what the ag
 | Mode | Presentation |
 | --- | --- |
 | waiting | moon spinner + rotating tip (a new tip when the loading kind changes) |
-| tool | moon spinner + the running tool's name (MCP tools read `server › tool`) |
-| thinking | braille `thinking...` line with the phase's token count and rate — the transcript's thinking block stays static, so this row is the sole spinner and the dock never collapses mid-turn |
+| tool | moon spinner + the running tool's name (MCP tools read `server › tool`); a subagent spawn stays unnamed because the agents pane shows it |
+| thinking | braille `thinking...` line with the phase's token count and rate — the transcript's thinking block shows only its elapsed time, so this row is the sole spinner and throughput readout, and the dock never collapses mid-turn |
 | composing | braille `working...` line (primary-colored frames + an inline tip) — no output cursor; this line is the "writing" signal |
 | idle | a one-row placeholder (stable dock edge) |
 | dialog open | the row hides (a panel holds the editor slot) |
@@ -45,7 +45,7 @@ Mayfly retains one auxiliary conversation slot. `/btw <question>` creates a temp
 
 ## Subagent-group pane (agents)
 
-While the agent's **subagent group** runs, its group card is pinned directly above the editor — the last dock row (the kimi swarm-pane semantics). Spawn-class calls (`subagent` and any `subagent_*` provider) count in the transcript's process titles and turn header and appear there as one-row members, while this pane shows who was spawned and what each is doing live. A settled group stays until the next turn starts; a call left unanswered when its turn ended reads `cancelled` rather than running forever.
+While the agent's **subagent group** runs, its group card is pinned directly above the editor — the last dock row (the kimi swarm-pane semantics). Spawn-class calls (`subagent` and any `subagent_*` provider) appear in the transcript as one-row members, count as subagents in the settled turn header, and read only `Coordinating subagents` in a running process title. This pane alone shows each agent live: its task, phase, model, effort, estimated output (`↓`, characters / 4), tools, elapsed time, tokens, and current activity. The summary row adds a phase breakdown only when phases differ, and a group clock only when several agents run. A settled group stays until the next turn starts; a call left unanswered when its turn ended reads `cancelled` rather than running forever.
 
 ## Workflow pane
 

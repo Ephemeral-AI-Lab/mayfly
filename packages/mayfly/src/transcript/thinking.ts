@@ -1,10 +1,10 @@
 /**
  * The transcript's thinking block: one step's reasoning mounted as its own
- * component above the assistant answer. Live it shows a static `✻ Thinking`
- * header with the elapsed time, projected token count, and estimated rate,
- * over the reasoning's last {@link THINKING_PREVIEW_LINES} wrapped lines; the
- * activity row owns the animated spinner, so the block only refreshes once a
- * second. Reasoning completion or a switch to text/tools clears `streaming`
+ * component above the assistant answer. Live it shows a static
+ * `✻ Thinking · 6s` header over the reasoning's last
+ * {@link THINKING_PREVIEW_LINES} wrapped lines; the activity row owns the
+ * animated spinner and the output count and rate, so the block only refreshes
+ * once a second. Reasoning completion or a switch to text/tools clears `streaming`
  * and the block settles in place into one `✻ Thought for 6s` row, previewing
  * the first line when the work-details policy allows it. The shared Ctrl-O
  * toggle opens the full italic body. A finalized item whose authoritative
@@ -17,8 +17,6 @@ import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type M
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import { STREAMING_RENDER_MAX_CHARS } from './components.ts'
 import type { TranscriptThinkingItem } from './types.ts'
-import { formatTokens } from './status-context.ts'
-import { outputRate } from './output-rate.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 
 /** Rendered body lines kept visible under the live header. */
@@ -149,15 +147,12 @@ export class ThinkingComponent implements MayflyComponent {
     const { streaming } = this.item
     if (streaming && this.timer === undefined) this.startTimer()
     if (!streaming) this.stopTimer()
-    const now = Date.now()
-    const rate = streaming ? outputRate(this.item.outputProgress, now) : ''
-    const count = this.item.outputProgress === undefined ? '' : `↓${formatTokens(Math.floor(this.item.text.length / 4))}`
-    const elapsed = streaming && this.item.startedAt !== undefined ? compactElapsedMs(now - this.item.startedAt) : ''
+    const elapsed = streaming && this.item.startedAt !== undefined ? compactElapsedMs(Date.now() - this.item.startedAt) : ''
     const preview = this.preview()
     const text = this.item.text.length > STREAMING_RENDER_MAX_CHARS
       ? streamingTextWindow(this.item.text)
       : sanitizePluginText(this.item.text)
-    const key = `${width}:${streaming}:${this.expanded}:${this.keyed}:${preview}:${elapsed}:${rate}:${count}:${this.item.durationMs ?? ''}:${text}`
+    const key = `${width}:${streaming}:${this.expanded}:${this.keyed}:${preview}:${elapsed}:${this.item.durationMs ?? ''}:${text}`
     if (this.cache?.key === key) return this.cache.lines
 
     const contentWidth = Math.max(1, width - THINKING_INDENT.length)
@@ -168,13 +163,8 @@ export class ThinkingComponent implements MayflyComponent {
     const marker = this.colors.muted(THINKING_MARKER)
     let lines: string[]
     if (streaming) {
-      let label = this.t('Thinking')
-      for (const part of [elapsed, count, rate]) {
-        if (part === '') continue
-        const next = `${label} · ${part}`
-        if (this.components.visibleWidth(`${THINKING_MARKER}${next}`) > width) break
-        label = next
-      }
+      const timed = `${this.t('Thinking')} · ${elapsed}`
+      const label = elapsed !== '' && this.components.visibleWidth(`${THINKING_MARKER}${timed}`) <= width ? timed : this.t('Thinking')
       const tail = contentLines.length > THINKING_PREVIEW_LINES
         ? contentLines.slice(contentLines.length - THINKING_PREVIEW_LINES)
         : contentLines

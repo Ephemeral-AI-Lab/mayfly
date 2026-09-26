@@ -151,7 +151,7 @@ describe('conversation flow scenarios', () => {
     expect(text).toContain('✓ Updated the plan · 1/2 done · ● Verify')
     expect(text).toContain('✓ reviewer · Review the change · Looks good')
     // The header summarizes the turn; thinking reads distinctly from answers.
-    expect(text).toContain('▾ Took 38s · 15 tool calls · 1 subagent')
+    expect(text).toContain('▾ Took 38s · 14 tool calls · 1 subagent')
     expect(text).toContain('✻ Thought for 4s · The user wants the flaky login test fixed.')
     component.invalidate()
     expect(component.render(120).map(strip)).toEqual(rows)
@@ -167,14 +167,14 @@ describe('conversation flow scenarios', () => {
         ' ',
         ' » Fix the flaky login test',
         ' ',
-        ' ▸ Took 38s · 15 tool calls · 1 subagent · ctrl+o to expand',
+        ' ▸ Took 38s · 14 tool calls · 1 subagent · ctrl+o to expand',
         ' ',
         ' ● Done. `login` is now idempotent under `retry`.',
       ])
       // An anchored local (a `!cmd` echo) never disables folding.
       component.appendAnchored('local', { render: () => ['$ ls'], invalidate: () => {} }, 0)
       const anchored = component.render(120).map(strip)
-      expect(anchored).toContain(' ▸ Took 38s · 15 tool calls · 1 subagent · ctrl+o to expand')
+      expect(anchored).toContain(' ▸ Took 38s · 14 tool calls · 1 subagent · ctrl+o to expand')
       expect(anchored).toContain(' $ ls')
       expect(anchored.join('\n')).not.toContain('pnpm lint')
       component.dispose()
@@ -185,6 +185,8 @@ describe('conversation flow scenarios', () => {
     const model = conversationTranscriptModel(scenario(true), tools)
     const standard = render(model, 'standard').rows.join('\n')
     expect(standard).toContain('▾ Deep diving for')
+    // Live counts belong to the dock; the running header shows lifecycle only.
+    expect(standard).not.toMatch(/Deep diving for[^\n]*(tool call|subagent)/)
     expect(standard).toContain('▸ Read files and searched code')
     expect(standard.indexOf('▸ Read files and searched code')).toBeLessThan(standard.indexOf('Let me run the test.'))
     expect(standard).toContain('▸ Reading files · missing.ts · 2 failed')

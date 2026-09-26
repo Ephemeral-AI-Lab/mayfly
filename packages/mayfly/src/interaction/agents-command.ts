@@ -14,6 +14,7 @@ import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { formatTokens } from './usage.ts'
 import { compactElapsedMs } from '../transcript/agent-presentation.ts'
+import { outputCounter } from '../transcript/output-rate.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-agents-command'
@@ -52,7 +53,8 @@ export function agentMetricsText(
   now: number,
 ): string {
   const parts: string[] = []
-  if (entry.liveChars !== undefined && entry.liveChars > 0) parts.push(`↓${formatTokens(entry.liveChars)}`)
+  const down = outputCounter(entry.liveChars ?? 0)
+  if (down !== '') parts.push(down)
   if (entry.toolCount !== undefined) parts.push(`${String(entry.toolCount)} ${entry.toolCount === 1 ? 'tool' : 'tools'}`)
   if (entry.tokens !== undefined) parts.push(`${formatTokens(entry.tokens)} tok`)
   const elapsed = entry.activeSince !== undefined ? now - entry.activeSince : entry.settledMs

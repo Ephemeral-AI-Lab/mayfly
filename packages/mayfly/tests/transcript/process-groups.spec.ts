@@ -56,7 +56,8 @@ describe('work-details display plan', () => {
     for (const mode of ['compact', 'standard', 'detailed'] as const) {
       const items = plan(turnOne(), mode)
       expect(shape(items)).toEqual(['user', 'header:closed:folded:hint', 'assistant'])
-      expect(items[1]).toMatchObject({ kind: 'turn-header', startedAt: 0, endedAt: 38_000, outcome: 'completed', toolCalls: 4, subagents: 1 })
+      // A subagent spawn counts as a subagent, not also as a tool call.
+      expect(items[1]).toMatchObject({ kind: 'turn-header', startedAt: 0, endedAt: 38_000, outcome: 'completed', toolCalls: 3, subagents: 1 })
       expect((items[2] as { entry: { text: string } }).entry.text).toBe('final answer')
     }
     // Out of Ctrl-O's reach the header does not name the key.
@@ -75,6 +76,10 @@ describe('work-details display plan', () => {
     const last = running.at(-1)!
     expect(last).toMatchObject({ kind: 'process-title', liveDetail: true, summary: { counts: [{ activity: 'commands', count: 1 }, { activity: 'subagents', count: 1 }], runningDetail: 'verify the fix' } })
     expect(plan(turnOne(false), 'compact', { runningTurn: 1 }).at(-1)).toMatchObject({ liveDetail: false })
+    // A running spawn's title carries no task detail: the agents pane owns it.
+    const spawning = plan([...turnOne(false).slice(0, -1), tool(1, { name: 'subagent', activity: 'subagents', detail: 'Review', result: undefined })], 'standard', { runningTurn: 1, turns: [{ turn: 1, startedAt: 0 }] })
+    expect(spawning[1]).toMatchObject({ kind: 'turn-header', running: true, toolCalls: 3, subagents: 1 })
+    expect(spawning.at(-1)).toMatchObject({ kind: 'process-title', closed: false, summary: { running: 'subagents', runningDetail: '' } })
     // Detailed keeps the running turn's members open.
     expect(shape(plan(turnOne(false), 'detailed', { runningTurn: 1 }))).toEqual(['user', 'header:running:open', 'thinking', 'read-group', 'assistant', 'tool', 'thinking', 'tool'])
   })

@@ -26,7 +26,9 @@ export interface TurnHeaderItem {
   readonly startedAt?: number | undefined
   readonly endedAt?: number | undefined
   readonly outcome?: string | undefined
+  /** Tool calls other than subagent spawns; the row renders counts only once the turn ends. */
   readonly toolCalls: number
+  /** Subagent spawns, counted apart from tool calls as upstream does. */
   readonly subagents: number
   /** Whether the turn's process and interim replies are hidden behind this row. */
   readonly folded: boolean
@@ -188,6 +190,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const folded = input.policy.foldCompletedTurns && closed && !interleaved && !abnormal && !expandedTurn
     const grouped = !expandedTurn && (input.policy.stepGrouping === 'collapsed' || (input.policy.stepGrouping === 'history' && closed))
     const facts = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
+    const subagents = facts.filter(fact => fact.activity === 'subagents').length
     for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
     const headerSeq = (rest.find(isSemantic) as TranscriptEntryModel).seq
     items.push({
@@ -201,8 +204,8 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
         ...(info.endedAt === undefined ? {} : { endedAt: info.endedAt }),
         ...(info.outcome === undefined ? {} : { outcome: info.outcome }),
       }),
-      toolCalls: facts.length,
-      subagents: facts.filter(fact => fact.activity === 'subagents').length,
+      toolCalls: facts.length - subagents,
+      subagents,
       folded,
       hint: folded && inScope,
     })
