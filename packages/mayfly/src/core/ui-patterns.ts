@@ -357,9 +357,9 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
   if (field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret') placeholder = field.value.length === 0 && field.placeholder !== undefined
   const prefix = interactivePrefix({ key: field.id, focused, marker: focus.marker })
   // Expanded selects show the label as a group header; the option rows carry the value.
-  // A trailing ‹ › on the focused row advertises the in-place ←→ cycle.
-  const adjustable = expandable && field.disabled !== true && field.options.length > 0
-  const body = expanded ? `${field.label}${focused ? ' ‹ ›' : ''}` : `${field.label}: ${value}${focused && adjustable ? ' ‹ ›' : ''}`
+  // A focused single select wraps its value in ‹ › while ←→ can cycle it.
+  const cycles = focused && field.kind === 'select' && field.options.filter(option => option.disabled !== true).length > (field.value === null ? 0 : 1)
+  const body = expanded ? field.label : `${field.label}: ${cycles ? `‹ ${value} ›` : value}`
   const row = field.disabled === true
     ? colors.muted(`${prefix}${body}`)
     : focused ? colors.primary(`${prefix}${body}`)
