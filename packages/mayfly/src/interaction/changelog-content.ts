@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.1-rc.1',
+    summary: 'The status line shows the latest-step cache hit rate, and live progress emits each fact once.',
+    highlights: [
+      'Cache hit rate - show the latest-step cache hit rate beside context occupancy in the status line.',
+      'Live progress - eliminate redundant live-progress facts across UI surfaces so each progress update publishes once.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.9',
     summary: 'The transcript mirrors Harness work details and repairs the conversation flow.',
     highlights: [

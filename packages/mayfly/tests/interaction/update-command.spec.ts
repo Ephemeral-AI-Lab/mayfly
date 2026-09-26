@@ -477,8 +477,7 @@ describe('/update early verdicts', () => {
     expect(result).toEqual({ kind: 'success' })
     const rows = overlayRows(world.ctx)
     expect(rows).toContain('minimumReleaseAge')
-    expect(rows).toContain('2026-08-25')
-    expect(rows).toContain('23:00 UTC')
+    expect(rows.replace(/[\s─│╭╮╰╯]+/g, ' ')).toContain('until 2026-08-25 23:00 UTC')
     world.dispose()
   })
 

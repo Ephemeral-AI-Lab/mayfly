@@ -1,7 +1,7 @@
 {
   "name": "@ephemeral-ai/mayfly-ui",
   "description": "Renderer-neutral contracts, builders, and UI contribution services for Mayfly",
-  "version": "0.1.0-alpha.9",
+  "version": "0.1.1-rc.1",
   "publishConfig": {
     "access": "public"
   },
