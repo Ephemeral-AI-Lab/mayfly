@@ -76,9 +76,6 @@ describe('buildExportMarkdown', () => {
     {
       kind: 'interrupted', seq: 6, turn: 2,
     },
-    {
-      kind: 'step-summary', seq: 7, turn: 3, step: 0, toolNames: ['read', 'read'], thinking: 1,
-    },
   ])
 
   it('renders an empty work directory in the full audit front matter', () => {
@@ -97,11 +94,11 @@ describe('buildExportMarkdown', () => {
     expect(markdown).toContain('session_id: sess-12345678')
     expect(markdown).toContain('exported_at: 2026-08-21T07:15:30.000Z')
     expect(markdown).toContain('work_dir: /tmp/spec')
-    expect(markdown).toContain('message_count: 7')
+    expect(markdown).toContain('message_count: 6')
     expect(markdown).toContain('# Mayfly Session Export')
-    // Overview: first user topic, 4 distinct turns, 1 tool call.
+    // Overview: first user topic, 3 distinct turns, 1 tool call.
     expect(markdown).toContain('- **Topic**: first question')
-    expect(markdown).toContain('- **Conversation**: 4 turns | 1 tool call')
+    expect(markdown).toContain('- **Conversation**: 3 turns | 1 tool call')
     // The user section carries the image placeholder.
     expect(markdown).toContain('### User')
     expect(markdown).toContain('[image]')
@@ -115,18 +112,17 @@ describe('buildExportMarkdown', () => {
     expect(markdown).toContain('```json\n{\n  "command": "ls"\n}')
     expect(markdown).toContain('<details><summary>Tool Result: bash (`ls`)</summary>')
     expect(markdown).toContain('file1\nfile2')
-    // Failure, interruption, and folded-step rows.
+    // Failure and interruption rows.
     expect(markdown).toContain('> ✗ request failed: endpoint 404 (ENDPOINT_404)')
     expect(markdown).toContain('> (interrupted)')
-    expect(markdown).toContain('#### (folded step · 2 tool calls · 1 thinking block)')
     // Turn sections carry the fold's own turn numbers (0-based), in
     // first-seen order.
+    const turn0 = markdown.indexOf('## Turn 0')
     const turn1 = markdown.indexOf('## Turn 1')
     const turn2 = markdown.indexOf('## Turn 2')
-    const turn3 = markdown.indexOf('## Turn 3')
-    expect(turn1).toBeGreaterThan(-1)
+    expect(turn0).toBeGreaterThan(-1)
+    expect(turn1).toBeGreaterThan(turn0)
     expect(turn2).toBeGreaterThan(turn1)
-    expect(turn3).toBeGreaterThan(turn2)
   })
 
   it('drops empty thinking, skips empty assistant bodies, and uses result fallbacks', () => {
@@ -392,10 +388,6 @@ describe('buildExportMarkdown', () => {
       },
       // An error without a machine code drops the parenthetical.
       { kind: 'error', seq: 3, turn: 0, message: 'no code' },
-      // Singular tool count and no thinking section.
-      { kind: 'step-summary', seq: 4, turn: 0, step: 0, toolNames: ['read'], thinking: 0 },
-      // Plural thinking blocks (the two-or-more arm).
-      { kind: 'step-summary', seq: 5, turn: 1, step: 0, toolNames: ['read'], thinking: 2 },
       // Only over-long arguments: the hint falls through both lists.
       { kind: 'tool', seq: 6, turn: 0, step: 0, callId: 'c', name: 'x', arguments: '{"long":"zzz"}', parsedArguments: { long: 'z'.repeat(100) } },
     ]
@@ -406,8 +398,6 @@ describe('buildExportMarkdown', () => {
     expect(markdown).toContain('second user')
     expect(markdown).toContain('[image shot.png]')
     expect(markdown).toContain('> ✗ request failed: no code')
-    expect(markdown).toContain('#### (folded step · 1 tool call)')
-    expect(markdown).toContain('#### (folded step · 1 tool call · 2 thinking blocks)')
     // The over-long hint leaves the plain tool heading.
     expect(markdown).toContain('#### Tool Call: x')
     expect(markdown).not.toContain('#### Tool Call: x (`')

@@ -361,7 +361,7 @@ describe('mayfly-pane-activity', () => {
     // up where the cycle left off.
     emit2(ctx, agent, toolCallEvent(1, 1, 'c0', 'worker', '{}'))
     emit2(ctx, agent, toolResultEvent(1, 1, 'c0', 'done'))
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[1]!} ↓2 · Tip: ${buildTipRotation(STATUS_TIPS)[2]!.text}`])
+    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[1]!} worker ↓2 · Tip: ${buildTipRotation(STATUS_TIPS)[2]!.text}`])
     await dispose()
   })
 
@@ -421,11 +421,13 @@ describe('mayfly-pane-activity', () => {
     await dispose()
   })
 
-  it('empties while the model thinks (the spinner belongs to the thinking block)', async () => {
+  it('keeps a thinking row while the model reasons, so the dock never collapses', async () => {
     const agent = runningAgent(fakeAgent([]))
     const { ctx, screen, timers, dispose } = await boot(agent)
     emit2(ctx, agent, reasoningDelta(1, 1, 'pondering'))
-    expect(screen.paneLines()).toEqual([])
+    // The braille style takes over from the moon with the next tip slot.
+    expect(screen.paneLines()).toEqual([`⠋ thinking... ↓2 · Tip: ${buildTipRotation(STATUS_TIPS)[1]!.text}`])
+    expect(timers.intervals).toEqual([120, 80])
     expect(timers.cleared).toBe(1)
     // Once active, the idle placeholder ratchet holds a blank row.
     emit2(ctx, agent, turnEnd(1))
@@ -437,8 +439,10 @@ describe('mayfly-pane-activity', () => {
     const agent = runningAgent(fakeAgent([]))
     const { ctx, screen, dispose } = await boot(agent)
     emit2(ctx, agent, toolCallEvent(1, 1, 'c1', 'bash', '{}'))
-    // waiting → tool keeps the moon loading kind, so the tip survives.
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} · Tip: ${FIRST_TIP}`])
+    // waiting → tool keeps the moon loading kind, so the tip survives; the row names the tool.
+    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} bash · Tip: ${FIRST_TIP}`])
+    emit2(ctx, agent, toolCallEvent(1, 1, 'c2', 'mcp__github__create_issue', '{}'))
+    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} github › create_issue · Tip: ${FIRST_TIP}`])
     await dispose()
   })
 
@@ -506,13 +510,13 @@ describe('mayfly-pane-activity', () => {
   })
 
   it('seeds the phase from the snapshot on attach', async () => {
-    // The snapshot ends mid-thinking: the resumed pane is empty at once.
+    // The snapshot ends mid-thinking: the resumed pane shows the thinking row at once.
     const agent = runningAgent(fakeAgent([
       turnStart(1),
       reasoningDelta(1, 1, 'mid-thought'),
     ]))
     const { screen, dispose } = await boot(agent)
-    expect(screen.paneLines()).toEqual([])
+    expect(screen.paneLines()[0]).toMatch(/^⠋ thinking\.\.\. ↓\d/u)
     await dispose()
   })
 

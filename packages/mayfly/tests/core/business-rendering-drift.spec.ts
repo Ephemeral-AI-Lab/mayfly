@@ -34,7 +34,6 @@ const approvedWidthMath = new Set([
   "packages/mayfly/src/transcript/status-model.ts:const renderWidth = result.ok && result.value.node.kind === 'text'",
   'packages/mayfly/src/transcript/status-model.ts:used += (parts.length > 1 ? 2 : 0) + this.components.visibleWidth(part)',
   'packages/mayfly/src/transcript/thinking.ts:const contentWidth = Math.max(1, width - THINKING_INDENT.length)',
-  'packages/mayfly/src/transcript/thinking.ts:const hintWidth = Math.max(0, width - THINKING_INDENT.length)',
 ])
 
 const approvedPresentation = new Set([
@@ -45,7 +44,6 @@ const approvedPresentation = new Set([
   "border:packages/mayfly/src/transcript/agent-presentation.ts:export function agentTreeBranch(last: boolean): '└─' | '├─' {",
   "border:packages/mayfly/src/transcript/command-group.ts:const branch = last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/command-group.ts:const continuation = last ? '   ' : '│  '",
-  "border:packages/mayfly/src/transcript/command-group.ts:this.renderCommandRow(call, index === failed.length - 1 ? '└─' : '├─', deps, cut))])",
   "border:packages/mayfly/src/transcript/read-group.ts:const branch = last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/read-group.ts:const continuation = last ? '   ' : '│  '",
   "border:packages/mayfly/src/transcript/read-group.ts:const windowBranch = windowLast ? '└─' : '├─'",
@@ -53,6 +51,9 @@ const approvedPresentation = new Set([
   "border:packages/mayfly/src/transcript/search-group.ts:const branch = last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/search-group.ts:const childContinuation = `${String(continuation)}${last ? '   ' : '│  '}`",
   "border:packages/mayfly/src/transcript/search-group.ts:const continuation = last ? '   ' : '│  '",
+  "border:packages/mayfly/src/transcript/tool-line.ts:const branch = index === web.sources.length - 1 ? '└─' : '├─'",
+  "pointer:packages/mayfly/src/transcript/tool-line.ts:return mcp === null ? name : `${mcp[1]!} › ${mcp[2]!}`",
+  "pointer:packages/mayfly/src/transcript/tool-line.ts:return { label: entry.detail, outcome: result === undefined ? t('waiting for your answer') : answer === undefined ? outcome : `→ ${answer}` }",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",

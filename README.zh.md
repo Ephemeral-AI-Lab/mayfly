@@ -25,9 +25,9 @@ Mayfly 可以直接在终端显示 Markdown 表格、assistant 消息中的闭�
 以及 renderer-neutral 的 line、point、bar、sparkline 与 heatmap 节点；超宽或不支持
 的内容会安全回退为源码或文本。
 
-流式思考时，标题显示当前思考块的估算 token 数和输出速率，例如
-`thinking... ↓1.2k · ≈42 tok/s`。正文开始后，思考动画停止，activity 行显示
-正文阶段独立的计数与速率。速率按每四个字符一个 token 估算，不计首个 chunk
+流式思考时，思考块标题显示已用时间、估算 token 数和输出速率，例如
+`✻ 思考中 · 6s · ↓1.2k · ≈42 tok/s`；编辑器上方的 activity 行是唯一的动画
+spinner，显示当前阶段独立的计数与速率。思考结束后折叠为一行 `✻ 已思考 6s`。速率按每四个字符一个 token 估算，不计首个 chunk
 之前的等待时间；两秒没有新输出后隐藏。窄终端优先省略提示和速率。
 
 <p align="center">

@@ -26,10 +26,11 @@ Mayfly renders Markdown tables, closed Mermaid fences in assistant messages,
 and renderer-neutral line, point, bar, sparkline, and heatmap nodes directly in
 the terminal, with width-safe source or text fallbacks.
 
-While reasoning streams, its heading shows the current thinking block's
-estimated token count and output rate, for example
-`thinking... ↓1.2k · ≈42 tok/s`. When the answer starts, thinking stops
-animating and the activity row shows the answer phase's own count and rate.
+While reasoning streams, the thinking block's heading shows its elapsed time,
+estimated token count, and output rate, for example
+`✻ Thinking · 6s · ↓1.2k · ≈42 tok/s`; the activity row above the editor is the
+one animated spinner and shows the current phase's own count and rate. Settled
+reasoning folds to one `✻ Thought for 6s` row.
 Rates use four characters per token, exclude first-chunk latency, and disappear
 after two seconds without output. Narrow terminals omit tips and rates first.
 

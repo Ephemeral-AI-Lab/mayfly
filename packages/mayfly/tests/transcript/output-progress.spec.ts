@@ -59,7 +59,7 @@ describe('phase-local output', () => {
     expect(outputProgressSchema.safeParse({ ...next, chars: -1 }).success).toBe(false)
   })
 
-  it('moves the sole spinner and metrics from thinking to working, then settles and ignores late chunks', async () => {
+  it('keeps the activity row the sole spinner from thinking to working, then settles and ignores late chunks', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
     vi.setSystemTime(1_000)
     const agent = fakeAgent([])
@@ -89,18 +89,19 @@ describe('phase-local output', () => {
     }
     try {
       replay(reasoning('seed', 1_000))
-      expect(transcript.render(80).join('\n')).toContain('thinking... ↓1')
-      expect(harness.screen.paneLines()).toEqual([])
+      expect(transcript.render(80).join('\n')).toContain('✻ Thinking · ↓1')
+      // Thinking keeps the activity row: the dock never collapses mid-turn.
+      expect(harness.screen.paneLines()[0]).toContain('thinking... ↓1')
       vi.setSystemTime(2_000)
       replay(reasoning('x'.repeat(168), 2_000))
-      expect(transcript.render(80).join('\n')).toContain('thinking... ↓43 · ≈42 tok/s')
-      expect(harness.screen.paneLines()).toEqual([])
+      expect(transcript.render(80).join('\n')).toContain('✻ Thinking · ↓43 · ≈42 tok/s')
+      expect(harness.screen.paneLines()[0]).toContain('thinking... ↓43 · ≈42 tok/s')
       replay(answer('', 2_010))
       replay(reasoning('\n', 2_020))
-      expect(transcript.render(80).join('\n')).toContain('thinking...')
+      expect(transcript.render(80).join('\n')).toContain('✻ Thinking')
       vi.setSystemTime(3_000)
       replay(answer('seed', 3_000))
-      expect(transcript.render(80).join('\n')).not.toContain('thinking...')
+      expect(transcript.render(80).join('\n')).not.toContain('✻ Thinking')
       expect(harness.screen.paneLines()[0]).toContain('working... ↓1')
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
       vi.setSystemTime(4_000)
@@ -121,7 +122,7 @@ describe('phase-local output', () => {
       expect(transcript.render(80).join('\n')).toContain('corrected thought')
       expect(harness.screen.paneLines().join('\n')).not.toContain('working...')
       send(reasoning('late', 7_000))
-      expect(transcript.render(80).join('\n')).not.toContain('thinking...')
+      expect(transcript.render(80).join('\n')).not.toContain('✻ Thinking')
       expect(harness.screen.paneLines().join('\n')).not.toContain('tok/s')
       send(turnEnd(1))
       send(answer('late', 8_000))
@@ -142,9 +143,9 @@ describe('phase-local output', () => {
     }
     const component = new ThinkingComponent(item, COLORS, fakeMayflyComponents())
     try {
-      expect(component.render(80)[1]).toBe('⠋ thinking... ↓1.2k · ≈42 tok/s')
-      expect(component.render(20)[1]).toBe('⠋ thinking... ↓1.2k')
-      expect(component.render(13)[1]).toBe('⠋ thinking...')
+      expect(component.render(80)[1]).toBe('✻ Thinking · ↓1.2k · ≈42 tok/s')
+      expect(component.render(20)[1]).toBe('✻ Thinking · ↓1.2k')
+      expect(component.render(13)[1]).toBe('✻ Thinking')
       for (const width of SCAN_WIDTHS) expectLinesFit('Thinking/TPS', component.render(width), width)
       vi.advanceTimersByTime(2_001)
       expect(component.render(80)[1]).not.toContain('tok/s')

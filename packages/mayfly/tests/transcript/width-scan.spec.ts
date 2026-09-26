@@ -19,7 +19,6 @@ import {
   AssistantMessageComponent,
   ErrorMessageComponent,
   InterruptedMarkerComponent,
-  StepSummaryComponent,
   ToolCallComponent,
   UserMessageComponent,
 } from '../../src/transcript/components.ts'
@@ -28,6 +27,9 @@ import { CommandGroupComponent } from '../../src/transcript/command-group.ts'
 import { ReadGroupComponent } from '../../src/transcript/read-group.ts'
 import { SearchGroupComponent } from '../../src/transcript/search-group.ts'
 import { ThinkingComponent } from '../../src/transcript/thinking.ts'
+import { ToolLineComponent } from '../../src/transcript/tool-line.ts'
+import { ProcessTitleComponent, TurnHeaderComponent } from '../../src/transcript/process-rows.ts'
+import type { TranscriptToolModel } from '../../src/frontend/models.ts'
 import * as agentsPane from '../../src/transcript/pane-agents.ts'
 import * as todoPane from '../../src/transcript/pane-todo.ts'
 import { workflowNode, type WorkflowRunState } from '../../src/transcript/pane-workflow.ts'
@@ -122,6 +124,11 @@ describe('transcript width-scan', () => {
         t: transcriptT,
       })
       const interrupted = new InterruptedMarkerComponent(colors, components, transcriptT)
+      const header = new TurnHeaderComponent(colors, components, () => {}, transcriptT)
+      header.update({ kind: 'turn-header', id: 'h', turn: 1, seq: 1, running: false, startedAt: 0, endedAt: 65_000, toolCalls: 3, subagents: 1, folded: true, hint: true })
+      const title = new ProcessTitleComponent(colors, components, () => {}, transcriptT)
+      title.update({ kind: 'process-title', id: 'p', turn: 1, seq: 1, closed: true, liveDetail: true, summary: { counts: [{ activity: 'read', count: 3 }, { activity: 'search', count: 2 }, { activity: 'commands', count: 1 }, { activity: 'edit', count: 1 }], failed: 2, runningDetail: '', preparing: false } })
+      const thought = new ThinkingComponent({ kind: 'thinking', seq: 1, turn: 1, step: 0, text: '界🙂 reasoning\nmore', streaming: false, durationMs: 4_000 }, colors, components, undefined, () => true, transcriptT)
       const bannerDeps = {
         colors,
         strong: (text: string) => components.strong(text),
@@ -132,6 +139,9 @@ describe('transcript width-scan', () => {
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`UserMessage/${locale}`, longUser.render(width), width)
         expectLinesFit(`Interrupted/${locale}`, interrupted.render(width), width)
+        expectLinesFit(`TurnHeader/${locale}`, header.render(width), width)
+        expectLinesFit(`ProcessTitle/${locale}`, title.render(width), width)
+        expectLinesFit(`Thought/${locale}`, thought.render(width), width)
         if (bannerLayout(width) !== null) {
           expectLinesFit(`Banner/${locale}`, composeBannerLines(bannerDeps, {
             version: '0.1.1-rc.2', model: 'deepseek-chat', provider: 'deepseek', cwd: '~/界🙂',
@@ -162,11 +172,21 @@ describe('transcript width-scan', () => {
       const components = fakeMayflyComponents()
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`ToolCall/${name}`, new ToolCallComponent(bashItem(text), colors, components).render(width), width)
-        const compact = new ToolCallComponent({
+        const failed = new ToolCallComponent({
           ...bashItem(text),
           result: { text, fullText: text, isError: true, endedAt: 2 },
-        }, colors, components, undefined, undefined, () => 'compact')
-        expectLinesFit(`ToolCallCompact/${name}`, compact.render(width), width)
+        }, colors, components)
+        expectLinesFit(`ToolCallFailed/${name}`, failed.render(width), width)
+        const terminal = new ToolCallComponent({
+          ...bashItem(text), startedAt: 0, title: text,
+          terminal: { command: `${text}\n${text}`, description: text, output: `${text}\n${text}\n${text}\n${text}`, exitCode: 2 },
+          result: { text, fullText: text, isError: false, endedAt: 5_000 },
+        }, colors, components)
+        expectLinesFit(`ToolCallTerminal/${name}`, terminal.render(width), width)
+        terminal.setExpanded(true)
+        expectLinesFit(`ToolCallTerminalExpanded/${name}`, terminal.render(width), width)
+        const titled = new ToolCallComponent({ ...bashItem(text), name: `mcp__${text}__tool`, title: text, result: { text, fullText: text, isError: false, endedAt: 2 } }, colors, components, undefined, '+1 −1')
+        expectLinesFit(`ToolCallTitled/${name}`, titled.render(width), width)
       }
     })
 
@@ -255,25 +275,53 @@ describe('transcript width-scan', () => {
       }
     })
 
-    it(`StepSummaryComponent survives ${name}`, () => {
-      const components = fakeMayflyComponents()
-      const item = { kind: 'step-summary', seq: 1, turn: 1, step: 1, toolNames: [text, text], thinking: 1 }
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`StepSummary/${name}`, new StepSummaryComponent(item, colors, components).render(width), width)
-      }
-    })
-
     it(`ThinkingComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
-      const item = { kind: 'thinking', seq: 1, turn: 1, step: 1, text, streaming: false }
-      const streaming = new ThinkingComponent({ ...item, streaming: true }, colors, components, undefined, () => 'compact')
+      const item = { kind: 'thinking' as const, seq: 1, turn: 1, step: 1, text, streaming: false, durationMs: 4_000 }
+      const streaming = new ThinkingComponent({ ...item, streaming: true, startedAt: Date.now() - 3_000 }, colors, components)
+      const expanded = new ThinkingComponent(item, colors, components, undefined, () => false)
+      expanded.setExpanded(true)
       try {
         for (const width of SCAN_WIDTHS) {
           expectLinesFit(`Thinking/${name}`, new ThinkingComponent(item, colors, components).render(width), width)
-          expectLinesFit(`ThinkingCompact/${name}`, streaming.render(width), width)
+          expectLinesFit(`ThinkingLive/${name}`, streaming.render(width), width)
+          expectLinesFit(`ThinkingExpanded/${name}`, expanded.render(width), width)
         }
       } finally {
         streaming.dispose()
+      }
+    })
+
+    it(`work-details rows and line tools survive ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const header = new TurnHeaderComponent(colors, components, () => {})
+      header.update({ kind: 'turn-header', id: 'h', turn: 1, seq: 1, running: false, startedAt: 0, endedAt: 3_723_000, toolCalls: 12, subagents: 2, folded: true, hint: true })
+      const title = new ProcessTitleComponent(colors, components, () => {})
+      title.update({ kind: 'process-title', id: 'p', turn: 1, seq: 1, closed: false, liveDetail: true, summary: { counts: [{ activity: 'commands', count: 2 }], failed: 1, running: 'commands', runningDetail: text, preparing: false } })
+      const tool = (overrides: Partial<TranscriptToolModel>): TranscriptToolModel => ({
+        kind: 'transcript-tool', id: 't', seq: 1, updatedSeq: 1, turn: 1, step: 0, callId: 'c', name: 'subagent', family: 'other',
+        activity: 'subagents', detail: text, arguments: JSON.stringify({ description: text, name: text }), startedAt: 0,
+        result: { text: `${text}\n${text}`, fullText: `${text}\n${text}`, isError: false, endedAt: 1 }, ...overrides,
+      })
+      const lines = [
+        tool({}),
+        tool({ name: 'web_search', activity: 'webSearch', web: { kind: 'search', sources: [{ url: text, title: text }], truncated: true } }),
+        tool({ name: 'todo_write', activity: 'plan', arguments: JSON.stringify({ todos: [{ content: text, status: 'in_progress' }] }) }),
+        tool({ name: 'write', activity: 'write', preparing: { characters: 18_342 } }),
+      ].map(entry => {
+        const line = new ToolLineComponent(entry, colors, components)
+        line.setExpanded(true)
+        return line
+      })
+      try {
+        for (const width of SCAN_WIDTHS) {
+          expectLinesFit(`TurnHeader/${name}`, header.render(width), width)
+          expectLinesFit(`ProcessTitle/${name}`, title.render(width), width)
+          for (const line of lines) expectLinesFit(`ToolLine/${name}`, line.render(width), width)
+        }
+      } finally {
+        header.dispose()
+        title.dispose()
       }
     })
 
@@ -306,11 +354,24 @@ describe('transcript width-scan', () => {
         components,
         images: () => ({}),
         requestRender: () => undefined,
+        viewportRows: () => 24,
+      })
+      // The same entries under work-details: a running grouped turn, then a folded one.
+      const running = createTranscriptModel('width-scan-flow', model.entries, true, 1, [{ turn: 1, startedAt: 0 }])
+      const settled = createTranscriptModel('width-scan-flow', model.entries, false, 2, [{ turn: 1, startedAt: 0, endedAt: 9_000, outcome: 'completed' }])
+      let current = running
+      const flow = new TranscriptModelComponent(() => current, {
+        colors, components, images: () => ({}), requestRender: () => undefined, viewportRows: () => 24,
       })
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`TranscriptModel/${name}`, component.render(width), width)
+        current = running
+        expectLinesFit(`TranscriptModelRunning/${name}`, flow.render(width), width)
+        current = settled
+        expectLinesFit(`TranscriptModelFolded/${name}`, flow.render(width), width)
       }
       component.dispose()
+      flow.dispose()
     })
 
     it(`AgentGroupComponent survives ${name}`, () => {

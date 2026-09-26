@@ -11,7 +11,7 @@ import { isAppendSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-sessio
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 import { outputProgressSchema } from './output-progress.ts'
-import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
+import { foldAssistantStreamRecords, initialAssistantStream, type AssistantStreamState } from './stream-accumulator.ts'
 import type {
   ConversationEntry,
   ConversationImage,
@@ -20,6 +20,7 @@ import type {
   ConversationProjectionState,
   ConversationThinkingEntry,
   ConversationToolEntry,
+  ConversationTurn,
 } from './types.ts'
 
 const jsonSchema: z.ZodType<ConversationJson> = z.lazy(() => z.union([
@@ -51,7 +52,7 @@ const entryBase = {
 const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
   z.object({ ...entryBase, kind: z.literal('user'), text: z.string(), images: z.array(imageSchema) }),
   z.object({ ...entryBase, kind: z.literal('assistant'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean() }),
-  z.object({ ...entryBase, kind: z.literal('thinking'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean(), outputProgress: outputProgressSchema.optional() }),
+  z.object({ ...entryBase, kind: z.literal('thinking'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean(), outputProgress: outputProgressSchema.optional(), durationMs: z.number().nonnegative().optional() }),
   z.object({
     ...entryBase,
     kind: z.literal('tool'),
@@ -73,11 +74,19 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
   z.object({ ...entryBase, kind: z.literal('interrupted') }),
 ]))
 
+const turnsSchema = z.array(z.object({
+  turn: z.number().int().nonnegative(),
+  startedAt: z.number(),
+  endedAt: z.number().optional(),
+  outcome: z.string().optional(),
+}))
+
 /** Runtime schema for the client-visible conversation value. */
 export const conversationProjectionSchema = z.object({
   entries: conversationEntriesSchema,
   streaming: z.boolean(),
   settledSteps: z.array(z.string()),
+  turns: turnsSchema,
 }) satisfies z.ZodType<ConversationProjection>
 
 /** Runtime schema for persisted projection checkpoints. */
@@ -93,6 +102,7 @@ export const conversationProjectionStateSchema = z.object({
   interruptedTurns: z.array(z.number().int().nonnegative()),
   retractedTurns: z.array(z.number().int().nonnegative()),
   toolEntryIds: z.record(z.string(), z.string()),
+  turns: turnsSchema,
 }) satisfies z.ZodType<ConversationProjectionState>
 
 /** Empty-log state for the conversation projection. */
@@ -109,6 +119,7 @@ export function initialConversationState(): ConversationProjectionState {
     interruptedTurns: [],
     retractedTurns: [],
     toolEntryIds: {},
+    turns: [],
   }
 }
 
@@ -181,10 +192,35 @@ function settleStreaming(state: ConversationProjectionState, updatedSeq: number)
   }
 }
 
+/**
+ * Whether a tool name is spawn-class delegation: `subagent` or any configured
+ * `subagent_*` provider (fork, codex, claude-code), the upstream Chat rule.
+ */
+export function isSpawnToolName(name: string): boolean {
+  return name === 'subagent' || name.startsWith('subagent_')
+}
+
 function toolChannel(name: string): ConversationToolEntry['channel'] {
   if (name === 'todo_write') return 'todo'
-  if (name === 'subagent' || name === 'subagent_fork') return 'agents'
+  if (isSpawnToolName(name)) return 'agents'
   return 'transcript'
+}
+
+/** Visible reasoning span of one folded stream, when it recorded one. */
+function reasoningDuration(stream: AssistantStreamState): number | undefined {
+  return stream.reasoningStartedAt === undefined || stream.reasoningEndedAt === undefined
+    ? undefined
+    : Math.max(0, stream.reasoningEndedAt - stream.reasoningStartedAt)
+}
+
+/** Record one turn boundary time; a missing start adopts the end time. */
+function markTurn(state: ConversationProjectionState, turn: number, patch: Partial<ConversationTurn> & { readonly time: number }): ConversationProjectionState {
+  const { time, ...fields } = patch
+  const index = state.turns.findIndex(entry => entry.turn === turn)
+  const turns = [...state.turns]
+  if (index < 0) turns.push({ turn, startedAt: time, ...fields })
+  else turns[index] = { ...turns[index]!, ...fields }
+  return { ...state, turns }
 }
 
 function appendEntry(state: ConversationProjectionState, entry: ConversationEntry): ConversationProjectionState {
@@ -232,6 +268,7 @@ function retractTurn(state: ConversationProjectionState, turn: number): Conversa
     interruptedTurns: state.interruptedTurns.filter(value => value !== turn),
     retractedTurns: [...state.retractedTurns, turn],
     toolEntryIds,
+    turns: state.turns.filter(entry => entry.turn !== turn),
   }
 }
 
@@ -271,6 +308,8 @@ function finalizeAssistant(
   const key = stepKey(turn, step)
   if (state.finalizedSteps.includes(key) || state.interruptedTurns.includes(turn)) return state
   let next = state.streamingStep === key ? state : settleStreaming(state, event.seq)
+  const durationMs = reasoningDuration(foldAssistantStreamRecords(initialAssistantStream(), event.data.stream))
+  const timing = durationMs === undefined ? {} : { durationMs }
   const reasoning = reasoningText(message.content)
   const answer = visibleText(message.content).trim()
   const thinkingId = `thinking:${key}`
@@ -278,11 +317,11 @@ function finalizeAssistant(
   const thinkingIndex = entryIndex(next.entries, next.streamingThinkingId)
   if (thinkingIndex >= 0) {
     next = replaceEntry(next, next.streamingThinkingId!, event.seq, entry => entry.kind === 'thinking'
-      ? { ...entry, text: reasoning, streaming: false }
+      ? { ...entry, text: reasoning, streaming: false, ...timing }
       : entry)
   } else if (reasoning.trim() !== '') {
     const thinking: ConversationThinkingEntry = {
-      kind: 'thinking', id: thinkingId, seq: event.seq, updatedSeq: event.seq, turn, step, text: reasoning, streaming: false,
+      kind: 'thinking', id: thinkingId, seq: event.seq, updatedSeq: event.seq, turn, step, text: reasoning, streaming: false, ...timing,
     }
     const entries = [...next.entries]
     const assistantIndex = entryIndex(entries, next.streamingAssistantId)
@@ -366,7 +405,7 @@ export function foldConversationProjection(
   switch (event.type) {
     case 'turn/start':
       if (state.retractedTurns.includes(event.data.turn)) return state
-      return { ...state, currentTurn: event.data.turn, active: true }
+      return markTurn({ ...state, currentTurn: event.data.turn, active: true }, event.data.turn, { time: event.time, startedAt: event.time })
     case 'step/start': {
       if (state.retractedTurns.includes(event.data.turn)) return state
       const settled = settleStreaming(state, event.seq)
@@ -374,7 +413,11 @@ export function foldConversationProjection(
     }
     case 'turn/end': {
       if (state.retractedTurns.includes(event.data.turn)) return state
-      let next = { ...settleStreaming(state, event.seq), currentTurn: event.data.turn, active: false }
+      const settled = { ...settleStreaming(state, event.seq), currentTurn: event.data.turn, active: false }
+      // The first close wins: a later synthetic closer keeps the recorded outcome.
+      let next = state.turns.some(entry => entry.turn === event.data.turn && entry.endedAt !== undefined)
+        ? settled
+        : markTurn(settled, event.data.turn, { time: event.time, endedAt: event.time, outcome: event.data.reason.kind })
       if (event.data.reason.kind === 'error') {
         const failure = event.data.reason.error
         return appendEntry(next, {
@@ -428,10 +471,12 @@ export function foldConversationProjection(
       const entries: ConversationEntry[] = [...next.entries]
       const thinkingId = draft.reasoning.trim() === '' ? null : `thinking:${key}`
       const assistantId = draft.text === '' ? null : `assistant:${key}`
+      // Visible reasoning always carries its producer-time span.
       if (thinkingId !== null) entries.push({
         kind: 'thinking', id: thinkingId, seq: event.seq, updatedSeq: event.seq, turn, step,
         text: draft.reasoning, streaming: draft.phase === 'thinking',
         ...(draft.phase === 'thinking' ? { outputProgress: draft.outputProgress } : {}),
+        durationMs: reasoningDuration(draft)!,
       })
       if (assistantId !== null) entries.push({
         kind: 'assistant', id: assistantId, seq: event.seq, updatedSeq: event.seq, turn, step,
@@ -495,11 +540,11 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
     view: state => {
       let view = conversationViewCache.get(state)
       if (view === undefined) {
-        view = { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }
+        view = { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps, turns: state.turns }
         conversationViewCache.set(state, view)
       }
       return view
     },
   },
-  stateVersion: 6,
+  stateVersion: 7,
 }

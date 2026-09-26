@@ -57,6 +57,19 @@ export interface ConversationThinkingEntry extends ConversationEntryBase {
   readonly text: string
   readonly streaming: boolean
   readonly outputProgress?: OutputProgress | undefined
+  /** Producer-time span of the visible reasoning, when the stream recorded one. */
+  readonly durationMs?: number | undefined
+}
+
+/** One turn's lifecycle times from committed `turn/start` and `turn/end` events. */
+export interface ConversationTurn {
+  readonly turn: number
+  /** Envelope time of `turn/start`, or of `turn/end` when the start is absent. */
+  readonly startedAt: number
+  /** Envelope time of `turn/end`; absent while the turn is open. */
+  readonly endedAt?: number | undefined
+  /** The `turn/end` reason kind (`completed`, `aborted`, `error`, …). */
+  readonly outcome?: string | undefined
 }
 
 /** Output within one streaming phase, measured from committed event timestamps. */
@@ -115,6 +128,8 @@ export interface ConversationProjection {
   readonly streaming: boolean
   /** Step keys whose assistant settlement is authoritative. */
   readonly settledSteps: readonly string[]
+  /** Lifecycle times of every retained turn, in start order. */
+  readonly turns: readonly ConversationTurn[]
 }
 
 /** Plain-JSON internal fold state checkpointed by the registry. */
@@ -131,6 +146,7 @@ export interface ConversationProjectionState {
   /** Turns durably erased by Mayfly's safe-retraction surface marker. */
   readonly retractedTurns: readonly number[]
   readonly toolEntryIds: Readonly<Record<string, string>>
+  readonly turns: readonly ConversationTurn[]
 }
 
 /**
@@ -172,13 +188,13 @@ export interface ConversationFacts {
   readonly agentCalls: readonly ConversationAgentCall[]
 }
 
-/** Projection facts for one `subagent`/`subagent_fork` call. */
+/** Projection facts for one spawn-class (`subagent` or `subagent_*`) call. */
 export interface ConversationAgentCall {
   readonly seq: number
   readonly turn: number
   readonly step: number
   readonly callId: string
-  readonly name: 'subagent' | 'subagent_fork'
+  readonly name: string
   readonly arguments: string
   readonly startedAt: number
   readonly result?: {

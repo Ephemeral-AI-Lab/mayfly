@@ -15,7 +15,30 @@ interface TranscriptEntryBase {
 }
 export interface TranscriptUserModel extends TranscriptEntryBase { readonly kind: 'transcript-user'; readonly text: string; readonly images: readonly TranscriptImageModel[] }
 export interface TranscriptAssistantModel extends TranscriptEntryBase { readonly kind: 'transcript-assistant'; readonly step: number; readonly text: string; readonly streaming: boolean }
-export interface TranscriptThinkingModel extends TranscriptEntryBase { readonly kind: 'transcript-thinking'; readonly step: number; readonly text: string; readonly streaming: boolean; readonly outputProgress?: import('../conversation/types.ts').OutputProgress | undefined }
+export interface TranscriptThinkingModel extends TranscriptEntryBase {
+  readonly kind: 'transcript-thinking'
+  readonly step: number
+  readonly text: string
+  readonly streaming: boolean
+  readonly outputProgress?: import('../conversation/types.ts').OutputProgress | undefined
+  /** Producer-time reasoning span once the phase has ended. */
+  readonly durationMs?: number | undefined
+  /** Producer time of the first reasoning delta, for a live elapsed label. */
+  readonly startedAt?: number | undefined
+}
+/**
+ * Upstream Chat process-activity vocabulary: the category one process member
+ * contributes to group titles and turn counts.
+ */
+export type ProcessActivity = 'read' | 'readImage' | 'write' | 'search' | 'edit' | 'commands' | 'code' | 'webSearch' | 'webFetch' | 'subagents' | 'plan' | 'questions' | 'tools'
+/** One turn's lifecycle times, copied from the conversation projection. */
+export interface TranscriptTurnModel { readonly turn: number; readonly startedAt: number; readonly endedAt?: number | undefined; readonly outcome?: string | undefined }
+/** Terminal-card facts of one command call. */
+export interface TranscriptTerminalModel { readonly command: string; readonly description?: string; readonly output?: string; readonly exitCode?: number; readonly signal?: string }
+/** Web-card facts of one settled web call. */
+export type TranscriptWebModel =
+  | { readonly kind: 'search'; readonly sources: readonly { readonly url: string; readonly title?: string }[]; readonly truncated: boolean }
+  | { readonly kind: 'fetch'; readonly url: string; readonly statusCode: number; readonly truncated: boolean }
 export interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
 /**
  * The presenter-card family a lone tool card belongs to, for the per-family
@@ -24,7 +47,26 @@ export interface TranscriptToolResultModel { readonly text: string; readonly ful
  * own entry kinds and never carry this field.
  */
 export type TranscriptToolFamily = 'command' | 'edit' | 'web' | 'other'
-export interface TranscriptToolModel extends TranscriptEntryBase { readonly kind: 'transcript-tool'; readonly preparing?: { readonly characters: number }; readonly step: number; readonly callId: string; readonly name: string; readonly family: TranscriptToolFamily; readonly arguments: string; readonly startedAt: number; readonly result?: TranscriptToolResultModel; readonly presentation?: ToolPresentationModel }
+export interface TranscriptToolModel extends TranscriptEntryBase {
+  readonly kind: 'transcript-tool'
+  readonly preparing?: { readonly characters: number }
+  readonly step: number
+  readonly callId: string
+  readonly name: string
+  readonly family: TranscriptToolFamily
+  /** Process category for group titles and turn counts. */
+  readonly activity: ProcessActivity
+  /** Bounded salient argument for live process titles (command, path, query, …). */
+  readonly detail: string
+  /** The presenter's call title, when the tool declares one. */
+  readonly title?: string
+  readonly terminal?: TranscriptTerminalModel
+  readonly web?: TranscriptWebModel
+  readonly arguments: string
+  readonly startedAt: number
+  readonly result?: TranscriptToolResultModel
+  readonly presentation?: ToolPresentationModel
+}
 /** One bounded preview line carried for a read window's expanded view. */
 export interface ReadPreviewLine { readonly number: number; readonly text: string }
 /**
@@ -36,6 +78,10 @@ export interface ReadPreviewLine { readonly number: number; readonly text: strin
  */
 export interface ReadCallModel {
   readonly callId: string
+  /** Process category for group titles and turn counts. */
+  readonly activity: ProcessActivity
+  /** Bounded salient argument for live process titles. */
+  readonly detail: string
   readonly seq: number
   readonly updatedSeq: number
   readonly turn: number
@@ -65,6 +111,10 @@ export interface SearchFileMatchesModel { readonly path: string; readonly count:
  */
 export interface SearchCallModel {
   readonly callId: string
+  /** Process category for group titles and turn counts. */
+  readonly activity: ProcessActivity
+  /** Bounded salient argument for live process titles. */
+  readonly detail: string
   readonly seq: number
   readonly updatedSeq: number
   readonly turn: number
@@ -88,6 +138,10 @@ export interface TranscriptSearchGroupModel extends TranscriptEntryBase { readon
  */
 export interface CommandCallModel {
   readonly callId: string
+  /** Process category for group titles and turn counts. */
+  readonly activity: ProcessActivity
+  /** Bounded salient argument for live process titles. */
+  readonly detail: string
   readonly seq: number
   readonly updatedSeq: number
   readonly turn: number
@@ -118,6 +172,8 @@ export interface TranscriptModel {
   readonly entries: readonly (MayflyUiNode | TranscriptEntryModel)[]
   readonly live?: TranscriptLiveOverlay
   readonly streaming?: boolean
+  /** Lifecycle times of the projected turns; absent for hand-built models. */
+  readonly turns?: readonly TranscriptTurnModel[]
 }
 
 /** Materialize a complete view for consumers that need a flat entry list. */

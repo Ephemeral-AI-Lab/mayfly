@@ -7,7 +7,6 @@
  * @module @ephemeral-ai/mayfly/transcript/transcript-model
  */
 
-import { workDetailEntries } from './work-details.ts'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
@@ -25,7 +24,9 @@ import {
   type TranscriptImageModel,
   type TranscriptModel,
   type TranscriptToolModel,
+  type TranscriptTurnModel,
   type MayflyTranslate,
+  interpolateLocaleMessage,
 } from '../frontend/index.ts'
 import {
   AssistantMessageComponent,
@@ -36,6 +37,9 @@ import {
   type UserMessageImages,
 } from './components.ts'
 import { ThinkingComponent } from './thinking.ts'
+import { ToolLineComponent, isLineTool } from './tool-line.ts'
+import { ProcessTitleComponent, TurnHeaderComponent } from './process-rows.ts'
+import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { ToolModelComponent, toolResultChip } from './tool-model.ts'
 import { ReadGroupComponent, groupReadsByFile } from './read-group.ts'
 import { SearchGroupComponent } from './search-group.ts'
@@ -43,15 +47,18 @@ import { CommandGroupComponent } from './command-group.ts'
 import { parseToolArguments, summarizeToolCall } from './present.ts'
 import { summarizeToolText } from './envelope.ts'
 import { renderCanonicalNode, type CanonicalNodeRenderer } from './canonical-node-renderer.ts'
-import type { TranscriptToolItem } from './types.ts'
+import type { TranscriptThinkingItem, TranscriptToolItem } from './types.ts'
 import {
   DEFAULT_TRANSCRIPT_PRESENTATION,
-  type TranscriptFamily,
   type TranscriptPresentationPolicy,
   type TranscriptPresentationSnapshot,
 } from './presentation-policy.ts'
 
-interface ExpandableComponent extends MayflyComponent { setExpanded?(expanded: boolean): void }
+/** A mounted card's disclosure setters; every one is optional. */
+interface DisclosureTarget extends MayflyComponent {
+  setExpanded?(expanded: boolean): void
+  setScope?(scope: { readonly hint: boolean, readonly turnClosed: boolean }): void
+}
 
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
@@ -82,8 +89,13 @@ export function createTranscriptModel(
   entries: readonly (MayflyUiNode | TranscriptEntryModel)[],
   streaming?: boolean,
   generation = 0,
+  turns?: readonly TranscriptTurnModel[],
 ): TranscriptModel {
-  return freezeModel({ kind: 'transcript', id, generation, entries: [...entries], ...(streaming === undefined ? {} : { streaming }) })
+  return freezeModel({
+    kind: 'transcript', id, generation, entries: [...entries],
+    ...(streaming === undefined ? {} : { streaming }),
+    ...(turns === undefined ? {} : { turns: [...turns] }),
+  })
 }
 
 /** Append one projected canonical node or semantic entry without folding events. */
@@ -92,7 +104,7 @@ export function appendTranscriptNode(
   entry: MayflyUiNode | TranscriptEntryModel,
   streaming = model.streaming,
 ): TranscriptModel {
-  return createTranscriptModel(model.id, [...materializeTranscriptEntries(model), entry], streaming, model.generation)
+  return createTranscriptModel(model.id, [...materializeTranscriptEntries(model), entry], streaming, model.generation, model.turns)
 }
 
 function isSemantic(entry: MayflyUiNode | TranscriptEntryModel): entry is TranscriptEntryModel {
@@ -112,6 +124,8 @@ function asToolItem(entry: TranscriptToolModel): TranscriptToolItem {
     ...(parsedArguments === undefined ? {} : { parsedArguments }),
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : { result: entry.result }),
+    ...(entry.title === undefined ? {} : { title: entry.title }),
+    ...(entry.terminal === undefined ? {} : { terminal: entry.terminal }),
   }
 }
 
@@ -131,6 +145,8 @@ function asImageRef(image: TranscriptImageModel): ImageAttachmentRef {
 
 interface CachedComponent {
   readonly kind: TranscriptEntryModel['kind']
+  /** Presentation variant: `line` or `card` for tools, the kind otherwise. */
+  readonly variant: string
   readonly component: MayflyComponent
   readonly target: MayflyComponent
   revision: number | string
@@ -141,7 +157,7 @@ interface CachedComponent {
 interface EntryRowsCache {
   readonly revision: number | string
   readonly width: number
-  readonly expanded: boolean
+  readonly disclosure: string
   readonly policy: TranscriptPresentationSnapshot
   readonly rows: string[]
 }
@@ -159,20 +175,33 @@ interface TranscriptRenderPlan {
   readonly policy: TranscriptPresentationSnapshot
   readonly liveTurn: number | undefined
   readonly liveStep: number | undefined
+  readonly streaming: boolean | undefined
+  readonly turns: TranscriptModel['turns']
   readonly entries: TranscriptModel['entries']
   readonly ids: ReadonlySet<string>
   readonly expandableTurns: ReadonlySet<number>
+  readonly runningTurn: number | undefined
+  /** Index of the running turn's first entry; everything before it is stable. */
+  readonly split: number
 }
 
-interface DurableRowsCache {
+/** Rows of every turn before the running one, reused across live frames. */
+interface PrefixRowsCache {
   readonly width: number
   readonly expanded: boolean
+  readonly items: readonly DisplayItem[]
   readonly rows: string[]
+  readonly lastSeq: number | undefined
 }
+
+/** One header or group-title row component and its gutter. */
+type RowComponent =
+  | { readonly kind: 'turn-header', readonly target: TurnHeaderComponent, readonly component: GutterComponent }
+  | { readonly kind: 'process-title', readonly target: ProcessTitleComponent, readonly component: GutterComponent }
 
 /**
  * One ephemeral component anchored into the durable flow: it renders after the
- * last durable entry whose seq does not exceed `seq`, orders among siblings by
+ * last visible item whose seq does not exceed `seq`, orders among siblings by
  * `order`, and drops on generation change or explicit removal.
  */
 interface AnchoredContent {
@@ -186,16 +215,31 @@ function entryRevision(entry: TranscriptEntryModel): number | string {
   return entry.renderRevision ?? entry.updatedSeq ?? Number.NaN
 }
 
+/** A tool entry renders as one row or as a card; other kinds have one form. */
+function variantOf(entry: TranscriptEntryModel): string {
+  return entry.kind === 'transcript-tool' ? isLineTool(entry) ? 'line' : 'card' : entry.kind
+}
+
+/** The anchor-ordering seq of the last item that carries one. */
+function lastItemSeq(items: readonly DisplayItem[], fallback: number | undefined): number | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const seq = items[index]!.seq
+    if (seq !== undefined) return seq
+  }
+  return fallback
+}
+
 /** Bounded semantic transcript component with id-based reconciliation. */
 export class TranscriptModelComponent implements MayflyComponent {
   private readonly cached = new Map<string, CachedComponent>()
+  private readonly rowComponents = new Map<string, RowComponent>()
   private readonly anchored = new Map<string, AnchoredContent>()
   private canonicalRows = new WeakMap<object, { readonly width: number, readonly rows: string[] }>()
   private expanded = false
   private renderedRows: RenderedRowsCache | undefined
   private generation: number | undefined
   private plan: TranscriptRenderPlan | undefined
-  private durableRows: DurableRowsCache | undefined
+  private prefix: PrefixRowsCache | undefined
   private liveIds = new Set<string>()
   private anchorOrder = 0
 
@@ -210,10 +254,11 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.renderedRows = undefined
       this.canonicalRows = new WeakMap()
       this.prune(new Set())
+      this.pruneRows(new Set())
       this.clearAnchored()
       this.generation = undefined
       this.plan = undefined
-      this.durableRows = undefined
+      this.prefix = undefined
       this.liveIds.clear()
       return []
     }
@@ -221,12 +266,13 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.renderedRows = undefined
       this.canonicalRows = new WeakMap()
       this.prune(new Set())
+      this.pruneRows(new Set())
       // Anchors appended since the last render keep their position on the
       // first pass; a real generation change (new session content) drops them.
       if (this.generation !== undefined) this.clearAnchored()
       this.generation = model.generation
       this.plan = undefined
-      this.durableRows = undefined
+      this.prefix = undefined
       this.liveIds.clear()
     }
     const policy = this.presentation()
@@ -239,16 +285,23 @@ export class TranscriptModelComponent implements MayflyComponent {
     const liveIds = new Set(liveEntries.map(entry => entry.id))
     let plan = this.plan
     if (plan === undefined || plan.sourceEntries !== model.entries || plan.policy !== policy
-      || plan.liveTurn !== model.live?.turn || plan.liveStep !== model.live?.step) {
+      || plan.liveTurn !== model.live?.turn || plan.liveStep !== model.live?.step
+      || plan.streaming !== model.streaming || plan.turns !== model.turns) {
       const bounded = model.live === undefined ? model.entries : model.entries.filter(entry => !((entry.kind === 'transcript-thinking' || entry.kind === 'transcript-assistant')
         && entry.turn === model.live!.turn && entry.step === model.live!.step))
       const turns = [...new Set([...bounded.filter(isSemantic).map(entry => entry.turn), ...(model.live === undefined ? [] : [model.live.turn])])]
       const visibleTurns = new Set(turns.slice(-policy.windowTurns))
       const entries = bounded.filter(entry => !isSemantic(entry) || visibleTurns.has(entry.turn))
       const ids = new Set(entries.filter(isSemantic).map(entry => entry.id))
-      plan = { sourceEntries: model.entries, policy, liveTurn: model.live?.turn, liveStep: model.live?.step, entries, ids, expandableTurns: new Set(turns.slice(-policy.expandTurns)) }
+      const runningTurn = runningTurnOf(model, entries)
+      const first = runningTurn === undefined ? -1 : entries.findIndex(entry => isSemantic(entry) && entry.turn === runningTurn)
+      plan = {
+        sourceEntries: model.entries, policy, liveTurn: model.live?.turn, liveStep: model.live?.step,
+        streaming: model.streaming, turns: model.turns, entries, ids,
+        expandableTurns: new Set(turns.slice(-policy.expandTurns)), runningTurn, split: first < 0 ? entries.length : first,
+      }
       this.plan = plan
-      this.durableRows = undefined
+      this.prefix = undefined
       this.prune(new Set([...ids, ...liveIds]))
     } else {
       for (const id of this.liveIds) {
@@ -259,27 +312,29 @@ export class TranscriptModelComponent implements MayflyComponent {
       }
     }
     this.liveIds = liveIds
-    let durableRows = this.durableRows
-    if (durableRows === undefined || durableRows.width !== width || durableRows.expanded !== this.expanded) {
-      const insertions = this.anchoredInsertions(plan.entries)
-      const displayEntries = model.streaming === undefined || this.renderer.semantic === false ? plan.entries : workDetailEntries(plan.entries, model.streaming, policy.mode, this.expanded)
-      const rows = insertions === undefined
-        ? displayEntries.flatMap(entry => this.renderPlanEntry(entry, width, plan, policy))
-        : [
-            ...this.anchoredRowsAt(insertions, 0, width),
-            ...plan.entries.flatMap((entry, index) => [
-              ...this.renderPlanEntry(entry, width, plan, policy),
-              ...this.anchoredRowsAt(insertions, index + 1, width),
-            ]),
-          ]
-      durableRows = { width, expanded: this.expanded, rows }
-      this.durableRows = durableRows
+    const flat = model.streaming === undefined || this.renderer.semantic === false
+    const tailEntries = [...plan.entries.slice(plan.split), ...liveEntries]
+    const tailFirst = tailEntries.find(isSemantic)?.seq
+    const display = (entries: TranscriptModel['entries'], previousSeq?: number): DisplayItem[] => buildDisplay({
+      entries, policy: policy.process, runningTurn: plan.runningTurn, turns: model.turns,
+      expanded: this.expanded, scope: plan.expandableTurns, flat, previousSeq,
+    })
+    let prefix = this.prefix
+    if (prefix === undefined || prefix.width !== width || prefix.expanded !== this.expanded) {
+      const items = display(plan.entries.slice(0, plan.split))
+      const anchors = [...this.anchored.values()].filter(item => tailFirst === undefined || item.seq < tailFirst)
+      prefix = { width, expanded: this.expanded, items, rows: this.renderItems(items, anchors, width, policy), lastSeq: lastItemSeq(items, undefined) }
+      this.prefix = prefix
     }
-    // A live frame is a fresh array over the shared durable rows: identity
+    const tailItems = tailEntries.length === 0 ? [] : display(tailEntries, prefix.lastSeq)
+    this.pruneRows(new Set([...prefix.items, ...tailItems].flatMap(item => item.kind === 'entry' ? [] : [item.id])))
+    // A live frame is a fresh array over the shared stable rows: identity
     // caches downstream (the frame clamp) see the change without a scan.
-    const rows = liveEntries.length === 0
-      ? durableRows.rows
-      : [...durableRows.rows, ...liveEntries.flatMap(entry => this.renderSemantic(entry, width, plan.expandableTurns.has(entry.turn), policy))]
+    let rows = prefix.rows
+    if (tailFirst !== undefined) {
+      const anchors = [...this.anchored.values()].filter(item => item.seq >= tailFirst)
+      rows = [...prefix.rows, ...this.renderItems(tailItems, anchors, width, policy)]
+    }
     this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
     return rows
   }
@@ -294,7 +349,7 @@ export class TranscriptModelComponent implements MayflyComponent {
 
   /**
    * Anchor an ephemeral component into the durable flow after the last visible
-   * entry whose seq does not exceed `seq`. Anchored content is presentation-only
+   * item whose seq does not exceed `seq`. Anchored content is presentation-only
    * and drops on generation change, a null source, or `removeAnchored`.
    */
   appendAnchored(id: string, component: MayflyComponent, seq: number): void {
@@ -313,26 +368,26 @@ export class TranscriptModelComponent implements MayflyComponent {
   }
 
   /**
-   * Group anchored items by the durable-entry index they render before. A
-   * canonical node inherits the seq of the preceding semantic entry (leading
-   * canonicals keep header position), so an anchor past every seq lands at
-   * the tail of whatever entries are visible.
+   * Group anchored items by the display index they render before. Each item
+   * carries an ordering seq (a canonical node inherits the preceding one;
+   * leading canonicals keep header position), so an anchor past every seq
+   * lands at the tail of whatever items are visible — folding and grouping
+   * never displace it.
    */
-  private anchoredInsertions(entries: TranscriptModel['entries']): Map<number, AnchoredContent[]> | undefined {
-    if (this.anchored.size === 0) return undefined
+  private anchoredInsertions(items: readonly DisplayItem[], anchors: readonly AnchoredContent[]): Map<number, AnchoredContent[]> | undefined {
+    if (anchors.length === 0) return undefined
     const insertions = new Map<number, AnchoredContent[]>()
-    const items = [...this.anchored.values()].sort((a, b) => a.seq - b.seq || a.order - b.order)
-    for (const item of items) {
+    for (const anchor of [...anchors].sort((a, b) => a.seq - b.seq || a.order - b.order)) {
       let index = 0
       let lastSeq = Number.NEGATIVE_INFINITY
-      for (let at = 0; at < entries.length; at += 1) {
-        const entry = entries[at]!
-        if (isSemantic(entry)) lastSeq = entry.seq
-        if (lastSeq <= item.seq) index = at + 1
+      for (let at = 0; at < items.length; at += 1) {
+        const seq = items[at]!.seq
+        if (seq !== undefined) lastSeq = seq
+        if (lastSeq <= anchor.seq) index = at + 1
       }
       const list = insertions.get(index)
-      if (list === undefined) insertions.set(index, [item])
-      else list.push(item)
+      if (list === undefined) insertions.set(index, [anchor])
+      else list.push(anchor)
     }
     return insertions
   }
@@ -347,15 +402,54 @@ export class TranscriptModelComponent implements MayflyComponent {
     })
   }
 
-  private renderPlanEntry(
-    entry: TranscriptModel['entries'][number],
-    width: number,
-    plan: TranscriptRenderPlan,
-    policy: TranscriptPresentationSnapshot,
-  ): string[] {
-    return isSemantic(entry)
-      ? this.renderSemantic(entry, width, plan.expandableTurns.has(entry.turn), policy)
-      : this.renderCanonical(entry, width)
+  /** Render display items with their anchored locals interleaved. */
+  private renderItems(items: readonly DisplayItem[], anchors: readonly AnchoredContent[], width: number, policy: TranscriptPresentationSnapshot): string[] {
+    const insertions = this.anchoredInsertions(items, anchors)
+    if (insertions === undefined) return items.flatMap(item => this.renderItem(item, width, policy))
+    return [
+      ...this.anchoredRowsAt(insertions, 0, width),
+      ...items.flatMap((item, index) => [...this.renderItem(item, width, policy), ...this.anchoredRowsAt(insertions, index + 1, width)]),
+    ]
+  }
+
+  private renderItem(item: DisplayItem, width: number, policy: TranscriptPresentationSnapshot): string[] {
+    if (item.kind !== 'entry') return this.renderRow(item, width)
+    return isSemantic(item.entry)
+      ? this.renderSemantic(item.entry, width, item, policy)
+      : this.renderCanonical(item.entry, width)
+  }
+
+  /** Render one turn header or group title through its reused row component. */
+  private renderRow(item: TurnHeaderItem | ProcessTitleItem, width: number): string[] {
+    // Header and title ids carry distinct prefixes, so an id never changes kind.
+    let row = this.rowComponents.get(item.id)
+    if (row === undefined) {
+      const onTick = (): void => {
+        this.renderedRows = undefined
+        this.renderer.requestRender()
+      }
+      const t = this.renderer.t ?? interpolateLocaleMessage
+      if (item.kind === 'turn-header') {
+        const target = new TurnHeaderComponent(this.renderer.colors, this.renderer.components, onTick, t)
+        row = { kind: 'turn-header', target, component: new GutterComponent(target) }
+      } else {
+        const target = new ProcessTitleComponent(this.renderer.colors, this.renderer.components, onTick, t)
+        row = { kind: 'process-title', target, component: new GutterComponent(target) }
+      }
+      this.rowComponents.set(item.id, row)
+    }
+    if (row.kind === 'turn-header') row.target.update(item as TurnHeaderItem)
+    else row.target.update(item as ProcessTitleItem)
+    return row.component.render(width)
+  }
+
+  /** Dispose header and title rows that left the display plan. */
+  private pruneRows(live: ReadonlySet<string>): void {
+    for (const [id, row] of this.rowComponents) {
+      if (live.has(id)) continue
+      this.disposeComponent(row.target)
+      this.rowComponents.delete(id)
+    }
   }
 
   private clearAnchored(): void {
@@ -365,7 +459,7 @@ export class TranscriptModelComponent implements MayflyComponent {
 
   private dropRows(): void {
     this.renderedRows = undefined
-    this.durableRows = undefined
+    this.prefix = undefined
   }
 
   renderWindow(width: number, offset: number, rows: number): { readonly rows: string[], readonly total: number } {
@@ -380,8 +474,7 @@ export class TranscriptModelComponent implements MayflyComponent {
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return
     this.expanded = expanded
-    this.renderedRows = undefined
-    this.durableRows = undefined
+    this.dropRows()
     for (const cached of this.cached.values()) {
       cached.rows = undefined
       cached.target.invalidate()
@@ -389,13 +482,13 @@ export class TranscriptModelComponent implements MayflyComponent {
   }
 
   invalidate(): void {
-    this.renderedRows = undefined
-    this.durableRows = undefined
+    this.dropRows()
     this.canonicalRows = new WeakMap()
     for (const cached of this.cached.values()) {
       cached.rows = undefined
       cached.component.invalidate()
     }
+    for (const row of this.rowComponents.values()) row.component.invalidate()
     for (const item of this.anchored.values()) {
       item.cached = undefined
       item.component.invalidate()
@@ -404,23 +497,21 @@ export class TranscriptModelComponent implements MayflyComponent {
 
   /** Dispose timers and async renderer resources held by cached components. */
   dispose(): void {
-    this.renderedRows = undefined
-    this.durableRows = undefined
+    this.dropRows()
     this.plan = undefined
     this.liveIds.clear()
     this.canonicalRows = new WeakMap()
     this.clearAnchored()
     this.prune(new Set())
+    this.pruneRows(new Set())
   }
 
-  private renderSemantic(entry: TranscriptEntryModel, width: number, expandable: boolean, policy: TranscriptPresentationSnapshot): string[] {
-    if (entry.kind === 'transcript-tool' && entry.preparing !== undefined) {
-      return renderCanonicalNode({ kind: 'text', content: `Preparing ${entry.name} · ${entry.preparing.characters} characters`, tone: 'muted' }, width, this.renderer)
-    }
+  private renderSemantic(entry: TranscriptEntryModel, width: number, disclosure: EntryItem, policy: TranscriptPresentationSnapshot): string[] {
     if (this.renderer.semantic === false) return renderCanonicalNode({ kind: 'text', content: this.plainText(entry) }, width, this.renderer)
     const revision = entryRevision(entry)
+    const variant = variantOf(entry)
     let cached = this.cached.get(entry.id)
-    if (cached !== undefined && (cached.kind !== entry.kind || (cached.revision !== revision && !cached.update(entry)))) {
+    if (cached !== undefined && (cached.kind !== entry.kind || cached.variant !== variant || (cached.revision !== revision && !cached.update(entry)))) {
       this.disposeComponent(cached.target)
       this.cached.delete(entry.id)
       cached = undefined
@@ -432,14 +523,17 @@ export class TranscriptModelComponent implements MayflyComponent {
       cached.revision = revision
       cached.rows = undefined
     }
-    const expanded = this.applyExpansion(cached.target, entry, expandable, policy)
+    const target = cached.target as DisclosureTarget
+    target.setExpanded?.(disclosure.expanded)
+    target.setScope?.({ hint: disclosure.hint, turnClosed: disclosure.turnClosed })
+    const key = `${String(disclosure.expanded)}:${String(disclosure.hint)}:${String(disclosure.turnClosed)}`
     const rendered = cached.rows
     if (rendered?.revision === revision
       && rendered.width === width
-      && rendered.expanded === expanded
+      && rendered.disclosure === key
       && rendered.policy === policy) return rendered.rows
     const rows = cached.component.render(width)
-    cached.rows = { revision, width, expanded, policy, rows }
+    cached.rows = { revision, width, disclosure: key, policy, rows }
     return rows
   }
 
@@ -447,7 +541,7 @@ export class TranscriptModelComponent implements MayflyComponent {
     const cached = this.cached.get(id)
     if (cached !== undefined) cached.rows = undefined
     this.renderedRows = undefined
-    if (this.plan?.ids.has(id)) this.durableRows = undefined
+    if (this.plan?.ids.has(id)) this.prefix = undefined
   }
 
   /** Current tree policy, or immutable shipped defaults for standalone consumers. */
@@ -455,29 +549,9 @@ export class TranscriptModelComponent implements MayflyComponent {
     return this.renderer?.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
   }
 
-  /** The configured family an entry renders under, or `undefined` for non-tool kinds. */
-  private familyOf(entry: TranscriptEntryModel): TranscriptFamily | undefined {
-    switch (entry.kind) {
-      case 'transcript-thinking': return 'thinking'
-      case 'transcript-command-group': return 'command'
-      case 'transcript-read-group': return 'read'
-      case 'transcript-search-group': return 'search'
-      case 'transcript-tool': return entry.family
-      default: return undefined
-    }
-  }
-
-  /** Compose Ctrl-O's recent-turn override over per-family detail defaults. */
-  private applyExpansion(target: MayflyComponent, entry: TranscriptEntryModel, expandable: boolean, policy: TranscriptPresentationSnapshot): boolean {
-    const family = this.familyOf(entry)
-    const expanded = (this.expanded && expandable)
-      || (family !== undefined && policy.detail[family] === 'full')
-    ;(target as ExpandableComponent).setExpanded?.(expanded)
-    return expanded
-  }
-
   private createComponent(entry: TranscriptEntryModel): CachedComponent {
     const renderer = this.renderer
+    const t = renderer.t ?? interpolateLocaleMessage
     let target: MayflyComponent
     let update: (entry: TranscriptEntryModel) => boolean = () => false
     switch (entry.kind) {
@@ -492,7 +566,7 @@ export class TranscriptModelComponent implements MayflyComponent {
             images.onReady?.()
           },
           presentation: () => this.presentation(),
-          ...(renderer.t === undefined ? {} : { t: renderer.t }),
+          t,
         })
         break
       }
@@ -509,26 +583,39 @@ export class TranscriptModelComponent implements MayflyComponent {
         break
       }
       case 'transcript-thinking': {
-        const item = { kind: 'thinking' as const, seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming, outputProgress: entry.outputProgress }
+        const item: TranscriptThinkingItem = {
+          kind: 'thinking', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming,
+          outputProgress: entry.outputProgress, durationMs: entry.durationMs, startedAt: entry.startedAt,
+        }
         target = new ThinkingComponent(item, renderer.colors, renderer.components, () => {
           this.invalidateEntry(entry.id)
           renderer.requestRender()
-        }, () => this.presentation().detail.thinking)
+        }, () => this.presentation().process.settledReasoningPreview, t)
         update = (next): boolean => {
           const thinking = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-thinking' }>
           item.text = thinking.text
           item.streaming = thinking.streaming
           item.outputProgress = thinking.outputProgress
+          item.durationMs = thinking.durationMs
+          item.startedAt = thinking.startedAt
           target.invalidate()
           return true
         }
         break
       }
       case 'transcript-tool': {
+        if (isLineTool(entry)) {
+          const line = new ToolLineComponent(entry, renderer.colors, renderer.components, t)
+          target = line
+          update = (next): boolean => {
+            line.update(next as TranscriptToolModel)
+            return true
+          }
+          break
+        }
         let tool = entry
-        const family = entry.family
         const body = new ToolModelComponent(() => tool.presentation ?? null, renderer)
-        const component = new ToolCallComponent(asToolItem(entry), renderer.colors, renderer.components, body, toolResultChip(entry.presentation), () => this.presentation().detail[family])
+        const component = new ToolCallComponent(asToolItem(entry), renderer.colors, renderer.components, body, toolResultChip(entry.presentation), t)
         target = component
         update = (next): boolean => {
           tool = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
@@ -538,7 +625,7 @@ export class TranscriptModelComponent implements MayflyComponent {
         break
       }
       case 'transcript-read-group': {
-        const group = new ReadGroupComponent(entry, renderer.colors, renderer.components, () => this.presentation().detail.read)
+        const group = new ReadGroupComponent(entry, renderer.colors, renderer.components, t)
         target = group
         update = (next): boolean => {
           group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-read-group' }>)
@@ -547,7 +634,7 @@ export class TranscriptModelComponent implements MayflyComponent {
         break
       }
       case 'transcript-search-group': {
-        const group = new SearchGroupComponent(entry, renderer.colors, renderer.components, () => this.presentation().detail.search)
+        const group = new SearchGroupComponent(entry, renderer.colors, renderer.components, t)
         target = group
         update = (next): boolean => {
           group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-search-group' }>)
@@ -556,7 +643,7 @@ export class TranscriptModelComponent implements MayflyComponent {
         break
       }
       case 'transcript-command-group': {
-        const group = new CommandGroupComponent(entry, renderer.colors, renderer.components, () => this.presentation().detail.command)
+        const group = new CommandGroupComponent(entry, renderer.colors, renderer.components, t)
         target = group
         update = (next): boolean => {
           group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-command-group' }>)
@@ -576,6 +663,7 @@ export class TranscriptModelComponent implements MayflyComponent {
     }
     return {
       kind: entry.kind,
+      variant: variantOf(entry),
       revision: entryRevision(entry),
       target,
       component: new GutterComponent(target),

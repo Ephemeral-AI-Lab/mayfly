@@ -226,7 +226,7 @@ it('renders preparation and retires it when the matching native call is dispatch
     r.chunk({ type: 'tool-call-delta', index: 0, id: 'preparing-call', name: 'write', argumentsDelta: '{"content":' })
     expect(r.component.render(80).join('\n')).toContain('Preparing write')
     r.chunk({ type: 'tool-call-delta', index: 0, id: 'preparing-call', argumentsDelta: '"hello"}' })
-    expect(r.component.render(80).join('\n')).toContain('19 characters')
+    expect(r.component.render(80).join('\n')).toContain('19 chars')
     r.session.append('tool/call', { turn: 1, step: 0, callId: 'preparing-call' as never, name: 'write', arguments: '{}' } as never)
     expect(r.component.render(80).join('\n')).not.toContain('Preparing write')
     r.session.append('tool/call', { turn: 1, step: 0, callId: 'read-call' as never, name: 'read', arguments: '{"path":"a"}' } as never)

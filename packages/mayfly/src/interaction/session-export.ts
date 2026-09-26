@@ -167,8 +167,6 @@ function formatTurnMd(items: readonly TranscriptItem[], turn: number): string {
       }
     } else if (item.kind === 'tool') {
       lines.push(formatToolItemMd(item))
-    } else if (item.kind === 'step-summary') {
-      lines.push(`#### (folded step · ${String(item.toolNames.length)} tool call${item.toolNames.length === 1 ? '' : 's'}${item.thinking === 0 ? '' : ` · ${String(item.thinking)} thinking block${item.thinking === 1 ? '' : 's'}`})`, '')
     } else if (item.kind === 'error') {
       lines.push(`> ✗ request failed: ${item.message}${item.code === undefined ? '' : ` (${item.code})`}`, '')
     } else {

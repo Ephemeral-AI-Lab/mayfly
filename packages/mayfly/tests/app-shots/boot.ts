@@ -10,8 +10,8 @@
  * structural test doubles with fixed data; `status-git`, the banner, and the
  * updater are never mounted (nondeterministic sources). Every wall-clock read
  * that reaches the frame is pinned: `meta.createdAt` is explicit, event times
- * go through {@link appendAt}'s scoped `Date.now` stub, the pane clock uses
- * `setPaneAgentsClock`, and the spec stubs `process.cwd` to
+ * go through {@link appendAt}'s scoped `Date.now` stub, the pane and turn
+ * header clocks use {@link pinShotClock}, and the spec stubs `process.cwd` to
  * {@link SHOT_CWD}.
  *
  * @module @ephemeral-ai/mayfly/tests/app-shots/boot
@@ -57,6 +57,7 @@ import { DEFAULT_SETTINGS as DEFAULT_MAYFLY_SETTINGS } from '../../src/interacti
 import * as transcriptPlugin from '../../src/transcript/index.ts'
 import * as paneAgentsPlugin from '../../src/transcript/pane-agents.ts'
 import { setPaneAgentsClock } from '../../src/transcript/pane-agents.ts'
+import { setProcessRowTimers } from '../../src/transcript/process-rows.ts'
 import * as statusBasicPlugin from '../../src/transcript/status-basic-model.ts'
 import * as statusContextPlugin from '../../src/transcript/status-context.ts'
 import * as statusCwdPlugin from '../../src/transcript/status-cwd.ts'
@@ -112,6 +113,22 @@ export function appendAt<T extends SessionEventType>(
   } finally {
     Date.now = realNow
   }
+}
+
+/**
+ * Pin the clocks that label elapsed time in a frame: the agents pane and the
+ * running turn header read the same scripted instant (real timers still tick).
+ * @param time - the scripted wall-clock instant, or `undefined` to restore.
+ */
+export function pinShotClock(time: number | undefined): void {
+  setPaneAgentsClock(time === undefined ? undefined : () => time)
+  setProcessRowTimers(time === undefined ? undefined : {
+    setInterval: (callback, ms) => setInterval(callback, ms),
+    clearInterval: handle => clearInterval(handle),
+    setTimeout: (callback, ms) => setTimeout(callback, ms),
+    clearTimeout: handle => clearTimeout(handle),
+    now: () => time,
+  })
 }
 
 /**
@@ -338,7 +355,7 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
     setPersistedTitles(titles) { persistedTitles = titles },
     currentAgent,
     async dispose() {
-      setPaneAgentsClock(undefined)
+      pinShotClock(undefined)
       await ctx.fiber.dispose()
       terminal.dispose()
     },

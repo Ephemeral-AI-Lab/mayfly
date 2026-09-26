@@ -5,7 +5,7 @@
  * (`/trace`, `/sessions`) or panel entry points (`openPermissionPanel`) a user
  * would reach. No renderer output is hand-built; every frame comes out of the
  * mounted plugin tree. All timestamps derive from `SHOT_EPOCH`, the pane clock
- * is pinned through `setPaneAgentsClock`, and child subagent sessions are real
+ * is pinned through `pinShotClock`, and child subagent sessions are real
  * store sessions with `origin: 'subagent'` lineage.
  *
  * @module @ephemeral-ai/mayfly/tests/app-shots/scenes
@@ -16,8 +16,7 @@ import type { AssistantMessage, ContentBlock, ToolResultMessage, UserMessage } f
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session, SessionHeader } from '@deepseek-ai/dsh-session'
 import { openPermissionPanel } from '../../src/interaction/permission-panel.ts'
-import { setPaneAgentsClock } from '../../src/transcript/pane-agents.ts'
-import { appendAt, SHOT_CWD, SHOT_EPOCH, SHOT_MAIN_ID, withShotTime, type AppShotTree } from './boot.ts'
+import { appendAt, pinShotClock, SHOT_CWD, SHOT_EPOCH, SHOT_MAIN_ID, withShotTime, type AppShotTree } from './boot.ts'
 
 let messageSeq = 0
 
@@ -198,7 +197,7 @@ export const AGENTS_PANE_FINAL = SHOT_EPOCH + 3_600_000 + 23_000
 async function sceneAgents(tree: AppShotTree): Promise<void> {
   const agent = await tree.currentAgent()
   const t = SHOT_EPOCH + 3_600_000
-  setPaneAgentsClock(() => AGENTS_PANE_BASE)
+  pinShotClock(AGENTS_PANE_BASE)
 
   appendAt(agent.session, t + 10_000, 'turn/start', { turn: 1 })
   appendAt(agent.session, t + 10_100, 'user/message', userMessage('Split the rebranding into parallel tracks.'), { surfaceOp: 'append' })
@@ -234,7 +233,7 @@ async function sceneAgents(tree: AppShotTree): Promise<void> {
 
 /** Step the pinned pane clock past the waiting hold; called between the two renders. */
 export function sceneAgentsAdvanceClock(): void {
-  setPaneAgentsClock(() => AGENTS_PANE_FINAL)
+  pinShotClock(AGENTS_PANE_FINAL)
 }
 
 /** `app-permission`: the bare-`/permission` preset picker in the editor slot. */

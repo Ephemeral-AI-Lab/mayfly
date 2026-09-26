@@ -58,8 +58,6 @@ export interface MayflySettings {
   readonly transcriptView: TranscriptViewMode
   /** Completed turns kept mounted in the transcript window (mirrors transcript's DEFAULT_WINDOW_TURNS). */
   readonly windowTurns: number
-  /** Recent steps of a turn keeping their cards before step folding (mirrors DEFAULT_RECENT_STEPS_RETENTION). */
-  readonly recentStepsRetention: number
   /** Turns the Ctrl-O expansion toggle reaches back (mirrors transcript's EXPAND_TURNS). */
   readonly expandTurns: number
   /** Lines of a user message before it folds (mirrors DEFAULT_USER_FOLD_LINES). */
@@ -81,7 +79,6 @@ export const Config = z.object({
   theme: z.union([z.const('dark'), z.const('light'), z.const('ocean'), z.const('paper'), z.const('auto')]).default('dark').volatile(),
   transcriptView: z.union([z.const('compact'), z.const('standard'), z.const('detailed'), z.const('verbose')]).default('standard').volatile(),
   windowTurns: z.number().step(1).min(1).default(15).volatile(),
-  recentStepsRetention: z.number().step(1).min(1).default(30).volatile(),
   expandTurns: z.number().step(1).min(1).default(3).volatile(),
   userFoldLines: z.number().step(1).min(1).default(10).volatile(),
   userFoldChars: z.number().step(1).min(1).default(1000).volatile(),
@@ -97,7 +94,6 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   theme: 'dark',
   transcriptView: 'standard',
   windowTurns: 15,
-  recentStepsRetention: 30,
   expandTurns: 3,
   userFoldLines: 10,
   userFoldChars: 1000,

@@ -41,7 +41,6 @@ declare module '@deepseek-ai/cordis' {
 
 export {
   AssistantMessageComponent,
-  StepSummaryComponent,
   TOOL_ARGUMENTS_MAX_CHARS,
   ToolCallComponent,
   USER_PREVIEW_LINES,
@@ -71,7 +70,6 @@ export { ThinkingComponent, THINKING_PREVIEW_LINES } from './thinking.ts'
 export type {
   TranscriptAssistantItem,
   TranscriptItem,
-  TranscriptStepSummaryItem,
   TranscriptThinkingItem,
   TranscriptToolItem,
   TranscriptToolResult,
@@ -79,16 +77,15 @@ export type {
 } from './types.ts'
 export {
   DEFAULT_EXPAND_TURNS,
-  DEFAULT_RECENT_STEPS_RETENTION,
-  DEFAULT_TRANSCRIPT_DETAIL,
   DEFAULT_TRANSCRIPT_PRESENTATION,
   DEFAULT_USER_FOLD_CHARS,
   DEFAULT_USER_FOLD_LINES,
   DEFAULT_WINDOW_TURNS,
-  TRANSCRIPT_FAMILIES,
+  PROCESS_POLICIES,
   TranscriptPresentationPolicy,
 } from './presentation-policy.ts'
-export type { TranscriptDetail, TranscriptFamily, TranscriptPresentationSnapshot } from './presentation-policy.ts'
+export type { ProcessPolicy, TranscriptPresentationSnapshot, TranscriptViewMode } from './presentation-policy.ts'
+export { setProcessRowTimers, type ProcessRowTimers } from './process-rows.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-transcript'
@@ -239,10 +236,9 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => offKeymap())
 
   // Mayfly settings ride the host settings document: the resolved `mayfly`
-  // namespace (schema owned by interaction) carries the per-family detail
-  // levels (`transcript.thinking` / `transcript.command` / …) and the transcript tunables
-  // (`windowTurns` / `recentStepsRetention` / `expandTurns` /
-  // `userFoldLines` / `userFoldChars`). The service is optional and its
+  // namespace (schema owned by interaction) carries the work-details mode
+  // (`transcriptView`) and the transcript tunables (`windowTurns` /
+  // `expandTurns` / `userFoldLines` / `userFoldChars`). The service is optional and its
   // value unknown here, so every read parses defensively — absent keys or
   // wrongly typed values keep the current setting; a host without settings
   // keeps every shipped default.

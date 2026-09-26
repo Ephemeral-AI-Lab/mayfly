@@ -106,7 +106,7 @@ describe('mayfly-pane-agents plugin', () => {
     expect(rig.screen.paneLines(140).join('\n')).toContain('Error: boom')
   })
 
-  it('ignores ordinary tool calls and keeps an unacked group across turns', async () => {
+  it('ignores ordinary tool calls and cancels an unanswered call once its turn ends', async () => {
     const rig = await boot([
       turnStart(1),
       stepStart(1, 1),
@@ -117,10 +117,15 @@ describe('mayfly-pane-agents plugin', () => {
     const rows = rig.screen.paneLines(140)
     expect(rows.join('\n')).toContain('running Survey')
     expect(rows.join('\n')).not.toContain('bash')
-    // No ack yet: the turn boundary keeps the pending group (a member
-    // without a result is not settled).
+    // The turn is cut before the call answers: the member reads as cancelled
+    // (never running forever) and settles the group.
+    rig.ctx.emit('session/event', rig.agent.session, { type: 'turn/end', seq: 98, time: T0 + 9_000, data: { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } } } as never)
+    const cut = rig.screen.paneLines(140).join('\n')
+    expect(cut).toContain('cancelled Survey')
+    expect(cut).toContain('1 agent finished')
+    // The next turn clears the settled group.
     rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
-    expect(rig.screen.paneLines(140).join('\n')).toContain('running Survey')
+    expect(rig.screen.paneLines(140)).toEqual([])
   })
 
   it('survives result shapes without text and unparsable spawn arguments', async () => {

@@ -151,7 +151,8 @@ describe('mayflyConversation projection', () => {
       { kind: 'tool', callId: 'todo-1', channel: 'todo' },
       { kind: 'tool', callId: 'agent-1', channel: 'agents' },
     ])
-    expect(conversationProjectionDefinition.wire.view(state)).toEqual({ entries: state.entries, streaming: false, settledSteps: ['2:0'] })
+    expect(state.turns).toEqual([{ turn: 2, startedAt: events[0]!.time, endedAt: events.at(-1)!.time, outcome: 'completed' }])
+    expect(conversationProjectionDefinition.wire.view(state)).toEqual({ entries: state.entries, streaming: false, settledSteps: ['2:0'], turns: state.turns })
   })
 
   it('uses append-origin human rows and preserves durable image references', () => {
@@ -262,6 +263,47 @@ describe('mayflyConversation projection', () => {
       { kind: 'error', turn: 4, message: 'endpoint down', code: 'HTTP_404' },
       { kind: 'error', turn: 5, message: 'unknown' },
     ])
+  })
+
+  it('records turn lifecycle times, reasoning durations, and spawn-class channels', () => {
+    const reasoningAt = (times: readonly number[]) => times.map(time => ({ type: 'chunk' as const, time, chunk: { type: 'reasoning-delta' as const, index: 0, text: `r${String(time)}` } }))
+    let state = fold([
+      event('turn/start', { turn: 1 }, { time: 1_000 }),
+      event('step/start', { turn: 1, step: 0 }),
+      // A failed attempt's durable stream carries its reasoning span.
+      event('assistant/attempt', { turn: 1, step: 0, stream: reasoningAt([1_100, 3_100]) }),
+    ])
+    expect(state.entries).toMatchObject([{ kind: 'thinking', durationMs: 2_000, streaming: true }])
+    // The authoritative message rewrites the open reasoning with its own span.
+    state = foldConversationProjection(state, event('assistant/message', {
+      turn: 1, step: 0, stream: reasoningAt([1_100, 4_100]),
+      message: assistantMessage([{ type: 'reasoning', text: 'thought' }, { type: 'text', text: 'ok' }]),
+    }, { append: true }))
+    expect(state.entries[0]).toMatchObject({ kind: 'thinking', durationMs: 3_000, streaming: false })
+    // A message without an attempt inserts reasoning with its span; an empty stream records none.
+    state = foldConversationProjection(state, event('step/start', { turn: 1, step: 1 }))
+    state = foldConversationProjection(state, event('assistant/message', {
+      turn: 1, step: 1, stream: reasoningAt([5_000, 5_500]),
+      message: assistantMessage([{ type: 'reasoning', text: 'again' }]),
+    }, { append: true }))
+    state = foldConversationProjection(state, event('step/start', { turn: 1, step: 2 }))
+    state = foldConversationProjection(state, event('assistant/message', {
+      turn: 1, step: 2, message: assistantMessage([{ type: 'reasoning', text: 'untimed' }]),
+    }, { append: true }))
+    expect(state.entries.filter(entry => entry.kind === 'thinking').map(entry => (entry as { durationMs?: number }).durationMs)).toEqual([3_000, 500, undefined])
+    state = foldConversationProjection(state, event('tool/call', { turn: 1, step: 2, callId: ToolCallId('x-1'), name: 'subagent_codex', arguments: '{}' }))
+    expect(state.entries.at(-1)).toMatchObject({ kind: 'tool', channel: 'agents' })
+    state = foldConversationProjection(state, event('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }, { time: 9_000 }))
+    // A later synthetic closer keeps the first recorded outcome.
+    state = foldConversationProjection(state, event('turn/end', { turn: 1, reason: { kind: 'interrupted' } }, { time: 9_500 }))
+    // A close without a recorded start adopts the close time.
+    state = foldConversationProjection(state, event('turn/end', { turn: 2, reason: { kind: 'error', error: { message: 'boom', code: '' } } }, { time: 12_000 }))
+    expect(state.turns).toEqual([
+      { turn: 1, startedAt: 1_000, endedAt: 9_000, outcome: 'aborted' },
+      { turn: 2, startedAt: 12_000, endedAt: 12_000, outcome: 'error' },
+    ])
+    state = foldConversationProjection(state, retractionMarker(2, 0))
+    expect(state.turns.map(turn => turn.turn)).toEqual([1])
   })
 
   it('durably removes a safely retracted turn and rejects its late events', () => {
@@ -457,11 +499,12 @@ describe('mayflyConversation projection', () => {
     expect(state.entries).toEqual([])
     expect(beforeWhitespace.streamingStep).toBe('7:0')
 
-    expect(conversationProjectionSchema.safeParse({ entries: state.entries, streaming: true, settledSteps: [] }).success).toBe(true)
+    expect(conversationProjectionSchema.safeParse({ entries: state.entries, streaming: true, settledSteps: [], turns: [] }).success).toBe(true)
+    expect(conversationProjectionSchema.safeParse({ entries: state.entries, streaming: true, settledSteps: [] }).success).toBe(false)
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(6)
+    expect(conversationProjectionDefinition.stateVersion).toBe(7)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -620,7 +663,7 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 6, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 7, seq: 3 })
     const obsolete = { ...checkpoint, mayflyConversation: { ...checkpoint.mayflyConversation!, ver: 4 } }
     expect(ctx.sessionProjections.restoreFloor(obsolete)).toBe(0)
     expect(ctx.sessionProjections.viewCheckpoint(obsolete)).not.toHaveProperty('mayflyConversation')

@@ -36,9 +36,12 @@ presentation and current-Agent selection.
 - `/mcp` server details expose Resources and Templates. Listing reads metadata;
   Read fetches a chosen URI through the exact Agent's native tool pipeline.
 - `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,
-  `standard` (default), `detailed`, and `verbose`. Completed work folds while final
-  replies remain visible; Verbose keeps process rows open. Ctrl+O expands recent
-  details. Old per-family settings are no longer interpreted.
+  `standard` (default), `detailed`, and `verbose`, mirroring the Harness Chat
+  work-details capability table: completed turns fold behind a turn header while
+  final replies remain visible, process work between replies collapses into titled
+  groups, and Verbose keeps every card open. Ctrl+O expands the recent
+  `expandTurns` turns. Old per-family settings and `recentStepsRetention` are no
+  longer interpreted.
 
 These changes do not automatically rewrite user configuration or delete user data.
 Remove obsolete keys from settings files when updating.

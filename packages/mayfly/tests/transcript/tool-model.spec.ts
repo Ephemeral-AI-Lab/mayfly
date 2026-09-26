@@ -16,13 +16,27 @@ describe('ToolModelComponent', () => {
   it('folds collapsed output while preserving the complete expanded presenter output', () => {
     const rows = Array.from({ length: 220 }, (_, index) => `row ${String(index)}`).join('\n')
     const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'bounded', name: 'bounded', call: { kind: 'code', code: rows }, result: { kind: 'code', code: rows } }), renderer)
-    const collapsed = component.render(40)
+    const collapsed = component.render(60)
     expect(collapsed).toHaveLength(12)
-    expect(collapsed.at(-1)).toContain('ctrl+o to expand')
+    expect(collapsed.at(-1)).toBe('... (209 more lines, 220 total, ctrl+o to expand)')
+    // Out of Ctrl-O's reach the hint states the fold without naming the key.
+    component.setScope({ hint: false })
+    expect(component.render(60).at(-1)).toBe('... (209 more lines, 220 total)')
     component.setExpanded(true)
-    const expanded = component.render(40)
+    // Expanded: the complete result (a structured call repeats in it).
+    const expanded = component.render(60)
     expect(expanded).toHaveLength(220)
     expect(expanded.at(-1)).toBe('row 219')
+  })
+  it('keeps a plain-text result to three rows and skips a settled structured call when expanded', () => {
+    const text = Array.from({ length: 5 }, (_, index) => `line ${String(index)}`).join('\n')
+    const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'text', name: 'text', call: { kind: 'text', content: 'args' }, result: { kind: 'text', content: text } }), renderer)
+    expect(component.render(60)).toEqual(['line 0', 'line 1', '... (3 more lines, 5 total, ctrl+o to expand)'])
+    component.setExpanded(true)
+    expect(component.render(60)).toEqual(['args', ...text.split('\n')])
+    const diff = { kind: 'sections' as const, sections: [{ title: 'a.ts', body: { kind: 'text' as const, content: 'hunk' } }] }
+    const edit = new ToolModelComponent(() => ({ kind: 'tool', id: 'edit', name: 'edit', call: diff, result: diff, expanded: true }), renderer)
+    expect(edit.render(60)).toHaveLength(2)
   })
   it('contains invalid canonical nodes and degenerate viewports', () => {
     const invalid = { kind: 'list', id: 'bad', selectedIds: [], items: [{ id: 'same', label: 'one' }, { id: 'same', label: 'two' }] } as MayflyUiNode
@@ -34,12 +48,16 @@ describe('ToolModelComponent', () => {
 describe('canonical tool presentation builder', () => {
   it('maps generic, terminal, and diff call metadata', () => {
     const generic = toolCallNode({ card: 'generic', title: 'Read', rawInput: { path: 'a.ts' }, content: [{ type: 'text', text: 'body' }] })
-    expect(generic).toMatchObject({ kind: 'sections', sections: [{ title: 'Read', body: { content: 'body' } }] })
-    expect(toolCallNode({ card: 'generic', title: 'Raw', rawInput: { path: 'a.ts' } })).toMatchObject({ sections: [{ body: { content: expect.stringContaining('a.ts') } }] })
+    expect(generic).toEqual({ kind: 'text', content: 'body' })
+    expect(toolCallNode({ card: 'generic', title: 'Raw', rawInput: { path: 'a.ts' } })).toMatchObject({ kind: 'text', content: expect.stringContaining('a.ts') })
     const cyclic: { self?: unknown } = {}; cyclic.self = cyclic
-    expect(toolCallNode({ card: 'generic', title: 'Cycle', rawInput: cyclic })).toMatchObject({ sections: [{ body: { content: '[object Object]' } }] })
-    expect(toolCallNode({ card: 'generic', title: 'Symbol', rawInput: Symbol('x') })).toMatchObject({ sections: [{ body: { content: 'Symbol(x)' } }] })
-    expect(toolCallNode({ card: 'generic', title: 'String', rawInput: 'literal' })).toMatchObject({ sections: [{ body: { content: 'literal' } }] })
+    expect(toolCallNode({ card: 'generic', title: 'Cycle', rawInput: cyclic })).toMatchObject({ content: '[object Object]' })
+    expect(toolCallNode({ card: 'generic', title: 'Symbol', rawInput: Symbol('x') })).toMatchObject({ content: 'Symbol(x)' })
+    expect(toolCallNode({ card: 'generic', title: 'String', rawInput: 'literal' })).toMatchObject({ content: 'literal' })
+    // The header already shows the title: a call that only repeats it yields no node.
+    expect(toolCallNode({ card: 'generic', title: 'Fetch https://x', rawInput: 'https://x' })).toBeUndefined()
+    expect(toolCallNode({ card: 'generic', title: 'List jobs' })).toBeUndefined()
+    expect(toolCallNode({ card: 'generic', title: 'Blank', rawInput: '  ' })).toBeUndefined()
     expect(toolCallNode({ card: 'terminal', title: 'pnpm test', description: 'Tests', cwd: '/repo' })).toMatchObject({ kind: 'sections', sections: [{ title: 'Tests' }, { title: 'Command', body: { kind: 'code' } }] })
     expect((toolCallNode({ card: 'terminal', title: 'pnpm test', description: 'Tests' }) as { sections: readonly unknown[] }).sections[0]).toMatchObject({ title: 'Tests', body: { content: '' } })
     expect((toolCallNode({ card: 'terminal', title: 'pwd', cwd: '/repo' }) as { sections: readonly unknown[] }).sections[0]).toMatchObject({ title: 'cwd', body: { content: '/repo' } })
@@ -50,8 +68,8 @@ describe('canonical tool presentation builder', () => {
 
   it('maps every official result node and generic fallback', () => {
     const content = [{ type: 'text' as const, text: 'text' }, { type: 'reasoning' as const, text: 'reason' }, { type: 'image' as const, attachment: {} as never }, { type: 'tool-call' as const, id: 'c' as never, name: 'read', arguments: '{}' }, { type: 'future' }] as never
-    expect(toolResultNode({ card: 'generic', title: 'Done', content }, undefined, 'tool')).toMatchObject({ sections: [{ title: 'Done', body: { content: expect.stringContaining('[future]') } }] })
-    expect(toolResultNode({ card: 'generic' }, { content: [{ type: 'text', text: 'raw' }], isError: false }, 'tool')).toMatchObject({ sections: [{ title: 'tool', body: { content: 'raw' } }] })
+    expect(toolResultNode({ card: 'generic', title: 'Done', content }, undefined, 'tool')).toMatchObject({ kind: 'text', content: expect.stringContaining('[future]') })
+    expect(toolResultNode({ card: 'generic' }, { content: [{ type: 'text', text: 'raw' }], isError: false }, 'tool')).toEqual({ kind: 'text', content: 'raw' })
     expect(toolResultNode({ card: 'terminal', title: 'Shell', output: 'ok', exitCode: 0 }, undefined, 'tool')).toMatchObject({ sections: [{ body: { code: 'ok' } }, { body: { content: 'exit 0' } }] })
     expect(toolResultNode({ card: 'terminal', signal: 'SIGTERM' }, undefined, 'tool')).toMatchObject({ sections: [{ body: { code: '(no output)' } }, { body: { content: 'signal SIGTERM' } }] })
     expect(toolResultNode({ card: 'terminal' }, undefined, 'tool')).toMatchObject({ sections: [{}, { body: { content: 'complete' } }] })
@@ -87,13 +105,13 @@ describe('canonical tool presentation builder', () => {
     expect(toolResultNode(undefined, { content: [{ type: 'text', text: envelope }], isError: false }, 'read')).toEqual({ kind: 'text', content: 'src/a.ts · lines 1-1 of 9' })
     expect(toolResultNode(undefined, { content: [{ type: 'text', text: envelope }], isError: true }, 'read')).toEqual({ kind: 'text', content: 'src/a.ts · lines 1-1 of 9', tone: 'danger' })
     const blocks = [{ type: 'tool-call' as const, id: 'c' as never, name: 'read', arguments: '{"file_path":"a.ts","limit":5}' }, { type: 'text' as const, text: 'tail' }] as never
-    expect(toolResultNode({ card: 'generic', title: 'Nested', content: blocks }, undefined, 'tool')).toMatchObject({ sections: [{ title: 'Nested', body: { content: 'read\n  file_path: a.ts\n  limit: 5\ntail' } }] })
+    expect(toolResultNode({ card: 'generic', title: 'Nested', content: blocks }, undefined, 'tool')).toEqual({ kind: 'text', content: 'read\n  file_path: a.ts\n  limit: 5\ntail' })
   })
 
   it('creates a deeply frozen model with a structured toggle action', () => {
     const model = createToolPresentationModel({ id: 'c1', name: 'read', call: { card: 'generic', title: 'Read' }, result: { card: 'read', path: 'a', offset: 1, lines: [], totalLines: 0 }, outcome: { content: [], isError: false }, expanded: false })
     expect(model).toMatchObject({ id: 'c1', expanded: false, action: { kind: 'tool.toggle', id: 'c1' } }); expect(Object.isFrozen(model)).toBe(true); expect(Object.isFrozen(model.call)).toBe(true)
-    const plain = createToolPresentationModel({ id: 'c2', name: 'unknown' }); expect(plain.call).toEqual({ kind: 'text', content: 'unknown' }); expect(plain.result).toBeUndefined()
+    const plain = createToolPresentationModel({ id: 'c2', name: 'unknown' }); expect(plain.call).toBeUndefined(); expect(plain.result).toBeUndefined()
   })
 
   it('derives diff chips through canonical nested nodes', () => {
