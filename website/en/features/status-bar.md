@@ -13,7 +13,7 @@ registers on the same `mayflyStatus` service with a renderer-neutral
 | jobs | 3 | `⏵ N jobs` — live (running/stopping) background-job count; hidden when none |
 | cwd | 5 | current working directory |
 | git | 10 | branch and change summary |
-| context | 20 | context occupancy |
+| context | 20 | latest-step cache hit rate and context occupancy, e.g. `cache 82%  context: 45% (57.6k/128k)`; the `cache` segment is omitted when the provider reports no cache reads |
 | title | 30 | session title |
 
 Entries sort by priority/id within a band. The right band yields first under

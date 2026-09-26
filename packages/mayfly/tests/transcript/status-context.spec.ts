@@ -4,7 +4,8 @@
  * 1024-base `k`/`M` formatting boundaries and the percent math, the
  * advertised-window percentage and its `ctx N` degradation (snapshot,
  * `request/context` live updates, model-switch window drops), live
- * `session/event` increments, session-change rebinding, and the text tier.
+ * `session/event` increments, the `cache N%` prefix and its live updates,
+ * session-change rebinding, and the text tier.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -71,6 +72,18 @@ describe('contextTokens, formatTokens, contextPercent', () => {
     expect(context.contextPercent(Number.NaN, 100)).toBe(0)
     expect(context.contextPercent(100, Number.NaN)).toBe(0)
   })
+
+  it('cache shares round down, clamp, and zero out degenerate input', () => {
+    expect(context.cachePercent(82, 100)).toBe(82)
+    expect(context.cachePercent(999, 1000)).toBe(99)
+    expect(context.cachePercent(1, 1000)).toBe(0)
+    expect(context.cachePercent(100, 100)).toBe(100)
+    expect(context.cachePercent(200, 100)).toBe(100)
+    expect(context.cachePercent(0, 100)).toBe(0)
+    expect(context.cachePercent(10, 0)).toBe(0)
+    expect(context.cachePercent(Number.NaN, 100)).toBe(0)
+    expect(context.cachePercent(10, Number.POSITIVE_INFINITY)).toBe(0)
+  })
 })
 
 describe('mayfly-status-context', () => {
@@ -99,8 +112,43 @@ describe('mayfly-status-context', () => {
     expect(harness.entry.priority).toBe(20)
     expect(harness.entry.align).toBe('right')
     expect(harness.entry.row).toBe(2)
-    expect(harness.entry.render(80)).toBe('ctx 12k')
+    // 1300 of 12300 occupied tokens are cache reads: 10.5% rounded down.
+    expect(harness.entry.render(80)).toBe('cache 10%  ctx 12k')
     await harness.dispose()
+  })
+
+  it('prefixes the cache-read share before the windowed readout', async () => {
+    resetSeq()
+    const agent = fakeAgent(
+      [usageEvent(1, 1, { inputTokens: 10_600, outputTokens: 10, cacheReadTokens: 48_378, cacheWriteTokens: 0 })],
+      { contextWindow: 131_072 },
+    )
+    const harness = await bootStatusPlugin(context, agent)
+    // 48378/58978 = 82.03% → 82; 58978 → 57.6k of 128k, 45% rounded up.
+    expect(harness.entry.render(80)).toBe('cache 82%  context: 45% (57.6k/128k)')
+    await harness.dispose()
+  })
+
+  it('updates the cache share live and drops it when a step stops reporting reads', async () => {
+    resetSeq()
+    const agent = fakeAgent([usageEvent(1, 1, { inputTokens: 1000, outputTokens: 1 })], { contextWindow: 4096 })
+    const { ctx, screen, entry, dispose } = await bootStatusPlugin(context, agent)
+    expect(entry.render(80)).toBe('context: 25% (1000/4k)')
+    const baseline = screen.renderRequests.length
+
+    ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 2, { inputTokens: 0, outputTokens: 1, cacheReadTokens: 1000 }))
+    expect(entry.render(80)).toBe('cache 100%  context: 25% (1000/4k)')
+    expect(screen.renderRequests.length).toBe(baseline + 1)
+
+    // Same occupancy, new cache share: a redraw is still requested.
+    ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 3, { inputTokens: 1000, outputTokens: 1, cacheReadTokens: 0 }))
+    expect(entry.render(80)).toBe('cache 0%  context: 25% (1000/4k)')
+    expect(screen.renderRequests.length).toBe(baseline + 2)
+
+    ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 4, { inputTokens: 1000, outputTokens: 1 }))
+    expect(entry.render(80)).toBe('context: 25% (1000/4k)')
+    expect(screen.renderRequests.length).toBe(baseline + 3)
+    await dispose()
   })
 
   it('renders the occupancy percentage when the snapshot advertises a window', async () => {
@@ -224,6 +272,16 @@ describe('mayfly-status-context', () => {
     expect(harness.entry.render(7)).toBe('ctx 999')
     expect(harness.entry.render(6)).toBe('')
     await harness.dispose()
+
+    resetSeq()
+    const cached = await bootStatusPlugin(context, fakeAgent(
+      [usageEvent(1, 1, { inputTokens: 10_600, outputTokens: 1, cacheReadTokens: 48_378 })],
+      { contextWindow: 131_072 },
+    ))
+    const full = 'cache 82%  context: 45% (57.6k/128k)'
+    expect(cached.entry.render(full.length)).toBe(full)
+    expect(cached.entry.render(full.length - 1)).toBe('')
+    await cached.dispose()
   })
 
   it('unregisters the entry when the fiber unloads', async () => {

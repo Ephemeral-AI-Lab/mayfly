@@ -167,6 +167,8 @@ export interface ConversationFacts {
   readonly outputProgress?: OutputProgress | undefined
   readonly todos: readonly TodoItem[]
   readonly contextTokens: number
+  /** Cache-read share of the latest step's `contextTokens`; absent when the provider did not report it. */
+  readonly contextCacheReadTokens?: number | undefined
   readonly contextWindow?: number | undefined
   readonly model?: string | undefined
   readonly provider?: string | undefined

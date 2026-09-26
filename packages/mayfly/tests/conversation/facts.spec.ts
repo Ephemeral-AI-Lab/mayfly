@@ -43,8 +43,8 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 }
 
 describe('mayflyConversationFacts projection', () => {
-  it('invalidates checkpoints after phase-local output measurements change', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(5)
+  it('invalidates checkpoints after the latest-step cache-read fact is added', () => {
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(6)
   })
 
   it('folds lifecycle, streaming, usage, todos, request metadata, and agents', () => {
@@ -76,9 +76,10 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ phase: 'composing', flowDownChars: 11 })
     expect(foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: undefined }))).toMatchObject({ phase: 'waiting', outputProgress: undefined })
     state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
-    expect(state.contextTokens).toBe(15)
+    expect(state).toMatchObject({ contextTokens: 15, contextCacheReadTokens: 2 })
     state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 4 } }))
     expect(state.contextTokens).toBe(4)
+    expect(state.contextCacheReadTokens).toBeUndefined()
     state = foldConversationFacts(state, event('request/context', { contextWindow: 32 }))
     expect(foldConversationFacts(state, event('request/context', { contextWindow: 32 }))).toBe(state)
     state = foldConversationFacts(state, event('request/header', { header: { config: { model: 'm', provider: 'p', reasoningEffort: 'high' } } }))

@@ -34,6 +34,7 @@ export const conversationFactsSchema = z.object({
   lastCompletedStep: z.number().int().nonnegative().optional(),
   todos: z.array(todoSchema),
   contextTokens: z.number().nonnegative(),
+  contextCacheReadTokens: z.number().nonnegative().optional(),
   contextWindow: z.number().positive().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
@@ -147,7 +148,7 @@ export function foldConversationFacts(
       const key = `${event.data.turn}/${event.data.step}`
       const usageByStep = { ...streamed.usageByStep, [key]: total }
       const epochTokens = Object.values(usageByStep).reduce((sum, value) => sum + value, 0)
-      return { ...streamed, contextTokens: used, flowUp: used, usageByStep, epochTokens }
+      return { ...streamed, contextTokens: used, contextCacheReadTokens: usage.cacheReadTokens, flowUp: used, usageByStep, epochTokens }
     }
     case 'tool/call':
       if (isSpawnToolName(event.data.name)) {
@@ -235,5 +236,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 5,
+  stateVersion: 6,
 }
