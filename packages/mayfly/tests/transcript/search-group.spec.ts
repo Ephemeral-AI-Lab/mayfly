@@ -60,7 +60,7 @@ describe('SearchGroupComponent', () => {
     const lines = new SearchGroupComponent(model, tagged(), COMPONENTS).render(140)
     expect(lines).toEqual([
       '',
-      '[S]✓ [/S]\x1b[1m[P]Searched 4 patterns[/P]\x1b[22m[M] · 2 files, 34 matches, 12 paths[/M][E] · 1 failed[/E]',
+      '[W]◐ [/W]\x1b[1m[P]Searched 4 patterns[/P]\x1b[22m[M] · 2 files, 34 matches, 12 paths[/M][E] · 1 failed[/E]',
       '  ├─ "export const" · 2 files, 18 of 34 matches [S]✓[/S]',
       '  ├─ src/**/*.ts · 12 paths [S]✓[/S]',
       '  ├─ "TODO" · 0 matches [S]✓[/S]',
@@ -231,23 +231,22 @@ describe('SearchGroupComponent', () => {
     for (const row of narrow) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(24)
   })
 
-  it('renders compact as the header plus failed-pattern rows only', () => {
+  it('reads unsettled patterns as cancelled once the turn ends, and scopes its hint', () => {
     const model = group([
-      search({ callId: 'a', pattern: 'const', shape: 'matches', files: [{ path: 'a.ts', count: 2, previews: [{ lineNumber: 1, line: 'const hit' }] }] }),
-      search({ callId: 'b', pattern: '*.ts', shape: 'paths', paths: ['a.ts'], pathsTotal: 1, total: 1 }),
-      search({ callId: 'c', pattern: 'gone', state: 'error', error: 'invalid pattern' }),
+      search({ callId: 'a', pattern: 'const', shape: 'matches', files: [{ path: 'a.ts', count: 2, previews: [] }] }),
+      search({ callId: 'b', pattern: 'deep', state: 'pending' }),
     ])
-    const compact = new SearchGroupComponent(model, tagged(), COMPONENTS, () => 'compact')
-    const rows = compact.render(140)
-    expect(rows[1]).toContain('Searched 3 patterns')
-    expect(rows[1]).toContain('1 failed')
-    expect(rows).toHaveLength(3)
-    expect(rows[2]).toContain('gone')
-    expect(rows[2]).toContain('invalid pattern')
-    expect(rows.join('\n')).not.toContain('const hit')
-    // Ctrl-O still opens the complete tree from compact.
-    compact.setExpanded(true)
-    expect(compact.render(80).join('\n')).toContain('const hit')
+    const component = new SearchGroupComponent(model, tagged(), COMPONENTS)
+    expect(component.render(140)[3]).toBe('  └─ deep [T]…[/T]')
+    component.setScope({ hint: true, turnClosed: true })
+    const rows = component.render(140)
+    expect(rows[1]).toBe('[S]✓ [/S]\x1b[1m[P]Searched 2 patterns[/P]\x1b[22m[M] · 1 file, 2 matches[/M][M] · 1 cancelled[/M]')
+    expect(rows[2]).toContain('"const"')
+    expect(rows[3]).toBe('  └─ deep [M]⊘[/M]')
+    const many = new SearchGroupComponent(group(Array.from({ length: 12 }, (_, index) => search({ callId: `m${String(index)}`, pattern: `p${String(index)}` }))), IDENTITY, COMPONENTS)
+    expect(many.render(80).at(-1)).toBe('  ... (5 more, ctrl+o to expand)')
+    many.setScope({ hint: false, turnClosed: false })
+    expect(many.render(80).at(-1)).toBe('  ... (5 more)')
   })
 
   it('replaces its immutable snapshot and invalidates cached rows', () => {

@@ -7,6 +7,7 @@
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { OutputProgress } from '../conversation/types.ts'
+import type { TranscriptTerminalModel } from '../frontend/models.ts'
 
 /** A user prompt rendered in the transcript. */
 export interface TranscriptUserItem {
@@ -23,8 +24,8 @@ export interface TranscriptUserItem {
 
 /**
  * One assistant step's reasoning rendered as its own transcript block (the
- * S17 kimi split: thinking mounts separately from the answer, live with a
- * spinner and finalized in place). Fields mutate while the step streams:
+ * S17 kimi split: thinking mounts separately from the answer, live under a
+ * `✻ Thinking` header and finalized in place). Fields mutate while the step streams:
  * `assistant/chunk` reasoning deltas append, and the closing
  * `assistant/message` rewrites the text from the authoritative assembled
  * message.
@@ -41,6 +42,10 @@ export interface TranscriptThinkingItem {
   /** True only while reasoning is the current output phase. */
   streaming: boolean
   outputProgress?: OutputProgress | undefined
+  /** Producer-time reasoning span once the phase ended. */
+  durationMs?: number | undefined
+  /** Producer time of the first reasoning delta, for the live elapsed label. */
+  startedAt?: number | undefined
 }
 
 /**
@@ -102,6 +107,10 @@ export interface TranscriptToolItem {
   parsedArguments?: unknown
   /** Present once the paired `tool/result` event has folded in. */
   result?: TranscriptToolResult
+  /** The presenter's call title, when the tool declares one. */
+  readonly title?: string
+  /** Terminal-card facts, for a foreground command. */
+  readonly terminal?: TranscriptTerminalModel
 }
 
 /** A turn that failed: the `turn/end` error reason rendered as a row, so a
@@ -132,33 +141,12 @@ export interface TranscriptInterruptedItem {
   readonly turn: number
 }
 
-/**
- * One folded-away mid-turn step: replaces the step's tool and thinking items
- * in place when the next `step/start` arrives (in-turn step folding).
- * `toolNames` keeps duplicates in call order; rendering counts them, and
- * `thinking` carries the step's folded reasoning blocks (0 or 1 — a step
- * owns at most one thinking item).
- */
-export interface TranscriptStepSummaryItem {
-  readonly kind: 'step-summary'
-  /** Seq of the first folded tool item. */
-  readonly seq: number
-  /** Turn and step the folded items belonged to. */
-  readonly turn: number
-  readonly step: number
-  /** Tool names in call order, duplicates kept. */
-  readonly toolNames: string[]
-  /** Number of folded thinking blocks from the step. */
-  readonly thinking: number
-}
-
 /** One rendered row group of the transcript, in session order. */
 export type TranscriptItem =
   | TranscriptUserItem
   | TranscriptAssistantItem
   | TranscriptThinkingItem
   | TranscriptToolItem
-  | TranscriptStepSummaryItem
   | TranscriptErrorItem
   | TranscriptInterruptedItem
 

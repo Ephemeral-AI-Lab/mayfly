@@ -23,6 +23,15 @@ describe('assistant stream accumulator', () => {
     expect(state).toMatchObject({ phase: 'waiting', outputProgress: undefined, updatedAt: 130 })
   })
 
+  it('records the visible reasoning span from producer times', () => {
+    let state = foldAssistantStreamChunk(initialAssistantStream(), { type: 'reasoning-delta', index: 0, text: '  ' }, 50)
+    expect(state.reasoningStartedAt).toBeUndefined()
+    state = foldAssistantStreamChunk(state, { type: 'reasoning-delta', index: 0, text: 'plan' }, 100)
+    state = foldAssistantStreamChunk(state, { type: 'reasoning-delta', index: 0, text: ' more' }, 2_600)
+    state = foldAssistantStreamChunk(state, { type: 'text-delta', index: 1, text: 'answer' }, 3_000)
+    expect(state).toMatchObject({ reasoningStartedAt: 100, reasoningEndedAt: 2_600 })
+  })
+
   it('ignores empty and unrelated chunks while preserving malformed streams', () => {
     const state = initialAssistantStream()
     expect(foldAssistantStreamChunk(state, { type: 'text-delta', index: 0, text: '' }, 1)).toBe(state)

@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { outputProgressSchema } from './output-progress.ts'
 import type { ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
+import { isSpawnToolName } from './projection.ts'
 
 const todoSchema = z.object({
   content: z.string(),
@@ -46,7 +47,7 @@ export const conversationFactsSchema = z.object({
   endedAt: z.number().optional(),
   agentCalls: z.array(z.object({
     seq: z.number().int(), turn: z.number().int().nonnegative(), step: z.number().int().nonnegative(),
-    callId: z.string(), name: z.enum(['subagent', 'subagent_fork']), arguments: z.string(), startedAt: z.number(),
+    callId: z.string(), name: z.string(), arguments: z.string(), startedAt: z.number(),
     result: z.object({ text: z.string(), isError: z.boolean(), endedAt: z.number() }).optional(),
   })),
 }) satisfies z.ZodType<ConversationFactsState>
@@ -149,7 +150,7 @@ export function foldConversationFacts(
       return { ...streamed, contextTokens: used, flowUp: used, usageByStep, epochTokens }
     }
     case 'tool/call':
-      if (event.data.name === 'subagent' || event.data.name === 'subagent_fork') {
+      if (isSpawnToolName(event.data.name)) {
         return {
           ...state,
           phase: 'tool', active: true, turn: event.data.turn, outputProgress: undefined,
@@ -234,5 +235,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 4,
+  stateVersion: 5,
 }

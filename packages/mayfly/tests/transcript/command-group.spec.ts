@@ -52,7 +52,7 @@ describe('CommandGroupComponent', () => {
     const lines = new CommandGroupComponent(model, tagged(), COMPONENTS).render(80)
     expect(lines).toEqual([
       '',
-      '[S]✓ [/S]\x1b[1m[P]Ran 3 commands[/P]\x1b[22m[E] · 1 failed[/E]',
+      '[W]◐ [/W]\x1b[1m[P]Ran 3 commands[/P]\x1b[22m[E] · 1 failed[/E]',
       '  ├─ pnpm test [S]✓[/S]',
       '  ├─ git status [S]✓[/S]',
       '  └─ rm -rf dist [E]✗[/E] [E]rm: cannot remove[/E]',
@@ -104,45 +104,26 @@ describe('CommandGroupComponent', () => {
       '  │  ok 2',
       '  └─ pnpm build ✓',
     ])
-    // A full-detail render opens the same tree without Ctrl-O.
-    const full = new CommandGroupComponent(model, IDENTITY, COMPONENTS, () => 'full').render(80)
-    expect(full).toEqual(expanded)
   })
 
-  it('renders compact as the header plus failed-member rows only', () => {
+  it('reads unsettled commands as cancelled once the turn ends, and scopes its hint', () => {
     const model = group([
       command({ callId: 'a', command: 'pnpm test' }),
-      command({ callId: 'b', command: 'git status' }),
-      command({ callId: 'c', command: 'pnpm build', state: 'error', error: 'TS2304: Cannot find name' }),
+      command({ callId: 'b', command: 'pnpm build', state: 'pending' }),
     ])
-    const compact = new CommandGroupComponent(model, IDENTITY, COMPONENTS, () => 'compact')
-    expect(compact.render(80)).toEqual([
+    const component = new CommandGroupComponent(model, IDENTITY, COMPONENTS)
+    expect(component.render(80)[1]).toBe('● \x1b[1mRunning 2 commands…\x1b[22m')
+    component.setScope({ hint: true, turnClosed: true })
+    expect(component.render(80)).toEqual([
       '',
-      '✓ \x1b[1mRan 3 commands\x1b[22m · 1 failed',
-      '  └─ pnpm build ✗ TS2304: Cannot find name',
+      '✓ \x1b[1mRan 2 commands\x1b[22m · 1 cancelled',
+      '  ├─ pnpm test ✓',
+      '  └─ pnpm build ⊘',
     ])
-    // Ctrl-O still opens the full tree from compact.
-    compact.setExpanded(true)
-    expect(compact.render(80)).toContain('  ├─ pnpm test ✓')
-    // A clean run compacts to the header alone.
-    const clean = new CommandGroupComponent(group([
-      command({ callId: 'a', command: 'pnpm test' }),
-      command({ callId: 'b', command: 'pnpm build' }),
-    ]), IDENTITY, COMPONENTS, () => 'compact')
-    expect(clean.render(80)).toEqual(['', '✓ \x1b[1mRan 2 commands\x1b[22m'])
-
-    // Multiple failures keep the ├─ continuation and error first lines.
-    const twoFailed = new CommandGroupComponent(group([
-      command({ callId: 'a', command: 'one', state: 'error', error: 'first broke' }),
-      command({ callId: 'b', command: 'two', state: 'ok' }),
-      command({ callId: 'c', command: 'three', state: 'error', error: 'last broke' }),
-    ]), IDENTITY, COMPONENTS, () => 'compact')
-    expect(twoFailed.render(80)).toEqual([
-      '',
-      '✓ \x1b[1mRan 3 commands\x1b[22m · 2 failed',
-      '  ├─ one ✗ first broke',
-      '  └─ three ✗ last broke',
-    ])
+    const many = new CommandGroupComponent(group(Array.from({ length: 12 }, (_, index) => command({ callId: `m${String(index)}`, command: `c${String(index)}` }))), IDENTITY, COMPONENTS)
+    expect(many.render(80).at(-1)).toBe('  ... (5 more, ctrl+o to expand)')
+    many.setScope({ hint: false, turnClosed: false })
+    expect(many.render(80).at(-1)).toBe('  ... (5 more)')
   })
 
   it('renders a single-command group with the singular noun', () => {

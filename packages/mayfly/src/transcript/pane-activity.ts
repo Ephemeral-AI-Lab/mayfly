@@ -1,9 +1,11 @@
 /**
- * One activity row for the selected Agent. Waiting and tools use the moon
- * spinner; composing shows working, phase-local output count and estimated
- * rate. Responsive variants drop the tip, rate, then counters as space shrinks.
- * Thinking owns its own transcript spinner and metrics, so this pane hides.
- * Idle holds a spacer; editor dialogs hide the pane. A latched user interrupt
+ * One activity row for the selected Agent — the transcript's only animated
+ * spinner, so progress stays visible while the transcript is scrolled away.
+ * Waiting uses the moon spinner; a tool phase adds the running tool's name;
+ * thinking and composing show their label, phase-local output count, and
+ * estimated rate. Responsive variants drop the tip, rate, then counters as
+ * space shrinks. The row never collapses while active, so the editor does not
+ * shift between phases. Idle holds a spacer; editor dialogs hide the pane. A latched user interrupt
  * (the app-owned stop request still draining) renders one static `■
  * interrupting...` row — held for a minimum visible duration, because a plain
  * abort settles within one render frame — so the keypress reads as accepted
@@ -28,6 +30,7 @@ import { outputRate } from './output-rate.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import { formatTokens } from './status-context.ts'
 import { buildTipRotation } from './status-tips.ts'
+import { toolDisplayName } from './tool-line.ts'
 import { STATUS_TIPS } from './tips-content.ts'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import {
@@ -54,6 +57,9 @@ const TIP_LEAD = ' · Tip: '
 
 /** The composing row's base: one frame cell, a space, the kimi label. */
 const WORKING_LABEL = ' working...'
+
+/** The thinking row's base label. */
+const THINKING_LABEL = ' thinking...'
 
 /** The stopping row's label; the `■` marker rides in error red beside it. */
 const STOPPING_LABEL = ' interrupting...'
@@ -111,6 +117,8 @@ interface ActivityState {
   tip: string
   /** The live turn-flow counter riding the spinner row; '' before any data. */
   flow: string
+  /** The running tool's display name during a tool phase; '' otherwise. */
+  tool: string
   outputProgress?: OutputProgress | undefined
   /** Whether a dialog panel occupies the editor slot. */
   dialog: boolean
@@ -156,9 +164,10 @@ function activityNode(state: ActivityState, t: MayflyTranslate, components: Mayf
     ? MOON_SPINNER_FRAMES[state.frame % MOON_SPINNER_FRAMES.length]!
     : BRAILLE_SPINNER_FRAMES[state.frame % BRAILLE_SPINNER_FRAMES.length]!
   const rate = outputRate(state.outputProgress, Date.now())
+  const label = state.mode === 'thinking' ? t(THINKING_LABEL) : state.mode === 'composing' ? t(WORKING_LABEL) : state.tool === '' ? '' : ` ${state.tool}`
   const spans: MayflyInlineSpan[] = [
     { text: frame, tone: 'accent', styles: ['strong'] },
-    ...(!moon ? [{ text: t(WORKING_LABEL) } as const] : []),
+    ...(label === '' ? [] : [{ text: label } as const]),
   ]
   const variants = [spans.slice()]
   for (const text of [
@@ -210,7 +219,7 @@ export function apply(ctx: Context): void {
   mountTranscriptLocale(ctx, 'transcript.activity', ACTIVITY_LOCALE)
   const t = transcriptTranslator(ctx, 'transcript.activity')
   const state: ActivityState = {
-    mode: 'idle', frame: 0, tip: '', flow: '', dialog: false,
+    mode: 'idle', frame: 0, tip: '', flow: '', tool: '', dialog: false,
   }
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   /* v8 ignore next -- mayflySessionFacts is an injected service; the fallback
@@ -232,7 +241,7 @@ export function apply(ctx: Context): void {
   let tipKind: TipKind | undefined
   const rotation = buildTipRotation(STATUS_TIPS)
   let tipIndex = 0
-  const currentNode = (): MayflyUiNode | null => state.mode === 'hidden' || state.mode === 'thinking'
+  const currentNode = (): MayflyUiNode | null => state.mode === 'hidden'
     ? null
     : activityNode(state, t, ctx.mayflyComponents)
   const pane = ctx.mayflyPanes.register({
@@ -264,7 +273,7 @@ export function apply(ctx: Context): void {
   /** Reconcile the row (mode, tip, timer) with the pane's four facts. */
   const sync = (): void => {
     const mode = activityMode(state, facts, statusActive, stopPending)
-    const kind: TipKind | undefined = mode === 'composing'
+    const kind: TipKind | undefined = mode === 'composing' || mode === 'thinking'
       ? 'composing'
       : mode === 'waiting' || mode === 'tool' ? 'moon' : undefined
     let tipChanged = false
@@ -282,15 +291,17 @@ export function apply(ctx: Context): void {
     }
     const spinner = kind !== undefined
     if (spinner) {
-      ensureTimer(mode === 'composing' ? BRAILLE_SPINNER_INTERVAL_MS : MOON_SPINNER_INTERVAL_MS)
+      ensureTimer(kind === 'composing' ? BRAILLE_SPINNER_INTERVAL_MS : MOON_SPINNER_INTERVAL_MS)
     } else {
       stopTimer()
     }
-    const progress = mode === 'composing' ? facts.outputProgress : undefined
+    const progress = kind === 'composing' ? facts.outputProgress : undefined
     const nextFlow = flowCounter({ up: facts.flowUp, downChars: progress?.chars ?? facts.flowDownChars })
-    const changed = mode !== state.mode || tipChanged || nextFlow !== state.flow || progress !== state.outputProgress
+    const nextTool = mode === 'tool' && facts.activity?.kind === 'tool' && facts.activity.name !== undefined ? toolDisplayName(facts.activity.name) : ''
+    const changed = mode !== state.mode || tipChanged || nextFlow !== state.flow || progress !== state.outputProgress || nextTool !== state.tool
     state.mode = mode
     state.flow = nextFlow
+    state.tool = nextTool
     state.outputProgress = progress
     if (changed) publish()
   }

@@ -8,9 +8,10 @@ A mode machine over the attached session's event stream, telling you what the ag
 
 | Mode | Presentation |
 | --- | --- |
-| waiting / tool | moon spinner + rotating tip (a new tip when the loading kind changes) |
+| waiting | moon spinner + rotating tip (a new tip when the loading kind changes) |
+| tool | moon spinner + the running tool's name (MCP tools read `server › tool`) |
+| thinking | braille `thinking...` line with the phase's token count and rate — the transcript's thinking block stays static, so this row is the sole spinner and the dock never collapses mid-turn |
 | composing | braille `working...` line (primary-colored frames + an inline tip) — no output cursor; this line is the "writing" signal |
-| thinking | cleared (the spinner belongs to the transcript's thinking block) |
 | idle | a one-row placeholder (stable dock edge) |
 | dialog open | the row hides (a panel holds the editor slot) |
 
@@ -28,7 +29,9 @@ The session's todo list (whole-list snapshots, last-write-wins) renders under a 
 - **Ctrl-T** toggles between folded and full (`all N items · ctrl+t to collapse`); the expanded state survives writes and resets on session change or a settled list.
 - **All-completed auto-close** — the next write reopens folded.
 
-`todo_write` calls never appear in the transcript; this pane is the list's only surface.
+- **Interrupted runs** — when the latest run failed or was stopped while the list is unsettled, the title adds a muted `· interrupted`.
+
+`todo_write` calls appear in the transcript only as one-row process members (`✓ Updated the plan · 3/5 done`); this pane is the list's live surface.
 
 ## Auxiliary conversations (/btw and /agents)
 
@@ -42,7 +45,7 @@ Mayfly retains one auxiliary conversation slot. `/btw <question>` creates a temp
 
 ## Subagent-group pane (agents)
 
-While the agent's **subagent group** runs, its group card is pinned directly above the editor — the last dock row (the kimi swarm-pane semantics). Like the todo pane's relationship to `todo_write`: spawn-class tool calls are suppressed from the session stream by the step fold, and this pane is the only surface where running subagents appear — you can see who was spawned and what each is doing without digging through tool cards in the transcript.
+While the agent's **subagent group** runs, its group card is pinned directly above the editor — the last dock row (the kimi swarm-pane semantics). Spawn-class calls (`subagent` and any `subagent_*` provider) count in the transcript's process titles and turn header and appear there as one-row members, while this pane shows who was spawned and what each is doing live. A settled group stays until the next turn starts; a call left unanswered when its turn ended reads `cancelled` rather than running forever.
 
 ## Workflow pane
 

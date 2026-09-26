@@ -44,7 +44,7 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 
 describe('mayflyConversationFacts projection', () => {
   it('invalidates checkpoints after phase-local output measurements change', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(4)
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(5)
   })
 
   it('folds lifecycle, streaming, usage, todos, request metadata, and agents', () => {
@@ -87,6 +87,8 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ contextWindow: 32, model: 'm2', provider: 'p2', reasoningEffort: undefined, todos: [{ content: 'ship' }] })
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-1', name: 'subagent', arguments: '{}', }, 88))
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-2', name: 'subagent_fork', arguments: '{}' }, 89))
+    // Any configured `subagent_*` provider is spawn-class too.
+    expect(foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-x', name: 'subagent_codex', arguments: '{}' }, 90)).agentCalls.at(-1)).toMatchObject({ callId: 'agent-x', name: 'subagent_codex' })
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'plain', name: 'read', arguments: '{}' }))
     expect(state).toMatchObject({ phase: 'tool', epochToolCount: 3 })
     state = foldConversationFacts(state, event('tool/result', toolResult('agent-1', [{ type: 'text', text: 'done' }, { type: 'json', value: 1 }], true), 99))

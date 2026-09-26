@@ -28,6 +28,8 @@ export interface LiveAssistantDraft {
   readonly outputProgress: OutputProgress | undefined
   readonly chars: number
   readonly updatedAt: number
+  /** Producer times of the first and latest visible reasoning deltas, absent before any. */
+  readonly reasoningSpan?: { readonly startedAt: number, readonly endedAt: number } | undefined
 }
 
 /** Native session follow reader, fenced by the caller's exact Agent identity. */
@@ -291,6 +293,8 @@ export class LiveAssistantStreamService extends Service {
       preparing: state.preparing,
       chars: state.chars,
       updatedAt: state.updatedAt,
+      // The accumulator sets both ends together on the first visible reasoning delta.
+      ...(state.reasoningStartedAt === undefined ? {} : { reasoningSpan: Object.freeze({ startedAt: state.reasoningStartedAt, endedAt: state.reasoningEndedAt! }) }),
     })
   }
 

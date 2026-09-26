@@ -11,8 +11,8 @@
  */
 
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
-import type { ReadCallModel, TranscriptReadGroupModel } from '../frontend/index.ts'
-import type { TranscriptDetail } from './presentation-policy.ts'
+import { interpolateLocaleMessage, type MayflyTranslate, type ReadCallModel, type TranscriptReadGroupModel } from '../frontend/index.ts'
+import { moreRowsHint } from './hints.ts'
 
 /** Tree rows kept in the collapsed card before the expand hint. */
 export const READ_GROUP_ROW_LIMIT = 8
@@ -30,6 +30,8 @@ export interface ReadFileGroup {
 interface RenderDeps {
   readonly colors: MayflySemanticColors
   readonly components: MayflyComponents
+  /** Whether the group's turn has ended: a pending member reads as cancelled. */
+  readonly closed: boolean
 }
 
 /**
@@ -58,17 +60,17 @@ export function groupReadsByFile(reads: readonly ReadCallModel[]): readonly Read
 }
 
 function windowMark(read: ReadCallModel, deps: RenderDeps): string {
-  if (read.state === 'pending') return deps.colors.textMuted('…')
+  if (read.state === 'pending') return deps.closed ? deps.colors.muted('⊘') : deps.colors.textMuted('…')
   if (read.state === 'error') return deps.colors.error('✗')
   return deps.colors.success('✓')
 }
 
-/** `1-40 of 89` — the actual window when known, the requested one otherwise. */
+/** ` · 1-40 of 89` — the actual window when known, the requested one otherwise, or nothing. */
 function windowText(read: ReadCallModel): string {
   const range = read.range ?? read.requestedRange
-  if (range === undefined) return 'read'
+  if (range === undefined) return ''
   const open = read.totalLines !== undefined && read.totalLines > range.last
-  return `${String(range.first)}-${String(range.last)}${open ? ` of ${String(read.totalLines)}` : ''}`
+  return ` · ${String(range.first)}-${String(range.last)}${open ? ` of ${String(read.totalLines)}` : ''}`
 }
 
 function shortError(read: ReadCallModel | undefined, deps: RenderDeps): string {
@@ -85,18 +87,25 @@ function shortError(read: ReadCallModel | undefined, deps: RenderDeps): string {
  */
 export class ReadGroupComponent implements MayflyComponent {
   private expanded = false
+  private keyed = true
+  private closed = false
   private cache: { key: string; lines: string[] } | null = null
 
   constructor(
     private model: TranscriptReadGroupModel,
     private readonly colors: MayflySemanticColors,
     private readonly components: MayflyComponents,
-    /** The `read` family's current detail level; `compact` renders the header plus failed-member rows only. */
-    private readonly detail: () => TranscriptDetail = () => 'collapsed',
+    private readonly t: MayflyTranslate = interpolateLocaleMessage,
   ) {}
 
   /** Switch between the collapsed tree and the expanded preview-bearing tree. */
   setExpanded(expanded: boolean): void { this.expanded = expanded }
+
+  /** Adopt whether Ctrl-O reaches the card and whether its turn has ended. */
+  setScope(scope: { readonly hint: boolean, readonly turnClosed: boolean }): void {
+    this.keyed = scope.hint
+    this.closed = scope.turnClosed
+  }
 
   /** Drop the cached lines; the next render rebuilds. */
   invalidate(): void { this.cache = null }
@@ -106,37 +115,33 @@ export class ReadGroupComponent implements MayflyComponent {
 
   /** @param width - current viewport width in columns. @returns the rows. */
   render(width: number): string[] {
-    const detail = this.detail()
-    const open = this.expanded || detail === 'full'
-    const key = `${String(width)}:${String(open)}:${detail}`
+    const open = this.expanded
+    const key = `${String(width)}:${String(open)}:${String(this.keyed)}:${String(this.closed)}`
     if (this.cache?.key === key) return this.cache.lines
-    const lines = this.renderTree(width, detail, open)
+    const lines = this.renderTree(width, open)
     this.cache = { key, lines }
     return lines
   }
 
-  private renderTree(width: number, detail: TranscriptDetail, open: boolean): string[] {
-    const deps: RenderDeps = { colors: this.colors, components: this.components }
+  private renderTree(width: number, open: boolean): string[] {
+    const deps: RenderDeps = { colors: this.colors, components: this.components, closed: this.closed }
     const cut = (row: string): string => this.components.truncateToWidth(row, width)
     const clamp = (rows: string[]): string[] => rows.map(cut)
     const header = this.renderHeader(width)
-    if (detail === 'compact' && !open) {
-      const failed = this.model.reads.filter(read => read.state === 'error')
-      return clamp(['', header, ...this.renderFileRows(deps, cut, open, failed)])
-    }
     const tree = this.renderFileRows(deps, cut, open)
     if (open) return clamp(['', header, ...tree])
     const limit = READ_GROUP_ROW_LIMIT
     if (tree.length <= limit) return clamp(['', header, ...tree])
-    const hint = `... (${String(tree.length - (limit - 1))} more, ctrl+o to expand)`
-    return clamp(['', header, ...tree.slice(0, limit - 1), this.colors.textMuted(cut(hint))])
+    const hint = moreRowsHint(this.t, tree.length - (limit - 1), this.keyed)
+    return clamp(['', header, ...tree.slice(0, limit - 1), `  ${this.colors.textMuted(hint)}`])
   }
 
   private renderHeader(width: number): string {
     const { colors, components } = this
     const reads = this.model.reads
     const files = groupReadsByFile(reads).length
-    const pending = reads.filter(read => read.state === 'pending').length
+    const unsettled = reads.filter(read => read.state === 'pending').length
+    const pending = this.closed ? 0 : unsettled
     const failed = reads.filter(read => read.state === 'error').length
     const bold = (text: string): string => components.strong(String(text))
     const label = pending > 0
@@ -144,15 +149,16 @@ export class ReadGroupComponent implements MayflyComponent {
       : failed === reads.length
         ? bold(colors.error(`Read ${String(files)} ${files === 1 ? 'file' : 'files'} · failed`))
         : bold(colors.primary(`Read ${String(files)} ${files === 1 ? 'file' : 'files'}`))
-    let header = `${String(pending > 0 ? colors.text('● ') : failed === reads.length ? colors.error('✗ ') : colors.success('✓ '))}${String(label)}`
+    let header = `${String(pending > 0 ? colors.text('● ') : failed === reads.length ? colors.error('✗ ') : failed > 0 ? colors.warning('◐ ') : colors.success('✓ '))}${String(label)}`
     if (reads.length > files) header += colors.muted(` · ${String(reads.length)} reads`)
     if (failed > 0 && failed < reads.length) header += colors.error(` · ${String(failed)} failed`)
+    if (this.closed && unsettled > 0) header += colors.muted(` · ${String(unsettled)} cancelled`)
     return components.truncateToWidth(header, width)
   }
 
-  private renderFileRows(deps: RenderDeps, cut: (row: string) => string, open: boolean, reads: readonly ReadCallModel[] = this.model.reads): string[] {
+  private renderFileRows(deps: RenderDeps, cut: (row: string) => string, open: boolean): string[] {
     const rows: string[] = []
-    const groups = groupReadsByFile(reads)
+    const groups = groupReadsByFile(this.model.reads)
     groups.forEach((group, index) => {
       const last = index === groups.length - 1
       const branch = last ? '└─' : '├─'
@@ -161,7 +167,7 @@ export class ReadGroupComponent implements MayflyComponent {
         const read = group.reads[0]!
         const inline = read.state === 'error'
           ? `  ${String(branch)} ${sanitizePluginText(group.path).replace(/[\r\n]+/gu, ' ')} ${String(windowMark(read, deps))}${String(shortError(read, deps))}`
-          : `  ${String(branch)} ${sanitizePluginText(group.path).replace(/[\r\n]+/gu, ' ')} · ${String(windowText(read))} ${String(windowMark(read, deps))}`
+          : `  ${String(branch)} ${sanitizePluginText(group.path).replace(/[\r\n]+/gu, ' ')}${String(windowText(read))} ${String(windowMark(read, deps))}`
         rows.push(cut(inline))
         if (open && read.state === 'ok') rows.push(...this.renderPreviewRows(read, continuation, cut))
         return
@@ -171,12 +177,12 @@ export class ReadGroupComponent implements MayflyComponent {
       let parent = `  ${String(branch)} ${sanitizePluginText(group.path).replace(/[\r\n]+/gu, ' ')}`
       if (errors.length === group.reads.length) parent += ` ${String(windowMark(group.reads[0]!, deps))}${String(shortError(group.reads.find(read => read.error !== undefined), deps))}`
       else if (errors.length > 0) parent += ` ${deps.colors.warning('◐')}${String(shortError(errors[0], deps))}`
-      else if (pending) parent += deps.colors.textMuted(' · reading…')
+      else if (pending && !deps.closed) parent += deps.colors.textMuted(' · reading…')
       rows.push(cut(parent))
       group.reads.forEach((read, window) => {
         const windowLast = window === group.reads.length - 1
         const windowBranch = windowLast ? '└─' : '├─'
-        rows.push(cut(`  ${String(continuation)}${String(windowBranch)} ${String(windowText(read))} ${String(windowMark(read, deps))}`))
+        rows.push(cut(`  ${String(continuation)}${String(windowBranch)}${windowText(read).replace(/^ · /u, ' ') || ' read'} ${String(windowMark(read, deps))}`))
         if (open && read.state === 'ok') {
           rows.push(...this.renderPreviewRows(read, `${String(continuation)}${windowLast ? '   ' : '│  '}`, cut))
         }

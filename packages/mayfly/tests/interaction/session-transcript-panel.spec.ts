@@ -88,7 +88,7 @@ describe('SessionTranscriptPanel', () => {
     }
     expect(screen.renderRequests).toHaveLength(requests + 1)
     const rendered = panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')
-    expect(rendered).toContain('thinking...')
+    expect(rendered).toContain('✻ Thinking')
     expect(rendered).toContain('latest thought')
     ctx.emit('tools/change')
     expect(panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')).toContain('latest thought')

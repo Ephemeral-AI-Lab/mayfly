@@ -15,7 +15,6 @@ import {
   STREAMING_RENDER_MAX_CHARS,
   TOOL_EXPANDED_RENDER_LINES,
   TOOL_PREVIEW_SCAN_MAX_CHARS,
-  StepSummaryComponent,
   ToolCallComponent,
   UserMessageComponent,
   USER_PREVIEW_LINES,
@@ -24,7 +23,6 @@ import { DEFAULT_TRANSCRIPT_PRESENTATION } from '../../src/transcript/presentati
 import type {
   TranscriptAssistantItem,
   TranscriptErrorItem,
-  TranscriptStepSummaryItem,
   TranscriptToolItem,
   TranscriptUserItem,
 } from '../../src/transcript/types.ts'
@@ -251,7 +249,7 @@ describe('UserMessageComponent', () => {
     const four = new UserMessageComponent(
       userItem('a\nb\nc\nd'), COLORS, setup(), presentation({ userFoldLines: 3 }),
     ).render(80)
-    expect(four.some(line => line.includes('1 more lines, 4 total'))).toBe(true)
+    expect(four.some(line => line.includes('1 more line, 4 total'))).toBe(true)
     const fourAgain = new UserMessageComponent(userItem('a\nb\nc\nd'), COLORS, setup()).render(80)
     expect(fourAgain.some(line => line.includes('more lines'))).toBe(false)
   })
@@ -497,8 +495,12 @@ describe('ToolCallComponent', () => {
       '  [M]line 1[/M]',
       '  [M]line 2[/M]',
       '  [M]line 3[/M]',
-      '[T]... (7 more lines, 10 total, ctrl+o to expand)[/T]',
+      '  [T]... (7 more lines, 10 total, ctrl+o to expand)[/T]',
     ])
+    // Out of Ctrl-O's reach the hint states the fold without the key.
+    component.setScope({ hint: false, turnClosed: false })
+    expect(component.render(80).at(-1)).toBe('  [T]... (7 more lines, 10 total)[/T]')
+    component.setScope({ hint: true, turnClosed: false })
 
     component.setExpanded(true)
     const expanded = component.render(80)
@@ -534,8 +536,9 @@ describe('ToolCallComponent', () => {
     expect(collapsed[2]).toBe('  [M]answers: id=ui_target, selected=只是演示工具能力[/M]')
     expect(collapsed).toHaveLength(3)
 
+    // Expanded, a JSON result pretty-prints.
     component.setExpanded(true)
-    expect(component.render(80)[2]).toBe(`  [M]${String(payload)}[/M]`)
+    expect(component.render(80).slice(2, 4)).toEqual(['  [M]{[/M]', '  [M]  "answers": [[/M]'])
   })
 
   it('counts wrapped visual rows for the preview cap and hint', () => {
@@ -546,7 +549,7 @@ describe('ToolCallComponent', () => {
     const components = setup()
     const lines = new ToolCallComponent(item, COLORS, components).render(20)
     // The hint truncates at this narrow width, but its signature survives.
-    expect(lines.at(-1)).toContain('more lines')
+    expect(lines.at(-1)).toContain('more lin')
     for (const line of lines) expect(components.visibleWidth(line)).toBeLessThanOrEqual(20)
   })
 
@@ -659,49 +662,73 @@ describe('ToolCallComponent', () => {
     expect(component.render(80)).toHaveLength(1 + 1 + 12)
   })
 
-  it('renders compact as a header row, inlining the bash command and keeping failure lines', () => {
-    const compact = (): 'compact' => 'compact'
-    // Settled bash: the header inlines the command the body would have shown.
-    const settled = new ToolCallComponent(
-      toolItem({ parsedArguments: { command: 'pnpm test' }, result: { text: 'ok\n8 passed', fullText: 'ok\n8 passed', isError: false, endedAt: 2 } }),
-      tagged(), setup(), undefined, undefined, compact,
-    )
-    const rows = settled.render(80)
-    expect(rows).toHaveLength(2)
-    expect(rows[1]).toContain('Ran a command')
-    expect(rows[1]).toContain('(pnpm test)')
-    expect(rows.join('\n')).not.toContain('8 passed')
-    expect(rows.join('\n')).toContain('2 lines')
-
-    // A failed call keeps its first non-empty error line under the header.
-    const failed = new ToolCallComponent(
-      toolItem({ parsedArguments: { command: 'pnpm build' }, result: { text: '\nerror TS2304\nmore', isError: true, endedAt: 2 } }),
-      tagged(), setup(), undefined, undefined, compact,
-    )
-    const failedRows = failed.render(80)
-    expect(failedRows).toHaveLength(3)
-    expect(failedRows[2]).toContain('[E]')
-    expect(failedRows[2]).toContain('error TS2304')
-    expect(failedRows.join('\n')).not.toContain('more')
-
-    // A non-bash card keeps its key arg; Ctrl-O still opens the body.
+  it('titles presenter cards, marks cancelled calls, and keeps failures legible', () => {
+    // A presenter title replaces the fallback label; the semantic chip rides beside it.
     const edit = new ToolCallComponent(
-      toolItem({ name: 'edit', parsedArguments: { file_path: 'a.ts' }, result: { text: 'done', isError: false, endedAt: 2 } }),
-      tagged(), setup(), undefined, '+3 −2', compact,
+      toolItem({ name: 'edit', title: 'Edit a.ts', parsedArguments: { file_path: 'a.ts' }, result: { text: 'done', isError: false, endedAt: 2 } }),
+      tagged(), setup(), undefined, '+3 −2',
     )
-    const editRows = edit.render(80)
-    expect(editRows).toHaveLength(2)
-    expect(editRows[1]).toContain('(a.ts)')
-    expect(editRows[1]).toContain('+3 −2')
-    edit.setExpanded(true)
-    expect(edit.render(80).join('\n')).toContain('done')
+    expect(edit.render(80)[1]).toBe('[S]✓ [/S]\x1b[1m[P]Edit a.ts[/P]\x1b[22m[M] · +3 −2[/M]')
+    const failedEdit = new ToolCallComponent(
+      toolItem({ name: 'edit', title: 'Edit a.ts', result: { text: 'conflict', isError: true, endedAt: 2 } }),
+      tagged(), setup(), undefined, '+3 −2',
+    )
+    expect(failedEdit.render(80)[1]).toBe('[E]✗ [/E]\x1b[1m[P]Edit a.ts[/P]\x1b[22m[E] · +3 −2[/E]')
+    // MCP names read `server › tool`.
+    const mcp = new ToolCallComponent(toolItem({ name: 'mcp__github__create_issue', parsedArguments: { title: 'Bug' } }), tagged(), setup())
+    expect(mcp.render(80)[1]).toBe('● Using \x1b[1m[P]github › create_issue[/P]\x1b[22m[M] (Bug)[/M]')
+    // A call left pending when its turn ended reads as cancelled.
+    mcp.setScope({ hint: true, turnClosed: true })
+    expect(mcp.render(80)[1]).toBe('[M]⊘ [/M]Using \x1b[1m[P]github › create_issue[/P]\x1b[22m[M] (Bug)[/M][M] · cancelled[/M]')
+    // A failed call keeps its first error lines under the header.
+    const failed = new ToolCallComponent(
+      toolItem({ name: 'probe', result: { text: '\nerror TS2304\nmore', isError: true, endedAt: 2 } }),
+      tagged(), setup(),
+    )
+    expect(failed.render(80).slice(1, 3)).toEqual(['[E]✗ [/E]Used \x1b[1m[P]probe[/P]\x1b[22m[E] · 3 lines[/E]', '  [E]error TS2304[/E]'])
+  })
 
-    // A declined plan review keeps the warning tone on its compact error line.
-    const declined = new ToolCallComponent(
-      toolItem({ name: 'exit_plan_mode', result: { text: 'keep planning', isError: true, endedAt: 2 } }),
-      tagged(), setup(), undefined, undefined, compact,
-    )
-    expect(declined.render(80)[2]).toBe('  [W]keep planning[/W]')
+  it('renders a terminal card: $ command, exit pill, run time, description, and output tail', () => {
+    const output = Array.from({ length: 6 }, (_, index) => `out ${String(index)}`).join('\n')
+    const item = toolItem({
+      name: 'bash', startedAt: 0, title: 'pnpm test',
+      terminal: { command: 'pnpm test', description: 'Run tests', output, exitCode: 1 },
+      result: { text: output, isError: false, endedAt: 3_400 },
+    })
+    const component = new ToolCallComponent(item, tagged(), setup())
+    expect(component.render(80)).toEqual([
+      '',
+      '[E]✗ [/E]$ \x1b[1m[P]pnpm test[/P]\x1b[22m[E] · exit 1[/E][M] · 3s[/M]',
+      '  [M]Run tests[/M]',
+      '  [T]... (3 more lines, 6 total, ctrl+o to expand)[/T]',
+      '  [M]out 3[/M]',
+      '  [M]out 4[/M]',
+      '  [M]out 5[/M]',
+    ])
+    component.setExpanded(true)
+    expect(component.render(80)).toHaveLength(2 + 1 + 6)
+    // A signal kill, a multi-line command expanded, a pending run, empty output, a sub-second run.
+    const signal = new ToolCallComponent(toolItem({
+      name: 'bash', startedAt: 0, terminal: { command: 'sleep 9\necho done', signal: 'SIGTERM', output: '' },
+      result: { text: '', isError: false, endedAt: 500 },
+    }), COLORS, setup())
+    expect(signal.render(80).slice(1)).toEqual(['✗ $ \x1b[1msleep 9 echo done\x1b[22m · signal SIGTERM', '  (no output)'])
+    signal.setExpanded(true)
+    expect(signal.render(80).slice(2)).toEqual(['  $ sleep 9', '    echo done', '  (no output)'])
+    const pending = new ToolCallComponent(toolItem({ name: 'bash', startedAt: 0, terminal: { command: 'ls' } }), COLORS, setup())
+    expect(pending.render(80)).toEqual(['', '● $ \x1b[1mls\x1b[22m'])
+    // An error result without a terminal view falls back to the raw text; an unmeasured tail says so.
+    const errored = new ToolCallComponent(toolItem({
+      name: 'bash', startedAt: 0, terminal: { command: 'x' }, result: { text: 'boom', isError: true, endedAt: 1 },
+    }), COLORS, setup())
+    expect(errored.render(80).at(-1)).toBe('  boom')
+    const huge = new ToolCallComponent(toolItem({
+      name: 'bash', startedAt: 0, terminal: { command: 'cat', output: 'x'.repeat(40_000), exitCode: 0 },
+      result: { text: 'x', isError: false, endedAt: 1 },
+    }), COLORS, setup())
+    expect(huge.render(80)[2]).toBe('  ... (more output, ctrl+o to expand)')
+    huge.setExpanded(true)
+    expect(huge.render(80).at(-1)).toContain('more')
   })
 
   it('omits the command preview for non-bash and malformed arguments', () => {
@@ -742,30 +769,3 @@ describe('InterruptedMarkerComponent', () => {
   })
 })
 
-describe('StepSummaryComponent', () => {
-  const item: TranscriptStepSummaryItem = {
-    kind: 'step-summary', seq: 1, turn: 1, step: 2, toolNames: ['Read', 'Read', 'Edit'], thinking: 0,
-  }
-
-  it('renders one muted summary line in the kimi wording — tools only', () => {
-    const component = new StepSummaryComponent(item, tagged(), setup())
-    const lines = component.render(80)
-    expect(lines).toEqual(['[T]… step 2 · call 3 tools[/T]'])
-    // Width-cached; invalidate forces a rebuild.
-    expect(component.render(80)).toBe(lines)
-    component.invalidate()
-    expect(component.render(80)).toEqual(lines)
-  })
-
-  it('counts folded thinking blocks with kimi\'s unconditional pluralization', () => {
-    const withThinking: TranscriptStepSummaryItem = {
-      ...item, toolNames: ['Read'], thinking: 1,
-    }
-    expect(new StepSummaryComponent(withThinking, tagged(), setup()).render(80)).toEqual(
-      ['[T]… step 2 · thinking 1 times, call 1 tools[/T]'])
-
-    const thinkingOnly: TranscriptStepSummaryItem = { ...item, toolNames: [], thinking: 1 }
-    expect(new StepSummaryComponent(thinkingOnly, tagged(), setup()).render(80)).toEqual(
-      ['[T]… step 2 · thinking 1 times[/T]'])
-  })
-})

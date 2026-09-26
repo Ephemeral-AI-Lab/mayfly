@@ -13,6 +13,8 @@ import {
   type MayflyLocaleSnapshot,
   type MayflyTranslate,
 } from '../frontend/index.ts'
+import { HINTS_ZH } from './hints.ts'
+import { PROCESS_TITLE_ZH, SHARED_DONE_PREFIX_KEY } from './process-activity.ts'
 
 const identityCatalog = (zh: Readonly<Record<string, string>>): MayflyLocaleCatalog => Object.freeze({
   en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
@@ -27,18 +29,57 @@ export const BANNER_LOCALE = identityCatalog({
   'Version:   ': '版本：     ',
 })
 
-/** Transcript renderer chrome. */
-export const TRANSCRIPT_LOCALE = identityCatalog({
+/** Transcript renderer chrome, work-details rows, and fold hints. */
+const TRANSCRIPT_MESSAGES = identityCatalog({
   'Toggle detail expansion (tool output, long messages)': '切换详细内容展开状态（工具输出、长消息）',
-  '... ({remaining} more lines, {total} total, ctrl+o to expand)': '...（还有 {remaining} 行，共 {total} 行，按 Ctrl-O 展开）',
   '[image]': '[图片]',
   '■ interrupted': '■ 已中断',
+  ...HINTS_ZH,
+  ...PROCESS_TITLE_ZH,
+  'Deep diving...': '深度求索中',
+  'Deep diving for {duration}': '深度求索中，用时{duration}',
+  'Took {duration}': '用时 {duration}',
+  'Stopped': '已停止',
+  'Failed': '处理失败',
+  'Worked': '已完成工作',
+  '{count} tool call': '{count} 次工具调用',
+  '{count} tool calls': '{count} 次工具调用',
+  '{count} subagent': '{count} 个 subagent',
+  '{count} subagents': '{count} 个 subagent',
+  '{count} failed': '{count} 个失败',
+  'ctrl+o to expand': '按 Ctrl-O 展开',
+  'Thinking': '思考中',
+  'Thought for a while': '已思考',
+  'Thought for {duration}': '已思考 {duration}',
+  'Preparing {name} · {count} chars': '准备 {name} · {count} 字符',
+  'cancelled': '已取消',
+  'running': '运行中',
+  'waiting for your answer': '等待你的回答',
+  '{count} source': '{count} 个来源',
+  '{count} sources': '{count} 个来源',
+  'truncated': '已截断',
+  'Fetching': '正在访问',
+  'Fetched': '已访问',
+  'Message to {to}': '发送给 {to}',
+  '{done}/{total} done': '已完成 {done}/{total}',
+  '(no output)': '（无输出）',
+})
+
+/**
+ * The transcript catalog. The joined-title shared prefix is the one message
+ * whose English is empty (Chinese strips a repeated `已`), so it is added
+ * beside the identity entries.
+ */
+export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = Object.freeze({
+  en: Object.freeze({ ...TRANSCRIPT_MESSAGES.en, [SHARED_DONE_PREFIX_KEY]: '' }),
+  zh: Object.freeze({ ...TRANSCRIPT_MESSAGES.zh, [SHARED_DONE_PREFIX_KEY]: '已' }),
 })
 
 /** Activity-pane copy. */
 export const ACTIVITY_LOCALE = identityCatalog({
   ' · Tip: ': ' · 提示：',
   ' working...': ' 工作中...',
+  ' thinking...': ' 思考中...',
   ' interrupting...': ' 正在中断...',
 })
 

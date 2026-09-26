@@ -160,7 +160,6 @@ mayfly:
   theme: dark              # persisted default theme: dark | light | ocean | paper | auto (applied at startup)
   transcriptView: standard # compact | standard | detailed | verbose
   windowTurns: 15          # transcript window: only the newest N completed turns stay mounted
-  recentStepsRetention: 30 # in-turn step folding: keep the newest N steps' cards expanded
   expandTurns: 3           # ctrl+o expansion scope (turns counted from the end)
   userFoldLines: 10        # long user message fold threshold (lines)
   userFoldChars: 1000      # long user message fold threshold (chars)
@@ -168,7 +167,7 @@ mayfly:
   pasteImageBackend: auto  # Linux clipboard backend: auto | wayland | x11
 ```
 
-`transcriptView` follows Harness work-detail modes. Compact and Standard summarize running work; Detailed exposes running process rows; Verbose retains completed process rows. Final replies remain visible. Ctrl+O expands recent details. The old per-family `transcript` settings are removed.
+`transcriptView` follows the Harness Chat work-details modes (see [Streaming transcript](/en/features/streaming#work-details)). Compact, Standard, and Detailed fold a completed turn behind its `Took 38s` header, keeping the final answer visible; process work between replies collapses into one titled group (Standard also names the running command, path, query, or reasoning; Detailed keeps the running turn open). Verbose keeps every card open. Ctrl+O expands the most recent `expandTurns` turns. The old per-family `transcript` settings and `recentStepsRetention` are no longer interpreted.
 
 The panel is two-level: level one starts with `locale` and groups rows by namespace (host sections like `shell:`, `agent-loop:`, and `web-search-deepseek:` included), Enter steps into level two's per-key rows, and `Enter`/`Space` there steps the preset value with every change landing on disk; language and `mayfly.theme` changes both apply live (`/theme` stays the session-level switch — see [Theming](/en/guide/theme)), and `transcriptView` and number changes apply to the running session just as immediately (an active Ctrl-O expansion still dominates). Level one's last row opens the whole settings.yaml in `$EDITOR`.
 

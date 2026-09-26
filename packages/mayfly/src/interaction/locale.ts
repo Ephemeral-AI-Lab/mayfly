@@ -200,8 +200,6 @@ const zh: Readonly<Record<string, string>> = {
   'Other tools detail': '其他工具详情',
   'Transcript window (turns)': '对话窗口（轮次）',
   'completed turns kept mounted': '保留渲染的已完成轮次数',
-  'Recent steps kept': '保留最近步骤',
-  'steps of a turn keeping their cards': '一轮中保留卡片的步骤数',
   'Ctrl-O range (turns)': 'Ctrl-O 范围（轮次）',
   'turns the expansion toggle reaches back': '展开切换向前覆盖的轮次',
   'User fold lines': '用户消息折叠行数',

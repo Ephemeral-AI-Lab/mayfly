@@ -18,6 +18,10 @@ export interface AssistantStreamState {
   readonly outputProgress: OutputProgress | undefined
   readonly updatedAt: number
   readonly chars: number
+  /** Producer time of the first visible reasoning delta, absent before any. */
+  readonly reasoningStartedAt?: number
+  /** Producer time of the latest visible reasoning delta. */
+  readonly reasoningEndedAt?: number
 }
 
 /** Empty attempt before its first visible output. */
@@ -44,7 +48,7 @@ export function foldAssistantStreamChunk(state: AssistantStreamState, chunk: Str
     const chars = reasoning && state.reasoning.trim() === '' ? text.length : chunk.text.length
     return {
       ...state,
-      ...(reasoning ? { reasoning: text } : { text }),
+      ...(reasoning ? { reasoning: text, reasoningStartedAt: state.reasoningStartedAt ?? time, reasoningEndedAt: time } : { text }),
       phase,
       outputProgress: appendOutputProgress(state.phase === phase ? state.outputProgress : undefined, chars, time),
       chars: state.chars + chars,

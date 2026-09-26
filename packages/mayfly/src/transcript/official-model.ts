@@ -17,10 +17,11 @@ import {
   type ConversationToolEntry,
 } from '../conversation/index.ts'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
-import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptToolFamily } from '../frontend/index.ts'
+import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/index.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
+import { toolActivity, toolDetail } from './process-activity.ts'
 
 /**
  * Live assistant-stream draft source. Harness `0.1.5` publishes streaming
@@ -69,6 +70,9 @@ export const SEARCH_PATH_LIMIT = 16
 /** Output-tail rows a command group's member carries when expanded. */
 export const COMMAND_PREVIEW_LINE_LIMIT = 4
 
+/** Characters one command output-tail row keeps before truncation. */
+const COMMAND_PREVIEW_LINE_MAX_CHARS = 160
+
 /** One tool entry with its presenter views resolved exactly once. */
 export interface ResolvedTool {
   readonly entry: ConversationToolEntry
@@ -99,24 +103,27 @@ function resolveTool(entry: ConversationToolEntry, tools: ToolPresentationSource
 }
 
 /**
- * Whether a tool entry presents as a read — by presenter vocabulary, not
- * tool name: the pending call declares `kind: 'read'`, or the settled result
- * carries the read card.
+ * Whether a tool entry presents as a file read — by presenter vocabulary, not
+ * tool name: the settled result carries the read card, or the call declares
+ * `kind: 'read'` over at least one file location. A read-kind call without a
+ * file (a skill load, a job reader, a goal lookup) stays a lone card.
  */
 function isReadTool(resolved: ResolvedTool): boolean {
-  if (resolved.call?.card === 'generic' && resolved.call.kind === 'read') return true
-  return resolved.result?.card === 'read'
+  if (resolved.result?.card === 'read') return true
+  return resolved.call?.card === 'generic' && resolved.call.kind === 'read' && (resolved.call.locations?.length ?? 0) > 0
 }
 
 /**
- * Whether a tool entry presents as a search (grep or glob) — by presenter
- * vocabulary: the pending call declares `kind: 'search'`, or the settled
- * result carries the search card (whose `shape` separates content matches
- * from path lists).
+ * Whether a tool entry presents as a code search (grep or glob) — by
+ * presenter vocabulary: the settled result carries the search card, or the
+ * call declares `kind: 'search'` with a `pattern` argument and did not settle
+ * as a web card. A web search (queries, web result) stays a lone web card.
  */
 function isSearchTool(resolved: ResolvedTool): boolean {
-  if (resolved.call?.card === 'generic' && resolved.call.kind === 'search') return true
-  return resolved.result?.card === 'search'
+  if (resolved.result?.card === 'search') return true
+  if (resolved.result?.card === 'web') return false
+  return resolved.call?.card === 'generic' && resolved.call.kind === 'search'
+    && typeof readArgumentRecord(resolved.args)['pattern'] === 'string'
 }
 
 /**
@@ -135,6 +142,14 @@ function isEditTool(resolved: ResolvedTool): boolean {
 /** Whether a tool entry presents as a web fetch/search — the result-only web card. */
 function isWebTool(resolved: ResolvedTool): boolean {
   return resolved.result?.card === 'web'
+}
+
+/** The process activity and live detail every mapped tool call carries. */
+function processFacts(resolved: ResolvedTool): { readonly activity: ReturnType<typeof toolActivity>, readonly detail: string } {
+  return {
+    activity: toolActivity(resolved.entry.name, resolved.call, resolved.result),
+    detail: toolDetail(resolved.entry.name, resolved.args),
+  }
 }
 
 /** The card family a tool entry presents as; read/search/command group, the rest stay lone cards. */
@@ -179,7 +194,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
       : view?.path
   // Read-kind calls without a file (the jobs reader, for one) still group;
   // their row falls back to the salient argument so the member stays visible.
-  const label = path === undefined ? salientArgument(record) : undefined
+  const label = path === undefined ? salientArgument(record) ?? entry.name : undefined
   const offset = typeof record['offset'] === 'number' && record['offset'] > 0 ? record['offset'] : 1
   const limit = typeof record['limit'] === 'number' ? record['limit'] : undefined
   const lines = view?.lines ?? []
@@ -187,6 +202,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
   // state 'error' implies entry.result exists: the outcome derives from it.
   return {
     callId: entry.callId,
+    ...processFacts(resolved),
     seq: entry.seq,
     updatedSeq: entry.updatedSeq,
     turn: entry.turn,
@@ -227,6 +243,7 @@ function searchCallModel(resolved: ResolvedTool): SearchCallModel {
   const state = outcome === undefined ? 'pending' : outcome.isError ? 'error' : 'ok'
   return {
     callId: entry.callId,
+    ...processFacts(resolved),
     seq: entry.seq,
     updatedSeq: entry.updatedSeq,
     turn: entry.turn,
@@ -262,11 +279,25 @@ function searchGroupModel(run: readonly ResolvedTool[]): TranscriptSearchGroupMo
   }
 }
 
-/** The bounded output tail one command member carries for the expanded view. */
+/**
+ * The bounded output tail one command member carries for the expanded view.
+ * Lines keep their own spacing (tables and indentation stay aligned); only
+ * trailing whitespace goes and long lines truncate.
+ */
 function commandPreviewLines(output: string): string[] | undefined {
-  const lines = output.replace(/\n+$/, '').split('\n')
-  if (lines.length === 0 || lines.every(line => line.trim() === '')) return undefined
-  return lines.slice(-COMMAND_PREVIEW_LINE_LIMIT).map(line => ellipsize(line, 160))
+  const lines = output.replace(/\n+$/, '').split('\n').map(line => line.replace(/\s+$/, ''))
+  if (lines.every(line => line.trim() === '')) return undefined
+  return lines.slice(-COMMAND_PREVIEW_LINE_LIMIT).map(line => line.length <= COMMAND_PREVIEW_LINE_MAX_CHARS ? line : `${line.slice(0, COMMAND_PREVIEW_LINE_MAX_CHARS - 1)}…`)
+}
+
+/** The exit/signal failure text of a settled terminal run, or `undefined` when it exited 0. */
+function exitFailure(exitCode: number | undefined, signal: string | undefined): string | undefined {
+  if (signal !== undefined) return `signal ${signal}`
+  return exitCode === undefined || exitCode === 0 ? undefined : `exit ${String(exitCode)}`
+}
+
+function lastNonEmptyLine(text: string): string | undefined {
+  return text.split('\n').findLast(line => line.trim() !== '')
 }
 
 /** Build one command call's renderer-neutral facts from entry, arguments, and views. */
@@ -278,10 +309,13 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
   const argCommand = typeof record['command'] === 'string' && record['command'] !== '' ? record['command'] : undefined
   const command = callView?.title ?? resultView?.title ?? argCommand ?? entry.name
   const output = resultView?.output ?? (entry.result === undefined ? undefined : entry.result.text)
-  const state = outcome === undefined ? 'pending' : outcome.isError ? 'error' : 'ok'
+  const exit = exitFailure(resultView?.exitCode, resultView?.signal)
+  const state = outcome === undefined ? 'pending' : outcome.isError || exit !== undefined ? 'error' : 'ok'
   const previewLines = output === undefined ? undefined : commandPreviewLines(output)
+  const exitLine = output === undefined ? undefined : lastNonEmptyLine(output)
   return {
     callId: entry.callId,
+    ...processFacts(resolved),
     seq: entry.seq,
     updatedSeq: entry.updatedSeq,
     turn: entry.turn,
@@ -290,7 +324,11 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
     state,
     ...(resultView?.exitCode === undefined ? {} : { exitCode: resultView.exitCode }),
     ...(resultView?.signal === undefined ? {} : { signal: resultView.signal }),
-    ...(state === 'error' ? { error: ellipsize(firstNonEmptyLine(entry.result!.text) ?? 'command failed', 120) } : {}),
+    ...(state === 'error' ? {
+      error: outcome!.isError
+        ? ellipsize(firstNonEmptyLine(entry.result!.text) ?? 'command failed', 120)
+        : ellipsize(`${exit!}${exitLine === undefined ? '' : ` · ${exitLine}`}`, 120),
+    } : {}),
     ...(previewLines === undefined ? {} : { previewLines }),
   }
 }
@@ -309,8 +347,38 @@ function commandGroupModel(run: readonly ResolvedTool[]): TranscriptCommandGroup
   }
 }
 
+/** Terminal-card facts of one command call, from its call and result views. */
+function terminalModel(resolved: ResolvedTool): TranscriptTerminalModel | undefined {
+  const call = resolved.call?.card === 'terminal' ? resolved.call : undefined
+  const result = resolved.result?.card === 'terminal' ? resolved.result : undefined
+  if (call === undefined && result === undefined) return undefined
+  const argCommand = readArgumentRecord(resolved.args)['command']
+  const command = call?.title ?? result?.title ?? (typeof argCommand === 'string' ? argCommand : resolved.entry.name)
+  return {
+    command,
+    ...(call?.description === undefined ? {} : { description: call.description }),
+    ...(result?.output === undefined ? {} : { output: result.output }),
+    ...(result?.exitCode === undefined ? {} : { exitCode: result.exitCode }),
+    ...(result?.signal === undefined ? {} : { signal: result.signal }),
+  }
+}
+
+/** Web-card facts of one settled web call. */
+function webModel(resolved: ResolvedTool): TranscriptWebModel | undefined {
+  const view = resolved.result
+  if (view?.card !== 'web') return undefined
+  if (view.kind === 'fetch') return { kind: 'fetch', url: view.url, statusCode: view.statusCode, truncated: view.truncated }
+  return {
+    kind: 'search',
+    sources: view.sources.map(source => ({ url: source.url, ...(source.title === undefined ? {} : { title: source.title }) })),
+    truncated: view.truncated,
+  }
+}
+
 function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): TranscriptEntryModel {
   const { entry, outcome, call, result } = resolved
+  const terminal = terminalModel(resolved)
+  const web = webModel(resolved)
   const presentation = call === undefined && result === undefined
     ? undefined
     : createToolPresentationModel({
@@ -330,6 +398,10 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): Transc
     callId: entry.callId,
     name: entry.name,
     family,
+    ...processFacts(resolved),
+    ...(call === undefined ? {} : { title: call.title }),
+    ...(terminal === undefined ? {} : { terminal }),
+    ...(web === undefined ? {} : { web }),
     arguments: entry.arguments,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : {
@@ -371,6 +443,7 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
         kind: 'transcript-thinking', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, step: entry.step,
         text: entry.text, streaming: entry.streaming,
         ...(entry.outputProgress === undefined ? {} : { outputProgress: entry.outputProgress }),
+        ...(entry.durationMs === undefined ? {} : { durationMs: entry.durationMs }),
       }
     case 'error':
       return {
@@ -407,14 +480,13 @@ export function conversationTranscriptModel(
   }
   for (const entry of projection.entries) {
     if (entry.kind !== 'tool') {
-      // Thinking is meta, not content: it neither renders into the run nor
-      // breaks it — grouped families stay grouped across the model's
-      // reasoning.
-      if (entry.kind !== 'thinking') flushRun()
+      // Reasoning within the run's own step keeps a grouped family together;
+      // a later step's reasoning closes the run first so it never renders
+      // above the calls it followed.
+      if (entry.kind !== 'thinking' || (run.length > 0 && run.at(-1)!.entry.step !== entry.step)) flushRun()
       entries.push(entryModel(entry))
       continue
     }
-    if (entry.channel !== 'transcript') continue
     /* Presenters re-resolve on every pending value; keying on the durable
        entry id + its last-update seq makes steady-state mapping O(changed). */
     const key = JSON.stringify([entry.id, entry.updatedSeq])
@@ -437,7 +509,13 @@ export function conversationTranscriptModel(
   }
   flushRun()
   const renderedEntries = renderRevision === undefined ? entries : entries.map(entry => ({ ...entry, renderRevision: `${renderRevision}:${String(entry.updatedSeq)}` }))
-  return createTranscriptModel('official-conversation', renderedEntries, projection.streaming, generation)
+  const turns: TranscriptTurnModel[] = (projection.turns ?? []).map(turn => ({
+    turn: turn.turn,
+    startedAt: turn.startedAt,
+    ...(turn.endedAt === undefined ? {} : { endedAt: turn.endedAt }),
+    ...(turn.outcome === undefined ? {} : { outcome: turn.outcome }),
+  }))
+  return createTranscriptModel('official-conversation', renderedEntries, projection.streaming, generation, turns)
 }
 
 /** Entry kinds the mapper dereferences; anything else is not our wire value. */
@@ -462,7 +540,7 @@ function visibleProjection(
   transcriptAfterSeq: number | undefined,
 ): ConversationProjection | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const envelope = value as { entries?: unknown, streaming?: unknown, settledSteps?: unknown }
+  const envelope = value as { entries?: unknown, streaming?: unknown, settledSteps?: unknown, turns?: unknown }
   if (!Array.isArray(envelope.entries) || typeof envelope.streaming !== 'boolean' || !Array.isArray(envelope.settledSteps)) return undefined
   /* One pass over the wire array: admit every entry and cut off inherited
      history at the same time. Downstream mapping works on this copy, so the
@@ -472,7 +550,10 @@ function visibleProjection(
     if (!admissibleEntry(candidate)) return undefined
     if (transcriptAfterSeq === undefined || candidate.seq > transcriptAfterSeq) entries.push(candidate)
   }
-  return { entries, streaming: envelope.streaming, settledSteps: envelope.settledSteps as string[] }
+  const retained = transcriptAfterSeq === undefined ? undefined : new Set(entries.map(entry => entry.turn))
+  const turns = (Array.isArray(envelope.turns) ? envelope.turns as ConversationProjection['turns'] : [])
+    .filter(turn => retained === undefined || retained.has(turn.turn))
+  return { entries, streaming: envelope.streaming, settledSteps: envelope.settledSteps as string[], turns }
 }
 
 /** Projection-to-model source scoped to one frontend tree and provider Fiber. */
@@ -619,6 +700,8 @@ function withLiveDraft(
   const renderRevision = `live:${draft.attemptId}:${String(draft.revision)}`
   const liveEntries: TranscriptEntryModel[] = []
   if (draft.reasoning.trim() !== '') {
+    const thinking = draft.phase === 'thinking'
+    const span = draft.reasoningSpan
     liveEntries.push({
       kind: 'transcript-thinking',
       id: `thinking:${String(draft.turn)}:${String(draft.step)}`,
@@ -628,8 +711,9 @@ function withLiveDraft(
       turn: draft.turn,
       step: draft.step,
       text: draft.reasoning,
-      streaming: draft.phase === 'thinking',
-      ...(draft.phase === 'thinking' ? { outputProgress: draft.outputProgress } : {}),
+      streaming: thinking,
+      ...(thinking ? { outputProgress: draft.outputProgress } : {}),
+      ...(span === undefined ? {} : { startedAt: span.startedAt, ...(thinking ? {} : { durationMs: Math.max(0, span.endedAt - span.startedAt) }) }),
     })
   }
   if (draft.text !== '') {
@@ -648,7 +732,8 @@ function withLiveDraft(
   for (const call of draft.preparing ?? []) {
     if (dispatched.has(call.id)) continue
     liveEntries.push({ kind: 'transcript-tool', id: `preparing:${call.id}`, seq, updatedSeq, renderRevision,
-      turn: draft.turn, step: draft.step, callId: call.id, name: call.name, family: 'other', arguments: '', startedAt: draft.updatedAt,
+      turn: draft.turn, step: draft.step, callId: call.id, name: call.name, family: 'other',
+      activity: toolActivity(call.name), detail: '', arguments: '', startedAt: draft.updatedAt,
       preparing: { characters: call.characters },
     })
   }
