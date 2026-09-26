@@ -9,7 +9,7 @@
 import {
   ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_EXPAND, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
   ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
-  ACTION_PREV_TAB, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey, printableKey,
+  ACTION_PREV_TAB, ACTION_RESET_FIELD, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey, printableKey,
 } from './key-actions.ts'
 
 /** The layer one Escape press leaves, innermost first. */
@@ -55,6 +55,8 @@ export interface GrammarState {
   readonly escape: EscapeStep | undefined
   /** Ctrl+C requests the same close as the outermost Escape. */
   readonly closable: boolean
+  /** What resetting the focused field does, when it has a changed or overriding value. */
+  readonly reset?: 'inherit' | 'reset'
 }
 
 export type GrammarIntent =
@@ -92,6 +94,7 @@ export type GrammarIntent =
   | { readonly kind: 'toggle-row' }
   | { readonly kind: 'navigate', readonly direction: Direction }
   | { readonly kind: 'activate' }
+  | { readonly kind: 'field-reset' }
 
 export type GrammarMatch =
   | { readonly kind: 'action', readonly action: string }
@@ -278,6 +281,10 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   tabSwitches(bindings, state, control.kind !== 'tab')
   groupMoves(bindings, state, control.kind !== 'tab')
   if (list?.searching === true) push(bindings, { kind: 'backspace' }, { kind: 'search-type' })
+  // A declared Delete accelerator keeps its key; otherwise Delete resets a changed field.
+  if (state.reset !== undefined && (control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle') && !state.keyed.some(keyed => keyed.key.toLowerCase() === 'delete')) {
+    push(bindings, action(ACTION_RESET_FIELD), { kind: 'field-reset' }, { id: 'reset', label: state.reset === 'inherit' ? 'use inherited' : 'reset', priority: PRIORITY.accelerator, actions: [ACTION_RESET_FIELD] })
+  }
 
   switch (control.kind) {
     case 'none':
@@ -365,5 +372,6 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: 'Type or /', action: 'Filter a filterable list; Ctrl+U clears the filter' },
   { keys: '1-9', action: 'Pick a numbered row' },
   { keys: 'Ctrl+E', action: 'Expand focused scrollable content to full screen' },
+  { keys: 'Delete', action: 'Return a changed field to its inherited or default value' },
   { keys: 'Alt+Enter', action: 'Insert a newline in a multi-line field' },
 ])

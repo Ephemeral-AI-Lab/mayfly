@@ -44,6 +44,16 @@ describe('key grammar', () => {
     expect(numbered(0, true)).toBeUndefined()
   })
 
+  it('offers Delete on a changed field unless a declared accelerator owns it or text is being edited', () => {
+    const field = { kind: 'select', multiple: false, picker: false, adjustable: true } as const
+    const reset = (overrides: Partial<GrammarState>) => grammarHints(keyGrammar(state({ control: field, reset: 'inherit', ...overrides }))).find(hint => hint.id === 'reset')
+    expect(reset({})).toMatchObject({ label: 'use inherited' })
+    expect(reset({ reset: 'reset' })).toMatchObject({ label: 'reset' })
+    expect(reset({ keyed: [{ control: 2, key: 'delete', label: 'Delete row' }] })).toBeUndefined()
+    expect(reset({ control: { kind: 'text', field: 'input', editing: true, enterSubmits: false } })).toBeUndefined()
+    expect(reset({ control: { kind: 'row', role: 'choose', multiple: false, tree: false } })).toBeUndefined()
+  })
+
   it('keeps the first hint for each id in binding order', () => {
     const hints = grammarHints([
       { match: { kind: 'any' }, intent: { kind: 'swallow' }, hint: { id: 'a', label: 'first', priority: 1 } },

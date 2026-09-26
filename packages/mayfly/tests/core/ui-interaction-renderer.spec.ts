@@ -803,22 +803,52 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('executes inherited field tools only on Enter or Space', async () => {
+  it('resets a changed field with Delete instead of inline override tools', async () => {
     const { compile, model } = await setup(ui.form({ id: 'form', fields: [
-      { kind: 'input', id: 'name', label: 'Name', value: 'base', origin: 'inherited', resetValue: 'base' },
+      { kind: 'input', id: 'name', label: 'Name', value: 'mine', origin: 'explicit', resetValue: 'base' },
+      { kind: 'select', id: 'mode', label: 'Mode', value: 'a', origin: 'inherited', resetValue: 'a', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] },
+      { kind: 'toggle', id: 'on', label: 'On', value: true, resetValue: false },
     ] }))
+    let renderer = compile()
+    const fields = () => model.form({ pagePath: [], formId: 'form' })!.fields
+    const hints = () => renderer.compiled.component.render(80).at(-1)!
+    expect(renderer.compiled.component.render(80).join('\n')).not.toMatch(/Set override|Use inherited value/u)
+    expect(renderer.runtime.state.controls().some(control => control.kind === 'field-action')).toBe(false)
+    expect(hints()).toContain('Delete use inherited')
+    renderer.input('\x1b[3~')
+    expect(fields().name).toMatchObject({ value: 'base', change: 'reset' })
+    // The surface renderer recompiles on each model revision, which re-seeds the field editor.
+    renderer.runtime.dispose()
+    renderer = compile()
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Name (Inherited): base')
+    expect(hints()).not.toContain('Delete')
+    // An inherited value has nothing to reset until an edit overrides it.
+    renderer.input('\x1b[B')
+    expect(hints()).not.toContain('Delete')
+    renderer.input('\x1b[C')
+    expect(fields().mode).toMatchObject({ value: 'b', change: 'set' })
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Mode (Override): ‹ B ›')
+    renderer.input('\x1b[3~')
+    expect(fields().mode).toMatchObject({ value: 'a', change: 'unchanged' })
+    // Without an origin, Delete restores the declared default.
+    renderer.input('\x1b[B')
+    expect(hints()).toContain('Delete reset')
+    renderer.input('\x1b[3~')
+    expect(fields().on).toMatchObject({ value: false, change: 'reset' })
+    renderer.runtime.dispose()
+  })
+
+  it('keeps the conflict choices as the only inline field controls', async () => {
+    const form = (value: string) => ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value }] })
+    const { compile, model, handle } = await setup(form('A'))
+    model.edit({ pagePath: [], formId: 'form', fieldId: 'name' }, 'B')
+    handle.set(form('C'), { reason: 'data' })
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Set override')
-    expect(renderer.runtime.state.controls().map(control => ({ kind: control.kind, identity: control.identity }))).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'field-action', identity: expect.objectContaining({ itemId: 'override' }) }),
-    ]))
-    expect(renderer.compiled.focusTarget!.restoreFocusIdentity?.({ pagePath: [], controlId: 'name', itemId: 'override' })).toBe(true)
-    expect(renderer.compiled.component.render(80).at(-1)).toContain('Enter apply')
-    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'name', itemId: 'override' })
-    renderer.input('x')
-    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.change).toBe('unchanged')
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Use current value  Keep my changes')
+    expect(renderer.compiled.focusTarget!.restoreFocusIdentity?.({ pagePath: [], controlId: 'name', itemId: 'draft' })).toBe(true)
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Keep my changes')
     renderer.input('\r')
-    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name!.change).toBe('set')
+    expect(model.form({ pagePath: [], formId: 'form' })!.fields.name).toMatchObject({ value: 'B', conflict: false })
     renderer.runtime.dispose()
   })
 

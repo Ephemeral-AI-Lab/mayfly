@@ -42,13 +42,13 @@ const zh = Object.freeze({
   scroll: '滚动',
   expand: '展开',
   collapse: '收起',
+  'use inherited': '改用继承值',
+  reset: '重置',
   // Field provenance and conflict resolution.
   Inherited: '继承',
   Override: '显式覆盖',
   'Use current value': '使用当前值',
   'Keep my changes': '保留我的修改',
-  'Set override': '设为显式覆盖',
-  'Use inherited value': '恢复继承值',
   // Shared decisions, placeholders, and default controls.
   'Discard unsaved changes?': '放弃未保存的修改？',
   No: '否',

@@ -47,7 +47,7 @@ import {
   type PatternFocus,
 } from './ui-patterns.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
-import { fieldActions, type UiFieldAction } from './ui-interaction-field-actions.ts'
+import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import {
   deferredUiNodeMayHaveControls,
   isDeferredUiNode,
@@ -745,6 +745,8 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
           : interaction?.backTarget() !== undefined ? 'back'
             : escapeLabel
   const numbered = node?.numbered
+  const fieldAddress = active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' ? runtime.fieldAddress(active.key) : undefined
+  const reset = fieldAddress === undefined ? undefined : fieldReset(interaction?.form(fieldAddress), fieldAddress.fieldId)
   return {
     mode: mode === 'editor' ? 'editor' : 'ui',
     expanded,
@@ -763,6 +765,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     siblings: active === undefined ? 0 : controls.filter(candidate => candidate.group === active.group).length,
     escape,
     closable: escapeLabel === 'close',
+    ...(reset === undefined ? {} : { reset }),
   }
 }
 
@@ -2323,6 +2326,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
         return
       }
       case 'select-cycle': this.selectCycle(active as Extract<ControlDescriptor, { readonly kind: 'select' }>, intent.delta); return
+      case 'field-reset': {
+        const address = this.surfaceRuntime.fieldAddress(active!.key)!
+        model!.updateForm(address, { kind: 'reset', fieldId: address.fieldId })
+        return
+      }
       case 'picker-open': {
         const select = active as Extract<ControlDescriptor, { readonly kind: 'select' }>
         this.state.beginSelectEditing(select.field, select.key)

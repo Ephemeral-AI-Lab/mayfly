@@ -25,6 +25,7 @@ export const ACTION_SHIFT_TAB = 'mayfly.interaction.shift-tab'
 export const ACTION_NEWLINE = 'mayfly.interaction.newline'
 export const ACTION_CLEAR_SEARCH = 'mayfly.interaction.clear-search'
 export const ACTION_EXPAND = 'mayfly.interaction.expand'
+export const ACTION_RESET_FIELD = 'mayfly.interaction.reset-field'
 export const ACTION_EXTERNAL_EDITOR = 'mayfly.interaction.external-editor'
 export const ACTION_CYCLE_MODEL = 'mayfly.interaction.cycle-model'
 export const ACTION_TOGGLE_AGENT_VIEW = 'mayfly.interaction.toggle-agent-view'
@@ -50,6 +51,7 @@ const FALLBACK_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze
   [ACTION_NEWLINE]: ['alt+enter'],
   [ACTION_CLEAR_SEARCH]: ['ctrl+u'],
   [ACTION_EXPAND]: ['ctrl+e'],
+  [ACTION_RESET_FIELD]: ['delete'],
 })
 
 const DISPLAY_KEY_BY_ID: Readonly<Record<string, string>> = {
