@@ -12,7 +12,7 @@ service，并使用 renderer-neutral `MayflyStatusNode`。
 | jobs | 3 | `⏵ N jobs`——live（running/stopping）后台任务数；没有时隐藏 |
 | cwd | 5 | 当前工作目录 |
 | git | 10 | branch 与变更摘要 |
-| context | 20 | context 占用 |
+| context | 20 | 最近一步的 cache 命中率与 context 占用，如 `cache 82%  context: 45% (57.6k/128k)`；provider 未报告 cache 时省略 `cache` 段 |
 | title | 30 | session title |
 
 同 band 按 priority/id 排序；右侧 band 在宽度压力下先让位。Entry 自己声明
