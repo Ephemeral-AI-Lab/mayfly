@@ -25,7 +25,7 @@ afterEach(() => {
 })
 
 /** The shell's own manifest version — the pin every fixture calibrates to. */
-const PIN = '0.1.0-alpha.8'
+const PIN = '0.1.0-alpha.9'
 const AHEAD = '0.1.0-alpha.199'
 
 /** One captured write or exit. */

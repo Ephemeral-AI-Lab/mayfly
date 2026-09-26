@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.0-alpha.9',
+    summary: 'The transcript mirrors Harness work details and repairs the conversation flow.',
+    highlights: [
+      'Work details - regroup commands, reads, searches, thinking, and background processes into per-family rows that mirror the official Harness work-details presentation.',
+      'Conversation flow - repair live-stream accumulation and transcript ordering so the projected conversation stays continuous.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.8',
     summary: 'The alpha.7 feature set on a much leaner CLI runtime.',
     highlights: [
