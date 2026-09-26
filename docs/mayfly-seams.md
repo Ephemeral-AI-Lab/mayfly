@@ -110,10 +110,9 @@ write still goes through the native addressed-subagent path and checks the
 exact identities of the primary Agent and the online child Agent. Browsing and
 draft editing of an unloaded child session stay readonly.
 
-`ui.child(..., { tab, tabWhen })` can use tab filtering in a narrow viewport
-and show pages simultaneously in a wide one, without replacing `pagePath` or
-duplicating list/form state. Viewport matching and visible width remain core's
-decision.
+`ui.child(..., { tab })` gives a page a stable `pagePath`; hidden pages retain
+list/form state. Viewport matching and visible width remain core's decision;
+use `stack.row` when pages should show side by side in a wide viewport.
 
 When the user interrupts the current Agent, Mayfly synchronously walks the
 `parentSession` lineage of the live `agents` and issues an interrupt to every
