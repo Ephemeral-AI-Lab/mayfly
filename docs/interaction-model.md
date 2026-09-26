@@ -71,7 +71,15 @@ block of both Website key references against it.
 - **Select fields.** `↑`/`↓` always move between fields. `←`/`→` cycle the value
   without wrapping and skip disabled options; from an unset value `→` picks the
   first enabled option and `←` the last. `Enter` opens the option list. A
-  multiselect opens with `Enter` or `Space` and never implicitly.
+  multiselect opens with `Enter` or `Space` and never implicitly. A focused
+  select that can cycle renders its value as `‹ value ›`.
+- **Field reset.** Fields with an `origin` show `(Inherited)` or `(Override)`;
+  editing an inherited value overrides it. `Delete` on a focused, non-editing
+  field whose value is changed or overriding returns it to `resetValue` (the
+  inherited value when the field has an origin). The binding and its hint exist
+  only while a reset would change something and no declared accelerator owns
+  `Delete`. Forms render no inline override or reset buttons; the only inline
+  field choices are **Use current value** / **Keep my changes** on a conflict.
 - **Pickers.** Arrows move the candidate, `Space` toggles in a multiselect,
   `Enter` applies, and `Tab`/`Shift+Tab` apply the candidate (or toggled set)
   before moving to the next group.

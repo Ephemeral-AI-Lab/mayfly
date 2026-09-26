@@ -43,6 +43,7 @@ Provider onboarding, provider and settings editing, and similar panels use one f
 - each field is a compact `label: value` row; the focused row carries `→`, and wrapped values continue under it;
 - **Up / Down** always move between fields; typing or **Enter** starts editing text, and **Enter** confirms and advances (`Alt+Enter` adds a line in multi-line fields);
 - a select changes directly with **Left / Right** (disabled options are skipped) or opens its list with **Enter**; a multiselect opens with **Enter** or **Space**; **Tab** applies an open list or text edit and moves to the next group;
+- settings that inherit a value show `(Inherited)` or `(Override)` after the label; changing the value overrides it, and **Delete** on an overriding field returns it to the inherited value;
 - **Escape** ends editing first; leaving a form with unsaved changes asks before discarding them;
 - a validation error renders directly below the failing field without closing the panel; any edit clears it;
 - values truncate to the panel width, so long pasted keys never break the frame.

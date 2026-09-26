@@ -33,6 +33,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `Type or /` | Filter a filterable list; Ctrl+U clears the filter |
 | `1-9` | Pick a numbered row |
 | `Ctrl+E` | Expand focused scrollable content to full screen |
+| `Delete` | Return a changed field to its inherited or default value |
 | `Alt+Enter` | Insert a newline in a multi-line field |
 <!-- END shared-keys -->
 
@@ -40,7 +41,8 @@ Details that follow from the grammar:
 
 - **Esc** leaves one layer per press, the same way everywhere: an open picker is cancelled, then text editing ends (the draft stays), then an active search ends (the filter stays), then a page with a Back target goes back, and only then does the panel close. Tab strips are not a stop on the way out.
 - **Disabled rows and options** never take the cursor; movement steps over them. A row or action that is unavailable says why next to its label.
-- **Select fields** change with `←`/`→` and never with `↑`/`↓`, which always move to the next field. `Enter` opens the option list; `Tab` applies the highlighted option and moves on.
+- **Select fields** change with `←`/`→` and never with `↑`/`↓`, which always move to the next field; a focused select shows its value as `‹ value ›` while it can cycle. `Enter` opens the option list; `Tab` applies the highlighted option and moves on.
+- **Inherited settings** carry `(Inherited)` or `(Override)` after the label. Changing the value overrides it; `Delete` on an overriding field returns it to the inherited value. There are no separate override buttons.
 - **Filtering** starts on the first typed character or `/`. Modifier shortcuts such as `Alt+Enter` or `Ctrl+R` keep working while a filter is active; in multi-select lists `Space` still toggles.
 - **Numbered rows** keep their numbers while the list scrolls. In gates such as plan review a digit only moves the cursor; `Enter` confirms.
 - **Confirmations** are one shared Yes/No decision with No focused first; the question may carry a sentence about consequences.
@@ -70,7 +72,7 @@ These keys reach the editor even while a notice is shown under the prompt. Edito
 | `/sessions` picker | Type to filter; ↑↓ moves, `Space` or `←` / `→` folds branches, `Enter` resumes; `Esc` first ends the filter (the query stays, `Ctrl+U` clears it), then closes |
 | Approval panel | The focused default is **Reject**; `←` / `→` or `Tab` reach Allow once, Allow for this session, and Reject with feedback; `Enter` runs; `Escape` rejects. On the feedback page, `Enter` sends, `Alt+Enter` adds a line, `Esc` ends editing and then returns to the decisions. There are no digit shortcuts |
 | Questionnaire | `1`–`9` or ↑↓ + `Enter` choose and advance; multi-choice toggles with `Space` and confirms with `Enter`; typing in Other starts an answer, `Enter` submits it, `Alt+Enter` adds a line; the question tabs switch with `←` / `→` on the strip or `Alt+←` / `Alt+→` anywhere, and moving forward validates the current question |
-| Form panel | ↑↓ move between fields; typing or `Enter` starts editing text, `Enter` confirms and moves on, `Alt+Enter` inserts a textarea newline; a select changes with `←` / `→` or opens with `Enter`; a multiselect opens with `Enter` or `Space`; `Tab` commits and moves to the next group; `Escape` ends editing, then closes (asking first when there are unsaved changes) |
+| Form panel | ↑↓ move between fields; typing or `Enter` starts editing text, `Enter` confirms and moves on, `Alt+Enter` inserts a textarea newline; a select changes with `←` / `→` or opens with `Enter`; a multiselect opens with `Enter` or `Space`; `Delete` returns an overriding field to its inherited value; `Tab` commits and moves to the next group; `Escape` ends editing, then closes (asking first when there are unsaved changes) |
 | Plan review | ↑↓ or `1`–`3` move between decisions and `Enter` confirms the focused one; `c` copies the plan, `o` opens feedback; `PageUp` / `PageDown` / `Shift+↑↓` scroll the plan |
 | `/model` panel | One list grouped by provider: type to filter, ↑↓ selects a model, `←` / `→` adjusts its thinking level; `Enter` sets the default, `Alt+Enter` uses it for this session only (also while filtering) |
 | `/effort` panel | `1`–`9` or ↑↓ + `Enter` set the default thinking level; `Alt+Enter` applies the focused level to this session only |

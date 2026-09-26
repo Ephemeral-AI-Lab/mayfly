@@ -822,15 +822,15 @@ for a select, and Enter or Space opens it for a multiselect. Inside the list,
 arrows move, Space toggles a multiselect option, and Enter applies. Escape
 discards the open list and stays on the field; Tab applies the highlighted
 option (or the toggled set) and moves on. An open list survives renderer
-rebuilds.
+rebuilds. A focused select that can cycle shows its value between the cycle
+markers, as in `Theme: ‹ Dark ›`.
 
-In the form below, pressing Enter on the Theme field opens the adjustment
-state and one Right step moves the candidate to Light — `‹ Light ›` is the
-adjustment presentation:
+In the form below, pressing Enter on the Theme field opens the option list and
+one Right step moves the highlight to Light:
 
-![`form` select adjustment](/shots/form-select.svg)
+![`form` select option list](/shots/form-select.svg)
 
-*Adjustment state: `‹ Light ›` is the shared picker's semantic focus; Enter writes it into the field draft (width 64).*
+*Open option list: `>` marks the highlighted option and `[x]` the current value; Enter writes the highlight into the field draft (width 64).*
 
 ```ts
 ui.form({
@@ -849,8 +849,8 @@ ui.form({
 
 `error` shows a validation message under the field; disabled fields do not
 enter focus navigation but remain in the submitted form. Required, length,
-numeric, and selection constraints run before an action starts. `origin` and
-`resetValue` produce shared override/reset tools:
+numeric, and selection constraints run before an action starts. The form below
+shows both states:
 
 ![`form` error and disabled states](/shots/form-validation.svg)
 
@@ -867,6 +867,15 @@ ui.form({
   submitLabel: 'Create profile',
 })
 ```
+
+`origin: 'inherited' | 'explicit'` adds `(Inherited)` or `(Override)` after
+the label; editing an inherited value overrides it. `resetValue` makes a changed
+or overriding field resettable: Delete on that field returns it to `resetValue`
+(the inherited value when the field has an `origin`), and the submitted field
+reports `change: 'reset'`. The hint row shows Delete only while a reset would
+change something; forms render no separate override or reset buttons. A field
+whose authoritative value changed under a draft asks for **Use current value**
+or **Keep my changes** before the form can be saved.
 
 `submitActionId` adds a submit control labelled `submitLabel` (a localized
 "Submit" when omitted); the id is never shown. An action's declared `submit` addresses

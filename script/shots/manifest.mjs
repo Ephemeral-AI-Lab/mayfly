@@ -340,9 +340,9 @@ export const SCENARIOS = [
   },
   {
     id: 'form-select',
-    // Doc example, verbatim; drive moves to the select field, enters the
-    // documented `‹ value ›` adjustment state with Enter, and steps Right.
-    title: 'form — select adjustment state',
+    // Doc example, verbatim; drive moves to the select field, opens its
+    // option list with Enter, and moves the highlight Right.
+    title: 'form — select option list',
     width: 64,
     build: ui => ui.form({
       id: 'profile-form',

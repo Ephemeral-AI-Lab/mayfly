@@ -766,14 +766,14 @@ ui.form({
 Left 选最后一项）；Up/Down 永远移动到相邻字段。Enter 打开 select 的共享选项列表，
 multiselect 用 Enter 或 Space 打开。列表内方向键移动、Space 切换多选项、Enter 应用。
 Escape 放弃打开的列表并停在当前字段；Tab 应用高亮选项（或已勾选的集合）并继续前进。
-打开的列表在 renderer 重建期间保留。
+打开的列表在 renderer 重建期间保留。可切换时，聚焦的 select 把取值放在切换标记之间，
+例如 `Theme: ‹ Dark ›`。
 
-下面的 form 在 Theme 字段按下 Enter 进入调整态，再按一次 Right 把候选切到
-Light——`‹ Light ›` 就是调整态的呈现：
+下面的 form 在 Theme 字段按下 Enter 打开选项列表，再按一次 Right 把高亮移到 Light：
 
-![`form` 的 select 调整态](/shots/form-select.svg)
+![`form` 的 select 选项列表](/shots/form-select.svg)
 
-*调整态：`‹ Light ›` 是共享 picker 的语义焦点，Enter 后写入 field draft（宽度 64）。*
+*打开的选项列表：`>` 标记高亮项，`[x]` 标记当前值；Enter 把高亮项写入 field draft（宽度 64）。*
 
 ```ts
 ui.form({
@@ -792,7 +792,7 @@ ui.form({
 
 `error` 在字段下方显示校验信息；`disabled` 字段不进入焦点导航，但仍保留在
 提交表单中。`required`、长度、数值与选择约束在 action 开始前统一校验；
-`origin` 与 `resetValue` 产生共享 override/reset 工具：
+下面的 form 同时展示这两种状态：
 
 ![`form` 的 error 与 disabled 状态](/shots/form-validation.svg)
 
@@ -809,6 +809,12 @@ ui.form({
   submitLabel: 'Create profile',
 })
 ```
+
+`origin: 'inherited' | 'explicit'` 在标签后标注 `(继承)` 或 `(显式覆盖)`；修改继承值即成为
+显式覆盖。`resetValue` 让已修改或显式覆盖的字段可以重置：在该字段上按 Delete 恢复为
+`resetValue`（字段带 `origin` 时即继承值），提交时该字段报告 `change: 'reset'`。只有重置会
+产生变化时提示行才显示 Delete；表单不再渲染单独的覆盖或重置按钮。草稿期间权威值发生变化的
+字段，需先选择 **使用当前值** 或 **保留我的修改** 才能保存。
 
 `submitActionId` 增加提交 control，按钮文字为 `submitLabel`（省略时为本地化的
 “提交”），id 不会显示。提交使用声明 action 的 `submit` 地址聚合一个或
