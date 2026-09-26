@@ -6,7 +6,7 @@ The transcript layer folds the session event stream into items and renders them.
 
 - **User messages** — `❯` gutter bubbles (`roleUser` color); images render inline where the terminal supports it (12-line cap), otherwise as `[image]` placeholders.
 - **Assistant messages** — ordinary-sized output is rendered as Markdown while streaming; oversized output uses a bounded safe tail both live and after close, while the complete raw text remains in the session record. Messages stay separated by blank lines, with the first line bulleted `●` and continuation indented two columns.
-- **Thinking blocks** — reasoning streams as its own block above the body. Live it shows a static `✻ Thinking · 6s · ↓1.2k · ≈42 tok/s` header over the reasoning's last two lines (the activity row owns the animated spinner); once the phase ends it settles into one row, `✻ Thought for 6s`, previewing the first line (Standard, Detailed, and Verbose). Ctrl-O opens the full body.
+- **Thinking blocks** — reasoning streams as its own block above the body. Live it shows a static `✻ Thinking · 6s` header over the reasoning's last two lines (the activity row owns the animated spinner, the token count, and the rate); once the phase ends it settles into one row, `✻ Thought for 6s`, previewing the first line (Standard, Detailed, and Verbose). Ctrl-O opens the full body.
 
 ## Work details
 
@@ -19,8 +19,8 @@ The transcript layer folds the session event stream into items and renders them.
 | Detailed | folds behind its header | collapsed once the turn ends; the running turn stays open | ✓ | ✓ |
 | Verbose | stays open | none (every card shows) | — | ✓ |
 
-- **Turn header** — every turn with process work carries one header row: `Deep diving for 12s` while it runs, then `Took 38s`, `Stopped`, or `Failed`, followed by its tool-call and subagent counts. A completed turn folds everything except its final answer behind this row; a stopped, failed, or steered turn never folds.
-- **Process groups** — reasoning and tool calls between two replies form one group. Collapsed, a group is a single title: `Read files and searched code` once closed, or the live `Running commands · pnpm test` while its turn runs (Compact drops the detail). Failures add `· N failed`.
+- **Turn header** — every turn with process work carries one header row: `Deep diving for 12s` while it runs, then `Took 38s`, `Stopped`, or `Failed`, followed by its tool-call and subagent counts once the turn ends (a subagent spawn counts as a subagent, not as a tool call). Live progress stays in the bottom panes, so a running header shows no counts. A completed turn folds everything except its final answer behind this row; a stopped, failed, or steered turn never folds.
+- **Process groups** — reasoning and tool calls between two replies form one group. Collapsed, a group is a single title: `Read files and searched code` once closed, or the live `Running commands · pnpm test` while its turn runs (Compact drops the detail; a running delegation reads just `Coordinating subagents`, because the agents pane shows each task). Failures add `· N failed`.
 - **Ctrl-O** — opens the fold, the groups, and the card bodies of the most recent **3 turns** (`expandTurns`). Hints name the key only where it reaches; older turns say how much is hidden without promising the key.
 
 ## Tool cards

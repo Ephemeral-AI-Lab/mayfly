@@ -327,7 +327,7 @@ describe('AgentGroupComponent', () => {
       expect(group.render(140)).toEqual([
         '',
         '● \x1b[1m[P]Running 1 agents (1 running)[/P]\x1b[22m[M] · 20s[/M]',
-        `  └─ [P]subagent[/P][M] · Survey tests · deepseek-v4 · high · ↓2k · 2 tools · 20s[/M][P] · Running[/P]`,
+        `  └─ [P]subagent[/P][M] · Survey tests · deepseek-v4 · high · ↓512 · 2 tools · 20s[/M][P] · Running[/P]`,
         `  ${'   '}    [M]Using read[/M]`,
       ])
     })

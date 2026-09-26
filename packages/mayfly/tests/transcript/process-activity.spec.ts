@@ -66,6 +66,12 @@ describe('process activity', () => {
     expect(processTitle(running, false, true, t)).toBe('Running commands · pnpm test')
     expect(processTitle(running, false, false, t)).toBe('Running commands')
     expect(processTitle(summarizeProcess([member('edit', { running: true, preparing: true })]), false, true, t)).toBe('Preparing to edit files')
+    // A running spawn names delegation only: the agents pane owns its task label,
+    // and the latest reasoning does not stand in for it.
+    const spawning = summarizeProcess([member('subagents', { running: true, detail: 'Summarize repo structure' })], 'plan the fix')
+    expect(spawning).toMatchObject({ running: 'subagents', runningDetail: '' })
+    expect(processTitle(spawning, false, true, t)).toBe('Coordinating subagents')
+    expect(processTitle(spawning, false, true, zh)).toBe('正在协调子智能体')
     expect(processTitle(summarizeProcess([], ''), false, true, t)).toBe('Analyzing the request')
     expect(processTitle(summarizeProcess([]), true, true, t)).toBe('Analysis completed')
     expect(processTitle(summarizeProcess([member('read')]), true, true, t)).toBe('Read files')

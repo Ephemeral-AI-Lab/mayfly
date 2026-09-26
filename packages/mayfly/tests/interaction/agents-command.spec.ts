@@ -53,8 +53,9 @@ describe('agent tree models', () => {
     expect(agentMetricsText({ toolCount: 1 }, 1_000)).toBe('1 tool')
     expect(agentMetricsText({ settledMs: 65_000 }, 1_000)).toBe('1m 5s')
     expect(agentMetricsText({ tokens: 100, settledMs: 5_000, activeSince: 500 }, 3_500)).toBe('100 tok · 3s')
-    expect(agentMetricsText({ liveChars: 2_200, toolCount: 0, tokens: 0, activeSince: 0 }, 20_000)).toBe('↓2.1k · 0 tools · 0 tok · 20s')
+    expect(agentMetricsText({ liveChars: 2_200, toolCount: 0, tokens: 0, activeSince: 0 }, 20_000)).toBe('↓550 · 0 tools · 0 tok · 20s')
     expect(agentMetricsText({ liveChars: 0 }, 1_000)).toBe('')
+    expect(agentMetricsText({ liveChars: 3 }, 1_000)).toBe('')
   })
 
   it('counts only live descendants inside the selected subtree', () => {
@@ -647,14 +648,14 @@ describe('mayfly-agents-command', () => {
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     const rows = browserRows(rig)
     expect(rows).toContain('Thinking…')
-    expect(rows).toContain('↓2k')
+    expect(rows).toContain('↓512')
     rig.facts.epochTokens = 4_096
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     expect(browserRows(rig)).toContain('4k tok')
     rig.liveDrafts.set('child', { phase: 'composing', chars: 3_072 })
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     expect(browserRows(rig)).toContain('Writing…')
-    expect(browserRows(rig)).toContain('↓3k')
+    expect(browserRows(rig)).toContain('↓768')
     rig.liveDrafts.delete('child')
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     const settled = browserRows(rig)

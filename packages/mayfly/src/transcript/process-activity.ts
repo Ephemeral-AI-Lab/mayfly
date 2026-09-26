@@ -127,6 +127,11 @@ export interface ProcessSummary {
   readonly counts: readonly { readonly activity: ProcessActivity, readonly count: number }[]
   readonly failed: number
   readonly running?: ProcessActivity | undefined
+  /**
+   * The running member's detail, or the latest reasoning when no tool runs.
+   * Preparing calls and subagent spawns carry none: the agents pane owns
+   * per-agent task labels.
+   */
   readonly runningDetail: string
   readonly preparing: boolean
 }
@@ -152,7 +157,9 @@ export function summarizeProcess(members: readonly ProcessMemberFact[], reasonin
     counts: ranked,
     failed,
     running: running?.activity,
-    runningDetail: running === undefined ? reasoningDetail(reasoning) : running.preparing === true ? '' : running.detail,
+    runningDetail: running === undefined
+      ? reasoningDetail(reasoning)
+      : running.preparing === true || running.activity === 'subagents' ? '' : running.detail,
     preparing: running?.preparing === true,
   }
 }

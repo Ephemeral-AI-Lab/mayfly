@@ -89,12 +89,15 @@ describe('phase-local output', () => {
     }
     try {
       replay(reasoning('seed', 1_000))
-      expect(transcript.render(80).join('\n')).toContain('✻ Thinking · ↓1')
+      // The activity row owns throughput; the thinking block never repeats it.
+      expect(transcript.render(80).join('\n')).toContain('✻ Thinking')
+      expect(transcript.render(80).join('\n')).not.toMatch(/↓|tok\/s/)
       // Thinking keeps the activity row: the dock never collapses mid-turn.
       expect(harness.screen.paneLines()[0]).toContain('thinking... ↓1')
       vi.setSystemTime(2_000)
       replay(reasoning('x'.repeat(168), 2_000))
-      expect(transcript.render(80).join('\n')).toContain('✻ Thinking · ↓43 · ≈42 tok/s')
+      expect(transcript.render(80).join('\n')).toContain('✻ Thinking')
+      expect(transcript.render(80).join('\n')).not.toMatch(/↓|tok\/s/)
       expect(harness.screen.paneLines()[0]).toContain('thinking... ↓43 · ≈42 tok/s')
       replay(answer('', 2_010))
       replay(reasoning('\n', 2_020))
@@ -134,21 +137,21 @@ describe('phase-local output', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('stops and restarts a reused thinking component, dropping whole metrics under width pressure', () => {
+  it('stops and restarts a reused thinking component, dropping the elapsed time under width pressure', () => {
     vi.useFakeTimers()
     vi.setSystemTime(2_000)
     const item: TranscriptThinkingItem = {
-      kind: 'thinking', seq: 1, turn: 1, step: 1, text: 'x'.repeat(4_800), streaming: true,
+      kind: 'thinking', seq: 1, turn: 1, step: 1, text: 'x'.repeat(4_800), streaming: true, startedAt: 0,
       outputProgress: { chars: 4_800, initialChars: 4_632, startedAt: 1_000, updatedAt: 2_000 },
     }
     const component = new ThinkingComponent(item, COLORS, fakeMayflyComponents())
     try {
-      expect(component.render(80)[1]).toBe('✻ Thinking · ↓1.2k · ≈42 tok/s')
-      expect(component.render(20)[1]).toBe('✻ Thinking · ↓1.2k')
-      expect(component.render(13)[1]).toBe('✻ Thinking')
+      // Output progress stays on the item, but only the activity row shows it.
+      expect(component.render(80)[1]).toBe('✻ Thinking · 2s')
+      expect(component.render(12)[1]).toBe('✻ Thinking')
       for (const width of SCAN_WIDTHS) expectLinesFit('Thinking/TPS', component.render(width), width)
       vi.advanceTimersByTime(2_001)
-      expect(component.render(80)[1]).not.toContain('tok/s')
+      expect(component.render(80)[1]).toBe('✻ Thinking · 4s')
       item.streaming = false
       component.render(80)
       expect(vi.getTimerCount()).toBe(0)

@@ -1,9 +1,11 @@
 /**
  * One activity row for the selected Agent — the transcript's only animated
- * spinner, so progress stays visible while the transcript is scrolled away.
- * Waiting uses the moon spinner; a tool phase adds the running tool's name;
- * thinking and composing show their label, phase-local output count, and
- * estimated rate. Responsive variants drop the tip, rate, then counters as
+ * spinner and the sole owner of live throughput, so progress stays visible
+ * while the transcript is scrolled away. Waiting uses the moon spinner; a tool
+ * phase adds the running tool's name, except a subagent spawn, whose live
+ * detail the agents pane owns; thinking and composing show their label,
+ * phase-local output count, and estimated rate (the transcript's live thinking
+ * block shows only its elapsed time). Responsive variants drop the tip, rate, then counters as
  * space shrinks. The row never collapses while active, so the editor does not
  * shift between phases. Idle holds a spacer; editor dialogs hide the pane. A latched user interrupt
  * (the app-owned stop request still draining) renders one static `■
@@ -25,8 +27,9 @@ import type { MayflyComponents } from '../core/index.ts'
 // Empty type import carries the app-owned opaque binding event merge.
 import type {} from '../app/index.ts'
 import type { ConversationFacts } from '../conversation/index.ts'
+import { isSpawnToolName } from '../conversation/projection.ts'
 import type { OutputProgress } from '../conversation/types.ts'
-import { outputRate } from './output-rate.ts'
+import { outputCounter, outputRate } from './output-rate.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import { formatTokens } from './status-context.ts'
 import { buildTipRotation } from './status-tips.ts'
@@ -138,10 +141,10 @@ interface TurnFlow {
 
 /** The spinner row's counter text: `↑30.2k ↓4.1k`, parts omitted at zero. */
 function flowCounter(flow: TurnFlow): string {
-  const down = Math.floor(flow.downChars / 4)
+  const down = outputCounter(flow.downChars)
   const parts: string[] = []
   if (flow.up !== undefined) parts.push(`↑${formatTokens(flow.up)}`)
-  if (down > 0) parts.push(`↓${formatTokens(down)}`)
+  if (down !== '') parts.push(down)
   return parts.join(' ')
 }
 
@@ -297,7 +300,9 @@ export function apply(ctx: Context): void {
     }
     const progress = kind === 'composing' ? facts.outputProgress : undefined
     const nextFlow = flowCounter({ up: facts.flowUp, downChars: progress?.chars ?? facts.flowDownChars })
-    const nextTool = mode === 'tool' && facts.activity?.kind === 'tool' && facts.activity.name !== undefined ? toolDisplayName(facts.activity.name) : ''
+    const nextTool = mode === 'tool' && facts.activity?.kind === 'tool' && facts.activity.name !== undefined && !isSpawnToolName(facts.activity.name)
+      ? toolDisplayName(facts.activity.name)
+      : ''
     const changed = mode !== state.mode || tipChanged || nextFlow !== state.flow || progress !== state.outputProgress || nextTool !== state.tool
     state.mode = mode
     state.flow = nextFlow

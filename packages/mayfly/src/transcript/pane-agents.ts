@@ -2,10 +2,16 @@
  * `mayfly-pane-agents` — the S33 subagent pane (the acceptance-ruling form,
  * the kimi `AgentSwarmProgressComponent` semantics): the running subagent
  * group renders as a dock pane pinned directly above the input editor —
- * always visible while agents run, never scrolling into history — and the
- * spawn-class tool calls (`subagent` / `subagent_fork`) render nothing in
- * the stream (the conversation projection routes them to `agents`): this
- * pane is their only presentation surface.
+ * always visible while agents run, never scrolling into history.
+ *
+ * This pane alone owns live per-agent detail: phase, task label, model,
+ * effort, estimated output (`↓`, streamed characters / 4), tool count,
+ * elapsed time, tokens, and the activity line. The transcript records each
+ * spawn-class call (`subagent` / `subagent_fork`) as a one-row member and
+ * names delegation only generically (`Coordinating subagents`, with no task
+ * detail); the activity row omits a spawn's tool name. The summary row adds
+ * its phase breakdown only for mixed phases and its clock only for more than
+ * one member, since each member row carries its own.
  *
  * The pane is self-hosted like the todo pane: current-session and official
  * facts subscriptions rebuild it from spawn-class calls, and it owns its
@@ -36,6 +42,7 @@ import type { SessionFactsService } from './session-facts.ts'
 import { agentCallLabel, agentPhasePresentation, agentTreeBranch, compactElapsedSeconds } from './agent-presentation.ts'
 import type { AgentLiveLookup, AgentMemberLive } from './agent-group.ts'
 import { trackChildAgentModels } from './child-agent-model.ts'
+import { outputCounter } from './output-rate.ts'
 import { parseToolArguments } from './present.ts'
 import { formatTokens } from './status-context.ts'
 import type { TranscriptToolItem } from './types.ts'
@@ -152,7 +159,7 @@ function memberNodes(view: MemberRowView): MayflyUiNode[] {
     view.charsText,
     view.live?.toolCount === undefined ? undefined : `${String(view.live.toolCount)} ${view.live.toolCount === 1 ? 'tool' : 'tools'}`,
     formatElapsed(view.elapsed),
-    view.live?.tokens === undefined ? undefined : `${String(view.live.tokens)} tokens`,
+    view.live?.tokens === undefined ? undefined : `${formatTokens(view.live.tokens)} tokens`,
   ].filter((value): value is string => value !== undefined)
   const failed = view.phaseLabel === 'failed'
   const row = ui.richText([
@@ -173,20 +180,23 @@ function paneNode(view: PaneView, cachedRows: Map<string, CachedRow>): MayflyUiN
   const maxElapsed = Math.max(...view.rows.map(row => row.elapsed))
   const settled = view.rows.every(row => row.phaseLabel === 'done' || row.phaseLabel === 'failed' || row.phaseLabel === 'cancelled')
   const noun = view.rows.length === 1 ? 'agent' : 'agents'
+  const clock = view.rows.length > 1 ? ` · ${formatElapsed(maxElapsed)}` : ''
+  const breakdown = !settled && counts.size > 1
+    ? ` (${['done', 'failed', 'cancelled', 'running', 'waiting'].flatMap(label => {
+        const count = counts.get(label) ?? 0
+        return count === 0 ? [] : [`${String(count)} ${label}`]
+      }).join(', ')})`
+    : ''
   const summary: MayflyInlineSpan[] = settled
     ? [
         { text: '✓ ', tone: 'success' },
         { text: `${String(view.rows.length)} ${noun} finished`, tone: 'accent', styles: ['strong'] },
-        { text: ` · ${formatElapsed(maxElapsed)}`, tone: 'muted' },
       ]
     : [
         { text: '● ', tone: 'accent' },
         { text: `Running ${String(view.rows.length)} ${noun}`, tone: 'accent', styles: ['strong'] },
-        { text: ` (${['done', 'failed', 'cancelled', 'running', 'waiting'].flatMap(label => {
-          const count = counts.get(label) ?? 0
-          return count === 0 ? [] : [`${String(count)} ${label}`]
-        }).join(', ')}) · ${formatElapsed(maxElapsed)}`, tone: 'muted' },
       ]
+  if (breakdown !== '' || clock !== '') summary.push({ text: `${breakdown}${clock}`, tone: 'muted' })
   return ui.stack.column([
     ui.divider(),
     ui.richText(summary),
@@ -284,7 +294,8 @@ export function apply(ctx: Context): void {
           : 'Failed'
         : live?.activity
       const last = index === members.length - 1
-      const charsText = live?.liveChars === undefined ? undefined : `↓${formatTokens(live.liveChars)}`
+      const down = outputCounter(live?.liveChars ?? 0)
+      const charsText = down === '' ? undefined : down
       const structure = JSON.stringify([
         item.callId,
         phase.label,

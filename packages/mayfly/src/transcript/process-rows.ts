@@ -2,8 +2,10 @@
  * Work-details row components: the turn header (the whole-turn disclosure
  * with its lifecycle label, upstream `TurnProcessNodeView`) and the collapsed
  * process-group title. A running header refreshes its elapsed label each
- * second; a running title holds each label for a short minimum so rapid tool
- * switches do not flicker. Both retire their timers once their turn closes.
+ * second and shows no counts, because the bottom dock owns live progress; a
+ * settled header adds its tool-call and subagent counts to describe what the
+ * fold hides. A running title holds each label for a short minimum so rapid
+ * tool switches do not flicker. Both retire their timers once their turn closes.
  *
  * @module @ephemeral-ai/mayfly/transcript/process-rows
  */
@@ -105,7 +107,7 @@ export class TurnHeaderComponent implements MayflyComponent {
         : t('Took {duration}', { duration: compactElapsedMs(item.endedAt - item.startedAt) })
       paint = colors.muted
     }
-    const counts = [
+    const counts = item.running ? [] : [
       ...(item.toolCalls === 0 ? [] : [t(item.toolCalls === 1 ? '{count} tool call' : '{count} tool calls', { count: item.toolCalls })]),
       ...(item.subagents === 0 ? [] : [t(item.subagents === 1 ? '{count} subagent' : '{count} subagents', { count: item.subagents })]),
     ]

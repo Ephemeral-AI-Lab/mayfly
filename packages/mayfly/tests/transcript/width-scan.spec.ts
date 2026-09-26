@@ -126,6 +126,8 @@ describe('transcript width-scan', () => {
       const interrupted = new InterruptedMarkerComponent(colors, components, transcriptT)
       const header = new TurnHeaderComponent(colors, components, () => {}, transcriptT)
       header.update({ kind: 'turn-header', id: 'h', turn: 1, seq: 1, running: false, startedAt: 0, endedAt: 65_000, toolCalls: 3, subagents: 1, folded: true, hint: true })
+      const runningHeader = new TurnHeaderComponent(colors, components, () => {}, transcriptT)
+      runningHeader.update({ kind: 'turn-header', id: 'r', turn: 2, seq: 2, running: true, toolCalls: 3, subagents: 1, folded: false, hint: false })
       const title = new ProcessTitleComponent(colors, components, () => {}, transcriptT)
       title.update({ kind: 'process-title', id: 'p', turn: 1, seq: 1, closed: true, liveDetail: true, summary: { counts: [{ activity: 'read', count: 3 }, { activity: 'search', count: 2 }, { activity: 'commands', count: 1 }, { activity: 'edit', count: 1 }], failed: 2, runningDetail: '', preparing: false } })
       const thought = new ThinkingComponent({ kind: 'thinking', seq: 1, turn: 1, step: 0, text: '界🙂 reasoning\nmore', streaming: false, durationMs: 4_000 }, colors, components, undefined, () => true, transcriptT)
@@ -140,6 +142,7 @@ describe('transcript width-scan', () => {
         expectLinesFit(`UserMessage/${locale}`, longUser.render(width), width)
         expectLinesFit(`Interrupted/${locale}`, interrupted.render(width), width)
         expectLinesFit(`TurnHeader/${locale}`, header.render(width), width)
+        expectLinesFit(`RunningTurnHeader/${locale}`, runningHeader.render(width), width)
         expectLinesFit(`ProcessTitle/${locale}`, title.render(width), width)
         expectLinesFit(`Thought/${locale}`, thought.render(width), width)
         if (bannerLayout(width) !== null) {

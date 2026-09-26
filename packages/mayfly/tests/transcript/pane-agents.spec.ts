@@ -115,6 +115,8 @@ describe('mayfly-pane-agents plugin', () => {
       toolCallEvent(1, 1, 'b1', 'bash', '{}', { time: T0 + 1_000 }),
     ])
     const rows = rig.screen.paneLines(140)
+    // One member: no tautological breakdown and no clock beside the row's own.
+    expect(rows[1]).toBe('● Running 1 agent')
     expect(rows.join('\n')).toContain('running Survey')
     expect(rows.join('\n')).not.toContain('bash')
     // The turn is cut before the call answers: the member reads as cancelled
@@ -122,7 +124,7 @@ describe('mayfly-pane-agents plugin', () => {
     rig.ctx.emit('session/event', rig.agent.session, { type: 'turn/end', seq: 98, time: T0 + 9_000, data: { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } } } as never)
     const cut = rig.screen.paneLines(140).join('\n')
     expect(cut).toContain('cancelled Survey')
-    expect(cut).toContain('1 agent finished')
+    expect(cut.split('\n')[1]).toBe('✓ 1 agent finished')
     // The next turn clears the settled group.
     rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
     expect(rig.screen.paneLines(140)).toEqual([])
@@ -231,12 +233,24 @@ describe('mayfly-pane-agents plugin', () => {
     ])
     const child = childSession('bd317666afec47f4777c7ca701c1779e')
     rig.ctx.emit('session/event', child, childTurnStart())
+    // Mixed phases carry the breakdown; several members carry the group clock.
+    expect(rig.screen.paneLines(140)[1]).toBe('● Running 2 agents (1 done, 1 running) · 6s')
     // a1's child never starts: it drops at the boundary while a2 stays
     // live-running — the prune keeps the survivor's cached row nodes.
     rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
     const text = rig.screen.paneLines(140).join('\n')
     expect(text).toContain('running Map docs')
     expect(text).not.toContain('Survey')
+  })
+
+  it('omits the breakdown when every member shares one phase', async () => {
+    const rig = await boot([
+      turnStart(1),
+      stepStart(1, 1),
+      subagentCallEvent(1, 1, 'a1', 'subagent', 'Survey', 'survey', { time: T0 }),
+      subagentCallEvent(1, 1, 'a2', 'subagent', 'Map docs', 'map', { time: T0 }),
+    ])
+    expect(rig.screen.paneLines(140)[1]).toBe('● Running 2 agents · 6s')
   })
 
   it('keeps a live-running group across the turn boundary, then clears once done', async () => {
@@ -287,7 +301,7 @@ describe('mayfly-pane-agents plugin', () => {
     expect(text).toContain('running Survey')
     expect(text).toContain('1 tool')
     expect(text).toContain('6s')
-    expect(text).toContain('3200 tokens')
+    expect(text).toContain('3.1k tokens')
     expect(text).toContain('Using read')
   })
 
@@ -306,8 +320,15 @@ describe('mayfly-pane-agents plugin', () => {
       phase: 'thinking', reasoning: 'draft', text: '', outputProgress: undefined, chars: 2_048, updatedAt: T0 + 2_000,
     })
     const text = rig.screen.paneLines(140).join('\n')
-    expect(text).toContain('↓2k')
+    // ↓ is estimated output tokens (characters / 4), as on the activity row.
+    expect(text).toContain('↓512')
     expect(text).toContain('Thinking…')
+    rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', {
+      sessionId: '9f5c4086a0674b55b621c3eaf8b88c0e',
+      attemptId: 'a1', revision: 2, turn: 1, step: 0,
+      phase: 'thinking', reasoning: 'dr', text: '', outputProgress: undefined, chars: 3, updatedAt: T0 + 2_100,
+    })
+    expect(rig.screen.paneLines(140).join('\n')).not.toMatch(/↓\d/)
     rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', undefined)
     expect(rig.screen.paneLines(140).join('\n')).not.toMatch(/↓\d/)
     rig.facts.setChildDraft('elsewhere', {
@@ -337,14 +358,14 @@ describe('mayfly-pane-agents plugin', () => {
       phase: 'thinking' as const, reasoning: 'draft', text: '', outputProgress: undefined, chars, updatedAt: T0 + 2_000,
     })
     rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', draft(2_048))
-    expect(rig.screen.paneLines(140).join('\n')).toContain('↓2k')
+    expect(rig.screen.paneLines(140).join('\n')).toContain('↓512')
     const revision = entry().revision
     rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', draft(4_096))
     // Only volatile metrics changed — the republish waits for the tick.
-    expect(rig.screen.paneLines(140).join('\n')).toContain('↓2k')
+    expect(rig.screen.paneLines(140).join('\n')).toContain('↓512')
     expect(entry().revision).toBe(revision)
     vi.advanceTimersByTime(paneAgents.PANE_TICK_MS)
-    expect(rig.screen.paneLines(140).join('\n')).toContain('↓4k')
+    expect(rig.screen.paneLines(140).join('\n')).toContain('↓1k')
     expect(entry().revision).toBeGreaterThan(revision)
     await rig.dispose()
   })

@@ -443,6 +443,9 @@ describe('mayfly-pane-activity', () => {
     expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} bash · Tip: ${FIRST_TIP}`])
     emit2(ctx, agent, toolCallEvent(1, 1, 'c2', 'mcp__github__create_issue', '{}'))
     expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} github › create_issue · Tip: ${FIRST_TIP}`])
+    // A subagent spawn is not named: the agents pane above owns its live detail.
+    emit2(ctx, agent, toolCallEvent(1, 1, 'c3', 'subagent', '{}'))
+    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} · Tip: ${FIRST_TIP}`])
     await dispose()
   })
 

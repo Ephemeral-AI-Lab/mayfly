@@ -9,8 +9,8 @@
 | 模式 | 呈现 |
 | --- | --- |
 | waiting | 月亮 spinner + 轮换教学提示（loading 种类变化时换提示） |
-| tool | 月亮 spinner + 正在运行的工具名（MCP 工具显示为 `server › tool`） |
-| thinking | braille `thinking...` 行，附本阶段的 token 计数与速率——会话流中的思考块保持静态，这行是唯一的 spinner，回合中途 dock 不会收缩 |
+| tool | 月亮 spinner + 正在运行的工具名（MCP 工具显示为 `server › tool`）；派生 subagent 时不显示工具名，由 agents 面板展示 |
+| thinking | braille `thinking...` 行，附本阶段的 token 计数与速率——会话流中的思考块只显示已用时间，这行是唯一的 spinner 与吞吐读数，回合中途 dock 不会收缩 |
 | composing | braille `working...` 行（primary 色帧 + 随行提示）——没有输出光标，这行就是"正在写"的信号 |
 | idle | 一行占位（dock 边缘稳定） |
 | 对话框打开 | 整行隐藏（面板占据编辑器槽位时） |
@@ -45,7 +45,7 @@ Mayfly 只保留一个辅助会话槽。`/btw <question>` 创建临时旁路 Age
 
 ## 子代理分组面板（agents）
 
-agent 派生的**子代理组**（subagent group）运行时，组卡片钉在编辑器正上方——dock 的最后一行（kimi swarm-pane 语义）。spawn 类调用（`subagent` 与任意 `subagent_*` provider）计入会话流的过程标题与回合标题，并以单行成员出现在会话流里；本面板实时显示派生了谁、各自在干什么。已结束的组保留到下一个回合开始；回合结束时仍未得到结果的调用显示 `cancelled`，不会永远显示运行中。
+agent 派生的**子代理组**（subagent group）运行时，组卡片钉在编辑器正上方——dock 的最后一行（kimi swarm-pane 语义）。spawn 类调用（`subagent` 与任意 `subagent_*` provider）以单行成员出现在会话流里，在结束后的回合标题中计为 subagent，运行中的过程标题只显示 `正在协调子智能体`。只有本面板实时展示每个子代理：任务、阶段、模型、effort、估算输出（`↓`，字符数 / 4）、工具数、已用时间、token 与当前活动。汇总行只在阶段不一致时附阶段分布，只在多个子代理时附整组用时。已结束的组保留到下一个回合开始；回合结束时仍未得到结果的调用显示 `cancelled`，不会永远显示运行中。
 
 ## Workflow 面板
 
