@@ -16,7 +16,6 @@ export const ACTION_TOGGLE = 'mayfly.interaction.toggle'
 export const ACTION_INTERRUPT = 'mayfly.interaction.interrupt'
 export const ACTION_STEER = 'mayfly.interaction.steer'
 export const ACTION_BACKSPACE = 'mayfly.interaction.backspace'
-export const ACTION_DELETE = 'mayfly.interaction.delete'
 export const ACTION_SEGMENT_LEFT = 'mayfly.interaction.segment-left'
 export const ACTION_SEGMENT_RIGHT = 'mayfly.interaction.segment-right'
 export const ACTION_PREV_TAB = 'mayfly.interaction.prev-tab'
@@ -26,6 +25,7 @@ export const ACTION_SHIFT_TAB = 'mayfly.interaction.shift-tab'
 export const ACTION_NEWLINE = 'mayfly.interaction.newline'
 export const ACTION_CLEAR_SEARCH = 'mayfly.interaction.clear-search'
 export const ACTION_EXPAND = 'mayfly.interaction.expand'
+export const ACTION_RESET_FIELD = 'mayfly.interaction.reset-field'
 export const ACTION_EXTERNAL_EDITOR = 'mayfly.interaction.external-editor'
 export const ACTION_CYCLE_MODEL = 'mayfly.interaction.cycle-model'
 export const ACTION_TOGGLE_AGENT_VIEW = 'mayfly.interaction.toggle-agent-view'
@@ -41,6 +41,7 @@ const FALLBACK_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze
   [ACTION_HOME]: ['home'],
   [ACTION_END]: ['end'],
   [ACTION_TOGGLE]: ['space'],
+  [ACTION_INTERRUPT]: ['ctrl+c'],
   [ACTION_NEXT_CONTROL]: ['tab'],
   [ACTION_SHIFT_TAB]: ['shift+tab'],
   [ACTION_SEGMENT_LEFT]: ['left'],
@@ -50,6 +51,7 @@ const FALLBACK_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze
   [ACTION_NEWLINE]: ['alt+enter'],
   [ACTION_CLEAR_SEARCH]: ['ctrl+u'],
   [ACTION_EXPAND]: ['ctrl+e'],
+  [ACTION_RESET_FIELD]: ['delete'],
 })
 
 const DISPLAY_KEY_BY_ID: Readonly<Record<string, string>> = {
@@ -68,6 +70,15 @@ export function displayKey(key: string): string {
     if (part === 'meta') return 'Meta'
     return DISPLAY_KEY_BY_ID[part] ?? (part.length === 1 ? part.toUpperCase() : part)
   }).join('+')
+}
+
+/** A key id that inserts text rather than chording a modifier or naming a function key. */
+export function printableKey(key: string): boolean {
+  const normalized = key.toLowerCase()
+  if (normalized === 'space') return true
+  const parts = normalized.split('+')
+  const base = parts.at(-1)!
+  return base.length === 1 && parts.slice(0, -1).every(modifier => modifier === 'shift')
 }
 
 /** Resolve configured keys, falling back only for compiler use without a keymap fixture. */

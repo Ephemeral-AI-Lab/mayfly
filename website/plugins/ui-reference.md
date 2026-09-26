@@ -450,8 +450,9 @@ ui.surface({
 `chrome: 'overlay'` 只是视觉意图，不会创建 overlay；真正的浮层仍通过
 `api.overlays.open()` 打开。若 registration 的根节点就是这种 surface，core 会把
 它与 registration title 合并成一个外框。普通 overlay 和
-`presentation: 'editor'` 都遵守 `maxHeight`，未声明时最多占终端高度的三分之一；
-内容较少时按自然高度显示，不会为了填满上限而拉伸。
+`presentation: 'editor'` 都遵守 `maxHeight`。未声明时，普通 overlay 最多占终端高度的
+三分之一，编辑器形态最多占一半（至少 10 行）；内容较少时按自然高度显示，不会为了填满
+上限而拉伸。
 上面的截图渲染的就是这个节点：
 
 ```ts
@@ -601,6 +602,7 @@ ui.list({
   filter?: string
   filterable?: boolean
   tree?: boolean
+  numbered?: boolean | 'focus'
   minSelected?: number
   maxSelected?: number
   acceptActionId?: string
@@ -618,6 +620,9 @@ type MayflyListItem = {
   disabledReason?: string
   parentId?: string
   searchText?: string
+  segment?: MayflyListSegment
+  unavailableActions?: Readonly<Record<string, string>>
+  confirm?: string | MayflyConfirmation
 }
 ```
 
@@ -639,9 +644,20 @@ ui.list({
 })
 ```
 
-`filterable: true` 启用共享搜索；`filter` 只提供初始 query。Mayfly 在已给出的 items
-上维护匹配和焦点，不触发网络读取。`tree: true` 配合 `parentId` 提供共享展开状态。
-大型 items 只校验和绘制当前窗口。items 为空时渲染 `empty`。
+`filterable: true` 启用共享搜索；`filter` 只提供初始 query。输入字符或 `/` 开始搜索，
+Escape 结束搜索并保留 query，Ctrl+U 清空。Mayfly 在已给出的 items 上维护匹配和焦点，
+不触发网络读取。`tree: true` 配合 `parentId` 提供共享展开状态（Space 或 Right/Left
+展开、折叠分支）。大型 items 只校验和绘制当前窗口。items 为空时渲染 `empty`。
+
+disabled 行永远不会获得光标，移动时直接跳过；没有 `detail` 的 disabled 行会在该位置
+显示 `disabledReason`。`numbered: true` 为前九个可见行加上 `1.`–`9.` 前缀，数字键直接
+选择该行；编号按可见顺序计算，列表滚动时保持不变。`numbered: 'focus'` 显示同样的编号，
+但数字只移动光标，适合需要显式 Enter 才接受的关卡。
+
+`unavailableActions` 把 action id 映射到“当本行是该 action（通过其 `selections`）所指向
+的选择时，该 action 为何不能执行”的原因。此时 action 以 disabled 呈现并显示原因，
+Mayfly 会在任何确认之前拒绝它，用户不会确认一个注定失败的操作。行上的 `confirm`
+会在接受这一行之前弹出共享 decision（见 `actions`）；选 No 时选择保持不变。
 
 multiple 模式配合 `group`、`badge`、`detail` 与 `disabled` 可以表达更丰富的清单：
 
@@ -678,7 +694,10 @@ ui.form({
   id: string
   fields: readonly MayflyFormField[]
   submitActionId?: string
+  submitLabel?: string
   cancelActionId?: string
+  cancelLabel?: string
+  enterSubmits?: string
 })
 ```
 
@@ -709,8 +728,10 @@ ui.form({
     ] },
     { kind: 'toggle', id: 'updates', label: 'Auto-update', value: true },
   ],
-  submitActionId: 'Create profile',
-  cancelActionId: 'Cancel',
+  submitActionId: 'create-profile',
+  submitLabel: 'Create profile',
+  cancelActionId: 'cancel',
+  cancelLabel: 'Cancel',
 })
 ```
 
@@ -718,7 +739,9 @@ Mayfly frontend instance 保留文本 draft，并向 `onEvent.observe` 发出带
 revision 的 `value-change`，用于可选的异步校验；插件不应把每次输入回声为 snapshot。
 权威 data snapshot 改变时，model 协调未修改值、草稿和冲突。文本字段聚焦后保持
 导航态，直接输入或 Enter 才进入编辑；input 编辑态的 Enter 进入下一组，textarea
-的 Enter 或 Alt+Enter 插入换行。
+的 Enter 或 Alt+Enter 插入换行。设置 `enterSubmits: actionId` 后，表单任一字段中的
+Enter 都会执行该 action（textarea 仍用 Alt+Enter 换行）。Escape 结束编辑并保留草稿，
+再按一次 Escape 才离开 surface。number 字段会在值后显示 `unit`。
 
 下面的 form 聚焦 Name 字段并键入 `Ada Lovelace`——截图中
 的草稿文本和光标就是这个交互序列留下的状态：
@@ -734,20 +757,23 @@ ui.form({
     { kind: 'input', id: 'name', label: 'Name', value: '' },
     { kind: 'toggle', id: 'updates', label: 'Auto-update', value: true },
   ],
-  submitActionId: 'Create profile',
+  submitActionId: 'create-profile',
+  submitLabel: 'Create profile',
 })
 ```
 
-Select 的 Enter 打开共享 Choice picker；Left/Right 移动语义焦点，Enter 接受单选，
-Space 切换多选。Escape 放弃 picker 并停在当前字段；Tab 同样放弃尚未确认的 picker
-调整，但继续移到下一语义组。picker draft 在 renderer 重建期间保留。
+聚焦的 select 用 Left/Right 直接切换取值并跳过 disabled 选项（未设值时 Right 选第一项、
+Left 选最后一项）；Up/Down 永远移动到相邻字段。Enter 打开 select 的共享选项列表，
+multiselect 用 Enter 或 Space 打开。列表内方向键移动、Space 切换多选项、Enter 应用。
+Escape 放弃打开的列表并停在当前字段；Tab 应用高亮选项（或已勾选的集合）并继续前进。
+打开的列表在 renderer 重建期间保留。可切换时，聚焦的 select 把取值放在切换标记之间，
+例如 `Theme: ‹ Dark ›`。
 
-下面的 form 在 Theme 字段按下 Enter 进入调整态，再按一次 Right 把候选切到
-Light——`‹ Light ›` 就是调整态的呈现：
+下面的 form 在 Theme 字段按下 Enter 打开选项列表，再按一次 Right 把高亮移到 Light：
 
-![`form` 的 select 调整态](/shots/form-select.svg)
+![`form` 的 select 选项列表](/shots/form-select.svg)
 
-*调整态：`‹ Light ›` 是共享 picker 的语义焦点，Enter 后写入 field draft（宽度 64）。*
+*打开的选项列表：`>` 标记高亮项，`[x]` 标记当前值；Enter 把高亮项写入 field draft（宽度 64）。*
 
 ```ts
 ui.form({
@@ -759,13 +785,14 @@ ui.form({
       { id: 'light', label: 'Light' },
     ] },
   ],
-  submitActionId: 'Create profile',
+  submitActionId: 'create-profile',
+  submitLabel: 'Create profile',
 })
 ```
 
 `error` 在字段下方显示校验信息；`disabled` 字段不进入焦点导航，但仍保留在
 提交表单中。`required`、长度、数值与选择约束在 action 开始前统一校验；
-`origin` 与 `resetValue` 产生共享 override/reset 工具：
+下面的 form 同时展示这两种状态：
 
 ![`form` 的 error 与 disabled 状态](/shots/form-validation.svg)
 
@@ -778,11 +805,19 @@ ui.form({
     { kind: 'input', id: 'name', label: 'Name', value: '', error: 'Name is required' },
     { kind: 'input', id: 'email', label: 'Email', value: 'ada@example.com', disabled: true },
   ],
-  submitActionId: 'Create profile',
+  submitActionId: 'create-profile',
+  submitLabel: 'Create profile',
 })
 ```
 
-`submitActionId` 增加提交 control。提交使用声明 action 的 `submit` 地址聚合一个或
+`origin: 'inherited' | 'explicit'` 在标签后标注 `(继承)` 或 `(显式覆盖)`；修改继承值即成为
+显式覆盖。`resetValue` 让已修改或显式覆盖的字段可以重置：在该字段上按 Delete 恢复为
+`resetValue`（字段带 `origin` 时即继承值），提交时该字段报告 `change: 'reset'`。只有重置会
+产生变化时提示行才显示 Delete；表单不再渲染单独的覆盖或重置按钮。草稿期间权威值发生变化的
+字段，需先选择 **使用当前值** 或 **保留我的修改** 才能保存。
+
+`submitActionId` 增加提交 control，按钮文字为 `submitLabel`（省略时为本地化的
+“提交”），id 不会显示。提交使用声明 action 的 `submit` 地址聚合一个或
 多个页面中的表单，并锁定这次 boundary：
 
 ```ts
@@ -801,7 +836,9 @@ ui.form({
 }
 ```
 
-`cancelActionId` 增加共享关闭 control；dirty form 会先进入默认 No 的丢弃确认。
+`cancelActionId` 增加共享关闭 control，按钮文字为 `cancelLabel`（省略时为本地化的
+“取消”）；dirty form 会先进入默认 No 的丢弃确认。关闭类 action 从不返回上一页，
+返回由 Escape 负责。
 
 ### `actions`
 
@@ -819,21 +856,41 @@ ui.actions({
     disabled?: boolean
     disabledReason?: string
     busy?: boolean
-    confirm?: string
+    confirm?: string | MayflyConfirmation
     submit?: readonly MayflyFormAddress[]
     read?: readonly MayflyFormAddress[]
     selections?: readonly MayflySelectionAddress[]
     defaultFocus?: boolean
     dismiss?: boolean
     navigate?: MayflyPagePath
+    key?: string
   }[]
 })
+
+type MayflyConfirmation = {
+  title: string
+  detail?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  tone?: 'danger'
+}
 ```
 
 激活可用 item 时向 `onEvent.action` 发出包含 `actionId`、`controlId` 与 `pagePath`
 的 `activate`。`disabled` 和
-`busy` item 不可激活；`busy` 同时表达进行中呈现。带 `confirm` 的 action 需要在
-共享 default-No decision 中明确选择 Yes，Escape/No 返回原 surface。`intent` 只表达
+`busy` item 不可激活；`busy` 同时表达进行中呈现，并让光标停留在运行中的 action 上。
+disabled item 会在标签旁显示 `disabledReason`。带 `confirm` 的 action 需要在共享
+default-No decision 中明确选择 Yes，Escape、Ctrl+C 或 No 返回原 surface。结构化的
+`confirm` 可以附加一句说明后果的 `detail`、自定义 `confirmLabel`/`cancelLabel` 按钮文字
+以及 `tone: 'danger'`；按钮顺序始终是先 No（默认聚焦）后 Yes。请使用它，而不要自行
+绘制 Yes/No overlay。
+
+`key` 声明 surface 聚焦时触发该 action 的快捷键。它必须是 key id（`ctrl+r`、
+`alt+enter`、`f5`、`q`）；共享导航键（Enter、Escape、Tab、Shift+Tab、Space、方向键、
+Page/Home/End、Alt+Left/Right、Backspace、Ctrl+C、Ctrl+E、Ctrl+U）被保留；同一页
+内每个键只能绑定一次；在含可筛选列表的 surface 上，纯字符键会被拒绝，因为它会吞掉
+筛选输入。文本字段聚焦时纯字符快捷键不会触发，输入会直接开始编辑。列表筛选进行中，
+组合键快捷键仍然有效。`intent` 只表达
 语义优先级，具体样式由主题决定。外层 `actions.id` 标识这组 action；事件的
 `controlId` 使用被激活 item 的 `id`。两张截图渲染的都是这个节点：
 
@@ -874,25 +931,26 @@ ui.actions({
 
 ## 焦点与上下文提示
 
-TUI 会直接从 canonical control 角色推导操作，插件不应在
-surface footer 里重复写通用按键教学：
+TUI 通过同一套键位语法从 canonical control 角色推导操作，并用同一套语法生成提示行，
+插件不应在 surface footer 里重复写通用按键教学：
 
-- 焦点按外层 tabs → 内层 tabs → 内容语义组 → 编辑态逐层下钻。
-- tab 条用不循环的 `←` / `→` 移动，`Enter` 下钻；`Tab` / `Shift-Tab`
-  在控制组间移动——在 tab 条上会下钻到当前 tab 的内容，在内容层则循环
-  语义组并记住组内焦点。
-- 内容方向移动不循环；disabled item 不可聚焦。single list 用 `Enter`
-  激活，multiple list 用 `Space` 切换、`Enter` 确认，action 用 `Enter` 或 `Space`。
-- text/select 进入编辑或调整态后用 `Enter` 确认，非法值保持原字段；`Tab` 保留文本
-  draft，但放弃尚未确认的 select 调整并移到下一语义组；Escape 按编辑态 → 内容 →
-  内层 tabs → 外层 tabs → 关闭逐层返回。
-- 待确认 action 的提示切换为 `Enter confirm · Esc cancel`；只读 scroll 可聚焦，
-  支持方向键、Page、Home 与 End。
+- `Tab` / `Shift-Tab` 在控制组间移动（在 tab 条上会下钻到当前页内容），记住组内
+  焦点，并顺路提交文本与打开的选择器；在 form 或 action 行内逐个控件移动。
+- `↑` / `↓` 在行与字段间移动，永远不改值。`←` / `→` 沿 action 行和 tab 条移动、调整
+  聚焦的 select 或行内 segment、展开或折叠树节点。`Alt+←` / `Alt+→` 可在任意位置切换
+  tab；向导向前切换时会校验离开的步骤。
+- 移动不循环，disabled item 不可聚焦。single list 用 `Enter` 激活，multiple list
+  用 `Space` 切换、`Enter` 确认，action 用 `Enter` 或 `Space`。
+- Escape 每次只退一层，所有 surface 一致：先取消打开的选择器，再结束文本编辑
+  （草稿保留），再结束进行中的搜索（query 保留），有 `backId` 的页面返回上一页，
+  最后关闭 surface。tab 条不是退出途中的一站。Ctrl+C 请求同样的关闭。
+- 待确认时提示切换为 `Enter confirm · Esc cancel`；只读 scroll 可聚焦，支持方向键、
+  Page、Home 与 End，并可用 Ctrl+E 展开到整个框。
 
-该行只在当前 plugin pane 获得焦点或 capturing overlay 打开时显示。
-可关闭 surface 才会提示 Escape；被动 pane 和 non-capturing overlay 不会显示伪操作。
-最多显示三个语义片段，窄屏先缩成完整按键 token，再整段隐藏，不会截断半条指令。
-局部计数、进度、风险和业务状态仍可放在 footer。
+该行只在当前 plugin pane 获得焦点或 capturing overlay 打开时显示，并且只列出当前状态下
+有效的键。只要 Escape 有作用就一定显示；被动 pane 和 non-capturing overlay 不会显示伪操作。
+80 列以下最多显示三个片段、80 列起最多四个，窄屏先缩成完整按键 token，再整段隐藏，
+不会截断半条指令。局部计数、进度、风险和业务状态仍可放在 footer。
 
 ## 反馈与辅助节点
 
@@ -908,18 +966,21 @@ ui.loader({
   variant?: 'braille' | 'tide'
   elapsedMs?: number
   cancelActionId?: string
+  cancelLabel?: string
 })
 ```
 
 `variant` 默认 `braille`。`elapsedMs` 是非负毫秒提示；动画计时仍由 owner 的
 生命周期管理，不应由 `render()` 启动 timer。提供 `cancelActionId` 时增加一个
-control，并发出 `activate` 事件。上面的截图渲染的就是这个节点：
+control，按钮文字为 `cancelLabel`（省略时为本地化的“取消”），并发出 `activate` 事件。
+上面的截图渲染的就是这个节点：
 
 ```ts
 ui.loader({
   message: 'Waiting for model',
   elapsedMs: 1200,
-  cancelActionId: 'Stop',
+  cancelActionId: 'stop',
+  cancelLabel: 'Stop',
 })
 ```
 

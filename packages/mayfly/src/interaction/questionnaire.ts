@@ -21,10 +21,11 @@ export function questionnaireView(questions: readonly AskUserQuestionItem[], t: 
     ...questions.map((question, index) => {
       const last = index === questions.length - 1
       const options = (question.options ?? []).map((option, optionIndex) => ({ id: String(optionIndex), label: option.label, ...(option.description === undefined ? {} : { detail: option.description }) }))
+      /* Wizard tabs and Alt+←→ switch steps with the same validation as Next; the one
+         Submit lives with Cancel below, and nested accept/Enter bindings resolve to it. */
       const navigation = [
-        ...index === 0 ? [] : [{ id: 'previous', label: t('Back'), key: 'left', navigate: pathOf(questions, questions[index - 1]!.id) }],
-        ...last ? [] : [{ id: 'next', label: t('Next'), key: 'right', read: [address(questions, question.id)], navigate: pathOf(questions, questions[index + 1]!.id) }],
-        ...last && questions.length > 1 ? [{ id: 'submit-answers', label: t('Submit answers'), intent: 'primary' as const, submit, ...selections.length === 0 ? {} : { selections } }] : [],
+        ...index === 0 ? [] : [{ id: 'previous', label: t('Back'), navigate: pathOf(questions, questions[index - 1]!.id) }],
+        ...last ? [] : [{ id: 'next', label: t('Next'), intent: 'primary' as const, read: [address(questions, question.id)], navigate: pathOf(questions, questions[index + 1]!.id) }],
       ]
       return ui.child(ui.stack.column([
         ui.text(question.question, { tone: 'accent' }),
@@ -37,7 +38,7 @@ export function questionnaireView(questions: readonly AskUserQuestionItem[], t: 
       ]), questions.length === 1 ? {} : { tab: { controlId: STEPS, itemId: question.id } })
     }),
     ui.actions({ id: 'question-actions', items: [
-      { id: 'submit-answers', label: t('Submit answers'), submit, ...selections.length === 0 ? {} : { selections } },
+      { id: 'submit-answers', label: t('Submit answers'), intent: 'primary', submit, ...selections.length === 0 ? {} : { selections } },
       { id: 'cancel', label: t('Cancel'), dismiss: true },
     ] }),
   ])

@@ -1,8 +1,13 @@
 # Mayfly terminal UX optimization design: aligning every surface under the unified interaction model
 
-- Status: mostly implemented — contract increments M1–M6 and the §7 command
-  changes shipped (feat/ux-interaction, merged `a1ca2d5`); M7 and the listed
-  polish items remain open. Sections that describe "current" behavior were
+> Superseded by [docs/interaction-model.md](../interaction-model.md); historical.
+> This record does not describe current behavior.
+
+- Status: historical — contract increments M1–M6 and the §7 command changes
+  shipped (feat/ux-interaction, merged `a1ca2d5`); M7 later shipped as a
+  validation rule (printable accelerators are rejected on pages with a
+  filterable list), and the key grammar was replaced by
+  `docs/interaction-model.md`. Sections that describe "current" behavior were
   written against baseline `867082e`; the Implementation status notes call
   out what has since landed.
 - Baseline: `867082e` (main at design time)

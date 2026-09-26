@@ -239,7 +239,7 @@ it('yields scroll keys to the content region only for content-scroll overlays', 
   } finally { await bench.dispose() }
 })
 
-it('coalesces root overlay chrome and bounds editor presentations by the overlay height', async () => {
+it('coalesces root overlay chrome and bounds editor presentations by half the terminal with a ten-row floor', async () => {
   const bench = await fixture(80, 24)
   try {
     const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
@@ -253,15 +253,25 @@ it('coalesces root overlay chrome and bounds editor presentations by the overlay
     })
     await flush()
     const rows = slot.component.render(80).map(stripTerminalSequences)
-    expect(rows).toHaveLength(Math.floor(24 / 3))
+    expect(rows).toHaveLength(12)
     expect(rows.filter(row => row.startsWith('╭'))).toHaveLength(1)
     expect(rows[0]).toMatch(/^╭ Command panel/u)
     expect(rows.join('\n')).toContain('Items')
     expect(rows.join('\n')).toContain('Close')
     expect(rows.at(-1)).toMatch(/^╰/u)
     bench.terminal.resize(80, 30)
+    expect(slot.component.render(80)).toHaveLength(15)
+    bench.terminal.resize(80, 16)
     expect(slot.component.render(80)).toHaveLength(10)
     handle.close()
+    await flush()
+    const declared = bench.open({
+      id: 'declared-editor', title: 'Declared', presentation: 'editor', capturing: true, maxHeight: 6,
+      render: () => ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: Array.from({ length: 40 }, (_, index) => ({ id: String(index), label: `row ${String(index)}` })) }),
+    })
+    await flush()
+    expect(slot.component.render(80)).toHaveLength(6)
+    declared.close()
     slot.dispose()
   } finally { await bench.dispose() }
 })

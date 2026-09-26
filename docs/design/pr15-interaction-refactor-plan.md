@@ -1,5 +1,8 @@
 # PR #15 interaction refactor detailed implementation plan
 
+> Superseded by [docs/interaction-model.md](../interaction-model.md); historical.
+> This record does not describe current behavior.
+
 Status: executed — the refactor merged into main (`5fbbdc8`, 2026-09-08) and
 the candidate worktree was retired. This document is kept as the design
 record of the shipped interaction model; §3–§8 describe the protocol and

@@ -398,7 +398,7 @@ describe('mayfly-commands plugin', () => {
     // The command roster grew past the first window; scroll down to the
     // Keys rows the window no longer shows on the first paint.
     for (let i = 0; i < 5; i += 1) panel.handleInput(KEY.down)
-    expect(panel.render(80).some(row => row.includes('enter') && row.includes('Submit input'))).toBe(true)
+    expect(panel.render(80).some(row => row.includes('Enter') && row.includes('Submit input'))).toBe(true)
     panel.invalidate()
     panel.handleInput(KEY.escape)
     await flushCommands()
@@ -438,11 +438,17 @@ describe('mayfly-commands plugin', () => {
     // Downs clamp at the scroll floor; use a generous count so additions to
     // the command/key roster do not hide the final binding.
     const panel = overlay(ctx, 'mayfly.help')
-    panel.render(80)
-    for (let i = 0; i < 50; i += 1) panel.handleInput(KEY.down)
-    const rows = panel.render(80)
-    expect(rows.join('\n')).toContain('f9')
-    expect(rows.join('\n')).toContain('spec.custom')
+    const seen = new Set(panel.render(80))
+    for (let i = 0; i < 80; i += 1) {
+      panel.handleInput(KEY.down)
+      for (const row of panel.render(80)) seen.add(row)
+    }
+    const rows = [...seen].join('\n')
+    expect(rows).toContain('F9')
+    expect(rows).toContain('spec.custom')
+    // The shared panel grammar follows the registered bindings.
+    expect(rows).toContain('Panels and pickers')
+    expect(rows).toContain('Leave the innermost layer')
     unregister?.()
     panel.handleInput(KEY.escape)
   })

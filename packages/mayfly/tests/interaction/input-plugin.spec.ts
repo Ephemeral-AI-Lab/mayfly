@@ -1171,11 +1171,13 @@ describe('mayfly-input plugin', () => {
       expect(ctx.mayflyRequests.stopPending()).toBe(true)
     })
 
-    it('clears the buffer on Escape when text is present and the agent is idle', async () => {
-      const { editor, cancel } = await mount()
+    it('clears the buffer on Escape when text is present and the agent is idle, keeping it one Up away', async () => {
+      const { editor, cancel, hint } = await mount()
       type(editor, 'draft')
       editor.handleInput(KEY.escape)
       expect(editor.getText()).toBe('')
+      expect(editor.getHistory()[0]).toBe('draft')
+      expect(hint.render(80).join('')).toContain('draft cleared · ↑ restores')
       expect(cancel).not.toHaveBeenCalled()
     })
 

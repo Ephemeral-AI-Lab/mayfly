@@ -54,6 +54,9 @@ describe('native approval UI', () => {
     renderer.input('too risky')
     expect(model.form({ pagePath: feedback, formId: 'feedback-form' })!.fields.reason!.value).toBe('too risky')
     renderer.input('\x1b')
+    expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('feedback')
+    expect(renderer.runtime.state.editingKey).toBeUndefined()
+    renderer.input('\x1b')
     expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('decision')
     expect(model.decisionNode).toBeUndefined()
     renderer.runtime.dispose()
@@ -144,13 +147,17 @@ describe('native approval UI', () => {
     expect(old.disposed).toBe(true)
   })
 
-  it('delegates other Agents and clears allowances when the exact selection changes', async () => {
+  it('delegates other Agents and keeps session allowances across view switches until the Agent is disposed', async () => {
     const bench = await setup()
     await expect(bench.approve({ agent: bench.other })).resolves.toBe('unavailable')
     const first = bench.approve()
     bench.model('mayfly.approval.').invoke('allow-session', decision)
     await first
     bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await expect(bench.approve()).resolves.toBe('allowed-once')
+    bench.ctx.emit('agent/disposed' as never, { agent: bench.agent } as never)
+    // The fixture keeps the disposed object registered, so it can be displayed again.
     bench.ctx.mayflyCurrentAgent.select(bench.agent)
     const second = bench.approve()
     bench.model('mayfly.approval.').requestClose()

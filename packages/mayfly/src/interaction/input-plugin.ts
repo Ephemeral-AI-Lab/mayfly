@@ -480,11 +480,16 @@ export function apply(ctx: Context): void {
   }
 
   /** Clear the current draft without changing request state. */
+  /** Clear the current draft; the cleared text stays one Up away in history. */
   function clearDraft(): boolean {
-    if (editor.getText().length === 0) return false
+    const text = editor.getText()
+    if (text.length === 0) return false
+    editor.addToHistory(text)
+    draft.stashHistory(editor.getHistory())
     editor.setText('')
     currentText = ''
     draft.clearDraft()
+    showFeedback('draft', 'draft cleared · ↑ restores', 'info')
     refreshHint()
     screen.requestRender()
     return true

@@ -215,9 +215,14 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     }
     const model = ctx.mayflyUiInteraction.get('overlay', delta.entry.id)
     if (model === undefined || mounted.has(delta.entry.id)) return
+    // The surface renderer recompiles on every model revision; mirror that here.
     let compiled = renderRequest(model)
+    let compiledRevision = model.revision
     const component: MayflyComponent = {
-      render: width => { if (compiled.runtime.interaction?.revision !== model.revision) compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime); return compiled.component.render(width) },
+      render: width => {
+        if (compiledRevision !== model.revision) { compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime); compiledRevision = model.revision }
+        return compiled.component.render(width)
+      },
       handleInput: data => compiled.input(data),
       invalidate: () => compiled.component.invalidate(),
     }
@@ -591,10 +596,10 @@ describe('mayfly-agents-command', () => {
     await execute(rig)
     const model = browser(rig)
     model.invoke('stop')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'error', message: 'subagent once is not continuable' }),
-    ])))
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', message: 'Only continuable subagents can be stopped' }),
+    ]))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -610,10 +615,10 @@ describe('mayfly-agents-command', () => {
     await execute(rig)
     const model = browser(rig)
     model.invoke('stop')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'error', message: 'subagent branch owns 1 live descendant; stop its live descendants first' }),
-    ])))
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', message: 'Stop its live descendants first' }),
+    ]))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -625,10 +630,10 @@ describe('mayfly-agents-command', () => {
     await execute(rig)
     const model = browser(rig)
     model.invoke('stop')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'error', message: 'subagent cold is not live; there is no running Agent to stop' }),
-    ])))
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', message: 'Not live; there is nothing to stop' }),
+    ]))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })

@@ -4,6 +4,7 @@
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyFieldError, MayflyFieldValue, MayflyFormAddress, MayflyFormField, MayflyFormNode, MayflySubmittedField, MayflySubmittedForm } from '@ephemeral-ai/mayfly-ui'
 import { createChoiceState, reconcileChoice, reduceChoice, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
+import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
 
 export interface UiFieldState {
   readonly definition: MayflyFormField
@@ -234,42 +235,42 @@ export function reduceForm(state: UiFormState, intent: UiFormIntent): UiFormStat
   return changeField(state, intent.fieldId, { ...clean, value, change, revision: field.revision + 1 })
 }
 
-function fieldError(field: UiFieldState): string | undefined {
+function fieldError(field: UiFieldState, t: UiTranslate): string | undefined {
   const definition = field.definition
   if (definition.disabled === true) return undefined
-  if (field.conflict) return 'Resolve the changed value before saving'
+  if (field.conflict) return t('Resolve the changed value before saving')
   const value = field.value
   if (definition.required === true && (value === '' || value === null || (Array.isArray(value) && value.length === 0))) {
-    return 'A value is required'
+    return t('A value is required')
   }
   if (definition.kind === 'number') {
     if (value === '') return undefined
     const number = Number(value)
-    if (!Number.isFinite(number)) return 'Enter a finite number'
-    if (definition.min !== undefined && number < definition.min) return `Minimum: ${definition.min}`
-    if (definition.max !== undefined && number > definition.max) return `Maximum: ${definition.max}`
+    if (!Number.isFinite(number)) return t('Enter a finite number')
+    if (definition.min !== undefined && number < definition.min) return t('Minimum: {value}', { value: definition.min })
+    if (definition.max !== undefined && number > definition.max) return t('Maximum: {value}', { value: definition.max })
     if (definition.step !== undefined) {
       const steps = (number - (definition.min ?? 0)) / definition.step
-      if (Math.abs(steps - Math.round(steps)) > 1e-9 * Math.max(1, Math.abs(steps))) return `Step: ${definition.step}`
+      if (Math.abs(steps - Math.round(steps)) > 1e-9 * Math.max(1, Math.abs(steps))) return t('Step: {value}', { value: definition.step })
     }
   } else if (definition.kind === 'select' || definition.kind === 'multiselect') {
     const selected = Array.isArray(value) ? value : value === null ? [] : [String(value)]
-    if (selected.some(id => !definition.options.some(option => option.id === id && option.disabled !== true))) return 'A selected option is unavailable'
+    if (selected.some(id => !definition.options.some(option => option.id === id && option.disabled !== true))) return t('A selected option is unavailable')
     if (definition.kind === 'multiselect') {
-      if (selected.length < (definition.minSelected ?? 0)) return `Select at least ${definition.minSelected} options`
-      if (definition.maxSelected !== undefined && selected.length > definition.maxSelected) return `Select at most ${definition.maxSelected} options`
+      if (selected.length < (definition.minSelected ?? 0)) return t('Select at least {count} options', { count: definition.minSelected! })
+      if (definition.maxSelected !== undefined && selected.length > definition.maxSelected) return t('Select at most {count} options', { count: definition.maxSelected })
     }
   } else if (definition.kind !== 'toggle') {
     const length = Array.from(String(value)).length
-    if (definition.minLength !== undefined && length < definition.minLength) return `Minimum length: ${definition.minLength}`
-    if (definition.maxLength !== undefined && length > definition.maxLength) return `Maximum length: ${definition.maxLength}`
+    if (definition.minLength !== undefined && length < definition.minLength) return t('Minimum length: {value}', { value: definition.minLength })
+    if (definition.maxLength !== undefined && length > definition.maxLength) return t('Maximum length: {value}', { value: definition.maxLength })
   }
   return field.error
 }
 
-export function validateForm(state: UiFormState): readonly MayflyFieldError[] {
+export function validateForm(state: UiFormState, t: UiTranslate = untranslated): readonly MayflyFieldError[] {
   return freezeWire(Object.entries(state.fields).flatMap(([fieldId, field]) => {
-    const message = fieldError(field)
+    const message = fieldError(field, t)
     return message === undefined ? [] : [{ ...state.address, fieldId, message }]
   }))
 }

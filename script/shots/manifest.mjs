@@ -316,8 +316,10 @@ export const SCENARIOS = [
         ] },
         { kind: 'toggle', id: 'updates', label: 'Auto-update', value: true },
       ],
-      submitActionId: 'Create profile',
-      cancelActionId: 'Cancel',
+      submitActionId: 'create-profile',
+      submitLabel: 'Create profile',
+      cancelActionId: 'cancel',
+      cancelLabel: 'Cancel',
     }),
   },
   {
@@ -331,15 +333,16 @@ export const SCENARIOS = [
         { kind: 'input', id: 'name', label: 'Name', value: '' },
         { kind: 'toggle', id: 'updates', label: 'Auto-update', value: true },
       ],
-      submitActionId: 'Create profile',
+      submitActionId: 'create-profile',
+      submitLabel: 'Create profile',
     }),
     drive: focus => { focus.handleInput?.('Ada Lovelace') },
   },
   {
     id: 'form-select',
-    // Doc example, verbatim; drive moves to the select field, enters the
-    // documented `‹ value ›` adjustment state with Enter, and steps Right.
-    title: 'form — select adjustment state',
+    // Doc example, verbatim; drive moves to the select field, opens its
+    // option list with Enter, and moves the highlight Right.
+    title: 'form — select option list',
     width: 64,
     build: ui => ui.form({
       id: 'profile-form',
@@ -350,7 +353,8 @@ export const SCENARIOS = [
           { id: 'light', label: 'Light' },
         ] },
       ],
-      submitActionId: 'Create profile',
+      submitActionId: 'create-profile',
+      submitLabel: 'Create profile',
     }),
     drive: focus => {
       focus.handleInput?.('\x1b[B')
@@ -370,7 +374,8 @@ export const SCENARIOS = [
         { kind: 'input', id: 'name', label: 'Name', value: '', error: 'Name is required' },
         { kind: 'input', id: 'email', label: 'Email', value: 'ada@example.com', disabled: true },
       ],
-      submitActionId: 'Create profile',
+      submitActionId: 'create-profile',
+      submitLabel: 'Create profile',
     }),
   },
   {
@@ -431,7 +436,8 @@ export const SCENARIOS = [
     build: ui => ui.loader({
       message: 'Waiting for model',
       elapsedMs: 1200,
-      cancelActionId: 'Stop',
+      cancelActionId: 'stop',
+      cancelLabel: 'Stop',
     }),
   },
   {

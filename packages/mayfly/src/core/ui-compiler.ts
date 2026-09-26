@@ -7,6 +7,7 @@
  */
 
 import type {
+  MayflyActionItem,
   MayflyChartNode,
   MayflyDiagramNode,
   MayflyFormField,
@@ -46,7 +47,7 @@ import {
   type PatternFocus,
 } from './ui-patterns.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
-import { fieldActions, type UiFieldAction } from './ui-interaction-field-actions.ts'
+import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import {
   deferredUiNodeMayHaveControls,
   isDeferredUiNode,
@@ -68,12 +69,12 @@ import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
+import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
+import { grammarHints, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
 import {
-  ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_EXPAND, ACTION_HOME, ACTION_MOVE_DOWN, ACTION_MOVE_UP,
-  ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP, ACTION_PREV_TAB,
-  ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey,
+  displayKey,
   keyActionKeys,
   matchesKeyAction,
 } from './key-actions.ts'
@@ -84,23 +85,17 @@ const LAYOUT_VALUE_MAX = 1_000_000
 const INACTIVE_FIELD_CACHE_LIMIT = 64
 const PASSIVE_EVENT_SINK = Function.prototype as (event: MayflyUiEvent) => void
 
-/** Dispatch shared scroll keys to a scroll view; returns whether the input was consumed. */
-function scrollViewInput(scroll: ScrollControl, keymap: MayflyKeymap | undefined, data: string): boolean {
-  if (matchesKeyAction(keymap, data, ACTION_MOVE_UP)) scroll.scrollBy(-1)
-  else if (matchesKeyAction(keymap, data, ACTION_MOVE_DOWN)) scroll.scrollBy(1)
-  else if (matchesKeyAction(keymap, data, ACTION_PAGE_UP)) scroll.scrollBy(-Math.max(1, scroll.viewportHeight))
-  else if (matchesKeyAction(keymap, data, ACTION_PAGE_DOWN)) scroll.scrollBy(Math.max(1, scroll.viewportHeight))
-  else if (matchesKeyAction(keymap, data, ACTION_HOME)) scroll.scrollToStart()
-  else if (matchesKeyAction(keymap, data, ACTION_END)) scroll.scrollToEnd()
-  else return false
-  return true
+/** Apply one semantic scroll movement to a scroll view. */
+function scrollBy(scroll: ScrollControl, movement: ListMovement): void {
+  switch (movement) {
+    case 'up': scroll.scrollBy(-1); return
+    case 'down': scroll.scrollBy(1); return
+    case 'page-up': scroll.scrollBy(-Math.max(1, scroll.viewportHeight)); return
+    case 'page-down': scroll.scrollBy(Math.max(1, scroll.viewportHeight)); return
+    case 'home': scroll.scrollToStart(); return
+    case 'end': scroll.scrollToEnd(); return
+  }
 }
-
-/** Semantic actions a focused filterable list routes; their bound keys must not start a text filter. */
-const LIST_FILTER_RESERVED_ACTIONS = [
-  ACTION_SUBMIT, ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_MOVE_UP, ACTION_MOVE_DOWN,
-  ACTION_PAGE_UP, ACTION_PAGE_DOWN, ACTION_HOME, ACTION_END, ACTION_TOGGLE, ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB,
-] as const
 
 /** Pane-relative dimensions used by responsive child conditions. */
 export interface MayflyUiViewport {
@@ -124,7 +119,7 @@ export interface MayflyUiCompilerOptions {
     readonly enabled?: boolean
     readonly suppressAuto?: boolean
     readonly focusWithoutControls?: boolean
-    readonly translate?: (key: string) => string
+    readonly translate?: (key: string, values?: UiTranslateValues) => string
     readonly extra?: () => readonly {
       readonly id: string
       readonly keys: string
@@ -502,9 +497,11 @@ function editorFieldComponent(field: TextField, key: string, state: FocusState, 
         const contentWidth = stacked ? available : available - labelWidth
         const placeholder = 'placeholder' in field ? field.placeholder : undefined
         const emptyPlaceholder = editor.getExpandedText().length === 0 && placeholder !== undefined
-        const body = emptyPlaceholder && !editor.focused
+        const content = emptyPlaceholder && !editor.focused
           ? [options.colors.textMuted(placeholder!)]
           : editor.renderContent(contentWidth, field.kind === 'secret')
+        const unit = field.kind === 'number' && field.unit !== undefined ? options.colors.textMuted(` ${field.unit}`) : ''
+        const body = content.map((row, index) => index === 0 ? `${row}${unit}` : row)
         const indent = ' '.repeat(Math.min(available, labelWidth))
         let rows = stacked
           ? [sliceByColumn(label, 0, available, true), ...body.map(row => sliceByColumn(row, 0, available, true))]
@@ -650,10 +647,6 @@ function fieldStateKey(key: string, kind: MayflyFormField['kind']): string {
   return JSON.stringify(['field-state', key, kind])
 }
 
-function groupOrder(controls: readonly ControlDescriptor[]): string[] {
-  return [...new Set(controls.map(control => control.group))]
-}
-
 function controlGroups(controls: readonly ControlDescriptor[]): ControlGroup[] {
   const groups: { id: string, kind: 'tabs' | 'content', entries: { control: ControlDescriptor, index: number }[] }[] = []
   const byId = new Map<string, (typeof groups)[number]>()
@@ -695,135 +688,109 @@ interface ContextKeyHint {
   readonly priority: number
 }
 
-function keyHint(id: string, keys: string, label: string, priority: number, compact = keys): ContextKeyHint {
-  return { id, keys, label, compact, priority }
+type EscapeLabel = 'close' | 'leave'
+
+/** Translate a core-owned string through the host catalog, falling back to English interpolation. */
+function coreText(options: Pick<MayflyUiCompilerOptions, 'contextHints'> | undefined, key: string, values?: UiTranslateValues): string {
+  try { return options?.contextHints?.translate?.(key, values) ?? untranslated(key, values) } catch { return untranslated(key, values) }
 }
 
-function actionsHint(options: RuntimeCompilerOptions, id: string, actionIds: readonly string[], fallback: string, label: string, priority: number, compact?: string): ContextKeyHint {
-  const keys = actionIds.flatMap(actionId => keyActionKeys(options.keymap, actionId)).map(displayKey)
-  const rendered = keys.length === 0 ? fallback : keys.join('/')
-  return keyHint(id, rendered, label, priority, compact === undefined ? rendered : compact)
+/** An action a targeted selection row declares unavailable renders disabled with that row's reason. */
+function effectiveActionItem(item: MayflyActionItem, options: RuntimeCompilerOptions): MayflyActionItem {
+  const reason = options.listRuntime.interaction?.unavailableReason(item)
+  return reason === undefined ? item : { ...item, disabled: true, disabledReason: reason }
 }
 
-function actionHint(options: RuntimeCompilerOptions, id: string, fallback: string, label: string, priority: number, compact?: string): ContextKeyHint {
-  return actionsHint(options, id, [id], fallback, label, priority, compact)
+/** Summarize the focused control and its surroundings for the shared key grammar. */
+function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): GrammarState {
+  const runtime = options.listRuntime
+  const interaction = runtime.interaction
+  const groups = controlGroups(controls)
+  const node = active?.kind === 'list' ? active.node : active?.kind === 'event' ? active.listEntry?.node : undefined
+  const pagePath = node === undefined ? [] : runtime.pagePath(node)
+  const choice = node === undefined ? undefined : interaction?.choice({ pagePath, controlId: node.id })
+  const editing = active !== undefined && state.editingKey === active.key
+  const expanded = state.expandedKey !== undefined && state.scrollViews.has(state.expandedKey)
+  const control = ((): GrammarControl => {
+    if (active === undefined) return { kind: 'none' }
+    switch (active.kind) {
+      case 'editor': return { kind: 'editor' }
+      case 'scroll': return { kind: 'scroll' }
+      case 'list': return { kind: 'empty-list' }
+      case 'toggle': return { kind: 'toggle' }
+      case 'submit': return { kind: 'submit' }
+      case 'field-action': return { kind: 'field-action' }
+      case 'text': return { kind: 'text', field: active.field.kind, editing, enterSubmits: active.form.enterSubmits !== undefined }
+      case 'select': {
+        const field = state.field(active.field, active.key) as SelectField
+        const enabled = field.options.filter(option => option.disabled !== true).length
+        return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable: enabled > 1 || (enabled === 1 && field.value === null) }
+      }
+      case 'event': {
+        if (active.role === 'tab') return { kind: 'tab' }
+        if (active.role === 'action') return { kind: 'action', decision: active.event.kind === 'activate' && active.event.actionId.startsWith('mayfly.decision.') }
+        if (active.role === 'cancel') return { kind: 'cancel' }
+        const list = active.listEntry!.node
+        const segment = admittedListItem(list.items, active.listEntry!.index)?.segment
+        const adjustable = segment !== undefined && segment.options.filter(option => option.disabled !== true).length > 1
+        return { kind: 'row', role: list.role, multiple: active.role === 'list-multiple', tree: list.tree === true, ...(adjustable ? { segment: (segment.label ?? 'segment').toLowerCase() } : {}) }
+      }
+    }
+  })()
+  const searching = choice?.searching === true
+  const escape: EscapeStep | undefined = expanded ? 'collapse'
+    : control.kind === 'select' && control.picker ? 'cancel'
+      : control.kind === 'text' && control.editing ? 'done'
+        : searching ? 'end-search'
+          : interaction?.backTarget() !== undefined ? 'back'
+            : escapeLabel
+  const numbered = node?.numbered
+  const fieldAddress = active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' ? runtime.fieldAddress(active.key) : undefined
+  const reset = fieldAddress === undefined ? undefined : fieldReset(interaction?.form(fieldAddress), fieldAddress.fieldId)
+  return {
+    mode: mode === 'editor' ? 'editor' : 'ui',
+    expanded,
+    control,
+    ...(node === undefined ? {} : { list: {
+      /* Search state lives in the frontend choice; without it the list stays a plain roving list. */
+      filterable: node.filterable === true && choice !== undefined,
+      searching,
+      query: (choice?.query ?? '').length > 0,
+      pasting: node.filterable === true && choice !== undefined && runtime.search(node).pending,
+      ...(numbered === undefined || numbered === false ? {} : { numbered: { accept: numbered === true, count: Math.min(9, choice === undefined ? node.items.length : choiceVisibleCount(choice)) } }),
+    } }),
+    keyed: controls.flatMap((candidate, index) => candidate.kind === 'event' && candidate.keyed !== undefined ? [{ control: index, key: candidate.keyed.key, label: candidate.keyed.label }] : []),
+    tabs: groups.some(group => group.kind === 'tabs'),
+    groups: groups.length,
+    siblings: active === undefined ? 0 : controls.filter(candidate => candidate.group === active.group).length,
+    escape,
+    closable: escapeLabel === 'close',
+    ...(reset === undefined ? {} : { reset }),
+  }
 }
 
-function automaticContextKeyHints(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, escapeHint: 'close' | 'leave' | undefined): ContextKeyHint[] {
-  if (options.contextHints?.suppressAuto === true) return []
-  if (active === undefined || active.kind === 'editor') {
-    return escapeHint === undefined || options.contextHints?.focusWithoutControls !== true
-      ? []
-      : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 70)]
+function matchesBinding(match: GrammarMatch, data: string, keymap: MayflyKeymap | undefined): boolean {
+  switch (match.kind) {
+    case 'action': return matchesKeyAction(keymap, data, match.action)
+    case 'key': return matchesKey(data, match.key as KeyId)
+    case 'char': return data === match.char
+    case 'digit': return data.length === 1 && data >= '1' && data <= '9'
+    case 'text': return (match.space || data !== ' ') && startsText(data)
+    case 'backspace': return data === '\x7f' || data === '\b'
+    case 'any': return true
   }
-  if (active.kind === 'scroll') {
-    const expanded = state.expandedKey === active.key
-    return [
-      actionsHint(options, 'navigate', [ACTION_MOVE_UP, ACTION_MOVE_DOWN, ACTION_PAGE_UP, ACTION_PAGE_DOWN], '↑↓/PgUp/PgDn', 'scroll', 100, 'PgUp/PgDn'),
-      /* Expand/collapse outranks navigation: scroll keys are discoverable,
-         the expand affordance is not, so it survives hint truncation. */
-      expanded
-        ? actionsHint(options, 'collapse', [ACTION_EXPAND, ACTION_CANCEL], 'Ctrl+E/Esc', 'collapse', 105)
-        : actionHint(options, ACTION_EXPAND, 'Ctrl+E', 'expand', 105),
-      ...(!expanded && groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
-      ...(expanded || escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', 'back', 90)]),
-    ]
-  }
-  const enterSubmits = active.kind === 'text' && active.form.enterSubmits !== undefined
-  if (active.kind === 'text' && state.editingKey === active.key) {
-    return [
-      ...(active.field.kind === 'textarea'
-        ? enterSubmits
-          ? [actionHint(options, ACTION_SUBMIT, 'Enter', 'submit', 95), actionHint(options, ACTION_NEWLINE, 'Alt+Enter', 'newline', 90)]
-          : [actionsHint(options, 'newline', [ACTION_SUBMIT, ACTION_NEWLINE], 'Enter/Alt+Enter', 'newline', 90)]
-        : [actionHint(options, ACTION_SUBMIT, 'Enter', enterSubmits ? 'submit' : 'next', 100)]),
-      actionHint(options, ACTION_CANCEL, 'Esc', options.listRuntime.interaction?.backTarget() === undefined ? 'leave' : 'back', 95),
-      ...(groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
-    ]
-  }
-  if (active.kind === 'select' && state.editingKey === active.key) {
-    const optionCount = active.field.options.filter(option => option.disabled !== true).length
-    return [
-      ...(optionCount > 1 ? [actionsHint(options, 'navigate', [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT], '←→', 'options', 90)] : []),
-      actionHint(options, ACTION_SUBMIT, 'Enter', 'apply', 100),
-      actionHint(options, ACTION_CANCEL, 'Esc', 'cancel', 95),
-      ...(groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
-    ]
-  }
-
-  const siblings = controls.filter(control => control.group === active.group)
-  const listSegment = active.kind === 'event' && active.listEntry !== undefined
-    ? admittedListItem(active.listEntry.node.items, active.listEntry.index)?.segment
-    : undefined
-  const segmentAdjustable = listSegment !== undefined && listSegment.options.filter(option => option.disabled !== true).length > 1
-  const movement = siblings.length <= 1 && groupOrder(controls).length <= 1
-    ? []
-    : [actionsHint(
-        options,
-        'navigate',
-        active.kind === 'event' && active.role === 'tab'
-          ? [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT]
-          : segmentAdjustable
-            ? [ACTION_MOVE_UP, ACTION_MOVE_DOWN]
-            : [ACTION_MOVE_UP, ACTION_MOVE_DOWN, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT],
-        active.kind === 'event' && active.role === 'tab' ? '←→' : segmentAdjustable ? '↑↓' : '↑↓←→',
-        active.kind === 'event' && active.role === 'tab'
-          ? 'tabs'
-          : active.kind === 'event' && active.role === 'action'
-            ? 'actions'
-            : active.kind === 'text' || active.kind === 'select' || active.kind === 'toggle'
-              ? 'fields'
-              : 'options',
-        90,
-      )]
-  const keyedHints = controls.flatMap((control): ContextKeyHint[] =>
-    control.kind === 'event' && control.keyed !== undefined
-      ? [keyHint(`keyed:${control.keyed.key}`, displayKey(control.keyed.key), control.keyed.label, 96)]
-      : [])
-  const hasTabs = controls.some(control => control.kind === 'event' && control.role === 'tab')
-  if (active.kind === 'list') return [
-    ...(active.node.filterable ? [keyHint('search', 'Type', 'filter', 100), actionHint(options, ACTION_CLEAR_SEARCH, 'Ctrl+U', 'clear', 90)] : []),
-    ...(active.node.role === 'choose' ? [actionHint(options, ACTION_SUBMIT, 'Enter', 'choose', 95)] : []),
-    ...keyedHints,
-    ...(escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 80)]),
-  ]
-  const primary = active.kind === 'text'
-    ? actionHint(options, ACTION_SUBMIT, 'Enter', enterSubmits ? 'submit' : 'edit', 100)
-    : active.kind === 'select'
-      ? actionsHint(options, 'adjust', [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SUBMIT], '←→/Enter', 'adjust', 100, '←→/Enter')
-      : active.kind === 'toggle'
-        ? actionsHint(options, 'activate', [ACTION_TOGGLE, ACTION_SUBMIT], 'Space/Enter', 'toggle', 100, 'Enter')
-        : active.kind === 'field-action'
-          ? actionHint(options, ACTION_SUBMIT, 'Enter', 'apply', 100)
-        : active.kind === 'submit'
-          ? actionHint(options, ACTION_SUBMIT, 'Enter', 'submit', 100)
-          : active.role === 'tab'
-            ? actionHint(options, ACTION_SUBMIT, 'Enter', 'open', 100)
-            : active.role === 'list-single'
-              ? actionHint(options, ACTION_SUBMIT, 'Enter', active.listEntry?.node.role === 'browse' ? 'open' : 'choose', 100)
-              : active.role === 'list-multiple'
-                ? actionsHint(options, 'activate', [ACTION_TOGGLE, ACTION_SUBMIT], 'Space / Enter', 'toggle / confirm', 100, 'Space/Enter')
-                : active.role === 'cancel'
-                  ? actionHint(options, ACTION_SUBMIT, 'Enter', 'cancel', 100)
-                  : active.event.kind === 'activate' && active.event.actionId.startsWith('mayfly.decision.')
-                    ? actionHint(options, ACTION_SUBMIT, 'Enter', 'confirm', 100)
-                    : actionHint(options, ACTION_SUBMIT, 'Enter', 'run', 100)
-  return [
-    ...movement,
-    ...(active.kind === 'event' && active.listEntry?.node.filterable === true ? [keyHint('search', 'Type', 'filter', 100)] : []),
-    ...(active.kind === 'event' && active.listEntry?.node.numbered === true ? [keyHint('numbered', '1-9', 'choose', 96)] : []),
-    primary,
-    ...(segmentAdjustable ? [actionsHint(options, 'adjust', [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT], '←→', (listSegment.label ?? 'segment').toLowerCase(), 95)] : []),
-    ...(active.kind === 'event' && active.listEntry?.node.tree === true ? [actionHint(options, ACTION_TOGGLE, 'Space', 'toggle branch', 95)] : []),
-    ...keyedHints,
-    ...(hasTabs && !(active.kind === 'event' && active.role === 'tab') ? [actionsHint(options, 'tabs', [ACTION_PREV_TAB, ACTION_NEXT_TAB], 'Alt+←→', 'tabs', 85, 'Alt+←→')] : []),
-    ...(active.kind === 'event' && active.role === 'tab' ? [] : groupOrder(controls).length > 1 ? [actionsHint(options, 'group', [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], 'Tab/Shift-Tab', 'groups', 80, 'Tab')] : []),
-    ...(escapeHint === undefined ? [] : [actionHint(options, ACTION_CANCEL, 'Esc', escapeHint, 70)]),
-  ]
 }
 
-function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, escapeHint: 'close' | 'leave' | undefined): ContextKeyHint[] {
-  const merged = new Map(automaticContextKeyHints(state, options, controls, active, escapeHint).map(hint => [hint.id, hint]))
+function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, limit: number): ContextKeyHint[] {
+  const merged = new Map<string, ContextKeyHint>()
+  const withoutControls = active === undefined && options.contextHints?.focusWithoutControls !== true
+  if (options.contextHints?.suppressAuto !== true && !withoutControls) {
+    for (const hint of grammarHints(keyGrammar(grammarStateFor(state, options, controls, active, mode, escapeLabel)))) {
+      // Literal key words (the "Type" of type-to-filter) are prose; key names are not translated.
+      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId)).map(displayKey).join('/')
+      merged.set(hint.id, { id: hint.id, keys, label: hint.label, compact: hint.compact ?? keys, priority: hint.priority })
+    }
+  }
   let extra: readonly { readonly id: string, readonly keys: string, readonly label?: string, readonly compact?: string, readonly priority?: number }[] = []
   try { extra = options.contextHints?.extra?.() ?? [] } catch { /* official hint providers cannot break their panel */ }
   for (const hint of extra) {
@@ -839,14 +806,15 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
   const indexed = [...merged.values()].map((hint, index) => ({ hint, index }))
   const admitted = new Set(indexed
     .toSorted((left, right) => right.hint.priority - left.hint.priority || left.index - right.index)
-    .slice(0, 3)
+    .slice(0, limit)
     .map(entry => entry.hint.id))
   const displayOrder = (id: string): number => {
     if (id === 'navigate') return 10
+    if (id === 'adjust') return 15
     if (id === 'activate') return 20
     if (id === 'confirm') return 30
     if (id === 'group') return 40
-    if (id === 'dismiss') return 50
+    if (id === 'escape' || id === 'dismiss') return 50
     return 25
   }
   return indexed
@@ -855,10 +823,15 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
     .map(entry => entry.hint)
 }
 
-function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, width: number, escapeHint: 'close' | 'leave' | undefined): string[] {
+/** Hint fragments admitted at a width: three on narrow terminals, four from 80 columns. */
+function hintLimit(width: number): number {
+  return width >= 80 ? 4 : 3
+}
+
+function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, width: number, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): string[] {
   if (!state.focused) return []
   const controls = reconcile(state)
-  const parts = contextualKeyHints(state, options, controls, controls[state.lastIndex], escapeHint)
+  const parts = contextualKeyHints(state, options, controls, controls[state.lastIndex], mode, escapeLabel, hintLimit(width))
   if (parts.length === 0) return []
   const translate = (key: string): string => {
     try { return options.contextHints?.translate?.(key) ?? key } catch { return key }
@@ -884,13 +857,13 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   return []
 }
 
-function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, escapeHint: 'close' | 'leave' | undefined): Component {
-  return staticComponent(width => contextKeyHintRows(state, options, width, escapeHint), options)
+function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): Component {
+  return staticComponent(width => contextKeyHintRows(state, options, width, mode, escapeLabel), options)
 }
 
-function beginsTextEditing(data: string): boolean {
-  if (/^\x1b\[200~[\s\S]*\x1b\[201~$/u.test(data)) return true
-  return /^[^\x00-\x1f\x7f-\x9f]+$/u.test(data)
+/** Printable text or the opening of a bracketed paste. */
+function startsText(data: string): boolean {
+  return data.includes('\x1b[200~') || /^[^\x00-\x1f\x7f-\x9f]+$/u.test(data)
 }
 
 interface TextEditorLease {
@@ -999,7 +972,7 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('form-cancel', current.id), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
       case 'actions':
-        for (const item of current.items) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
+        for (const item of current.items.map(entry => effectiveActionItem(entry, options))) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
         break
       case 'loader':
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
@@ -1159,12 +1132,13 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
         const counter = visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
         const focus = patternFocus(state, scopedControlGroup('list', node.id))
-        const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted('No matches'), 0, width, true)] : empty?.render(width) ?? [] : renderList(
+        const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? [] : renderList(
           { ...unfiltered, items, selectedIds: options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })?.selectedIds ?? node.selectedIds },
           width,
           Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1)),
           focus,
           options.colors,
+          entries[0]!.position,
         )
         const focusedItem = focus.focused && focus.key !== '' ? entries.find(entry => entry.item.id === focus.key)?.item : undefined
         const segment = focusedItem?.segment
@@ -1186,7 +1160,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
             const address = options.listRuntime.fieldAddress(key)!
             const picker = options.listRuntime.interaction?.form(address)?.fields[field.id]?.picker
             const editing = picker === undefined ? {} : { editing: true as const, ...(picker.focusedId === undefined ? {} : { optionId: picker.focusedId }) }
-            return renderFormField(state.field(field, key), width, { ...patternFocus(state, scopedControlGroup('form', node.id)), ...editing }, options.colors)
+            return renderFormField(state.field(field, key), width, { ...patternFocus(state, scopedControlGroup('form', node.id)), ...editing }, options.colors, key => coreText(options, key))
           }, options)
         stack.addChild(component)
         if (field.disabled !== true) state.bindControls([key], { component, axis: 'none' })
@@ -1203,12 +1177,12 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         }
       }
       if (node.submitActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitActionId!, intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Submit'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('form-submit', node.id)], { component, axis: 'none' })
       }
       if (node.cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'cancel', label: node.cancelActionId! }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('form-cancel', node.id)], { component, axis: 'none' })
       }
@@ -1218,9 +1192,20 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       const vertical = options.screenMode === 'main'
       /* An action with a handled invoke in flight renders as busy until the
          reply lands, matching the disabled-side effect at control level. */
-      const items = node.items.map(item => item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item)
-      const component = staticComponent(width => renderActions({ ...node, items }, width, patternFocus(state, actionGroup(node, pagePath)), options.colors, vertical), options)
-      state.bindControls(items.filter(item => item.disabled !== true && item.busy !== true).map(item => scopedControlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
+      /* Busy and row-unavailable states follow the live model, so they are read per frame. */
+      const items = () => node.items.map(entry => {
+        const item = effectiveActionItem(entry, options)
+        return item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item
+      })
+      const bind = (current: readonly MayflyActionItem[]): void => {
+        state.bindControls(current.filter(item => item.disabled !== true && item.busy !== true).map(item => scopedControlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
+      }
+      const component: MayflyComponent = staticComponent(width => {
+        const current = items()
+        bind(current)
+        return renderActions({ ...node, items: current }, width, patternFocus(state, actionGroup(node, pagePath)), options.colors, vertical)
+      }, options)
+      bind(items())
       return component
     }
     case 'loader': {
@@ -1228,7 +1213,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       stack.addChild(staticComponent(width => renderLoader(node, width, options.colors), options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: cancelActionId }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
       }
@@ -1412,7 +1397,6 @@ export class MayflyUiSurfaceRuntime {
   private readonly tabDefinitions = new Map<string, Extract<MayflyUiNode, { readonly kind: 'tabs' }>>()
   private readonly searches = new Map<string, SearchInput>()
   private readonly textEditors = new Map<string, TextEditorLease>()
-  private readonly editorFocusCheckpoints: Map<MayflyEditor, boolean>[] = []
   private readonly fieldKinds = new Map<string, MayflyFormField['kind']>()
   private readonly fieldOwners = new Map<string, string>()
   private readonly fieldRecency = new Map<string, true>()
@@ -1455,11 +1439,13 @@ export class MayflyUiSurfaceRuntime {
         const picker = draft?.picker
         const value = picker === undefined ? fieldValue(field, key) : field.kind === 'multiselect' ? picker.selectedIds : picker.selectedIds[0] ?? null
         const origin = draft?.change === 'reset' || (draft?.change ?? 'unchanged') === 'unchanged' && field.origin === 'inherited' ? 'Inherited' : 'Override'
+        const text = (key: string, values?: UiTranslateValues) => coreText(this.options, key, values)
+        const pickerError = picker === undefined ? undefined : choiceError(picker, text)
         return { ...field, value: field.kind === 'number' ? field.value : value,
-          ...field.origin === undefined ? {} : { label: `${field.label} (${this.options?.contextHints?.translate?.(origin) ?? origin})` },
+          ...field.origin === undefined ? {} : { label: `${field.label} (${text(origin)})` },
           ...(draft?.error === undefined ? {} : { error: draft.error }),
-          ...(draft?.conflict ? { error: 'Resolve the changed value before saving' } : {}),
-          ...(picker === undefined || choiceError(picker) === undefined ? {} : { error: choiceError(picker) }),
+          ...(draft?.conflict ? { error: text('Resolve the changed value before saving') } : {}),
+          ...(pickerError === undefined ? {} : { error: pickerError }),
           ...(form?.pending === undefined ? {} : { disabled: true }),
         } as MayflyFormField
       },
@@ -1538,18 +1524,18 @@ export class MayflyUiSurfaceRuntime {
     const start = Math.max(0, Math.min(count - size, cursor - Math.floor(size / 2)))
     return Array.from({ length: size }, (_, offset) => {
       const index = state === undefined ? start + offset : choiceVisibleIndex(state, start + offset)!
-      return { index, item: state === undefined ? admittedListItem(node.items, index)! : decorateChoiceItem(state, index) }
+      return { index, position: start + offset, item: state === undefined ? admittedListItem(node.items, index)! : decorateChoiceItem(state, index) }
     })
   }
 
-  moveList(node: MayflyListNode, _from: number, movement: ListMovement, pageSize: number): VirtualListEntry | undefined {
+  moveList(node: MayflyListNode, movement: ListMovement, pageSize: number): VirtualListEntry | undefined {
     const address = { pagePath: this.pagePath(node), controlId: node.id }
     if (movement === 'home' || movement === 'end') this.interaction?.updateChoice(address, { kind: 'edge', edge: movement === 'home' ? 'first' : 'last' })
     else this.interaction?.updateChoice(address, { kind: 'move', direction: movement === 'up' || movement === 'page-up' ? -1 : 1, count: movement === 'page-up' || movement === 'page-down' ? pageSize : 1 })
     const state = this.interaction?.choice(address)
     const index = state?.focusedIndex ?? -1
     const item = index < 0 ? undefined : admittedListItem(node.items, index)
-    return item === undefined ? undefined : { index, item }
+    return item === undefined ? undefined : { index, position: state!.focusedPosition, item }
   }
 
   setFocused(value: boolean): void {
@@ -1586,19 +1572,6 @@ export class MayflyUiSurfaceRuntime {
       Object.assign(this.state, focus)
       this.state.groupActiveKeys.clear(); for (const [key, value] of groupActiveKeys) this.state.groupActiveKeys.set(key, value)
       restoreControls()
-    }
-  }
-
-  checkpointEditorFocus(): () => void {
-    const focused = new Map([...this.textEditors.values()].map(lease => [lease.editor, lease.editor.focused]))
-    this.editorFocusCheckpoints.push(focused)
-    let restored = false
-    return () => {
-      if (restored) return
-      restored = true
-      const index = this.editorFocusCheckpoints.lastIndexOf(focused)
-      this.editorFocusCheckpoints.splice(index, 1)
-      for (const [editor, value] of focused) editor.focused = value
     }
   }
 
@@ -1720,9 +1693,6 @@ export class MayflyUiSurfaceRuntime {
     if (editor === undefined) {
       editor = options.components.createEditor()
     }
-    for (const checkpoint of this.editorFocusCheckpoints) {
-      if (!checkpoint.has(editor)) checkpoint.set(editor, editor.focused)
-    }
     let lease = previous
     if (lease === undefined) {
       lease = { editor, onChange: undefined, onSubmit: undefined }
@@ -1763,15 +1733,16 @@ class CompiledSurface implements MayflyEditorShellComponent {
   private readonly generation: number
   private readonly hintRowsFor: ((width: number) => string[]) | undefined
   private viewportOffset = 0
+  private readonly runtimeOptions: RuntimeCompilerOptions
 
   constructor(
     private readonly node: CompilableNode,
     private readonly options: MayflyUiCompilerOptions,
-    mode: CompilerMode,
+    private readonly mode: CompilerMode,
     private readonly editor?: MayflyEditor,
     surfaceRuntime?: MayflyUiSurfaceRuntime,
     contextKeyHints = false,
-    contextEscapeHint?: 'close' | 'leave',
+    private readonly escapeLabel?: EscapeLabel,
   ) {
     this.viewport = safeViewport(options.getViewport)
     this.surfaceRuntime = surfaceRuntime ?? new MayflyUiSurfaceRuntime(options.interaction)
@@ -1782,11 +1753,12 @@ class CompiledSurface implements MayflyEditorShellComponent {
       listRuntime: this.surfaceRuntime,
       reportRuntimeFailure: message => { this.runtimeFailure ??= message },
     }
+    this.runtimeOptions = runtimeOptions
     this.generation = this.surfaceRuntime.bind(node, runtimeOptions, viewport => { this.viewport = viewport })
     this.state = this.surfaceRuntime.state
     this.surfaceRuntime.admit(node)
-    const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, contextEscapeHint) : undefined
-    this.hintRowsFor = contextKeyHints ? width => contextKeyHintRows(this.state, runtimeOptions, width, contextEscapeHint) : undefined
+    const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, mode, escapeLabel) : undefined
+    this.hintRowsFor = contextKeyHints ? width => contextKeyHintRows(this.state, runtimeOptions, width, mode, escapeLabel) : undefined
     const compiledRoot = compileNode(node, this.state, runtimeOptions, '$', mode, node.kind === 'surface' ? contextHint : undefined)
     if (contextHint === undefined || node.kind === 'surface') this.root = compiledRoot
     else {
@@ -2014,7 +1986,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
     // `dryRun` is exposed only by the validated editor-shell result, whose
     // compiler contract guarantees the injected editor and its one control.
     const editor = this.editor!
-    const restoreEditorFocus = this.surfaceRuntime.checkpointEditorFocus()
     const focus = {
       activeKey: this.state.activeKey,
       activeGroup: this.state.activeGroup,
@@ -2051,7 +2022,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
       this.viewport = focus.viewport
       this.runtimeFailure = focus.runtimeFailure
       editor.focused = focus.editorFocused
-      restoreEditorFocus()
     }
   }
 
@@ -2111,393 +2081,325 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.frameResult = undefined
     if (!this.surfaceRuntime.current(this.generation)) return
     this.viewport = safeViewport(this.options.getViewport)
+    if (this.state.expandedKey !== undefined && !this.state.scrollViews.has(this.state.expandedKey)) this.state.expandedKey = undefined
     const controls = reconcile(this.state)
     const active = controls[this.state.lastIndex]
+    const runtimeOptions = this.runtimeOptions
+    const grammar = keyGrammar(grammarStateFor(this.state, runtimeOptions, controls, active, this.mode, this.escapeLabel))
+    const binding = grammar.find(candidate => matchesBinding(candidate.match, data, this.options.keymap))
+    /* v8 ignore next -- every grammar ends with a catch-all binding. */
+    if (binding === undefined) return
+    this.apply(binding.intent, data, controls, active)
+  }
+
+  private moveTo(index: number, within: readonly ControlDescriptor[]): void {
+    const control = within[index]
+    /* v8 ignore next -- every caller resolves an entry from the current control set. */
+    if (control === undefined) return
+    const tabGroups = controlGroups(within).filter(group => group.kind === 'tabs')
+    this.state.setEditing(undefined)
+    this.state.lastIndex = index
+    this.state.activeKey = control.key
+    this.state.activeGroup = control.group
+    this.state.desiredKey = control.key
+    this.state.desiredGroup = control.group
+    this.state.groupActiveKeys.set(control.group, control.key)
+    const tabIndex = tabGroups.findIndex(group => group.id === control.group)
+    if (tabIndex >= 0) this.state.lastTabGroupIndex = tabIndex
+    reconcile(this.state)
+    this.surfaceRuntime.interaction?.focusControl(control.identity as UiControlAddress)
+    try { this.options.onFocusChange?.(control.identity) } catch { /* focus observers cannot escape input */ }
+  }
+
+  private moveGroup(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
     const groups = controlGroups(controls)
-    const list = active?.kind === 'list' ? active.node : active?.kind === 'event' ? active.listEntry?.node : undefined
-    /* Action-declared accelerators are surface-local: they win over idle
-       type-to-filter but never interrupt an open search or text entry. */
-    const keyed = controls.find((control): control is Extract<ControlDescriptor, { readonly kind: 'event' }> =>
-      control.kind === 'event' && control.keyed !== undefined && matchesKey(data, control.keyed.key as KeyId))
-    /* A scroll view expanded with Ctrl+E owns the whole frame: Ctrl+E or Esc
-       collapses back, scroll keys move the shared viewport, and every other
-       key is swallowed so the underlying surface stays untouched. */
-    if (this.state.expandedKey !== undefined) {
-      const scroll = this.state.scrollViews.get(this.state.expandedKey)
-      if (scroll === undefined) this.state.expandedKey = undefined
-      else {
-        if (matchesKeyAction(this.options.keymap, data, ACTION_EXPAND) || matchesKeyAction(this.options.keymap, data, ACTION_CANCEL)) this.state.expandedKey = undefined
-        else scrollViewInput(scroll, this.options.keymap, data)
-        return
-      }
-    }
-    if (active?.kind === 'scroll' && matchesKeyAction(this.options.keymap, data, ACTION_EXPAND)) {
-      this.state.expandedKey = active.key
+    const current = groups.findIndex(group => group.id === active.group)
+    /* v8 ignore next -- a non-tab active control belongs to one content group above. */
+    if (current < 0) return
+    const sibling = controls[this.state.lastIndex + delta]
+    if (sibling?.group === active.group && !(active.kind === 'event' && (active.role === 'tab' || active.role === 'list-single' || active.role === 'list-multiple'))) {
+      this.moveTo(this.state.lastIndex + delta, controls)
       return
     }
-    let searching = false
-    if (list?.filterable === true) {
-      const address = { pagePath: this.surfaceRuntime.pagePath(list), controlId: list.id }
-      const choice = this.surfaceRuntime.interaction?.choice(address)
-      if (choice !== undefined) {
-        searching = choice.searching
-        const search = this.surfaceRuntime.search(list)
-        if (matchesKeyAction(this.options.keymap, data, ACTION_CANCEL) && choice.searching) { this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'stop-search' }); return }
-        if (matchesKeyAction(this.options.keymap, data, ACTION_CLEAR_SEARCH)) { search.clear(); this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'clear-search' }); return }
-        if (data === '/' && !choice.searching) { this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'query', query: choice.query }); return }
-        /* While searching, printable input filters except for the explicit submit key.
-           Outside search, any bound list action or declared accelerator wins over type-to-filter. */
-        const reservedAction = choice.searching
-          ? matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)
-          : keyed !== undefined || (list.numbered === true && data.length === 1 && data >= '1' && data <= '9') || LIST_FILTER_RESERVED_ACTIONS.some(actionId => matchesKeyAction(this.options.keymap, data, actionId))
-        if (!reservedAction && (data !== ' ' || choice.searching) && search.handleInput(data, data === '\x7f' || data === '\b')) {
-          this.surfaceRuntime.interaction!.updateChoice(address, { kind: 'query', query: search.text })
-          return
-        }
-      }
-    }
-    const tabGroups = groups.filter(group => group.kind === 'tabs')
-    const moveTo = (index: number, within: readonly ControlDescriptor[] = controls): void => {
-      const control = within[index]
-      /* v8 ignore next -- every caller resolves an entry from the current control set. */
-      if (control === undefined) return
-      this.state.setEditing(undefined)
-      this.state.lastIndex = index
-      this.state.activeKey = control.key
-      this.state.activeGroup = control.group
-      this.state.desiredKey = control.key
-      this.state.desiredGroup = control.group
-      this.state.groupActiveKeys.set(control.group, control.key)
-      const tabIndex = tabGroups.findIndex(group => group.id === control.group)
-      if (tabIndex >= 0) this.state.lastTabGroupIndex = tabIndex
-      reconcile(this.state)
-      this.surfaceRuntime.interaction?.focusControl(control.identity as UiControlAddress)
-      try { this.options.onFocusChange?.(control.identity) } catch { /* focus observers cannot escape input */ }
-    }
-    const moveGroup = (delta: -1 | 1): void => {
-      const currentActive = active!
-      const current = groups.findIndex(group => group.id === currentActive.group)
-      /* v8 ignore next -- a non-tab active control belongs to one content group above. */
-      if (current < 0) return
-      const sibling = controls[this.state.lastIndex + delta]
-      if (sibling?.group === currentActive.group && !(currentActive.kind === 'event' && (currentActive.role === 'tab' || currentActive.role === 'list-single' || currentActive.role === 'list-multiple'))) {
-        moveTo(this.state.lastIndex + delta)
-        return
-      }
-      const target = groups[current + delta]
-      if (target === undefined) return
-      moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)))
-    }
-    if (matchesKeyAction(this.options.keymap, data, ACTION_CANCEL)) {
-      if (active?.kind === 'select' && this.state.editingKey === active.key) {
-        this.state.finishSelectEditing(active.field, active.key, true)
-        return
-      }
-      if (this.surfaceRuntime.interaction?.back()) return
-      if (this.surfaceRuntime.interaction?.registration.definition.dismissal === 'discard') {
-        this.options.onUnhandledEscape?.()
-        return
-      }
-      if (active !== undefined && tabGroups.length > 0) {
-        const activeTabIndex = tabGroups.findIndex(group => group.id === active.group)
-        if (activeTabIndex > 0) {
-          const parent = tabGroups[activeTabIndex - 1]!
-          moveTo(groupTarget(controls, parent.id, this.state.groupActiveKeys.get(parent.id)))
-          return
-        }
-        if (activeTabIndex < 0) {
-          /* v8 ignore next -- reconcile keeps the remembered tab index in range. */
-          const parent = tabGroups[this.state.lastTabGroupIndex] ?? tabGroups.at(-1)!
-          moveTo(groupTarget(controls, parent.id, this.state.groupActiveKeys.get(parent.id)))
-          return
-        }
-      }
-      this.options.onUnhandledEscape?.()
-      return
-    }
-    /* Numbered rows dispatch like ↑↓+Enter on the Nth visible row: the digit
-       moves the cursor and emits the row's own event (accept or toggle). */
-    if (list?.numbered === true && !searching && data.length === 1 && data >= '1' && data <= '9') {
-      const entry = this.surfaceRuntime.listWindow(list, this.surfaceRuntime.listRowLimit(this.viewport.rows))[Number(data) - 1]
-      const index = entry === undefined ? -1 : controls.findIndex(candidate => candidate.kind === 'event' && candidate.listEntry?.node === list && candidate.listEntry.index === entry.index)
-      const control = index < 0 ? undefined : controls[index]
-      if (control?.kind === 'event') { moveTo(index); this.state.emit(control.event); return }
-    }
-    /* Alt+←→ switches the page's tab group from anywhere; the strip's own
-       ←→ only reaches it while it holds focus. The switch lands on the new
-       strip entry when the strip owned focus, otherwise inside the new
-       tab's first content group at its remembered control. */
-    const tabDelta: -1 | 1 | undefined = matchesKeyAction(this.options.keymap, data, ACTION_PREV_TAB) ? -1
-      : matchesKeyAction(this.options.keymap, data, ACTION_NEXT_TAB) ? 1 : undefined
-    if (tabDelta !== undefined && tabGroups.length > 0
-      && !(active?.kind === 'text' && this.state.editingKey === active.key)
-      && !(active?.kind === 'select' && this.state.editingKey === active.key)) {
-      const onStrip = active?.kind === 'event' && active.role === 'tab'
-      const activePath = active?.identity.pagePath
-      /* Content nested in a tab page addresses its innermost enclosing tab
-         group; page-level controls fall back to the last focused tab group. */
-      const enclosing = onStrip || activePath === undefined || activePath.length === 0
-        ? undefined
-        : controlGroup('tabs', activePath.at(-1)!.controlId, activePath.slice(0, -1))
-      const groupIndex = onStrip
-        ? tabGroups.findIndex(candidate => candidate.id === active!.group)
-        : enclosing === undefined
-          ? Math.min(this.state.lastTabGroupIndex, tabGroups.length - 1)
-          : tabGroups.findIndex(candidate => candidate.id === enclosing)
-      const group = tabGroups[Math.max(0, groupIndex)]!
-      /* v8 ignore next -- tab groups register only tab-change event controls. */
-      const tabEvent = (control: ControlDescriptor): Extract<MayflyUiEvent, { readonly kind: 'tab-change' }> | undefined =>
-        control.kind === 'event' && control.event.kind === 'tab-change' ? control.event : undefined
-      const entries = group.entries.filter(entry => tabEvent(entry.control) !== undefined)
-      const anchor = tabEvent(entries[0]!.control)!
-      const currentId = this.surfaceRuntime.activeTab({ pagePath: anchor.pagePath, controlId: anchor.controlId })
-      const currentIndex = entries.findIndex(entry => tabEvent(entry.control)?.tabId === currentId)
-      const target = entries[currentIndex + tabDelta]
-      const targetEvent = target === undefined ? undefined : tabEvent(target.control)
-      if (targetEvent !== undefined) {
-        this.state.emit(targetEvent)
-        const refreshed = reconcile(this.state)
-        const stripIndex = refreshed.findIndex(control => control.kind === 'event' && control.role === 'tab' && tabEvent(control)?.tabId === targetEvent.tabId)
-        const content = onStrip ? undefined : controlGroups(refreshed).slice(controlGroups(refreshed).findIndex(candidate => candidate.id === group.id) + 1).find(candidate => candidate.kind === 'content')
-        moveTo(content === undefined ? stripIndex : groupTarget(refreshed, content.id, this.state.groupActiveKeys.get(content.id)), refreshed)
-      }
-      return
-    }
-    if (keyed !== undefined
-      && !searching
-      && active?.kind !== 'editor'
-      && !(active?.kind === 'text' && this.state.editingKey === active.key)
-      && !(active?.kind === 'select' && this.state.editingKey === active.key)) {
-      this.state.emit(keyed.event)
-      return
-    }
-    if (active === undefined) return
-    if (active.kind === 'list' && matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) { this.state.emit({ kind: 'selection-accept', pagePath: active.identity.pagePath!, controlId: active.node.id, selectedIds: this.surfaceRuntime.interaction?.choice({ pagePath: active.identity.pagePath!, controlId: active.node.id })?.selectedIds ?? [] }); return }
-    const nextControl = matchesKeyAction(this.options.keymap, data, ACTION_NEXT_CONTROL)
-    const previousControl = matchesKeyAction(this.options.keymap, data, ACTION_SHIFT_TAB)
-    if (nextControl || previousControl) {
-      // An editor-only provider shell has nowhere to rove. Preserve the
-      // editing engine's Tab contract so it can accept or explicitly open
-      // autocomplete without the canonical wrapper consuming the key.
-      if (controls.length === 1 && active.kind === 'editor') {
-        this.editor?.handleInput?.(data)
-        return
-      }
-      const delta = nextControl ? 1 : -1
-      if (active.kind === 'text' && this.state.editingKey === active.key) {
-        const editor = this.state.textEditor(active.field, active.key)
-        this.state.setValue(active.key, editor.getExpandedText())
-        moveGroup(delta)
-        return
-      }
-      if (active.kind === 'select' && this.state.editingKey === active.key) {
-        this.state.finishSelectEditing(active.field, active.key, true)
-        moveGroup(delta)
-        return
-      }
-      moveGroup(delta)
-      return
-    }
-    if (active.kind === 'editor') {
-      this.editor?.handleInput?.(data)
-      return
-    }
+    const target = groups[current + delta]
+    if (target === undefined) return
+    this.moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)), controls)
+  }
+
+  /** Select one list row in both the frontend choice and the renderer roving focus. */
+  private focusRow(node: MayflyListNode, itemId: string, pagePath: MayflyPagePath): void {
+    const key = controlKey('list', node.id, itemId, pagePath)
+    const group = controlGroup('list', node.id, pagePath)
+    this.state.setEditing(undefined)
+    this.state.activeKey = key
+    this.state.activeGroup = group
+    this.state.desiredKey = key
+    this.state.desiredGroup = group
+    this.state.groupActiveKeys.set(group, key)
+    const updated = reconcile(this.state)
+    this.state.lastIndex = updated.findIndex(control => control.key === key)
+    this.surfaceRuntime.interaction?.focusControl({ pagePath, controlId: node.id, itemId })
+    try { this.options.onFocusChange?.(focusIdentity(node.id, itemId, pagePath)) } catch { /* focus observers cannot escape input */ }
+  }
+
+  /** Commit an in-progress text edit or picker before focus leaves the field. */
+  private commitEditing(active: ControlDescriptor): void {
     if (active.kind === 'text' && this.state.editingKey === active.key) {
-      if (this.state.field(active.field, active.key).disabled === true) return
-      const editor = this.state.textEditor(active.field, active.key)
-      editor.focused = this.state.focused
-      if (matchesKeyAction(this.options.keymap, data, ACTION_NEWLINE)) {
-        if (active.field.kind === 'textarea') editor.insertText('\n')
+      this.state.setValue(active.key, this.state.textEditor(active.field, active.key).getExpandedText())
+      this.state.setEditing(undefined)
+    } else if (active.kind === 'select' && this.state.editingKey === active.key) this.applyPicker(active)
+  }
+
+  private applyPicker(active: Extract<ControlDescriptor, { readonly kind: 'select' }>): void {
+    const address = this.surfaceRuntime.fieldAddress(active.key)!
+    const model = this.surfaceRuntime.interaction
+    const picker = model?.form(address)?.fields[address.fieldId]?.picker
+    if (active.field.kind === 'select' && picker?.focusedId !== undefined) {
+      model!.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'select', ids: [picker.focusedId] } })
+    }
+    this.state.finishSelectEditing(active.field, active.key, false)
+  }
+
+  private switchTab(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined): void {
+    const tabGroups = controlGroups(controls).filter(group => group.kind === 'tabs')
+    const onStrip = active?.kind === 'event' && active.role === 'tab'
+    const activePath = active?.identity.pagePath
+    /* Content nested in a tab page addresses its innermost enclosing tab
+       group; page-level controls fall back to the last focused tab group. */
+    const enclosing = onStrip || activePath === undefined || activePath.length === 0
+      ? undefined
+      : controlGroup('tabs', activePath.at(-1)!.controlId, activePath.slice(0, -1))
+    const groupIndex = onStrip
+      ? tabGroups.findIndex(candidate => candidate.id === active.group)
+      : enclosing === undefined
+        ? Math.min(this.state.lastTabGroupIndex, tabGroups.length - 1)
+        : tabGroups.findIndex(candidate => candidate.id === enclosing)
+    const group = tabGroups[Math.max(0, groupIndex)]!
+    /* v8 ignore next -- tab groups register only tab-change event controls. */
+    const tabEvent = (control: ControlDescriptor): Extract<MayflyUiEvent, { readonly kind: 'tab-change' }> | undefined =>
+      control.kind === 'event' && control.event.kind === 'tab-change' ? control.event : undefined
+    const entries = group.entries.filter(entry => tabEvent(entry.control) !== undefined)
+    const anchor = tabEvent(entries[0]!.control)!
+    const currentId = this.surfaceRuntime.activeTab({ pagePath: anchor.pagePath, controlId: anchor.controlId })
+    const currentIndex = entries.findIndex(entry => tabEvent(entry.control)?.tabId === currentId)
+    const target = entries[currentIndex + delta]
+    const targetEvent = target === undefined ? undefined : tabEvent(target.control)
+    if (targetEvent === undefined) return
+    this.state.emit(targetEvent)
+    const refreshed = reconcile(this.state)
+    const stripIndex = refreshed.findIndex(control => control.kind === 'event' && control.role === 'tab' && tabEvent(control)?.tabId === targetEvent.tabId)
+    const refreshedGroups = controlGroups(refreshed)
+    const content = onStrip ? undefined : refreshedGroups.slice(refreshedGroups.findIndex(candidate => candidate.id === group.id) + 1).find(candidate => candidate.kind === 'content')
+    this.moveTo(content === undefined ? stripIndex : groupTarget(refreshed, content.id, this.state.groupActiveKeys.get(content.id)), refreshed)
+  }
+
+  private escape(step: EscapeStep, active: ControlDescriptor | undefined): void {
+    switch (step) {
+      case 'cancel': {
+        const select = active as Extract<ControlDescriptor, { readonly kind: 'select' }>
+        this.state.finishSelectEditing(select.field, select.key, true)
         return
       }
-      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) {
-        if (active.field.kind === 'textarea' && active.form.enterSubmits === undefined) editor.insertText('\n')
-        else {
-          this.state.setValue(active.key, editor.getExpandedText())
-          if (active.form.enterSubmits === undefined) moveGroup(1)
-          else { this.state.setEditing(undefined); this.surfaceRuntime.interaction?.invoke(active.form.enterSubmits, active.identity.pagePath!) }
+      case 'done': this.commitEditing(active!); return
+      case 'end-search': {
+        const node = (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry?.node ?? (active as Extract<ControlDescriptor, { readonly kind: 'list' }>).node
+        this.surfaceRuntime.interaction!.updateChoice({ pagePath: this.surfaceRuntime.pagePath(node), controlId: node.id }, { kind: 'stop-search' })
+        return
+      }
+      case 'back': this.surfaceRuntime.interaction!.back(); return
+      /* v8 ignore next -- an expanded view resolves Escape through its own collapse binding. */
+      case 'collapse': this.state.expandedKey = undefined; return
+      case 'close':
+      case 'leave': this.options.onUnhandledEscape?.(); return
+    }
+  }
+
+  private selectCycle(active: Extract<ControlDescriptor, { readonly kind: 'select' }>, delta: -1 | 1): void {
+    const options = (this.state.field(active.field, active.key) as SelectField).options.filter(option => option.disabled !== true)
+    const value = this.state.fieldValue(active.field, active.key)
+    const index = options.findIndex(option => option.id === value)
+    /* An unset or unavailable value starts from the edge the arrow points into. */
+    const target = index < 0 ? (delta > 0 ? options[0] : options.at(-1)) : options[index + delta]
+    if (target !== undefined) this.state.setValue(active.key, target.id)
+  }
+
+  private numbered(data: string, active: ControlDescriptor): void {
+    const node = (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry!.node
+    const pagePath = this.surfaceRuntime.pagePath(node)
+    const address = { pagePath, controlId: node.id }
+    const choice = this.surfaceRuntime.interaction?.choice(address)
+    const index = choice === undefined ? Number(data) - 1 : choiceVisibleIndex(choice, Number(data) - 1)
+    const item = index === undefined ? undefined : admittedListItem(node.items, index)
+    if (item === undefined || item.disabled === true) return
+    this.surfaceRuntime.interaction?.updateChoice(address, { kind: 'focus', id: item.id })
+    this.focusRow(node, item.id, pagePath)
+    if (node.numbered !== true) return
+    const selected = choice?.selectedIds ?? node.selectedIds
+    this.state.emit(node.mode === 'multiple'
+      ? { kind: 'selection-toggle', pagePath, controlId: node.id, selectedIds: selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id] }
+      : { kind: 'selection-accept', pagePath, controlId: node.id, selectedIds: [item.id] })
+  }
+
+  private navigate(direction: 'up' | 'down' | 'left' | 'right', controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
+    const group = controlGroups(controls).find(candidate => candidate.id === active.group)
+    const matchingAxis = active.navigation === 'horizontal'
+      ? direction === 'left' || direction === 'right'
+      : active.navigation === 'vertical' && (direction === 'up' || direction === 'down')
+    let target: number | undefined
+    if (matchingAxis && group !== undefined) {
+      const current = group.entries.findIndex(entry => entry.index === this.state.lastIndex)
+      target = group.entries[current + (direction === 'left' || direction === 'up' ? -1 : 1)]?.index
+    }
+    if (target === undefined) target = nearestDirectionalControl(controls, this.controlRectangles(controls), this.state.lastIndex, direction)
+    if (target !== undefined) this.moveTo(target, controls)
+  }
+
+  private apply(intent: GrammarIntent, data: string, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined): void {
+    const model = this.surfaceRuntime.interaction
+    const listNode = active?.kind === 'list' ? active.node : active?.kind === 'event' ? active.listEntry?.node : undefined
+    const listAddress = listNode === undefined ? undefined : { pagePath: this.surfaceRuntime.pagePath(listNode), controlId: listNode.id }
+    switch (intent.kind) {
+      case 'editor': this.editor?.handleInput?.(data); return
+      case 'swallow': return
+      case 'collapse': this.state.expandedKey = undefined; return
+      case 'expand': this.state.expandedKey = active!.key; return
+      case 'scroll': {
+        const scroll = this.state.scrollViews.get(this.state.expandedKey ?? active!.key)
+        /* v8 ignore next -- compiler registration creates both descriptors atomically. */
+        if (scroll !== undefined) scrollBy(scroll, intent.movement)
+        return
+      }
+      case 'escape': this.escape(intent.step, active); return
+      case 'close': this.options.onUnhandledEscape?.(); return
+      case 'keyed': this.state.emit((controls[intent.control] as Extract<ControlDescriptor, { readonly kind: 'event' }>).event); return
+      case 'numbered': this.numbered(data, active!); return
+      case 'tab-switch': this.switchTab(intent.delta, controls, active); return
+      case 'search-clear': {
+        this.surfaceRuntime.search(listNode!).clear()
+        model!.updateChoice(listAddress!, { kind: 'clear-search' })
+        return
+      }
+      case 'search-start': model!.updateChoice(listAddress!, { kind: 'query', query: model!.choice(listAddress!)!.query }); return
+      case 'search-type': {
+        // The grammar routes only text, Backspace, and paste chunks here, all of which the search input accepts.
+        const search = this.surfaceRuntime.search(listNode!)
+        search.handleInput(data, data === '\x7f' || data === '\b')
+        model!.updateChoice(listAddress!, { kind: 'query', query: search.text })
+        return
+      }
+    }
+    /* v8 ignore next -- every remaining intent is bound only while a control holds focus. */
+    if (active === undefined) return
+    switch (intent.kind) {
+      case 'group': this.commitEditing(active); this.moveGroup(intent.delta, reconcile(this.state), active); return
+      case 'text-newline': this.state.textEditor((active as Extract<ControlDescriptor, { readonly kind: 'text' }>).field, active.key).insertText('\n'); return
+      case 'text-enter': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        const editor = this.state.textEditor(text.field, text.key)
+        if (text.field.kind === 'textarea' && text.form.enterSubmits === undefined) { editor.insertText('\n'); return }
+        this.state.setValue(text.key, editor.getExpandedText())
+        if (text.form.enterSubmits === undefined) this.moveGroup(1, controls, active)
+        else { this.state.setEditing(undefined); model?.invoke(text.form.enterSubmits, text.identity.pagePath!) }
+        return
+      }
+      case 'text-type': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        if (this.state.field(text.field, text.key).disabled === true) return
+        const editor = this.state.textEditor(text.field, text.key)
+        editor.focused = this.state.focused
+        editor.handleInput?.(data)
+        return
+      }
+      case 'text-begin': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        this.state.setEditing(text.key)
+        if (startsText(data)) {
+          const editor = this.state.textEditor(text.field, text.key)
+          editor.focused = this.state.focused
+          editor.handleInput?.(data)
         }
         return
       }
-      editor.handleInput?.(data)
-      return
-    }
-    const direction: NavigationDirection | undefined = matchesKeyAction(this.options.keymap, data, ACTION_MOVE_UP) ? 'up'
-      : matchesKeyAction(this.options.keymap, data, ACTION_MOVE_DOWN) ? 'down'
-        : matchesKeyAction(this.options.keymap, data, ACTION_SEGMENT_LEFT) ? 'left'
-          : matchesKeyAction(this.options.keymap, data, ACTION_SEGMENT_RIGHT) ? 'right'
-            : undefined
-    /* v8 ignore next -- renderer integration covers this defensive branch. */
-    if (active.kind === 'select' && this.state.editingKey === undefined && direction !== undefined) {
-      const address = this.surfaceRuntime.fieldAddress(active.key)
-      const model = this.surfaceRuntime.interaction
-      if (address === undefined || model === undefined) return
-      this.state.beginSelectEditing(active.field, active.key)
-      model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'move', direction: direction === 'left' || direction === 'up' ? -1 : 1, count: 1 } })
-      const focusedId = model.form(address)?.fields[address.fieldId]?.picker?.focusedId
-      if (focusedId !== undefined && active.field.kind === 'select') {
-        model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'select', ids: [focusedId] } })
-        this.state.finishSelectEditing(active.field, active.key, false)
-      }
-      return
-    }
-    /* v8 ignore stop */
-    if (active.kind === 'select' && this.state.editingKey === active.key) {
-      const address = this.surfaceRuntime.fieldAddress(active.key)
-      const model = this.surfaceRuntime.interaction
-      if (address === undefined || model === undefined) return
-      const picker = model.form(address)?.fields[address.fieldId]?.picker
-      if (picker === undefined) return
-      if (direction !== undefined) {
-        model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'move', direction: direction === 'left' || direction === 'up' ? -1 : 1, count: 1 } })
+      case 'enter-submits': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        model?.invoke(text.form.enterSubmits!, text.identity.pagePath!)
         return
       }
-      if (matchesKeyAction(this.options.keymap, data, ACTION_TOGGLE) && active.field.kind === 'multiselect' && picker.focusedId !== undefined) {
-        model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'toggle', id: picker.focusedId } })
+      case 'select-cycle': this.selectCycle(active as Extract<ControlDescriptor, { readonly kind: 'select' }>, intent.delta); return
+      case 'field-reset': {
+        const address = this.surfaceRuntime.fieldAddress(active!.key)!
+        model!.updateForm(address, { kind: 'reset', fieldId: address.fieldId })
         return
       }
-      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) {
-        if (active.field.kind === 'select' && picker.focusedId !== undefined) {
-          if (active.field.options.find(option => option.id === picker.focusedId)?.disabled === true) return
-          model.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'select', ids: [picker.focusedId] } })
-        }
-        this.state.finishSelectEditing(active.field, active.key, false)
+      case 'picker-open': {
+        const select = active as Extract<ControlDescriptor, { readonly kind: 'select' }>
+        this.state.beginSelectEditing(select.field, select.key)
+        return
       }
-      return
-    }
-    if (active.kind === 'scroll') {
-      const scroll = this.state.scrollViews.get(active.key)
-      /* v8 ignore next -- compiler registration creates both descriptors atomically. */
-      if (scroll === undefined) return
-      scrollViewInput(scroll, this.options.keymap, data)
-      return
-    }
-    if (active.kind === 'event' && active.role === 'tab') {
-      if (direction === 'left' || direction === 'right') {
-        const group = tabGroups.find(candidate => candidate.id === active.group)!
+      case 'picker-move':
+      case 'picker-toggle': {
+        const address = this.surfaceRuntime.fieldAddress(active.key)!
+        const picker = model?.form(address)?.fields[address.fieldId]?.picker
+        /* v8 ignore next -- an open picker always has a frontend model. */
+        if (picker === undefined) return
+        if (intent.kind === 'picker-move') model!.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'move', direction: intent.delta, count: 1 } })
+        else if (picker.focusedId !== undefined) model!.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'toggle', id: picker.focusedId } })
+        return
+      }
+      case 'picker-apply': this.applyPicker(active as Extract<ControlDescriptor, { readonly kind: 'select' }>); return
+      case 'tab-move': {
+        const group = controlGroups(controls).find(candidate => candidate.id === active.group)!
         const current = group.entries.findIndex(entry => entry.index === this.state.lastIndex)
-        const next = current + (direction === 'left' ? -1 : 1)
-        const target = group.entries[next]
-        if (target !== undefined) {
-          moveTo(target.index)
-          this.state.emit((target.control as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)
-        }
+        const target = group.entries[current + intent.delta]
+        if (target === undefined) return
+        this.moveTo(target.index, controls)
+        this.state.emit((target.control as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)
         return
       }
-      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) {
-        const groupIndex = groups.findIndex(group => group.id === active.group)
-        const target = groups[groupIndex + 1]
-        if (target !== undefined) moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)))
-      }
-      return
-    }
-    if (active.kind === 'event' && active.listEntry !== undefined) {
-      if (active.listEntry.node.tree === true && matchesKeyAction(this.options.keymap, data, ACTION_TOGGLE)) {
-        const pagePath = active.identity.pagePath!
-        const item = admittedListItem(active.listEntry.node.items, active.listEntry.index)!
-        this.surfaceRuntime.interaction?.updateChoice({ pagePath, controlId: active.listEntry.node.id }, { kind: 'expand', id: item.id })
+      case 'tab-descend': {
+        const groups = controlGroups(controls)
+        const target = groups[groups.findIndex(group => group.id === active.group) + 1]
+        if (target !== undefined) this.moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)), controls)
         return
       }
-      const movement: ListMovement | undefined = direction === 'up' ? 'up'
-        : direction === 'down' ? 'down'
-          : matchesKeyAction(this.options.keymap, data, ACTION_PAGE_UP) ? 'page-up'
-            : matchesKeyAction(this.options.keymap, data, ACTION_PAGE_DOWN) ? 'page-down'
-              : matchesKeyAction(this.options.keymap, data, ACTION_HOME) ? 'home'
-                : matchesKeyAction(this.options.keymap, data, ACTION_END) ? 'end'
-                  : undefined
-      if (movement !== undefined) {
-        const target = this.surfaceRuntime.moveList(
-          active.listEntry.node,
-          active.listEntry.index,
-          movement,
-          Math.max(1, Math.min(10, this.viewport.rows - 1)),
-        )
-        if (target === undefined || target.index === active.listEntry.index) return
-        const pagePath = active.identity.pagePath!
-        const key = controlKey('list', active.listEntry.node.id, target.item.id, pagePath)
-        const group = controlGroup('list', active.listEntry.node.id, pagePath)
-        this.state.setEditing(undefined)
-        this.state.activeKey = key
-        this.state.activeGroup = group
-        this.state.desiredKey = key
-        this.state.desiredGroup = group
-        this.state.groupActiveKeys.set(group, key)
-        const updated = reconcile(this.state)
-        this.state.lastIndex = updated.findIndex(control => control.key === key)
-        this.surfaceRuntime.interaction?.focusControl({ pagePath, controlId: active.listEntry.node.id, itemId: target.item.id })
-        try { this.options.onFocusChange?.(focusIdentity(active.listEntry.node.id, target.item.id)) } catch { /* focus observers cannot escape input */ }
+      case 'list-move': {
+        const target = this.surfaceRuntime.moveList(listNode!, intent.movement, Math.max(1, Math.min(10, this.viewport.rows - 1)))
+        if (target === undefined || target.index === (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry!.index) return
+        this.focusRow(listNode!, target.item.id, listAddress!.pagePath)
         return
       }
-      if (direction === 'left' || direction === 'right') {
-        const item = admittedListItem(active.listEntry.node.items, active.listEntry.index)
-        if (item?.segment !== undefined && this.surfaceRuntime.interaction !== undefined) {
-          this.surfaceRuntime.interaction.updateChoice({ pagePath: active.identity.pagePath!, controlId: active.listEntry.node.id },
-            { kind: 'segment', id: item.id, direction: direction === 'left' ? -1 : 1 })
-          return
-        }
-      }
-    }
-    if (direction !== undefined) {
-      const group = groups.find(candidate => candidate.id === active.group)
-      const matchingAxis = active.navigation === 'horizontal'
-        ? direction === 'left' || direction === 'right'
-        : active.navigation === 'vertical' && (direction === 'up' || direction === 'down')
-      let target: number | undefined
-      if (matchingAxis && group !== undefined) {
-        const current = group.entries.findIndex(entry => entry.index === this.state.lastIndex)
-        target = group.entries[current + (direction === 'left' || direction === 'up' ? -1 : 1)]?.index
-      }
-      if (target === undefined) target = nearestDirectionalControl(controls, this.controlRectangles(controls), this.state.lastIndex, direction)
-      if (target !== undefined) moveTo(target)
-      return
-    }
-    if (active.kind === 'text') {
-      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) {
-        if (active.form.enterSubmits !== undefined) { this.surfaceRuntime.interaction?.invoke(active.form.enterSubmits, active.identity.pagePath!); return }
-        this.state.setEditing(active.key)
+      case 'segment': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        model?.updateChoice(listAddress!, { kind: 'segment', id: admittedListItem(listNode!.items, row.listEntry!.index)!.id, direction: intent.delta })
         return
       }
-      if (!beginsTextEditing(data)) return
-      this.state.setEditing(active.key)
-      const editor = this.state.textEditor(active.field, active.key)
-      editor.focused = this.state.focused
-      editor.handleInput?.(data)
-      return
+      case 'branch': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        const item = admittedListItem(listNode!.items, row.listEntry!.index)!
+        const choice = model?.choice(listAddress!)
+        const expanded = choice?.expandedIds.includes(item.id) === true
+        // Space toggles; Right opens a closed parent; Left closes an open one.
+        const toggle = intent.expand === undefined ? true : intent.expand ? !expanded && choice?.treeIndex?.parents.has(item.id) === true : expanded
+        if (toggle) model?.updateChoice(listAddress!, { kind: 'expand', id: item.id })
+        return
+      }
+      case 'accept':
+        if (active.kind === 'list') this.state.emit({ kind: 'selection-accept', pagePath: active.identity.pagePath!, controlId: active.node.id, selectedIds: model?.choice(listAddress!)?.selectedIds ?? [] })
+        else this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)
+        return
+      case 'commit': this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).commitEvent!); return
+      case 'toggle-row': this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event); return
+      case 'navigate': this.navigate(intent.direction, controls, active); return
+      case 'activate':
+        if (active.kind === 'field-action') {
+          model?.updateForm(active.address, active.action.intent)
+          model?.focusControl({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
+          this.restoreFocusIdentity({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
+        } else if (active.kind === 'toggle') this.state.setValue(active.key, !this.state.fieldValue(active.field, active.key))
+        else if (active.kind === 'submit') model?.invoke(active.form.submitActionId!, active.identity.pagePath!)
+        else this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)
+        return
     }
-    if (active.kind === 'select') {
-      if (matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)) this.state.beginSelectEditing(active.field, active.key)
-      return
-    }
-    const enter = matchesKeyAction(this.options.keymap, data, ACTION_SUBMIT)
-    const space = matchesKeyAction(this.options.keymap, data, ACTION_TOGGLE)
-    if (active.kind === 'field-action') {
-      if (!enter && !space) return
-      this.surfaceRuntime.interaction?.updateForm(active.address, active.action.intent)
-      this.surfaceRuntime.interaction?.focusControl({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
-      this.restoreFocusIdentity({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
-      return
-    }
-    if (active.kind === 'toggle') {
-      if (!enter && !space) return
-      const value = !this.state.fieldValue(active.field, active.key)
-      this.state.setValue(active.key, value)
-      return
-    }
-    if (active.kind === 'submit') {
-      if (!enter && !space) return
-      this.surfaceRuntime.interaction?.invoke(active.form.submitActionId!, active.identity.pagePath!)
-      return
-    }
-    const eventControl = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
-    if (eventControl.role === 'list-multiple' && enter) {
-      this.state.emit(eventControl.commitEvent!)
-      return
-    }
-    const activates = eventControl.activation === 'both'
-      ? enter || space
-      : eventControl.activation === 'enter' ? enter : space
-    if (!activates) return
-    this.state.emit(eventControl.event)
   }
 
   invalidate(): void {
@@ -2528,7 +2430,7 @@ class StatusErrorComponent implements MayflyStatusComponent {
   invalidate(): void { this.error.invalidate() }
 }
 
-function admittedSurface(node: CompilableNode, options: MayflyUiCompilerOptions, mode: CompilerMode, editor?: MayflyEditor, surfaceRuntime?: MayflyUiSurfaceRuntime, contextKeyHints = false, contextEscapeHint?: 'close' | 'leave'): CompiledSurface {
+function admittedSurface(node: CompilableNode, options: MayflyUiCompilerOptions, mode: CompilerMode, editor?: MayflyEditor, surfaceRuntime?: MayflyUiSurfaceRuntime, contextKeyHints = false, contextEscapeHint?: EscapeLabel): CompiledSurface {
   const rollback = surfaceRuntime?.checkpoint()
   try { return new CompiledSurface(node, options, mode, editor, surfaceRuntime, contextKeyHints, contextEscapeHint) }
   catch (error) { rollback?.(); throw error }

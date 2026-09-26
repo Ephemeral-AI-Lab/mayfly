@@ -1,5 +1,8 @@
 # Mayfly UI/UX unified model design proposal
 
+> Superseded by [docs/interaction-model.md](../interaction-model.md); historical.
+> This record does not describe current behavior.
+
 Status: implemented — the unified model merged into main (`5fbbdc8`).
 Sections 2–3 describe the pre-migration baseline (`bd171aa`/`b57eb0d`) and
 the controller code they cite has since been deleted; the later sections are

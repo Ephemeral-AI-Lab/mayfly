@@ -234,11 +234,20 @@ describe('mayfly-core plugin through the real Loader', () => {
     await new Promise<void>(resolve => setTimeout(resolve, 50))
     expect(handler).toHaveBeenCalledTimes(2)
 
+    // A retained readonly conversation is a view: global keys still dispatch over it.
+    ctx.mayflyScreen.setEditorReplacement(panel, 'conversation')
+    expect(ctx.mayflyScreen.capturesInput).toBe(false)
+    process.stdin.emit('data', Buffer.from('\x0f', 'utf8'))
+    await new Promise<void>(resolve => setTimeout(resolve, 50))
+    expect(handler).toHaveBeenCalledTimes(3)
+    expect(captured).toEqual(['\x0f'])
+    ctx.mayflyScreen.setEditorReplacement(null, 'conversation')
+
     // Unloading removes the dispatcher listener with the fiber.
     await ctx.fiber.dispose()
     process.stdin.emit('data', Buffer.from('\x0f', 'utf8'))
     await new Promise<void>(resolve => setTimeout(resolve, 50))
-    expect(handler).toHaveBeenCalledTimes(2)
+    expect(handler).toHaveBeenCalledTimes(3)
   })
 
   it('stops the terminal and removes the services when the tree unloads', async () => {
