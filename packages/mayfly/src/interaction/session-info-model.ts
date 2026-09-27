@@ -121,10 +121,10 @@ export function usageNode(facts: SessionInfoFacts, t: MayflyTranslate): MayflyUi
       ui.divider({ label: t('Context usage (heuristic)') }),
       ...parts.every(part => part.tokens <= 0) ? [legend()] : [
         ui.child(ui.stack.row([
-          ui.child(grid(), { basis: 12, grow: 0, shrink: 1 }),
+          ui.child(grid(), { basis: 22, grow: 0, shrink: 1 }),
           ui.child(ui.stack.column([caption(), legend()]), { grow: 1, shrink: 1, minSize: 1 }),
-        ], { gap: 2 }), { when: { minWidth: 56 } }),
-        ui.child(ui.stack.column([caption(), grid(), legend()]), { when: { maxWidth: 55 } }),
+        ], { gap: 2 }), { when: { minWidth: 66 } }),
+        ui.child(ui.stack.column([caption(), grid(), legend()]), { when: { maxWidth: 65 } }),
       ],
     ],
   ])

@@ -324,8 +324,8 @@ ui.chart({
   layout?: 'grouped' | 'stacked' | 'normalized',
   // 'horizontal' requires layout: 'normalized': each category renders as a
   // `height`-row (default 10) grid of `ceil(100/height)` proportional cells —
-  // each cell ~1%, and every non-zero share keeps at least one cell; a series
-  // flagged empty: true paints '░' empty track (e.g. free space).
+  // each cell ~1%, painted two columns wide; every non-zero share keeps at
+  // least one cell; a series flagged empty: true paints '░' empty track.
   orientation?: 'vertical' | 'horizontal',
   title?: string,
   yLabel?: string,

@@ -145,12 +145,13 @@ function renderBars(node: Extract<MayflyChartNode, { readonly chart: 'bar' }>, w
   }), width, tones, components, colors)
 }
 
-/** Horizontal normalized bars: each category folds its proportional series fill row-major over a `height`-row grid of ~1% cells; `empty` series paint as the muted empty track. */
+/** Horizontal normalized bars: each category folds its proportional series fill row-major over a `height`-row grid of ~1% cells painted two columns wide; `empty` series paint as the muted empty track. */
 function renderHorizontalBars(node: Extract<MayflyChartNode, { readonly chart: 'bar' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
   if (node.categories.length === 0) return undefined
   const tones = node.series.map((series, index) => toneAt(series.tone, index))
   const height = Math.max(1, node.height ?? 10)
-  const columns = Math.max(1, Math.min(width, Math.ceil(100 / height)))
+  const cellWidth = width >= 2 ? 2 : 1
+  const columns = Math.max(1, Math.min(Math.floor(width / cellWidth), Math.ceil(100 / height)))
   const cells = height * columns
   const result: string[] = []
   if (node.title !== undefined) result.push(colors.textStrong(components.truncateToWidth(node.title, width)))
@@ -186,7 +187,7 @@ function renderHorizontalBars(node: Extract<MayflyChartNode, { readonly chart: '
       const flush = (): void => {
         if (runLength === 0) return
         const series = run >= 0 ? node.series[run] : undefined
-        line += paintPluginTone(colors, run >= 0 ? tones[run] : 'muted')((series?.empty === true || run < 0 ? '░' : '█').repeat(runLength))
+        line += paintPluginTone(colors, run >= 0 ? tones[run] : 'muted')((series?.empty === true || run < 0 ? '░' : '█').repeat(runLength * cellWidth))
         runLength = 0
       }
       for (let column = 0; column < columns; column += 1) {

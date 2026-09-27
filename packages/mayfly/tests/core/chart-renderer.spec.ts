@@ -55,7 +55,7 @@ describe('renderChartRows', () => {
       ],
     }), 10, components, tagged)
     expect(rows[0]).toBe('<textStrong>T')
-    expect(rows[1]).toBe('<primary>█████<accent>█████')
+    expect(rows[1]).toBe('<primary>██████<accent>████')
     expect(rows[2]).toBe('<accent>██████████')
   })
 
@@ -88,8 +88,8 @@ describe('renderChartRows', () => {
       ],
     }), 40, components, tagged)
     expect(rows).toHaveLength(10)
-    expect(rows[0]).toBe(`<primary>█<muted>${'░'.repeat(9)}`)
-    expect(rows.slice(1).every(row => row === `<muted>${'░'.repeat(10)}`)).toBe(true)
+    expect(rows[0]).toBe(`<primary>██<muted>${'░'.repeat(18)}`)
+    expect(rows.slice(1).every(row => row === `<muted>${'░'.repeat(20)}`)).toBe(true)
 
     const emptyGrid = { kind: 'chart', chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [], series: [{ id: 'a', values: [] }] } as const
     expect(renderChartRows(emptyGrid, 10, components, colors).join()).toContain('no data')
@@ -107,7 +107,7 @@ describe('renderChartRows', () => {
         { id: 'small', values: [250] },
       ],
     }), 40, components, tagged)
-    expect(donors[0]).toBe(`<accent>█<success>${'█'.repeat(9)}`)
+    expect(donors[0]).toBe(`<accent>██<success>${'█'.repeat(18)}`)
   })
 
   it('contains every chart at narrow widths with a chart or textual summary fallback', () => {

@@ -303,8 +303,8 @@ ui.chart({
   chart: 'bar',
   layout?: 'grouped' | 'stacked' | 'normalized',
   // 'horizontal' 仅与 layout: 'normalized' 组合：把每个 category 画成
-  // height 行（默认 10）× ⌈100/height⌉ 列的按比例格网——每格约 1%，非零
-  // 份额保底一格；empty: true 的 series 渲成 '░' 空轨（如 free space）。
+  // height 行（默认 10）× ⌈100/height⌉ 列的按比例格网——每格约 1%、渲染
+  // 两列宽；非零份额保底一格，empty: true 的 series 渲成 '░' 空轨（如 free space）。
   orientation?: 'vertical' | 'horizontal',
   title?: string,
   yLabel?: string,
