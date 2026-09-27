@@ -52,3 +52,19 @@ ui.stack.row([{ kind: 'text', content: 'bad', grow: 1 }])
 metric.render({ label: 'Context' })
 // @ts-expect-error user kits cannot introduce a new node kind through the type contract
 defineMayflyComponent({ id: '@acme/invalid', render: () => ({ kind: 'custom' }) })
+
+export const confirmedActions = ui.actions({ id: 'profile-actions', items: [
+  { id: 'delete', label: 'Delete', key: 'ctrl+d', confirm: { title: 'Delete profile?', detail: 'This cannot be undone.', confirmLabel: 'Delete', cancelLabel: 'Keep', tone: 'danger' } },
+  { id: 'archive', label: 'Archive', confirm: 'Archive profile?' },
+] })
+export const availabilityList = ui.list({ id: 'profiles', role: 'choose', numbered: 'focus', selectedIds: [], items: [
+  { id: 'default', label: 'Default', unavailableActions: { delete: 'The default profile cannot be deleted' }, confirm: { title: 'Switch profile?' } },
+] })
+export const labelledForm = ui.form({ id: 'profile', fields: [], submitActionId: 'save', submitLabel: 'Save profile', cancelActionId: 'cancel', cancelLabel: 'Discard' })
+export const stoppableLoader = ui.loader({ message: 'Working', cancelActionId: 'stop', cancelLabel: 'Stop now' })
+// @ts-expect-error confirmation tone is limited to danger
+ui.actions({ id: 'bad', items: [{ id: 'x', label: 'X', confirm: { title: 'X?', tone: 'warning' } }] })
+// @ts-expect-error numbered accepts a boolean or 'focus'
+ui.list({ id: 'bad', role: 'choose', numbered: 'accept', selectedIds: [], items: [] })
+// @ts-expect-error a confirmation needs a title
+ui.actions({ id: 'bad', items: [{ id: 'x', label: 'X', confirm: { detail: 'Why?' } }] })

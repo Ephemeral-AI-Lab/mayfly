@@ -10,8 +10,8 @@
  */
 
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
-import type { SearchCallModel, TranscriptSearchGroupModel } from '../frontend/index.ts'
-import type { TranscriptDetail } from './presentation-policy.ts'
+import { interpolateLocaleMessage, type MayflyTranslate, type SearchCallModel, type TranscriptSearchGroupModel } from '../frontend/index.ts'
+import { moreRowsHint } from './hints.ts'
 
 /** Tree rows kept in the collapsed card before the expand hint. */
 export const SEARCH_GROUP_ROW_LIMIT = 8
@@ -23,6 +23,8 @@ export const SEARCH_GROUP_EXPANDED_ROW_LIMIT = Number.MAX_SAFE_INTEGER
 interface RenderDeps {
   readonly colors: MayflySemanticColors
   readonly components: MayflyComponents
+  /** Whether the group's turn has ended: a pending member reads as cancelled. */
+  readonly closed: boolean
 }
 
 /**
@@ -34,15 +36,22 @@ interface RenderDeps {
  */
 export class SearchGroupComponent implements MayflyComponent {
   private expanded = false
+  private keyed = true
+  private closed = false
   private cache: { key: string; lines: string[] } | null = null
 
   constructor(
     private model: TranscriptSearchGroupModel,
     private readonly colors: MayflySemanticColors,
     private readonly components: MayflyComponents,
-    /** The `search` family's current detail level; `compact` renders the header plus failed-pattern rows only. */
-    private readonly detail: () => TranscriptDetail = () => 'collapsed',
+    private readonly t: MayflyTranslate = interpolateLocaleMessage,
   ) {}
+
+  /** Adopt whether Ctrl-O reaches the card and whether its turn has ended. */
+  setScope(scope: { readonly hint: boolean, readonly turnClosed: boolean }): void {
+    this.keyed = scope.hint
+    this.closed = scope.turnClosed
+  }
 
   /** Switch between the collapsed pattern rows and the expanded detail tree. */
   setExpanded(expanded: boolean): void { this.expanded = expanded }
@@ -55,37 +64,33 @@ export class SearchGroupComponent implements MayflyComponent {
 
   /** @param width - current viewport width in columns. @returns the rows. */
   render(width: number): string[] {
-    const detail = this.detail()
-    const open = this.expanded || detail === 'full'
-    const key = `${String(width)}:${String(open)}:${detail}`
+    const open = this.expanded
+    const key = `${String(width)}:${String(open)}:${String(this.keyed)}:${String(this.closed)}`
     if (this.cache?.key === key) return this.cache.lines
-    const lines = this.renderTree(width, detail, open)
+    const lines = this.renderTree(width, open)
     this.cache = { key, lines }
     return lines
   }
 
-  private renderTree(width: number, detail: TranscriptDetail, open: boolean): string[] {
-    const deps: RenderDeps = { colors: this.colors, components: this.components }
+  private renderTree(width: number, open: boolean): string[] {
+    const deps: RenderDeps = { colors: this.colors, components: this.components, closed: this.closed }
     const cut = (row: string): string => this.components.truncateToWidth(row, width)
     const clamp = (rows: string[]): string[] => rows.map(cut)
     const header = this.renderHeader(width)
-    if (detail === 'compact' && !open) {
-      const failed = this.model.searches.filter(call => call.state === 'error')
-      return clamp(['', header, ...this.renderPatternRows(deps, cut, open, failed)])
-    }
     const tree = this.renderPatternRows(deps, cut, open)
     if (open) return clamp(['', header, ...tree])
     const limit = SEARCH_GROUP_ROW_LIMIT
     if (tree.length <= limit) return clamp(['', header, ...tree])
     const hidden = tree.length - (limit - 1)
-    const hint = `... (${String(hidden)} more, ctrl+o to expand)`
-    return clamp(['', header, ...tree.slice(0, limit - 1), this.colors.textMuted(cut(hint))])
+    const hint = moreRowsHint(this.t, hidden, this.keyed)
+    return clamp(['', header, ...tree.slice(0, limit - 1), `  ${this.colors.textMuted(hint)}`])
   }
 
   private renderHeader(width: number): string {
     const { colors, components } = this
     const searches = this.model.searches
-    const pending = searches.filter(call => call.state === 'pending').length
+    const unsettled = searches.filter(call => call.state === 'pending').length
+    const pending = this.closed ? 0 : unsettled
     const failed = searches.filter(call => call.state === 'error').length
     const bold = (text: string): string => components.strong(String(text))
     const label = pending > 0
@@ -93,7 +98,7 @@ export class SearchGroupComponent implements MayflyComponent {
       : failed === searches.length
         ? bold(colors.error(`Searched ${String(searches.length)} ${searches.length === 1 ? 'pattern' : 'patterns'} · failed`))
         : bold(colors.primary(`Searched ${String(searches.length)} ${searches.length === 1 ? 'pattern' : 'patterns'}`))
-    let header = `${String(pending > 0 ? colors.text('● ') : failed === searches.length ? colors.error('✗ ') : colors.success('✓ '))}${String(label)}`
+    let header = `${String(pending > 0 ? colors.text('● ') : failed === searches.length ? colors.error('✗ ') : failed > 0 ? colors.warning('◐ ') : colors.success('✓ '))}${String(label)}`
     const files = searches.reduce((sum, call) => sum + (call.shape === 'matches' ? call.files?.length ?? 0 : 0), 0)
     const matches = searches.reduce((sum, call) => sum + (call.shape === 'matches' ? call.total ?? call.files?.reduce((inner, file) => inner + file.count, 0) ?? 0 : 0), 0)
     const paths = searches.reduce((sum, call) => sum + (call.shape === 'paths' ? call.pathsTotal ?? call.paths?.length ?? 0 : 0), 0)
@@ -103,10 +108,12 @@ export class SearchGroupComponent implements MayflyComponent {
     if (paths > 0) chips.push(`${String(paths)} ${paths === 1 ? 'path' : 'paths'}`)
     if (chips.length > 0) header += colors.muted(` · ${chips.join(', ')}`)
     if (failed > 0 && failed < searches.length) header += colors.error(` · ${String(failed)} failed`)
+    if (this.closed && unsettled > 0) header += colors.muted(` · ${String(unsettled)} cancelled`)
     return components.truncateToWidth(header, width)
   }
 
-  private renderPatternRows(deps: RenderDeps, cut: (row: string) => string, open: boolean, searches: readonly SearchCallModel[] = this.model.searches): string[] {
+  private renderPatternRows(deps: RenderDeps, cut: (row: string) => string, open: boolean): string[] {
+    const searches = this.model.searches
     const rows: string[] = []
     searches.forEach((call, index) => {
       const last = index === searches.length - 1
@@ -119,7 +126,7 @@ export class SearchGroupComponent implements MayflyComponent {
       if (call.state === 'error') {
         row = `  ${String(branch)} ${String(label)} ${deps.colors.error('✗')}${String(call.error === undefined ? '' : ` ${deps.colors.error(sanitizePluginText(call.error).replace(/[\r\n]+/gu, ' '))}`)}`
       } else if (call.state === 'pending') {
-        row = `  ${String(branch)} ${String(label)} ${deps.colors.textMuted('…')}`
+        row = `  ${String(branch)} ${String(label)} ${deps.closed ? deps.colors.muted('⊘') : deps.colors.textMuted('…')}`
       } else if (call.shape === 'matches') {
         const files = call.files ?? []
         const kept = files.reduce((sum, file) => sum + file.count, 0)

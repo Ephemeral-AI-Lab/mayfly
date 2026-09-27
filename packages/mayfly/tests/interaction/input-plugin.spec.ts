@@ -176,6 +176,36 @@ describe('mayfly-input plugin', () => {
     hint.invalidate()
   })
 
+  it('mirrors the current session title into the editor border while session facts exist', async () => {
+    const { ctx, screen, editor, fiber } = await mount()
+    expect(editor.borderTitle).toBeUndefined()
+    const listeners = new Set<(title: string | undefined) => void>()
+    const facts = {
+      subscribeTitle(listener: (title: string | undefined) => void) {
+        listeners.add(listener)
+        listener('dock-transcript-redesign')
+        return () => { listeners.delete(listener) }
+      },
+    }
+    const renders = screen.renderRequests
+    const offFacts = ctx.provide('mayflySessionFacts', facts as never)
+    await vi.waitFor(() => { expect(editor.borderTitle).toBe('dock-transcript-redesign') })
+    expect(screen.renderRequests).toBeGreaterThan(renders)
+    for (const listener of listeners) listener(undefined)
+    expect(editor.borderTitle).toBeUndefined()
+    for (const listener of listeners) listener('renamed')
+    expect(editor.borderTitle).toBe('renamed')
+
+    offFacts()
+    await vi.waitFor(() => { expect(listeners.size).toBe(0) })
+    expect(editor.borderTitle).toBeUndefined()
+
+    ctx.provide('mayflySessionFacts', facts as never)
+    await vi.waitFor(() => { expect(editor.borderTitle).toBe('dock-transcript-redesign') })
+    await fiber.dispose()
+    await vi.waitFor(() => { expect(listeners.size).toBe(0) })
+  })
+
   it('stays pinned below transcript content mounted after it', async () => {
     const { screen, editorRoot } = await mount()
     // Transcript components only mount once a session exists — long after
@@ -1171,11 +1201,13 @@ describe('mayfly-input plugin', () => {
       expect(ctx.mayflyRequests.stopPending()).toBe(true)
     })
 
-    it('clears the buffer on Escape when text is present and the agent is idle', async () => {
-      const { editor, cancel } = await mount()
+    it('clears the buffer on Escape when text is present and the agent is idle, keeping it one Up away', async () => {
+      const { editor, cancel, hint } = await mount()
       type(editor, 'draft')
       editor.handleInput(KEY.escape)
       expect(editor.getText()).toBe('')
+      expect(editor.getHistory()[0]).toBe('draft')
+      expect(hint.render(80).join('')).toContain('draft cleared · ↑ restores')
       expect(cancel).not.toHaveBeenCalled()
     })
 

@@ -339,25 +339,36 @@ export function registerPluginCommand(ctx: Context): () => void {
       const items = marketItems()
       const installStates = states()
       const groupIds = ['installed', 'not-installed'] as const
+      /* Install/Remove availability belongs to each row, not to its tab: a fully
+         installed entry cannot be reinstalled, a partial or outdated one can be
+         repaired, and only entries with installed rows can be removed. */
+      const unavailable = (entry: MarketEntry): Record<string, string> => {
+        const state = installStates[entry.id]
+        const installed = hasInstalledRows(entry)
+        return {
+          ...(entry.status === 'removed' ? { install: entry.statusNote ?? t('removed from the market') }
+            : installed && state?.installed === true && state.updateAvailable !== true ? { install: t('Already installed in this profile') } : {}),
+          ...(installed ? {} : { remove: t('Not installed in this profile') }),
+        }
+      }
       const groups = groupIds.map(group => {
         const groupItems = items.filter(entry => (hasInstalledRows(entry) ? 'installed' : 'not-installed') === group)
-        const canRepair = groupItems.some(entry => {
-          const state = installStates[entry.id]
-          return state?.updateAvailable === true || state?.installed !== true
-        })
         return ui.child(ui.stack.column([
           ui.list({
             id: `plugins-${group}`,
             role: 'browse',
             filterable: true,
             selectedIds: [],
-            items: groupItems.map(entry => ({ id: entry.id, label: entry.displayName, detail: entry.status === 'removed' ? (entry.statusNote ?? t('removed from the market')) : describe(entry), badge: badgeOf(entry, installStates[entry.id]), searchText: `${entry.displayName} ${describe(entry)}` })),
+            items: groupItems.map(entry => {
+              const blocked = unavailable(entry)
+              return { id: entry.id, label: entry.displayName, detail: entry.status === 'removed' ? (entry.statusNote ?? t('removed from the market')) : describe(entry), badge: badgeOf(entry, installStates[entry.id]), searchText: `${entry.displayName} ${describe(entry)}`, ...(Object.keys(blocked).length === 0 ? {} : { unavailableActions: blocked }) }
+            }),
             empty: ui.empty({ title: t(group === 'installed' ? 'no plugins installed' : 'no plugins available') }),
           }),
           ui.actions({ id: `plugin-market-${group}-actions`, items: [
             { id: 'details', label: t('Details'), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
-            { id: 'install', label: t(group === 'installed' ? 'Update / repair' : 'Install'), intent: 'primary', ...(group === 'installed' && !canRepair ? { disabled: true, disabledReason: t('Already installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
-            { id: 'remove', label: t('Remove'), intent: 'danger', confirm: t('Remove the selected plugin?'), ...(group === 'not-installed' ? { disabled: true, disabledReason: t('Not installed in this profile') } : {}), selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
+            { id: 'install', label: t(group === 'installed' ? 'Update / repair' : 'Install'), intent: 'primary', selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
+            { id: 'remove', label: t('Remove'), intent: 'danger', confirm: { title: t('Remove the selected plugin?'), detail: t('Removal applies after restarting Mayfly and starting a new session.'), confirmLabel: t('Remove'), tone: 'danger' }, selections: [{ pagePath: [{ controlId: 'plugin-market-tabs', itemId: group }], controlId: `plugins-${group}` }] },
           ] }),
         ]), { tab: { controlId: 'plugin-market-tabs', itemId: group } })
       })

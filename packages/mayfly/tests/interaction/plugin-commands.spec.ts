@@ -187,9 +187,14 @@ async function mountWorld(options: {
     if (model === undefined) return undefined
     const existing = drivers.get(model)
     if (existing !== undefined) return existing
+    // The surface renderer recompiles on every model revision; mirror that here.
     let compiled: ReturnType<typeof renderRequest> | undefined
+    let compiledRevision = -1
     const sync = (width = 80) => {
-      if (compiled === undefined || compiled.runtime.interaction?.revision !== model.revision) compiled = renderRequest(model, { columns: width, rows: 24 }, compiled?.runtime)
+      if (compiled === undefined || compiledRevision !== model.revision) {
+        compiled = renderRequest(model, { columns: width, rows: 24 }, compiled?.runtime)
+        compiledRevision = model.revision
+      }
       return compiled
     }
     const driver: BrowserPanel = {

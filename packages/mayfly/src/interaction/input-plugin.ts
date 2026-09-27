@@ -480,11 +480,16 @@ export function apply(ctx: Context): void {
   }
 
   /** Clear the current draft without changing request state. */
+  /** Clear the current draft; the cleared text stays one Up away in history. */
   function clearDraft(): boolean {
-    if (editor.getText().length === 0) return false
+    const text = editor.getText()
+    if (text.length === 0) return false
+    editor.addToHistory(text)
+    draft.stashHistory(editor.getHistory())
     editor.setText('')
     currentText = ''
     draft.clearDraft()
+    showFeedback('draft', 'draft cleared · ↑ restores', 'info')
     refreshHint()
     screen.requestRender()
     return true
@@ -695,6 +700,19 @@ export function apply(ctx: Context): void {
     refreshHint()
   })
   ctx.effect(() => sessionRegistration)
+  // The session name rides the right end of the editor's top border: the
+  // official `title` projection of the exact current Agent, read through
+  // the frontend session-facts bridge whenever that service is mounted.
+  ctx.inject(['mayflySessionFacts'], owner => {
+    const offTitle = owner.mayflySessionFacts.subscribeTitle(title => {
+      editor.setBorderTitle(title)
+      screen.requestRender()
+    })
+    owner.effect(() => () => {
+      offTitle()
+      editor.setBorderTitle(undefined)
+    })
+  })
   ctx.effect(() => {
     const slot = screen.mountDockSlot('editor.prompt', extensionRuntime)
     slot.focus()

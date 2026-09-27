@@ -102,16 +102,20 @@ export function apply(ctx: Context): void {
       else run()
     })
   })
+  /* Session allowances belong to their Agent, so switching the displayed view
+     keeps them; only disposing that Agent forgets them. Requests still settle
+     only while their Agent is displayed. */
   let observed = currentAgent.current()
   const offAgent = currentAgent.subscribe(agent => {
     if (agent === observed) return
     observed = agent
-    allowances.clear()
     for (const cancel of cancellations) cancel()
   })
+  const offDisposed = ctx.on('agent/disposed', ({ agent }) => { allowances.delete(agent) })
   ctx.effect(() => () => {
     disposed = true
     offAgent()
+    offDisposed()
     for (const cancel of cancellations) cancel()
     queued.splice(0)
     allowances.clear()

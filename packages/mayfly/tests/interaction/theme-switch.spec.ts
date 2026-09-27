@@ -60,6 +60,7 @@ async function mount(): Promise<{
   ctx.provide('sessionProjections', { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: () => () => {} } as never)
   ctx.provide('sessionController', { selectModel: async () => { throw new Error('not used') } } as never)
   ctx.provide('tools', { schemas: () => [] } as never)
+  ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   new SkillsCatalogService(ctx)
   const fiber = await ctx.plugin(commandsPlugin)
   return { ctx, agent, fiber }

@@ -926,7 +926,7 @@ describe('editor extension shell and actions', () => {
       before: { kind: 'actions', id: 'interactive-before', items: [] },
       after: { kind: 'unknown' },
       hint: 'x'.repeat(20_001),
-      actions: [{ id: '', label: 'invalid action' }],
+      actions: [{ id: '', label: 'invalid action', key: 'ctrl+x' }],
     }, {
       id: 'acme.opposite-rejections',
       before: { kind: 'unknown' },
@@ -945,6 +945,51 @@ describe('editor extension shell and actions', () => {
       expect.stringContaining('Mayfly UI text exceeds'),
     ]))
     runtime.invalidate()
+    runtime.dispose()
+  })
+
+  it('leaves Escape, Tab, and Shift+Tab to the editor while a footer notice is shown', () => {
+    const { ctx } = fakeMayflyContext()
+    const editor = new FakeMayflyEditor()
+    const keys: string[] = []
+    editor.onKey = data => { keys.push(data); return true }
+    const runtime = new EditorExtensionRuntime({
+      ctx,
+      editor,
+      report: () => {},
+      shouldTransformSubmit: () => true,
+      footer: () => ({ kind: 'text', content: 'interrupt requested' }),
+    })
+    runtime.focused = true
+    expect(runtime.render(80).join('\n')).toContain('interrupt requested')
+    for (const key of [KEY.escape, KEY.tab, KEY.shiftTab, KEY.ctrlC]) runtime.handleInput(key)
+    expect(keys).toEqual([KEY.escape, KEY.tab, KEY.shiftTab, KEY.ctrlC])
+    runtime.dispose()
+  })
+
+  it('omits decoration actions without a free modifier accelerator and reports why', () => {
+    const { ctx, runtime, notices } = runtimeFixture([{
+      id: 'acme.keys',
+      actions: [
+        { id: 'bare', label: 'Bare' },
+        { id: 'printable', label: 'Printable', key: 'q' },
+        { id: 'chord', label: 'Chord', key: 'alt+r' },
+      ],
+    }, {
+      id: 'acme.late',
+      actions: [
+        { id: 'again', label: 'Again', key: 'Alt+R' },
+        { id: 'steer', label: 'Steer', key: 'ctrl+s' },
+      ],
+    }])
+    ctx.mayflyKeymap.register([{ id: 'test.steer', keys: 'ctrl+s' }])
+    runtime.refreshPresentation()
+    const output = runtime.render(80).join('\n')
+    expect(output).toContain('Chord')
+    for (const label of ['Bare', 'Printable', 'Again', 'Steer']) expect(output).not.toContain(label)
+    expect(notices.filter(notice => notice.includes('modifier key'))).toHaveLength(4)
+    expect(notices).toContain('editor extension action key "Alt+R" is already bound')
+    expect(notices).toContain('editor extension action key "ctrl+s" is already bound')
     runtime.dispose()
   })
 
@@ -1031,7 +1076,7 @@ describe('editor extension shell and actions', () => {
     const calls: MayflyUiEvent[] = []
     const entries: readonly TestEditorExtension[] = [{
       id: 'acme.action-results',
-      actions: [{ id: 'run', label: 'Run' }],
+      actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }],
       onEvent: { action: async event => {
         calls.push(event)
         if (calls.length === 3) throw new Error('rejected action callback')
@@ -1040,7 +1085,7 @@ describe('editor extension shell and actions', () => {
       } },
     }, {
       id: 'acme.no-handler',
-      actions: [{ id: 'idle', label: 'Idle' }],
+      actions: [{ id: 'idle', label: 'Idle', key: 'alt+i' }],
     }]
     const { runtime, notices, replace } = runtimeFixture(entries)
     privateDispatch(runtime, { kind: 'change', controlId: 'extension-0-0', value: 'ignored' })
@@ -1062,7 +1107,7 @@ describe('editor extension shell and actions', () => {
   it('forwards action progress and reports structured failures', async () => {
     const { runtime, notices } = runtimeFixture([{
       id: 'acme.action-feedback',
-      actions: [{ id: 'run', label: 'Run' }],
+      actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }],
       onEvent: { action: (_event, context) => {
         context.report({ severity: 'info', purpose: 'progress', message: 'Working' })
         return { kind: 'failed', message: 'Action failed' }
@@ -1076,7 +1121,7 @@ describe('editor extension shell and actions', () => {
   it('forwards final reply feedback for a completed action', async () => {
     const { runtime, notices } = runtimeFixture([{
       id: 'acme.action-success',
-      actions: [{ id: 'run', label: 'Run' }],
+      actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }],
       onEvent: { action: () => ({ kind: 'completed', feedback: { severity: 'success', message: 'Applied' } }) },
     }])
     privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
@@ -1089,7 +1134,7 @@ describe('editor extension shell and actions', () => {
     let report!: (feedback: { severity: 'error', message: string }) => void
     const { runtime, notices } = runtimeFixture([{
       id: 'acme.late-action-feedback',
-      actions: [{ id: 'run', label: 'Run' }],
+      actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }],
       onEvent: { action: (_event, context) => { report = context.report; return gate.promise } },
     }])
     privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
@@ -1108,7 +1153,7 @@ describe('editor extension shell and actions', () => {
     let actionContext!: { signal: AbortSignal, report(feedback: { severity: 'error', message: string }): void }
     const subscribe = vi.spyOn(ctx.mayflyEditorExtensions, 'subscribe').mockImplementation(listener => {
       listener({ kind: 'upsert', entry: {
-        id: 'acme.external-action', definition: { id: 'acme.external-action' }, decoration: { actions: [{ id: 'run', label: 'Run' }] }, revision: 0, source: [],
+        id: 'acme.external-action', definition: { id: 'acme.external-action' }, decoration: { actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }] }, revision: 0, source: [],
         events: { prepare: (_event, context) => { actionContext = context; return gate.promise } },
       } as never })
       return () => {}
@@ -1132,7 +1177,7 @@ describe('editor extension shell and actions', () => {
     let calls = 0
     registerExtensions(ctx, [{
       id: 'acme.throwing-notice',
-      actions: [{ id: 'run', label: 'Run' }],
+      actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }],
       onEvent: { action: async () => {
         calls += 1
         if (calls === 1) throw new Error('first rejection')
@@ -1158,7 +1203,7 @@ describe('editor extension shell and actions', () => {
     let count = 0
     const entry: TestEditorExtension = {
       id: 'acme.actions',
-      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' , key: 'ctrl+r' }],
       onEvent: { action: (event, context) => {
         calls.push((event as MayflyUiEvent & { controlId: string }).controlId)
         signals.push(context.signal)
@@ -1169,9 +1214,8 @@ describe('editor extension shell and actions', () => {
     const { runtime, replace } = runtimeFixture([entry])
     runtime.focused = true
     runtime.render(80)
-    runtime.handleInput(KEY.tab)
-    runtime.handleInput(KEY.enter)
-    runtime.handleInput(KEY.enter)
+    runtime.handleInput(KEY.ctrlR)
+    runtime.handleInput(KEY.ctrlR)
     await vi.waitFor(() => expect(calls).toEqual(['run', 'run']))
     first.resolve(success(undefined))
     await vi.waitFor(() => expect(calls).toEqual(['run', 'run']))
@@ -1187,9 +1231,8 @@ describe('editor extension shell and actions', () => {
     }
     replace([retiring], 3)
     runtime.render(80)
-    runtime.handleInput(KEY.tab)
-    runtime.handleInput(KEY.enter)
-    runtime.handleInput(KEY.enter)
+    runtime.handleInput(KEY.ctrlR)
+    runtime.handleInput(KEY.ctrlR)
     await vi.waitFor(() => expect(calls.at(-1)).toBe('late'))
     replace([], 4)
     expect(signals.at(-1)?.aborted).toBe(true)
@@ -1210,9 +1253,9 @@ describe('editor extension shell and actions', () => {
       onEvent: { action: async (_event, context) => {
         signal = context.signal
         await gate.promise
-        return { kind: 'accepted', node: { actions: [{ id: 'run', label: 'Updated' }] }, source: [] }
+        return { kind: 'accepted', node: { actions: [{ id: 'run', label: 'Updated' , key: 'ctrl+r' }] }, source: [] }
       } },
-    }, { actions: [{ id: 'run', label: 'Run' }] })
+    }, { actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }] })
     const runtime = new EditorExtensionRuntime({
       ctx,
       editor,
@@ -1225,7 +1268,7 @@ describe('editor extension shell and actions', () => {
     gate.resolve()
     await vi.waitFor(() => expect(runtime.render(80).join('\n')).toContain('Updated'))
 
-    registration.set({ actions: [{ id: 'run', label: 'External' }] })
+    registration.set({ actions: [{ id: 'run', label: 'External' , key: 'ctrl+r' }] })
     expect(signal?.aborted).toBe(true)
     await new Promise(resolve => setImmediate(resolve))
     runtime.dispose()
@@ -1239,7 +1282,7 @@ describe('editor extension shell and actions', () => {
       .mockResolvedValue(undefined)
     const entry: TestEditorExtension = {
       id: 'acme.session-action',
-      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' , key: 'ctrl+r' }],
       onEvent: { action: dispatch },
     }
     const { ctx } = fakeMayflyContext()
@@ -1272,7 +1315,7 @@ describe('editor extension shell and actions', () => {
     const dispatch = vi.fn().mockReturnValue(hung.promise)
     const entry: TestEditorExtension = {
       id: 'acme.dispose-action',
-      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' , key: 'ctrl+r' }],
       onEvent: { action: dispatch },
     }
     const { ctx } = fakeMayflyContext()
@@ -1302,7 +1345,7 @@ describe('editor extension shell and actions', () => {
     const calls: string[] = []
     const { runtime, notices, replace } = runtimeFixture([{
       id: 'acme.same-action',
-      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' , key: 'ctrl+r' }],
       onEvent: { action: (_event, context) => {
         calls.push('old')
         oldSignal = context.signal
@@ -1312,20 +1355,18 @@ describe('editor extension shell and actions', () => {
     try {
       runtime.focused = true
       runtime.render(80)
-      runtime.handleInput(KEY.tab)
-      runtime.handleInput(KEY.enter)
+      runtime.handleInput(KEY.ctrlR)
       await vi.advanceTimersByTimeAsync(0)
       expect(calls).toEqual(['old'])
 
       replace([{
         id: 'acme.same-action',
-        actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+        actions: [{ id: 'run', label: 'Run', intent: 'primary' , key: 'ctrl+r' }],
         onEvent: { action: () => { calls.push('new'); return { kind: 'completed' } } },
       }], 2)
       expect(oldSignal?.aborted).toBe(true)
       runtime.render(80)
-      runtime.handleInput(KEY.tab)
-      runtime.handleInput(KEY.enter)
+      runtime.handleInput(KEY.ctrlR)
       await vi.advanceTimersByTimeAsync(0)
       expect(calls).toEqual(['old', 'new'])
 
@@ -1344,7 +1385,7 @@ describe('editor extension shell and actions', () => {
     let calls = 0
     const { runtime, notices } = runtimeFixture([{
       id: 'acme.action-timeout',
-      actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
+      actions: [{ id: 'run', label: 'Run', intent: 'primary' , key: 'ctrl+r' }],
       onEvent: { action: () => {
         calls += 1
         return calls === 1 ? hung.promise.then(() => ({ kind: 'completed' as const })) : { kind: 'completed' }
@@ -1353,9 +1394,8 @@ describe('editor extension shell and actions', () => {
     try {
       runtime.focused = true
       runtime.render(80)
-      runtime.handleInput(KEY.tab)
-      runtime.handleInput(KEY.enter)
-      runtime.handleInput(KEY.enter)
+      runtime.handleInput(KEY.ctrlR)
+      runtime.handleInput(KEY.ctrlR)
       await vi.advanceTimersByTimeAsync(0)
       expect(calls).toBe(2)
       await vi.advanceTimersByTimeAsync(30_000)

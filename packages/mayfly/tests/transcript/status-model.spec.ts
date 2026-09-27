@@ -81,6 +81,35 @@ describe('StatusFooterComponent', () => {
     expect(footer.render(20)).toEqual([])
   })
 
+  it('admits entries by priority across bands before lower-priority ones truncate', () => {
+    const service = registry(
+      entry('model', 'model', { priority: 0 }),
+      entry('context', 'ctx 45%', { priority: 4, band: 'right', overflow: 'hide' }),
+      entry('cwd', '~/dev/workspace', { priority: 5 }),
+      entry('git', 'main', { priority: 10 }),
+    )
+    const footer = new StatusFooterComponent(service, fakeMayflyComponents(), COLORS)
+    // Everything fits: left cluster in priority order, the readout right-aligned.
+    expect(footer.render(40)).toEqual(['model  ~/dev/workspace  main     ctx 45%'])
+    // Short of room, the right-band readout keeps its place; git drops, then cwd truncates.
+    expect(footer.render(32)).toEqual(['model  ~/dev/workspace   ctx 45%'])
+    expect(footer.render(26)).toEqual(['model  ~/dev/w\x1b[0m...\x1b[0m  ctx 45%'])
+    // The readout hides whole only when it no longer fits after the model.
+    expect(footer.render(12)).toEqual(['model  ~/\x1b[0m...\x1b[0m'])
+  })
+
+  it('centers the center band between the left and right clusters', () => {
+    const service = registry(
+      entry('left', 'L', { priority: 0 }),
+      entry('center', 'MAIN', { priority: 0, band: 'center' }),
+      entry('right', 'R', { priority: 1, band: 'right' }),
+    )
+    const footer = new StatusFooterComponent(service, fakeMayflyComponents(), COLORS)
+    expect(footer.render(20)).toEqual(['L       MAIN       R'])
+    const centerOnly = new StatusFooterComponent(registry(entry('center', 'MAIN', { band: 'center' })), fakeMayflyComponents(), COLORS)
+    expect(centerOnly.render(10)).toEqual(['   MAIN   '])
+  })
+
   it('separates multiple entries in one footer cluster', () => {
     const service = registry(entry('first', 'first'), entry('second', 'second'))
     const footer = new StatusFooterComponent(service, fakeMayflyComponents(), COLORS)

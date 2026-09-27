@@ -22,6 +22,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
@@ -61,11 +62,20 @@ jobs:
             git merge-base --is-ancestor HEAD origin/main || { echo 'release tag commit is not on main' >&2; exit 1; }
           fi
       - run: pnpm install --frozen-lockfile
+      - run: pnpm release:preflight "${RELEASE_VERSION#v}"
+      - run: pnpm test:repo-workflow
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm diagrams:check
       - run: pnpm build
       - run: pnpm check:lib
+      - run: pnpm check:agent-docs
+      - run: pnpm shots:check
+        if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
+      - run: pnpm check:examples
+        if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
+      - run: pnpm website:build
+        if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
       - name: full coverage gate (正式 rc/stable)
         if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
         run: pnpm test:coverage
@@ -73,6 +83,7 @@ jobs:
         if: ${{ contains(inputs.version || github.ref_name, '-test.') }}
         run: pnpm vitest run packages/ui/tests/ui.spec.ts packages/ui/tests/provider.spec.ts packages/cli/tests/main.spec.ts packages/mayfly/tests/interaction/commands-plugin.spec.ts
       - run: pnpm check:pack
+      - run: pnpm release:preflight --artifact "${RELEASE_VERSION#v}"
       - uses: actions/upload-artifact@v4
         with:
           name: npm-tarballs
@@ -155,6 +166,14 @@ jobs:
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           registry-url: https://registry.npmjs.org
+      - name: verify promote-only source run
+        if: ${{ inputs.promote_only == true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          test -n "$SOURCE_RUN_ID"
+          gh run view "$SOURCE_RUN_ID" --json headSha,workflowName,jobs | node script/promotion-source.mjs "$(git rev-parse HEAD)"
       - uses: actions/download-artifact@v4
         with:
           name: npm-tarballs
@@ -162,6 +181,7 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.source_run_id || github.run_id }}
+      - run: node script/release-preflight.mjs --artifact "${RELEASE_VERSION#v}"
       - run: node script/release-packages.mjs promote
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

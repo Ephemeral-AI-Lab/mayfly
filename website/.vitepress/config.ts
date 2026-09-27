@@ -6,7 +6,7 @@ const base = process.env.DOCS_BASE ?? '/'
  * 站点版本：当前预览线，与三个发布包一致。
  * 升级时只改这一处（首页 hero 文案与 footer 同步引用语义，见各 index.md）。
  */
-const SITE_VERSION = '0.1.0-alpha.5'
+const SITE_VERSION = '0.1.1-rc.1'
 
 /**
  * Optional deployment origin. Local and fork builds deliberately have no
@@ -155,7 +155,7 @@ const sidebarZh = {
         { text: 'Seam 参考', link: '/plugins/seams' },
         { text: '内置插件', link: '/plugins/builtins' },
         { text: '贡献本仓库', link: '/plugins/contributing' },
-        { text: '仓库设计文档（GitHub）', link: 'https://github.com/Ephemeral-AI-Lab/mayfly/blob/main/docs/README.md' },
+        { text: '仓库设计文档（GitHub, English）', link: 'https://github.com/Ephemeral-AI-Lab/mayfly/blob/main/docs/README.md' },
       ],
     },
   ],
@@ -259,7 +259,7 @@ const sidebarEn = {
         { text: 'Seam reference', link: '/en/plugins/seams' },
         { text: 'Built-in plugins', link: '/en/plugins/builtins' },
         { text: 'Contributing to Mayfly', link: '/en/plugins/contributing' },
-        { text: 'Design docs (GitHub, 中文)', link: 'https://github.com/Ephemeral-AI-Lab/mayfly/blob/main/docs/README.md' },
+        { text: 'Design docs (GitHub)', link: 'https://github.com/Ephemeral-AI-Lab/mayfly/blob/main/docs/README.md' },
       ],
     },
   ],

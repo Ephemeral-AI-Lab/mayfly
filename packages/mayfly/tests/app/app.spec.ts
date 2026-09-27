@@ -277,6 +277,15 @@ describe('mayfly app driver', () => {
     expect(test.ctx.mayflyCurrentAgent.current()).toBe(fresh)
   })
 
+  it('carries a requested agent preset into session.create', async () => {
+    const test = bench()
+    await waitForAgent(test)
+    expect(test.created).toEqual([{ cwd: process.cwd() }])
+    test.ctx.emit('mayfly/request-new', 'minimal')
+    await vi.waitFor(() => { expect(test.created.length).toBe(2) })
+    expect(test.created[1]).toEqual({ cwd: process.cwd(), agentPreset: 'minimal' })
+  })
+
   it('forks and rewinds through the native controller and reports every guard', async () => {
     const test = bench()
     const parent = await waitForAgent(test)

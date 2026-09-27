@@ -7,7 +7,11 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { mayflyCurrentAgent: MayflyCurrentAgentService }
-  interface Events { 'mayfly/request-close-agent-view'(): void }
+  interface Events {
+    'mayfly/request-close-agent-view'(): void
+    /** Open the shared reply form for the displayed continuable child; does not send or resume it. */
+    'mayfly/request-subagent-reply'(target: Extract<MayflyAuxiliaryView, { readonly kind: 'subagent' }>): void
+  }
 }
 
 /** One auxiliary conversation the frontend may display beside its primary. */

@@ -7,7 +7,7 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
-import type { AgentPreset } from '@deepseek-ai/dsh-agent-preset-registry'
+import type { AgentPreset, AgentPresetComposition } from '@deepseek-ai/dsh-agent-preset-registry'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { presetItems } from '../../src/interaction/preset-commands.ts'
 import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
@@ -19,6 +19,7 @@ const preset = (id: string, options: Partial<AgentPreset> = {}): AgentPreset => 
 class FixturePresets {
   constructor(private readonly ctx: Context) {}
   catalog: AgentPreset[] = [preset('standard', { name: 'Standard' }), preset('minimal', { name: 'Minimal' })]
+  compositions: AgentPresetComposition[] = []
   selected = new Map<Context, string>()
   private readonly switches = new Map<string, Promise<unknown>>()
   readonly recomposeCalls = vi.fn(async (ctx: Context, id: string): Promise<AgentPreset> => {
@@ -28,6 +29,7 @@ class FixturePresets {
     return preset
   })
   async list() { return this.catalog }
+  async compositionInventory() { return this.compositions }
   composedPreset(ctx: Context) { return this.selected.get(ctx) }
   recompose(ctx: Context, id: string) { return this.recomposeCalls(ctx, id) }
   async select(agent: Agent, agentPreset: string): Promise<string> {
@@ -44,11 +46,18 @@ class FixturePresets {
   }
 }
 
+const scheduleComposition = (id: string, schedule = false): AgentPresetComposition => ({
+  id, isDefault: false,
+  rows: schedule ? [{ entryId: 'schedule', moduleName: '@deepseek-ai/dsh-schedule', enabled: true }] : [],
+})
+
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
+  let schemas: () => readonly { name: string }[] = () => []
+  ctx.provide('tools', { schemas: () => schemas() } as never)
   const bench = await requestFixture(ctx)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
@@ -61,7 +70,9 @@ async function setup() {
   } })
   await flushRequests()
   const run = (line = '/preset', signal = new AbortController().signal) => ctx.commands.execute(bench.agent, line, [], signal)
-  return { ...bench, rosterOwner, roster: ctx.agentPresets as FixturePresets, session, run }
+  const setTools = (names: readonly string[]) => { schemas = () => names.map(name => ({ name })) }
+  const failTools = () => { schemas = () => { throw new Error('catalog unavailable') } }
+  return { ...bench, rosterOwner, roster: ctx.agentPresets as FixturePresets, session, run, setTools, failTools }
 }
 
 describe('native preset selection UI', () => {
@@ -127,6 +138,58 @@ describe('native preset selection UI', () => {
     expect((await bench.run('/preset minimal'))?.result.kind).toBe('error')
     bench.ctx.mayflyCurrentAgent.select(bench.other)
     expect((await bench.run('/preset minimal'))?.result.kind).toBe('error')
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
+  })
+
+  it('refuses to strand reminder tools on a preset that does not compose them', async () => {
+    const bench = await setup()
+    bench.setTools(['schedule_create', 'schedule_list', 'schedule_delete'])
+    bench.roster.compositions = [scheduleComposition('standard', true), scheduleComposition('minimal')]
+    const result = await bench.run('/preset minimal')
+    expect(result?.result.kind).toBe('error')
+    expect(result?.result.kind === 'error' && result.result.text).toContain('/new minimal')
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
+
+    await bench.run()
+    const model = bench.model('mayfly.presets')
+    model.emit({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['minimal'] })
+    await flushRequests()
+    expect(model.disposed).toBe(false)
+    expect(model.feedbackSnapshot().at(-1)?.severity).toBe('error')
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
+  })
+
+  it('refuses a switch that cannot grant the reminder tools the target composes', async () => {
+    const bench = await setup()
+    bench.roster.compositions = [scheduleComposition('standard', true), scheduleComposition('minimal')]
+    const result = await bench.run('/preset standard')
+    expect(result?.result.kind).toBe('error')
+    expect(result?.result.kind === 'error' && result.result.text).toContain('/new standard')
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
+  })
+
+  it('lets capability-matched and unknown-preset selections reach the native service', async () => {
+    const bench = await setup()
+    bench.setTools(['schedule_create'])
+    bench.roster.compositions = [
+      scheduleComposition('standard', true),
+      scheduleComposition('minimal'),
+      { ...scheduleComposition('busted'), broken: 'Unreadable composition' },
+    ]
+    // Same capability both ways: no refusal.
+    expect((await bench.run('/preset standard'))?.result.kind).toBe('success')
+    expect(bench.roster.recomposeCalls).toHaveBeenCalledTimes(1)
+    // Unknown and unreadable targets are the native service's refusal, not the guard's.
+    expect((await bench.run('/preset missing'))?.result.kind).toBe('error')
+    expect((await bench.run('/preset busted'))?.result.kind).toBe('error')
+    expect(bench.roster.recomposeCalls).toHaveBeenCalledTimes(3)
+  })
+
+  it('treats an unreadable tool catalog as incapable when the target composes reminders', async () => {
+    const bench = await setup()
+    bench.failTools()
+    bench.roster.compositions = [scheduleComposition('standard', true)]
+    expect((await bench.run('/preset standard'))?.result.kind).toBe('error')
     expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
   })
 

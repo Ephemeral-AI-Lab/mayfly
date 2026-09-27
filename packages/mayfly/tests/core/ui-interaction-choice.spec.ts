@@ -109,8 +109,9 @@ describe('flat choice reducer', () => {
     expect(reduceChoice(state, { kind: 'focus', id: 'one' })).toBe(state)
     state = reduceChoice(state, { kind: 'move', direction: 1, count: 0 })
     expect(state.focusedId).toBe('two')
-    state = reduceChoice(state, { kind: 'edge', edge: 'last' })
-    expect(state.focusedId).toBe('disabled')
+    expect(reduceChoice(state, { kind: 'edge', edge: 'last' })).toBe(state)
+    expect(reduceChoice(state, { kind: 'move', direction: 1, count: 5 })).toBe(state)
+    expect(reduceChoice(state, { kind: 'focus', id: 'disabled' })).toBe(state)
     state = reduceChoice(state, { kind: 'edge', edge: 'first' })
     expect(state.focusedId).toBe('one')
     state = reduceChoice(state, { kind: 'query', query: 'second' })
@@ -124,6 +125,42 @@ describe('flat choice reducer', () => {
     state = reduceChoice(state, { kind: 'query', query: 'absent' })
     expect(state.focusedIndex).toBe(-1)
     expect(reduceChoice(state, { kind: 'move', direction: 1, count: 1 })).toBe(state)
+  })
+
+  it('never focuses a disabled row: movement steps over it and edges stop short of it', () => {
+    const gapped = ui.list({ id: 'gapped', role: 'choose', selectedIds: ['off'], filterable: true, items: [
+      { id: 'off', label: 'Off', disabled: true },
+      { id: 'a', label: 'Alpha' },
+      { id: 'hole', label: 'Alpha hole', disabled: true },
+      { id: 'b', label: 'Beta' },
+      { id: 'tail', label: 'Tail', disabled: true },
+    ] })
+    let state = createChoiceState(gapped)
+    expect(state).toMatchObject({ focusedId: 'a', focusedPosition: 1 })
+    state = reduceChoice(state, { kind: 'move', direction: 1, count: 1 })
+    expect(state).toMatchObject({ focusedId: 'b', focusedPosition: 3 })
+    expect(reduceChoice(state, { kind: 'move', direction: 1, count: 10 })).toBe(state)
+    expect(reduceChoice(state, { kind: 'edge', edge: 'last' })).toBe(state)
+    expect(reduceChoice(state, { kind: 'move', direction: -1, count: 10 })).toMatchObject({ focusedId: 'a' })
+    expect(reduceChoice(state, { kind: 'edge', edge: 'first' })).toMatchObject({ focusedId: 'a' })
+    expect(reduceChoice(state, { kind: 'query', query: 'hole' })).toMatchObject({ focusedIndex: -1, focusedId: undefined })
+    expect(reduceChoice(state, { kind: 'query', query: 'alpha' })).toMatchObject({ focusedId: 'a' })
+    const disabledNow = { ...gapped, items: gapped.items.map(item => item.id === 'b' ? { ...item, disabled: true } : item) }
+    expect(reconcileChoice(state, disabledNow)).toMatchObject({ focusedId: 'a' })
+    const inert = createChoiceState({ ...gapped, items: [{ id: 'x', label: 'X', disabled: true }] })
+    expect(inert).toMatchObject({ focusedIndex: -1, focusedId: undefined })
+    expect(reduceChoice(inert, { kind: 'move', direction: 1, count: 1 })).toBe(inert)
+    expect(reduceChoice(inert, { kind: 'edge', edge: 'first' })).toBe(inert)
+  })
+
+  it('moves focus to the nearest enabled row when a collapsed ancestor cannot hold it', () => {
+    const lockedTree = ui.list({ id: 'locked', role: 'browse', tree: true, selectedIds: ['leaf'], items: [
+      { id: 'root', label: 'Root', disabled: true },
+      { id: 'leaf', label: 'Leaf', parentId: 'root' },
+      { id: 'next', label: 'Next' },
+    ] })
+    const state = reduceChoice(createChoiceState(lockedTree), { kind: 'expand', id: 'root' })
+    expect(state).toMatchObject({ focusedId: 'next', expandedIds: [] })
   })
 
   it('validates browse, duplicate, single, missing, disabled, and dirty selections', () => {

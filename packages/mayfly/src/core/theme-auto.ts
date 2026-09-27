@@ -12,8 +12,8 @@
 
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import { defineThemeService, themeModel } from './theme-palette.ts'
-import { DARK_COLORS, DARK_FOREGROUNDS, DARK_SELECTED_BG } from './theme-dark.ts'
-import { LIGHT_COLORS, LIGHT_FOREGROUNDS, LIGHT_SELECTED_BG } from './theme-light.ts'
+import { DARK_COLORS, DARK_FOREGROUNDS, DARK_BACKGROUNDS } from './theme-dark.ts'
+import { LIGHT_COLORS, LIGHT_FOREGROUNDS, LIGHT_BACKGROUNDS } from './theme-light.ts'
 // Empty type imports carry the `mayflyTerminalInfo` Context merge and the
 // `mayfly/terminal-theme-changed` Events merge used below.
 import type {} from './terminal-info.ts'
@@ -27,8 +27,8 @@ export const inject = ['mayflyTerminalInfo']
 
 const PALETTES = { dark: DARK_COLORS, light: LIGHT_COLORS } as const
 const MODELS = {
-  dark: themeModel('dark', 'Dark', true, DARK_FOREGROUNDS, DARK_SELECTED_BG),
-  light: themeModel('light', 'Light', false, LIGHT_FOREGROUNDS, LIGHT_SELECTED_BG),
+  dark: themeModel('dark', 'Dark', true, DARK_FOREGROUNDS, DARK_BACKGROUNDS),
+  light: themeModel('light', 'Light', false, LIGHT_FOREGROUNDS, LIGHT_BACKGROUNDS),
 } as const
 
 /**

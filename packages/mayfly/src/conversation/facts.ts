@@ -11,10 +11,15 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { AssistantStreamRecord, ContentBlock } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tool-todo'
+// Empty type import activates the compaction-lifecycle event declarations
+// the meter cases below consume.
+import type {} from '@deepseek-ai/dsh-compaction/types'
 import { z } from 'zod'
 import { outputProgressSchema } from './output-progress.ts'
 import type { ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
+import { isSpawnToolName } from './projection.ts'
+import { callDetail, reasoningDetail } from './activity-detail.ts'
 
 const todoSchema = z.object({
   content: z.string(),
@@ -26,6 +31,7 @@ export const conversationFactsSchema = z.object({
   phase: z.enum(['idle', 'waiting', 'thinking', 'composing', 'tool']),
   active: z.boolean(),
   turn: z.number().int().nonnegative(),
+  turnStartedAt: z.number().optional(),
   flowUp: z.number().nonnegative().optional(),
   flowDownChars: z.number().int().nonnegative(),
   outputProgress: outputProgressSchema.optional(),
@@ -33,6 +39,7 @@ export const conversationFactsSchema = z.object({
   lastCompletedStep: z.number().int().nonnegative().optional(),
   todos: z.array(todoSchema),
   contextTokens: z.number().nonnegative(),
+  contextCacheReadTokens: z.number().nonnegative().optional(),
   contextWindow: z.number().positive().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
@@ -41,12 +48,17 @@ export const conversationFactsSchema = z.object({
   epochToolCount: z.number().int().nonnegative().optional(),
   epochTokens: z.number().nonnegative().optional(),
   usageByStep: z.record(z.string(), z.number().nonnegative()).optional(),
-  activity: z.object({ kind: z.enum(['reasoning', 'text', 'tool']), name: z.string().optional() }).optional(),
+  activity: z.object({
+    kind: z.enum(['reasoning', 'text', 'tool']),
+    name: z.string().optional(),
+    detail: z.string().optional(),
+    preparing: z.boolean().optional(),
+  }).optional(),
   runOutcome: z.enum(['completed', 'failed']).optional(),
   endedAt: z.number().optional(),
   agentCalls: z.array(z.object({
     seq: z.number().int(), turn: z.number().int().nonnegative(), step: z.number().int().nonnegative(),
-    callId: z.string(), name: z.enum(['subagent', 'subagent_fork']), arguments: z.string(), startedAt: z.number(),
+    callId: z.string(), name: z.string(), arguments: z.string(), startedAt: z.number(),
     result: z.object({ text: z.string(), isError: z.boolean(), endedAt: z.number() }).optional(),
   })),
 }) satisfies z.ZodType<ConversationFactsState>
@@ -89,7 +101,9 @@ function foldStreamChunks(
   return {
     ...state, phase: draft.phase, active: true, turn, currentStep: step,
     flowDownChars: state.flowDownChars + draft.chars,
-    activity: draft.phase === 'waiting' ? state.activity : { kind: draft.phase === 'thinking' ? 'reasoning' : 'text' },
+    activity: draft.phase === 'waiting'
+      ? state.activity
+      : draft.phase === 'thinking' ? { kind: 'reasoning', detail: reasoningDetail(draft.reasoning) } : { kind: 'text' },
     outputProgress: draft.outputProgress,
   }
 }
@@ -105,7 +119,7 @@ export function foldConversationFacts(
   switch (event.type) {
     case 'turn/start':
       return {
-        ...state, phase: 'waiting', active: true, turn: event.data.turn, flowUp: undefined,
+        ...state, phase: 'waiting', active: true, turn: event.data.turn, turnStartedAt: event.time, flowUp: undefined,
         flowDownChars: 0, outputProgress: undefined, epochToolCount: 0, epochTokens: 0, usageByStep: {},
         activity: undefined, runOutcome: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
       }
@@ -146,10 +160,10 @@ export function foldConversationFacts(
       const key = `${event.data.turn}/${event.data.step}`
       const usageByStep = { ...streamed.usageByStep, [key]: total }
       const epochTokens = Object.values(usageByStep).reduce((sum, value) => sum + value, 0)
-      return { ...streamed, contextTokens: used, flowUp: used, usageByStep, epochTokens }
+      return { ...streamed, contextTokens: used, contextCacheReadTokens: usage.cacheReadTokens, flowUp: used, usageByStep, epochTokens }
     }
     case 'tool/call':
-      if (event.data.name === 'subagent' || event.data.name === 'subagent_fork') {
+      if (isSpawnToolName(event.data.name)) {
         return {
           ...state,
           phase: 'tool', active: true, turn: event.data.turn, outputProgress: undefined,
@@ -169,7 +183,7 @@ export function foldConversationFacts(
       return {
         ...state, phase: 'tool', active: true, turn: event.data.turn, outputProgress: undefined,
         epochToolCount: (state.epochToolCount ?? 0) + 1,
-        activity: { kind: 'tool', name: event.data.name },
+        activity: { kind: 'tool', name: event.data.name, detail: callDetail(event.data.arguments) },
       }
     case 'tool/result': {
       // Tool results are first-class tool-role messages; logs written before
@@ -202,6 +216,23 @@ export function foldConversationFacts(
       return { ...state, todos: event.data.todos.map(todo => ({ ...todo })) }
     case 'request/context':
       return event.data.contextWindow === state.contextWindow ? state : { ...state, contextWindow: event.data.contextWindow }
+    // `compaction/summary` and `compaction/prune` are the metering events
+    // paired with a surface `replace`: a consumer subtracts the shadow price
+    // without retaining per-node prices. The summarize call's output tokens
+    // stand in for the framed checkpoint; the post-replacement cache share
+    // is unknown, so the stale segment clears until the next model step.
+    case 'compaction/summary':
+      return {
+        ...state,
+        contextTokens: Math.max(0, state.contextTokens - event.data.shadowedTokenCount + (event.data.usage?.outputTokens ?? 0)),
+        contextCacheReadTokens: undefined,
+      }
+    case 'compaction/prune':
+      return {
+        ...state,
+        contextTokens: Math.max(0, state.contextTokens - event.data.shadowedTokenCount),
+        contextCacheReadTokens: undefined,
+      }
     case 'request/header': {
       const config = event.data.header.config
       return {
@@ -234,5 +265,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 4,
+  stateVersion: 8,
 }

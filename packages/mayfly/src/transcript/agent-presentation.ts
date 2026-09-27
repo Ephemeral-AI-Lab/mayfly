@@ -37,3 +37,29 @@ export function agentPhasePresentation(phase: 'pending' | 'running' | 'waiting' 
 export function agentTreeBranch(last: boolean): '└─' | '├─' {
   return last ? '└─' : '├─'
 }
+
+/** Argument keys naming a spawned agent, in priority order. */
+const AGENT_NAME_KEYS = ['name', 'agent_name', 'agent', 'type', 'preset']
+
+function stringArgument(args: unknown, key: string): string | undefined {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return undefined
+  const value = (args as Record<string, unknown>)[key]
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+/**
+ * The display label of one spawn-class call: its agent name (with the task
+ * description as detail), else the description, else the tool name with its
+ * raw arguments as detail.
+ * @param name - the tool name.
+ * @param args - the parsed arguments, when valid.
+ * @param raw - the raw arguments string.
+ * @returns the label and optional detail.
+ */
+export function agentCallLabel(name: string, args: unknown, raw: string): { readonly label: string, readonly detail?: string } {
+  const named = AGENT_NAME_KEYS.map(key => stringArgument(args, key)).find(value => value !== undefined)
+  const description = stringArgument(args, 'description')
+  if (named !== undefined) return { label: named, ...(description === undefined || description === named ? {} : { detail: description }) }
+  if (description !== undefined) return { label: description }
+  return { label: name, ...(raw === '' ? {} : { detail: raw }) }
+}

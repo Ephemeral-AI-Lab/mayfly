@@ -12,8 +12,8 @@
  * `command/done` and the `permission/preset`/`sandbox/mode`/
  * `approval/policy` knob events logged for free. The `custom` preset is
  * a display-only derived state (upstream rejects it on write), and the
- * `danger-full-access` row opens an explicit Yes/No confirmation because
- * it changes the sandbox and approval policy together.
+ * `danger-full-access` row asks the shared No-first decision because it
+ * changes the sandbox and approval policy together.
  *
  * @module @ephemeral-ai/mayfly/interaction/permission-panel
  */
@@ -27,7 +27,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { ui, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 import { CURRENT_MARK } from './symbols.ts'
 
 /** The sandbox + approval bundle one preset resolves to. */
@@ -85,16 +85,29 @@ export function openPermissionPanel(ctx: Context): void {
   if (currentAgents === undefined) return
   const agent = currentAgents.current()
   if (agent === null) return
+  const t = interactionTranslator(ctx)
   const current = presets.current(agent.session)
-  const rows: Array<{ readonly id: string, readonly label: string, readonly detail?: string, readonly badge?: string, readonly disabled?: boolean }> = presets.names.map(name => ({
-    id: name,
-    label: presets.optionOf(name).name,
-    detail: presetDescription(presets.resolve(name)),
-    ...(name === current ? { badge: CURRENT_MARK } : {}),
-  }))
-  if (current === 'custom') {
-    rows.push({ id: 'custom', label: presets.optionOf('custom').name, disabled: true })
-  }
+  const rows: MayflyListItem[] = presets.names.map(name => {
+    const spec = presets.resolve(name)
+    const label = presets.optionOf(name).name
+    return {
+      id: name,
+      label,
+      detail: presetDescription(spec),
+      ...(name === current ? { badge: CURRENT_MARK } : {}),
+      /* Full access changes the sandbox and approval policy together, so it
+         runs through the shared decision with its consequence spelled out. */
+      ...(spec.sandbox === 'danger-full-access' ? { confirm: {
+        title: t('Enable {preset}?', { preset: label }),
+        detail: t(spec.approval === 'never'
+          ? 'Disable the file sandbox. Requests that still require approval will be rejected without prompting.'
+          : 'Disable the file sandbox. Requests that require approval will still prompt.'),
+        confirmLabel: t('Enable'),
+        tone: 'danger' as const,
+      } } : {}),
+    }
+  })
+  if (current === 'custom') rows.push({ id: 'custom', label: presets.optionOf('custom').name, disabled: true, disabledReason: t(CUSTOM_BLOCKED) })
 
   const dispatch = (name: string): void => {
     void ctx.commands.execute(agent, `/permission ${name}`, [], new AbortController().signal).then(
@@ -113,35 +126,20 @@ export function openPermissionPanel(ctx: Context): void {
     )
   }
 
-  let picker!: MayflyOverlayHandle
-  const confirmDanger = (name: string): void => {
-    const t = interactionTranslator(ctx)
-    const id = 'mayfly.permission.confirm'
-    const handle: MayflyOverlayHandle | undefined = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Full access'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
-      if (event.kind === 'activate' && event.actionId === 'yes') {
-        handle?.close(); picker.close()
-        if (currentAgents.current() !== agent) {
-          notifications.report('dispatch', { message: 'permission target changed; action cancelled', severity: 'warning' })
-        } else dispatch(name)
-      }
-      else if (event.kind === 'activate' && event.actionId === 'no') handle?.close()
-      return { kind: 'completed' as const }
-    } } }, ui.surface({ chrome: 'overlay', title: t('Full access'), child: ui.stack.column([
-      ui.text(t('Enable {preset}?', { preset: presets.optionOf(name).name })),
-      ui.text(presets.resolve(name).approval === 'never' ? t('Disable the file sandbox. Requests that still require approval will be rejected without prompting.') : t('Disable the file sandbox. Requests that require approval will still prompt.'), { tone: 'warning' }),
-      ui.actions({ id: 'permission-confirm-actions', items: [{ id: 'yes', label: t('Yes'), intent: 'danger' }, { id: 'no', label: t('No'), defaultFocus: true }] }),
-    ]) }), { reopen: 'focus' })
-  }
-
   // 'replace' re-reads the preset table on every invocation, so a stale
   // picker never shows an outdated current mark.
-  picker = openUiOverlay(ctx, { id: 'mayfly.permission', presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Permissions', scope: { kind: 'app', targetId: 'permission' }, onEvent: { action: event => {
+  let offAgent: (() => void) | undefined
+  const picker = openUiOverlay(ctx, { id: 'mayfly.permission', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Permissions'), scope: { kind: 'app', targetId: 'permission' }, onEvent: { action: event => {
     if (event.kind !== 'selection-accept') return { kind: 'completed' as const }
     const name = event.selectedIds[0]
-    if (name === undefined) return { kind: 'completed' as const }
-    if (name === 'custom') { notifications.report('custom', { message: CUSTOM_BLOCKED, severity: 'warning' }); return { kind: 'completed' as const } }
-    if (presets.resolve(name).sandbox === 'danger-full-access') confirmDanger(name)
-    else { picker.close(); dispatch(name) }
-    return { kind: 'completed' as const }
-  } } }, ui.surface({ chrome: 'overlay', title: 'Permissions', child: ui.list({ id: 'permissions', role: 'choose', numbered: true, selectedIds: current === 'custom' ? [] : [current], items: rows }) }), { reopen: 'replace' })
+    if (name === undefined || !presets.names.includes(name)) return { kind: 'completed' as const }
+    if (currentAgents.current() !== agent) {
+      notifications.report('dispatch', { message: t('permission target changed; action cancelled'), severity: 'warning' })
+      return { kind: 'cancelled' as const, dismiss: true }
+    }
+    dispatch(name)
+    return { kind: 'completed' as const, dismiss: true }
+  } } }, ui.surface({ chrome: 'overlay', title: t('Permissions'), child: ui.list({ id: 'permissions', role: 'choose', numbered: true, selectedIds: current === 'custom' ? [] : [current], items: rows }) }), { reopen: 'replace', onClosed: () => offAgent?.() })
+  /* The picker belongs to the Agent it was opened for; replacing that Agent retires it. */
+  offAgent = currentAgents.subscribe(next => { if (next !== agent) picker.close() })
 }

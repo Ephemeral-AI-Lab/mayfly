@@ -17,7 +17,7 @@
 
 Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 （`dsh`）的交互式终端界面。它是叠加在 `dsh-base` 上的树外 Cordis
-bundle，针对 Harness `0.1.7-rc.2` 构建。Mayfly `0.1.0-alpha.5`
+bundle，针对 Harness `0.1.7-rc.2` 构建。Mayfly `0.1.1-rc.1`
 刻意与 dsh Web 使用同一种插件模型：插件是普通 Cordis sibling，直接消费
 dsh 原生服务。
 
@@ -25,9 +25,10 @@ Mayfly 可以直接在终端显示 Markdown 表格、assistant 消息中的闭�
 以及 renderer-neutral 的 line、point、bar、sparkline 与 heatmap 节点；超宽或不支持
 的内容会安全回退为源码或文本。
 
-流式思考时，标题显示当前思考块的估算 token 数和输出速率，例如
-`thinking... ↓1.2k · ≈42 tok/s`。正文开始后，思考动画停止，activity 行显示
-正文阶段独立的计数与速率。速率按每四个字符一个 token 估算，不计首个 chunk
+编辑器上方的 activity 行是唯一显示实时状态的位置：spinner、当前步骤（`思考中`、
+`正在运行命令`）、回合耗时，以及估算 token 数与输出速率。会话记录只记录已经发生的事：
+流式思考显示为不带标题的 `✻` 尾部，结束后收成一行 `✻ 已思考 6s`；文件修改以 diff
+卡片保留在最终回答旁。速率按每四个字符一个 token 估算，不计首个 chunk
 之前的等待时间；两秒没有新输出后隐藏。窄终端优先省略提示和速率。
 
 <p align="center">
@@ -121,7 +122,7 @@ frontend、conversation、app、core、transcript 与 interaction 继续作为
 `@ephemeral-ai/mayfly` 内部的源码所有权区域和 Cordis row，不再独立发布。
 
 <!-- BEGIN diagram:mayfly-layers -->
-<!-- single source 单一来源: docs/diagrams/mayfly-layers.zh.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
+<!-- single source: docs/diagrams/mayfly-layers.zh.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
     ROOT["一个 dsh 进程 · 一张 Cordis service graph"]

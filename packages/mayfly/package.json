@@ -12,7 +12,7 @@
     "pi-tui",
     "coding-agent"
   ],
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.1-rc.1",
   "publishConfig": {
     "access": "public"
   },
@@ -87,10 +87,6 @@
     "./status-cwd": {
       "types": "./lib/types/status-cwd.d.ts",
       "default": "./lib/status-cwd.js"
-    },
-    "./status-title": {
-      "types": "./lib/types/status-title.d.ts",
-      "default": "./lib/status-title.js"
     },
     "./status-git": {
       "types": "./lib/types/status-git.d.ts",
@@ -206,10 +202,7 @@
     "@deepseek-ai/dsh-client-file-upload": "0.1.7-rc.2",
     "@deepseek-ai/dsh-cmdline": "0.1.7-rc.2",
     "@deepseek-ai/dsh-cordis-host-runner": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-experimental-agent-team": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-experimental-tool-agent-team": "0.1.7-rc.2",
     "@deepseek-ai/dsh-mcp-client": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-session-title-all-prompts-llm": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tool-subagent": "0.1.7-rc.2",
     "@deepseek-ai/dsh-workspace": "0.1.7-rc.2",
     "@deepseek-ai/schemastery": "3.18.4",
@@ -235,7 +228,6 @@
     "@deepseek-ai/dsh-attachment": "^0.1.7-rc.2",
     "@deepseek-ai/dsh-commands": "^0.1.7-rc.2",
     "@deepseek-ai/dsh-credentials": "^0.1.7-rc.2",
-    "@deepseek-ai/dsh-experimental-agent-team": "^0.1.7-rc.2",
     "@deepseek-ai/dsh-goal": "^0.1.7-rc.2",
     "@deepseek-ai/dsh-invariants": "^0.1.7-rc.2",
     "@deepseek-ai/dsh-jobs": "^0.1.7-rc.2",
@@ -285,7 +277,6 @@
     "@deepseek-ai/dsh-compaction": "0.1.7-rc.2",
     "@deepseek-ai/dsh-credentials": "0.1.7-rc.2",
     "@deepseek-ai/dsh-credentials-local": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-experimental-agent-team": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
     "@deepseek-ai/dsh-goal": "0.1.7-rc.2",
     "@deepseek-ai/dsh-invariants": "0.1.7-rc.2",

@@ -22,7 +22,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import * as agentViewStatusPlugin from './agent-view-status.ts'
 import * as scheduleCommand from './schedule-command.ts'
 import * as deliverablesCommand from './deliverables-command.ts'
-import * as teamCommand from './team-command.ts'
 import * as commandsPlugin from './commands-plugin.ts'
 import * as inputPlugin from './input-plugin.ts'
 import * as keysPlugin from './keys.ts'
@@ -57,7 +56,6 @@ export function apply(ctx: Context): void {
   ctx.plugin(keysPlugin)
   ctx.plugin(agentViewStatusPlugin)
   ctx.plugin(commandsPlugin)
-  ctx.plugin(teamCommand)
   ctx.plugin(deliverablesCommand)
   ctx.plugin(scheduleCommand)
   ctx.plugin(inputPlugin)

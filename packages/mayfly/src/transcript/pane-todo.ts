@@ -176,6 +176,8 @@ interface TodoState {
   expanded: boolean
   /** Whether a dialog temporarily occupies the editor slot. */
   dialog: boolean
+  /** Whether the latest run failed or was stopped while the list was unsettled. */
+  interrupted: boolean
 }
 
 /**
@@ -190,7 +192,7 @@ function signature(state: TodoState): string {
   const goal = badge === null
     ? 'no-goal'
     : `${badge.phase}:${badge.goal.goal.revision}:${badge.goal.roundsStarted}:${badge.goal.goal.maxGoalRounds}:${blockedReasonText(badge.goal)}`
-  return `${state.dialog ? 'dialog' : 'visible'}\n${state.expanded ? 'expanded' : 'folded'}\n${goal}\n${list}`
+  return `${state.dialog ? 'dialog' : 'visible'}\n${state.expanded ? 'expanded' : 'folded'}\n${state.interrupted ? 'interrupted' : 'live'}\n${goal}\n${list}`
 }
 
 type BadgePhase = 'active' | 'paused' | 'blocked'
@@ -210,16 +212,18 @@ function blockedReasonText(goal: GoalProjection): string {
   return goal.goal.blockedReason?.message ?? ''
 }
 
-function titleSpans(goal: GoalProjection | null): readonly MayflyInlineSpan[] {
+function titleSpans(goal: GoalProjection | null, interrupted: boolean): readonly MayflyInlineSpan[] {
   const title: MayflyInlineSpan = { text: '  Todo', tone: 'accent', styles: ['strong'] }
+  const stale: readonly MayflyInlineSpan[] = interrupted ? [{ text: ' · interrupted', tone: 'muted' }] : []
   const badge = goalBadge(goal)
-  if (badge === null) return [title]
+  if (badge === null) return [title, ...stale]
   const paint = GOAL_BADGE[badge.phase]
   return [
     title,
     { text: ' · ', tone: 'muted' },
     { text: `${paint.marker} ${badge.phase}`, tone: paint.tone, ...(badge.phase === 'active' ? { styles: ['strong'] as const } : {}) },
     { text: ` · ${badge.goal.roundsStarted}/${badge.goal.goal.maxGoalRounds}`, tone: 'muted' },
+    ...stale,
   ]
 }
 
@@ -227,7 +231,7 @@ function titleSpans(goal: GoalProjection | null): readonly MayflyInlineSpan[] {
 function todoNode(state: TodoState): MayflyUiNode {
   const children: { readonly node: MayflyUiNode }[] = [
     { node: { kind: 'divider' } },
-    { node: { kind: 'rich-text', spans: titleSpans(state.goal) } },
+    { node: { kind: 'rich-text', spans: titleSpans(state.goal, state.interrupted) } },
   ]
   const badge = goalBadge(state.goal)
   if (badge !== null) {
@@ -272,7 +276,7 @@ function todoNode(state: TodoState): MayflyUiNode {
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
-  const state: TodoState = { todos: [], goal: null, expanded: false, dialog: false }
+  const state: TodoState = { todos: [], goal: null, expanded: false, dialog: false, interrupted: false }
   let rendered = signature(state)
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.todo',
@@ -309,7 +313,10 @@ export function apply(ctx: Context): void {
     state.goal = null
     update([])
   })
-  const offFacts = facts?.subscribe((next: ConversationFacts) => update(next.todos))
+  const offFacts = facts?.subscribe((next: ConversationFacts) => {
+    state.interrupted = !next.active && next.runOutcome === 'failed'
+    update(next.todos)
+  })
   const offGoal = facts?.subscribeGoal((goal) => {
     state.goal = goal
     const next = signature(state)

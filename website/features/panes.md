@@ -4,15 +4,26 @@
 
 ## 活动面板（activity）
 
-挂在会话事件流上的模式机，告诉你 agent 现在在干什么：
+当前 Agent 唯一的实时状态行：会话记录只记录已经发生的事，这一行说明现在正在发生什么——spinner、现在时标签、回合耗时、token 计数（`↑` 上下文，`↓` 估算输出，字符数 / 4）、文本流式输出时的速率，以及轮换提示：
+
+```
+🌔 深度求索中 · 3s · 提示：…
+⠋ 思考中 · 8s · ↓2 · ≈42 tok/s · 提示：…
+⠋ 输出中 · 14s · ↓120 · ≈40 tok/s · 提示：…
+🌔 正在运行命令 · 21s · ↑30k ↓4k · pnpm test
+```
 
 | 模式 | 呈现 |
 | --- | --- |
-| waiting / tool | 月亮 spinner + 轮换教学提示（loading 种类变化时换提示） |
-| composing | braille `working...` 行（primary 色帧 + 随行提示）——没有输出光标，这行就是"正在写"的信号 |
-| thinking | 清空（spinner 归 transcript 的思考块） |
+| waiting | 月亮 spinner + `深度求索中`；工具调用参数仍在流式生成时显示准备标签（`准备写入文件`） |
+| tool | 月亮 spinner + 正在运行的类别（`正在运行命令`、`正在读取文件`、`正在调用工具`）；派生 subagent 时保持 `深度求索中`，由 agents 面板展示 |
+| thinking | braille spinner + `思考中` |
+| composing | braille spinner + `输出中`——没有输出光标，这行就是"正在写"的信号 |
+| stopping | 中断排空期间显示静态 `■ 正在中断...` |
 | idle | 一行占位（dock 边缘稳定） |
 | 对话框打开 | 整行隐藏（面板占据编辑器槽位时） |
+
+Standard 模式下，提示的位置改为显示当前动作：命令、路径或查询（通用工具与 MCP 工具显示名称，如 `server › tool`），思考时显示最新一段思考内容。Compact 保持精简，Detailed 与 Verbose 已在会话记录中显示运行中的卡片，因此不附详情；文件写入与编辑的 diff 卡片已在屏幕上，同样不附详情。终端变窄时，这一行先舍弃尾部（过长的详情先截断再舍弃），再依次舍弃速率、计数、耗时，最后是标签；始终不换行。
 
 ## 排队消息面板（queue）
 
@@ -28,7 +39,9 @@
 - **Ctrl-T** 在折叠/整表之间切换（`all N items · ctrl+t to collapse`）；展开态跨写入保留，会话切换或列表完结时复位。
 - **全部完成自动收起**——下一次写入重新以折叠态打开。
 
-`todo_write` 工具调用不出现在会话流里，这个面板是 todo 的唯一呈现面。
+- **中断的运行** —— 最近一次运行失败或被停止且列表未完成时，标题追加灰色的 `· interrupted`。
+
+`todo_write` 调用在会话流里只作为单行过程成员出现（`✓ 更新了计划 · 已完成 3/5`）；这个面板是 todo 的实时呈现面。
 
 ## 辅助会话（/btw 与 /agents）
 
@@ -38,11 +51,11 @@ Mayfly 只保留一个辅助会话槽。`/btw <question>` 创建临时旁路 Age
 - one-shot 或当前不驻留的 continuable child 不激活 Agent，而是在 editor 槽位打开 core-owned 的全保真只读 transcript panel；它复用正式 transcript model、工具呈现、图片加载、宽度约束与滚动逻辑；
 - 状态栏中央显式显示当前侧以及 `F7 switch · F8 close`；`F7` 在主/辅助会话间切换，`F8` 完全关闭辅助视图并返回主会话；关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
 - 再次打开 BTW 或 child 会替换旧辅助槽。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork`、`/rewind` 和 `/agents` 浏览会先回到主会话；
-- `/agents` 中 `Enter` 查看 child，`Space` 展开分支，`Delete`/`Ctrl-D` 打开 Yes / No 确认，选择 Yes 停止 live continuable child；`/agents stop <id>` 提供直接停止路径，one-shot 与 cold/inactive child 不允许停止。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。
+- `/agents` 中 `Enter` 查看 child，`Space` 或 `←` / `→` 展开分支，`Tab` 到 **Stop selected**，停止 live continuable child 前会弹出 Yes / No 确认（默认聚焦 No）。对 one-shot、cold/inactive 或仍有 live 后代的 child，Stop 会直接说明为何不可用而不弹确认。`/agents stop <id>` 提供直接停止路径。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。
 
 ## 子代理分组面板（agents）
 
-agent 派生的**子代理组**（subagent group）运行时，组卡片钉在编辑器正上方——dock 的最后一行（kimi swarm-pane 语义）。与 todo 面板对 `todo_write` 的关系一样：spawn 类工具调用被 step 折叠从会话流里隐去，本面板是运行中子代理的唯一呈现面——你能看到派生了谁、各自在干什么，而不必在会话流里翻工具卡。
+agent 派生的**子代理组**（subagent group）运行时，组卡片钉在编辑器正上方——dock 的最后一行（kimi swarm-pane 语义）。spawn 类调用（`subagent` 与任意 `subagent_*` provider）以单行成员出现在会话流里，在结束后的回合标题中计为 subagent，结束后并入分组标题（`已协调子智能体`）；activity 行把它们交给本面板展示。只有本面板实时展示每个子代理：任务、阶段、模型、effort、估算输出（`↓`，字符数 / 4）、工具数、已用时间、token 与当前活动。汇总行只在阶段不一致时附阶段分布，只在多个子代理时附整组用时。已结束的组保留到下一个回合开始；回合结束时仍未得到结果的调用显示 `cancelled`，不会永远显示运行中。
 
 ## Workflow 面板
 

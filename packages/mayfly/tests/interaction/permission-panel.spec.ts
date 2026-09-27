@@ -100,9 +100,14 @@ async function mount(options: MountOptions = {}): Promise<{
     const model = interaction.get('overlay', entry.id)!
     const previous = drivers.get(model)
     if (previous !== undefined) return { ...previous, hidden: entry.hidden }
+    // The surface renderer recompiles on every model revision; mirror that here.
     let compiled = renderRequest(model)
+    let compiledRevision = model.revision
     const sync = (width = 80) => {
-      if (compiled.runtime.interaction?.revision !== model.revision) compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime)
+      if (compiledRevision !== model.revision) {
+        compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime)
+        compiledRevision = model.revision
+      }
       return compiled
     }
     const driver = { component: { render: (width: number) => sync(width).component.render(width), handleInput: (data: string) => sync().input(data) }, hidden: entry.hidden }
@@ -173,39 +178,34 @@ describe('openPermissionPanel', () => {
     top(mounted).component.handleInput(KEY.escape)
   })
 
-  it('gates danger-full-access behind Yes/No actions and returns to the list on Esc', async () => {
+  it('gates danger-full-access behind the shared decision and returns to the list on Esc', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
-    // Seed is workspace-write (row 1); one Down reaches the danger row.
+    // Seed is workspace-write (row 2); one Down reaches the danger row.
     top(mounted).component.handleInput(KEY.down)
     top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(mounted.overlays).toHaveLength(2))
-    const gate = top(mounted)
-    expect(gate.component.render(80).join('\n')).toContain('Full access')
-    // Esc pops the gate; the picker beneath is still live.
-    gate.component.handleInput(KEY.escape)
-    await vi.waitFor(() => expect(mounted.overlays).toHaveLength(1))
-    expect(mounted.overlays[0]!.hidden).toBe(false)
+    const gate = top(mounted).component.render(120).join('\n')
+    expect(mounted.overlays).toHaveLength(1)
+    expect(gate).toContain('Enable danger-full-access?')
+    expect(gate).toContain('rejected without prompting')
+    expect(gate.indexOf('No')).toBeLessThan(gate.indexOf('Enable ', gate.indexOf('No')))
+    top(mounted).component.handleInput(KEY.escape)
+    expect(top(mounted).component.render(80).join('\n')).toContain('sandbox read-only')
     expect(mounted.runs).toEqual([])
   })
 
-  it('defaults to No and dispatches only after selecting Yes', async () => {
+  it('defaults to No and dispatches only after choosing the confirm button', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
     top(mounted).component.handleInput(KEY.down)
     top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(mounted.overlays).toHaveLength(2))
-    const gate = top(mounted)
-    expect(gate.component.render(80).join('\n')).toContain('Yes')
-    expect(gate.component.render(80).join('\n')).toContain('No')
-    gate.component.handleInput('y')
+    top(mounted).component.handleInput('y')
     expect(mounted.runs).toEqual([])
-    gate.component.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(mounted.overlays).toHaveLength(1))
+    top(mounted).component.handleInput(KEY.enter)
     expect(mounted.runs).toEqual([])
-    mounted.overlays[0]!.component.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(mounted.overlays).toHaveLength(2))
-    top(mounted).component.handleInput(KEY.left)
+    expect(top(mounted).component.render(80).join('\n')).toContain('sandbox danger-full-access')
+    top(mounted).component.handleInput(KEY.enter)
+    top(mounted).component.handleInput(KEY.right)
     top(mounted).component.handleInput(KEY.enter)
     await vi.waitFor(() => { expect(mounted.runs).toEqual([' danger-full-access']) })
     await vi.waitFor(() => { expect(mounted.notices).toContain('preset danger-full-access') })
@@ -217,12 +217,10 @@ describe('openPermissionPanel', () => {
     openPermissionPanel(mounted.ctx)
     top(mounted).component.handleInput(KEY.down)
     top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(mounted.overlays).toHaveLength(2))
     const replacement = { id: mounted.agent.id, session: mounted.agent.session, status: 'idle' } as unknown as Agent
     ;(mounted.ctx.get('testSession') as { current: Agent | null }).current = replacement
-    const gate = top(mounted)
-    gate.component.handleInput(KEY.left)
-    gate.component.handleInput(KEY.enter)
+    top(mounted).component.handleInput(KEY.right)
+    top(mounted).component.handleInput(KEY.enter)
     await vi.waitFor(() => expect(mounted.overlays).toEqual([]))
     expect(mounted.runs).toEqual([])
     await vi.waitFor(() => expect(mounted.notices).toContain('permission target changed; action cancelled'))
@@ -237,7 +235,6 @@ describe('openPermissionPanel', () => {
     openPermissionPanel(mounted.ctx)
     top(mounted).component.handleInput(KEY.down)
     top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(mounted.overlays).toHaveLength(2))
     expect(top(mounted).component.render(120).join('\n')).toContain('will still prompt')
     top(mounted).component.handleInput(KEY.escape)
     expect(mounted.runs).toEqual([])
@@ -319,18 +316,18 @@ describe('openPermissionPanel', () => {
     await ctx.fiber.dispose()
   })
 
-  it('handles direct custom selection and focuses an existing danger confirmation', async () => {
+  it('explains the derived custom row, ignores direct custom selection, and closes for a replaced Agent', async () => {
     const mounted = await mount({ presets: fakePresets({ current: 'custom' }) })
     openPermissionPanel(mounted.ctx)
+    expect(top(mounted).component.render(120).join('\n')).toContain('custom is the derived state — pick a preset')
     const picker = mounted.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.permission')!
     const context = { surfaceId: picker.id, operationId: 'direct', source: picker.source, revision: picker.revision, signal: new AbortController().signal, report: vi.fn() }
     expect(await picker.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['custom'] }, context)).toEqual({ kind: 'completed' })
-    expect(mounted.notices).toContain('custom is the derived state — pick a preset')
-    await picker.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['danger-full-access'] }, context)
-    const confirmation = mounted.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.permission.confirm')!
-    const focus = confirmation.focusRevision
-    await picker.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['danger-full-access'] }, context)
-    expect(mounted.ctx.mayflyOverlays.list().find(entry => entry.id === confirmation.id)!.focusRevision).toBeGreaterThan(focus)
+    expect(await picker.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'x', actionId: 'x' }, context)).toEqual({ kind: 'completed' })
+    expect(mounted.runs).toEqual([])
+    const replacement = { id: mounted.agent.id, session: mounted.agent.session, status: 'idle' } as unknown as Agent
+    ;(mounted.ctx.get('testSession') as { current: Agent | null }).current = replacement
+    mounted.ctx.emit('test/session-changed' as never)
+    await vi.waitFor(() => expect(mounted.overlays).toEqual([]))
   })
-
 })

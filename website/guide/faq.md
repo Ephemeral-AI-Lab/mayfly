@@ -2,7 +2,7 @@
 
 ## 为什么不直接 `npm install @ephemeral-ai/mayfly`？
 
-Mayfly 是装进 dsh profile 的插件包，不是独立应用——裸装只把包放进 node_modules，没有宿主与 profile 装配，跑不起来。正确路径：装 `mayfly` 壳包，或用 `dsh plugin --profile mayfly add`，见[快速上手](/guide/)。当前发布线是 `v0.1.0-alpha.5`，普通安装使用 npm `latest`；插件与 CI 应锁定 Mayfly `0.1.0-alpha.5` 与 Harness `0.1.7-rc.2`。Harness 依赖线当前追踪 npm 的 RC 发布线。贡献者的本地开发安装见开发手册的[贡献本仓库](/plugins/contributing)页。
+Mayfly 是装进 dsh profile 的插件包，不是独立应用——裸装只把包放进 node_modules，没有宿主与 profile 装配，跑不起来。正确路径：装 `mayfly` 壳包，或用 `dsh plugin --profile mayfly add`，见[快速上手](/guide/)。当前发布线是 `v0.1.1-rc.1`，普通安装使用 npm `latest`；插件与 CI 应锁定 Mayfly `0.1.1-rc.1` 与 Harness `0.1.7-rc.2`。Harness 依赖线当前追踪 npm 的 RC 发布线。贡献者的本地开发安装见开发手册的[贡献本仓库](/plugins/contributing)页。
 
 ## 默认安装没有拿到最新版本？
 
@@ -58,7 +58,7 @@ git 徽章经 TTL 缓存惰性探测（branch 5 秒、status 15 秒），在任�
 
 ## 状态栏条目放不下会怎样？
 
-状态栏至多两行，每行分左、中、右三个 band（条目经 `band`/`row` 归位）。同 band 的条目按 `priority`（再按 id）排序。行宽不够时，超宽条目截断到剩余预算（声明了 `overflow: hide` 的条目宁缺不截、整项隐藏），簇排满后靠后的条目不再显示；右侧 band 在宽度压力下先让位。
+状态栏默认单行（条目仍可声明 `row: 2` 独占第二行）。宽度不足时，整行不分 band、按 `priority`（再按 id）顺序容纳条目：放得下的条目保留完整宽度，超宽条目截断到剩余预算（声明 `overflow: hide` 的条目宁缺不截、整项隐藏），行满后靠后的条目不再显示。已容纳的条目再按声明的 left/center/right band 布局。会话名不再占用 footer——它显示在编辑器上边框的右端。
 
 ## bash 模式的输出会进入会话历史吗？
 

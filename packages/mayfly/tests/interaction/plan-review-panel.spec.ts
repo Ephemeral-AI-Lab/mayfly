@@ -158,7 +158,7 @@ describe('shared plan review', () => {
     expect(planReviewChoices(question)).toEqual({ approve: question.options![1], decline: question.options![0] })
     expect(planReviewChoices({ ...question, options: question.options!.toReversed() })).toEqual({ approve: question.options![1], decline: question.options![0] })
     expect(JSON.stringify(planDocumentNode({ ...question, detail: undefined }, key => key))).toContain('"source":""')
-    expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"numbered":true')
+    expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"numbered":"focus"')
     expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Start implementation"')
     expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Other"')
     const described = planReviewChoices({ ...question, options: [{ label: 'Keep planning', description: 'stay' }, { label: 'Start implementation', description: 'go' }] })!

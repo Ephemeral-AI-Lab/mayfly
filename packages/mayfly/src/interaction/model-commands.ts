@@ -127,10 +127,13 @@ async function commitModelSelection(
   next: MayflySessionModelSelection,
   persist: boolean,
   signal?: AbortSignal,
+  expected?: unknown,
 ): Promise<ModelCommitResult> {
   const agent = ctx.get('mayflyCurrentAgent')?.current()
   const controller = ctx.get('sessionController')
   if (agent == null || controller === undefined) return { text: 'no session is live yet', state: 'failed' }
+  /* A write computed for one Agent never lands on its replacement. */
+  if (expected !== undefined && agent !== expected) return { text: 'agent changed before model selection completed', state: 'failed' }
   const previous = readSelection(ctx)
   if ('error' in previous) return { text: previous.error, state: 'failed' }
   const selected = sameSelection(previous.read, next) ? { selected: previous.read } : await controller.selectModel({ sessionId: agent.id, ...next })
@@ -232,6 +235,7 @@ export async function cycleSessionModel(ctx: Context, cache: ModelListCache, rep
     return
   }
   const currentSelection = selection.read
+  const agent = ctx.get('mayflyCurrentAgent')?.current()
   const listing = await providerModelIds(ctx, currentSelection.provider, cache)
   if ('error' in listing) {
     report('model-cycle', { message: listing.error, severity: 'error' })
@@ -249,8 +253,10 @@ export async function cycleSessionModel(ctx: Context, cache: ModelListCache, rep
       ctx,
       { provider: currentSelection.provider, model: next },
       false,
+      undefined,
+      agent,
     )
-    report('model-cycle', { message: result.text, severity: 'success' })
+    report('model-cycle', { message: result.text, severity: result.state === 'failed' ? 'warning' : 'success' })
   } catch (error) {
     /* v8 ignore next -- the catch guards only the append-failure loud path
        (the cycleMode discipline); commitModelSelection itself never throws

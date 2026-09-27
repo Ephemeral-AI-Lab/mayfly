@@ -57,6 +57,19 @@ export interface ConversationThinkingEntry extends ConversationEntryBase {
   readonly text: string
   readonly streaming: boolean
   readonly outputProgress?: OutputProgress | undefined
+  /** Producer-time span of the visible reasoning, when the stream recorded one. */
+  readonly durationMs?: number | undefined
+}
+
+/** One turn's lifecycle times from committed `turn/start` and `turn/end` events. */
+export interface ConversationTurn {
+  readonly turn: number
+  /** Envelope time of `turn/start`, or of `turn/end` when the start is absent. */
+  readonly startedAt: number
+  /** Envelope time of `turn/end`; absent while the turn is open. */
+  readonly endedAt?: number | undefined
+  /** The `turn/end` reason kind (`completed`, `aborted`, `error`, …). */
+  readonly outcome?: string | undefined
 }
 
 /** Output within one streaming phase, measured from committed event timestamps. */
@@ -100,6 +113,35 @@ export interface ConversationInterruptedEntry extends ConversationEntryBase {
   readonly kind: 'interrupted'
 }
 
+/**
+ * One compaction transaction's lifecycle: opened by the initiating
+ * `command/run` (manual) or `compaction/start` (automatic), filled by
+ * `compaction/summary`, and settled by `compaction/end` — or by `command/done`
+ * when the transaction never opened. The row is the transcript's durable
+ * boundary marker for a surface replacement the conversation itself filters.
+ */
+export interface ConversationCompactionEntry extends ConversationEntryBase {
+  readonly kind: 'compaction'
+  /** Transaction identity from `compaction/start`, for the summary/end pairing. */
+  readonly compactionId?: string | undefined
+  /** The initiating `/compact` execution's pairing id, for `command/done`. */
+  readonly commandId?: string | undefined
+  readonly state: 'running' | 'ok' | 'error'
+  /** Whether a human command or in-turn pressure/overflow triggered the run. */
+  readonly trigger: 'manual' | 'auto'
+  readonly startedAt: number
+  readonly endedAt?: number | undefined
+  readonly shadowedCount?: number | undefined
+  readonly shadowedTokens?: number | undefined
+  readonly provider?: string | undefined
+  readonly model?: string | undefined
+  /** The checkpoint summary text, for the expanded view. */
+  readonly summary?: string | undefined
+  /** The initiating command's own outcome text (e.g. "No compactable history yet."). */
+  readonly detail?: string | undefined
+  readonly error?: string | undefined
+}
+
 /** Complete frontend-relevant entry vocabulary of the projection. */
 export type ConversationEntry =
   | ConversationUserEntry
@@ -108,6 +150,7 @@ export type ConversationEntry =
   | ConversationToolEntry
   | ConversationErrorEntry
   | ConversationInterruptedEntry
+  | ConversationCompactionEntry
 
 /** Client-visible whole value served by `sessionProjections`. */
 export interface ConversationProjection {
@@ -115,6 +158,8 @@ export interface ConversationProjection {
   readonly streaming: boolean
   /** Step keys whose assistant settlement is authoritative. */
   readonly settledSteps: readonly string[]
+  /** Lifecycle times of every retained turn, in start order. */
+  readonly turns: readonly ConversationTurn[]
 }
 
 /** Plain-JSON internal fold state checkpointed by the registry. */
@@ -131,6 +176,7 @@ export interface ConversationProjectionState {
   /** Turns durably erased by Mayfly's safe-retraction surface marker. */
   readonly retractedTurns: readonly number[]
   readonly toolEntryIds: Readonly<Record<string, string>>
+  readonly turns: readonly ConversationTurn[]
 }
 
 /**
@@ -143,6 +189,8 @@ export interface ConversationFacts {
   readonly phase: 'idle' | 'waiting' | 'thinking' | 'composing' | 'tool'
   readonly active: boolean
   readonly turn: number
+  /** Envelope time of the latest `turn/start`; the activity row's elapsed anchor. */
+  readonly turnStartedAt?: number | undefined
   readonly flowUp?: number | undefined
   readonly currentStep?: number | undefined
   readonly lastCompletedStep?: number | undefined
@@ -151,6 +199,8 @@ export interface ConversationFacts {
   readonly outputProgress?: OutputProgress | undefined
   readonly todos: readonly TodoItem[]
   readonly contextTokens: number
+  /** Cache-read share of the latest step's `contextTokens`; absent when the provider did not report it. */
+  readonly contextCacheReadTokens?: number | undefined
   readonly contextWindow?: number | undefined
   readonly model?: string | undefined
   readonly provider?: string | undefined
@@ -163,8 +213,17 @@ export interface ConversationFacts {
   readonly epochTokens?: number | undefined
   /** Projection-private usage buckets retained as plain readonly data. */
   readonly usageByStep?: Readonly<Record<string, number>> | undefined
-  /** Latest running activity marker. */
-  readonly activity?: Readonly<{ readonly kind: 'reasoning' | 'text' | 'tool', readonly name?: string | undefined }> | undefined
+  /**
+   * Latest running activity marker. `detail` is the bounded salient argument
+   * of a non-spawn call or the latest reasoning paragraph; `preparing` marks a
+   * call whose arguments are still streaming.
+   */
+  readonly activity?: Readonly<{
+    readonly kind: 'reasoning' | 'text' | 'tool'
+    readonly name?: string | undefined
+    readonly detail?: string | undefined
+    readonly preparing?: boolean | undefined
+  }> | undefined
   /** Terminal outcome of the latest run. */
   readonly runOutcome?: 'completed' | 'failed' | undefined
   /** Envelope timestamp of the latest terminal outcome. */
@@ -172,13 +231,13 @@ export interface ConversationFacts {
   readonly agentCalls: readonly ConversationAgentCall[]
 }
 
-/** Projection facts for one `subagent`/`subagent_fork` call. */
+/** Projection facts for one spawn-class (`subagent` or `subagent_*`) call. */
 export interface ConversationAgentCall {
   readonly seq: number
   readonly turn: number
   readonly step: number
   readonly callId: string
-  readonly name: 'subagent' | 'subagent_fork'
+  readonly name: string
   readonly arguments: string
   readonly startedAt: number
   readonly result?: {

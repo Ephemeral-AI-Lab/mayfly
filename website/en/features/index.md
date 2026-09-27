@@ -1,6 +1,6 @@
 # Features overview
 
-Mayfly `0.1.0-alpha.5` is a flat Cordis plugin tree over `dsh-base`. The
+Mayfly `0.1.1-rc.1` is a flat Cordis plugin tree over `dsh-base`. The
 bundle inserts a set of dsh support rows and the Mayfly rows (the row list
 lives in `cordis.patch.yml`).
 
@@ -31,6 +31,6 @@ External plugins and built-ins use the same services and Fiber lifecycle.
 - [Input editor](/en/features/editor)
 - [Approvals and questionnaires](/en/features/approval)
 - [Status bar](/en/features/status-bar)
-- [Built-in Agent Team](/en/features/team)
+- [Optional Agent Team](/en/features/team)
 - [Session modes](/en/features/modes)
 - [Bottom panes](/en/features/panes)

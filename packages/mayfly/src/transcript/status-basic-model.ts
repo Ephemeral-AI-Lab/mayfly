@@ -1,9 +1,13 @@
 /**
  * Renderer-neutral baseline model footer row. The producer prefers the live
- * model-selection projection — a committed `/model` pick flips the row
- * immediately, before any request fires — then falls back to the current app
- * session snapshot and official conversation facts; the renderer owns
- * styling and width handling.
+ * model-selection projection — a committed `/model` or `/effort` pick flips
+ * the row immediately, before any request fires — then falls back to the
+ * current app session snapshot and official conversation facts; the renderer
+ * owns styling and width handling. A source carrying an explicit reasoning
+ * effort appends ` <Effort>` (the id capitalized, `step-5-preview Max`);
+ * the provider default leaves the bare model id. Model and effort stay
+ * paired per source — a `/model` switch that drops the effort clears the
+ * suffix rather than inheriting the previous request's level.
  *
  * @module @ephemeral-ai/mayfly/transcript/status-basic-model
  */
@@ -25,19 +29,34 @@ export const inject = ['mayflyStatus', 'mayflySessionFacts', 'sessionProjections
 
 /** The wired model-selection view shape the status row reads, when projected. */
 interface ProjectedModelSelection {
-  readonly next?: { readonly provider: string, readonly model: string } | null
+  readonly next?: { readonly provider: string, readonly model: string, readonly reasoningEffort?: string } | null
+}
+
+/** The displayed pair: the model label and its source-paired effort id. */
+interface RowSelection {
+  readonly model: string
+  readonly effort?: string
 }
 
 /**
- * Read the session's projected next model, if the projection carries one.
+ * Read the session's projected next selection, if the projection carries one.
  * @param ctx - plugin context.
  * @param session - the current Agent's session, if any.
- * @returns the projected model id, or `undefined` before any selection.
+ * @returns the projected selection, or `undefined` before any selection.
  */
-function projectedNext(ctx: Context, session: Session | undefined): string | undefined {
+function projectedNext(ctx: Context, session: Session | undefined): RowSelection | undefined {
   if (session === undefined) return undefined
   const projected = ctx.sessionProjections.snapshot(session, ['modelSelection']).values.modelSelection as ProjectedModelSelection | undefined
-  return projected?.next?.model
+  const next = projected?.next
+  if (next === undefined || next === null) return undefined
+  return next.reasoningEffort === undefined
+    ? { model: next.model }
+    : { model: next.model, effort: next.reasoningEffort }
+}
+
+/** Capitalize the effort id's head: `max` → `Max`, `x-high` → `X-high`. */
+function capitalizeEffort(id: string): string {
+  return id.charAt(0).toUpperCase() + id.slice(1)
 }
 
 /** Register the baseline model row. */
@@ -47,12 +66,24 @@ export function apply(ctx: Context): void {
   let agent = factsService.currentAgent
   let text = ''
   const derive = (): void => {
-    text = projectedNext(ctx, agent?.session)
-      ?? facts.model
-      ?? agent?.session.requestHeader()?.config.model
-      ?? agent?.options.model
-      ?? facts.provider
-      ?? (agent === null ? '' : 'no model')
+    /* The model/effort pair comes from one source only: a projected pick
+       that leaves the effort undefined restores the provider default, it
+       never inherits the stale facts or header level. */
+    const header = agent?.session.requestHeader()?.config
+    const selection: RowSelection | undefined = projectedNext(ctx, agent?.session)
+      ?? (facts.model === undefined
+        ? undefined
+        : { model: facts.model, ...(facts.reasoningEffort === undefined ? {} : { effort: facts.reasoningEffort }) })
+      ?? (header === undefined
+        ? undefined
+        : { model: header.model, ...(header.reasoningEffort === undefined ? {} : { effort: String(header.reasoningEffort) }) })
+      ?? (agent?.options.model === undefined
+        ? undefined
+        : { model: agent.options.model, ...(agent.options.reasoningEffort === undefined ? {} : { effort: String(agent.options.reasoningEffort) }) })
+    const model = selection?.model ?? facts.provider ?? (agent === null ? '' : 'no model')
+    text = model === '' || selection?.effort === undefined
+      ? model
+      : `${model} ${capitalizeEffort(selection.effort)}`
   }
   derive()
   const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'default' }

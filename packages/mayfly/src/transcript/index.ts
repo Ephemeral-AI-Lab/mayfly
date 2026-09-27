@@ -15,14 +15,13 @@ import {
 } from '../core/index.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
-// Carries the optional host `settings` service Context merge.
-import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
 import { TranscriptController, TranscriptLocalsService } from './transcript-model.ts'
 import { OfficialConversationModelSource, type LiveDraftSource } from './official-model.ts'
 import {
   DEFAULT_EXPAND_TURNS,
+  followPresentationSettings,
   TranscriptPresentationPolicy,
 } from './presentation-policy.ts'
 import {
@@ -41,7 +40,6 @@ declare module '@deepseek-ai/cordis' {
 
 export {
   AssistantMessageComponent,
-  StepSummaryComponent,
   TOOL_ARGUMENTS_MAX_CHARS,
   ToolCallComponent,
   USER_PREVIEW_LINES,
@@ -71,7 +69,6 @@ export { ThinkingComponent, THINKING_PREVIEW_LINES } from './thinking.ts'
 export type {
   TranscriptAssistantItem,
   TranscriptItem,
-  TranscriptStepSummaryItem,
   TranscriptThinkingItem,
   TranscriptToolItem,
   TranscriptToolResult,
@@ -79,16 +76,15 @@ export type {
 } from './types.ts'
 export {
   DEFAULT_EXPAND_TURNS,
-  DEFAULT_RECENT_STEPS_RETENTION,
-  DEFAULT_TRANSCRIPT_DETAIL,
   DEFAULT_TRANSCRIPT_PRESENTATION,
   DEFAULT_USER_FOLD_CHARS,
   DEFAULT_USER_FOLD_LINES,
   DEFAULT_WINDOW_TURNS,
-  TRANSCRIPT_FAMILIES,
+  PROCESS_POLICIES,
   TranscriptPresentationPolicy,
 } from './presentation-policy.ts'
-export type { TranscriptDetail, TranscriptFamily, TranscriptPresentationSnapshot } from './presentation-policy.ts'
+export type { ProcessPolicy, TranscriptPresentationSnapshot, TranscriptViewMode } from './presentation-policy.ts'
+export { setProcessRowTimers, type ProcessRowTimers } from './process-rows.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-transcript'
@@ -120,9 +116,14 @@ export function apply(ctx: Context): void {
   const colors = ctx.mayflyTheme.colors
   const toggle: CollapseToggle = { expanded: false }
   const presentation = new TranscriptPresentationPolicy()
-
-  const MAYFLY_NS = 'mayfly' as SettingsNamespace
-  presentation.apply(ctx.get('mayflyInteractionState')?.settingsSource())
+  // Mayfly settings ride the host settings document: the resolved `mayfly`
+  // namespace (schema owned by interaction) carries the work-details mode
+  // (`transcriptView`) and the transcript tunables (`windowTurns` /
+  // `expandTurns` / `userFoldLines` / `userFoldChars`). The service is optional and its
+  // value unknown here, so every read parses defensively — absent keys or
+  // wrongly typed values keep the current setting; a host without settings
+  // keeps every shipped default.
+  followPresentationSettings(ctx, presentation, () => transcript.refreshPresentationPolicy())
 
   // Optional image wiring is renderer-owned; the projected model carries only
   // durable references and the byte loader stays in this terminal layer.
@@ -154,7 +155,6 @@ export function apply(ctx: Context): void {
       components: ctx.mayflyComponents,
       viewportRows: () => screen.editorViewport.rows,
       images: imageDependencies,
-      requestRender: () => screen.requestRender(),
       presentation,
       t,
     },
@@ -213,9 +213,9 @@ export function apply(ctx: Context): void {
   })
   ctx.effect(() => offStatus)
   transcript.attach(screen)
-  // The footer pins to the dock's lowest slot (S12): the two-row status
-  // stays on the terminal's last rows beneath the editor, the kimi layout
-  // dialog panels pull up over.
+  // The footer pins to the dock's lowest slot (S12): the status row stays
+  // on the terminal's last row beneath the editor, the kimi layout dialog
+  // panels pull up over.
   ctx.effect(() => {
     const slot = screen.mountDockSlot('status.footer', new GutterComponent(footer), 'bottom')
     return () => slot.dispose()
@@ -237,21 +237,6 @@ export function apply(ctx: Context): void {
   }
   registerKeymap()
   ctx.effect(() => () => offKeymap())
-
-  // Mayfly settings ride the host settings document: the resolved `mayfly`
-  // namespace (schema owned by interaction) carries the per-family detail
-  // levels (`transcript.thinking` / `transcript.command` / …) and the transcript tunables
-  // (`windowTurns` / `recentStepsRetention` / `expandTurns` /
-  // `userFoldLines` / `userFoldChars`). The service is optional and its
-  // value unknown here, so every read parses defensively — absent keys or
-  // wrongly typed values keep the current setting; a host without settings
-  // keeps every shipped default.
-  const applyFoldSettings = (value: unknown): void => {
-    if (presentation.apply(value)) transcript.refreshPresentationPolicy()
-  }
-  ctx.on('settings/document-updated', (ns) => {
-    if (ns === MAYFLY_NS) applyFoldSettings(ctx.get('mayflyInteractionState')?.settingsSource())
-  })
 
   const offLocale = observeTranscriptLocale(ctx, () => {
     transcript.refreshLocale()

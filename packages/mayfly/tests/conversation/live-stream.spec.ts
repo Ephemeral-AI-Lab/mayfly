@@ -399,6 +399,7 @@ describe('LiveAssistantStreamService', () => {
     expect(service.get(agent)).toMatchObject({ sessionId: key, turn: 2, step: 1, phase: 'waiting', reasoning: '', text: '' })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 2, index: 0, time: 100, chunk: { type: 'reasoning-delta', index: 0, text: 'think' } })
     expect(service.get(agent)).toMatchObject({ phase: 'thinking', reasoning: 'think', outputProgress: { chars: 5, initialChars: 5, startedAt: 100, updatedAt: 100 } })
+    expect(service.get(agent)).toMatchObject({ reasoningSpan: { startedAt: 100, endedAt: 100 } })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 3, index: 1, time: 110, chunk: { type: 'reasoning-delta', index: 0, text: '' } })
     expect(service.get(agent)?.reasoning).toBe('think')
     // An empty text delta parks nothing either.

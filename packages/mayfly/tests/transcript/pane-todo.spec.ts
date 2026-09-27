@@ -13,7 +13,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { GoalPhase, GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 import * as todo from '../../src/transcript/pane-todo.ts'
-import { event, resetSeq, userEvent } from './helpers.ts'
+import { event, resetSeq, turnEnd, turnStart, userEvent } from './helpers.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { asAgent, fakeAgent } from './status-fakes.ts'
 
@@ -204,6 +204,21 @@ describe('mayfly-pane-todo', () => {
     expect(harness.screen.paneLines()).toEqual([rule(), TITLE, row('○', 'next task')])
     harness.facts.setGoal(null)
     expect(harness.screen.paneLines()).toEqual([rule(), TITLE, row('○', 'next task')])
+    await harness.dispose()
+  })
+
+  it('marks an unsettled list after an interrupted or failed run, alone or beside a goal', async () => {
+    resetSeq()
+    const agent = fakeAgent([turnStart(1), todoWrite([{ content: 'half done', status: 'in_progress' }])])
+    const harness = await bootPanePlugin(todo, agent)
+    expect(harness.screen.paneLines()[1]).toBe('  Todo')
+    harness.ctx.emit('session/event', agent.session as unknown as Session, turnEnd(1, { kind: 'aborted', reason: { kind: 'user' } } as never))
+    expect(harness.screen.paneLines()[1]).toBe('  Todo · interrupted')
+    harness.facts.setGoal(goalProjection('active'))
+    expect(harness.screen.paneLines()[1]).toBe('  Todo · ● active · 2/8 · interrupted')
+    // The next run clears the marker.
+    harness.ctx.emit('session/event', agent.session as unknown as Session, turnStart(2))
+    expect(harness.screen.paneLines()[1]).toBe('  Todo · ● active · 2/8')
     await harness.dispose()
   })
 

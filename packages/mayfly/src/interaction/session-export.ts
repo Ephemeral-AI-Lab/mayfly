@@ -57,6 +57,7 @@ type ProjectionEntry =
   | (ProjectionEntryBase & { readonly kind: 'tool'; readonly step: number; readonly callId: string; readonly name: string; readonly arguments: string; readonly startedAt: number; readonly result?: { readonly text: string; readonly isError: boolean; readonly endedAt: number } })
   | (ProjectionEntryBase & { readonly kind: 'error'; readonly message: string; readonly code?: string })
   | (ProjectionEntryBase & { readonly kind: 'interrupted' })
+  | (ProjectionEntryBase & { readonly kind: 'compaction' })
 interface ConversationProjection { readonly entries: readonly ProjectionEntry[]; readonly streaming: boolean }
 
 /** Flatten and ellipsize one hint string. */
@@ -167,8 +168,6 @@ function formatTurnMd(items: readonly TranscriptItem[], turn: number): string {
       }
     } else if (item.kind === 'tool') {
       lines.push(formatToolItemMd(item))
-    } else if (item.kind === 'step-summary') {
-      lines.push(`#### (folded step · ${String(item.toolNames.length)} tool call${item.toolNames.length === 1 ? '' : 's'}${item.thinking === 0 ? '' : ` · ${String(item.thinking)} thinking block${item.thinking === 1 ? '' : 's'}`})`, '')
     } else if (item.kind === 'error') {
       lines.push(`> ✗ request failed: ${item.message}${item.code === undefined ? '' : ` (${item.code})`}`, '')
     } else {
@@ -377,10 +376,10 @@ function format1024(count: number): string {
 
 /** Convert the official conversation view into the Markdown item vocabulary. */
 function projectionItems(projection: ConversationProjection): TranscriptItem[] {
-  return projection.entries.map((entry): TranscriptItem => {
+  return projection.entries.flatMap((entry): TranscriptItem[] => {
     switch (entry.kind) {
       case 'user':
-        return {
+        return [{
           kind: 'user', seq: entry.seq, turn: entry.turn, text: entry.text,
           images: entry.images.map(image => ({
             attachmentId: AttachmentId(image.attachmentId), mediaType: image.mediaType, bytes: image.bytes,
@@ -388,13 +387,13 @@ function projectionItems(projection: ConversationProjection): TranscriptItem[] {
             ...(image.name === undefined ? {} : { name: image.name }),
             ...(image.originalDimensions === undefined ? {} : { originalDimensions: { ...image.originalDimensions } }),
           })),
-        }
+        }]
       case 'assistant':
-        return { kind: 'assistant', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text }
+        return [{ kind: 'assistant', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text }]
       case 'thinking':
-        return { kind: 'thinking', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming }
+        return [{ kind: 'thinking', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming }]
       case 'tool':
-        return {
+        return [{
           kind: 'tool', seq: entry.seq, turn: entry.turn, step: entry.step, callId: entry.callId,
           name: entry.name, arguments: entry.arguments, startedAt: entry.startedAt,
           ...(entry.result === undefined ? {} : {
@@ -403,11 +402,15 @@ function projectionItems(projection: ConversationProjection): TranscriptItem[] {
               isError: entry.result.isError, endedAt: entry.result.endedAt,
             },
           }),
-        }
+        }]
       case 'error':
-        return { kind: 'error', seq: entry.seq, turn: entry.turn, message: entry.message, ...(entry.code === undefined ? {} : { code: entry.code }) }
+        return [{ kind: 'error', seq: entry.seq, turn: entry.turn, message: entry.message, ...(entry.code === undefined ? {} : { code: entry.code }) }]
       case 'interrupted':
-        return { kind: 'interrupted', seq: entry.seq, turn: entry.turn }
+        return [{ kind: 'interrupted', seq: entry.seq, turn: entry.turn }]
+      // Compaction markers are transcript chrome; the full export already
+      // renders the raw compaction/* events, so the folded overview drops them.
+      case 'compaction':
+        return []
     }
   })
 }

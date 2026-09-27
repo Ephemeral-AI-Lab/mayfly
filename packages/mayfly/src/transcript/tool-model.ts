@@ -8,12 +8,17 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { diffChangeCounts, type MayflyComponent } from '../core/index.ts'
-import { freezeModel, type ToolPresentationModel } from '../frontend/index.ts'
+import { freezeModel, interpolateLocaleMessage, type MayflyTranslate, type ToolPresentationModel } from '../frontend/index.ts'
 import { renderCanonicalNode, type CanonicalNodeRenderer } from './canonical-node-renderer.ts'
 import { summarizeToolText } from './envelope.ts'
+import { moreLinesHint } from './hints.ts'
 import { summarizeToolCall } from './present.ts'
 
+/** Rows a collapsed structured body (a diff, sections) keeps. */
 const COLLAPSED_ROW_LIMIT = 12
+
+/** Rows a collapsed plain-text result keeps. */
+const COLLAPSED_TEXT_LIMIT = 3
 
 /** Official facts required to build one renderer-neutral tool card. */
 export interface ToolPresentationFacts {
@@ -27,11 +32,12 @@ export interface ToolPresentationFacts {
 
 /** Convert official call/result presentation metadata without reading events. */
 export function createToolPresentationModel(facts: ToolPresentationFacts): ToolPresentationModel {
+  const call = facts.call === undefined ? undefined : toolCallNode(facts.call)
   const model: ToolPresentationModel = {
     kind: 'tool',
     id: facts.id,
     name: facts.name,
-    call: facts.call === undefined ? { kind: 'text', content: facts.name } : toolCallNode(facts.call),
+    ...(call === undefined ? {} : { call }),
     ...(facts.result === undefined && facts.outcome === undefined ? {} : { result: toolResultNode(facts.result, facts.outcome, facts.name) }),
     ...(facts.expanded === undefined ? {} : { expanded: facts.expanded }),
     action: { kind: 'tool.toggle', id: facts.id },
@@ -39,13 +45,16 @@ export function createToolPresentationModel(facts: ToolPresentationFacts): ToolP
   return freezeModel(model)
 }
 
-/** Map one official pending-call view to the canonical frontend vocabulary. */
-export function toolCallNode(view: ToolCallView): MayflyUiNode {
+/**
+ * Map one official pending-call view to the canonical frontend vocabulary.
+ * The card header already shows the view's title, so a generic call yields a
+ * node only when its content or salient input adds something beyond it.
+ */
+export function toolCallNode(view: ToolCallView): MayflyUiNode | undefined {
   switch (view.card) {
     case 'generic': {
-      const content = contentText(view.content)
-      const input = view.rawInput === undefined ? undefined : readableValue(view.rawInput)
-      return { kind: 'sections', sections: [{ title: view.title, body: { kind: 'text', content: content ?? input ?? '' } }] }
+      const content = contentText(view.content) ?? (view.rawInput === undefined ? undefined : readableValue(view.rawInput))
+      return content === undefined || content.trim() === '' || view.title.includes(content.trim()) ? undefined : { kind: 'text', content }
     }
     case 'terminal': {
       const sections: { title: string; body: Extract<MayflyUiNode, { readonly kind: 'text' | 'code' }> }[] = []
@@ -65,7 +74,7 @@ export function toolResultNode(view: ToolResultView | undefined, outcome: ToolRe
   if (view === undefined) return { kind: 'text', content: fallback }
   switch (view.card) {
     case 'generic':
-      return { kind: 'sections', sections: [{ title: view.title ?? name, body: { kind: 'text', content: contentText(view.content) ?? fallback } }] }
+      return { kind: 'text', content: contentText(view.content) ?? fallback }
     case 'terminal': {
       const status = view.exitCode === undefined ? view.signal === undefined ? 'complete' : `signal ${view.signal}` : `exit ${String(view.exitCode)}`
       return { kind: 'sections', sections: [
@@ -178,30 +187,44 @@ function contentText(content: readonly ContentBlock[] | undefined): string | und
   }).join('\n')
 }
 
+/**
+ * The presented body of one tool card. Collapsed it shows the settled result
+ * (the pending call while running) under a row budget — three rows for plain
+ * text, twelve for structured views such as diffs; expanded it shows the
+ * call's own details followed by the complete result.
+ */
 class ToolModelComponent implements MayflyComponent {
   private expandedOverride: boolean | undefined
+  private keyed = true
   constructor(
     private readonly source: () => ToolPresentationModel | null,
-    private readonly renderer: CanonicalNodeRenderer,
+    private readonly renderer: CanonicalNodeRenderer & { readonly t?: MayflyTranslate | undefined },
   ) {}
   render(width: number): string[] {
     const model = this.source()
     if (model === null) return []
     const expanded = this.expandedOverride ?? model.expanded ?? false
-    const view = expanded ? model.result ?? model.call : model.call
+    if (expanded) {
+      // A settled structured call (a diff) repeats in its result; only a call's
+      // own text details precede the result.
+      const call = model.result !== undefined && model.call?.kind !== 'text' ? undefined : model.call
+      return [call, model.result].flatMap(view => view === undefined ? [] : renderCanonicalNode(view, width, this.renderer))
+    }
+    const view = model.result ?? model.call
     if (view === undefined) return []
-    // The tool component applies its own 12/200-row budget after canonical
-    // content has rendered completely, so its hidden-line count stays exact.
+    // The tool component applies its own row budget after canonical content
+    // has rendered completely, so its hidden-line count stays exact.
     const rows = renderCanonicalNode(view, width, this.renderer)
-    if (expanded) return rows
-    const limit = COLLAPSED_ROW_LIMIT
+    const limit = view.kind === 'text' ? COLLAPSED_TEXT_LIMIT : COLLAPSED_ROW_LIMIT
     if (rows.length <= limit) return rows
     const remaining = rows.length - limit + 1
-    const hint = `... (${String(remaining)} more lines, ctrl+o to expand)`
-    const hintRow = renderCanonicalNode({ kind: 'text', content: hint }, width, this.renderer)[0]!
+    const hint = moreLinesHint(this.renderer.t ?? interpolateLocaleMessage, remaining, rows.length, this.keyed)
+    const hintRow = renderCanonicalNode({ kind: 'text', content: hint, tone: 'muted' }, width, this.renderer)[0]!
     return [...rows.slice(0, limit - 1), hintRow]
   }
   setExpanded(expanded: boolean): void { this.expandedOverride = expanded }
+  /** Adopt whether Ctrl-O reaches the card, so the hint may name the key. */
+  setScope(scope: { readonly hint: boolean }): void { this.keyed = scope.hint }
   invalidate(): void {}
 }
 

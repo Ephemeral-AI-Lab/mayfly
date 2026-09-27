@@ -1,32 +1,51 @@
 # 键位参考
 
-键位经 `mayflyKeymap` 服务注册，重复绑定会被拒绝；`/help` 浮层实时列出当前注册的全部键位（这就是本表的权威来源——若与本文有出入，以 `/help` 为准）。
+键位经 `mayflyKeymap` 服务注册，重复绑定会被拒绝；`/help` 浮层实时列出当前注册的全部键位，并在其后列出下方的共享面板键位（这就是本页的权威来源——若与本文有出入，以 `/help` 为准）。
 
 ## 全局动作
 
-任意焦点下生效：
+除非有 capturing 面板（编辑器槽中的选择器、表单或审批）占用输入，否则生效。只读 subagent transcript 是视图而不是 capturing 面板，因此这些键在其上依旧可用：
 
 | 键 | 动作 | 说明 |
 | --- | --- | --- |
 | `Ctrl-O` | 切换工具输出展开 | 在最近 **3 个 turn** 的工具卡与思考块的一行摘要与完整输出之间切换 |
 | `Ctrl-T` | 切换 todo 面板折叠 | 五行折叠视图 ↔ 整表视图 |
-| `F6` / `Shift+F6` | 切换 surface 焦点 | 按布局顺序在 Editor 与 pane lane 间前进/后退；到边界回到 Editor，capturing overlay 打开时由 overlay 独占焦点 |
+| `F6` / `Shift+F6` | 切换 surface 焦点 | 按布局顺序在 Editor 与 pane lane 间前进/后退；到边界回到 Editor |
 | `F7` | 切换主/辅助会话 | 在主会话与保留的 BTW/subagent 会话间切换整套 UI；无辅助槽时显示提示 |
 | `F8` | 关闭辅助会话 | detach subagent 或 dispose 临时 BTW Agent，并返回主会话 |
 
-## 共享交互键位
+## 共享面板键位
 
-聚焦 surface 使用分层导航：外层 tabs → 内层 tabs → 内容控件组 → 编辑态。底部上下文提示只在该 surface 聚焦时显示，并会随当前层、编辑、调整和确认状态变化：
+所有面板、选择器与表单遵循同一套键位语法。聚焦面板底部的提示行由同一套语法生成，因此只显示当前状态下真正有效的键（80 列以下最多 3 条、80 列起最多 4 条，只要 Esc 有作用就一定显示 Esc）：
 
-| 键 | 动作 | 说明 |
-| --- | --- | --- |
-| `←` / `→` | 水平层内导航 | 在 tabs、actions 与 select 调整态内移动，到边界不循环 |
-| `Enter` | 下钻 / 提交 / 确认 | 在 tab 条进入下一层；激活列表、action 或输入确认 |
-| `Tab` / `Shift-Tab` | 切换内容组 | 只在内容层循环 list/form/actions 等语义组并记忆组内焦点；在 tab 条上无动作 |
-| `Escape` | 返回 / 取消 / 关闭 | 编辑态 → 内容 → 内层 tabs → 外层 tabs → 关闭，每次只退一层；回到 Editor 后仍沿用补全、中断与撤回链 |
-| `↑` / `↓` | 垂直层内导航 | list 与 form 导航态，到边界不循环；disabled 行会跳过 |
-| `Space` | 多选切换 | 多选列表中切换聚焦项，`Enter` 确认整组 |
-| `Ctrl-U` | 清空筛选 | filterable list 中清空当前搜索 query |
+<!-- BEGIN shared-keys (checked against SHARED_KEY_REFERENCE in packages/mayfly/src/core/ui-key-grammar.ts) -->
+| 键 | 动作 |
+| --- | --- |
+| `↑/↓` | 在行和字段之间移动；滚动文档 |
+| `←/→` | 切换下拉选项、调整行内设置、展开或折叠树节点，或在标签栏中移动 |
+| `Alt+←/→` | 在面板任意位置切换标签；向导会校验离开的步骤 |
+| `PgUp/PgDn, Home/End` | 在列表和文档中翻页或跳转 |
+| `Enter` | 选择、执行、打开或应用选择器，或开始编辑字段 |
+| `Space` | 切换复选框或多选行、打开多选字段，或折叠树节点 |
+| `Tab/Shift+Tab` | 移动到下一个或上一个控件组，并提交文本和选择器 |
+| `Esc` | 退出最内层：选择器、编辑、搜索、返回，最后关闭 |
+| `Ctrl+C` | 关闭面板；有未保存修改时先确认 |
+| `输入或 /` | 筛选可筛选的列表；Ctrl+U 清除筛选 |
+| `1-9` | 选择带编号的行 |
+| `Ctrl+E` | 将聚焦的可滚动内容展开为全屏 |
+| `Delete` | 将已修改的字段恢复为继承值或默认值 |
+| `Alt+Enter` | 在多行字段中插入换行 |
+<!-- END shared-keys -->
+
+由这套语法得出的细节：
+
+- **Esc** 每按一次只退一层，所有面板一致：先取消打开的选择器，再结束文本编辑（草稿保留），再结束进行中的搜索（筛选保留），有返回目标的页面则返回，最后才关闭面板。tab 条不再是退出途中的一站。
+- **不可用的行和选项**不会获得光标，移动时直接跳过。不可用的行或动作会在标签旁说明原因。
+- **下拉字段**用 `←`/`→` 切换取值，`↑`/`↓` 永远移动到相邻字段；可切换时，聚焦的下拉字段把取值显示为 `‹ 取值 ›`。`Enter` 打开选项列表；`Tab` 应用高亮选项并前进。
+- **继承的设置**在标签后标注 `(继承)` 或 `(显式覆盖)`。修改取值即成为显式覆盖；在显式覆盖的字段上按 `Delete` 恢复为继承值。不再有单独的覆盖按钮。
+- **筛选**在输入第一个字符或 `/` 时开始。筛选进行中 `Alt+Enter`、`Ctrl+R` 等组合键仍然有效；多选列表中 `Space` 仍是勾选。
+- **编号行**在列表滚动时编号保持不变。在计划评审等关卡中，数字只移动光标，需按 `Enter` 确认。
+- **确认**统一为共享的“是/否”决定，默认聚焦“否”；问题下方可附一句后果说明。
 
 ## 编辑器语境
 
@@ -34,31 +53,35 @@
 
 | 键 | 动作 | 说明 |
 | --- | --- | --- |
-| `Escape` | 中断会话流 / 清空草稿 | 会话流进行中（所选 Agent 或 live 后代运行中）中断该流：buffer 为空且刚提交的消息可安全撤回时优先撤回并恢复进编辑器，草稿保留；空闲时清空草稿；补全弹层打开时只关弹层 |
-| `Ctrl-C` | 清空草稿 → 中断 → 退出 | 有草稿时只清空草稿、流继续；空 buffer 且会话流进行中时中断当前 Agent 与所有 running continuable 后代；整棵树空闲且 buffer 为空时 **1 秒内第二次按下**退出 Mayfly |
+| `Escape` | 中断会话流 / 清空草稿 | 会话流进行中（所选 Agent 或 live 后代运行中）中断该流：buffer 为空且刚提交的消息可安全撤回时优先撤回并恢复进编辑器，草稿保留；空闲时清空草稿，草稿保留在历史中、按一次 `↑` 即可取回；补全弹层打开时只关弹层 |
+| `Ctrl-C` | 清空草稿 → 中断 → 退出 | 有草稿时只清空草稿（按一次 `↑` 可取回）、流继续；空 buffer 且会话流进行中时中断当前 Agent 与所有 running continuable 后代；整棵树空闲且 buffer 为空时 **1 秒内第二次按下**退出 Mayfly |
 | `Ctrl-S` | steer 注入 | 把非空草稿作为转向指令注入当前 turn，并清空 buffer |
 | `Ctrl-V` | 粘贴图片 | 剪贴板图片入附件库，光标处插入 `[image #N]` 标记 |
 | `Ctrl-G` | 外部编辑器 | 草稿交给外部编辑器全屏编辑（`mayfly.editorCommand` 设置 → `$VISUAL` → `$EDITOR`；Mayfly 挂起让出终端）；以 `:cq` 退出则草稿原样保留 |
 | `Alt+M` | 循环会话模型 | 当前 provider 的模型列表里逐个切换（**仅本会话**、不写默认；按键被消费，草稿不动） |
 | `Backspace` | 退格 / 退模式 | 空的 `!` bash 提示符上退格即退回 prompt 模式 |
-| `Shift+Tab` | 切换计划状态 | normal ↔ plan，保留当前权限与 YOLO（见[会话模式](/features/modes)）。仅在编辑器焦点下生效；面板与问卷保留各自的 Tab 导航 |
+| `Shift+Tab` | 切换计划状态 | normal ↔ plan，保留当前权限与 YOLO（见[会话模式](/features/modes)） |
+
+提示符下方显示通知时，这些键依旧送达编辑器。编辑器扩展只能把动作绑定到组合键（如 `Alt+R`）上；`Esc`、`Tab`、`Shift+Tab` 以及所有未加修饰键的按键都归编辑器。
 
 ## 面板语境
 
 | 表面 | 键位 |
 | --- | --- |
-| `/help` 浮层 | ↑↓ / PageUp / PageDown 翻页；`Escape` / `Enter` / `q` 关闭 |
-| `/sessions` 选择器 | ↑↓ 不循环导航，`Enter` 恢复；输入筛选后 `Esc` 只结束筛选并保留 query，聚焦 `Clear filter` 才清空，再按层级退出 |
-| 审批面板 | ↑↓ 不循环 + `Enter`，或数字键 `1`–`4` 直选；`Escape` 拒绝 |
-| 问卷面板 | 问题 tabs 用不循环的 `←` / `→` 切题、`Enter` 进入内容；Tab 在问题 tabs 上无动作；单选 ↑↓ + `Enter`，多选 `Space` + `Enter`，Other 编辑器内 `Esc` 返回列表 |
-| 表单面板 | `↑` / `↓` 在导航态不循环切字段；文本用直接输入或第一次 `Enter` 进入编辑，编辑态 `Enter` 确认，非法值停在原字段，textarea 用 `Alt+Enter` 换行；select 用 `Enter` 进入、`←` / `→` 调整、`Enter` 应用；`Tab` 放弃未确认的 select 调整并切到下一语义组，`Escape` 逐层返回 |
-| 计划评审 | `←` / `→` 或 `1`–`3` 选决策，`↑` / `↓` / `PageUp` / `PageDown` 滚动计划，`Enter` 确认 |
-| `/model` 面板 | 唯一 tab 层是 provider：`←` / `→` 不循环切换，`Enter` 进入模型列表；列表中 `↑` / `↓` 选模型，`←` / `→` 调当前模型的思考等级，`Tab` 进入同级提交动作 |
-| `/effort` 面板 | `←` / `→` 在思考等级间不循环移动，`Enter` 下钻；选择 `Set as default` 持久化，或选择 `Use for this session` 仅改当前会话 |
-| `/agents` 浏览器 | ↑↓ 选择、`Space` 展开/折叠、`Enter` 查看；`Delete`/`Ctrl-D` 打开 Yes / No 确认后停止没有 live 后代的 live continuable child，父节点需先停止叶子 |
-| 只读 subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` 滚动；`Escape` 关闭；全局 `F7`/`F8` 仍生效 |
+| `/help` 浮层 | ↑↓ / PageUp / PageDown / Home / End 滚动；`Ctrl+E` 展开；`Tab` 到 Close；`Escape` 关闭 |
+| `/sessions` 选择器 | 输入即筛选；↑↓ 移动，`Space` 或 `←` / `→` 折叠分支，`Enter` 恢复；`Esc` 先结束筛选（query 保留，`Ctrl+U` 清空），再关闭 |
+| 审批面板 | 默认聚焦 **Reject**；用 `←` / `→` 或 `Tab` 到 Allow once、本会话允许与 Reject with feedback；`Enter` 执行；`Escape` 拒绝。在反馈页 `Enter` 发送、`Alt+Enter` 换行，`Esc` 先结束编辑再返回决策页。没有数字快捷键 |
+| 问卷面板 | `1`–`9` 或 ↑↓ + `Enter` 选择并前进；多选用 `Space` 勾选、`Enter` 确认；在 Other 中输入即开始作答，`Enter` 提交、`Alt+Enter` 换行；问题 tabs 在标签栏上用 `←` / `→`，任意位置用 `Alt+←` / `Alt+→` 切换，向前切换会校验当前问题 |
+| 表单面板 | ↑↓ 在字段间移动；直接输入或 `Enter` 开始编辑文本，`Enter` 确认并前进，textarea 用 `Alt+Enter` 换行；下拉字段用 `←` / `→` 切换或 `Enter` 打开；多选字段用 `Enter` 或 `Space` 打开；`Delete` 把显式覆盖的字段恢复为继承值；`Tab` 提交并切到下一组；`Escape` 先结束编辑，再关闭（有未保存修改时先确认） |
+| 计划评审 | ↑↓ 或 `1`–`3` 在决策间移动，`Enter` 确认聚焦的决策；`c` 复制计划，`o` 打开反馈；`PageUp` / `PageDown` / `Shift+↑↓` 滚动计划 |
+| `/model` 面板 | 一个按 provider 分组的列表：输入即筛选，↑↓ 选模型，`←` / `→` 调思考等级；`Enter` 设为默认，`Alt+Enter` 仅用于本会话（筛选中同样有效） |
+| `/effort` 面板 | `1`–`9` 或 ↑↓ + `Enter` 设置默认思考等级；`Alt+Enter` 仅对本会话应用聚焦的等级 |
+| `/permission` 选择器 | `1`–`9` 或 ↑↓ + `Enter` 切换预设；完全访问会先弹出默认聚焦“否”的确认 |
+| `/agents` 浏览器 | 输入即筛选；↑↓ 选择，`Space` 或 `←` / `→` 展开/折叠，`Enter` 查看；`Tab` 到 **Stop selected**，停止前先确认，对 one-shot、未运行或仍有运行中下级的行会直接说明原因 |
+| `/plugin` 市场 | Installed / Not installed 标签（标签栏上 `←` / `→` 或 `Alt+←` / `Alt+→`）；输入即筛选；`Tab` 到 Details、Install 或 Update/repair 与 Remove，可用性按行判断；`Ctrl+R` 刷新 |
+| 只读 subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` 滚动；`Escape` 关闭；`F7` 切回、`F8` 关闭；可继续的子 Agent 用 `i` 回复 |
 | live BTW/subagent | 使用完整主编辑器与同一套 panel 键位；`F7` 切回主会话，`F8` 关闭辅助槽 |
 
 ## 自定义键位
 
-暂缓（属后续阶段）。当前没有面向用户的键位配置；键位冲突由 keymap 注册时直接拒绝来保证。
+暂缓（属后续阶段）。当前没有面向用户的键位配置；键位冲突由 keymap 注册时直接拒绝来保证。插件声明的面板快捷键必须是合法的 key id，不能占用共享导航键，不能在同一页重复，且在带可筛选列表的面板上不能是纯字符键。

@@ -19,10 +19,12 @@ describe('interaction keys', () => {
     expect(keymap.matches('\x1b[6~', keys.ACTION_PAGE_DOWN)).toBe(true)
     expect(keymap.matches('\x1b[H', keys.ACTION_HOME)).toBe(true)
     expect(keymap.matches('\x1b[F', keys.ACTION_END)).toBe(true)
-    expect(keymap.matches('\x04', keys.ACTION_DELETE)).toBe(true)
     expect(keymap.matches('\x05', keys.ACTION_EXPAND)).toBe(true)
     expect(keymap.matches('\x1b[18~', keys.ACTION_TOGGLE_AGENT_VIEW)).toBe(true)
-    expect(keys.interactionKeyHint(keymap, keys.ACTION_DELETE, 'Delete')).toBe('Delete/Ctrl+D')
+    expect(keys.interactionKeyHint(keymap, keys.ACTION_EXPAND, 'Expand')).toBe('Ctrl+E')
+    // Delete belongs only to the contextual form-field reset; no entity action claims Delete or Ctrl+D.
+    expect(keymap.list().filter(action => [action.keys].flat().some(key => key === 'delete' || key === 'ctrl+d')).map(action => action.id)).toEqual([keys.ACTION_RESET_FIELD])
+    expect(keymap.matches('\x1b[3~', keys.ACTION_RESET_FIELD)).toBe(true)
     expect(keys.interactionKeyHint(keymap, 'missing', 'Fallback')).toBe('Fallback')
   })
 

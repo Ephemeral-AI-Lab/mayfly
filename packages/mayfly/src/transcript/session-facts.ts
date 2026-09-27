@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-session-title/types'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
 import type { ConversationFacts } from '../conversation/index.ts'
 import { initialConversationFacts } from '../conversation/index.ts'
+import { reasoningDetail } from '../conversation/activity-detail.ts'
 
 /** Renderer-neutral facts for one admitted child session. */
 export interface ChildSessionFacts {
@@ -33,6 +34,18 @@ export interface ChildSessionFacts {
 
 declare module '@deepseek-ai/cordis' {
   interface Context { mayflySessionFacts: SessionFactsService }
+}
+
+/**
+ * The live draft's activity: the latest reasoning paragraph while thinking,
+ * text while composing, and while waiting the newest call whose arguments are
+ * still streaming, else the durable marker.
+ */
+function draftActivity(draft: LiveAssistantDraft, durable: ConversationFacts['activity']): ConversationFacts['activity'] {
+  if (draft.phase === 'thinking') return { kind: 'reasoning', detail: reasoningDetail(draft.reasoning) }
+  if (draft.phase === 'composing') return { kind: 'text' }
+  const preparing = draft.preparing?.at(-1)
+  return preparing === undefined ? durable : { kind: 'tool', name: preparing.name, preparing: true }
 }
 
 /** Session-scoped facts bridge for status and dock model producers. */
@@ -202,7 +215,7 @@ export class SessionFactsService extends Service {
       turn: draft.turn,
       currentStep: draft.step,
       phase: draft.phase,
-      activity: draft.phase === 'waiting' ? this.durable.activity : { kind: draft.phase === 'thinking' ? 'reasoning' : 'text' },
+      activity: draftActivity(draft, this.durable.activity),
       flowDownChars: this.durable.flowDownChars + draft.chars,
       outputProgress: draft.outputProgress,
     }

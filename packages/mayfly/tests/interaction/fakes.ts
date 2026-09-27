@@ -100,6 +100,7 @@ export const KEY = {
   ctrlD: '\x04',
   ctrlS: '\x13',
   ctrlG: '\x07',
+  ctrlR: '\x12',
   ctrlV: '\x16',
   altEnter: '\x1b\r',
 } as const
@@ -212,6 +213,8 @@ function fakeColors(): MayflySemanticColors {
     diffRemovedStrong: text => `/${text}/`,
     diffGutter: text => `:${text}:`,
     diffMeta: text => `;${text};`,
+    diffAddedBg: text => `[+${text}+]`,
+    diffRemovedBg: text => `[-${text}-]`,
   }
 }
 
@@ -244,6 +247,8 @@ export class FakeMayflyEditor implements MayflyEditor {
   promptSymbol: '>' | '!' | undefined
   /** The last border label set, if any. */
   borderLabel: string | undefined
+  /** The last border title set, if any. */
+  borderTitle: string | undefined
   /** Whether the frame currently opens into a panel above. */
   connectedAbove = false
   /** The last ghost hint set, if any. */
@@ -314,6 +319,10 @@ export class FakeMayflyEditor implements MayflyEditor {
 
   setBorderLabel(text: string | undefined): void {
     this.borderLabel = text
+  }
+
+  setBorderTitle(text: string | undefined): void {
+    this.borderTitle = text
   }
 
   setConnectedAbove(connected: boolean): void {
@@ -966,6 +975,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     },
   } as never)
   ctx.provide('tools', { schemas: () => [] } as never)
+  ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   ctx.provide('subagents', {
     prompt: async () => ({ messageId: 'fake-subagent-message' }),
     interrupt: () => {},

@@ -22,6 +22,44 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.1-rc.1',
+    summary: 'The status line shows the latest-step cache hit rate, and live progress emits each fact once.',
+    highlights: [
+      'Cache hit rate - show the latest-step cache hit rate beside context occupancy in the status line.',
+      'Live progress - eliminate redundant live-progress facts across UI surfaces so each progress update publishes once.',
+    ],
+    knownIssues: [],
+  },
+  {
+    version: '0.1.0-alpha.9',
+    summary: 'The transcript mirrors Harness work details and repairs the conversation flow.',
+    highlights: [
+      'Work details - regroup commands, reads, searches, thinking, and background processes into per-family rows that mirror the official Harness work-details presentation.',
+      'Conversation flow - repair live-stream accumulation and transcript ordering so the projected conversation stays continuous.',
+    ],
+    knownIssues: [],
+  },
+  {
+    version: '0.1.0-alpha.8',
+    summary: 'The alpha.7 feature set on a much leaner CLI runtime.',
+    highlights: [
+      'Lean runtime - the bundled Harness runtime no longer ships LibreOffice and sherpa-onnx native payloads, cutting the CLI package from ~710 MB to ~125 MB; the TUI never mounted those optional Office/PDF and voice-input capabilities.',
+    ],
+    knownIssues: [],
+  },
+  {
+    version: '0.1.0-alpha.7',
+    summary: 'Native Agent Team workflows, a unified interaction model, and richer overlay surfaces on dsh 0.1.7-rc.1.',
+    highlights: [
+      'Agent Teams - mount the native agentTeams service and tools in the default bundle, with a readonly team panel over addressed subagents.',
+      'Unified interaction - align forms, choices, tabs, pickers, and overlays to the shared interaction model across built-in and external surfaces.',
+      'Conversation overlays - mount plan reviews and wide choice questions inside the conversation flow.',
+      'Detail tiers - fold tool and thinking transcript rows into per-family detail tiers.',
+      'Session flow - swap editor Esc/Ctrl-C for a running session flow, commit /model from one picker with inline effort, and add a preset-scoped /schedule with a preset-aware /new.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.0-alpha.5',
     summary: 'Faster rendering under concurrent subagent activity, and fixes for large pickers and shell output.',
     highlights: [

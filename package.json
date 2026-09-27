@@ -24,6 +24,7 @@
     "check:examples": "node script/check-examples.mjs",
     "release:lock-cli": "pnpm --dir packages/cli/runtime install --lockfile-only",
     "release:version": "node script/release-version.mjs",
+    "release:preflight": "node script/release-preflight.mjs",
     "smoke:happy": "node script/smoke-happy.mjs",
     "smoke:cli-registry": "node script/smoke-cli-local-registry.mjs",
     "smoke:pty": "node script/smoke-pty.mjs",

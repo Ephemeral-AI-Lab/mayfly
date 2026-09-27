@@ -9,6 +9,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { inc } from 'semver'
 import { mkdtempTracked, registerTempDirCleanup } from '../../mayfly/tests/core/temp-dir.ts'
 import { cliInternals, type SpawnOutcome } from '../src/internals.ts'
 import { main, shellVersion } from '../src/main.ts'
@@ -25,8 +26,8 @@ afterEach(() => {
 })
 
 /** The shell's own manifest version — the pin every fixture calibrates to. */
-const PIN = '0.1.0-alpha.5'
-const AHEAD = '0.1.0-alpha.199'
+const PIN = '0.1.1-rc.1'
+const AHEAD = inc(PIN, 'minor')!
 
 /** One captured write or exit. */
 const captures: { out: string[], err: string[], exits: number[] } = { out: [], err: [], exits: [] }

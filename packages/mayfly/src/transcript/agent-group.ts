@@ -20,8 +20,8 @@
  * at render with a cache key, and pi-tui's `requestRender` already
  * coalesces per tick. The only timer is the 1 Hz tick
  * that advances non-terminal members' elapsed seconds; it stands itself down
- * on the first tick that finds none left (the ThinkingTimers retire pattern
- * — a replay of settled steps starts zero timers). No `setExpanded`: the
+ * on the first tick that finds none left, so a replay of settled steps
+ * starts zero timers. No `setExpanded`: the
  * group never expands, and the Ctrl-O toggle skips components without one.
  *
  * @module @ephemeral-ai/mayfly/transcript/agent-group
@@ -29,6 +29,7 @@
 
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { compactElapsedSeconds } from './agent-presentation.ts'
+import { outputCounter } from './output-rate.ts'
 import { ellipsize } from './present.ts'
 import type { TranscriptToolItem } from './types.ts'
 
@@ -64,7 +65,7 @@ export interface AgentMemberLive {
 /** Resolves a member's live overlay; absent on replay and unit tests. */
 export type AgentLiveLookup = (member: TranscriptToolItem) => AgentMemberLive | undefined
 
-/** The timer + clock primitives; replaceable in tests (ThinkingTimers precedent). */
+/** The timer + clock primitives; replaceable in tests. */
 export interface AgentGroupTimers {
   /** Start a repeating callback; mirrors the global `setInterval`. */
   setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
@@ -323,7 +324,8 @@ export class AgentGroupComponent implements MayflyComponent {
     const stats: string[] = []
     if (snapshot.live?.model !== undefined) stats.push(sanitizePluginText(snapshot.live.model).replace(/[\r\n]+/gu, ' '))
     if (snapshot.live?.effort !== undefined) stats.push(sanitizePluginText(snapshot.live.effort).replace(/[\r\n]+/gu, ' '))
-    if (snapshot.live?.liveChars !== undefined) stats.push(`↓${formatTok(snapshot.live.liveChars)}`)
+    const down = outputCounter(snapshot.live?.liveChars ?? 0)
+    if (down !== '') stats.push(down)
     if (snapshot.live !== undefined) stats.push(`${snapshot.live.toolCount} tool${snapshot.live.toolCount === 1 ? '' : 's'}`)
     stats.push(formatElapsed(snapshot.elapsedSeconds))
     if (snapshot.live?.tokens !== undefined) stats.push(`${formatTok(snapshot.live.tokens)} tok`)

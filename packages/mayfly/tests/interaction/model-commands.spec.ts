@@ -58,14 +58,15 @@ function fakeModelRef(selection: ModelSelection): { ref: TestModelRef, writes: M
 /** Provide the renderer-neutral app boundary to standalone command contexts. */
 function provideModelBoundary(
   ctx: Context,
-  agent: Agent | undefined,
+  agent: Agent | undefined | { readonly current: Agent | null },
   modelRef?: TestModelRef,
 ): void {
+  const resolve = (): Agent | null => agent !== undefined && 'current' in agent ? agent.current : agent ?? null
   ctx.provide('mayflyCurrentAgent', {
-    current: () => agent ?? null,
+    current: resolve,
     revision: () => 0,
     subscribe: (listener: (current: Agent | null, revision: number) => void) => {
-      listener(agent ?? null, 0)
+      listener(resolve(), 0)
       return () => {}
     },
   } as never)
@@ -180,9 +181,14 @@ async function mount(options: {
   const driver = (model: UiSurfaceModel) => {
     const previous = drivers.get(model)
     if (previous !== undefined) return previous
+    // The surface renderer recompiles on every model revision; mirror that here.
     let compiled = renderRequest(model)
+    let compiledRevision = model.revision
     const sync = (width = 80) => {
-      if (compiled.runtime.interaction?.revision !== model.revision) compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime)
+      if (compiledRevision !== model.revision) {
+        compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime)
+        compiledRevision = model.revision
+      }
       return compiled
     }
     const value = { render: (width: number) => sync(width).component.render(width), handleInput: (data: string) => sync().input(data) }
@@ -920,6 +926,24 @@ describe('cycleSessionModel (the Alt+M hotkey)', () => {
     const { ctx } = await mount({ attach: false })
     await cycleSessionModel(ctx, modelListCache)
     expect(notices).toEqual(['no session is live yet'])
+  })
+
+  it('drops a cycle whose Agent was replaced while the model listing loaded', async () => {
+    const ctx = new Context()
+    const first = { id: 'first', session: { events: [] }, status: 'idle' } as unknown as Agent
+    const selection = { current: first as Agent | null }
+    const fake = fakeModelRef({ provider: 'mock', model: 'mock' })
+    provideModelBoundary(ctx, selection, fake.ref)
+    const gate = Promise.withResolvers<void>()
+    const llm = fakeLlm()
+    ctx.provide('llm', { ...llm, listModels: async (...args: Parameters<LlmRuntime['listModels']>) => { await gate.promise; return llm.listModels(...args) } } as never)
+    const seen: string[] = []
+    const cycling = cycleSessionModel(ctx, createModelListCache(), (_id, feedback) => { seen.push(feedback.message) })
+    selection.current = { id: 'second', session: { events: [] }, status: 'idle' } as unknown as Agent
+    gate.resolve()
+    await cycling
+    expect(fake.writes).toEqual([])
+    expect(seen).toEqual(['agent changed before model selection completed'])
   })
 
   it('uses a silent fallback when neither reporter nor shared editor exists', async () => {

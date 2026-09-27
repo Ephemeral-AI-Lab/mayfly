@@ -43,8 +43,29 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 }
 
 describe('mayflyConversationFacts projection', () => {
-  it('invalidates checkpoints after phase-local output measurements change', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(4)
+  it('invalidates checkpoints after the turn-start anchor, activity detail, and compaction metering are added', () => {
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(8)
+  })
+
+  it('records the turn start and the running action detail for the activity row', () => {
+    seq = 0
+    let state = foldConversationFacts(initialConversationFacts(), event('turn/start', { turn: 1 }, 5_000))
+    expect(state.turnStartedAt).toBe(5_000)
+    state = foldConversationFacts(state, event('step/start', { turn: 1, step: 0 }))
+    state = foldConversationFacts(state, attempt(1, 0, 'reasoning', 'Plan.\n\n**Read the auth module**'))
+    expect(state.activity).toEqual({ kind: 'reasoning', detail: 'Read the auth module' })
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c1', name: 'bash', arguments: '{"command":"pnpm test"}' }))
+    expect(state.activity).toEqual({ kind: 'tool', name: 'bash', detail: 'pnpm test' })
+    // A plan update carries no detail, so the row never shows the raw tool name.
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c2', name: 'todo_write', arguments: '{"todos":[]}' }))
+    expect(state.activity).toEqual({ kind: 'tool', name: 'todo_write', detail: '' })
+    // The agents pane owns spawn detail.
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c3', name: 'subagent', arguments: '{"description":"Review"}' }))
+    expect(state.activity).toEqual({ kind: 'tool', name: 'subagent' })
+    state = foldConversationFacts(state, event('turn/end', { turn: 1, reason: { kind: 'completed' } }))
+    expect(state.turnStartedAt).toBe(5_000)
+    expect(foldConversationFacts(state, event('turn/start', { turn: 2 }, 9_000)).turnStartedAt).toBe(9_000)
+    expect(conversationFactsSchema.safeParse(state).success).toBe(true)
   })
 
   it('folds lifecycle, streaming, usage, todos, request metadata, and agents', () => {
@@ -76,9 +97,10 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ phase: 'composing', flowDownChars: 11 })
     expect(foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: undefined }))).toMatchObject({ phase: 'waiting', outputProgress: undefined })
     state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
-    expect(state.contextTokens).toBe(15)
+    expect(state).toMatchObject({ contextTokens: 15, contextCacheReadTokens: 2 })
     state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 4 } }))
     expect(state.contextTokens).toBe(4)
+    expect(state.contextCacheReadTokens).toBeUndefined()
     state = foldConversationFacts(state, event('request/context', { contextWindow: 32 }))
     expect(foldConversationFacts(state, event('request/context', { contextWindow: 32 }))).toBe(state)
     state = foldConversationFacts(state, event('request/header', { header: { config: { model: 'm', provider: 'p', reasoningEffort: 'high' } } }))
@@ -87,6 +109,8 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ contextWindow: 32, model: 'm2', provider: 'p2', reasoningEffort: undefined, todos: [{ content: 'ship' }] })
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-1', name: 'subagent', arguments: '{}', }, 88))
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-2', name: 'subagent_fork', arguments: '{}' }, 89))
+    // Any configured `subagent_*` provider is spawn-class too.
+    expect(foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-x', name: 'subagent_codex', arguments: '{}' }, 90)).agentCalls.at(-1)).toMatchObject({ callId: 'agent-x', name: 'subagent_codex' })
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'plain', name: 'read', arguments: '{}' }))
     expect(state).toMatchObject({ phase: 'tool', epochToolCount: 3 })
     state = foldConversationFacts(state, event('tool/result', toolResult('agent-1', [{ type: 'text', text: 'done' }, { type: 'json', value: 1 }], true), 99))
@@ -111,6 +135,42 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ phase: 'idle', active: false, turn: 1, runOutcome: 'completed' })
     state = foldConversationFacts(state, event('turn/end', { turn: 2, reason: { kind: 'interrupted' } }))
     expect(state).toMatchObject({ phase: 'idle', active: false, turn: 2, runOutcome: 'failed' })
+  })
+
+  it('subtracts compaction shadow prices from the context meter', () => {
+    let state = foldConversationFacts(initialConversationFacts(), event('turn/start', { turn: 1 }))
+    state = foldConversationFacts(state, event('assistant/message', {
+      turn: 1, step: 0, stream: [],
+      usage: { inputTokens: 1_000, outputTokens: 50, cacheReadTokens: 400 },
+    }))
+    expect(state).toMatchObject({ contextTokens: 1_400, contextCacheReadTokens: 400 })
+    // The summary metering event subtracts the shadowed price and adds the
+    // summarize call's own output back as the checkpoint's stand-in size.
+    state = foldConversationFacts(state, event('compaction/summary', {
+      compactionId: 'cmp-1', summary: [{ type: 'text', text: 'checkpoint' }],
+      shadowedRange: { start: 1, end: 5 }, shadowedSeqs: [1, 2, 3, 4, 5], shadowedTokenCount: 800,
+      provider: 'mock', model: 'mock', usage: { inputTokens: 900, outputTokens: 100 },
+    }))
+    expect(state).toMatchObject({ contextTokens: 700 })
+    // The post-replacement cache share is unknown; the segment clears.
+    expect(state.contextCacheReadTokens).toBeUndefined()
+    // A summary without usage adds nothing back.
+    state = foldConversationFacts(state, event('compaction/summary', {
+      compactionId: 'cmp-2', summary: [],
+      shadowedRange: { start: 6, end: 6 }, shadowedSeqs: [6], shadowedTokenCount: 100,
+      provider: 'mock', model: 'mock',
+    }))
+    expect(state.contextTokens).toBe(600)
+    // The tool-result pruner uses the same shadow-price protocol.
+    state = foldConversationFacts(state, event('compaction/prune', {
+      shadowedRange: { start: 7, end: 8 }, shadowedSeqs: [7, 8], shadowedTokenCount: 300,
+    }))
+    expect(state.contextTokens).toBe(300)
+    // The meter never dips below zero.
+    state = foldConversationFacts(state, event('compaction/prune', {
+      shadowedRange: { start: 9, end: 9 }, shadowedSeqs: [9], shadowedTokenCount: 10_000,
+    }))
+    expect(state.contextTokens).toBe(0)
   })
 
   it('folds foreign or malformed embedded streams as empty', () => {

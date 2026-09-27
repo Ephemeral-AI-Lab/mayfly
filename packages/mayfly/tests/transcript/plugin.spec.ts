@@ -20,17 +20,15 @@ import { ACTION_TOGGLE_COLLAPSE, apply, inject } from '../../src/transcript/inde
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import * as statusBasicModel from '../../src/transcript/status-basic-model.ts'
-import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, textDelta, toolCallEvent, toolResultEvent, userEvent } from './helpers.ts'
+import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, textDelta, toolCallEvent, toolResultEvent, turnStart, userEvent } from './helpers.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
-import { setThinkingTimers } from '../../src/transcript/thinking.ts'
 
 registerTempDirCleanup()
 
 const disposers: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose()
-  setThinkingTimers(undefined)
 })
 
 const id = (text: string): string => text
@@ -40,7 +38,7 @@ const COLORS = {
   mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id,
   mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
-  diffGutter: id, diffMeta: id,
+  diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
 }
 
 class FakeScreen implements MayflyScreen {
@@ -391,24 +389,28 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(presentResult).toHaveBeenCalled()
   })
 
-  it('requests a frame when the renderer-owned thinking spinner advances', async () => {
-    let tick: (() => void) | undefined
-    setThinkingTimers({
-      setInterval(callback) {
-        tick = callback
-        return 1 as unknown as ReturnType<typeof setInterval>
-      },
-      clearInterval() {},
-    })
-    const agent = fakeAgent([userEvent('think')])
-    const { ctx, screen } = await bootTranscript(agent, {
-      settings: { mayfly: { transcriptView: 'verbose' } },
-    })
-    ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
-    expect(contentLines(screen).join('\n')).toContain('working')
-    const baseline = screen.renderRequests.length
-    tick?.()
-    expect(screen.renderRequests.length).toBeGreaterThan(baseline)
+  it('keeps live status out of the main transcript: no running header, caption, or live title', async () => {
+    const live = async (view: string): Promise<string> => {
+      resetSeq()
+      // The fake projection re-seeds from every logged event but the last.
+      const agent = fakeAgent([userEvent('think'), turnStart(1)])
+      const harness = await bootTranscript(agent, { settings: { mayfly: { transcriptView: view } } })
+      harness.ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
+      return contentLines(harness.screen).join('\n')
+    }
+    // Compact and Standard leave a reasoning-only group untitled: the activity row says Thinking.
+    for (const view of ['compact', 'standard']) {
+      const text = await live(view)
+      expect(text).toContain('think')
+      expect(text).not.toMatch(/working|Deep diving|Thinking|Analyzing the request/u)
+    }
+    // Detailed and Verbose show the reasoning itself, as a captionless tail.
+    for (const view of ['detailed', 'verbose']) {
+      const text = await live(view)
+      expect(text).toContain('think')
+      expect(text).toMatch(/✻ .*working/u)
+      expect(text).not.toMatch(/Deep diving|Thinking/u)
+    }
   })
 
   it('renders a sibling plugin registration from the same direct mayflyStatus service', async () => {

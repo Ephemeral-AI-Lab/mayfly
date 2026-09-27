@@ -8,11 +8,16 @@
 
 import type { ContentBlock, ImageBlock } from '@deepseek-ai/dsh-llm'
 import { isAppendSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
+// Empty type imports activate the command- and compaction-lifecycle event
+// declaration merges the fold below consumes.
+import type {} from '@deepseek-ai/dsh-commands/types'
+import type {} from '@deepseek-ai/dsh-compaction/types'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 import { outputProgressSchema } from './output-progress.ts'
-import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
+import { foldAssistantStreamRecords, initialAssistantStream, type AssistantStreamState } from './stream-accumulator.ts'
 import type {
+  ConversationCompactionEntry,
   ConversationEntry,
   ConversationImage,
   ConversationJson,
@@ -20,6 +25,7 @@ import type {
   ConversationProjectionState,
   ConversationThinkingEntry,
   ConversationToolEntry,
+  ConversationTurn,
 } from './types.ts'
 
 const jsonSchema: z.ZodType<ConversationJson> = z.lazy(() => z.union([
@@ -51,7 +57,7 @@ const entryBase = {
 const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
   z.object({ ...entryBase, kind: z.literal('user'), text: z.string(), images: z.array(imageSchema) }),
   z.object({ ...entryBase, kind: z.literal('assistant'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean() }),
-  z.object({ ...entryBase, kind: z.literal('thinking'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean(), outputProgress: outputProgressSchema.optional() }),
+  z.object({ ...entryBase, kind: z.literal('thinking'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean(), outputProgress: outputProgressSchema.optional(), durationMs: z.number().nonnegative().optional() }),
   z.object({
     ...entryBase,
     kind: z.literal('tool'),
@@ -71,13 +77,38 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
   }),
   z.object({ ...entryBase, kind: z.literal('error'), message: z.string(), code: z.string().optional() }),
   z.object({ ...entryBase, kind: z.literal('interrupted') }),
+  z.object({
+    ...entryBase,
+    kind: z.literal('compaction'),
+    compactionId: z.string().optional(),
+    commandId: z.string().optional(),
+    state: z.enum(['running', 'ok', 'error']),
+    trigger: z.enum(['manual', 'auto']),
+    startedAt: z.number(),
+    endedAt: z.number().optional(),
+    shadowedCount: z.number().int().nonnegative().optional(),
+    shadowedTokens: z.number().nonnegative().optional(),
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    summary: z.string().optional(),
+    detail: z.string().optional(),
+    error: z.string().optional(),
+  }),
 ]))
+
+const turnsSchema = z.array(z.object({
+  turn: z.number().int().nonnegative(),
+  startedAt: z.number(),
+  endedAt: z.number().optional(),
+  outcome: z.string().optional(),
+}))
 
 /** Runtime schema for the client-visible conversation value. */
 export const conversationProjectionSchema = z.object({
   entries: conversationEntriesSchema,
   streaming: z.boolean(),
   settledSteps: z.array(z.string()),
+  turns: turnsSchema,
 }) satisfies z.ZodType<ConversationProjection>
 
 /** Runtime schema for persisted projection checkpoints. */
@@ -93,6 +124,7 @@ export const conversationProjectionStateSchema = z.object({
   interruptedTurns: z.array(z.number().int().nonnegative()),
   retractedTurns: z.array(z.number().int().nonnegative()),
   toolEntryIds: z.record(z.string(), z.string()),
+  turns: turnsSchema,
 }) satisfies z.ZodType<ConversationProjectionState>
 
 /** Empty-log state for the conversation projection. */
@@ -109,6 +141,7 @@ export function initialConversationState(): ConversationProjectionState {
     interruptedTurns: [],
     retractedTurns: [],
     toolEntryIds: {},
+    turns: [],
   }
 }
 
@@ -181,10 +214,35 @@ function settleStreaming(state: ConversationProjectionState, updatedSeq: number)
   }
 }
 
+/**
+ * Whether a tool name is spawn-class delegation: `subagent` or any configured
+ * `subagent_*` provider (fork, codex, claude-code), the upstream Chat rule.
+ */
+export function isSpawnToolName(name: string): boolean {
+  return name === 'subagent' || name.startsWith('subagent_')
+}
+
 function toolChannel(name: string): ConversationToolEntry['channel'] {
   if (name === 'todo_write') return 'todo'
-  if (name === 'subagent' || name === 'subagent_fork') return 'agents'
+  if (isSpawnToolName(name)) return 'agents'
   return 'transcript'
+}
+
+/** Visible reasoning span of one folded stream, when it recorded one. */
+function reasoningDuration(stream: AssistantStreamState): number | undefined {
+  return stream.reasoningStartedAt === undefined || stream.reasoningEndedAt === undefined
+    ? undefined
+    : Math.max(0, stream.reasoningEndedAt - stream.reasoningStartedAt)
+}
+
+/** Record one turn boundary time; a missing start adopts the end time. */
+function markTurn(state: ConversationProjectionState, turn: number, patch: Partial<ConversationTurn> & { readonly time: number }): ConversationProjectionState {
+  const { time, ...fields } = patch
+  const index = state.turns.findIndex(entry => entry.turn === turn)
+  const turns = [...state.turns]
+  if (index < 0) turns.push({ turn, startedAt: time, ...fields })
+  else turns[index] = { ...turns[index]!, ...fields }
+  return { ...state, turns }
 }
 
 function appendEntry(state: ConversationProjectionState, entry: ConversationEntry): ConversationProjectionState {
@@ -232,6 +290,7 @@ function retractTurn(state: ConversationProjectionState, turn: number): Conversa
     interruptedTurns: state.interruptedTurns.filter(value => value !== turn),
     retractedTurns: [...state.retractedTurns, turn],
     toolEntryIds,
+    turns: state.turns.filter(entry => entry.turn !== turn),
   }
 }
 
@@ -271,6 +330,8 @@ function finalizeAssistant(
   const key = stepKey(turn, step)
   if (state.finalizedSteps.includes(key) || state.interruptedTurns.includes(turn)) return state
   let next = state.streamingStep === key ? state : settleStreaming(state, event.seq)
+  const durationMs = reasoningDuration(foldAssistantStreamRecords(initialAssistantStream(), event.data.stream))
+  const timing = durationMs === undefined ? {} : { durationMs }
   const reasoning = reasoningText(message.content)
   const answer = visibleText(message.content).trim()
   const thinkingId = `thinking:${key}`
@@ -278,11 +339,11 @@ function finalizeAssistant(
   const thinkingIndex = entryIndex(next.entries, next.streamingThinkingId)
   if (thinkingIndex >= 0) {
     next = replaceEntry(next, next.streamingThinkingId!, event.seq, entry => entry.kind === 'thinking'
-      ? { ...entry, text: reasoning, streaming: false }
+      ? { ...entry, text: reasoning, streaming: false, ...timing }
       : entry)
   } else if (reasoning.trim() !== '') {
     const thinking: ConversationThinkingEntry = {
-      kind: 'thinking', id: thinkingId, seq: event.seq, updatedSeq: event.seq, turn, step, text: reasoning, streaming: false,
+      kind: 'thinking', id: thinkingId, seq: event.seq, updatedSeq: event.seq, turn, step, text: reasoning, streaming: false, ...timing,
     }
     const entries = [...next.entries]
     const assistantIndex = entryIndex(entries, next.streamingAssistantId)
@@ -366,7 +427,7 @@ export function foldConversationProjection(
   switch (event.type) {
     case 'turn/start':
       if (state.retractedTurns.includes(event.data.turn)) return state
-      return { ...state, currentTurn: event.data.turn, active: true }
+      return markTurn({ ...state, currentTurn: event.data.turn, active: true }, event.data.turn, { time: event.time, startedAt: event.time })
     case 'step/start': {
       if (state.retractedTurns.includes(event.data.turn)) return state
       const settled = settleStreaming(state, event.seq)
@@ -374,7 +435,11 @@ export function foldConversationProjection(
     }
     case 'turn/end': {
       if (state.retractedTurns.includes(event.data.turn)) return state
-      let next = { ...settleStreaming(state, event.seq), currentTurn: event.data.turn, active: false }
+      const settled = { ...settleStreaming(state, event.seq), currentTurn: event.data.turn, active: false }
+      // The first close wins: a later synthetic closer keeps the recorded outcome.
+      let next = state.turns.some(entry => entry.turn === event.data.turn && entry.endedAt !== undefined)
+        ? settled
+        : markTurn(settled, event.data.turn, { time: event.time, endedAt: event.time, outcome: event.data.reason.kind })
       if (event.data.reason.kind === 'error') {
         const failure = event.data.reason.error
         return appendEntry(next, {
@@ -428,10 +493,12 @@ export function foldConversationProjection(
       const entries: ConversationEntry[] = [...next.entries]
       const thinkingId = draft.reasoning.trim() === '' ? null : `thinking:${key}`
       const assistantId = draft.text === '' ? null : `assistant:${key}`
+      // Visible reasoning always carries its producer-time span.
       if (thinkingId !== null) entries.push({
         kind: 'thinking', id: thinkingId, seq: event.seq, updatedSeq: event.seq, turn, step,
         text: draft.reasoning, streaming: draft.phase === 'thinking',
         ...(draft.phase === 'thinking' ? { outputProgress: draft.outputProgress } : {}),
+        durationMs: reasoningDuration(draft)!,
       })
       if (assistantId !== null) entries.push({
         kind: 'assistant', id: assistantId, seq: event.seq, updatedSeq: event.seq, turn, step,
@@ -468,6 +535,87 @@ export function foldConversationProjection(
       return state.retractedTurns.includes(event.data.turn) || !isAppendSurfaceEvent(event)
         ? state
         : applyToolResult(state, event)
+    // The `/compact` lifecycle: `command/run` opens the row at submit time so
+    // a busy or never-started attempt still leaves a trace; `compaction/start`
+    // either adopts that row (manual) or opens one itself (automatic);
+    // `compaction/end` settles it, and `command/done` is the terminal record
+    // for attempts that never reached the transaction.
+    case 'command/run': {
+      if (event.data.name !== 'compact') return state
+      const commandId = String(event.data.commandId)
+      const id = `compaction:cmd:${commandId}`
+      if (state.entries.some(entry => entry.id === id)) return state
+      return appendEntry(state, {
+        kind: 'compaction', id, seq: event.seq, updatedSeq: event.seq, turn: state.currentTurn,
+        commandId, state: 'running', trigger: 'manual', startedAt: event.time,
+      })
+    }
+    case 'compaction/start': {
+      const compactionId = String(event.data.compactionId)
+      const sourceCommandId = event.data.sourceCommandId === undefined ? undefined : String(event.data.sourceCommandId)
+      const existing = state.entries.findLast((entry): entry is ConversationCompactionEntry =>
+        entry.kind === 'compaction' && entry.state === 'running'
+        && (entry.compactionId === compactionId
+          || (sourceCommandId !== undefined && entry.commandId === sourceCommandId)))
+      if (existing !== undefined) {
+        return replaceEntry(state, existing.id, event.seq, () => ({ ...existing, compactionId }))
+      }
+      return appendEntry(state, {
+        kind: 'compaction', id: `compaction:${compactionId}`, seq: event.seq, updatedSeq: event.seq,
+        turn: event.data.turn ?? state.currentTurn, compactionId,
+        state: 'running', trigger: sourceCommandId === undefined ? 'auto' : 'manual', startedAt: event.time,
+      })
+    }
+    case 'compaction/summary': {
+      const compactionId = String(event.data.compactionId)
+      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
+        candidate.kind === 'compaction' && candidate.compactionId === compactionId && candidate.state === 'running')
+      if (entry === undefined) return state
+      const summary = visibleText(event.data.summary)
+      return replaceEntry(state, entry.id, event.seq, () => ({
+        ...entry,
+        shadowedCount: event.data.shadowedSeqs.length,
+        shadowedTokens: event.data.shadowedTokenCount,
+        provider: event.data.provider,
+        model: event.data.model,
+        ...(summary === '' ? {} : { summary }),
+      }))
+    }
+    case 'compaction/end': {
+      const compactionId = String(event.data.compactionId)
+      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
+        candidate.kind === 'compaction' && candidate.compactionId === compactionId && candidate.state === 'running')
+      if (entry === undefined) return state
+      const error = event.data.error
+      return replaceEntry(state, entry.id, event.seq, () => ({
+        ...entry,
+        state: error === undefined ? 'ok' : 'error',
+        endedAt: event.time,
+        ...(error === undefined ? {} : { error }),
+      }))
+    }
+    case 'command/done': {
+      const commandId = String(event.data.commandId)
+      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
+        candidate.kind === 'compaction' && candidate.commandId === commandId && candidate.state === 'running')
+      if (entry === undefined) return state
+      return replaceEntry(state, entry.id, event.seq, () => event.data.kind === 'error'
+        ? { ...entry, state: 'error' as const, endedAt: event.time, error: event.data.text ?? 'compaction failed' }
+        : { ...entry, state: 'ok' as const, endedAt: event.time, ...(event.data.text === undefined ? {} : { detail: event.data.text }) })
+    }
+    // A constructor seed ends every prior lifecycle: a compaction still open
+    // across it died with the previous session instance, so its row settles
+    // instead of replaying as a spinner forever.
+    case 'session/end-seed': {
+      let next = state
+      for (const entry of state.entries) {
+        if (entry.kind !== 'compaction' || entry.state !== 'running') continue
+        next = replaceEntry(next, entry.id, event.seq, () => ({
+          ...entry, state: 'error' as const, endedAt: event.time, error: 'compaction interrupted by restart',
+        }))
+      }
+      return next
+    }
     default:
       return state
   }
@@ -495,11 +643,11 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
     view: state => {
       let view = conversationViewCache.get(state)
       if (view === undefined) {
-        view = { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }
+        view = { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps, turns: state.turns }
         conversationViewCache.set(state, view)
       }
       return view
     },
   },
-  stateVersion: 6,
+  stateVersion: 8,
 }

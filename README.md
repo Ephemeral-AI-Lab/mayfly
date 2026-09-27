@@ -18,7 +18,7 @@ English | [中文](README.zh.md)
 Mayfly is an interactive terminal UI for
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`).
 It is an out-of-tree Cordis bundle over `dsh-base`, built against Harness
-`0.1.7-rc.2`. Mayfly `0.1.0-alpha.5` deliberately uses the same plugin
+`0.1.7-rc.2`. Mayfly `0.1.1-rc.1` deliberately uses the same plugin
 model as dsh Web: plugins are ordinary Cordis siblings and consume native dsh
 services directly.
 
@@ -26,10 +26,12 @@ Mayfly renders Markdown tables, closed Mermaid fences in assistant messages,
 and renderer-neutral line, point, bar, sparkline, and heatmap nodes directly in
 the terminal, with width-safe source or text fallbacks.
 
-While reasoning streams, its heading shows the current thinking block's
-estimated token count and output rate, for example
-`thinking... ↓1.2k · ≈42 tok/s`. When the answer starts, thinking stops
-animating and the activity row shows the answer phase's own count and rate.
+The activity row above the editor is the one place for live status: the
+spinner, the current step (`Thinking`, `Running commands`), the turn's elapsed
+time, and the estimated token count and output rate. The transcript records
+only what has happened, so streaming reasoning shows as a captionless `✻` tail
+that settles to one `✻ Thought for 6s` row, and file changes stay visible as
+diff cards next to the final answer.
 Rates use four characters per token, exclude first-chunk latency, and disappear
 after two seconds without output. Narrow terminals omit tips and rates first.
 
@@ -133,7 +135,7 @@ ownership areas and Cordis rows inside `@ephemeral-ai/mayfly`; they are not
 independently published packages.
 
 <!-- BEGIN diagram:mayfly-layers -->
-<!-- single source 单一来源: docs/diagrams/mayfly-layers.en.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
+<!-- single source: docs/diagrams/mayfly-layers.en.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
     ROOT["one dsh process · one Cordis service graph"]

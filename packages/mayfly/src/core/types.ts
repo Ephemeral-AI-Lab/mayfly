@@ -235,9 +235,10 @@ export type MayflyColorFn = (text: string) => string
 
 /**
  * The semantic color table. Keys name roles, not presentation. Every token is
- * required so a palette is compile-checked for completeness. `selectedBg` is
- * a background color and `logoGradient` is the banner's row-wise foreground
- * sweep; all other entries style one foreground role.
+ * required so a palette is compile-checked for completeness. `selectedBg`,
+ * `diffAddedBg`, and `diffRemovedBg` are background colors and `logoGradient`
+ * is the banner's row-wise foreground sweep; all other entries style one
+ * foreground role.
  */
 export interface MayflySemanticColors {
   /** Default foreground. */
@@ -300,6 +301,10 @@ export interface MayflySemanticColors {
   diffGutter: MayflyColorFn
   /** Diff metadata (file paths, hunk ranges). */
   diffMeta: MayflyColorFn
+  /** Background band behind an added diff line. */
+  diffAddedBg: MayflyColorFn
+  /** Background band behind a removed diff line. */
+  diffRemovedBg: MayflyColorFn
   /** Banner model-row highlight. */
   modelHighlight: MayflyColorFn
   /** Banner logo foregrounds from top row to bottom row. */
@@ -560,6 +565,14 @@ export interface MayflyEditor extends MayflyFocusable {
    * @param text - the styled label, or `undefined` to remove it.
    */
   setBorderLabel(text: string | undefined): void
+  /**
+   * Lay plain text into the right end of the editor's top border as
+   * `─ title ─╮` (the session name). Core strips terminal controls,
+   * collapses whitespace, ellipsizes the title to the room the border label
+   * leaves, and drops it on narrow or scroll-indicator borders.
+   * @param text - the plain title, or `undefined` (or blank) to remove it.
+   */
+  setBorderTitle(text: string | undefined): void
   /**
    * Switch the top corners between `╭╮` and `├┤`, the latter reading as a
    * frame docked to a panel above (the S13 btw dock).

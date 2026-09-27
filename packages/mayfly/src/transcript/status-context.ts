@@ -1,7 +1,10 @@
 /**
  * `mayfly-status-context` plugin: enhancement footer entry showing the context
- * occupancy of the latest model step — right-aligned on band 2 in the full
- * `text` foreground (priority 20), the kimi footer's readout. Occupancy is
+ * occupancy of the latest model step — right-aligned on the single footer row
+ * in the full `text` foreground, the kimi footer's readout. Its priority 4
+ * ranks it after the model, mode, goal, and jobs entries but ahead of the cwd
+ * and git entries, so under width pressure those truncate or drop first and
+ * the readout hides only when it no longer fits whole. Occupancy is
  * the `assistant/message` usage's disjoint input side — `inputTokens +
  * cacheReadTokens + cacheWriteTokens` (output and reasoning tokens are new
  * generation, not occupied context). When the session-facts projection
@@ -13,7 +16,10 @@
  * `256k`). The share is a lower bound: the window covers request and
  * response combined while K counts the input side only. Without a window
  * the entry degrades to `ctx N` (the pre-S15 form); a session with no usage
- * data yet renders ''. Attach follows the session-facts projection's
+ * data yet renders ''. When the step reports `cacheReadTokens`, the readout
+ * is prefixed with `cache N%  ` — the cache-read share of the occupancy,
+ * rounded down so a partial hit never reads as 100%; providers that omit
+ * the field get no cache segment. Attach follows the session-facts projection's
  * replay/live whole-value feed; this producer never scans an Agent or Session
  * event log.
  *
@@ -84,6 +90,20 @@ export function contextPercent(used: number, max: number): number {
 }
 
 /**
+ * The cache-read share of the occupied context, in whole percents: rounded
+ * down so only a fully cached prompt reads 100, clamped to [0, 100]. A
+ * non-finite or non-positive occupancy — or a non-finite or negative cache
+ * read — yields 0.
+ * @param cacheRead - the cache-read tokens.
+ * @param used - the occupied tokens.
+ * @returns the share in percent.
+ */
+export function cachePercent(cacheRead: number, used: number): number {
+  if (!Number.isFinite(cacheRead) || !Number.isFinite(used) || cacheRead <= 0 || used <= 0) return 0
+  return Math.min(100, Math.floor((cacheRead / used) * 100))
+}
+
+/**
  * Normalize an advertised context window: only a positive finite number is
  * a window, anything else (undefined included) means "not advertised" and
  * the entry degrades.
@@ -112,17 +132,21 @@ export function apply(ctx: Context): void {
     phase: 'idle', active: false, turn: 0, flowDownChars: 0, todos: [], contextTokens: 0, agentCalls: [],
   }
   const node = (): MayflyStatusNode | null => {
+    if (facts.contextTokens <= 0) return null
     const max = normalizeWindow(facts.contextWindow)
-    const text = facts.contextTokens <= 0
+    const cache = facts.contextCacheReadTokens === undefined
       ? ''
-      : max === undefined
-        ? `ctx ${formatTokens(facts.contextTokens)}`
-        : `context: ${String(contextPercent(facts.contextTokens, max))}% (${formatTokens(facts.contextTokens)}/${formatTokens(max)})`
-    return text === '' ? null : { kind: 'text', content: text }
+      : `cache ${String(cachePercent(facts.contextCacheReadTokens, facts.contextTokens))}%  `
+    const occupancy = max === undefined
+      ? `ctx ${formatTokens(facts.contextTokens)}`
+      : `context: ${String(contextPercent(facts.contextTokens, max))}% (${formatTokens(facts.contextTokens)}/${formatTokens(max)})`
+    return { kind: 'text', content: `${cache}${occupancy}` }
   }
-  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 20, band: 'right', row: 2, overflow: 'hide' }, node())
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 4, band: 'right', overflow: 'hide' }, node())
   const offFacts = factsService?.subscribe(next => {
-    const changed = next.contextTokens !== facts.contextTokens || next.contextWindow !== facts.contextWindow
+    const changed = next.contextTokens !== facts.contextTokens
+      || next.contextCacheReadTokens !== facts.contextCacheReadTokens
+      || next.contextWindow !== facts.contextWindow
     facts = next
     if (changed) status.set(node())
   })

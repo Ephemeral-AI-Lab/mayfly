@@ -1,29 +1,55 @@
 /** Session browsing, content search, and archive admission owned by Harness.
  * @module @ephemeral-ai/mayfly/interaction/native-sessions
  */
+import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-query'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import { ui, type MayflyOverlayHandle, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyTranslate } from '../frontend/index.ts'
+import { sessionDetailNode, sessionLabel, sessionListFacts, sessionListItem, type SessionListFacts } from './session-list-model.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
-export async function openSessions(ctx: Context, signal: AbortSignal): Promise<CommandResult> {
+export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyTranslate): Promise<CommandResult> {
   const lifetime = new AbortController()
   const abort = AbortSignal.any([signal, lifetime.signal])
   const cleanup = ctx.effect(() => () => lifetime.abort())
+  const home = homedir()
   let handle: MayflyOverlayHandle | undefined
   let detail: MayflyOverlayHandle | undefined
   let sessions: readonly SessionSummary[] = []
+  let headers: ReadonlyMap<string, SessionHeader> = new Map()
+  let now = Date.now()
   let searchRows: readonly MayflyListItem[] | undefined
   let message = ''
-  const refresh = async () => { sessions = (await ctx.sessionController.list({}, abort)).items }
-  const rows = (): readonly MayflyListItem[] => searchRows ?? sessions.map(session => ({
-    id: session.sessionId, label: session.projections?.values.title ?? session.sessionId,
-    detail: `${session.cwd ?? ''} · ${session.running ? 'running' : 'inactive'}${ctx.workspaceRegistry.archivedSessionIds.includes(session.sessionId) ? ' · archived' : ''}`,
-    ...(session.parentSessionId === undefined ? {} : { parentId: session.parentSessionId }),
-  }))
+  // Stored headers carry the creation time and preset the summaries omit;
+  // without the query service (or on a listing failure) rows omit the span.
+  const readHeaders = async (): Promise<ReadonlyMap<string, SessionHeader>> => {
+    const query = ctx.get('sessionQuery')
+    if (query === undefined) return new Map()
+    try {
+      return new Map((await query.listSessions(abort)).map(record => [String(record.header.id), record.header]))
+    } catch (error) {
+      if (!abort.aborted) ctx.logger.warn(`sessions: stored header listing failed: ${String(error)}`)
+      return new Map()
+    }
+  }
+  const refresh = async () => {
+    const [listed, stored] = await Promise.all([ctx.sessionController.list({}, abort), readHeaders()])
+    sessions = listed.items
+    headers = stored
+    now = Date.now()
+  }
+  const factsOf = (session: SessionSummary): SessionListFacts => sessionListFacts(session, {
+    header: headers.get(String(session.sessionId)),
+    archived: ctx.workspaceRegistry.archivedSessionIds.includes(session.sessionId),
+    current: String(ctx.mayflyCurrentAgent.primary()?.id) === String(session.sessionId),
+    now,
+  })
+  const rows = (): readonly MayflyListItem[] => searchRows ?? sessions.map(session => sessionListItem(factsOf(session), now, home, t))
   const node = () => ui.surface({ title: 'Sessions', chrome: 'overlay', child: ui.stack.column([
     ...(message === '' ? [] : [ui.text(message)]),
     ui.form({ id: 'content-search', fields: [{ kind: 'input', id: 'query', label: 'Search conversation contents', value: '' }] }),
@@ -42,7 +68,10 @@ export async function openSessions(ctx: Context, signal: AbortSignal): Promise<C
           const query = event.inputs?.forms[0]?.fields.find(field => field.id === 'query')?.value
           if (typeof query !== 'string' || query.trim() === '') return { kind: 'failed', message: 'Enter search text' }
           const result = await ctx.sessionController.search({ query: query.trim() }, context.signal)
-          searchRows = result.items.map(item => ({ id: item.sessionId, label: sessions.find(session => session.sessionId === item.sessionId)?.projections?.values.title ?? item.sessionId, detail: item.snippet }))
+          searchRows = result.items.map(item => {
+            const session = sessions.find(session => session.sessionId === item.sessionId)
+            return { id: item.sessionId, label: session === undefined ? item.sessionId : sessionLabel(factsOf(session), t), detail: item.snippet }
+          })
           message = result.hasMore ? 'More matches exist; narrow the search.' : ''
         } else if (event.actionId === 'refresh') {
           await refresh()
@@ -55,13 +84,15 @@ export async function openSessions(ctx: Context, signal: AbortSignal): Promise<C
       const id = event.selectedIds[0]
       const session = sessions.find(session => session.sessionId === id)
       if (session === undefined) return { kind: 'failed', message: 'Session is no longer listed; refresh the catalog.' }
-      const archived = ctx.workspaceRegistry.archivedSessionIds.includes(session.sessionId)
-      const detailNode = (activity = '') => ui.surface({ title: session.projections?.values.title ?? session.sessionId, chrome: 'overlay', child: ui.stack.column([
-        ui.text(`${session.sessionId}\n${session.cwd ?? ''}\n${activity}`),
+      const facts = factsOf(session)
+      const archived = facts.archived
+      const detailNode = (activity = '') => ui.surface({ title: sessionLabel(facts, t), chrome: 'overlay', child: ui.stack.column([
+        sessionDetailNode(facts, now, t),
+        ...(activity === '' ? [] : [ui.text(activity, { tone: 'warning' })]),
         ui.actions({ id: 'session-detail-actions', items: [
           { id: 'open', label: 'Open conversation', disabled: archived, ...(archived ? { disabledReason: 'Restore the session first' } : {}) },
           { id: archived ? 'restore' : 'archive', label: archived ? 'Restore' : 'Archive', confirm: archived ? 'Restore this session?' : 'Archive this session?' },
-          ...(activity === '' ? [] : [{ id: 'stop-archive', label: 'Stop activity and archive', intent: 'danger' as const, confirm: `Stop this session’s activity and archive it?\n${activity}` }]),
+          ...(activity === '' ? [] : [{ id: 'stop-archive', label: 'Stop activity and archive', intent: 'danger' as const, confirm: { title: 'Stop this session’s activity and archive it?', detail: activity, confirmLabel: 'Stop and archive', tone: 'danger' as const } }]),
           { id: 'close', label: 'Close', dismiss: true },
         ] }),
       ]) })

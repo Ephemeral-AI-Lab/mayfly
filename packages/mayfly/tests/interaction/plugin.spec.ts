@@ -121,6 +121,7 @@ export const apply = ctx => globalThis.__mayflyInteractionFixtures.interactionAp
   ctx.provide('sessionController', { selectModel: async () => { throw new Error('no session') } } as never)
   ctx.provide('sessions', { list: () => [], flush: async () => false } as never)
   ctx.provide('tools', { schemas: () => [] } as never)
+  ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   ctx.provide('mayflyRequests', {
     sessionEpoch: 0,
     active: () => undefined,

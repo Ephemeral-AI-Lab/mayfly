@@ -18,6 +18,9 @@ import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
 const OVERLAY_DEFAULT_WIDTH = '70%'
 const OVERLAY_DEFAULT_MAX_HEIGHT = '33.333333333333336%'
+/** Editor-slot pickers default to half the terminal, never fewer than ten rows when the slot allows it. */
+const EDITOR_DEFAULT_MAX_HEIGHT = '50%'
+const EDITOR_MIN_ROWS = 10
 
 interface SurfaceSnapshot {
   readonly revision: number
@@ -246,12 +249,14 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const paneViewport = (id: string): MayflyUiViewport => runtime.surfaceViewport(id)
   const overlayViewport = (entry: MayflyOverlayEntry): MayflyUiViewport => {
     const percent = (value: string, total: number) => Math.max(1, Math.floor(total * Number.parseFloat(value) / 100))
-    const height = entry.definition.maxHeight ?? OVERLAY_DEFAULT_MAX_HEIGHT
-    const requestedRows = typeof height === 'string' ? percent(height, runtime.rows) : Math.max(1, Math.floor(height))
+    const declared = entry.definition.maxHeight
+    const rowsFor = (height: number | `${number}%`): number => typeof height === 'string' ? percent(height, runtime.rows) : Math.max(1, Math.floor(height))
     if (entry.definition.presentation === 'editor') {
       const viewport = ctx.mayflyScreen.editorViewport
-      return { columns: viewport.columns, rows: Math.max(1, Math.min(viewport.rows, requestedRows)) }
+      const requested = declared === undefined ? Math.max(EDITOR_MIN_ROWS, rowsFor(EDITOR_DEFAULT_MAX_HEIGHT)) : rowsFor(declared)
+      return { columns: viewport.columns, rows: Math.max(1, Math.min(viewport.rows, requested)) }
     }
+    const requestedRows = rowsFor(declared ?? OVERLAY_DEFAULT_MAX_HEIGHT)
     const width = entry.definition.width ?? OVERLAY_DEFAULT_WIDTH
     const requestedWidth = typeof width === 'string' ? percent(width, runtime.columns) : Math.floor(width)
     const maximum = 100

@@ -1,22 +1,27 @@
 # 状态栏
 
-Footer 最多两行。所有内置与第三方 entry 都注册在同一个 `mayflyStatus`
-service，并使用 renderer-neutral `MayflyStatusNode`。
+Footer 是单行。所有内置与第三方 entry 都注册在同一个 `mayflyStatus`
+service，并使用 renderer-neutral `MayflyStatusNode`；entry 仍可声明
+`row: 2` 独占第二行。
+
+会话名称不在 footer 中——它显示在编辑器上边框的右端。Bash 模式保留左缘的
+`! shell mode` 标签。
 
 | Entry | Priority | 内容 |
 | --- | --- | --- |
 | agent-view | 0（center） | 有辅助会话时显示当前侧、辅助类型/标签，以及 `F7 switch · F8 close` |
-| basic | 0 | 当前 model |
+| basic | 0 | 当前 model；显式选择 thinking effort 时追加 ` Effort`(如 `step-5-preview Max`),provider default 不加后缀 |
 | mode | 2 | plan/yolo 状态 |
 | goal | 2 | 当前 goal 的 `Goal <phase> · <rounds>/<max> · <activation>`（按 phase 着色；无 goal 时隐藏） |
+| schedule | 2 | 提醒数（无提醒时隐藏） |
 | jobs | 3 | `⏵ N jobs`——live（running/stopping）后台任务数；没有时隐藏 |
+| context | 4（right） | 最近一步的 cache 命中率与 context 占用，如 `cache 82%  context: 45% (57.6k/128k)`；provider 未报告 cache 时省略 `cache` 段 |
 | cwd | 5 | 当前工作目录 |
 | git | 10 | branch 与变更摘要 |
-| context | 20 | context 占用 |
-| title | 30 | session title |
 
-同 band 按 priority/id 排序；右侧 band 在宽度压力下先让位。Entry 自己声明
-`row` 与 `overflow`，无法容纳时按低优先级隐藏。
+宽度不足时，整行按 priority/id 顺序容纳 entry：放得下的 entry 保留完整
+宽度，声明 `overflow: 'hide'` 的 entry 直接隐藏而不是截断，行满后低优先级
+entry 被丢弃。已容纳的 entry 再按声明的 left/center/right band 布局。
 
 第三方贡献：
 

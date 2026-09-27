@@ -36,6 +36,10 @@ slots, never arbitrary root components.
   Live overlays share stable history; completion comes from explicit settled
   steps, never a reasoning block's animation flag. Verify through the actual
   source-to-component path, including settlement and renderer reload.
+  The activity pane is the sole owner of live status (phase, elapsed time,
+  current action, throughput); transcript rows show content and settled
+  summaries only, and only surfaces without an activity row opt into the
+  running turn header.
 - Core retains the cold-conversation editor layer beneath registered editor overlays.
   Registry refreshes must never clear the retained conversation; a submitted reply
   acknowledges its form snapshot before dismissal.
@@ -66,13 +70,25 @@ and whole-attempt cancellation are distinct; abort/Agent replacement/unload
 must retire visible and queued requests before they grant or steer. OAuth
 instructions belong only to the live authorization surface.
 
+`core/ui-key-grammar.ts` is the single source for key dispatch and contextual
+hints; [docs/interaction-model.md](../../docs/interaction-model.md) is the
+spec. Changes to shared keys update `SHARED_KEY_REFERENCE` and both Website key
+references together. Escape leaves one layer per press (picker, editing,
+search, back, close); Tab commits text and open pickers; arrows up/down never
+change a select. Editor shells leave every key except modifier accelerators to
+the editor. Choice reducers never focus disabled rows. Consumers express
+per-row availability with `unavailableActions` and questions with `confirm`,
+not custom confirm pages or post-confirmation rejections.
+
 ## Native writes and sensitive data
 
 - `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation
   and removal apply after restart; HMR stays disabled in the default bundle.
-- The default bundle mounts native `agentTeams` and its tools once. Shipped presets
-  omit overlapping ordinary delegation tools. Team state comes from `agentTeam`;
-  its panel is readonly and navigation uses ordinary addressed subagents.
+- Optional collaboration plugins own their preset, tools, and UI contributions.
+  The default bundle and shipped presets do not mount Agent Team. Keep upstream
+  ordinary delegation available. Generic child navigation and the shared
+  `mayfly/request-subagent-reply` event remain app/interaction-owned; replies
+  explicitly choose Queue or Steer and fence exact-Agent replacement.
 
 - Settings use shared forms and explicit native path-op commits. Bind writes to
   descriptor revision and exposed field projection; rehydrate with Schemastery.

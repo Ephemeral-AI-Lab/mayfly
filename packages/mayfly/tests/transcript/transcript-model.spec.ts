@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponent, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
@@ -7,7 +7,6 @@ import { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, T
 import { visibleWidth } from '../../src/core/width.ts'
 import { ToolCallComponent } from '../../src/transcript/components.ts'
 import { DEFAULT_TRANSCRIPT_PRESENTATION, TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
-import { setThinkingTimers } from '../../src/transcript/thinking.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
@@ -78,10 +77,6 @@ const collapsedPolicy = (): TranscriptPresentationPolicy => {
   policy.apply({ transcriptView: 'verbose' })
   return policy
 }
-
-afterEach(() => {
-  setThinkingTimers(undefined)
-})
 
 describe('TranscriptController', () => {
   it('recompiles canonical viewport conditions after invalidation and generation changes', () => {
@@ -239,15 +234,6 @@ describe('TranscriptController', () => {
         { callId: 'c2', seq: 5, updatedSeq: 5, turn: 1, step: 0, command: 'pnpm build', state: 'error', exitCode: 1, error: 'TS2304: nope' },
       ],
     }
-    // Default policy is compact: header plus the failed member only.
-    const compactPolicy = new TranscriptPresentationPolicy()
-    compactPolicy.apply({ transcriptView: 'compact' })
-    const compactRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer(() => {}, compactPolicy)).render(80)
-    expect(compactRows.join('\n')).toContain('Ran 2 commands')
-    expect(compactRows.join('\n')).toContain('pnpm build')
-    expect(compactRows.join('\n')).not.toContain('8 passed')
-    expect(compactRows.join('\n')).not.toContain('pnpm test ✓')
-
     const collapsedRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer(() => {}, collapsedPolicy())).render(80)
     expect(collapsedRows.join('\n')).toContain('├─ pnpm test')
     expect(collapsedRows.join('\n')).toContain('└─ pnpm build')
@@ -264,34 +250,44 @@ describe('TranscriptController', () => {
     expect(plain).toContain('Ran 2 commands: pnpm test, pnpm build')
   })
 
-  it('wires per-family detail from the policy and lets Ctrl-O override compact', () => {
+  it('applies the work-details policy: folds, groups, and Ctrl-O scope', () => {
     const policy = new TranscriptPresentationPolicy()
-    policy.apply({ transcriptView: 'compact' })
-    const entries: TranscriptEntryModel[] = [
-      { kind: 'transcript-thinking', id: 'thinking', seq: 1, turn: 1, step: 0, text: 'deep thought line one\nline two\nline three', streaming: false },
+    policy.apply({ transcriptView: 'compact', expandTurns: 1 })
+    const turn = (n: number, seq: number): TranscriptEntryModel[] => [
+      { kind: 'transcript-user', id: `u${String(n)}`, seq, turn: n, text: `ask ${String(n)}`, images: [] },
+      { kind: 'transcript-thinking', id: `t${String(n)}`, seq: seq + 1, turn: n, step: 0, text: `deep thought ${String(n)}\nline two`, streaming: false },
       {
-        kind: 'transcript-read-group', id: 'read-group:r1', seq: 2, turn: 1, step: 0,
-        reads: [{ callId: 'r1', seq: 2, turn: 1, step: 0, path: 'a.ts', range: { first: 1, last: 2 }, state: 'ok', previewLines: [{ number: 1, text: 'preview' }] }],
+        kind: 'transcript-read-group', id: `read-group:r${String(n)}`, seq: seq + 2, turn: n, step: 0,
+        reads: [{ callId: `r${String(n)}`, activity: 'read', detail: 'a.ts', seq: seq + 2, turn: n, step: 0, path: 'a.ts', range: { first: 1, last: 2 }, state: 'ok', previewLines: [{ number: 1, text: `preview ${String(n)}` }] }],
       },
-      {
-        kind: 'transcript-tool', id: 'tool', seq: 3, turn: 1, step: 0, callId: 'c', name: 'fetch', family: 'web', arguments: '{}', startedAt: 1,
-        result: { text: 'web body', fullText: 'web body', isError: false, endedAt: 2 },
-      },
+      { kind: 'transcript-assistant', id: `a${String(n)}`, seq: seq + 3, turn: n, step: 1, text: `answer ${String(n)}`, streaming: false },
     ]
-    const component = new TranscriptModelComponent(() => model('families', entries), renderer(() => {}, policy))
-    const text = component.render(80).join('\n')
-    // thinking:full renders the complete body; read:collapsed the bounded tree;
-    // web:compact keeps only the tool header.
-    expect(text).not.toContain('line three')
-    expect(text).not.toContain('└─ a.ts')
-    expect(text).not.toContain('preview')
-    expect(text).toContain('Used')
-    expect(text).not.toContain('web body')
-    // Ctrl-O opens every recent-turn expandable entry regardless of detail.
+    const turns = [{ turn: 1, startedAt: 0, endedAt: 5_000, outcome: 'completed' }, { turn: 2, startedAt: 6_000, endedAt: 9_000, outcome: 'completed' }]
+    let current = createTranscriptModel('flow', [...turn(1, 1), ...turn(2, 10)], false, 0, turns)
+    const component = new TranscriptModelComponent(() => current, renderer(() => {}, policy))
+    const folded = component.render(80).join('\n')
+    expect(folded).toContain('▸ Took 5s · 1 tool call')
+    expect(folded).toContain('▸ Took 3s · 1 tool call · ctrl+o to expand')
+    expect(folded).toContain('answer 1')
+    expect(folded).not.toContain('deep thought')
+    // Ctrl-O opens only the in-scope turn; the older one stays folded without a key hint.
     component.setExpanded(true)
     const opened = component.render(80).join('\n')
-    expect(opened).toContain('preview')
-    expect(opened).toContain('web body')
+    expect(opened).toContain('preview 2')
+    expect(opened).not.toContain('preview 1')
+    expect(opened).toContain('▸ Took 5s · 1 tool call\n')
+    // A running turn states no live status: the activity row owns it. Compact
+    // hides the running process entirely.
+    current = createTranscriptModel('flow', [...turn(1, 1), ...turn(2, 10).slice(0, 3)], true, 0, [turns[0]!, { turn: 2, startedAt: 6_000 }])
+    component.setExpanded(false)
+    const running = component.render(80).join('\n')
+    expect(running).toContain('ask 2')
+    expect(running).not.toMatch(/Deep diving|Analyzing the request|Analysis completed|Read files/u)
+    // Standard titles only the running turn's settled work, in the past tense.
+    policy.apply({ transcriptView: 'standard' })
+    const standard = component.render(80).join('\n')
+    expect(standard).toContain('▸ Read files')
+    expect(standard).not.toMatch(/Deep diving|Analyzing the request|Analysis completed/u)
     component.dispose()
   })
 
@@ -465,7 +461,7 @@ describe('TranscriptController', () => {
     const settled = component.render(80).join('\n')
     expect(update).toHaveBeenCalledOnce()
     expect(settled).toContain('Used')
-    expect(settled).toContain('presented call')
+    expect(settled).toContain('presented result')
     component.dispose()
     update.mockRestore()
   })
@@ -493,27 +489,21 @@ describe('TranscriptController', () => {
     component.dispose()
   })
 
-  it('invalidates streaming aggregate rows when a thinking spinner advances', () => {
-    let tick: (() => void) | undefined
-    setThinkingTimers({
-      setInterval: (callback) => {
-        tick = callback
-        return 1 as unknown as ReturnType<typeof setInterval>
-      },
-      clearInterval: () => {},
-    })
+  it('renders live reasoning as a captionless tail that changes only with its text', () => {
     const requestRender = vi.fn()
-    const current = createTranscriptModel('thinking-stream', [{
-      kind: 'transcript-thinking', id: 'thinking-stream', seq: 1, turn: 1, step: 0, text: 'live', streaming: true,
+    const live = (text: string): TranscriptModel => createTranscriptModel('thinking-stream', [{
+      kind: 'transcript-thinking', id: 'thinking-stream', seq: 1, turn: 1, step: 0, text, streaming: true,
     }], true)
+    let current = live('live')
     const component = new TranscriptModelComponent(() => current, renderer(requestRender, collapsedPolicy()))
     const first = component.render(80)
-
-    tick?.()
-    const next = component.render(80)
-    expect(requestRender).toHaveBeenCalledOnce()
-    expect(next).not.toBe(first)
-    expect(next.join('\n')).toContain('⠙')
+    expect(first.join('\n')).toMatch(/✻ .*live/u)
+    expect(first.join('\n')).not.toContain('Thinking')
+    expect(component.render(80)).toBe(first)
+    current = live('live and more')
+    expect(component.render(80).join('\n')).toContain('live and more')
+    // No clock drives the block: it never asks for a frame on its own.
+    expect(requestRender).not.toHaveBeenCalled()
     component.dispose()
   })
 
@@ -554,7 +544,8 @@ describe('TranscriptController', () => {
     expect(scopedText).not.toContain('old answer')
     expect(scopedText).not.toContain('middle four')
     expect(scopedText).toContain('new four')
-    expect(scopedText).toContain('ctrl+o to expand')
+    // The out-of-scope turn's block does not name a key that cannot open it.
+    expect(scopedText).toContain('Thought for a while · \x1b[3mmiddle one\x1b[23m\n')
 
     const otherTree = new TranscriptModelComponent(() => model('default', entries), renderer())
     otherTree.setExpanded(true)

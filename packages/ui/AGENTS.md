@@ -12,7 +12,9 @@ objects, or mutable product state.
   Only this module's `freezeWire` snapshots may retain object identity. Keep
   trust weakly held and private; arbitrary frozen data must still be cloned.
 - Preserve handwritten wire shapes. Stacks normalize nodes to `{ node }`;
-  sizing/viewport options require `ui.child`. No hidden layout metadata or
+  sizing/viewport options require `ui.child`. `tab` gives a child stable page
+  identity under a `tabs` control and is unavailable in status/editor
+  decorations. No hidden layout metadata or
   renderer callbacks. Rich document builders expose data, not renderer libraries,
   and stay outside the narrower status/editor-extension/section unions.
 - `defineMayflyComponent` validates the id/render function and freezes output;
@@ -39,6 +41,11 @@ objects, or mutable product state.
   paths. Unsuccessful replies cannot dismiss feedback; ordinary dirty dismissal
   uses confirmation, while explicit `discard` supports native decision outcomes.
   `presentation: 'editor'` uses the same overlay lifecycle and activation order.
+- Contract fields stay additive and renderer-neutral: action `key` is a key id
+  that core validates (no shared navigation keys, no repeats per page, no
+  printable keys beside filterable lists, modifiers only in editor
+  decorations); confirmations, row availability, numbering mode, and button
+  labels are plain data.
 
 ## Verification
 

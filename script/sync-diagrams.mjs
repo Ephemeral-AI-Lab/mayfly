@@ -12,14 +12,16 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 
-// 每张图的唯一正典 .mmd 与它嵌入的目标文件（嵌入块一律生成，勿手改）。
-// 值为数组时所有目标共享同名 .mmd；值为对象时按目标文件指定 .mmd 源
-// （README.md 用英文图，中文文档用中文图）。
+// Each diagram's canonical .mmd and the markdown files it is embedded into
+// (embed blocks are always generated — never edit them by hand).
+// An array value means every target shares the same-named .mmd; an object
+// value picks the .mmd source per target file (README.md uses the English
+// diagram, README.zh.md the Chinese one).
 const DIAGRAMS = {
   'mayfly-layers': {
     'README.md': 'mayfly-layers.en',
     'README.zh.md': 'mayfly-layers.zh',
-    'docs/mayfly-architecture.md': 'mayfly-layers.zh',
+    'docs/mayfly-architecture.md': 'mayfly-layers.en',
   },
   'mayfly-composition': [
     'docs/mayfly-architecture.md',
@@ -44,7 +46,7 @@ for (const [name, mapping] of Object.entries(DIAGRAMS)) {
     const fence = '```' + 'mermaid'
     const block =
       `${begin}\n` +
-      `<!-- single source 单一来源: ${source} — edit the .mmd, then \`pnpm run diagrams:sync\` -->\n` +
+      `<!-- single source: ${source} — edit the .mmd, then \`pnpm run diagrams:sync\` -->\n` +
       `${fence}\n${mermaid}\n${fence.slice(0, 3)}\n` +
       end
 

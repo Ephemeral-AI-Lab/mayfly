@@ -5,8 +5,8 @@
  * @module @ephemeral-ai/mayfly/core/scrollable-panel
  */
 
-import { Key, matchesKey } from '@earendil-works/pi-tui'
-import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyScreen, MayflySemanticColors } from './types.ts'
+import { ACTION_CANCEL, ACTION_END, ACTION_HOME, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyScreen, MayflySemanticColors } from './types.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 
 /** Renderer dependencies and product callbacks for one read-only panel. */
@@ -15,6 +15,8 @@ export interface ScrollablePanelOptions {
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
   readonly body: MayflyComponent
+  /** Live semantic bindings; omitted only by isolated fixtures, which use the defaults. */
+  readonly keymap?: MayflyKeymap
   readonly title: () => string
   readonly hint?: () => string
   readonly footer?: () => readonly string[]
@@ -37,16 +39,17 @@ export class ScrollablePanel implements MayflyFocusable {
 
   handleInput(data: string): void {
     if (this.disposed) return
-    if (matchesKey(data, Key.escape)) {
+    const keymap = this.options.keymap
+    if (matchesKeyAction(keymap, data, ACTION_CANCEL)) {
       this.options.onClose()
       return
     }
-    if (matchesKey(data, Key.up)) this.scrollBy(1)
-    else if (matchesKey(data, Key.down)) this.scrollBy(-1)
-    else if (matchesKey(data, Key.pageUp)) this.scrollBy(Math.max(1, this.bodyRows - 1))
-    else if (matchesKey(data, Key.pageDown)) this.scrollBy(-Math.max(1, this.bodyRows - 1))
-    else if (matchesKey(data, Key.home)) this.scrollToStart()
-    else if (matchesKey(data, Key.end)) this.scrollToEnd()
+    if (matchesKeyAction(keymap, data, ACTION_MOVE_UP)) this.scrollBy(1)
+    else if (matchesKeyAction(keymap, data, ACTION_MOVE_DOWN)) this.scrollBy(-1)
+    else if (matchesKeyAction(keymap, data, ACTION_PAGE_UP)) this.scrollBy(Math.max(1, this.bodyRows - 1))
+    else if (matchesKeyAction(keymap, data, ACTION_PAGE_DOWN)) this.scrollBy(-Math.max(1, this.bodyRows - 1))
+    else if (matchesKeyAction(keymap, data, ACTION_HOME)) this.scrollToStart()
+    else if (matchesKeyAction(keymap, data, ACTION_END)) this.scrollToEnd()
   }
 
   invalidate(): void {

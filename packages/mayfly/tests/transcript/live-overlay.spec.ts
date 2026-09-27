@@ -93,6 +93,8 @@ describe('live draft overlays', () => {
     model = source.snapshot()
     expect(materializeTranscriptEntries(model).map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant', 'transcript-thinking', 'transcript-assistant'])
     expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('thinking now')
+    // Settled live reasoning carries its producer-time span for the `Thought for` title.
+    expect(materializeTranscriptEntries(model)[2]).toMatchObject({ kind: 'transcript-thinking', streaming: false, startedAt: 2, durationMs: 0 })
 
     // Each reasoning delta is visible on the next render; it must not wait
     // for the final assistant/message settlement.
@@ -101,6 +103,9 @@ describe('live draft overlays', () => {
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'streaming' as never, revision: 8, index: 0, time: 4, chunk: { type: 'reasoning-delta', index: 0, text: 'first ' } } } as never)
     model = source.snapshot()
     expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('first ')
+    const streamingThought = materializeTranscriptEntries(model).find(entry => entry.kind === 'transcript-thinking') as { startedAt?: number, durationMs?: number }
+    expect(streamingThought).toMatchObject({ startedAt: 4 })
+    expect(streamingThought.durationMs).toBeUndefined()
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'streaming' as never, revision: 9, index: 1, time: 5, chunk: { type: 'reasoning-delta', index: 0, text: 'second' } } } as never)
     model = source.snapshot()
     expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('first second')

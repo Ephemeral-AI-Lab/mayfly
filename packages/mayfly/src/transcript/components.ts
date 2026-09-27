@@ -23,16 +23,17 @@ import { sanitizePluginText } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import { extractKeyArgument, isPlanDecline, KEY_ARG_MAX_CHARS } from './present.ts'
 import { summarizeToolText } from './envelope.ts'
+import { moreLinesHint, moreOutputHint } from './hints.ts'
+import { compactElapsedMs } from './agent-presentation.ts'
+import { prettyJson, toolDisplayName } from './tool-line.ts'
 import {
   DEFAULT_USER_FOLD_CHARS,
   DEFAULT_USER_FOLD_LINES,
   DEFAULT_TRANSCRIPT_PRESENTATION,
-  type TranscriptDetail,
   type TranscriptPresentationSnapshot,
 } from './presentation-policy.ts'
 import type {
   TranscriptAssistantItem,
-  TranscriptStepSummaryItem,
   TranscriptToolItem,
   TranscriptToolResult,
   TranscriptUserItem,
@@ -174,6 +175,7 @@ export class UserMessageComponent implements MayflyComponent {
   private readonly resolved = new Map<number, MayflyImage | null>()
   private imageVersion = 0
   private expanded = false
+  private keyed = true
   private cache: RenderCache | null = null
 
   /**
@@ -214,6 +216,11 @@ export class UserMessageComponent implements MayflyComponent {
     this.expanded = expanded
   }
 
+  /** Adopt whether Ctrl-O reaches the message, so the fold hint may name the key. */
+  setScope(scope: { readonly hint: boolean }): void {
+    this.keyed = scope.hint
+  }
+
   /** Whether the raw-text metrics put this message over a fold threshold. */
   private isFoldable(): boolean {
     const policy = this.presentation()
@@ -246,7 +253,7 @@ export class UserMessageComponent implements MayflyComponent {
    */
   render(width: number): string[] {
     const text = sanitizePluginText(this.item.text)
-    const key = `${this.item.seq}:${width}:${this.imageVersion}:${this.expanded}:${text}`
+    const key = `${this.item.seq}:${width}:${this.imageVersion}:${this.expanded}:${this.keyed}:${text}`
     if (this.cache?.key === key) return this.cache.lines
     const bullet = this.components.strong(this.colors.roleUser(USER_MESSAGE_BULLET))
     const bulletWidth = this.components.visibleWidth(USER_MESSAGE_BULLET)
@@ -263,10 +270,7 @@ export class UserMessageComponent implements MayflyComponent {
     if (folded && wrapped.length > shown.length) {
       // The S20 expand hint, width-disciplined to the content indent.
       const remaining = wrapped.length - shown.length
-      const hint = this.t('... ({remaining} more lines, {total} total, ctrl+o to expand)', {
-        remaining,
-        total: wrapped.length,
-      })
+      const hint = moreLinesHint(this.t, remaining, wrapped.length, this.keyed)
       lines.push(indent + this.colors.textMuted(this.components.truncateToWidth(hint, contentWidth)))
     }
     const images = this.item.images ?? []
@@ -357,33 +361,31 @@ export class AssistantMessageComponent implements MayflyComponent {
 }
 
 /**
- * Renders one tool call in the kimi tool-card chrome (S20 front half): a
- * three-state header — the solid `text` `● ` while running (the old hollow
- * marker flickered on every re-render, kimi's reason for going solid), the
- * success `✓` / error `✗ ` once finished — behind a `Using/Used ToolName
- * (keyArg)` label: the verb plain, the tool name bold `primary`, and the
- * key argument dim in parentheses (whitelist `file_path`/`command`/`pattern`
- * first, then the first short string argument; values flatten to one line
- * at {@link TOOL_ARGUMENTS_MAX_CHARS}). `bash` keeps the kimi pure label
- * `Running a command`/`Ran a command` — the command belongs to the body,
- * and Mayfly's shell tool normally renders through the terminal intent, so
- * this branch is the presenter-less fallback. A finished card carries a dim
- * ` · N lines` chip counting the result's non-empty lines (error-colored on
- * failure). The collapsed body is the kimi result preview: the full text
- * wrapped at the content width, capped at {@link RESULT_PREVIEW_LINES}
- * visual rows, under a dim `... (N more lines, M total, ctrl+o to expand)`
- * hint — the two-column kimi indent replaces the retired `⎿` connector
- * (kimi has no such glyph; the dogfood rules its fate). Expanded (Ctrl-O)
- * renders every wrapped line. MCP tools need no
- * dim suffix yet: the rc.7 harness has no MCP surface, and Mayfly does not
- * build for a consumer that does not exist.
+ * Renders one tool call card: a status marker, a header, and a body.
+ *
+ * - The marker is the solid `●` while running (`⊘` once its turn ended
+ *   without a result), `✓` on success, `✗` on failure (a tool error, or a
+ *   command exiting non-zero or by signal), and `◐` for a declined plan.
+ * - A terminal call's header is `$ command` with an exit/signal pill and its
+ *   run time; its body is the description over the output's last
+ *   {@link RESULT_PREVIEW_LINES} rows.
+ * - A presenter-backed call's header is the presenter's own call title (with
+ *   the diff `+A −D` chip); its body is the presented result.
+ * - A presenter-less call keeps the `Using/Used name (key arg)` header (MCP
+ *   names read `server › tool`) with a line-count chip, and its raw result
+ *   preview; bash without a presenter keeps the `$ command` preview.
+ *
+ * Ctrl-O expands the body; hints name the key only when Ctrl-O reaches the
+ * card's turn. Presenter-less JSON results pretty-print when expanded.
  */
 export class ToolCallComponent implements MayflyComponent {
   private item: TranscriptToolItem
   private readonly colors: MayflySemanticColors
   private readonly components: MayflyComponents
-  private readonly detail: () => TranscriptDetail
+  private readonly t: MayflyTranslate
   private expanded = false
+  private keyed = true
+  private closed = false
   private cache: RenderCache | null = null
 
   /**
@@ -391,21 +393,22 @@ export class ToolCallComponent implements MayflyComponent {
    *   `tool/result` folds in.
    * @param colors - the semantic color table.
    * @param components - the component factory providing the width helpers.
-   * @param detail - the tool family's current detail level; `compact` renders
-   *   only the header row (plus a one-line error on failure).
+   * @param presentedBody - the presenter-backed body, when the tool declares views.
+   * @param resultChip - the semantic header chip (a diff's `+A −D`).
+   * @param t - transcript translator.
    */
   constructor(
     item: TranscriptToolItem,
     colors: MayflySemanticColors,
     components: MayflyComponents,
-    private readonly presentedBody?: MayflyComponent & { setExpanded?(expanded: boolean): void },
+    private readonly presentedBody?: MayflyComponent & { setExpanded?(expanded: boolean): void, setScope?(scope: { readonly hint: boolean }): void },
     private resultChip?: string,
-    detail?: () => TranscriptDetail,
+    t: MayflyTranslate = interpolateLocaleMessage,
   ) {
     this.item = item
     this.colors = colors
     this.components = components
-    this.detail = detail ?? (() => 'collapsed')
+    this.t = t
   }
 
   /** Drop the cached lines; the next render rebuilds from the item. */
@@ -425,6 +428,13 @@ export class ToolCallComponent implements MayflyComponent {
     this.presentedBody?.setExpanded?.(expanded)
   }
 
+  /** Adopt whether Ctrl-O reaches the card and whether its turn has ended. */
+  setScope(scope: { readonly hint: boolean, readonly turnClosed: boolean }): void {
+    this.keyed = scope.hint
+    this.closed = scope.turnClosed
+    this.presentedBody?.setScope?.(scope)
+  }
+
   /** Replace the semantic result summary after a pending tool settles. */
   setResultChip(resultChip: string | undefined): void {
     if (this.resultChip === resultChip) return
@@ -439,50 +449,59 @@ export class ToolCallComponent implements MayflyComponent {
     this.invalidate()
   }
 
-  /** The header row: bullet, verb, bold name, key arg, and the lines chip. */
+  /** The exit/signal failure of a settled terminal run, or `undefined`. */
+  private exitFailure(): string | undefined {
+    const terminal = this.item.terminal
+    if (terminal?.signal !== undefined) return `signal ${terminal.signal}`
+    return terminal?.exitCode === undefined || terminal.exitCode === 0 ? undefined : `exit ${String(terminal.exitCode)}`
+  }
+
+  /** The header row: marker, label, chips. */
   private renderHeader(width: number): string {
-    const { result } = this.item
-    const { colors } = this
+    const { result, terminal } = this.item
+    const { colors, components } = this
+    const flat = (text: string): string => sanitizePluginText(text).replace(/[\r\n]+/gu, ' ')
     const declined = result !== undefined && isPlanDecline(this.item)
+    const failure = this.exitFailure()
+    const cancelled = result === undefined && this.closed
     const bullet = result === undefined
-      ? colors.text(STATUS_BULLET)
+      ? cancelled ? colors.muted('⊘ ') : colors.text(STATUS_BULLET)
       : declined
         ? colors.warning('◐ ')
-        : result.isError
+        : result.isError || failure !== undefined
           ? colors.error('✗ ')
           : colors.success('✓ ')
     let header: string
-    const toolName = sanitizePluginText(this.item.name)
-    if (toolName === 'bash') {
-      const label = result === undefined ? 'Running a command' : 'Ran a command'
-      header = `${bullet}${this.components.strong(colors.primary(label))}`
-      // Compact drops the command's body row, so the header carries it inline.
-      const keyArg = this.isCompact() ? extractKeyArgument(this.item) : undefined
-      if (keyArg !== undefined) header += colors.muted(` (${sanitizePluginText(keyArg).replace(/[\r\n]+/gu, ' ')})`)
+    if (terminal !== undefined) {
+      header = `${bullet}${colors.shellMode('$ ')}${components.strong(colors.primary(flat(terminal.command)))}`
+      if (failure !== undefined) header += colors.error(` · ${failure}`)
+      const elapsed = result === undefined ? 0 : result.endedAt - this.item.startedAt
+      if (elapsed >= 1000) header += colors.muted(` · ${compactElapsedMs(elapsed)}`)
+    } else if (this.item.title !== undefined) {
+      header = `${bullet}${components.strong(colors.primary(flat(this.item.title)))}`
+      if (!declined && result !== undefined && this.resultChip !== undefined) {
+        header += result.isError ? colors.error(` · ${this.resultChip}`) : colors.muted(` · ${this.resultChip}`)
+      }
     } else {
-      const verb = result === undefined ? 'Using' : 'Used'
-      const name = this.components.strong(colors.primary(toolName))
-      const keyArg = extractKeyArgument(this.item)
-      const safeKeyArg = keyArg === undefined ? undefined : sanitizePluginText(keyArg).replace(/[\r\n]+/gu, ' ')
-      const argStr = safeKeyArg === undefined ? '' : colors.muted(` (${safeKeyArg})`)
-      header = `${bullet}${verb} ${name}${argStr}`
-    }
-    if (declined) {
-      header += colors.warning(' · plan declined')
-    } else if (result !== undefined) {
-      const chipText = this.resultChip
-      if (chipText !== undefined) {
-        header += result.isError ? colors.error(` · ${chipText}`) : colors.muted(` · ${chipText}`)
+      const toolName = flat(this.item.name)
+      if (toolName === 'bash') {
+        // The body's `$ command` preview carries the command itself.
+        header = `${bullet}${components.strong(colors.primary(result === undefined ? 'Running a command' : 'Ran a command'))}`
       } else {
-        const text = sanitizePluginText(result.fullText ?? result.text)
-        const count = lineCount(text)
-        if (count > 0) {
-          const chip = ` · ${count} ${count === 1 ? 'line' : 'lines'}`
-          header += result.isError ? colors.error(chip) : colors.muted(chip)
-        }
+        const name = components.strong(colors.primary(toolDisplayName(toolName)))
+        header = `${bullet}${result === undefined ? 'Using' : 'Used'} ${name}`
+        const keyArg = extractKeyArgument(this.item)
+        if (keyArg !== undefined) header += colors.muted(` (${flat(keyArg)})`)
+      }
+      if (!declined && result !== undefined) {
+        const count = lineCount(sanitizePluginText(result.fullText ?? result.text))
+        const chip = this.resultChip ?? (count > 0 ? `${count} ${count === 1 ? 'line' : 'lines'}` : undefined)
+        if (chip !== undefined) header += result.isError ? colors.error(` · ${chip}`) : colors.muted(` · ${chip}`)
       }
     }
-    return this.components.truncateToWidth(header, width)
+    if (declined) header += colors.warning(' · plan declined')
+    if (cancelled) header += colors.muted(` · ${this.t('cancelled')}`)
+    return components.truncateToWidth(header, width)
   }
 
   /** The bash fallback's command lines, or undefined for a non-bash card. */
@@ -495,12 +514,56 @@ export class ToolCallComponent implements MayflyComponent {
     return sanitizePluginText(command).split('\n')
   }
 
+  /** The hint row under a folded body, indented to the body. */
+  private hintRow(width: number, remaining: number | undefined, total: number | undefined): string {
+    const hint = remaining === undefined ? moreOutputHint(this.t, this.keyed) : moreLinesHint(this.t, remaining, total, this.keyed)
+    return this.components.truncateToWidth(`${PREVIEW_INDENT}${this.colors.textMuted(hint)}`, width)
+  }
+
+  /** A terminal card's body: the description over the output tail (all of it when expanded). */
+  private renderTerminal(width: number, result: TranscriptToolResult | undefined): string[] {
+    const { colors, components } = this
+    const terminal = this.item.terminal!
+    const lines: string[] = []
+    const contentWidth = Math.max(1, width - components.visibleWidth(PREVIEW_INDENT))
+    if (terminal.description !== undefined && terminal.description.trim() !== '') {
+      lines.push(components.truncateToWidth(`${PREVIEW_INDENT}${colors.muted(sanitizePluginText(terminal.description).replace(/[\r\n]+/gu, ' '))}`, width))
+    }
+    if (this.expanded) {
+      const command = sanitizePluginText(terminal.command).split('\n')
+      if (command.length > 1) command.forEach((line, index) => lines.push(components.truncateToWidth(`${PREVIEW_INDENT}${index === 0 ? colors.shellMode('$ ') : '  '}${colors.muted(line)}`, width)))
+    }
+    if (result === undefined) return lines
+    const output = sanitizePluginText(terminal.output ?? result.fullText ?? result.text).replace(/\n+$/, '')
+    if (output.trim() === '') {
+      lines.push(`${PREVIEW_INDENT}${colors.textMuted(this.t('(no output)'))}`)
+      return lines
+    }
+    const paint = (line: string): string => `${PREVIEW_INDENT}${result.isError ? colors.error(line) : colors.muted(line)}`
+    if (this.expanded) {
+      const preview = boundedPreview(output, contentWidth, TOOL_EXPANDED_RENDER_LINES, components)
+      lines.push(...preview.lines.map(paint))
+      if (preview.more) lines.push(this.hintRow(width, preview.remaining, preview.total))
+      return lines
+    }
+    // A command's verdict sits at the end of its output: collapsed shows the tail.
+    const sample = output.length > TOOL_PREVIEW_SCAN_MAX_CHARS ? output.slice(-TOOL_PREVIEW_SCAN_MAX_CHARS) : output
+    const wrapped = components.wrapText(sample, contentWidth)
+    if (wrapped.length > RESULT_PREVIEW_LINES || sample.length < output.length) {
+      lines.push(sample.length < output.length
+        ? this.hintRow(width, undefined, undefined)
+        : this.hintRow(width, wrapped.length - RESULT_PREVIEW_LINES, wrapped.length))
+    }
+    lines.push(...wrapped.slice(-RESULT_PREVIEW_LINES).map(paint))
+    return lines
+  }
+
   /**
-   * The body rows: the kimi shell chrome for a bash fallback command
-   * (`$ ` shellMode + the command one step dimmer, continuations indented,
-   * the collapsed preview capped at {@link COMMAND_PREVIEW_LINES}), then
-   * the result preview — the kimi wrap-aware 3-row cap with the expand
-   * hint collapsed, every wrapped line expanded.
+   * The presenter-less body rows: the bash fallback's `$ ` command (capped at
+   * {@link COMMAND_PREVIEW_LINES} collapsed), then the result preview — a
+   * recognized raw shape collapses to its summary line, anything else keeps
+   * {@link RESULT_PREVIEW_LINES} wrapped rows; expanded shows every row, with
+   * JSON pretty-printed.
    * @param width - current viewport width in columns.
    * @param result - the paired result, or undefined while pending.
    * @returns the body rows (possibly empty).
@@ -515,18 +578,18 @@ export class ToolCallComponent implements MayflyComponent {
         : Math.min(command.length, COMMAND_PREVIEW_LINES)
       for (let index = 0; index < cap; index += 1) {
         const body = colors.muted(command[index]!)
-        // Budgeted like every other composed row (the select-list idiom): a
-        // long one-liner command must truncate to the viewport, not reach
-        // pi-tui's width guard (the #15 family — an 186-column grep
-        // pipeline crashed the real run).
+        // Budgeted like every other composed row: a long one-liner command
+        // must truncate to the viewport, not reach pi-tui's width guard.
         lines.push(index === 0
           ? components.truncateToWidth(`${PREVIEW_INDENT}${colors.shellMode('$ ')}${body}`, width)
           : components.truncateToWidth(`${PREVIEW_INDENT}  ${body}`, width))
       }
     }
     if (result === undefined) return lines
-    const text = sanitizePluginText(result.fullText ?? result.text).replace(/\n+$/, '')
-    if (text === '') return lines
+    // Leading blank lines would spend the preview on nothing.
+    const raw = sanitizePluginText(result.fullText ?? result.text).replace(/\n+$/, '').replace(/^(?:[ \t]*\n)+/, '')
+    if (raw === '') return lines
+    const text = this.expanded ? prettyJson(raw) : raw
     const contentWidth = Math.max(1, width - components.visibleWidth(PREVIEW_INDENT))
     const paint = (line: string): string => `${PREVIEW_INDENT}${
       isPlanDecline(this.item) ? colors.warning(line)
@@ -553,20 +616,9 @@ export class ToolCallComponent implements MayflyComponent {
               }
             })()
           : boundedPreview(text, contentWidth, RESULT_PREVIEW_LINES, components)
-    const shown = preview.lines
-    lines.push(...shown.map(paint))
-    if (preview.more) {
-      const hint = preview.remaining === undefined || preview.total === undefined
-        ? '... (more output, ctrl+o to expand)'
-        : `... (${preview.remaining} more lines, ${preview.total} total, ctrl+o to expand)`
-      lines.push(colors.textMuted(components.truncateToWidth(hint, width)))
-    }
+    lines.push(...preview.lines.map(paint))
+    if (preview.more) lines.push(this.hintRow(width, preview.remaining, preview.total))
     return lines
-  }
-
-  /** Whether the family's detail level is compact and Ctrl-O hasn't opened the card. */
-  private isCompact(): boolean {
-    return !this.expanded && this.detail() === 'compact'
   }
 
   /**
@@ -575,41 +627,25 @@ export class ToolCallComponent implements MayflyComponent {
    */
   render(width: number): string[] {
     const { result } = this.item
-    const compact = this.isCompact()
     const body = result === undefined ? '' : sanitizePluginText(result.fullText ?? result.text)
-    const key = `${width}:${this.expanded}:${compact}:${result ? `${result.isError}:${body}` : 'pending'}`
+    const key = `${width}:${this.expanded}:${this.keyed}:${this.closed}:${result ? `${result.isError}:${body}` : 'pending'}`
     if (this.cache?.key === key) return this.cache.lines
-    let lines: string[]
-    if (compact) {
-      lines = ['', this.renderHeader(width)]
-      // Failures stay legible in compact: one error line under the header.
-      const first = result?.isError === true
-        ? body.split('\n').find(line => line.trim() !== '')
-        : undefined
-      if (first !== undefined) {
-        const paint = isPlanDecline(this.item) ? this.colors.warning(first) : this.colors.error(first)
-        lines.push(this.components.truncateToWidth(`${PREVIEW_INDENT}${paint}`, width))
-      }
+    let rows: string[]
+    if (this.item.terminal !== undefined) {
+      rows = this.renderTerminal(width, result)
     } else {
       const presentedWidth = Math.max(1, width - this.components.visibleWidth(PREVIEW_INDENT))
-      const presentedRows = this.presentedBody?.render(presentedWidth)
+      const presented = this.presentedBody?.render(presentedWidth)
         .map(row => this.components.truncateToWidth(`${PREVIEW_INDENT}${row}`, width))
-      lines = ['', this.renderHeader(width), ...(presentedRows !== undefined && presentedRows.length > 0 ? presentedRows : this.renderBody(width, result))]
+      rows = presented !== undefined && presented.length > 0 ? presented : this.renderBody(width, result)
     }
+    // The indent can out-wide a degenerate viewport; every row passes the width backstop.
+    const lines = ['', this.renderHeader(width), ...rows].map(row => this.components.truncateToWidth(row, width))
     this.cache = { key, lines }
     return lines
   }
 }
 
-/**
- * Renders one folded-away mid-turn step as a single textMuted line in the
- * kimi step-summary wording (S18): `… step N · thinking X times, call Y
- * tools` — the two parts joined by `, `, each omitted at zero, with kimi's
- * unconditional pluralization (`1 times`, `1 tools`) kept verbatim. The
- * `step N ·` prefix is Mayfly's own: folding is per-step, so one turn can
- * carry several summaries. The item is immutable, so the cache keys on
- * width alone.
- */
 /**
  * One failed-turn row: the `✗` marker in `error` beside the structured
  * failure's message, wrapped to the content width — the dead-endpoint
@@ -674,44 +710,5 @@ export class InterruptedMarkerComponent implements MayflyComponent {
    */
   render(width: number): string[] {
     return [this.components.truncateToWidth(this.colors.error(this.t('■ interrupted')), width)]
-  }
-}
-
-export class StepSummaryComponent implements MayflyComponent {
-  private readonly item: TranscriptStepSummaryItem
-  private readonly colors: MayflySemanticColors
-  private readonly components: MayflyComponents
-  private cache: RenderCache | null = null
-
-  /**
-   * @param item - the folded step-summary item to render.
-   * @param colors - the semantic color table (the line is textMuted).
-   * @param components - the component factory providing the width helpers.
-   */
-  constructor(item: TranscriptStepSummaryItem, colors: MayflySemanticColors, components: MayflyComponents) {
-    this.item = item
-    this.colors = colors
-    this.components = components
-  }
-
-  /** Drop the cached lines; the next render rebuilds from the item. */
-  invalidate(): void {
-    this.cache = null
-  }
-
-  /**
-   * @param width - current viewport width in columns.
-   * @returns the single summary row, truncated to `width`.
-   */
-  render(width: number): string[] {
-    const key = `${width}`
-    if (this.cache?.key === key) return this.cache.lines
-    const parts: string[] = []
-    if (this.item.thinking > 0) parts.push(`thinking ${this.item.thinking} times`)
-    if (this.item.toolNames.length > 0) parts.push(`call ${this.item.toolNames.length} tools`)
-    const line = this.colors.textMuted(
-      this.components.truncateToWidth(`… step ${this.item.step} · ${parts.join(', ')}`, width))
-    this.cache = { key, lines: [line] }
-    return this.cache.lines
   }
 }

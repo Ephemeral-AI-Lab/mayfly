@@ -32,6 +32,7 @@ it('admits only the displayed continuable address and fences a changed view befo
     expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
     const submit = (fields: unknown[]) => ({ kind: 'submit', pagePath: [], controlId: 'reply', submission: { actionId: 'send', draftRevision: 0, source: [], forms: [{ pagePath: [], formId: 'reply', draftRevision: 0, fields }] } }) as never
     expect(await nativeAction(model, submit([]))).toMatchObject({ kind: 'failed' })
+    expect(await nativeAction(model, submit([{ id: 'message', value: 'hello' }, { id: 'delivery', value: 'invalid' }]))).toMatchObject({ kind: 'failed' })
     const original = bench.ctx.mayflyCurrentAgent.view()
     const spy = vi.spyOn(bench.ctx.mayflyCurrentAgent, 'view').mockReturnValue({ ...original, displayed: 'primary' })
     expect(await nativeAction(model, submit([{ id: 'message', value: 'stale' }]))).toMatchObject({ kind: 'cancelled' })
@@ -39,5 +40,28 @@ it('admits only the displayed continuable address and fences a changed view befo
     expect(prompt).not.toHaveBeenCalled()
     bench.ctx.mayflyCurrentAgent.closeAuxiliary()
     expect(model.disposed).toBe(true)
+  } finally { await bench.ctx.fiber.dispose() }
+})
+
+it('sends live-member guidance with Steer and retires a form after an exact-Agent replacement', async () => {
+  const bench = await informationFixture(new Context())
+  const prompt = vi.fn(async () => ({ messageId: 'accepted' }))
+  bench.ctx.provide('subagents', { prompt } as never)
+  await bench.ctx.plugin(reply)
+  const target = { kind: 'subagent' as const, sessionId: 'other', parentSessionId: 'current', label: 'Other', mode: 'continuable' as const }
+  try {
+    bench.ctx.mayflyCurrentAgent.openAuxiliary(target)
+    bench.ctx.emit('mayfly/request-subagent-reply', target)
+    const model = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.subagent.reply')!
+    model.edit({ pagePath: [], formId: 'reply', fieldId: 'message' }, 'Change direction now')
+    model.edit({ pagePath: [], formId: 'reply', fieldId: 'delivery' }, 'steer')
+    model.invoke('send')
+    await vi.waitFor(() => expect(model.disposed).toBe(true))
+    expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ childSessionId: 'other', delivery: 'steer' }), expect.any(AbortSignal))
+    bench.ctx.emit('mayfly/request-subagent-reply', target)
+    const stale = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.subagent.reply')!
+    bench.agents.set(bench.other.id, { ...bench.other } as typeof bench.other)
+    bench.ctx.mayflyCurrentAgent.current()
+    expect(stale.disposed).toBe(true)
   } finally { await bench.ctx.fiber.dispose() }
 })

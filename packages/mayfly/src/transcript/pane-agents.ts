@@ -2,10 +2,16 @@
  * `mayfly-pane-agents` — the S33 subagent pane (the acceptance-ruling form,
  * the kimi `AgentSwarmProgressComponent` semantics): the running subagent
  * group renders as a dock pane pinned directly above the input editor —
- * always visible while agents run, never scrolling into history — and the
- * spawn-class tool calls (`subagent` / `subagent_fork`) render nothing in
- * the stream (the conversation projection routes them to `agents`): this
- * pane is their only presentation surface.
+ * always visible while agents run, never scrolling into history.
+ *
+ * This pane alone owns live per-agent detail: phase, task label, model,
+ * effort, estimated output (`↓`, streamed characters / 4), tool count,
+ * elapsed time, tokens, and the activity line. The transcript records each
+ * spawn-class call (`subagent` / `subagent_fork`) as a one-row member and
+ * names delegation only generically (`Coordinating subagents`, with no task
+ * detail); the activity row omits a spawn's tool name. The summary row adds
+ * its phase breakdown only for mixed phases and its clock only for more than
+ * one member, since each member row carries its own.
  *
  * The pane is self-hosted like the todo pane: current-session and official
  * facts subscriptions rebuild it from spawn-class calls, and it owns its
@@ -33,9 +39,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { ConversationAgentCall, ConversationFacts } from '../conversation/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
-import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds } from './agent-presentation.ts'
+import { agentCallLabel, agentPhasePresentation, agentTreeBranch, compactElapsedSeconds } from './agent-presentation.ts'
 import type { AgentLiveLookup, AgentMemberLive } from './agent-group.ts'
 import { trackChildAgentModels } from './child-agent-model.ts'
+import { outputCounter } from './output-rate.ts'
 import { parseToolArguments } from './present.ts'
 import { formatTokens } from './status-context.ts'
 import type { TranscriptToolItem } from './types.ts'
@@ -95,13 +102,6 @@ interface CachedRow {
   readonly nodes: readonly MayflyUiNode[]
 }
 
-function argument(item: TranscriptToolItem, key: string): string | undefined {
-  const args = item.parsedArguments
-  if (typeof args !== 'object' || args === null || Array.isArray(args)) return undefined
-  const value = (args as Record<string, unknown>)[key]
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
-}
-
 function agentPhase(member: PaneMember, live: AgentLiveLookup | undefined): {
   readonly label: string
   readonly tone: MayflyTone
@@ -109,14 +109,19 @@ function agentPhase(member: PaneMember, live: AgentLiveLookup | undefined): {
   return phaseOf(member.item, live?.(member.item))
 }
 
-/** Phase for an already-resolved live overlay. */
-function phaseOf(item: TranscriptToolItem, live: AgentMemberLive | undefined): {
+/**
+ * Phase for an already-resolved live overlay. A call still unanswered after
+ * its turn ended (a cut turn) reads as cancelled rather than running forever.
+ */
+function phaseOf(item: TranscriptToolItem, live: AgentMemberLive | undefined, turnEnded = false): {
   readonly label: string
   readonly tone: MayflyTone
 } {
   const phase = live?.phase
-  const presentation = agentPhasePresentation(phase === 'completed' ? 'done'
-    : phase ?? (item.result === undefined ? 'pending' : item.result.isError ? 'failed' : 'done'))
+  const unanswered = item.result === undefined && phase !== 'running' && phase !== 'waiting'
+  const presentation = agentPhasePresentation(unanswered && turnEnded ? 'cancelled'
+    : phase === 'completed' ? 'done'
+      : phase ?? (item.result === undefined ? 'pending' : item.result.isError ? 'failed' : 'done'))
   return { label: presentation.label, tone: presentation.tone }
 }
 
@@ -141,13 +146,7 @@ function firstNonEmptyLine(text: string): string | undefined {
 }
 
 function agentLabel(item: TranscriptToolItem): { readonly label: string, readonly detail?: string } {
-  const named = ['name', 'agent_name', 'agent', 'type', 'preset']
-    .map(key => argument(item, key))
-    .find(value => value !== undefined)
-  const description = argument(item, 'description')
-  if (named !== undefined) return { label: named, ...(description === undefined || description === named ? {} : { detail: description }) }
-  if (description !== undefined) return { label: description }
-  return { label: item.name, ...(item.arguments === '' ? {} : { detail: item.arguments }) }
+  return agentCallLabel(item.name, item.parsedArguments, item.arguments)
 }
 
 const EMPTY_STRUCTURE = ''
@@ -160,7 +159,7 @@ function memberNodes(view: MemberRowView): MayflyUiNode[] {
     view.charsText,
     view.live?.toolCount === undefined ? undefined : `${String(view.live.toolCount)} ${view.live.toolCount === 1 ? 'tool' : 'tools'}`,
     formatElapsed(view.elapsed),
-    view.live?.tokens === undefined ? undefined : `${String(view.live.tokens)} tokens`,
+    view.live?.tokens === undefined ? undefined : `${formatTokens(view.live.tokens)} tokens`,
   ].filter((value): value is string => value !== undefined)
   const failed = view.phaseLabel === 'failed'
   const row = ui.richText([
@@ -179,22 +178,25 @@ function paneNode(view: PaneView, cachedRows: Map<string, CachedRow>): MayflyUiN
   const counts = new Map<string, number>()
   for (const row of view.rows) counts.set(row.phaseLabel, (counts.get(row.phaseLabel) ?? 0) + 1)
   const maxElapsed = Math.max(...view.rows.map(row => row.elapsed))
-  const settled = view.rows.every(row => row.phaseLabel === 'done' || row.phaseLabel === 'failed')
+  const settled = view.rows.every(row => row.phaseLabel === 'done' || row.phaseLabel === 'failed' || row.phaseLabel === 'cancelled')
   const noun = view.rows.length === 1 ? 'agent' : 'agents'
+  const clock = view.rows.length > 1 ? ` · ${formatElapsed(maxElapsed)}` : ''
+  const breakdown = !settled && counts.size > 1
+    ? ` (${['done', 'failed', 'cancelled', 'running', 'waiting'].flatMap(label => {
+        const count = counts.get(label) ?? 0
+        return count === 0 ? [] : [`${String(count)} ${label}`]
+      }).join(', ')})`
+    : ''
   const summary: MayflyInlineSpan[] = settled
     ? [
         { text: '✓ ', tone: 'success' },
         { text: `${String(view.rows.length)} ${noun} finished`, tone: 'accent', styles: ['strong'] },
-        { text: ` · ${formatElapsed(maxElapsed)}`, tone: 'muted' },
       ]
     : [
         { text: '● ', tone: 'accent' },
         { text: `Running ${String(view.rows.length)} ${noun}`, tone: 'accent', styles: ['strong'] },
-        { text: ` (${['done', 'failed', 'running', 'waiting'].flatMap(label => {
-          const count = counts.get(label) ?? 0
-          return count === 0 ? [] : [`${String(count)} ${label}`]
-        }).join(', ')}) · ${formatElapsed(maxElapsed)}`, tone: 'muted' },
       ]
+  if (breakdown !== '' || clock !== '') summary.push({ text: `${breakdown}${clock}`, tone: 'muted' })
   return ui.stack.column([
     ui.divider(),
     ui.richText(summary),
@@ -219,6 +221,10 @@ export function apply(ctx: Context): void {
   let tracker: ReturnType<typeof trackChildAgentModels> | undefined
   let liveLookup: AgentLiveLookup | undefined
   let refresh = (): void => undefined
+  /** The latest facts turn and activity, to recognize calls whose turn ended. */
+  let factsTurn = -1
+  let factsActive = false
+  const turnEnded = (item: TranscriptToolItem): boolean => item.turn < factsTurn || (item.turn === factsTurn && !factsActive)
   const waitingSince = new Map<string, number>()
   const waitingTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const itemCache = new Map<string, { readonly call: ConversationAgentCall, readonly item: TranscriptToolItem }>()
@@ -279,8 +285,8 @@ export function apply(ctx: Context): void {
     const rows = members.map((member, index): MemberRowView => {
       const item = member.item
       const live = displayLookup(item)
-      const phase = phaseOf(item, live)
-      const elapsed = elapsedSeconds(item, live, phase.label === 'done' || phase.label === 'failed', now)
+      const phase = phaseOf(item, live, turnEnded(item))
+      const elapsed = elapsedSeconds(item, live, phase.label === 'done' || phase.label === 'failed' || phase.label === 'cancelled', now)
       const { label, detail } = labelOf(item)
       const detailLine = phase.label === 'failed'
         ? item.result?.isError === true
@@ -288,7 +294,8 @@ export function apply(ctx: Context): void {
           : 'Failed'
         : live?.activity
       const last = index === members.length - 1
-      const charsText = live?.liveChars === undefined ? undefined : `↓${formatTokens(live.liveChars)}`
+      const down = outputCounter(live?.liveChars ?? 0)
+      const charsText = down === '' ? undefined : down
       const structure = JSON.stringify([
         item.callId,
         phase.label,
@@ -325,15 +332,18 @@ export function apply(ctx: Context): void {
   let lastTurn = -1
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService
   const sync = (next: ConversationFacts): void => {
+    factsTurn = next.turn
+    factsActive = next.active
     const settled = members.length > 0 && members.every(member => {
-      if (member.item.result === undefined) return false
       const phase = liveLookup?.(member.item)?.phase
-      return phase !== 'running' && phase !== 'waiting'
+      if (phase === 'running' || phase === 'waiting') return false
+      return member.item.result !== undefined || turnEnded(member.item)
     })
     if (next.turn > lastTurn && settled) members = []
     lastTurn = Math.max(lastTurn, next.turn)
     members = next.agentCalls.filter(call => {
-      if (call.result === undefined || call.turn === next.turn) return true
+      // The current turn's calls stay; an older turn's call stays only while its agent still runs.
+      if (call.turn === next.turn) return true
       const existing = members.find(member => member.item.callId === call.callId)
       const phase = existing === undefined ? undefined : liveLookup?.(existing.item)?.phase
       return phase === 'running' || phase === 'waiting'

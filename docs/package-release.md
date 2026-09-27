@@ -1,6 +1,6 @@
 # Mayfly package and release workflow
 
-Mayfly publishes three packages as one `0.1.0-alpha.5` lockstep release:
+Mayfly publishes three packages as one `0.1.1-rc.1` lockstep release:
 `@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`, and
 `@ephemeral-ai/mayfly-cli`. The exact release order lives in
 `script/package-contract.mjs`. The supported Harness line is `0.1.7-rc.2`.
@@ -11,14 +11,27 @@ Published packages contain runtime JavaScript, declarations, and explicitly
 listed consumer configuration. Source, maps, workspace protocols, and local
 paths must not leak.
 
-Run:
+After preparing a new release and writing its changelog entry, set `VERSION`
+to that release and run:
 
 ```sh
-pnpm run build
-pnpm run check:lib
-pnpm run check:pack
-pnpm run check:examples
+VERSION=0.1.1-rc.2
+pnpm run verify:changed -- --plan
+pnpm release:preflight "$VERSION"
+pnpm run verify:full
+pnpm release:preflight --artifact "$VERSION"
 ```
+
+The version bump supports `pnpm release:version <version> --dry-run` and checks
+all release markers before writing. Write a substantive first entry in the
+shipped changelog before preflight. Do not tag until the applicable Website
+preview, dedicated-profile checks, and human acceptance are complete.
+For a release manifest change, the full plan includes `check:pack`; otherwise
+run `pnpm run check:pack` before using the artifact preflight. The full gate
+also builds, checks exports and examples, tests, and checks screenshots.
+`release:preflight` checks release metadata before building; its `--artifact`
+form additionally checks the packed package set. These commands do not
+publish or replace the registry-install matrix.
 
 `check:pack` writes `.artifacts/pack/index.json` and three tarballs, then runs
 manifest/export/bin/protocol checks, publint, AreTheTypesWrong, package budgets,
@@ -39,7 +52,14 @@ trusted publisher for `Ephemeral-AI-Lab/mayfly`, workflow
 `.github/workflows/release.yml`, and environment `npm`. Keep the token until
 dist-tag promotion also has an OIDC-capable path.
 
-Tags execute the CI release workflow: publish verified artifacts to
+Tags execute the CI release workflow after acceptance: publish verified artifacts to
 `candidate`, install the exact registry versions on Linux/macOS/Windows, then
 promote alpha and stable versions to `latest`, and RC versions to both `rc`
-and `latest`. Local release commands must not publish.
+and `latest`. The workflow validates release metadata and artifact versions
+before publishing or promotion. Local release commands must not publish.
+Promote-only dispatch requires the original release run ID and
+must be started from the same release commit; the referenced run must have
+passed the candidate and all six registry-install jobs.
+The repository's `npm` environment needs required reviewers to make human
+approval enforceable before candidate publication; naming the environment
+alone does not provide an approval gate.

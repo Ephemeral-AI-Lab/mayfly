@@ -53,8 +53,9 @@ describe('agent tree models', () => {
     expect(agentMetricsText({ toolCount: 1 }, 1_000)).toBe('1 tool')
     expect(agentMetricsText({ settledMs: 65_000 }, 1_000)).toBe('1m 5s')
     expect(agentMetricsText({ tokens: 100, settledMs: 5_000, activeSince: 500 }, 3_500)).toBe('100 tok · 3s')
-    expect(agentMetricsText({ liveChars: 2_200, toolCount: 0, tokens: 0, activeSince: 0 }, 20_000)).toBe('↓2.1k · 0 tools · 0 tok · 20s')
+    expect(agentMetricsText({ liveChars: 2_200, toolCount: 0, tokens: 0, activeSince: 0 }, 20_000)).toBe('↓550 · 0 tools · 0 tok · 20s')
     expect(agentMetricsText({ liveChars: 0 }, 1_000)).toBe('')
+    expect(agentMetricsText({ liveChars: 3 }, 1_000)).toBe('')
   })
 
   it('counts only live descendants inside the selected subtree', () => {
@@ -215,9 +216,14 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     }
     const model = ctx.mayflyUiInteraction.get('overlay', delta.entry.id)
     if (model === undefined || mounted.has(delta.entry.id)) return
+    // The surface renderer recompiles on every model revision; mirror that here.
     let compiled = renderRequest(model)
+    let compiledRevision = model.revision
     const component: MayflyComponent = {
-      render: width => { if (compiled.runtime.interaction?.revision !== model.revision) compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime); return compiled.component.render(width) },
+      render: width => {
+        if (compiledRevision !== model.revision) { compiled = renderRequest(model, { columns: width, rows: 24 }, compiled.runtime); compiledRevision = model.revision }
+        return compiled.component.render(width)
+      },
       handleInput: data => compiled.input(data),
       invalidate: () => compiled.component.invalidate(),
     }
@@ -591,10 +597,10 @@ describe('mayfly-agents-command', () => {
     await execute(rig)
     const model = browser(rig)
     model.invoke('stop')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'error', message: 'subagent once is not continuable' }),
-    ])))
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', message: 'Only continuable subagents can be stopped' }),
+    ]))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -610,10 +616,10 @@ describe('mayfly-agents-command', () => {
     await execute(rig)
     const model = browser(rig)
     model.invoke('stop')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'error', message: 'subagent branch owns 1 live descendant; stop its live descendants first' }),
-    ])))
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', message: 'Stop its live descendants first' }),
+    ]))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -625,10 +631,10 @@ describe('mayfly-agents-command', () => {
     await execute(rig)
     const model = browser(rig)
     model.invoke('stop')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'error', message: 'subagent cold is not live; there is no running Agent to stop' }),
-    ])))
+    expect(model.decisionNode).toBeUndefined()
+    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', message: 'Not live; there is nothing to stop' }),
+    ]))
     expect(rig.drain).not.toHaveBeenCalled()
     await rig.fiber.dispose()
   })
@@ -642,14 +648,14 @@ describe('mayfly-agents-command', () => {
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     const rows = browserRows(rig)
     expect(rows).toContain('Thinking…')
-    expect(rows).toContain('↓2k')
+    expect(rows).toContain('↓512')
     rig.facts.epochTokens = 4_096
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     expect(browserRows(rig)).toContain('4k tok')
     rig.liveDrafts.set('child', { phase: 'composing', chars: 3_072 })
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     expect(browserRows(rig)).toContain('Writing…')
-    expect(browserRows(rig)).toContain('↓3k')
+    expect(browserRows(rig)).toContain('↓768')
     rig.liveDrafts.delete('child')
     rig.notifyProjection(rig.childSession, 'mayflyConversationFacts', rig.facts)
     const settled = browserRows(rig)

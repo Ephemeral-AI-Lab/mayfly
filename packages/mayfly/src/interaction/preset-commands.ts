@@ -5,6 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { AgentPreset } from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-commands'
+import type {} from '@deepseek-ai/dsh-tools'
 import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
@@ -12,8 +13,13 @@ import { interactionTranslator, mountInteractionLocale, observeInteractionLocale
 import { createInteractionNotificationOwner } from './notifications.ts'
 
 export const name = 'mayfly-preset-command'
-export const inject = ['commands', 'agentPresets', 'mayflyCurrentAgent', 'mayflyOverlays']
+export const inject = ['commands', 'agentPresets', 'mayflyCurrentAgent', 'mayflyOverlays', 'tools']
 const ID = 'mayfly.presets'
+
+/** Module a preset row names when it composes reminder capability. */
+const SCHEDULE_MODULE = '@deepseek-ai/dsh-schedule'
+/** Schema name proving the Agent's own scope layer carries reminder tools. */
+const SCHEDULE_SCHEMA = 'schedule_create'
 
 export function presetItems(presets: readonly AgentPreset[], current: string | undefined, t: MayflyTranslate): readonly MayflyListItem[] {
   return presets.toSorted((left, right) => (left.order ?? Infinity) - (right.order ?? Infinity) || left.id.localeCompare(right.id)).map(preset => ({
@@ -33,9 +39,31 @@ export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
   const notifications = createInteractionNotificationOwner(ctx, 'mayfly.preset', 'preset')
   const current = (agent: Agent) => !lifetime.signal.aborted && ctx.mayflyCurrentAgent.current() === agent
+  // Reminder tools register on the Agent's own scope layer when the Agent is
+  // created, so a scope re-link can neither retract nor grant them: refusing
+  // the switch is the only way to keep a preset's composed capability honest.
+  const scheduleCapable = (agent: Agent): boolean => {
+    try {
+      return ctx.tools.schemas(agent).some(schema => schema.name === SCHEDULE_SCHEMA)
+    } catch {
+      return false
+    }
+  }
+  const presetSchedules = async (id: string): Promise<boolean | undefined> => {
+    const composition = (await roster.compositionInventory()).find(item => item.id === id)
+    return composition === undefined || composition.broken !== undefined
+      ? undefined
+      : composition.rows.some(row => row.moduleName === SCHEDULE_MODULE && row.enabled !== false)
+  }
   const select = async (agent: Agent, id: string, signal: AbortSignal) => {
     if (signal.aborted || !current(agent)) throw new Error(t('The active Agent changed before the preset switch'))
     if (agent.status !== 'idle') throw new Error(t('cannot switch presets while the agent is running'))
+    const grants = await presetSchedules(id)
+    if (grants !== undefined && grants !== scheduleCapable(agent)) {
+      throw new Error(t(grants
+        ? 'Schedule tools bind when the Agent is created; this session cannot gain them through /preset. Run /new {preset} for a session that has them.'
+        : 'Schedule tools bind when the Agent is created; /preset cannot remove them from this session. Run /new {preset} for a session without them.', { preset: id }))
+    }
     return roster.select(agent, id)
   }
   ctx.commands.register({

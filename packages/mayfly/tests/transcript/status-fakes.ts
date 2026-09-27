@@ -32,7 +32,7 @@ export const COLORS = {
   mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id,
   mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
-  diffGutter: id, diffMeta: id,
+  diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
   modelHighlight: id,
   logoGradient: [],
 }
@@ -99,7 +99,7 @@ export interface FakeSession {
   events: SessionEvent[]
   header: { cwd?: string }
   snapshotEvents(): readonly SessionEvent[]
-  requestHeader(): { config: { model: string } } | undefined
+  requestHeader(): { config: { model: string, reasoningEffort?: string } } | undefined
   requestContext(): { contextWindow?: number } | undefined
 }
 
@@ -107,7 +107,7 @@ export interface FakeSession {
 export interface FakeAgent {
   id: SessionId
   status: 'idle' | 'running'
-  options: { provider?: string, model?: string }
+  options: { provider?: string, model?: string, reasoningEffort?: string }
   session: FakeSession
 }
 
@@ -299,26 +299,30 @@ let agentCounter = 0
 /**
  * A fake agent whose session is a plain event-log object.
  * @param events - the session's event snapshot.
- * @param options - agent options (model/provider fallbacks) and the durable
- *   header cwd / request-header model the plugins may prefer.
+ * @param options - agent options (model/provider/effort fallbacks) and the
+ *   durable header cwd / request-header model the plugins may prefer.
  */
 export function fakeAgent(
   events: SessionEvent[],
   options: {
     model?: string
     provider?: string
+    effort?: string
     cwd?: string
     headerModel?: string
+    headerEffort?: string
     contextWindow?: number
   } = {},
 ): FakeAgent {
   agentCounter += 1
   const header: { cwd?: string } = {}
   if (options.cwd !== undefined) header.cwd = options.cwd
-  const agentOptions: { provider?: string, model?: string } = {}
+  const agentOptions: { provider?: string, model?: string, reasoningEffort?: string } = {}
   if (options.model !== undefined) agentOptions.model = options.model
   if (options.provider !== undefined) agentOptions.provider = options.provider
+  if (options.effort !== undefined) agentOptions.reasoningEffort = options.effort
   const headerModel = options.headerModel
+  const headerEffort = options.headerEffort
   const requestContext = options.contextWindow === undefined
     ? undefined
     : (): { contextWindow?: number } => ({ contextWindow: options.contextWindow })
@@ -330,7 +334,9 @@ export function fakeAgent(
       events,
       header,
       snapshotEvents: () => events,
-      requestHeader: () => (headerModel === undefined ? undefined : { config: { model: headerModel } }),
+      requestHeader: () => (headerModel === undefined ? undefined : {
+        config: { model: headerModel, ...(headerEffort === undefined ? {} : { reasoningEffort: headerEffort }) },
+      }),
       requestContext: () => requestContext?.(),
     },
   }

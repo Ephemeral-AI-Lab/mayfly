@@ -190,9 +190,13 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return this.runtime.rows
   }
 
-  /** Whether a modal overlay or editor replacement currently owns input. */
+  /**
+   * Whether a modal overlay or an overlay-layer editor replacement currently
+   * owns input. A retained readonly conversation is a view, not a modal
+   * surface, so global keys such as F7/F8 keep working over it.
+   */
   get capturesInput(): boolean {
-    return this.runtime.hasCapturingOverlay() || this.fixed.get('editor.prompt')!.editorReplaced
+    return this.runtime.hasCapturingOverlay() || (this.editorLayers.overlay !== null && this.fixed.get('editor.prompt')!.editorReplaced)
   }
 
   /** The editor shares the terminal with the fixed footer and at least one content row. */

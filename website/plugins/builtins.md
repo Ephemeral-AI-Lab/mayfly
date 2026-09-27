@@ -5,12 +5,12 @@ Mayfly bundle 在 `dsh-base` 上插入普通 Cordis sibling：一组 dsh 支撑�
 group/isolate 或私有 service realm。
 
 <!-- BEGIN diagram:mayfly-composition -->
-<!-- single source 单一来源: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
+<!-- single source: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
     BASE["dsh-base"]
     subgraph GRAPH["flat Cordis sibling graph"]
-        SUPPORT["dsh support rows<br/>subagent settings · presets · host runner · workspace<br/>connection · file upload · session controller · title"]
+        SUPPORT["dsh support rows<br/>subagent settings · presets · host runner · workspace<br/>connection · file upload · session controller · session stats"]
         UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
         RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]
         PLUGINS["external Cordis plugins"]
@@ -32,7 +32,7 @@ flowchart TB
 - dynamic Cordis host runner；
 - workspace、connection、file-upload；
 - session controller；
-- all-prompts title provider。
+- session statistics（轮次/步数与模型/工具耗时）。
 
 ## Mayfly 行
 
@@ -40,7 +40,7 @@ flowchart TB
 - `mayfly-frontend`、`mayfly-core`、dark theme；
 - `mayfly-conversation`、startup、app/current Agent；
 - banner、transcript、official model；
-- basic/cwd/git/title/context/mode/jobs/goal status；
+- basic/cwd/git/context/mode/jobs/goal status；
 - activity/queue/todo/agents/workflow pane；
 - BTW、jobs 与 agents command、attachments、paste image、editor-plus、interaction。
 

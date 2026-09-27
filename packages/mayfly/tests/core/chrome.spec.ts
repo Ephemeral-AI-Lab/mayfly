@@ -77,6 +77,48 @@ describe('withSideBorders', () => {
     expect(boxed[2]).toBe(`╰${'─'.repeat(10)}╯`)
   })
 
+  it('lays a title into the right end of the top rule only', () => {
+    const boxed = withSideBorders(
+      ['─'.repeat(20), ' '.repeat(20), '─'.repeat(20)],
+      plain,
+      { title: 'my-session', titlePaint: text => `<${text}>` },
+    )
+    // 18 dashes: 5 remain on the left, then ` my-session ` and one dash.
+    expect(boxed[0]).toBe(`╭─────< my-session >─╮`)
+    expect(visibleWidth(boxed[0]!.replace(/[<>]/g, ''))).toBe(20)
+    expect(boxed[2]).toBe(`╰${'─'.repeat(18)}╯`)
+  })
+
+  it('paints the title with the border paint when no title paint is given', () => {
+    const boxed = withSideBorders(['─'.repeat(14), ' '.repeat(14)], text => `[${text}]`, { title: 'name' })
+    expect(boxed[0]).toBe('[╭][─────][ name ][─][╮]')
+  })
+
+  it('keeps the label whole and fits the title into the remaining room', () => {
+    const boxed = withSideBorders(['─'.repeat(22), ' '.repeat(22)], plain, { label: 'mode', title: 'a-long-session-name' })
+    // 20 dashes − 4 label − 1 separator − 3 title chrome leaves 12 columns.
+    expect(boxed[0]).toBe('╭mode─ a-long-sess… ─╮')
+    expect(visibleWidth(boxed[0]!)).toBe(22)
+  })
+
+  it('ellipsizes wide titles without splitting a double-width character', () => {
+    const boxed = withSideBorders(['─'.repeat(14), ' '.repeat(14)], plain, { title: '对话名称测试' })
+    // 12 dashes leave 8 title columns; 7 before `…` hold only three glyphs.
+    expect(boxed[0]).toBe('╭── 对话名… ─╮')
+    expect(visibleWidth(boxed[0]!)).toBe(14)
+  })
+
+  it('drops a title that no longer fits the minimum width, or is empty', () => {
+    expect(withSideBorders(['─'.repeat(11)], plain, { title: 'session' })[0]).toBe(`╭${'─'.repeat(9)}╮`)
+    expect(withSideBorders(['─'.repeat(12)], plain, { title: 'session' })[0]).toBe('╭─ sessi… ─╮')
+    expect(withSideBorders(['─'.repeat(12)], plain, { title: '' })[0]).toBe(`╭${'─'.repeat(10)}╮`)
+  })
+
+  it('never titles a scroll-indicator rule and keeps the connected corners', () => {
+    expect(withSideBorders([`── ↑ 2 more ${'─'.repeat(10)}`], plain, { title: 'session' })[0]).toBe(`╭─ ↑ 2 more ${'─'.repeat(9)}╮`)
+    expect(withSideBorders(['─'.repeat(16)], plain, { title: 'session', connectedAbove: true })[0]).toBe('├──── session ─┤')
+  })
+
   it('renders a lone dash row as a single corner cell', () => {
     expect(withSideBorders(['─'], plain)).toEqual(['╭'])
   })

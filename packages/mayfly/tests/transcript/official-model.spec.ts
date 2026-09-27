@@ -53,7 +53,7 @@ function readSource(): ToolPresentationSource {
     get(name: string) {
       if (name !== 'read') return undefined
       return {
-        presentCall: () => ({ card: 'generic', title: 'Read a.txt', kind: 'read' }),
+        presentCall: () => ({ card: 'generic', title: 'Read a.txt', kind: 'read', locations: [{ path: 'a.txt' }] }),
         presentResult: (_args: unknown, result: { readonly isError: boolean; readonly meta?: unknown }) => {
           if (result.isError) return undefined
           const meta = result.meta as { readonly path: string; readonly offset: number; readonly lines: readonly { readonly number: number; readonly text: string }[]; readonly totalLines: number } | undefined
@@ -180,7 +180,7 @@ describe('official conversation model mapping', () => {
     expect(model.entries[0]).toMatchObject({ id: 'assistant-0' })
   })
 
-  it('maps every semantic entry and filters tool-owned dock channels', () => {
+  it('maps every semantic entry and keeps pane-owned channels as process members', () => {
     const model = conversationTranscriptModel(projection([
       {
         kind: 'user', id: 'user-1', seq: 1, turn: 1, text: 'hello', images: [{
@@ -201,15 +201,15 @@ describe('official conversation model mapping', () => {
           meta: { path: 'a.txt' },
         },
       }),
-      transcriptTool({ id: 'todo-1', callId: 'todo-1', channel: 'todo' }),
-      transcriptTool({ id: 'agent-1', callId: 'agent-1', channel: 'agents' }),
+      transcriptTool({ id: 'todo-1', callId: 'todo-1', name: 'todo_write', arguments: '{"todos":[]}', channel: 'todo' }),
+      transcriptTool({ id: 'agent-1', callId: 'agent-1', name: 'subagent_codex', arguments: '{"description":"Review"}', channel: 'agents' }),
       { kind: 'error', id: 'error-1', seq: 7, turn: 1, message: 'down', code: 'HTTP_404' },
       { kind: 'error', id: 'error-2', seq: 8, turn: 1, message: 'unknown' },
       { kind: 'interrupted', id: 'cut-1', seq: 9, turn: 1 },
     ], true), toolSource())
 
     expect(model.streaming).toBe(true)
-    expect(model.entries).toHaveLength(7)
+    expect(model.entries).toHaveLength(9)
     expect(model.entries).toMatchObject([
       { kind: 'transcript-user', text: 'hello', images: [
         { name: 'plot.png', originalDimensions: { width: 8, height: 6 } },
@@ -220,8 +220,11 @@ describe('official conversation model mapping', () => {
       {
         kind: 'transcript-tool',
         result: { text: 'raw', fullText: 'raw', isError: false, endedAt: 180 },
-        presentation: { kind: 'tool', call: { kind: 'sections' }, result: { kind: 'sections' } },
+        presentation: { kind: 'tool', call: { kind: 'text', content: expect.stringContaining('a.txt') }, result: { kind: 'text', content: 'presented' } },
+        activity: 'read', detail: 'a.txt', title: 'Reading',
       },
+      { kind: 'transcript-tool', id: 'todo-1', activity: 'plan', detail: 'todo_write' },
+      { kind: 'transcript-tool', id: 'agent-1', activity: 'subagents', detail: 'Review' },
       { kind: 'transcript-error', message: 'down', code: 'HTTP_404' },
       { kind: 'transcript-error', message: 'unknown' },
       { kind: 'transcript-interrupted' },
@@ -256,12 +259,11 @@ describe('official conversation model mapping', () => {
         presentResult: () => ({ card: 'generic', title: 'Result only' }),
       } as never),
     } as ToolPresentationSource)
-    expect(resultOnly.entries[0]).toMatchObject({
-      presentation: { call: { kind: 'text', content: 'read' }, result: { kind: 'sections' } },
-    })
+    expect(resultOnly.entries[0]).toMatchObject({ presentation: { result: { kind: 'text', content: 'done' } } })
+    expect((resultOnly.entries[0] as { presentation: { call?: unknown } }).presentation.call).toBeUndefined()
   })
 
-  it('groups consecutive reads, transparently across thinking, into one entry per run', () => {
+  it('groups consecutive reads and closes the run at a later step\'s reasoning', () => {
     const window = (path: string, offset: number, count: number, total: number): ReadMeta => ({
       path,
       offset,
@@ -272,20 +274,28 @@ describe('official conversation model mapping', () => {
       { kind: 'assistant', id: 'assistant-1', seq: 1, turn: 1, step: 0, text: 'looking', streaming: false },
       transcriptTool({ id: 'r1', callId: 'c-r1', seq: 2, arguments: '{"file_path":"src/a.ts","offset":1,"limit":100}', result: readResult(window('src/a.ts', 1, 100, 342)) }),
       { kind: 'thinking', id: 'thinking-1', seq: 3, turn: 1, step: 1, text: 'considering', streaming: false },
-      transcriptTool({ id: 'r2', callId: 'c-r2', seq: 4, arguments: '{"file_path":"src/a.ts","offset":101,"limit":120}', result: readResult(window('src/a.ts', 101, 120, 342)) }),
-      transcriptTool({ id: 'r3', callId: 'c-r3', seq: 5, arguments: '{"file_path":"missing.txt"}', result: readResult(undefined, true) }),
+      transcriptTool({ id: 'r2', callId: 'c-r2', seq: 4, step: 1, arguments: '{"file_path":"src/a.ts","offset":101,"limit":120}', result: readResult(window('src/a.ts', 101, 120, 342)) }),
+      transcriptTool({ id: 'r3', callId: 'c-r3', seq: 5, step: 1, arguments: '{"file_path":"missing.txt"}', result: readResult(undefined, true) }),
     ]), readSource())
 
-    expect(model.entries).toHaveLength(3)
-    expect(model.entries[0]).toMatchObject({ kind: 'transcript-assistant', text: 'looking' })
-    expect(model.entries[1]).toMatchObject({ kind: 'transcript-thinking', text: 'considering' })
-    const group = model.entries[2] as { kind: string; id: string; reads: unknown[] }
-    expect(group).toMatchObject({ kind: 'transcript-read-group', id: 'read-group:r1', seq: 2, turn: 1, step: 0 })
-    expect(group.reads).toHaveLength(3)
+    // The later step's reasoning renders after the read it followed, never above it.
+    expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-assistant', 'transcript-read-group', 'transcript-thinking', 'transcript-read-group'])
+    expect(model.entries[1]).toMatchObject({ id: 'read-group:r1', reads: [{ callId: 'c-r1', activity: 'read', detail: 'src/a.ts' }] })
+    const group = model.entries[3] as { kind: string; id: string; reads: unknown[] }
+    expect(group).toMatchObject({ kind: 'transcript-read-group', id: 'read-group:r2', seq: 4, turn: 1, step: 1 })
+    expect(group.reads).toHaveLength(2)
     expect(Object.isFrozen(group)).toBe(true)
+
+    // Reasoning recorded within the run's own step leaves the run intact.
+    const sameStep = conversationTranscriptModel(projection([
+      transcriptTool({ id: 'r1', callId: 'c-r1', seq: 1, arguments: '{"file_path":"a.ts"}' }),
+      { kind: 'thinking', id: 'thinking-0', seq: 2, turn: 1, step: 0, text: 'retry', streaming: false },
+      transcriptTool({ id: 'r2', callId: 'c-r2', seq: 3, arguments: '{"file_path":"b.ts"}' }),
+    ]), readSource())
+    expect(sameStep.entries.map(entry => entry.kind)).toEqual(['transcript-thinking', 'transcript-read-group'])
   })
 
-  it('breaks runs on content, other tools, other turns, and invisible channels keep runs intact', () => {
+  it('breaks runs on content, other tools, other turns, and pane-owned calls', () => {
     const reads = (): ConversationProjection['entries'] => [
       transcriptTool({ id: 'r1', callId: 'c1', seq: 1 }),
       transcriptTool({ id: 'r2', callId: 'c2', seq: 2 }),
@@ -311,11 +321,11 @@ describe('official conversation model mapping', () => {
 
     const invisible = conversationTranscriptModel(projection([
       transcriptTool({ id: 'r1', callId: 'c1', seq: 1 }),
-      transcriptTool({ id: 'todo-1', callId: 't1', seq: 2, channel: 'todo' }),
-      transcriptTool({ id: 'agent-1', callId: 'a1', seq: 3, channel: 'agents' }),
+      transcriptTool({ id: 'todo-1', callId: 't1', seq: 2, name: 'todo_write', channel: 'todo' }),
+      transcriptTool({ id: 'agent-1', callId: 'a1', seq: 3, name: 'subagent', channel: 'agents' }),
       transcriptTool({ id: 'r2', callId: 'c2', seq: 4 }),
     ]), readSource())
-    expect(invisible.entries.map(entry => entry.kind)).toEqual(['transcript-read-group'])
+    expect(invisible.entries.map(entry => entry.kind)).toEqual(['transcript-read-group', 'transcript-tool', 'transcript-tool', 'transcript-read-group'])
 
     const single = conversationTranscriptModel(projection([transcriptTool({ id: 'r9', callId: 'c9', seq: 9 })]), readSource())
     expect(single.entries).toHaveLength(1)
@@ -376,19 +386,25 @@ describe('official conversation model mapping', () => {
     expect(group.reads[1]).toMatchObject({ callId: 'c-blank', state: 'error', error: 'read failed' })
   })
 
-  it('labels read-kind calls without a file by their salient argument', () => {
+  it('keeps read-kind calls without a file as lone cards', () => {
     const model = conversationTranscriptModel(projection([
       transcriptTool({ id: 'j1', callId: 'c-j1', seq: 1, name: 'job_output', arguments: '{"job_id":"5","wait":true}' }),
       transcriptTool({ id: 'j2', callId: 'c-j2', seq: 2, name: 'job_output', arguments: '{"job_id":"5"}', result: { content: [{ type: 'text', text: 'chunk\n[status: running]' }], text: 'chunk\n[status: running]', isError: false, endedAt: 9 } }),
-      transcriptTool({ id: 'j3', callId: 'c-j3', seq: 3, name: 'job_output', arguments: `{\"payload\":\"${'x'.repeat(70)}\"}` }),
     ]), jobSource())
+    expect(model.entries).toMatchObject([
+      { kind: 'transcript-tool', name: 'job_output', activity: 'tools', detail: 'job_output', title: 'Read output from background job 5' },
+      { kind: 'transcript-tool', name: 'job_output', result: { text: 'chunk\n[status: running]' } },
+    ])
+  })
+
+  it('labels file reads without a path by their salient argument or tool name', () => {
+    const model = conversationTranscriptModel(projection([
+      transcriptTool({ id: 'u1', callId: 'c-u1', seq: 1, arguments: '{"uri":"mem://x"}' }),
+      transcriptTool({ id: 'u2', callId: 'c-u2', seq: 2, arguments: `{\"payload\":\"${'x'.repeat(70)}\"}` }),
+    ]), readSource())
     const group = model.entries[0] as unknown as { reads: Array<Record<string, unknown>> }
-    expect(model.entries).toHaveLength(1)
-    expect(group.reads[0]).toMatchObject({ callId: 'c-j1', label: 'job_id: 5', state: 'pending' })
-    expect(group.reads[1]).toMatchObject({ callId: 'c-j2', label: 'job_id: 5', state: 'ok' })
-    // No short string argument at all: the member joins the count but no row.
-    expect(group.reads[2]).toMatchObject({ callId: 'c-j3', state: 'pending' })
-    expect(group.reads[2]!['label']).toBeUndefined()
+    expect(group.reads[0]).toMatchObject({ callId: 'c-u1', label: 'uri: mem://x' })
+    expect(group.reads[1]).toMatchObject({ callId: 'c-u2', label: 'read' })
   })
 
   it('groups mixed grep and glob runs while reads keep their own family', () => {
@@ -406,23 +422,25 @@ describe('official conversation model mapping', () => {
       transcriptTool({ id: 'r0', callId: 'c-r0', seq: 1, name: 'read', arguments: '{"file_path":"a.ts"}' }),
       grep('s1', 'c-s1', 2, '{"pattern":"export"}', searchResult(matches)),
       { kind: 'thinking', id: 't1', seq: 3, turn: 1, step: 1, text: 'narrow it', streaming: false },
-      grep('s2', 'c-s2', 4, '{"pattern":"*.ts"}', searchResult(paths)),
-      grep('s3', 'c-s3', 5, '{"pattern":"gone"}', searchResult(undefined, true)),
-      grep('s4', 'c-s4', 6, '{"pattern":"deep"}', undefined as never),
+      { ...grep('s2', 'c-s2', 4, '{"pattern":"*.ts"}', searchResult(paths)), step: 1 },
+      { ...grep('s3', 'c-s3', 5, '{"pattern":"gone"}', searchResult(undefined, true)), step: 1 },
+      { ...grep('s4', 'c-s4', 6, '{"pattern":"deep"}', undefined as never), step: 1 },
     ]), combinedSource())
     expect(model.entries.map(entry => entry.kind)).toEqual([
       'transcript-read-group',
+      'transcript-search-group',
       'transcript-thinking',
       'transcript-search-group',
     ])
-    const search = model.entries[2] as unknown as { searches: Array<Record<string, unknown>> }
-    expect(search.searches[0]).toMatchObject({
-      callId: 'c-s1', pattern: 'export', shape: 'matches',
+    const first = model.entries[1] as unknown as { searches: Array<Record<string, unknown>> }
+    expect(first.searches[0]).toMatchObject({
+      callId: 'c-s1', pattern: 'export', shape: 'matches', activity: 'search', detail: 'export',
       files: [{ path: 'a.ts', count: 4, previews: { length: 3 } }], truncated: true, total: 40, state: 'ok',
     })
-    expect(search.searches[1]).toMatchObject({ callId: 'c-s2', pattern: '*.ts', shape: 'paths', paths: ['a.ts', 'b.ts'], pathsTotal: 2, state: 'ok' })
-    expect(search.searches[2]).toMatchObject({ callId: 'c-s3', pattern: 'gone', state: 'error', error: 'pattern rejected' })
-    expect(search.searches[3]).toMatchObject({ callId: 'c-s4', pattern: 'deep', state: 'pending' })
+    const search = model.entries[3] as unknown as { searches: Array<Record<string, unknown>> }
+    expect(search.searches[0]).toMatchObject({ callId: 'c-s2', pattern: '*.ts', shape: 'paths', paths: ['a.ts', 'b.ts'], pathsTotal: 2, state: 'ok' })
+    expect(search.searches[1]).toMatchObject({ callId: 'c-s3', pattern: 'gone', state: 'error', error: 'pattern rejected' })
+    expect(search.searches[2]).toMatchObject({ callId: 'c-s4', pattern: 'deep', state: 'pending' })
     expect(Object.isFrozen(search)).toBe(true)
 
     // Degraded search facts: an empty pattern, a paths view without totals,
@@ -450,18 +468,32 @@ describe('official conversation model mapping', () => {
     const model = conversationTranscriptModel(projection([
       bash('b1', 'c-b1', 1, 'pnpm test', commandResult('8 passed', { exitCode: 0 })),
       { kind: 'thinking', id: 't1', seq: 2, turn: 1, step: 1, text: 'check git', streaming: false },
-      bash('b2', 'c-b2', 3, 'git status', commandResult('clean', { exitCode: 0 })),
-      bash('b3', 'c-b3', 4, 'pnpm build', commandResult('error TS2304\nboom', { exitCode: 1 }, true)),
-      bash('b4', 'c-b4', 5, 'pnpm lint', undefined),
+      { ...bash('b2', 'c-b2', 3, 'git status', commandResult('clean', { exitCode: 0 })), step: 1 },
+      { ...bash('b3', 'c-b3', 4, 'pnpm build', commandResult('error TS2304\nboom', { exitCode: 1 }, true)), step: 1 },
+      { ...bash('b4', 'c-b4', 5, 'pnpm lint', undefined), step: 1 },
+      { ...bash('b5', 'c-b5', 6, 'pnpm vitest', commandResult(' FAIL  login\n   Tests  1 failed   \n', { exitCode: 1 })), step: 1 },
+      { ...bash('b6', 'c-b6', 7, 'sleep 99', commandResult('', { signal: 'SIGTERM' })), step: 1 },
     ]), commandSource())
-    expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-thinking', 'transcript-command-group'])
-    const group = model.entries[1] as unknown as { kind: string; id: string; commands: Array<Record<string, unknown>> }
-    expect(group).toMatchObject({ kind: 'transcript-command-group', id: 'command-group:b1', seq: 1, turn: 1, step: 0 })
-    expect(group.commands).toHaveLength(4)
-    expect(group.commands[0]).toMatchObject({ callId: 'c-b1', command: 'pnpm test', state: 'ok', exitCode: 0, previewLines: ['8 passed'] })
-    expect(group.commands[2]).toMatchObject({ callId: 'c-b3', command: 'pnpm build', state: 'error', exitCode: 1, error: 'error TS2304' })
-    expect(group.commands[3]).toMatchObject({ callId: 'c-b4', command: 'pnpm lint', state: 'pending' })
+    expect(model.entries.map(entry => entry.kind)).toEqual(['transcript-tool', 'transcript-thinking', 'transcript-command-group'])
+    expect(model.entries[0]).toMatchObject({ kind: 'transcript-tool', family: 'command', activity: 'commands', terminal: { command: 'pnpm test', output: '8 passed', exitCode: 0 } })
+    const group = model.entries[2] as unknown as { kind: string; id: string; commands: Array<Record<string, unknown>> }
+    expect(group).toMatchObject({ kind: 'transcript-command-group', id: 'command-group:b2', seq: 3, turn: 1, step: 1 })
+    expect(group.commands).toHaveLength(5)
+    expect(group.commands[0]).toMatchObject({ callId: 'c-b2', command: 'git status', state: 'ok', exitCode: 0, previewLines: ['clean'], activity: 'commands', detail: 'git status' })
+    expect(group.commands[1]).toMatchObject({ callId: 'c-b3', command: 'pnpm build', state: 'error', exitCode: 1, error: 'error TS2304' })
+    expect(group.commands[2]).toMatchObject({ callId: 'c-b4', command: 'pnpm lint', state: 'pending' })
+    // A non-zero exit without a tool error is still a failed command; output keeps its spacing.
+    expect(group.commands[3]).toMatchObject({ callId: 'c-b5', state: 'error', exitCode: 1, error: 'exit 1 · Tests 1 failed', previewLines: [' FAIL  login', '   Tests  1 failed'] })
+    expect(group.commands[4]).toMatchObject({ callId: 'c-b6', state: 'error', signal: 'SIGTERM', error: 'signal SIGTERM' })
     expect(Object.isFrozen(group)).toBe(true)
+
+    const long = conversationTranscriptModel(projection([
+      bash('b1', 'c-b1', 1, 'cat big', commandResult('y'.repeat(200), { exitCode: 0 })),
+      bash('b2', 'c-b2', 2, 'true', commandResult('\n  \n', { exitCode: 0 })),
+    ]), commandSource())
+    const longGroup = long.entries[0] as unknown as { commands: Array<Record<string, unknown>> }
+    expect((longGroup.commands[0]!['previewLines'] as string[])[0]).toBe(`${'y'.repeat(159)}…`)
+    expect(longGroup.commands[1]!['previewLines']).toBeUndefined()
   })
 
   it('keeps a lone command a plain tool card and splits runs on families and turns', () => {
@@ -484,6 +516,34 @@ describe('official conversation model mapping', () => {
       { ...bash('b2', 'c-b2', 2, 'two', commandResult('x', {})), turn: 2 },
     ]), commandSource())
     expect(crossTurn.entries.map(entry => entry.kind)).toEqual(['transcript-tool', 'transcript-tool'])
+  })
+
+  it('derives terminal and web facts and passes turn times through the cutoff', () => {
+    const terminalOnly = conversationTranscriptModel(projection([
+      // Result-only terminal view: the command falls back to the argument, then the tool name.
+      transcriptTool({ id: 'x1', callId: 'c-x1', seq: 1, name: 'shell', arguments: '{"command":"ls -la"}', result: { content: [{ type: 'text', text: 'out' }], text: 'out', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'x2', callId: 'c-x2', seq: 2, turn: 2, name: 'shell', arguments: '{}', result: { content: [{ type: 'text', text: 'out' }], text: 'out', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'x3', callId: 'c-x3', seq: 3, turn: 3, name: 'runner', arguments: '{"command":"make"}' }),
+      transcriptTool({ id: 'w1', callId: 'c-w1', seq: 4, turn: 4, name: 'web_search', arguments: '{"queries":["q"]}', result: { content: [{ type: 'text', text: 'r' }], text: 'r', isError: false, endedAt: 1 } }),
+    ]), {
+      get(name: string) {
+        if (name === 'shell') return { presentResult: () => ({ card: 'terminal', output: 'out', signal: 'SIGKILL' }) } as never
+        if (name === 'runner') return { presentCall: () => ({ card: 'terminal', title: 'make', description: 'Build it' }) } as never
+        if (name === 'web_search') return { presentCall: () => ({ card: 'generic', title: 'q', kind: 'search', rawInput: 'q' }), presentResult: () => ({ card: 'web', kind: 'search', sources: [{ url: 'https://a', title: 'A' }, { url: 'https://b' }], truncated: false }) } as never
+        return undefined
+      },
+    } as Pick<ToolRuntime, 'get'>)
+    expect(terminalOnly.entries).toMatchObject([
+      { terminal: { command: 'ls -la', output: 'out', signal: 'SIGKILL' } },
+      { terminal: { command: 'shell' } },
+      { terminal: { command: 'make', description: 'Build it' }, title: 'make' },
+      { kind: 'transcript-tool', family: 'web', activity: 'webSearch', detail: 'q', web: { kind: 'search', sources: [{ url: 'https://a', title: 'A' }, { url: 'https://b' }], truncated: false } },
+    ])
+    expect((terminalOnly.entries[3] as { web: { sources: object[] } }).web.sources[1]).not.toHaveProperty('title')
+
+    const timed = conversationTranscriptModel({ ...projection([]), turns: [{ turn: 1, startedAt: 5, endedAt: 9, outcome: 'completed' }, { turn: 2, startedAt: 10 }] }, toolSource())
+    expect(timed.turns).toEqual([{ turn: 1, startedAt: 5, endedAt: 9, outcome: 'completed' }, { turn: 2, startedAt: 10 }])
+    expect(conversationTranscriptModel(projection([]), toolSource()).turns).toEqual([])
   })
 
   it('maps lone tool cards to their presenter family', () => {
@@ -894,6 +954,22 @@ describe('OfficialConversationModelSource', () => {
     source.dispose()
   })
 
+  it('overlays a draft whose reasoning carries no recorded span without timing it', () => {
+    const f = sourceFixture(projection([], true), 1)
+    const agent = { session: f.session } as never
+    const draft = {
+      sessionId: 'session-1', attemptId: 'a', revision: 1, turn: 1, step: 0, phase: 'composing' as const,
+      reasoning: 'untimed thought', text: '', outputProgress: undefined, chars: 15, updatedAt: 1,
+    }
+    const source = new OfficialConversationModelSource(f.source, toolSource(), () => {}, { subscribe: () => () => {}, get: () => draft })
+    source.attach(f.session, undefined, agent)
+    const [thought] = materializeTranscriptEntries(source.snapshot())
+    expect(thought).toMatchObject({ kind: 'transcript-thinking', text: 'untimed thought', streaming: false })
+    expect(thought).not.toHaveProperty('startedAt')
+    expect(thought).not.toHaveProperty('durationMs')
+    source.dispose()
+  })
+
   it('hides inherited entries after an auxiliary transcript cut while retaining later updates', () => {
     const f = sourceFixture(projection([
       { kind: 'user', id: 'history-user', seq: 1, turn: 1, text: 'main history', images: [] },
@@ -910,12 +986,14 @@ describe('OfficialConversationModelSource', () => {
       { kind: 'transcript-user', text: 'side question' },
       { kind: 'transcript-assistant', text: 'side answer' },
     ])
-    f.emit('mayflyConversation', projection([
+    f.emit('mayflyConversation', { ...projection([
       { kind: 'user', id: 'history-user', seq: 1, turn: 1, text: 'main history', images: [] },
       { kind: 'assistant', id: 'history-answer', seq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
       { kind: 'user', id: 'btw-user', seq: 3, turn: 2, text: 'side question', images: [] },
       { kind: 'assistant', id: 'btw-answer', seq: 4, turn: 2, step: 0, text: 'side answer updated', streaming: false },
-    ], false), 5)
+    ], false), turns: [{ turn: 1, startedAt: 1, endedAt: 2, outcome: 'completed' }, { turn: 2, startedAt: 3, endedAt: 4, outcome: 'completed' }] }, 5)
+    // Inherited turns leave the turn times with their entries.
+    expect(source.snapshot().turns).toEqual([{ turn: 2, startedAt: 3, endedAt: 4, outcome: 'completed' }])
     expect(materializeTranscriptEntries(source.snapshot())).not.toEqual(expect.arrayContaining([expect.objectContaining({ text: 'main history' })]))
     expect(materializeTranscriptEntries(source.snapshot())).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'side answer updated' })]))
     expect(published.at(-1)).toEqual(['side question', 'side answer updated'])

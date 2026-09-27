@@ -29,8 +29,10 @@ export function planReviewControls(question: AskUserQuestionItem, choices: PlanR
   return ui.stack.column([
     ui.text(question.question),
     /* Seeding 'reject' places the cursor on the decline row while marking the
-       still-unapproved plan as the current state — Enter must never approve. */
-    ui.list({ id: 'decision', role: 'choose', numbered: true, selectedIds: ['reject'], items: [
+       still-unapproved plan as the current state — Enter must never approve.
+       Digits only move the cursor: approving a plan, like granting a tool,
+       always takes an explicit Enter on the focused decision. */
+    ui.list({ id: 'decision', role: 'choose', numbered: 'focus', selectedIds: ['reject'], items: [
       { id: 'approve', label: choices.approve.label, ...choices.approve.description === undefined ? {} : { detail: choices.approve.description } },
       { id: 'reject', label: choices.decline.label, ...choices.decline.description === undefined ? {} : { detail: choices.decline.description } },
       { id: 'other', label: t('Other'), detail: t('Type feedback to revise the plan') },

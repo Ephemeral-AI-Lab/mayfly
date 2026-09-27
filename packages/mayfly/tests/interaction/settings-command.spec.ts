@@ -64,21 +64,25 @@ describe('native settings UI', () => {
     expect(model.feedbackSnapshot().at(-1)?.severity).toBe('success')
   })
 
-  it('preserves equal-value explicit overrides and resets through the shared field tools', async () => {
+  it('preserves equal-value explicit overrides and resets them with Delete', async () => {
     const bench = await setup(undefined, { name: 'composition' })
     const model = await bench.open()
     let renderer = renderRequest(model)
     const name = field('name').fieldId
-    expect(renderer.focusTarget!.restoreFocusIdentity?.({ controlId: name, itemId: 'override', pagePath: [] })).toBe(true)
-    renderer.input('\r')
+    // No inline override tools: editing an inherited value is what overrides it.
+    expect(renderer.component.render(120).join('\n')).not.toMatch(/Set override|Use inherited value/u)
+    expect(renderer.focusTarget!.restoreFocusIdentity?.({ controlId: name, pagePath: [] })).toBe(true)
+    renderer.input('\x1b[3~')
+    expect(model.form(field('name'))!.fields[name]!.change).toBe('unchanged')
+    model.edit(field('name'), 'composition')
     expect(model.form(field('name'))!.fields[name]).toMatchObject({ value: 'composition', change: 'set' })
     model.invoke('save')
     await flushRequests()
     expect(bench.settings.describe().find(item => item.ns === 'test-settings')!.user).toMatchObject({ name: 'composition' })
     renderer.runtime.dispose()
     renderer = renderRequest(model)
-    expect(renderer.focusTarget!.restoreFocusIdentity?.({ controlId: name, itemId: 'reset', pagePath: [] })).toBe(true)
-    renderer.input('\r')
+    expect(renderer.focusTarget!.restoreFocusIdentity?.({ controlId: name, pagePath: [] })).toBe(true)
+    renderer.input('\x1b[3~')
     expect(model.form(field('name'))!.fields[name]).toMatchObject({ value: 'composition', change: 'reset' })
     model.invoke('save')
     await flushRequests()
