@@ -1,7 +1,7 @@
 /**
  * The diff alignment core: fast paths, prefix/suffix trim, LCS interleaving,
  * the oversized-input guard, change counts, and the painted rows with their
- * context-run elision.
+ * context-run elision, gutter wrapping, and full-width change bands.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -12,6 +12,7 @@ import {
   DIFF_ALIGN_MAX_ROWS,
   paintDiffRows,
 } from '../../src/core/diff-align.ts'
+import { visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 
 const ops = (before: string, after: string): Array<[string, string]> =>
   alignDiffLines(before, after).map(op => [op.type, op.text])
@@ -61,31 +62,78 @@ describe('alignDiffLines', () => {
 })
 
 describe('paintDiffRows', () => {
+  const helpers = { wrapText: wrapTextWithAnsi, visibleWidth }
   const palette = {
+    text: (text: string): string => `<T>${text}</T>`,
     diffAdded: (text: string): string => `<A>${text}</A>`,
     diffRemoved: (text: string): string => `<R>${text}</R>`,
+    diffAddedBg: (text: string): string => `[A${text}A]`,
+    diffRemovedBg: (text: string): string => `[R${text}R]`,
     diffMeta: (text: string): string => `<M>${text}</M>`,
   }
+  const ctxOps = (texts: readonly string[]): Array<{ type: 'ctx'; text: string }> => texts.map(text => ({ type: 'ctx', text }))
 
-  it('paints context once and colors removals and additions', () => {
+  it('paints context once and bands removals and additions to the full width', () => {
     const aligned = alignDiffLines('a\nb', 'a\nc')
-    expect(paintDiffRows(aligned)).toEqual(['  a', '- b', '+ c'])
-    expect(paintDiffRows(aligned, palette)).toEqual(['  a', '<R>- b</R>', '<A>+ c</A>'])
+    expect(paintDiffRows(aligned, 8, helpers)).toEqual(['  a', '- b', '+ c'])
+    expect(paintDiffRows(aligned, 8, helpers, palette)).toEqual([
+      '  a',
+      '[R<R>- </R><T>b</T>     R]',
+      '[A<A>+ </A><T>c</T>     A]',
+    ])
+  })
+
+  it('wraps long lines under the gutter and keeps the band on every visual row', () => {
+    const aligned = alignDiffLines('same words here\nold', 'same words here\nnew wrapped line')
+    expect(paintDiffRows(aligned, 10, helpers)).toEqual(['  same', '  words', '  here', '- old', '+ new', '  wrapped', '  line'])
+    expect(paintDiffRows(aligned, 10, helpers, palette).slice(4)).toEqual([
+      '[A<A>+ </A><T>new</T>     A]',
+      '[A  <T>wrapped</T> A]',
+      '[A  <T>line</T>    A]',
+    ])
+  })
+
+  it('pads real SGR bands to exactly the width with the band closing last', () => {
+    const red = (text: string): string => `\x1b[38;2;1;2;3m${text}\x1b[39m`
+    const band = (text: string): string => `\x1b[48;2;4;5;6m${text}\x1b[49m`
+    const real = { text: red, diffAdded: red, diffRemoved: red, diffAddedBg: band, diffRemovedBg: band, diffMeta: red }
+    const rows = paintDiffRows(alignDiffLines('', 'x\n\ty\n'), 12, helpers, real)
+    expect(rows.map(row => visibleWidth(row))).toEqual([12, 12])
+    for (const row of rows) {
+      expect(row.startsWith('\x1b[48;2;4;5;6m')).toBe(true)
+      expect(row.endsWith('\x1b[49m')).toBe(true)
+      expect(row.slice(0, -'\x1b[49m'.length)).not.toContain('\x1b[49m')
+    }
+    // A tab expands to the width truth's three columns instead of a tab stop.
+    expect(rows[1]).not.toContain('\t')
+    expect(rows[1]).toContain('   y')
+  })
+
+  it('drops the gutter when it would leave less than one wide glyph', () => {
+    const aligned = alignDiffLines('ab', 'cd')
+    expect(paintDiffRows(aligned, 3, helpers, palette)).toEqual(['[R<T>ab</T> R]', '[A<T>cd</T> A]'])
+    expect(paintDiffRows(aligned, 1, helpers, palette)).toEqual(['[R<T>a</T>R]', '[R<T>b</T>R]', '[A<T>c</T>A]', '[A<T>d</T>A]'])
+    expect(paintDiffRows(aligned, 3, helpers)).toEqual(['ab', 'cd'])
+    expect(paintDiffRows(aligned, 0, helpers)).toEqual(['a', 'b', 'c', 'd'])
+    // Four columns keep the gutter with a two-column text lane that fits a wide glyph.
+    expect(paintDiffRows(aligned, 4, helpers)).toEqual(['- ab', '+ cd'])
+    expect(paintDiffRows(alignDiffLines('', '你好'), 4, helpers)).toEqual(['+ 你', '  好'])
   })
 
   it('elides only genuinely long unchanged runs', () => {
     const ctx = Array.from({ length: CTX_EDGE_ROWS * 2 }, (_, index) => `c${String(index)}`)
-    expect(paintDiffRows(ctx.map(text => ({ type: 'ctx' as const, text })))).toHaveLength(CTX_EDGE_ROWS * 2)
+    expect(paintDiffRows(ctxOps(ctx), 40, helpers)).toHaveLength(CTX_EDGE_ROWS * 2)
     const long = Array.from({ length: CTX_EDGE_ROWS * 2 + 7 }, (_, index) => `l${String(index)}`)
-    const rows = paintDiffRows(long.map(text => ({ type: 'ctx' as const, text })), palette)
-    expect(rows).toEqual([
+    expect(paintDiffRows(ctxOps(long), 40, helpers, palette)).toEqual([
       ...long.slice(0, CTX_EDGE_ROWS).map(text => `  ${text}`),
       `<M>⋯ ${String(7)} unchanged lines</M>`,
       ...long.slice(-CTX_EDGE_ROWS).map(text => `  ${text}`),
     ])
+    // The marker wraps with the width, unbanded, and stays uncolored without a palette.
+    expect(paintDiffRows(ctxOps(long), 12, helpers).slice(CTX_EDGE_ROWS, CTX_EDGE_ROWS + 3)).toEqual(['⋯ 7', 'unchanged', 'lines'])
     // Elision resets between separate runs around a change.
     const mixed = alignDiffLines('1\n2\n3\nx\n7\n8\n9\n10\n11\n12\n13\n14\n15', '1\n2\n3\ny\n7\n8\n9\n10\n11\n12\n13\n14\n15')
-    const painted = paintDiffRows(mixed)
+    const painted = paintDiffRows(mixed, 40, helpers)
     expect(painted).toContain('- x')
     expect(painted).toContain('+ y')
   })

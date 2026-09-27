@@ -91,6 +91,20 @@ describe('mayfly-theme-custom plugin', () => {
     expect(ctx.mayflyThemeModels.current?.id).toBe('custom')
     expect(ctx.mayflyThemeModels.current?.colors.text).toBe('#112233')
     expect(ctx.mayflyThemeModels.current?.colors.muted).toBe('#9AA3B8')
+    expect(ctx.mayflyThemeModels.current?.colors.diffAddedBg).toBe('#1E3A2B')
+  })
+
+  it('paints diff band overrides as backgrounds', async () => {
+    const ctx = new Context()
+    await ctx.plugin(ThemeModelService)
+    await mount(ctx, JSON.stringify({ diffAddedBg: '#112233', diffRemovedBg: '#445566' }), 'light')
+    const { colors } = ctx.mayflyTheme
+    // diffAddedBg #112233 → rgb(17, 34, 51); diffRemovedBg #445566 → rgb(68, 85, 102)
+    expect(colors.diffAddedBg('hi')).toBe('\x1b[48;2;17;34;51mhi\x1b[49m')
+    expect(colors.diffRemovedBg('hi')).toBe('\x1b[48;2;68;85;102mhi\x1b[49m')
+    expect(colors.diffAdded).toBe(LIGHT_COLORS.diffAdded)
+    expect(ctx.mayflyThemeModels.current?.colors.diffAddedBg).toBe('#112233')
+    expect(ctx.mayflyThemeModels.current?.colors.selectedBg).toBe('#d0d7de')
   })
 
   it('drops invalid entries and falls back to the base palette entry', async () => {

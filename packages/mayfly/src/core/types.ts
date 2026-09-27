@@ -235,9 +235,10 @@ export type MayflyColorFn = (text: string) => string
 
 /**
  * The semantic color table. Keys name roles, not presentation. Every token is
- * required so a palette is compile-checked for completeness. `selectedBg` is
- * a background color and `logoGradient` is the banner's row-wise foreground
- * sweep; all other entries style one foreground role.
+ * required so a palette is compile-checked for completeness. `selectedBg`,
+ * `diffAddedBg`, and `diffRemovedBg` are background colors and `logoGradient`
+ * is the banner's row-wise foreground sweep; all other entries style one
+ * foreground role.
  */
 export interface MayflySemanticColors {
   /** Default foreground. */
@@ -300,6 +301,10 @@ export interface MayflySemanticColors {
   diffGutter: MayflyColorFn
   /** Diff metadata (file paths, hunk ranges). */
   diffMeta: MayflyColorFn
+  /** Background band behind an added diff line. */
+  diffAddedBg: MayflyColorFn
+  /** Background band behind a removed diff line. */
+  diffRemovedBg: MayflyColorFn
   /** Banner model-row highlight. */
   modelHighlight: MayflyColorFn
   /** Banner logo foregrounds from top row to bottom row. */

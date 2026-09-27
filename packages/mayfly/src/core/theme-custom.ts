@@ -13,9 +13,9 @@
 import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { backgroundColor, defineThemeService, foregroundColor, themeModel } from './theme-palette.ts'
-import { DARK_COLORS, DARK_FOREGROUNDS, DARK_SELECTED_BG } from './theme-dark.ts'
-import { LIGHT_COLORS, LIGHT_FOREGROUNDS, LIGHT_SELECTED_BG } from './theme-light.ts'
+import { BACKGROUND_TOKENS, backgroundColor, defineThemeService, foregroundColor, themeModel } from './theme-palette.ts'
+import { DARK_COLORS, DARK_FOREGROUNDS, DARK_BACKGROUNDS } from './theme-dark.ts'
+import { LIGHT_COLORS, LIGHT_FOREGROUNDS, LIGHT_BACKGROUNDS } from './theme-light.ts'
 import type { MayflyColorFn, MayflySemanticColors } from './types.ts'
 
 /** Stable Cordis plugin name. */
@@ -47,8 +47,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const logger = ctx.logger(name)
   const base = config.base === 'light' ? LIGHT_COLORS : DARK_COLORS
   const baseForegrounds = config.base === 'light' ? LIGHT_FOREGROUNDS : DARK_FOREGROUNDS
-  const baseSelectedBg = config.base === 'light' ? LIGHT_SELECTED_BG : DARK_SELECTED_BG
-  const baseModel = themeModel('custom', 'Custom', config.base !== 'light', baseForegrounds, baseSelectedBg)
+  const baseBackgrounds = config.base === 'light' ? LIGHT_BACKGROUNDS : DARK_BACKGROUNDS
+  const baseModel = themeModel('custom', 'Custom', config.base !== 'light', baseForegrounds, baseBackgrounds)
   let parsed: unknown
   try {
     parsed = JSON.parse(await readFile(config.path, 'utf8'))
@@ -81,7 +81,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       logger.warn('ignoring invalid color for theme token %s; using the base palette entry', token)
       continue
     }
-    overrides[token] = token === 'selectedBg' ? backgroundColor(value) : foregroundColor(value)
+    overrides[token] = BACKGROUND_TOKENS.has(token) ? backgroundColor(value) : foregroundColor(value)
     rawOverrides[token] = value
   }
   ctx.plugin(defineThemeService(Object.freeze({ ...base, ...overrides }) as MayflySemanticColors, { ...baseModel, colors: Object.freeze({ ...baseModel.colors, ...rawOverrides }) }))

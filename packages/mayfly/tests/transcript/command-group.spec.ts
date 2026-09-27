@@ -21,7 +21,7 @@ const IDENTITY: MayflySemanticColors = {
   borderFocus: id, success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
   mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id, mdCodeBlockBorder: id,
   mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id, diffGutter: id, diffMeta: id,
+  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id, diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
 }
 // Structurally satisfies MayflySemanticColors; declared where consumed.
 

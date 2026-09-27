@@ -55,6 +55,7 @@ custom 主题从 JSON 文件读取 token 到 `#rrggbb` 十六进制色的映射�
 - 只需写想覆盖的 token，其余落到 base 的对应项；
 - **未知 token**（不在下表中，亦非下方的 `logoGradient`）与**非法颜色**（非 `#rrggbb` 格式）会被丢弃并打印警告，回退 base 对应项；
 - `logoGradient` 是唯一接受数组的 token——一个非空 `#rrggbb` 数组，自上而下逐行染横幅 logo；
+- `selectedBg`、`diffAddedBg`、`diffRemovedBg` 染背景色，其余颜色 token 均染前景色；
 - 文件不可读或不是 JSON 对象时，整表回退 base。
 
 ## 语义 token 表
@@ -100,8 +101,10 @@ custom 主题从 JSON 文件读取 token 到 `#rrggbb` 十六进制色的映射�
 
 | token | dark 值 | 用途 |
 | --- | --- | --- |
-| `diffAdded` | `#4ec87e` | 新增行 |
-| `diffRemoved` | `#e85454` | 删除行 |
+| `diffAdded` | `#4ec87e` | 新增行的 `+` 号 |
+| `diffRemoved` | `#e85454` | 删除行的 `-` 号 |
+| `diffAddedBg` | `#1E3A2B` | 新增行背景色带 |
+| `diffRemovedBg` | `#43232A` | 删除行背景色带 |
 | `diffAddedStrong` | `#7ad99b` | 新增行（强调） |
 | `diffRemovedStrong` | `#f08585` | 删除行（强调） |
 | `diffGutter` | `#5C6476` | diff 行号槽 |

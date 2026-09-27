@@ -32,7 +32,7 @@ export const COLORS = {
   mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id,
   mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
-  diffGutter: id, diffMeta: id,
+  diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
   modelHighlight: id,
   logoGradient: [],
 }
