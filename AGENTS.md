@@ -39,17 +39,22 @@ History and release notes do not define current behavior.
 
 ## Verification
 
-Start with `pnpm run verify:changed -- --plan`, then `pnpm run verify:changed`.
+Start with `pnpm run verify:changed -- --plan`, then run the selected gate.
 The default comparison is `origin/main...HEAD` plus staged, unstaged, and
-untracked files; use `--base <ref>` when needed. The executable selection rules
-are in `script/test-impact.mjs` and `script/verify-changed.mjs`.
+untracked files (not generated `.artifacts/`); use `--base <ref>` when needed.
+The plan lists commands that will run and separate manual acceptance paths.
+The executable selection rules are in `script/test-impact.mjs`,
+`script/verification-commands.mjs`, and `script/verify-changed.mjs`.
 
-Use `pnpm run verify:full` for broad, release, architecture, composition, or
-workflow changes. CI runs the full deterministic gate. Full verification runs
-coverage once and happy smoke; do not precede it with redundant plain tests.
-Run `pnpm run check:pack` for distribution changes; it is not part of the full
-runner. After instruction or shipped-skill edits, run
-`pnpm run check:agent-docs`.
+Use `pnpm run verify:full` instead of an additional `verify:changed` for broad,
+release, architecture, composition, or workflow changes. CI runs the full
+deterministic gate. Full verification includes screenshot freshness, coverage
+once, happy smoke, and a Website build when Website files changed; do not
+precede it with redundant plain tests. Distribution changes selected by the
+planner also run `check:pack`; a plain full gate does not pack. Release
+publication additionally requires `pnpm release:preflight <version>`, verified
+tarballs, and the human acceptance described below. Instruction and
+shipped-skill changes run `check:agent-docs`.
 
 - Vitest uses fork workers and per-file 100% executable-source coverage.
   Type-only `src/types.ts` files are excluded. Specs import the tested source

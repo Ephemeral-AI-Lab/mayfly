@@ -12,7 +12,7 @@ function walk(root, name) {
   const found = []
   if (!existsSync(root)) return found
   for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === 'lib') continue
+    if (entry.name === '.git' || entry.name === '.artifacts' || entry.name === 'node_modules' || entry.name === 'lib') continue
     const full = join(root, entry.name)
     if (entry.isDirectory()) found.push(...walk(full, name))
     else if (entry.name === name) found.push(full)
