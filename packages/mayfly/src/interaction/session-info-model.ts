@@ -47,17 +47,22 @@ export function changelogNode(entries: readonly ChangelogEntry[], t: MayflyTrans
   ]))
 }
 
+function contextWindowField(facts: UsageFacts['context'], t: MayflyTranslate): MayflyField | undefined {
+  const window = tokenInteger(facts.window)
+  const used = tokenInteger(facts.used)
+  if (window === undefined || window <= 0 || used === undefined) return undefined
+  const severity = ratioSeverity(usageRatio(used, window))
+  return field(t('Context window'), `${formatTokens(used)} / ${formatTokens(window)} (${usagePercent(used, window)}%)`, severity === 'danger' ? 'danger' : severity === 'warn' ? 'warning' : 'success')
+}
+
 export function contextNode(facts: UsageFacts['context'], t: MayflyTranslate): MayflyUiNode {
   const window = tokenInteger(facts.window)
   if (window === undefined || window <= 0) return ui.text(t('not advertised for the current model'), { tone: 'muted' })
   const used = tokenInteger(facts.used)
   if (used === undefined) return ui.text(t('no request has reported usage yet'), { tone: 'muted' })
-  const occupied = Math.min(used, window)
-  const ratio = usageRatio(used, window)
-  const severity = ratioSeverity(ratio)
   return ui.stack.column([
-    ui.progress({ value: occupied, max: window }),
-    ui.fields([field(t('Context window'), `${formatTokens(used)} / ${formatTokens(window)} (${usagePercent(used, window)}%)`, severity === 'danger' ? 'danger' : severity === 'warn' ? 'warning' : 'success')]),
+    ui.progress({ value: Math.min(used, window), max: window }),
+    ui.fields([contextWindowField(facts, t)!]),
   ])
 }
 
@@ -82,24 +87,48 @@ export function statusNode(facts: SessionInfoFacts, version: VersionFacts, t: Ma
 export function usageNode(facts: SessionInfoFacts, t: MayflyTranslate): MayflyUiNode {
   const { buckets, context } = facts.usage
   const total = totalTokens(buckets)
+  const promptTokens = buckets.input + buckets.cacheRead + buckets.cacheWrite
   const contextWindow = tokenInteger(context.window)
   const parts = facts.composition === undefined ? [] : [
     { id: 'system', label: t('System prompt'), tokens: tokenInteger(facts.composition.system) ?? 0, tone: 'muted' as const },
     { id: 'tools', label: t('Tools'), tokens: tokenInteger(facts.composition.tools) ?? 0, tone: 'primary' as const },
     { id: 'messages', label: t('Messages'), tokens: tokenInteger(facts.composition.messages) ?? 0, tone: 'accent' as const },
   ]
-  if (parts.length > 0 && contextWindow !== undefined) parts.push({ id: 'free', label: t('Estimated free space'), tokens: Math.max(0, contextWindow - parts.reduce((sum, part) => sum + part.tokens, 0)), tone: 'muted' })
+  if (parts.length > 0 && contextWindow !== undefined && contextWindow > 0) parts.push({ id: 'free', label: t('Estimated free space'), tokens: Math.max(0, contextWindow - parts.reduce((sum, part) => sum + part.tokens, 0)), tone: 'muted' })
+  const contextField = contextWindowField(context, t)
+  const shareText = (tokens: number): string => `${formatTokens(tokens)}${contextWindow === undefined || contextWindow <= 0 ? '' : ` (${Math.min(100, Math.max(0, tokens / contextWindow * 100)).toFixed(1)}%)`}`
+  const grid = (): MayflyUiNode => ui.chart({
+    chart: 'bar', layout: 'normalized', orientation: 'horizontal', height: 10,
+    categories: [''],
+    series: parts.map(part => ({ id: part.id, label: part.label, tone: part.tone, ...(part.id === 'free' ? { empty: true } : {}), values: [part.tokens] })),
+  })
+  const legend = (): MayflyUiNode => ui.fields(parts.map(part => ({
+    label: part.label,
+    value: [{ text: part.id === 'free' ? '░ ' : '█ ', tone: part.tone }, { text: shareText(part.tokens) }],
+  })))
+  const caption = (): MayflyUiNode => ui.text(t('Estimated usage by category'))
   return ui.stack.column([
-    contextNode(context, t),
+    ui.fields([
+      field(t('Model'), facts.model === undefined ? t('not set') : `${facts.model.model} (${facts.model.provider})`),
+      ...contextField === undefined ? [] : [contextField],
+    ]),
+    ...contextField === undefined ? [ui.text(contextWindow === undefined || contextWindow <= 0 ? t('not advertised for the current model') : t('no request has reported usage yet'), { tone: 'muted' })] : [],
     ui.divider({ label: t('Session usage') }),
     total === 0 ? ui.text(t('no provider usage recorded yet'), { tone: 'muted' }) : ui.fields([
       field(t('Input'), formatTokens(buckets.input)), field(t('Cache read'), formatTokens(buckets.cacheRead)),
-      field(t('Cache write'), formatTokens(buckets.cacheWrite)), field(t('Output'), formatTokens(buckets.output)), field(t('Total'), formatTokens(total)),
+      field(t('Cache write'), formatTokens(buckets.cacheWrite)),
+      ...(promptTokens > 0 ? [field(t('Cache hit rate'), `${Math.round(buckets.cacheRead / promptTokens * 100)}%`)] : []),
+      field(t('Output'), formatTokens(buckets.output)), field(t('Total'), formatTokens(total)),
     ]),
     ...parts.length === 0 ? [] : [
       ui.divider({ label: t('Context usage (heuristic)') }),
-      ui.chart({ chart: 'bar', layout: 'stacked', categories: [t('Estimated usage by category')], series: parts.map(part => ({ id: part.id, label: part.label, tone: part.tone, values: [part.tokens] })) }),
-      ui.fields(parts.map(part => field(part.label, `${formatTokens(part.tokens)}${contextWindow === undefined || contextWindow <= 0 ? '' : ` (${Math.min(100, Math.max(0, part.tokens / contextWindow * 100)).toFixed(1)}%)`}`, part.tone))),
+      ...parts.every(part => part.tokens <= 0) ? [legend()] : [
+        ui.child(ui.stack.row([
+          ui.child(grid(), { basis: 22, grow: 0, shrink: 1 }),
+          ui.child(ui.stack.column([caption(), legend()]), { grow: 1, shrink: 1, minSize: 1 }),
+        ], { gap: 2 }), { when: { minWidth: 66 } }),
+        ui.child(ui.stack.column([caption(), grid(), legend()]), { when: { maxWidth: 65 } }),
+      ],
     ],
   ])
 }

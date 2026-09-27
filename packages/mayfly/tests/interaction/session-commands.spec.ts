@@ -121,9 +121,17 @@ describe('native session information', () => {
     const facts: SessionInfoFacts = { id: 'id', createdAt: NaN, status: 'idle', turns: 2, steps: 3, model: { provider: 'p', model: 'm', reasoningEffort: 'high' }, usage: { buckets: { input: 10, cacheRead: 20, cacheWrite: 30, output: 40 }, context: { used: 900, window: 1000 } }, composition: { system: 1, tools: 200, messages: 300 } }
     const value = JSON.stringify(usageNode(facts, key => key))
     expect(value).toContain('"chart":"bar"')
+    expect(value).toContain('"layout":"normalized"')
+    expect(value).toContain('"orientation":"horizontal"')
+    expect(value).toContain('"empty":true')
+    expect(value).toContain('"text":"░ "')
     expect(value).toContain('0.1%')
     expect(value).toContain('Context usage (heuristic)')
-    expect(value).not.toMatch(/[█▓▒░]/u)
+    expect(value).toContain('"Model"')
+    expect(value).toContain('"text":"█ "')
+    expect(value).toContain('"Cache hit rate"')
+    expect(value).toContain('33%')
+    expect(value).not.toMatch(/[█▓▒░]{2,}/u)
     expect(JSON.stringify(statusNode(facts, { mayfly: 'test', harness: 'native' }, key => key))).toContain('high')
     expect(formatCreated(NaN)).toBe('unknown UTC')
     expect(JSON.stringify(versionNode({ mayfly: 'custom', harness: 'native' }))).toContain('vcustom')
@@ -138,12 +146,18 @@ describe('native session information', () => {
     expect(normalized.children[0]!.node).toMatchObject({ kind: 'progress', value: 13, max: 101 })
     expect(JSON.stringify(contextNode({ used: Number.NaN, window: 1000 }, key => key))).toContain('no request')
     expect(JSON.stringify(contextNode({ used: 10, window: Number.POSITIVE_INFINITY }, key => key))).toContain('not advertised')
-    expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: {} } }, key => key))).not.toContain('%')
+    expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: {} } }, key => key))).not.toMatch(/\(\d+(?:\.\d+)?%\)/u)
+    expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: {} } }, key => key))).toContain('not advertised for the current model')
+    expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: { window: 1000 } } }, key => key))).toContain('no request has reported usage yet')
+    const zeroed = JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: {} }, composition: { system: 0, tools: 0, messages: 0 } }, key => key))
+    expect(zeroed).not.toContain('"chart"')
+    expect(zeroed).toContain('System prompt')
+    expect(JSON.stringify(usageNode({ ...facts, usage: { buckets: { input: 0, cacheRead: 0, cacheWrite: 0, output: 5 }, context: {} } }, key => key))).not.toContain('Cache hit rate')
     const normalizedComposition = JSON.stringify(usageNode({
       ...facts,
       composition: { system: Number.NaN, tools: -1, messages: Number.POSITIVE_INFINITY },
     }, key => key))
-    expect(normalizedComposition.match(/"values":\[0\]/gu)).toHaveLength(3)
+    expect(normalizedComposition.match(/"values":\[0\]/gu)).toHaveLength(6)
   })
 
   it('renders fractional native context estimates through the command surface', async () => {
@@ -160,7 +174,7 @@ describe('native session information', () => {
     expect(JSON.stringify(model.node)).toContain('13 / 101 (13%)')
     const rendered = renderRequest(model)
     const rows = rendered.component.render(80).join('\n')
-    expect(rows).toContain('13/101')
+    expect(rows).toContain('13 / 101')
     expect(rows).not.toContain('must be a finite integer')
     rendered.runtime.dispose()
   })

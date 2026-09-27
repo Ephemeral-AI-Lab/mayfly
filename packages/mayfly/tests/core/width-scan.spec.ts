@@ -168,9 +168,22 @@ describe('core width-scan', () => {
           { id: 'failed', label: 'failed', tone: 'danger' as const, values: [1, 3] },
         ],
       }
+      const horizontal = {
+        kind: 'chart' as const,
+        chart: 'bar' as const,
+        layout: 'normalized' as const,
+        orientation: 'horizontal' as const,
+        categories: ['ctx', text],
+        series: [
+          { id: 'ok', label: text, tone: 'success' as const, values: [2, 4] },
+          { id: 'failed', label: 'failed', tone: 'danger' as const, values: [1, 3] },
+          { id: 'free', label: 'free', empty: true, values: [4, 2] },
+        ],
+      }
       const mermaid = `graph LR\n  A[${text}] --> B[done]`
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`Chart/${name}`, renderChartRows(chart, width, chartComponents, statusColors as MayflySemanticColors), width)
+        expectLinesFit(`Chart-horizontal/${name}`, renderChartRows(horizontal, width, chartComponents, statusColors as MayflySemanticColors), width)
         const diagram = renderMermaidRows(mermaid, width)
         const documentRows = diagram ?? wrapTextWithAnsi(mermaid, Math.max(1, width))
         expectLinesFit(`Mermaid/${name}`, documentRows, width)

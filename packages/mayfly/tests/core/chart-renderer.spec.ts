@@ -20,6 +20,7 @@ const charts = [
     { id: 'failed', tone: 'danger', values: [1, 2] },
   ] }),
   ui.chart({ chart: 'bar', layout: 'stacked', categories: ['Mon', 'Tue'], series: [{ id: 'a', values: [2, 3] }, { id: 'b', values: [1, 4] }] }),
+  ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: ['ctx'], series: [{ id: 'a', tone: 'primary', values: [2] }, { id: 'b', values: [1] }] }),
   ui.chart({ chart: 'bar', layout: 'normalized', categories: ['Mon', 'Tue'], series: [{ id: 'a', values: [2, 3] }, { id: 'b', values: [1, 4] }] }),
   ui.chart({ chart: 'sparkline', label: 'Load', tone: 'warning', values: [1, 5, null, 3, 8] }),
   ui.chart({ chart: 'heatmap', title: 'CI', columns: ['Linux', 'macOS'], rows: ['Node 22', 'Node 24'], values: [['pass', 'fail'], ['pass', 'pass']], levels: [
@@ -42,6 +43,71 @@ describe('renderChartRows', () => {
       expect(rows.every(row => visibleWidth(row) <= 80)).toBe(true)
       expect(rows.join('\n')).not.toContain('\x1b')
     }
+  })
+
+  it('folds horizontal normalized bars row-major into proportional tone runs', () => {
+    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (text: string) => `<${String(key)}>${text}` }) as MayflySemanticColors
+    const rows = renderChartRows(ui.chart({
+      chart: 'bar', layout: 'normalized', orientation: 'horizontal', height: 2, title: 'T',
+      categories: [''], series: [
+        { id: 'a', tone: 'primary', values: [1] },
+        { id: 'b', tone: 'accent', values: [3] },
+      ],
+    }), 10, components, tagged)
+    expect(rows[0]).toBe('<textStrong>T')
+    expect(rows[1]).toBe('<primary>██████<accent>████')
+    expect(rows[2]).toBe('<accent>██████████')
+  })
+
+  it('renders horizontal bar labels, default height, and muted empty fills', () => {
+    const single = renderChartRows(ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: ['ctx'], series: [{ id: 'a', values: [1] }] }), 8, components, colors)
+    expect(single[0]).toBe('ctx')
+    expect(single).toHaveLength(11)
+    expect(single.slice(1).every(row => row === '█'.repeat(8))).toBe(true)
+
+    const zero = renderChartRows({ kind: 'chart', chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: [{ id: 'a', values: [0] }] } as const, 6, components, colors)
+    expect(zero).toEqual(Array.from({ length: 10 }, () => '░'.repeat(6)))
+
+    const multi = renderChartRows(ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', height: 4, categories: ['one', 'two'], series: [
+      { id: 'a', values: [1, null] },
+      { id: 'b', values: [0, 2] },
+      { id: 'c', values: [-5, 1] },
+    ] }), 4, components, colors)
+    expect(multi[0]).toBe('one')
+    expect(multi[5]).toBe('two')
+    expect(multi).toHaveLength(10)
+    expect(multi.every(row => visibleWidth(row) <= 4)).toBe(true)
+  })
+
+  it('paints empty series as the muted track and keeps sub-cell shares visible', () => {
+    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (text: string) => `<${String(key)}>${text}` }) as MayflySemanticColors
+    const rows = renderChartRows(ui.chart({
+      chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: [
+        { id: 'a', tone: 'primary', values: [1] },
+        { id: 'free', tone: 'muted', empty: true, values: [999] },
+      ],
+    }), 40, components, tagged)
+    expect(rows).toHaveLength(10)
+    expect(rows[0]).toBe(`<primary>██<muted>${'░'.repeat(18)}`)
+    expect(rows.slice(1).every(row => row === `<muted>${'░'.repeat(20)}`)).toBe(true)
+
+    const emptyGrid = { kind: 'chart', chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [], series: [{ id: 'a', values: [] }] } as const
+    expect(renderChartRows(emptyGrid, 10, components, colors).join()).toContain('no data')
+
+    const crowded = { kind: 'chart', chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: Array.from({ length: 12 }, (_, index) => ({ id: `s${String(index)}`, values: [1] })) } as const
+    const tight = renderChartRows(crowded, 1, components, colors)
+    expect(tight).toHaveLength(10)
+    expect(tight.every(row => visibleWidth(row) <= 1)).toBe(true)
+
+    const donors = renderChartRows(ui.chart({
+      chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: [
+        { id: 'tiny', values: [1] },
+        { id: 'mid', values: [200] },
+        { id: 'large', values: [300] },
+        { id: 'small', values: [250] },
+      ],
+    }), 40, components, tagged)
+    expect(donors[0]).toBe(`<accent>██<success>${'█'.repeat(18)}`)
   })
 
   it('contains every chart at narrow widths with a chart or textual summary fallback', () => {

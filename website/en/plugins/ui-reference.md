@@ -322,11 +322,16 @@ ui.chart({
 ui.chart({
   chart: 'bar',
   layout?: 'grouped' | 'stacked' | 'normalized',
+  // 'horizontal' requires layout: 'normalized': each category renders as a
+  // `height`-row (default 10) grid of `ceil(100/height)` proportional cells —
+  // each cell ~1%, painted two columns wide; every non-zero share keeps at
+  // least one cell; a series flagged empty: true paints '░' empty track.
+  orientation?: 'vertical' | 'horizontal',
   title?: string,
   yLabel?: string,
   height?: number, // 4..20
   categories: readonly string[],
-  series: [{ id: string, label?: string, tone?: MayflyTone, values: readonly (number | null)[] }],
+  series: [{ id: string, label?: string, tone?: MayflyTone, empty?: boolean, values: readonly (number | null)[] }],
 })
 
 ui.chart({ chart: 'sparkline', values: [2, 4, null, 7], label: 'Load', tone: 'warning' })
