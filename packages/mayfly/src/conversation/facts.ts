@@ -16,6 +16,7 @@ import { outputProgressSchema } from './output-progress.ts'
 import type { ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
 import { isSpawnToolName } from './projection.ts'
+import { callDetail, reasoningDetail } from './activity-detail.ts'
 
 const todoSchema = z.object({
   content: z.string(),
@@ -27,6 +28,7 @@ export const conversationFactsSchema = z.object({
   phase: z.enum(['idle', 'waiting', 'thinking', 'composing', 'tool']),
   active: z.boolean(),
   turn: z.number().int().nonnegative(),
+  turnStartedAt: z.number().optional(),
   flowUp: z.number().nonnegative().optional(),
   flowDownChars: z.number().int().nonnegative(),
   outputProgress: outputProgressSchema.optional(),
@@ -43,7 +45,12 @@ export const conversationFactsSchema = z.object({
   epochToolCount: z.number().int().nonnegative().optional(),
   epochTokens: z.number().nonnegative().optional(),
   usageByStep: z.record(z.string(), z.number().nonnegative()).optional(),
-  activity: z.object({ kind: z.enum(['reasoning', 'text', 'tool']), name: z.string().optional() }).optional(),
+  activity: z.object({
+    kind: z.enum(['reasoning', 'text', 'tool']),
+    name: z.string().optional(),
+    detail: z.string().optional(),
+    preparing: z.boolean().optional(),
+  }).optional(),
   runOutcome: z.enum(['completed', 'failed']).optional(),
   endedAt: z.number().optional(),
   agentCalls: z.array(z.object({
@@ -91,7 +98,9 @@ function foldStreamChunks(
   return {
     ...state, phase: draft.phase, active: true, turn, currentStep: step,
     flowDownChars: state.flowDownChars + draft.chars,
-    activity: draft.phase === 'waiting' ? state.activity : { kind: draft.phase === 'thinking' ? 'reasoning' : 'text' },
+    activity: draft.phase === 'waiting'
+      ? state.activity
+      : draft.phase === 'thinking' ? { kind: 'reasoning', detail: reasoningDetail(draft.reasoning) } : { kind: 'text' },
     outputProgress: draft.outputProgress,
   }
 }
@@ -107,7 +116,7 @@ export function foldConversationFacts(
   switch (event.type) {
     case 'turn/start':
       return {
-        ...state, phase: 'waiting', active: true, turn: event.data.turn, flowUp: undefined,
+        ...state, phase: 'waiting', active: true, turn: event.data.turn, turnStartedAt: event.time, flowUp: undefined,
         flowDownChars: 0, outputProgress: undefined, epochToolCount: 0, epochTokens: 0, usageByStep: {},
         activity: undefined, runOutcome: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
       }
@@ -171,7 +180,7 @@ export function foldConversationFacts(
       return {
         ...state, phase: 'tool', active: true, turn: event.data.turn, outputProgress: undefined,
         epochToolCount: (state.epochToolCount ?? 0) + 1,
-        activity: { kind: 'tool', name: event.data.name },
+        activity: { kind: 'tool', name: event.data.name, detail: callDetail(event.data.arguments) },
       }
     case 'tool/result': {
       // Tool results are first-class tool-role messages; logs written before
@@ -236,5 +245,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 6,
+  stateVersion: 7,
 }

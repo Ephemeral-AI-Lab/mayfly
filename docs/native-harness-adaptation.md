@@ -36,12 +36,15 @@ presentation and current-Agent selection.
 - `/mcp` server details expose Resources and Templates. Listing reads metadata;
   Read fetches a chosen URI through the exact Agent's native tool pipeline.
 - `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,
-  `standard` (default), `detailed`, and `verbose`, mirroring the Harness Chat
-  work-details capability table: completed turns fold behind a turn header while
-  final replies remain visible, process work between replies collapses into titled
-  groups, and Verbose keeps every card open. Ctrl+O expands the recent
-  `expandTurns` turns. Old per-family settings and `recentStepsRetention` are no
-  longer interpreted.
+  `standard` (default), `detailed`, and `verbose`, keeping the Harness Chat
+  work-details mode names. Unlike Harness Chat, whose running turn header and
+  open group title are its live signals, Mayfly keeps every live fact in the
+  activity row and renders the transcript in the past tense: completed turns fold
+  behind a settled turn header while final replies (and, from Standard up, file
+  changes) remain visible, process work collapses into titles of settled work,
+  and Verbose keeps every card open. Ctrl+O expands the recent `expandTurns`
+  turns. Old per-family settings and `recentStepsRetention` are no longer
+  interpreted.
 
 These changes do not automatically rewrite user configuration or delete user data.
 Remove obsolete keys from settings files when updating.

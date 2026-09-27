@@ -8,7 +8,7 @@
  *
  * @module @ephemeral-ai/mayfly/tests/transcript/flow-scenarios
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import type { MayflySemanticColors } from '../../src/core/index.ts'
 import type { ConversationEntry, ConversationProjection } from '../../src/conversation/types.ts'
@@ -16,8 +16,6 @@ import type { TranscriptModel } from '../../src/frontend/models.ts'
 import { conversationTranscriptModel } from '../../src/transcript/official-model.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import { TranscriptPresentationPolicy, type TranscriptViewMode } from '../../src/transcript/presentation-policy.ts'
-import { setProcessRowTimers } from '../../src/transcript/process-rows.ts'
-import { setThinkingTimers } from '../../src/transcript/thinking.ts'
 import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
@@ -122,11 +120,6 @@ function render(model: TranscriptModel, mode: TranscriptViewMode, expanded = fal
   return { rows: component.render(120).map(strip), component }
 }
 
-afterEach(() => {
-  setThinkingTimers(undefined)
-  setProcessRowTimers(undefined)
-})
-
 describe('conversation flow scenarios', () => {
   it('keeps chronology, honest statuses, and correct tool families when everything is shown', () => {
     const { rows, component } = render(conversationTranscriptModel(scenario(false), tools), 'verbose')
@@ -158,43 +151,55 @@ describe('conversation flow scenarios', () => {
     component.dispose()
   })
 
-  it('folds a settled turn to its guttered header and final answer in compact, standard, and detailed', () => {
+  it('folds a settled turn to its header and final answer, keeping file changes from Standard up', () => {
     const model = conversationTranscriptModel(scenario(false), tools)
-    for (const mode of ['compact', 'standard', 'detailed'] as const) {
+    const header = ' ▸ Took 38s · 14 tool calls · 1 subagent · ctrl+o to expand'
+    const answer = ' ● Done. `login` is now idempotent under `retry`.'
+    const compact = render(model, 'compact')
+    // Blank separator rows carry the one-column gutter.
+    expect(compact.rows).toEqual([' ', ' » Fix the flaky login test', ' ', header, ' ', answer])
+    compact.component.dispose()
+    for (const mode of ['standard', 'detailed'] as const) {
       const { rows, component } = render(model, mode)
-      // Blank separator rows carry the one-column gutter.
-      expect(rows).toEqual([
-        ' ',
-        ' » Fix the flaky login test',
-        ' ',
-        ' ▸ Took 38s · 14 tool calls · 1 subagent · ctrl+o to expand',
-        ' ',
-        ' ● Done. `login` is now idempotent under `retry`.',
-      ])
+      // The edit's diff card stays between the header and the answer.
+      const text = rows.join('\n')
+      expect(rows.slice(0, 4)).toEqual([' ', ' » Fix the flaky login test', ' ', header])
+      expect(rows.at(-1)).toBe(answer)
+      expect(text).toMatch(/Edit src\/auth\.ts/u)
+      expect(text).toContain('retry(() => login(token), 3)')
+      expect(text.indexOf('Edit src/auth.ts')).toBeGreaterThan(text.indexOf(header))
+      expect(text).not.toContain('pnpm lint')
       // An anchored local (a `!cmd` echo) never disables folding.
       component.appendAnchored('local', { render: () => ['$ ls'], invalidate: () => {} }, 0)
       const anchored = component.render(120).map(strip)
-      expect(anchored).toContain(' ▸ Took 38s · 14 tool calls · 1 subagent · ctrl+o to expand')
+      expect(anchored).toContain(header)
       expect(anchored).toContain(' $ ls')
       expect(anchored.join('\n')).not.toContain('pnpm lint')
       component.dispose()
     }
   })
 
-  it('segments a running turn into chronological titled groups by mode', () => {
+  it('shows a running turn in the past tense by mode, with no live status rows', () => {
     const model = conversationTranscriptModel(scenario(true), tools)
     const standard = render(model, 'standard').rows.join('\n')
-    expect(standard).toContain('▾ Deep diving for')
-    // Live counts belong to the dock; the running header shows lifecycle only.
-    expect(standard).not.toMatch(/Deep diving for[^\n]*(tool call|subagent)/)
+    // The activity row owns the lifecycle: no running header, no live titles.
+    expect(standard).not.toMatch(/Deep diving|Analyzing the request|Analysis completed|Reading files|Running commands/u)
     expect(standard).toContain('▸ Read files and searched code')
     expect(standard.indexOf('▸ Read files and searched code')).toBeLessThan(standard.indexOf('Let me run the test.'))
-    expect(standard).toContain('▸ Reading files · missing.ts · 2 failed')
+    // The edit renders as its card, splitting the group around it.
+    expect(standard).toContain('▸ Ran commands · 1 failed')
+    expect(standard).toContain('retry(() => login(token), 3)')
+    expect(standard.indexOf('▸ Ran commands · 1 failed')).toBeLessThan(standard.indexOf('retry(() => login(token), 3)'))
+    // The last group titles only settled work; the pending read is not summarized.
+    expect(standard).toContain('▸ Called tools, ran commands, updated the plan, etc. · 1 failed')
     const compact = render(model, 'compact').rows.join('\n')
-    expect(compact).toContain('▸ Reading files · 2 failed')
+    expect(compact).not.toContain('▸')
+    expect(compact).toContain('Let me run the test.')
+    expect(compact).not.toContain('retry(() => login(token), 3)')
     const detailed = render(model, 'detailed').rows.join('\n')
     expect(detailed).toContain('✗ $ pnpm vitest run tests/login.spec.ts · exit 1')
     expect(detailed).toContain('Reading 1 file…')
+    expect(detailed).not.toContain('Deep diving')
   })
 
   it('opens the recent turn with Ctrl-O and marks calls cut by a stopped turn', () => {

@@ -4,16 +4,26 @@ Between the status bar and the input editor sits the **bottom dock**: five passi
 
 ## Activity pane
 
-A mode machine over the attached session's event stream, telling you what the agent is doing:
+The one live-status row for the current Agent: the transcript only records what happened, while this row says what is happening now — the spinner, a present-tense label, the turn's elapsed time, token counters (`↑` context, `↓` estimated output, characters / 4), the output rate while text streams, and a rotating tip:
+
+```
+🌔 Deep diving · 3s · Tip: …
+⠋ Thinking · 8s · ↓2 · ≈42 tok/s · Tip: …
+⠋ Writing · 14s · ↓120 · ≈40 tok/s · Tip: …
+🌔 Running commands · 21s · ↑30k ↓4k · pnpm test
+```
 
 | Mode | Presentation |
 | --- | --- |
-| waiting | moon spinner + rotating tip (a new tip when the loading kind changes) |
-| tool | moon spinner + the running tool's name (MCP tools read `server › tool`); a subagent spawn stays unnamed because the agents pane shows it |
-| thinking | braille `thinking...` line with the phase's token count and rate — the transcript's thinking block shows only its elapsed time, so this row is the sole spinner and throughput readout, and the dock never collapses mid-turn |
-| composing | braille `working...` line (primary-colored frames + an inline tip) — no output cursor; this line is the "writing" signal |
+| waiting | moon spinner + `Deep diving`; while a tool call's arguments still stream, its preparing label (`Preparing to write files`) |
+| tool | moon spinner + the running category (`Running commands`, `Reading files`, `Calling tools`); a subagent spawn keeps `Deep diving` because the agents pane shows it |
+| thinking | braille spinner + `Thinking` |
+| composing | braille spinner + `Writing` — no output cursor; this line is the "writing" signal |
+| stopping | a static `■ interrupting...` while an interrupt drains |
 | idle | a one-row placeholder (stable dock edge) |
 | dialog open | the row hides (a panel holds the editor slot) |
+
+In Standard, the tip's slot carries the running action instead: the command, path, or query (a generic or MCP tool shows its name, `server › tool`), or the latest reasoning paragraph while thinking. Compact stays minimal, and Detailed and Verbose already show the running card in the transcript, so they carry no detail; neither does a file write or edit, whose diff card is on screen. As the terminal narrows, the row sheds the tail first (a long detail truncates before it goes), then the rate, the counters, the elapsed time, and finally the label; it never wraps.
 
 ## Queue pane
 
@@ -45,7 +55,7 @@ Mayfly retains one auxiliary conversation slot. `/btw <question>` creates a temp
 
 ## Subagent-group pane (agents)
 
-While the agent's **subagent group** runs, its group card is pinned directly above the editor — the last dock row (the kimi swarm-pane semantics). Spawn-class calls (`subagent` and any `subagent_*` provider) appear in the transcript as one-row members, count as subagents in the settled turn header, and read only `Coordinating subagents` in a running process title. This pane alone shows each agent live: its task, phase, model, effort, estimated output (`↓`, characters / 4), tools, elapsed time, tokens, and current activity. The summary row adds a phase breakdown only when phases differ, and a group clock only when several agents run. A settled group stays until the next turn starts; a call left unanswered when its turn ended reads `cancelled` rather than running forever.
+While the agent's **subagent group** runs, its group card is pinned directly above the editor — the last dock row (the kimi swarm-pane semantics). Spawn-class calls (`subagent` and any `subagent_*` provider) appear in the transcript as one-row members, count as subagents in the settled turn header, and join a group title (`Coordinated subagents`) once they settle; the activity row leaves them to this pane. This pane alone shows each agent live: its task, phase, model, effort, estimated output (`↓`, characters / 4), tools, elapsed time, tokens, and current activity. The summary row adds a phase breakdown only when phases differ, and a group clock only when several agents run. A settled group stays until the next turn starts; a call left unanswered when its turn ended reads `cancelled` rather than running forever.
 
 ## Workflow pane
 

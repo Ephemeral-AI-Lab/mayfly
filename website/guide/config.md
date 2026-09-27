@@ -167,7 +167,7 @@ mayfly:
   pasteImageBackend: auto  # Linux 剪贴板后端：auto | wayland | x11
 ```
 
-`transcriptView` 对齐 Harness Chat 的四种工作详情模式（见[流式会话](/features/streaming#工作详情)）。Compact、Standard 与 Detailed 把已完成回合折叠到 `用时 38s` 标题下，最终回答保持可见；回复之间的过程折叠为一行带标题的分组（Standard 还显示正在运行的命令、路径、查询或思考内容；Detailed 让运行中的回合保持展开）。Verbose 逐卡展开。Ctrl+O 展开最近 `expandTurns` 个回合。原有按类型配置的 `transcript` 设置与 `recentStepsRetention` 不再生效。
+`transcriptView` 沿用 Harness Chat 的四种工作详情模式名（见[流式会话](/features/streaming#工作详情)）。实时状态由 activity 行负责，会话记录只显示已经发生的事。回合运行中，Compact 只显示对话；Standard 另外显示文件修改的 diff 卡片与过去时分组标题，其 activity 行还会显示正在运行的命令、路径、查询或思考内容；Detailed 实时显示所有卡片。Compact、Standard 与 Detailed 把已完成回合折叠到 `用时 38s` 标题下，最终回答（从 Standard 起还有文件修改）保持可见；Verbose 逐卡展开。Ctrl+O 展开最近 `expandTurns` 个回合。原有按类型配置的 `transcript` 设置与 `recentStepsRetention` 不再生效。
 
 面板分两级：第一级从 `locale` 开始，并按命名空间分组（`mayfly`、`shell`、`agent-loop`、`web-search-deepseek:` 等宿主段在内），Enter 进入第二级逐行调整，`Enter`/`Space` 步进预设值、每次改动即落盘；语言切换与 `mayfly.theme` 都实时生效（`/theme` 仍是会话级切换，见[主题](/guide/theme)），`transcriptView`与数值项的改动同样立即作用于当前会话（Ctrl-O 的全局展开状态优先）。第一级末行可在 `$EDITOR` 里打开整份 settings.yaml。
 

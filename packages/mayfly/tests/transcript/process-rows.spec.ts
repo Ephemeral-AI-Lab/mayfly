@@ -1,10 +1,9 @@
-/** Turn header and process-title rows: labels, counts, clocks, and title holds.
+/** Turn header and process-title rows: labels, counts, the opt-in running clock, and static titles.
  * @module @ephemeral-ai/mayfly/tests/transcript/process-rows
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MayflySemanticColors } from '../../src/core/index.ts'
 import {
-  PROCESS_TITLE_MINIMUM_MS,
   ProcessTitleComponent,
   setProcessRowTimers,
   TURN_CLOCK_INTERVAL_MS,
@@ -22,19 +21,12 @@ const colors = COLORS as MayflySemanticColors
 class FakeRowTimers implements ProcessRowTimers {
   current = 0
   readonly intervals: { callback: () => void, ms: number }[] = []
-  readonly timeouts: { callback: () => void, ms: number }[] = []
   clearedIntervals = 0
-  clearedTimeouts = 0
   setInterval(callback: () => void, ms: number): ReturnType<typeof setInterval> {
     this.intervals.push({ callback, ms })
     return this.intervals.length as unknown as ReturnType<typeof setInterval>
   }
   clearInterval(): void { this.clearedIntervals += 1 }
-  setTimeout(callback: () => void, ms: number): ReturnType<typeof setTimeout> {
-    this.timeouts.push({ callback, ms })
-    return this.timeouts.length as unknown as ReturnType<typeof setTimeout>
-  }
-  clearTimeout(): void { this.clearedTimeouts += 1 }
   now(): number { return this.current }
 }
 
@@ -94,72 +86,34 @@ describe('TurnHeaderComponent', () => {
 
 describe('ProcessTitleComponent', () => {
   const title = (overrides: Partial<ProcessTitleItem>): ProcessTitleItem => ({
-    kind: 'process-title', id: 'p', turn: 1, seq: 1, closed: false, liveDetail: true,
-    summary: summarizeProcess([{ activity: 'commands', running: true, detail: 'pnpm test' }]), ...overrides,
+    kind: 'process-title', id: 'p', turn: 1, seq: 1,
+    summary: summarizeProcess([{ activity: 'commands', running: false }]), ...overrides,
   })
 
-  it('renders closed and failed groups at once', () => {
-    const component = new ProcessTitleComponent(colors, fakeMayflyComponents(), () => {})
+  it('renders a static past-tense title with its failures', () => {
+    const component = new ProcessTitleComponent(colors, fakeMayflyComponents())
     expect(component.render(80)).toEqual([])
-    component.update(title({ closed: true, summary: summarizeProcess([{ activity: 'read', running: false, detail: 'a', failed: true }]) }))
-    expect(component.render(80)).toEqual(['', '▸ Read files · 1 failed'])
+    component.update(title({ summary: summarizeProcess([{ activity: 'read', running: false, failed: true }, { activity: 'search', running: false }]) }))
+    expect(component.render(80)).toEqual(['', '▸ Read files and searched code · 1 failed'])
     expect(component.render(80)).toBe(component.render(80))
     component.invalidate()
-    expect(component.render(80)).toEqual(['', '▸ Read files · 1 failed'])
-  })
-
-  it('holds a running title for the minimum time before showing the next one', () => {
-    const timers = new FakeRowTimers()
-    setProcessRowTimers(timers)
-    const ticks: number[] = []
-    const component = new ProcessTitleComponent(colors, fakeMayflyComponents(), () => ticks.push(1))
+    expect(component.render(80)).toEqual(['', '▸ Read files and searched code · 1 failed'])
+    // A newer summary replaces the title at once: nothing holds or ticks.
     component.update(title({}))
-    expect(component.render(80)[1]).toBe('▸ Running commands · pnpm test')
-    timers.current = 50
-    component.update(title({ summary: summarizeProcess([{ activity: 'read', running: true, detail: 'a.ts' }]) }))
-    // Too soon: the previous title stays and one commit is scheduled.
-    expect(component.render(80)[1]).toBe('▸ Running commands · pnpm test')
-    component.render(81)
-    expect(timers.timeouts).toEqual([expect.objectContaining({ ms: PROCESS_TITLE_MINIMUM_MS - 50 })])
-    timers.current = PROCESS_TITLE_MINIMUM_MS
-    timers.timeouts[0]!.callback()
-    expect(ticks).toHaveLength(1)
-    expect(component.render(80)[1]).toBe('▸ Reading files · a.ts')
-    // Past the minimum the next title commits immediately.
-    timers.current = 1_000
-    component.update(title({ summary: summarizeProcess([{ activity: 'edit', running: true, detail: 'b.ts' }]) }))
-    expect(component.render(80)[1]).toBe('▸ Editing files · b.ts')
-    // A pending hold is cancelled on dispose.
-    timers.current = 1_010
-    component.update(title({ summary: summarizeProcess([{ activity: 'code', running: true, detail: 'x' }]) }))
-    component.render(80)
-    component.dispose()
-    expect(timers.clearedTimeouts).toBeGreaterThan(0)
+    expect(component.render(80)).toEqual(['', '▸ Ran commands'])
+    for (const width of [1, 5, 12]) {
+      for (const row of component.render(width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+    }
   })
 
-  it('uses the default timers', () => {
+  it('drives the opt-in running header from the default timers', () => {
     vi.useFakeTimers()
     try {
       const ticks: number[] = []
-      const component = new ProcessTitleComponent(colors, fakeMayflyComponents(), () => ticks.push(1))
-      component.update(title({}))
-      component.render(80)
-      component.update(title({ summary: summarizeProcess([{ activity: 'read', running: true, detail: 'a' }]) }))
-      component.render(80)
-      vi.advanceTimersByTime(PROCESS_TITLE_MINIMUM_MS)
-      expect(ticks).toHaveLength(1)
-      // A hold still pending when the row retires is cancelled.
-      component.update(title({ summary: summarizeProcess([{ activity: 'edit', running: true, detail: 'b' }]) }))
-      component.render(80)
-      component.update(title({ summary: summarizeProcess([{ activity: 'code', running: true, detail: 'c' }]) }))
-      component.render(80)
-      component.dispose()
-      vi.advanceTimersByTime(PROCESS_TITLE_MINIMUM_MS)
-      expect(ticks).toHaveLength(1)
       const clock = new TurnHeaderComponent(colors, fakeMayflyComponents(), () => ticks.push(2))
       clock.update(header({ running: true, startedAt: Date.now() }))
       vi.advanceTimersByTime(TURN_CLOCK_INTERVAL_MS)
-      expect(ticks).toEqual([1, 2])
+      expect(ticks).toEqual([2])
       clock.dispose()
     } finally {
       vi.useRealTimers()

@@ -15,14 +15,13 @@ import {
 } from '../core/index.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
-// Carries the optional host `settings` service Context merge.
-import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
 import { TranscriptController, TranscriptLocalsService } from './transcript-model.ts'
 import { OfficialConversationModelSource, type LiveDraftSource } from './official-model.ts'
 import {
   DEFAULT_EXPAND_TURNS,
+  followPresentationSettings,
   TranscriptPresentationPolicy,
 } from './presentation-policy.ts'
 import {
@@ -117,9 +116,14 @@ export function apply(ctx: Context): void {
   const colors = ctx.mayflyTheme.colors
   const toggle: CollapseToggle = { expanded: false }
   const presentation = new TranscriptPresentationPolicy()
-
-  const MAYFLY_NS = 'mayfly' as SettingsNamespace
-  presentation.apply(ctx.get('mayflyInteractionState')?.settingsSource())
+  // Mayfly settings ride the host settings document: the resolved `mayfly`
+  // namespace (schema owned by interaction) carries the work-details mode
+  // (`transcriptView`) and the transcript tunables (`windowTurns` /
+  // `expandTurns` / `userFoldLines` / `userFoldChars`). The service is optional and its
+  // value unknown here, so every read parses defensively — absent keys or
+  // wrongly typed values keep the current setting; a host without settings
+  // keeps every shipped default.
+  followPresentationSettings(ctx, presentation, () => transcript.refreshPresentationPolicy())
 
   // Optional image wiring is renderer-owned; the projected model carries only
   // durable references and the byte loader stays in this terminal layer.
@@ -151,7 +155,6 @@ export function apply(ctx: Context): void {
       components: ctx.mayflyComponents,
       viewportRows: () => screen.editorViewport.rows,
       images: imageDependencies,
-      requestRender: () => screen.requestRender(),
       presentation,
       t,
     },
@@ -234,20 +237,6 @@ export function apply(ctx: Context): void {
   }
   registerKeymap()
   ctx.effect(() => () => offKeymap())
-
-  // Mayfly settings ride the host settings document: the resolved `mayfly`
-  // namespace (schema owned by interaction) carries the work-details mode
-  // (`transcriptView`) and the transcript tunables (`windowTurns` /
-  // `expandTurns` / `userFoldLines` / `userFoldChars`). The service is optional and its
-  // value unknown here, so every read parses defensively — absent keys or
-  // wrongly typed values keep the current setting; a host without settings
-  // keeps every shipped default.
-  const applyFoldSettings = (value: unknown): void => {
-    if (presentation.apply(value)) transcript.refreshPresentationPolicy()
-  }
-  ctx.on('settings/document-updated', (ns) => {
-    if (ns === MAYFLY_NS) applyFoldSettings(ctx.get('mayflyInteractionState')?.settingsSource())
-  })
 
   const offLocale = observeTranscriptLocale(ctx, () => {
     transcript.refreshLocale()

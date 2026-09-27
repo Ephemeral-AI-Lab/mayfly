@@ -24,8 +24,8 @@ export interface TranscriptUserItem {
 
 /**
  * One assistant step's reasoning rendered as its own transcript block (the
- * S17 kimi split: thinking mounts separately from the answer, live under a
- * `✻ Thinking` header and finalized in place). Fields mutate while the step streams:
+ * S17 kimi split: thinking mounts separately from the answer, live as a
+ * captionless `✻` tail and finalized in place). Fields mutate while the step streams:
  * `assistant/chunk` reasoning deltas append, and the closing
  * `assistant/message` rewrites the text from the authoritative assembled
  * message.
@@ -44,8 +44,6 @@ export interface TranscriptThinkingItem {
   outputProgress?: OutputProgress | undefined
   /** Producer-time reasoning span once the phase ended. */
   durationMs?: number | undefined
-  /** Producer time of the first reasoning delta, for the live elapsed label. */
-  startedAt?: number | undefined
 }
 
 /**

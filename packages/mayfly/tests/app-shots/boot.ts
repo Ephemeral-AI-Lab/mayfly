@@ -116,8 +116,9 @@ export function appendAt<T extends SessionEventType>(
 }
 
 /**
- * Pin the clocks that label elapsed time in a frame: the agents pane and the
- * running turn header read the same scripted instant (real timers still tick).
+ * Pin the clocks that label elapsed time in a frame: the agents pane and any
+ * opt-in running turn header read the same scripted instant (real timers
+ * still tick).
  * @param time - the scripted wall-clock instant, or `undefined` to restore.
  */
 export function pinShotClock(time: number | undefined): void {
@@ -125,8 +126,6 @@ export function pinShotClock(time: number | undefined): void {
   setProcessRowTimers(time === undefined ? undefined : {
     setInterval: (callback, ms) => setInterval(callback, ms),
     clearInterval: handle => clearInterval(handle),
-    setTimeout: (callback, ms) => setTimeout(callback, ms),
-    clearTimeout: handle => clearTimeout(handle),
     now: () => time,
   })
 }

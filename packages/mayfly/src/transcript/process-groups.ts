@@ -1,11 +1,14 @@
 /**
  * Work-details display plan: the pure segmentation of transcript entries into
- * turn headers, process groups, and visible entries, mirroring the upstream
+ * turn headers, process groups, and visible entries, after the upstream
  * Harness Chat `TurnGroups` rules. Reasoning and tool calls are process
- * members; a reply, a user message, an error, or an interruption closes the
- * current group; the last group of a running turn stays open. A normally
- * completed turn folds everything but its final answer behind the turn
- * header. Rendering, timers, and width live elsewhere.
+ * members; a reply, a user message, an error, an interruption, or (where the
+ * policy makes file changes content) a diff-card call closes the current
+ * group. The transcript speaks in the past tense: a group title summarizes
+ * only settled members, a reasoning-only group has no title, and a running
+ * turn has no header unless its tree has no activity row. A normally
+ * completed turn folds everything but its file changes and final answer
+ * behind the turn header. Rendering and width live elsewhere.
  *
  * @module @ephemeral-ai/mayfly/transcript/process-groups
  */
@@ -36,16 +39,13 @@ export interface TurnHeaderItem {
   readonly hint: boolean
 }
 
-/** One collapsed process group row. */
+/** One collapsed process group row: the past-tense summary of its settled members. */
 export interface ProcessTitleItem {
   readonly kind: 'process-title'
   readonly id: string
   readonly turn: number
   readonly seq: number
-  readonly closed: boolean
   readonly summary: ProcessSummary
-  /** Whether a running title appends its live detail. */
-  readonly liveDetail: boolean
 }
 
 /** One visible entry with its disclosure state. */
@@ -80,6 +80,8 @@ export interface DisplayInput {
   readonly flat: boolean
   /** The seq preceding the first entry, for canonical nodes that lead the slice. */
   readonly previousSeq?: number | undefined
+  /** Whether a running turn keeps its live header (trees without an activity row). */
+  readonly runningHeader?: boolean | undefined
 }
 
 function isSemantic(entry: Entry): entry is TranscriptEntryModel {
@@ -89,6 +91,11 @@ function isSemantic(entry: Entry): entry is TranscriptEntryModel {
 function isMember(entry: Entry): boolean {
   return entry.kind === 'transcript-thinking' || entry.kind === 'transcript-tool'
     || entry.kind === 'transcript-read-group' || entry.kind === 'transcript-search-group' || entry.kind === 'transcript-command-group'
+}
+
+/** Whether a tool entry presents as a file change (the presenter's diff card). */
+function isFileChange(entry: Entry): boolean {
+  return entry.kind === 'transcript-tool' && entry.family === 'edit'
 }
 
 const ABNORMAL_OUTCOMES = new Set(['aborted', 'error', 'interrupted', 'forked'])
@@ -113,14 +120,13 @@ export function memberFacts(entry: Entry, closed: boolean): ProcessMemberFact[] 
         running: !closed && entry.result === undefined,
         ...(entry.preparing === undefined ? {} : { preparing: true }),
         failed: entry.result?.isError === true || exitFailed(entry),
-        detail: entry.detail,
       }]
     case 'transcript-read-group':
-      return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', failed: read.state === 'error', detail: read.detail }))
+      return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', failed: read.state === 'error' }))
     case 'transcript-search-group':
-      return entry.searches.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error', detail: call.detail }))
+      return entry.searches.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error' }))
     case 'transcript-command-group':
-      return entry.commands.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error', detail: call.detail }))
+      return entry.commands.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error' }))
     default:
       return []
   }
@@ -187,68 +193,71 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const interleaved = rest.some(entry => entry.kind === 'transcript-user')
     const abnormal = (info?.outcome !== undefined && ABNORMAL_OUTCOMES.has(info.outcome))
       || rest.some(entry => entry.kind === 'transcript-error' || entry.kind === 'transcript-interrupted')
-    const folded = input.policy.foldCompletedTurns && closed && !interleaved && !abnormal && !expandedTurn
-    const grouped = !expandedTurn && (input.policy.stepGrouping === 'collapsed' || (input.policy.stepGrouping === 'history' && closed))
+    const policy = input.policy
+    const folded = policy.foldCompletedTurns && closed && !interleaved && !abnormal && !expandedTurn
+    const view = expandedTurn ? 'cards' : closed ? policy.settledProcess : policy.liveProcess
+    const content = (entry: Entry): boolean => policy.fileChanges === 'content' && isFileChange(entry)
     const facts = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
     const subagents = facts.filter(fact => fact.activity === 'subagents').length
     for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
-    const headerSeq = (rest.find(isSemantic) as TranscriptEntryModel).seq
-    items.push({
-      kind: 'turn-header',
-      id: `turn-header:${String(turn)}`,
-      turn,
-      seq: headerSeq,
-      running: !closed,
-      ...(info === undefined ? {} : {
-        startedAt: info.startedAt,
-        ...(info.endedAt === undefined ? {} : { endedAt: info.endedAt }),
-        ...(info.outcome === undefined ? {} : { outcome: info.outcome }),
-      }),
-      toolCalls: facts.length - subagents,
-      subagents,
-      folded,
-      hint: folded && inScope,
-    })
-    lastSeq = headerSeq
+    // The activity row owns a running turn's lifecycle; only a tree without
+    // one keeps the live header.
+    if (closed || input.runningHeader === true) {
+      const headerSeq = (rest.find(isSemantic) as TranscriptEntryModel).seq
+      items.push({
+        kind: 'turn-header',
+        id: `turn-header:${String(turn)}`,
+        turn,
+        seq: headerSeq,
+        running: !closed,
+        ...(info === undefined ? {} : {
+          startedAt: info.startedAt,
+          ...(info.endedAt === undefined ? {} : { endedAt: info.endedAt }),
+          ...(info.outcome === undefined ? {} : { outcome: info.outcome }),
+        }),
+        toolCalls: facts.length - subagents,
+        subagents,
+        folded,
+        hint: folded && inScope,
+      })
+      lastSeq = headerSeq
+    }
     if (folded) {
       const answer = rest.findLast(entry => entry.kind === 'transcript-assistant')
       for (const entry of rest) {
-        if (entry === answer || !isSemantic(entry)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+        if (entry === answer || !isSemantic(entry) || content(entry)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
       }
       lastSeq = (rest.findLast(isSemantic) as TranscriptEntryModel).seq
       continue
     }
     let pending: Entry[] = []
-    const flush = (groupClosed: boolean): void => {
+    const flush = (): void => {
       if (pending.length === 0) return
       const members = pending
       pending = []
-      if (!grouped) {
+      if (view === 'cards') {
         for (const entry of members) items.push(plainEntry(entry, closed, expandedTurn, inScope))
         return
       }
+      // Past tense only: a title summarizes settled members, so a
+      // reasoning-only group or one whose work still runs shows nothing.
+      const settled = members.flatMap(entry => memberFacts(entry, closed)).filter(fact => !fact.running)
       const head = members[0] as TranscriptEntryModel
-      const reasoning = members.findLast(entry => entry.kind === 'transcript-thinking') as Extract<TranscriptEntryModel, { readonly kind: 'transcript-thinking' }> | undefined
-      items.push({
-        kind: 'process-title',
-        id: `process:${head.id}`,
-        turn,
-        seq: head.seq,
-        closed: groupClosed,
-        summary: summarizeProcess(members.flatMap(entry => memberFacts(entry, groupClosed)), groupClosed ? '' : reasoning?.text ?? ''),
-        liveDetail: input.policy.liveProcessDetail,
-      })
+      if (view === 'titles' && settled.length > 0) {
+        items.push({ kind: 'process-title', id: `process:${head.id}`, turn, seq: head.seq, summary: summarizeProcess(settled) })
+      }
+      // Hidden members still advance the anchor order.
       lastSeq = (members.findLast(isSemantic) as TranscriptEntryModel).seq
     }
     for (const entry of rest) {
-      if (isMember(entry)) {
+      if (isMember(entry) && !content(entry)) {
         pending.push(entry)
         continue
       }
-      flush(true)
+      flush()
       items.push(plainEntry(entry, closed, expandedTurn, inScope))
     }
-    flush(closed)
+    flush()
   }
   return items
 }

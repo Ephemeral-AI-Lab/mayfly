@@ -6,21 +6,22 @@ The transcript layer folds the session event stream into items and renders them.
 
 - **User messages** — `❯` gutter bubbles (`roleUser` color); images render inline where the terminal supports it (12-line cap), otherwise as `[image]` placeholders.
 - **Assistant messages** — ordinary-sized output is rendered as Markdown while streaming; oversized output uses a bounded safe tail both live and after close, while the complete raw text remains in the session record. Messages stay separated by blank lines, with the first line bulleted `●` and continuation indented two columns.
-- **Thinking blocks** — reasoning streams as its own block above the body. Live it shows a static `✻ Thinking · 6s` header over the reasoning's last two lines (the activity row owns the animated spinner, the token count, and the rate); once the phase ends it settles into one row, `✻ Thought for 6s`, previewing the first line (Standard, Detailed, and Verbose). Ctrl-O opens the full body.
+- **Thinking blocks** — reasoning streams as its own block above the body. Live it shows only the `✻` marker over the reasoning's last two lines, with no caption or clock: the activity row says `Thinking` and owns the elapsed time, token count, and rate. Once the phase ends it settles into one row, `✻ Thought for 6s`, previewing the first line (Detailed and Verbose, where reasoning shows). Ctrl-O opens the full body.
 
 ## Work details
 
-`mayfly.transcriptView` follows the Harness Chat work-details modes. Each mode enables a fixed set of capabilities:
+The transcript speaks in the past tense and the bottom activity row in the present: everything live — the spinner, the turn's elapsed time, the current step, and throughput — appears only in the [activity row](/en/features/panes), so no transcript row ticks or says what is running. `mayfly.transcriptView` keeps the Harness Chat mode names; each step up shows more of the work:
 
-| Mode | Completed turn | Process groups | Running title detail | Settled reasoning preview |
+| Mode | Running turn | Completed turn | Stopped / failed turn | Activity-row detail |
 | --- | --- | --- | --- | --- |
-| Compact | folds behind its header | collapsed | — | — |
-| Standard (default) | folds behind its header | collapsed | command, path, query, or reasoning | ✓ |
-| Detailed | folds behind its header | collapsed once the turn ends; the running turn stays open | ✓ | ✓ |
-| Verbose | stays open | none (every card shows) | — | ✓ |
+| Compact | messages only | header + final answer | past-tense titles | — |
+| Standard (default) | messages, file-change cards, past-tense titles | header + file-change cards + final answer | titles + file-change cards | command, path, query, or reasoning |
+| Detailed | every card, live | header + file-change cards + final answer | titles + file-change cards | — |
+| Verbose | every card, live | stays open | every card | — |
 
-- **Turn header** — every turn with process work carries one header row: `Deep diving for 12s` while it runs, then `Took 38s`, `Stopped`, or `Failed`, followed by its tool-call and subagent counts once the turn ends (a subagent spawn counts as a subagent, not as a tool call). Live progress stays in the bottom panes, so a running header shows no counts. A completed turn folds everything except its final answer behind this row; a stopped, failed, or steered turn never folds.
-- **Process groups** — reasoning and tool calls between two replies form one group. Collapsed, a group is a single title: `Read files and searched code` once closed, or the live `Running commands · pnpm test` while its turn runs (Compact drops the detail; a running delegation reads just `Coordinating subagents`, because the agents pane shows each task). Failures add `· N failed`.
+- **Turn header** — a turn with process work gets its header row when it ends: `Took 38s`, `Stopped`, or `Failed`, followed by its tool-call and subagent counts (a subagent spawn counts as a subagent, not as a tool call). A running turn has no header; the activity row carries its elapsed time. A completed turn folds its process and interim replies behind this row; a stopped, failed, or steered turn never folds.
+- **Process groups** — reasoning and tool calls between two replies form one group. As a title, a group summarizes only work that has finished: `Read files and searched code`, `Ran commands · 1 failed`. A group whose work is still running, or that holds only reasoning, shows no title until something settles.
+- **File changes** — from Standard up, any call whose presenter declares the diff card (`Write <path>`, `Edit <path>`, `apply_patch`) renders as its diff card, splits the groups around it, and stays visible when the turn folds, so the code changes read next to the final answer. Compact counts them with the rest of the work.
 - **Ctrl-O** — opens the fold, the groups, and the card bodies of the most recent **3 turns** (`expandTurns`). Hints name the key only where it reaches; older turns say how much is hidden without promising the key.
 
 ## Tool cards

@@ -1,14 +1,13 @@
 /**
  * The transcript's thinking block: one step's reasoning mounted as its own
- * component above the assistant answer. Live it shows a static
- * `✻ Thinking · 6s` header over the reasoning's last
- * {@link THINKING_PREVIEW_LINES} wrapped lines; the activity row owns the
- * animated spinner and the output count and rate, so the block only refreshes
- * once a second. Reasoning completion or a switch to text/tools clears `streaming`
- * and the block settles in place into one `✻ Thought for 6s` row, previewing
- * the first line when the work-details policy allows it. The shared Ctrl-O
- * toggle opens the full italic body. A finalized item whose authoritative
- * reasoning is blank renders zero rows.
+ * component above the assistant answer. Live it is content, not status: the
+ * `✻` marker over the reasoning's last {@link THINKING_PREVIEW_LINES} wrapped
+ * lines, with no caption or clock — the activity row owns the phase label,
+ * elapsed time, and throughput. Reasoning completion or a switch to
+ * text/tools clears `streaming` and the block settles in place into one
+ * `✻ Thought for 6s` row, previewing the first line when the work-details
+ * policy allows it. The shared Ctrl-O toggle opens the full italic body.
+ * Blank reasoning, live or finalized, renders zero rows.
  *
  * @module @ephemeral-ai/mayfly/transcript/thinking
  */
@@ -19,11 +18,8 @@ import { STREAMING_RENDER_MAX_CHARS } from './components.ts'
 import type { TranscriptThinkingItem } from './types.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 
-/** Rendered body lines kept visible under the live header. */
+/** Wrapped reasoning lines a live block keeps visible. */
 export const THINKING_PREVIEW_LINES = 2
-
-/** Refresh cadence of the live elapsed label. */
-export const THINKING_REFRESH_MS = 1000
 
 /** The block's marker: distinct from the answer and tool bullets. */
 export const THINKING_MARKER = '✻ '
@@ -38,49 +34,20 @@ function streamingTextWindow(text: string): string {
   return `... (${String(text.length - visible.length)} earlier characters)\n${visible}`
 }
 
-/** The timer primitives behind the live refresh; replaceable in tests. */
-export interface ThinkingTimers {
-  /** Start a repeating callback; mirrors the global `setInterval`. */
-  setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
-  /** Stop a repeating callback; mirrors the global `clearInterval`. */
-  clearInterval: (handle: ReturnType<typeof setInterval>) => void
-}
-
-/** The process timer primitives. */
-const defaultThinkingTimers: ThinkingTimers = {
-  setInterval: (callback, ms) => setInterval(callback, ms),
-  clearInterval: handle => clearInterval(handle),
-}
-
-let thinkingTimers: ThinkingTimers = defaultThinkingTimers
-
-/**
- * Replace the refresh timers (tests inject fakes here).
- * @param timers - the replacement, or `undefined` to restore the defaults.
- */
-export function setThinkingTimers(timers: ThinkingTimers | undefined): void {
-  thinkingTimers = timers ?? defaultThinkingTimers
-}
-
 /**
  * Renders one step's reasoning. The component reads the item on every
  * render, so the fold's mutations (delta appends, the authoritative
- * finalize rewrite) flow through with nothing but a cache-key change; the
- * refresh interval is the only mutable machinery, and it retires itself on
- * the first tick that observes the finalized item (a snapshot replay
- * constructs thousands of once-live blocks synchronously — none of them
- * ever fires).
+ * finalize rewrite) flow through with nothing but a cache-key change; it
+ * owns no timers.
  */
 export class ThinkingComponent implements MayflyComponent {
   private readonly item: TranscriptThinkingItem
   private readonly colors: MayflySemanticColors
   private readonly components: MayflyComponents
-  private readonly requestRender: (() => void) | undefined
   private readonly preview: () => boolean
   private readonly t: MayflyTranslate
   private expanded = false
   private keyed = true
-  private timer: ReturnType<typeof setInterval> | undefined
   private cache: { key: string, lines: string[] } | undefined
   private wrapped: { text: string, width: number, lines: string[] } | undefined
 
@@ -89,8 +56,6 @@ export class ThinkingComponent implements MayflyComponent {
    *   streams and finalizes.
    * @param colors - the semantic color table (muted body, textMuted hint).
    * @param components - the component factory providing the width helpers.
-   * @param requestRender - the redraw nudge for the live refresh; absent in
-   *   unit tests, where the label advances only through explicit renders.
    * @param preview - whether a settled block previews its first line.
    * @param t - transcript translator.
    */
@@ -98,17 +63,14 @@ export class ThinkingComponent implements MayflyComponent {
     item: TranscriptThinkingItem,
     colors: MayflySemanticColors,
     components: MayflyComponents,
-    requestRender?: (() => void) | undefined,
     preview: () => boolean = () => true,
     t: MayflyTranslate = interpolateLocaleMessage,
   ) {
     this.item = item
     this.colors = colors
     this.components = components
-    this.requestRender = requestRender
     this.preview = preview
     this.t = t
-    if (item.streaming) this.startTimer()
   }
 
   /** Drop the cached lines; the next render rebuilds from the item. */
@@ -134,25 +96,17 @@ export class ThinkingComponent implements MayflyComponent {
     this.keyed = scope.hint
   }
 
-  /** Stop the refresh; the mounter calls this when the component retires. */
-  dispose(): void {
-    this.stopTimer()
-  }
-
   /**
    * @param width - current viewport width in columns.
-   * @returns the rendered rows: none for a blank finalized block.
+   * @returns the rendered rows: none for blank reasoning.
    */
   render(width: number): string[] {
     const { streaming } = this.item
-    if (streaming && this.timer === undefined) this.startTimer()
-    if (!streaming) this.stopTimer()
-    const elapsed = streaming && this.item.startedAt !== undefined ? compactElapsedMs(Date.now() - this.item.startedAt) : ''
     const preview = this.preview()
     const text = this.item.text.length > STREAMING_RENDER_MAX_CHARS
       ? streamingTextWindow(this.item.text)
       : sanitizePluginText(this.item.text)
-    const key = `${width}:${streaming}:${this.expanded}:${this.keyed}:${preview}:${elapsed}:${this.item.durationMs ?? ''}:${text}`
+    const key = `${width}:${streaming}:${this.expanded}:${this.keyed}:${preview}:${this.item.durationMs ?? ''}:${text}`
     if (this.cache?.key === key) return this.cache.lines
 
     const contentWidth = Math.max(1, width - THINKING_INDENT.length)
@@ -162,16 +116,14 @@ export class ThinkingComponent implements MayflyComponent {
     this.wrapped = { text, width: contentWidth, lines: contentLines }
     const marker = this.colors.muted(THINKING_MARKER)
     let lines: string[]
-    if (streaming) {
-      const timed = `${this.t('Thinking')} · ${elapsed}`
-      const label = elapsed !== '' && this.components.visibleWidth(`${THINKING_MARKER}${timed}`) <= width ? timed : this.t('Thinking')
-      const tail = contentLines.length > THINKING_PREVIEW_LINES
-        ? contentLines.slice(contentLines.length - THINKING_PREVIEW_LINES)
-        : contentLines
-      lines = ['', `${marker}${this.colors.muted(label)}`, ...tail.map(line => THINKING_INDENT + this.styled(line))]
-    } else if (text.trim() === '') {
-      // A finalized rewrite with no visible reasoning renders nothing.
+    if (text.trim() === '') {
+      // Blank reasoning, live or finalized, renders nothing.
       lines = []
+    } else if (streaming) {
+      // The live tail: the last non-blank wrapped lines, the first on the marker.
+      const last = contentLines.findLastIndex(line => line.trim() !== '')
+      const tail = contentLines.slice(Math.max(0, last + 1 - THINKING_PREVIEW_LINES), last + 1)
+      lines = ['', ...tail.map((line, index) => (index === 0 ? marker : THINKING_INDENT) + this.styled(line))]
     } else {
       const title = this.item.durationMs === undefined
         ? this.t('Thought for a while')
@@ -198,24 +150,5 @@ export class ThinkingComponent implements MayflyComponent {
   /** One muted italic body line. */
   private styled(line: string): string {
     return this.components.italic(this.colors.muted(line))
-  }
-
-  private startTimer(): void {
-    this.timer = thinkingTimers.setInterval(() => {
-      // The fold finalizes by mutation; the first tick that sees it stands
-      // down instead of refreshing a settled block.
-      if (!this.item.streaming) {
-        this.stopTimer()
-        return
-      }
-      this.cache = undefined
-      this.requestRender?.()
-    }, THINKING_REFRESH_MS)
-  }
-
-  private stopTimer(): void {
-    if (this.timer === undefined) return
-    thinkingTimers.clearInterval(this.timer)
-    this.timer = undefined
   }
 }

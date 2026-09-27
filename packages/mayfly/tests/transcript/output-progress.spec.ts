@@ -15,8 +15,6 @@ import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-
 import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { outputRate } from '../../src/transcript/output-rate.ts'
 import * as activity from '../../src/transcript/pane-activity.ts'
-import { ThinkingComponent } from '../../src/transcript/thinking.ts'
-import type { TranscriptThinkingItem } from '../../src/transcript/types.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
 import { assistantEvent, event, fakeMayflyComponents, resetSeq, turnEnd, turnStart } from './helpers.ts'
@@ -59,7 +57,7 @@ describe('phase-local output', () => {
     expect(outputProgressSchema.safeParse({ ...next, chars: -1 }).success).toBe(false)
   })
 
-  it('keeps the activity row the sole spinner from thinking to working, then settles and ignores late chunks', async () => {
+  it('keeps the activity row the sole live status from thinking to writing, then settles and ignores late chunks', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
     vi.setSystemTime(1_000)
     const agent = fakeAgent([])
@@ -82,40 +80,42 @@ describe('phase-local output', () => {
     const records: AssistantStreamRecord[] = []
     const replay = (next: SessionEvent<'assistant/attempt'>): void => {
       records.push(...next.data.stream)
-      const events = [turnStart(1), attempt([...records], next.time, 1, 1)]
+      const events = [event('turn/start', { turn: 1 }, 1_000), attempt([...records], next.time, 1, 1)]
       state = events.reduce(foldConversationProjection, initialConversationState())
       agent.session.events.splice(0, agent.session.events.length, ...events)
       harness.ctx.emit('test/session-changed', agent as never)
     }
     try {
       replay(reasoning('seed', 1_000))
-      // The activity row owns throughput; the thinking block never repeats it.
-      expect(transcript.render(80).join('\n')).toContain('✻ Thinking')
-      expect(transcript.render(80).join('\n')).not.toMatch(/↓|tok\/s/)
+      // The activity row owns the phase, time, and throughput; the live
+      // reasoning block is content only, with no caption or counters.
+      expect(transcript.render(80).join('\n')).toMatch(/✻ .*seed/u)
+      expect(transcript.render(80).join('\n')).not.toMatch(/Thinking|↓|tok\/s/u)
       // Thinking keeps the activity row: the dock never collapses mid-turn.
-      expect(harness.screen.paneLines()[0]).toContain('thinking... ↓1')
+      expect(harness.screen.paneLines()[0]).toContain('Thinking · 0s · ↓1 · seed')
       vi.setSystemTime(2_000)
       replay(reasoning('x'.repeat(168), 2_000))
-      expect(transcript.render(80).join('\n')).toContain('✻ Thinking')
-      expect(transcript.render(80).join('\n')).not.toMatch(/↓|tok\/s/)
-      expect(harness.screen.paneLines()[0]).toContain('thinking... ↓43 · ≈42 tok/s')
+      expect(transcript.render(80).join('\n')).toContain('✻ ')
+      expect(transcript.render(80).join('\n')).not.toMatch(/Thinking|↓|tok\/s/u)
+      expect(harness.screen.paneLines()[0]).toContain('Thinking · 1s · ↓43 · ≈42 tok/s')
       replay(answer('', 2_010))
       replay(reasoning('\n', 2_020))
-      expect(transcript.render(80).join('\n')).toContain('✻ Thinking')
+      expect(transcript.render(80).join('\n')).toContain('✻ ')
       vi.setSystemTime(3_000)
       replay(answer('seed', 3_000))
-      expect(transcript.render(80).join('\n')).not.toContain('✻ Thinking')
-      expect(harness.screen.paneLines()[0]).toContain('working... ↓1')
+      // The reasoning settles in place into its one-row summary.
+      expect(transcript.render(80).join('\n')).toContain('✻ Thought for')
+      expect(harness.screen.paneLines()[0]).toContain('Writing · 2s · ↓1')
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
       vi.setSystemTime(4_000)
       replay(answer('y'.repeat(80), 4_000))
-      expect(harness.screen.paneLines()[0]).toContain('working... ↓21 · ≈20 tok/s')
+      expect(harness.screen.paneLines()[0]).toContain('Writing · 3s · ↓21 · ≈20 tok/s')
       for (const width of SCAN_WIDTHS) expectLinesFit('Activity/TPS', harness.screen.paneLines(width), width)
       expect(harness.screen.paneLines(40)[0]).toContain('≈20 tok/s')
       expect(harness.screen.paneLines(40)[0]).not.toContain('Tip:')
       expect(harness.screen.paneLines(20)[0]).toContain('↓21')
       expect(harness.screen.paneLines(20)[0]).not.toContain('tok/s')
-      expect(harness.screen.paneLines(12)[0]).toBe('⠋ working...')
+      expect(harness.screen.paneLines(12)[0]).toBe('⠋ Writing')
 
       vi.advanceTimersByTime(2_100)
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
@@ -123,9 +123,9 @@ describe('phase-local output', () => {
       const final = { ...assistantEvent(1, 1, [{ type: 'reasoning', text: 'corrected thought' }, { type: 'text', text: 'final answer' }]), surfaceOp: 'append' as const }
       send(final)
       expect(transcript.render(80).join('\n')).toContain('corrected thought')
-      expect(harness.screen.paneLines().join('\n')).not.toContain('working...')
+      expect(harness.screen.paneLines().join('\n')).not.toContain('Writing')
       send(reasoning('late', 7_000))
-      expect(transcript.render(80).join('\n')).not.toContain('✻ Thinking')
+      expect(transcript.render(80).join('\n')).not.toContain('late')
       expect(harness.screen.paneLines().join('\n')).not.toContain('tok/s')
       send(turnEnd(1))
       send(answer('late', 8_000))
@@ -135,32 +135,6 @@ describe('phase-local output', () => {
       await harness.dispose()
     }
     expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it('stops and restarts a reused thinking component, dropping the elapsed time under width pressure', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(2_000)
-    const item: TranscriptThinkingItem = {
-      kind: 'thinking', seq: 1, turn: 1, step: 1, text: 'x'.repeat(4_800), streaming: true, startedAt: 0,
-      outputProgress: { chars: 4_800, initialChars: 4_632, startedAt: 1_000, updatedAt: 2_000 },
-    }
-    const component = new ThinkingComponent(item, COLORS, fakeMayflyComponents())
-    try {
-      // Output progress stays on the item, but only the activity row shows it.
-      expect(component.render(80)[1]).toBe('✻ Thinking · 2s')
-      expect(component.render(12)[1]).toBe('✻ Thinking')
-      for (const width of SCAN_WIDTHS) expectLinesFit('Thinking/TPS', component.render(width), width)
-      vi.advanceTimersByTime(2_001)
-      expect(component.render(80)[1]).toBe('✻ Thinking · 4s')
-      item.streaming = false
-      component.render(80)
-      expect(vi.getTimerCount()).toBe(0)
-      item.streaming = true
-      component.render(80)
-      expect(vi.getTimerCount()).toBe(1)
-    } finally {
-      component.dispose()
-    }
   })
 
   it('replays metrics deterministically, resets per phase/step/turn, and rejects aborted or older output', () => {

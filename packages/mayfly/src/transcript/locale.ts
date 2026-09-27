@@ -14,7 +14,7 @@ import {
   type MayflyTranslate,
 } from '../frontend/index.ts'
 import { HINTS_ZH } from './hints.ts'
-import { PROCESS_TITLE_ZH, SHARED_DONE_PREFIX_KEY } from './process-activity.ts'
+import { PROCESS_ACTIVE_ZH, PROCESS_DONE_ZH, SHARED_DONE_PREFIX_KEY } from './process-activity.ts'
 
 const identityCatalog = (zh: Readonly<Record<string, string>>): MayflyLocaleCatalog => Object.freeze({
   en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
@@ -35,7 +35,8 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   '[image]': '[图片]',
   '■ interrupted': '■ 已中断',
   ...HINTS_ZH,
-  ...PROCESS_TITLE_ZH,
+  ...PROCESS_ACTIVE_ZH,
+  ...PROCESS_DONE_ZH,
   'Deep diving...': '深度求索中',
   'Deep diving for {duration}': '深度求索中，用时{duration}',
   'Took {duration}': '用时 {duration}',
@@ -48,7 +49,6 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   '{count} subagents': '{count} 个 subagent',
   '{count} failed': '{count} 个失败',
   'ctrl+o to expand': '按 Ctrl-O 展开',
-  'Thinking': '思考中',
   'Thought for a while': '已思考',
   'Thought for {duration}': '已思考 {duration}',
   'Preparing {name} · {count} chars': '准备 {name} · {count} 字符',
@@ -75,12 +75,14 @@ export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = Object.freeze({
   zh: Object.freeze({ ...TRANSCRIPT_MESSAGES.zh, [SHARED_DONE_PREFIX_KEY]: '已' }),
 })
 
-/** Activity-pane copy. */
+/** Activity-pane copy: phase labels plus the running and preparing process labels. */
 export const ACTIVITY_LOCALE = identityCatalog({
   ' · Tip: ': ' · 提示：',
-  ' working...': ' 工作中...',
-  ' thinking...': ' 思考中...',
+  'Deep diving': '深度求索中',
+  'Thinking': '思考中',
+  'Writing': '输出中',
   ' interrupting...': ' 正在中断...',
+  ...PROCESS_ACTIVE_ZH,
 })
 
 /**

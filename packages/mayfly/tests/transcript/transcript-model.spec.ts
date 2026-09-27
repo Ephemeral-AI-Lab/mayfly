@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponent, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
@@ -7,7 +7,6 @@ import { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, T
 import { visibleWidth } from '../../src/core/width.ts'
 import { ToolCallComponent } from '../../src/transcript/components.ts'
 import { DEFAULT_TRANSCRIPT_PRESENTATION, TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
-import { setThinkingTimers } from '../../src/transcript/thinking.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
@@ -78,10 +77,6 @@ const collapsedPolicy = (): TranscriptPresentationPolicy => {
   policy.apply({ transcriptView: 'verbose' })
   return policy
 }
-
-afterEach(() => {
-  setThinkingTimers(undefined)
-})
 
 describe('TranscriptController', () => {
   it('recompiles canonical viewport conditions after invalidation and generation changes', () => {
@@ -281,13 +276,18 @@ describe('TranscriptController', () => {
     expect(opened).toContain('preview 2')
     expect(opened).not.toContain('preview 1')
     expect(opened).toContain('▸ Took 5s · 1 tool call\n')
-    // A running turn groups its process under a live title.
+    // A running turn states no live status: the activity row owns it. Compact
+    // hides the running process entirely.
     current = createTranscriptModel('flow', [...turn(1, 1), ...turn(2, 10).slice(0, 3)], true, 0, [turns[0]!, { turn: 2, startedAt: 6_000 }])
     component.setExpanded(false)
     const running = component.render(80).join('\n')
-    expect(running).toContain('▾ Deep diving for')
-    // Nothing runs right now, so the open group reads as analysis.
-    expect(running).toContain('▸ Analyzing the request')
+    expect(running).toContain('ask 2')
+    expect(running).not.toMatch(/Deep diving|Analyzing the request|Analysis completed|Read files/u)
+    // Standard titles only the running turn's settled work, in the past tense.
+    policy.apply({ transcriptView: 'standard' })
+    const standard = component.render(80).join('\n')
+    expect(standard).toContain('▸ Read files')
+    expect(standard).not.toMatch(/Deep diving|Analyzing the request|Analysis completed/u)
     component.dispose()
   })
 
@@ -489,32 +489,22 @@ describe('TranscriptController', () => {
     component.dispose()
   })
 
-  it('invalidates streaming aggregate rows when a thinking refresh ticks', () => {
-    vi.useFakeTimers({ now: 100_000, toFake: ['Date'] })
-    let tick: (() => void) | undefined
-    setThinkingTimers({
-      setInterval: (callback) => {
-        tick = callback
-        return 1 as unknown as ReturnType<typeof setInterval>
-      },
-      clearInterval: () => {},
-    })
+  it('renders live reasoning as a captionless tail that changes only with its text', () => {
     const requestRender = vi.fn()
-    const current = createTranscriptModel('thinking-stream', [{
-      kind: 'transcript-thinking', id: 'thinking-stream', seq: 1, turn: 1, step: 0, text: 'live', streaming: true, startedAt: 99_000,
+    const live = (text: string): TranscriptModel => createTranscriptModel('thinking-stream', [{
+      kind: 'transcript-thinking', id: 'thinking-stream', seq: 1, turn: 1, step: 0, text, streaming: true,
     }], true)
+    let current = live('live')
     const component = new TranscriptModelComponent(() => current, renderer(requestRender, collapsedPolicy()))
     const first = component.render(80)
-
-    expect(first.join('\n')).toContain('Thinking · 1s')
-    vi.setSystemTime(102_000)
-    tick?.()
-    const next = component.render(80)
-    expect(requestRender).toHaveBeenCalledOnce()
-    expect(next).not.toBe(first)
-    expect(next.join('\n')).toContain('Thinking · 3s')
+    expect(first.join('\n')).toMatch(/✻ .*live/u)
+    expect(first.join('\n')).not.toContain('Thinking')
+    expect(component.render(80)).toBe(first)
+    current = live('live and more')
+    expect(component.render(80).join('\n')).toContain('live and more')
+    // No clock drives the block: it never asks for a frame on its own.
+    expect(requestRender).not.toHaveBeenCalled()
     component.dispose()
-    vi.useRealTimers()
   })
 
   it('contains an image completion after its cached entry was pruned', async () => {
