@@ -44,7 +44,9 @@ function localIntegrity(filename) {
 }
 
 async function waitFor(pkg, expectedIntegrity) {
-  for (let attempt = 1; attempt <= 20; attempt += 1) {
+  // The ~130 MB CLI tarball regularly needs more than five minutes to become
+  // visible after npm accepts it; the window has to outlive that processing.
+  for (let attempt = 1; attempt <= 40; attempt += 1) {
     const integrity = npmView(`${pkg.name}@${pkg.version}`, 'dist.integrity')
     if (integrity === expectedIntegrity) {
       const attestations = npmView(`${pkg.name}@${pkg.version}`, 'dist.attestations')
@@ -53,10 +55,10 @@ async function waitFor(pkg, expectedIntegrity) {
       return
     }
     if (integrity !== undefined && integrity !== expectedIntegrity) throw new Error(`${pkg.name}@${pkg.version}: registry integrity differs from local tarball`)
-    console.log(`${pkg.name}@${pkg.version}: not visible yet (${attempt}/20)`)
+    console.log(`${pkg.name}@${pkg.version}: not visible yet (${attempt}/40)`)
     await new Promise(resolve => setTimeout(resolve, 15_000))
   }
-  throw new Error(`${pkg.name}@${pkg.version}: not visible after five minutes`)
+  throw new Error(`${pkg.name}@${pkg.version}: not visible after ten minutes`)
 }
 
 async function waitForTag(pkg, tag, expectedVersion) {
