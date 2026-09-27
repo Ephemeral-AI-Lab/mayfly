@@ -1,9 +1,12 @@
-// Interactive PTY smoke for the preset-scoped Schedule surface (manual — not in
+// Interactive PTY smoke for the Host-scoped Schedule surface (manual — not in
 // CI): boots the real dsh CLI with Mayfly under a pseudo-terminal at 40 columns
-// twice — once on the shipped default preset and once with the profile patch
-// flipping the registry default to `minimal` — asserting that the reminder
-// catalog renders, that schedule_* tools exist only under the preset that
-// mounts `dsh-schedule`, and that the unavailable state degrades cleanly.
+// three times — once on the shipped default preset, once with the profile
+// patch flipping the registry default to `minimal`, and once with the profile
+// patch re-enabling the base layer's disabled `schedule` row — asserting that
+// the reminder catalog degrades cleanly while the service stays disabled,
+// that schedule_* tools stay absent from every preset, and that an explicit
+// `disabled: false` overlay mounts the Host service with its catalog and
+// Agent-scoped tools.
 // Run: node script/smoke-schedule.mjs (self-contained: installs its own throwaway profile)
 
 import { createRequire } from 'node:module'
@@ -98,70 +101,87 @@ async function boot(label) {
   return { term, clean, waitFor, exit }
 }
 
-try {
-  // Minimal first: flip the registry default through the profile patch layer
-  // so the fresh session composes minimal. Minimal's standing mount carries
-  // no schedule row — the agent/created listener in standard's mount never
-  // sees this agent, so no schedule_* tools exist for it and the catalog
-  // reports the capability as unavailable.
-  writeFileSync(join(dshHome, 'profiles', profile, 'cordis.patch.yml'), [
-    '- id: agent-preset-registry',
-    '  config:',
-    '    default: minimal',
-    '',
-  ].join('\n'))
-  const minimal = await boot('minimal')
-  if (!(await minimal.waitFor(() => minimal.clean().includes('deepseek-flash'), 'the minimal boot frame'))) throw new Error('minimal boot')
-  minimal.term.write('/tools\r')
-  if (!(await minimal.waitFor(() => minimal.clean().includes('Refresh'), 'the minimal tools catalog'))) throw new Error('minimal tools open')
-  minimal.term.write('sched')
-  await sleep(600)
-  if (minimal.clean().includes('schedule_create')) throw new Error('schedule_create leaked into minimal')
-  minimal.term.write('\x15')
-  await sleep(200)
-  minimal.term.write('\x1b')
-  await sleep(300)
-  minimal.term.write('\x1b')
-  await sleep(300)
-  minimal.term.write('/schedule\r')
-  if (!(await minimal.waitFor(() => minimal.clean().includes('Schedule unavailable'), 'the unavailable reminder catalog'))) throw new Error('unavailable state')
-  const minimalResult = await minimal.exit()
-  if (minimalResult.output.includes('exceeds terminal width') || minimalResult.output.includes('pi-crash.log')) throw new Error('minimal width guard')
+const writeProfilePatch = lines =>
+  writeFileSync(join(dshHome, 'profiles', profile, 'cordis.patch.yml'), [...lines, ''].join('\n'))
 
-  // Standard preset: the schedule capability mounts inside the preset's
-  // standing scope, so its tools exist and the catalog reads empty.
-  writeFileSync(join(dshHome, 'profiles', profile, 'cordis.patch.yml'), [
+// A boot whose Schedule row is disabled: no schedule_* tools on any preset,
+// and `/schedule` reports the unavailable state instead of hanging on a
+// missing service.
+async function checkDisabled(label) {
+  const session = await boot(label)
+  if (!(await session.waitFor(() => session.clean().includes('deepseek-flash'), `${label} boot frame`))) throw new Error(`${label} boot`)
+  session.term.write('/tools\r')
+  if (!(await session.waitFor(() => session.clean().includes('Refresh'), `${label} tools catalog`))) throw new Error(`${label} tools open`)
+  session.term.write('sched')
+  await sleep(600)
+  if (session.clean().includes('schedule_create')) throw new Error(`schedule_create leaked into ${label}`)
+  session.term.write('\x15')
+  await sleep(200)
+  session.term.write('\x1b')
+  await sleep(300)
+  session.term.write('\x1b')
+  await sleep(300)
+  session.term.write('/schedule\r')
+  if (!(await session.waitFor(() => session.clean().includes('Schedule unavailable'), `${label} unavailable reminder catalog`))) throw new Error(`${label} unavailable state`)
+  const result = await session.exit()
+  if (result.output.includes('exceeds terminal width') || result.output.includes('pi-crash.log')) throw new Error(`${label} width guard`)
+}
+
+try {
+  // Standard preset first: the Host Schedule row ships disabled, so the
+  // catalog stays unavailable and no Agent gains schedule_* tools.
+  writeProfilePatch([
     '- id: agent-preset-registry',
     '  config:',
     '    default: standard',
-    '',
-  ].join('\n'))
-  const standard = await boot('standard')
-  if (!(await standard.waitFor(() => standard.clean().includes('deepseek-flash'), 'the statusline boot frame'))) throw new Error('boot')
-  standard.term.write('/tools\r')
-  if (!(await standard.waitFor(() => standard.clean().includes('Refresh'), 'the standard tools catalog'))) throw new Error('standard tools open')
+  ])
+  await checkDisabled('standard')
+
+  // Minimal preset: same unavailable behavior — the capability no longer
+  // depends on which preset mounted a schedule row.
+  writeProfilePatch([
+    '- id: agent-preset-registry',
+    '  config:',
+    '    default: minimal',
+  ])
+  await checkDisabled('minimal')
+
+  // Explicitly re-enabled through the profile patch layer: the Host service
+  // mounts once, exposes its catalog, and attaches schedule_* tools to the
+  // root Agent.
+  writeProfilePatch([
+    '- id: agent-preset-registry',
+    '  config:',
+    '    default: standard',
+    '- id: schedule',
+    '  disabled: false',
+  ])
+  const enabled = await boot('enabled')
+  if (!(await enabled.waitFor(() => enabled.clean().includes('deepseek-flash'), 'the enabled boot frame'))) throw new Error('enabled boot')
+  enabled.term.write('/tools\r')
+  if (!(await enabled.waitFor(() => enabled.clean().includes('Refresh'), 'the enabled tools catalog'))) throw new Error('enabled tools open')
   // The catalog is a scrollable list; typing filters it so schedule_* rows
   // render inside the 40-column viewport.
-  standard.term.write('sched')
-  if (!(await standard.waitFor(() => standard.clean().includes('schedule_create'), 'schedule_create on standard'))) throw new Error('standard tools')
+  enabled.term.write('sched')
+  if (!(await enabled.waitFor(() => enabled.clean().includes('schedule_create'), 'schedule_create when enabled'))) throw new Error('enabled tools')
   for (const name of ['schedule_list', 'schedule_delete']) {
-    if (!standard.clean().includes(name)) throw new Error(`standard tools missing ${name}`)
+    if (!enabled.clean().includes(name)) throw new Error(`enabled tools missing ${name}`)
   }
-  standard.term.write('\x15')
+  enabled.term.write('\x15')
   await sleep(200)
-  standard.term.write('\x1b')
+  enabled.term.write('\x1b')
   await sleep(300)
-  standard.term.write('\x1b')
+  enabled.term.write('\x1b')
   await sleep(300)
-  standard.term.write('/schedule\r')
-  if (!(await standard.waitFor(() => standard.clean().includes('No active reminders'), 'the empty reminder catalog'))) throw new Error('empty catalog')
-  if (!standard.clean().includes('Reminders')) throw new Error('catalog title')
-  standard.term.write('\x1b')
+  enabled.term.write('/schedule\r')
+  if (!(await enabled.waitFor(() => enabled.clean().includes('No active reminders'), 'the empty reminder catalog'))) throw new Error('empty catalog')
+  if (!enabled.clean().includes('Reminders')) throw new Error('catalog title')
+  enabled.term.write('\x1b')
   await sleep(300)
-  standard.term.write('/sessions\r')
-  if (!(await standard.waitFor(() => standard.clean().includes('Sessions'), 'the sessions catalog'))) throw new Error('sessions')
-  const standardResult = await standard.exit()
-  if (standardResult.output.includes('exceeds terminal width') || standardResult.output.includes('pi-crash.log')) throw new Error('standard width guard')
+  enabled.term.write('/sessions\r')
+  if (!(await enabled.waitFor(() => enabled.clean().includes('Sessions'), 'the sessions catalog'))) throw new Error('sessions')
+  const enabledResult = await enabled.exit()
+  if (enabledResult.output.includes('exceeds terminal width') || enabledResult.output.includes('pi-crash.log')) throw new Error('enabled width guard')
 } catch (error) {
   console.error(`FAIL: ${error.message}`)
   await server.close()

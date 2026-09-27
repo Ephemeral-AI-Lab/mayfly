@@ -30,7 +30,7 @@ import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 /** The published release version (the website's advertised number). */
 const RELEASE_VERSION = '0.1.1-rc.1'
 /** The harness prerelease line the dsh pins ride. */
-const HARNESS_LINE = '0.1.7-rc.1'
+const HARNESS_LINE = '0.1.7-rc.2'
 
 /** One workspace package manifest. */
 interface Manifest {

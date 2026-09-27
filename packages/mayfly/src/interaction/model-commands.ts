@@ -3,13 +3,13 @@
  * footer thinking-segment control, or a direct id switch), `/effort`
  * (horizontal segment selector or a direct level switch), and the shared
  * commit path they both funnel into — call the app-owned model action for
- * the next step's route and, unless session-only, persist the new
- * default through `agentDefaultModel.saveSelection`. The Alt+M hotkey
- * cycle (`cycleSessionModel`, matched in the editor key chain) funnels
- * into the same commit path on the session-only channel. The S23 seam
- * supplies the handle; this module never injects a display or harness
- * service, it resolves everything through `ctx.get` (the `/theme`
- * fiber-dispose trap).
+ * the next step's route. `sessionController.selectModel` validates the
+ * catalog and saves the default in the background, so every committed
+ * selection is also the persisted default. The Alt+M hotkey cycle
+ * (`cycleSessionModel`, matched in the editor key chain) funnels into the
+ * same commit path. The S23 seam supplies the handle; this module never
+ * injects a display or harness service, it resolves everything through
+ * `ctx.get` (the `/theme` fiber-dispose trap).
  *
  * @module @ephemeral-ai/mayfly/interaction/model-commands
  */
@@ -68,97 +68,65 @@ function sameSelection(a: MayflySessionModelSelection, b: MayflySessionModelSele
   return a.provider === b.provider && a.model === b.model && a.reasoningEffort === b.reasoningEffort
 }
 
-/** How the persisted-default write went. */
-export type ModelSaveState = 'saved' | 'skipped' | 'session-only' | 'unavailable' | 'failed'
-
 /**
  * The model-switch notice family (the kimi five-state wording, folded to
- * Mayfly's notice channel): what changed, then how the default write went.
+ * Mayfly's notice channel): what changed. The persisted-default write rides
+ * the Host's own background save inside `selectModel`, so the notice stays
+ * silent about it.
  * @param previous - the selection before the switch.
  * @param next - the selection after the switch.
- * @param saveState - the persisted-default outcome.
- * @param failureDetail - the save error's message, for the `failed` state.
  * @returns the single-line notice text.
  */
 export function modelSwitchNotice(
   previous: MayflySessionModelSelection,
   next: MayflySessionModelSelection,
-  saveState: ModelSaveState,
-  failureDetail?: string,
 ): string {
   const modelChanged = previous.provider !== next.provider || previous.model !== next.model
   const effortChanged = previous.reasoningEffort !== next.reasoningEffort
-  let base: string
   if (modelChanged) {
-    base = `Switched to ${next.model} (${next.provider})`
+    let base = `Switched to ${next.model} (${next.provider})`
     if (next.reasoningEffort !== undefined) base += ` · thinking ${String(next.reasoningEffort)}`
-  } else if (effortChanged) {
-    base = next.reasoningEffort === undefined
+    return base
+  }
+  if (effortChanged) {
+    return next.reasoningEffort === undefined
       ? 'Thinking set to provider default'
       : `Thinking set to ${String(next.reasoningEffort)}`
-  } else {
-    base = `Already using ${next.model} (${next.provider})`
   }
-  switch (saveState) {
-    case 'session-only':
-      return `${base} · session only`
-    case 'unavailable':
-      return `${base} — default not saved: no default-model service`
-    case 'failed':
-      /* v8 ignore next -- the catch always passes describe(error) */
-      return `${base} — failed to save default: ${failureDetail ?? 'unknown error'}`
-    default:
-      return base
-  }
+  return `Already using ${next.model} (${next.provider})`
 }
 
 /**
- * Commit one selection through the app-owned action and, unless
- * session-only, persist the new default.
- * @param ctx - plugin context (`agentDefaultModel` resolved lazily).
+ * Commit one selection through the app-owned action; the Host validates the
+ * catalog (`session/model-unavailable` rejects) and persists the default in
+ * the background.
+ * @param ctx - plugin context.
  * @param next - the selection to commit.
- * @param persist - `false` for an explicit session-only action.
  * @returns the notice text describing the outcome.
  */
-interface ModelCommitResult { readonly text: string, readonly state: ModelSaveState, readonly selected?: MayflySessionModelSelection }
+interface ModelCommitResult { readonly text: string, readonly ok: boolean }
 
 async function commitModelSelection(
   ctx: Context,
   next: MayflySessionModelSelection,
-  persist: boolean,
   signal?: AbortSignal,
   expected?: unknown,
 ): Promise<ModelCommitResult> {
   const agent = ctx.get('mayflyCurrentAgent')?.current()
   const controller = ctx.get('sessionController')
-  if (agent == null || controller === undefined) return { text: 'no session is live yet', state: 'failed' }
+  if (agent == null || controller === undefined) return { text: 'no session is live yet', ok: false }
   /* A write computed for one Agent never lands on its replacement. */
-  if (expected !== undefined && agent !== expected) return { text: 'agent changed before model selection completed', state: 'failed' }
+  if (expected !== undefined && agent !== expected) return { text: 'agent changed before model selection completed', ok: false }
   const previous = readSelection(ctx)
-  if ('error' in previous) return { text: previous.error, state: 'failed' }
-  const selected = sameSelection(previous.read, next) ? { selected: previous.read } : await controller.selectModel({ sessionId: agent.id, ...next })
-  if (signal?.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { text: 'agent changed before model selection completed', state: 'failed' }
-  const result = (state: ModelSaveState, failure?: string): ModelCommitResult => ({ state, selected: selected.selected, text: modelSwitchNotice(previous.read, selected.selected, state, failure) })
-  if (!persist || signal?.aborted) return result('session-only')
-  const defaults = ctx.get('agentDefaultModel')
-  if (defaults === undefined) return result('unavailable')
-  const persisted = {
-    provider: selected.selected.provider,
-    model: selected.selected.model,
-    ...(selected.selected.reasoningEffort === undefined
-      ? {}
-      : { reasoningEffort: ReasoningEffortId(selected.selected.reasoningEffort) }),
-  }
-  if (sameSelection(defaults.currentSelection(), persisted)) {
-    return result('skipped')
-  }
+  if ('error' in previous) return { text: previous.error, ok: false }
+  let selected: MayflySessionModelSelection
   try {
-    if (ctx.get('mayflyCurrentAgent')?.current() !== agent) return result('failed', 'agent changed before saving model default')
-    await defaults.saveSelection(persisted)
-    return result('saved')
+    selected = sameSelection(previous.read, next) ? previous.read : (await controller.selectModel({ sessionId: agent.id, ...next })).selected
   } catch (error) {
-    return result('failed', describe(error))
+    return { text: describe(error), ok: false }
   }
+  if (signal?.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { text: 'agent changed before model selection completed', ok: false }
+  return { ok: true, text: modelSwitchNotice(previous.read, selected) }
 }
 
 /** The llm surface the display-name helper reads. */
@@ -219,9 +187,7 @@ async function providerModelIds(
 
 /**
  * Cycle the session model within the current provider — the Alt+M hotkey.
- * The next advertised model commits through the session-only channel: the
- * persisted default stays untouched (a deliberate one-press switch must
- * not rewrite configuration — `/model` is the durable path), and the
+ * The next advertised model commits through the shared path, and the
  * reasoning effort is not carried, matching the `/model <id>` direct
  * switch (the cycled model uses its provider default). The press never
  * reaches the Editor, so the typed draft is intact by construction.
@@ -252,15 +218,13 @@ export async function cycleSessionModel(ctx: Context, cache: ModelListCache, rep
     const result = await commitModelSelection(
       ctx,
       { provider: currentSelection.provider, model: next },
-      false,
       undefined,
       agent,
     )
-    report('model-cycle', { message: result.text, severity: result.state === 'failed' ? 'warning' : 'success' })
+    report('model-cycle', { message: result.text, severity: result.ok ? 'success' : 'warning' })
   } catch (error) {
     /* v8 ignore next -- the catch guards only the append-failure loud path
-       (the cycleMode discipline); commitModelSelection itself never throws
-       on the session-only channel */
+       (the cycleMode discipline); commitModelSelection itself never throws */
     ctx.logger.warn(`model cycle commit failed: ${describe(error)}`)
   }
 }
@@ -342,12 +306,10 @@ async function catalogRows(
 
 /**
  * Commit the picker's resolved row: `segmentId` carries the row's live
- * thinking-effort segment (undefined/'default' means provider default),
- * `persist` selects the default write or the session-only channel.
+ * thinking-effort segment (undefined/'default' means provider default).
  * @param scope - the overlay's exact-Agent context.
  * @param item - the catalog row being committed.
  * @param segmentId - the row's effective segment option id.
- * @param persist - whether to also save the selection as the default.
  * @param signal - the UI request's cancellation signal.
  * @returns the action reply: dismiss+notice on success, inline failure otherwise.
  */
@@ -355,7 +317,6 @@ async function commitPickerRow(
   scope: Context,
   item: ModelPickerItem | undefined,
   segmentId: string | undefined,
-  persist: boolean,
   signal: AbortSignal,
   t: (text: string) => string,
 ): Promise<MayflyUiActionReply> {
@@ -363,9 +324,9 @@ async function commitPickerRow(
   const result = await commitModelSelection(scope, {
     provider: item.provider, model: item.id,
     ...(segmentId === undefined || segmentId === 'default' ? {} : { reasoningEffort: ReasoningEffortId(segmentId) }),
-  }, persist, signal)
+  }, signal)
   if (signal.aborted) return { kind: 'cancelled' }
-  if (result.state === 'failed' || result.state === 'unavailable') return { kind: 'failed', message: result.text }
+  if (!result.ok) return { kind: 'failed', message: result.text }
   /* The notice must outlive the dismissing overlay, so it goes through the
      shared editor's channel (the Alt+M cycle's), not reply feedback. */
   const report = getSharedEditor(scope)?.report ?? (() => {})
@@ -376,8 +337,7 @@ async function commitPickerRow(
 /**
  * The shared picker surface for `/model` and `/effort`: a browse list whose
  * Enter runs `acceptActionId` through the ordinary invoke pipeline (so the
- * row's segment state rides the selections projection) and whose actions row
- * carries the Alt+Enter session-only twin.
+ * row's segment state rides the selections projection).
  * @param ctx - plugin context.
  * @param agent - the exact Agent the overlay is scoped to.
  * @param overlayId - the registration id (reopen focuses a live one).
@@ -394,7 +354,7 @@ async function openPickerOverlay(
   title: string,
   options: { readonly items: readonly MayflyListItem[], readonly filterable?: boolean, readonly numbered?: boolean, readonly empty?: MayflyUiNode },
   signal: AbortSignal,
-  commit: (scope: Context, selectedId: string | undefined, segmentId: string | undefined, persist: boolean, eventSignal: AbortSignal) => Promise<MayflyUiActionReply>,
+  commit: (scope: Context, selectedId: string | undefined, segmentId: string | undefined, eventSignal: AbortSignal) => Promise<MayflyUiActionReply>,
 ): Promise<MayflyOverlayHandle | undefined> {
   const t = interactionTranslator(ctx)
   return openAgentOverlay(ctx, agent, { id: overlayId, title, presentation: 'editor', capturing: true }, ui.stack.column([
@@ -406,13 +366,12 @@ async function openPickerOverlay(
     }),
     ui.actions({ id: `${overlayId}-actions`, items: [
       { id: 'default', label: t('Set as default'), intent: 'primary', selections: [{ pagePath: [], controlId: 'selection' }] },
-      { id: 'session', label: t('Use for this session'), key: 'alt+enter', selections: [{ pagePath: [], controlId: 'selection' }] },
       { id: 'cancel', label: t('Cancel'), dismiss: true },
     ] }),
   ]), scope => async (event, context) => {
-    if (event.kind !== 'activate' || (event.actionId !== 'default' && event.actionId !== 'session')) return { kind: 'completed' }
+    if (event.kind !== 'activate' || event.actionId !== 'default') return { kind: 'completed' }
     const selection = event.inputs?.selections?.find(entry => entry.controlId === 'selection')
-    return commit(scope, selection?.selectedIds[0], selection?.segmentId, event.actionId === 'default', context.signal)
+    return commit(scope, selection?.selectedIds[0], selection?.segmentId, context.signal)
   }, { signal, reopen: 'focus' })
 }
 
@@ -453,8 +412,8 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
     }))
     await openPickerOverlay(ctx, agent, 'mayfly.models', t('Select a model'), {
       items: rows, filterable: true, empty: ui.empty({ title: t('No models advertised') }),
-    }, signal, (scope, selectedId, segmentId, persist, eventSignal) =>
-      commitPickerRow(scope, selectedId === undefined ? undefined : byId.get(selectedId), segmentId, persist, eventSignal, t))
+    }, signal, (scope, selectedId, segmentId, eventSignal) =>
+      commitPickerRow(scope, selectedId === undefined ? undefined : byId.get(selectedId), segmentId, eventSignal, t))
     return { kind: 'success' }
   } catch (error) {
     return combined.aborted ? { kind: 'success' } : { kind: 'error', text: describe(error) }
@@ -506,10 +465,9 @@ export function registerModelCommands(ctx: Context): () => void {
       const result = await commitModelSelection(
         ctx,
         { provider: chosen.provider, model: chosen.id },
-        true,
         signal,
       )
-      return { kind: result.state === 'failed' || result.state === 'unavailable' ? 'error' : 'success', text: result.text }
+      return { kind: result.ok ? 'success' : 'error', text: result.text }
     }
     return openModelPicker(ctx, signal)
   }
@@ -551,9 +509,9 @@ export function registerModelCommands(ctx: Context): () => void {
         ...efforts.map(effort => ({ id: String(effort.id), label: String(effort.id), ...(activeEffort === String(effort.id) ? { badge: t('current') } : {}) })),
       ]
       const opened = await openPickerOverlay(ctx, agent, 'mayfly.effort', `${providerDisplayName(llm, current.provider)}/${current.model}`, { items, numbered: true }, signal,
-        (scope, selectedId, _segmentId, persist, eventSignal) => {
+        (scope, selectedId, _segmentId, eventSignal) => {
           const effort = items.find(item => item.id === selectedId)
-          return commitPickerRow(scope, effort === undefined ? undefined : { provider: current.provider, providerLabel: providerDisplayName(llm, current.provider), id: current.model, name: current.model }, effort?.id, persist, eventSignal, t)
+          return commitPickerRow(scope, effort === undefined ? undefined : { provider: current.provider, providerLabel: providerDisplayName(llm, current.provider), id: current.model, name: current.model }, effort?.id, eventSignal, t)
         })
       return opened !== undefined ? { kind: 'success' } : { kind: 'error', text: 'model picker is unavailable' }
     }
@@ -561,10 +519,9 @@ export function registerModelCommands(ctx: Context): () => void {
       const result = await commitModelSelection(
         ctx,
         { provider: current.provider, model: current.model },
-        true,
         signal,
       )
-      return { kind: result.state === 'failed' || result.state === 'unavailable' ? 'error' : 'success', text: result.text }
+      return { kind: result.ok ? 'success' : 'error', text: result.text }
     }
     const normalized = argument.toLowerCase()
     const match = efforts.find(effort =>
@@ -583,10 +540,9 @@ export function registerModelCommands(ctx: Context): () => void {
         model: current.model,
         reasoningEffort: ReasoningEffortId(String(match.id)),
       },
-      true,
       signal,
     )
-    return { kind: result.state === 'failed' || result.state === 'unavailable' ? 'error' : 'success', text: result.text }
+    return { kind: result.ok ? 'success' : 'error', text: result.text }
   }
 
   const model = ctx.commands.register({

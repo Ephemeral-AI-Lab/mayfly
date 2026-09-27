@@ -55,7 +55,7 @@ The catalog of dsh's built-in tools, grouped by purpose. Which tools actually ap
 | Tool | Description |
 | --- | --- |
 | `create_goal` / `get_goal` / `update_goal` | manage a persistent same-session goal |
-| `schedule_create` / `schedule_list` / `schedule_delete` | session-local reminders (one-shot or fixed-rate) |
+| `schedule_create` / `schedule_list` / `schedule_delete` | Host-wide durable reminders (once, interval, daily/weekly/cron; gated by the `schedule` row, disabled by default) |
 | `todo_write` | replace the full structured task list (rendered by Mayfly's [todo pane](/en/features/panes)) |
 | `web_fetch` · `web_search` | fetch and decode a URL to text; web search over 1–4 merged queries |
 

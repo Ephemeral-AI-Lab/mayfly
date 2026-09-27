@@ -28,6 +28,54 @@ describe('native approval UI', () => {
     renderer.runtime.dispose()
   })
 
+  it('renders the localized displayReason over the raw reason when the asker supplies one', async () => {
+    const bench = await setup()
+    const pending = bench.approve({ reason: 'raw reason', displayReason: { en: 'Shown reason', zh: '中文理由' } })
+    const model = bench.model('mayfly.approval.')
+    const renderer = renderRequest(model)
+    // No mayflyLocale service in the fixture → falls back to the `en` entry.
+    expect(renderer.component.render(80).join('\n')).toContain('Shown reason')
+    expect(renderer.component.render(80).join('\n')).not.toContain('raw reason')
+    renderer.runtime.dispose()
+    model.invoke('reject', decision)
+    await expect(pending).resolves.toBe('rejected')
+  })
+
+  it('prefers the active locale entry of displayReason', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyLocale.setPreference('zh')
+    const pending = bench.approve({ reason: 'raw reason', displayReason: { en: 'Shown reason', zh: '中文理由' } })
+    const model = bench.model('mayfly.approval.')
+    const renderer = renderRequest(model)
+    expect(renderer.component.render(80).join('\n')).toContain('中文理由')
+    renderer.runtime.dispose()
+    model.invoke('reject', decision)
+    await expect(pending).resolves.toBe('rejected')
+  })
+
+  it('falls back to the en displayReason entry for unlisted locales and absent locale services', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyLocale.setPreference('zh')
+    const pending = bench.approve({ displayReason: { en: 'Shown reason' } })
+    const model = bench.model('mayfly.approval.')
+    const renderer = renderRequest(model)
+    expect(renderer.component.render(80).join('\n')).toContain('Shown reason')
+    renderer.runtime.dispose()
+    model.invoke('reject', decision)
+    await expect(pending).resolves.toBe('rejected')
+
+    // Clearing the implementation value reads back as an absent service.
+    const store = (bench.front as never as { store: Record<string, { value: unknown }> }).store
+    store['mayflyLocale']!.value = undefined
+    const second = bench.approve({ displayReason: { en: 'Shown again' } })
+    const secondModel = bench.model('mayfly.approval.')
+    const secondRenderer = renderRequest(secondModel)
+    expect(secondRenderer.component.render(80).join('\n')).toContain('Shown again')
+    secondRenderer.runtime.dispose()
+    secondModel.invoke('reject', decision)
+    await expect(second).resolves.toBe('rejected')
+  })
+
   it('allows once without adding a session allowance and requires an explicit session grant', async () => {
     const bench = await setup()
     const first = bench.approve()

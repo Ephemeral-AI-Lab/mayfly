@@ -1,8 +1,8 @@
 /**
  * The model-family commands over the real command runtime and the plugin
  * wiring: `/model` picker and direct switch, `/effort` selector and direct
- * level, the commit path's session-only/persist split, the alias relation,
- * and the unload guard.
+ * level, the shared commit path (the Host validates the catalog and saves
+ * the default in the background), the alias relation, and the unload guard.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -80,6 +80,8 @@ function provideModelBoundary(
     onChanged: () => () => {},
   } as never)
   ctx.provide('sessionController', {
+    // Mirrors the rc.2 contract: the Session-local selection is installed
+    // synchronously and the default save runs in the background.
     selectModel: async (request: ModelSelection & { sessionId: string }) => {
       if (modelRef === undefined) throw new Error('model selection is unavailable for this session')
       const selected = {
@@ -88,6 +90,7 @@ function provideModelBoundary(
         ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
       }
       modelRef.current = selected
+      void ctx.get('agentDefaultModel')?.saveSelection(selected).catch(() => {})
       return { selected }
     },
   } as never)
@@ -323,8 +326,7 @@ describe('model-family commands', () => {
     expect(node).toContain('64k context')
     expect(node).toContain('Mock Pro')
     expect(node).toContain('Set as default')
-    expect(node).toContain('Use for this session')
-    expect(node).toContain('"key":"alt+enter"')
+    expect(node).not.toContain('alt+enter')
   })
 
   it('/model degrades rows whose metadata lookup fails', async () => {
@@ -387,32 +389,22 @@ describe('model-family commands', () => {
     expect(notices).toEqual(['Thinking set to high'])
   })
 
-  it('reports an Agent lost immediately before the default write', async () => {
+  it('reports an Agent lost while the selection request was in flight', async () => {
     const { ctx, agent, saveSelection } = await mount()
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = selectModel(ctx, 'mock', 'mock-pro')
     let replaced = false
-    const defaults = ctx.get('agentDefaultModel') as { currentSelection(): unknown }
-    vi.spyOn(defaults, 'currentSelection').mockImplementation(() => {
+    const controller = ctx.get('sessionController') as unknown as { selectModel: (request: never) => Promise<unknown> }
+    const inner = controller.selectModel.bind(controller)
+    controller.selectModel = async request => {
+      const value = await inner(request)
       replaced = true
-      return { provider: 'mock', model: 'mock' }
-    })
+      return value
+    }
     vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockImplementation(() => replaced ? null : agent)
     picker.invoke('default')
-    await vi.waitFor(() => expect(picker.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining('agent changed before saving model default') })])))
-    expect(saveSelection).not.toHaveBeenCalled()
-  })
-
-  it('/model picker commits through the explicit session-only action and skips the default write', async () => {
-    const { ctx, agent, writes, saveSelection } = await mount()
-    await ctx.commands.execute(agent, '/model', [], signal())
-    const picker = selectModel(ctx, 'mock', 'mock-pro')
-    stepSegment(picker, 'selection', JSON.stringify(['mock', 'mock-pro']), 2)
-    picker.invoke('session')
-    await vi.waitFor(() => { expect(writes).toHaveLength(1) })
-    expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro', reasoningEffort: 'high' as never }])
-    expect(saveSelection).not.toHaveBeenCalled()
-    expect(notices).toEqual(['Switched to mock-pro (mock) · thinking high · session only'])
+    await vi.waitFor(() => expect(picker.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining('agent changed before model selection completed') })])))
+    expect(saveSelection).toHaveBeenCalled()
   })
 
   it('/model picker contains a commit after the current Agent disappears', async () => {
@@ -489,15 +481,14 @@ describe('model-family commands', () => {
     expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.model.options')).toBeUndefined()
   })
 
-  it('/model commits the row under focus through the session-only accelerator', async () => {
-    const { ctx, screen, agent, writes, saveSelection } = await mount()
+  it('/model commits the row under focus through the accelerator', async () => {
+    const { ctx, screen, agent, writes } = await mount()
     await ctx.commands.execute(agent, '/model', [], signal())
     overlay(screen).handleInput(KEY.down)
-    overlay(screen).handleInput(KEY.altEnter)
+    overlay(screen).handleInput(KEY.enter)
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
     expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro' }])
-    expect(saveSelection).not.toHaveBeenCalled()
-    expect(notices).toEqual(['Switched to mock-pro (mock) · session only'])
+    expect(notices).toEqual(['Switched to mock-pro (mock)'])
   })
 
   it('/model omits the segment when a model exposes no efforts', async () => {
@@ -521,33 +512,52 @@ describe('model-family commands', () => {
     expect(writes).toEqual([])
   })
 
-  it('/model direct switch skips the save when the default already matches', async () => {
+  it('/model direct switch reports the selection even when the default already matches', async () => {
     const { ctx, agent, saveSelection } = await mount({
       defaults: { selection: { provider: 'mock', model: 'mock-pro' } },
     })
     const execution = await ctx.commands.execute(agent, '/model mock-pro', [], signal())
     expect(execution?.result).toEqual({ kind: 'success', text: 'Switched to mock-pro (mock)' })
-    expect(saveSelection).not.toHaveBeenCalled()
+    // The Host owns the default write; a matching value still round-trips it.
+    expect(saveSelection).toHaveBeenCalled()
   })
 
-  it('/model surfaces a failed default save and works without the default service', async () => {
+  it('/model leaves a failed default save to the Host and works without the default service', async () => {
     const failing = await mount({
       defaults: { selection: { provider: 'mock', model: 'mock' }, saveError: new Error('disk full') },
     })
     const execution = await failing.ctx.commands.execute(failing.agent, '/model mock-pro', [], signal())
-    expect(execution?.result).toEqual({
-      kind: 'error',
-      text: 'Switched to mock-pro (mock) — failed to save default: disk full',
-    })
+    expect(execution?.result).toEqual({ kind: 'success', text: 'Switched to mock-pro (mock)' })
   })
 
   it('/model surfaces a rejected structured selection action', async () => {
     const mounted = await mount()
     ;(mounted.ctx.get('sessionController') as unknown as {
       selectModel: () => Promise<never>
-    }).selectModel = async () => { throw new Error('selection rejected') }
-    await expect(mounted.ctx.commands.execute(mounted.agent, '/model mock-pro', [], signal()))
-      .rejects.toThrow('selection rejected')
+    }).selectModel = async () => { throw new Error('session/model-unavailable: Select an available model before sending a message.') }
+    const execution = await mounted.ctx.commands.execute(mounted.agent, '/model mock-pro', [], signal())
+    expect(execution?.result).toEqual({
+      kind: 'error',
+      text: 'session/model-unavailable: Select an available model before sending a message.',
+    })
+  })
+
+  it('/model stringifies a non-Error selection rejection', async () => {
+    const mounted = await mount()
+    ;(mounted.ctx.get('sessionController') as unknown as {
+      selectModel: () => Promise<never>
+    }).selectModel = async () => { throw 'plain failure' }
+    const execution = await mounted.ctx.commands.execute(mounted.agent, '/model mock-pro', [], signal())
+    expect(execution?.result).toEqual({ kind: 'error', text: 'plain failure' })
+  })
+
+  it('/effort surfaces commit failures on the default and named-level paths', async () => {
+    const { ctx, agent } = await mount()
+    ctx.set('sessionController', undefined as never)
+    expect((await ctx.commands.execute(agent, '/effort default', [], signal()))?.result)
+      .toEqual({ kind: 'error', text: 'no session is live yet' })
+    expect((await ctx.commands.execute(agent, '/effort low', [], signal()))?.result)
+      .toEqual({ kind: 'error', text: 'no session is live yet' })
   })
 
   it('/effort guards: no reasoning metadata and resolve failure', async () => {
@@ -614,13 +624,10 @@ describe('model-family commands', () => {
     expect(execution?.result).toEqual({ kind: 'success', text: 'Already using mock (mock)' })
   })
 
-  it('/model works without the default-model service and says so', async () => {
+  it('/model works without the default-model service', async () => {
     const { ctx, agent } = await mount({ defaults: false })
     const execution = await ctx.commands.execute(agent, '/model mock-pro', [], signal())
-    expect(execution?.result).toEqual({
-      kind: 'error',
-      text: 'Switched to mock-pro (mock) — default not saved: no default-model service',
-    })
+    expect(execution?.result).toEqual({ kind: 'success', text: 'Switched to mock-pro (mock)' })
   })
 
   it('/model reports an ambiguity the live provider cannot resolve', async () => {
@@ -774,7 +781,7 @@ describe('model-family commands', () => {
         ? selectModel(mounted.ctx, 'mock', 'mock-pro')
         : mounted.ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!
       if (command === 'effort') focusRow(picker, 'selection', 'low')
-      picker.invoke('session')
+      picker.invoke('default')
       await vi.waitFor(() => { expect(selectModelCall).toHaveBeenCalledOnce() })
       await mounted.fiber.dispose()
       resolveSelection({ selected: { provider: 'mock', model: command === 'model' ? 'mock-pro' : 'mock', reasoningEffort: 'low' as never } })
@@ -808,37 +815,25 @@ describe('model-family commands', () => {
     expect('reasoningEffort' in (preset.writes[0] ?? {})).toBe(false)
   })
 
-  it('stringifies a non-Error default-save failure', async () => {
-    const { ctx, agent } = await mount({
-      defaults: { selection: { provider: 'mock', model: 'mock' }, saveError: 'plain failure' as never },
-    })
-    const execution = await ctx.commands.execute(agent, '/model mock-pro', [], signal())
-    expect(execution?.result).toEqual({
-      kind: 'error',
-      text: 'Switched to mock-pro (mock) — failed to save default: plain failure',
-    })
-  })
-
-  it('/effort explicit session-only action leaves the default untouched', async () => {
-    const { ctx, agent, saveSelection, writes } = await mount()
+  it('/effort commits the focused level through the shared path', async () => {
+    const { ctx, agent, writes } = await mount()
     await ctx.commands.execute(agent, '/effort', [], signal())
     const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!
     focusRow(picker, 'selection', 'low')
-    picker.invoke('session')
+    picker.invoke('default')
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
-    expect(saveSelection).not.toHaveBeenCalled()
-    expect(notices).toEqual(['Thinking set to low · session only'])
+    expect(notices).toEqual(['Thinking set to low'])
   })
 })
 
 describe('cycleSessionModel (the Alt+M hotkey)', () => {
-  it('cycles to the provider\'s next model through the session-only channel', async () => {
+  it('cycles to the provider\'s next model through the shared commit path', async () => {
     const { ctx, writes, saveSelection } = await mount()
     await cycleSessionModel(ctx, modelListCache)
     expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro' }])
-    // A one-press switch never rewrites the persisted default.
-    expect(saveSelection).not.toHaveBeenCalled()
-    expect(notices).toEqual(['Switched to mock-pro (mock) · session only'])
+    // The Host saves the new default in the background on every commit.
+    expect(saveSelection).toHaveBeenCalled()
+    expect(notices).toEqual(['Switched to mock-pro (mock)'])
   })
 
   it('drops the reasoning effort, matching the /model <id> direct switch', async () => {
@@ -856,16 +851,16 @@ describe('cycleSessionModel (the Alt+M hotkey)', () => {
     await cycleSessionModel(ctx, modelListCache)
     // mock → mock-pro, then the wrap back to mock — one listing for both.
     expect(listModels).toHaveBeenCalledTimes(1)
-    expect(notices[1]).toBe('Switched to mock (mock) · session only')
+    expect(notices[1]).toBe('Switched to mock (mock)')
   })
 
-  it('reports already-using on a single-model provider without touching the default', async () => {
+  it('reports already-using on a single-model provider', async () => {
     const { ctx, saveSelection } = await mount({
       catalog: { models: { mock: [{ id: 'mock', name: 'Mock' }] } },
     })
     await cycleSessionModel(ctx, modelListCache)
     expect(saveSelection).not.toHaveBeenCalled()
-    expect(notices).toEqual(['Already using mock (mock) · session only'])
+    expect(notices).toEqual(['Already using mock (mock)'])
   })
 
   it('declines when the provider advertises no models', async () => {
@@ -1005,13 +1000,13 @@ describe('direct model picker boundaries', () => {
     expect(await pending).toEqual({ kind: 'success' })
   })
 
-  it('uses model ids for blank provider names and reports unavailable defaults for effort changes', async () => {
+  it('uses model ids for blank provider names and commits effort changes without the default service', async () => {
     const llm = fakeLlm({ providers: [{ id: 'mock', name: '' }] })
     const bench = await mount({ llm, defaults: false })
     await openModelPicker(bench.ctx, signal())
     expect(JSON.stringify(bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.models')!.node)).toContain('"label":"mock/Mock"')
-    expect((await bench.ctx.commands.execute(bench.agent, '/effort default', [], signal()))?.result.kind).toBe('error')
-    expect((await bench.ctx.commands.execute(bench.agent, '/effort low', [], signal()))?.result.kind).toBe('error')
+    expect((await bench.ctx.commands.execute(bench.agent, '/effort default', [], signal()))?.result.kind).toBe('success')
+    expect((await bench.ctx.commands.execute(bench.agent, '/effort low', [], signal()))?.result.kind).toBe('success')
   })
 
   it('reports an unavailable catalog and filter failures or cancellation', async () => {
@@ -1035,7 +1030,7 @@ describe('direct model picker boundaries', () => {
     const picker = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
     focusRow(picker, 'selection', JSON.stringify(['mock', 'mock']))
     bench.ctx.set('sessionController', undefined as never)
-    picker.invoke('session')
+    picker.invoke('default')
     await vi.waitFor(() => expect(picker.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ message: 'no session is live yet' })])))
   })
 

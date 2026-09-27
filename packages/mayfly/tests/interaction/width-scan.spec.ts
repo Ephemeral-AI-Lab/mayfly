@@ -287,7 +287,7 @@ describe('interaction width-scan', () => {
 for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name}`, async () => {
   const bench = await requestFixture()
   try {
-    const reminders = [{ id: 'schedule', prompt: text, kind: 'every', everySeconds: 300, scheduledAt: '2099-01-01T00:00:00Z' }] as never
+    const reminders = [{ id: 'schedule', title: text, prompt: text, kind: 'every', everySeconds: 300, scheduledAt: '2099-01-01T00:00:00Z' }] as never
     const nodes = [
       ...(['en', 'zh'] as const).flatMap((locale: MayflyLocaleId) => {
         const t = (key: string, values?: Record<string, string | number>) => interpolateLocaleMessage(INTERACTION_LOCALE[locale][key] ?? INTERACTION_LOCALE.en[key] ?? key, values)

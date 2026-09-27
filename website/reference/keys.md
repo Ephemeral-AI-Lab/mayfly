@@ -58,7 +58,7 @@
 | `Ctrl-S` | steer 注入 | 把非空草稿作为转向指令注入当前 turn，并清空 buffer |
 | `Ctrl-V` | 粘贴图片 | 剪贴板图片入附件库，光标处插入 `[image #N]` 标记 |
 | `Ctrl-G` | 外部编辑器 | 草稿交给外部编辑器全屏编辑（`mayfly.editorCommand` 设置 → `$VISUAL` → `$EDITOR`；Mayfly 挂起让出终端）；以 `:cq` 退出则草稿原样保留 |
-| `Alt+M` | 循环会话模型 | 当前 provider 的模型列表里逐个切换（**仅本会话**、不写默认；按键被消费，草稿不动） |
+| `Alt+M` | 循环会话模型 | 当前 provider 的模型列表里逐个切换（与 `/model` 走同一通道，Host 会同步持久化默认；按键被消费，草稿不动） |
 | `Backspace` | 退格 / 退模式 | 空的 `!` bash 提示符上退格即退回 prompt 模式 |
 | `Shift+Tab` | 切换计划状态 | normal ↔ plan，保留当前权限与 YOLO（见[会话模式](/features/modes)） |
 
@@ -74,8 +74,8 @@
 | 问卷面板 | `1`–`9` 或 ↑↓ + `Enter` 选择并前进；多选用 `Space` 勾选、`Enter` 确认；在 Other 中输入即开始作答，`Enter` 提交、`Alt+Enter` 换行；问题 tabs 在标签栏上用 `←` / `→`，任意位置用 `Alt+←` / `Alt+→` 切换，向前切换会校验当前问题 |
 | 表单面板 | ↑↓ 在字段间移动；直接输入或 `Enter` 开始编辑文本，`Enter` 确认并前进，textarea 用 `Alt+Enter` 换行；下拉字段用 `←` / `→` 切换或 `Enter` 打开；多选字段用 `Enter` 或 `Space` 打开；`Delete` 把显式覆盖的字段恢复为继承值；`Tab` 提交并切到下一组；`Escape` 先结束编辑，再关闭（有未保存修改时先确认） |
 | 计划评审 | ↑↓ 或 `1`–`3` 在决策间移动，`Enter` 确认聚焦的决策；`c` 复制计划，`o` 打开反馈；`PageUp` / `PageDown` / `Shift+↑↓` 滚动计划 |
-| `/model` 面板 | 一个按 provider 分组的列表：输入即筛选，↑↓ 选模型，`←` / `→` 调思考等级；`Enter` 设为默认，`Alt+Enter` 仅用于本会话（筛选中同样有效） |
-| `/effort` 面板 | `1`–`9` 或 ↑↓ + `Enter` 设置默认思考等级；`Alt+Enter` 仅对本会话应用聚焦的等级 |
+| `/model` 面板 | 一个按 provider 分组的列表：输入即筛选，↑↓ 选模型，`←` / `→` 调思考等级；`Enter` 设为默认并切换 |
+| `/effort` 面板 | `1`–`9` 或 ↑↓ + `Enter` 设置默认思考等级 |
 | `/permission` 选择器 | `1`–`9` 或 ↑↓ + `Enter` 切换预设；完全访问会先弹出默认聚焦“否”的确认 |
 | `/agents` 浏览器 | 输入即筛选；↑↓ 选择，`Space` 或 `←` / `→` 展开/折叠，`Enter` 查看；`Tab` 到 **Stop selected**，停止前先确认，对 one-shot、未运行或仍有运行中下级的行会直接说明原因 |
 | `/plugin` 市场 | Installed / Not installed 标签（标签栏上 `←` / `→` 或 `Alt+←` / `Alt+→`）；输入即筛选；`Tab` 到 Details、Install 或 Update/repair 与 Remove，可用性按行判断；`Ctrl+R` 刷新 |

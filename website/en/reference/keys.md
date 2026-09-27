@@ -58,7 +58,7 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 | `Ctrl-S` | Steer | Inject the non-empty draft as a steering instruction into the current turn, clearing the buffer |
 | `Ctrl-V` | Paste image | Store the clipboard image in the attachment library, inserting an `[image #N]` marker at the cursor |
 | `Ctrl-G` | External editor | Hand the draft to an external editor for full-screen editing (`mayfly.editorCommand` setting → `$VISUAL` → `$EDITOR`; Mayfly suspends and yields the terminal); quitting with `:cq` leaves the draft untouched |
-| `Alt+M` | Cycle session model | Step through the current provider's models (**session-only**, no persisted default; the press is consumed, the draft stays intact) |
+| `Alt+M` | Cycle session model | Step through the current provider's models (same channel as `/model` — the Host persists the default in the background; the press is consumed, the draft stays intact) |
 | `Backspace` | Delete / exit mode | Backspace on an empty `!` bash prompt exits back to prompt mode |
 | `Shift+Tab` | Toggle plan state | normal ↔ plan, preserving permissions and YOLO (see [Session modes](/en/features/modes)) |
 
@@ -74,8 +74,8 @@ These keys reach the editor even while a notice is shown under the prompt. Edito
 | Questionnaire | `1`–`9` or ↑↓ + `Enter` choose and advance; multi-choice toggles with `Space` and confirms with `Enter`; typing in Other starts an answer, `Enter` submits it, `Alt+Enter` adds a line; the question tabs switch with `←` / `→` on the strip or `Alt+←` / `Alt+→` anywhere, and moving forward validates the current question |
 | Form panel | ↑↓ move between fields; typing or `Enter` starts editing text, `Enter` confirms and moves on, `Alt+Enter` inserts a textarea newline; a select changes with `←` / `→` or opens with `Enter`; a multiselect opens with `Enter` or `Space`; `Delete` returns an overriding field to its inherited value; `Tab` commits and moves to the next group; `Escape` ends editing, then closes (asking first when there are unsaved changes) |
 | Plan review | ↑↓ or `1`–`3` move between decisions and `Enter` confirms the focused one; `c` copies the plan, `o` opens feedback; `PageUp` / `PageDown` / `Shift+↑↓` scroll the plan |
-| `/model` panel | One list grouped by provider: type to filter, ↑↓ selects a model, `←` / `→` adjusts its thinking level; `Enter` sets the default, `Alt+Enter` uses it for this session only (also while filtering) |
-| `/effort` panel | `1`–`9` or ↑↓ + `Enter` set the default thinking level; `Alt+Enter` applies the focused level to this session only |
+| `/model` panel | One list grouped by provider: type to filter, ↑↓ selects a model, `←` / `→` adjusts its thinking level; `Enter` sets the default and switches |
+| `/effort` panel | `1`–`9` or ↑↓ + `Enter` set the default thinking level |
 | `/permission` picker | `1`–`9` or ↑↓ + `Enter` switch presets; full access first asks a Yes/No decision with No focused |
 | `/agents` browser | Type to filter; ↑↓ selects, `Space` or `←` / `→` expands/collapses, `Enter` views; `Tab` reaches **Stop selected**, which asks first and names why it cannot run for a one-shot, cold, or parent-of-live row |
 | `/plugin` marketplace | Installed / Not installed tabs (`←` / `→` on the strip or `Alt+←` / `Alt+→`); type to filter; `Tab` reaches Details, Install or Update/repair, and Remove, each available per row; `Ctrl+R` refreshes |

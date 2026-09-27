@@ -67,6 +67,15 @@ async function directSetup(options: {
 }
 
 describe('provider editor', () => {
+  it('refuses a route another settings namespace owns', async () => {
+    const bench = await directSetup({
+      route: 'deepseek-account',
+      llm: { listConfigurableProviders: () => [{ provider: 'deepseek-account', displayName: 'DeepSeek Account', settingsNs: 'llm-deepseek-account', settingsPath: [] }], discoverModels: vi.fn() },
+    })
+    expect(bench.opened).toBe(false)
+    expect(bench.entry).toBeUndefined()
+  })
+
   /** Drive the inline `+ model id` row on the Models tab; the reply is asserted, not published. */
   const addModel = async (bench: Awaited<ReturnType<typeof directSetup>>, modelId: string | undefined) => {
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === bench.entry!.id)!

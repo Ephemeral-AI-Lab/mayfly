@@ -1,8 +1,9 @@
-/** Native reminder catalog and session-local delivery indicator.
+/** Native Host-wide reminder catalog view over the Schedule service.
  * @module @ephemeral-ai/mayfly/interaction/schedule-command
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-schedule'
 import type { ScheduleRecord } from '@deepseek-ai/dsh-schedule/client'
 import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyLocaleId, MayflyTranslate } from '../frontend/index.ts'
@@ -10,7 +11,7 @@ import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 
 export const name = 'mayfly-schedule-command'
-export const inject = ['commands', 'sessionProjections', 'mayflyCurrentAgent', 'mayflyOverlays', 'mayflyStatus', 'tools']
+export const inject = ['commands', 'mayflyCurrentAgent', 'mayflyOverlays', 'mayflyStatus', 'tools']
 
 type TimeUnit = 'day' | 'hour' | 'minute' | 'second'
 
@@ -37,6 +38,9 @@ function unitLabel(unit: TimeUnit, value: number, t: MayflyTranslate): string {
 
 /** Pick the largest exact whole unit without rounding the durable interval. */
 export function formatReminderFrequency(record: ScheduleRecord, t: MayflyTranslate): string {
+  if (record.kind === 'daily') return t('Daily')
+  if (record.kind === 'weekly') return t('Weekly')
+  if (record.kind === 'cron') return t('Cron')
   if (record.kind !== 'every') return t('Once')
   let selected: { unit: TimeUnit; seconds: number } = SECOND_UNIT
   for (const candidate of UNIT_SECONDS) {
@@ -88,13 +92,13 @@ export function orderScheduleRecords(
 export function scheduleNode(records: readonly ScheduleRecord[] | undefined, now: number, t: MayflyTranslate, locale?: MayflyLocaleId): MayflyUiNode {
   const items: readonly MayflyListItem[] = records === undefined ? [] : orderScheduleRecords(records, now).map(record => ({
     id: record.id,
-    label: record.prompt,
+    label: record.title,
     badge: Date.parse(record.scheduledAt) <= now ? t('Overdue') : t('Scheduled'),
-    detail: `${formatReminderFrequency(record, t)} · ${formatReminderLocalTime(record.scheduledAt, locale)} · ${formatReminderRelative(record.scheduledAt, now, t)}`,
+    detail: `${formatReminderFrequency(record, t)}${'timeZone' in record ? ` · ${record.timeZone}` : ''} · ${formatReminderLocalTime(record.scheduledAt, locale)} · ${formatReminderRelative(record.scheduledAt, now, t)}`,
   }))
   return ui.surface({ title: t('Reminders'), chrome: 'overlay', child: ui.stack.column([
-    ui.text(t('Delivery requires a live root session. Create or cancel reminders through the conversation; the Agent preset decides whether reminder tools exist.')),
-    ...(records === undefined ? [ui.empty({ title: t('Schedule unavailable'), description: t('The Schedule capability is mounted per Agent preset; the shipped standard preset enables it.') })] : [ui.list({ id: 'reminders', role: 'browse', filterable: true, selectedIds: [], items, empty: ui.empty({ title: t('No active reminders') }) })]),
+    ui.text(t('Reminders follow their original session, even when no Agent is running. Create or cancel reminders through the conversation.')),
+    ...(records === undefined ? [ui.empty({ title: t('Schedule unavailable'), description: t('The Schedule capability is a Host service; enable it in profile files.') })] : [ui.list({ id: 'reminders', role: 'browse', filterable: true, selectedIds: [], items, empty: ui.empty({ title: t('No active reminders') }) })]),
     ui.actions({ id: 'reminder-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
   ]) })
 }
@@ -105,46 +109,74 @@ export function apply(ctx: Context): void {
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
   const status = ctx.mayflyStatus.register({ id: 'mayfly.schedule', priority: 2, overflow: 'hide' }, null)
-  // Capability is an exact-Agent question: the projection registers globally
-  // when the standard standing mount loads, so `values.schedule` exists even
-  // for sessions whose preset mounts no schedule row. The agent's visible
-  // toolset answers whether reminders can exist for it at all.
-  const recordsFor = (agent: Agent): readonly ScheduleRecord[] | undefined => {
+  let generation = 0
+  let records: readonly ScheduleRecord[] | undefined
+  const listeners = new Set<() => void>()
+  const render = () => {
+    status.set(records?.length ? ui.text(t('Reminders {count}', { count: records.length })) : null)
+    for (const listener of listeners) listener()
+  }
+  // Capability is an exact-Agent question: the Host Schedule service attaches
+  // reminder tools to every root Agent it observes, so the Agent's visible
+  // toolset answers both whether the service is mounted and whether this
+  // Agent's scope carries the tools.
+  const capable = (agent: Agent): boolean => {
     try {
-      if (!ctx.tools.schemas(agent).some(schema => schema.name === 'schedule_create')) return undefined
+      return ctx.tools.schemas(agent).some(schema => schema.name === 'schedule_create')
     } catch {
-      return undefined
+      return false
     }
-    return ctx.sessionProjections.snapshot(agent.session, ['schedule']).values.schedule
   }
-  const records = () => {
+  const refresh = async (agent: Agent): Promise<void> => {
+    const service = ctx.get('schedule')
+    const currentGeneration = ++generation
+    if (service === undefined || !capable(agent)) {
+      records = undefined
+      render()
+      return
+    }
+    try {
+      const next = await service.list({ sessionId: agent.session.id })
+      if (lifetime.signal.aborted || generation !== currentGeneration || ctx.mayflyCurrentAgent.current() !== agent) return
+      records = next
+    } catch {
+      if (lifetime.signal.aborted || generation !== currentGeneration || ctx.mayflyCurrentAgent.current() !== agent) return
+      records = undefined
+    }
+    render()
+  }
+  const refreshCurrent = () => {
     const agent = ctx.mayflyCurrentAgent.current()
-    return agent === null ? undefined : recordsFor(agent)
+    if (agent === null) {
+      generation++
+      records = undefined
+      render()
+      return
+    }
+    void refresh(agent)
   }
-  const refresh = () => {
-    const value = records()
-    status.set(value?.length ? ui.text(t('Reminders {count}', { count: value.length })) : null)
-  }
-  ctx.commands.register({ name: 'schedule', description: t('Inspect session-local reminders'), handler: async invocation => {
+  ctx.commands.register({ name: 'schedule', description: t('Inspect session reminders'), handler: async invocation => {
     const agent = invocation.agent
     const signal = AbortSignal.any([lifetime.signal, invocation.signal])
     if (signal.aborted || ctx.mayflyCurrentAgent.current() !== agent) return { kind: 'success' }
-    const node = () => scheduleNode(recordsFor(agent), Date.now(), t, ctx.get('mayflyLocale')?.snapshot.locale)
+    const node = () => scheduleNode(records, Date.now(), t, ctx.get('mayflyLocale')?.snapshot.locale)
     let handle: MayflyOverlayHandle | undefined
     handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.schedule', presentation: 'editor', capturing: true }, node(), owner => {
       const update = () => { if (handle?.closed === false) handle.set(node()) }
-      owner.effect(() => ctx.sessionProjections.onChanged((session, key) => { if (session === agent.session && key === 'schedule') update() }))
+      listeners.add(update)
+      owner.effect(() => ctx.on('schedule/changed', refreshCurrent))
       owner.effect(() => observeInteractionLocale(owner, update))
       const timer = setInterval(update, 1000)
       timer.unref()
-      owner.effect(() => () => clearInterval(timer))
+      owner.effect(() => () => { listeners.delete(update); clearInterval(timer) })
+      refreshCurrent()
       return () => ({ kind: 'completed' })
     }, { signal, reopen: 'focus' })
     return { kind: 'success' }
   } })
-  ctx.effect(() => ctx.mayflyCurrentAgent.subscribe(() => refresh()))
-  ctx.effect(() => ctx.sessionProjections.onChanged((session, key) => { if (session === ctx.mayflyCurrentAgent.current()?.session && key === 'schedule') refresh() }))
-  ctx.effect(() => observeInteractionLocale(ctx, () => refresh()))
-  refresh()
+  ctx.effect(() => ctx.mayflyCurrentAgent.subscribe(() => refreshCurrent()))
+  ctx.effect(() => ctx.on('schedule/changed', refreshCurrent))
+  ctx.effect(() => observeInteractionLocale(ctx, () => render()))
+  refreshCurrent()
   ctx.effect(() => () => status.dispose())
 }
