@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.1-rc.2',
+    summary: 'Align with Harness 0.1.7-rc.2 and reshape /context usage as a folded proportional bar.',
+    highlights: [
+      'Harness 0.1.7-rc.2 - adopt the Host-wide schedule service, the shared model-selection commit path, and localized approval reasons from the new Harness line.',
+      'Context usage - render the /context composition as a folded proportional bar with a swatched legend and the latest-step cache hit rate.',
+      'Transcript - adopt native session naming with a border title, paint diff added/removed backgrounds, show the selected thinking effort, and draw a durable /compact boundary row.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.1-rc.1',
     summary: 'The status line shows the latest-step cache hit rate, and live progress emits each fact once.',
     highlights: [
