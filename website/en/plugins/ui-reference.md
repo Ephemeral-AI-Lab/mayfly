@@ -322,6 +322,11 @@ ui.chart({
 ui.chart({
   chart: 'bar',
   layout?: 'grouped' | 'stacked' | 'normalized',
+  // 'horizontal' requires layout: 'normalized': each category renders as
+  // `height` full-width rows of proportional series segments (row-major
+  // fill) — the /context-style share view. Shares such as free space are
+  // provided by the caller as explicit series.
+  orientation?: 'vertical' | 'horizontal',
   title?: string,
   yLabel?: string,
   height?: number, // 4..20

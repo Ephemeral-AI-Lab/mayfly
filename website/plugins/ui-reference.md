@@ -302,6 +302,10 @@ ui.chart({
 ui.chart({
   chart: 'bar',
   layout?: 'grouped' | 'stacked' | 'normalized',
+  // 'horizontal' 仅与 layout: 'normalized' 组合：按 series 比例把每个
+  // category 画成 height 行高的满宽分段条（逐行折叠填充），用于 /context 式
+  // 的占比视图；free space 之类的份额由调用方作为显式 series 给出。
+  orientation?: 'vertical' | 'horizontal',
   title?: string,
   yLabel?: string,
   height?: number, // 4..20

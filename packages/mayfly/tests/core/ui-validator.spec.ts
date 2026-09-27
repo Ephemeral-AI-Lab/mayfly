@@ -107,6 +107,9 @@ describe('validateMayflyUiNode', () => {
     [{ kind: 'chart', chart: 'bar', categories: ['A'], series: [{ id: 'a', values: [] }] }, 'match categories'],
     [{ kind: 'chart', chart: 'bar', layout: 'normalized', categories: ['A'], series: [{ id: 'a', values: [-1] }] }, 'non-negative'],
     [{ kind: 'chart', chart: 'bar', layout: 'normalized', categories: ['A'], series: [{ id: 'a', values: [0] }] }, 'positive'],
+    [{ kind: 'chart', chart: 'bar', layout: 'grouped', orientation: 'horizontal', categories: ['A'], series: [{ id: 'a', values: [1] }] }, 'normalized layout'],
+    [{ kind: 'chart', chart: 'bar', orientation: 'horizontal', categories: ['A'], series: [{ id: 'a', values: [1] }] }, 'normalized layout'],
+    [{ kind: 'chart', chart: 'bar', orientation: 'diagonal', categories: ['A'], series: [{ id: 'a', values: [1] }] }, 'invalid'],
     [{ kind: 'chart', chart: 'heatmap', columns: ['A'], rows: ['R'], values: [[1, 2]], levels: [{ value: 1, label: 'one' }] }, 'dimensions'],
     [{ kind: 'chart', chart: 'heatmap', columns: ['A'], rows: ['R'], values: [[2]], levels: [{ value: 1, label: 'one' }] }, 'without a level'],
     [{ kind: 'chart', chart: 'heatmap', columns: [], rows: [], values: [], levels: [{ value: null, label: 'bad' }] }, 'string or finite number'],
@@ -129,6 +132,14 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode({
       kind: 'chart', chart: 'bar', layout: 'normalized', categories: ['A'],
       series: [{ id: 'missing', values: [null] }, { id: 'present', values: [1] }],
+    })).toMatchObject({ ok: true })
+    expect(validateMayflyUiNode({
+      kind: 'chart', chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: ['A'],
+      series: [{ id: 'missing', values: [null] }, { id: 'present', values: [1] }],
+    })).toMatchObject({ ok: true })
+    expect(validateMayflyUiNode({
+      kind: 'chart', chart: 'bar', layout: 'grouped', orientation: 'vertical', categories: ['A'],
+      series: [{ id: 'a', values: [1] }],
     })).toMatchObject({ ok: true })
     expect(validateMayflyUiNode({
       kind: 'chart', chart: 'bar', categories: ['A'], series: [{ id: 'default-layout', values: [1] }],

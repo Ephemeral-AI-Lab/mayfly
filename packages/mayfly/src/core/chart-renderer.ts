@@ -145,6 +145,50 @@ function renderBars(node: Extract<MayflyChartNode, { readonly chart: 'bar' }>, w
   }), width, tones, components, colors)
 }
 
+/** Horizontal normalized bars: each category folds its proportional series fill row-major over `height` full-width rows. */
+function renderHorizontalBars(node: Extract<MayflyChartNode, { readonly chart: 'bar' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
+  const tones = node.series.map((series, index) => toneAt(series.tone, index))
+  const height = Math.max(1, node.height ?? 4)
+  const result: string[] = []
+  if (node.title !== undefined) result.push(colors.textStrong(components.truncateToWidth(node.title, width)))
+  for (const [categoryIndex, category] of node.categories.entries()) {
+    if (category.length > 0) result.push(colors.textStrong(components.truncateToWidth(category, width)))
+    const totals = node.series.map(series => Math.max(0, series.values[categoryIndex] ?? 0))
+    const total = totals.reduce((sum, value) => sum + value, 0)
+    if (!(total > 0)) {
+      const empty = paintPluginTone(colors, 'muted')('░'.repeat(width))
+      for (let row = 0; row < height; row += 1) result.push(empty)
+      continue
+    }
+    const cells = width * height
+    const assignments: (MayflyTone | undefined)[] = Array.from({ length: cells })
+    let cumulative = 0
+    let cursor = 0
+    for (const [index, value] of totals.entries()) {
+      cumulative += value
+      const end = Math.round((cumulative / total) * cells)
+      while (cursor < end) { assignments[cursor] = tones[index]; cursor += 1 }
+    }
+    for (let row = 0; row < height; row += 1) {
+      const base = row * width
+      let line = ''
+      let runTone = assignments[base]
+      let runLength = 0
+      for (let column = 0; column < width; column += 1) {
+        const tone = assignments[base + column]
+        if (tone !== runTone) {
+          line += paintPluginTone(colors, runTone)('█'.repeat(runLength))
+          runTone = tone
+          runLength = 0
+        }
+        runLength += 1
+      }
+      result.push(line + paintPluginTone(colors, runTone)('█'.repeat(runLength)))
+    }
+  }
+  return result
+}
+
 function sampleValues(values: readonly (number | null)[], size: number): readonly (number | null)[] {
   if (values.length <= size) return values
   return Array.from({ length: size }, (_, index) => values[Math.round(index * (values.length - 1) / Math.max(1, size - 1))]!)
@@ -190,7 +234,7 @@ export function renderChartRows(node: MayflyChartNode, width: number, components
     case 'sparkline': return renderSparkline(node, safeWidth, components, colors)
     case 'line':
     case 'point': return renderNumeric(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
-    case 'bar': return renderBars(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
+    case 'bar': return (node.orientation === 'horizontal' ? renderHorizontalBars(node, safeWidth, components, colors) : renderBars(node, safeWidth, components, colors)) ?? summary(node, safeWidth, components, colors)
     case 'heatmap': return renderHeatmap(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
   }
 }

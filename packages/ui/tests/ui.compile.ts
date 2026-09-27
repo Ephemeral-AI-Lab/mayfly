@@ -27,6 +27,7 @@ export const node: MayflyUiNode = metric.render({ label: 'Context', value: 42 })
 export const child: MayflyUiChild = ui.child(node, { shrink: 1 })
 export const document = ui.diagram('graph TD\nA --> B')
 export const chart = ui.chart({ chart: 'line', series: [{ id: 'load', points: [{ x: 0, y: 1 }] }] })
+export const horizontalBar = ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: ['ctx'], series: [{ id: 'load', values: [1] }] })
 export const handlers: MayflyUiEventHandlers = {
   observe: event => event.kind === 'value-change' ? { kind: 'completed' } : undefined,
   action: event => event.kind === 'submit' ? { kind: 'cancelled' } : { kind: 'completed' },

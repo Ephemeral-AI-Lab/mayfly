@@ -1091,6 +1091,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         }
         if (chart === 'bar') {
           const layoutValue = own(object, 'layout', path)
+          const orientationValue = own(object, 'orientation', path)
           const categories = collection(required(object, 'categories', path), `${path}.categories`)
             .map((item, index) => text(item, `${path}.categories[${String(index)}]`, state))
           const series = collection(required(object, 'series', path), `${path}.series`)
@@ -1098,15 +1099,18 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           uniqueIds(series, `${path}.series`)
           if (series.some(item => item.values.length !== categories.length)) invalid(`${path}.series values must match categories`)
           const layout = layoutValue === undefined ? undefined : enumeration(layoutValue, ['grouped', 'stacked', 'normalized'], `${path}.layout`)
+          const orientation = orientationValue === undefined ? undefined : enumeration(orientationValue, ['vertical', 'horizontal'], `${path}.orientation`)
           if (layout === 'normalized') {
             if (series.some(item => item.values.some(value => value !== null && value < 0))) invalid(`${path}.series normalized values must be non-negative`)
             for (let index = 0; index < categories.length; index += 1) {
               if (series.reduce((sum, item) => sum + (item.values[index] ?? 0), 0) <= 0) invalid(`${path}.series normalized category totals must be positive`)
             }
           }
+          if (orientation === 'horizontal' && layout !== 'normalized') invalid(`${path}.orientation horizontal requires normalized layout`)
           return {
             kind, chart,
             ...optional(layout, 'layout'),
+            ...optional(orientation, 'orientation'),
             categories, series,
             ...optional(optionalText(object, 'title', path, state), 'title'),
             ...optional(optionalText(object, 'yLabel', path, state), 'yLabel'),
