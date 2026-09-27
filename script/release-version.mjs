@@ -67,4 +67,9 @@ for (const relativePath of advertisedVersionFiles) {
   writeFileSync(path, source.replaceAll(old, next))
 }
 
+const changelogPath = join(ROOT, 'packages/mayfly/src/interaction/changelog-content.ts')
+if (!readFileSync(changelogPath, 'utf8').includes(`version: '${next}'`)) {
+  console.warn(`release line: add a changelog entry for ${next} in packages/mayfly/src/interaction/changelog-content.ts`)
+}
+
 console.log(`release line: ${old} -> ${next}; updated ${PACKAGE_DIRS.length} packages, Website, constants, tests, and advertised versions`)
