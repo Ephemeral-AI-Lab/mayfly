@@ -6,7 +6,7 @@ service，并使用 renderer-neutral `MayflyStatusNode`。
 | Entry | Priority | 内容 |
 | --- | --- | --- |
 | agent-view | 0（center） | 有辅助会话时显示当前侧、辅助类型/标签，以及 `F7 switch · F8 close` |
-| basic | 0 | 当前 model |
+| basic | 0 | 当前 model；显式选择 thinking effort 时追加 ` Effort`(如 `step-5-preview Max`),provider default 不加后缀 |
 | mode | 2 | plan/yolo 状态 |
 | goal | 2 | 当前 goal 的 `Goal <phase> · <rounds>/<max> · <activation>`（按 phase 着色；无 goal 时隐藏） |
 | jobs | 3 | `⏵ N jobs`——live（running/stopping）后台任务数；没有时隐藏 |

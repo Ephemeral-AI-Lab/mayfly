@@ -7,7 +7,7 @@ registers on the same `mayflyStatus` service with a renderer-neutral
 | Entry | Priority | Content |
 | --- | --- | --- |
 | agent-view | 0 (center) | When an auxiliary exists, show the active side, auxiliary kind/label, and `F7 switch · F8 close` |
-| basic | 0 | current model |
+| basic | 0 | current model; an explicitly selected thinking effort appends ` Effort` (e.g. `step-5-preview Max`), the provider default adds none |
 | mode | 2 | plan/yolo state |
 | goal | 2 | current goal as `Goal <phase> · <rounds>/<max> · <activation>` (phase-colored; hidden with no goal) |
 | jobs | 3 | `⏵ N jobs` — live (running/stopping) background-job count; hidden when none |
