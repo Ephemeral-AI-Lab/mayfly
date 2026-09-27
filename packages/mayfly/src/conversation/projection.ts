@@ -8,11 +8,16 @@
 
 import type { ContentBlock, ImageBlock } from '@deepseek-ai/dsh-llm'
 import { isAppendSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
+// Empty type imports activate the command- and compaction-lifecycle event
+// declaration merges the fold below consumes.
+import type {} from '@deepseek-ai/dsh-commands/types'
+import type {} from '@deepseek-ai/dsh-compaction/types'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 import { outputProgressSchema } from './output-progress.ts'
 import { foldAssistantStreamRecords, initialAssistantStream, type AssistantStreamState } from './stream-accumulator.ts'
 import type {
+  ConversationCompactionEntry,
   ConversationEntry,
   ConversationImage,
   ConversationJson,
@@ -72,6 +77,23 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
   }),
   z.object({ ...entryBase, kind: z.literal('error'), message: z.string(), code: z.string().optional() }),
   z.object({ ...entryBase, kind: z.literal('interrupted') }),
+  z.object({
+    ...entryBase,
+    kind: z.literal('compaction'),
+    compactionId: z.string().optional(),
+    commandId: z.string().optional(),
+    state: z.enum(['running', 'ok', 'error']),
+    trigger: z.enum(['manual', 'auto']),
+    startedAt: z.number(),
+    endedAt: z.number().optional(),
+    shadowedCount: z.number().int().nonnegative().optional(),
+    shadowedTokens: z.number().nonnegative().optional(),
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    summary: z.string().optional(),
+    detail: z.string().optional(),
+    error: z.string().optional(),
+  }),
 ]))
 
 const turnsSchema = z.array(z.object({
@@ -513,6 +535,87 @@ export function foldConversationProjection(
       return state.retractedTurns.includes(event.data.turn) || !isAppendSurfaceEvent(event)
         ? state
         : applyToolResult(state, event)
+    // The `/compact` lifecycle: `command/run` opens the row at submit time so
+    // a busy or never-started attempt still leaves a trace; `compaction/start`
+    // either adopts that row (manual) or opens one itself (automatic);
+    // `compaction/end` settles it, and `command/done` is the terminal record
+    // for attempts that never reached the transaction.
+    case 'command/run': {
+      if (event.data.name !== 'compact') return state
+      const commandId = String(event.data.commandId)
+      const id = `compaction:cmd:${commandId}`
+      if (state.entries.some(entry => entry.id === id)) return state
+      return appendEntry(state, {
+        kind: 'compaction', id, seq: event.seq, updatedSeq: event.seq, turn: state.currentTurn,
+        commandId, state: 'running', trigger: 'manual', startedAt: event.time,
+      })
+    }
+    case 'compaction/start': {
+      const compactionId = String(event.data.compactionId)
+      const sourceCommandId = event.data.sourceCommandId === undefined ? undefined : String(event.data.sourceCommandId)
+      const existing = state.entries.findLast((entry): entry is ConversationCompactionEntry =>
+        entry.kind === 'compaction' && entry.state === 'running'
+        && (entry.compactionId === compactionId
+          || (sourceCommandId !== undefined && entry.commandId === sourceCommandId)))
+      if (existing !== undefined) {
+        return replaceEntry(state, existing.id, event.seq, () => ({ ...existing, compactionId }))
+      }
+      return appendEntry(state, {
+        kind: 'compaction', id: `compaction:${compactionId}`, seq: event.seq, updatedSeq: event.seq,
+        turn: event.data.turn ?? state.currentTurn, compactionId,
+        state: 'running', trigger: sourceCommandId === undefined ? 'auto' : 'manual', startedAt: event.time,
+      })
+    }
+    case 'compaction/summary': {
+      const compactionId = String(event.data.compactionId)
+      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
+        candidate.kind === 'compaction' && candidate.compactionId === compactionId && candidate.state === 'running')
+      if (entry === undefined) return state
+      const summary = visibleText(event.data.summary)
+      return replaceEntry(state, entry.id, event.seq, () => ({
+        ...entry,
+        shadowedCount: event.data.shadowedSeqs.length,
+        shadowedTokens: event.data.shadowedTokenCount,
+        provider: event.data.provider,
+        model: event.data.model,
+        ...(summary === '' ? {} : { summary }),
+      }))
+    }
+    case 'compaction/end': {
+      const compactionId = String(event.data.compactionId)
+      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
+        candidate.kind === 'compaction' && candidate.compactionId === compactionId && candidate.state === 'running')
+      if (entry === undefined) return state
+      const error = event.data.error
+      return replaceEntry(state, entry.id, event.seq, () => ({
+        ...entry,
+        state: error === undefined ? 'ok' : 'error',
+        endedAt: event.time,
+        ...(error === undefined ? {} : { error }),
+      }))
+    }
+    case 'command/done': {
+      const commandId = String(event.data.commandId)
+      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
+        candidate.kind === 'compaction' && candidate.commandId === commandId && candidate.state === 'running')
+      if (entry === undefined) return state
+      return replaceEntry(state, entry.id, event.seq, () => event.data.kind === 'error'
+        ? { ...entry, state: 'error' as const, endedAt: event.time, error: event.data.text ?? 'compaction failed' }
+        : { ...entry, state: 'ok' as const, endedAt: event.time, ...(event.data.text === undefined ? {} : { detail: event.data.text }) })
+    }
+    // A constructor seed ends every prior lifecycle: a compaction still open
+    // across it died with the previous session instance, so its row settles
+    // instead of replaying as a spinner forever.
+    case 'session/end-seed': {
+      let next = state
+      for (const entry of state.entries) {
+        if (entry.kind !== 'compaction' || entry.state !== 'running') continue
+        next = replaceEntry(next, entry.id, event.seq, () => ({
+          ...entry, state: 'error' as const, endedAt: event.time, error: 'compaction interrupted by restart',
+        }))
+      }
+      return next
+    }
     default:
       return state
   }
@@ -546,5 +649,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
       return view
     },
   },
-  stateVersion: 7,
+  stateVersion: 8,
 }

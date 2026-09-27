@@ -113,6 +113,35 @@ export interface ConversationInterruptedEntry extends ConversationEntryBase {
   readonly kind: 'interrupted'
 }
 
+/**
+ * One compaction transaction's lifecycle: opened by the initiating
+ * `command/run` (manual) or `compaction/start` (automatic), filled by
+ * `compaction/summary`, and settled by `compaction/end` — or by `command/done`
+ * when the transaction never opened. The row is the transcript's durable
+ * boundary marker for a surface replacement the conversation itself filters.
+ */
+export interface ConversationCompactionEntry extends ConversationEntryBase {
+  readonly kind: 'compaction'
+  /** Transaction identity from `compaction/start`, for the summary/end pairing. */
+  readonly compactionId?: string | undefined
+  /** The initiating `/compact` execution's pairing id, for `command/done`. */
+  readonly commandId?: string | undefined
+  readonly state: 'running' | 'ok' | 'error'
+  /** Whether a human command or in-turn pressure/overflow triggered the run. */
+  readonly trigger: 'manual' | 'auto'
+  readonly startedAt: number
+  readonly endedAt?: number | undefined
+  readonly shadowedCount?: number | undefined
+  readonly shadowedTokens?: number | undefined
+  readonly provider?: string | undefined
+  readonly model?: string | undefined
+  /** The checkpoint summary text, for the expanded view. */
+  readonly summary?: string | undefined
+  /** The initiating command's own outcome text (e.g. "No compactable history yet."). */
+  readonly detail?: string | undefined
+  readonly error?: string | undefined
+}
+
 /** Complete frontend-relevant entry vocabulary of the projection. */
 export type ConversationEntry =
   | ConversationUserEntry
@@ -121,6 +150,7 @@ export type ConversationEntry =
   | ConversationToolEntry
   | ConversationErrorEntry
   | ConversationInterruptedEntry
+  | ConversationCompactionEntry
 
 /** Client-visible whole value served by `sessionProjections`. */
 export interface ConversationProjection {

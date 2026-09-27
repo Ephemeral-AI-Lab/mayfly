@@ -13,6 +13,7 @@ import {
   SessionStore,
   type SessionEvent,
 } from '@deepseek-ai/dsh-session'
+import { CommandId } from '@deepseek-ai/dsh-commands/brand'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import * as conversationPlugin from '../../src/conversation/index.ts'
 import {
@@ -504,7 +505,7 @@ describe('mayflyConversation projection', () => {
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(7)
+    expect(conversationProjectionDefinition.stateVersion).toBe(8)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -637,6 +638,160 @@ describe('mayflyConversation projection', () => {
     const retractedOther = foldConversationProjection(state, retractionMarker(2, 0))
     expect(retractedOther.streamingThinkingId).toBe(state.streamingThinkingId)
   })
+
+  it('opens a manual row at /compact dispatch, adopts the transaction, and settles on end', () => {
+    let state = fold([
+      event('turn/start', { turn: 1 }),
+      event('user/message', userMessage('first prompt'), { append: true }),
+      event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    state = foldConversationProjection(state, event('command/run', {
+      commandId: CommandId('cmd-1'), name: 'compact', source: { kind: 'user' },
+    }, { time: 1_000 }))
+    expect(state.entries.at(-1)).toMatchObject({
+      kind: 'compaction', id: 'compaction:cmd:cmd-1', state: 'running', trigger: 'manual',
+      turn: 1, commandId: 'cmd-1', startedAt: 1_000,
+    })
+
+    // Unrelated commands and a duplicate run leave the open row untouched.
+    const opened = state
+    state = foldConversationProjection(state, event('command/run', {
+      commandId: CommandId('cmd-2'), name: 'help', source: { kind: 'user' },
+    }))
+    state = foldConversationProjection(state, event('command/run', {
+      commandId: CommandId('cmd-1'), name: 'compact', source: { kind: 'user' },
+    }))
+    expect(state).toBe(opened)
+
+    state = foldConversationProjection(state, event('compaction/start', {
+      compactionId: 'cmp-1' as never, sourceCommandId: CommandId('cmd-1'), turn: null,
+    }, { time: 1_100 }))
+    expect(state.entries.at(-1)).toMatchObject({ id: 'compaction:cmd:cmd-1', compactionId: 'cmp-1', state: 'running' })
+
+    // A repeated start for the adopted transaction is an idempotent touch.
+    state = foldConversationProjection(state, event('compaction/start', {
+      compactionId: 'cmp-1' as never, sourceCommandId: CommandId('cmd-1'), turn: null,
+    }, { time: 1_200 }))
+    expect(state.entries.at(-1)).toMatchObject({ id: 'compaction:cmd:cmd-1', compactionId: 'cmp-1', state: 'running' })
+
+    const summary = [{ type: 'text' as const, text: 'condensed earlier context' }]
+    state = foldConversationProjection(state, event('compaction/summary', {
+      compactionId: 'cmp-1' as never,
+      sourceCommandId: CommandId('cmd-1'),
+      summary,
+      shadowedRange: { start: 1 as never, end: 2 as never },
+      shadowedSeqs: [1, 2, 3] as never,
+      shadowedTokenCount: 18_200,
+      provider: 'mock',
+      model: 'mock',
+      llmStreamCall: true,
+      rawOutput: summary,
+    }, { time: 2_000 }))
+    expect(state.entries.at(-1)).toMatchObject({
+      state: 'running', shadowedCount: 3, shadowedTokens: 18_200,
+      provider: 'mock', model: 'mock', summary: 'condensed earlier context',
+    })
+
+    // The checkpoint replacement is model-facing; it never becomes a row.
+    state = foldConversationProjection(state, event('user/message',
+      userMessage('condensed earlier context', [], { kind: 'compact-checkpoint', compactionId: 'cmp-1' } as never),
+      { replace: true }))
+    expect(state.entries.filter(entry => entry.kind === 'user')).toHaveLength(1)
+
+    state = foldConversationProjection(state, event('compaction/end', {
+      compactionId: 'cmp-1' as never, sourceCommandId: CommandId('cmd-1'), turn: null,
+    }, { time: 2_100 }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'ok', endedAt: 2_100 })
+
+    // The trailing command/done no longer owns the row.
+    const settled = state
+    state = foldConversationProjection(state, event('command/done', {
+      commandId: CommandId('cmd-1'), kind: 'success', text: 'Compacted 3 history items (~18200 tokens).',
+    }))
+    expect(state).toBe(settled)
+  })
+
+  it('settles never-started manual attempts through command/done alone', () => {
+    let state = fold([
+      event('command/run', { commandId: CommandId('cmd-2'), name: 'compact', source: { kind: 'user' } }, { time: 1_000 }),
+      event('command/done', { commandId: CommandId('cmd-2'), kind: 'success', text: 'No compactable history yet.' }, { time: 1_050 }),
+    ])
+    expect(state.entries).toMatchObject([{
+      kind: 'compaction', state: 'ok', trigger: 'manual', detail: 'No compactable history yet.', endedAt: 1_050,
+    }])
+    state = foldConversationProjection(state, event('command/run', { commandId: CommandId('cmd-3'), name: 'compact', source: { kind: 'user' } }))
+    state = foldConversationProjection(state, event('command/done', { commandId: CommandId('cmd-3'), kind: 'error', text: 'A compaction is already running.' }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'error', error: 'A compaction is already running.' })
+    // A bare success or error result still settles the row.
+    state = foldConversationProjection(state, event('command/run', { commandId: CommandId('cmd-5'), name: 'compact', source: { kind: 'user' } }))
+    state = foldConversationProjection(state, event('command/done', { commandId: CommandId('cmd-5'), kind: 'success' }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'ok' })
+    expect(state.entries.at(-1)).not.toHaveProperty('detail')
+    state = foldConversationProjection(state, event('command/run', { commandId: CommandId('cmd-6'), name: 'compact', source: { kind: 'user' } }))
+    state = foldConversationProjection(state, event('command/done', { commandId: CommandId('cmd-6'), kind: 'error' }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'error', error: 'compaction failed' })
+    // A settled row is not resurrected by a late lifecycle event.
+    state = foldConversationProjection(state, event('compaction/start', {
+      compactionId: 'cmp-3' as never, sourceCommandId: CommandId('cmd-3'), turn: null,
+    }))
+    expect(state.entries.filter(entry => entry.kind === 'compaction')).toHaveLength(5)
+    expect(state.entries[1]).toMatchObject({ state: 'error', error: 'A compaction is already running.' })
+    expect(state.entries.at(-1)).toMatchObject({ state: 'running', trigger: 'manual', compactionId: 'cmp-3' })
+  })
+
+  it('opens an automatic row inside the active turn and settles it on error', () => {
+    let state = fold([
+      event('turn/start', { turn: 4 }),
+      event('user/message', userMessage('big task'), { append: true }),
+    ])
+    state = foldConversationProjection(state, event('compaction/start', {
+      compactionId: 'cmp-auto' as never, turn: 4,
+    }, { time: 5_000 }))
+    expect(state.entries.at(-1)).toMatchObject({
+      kind: 'compaction', id: 'compaction:cmp-auto', state: 'running', trigger: 'auto', turn: 4, startedAt: 5_000,
+    })
+    state = foldConversationProjection(state, event('compaction/end', {
+      compactionId: 'cmp-auto' as never, turn: 4, error: 'summary was not smaller than the shadowed content',
+    }, { time: 6_000 }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'error', endedAt: 6_000, error: 'summary was not smaller than the shadowed content' })
+    // Unknown lifecycle events fold empty.
+    const settled = state
+    state = foldConversationProjection(state, event('compaction/end', { compactionId: 'cmp-none' as never, turn: null }))
+    expect(state).toBe(settled)
+    state = foldConversationProjection(state, event('compaction/summary', {
+      compactionId: 'cmp-none' as never, summary: [{ type: 'text', text: 'orphan' }],
+      shadowedRange: { start: 1 as never, end: 1 as never }, shadowedSeqs: [], shadowedTokenCount: 0,
+      provider: 'mock', model: 'mock',
+    }))
+    expect(state).toBe(settled)
+    // An empty summary leaves the preview slot unset.
+    state = foldConversationProjection(state, event('compaction/start', { compactionId: 'cmp-img' as never, turn: 4 }))
+    state = foldConversationProjection(state, event('compaction/summary', {
+      compactionId: 'cmp-img' as never, summary: [],
+      shadowedRange: { start: 1 as never, end: 1 as never }, shadowedSeqs: [1] as never, shadowedTokenCount: 4,
+      provider: 'mock', model: 'mock',
+    }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'running', shadowedCount: 1, shadowedTokens: 4 })
+    expect(state.entries.at(-1)).not.toHaveProperty('summary')
+  })
+
+  it('settles a still-running compaction as interrupted at session/end-seed', () => {
+    let state = fold([
+      event('user/message', userMessage('prompt'), { append: true }),
+      event('command/run', { commandId: CommandId('cmd-4'), name: 'compact', source: { kind: 'user' } }),
+      event('compaction/start', { compactionId: 'cmp-4' as never, sourceCommandId: CommandId('cmd-4'), turn: null }),
+      event('command/run', { commandId: CommandId('cmd-7'), name: 'compact', source: { kind: 'user' } }),
+      event('command/done', { commandId: CommandId('cmd-7'), kind: 'error', text: 'A compaction is already running.' }),
+    ])
+    state = foldConversationProjection(state, event('session/end-seed', {}, { time: 9_000 }))
+    // Only the still-running row settles; the user row and the settled error row are untouched.
+    expect(state.entries).toMatchObject([
+      { kind: 'user' },
+      { kind: 'compaction', state: 'error', endedAt: 9_000, error: 'compaction interrupted by restart' },
+      { kind: 'compaction', state: 'error', error: 'A compaction is already running.' },
+    ])
+    expect(state.entries[2]).not.toHaveProperty('endedAt', 9_000)
+  })
 })
 
 describe('SessionProjectionRegistry integration', () => {
@@ -663,7 +818,7 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 7, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 8, seq: 3 })
     const obsolete = { ...checkpoint, mayflyConversation: { ...checkpoint.mayflyConversation!, ver: 4 } }
     expect(ctx.sessionProjections.restoreFloor(obsolete)).toBe(0)
     expect(ctx.sessionProjections.viewCheckpoint(obsolete)).not.toHaveProperty('mayflyConversation')

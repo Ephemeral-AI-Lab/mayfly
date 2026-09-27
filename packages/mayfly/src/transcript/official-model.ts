@@ -452,6 +452,17 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
       }
     case 'interrupted':
       return { kind: 'transcript-interrupted', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn }
+    case 'compaction':
+      return {
+        kind: 'transcript-compaction', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn,
+        state: entry.state, trigger: entry.trigger, startedAt: entry.startedAt,
+        ...(entry.endedAt === undefined ? {} : { endedAt: entry.endedAt }),
+        ...(entry.shadowedCount === undefined ? {} : { shadowedCount: entry.shadowedCount }),
+        ...(entry.shadowedTokens === undefined ? {} : { shadowedTokens: entry.shadowedTokens }),
+        ...(entry.summary === undefined ? {} : { summary: entry.summary }),
+        ...(entry.detail === undefined ? {} : { detail: entry.detail }),
+        ...(entry.error === undefined ? {} : { error: entry.error }),
+      }
   }
 }
 
@@ -519,7 +530,7 @@ export function conversationTranscriptModel(
 }
 
 /** Entry kinds the mapper dereferences; anything else is not our wire value. */
-const ADMITTED_KINDS = new Set(['user', 'assistant', 'thinking', 'tool', 'error', 'interrupted'])
+const ADMITTED_KINDS = new Set(['user', 'assistant', 'thinking', 'tool', 'error', 'interrupted', 'compaction'])
 
 /** The entry fields this mapper dereferences; the rest stay opaque here. */
 function admissibleEntry(candidate: unknown): candidate is ConversationEntry {
