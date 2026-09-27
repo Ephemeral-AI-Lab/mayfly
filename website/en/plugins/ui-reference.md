@@ -218,15 +218,17 @@ ui.code([
 
 ![`diff` node rendering](/shots/diff.svg)
 
-*Multi-line before/after: context lines pass through, changed lines are marked `-`/`+` (width 64).*
+*Multi-line before/after: context lines pass through, changed lines are marked `-`/`+` on red/green background bands (width 64).*
 
 ```ts
 ui.diff(before: string, after: string)
 ```
 
 Represents the semantic before/after states of the same content, such as a
-pending edit. Supply plain text rather than manually adding diff colors. The
-screenshot above renders exactly this node:
+pending edit. Supply plain text rather than manually adding diff colors: Mayfly
+shades removed and added lines with the theme's `diffRemovedBg`/`diffAddedBg`
+bands, padded to the assigned width. The screenshot above renders exactly this
+node:
 
 ```ts
 ui.diff(

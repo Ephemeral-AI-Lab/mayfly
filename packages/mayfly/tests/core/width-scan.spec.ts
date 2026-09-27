@@ -1,8 +1,8 @@
 /**
  * The width-scan contract for core's own rendering surfaces (D48): the
  * gutter wrapper, the shared `framePanel` framer, `WrappingSelectList`
- * (the slash-command dropdown), and the `clampRowsToWidth` backstop
- * itself — each must honor the `MayflyComponent` contract at every scan
+ * (the slash-command dropdown), the diff band painter, and the
+ * `clampRowsToWidth` backstop itself — each must honor the `MayflyComponent` contract at every scan
  * width against every adversarial fixture.
  */
 
@@ -10,6 +10,8 @@ import { describe, expect, it } from 'vitest'
 import type { SelectItem, SelectListTheme } from '@earendil-works/pi-tui'
 import { clampRowsToWidth, framePanel } from '../../src/core/chrome.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
+import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
+import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { renderListSegment } from '../../src/core/ui-patterns.ts'
 import { GutterComponent } from '../../src/core/gutter.ts'
 import { renderMermaidRows } from '../../src/core/rich-document.ts'
@@ -172,6 +174,14 @@ describe('core width-scan', () => {
         const diagram = renderMermaidRows(mermaid, width)
         const documentRows = diagram ?? wrapTextWithAnsi(mermaid, Math.max(1, width))
         expectLinesFit(`Mermaid/${name}`, documentRows, width)
+      }
+    })
+
+    it(`diff band painter survives ${name}`, () => {
+      // Real SGR bands: padding must land exactly on the width, never past it.
+      const ops = alignDiffLines(`keep\n${text}\nkeep`, `keep\nadded ${text}\nkeep`)
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`DiffBands/${name}`, paintDiffRows(ops, width, { visibleWidth, wrapText: wrapTextWithAnsi }, DARK_COLORS), width)
       }
     })
 

@@ -53,16 +53,20 @@ const PAPER_LOGO_GRADIENT = [
   '#d49655', '#dfaa70', '#e8bd8c', '#f0d0ab',
 ] as const
 
-const PAPER_SELECTED_BG = '#efe6d3'
+const PAPER_BACKGROUNDS = {
+  selectedBg: '#efe6d3',
+  diffAddedBg: '#e4ecd3',
+  diffRemovedBg: '#f6dcd4',
+} as const
 
 /** The built-in paper palette as a frozen semantic color table. */
-export const PAPER_COLORS: MayflySemanticColors = colorsFromForegrounds(PAPER_FOREGROUNDS, PAPER_SELECTED_BG, PAPER_LOGO_GRADIENT)
+export const PAPER_COLORS: MayflySemanticColors = colorsFromForegrounds(PAPER_FOREGROUNDS, PAPER_BACKGROUNDS, PAPER_LOGO_GRADIENT)
 
 /**
  * The paper `mayflyTheme` provider. Exposes the frozen semantic color table;
  * unregistered automatically when the plugin's fiber unloads.
  */
-export class MayflyThemeService extends defineThemeService(PAPER_COLORS, themeModel('paper', 'Paper', false, PAPER_FOREGROUNDS, PAPER_SELECTED_BG)) {}
+export class MayflyThemeService extends defineThemeService(PAPER_COLORS, themeModel('paper', 'Paper', false, PAPER_FOREGROUNDS, PAPER_BACKGROUNDS)) {}
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-theme-paper'

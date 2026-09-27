@@ -1,6 +1,6 @@
 /**
  * `mayfly-theme-paper` plugin entry: registration and disposal on the fiber,
- * and the paper semantic color table (32 tokens) — the warm light palette
+ * and the paper semantic color table (34 tokens) — the warm light palette
  * with its amber logo sweep.
  */
 
@@ -40,6 +40,8 @@ const EXPECTED_ROLES: (keyof MayflySemanticColors)[] = [
   'diffRemovedStrong',
   'diffGutter',
   'diffMeta',
+  'diffAddedBg',
+  'diffRemovedBg',
   'modelHighlight',
   'logoGradient',
 ]
@@ -85,6 +87,10 @@ describe('mayfly-theme-paper plugin', () => {
     expect(colors.roleUser('hi')).toBe('\x1b[38;2;53;80;158mhi\x1b[39m')
     // selectedBg #efe6d3 → rgb(239, 230, 211)
     expect(colors.selectedBg('hi')).toBe('\x1b[48;2;239;230;211mhi\x1b[49m')
+    // diffAddedBg #e4ecd3 → rgb(228, 236, 211)
+    expect(colors.diffAddedBg('hi')).toBe('\x1b[48;2;228;236;211mhi\x1b[49m')
+    // diffRemovedBg #f6dcd4 → rgb(246, 220, 212)
+    expect(colors.diffRemovedBg('hi')).toBe('\x1b[48;2;246;220;212mhi\x1b[49m')
     // modelHighlight #a04e1a → rgb(160, 78, 26)
     expect(colors.modelHighlight('hi')).toBe('\x1b[38;2;160;78;26mhi\x1b[39m')
   })

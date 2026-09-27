@@ -51,16 +51,20 @@ const LIGHT_LOGO_GRADIENT = [
   '#2f66cd', '#3d77dd', '#4f8ae8', '#63a0f2',
 ] as const
 
-export const LIGHT_SELECTED_BG = '#d0d7de'
+export const LIGHT_BACKGROUNDS = {
+  selectedBg: '#d0d7de',
+  diffAddedBg: '#dafbe1',
+  diffRemovedBg: '#ffebe9',
+} as const
 
 /** The built-in light palette as a frozen semantic color table. */
-export const LIGHT_COLORS: MayflySemanticColors = colorsFromForegrounds(LIGHT_FOREGROUNDS, LIGHT_SELECTED_BG, LIGHT_LOGO_GRADIENT)
+export const LIGHT_COLORS: MayflySemanticColors = colorsFromForegrounds(LIGHT_FOREGROUNDS, LIGHT_BACKGROUNDS, LIGHT_LOGO_GRADIENT)
 
 /**
  * The light `mayflyTheme` provider. Exposes the frozen semantic color table;
  * unregistered automatically when the plugin's fiber unloads.
  */
-export class MayflyThemeService extends defineThemeService(LIGHT_COLORS, themeModel('light', 'Light', false, LIGHT_FOREGROUNDS, LIGHT_SELECTED_BG)) {}
+export class MayflyThemeService extends defineThemeService(LIGHT_COLORS, themeModel('light', 'Light', false, LIGHT_FOREGROUNDS, LIGHT_BACKGROUNDS)) {}
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-theme-light'
