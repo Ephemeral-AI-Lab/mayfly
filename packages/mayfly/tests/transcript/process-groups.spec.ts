@@ -142,6 +142,28 @@ describe('work-details display plan', () => {
     expect(shape(plan(turn(true), 'standard', { expanded: true }))).toEqual(['user+', 'header:closed:open', 'read-group+', 'tool+', 'tool+', 'assistant+'])
   })
 
+  it('keeps compaction boundary rows visible in every mode and out of process groups', () => {
+    const compaction = (overrides: Partial<Extract<TranscriptEntryModel, { kind: 'transcript-compaction' }>> = {}): TranscriptEntryModel => ({
+      kind: 'transcript-compaction', id: `cmp${String(seq + 1)}`, ...base(1),
+      state: 'ok', trigger: 'manual', startedAt: 0, endedAt: 1, shadowedCount: 3, shadowedTokens: 4_096, ...overrides,
+    })
+    seq = 0
+    for (const mode of ['compact', 'standard', 'detailed'] as const) {
+      expect(shape(plan([...turnOne(), compaction()], mode))).toEqual(['user', 'header:closed:folded:hint', 'assistant', 'compaction'])
+    }
+    seq = 0
+    expect(shape(plan([...turnOne(), compaction()], 'verbose')))
+      .toEqual(['user', 'header:closed:open', 'thinking', 'read-group', 'assistant', 'tool', 'thinking', 'tool', 'assistant', 'compaction'])
+    // In a running turn the marker flushes the pending process group like an
+    // error row does, splitting it into two titled groups.
+    seq = 0
+    const running = plan([user(1), tool(1), compaction({ state: 'running', trigger: 'auto', endedAt: undefined, shadowedCount: undefined, shadowedTokens: undefined }), tool(1)], 'standard', { runningTurn: 1, turns: [{ turn: 1, startedAt: 0 }] })
+    expect(shape(running)).toEqual(['user', 'title:commands', 'compaction', 'title:commands'])
+    // A lone compaction never invents a header or a group of its own.
+    seq = 0
+    expect(shape(plan([user(1), compaction()], 'standard'))).toEqual(['user', 'compaction'])
+  })
+
   it('reports cancelled members and header counts without preparing calls', () => {
     seq = 0
     const pendingCall = tool(1, { result: undefined })

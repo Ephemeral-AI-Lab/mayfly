@@ -63,6 +63,11 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   'Message to {to}': '发送给 {to}',
   '{done}/{total} done': '已完成 {done}/{total}',
   '(no output)': '（无输出）',
+  'compacting context…': '正在压缩上下文…',
+  'compacted': '已压缩',
+  'compacted {count} items': '已压缩 {count} 条历史',
+  'compaction failed': '压缩失败',
+  ' · auto': ' · 自动',
 })
 
 /**

@@ -27,6 +27,7 @@ import { CommandGroupComponent } from '../../src/transcript/command-group.ts'
 import { ReadGroupComponent } from '../../src/transcript/read-group.ts'
 import { SearchGroupComponent } from '../../src/transcript/search-group.ts'
 import { ThinkingComponent } from '../../src/transcript/thinking.ts'
+import { CompactionRowComponent } from '../../src/transcript/compaction.ts'
 import { ToolLineComponent } from '../../src/transcript/tool-line.ts'
 import { ProcessTitleComponent, TurnHeaderComponent } from '../../src/transcript/process-rows.ts'
 import type { TranscriptToolModel } from '../../src/frontend/models.ts'
@@ -277,6 +278,29 @@ describe('transcript width-scan', () => {
       }
     })
 
+    it(`CompactionRowComponent survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      const base = { kind: 'transcript-compaction' as const, id: 'cmp', seq: 1, updatedSeq: 1, turn: 1 }
+      const running = new CompactionRowComponent({ ...base, state: 'running', trigger: 'auto', startedAt: Date.now() - 3_000 }, colors, components)
+      const ok = new CompactionRowComponent({
+        ...base, state: 'ok', trigger: 'manual', startedAt: 0, endedAt: 1,
+        shadowedCount: 3, shadowedTokens: 18_200, summary: `${text}\n${text}\n${text}`,
+      }, colors, components)
+      ok.setExpanded(true)
+      const detailOnly = new CompactionRowComponent({ ...base, state: 'ok', trigger: 'auto', startedAt: 0, endedAt: 1, detail: text }, colors, components)
+      const failed = new CompactionRowComponent({ ...base, state: 'error', trigger: 'manual', startedAt: 0, endedAt: 1, error: text }, colors, components)
+      try {
+        for (const width of SCAN_WIDTHS) {
+          expectLinesFit(`CompactionRunning/${name}`, running.render(width), width)
+          expectLinesFit(`CompactionSettled/${name}`, ok.render(width), width)
+          expectLinesFit(`CompactionDetail/${name}`, detailOnly.render(width), width)
+          expectLinesFit(`CompactionFailed/${name}`, failed.render(width), width)
+        }
+      } finally {
+        running.dispose()
+      }
+    })
+
     it(`ThinkingComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
       const item = { kind: 'thinking' as const, seq: 1, turn: 1, step: 1, text, streaming: false, durationMs: 4_000 }
@@ -345,6 +369,10 @@ describe('transcript width-scan', () => {
         },
         { kind: 'transcript-error', id: 'error', seq: 6, turn: 1, message: text },
         { kind: 'transcript-interrupted', id: 'interrupted', seq: 7, turn: 1 },
+        {
+          kind: 'transcript-compaction', id: 'compaction', seq: 10, updatedSeq: 10, turn: 1,
+          state: 'ok', trigger: 'auto', startedAt: 0, endedAt: 1, shadowedCount: 3, shadowedTokens: 4_096, summary: text,
+        },
       ])
       const component = new TranscriptModelComponent(() => model, {
         colors,

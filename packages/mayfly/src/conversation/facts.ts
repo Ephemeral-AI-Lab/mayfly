@@ -11,6 +11,9 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { AssistantStreamRecord, ContentBlock } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tool-todo'
+// Empty type import activates the compaction-lifecycle event declarations
+// the meter cases below consume.
+import type {} from '@deepseek-ai/dsh-compaction/types'
 import { z } from 'zod'
 import { outputProgressSchema } from './output-progress.ts'
 import type { ConversationFactsState } from './types.ts'
@@ -213,6 +216,23 @@ export function foldConversationFacts(
       return { ...state, todos: event.data.todos.map(todo => ({ ...todo })) }
     case 'request/context':
       return event.data.contextWindow === state.contextWindow ? state : { ...state, contextWindow: event.data.contextWindow }
+    // `compaction/summary` and `compaction/prune` are the metering events
+    // paired with a surface `replace`: a consumer subtracts the shadow price
+    // without retaining per-node prices. The summarize call's output tokens
+    // stand in for the framed checkpoint; the post-replacement cache share
+    // is unknown, so the stale segment clears until the next model step.
+    case 'compaction/summary':
+      return {
+        ...state,
+        contextTokens: Math.max(0, state.contextTokens - event.data.shadowedTokenCount + (event.data.usage?.outputTokens ?? 0)),
+        contextCacheReadTokens: undefined,
+      }
+    case 'compaction/prune':
+      return {
+        ...state,
+        contextTokens: Math.max(0, state.contextTokens - event.data.shadowedTokenCount),
+        contextCacheReadTokens: undefined,
+      }
     case 'request/header': {
       const config = event.data.header.config
       return {
@@ -245,5 +265,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 7,
+  stateVersion: 8,
 }
