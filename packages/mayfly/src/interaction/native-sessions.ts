@@ -6,6 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-schedule'
 import type {} from '@deepseek-ai/dsh-session-query'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import { ui, type MayflyOverlayHandle, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
@@ -22,6 +23,7 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
   let detail: MayflyOverlayHandle | undefined
   let sessions: readonly SessionSummary[] = []
   let headers: ReadonlyMap<string, SessionHeader> = new Map()
+  let reminders: ReadonlySet<string> = new Set()
   let now = Date.now()
   let searchRows: readonly MayflyListItem[] | undefined
   let message = ''
@@ -37,16 +39,29 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
       return new Map()
     }
   }
+  // One Host catalog read badges every row; absent service leaves the set empty.
+  const readReminders = async (): Promise<ReadonlySet<string>> => {
+    const schedule = ctx.get('schedule')
+    if (schedule === undefined) return new Set()
+    try {
+      return new Set((await schedule.catalog()).filter(entry => entry.status === 'active').map(entry => String(entry.sessionId)))
+    } catch (error) {
+      if (!abort.aborted) ctx.logger.warn(`sessions: reminder catalog failed: ${String(error)}`)
+      return new Set()
+    }
+  }
   const refresh = async () => {
-    const [listed, stored] = await Promise.all([ctx.sessionController.list({}, abort), readHeaders()])
+    const [listed, stored, reminding] = await Promise.all([ctx.sessionController.list({}, abort), readHeaders(), readReminders()])
     sessions = listed.items
     headers = stored
+    reminders = reminding
     now = Date.now()
   }
   const factsOf = (session: SessionSummary): SessionListFacts => sessionListFacts(session, {
     header: headers.get(String(session.sessionId)),
     archived: ctx.workspaceRegistry.archivedSessionIds.includes(session.sessionId),
     current: String(ctx.mayflyCurrentAgent.primary()?.id) === String(session.sessionId),
+    reminders,
     now,
   })
   const rows = (): readonly MayflyListItem[] => searchRows ?? sessions.map(session => sessionListItem(factsOf(session), now, home, t))

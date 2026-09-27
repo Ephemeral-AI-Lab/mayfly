@@ -1614,7 +1614,7 @@ describe('the Alt+M model cycle key', () => {
     // survives byte for byte — the point of the hotkey.
     expect(editor.getText()).toBe('keep this draft')
     await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(1) })
-    expect(ctx.mayflyUiInteraction.notificationSnapshot()[0]!.message).toBe('Switched to mock-pro (mock) · session only')
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()[0]!.message).toBe('Switched to mock-pro (mock)')
     expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro' }])
   })
 

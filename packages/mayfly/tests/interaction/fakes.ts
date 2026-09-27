@@ -956,6 +956,8 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     async *follow() {
       yield { type: 'snapshot', assistantStream: { revision: 0 } }
     },
+    // Mirrors the rc.2 contract: the Session-local selection is installed
+    // synchronously and the default save runs in the background.
     selectModel: async (request: { sessionId: string, provider: string, model: string, reasoningEffort?: string }) => {
       const state = testSession()
       if (state?.current === null || state?.modelRef === undefined) throw new Error('no session is live yet')
@@ -971,6 +973,8 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
           listener(session, 'modelSelection', { lastUsed: selected, next: selected }, 0)
         }
       }
+      void (ctx.get('agentDefaultModel') as { saveSelection?(value: unknown): Promise<void> } | undefined)
+        ?.saveSelection?.(selected).catch(() => {})
       return { selected }
     },
   } as never)

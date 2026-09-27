@@ -45,13 +45,12 @@ describe('sessionListFacts', () => {
       running: true,
       projections: { values: {
         title: 'My session',
-        schedule: [{ id: 'r1' }],
         tokenUsage: { uncachedInputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 5 },
         sessionStats: { turns: 2, steps: 4, llmMs: 1_000, toolMs: 500, ttftMs: 100, ttftSteps: 1, decodeMs: 900, decodeTokens: 50 },
         modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' } },
         mayflyConversationFacts: { endedAt: NOW - 30_000 },
       } },
-    }), { ...context({ current: true, archived: true }), header: header({ agentPreset: 'standard' }) })
+    }), { ...context({ current: true, archived: true }), header: header({ agentPreset: 'standard' }), reminders: new Set(['session-id-abcdef']) })
     expect(facts).toMatchObject({
       id: 'session-id-abcdef',
       title: 'My session',

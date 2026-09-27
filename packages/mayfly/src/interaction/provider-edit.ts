@@ -44,6 +44,11 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
   const credentials = ctx.get('credentials')
   const overlays = ctx.get('mayflyOverlays')
   if (settings === undefined || credentials === undefined || overlays === undefined) return false
+  // Routes another settings namespace owns (e.g. the DeepSeek account
+  // adapter under `llm-deepseek-account`) are not pi-ai profiles: writing
+  // one would shadow the adapter's route, so the editor refuses them.
+  const declared = ctx.get('llm')?.listConfigurableProviders().find(item => item.provider === route)
+  if (declared !== undefined && declared.settingsNs !== NAMESPACE) return false
   const id = `mayfly.provider.${Buffer.from(route).toString('hex')}`
   const existing = overlays.list().find(entry => entry.id === id)
   if (existing !== undefined) {

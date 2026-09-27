@@ -5,7 +5,6 @@
  */
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-schedule'
 import type { SessionStatsProjection } from '@deepseek-ai/dsh-session-stats'
 import type {} from '@deepseek-ai/dsh-token-meter'
 import { ui, type MayflyField, type MayflyInlineSpan, type MayflyListItem, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
@@ -48,6 +47,8 @@ export interface SessionListContext {
   readonly header?: SessionHeader | undefined
   readonly archived: boolean
   readonly current: boolean
+  /** Sessions with at least one active Host reminder; absent without Schedule. */
+  readonly reminders?: ReadonlySet<string>
   /** The listing time, for running sessions and relative ages. */
   readonly now: number
 }
@@ -74,7 +75,7 @@ export function sessionListFacts(summary: SessionSummary, context: SessionListCo
     running: summary.running,
     archived: context.archived,
     current: context.current,
-    reminders: Array.isArray(values?.schedule) && values.schedule.length > 0,
+    reminders: context.reminders?.has(String(summary.sessionId)) ?? false,
     ...(summary.parentSessionId === undefined ? {} : { parentId: String(summary.parentSessionId) }),
     ...(summary.origin === undefined ? {} : { origin: summary.origin }),
     ...(usage === undefined ? {} : { tokens: { input: usage.uncachedInputTokens, cacheRead: usage.cacheReadTokens, cacheWrite: usage.cacheWriteTokens, output: usage.outputTokens } }),

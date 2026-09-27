@@ -55,7 +55,7 @@ dsh 自带的工具目录，按用途分组。哪些工具真正出现在你的�
 | 工具 | 说明 |
 | --- | --- |
 | `create_goal` / `get_goal` / `update_goal` | 管理同会话内持久的目标 |
-| `schedule_create` / `schedule_list` / `schedule_delete` | 会话内提醒（一次性或固定频率） |
+| `schedule_create` / `schedule_list` / `schedule_delete` | Host 级持久化提醒（单次、间隔、每日/每周/cron；由 `schedule` 行控制，默认禁用） |
 | `todo_write` | 整表替换结构化任务清单（Mayfly 中由 [todo 面板](/features/panes)呈现） |
 | `web_fetch` · `web_search` | 抓取并解码 URL 为文本；1–4 个查询合并的网页搜索 |
 

@@ -25,7 +25,7 @@ async function setup() {
         sessionStats: { turns: 3, steps: 5, llmMs: 12_000, toolMs: 3_000, ttftMs: 800, ttftSteps: 3, decodeMs: 9_000, decodeTokens: 800 },
         modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat' } },
       } } },
-      { sessionId: 'other', running: true, updatedAt: start - 30_000, projections: { values: { schedule: [{ id: 'r1' }] } } },
+      { sessionId: 'other', running: true, updatedAt: start - 30_000 },
       { sessionId: 'child', origin: 'subagent', parentSessionId: 'current', running: false, updatedAt: start - 20_000 },
     ] })),
     search: vi.fn(async () => ({ items: [{ sessionId: 'other', snippet: 'matching text' }], hasMore: true })),
@@ -37,10 +37,12 @@ async function setup() {
   ]) }
   const registry = { archivedSessionIds: [] as string[], archiveSession: vi.fn(async (id: string, _options: unknown) => { registry.archivedSessionIds.push(id) }), unarchiveSession: vi.fn(async (id: string) => { registry.archivedSessionIds = registry.archivedSessionIds.filter(item => item !== id) }) }
   const subagents = { listDescendants: vi.fn(async () => [{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }]) }
+  const schedule = { catalog: vi.fn(async () => [{ sessionId: 'other', status: 'active' }] as never) }
   ctx.provide('sessionController', controller as never)
   ctx.provide('sessionQuery', query as never)
   ctx.provide('workspaceRegistry', registry as never)
   ctx.provide('subagents', subagents as never)
+  ctx.provide('schedule', schedule as never)
   const open = () => openSessions(ctx, new AbortController().signal, interactionTranslator(ctx))
   const model = (id = 'mayfly.sessions') => ctx.mayflyUiInteraction.get('overlay', id)!
   const select = async (id: string) => { model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'sessions', selectedIds: [id] }); await flushRequests() }
@@ -194,6 +196,41 @@ it('stays quiet when the header listing fails after the signal aborted', async (
   const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
   const caller = new AbortController()
   bench.query.listSessions.mockImplementationOnce(async () => { caller.abort(); throw new Error('late failure') })
+  expect(await openSessions(bench.ctx, caller.signal, interactionTranslator(bench.ctx))).toEqual({ kind: 'success' })
+  expect(warn).not.toHaveBeenCalled()
+})
+
+it('lists sessions without reminder badges when the Host schedule service is absent', async () => {
+  const bench = await setup()
+  bench.ctx.set('schedule', undefined as never)
+  expect(await bench.open()).toEqual({ kind: 'success' })
+  expect(JSON.stringify(bench.model().node)).not.toContain('Reminders')
+})
+
+it('lists sessions without headers when the query service is absent', async () => {
+  const bench = await setup()
+  bench.ctx.set('sessionQuery', undefined as never)
+  expect(await bench.open()).toEqual({ kind: 'success' })
+  const node = JSON.stringify(bench.model().node)
+  expect(node).toContain('Untitled')
+})
+
+it('degrades reminder badges when the Host catalog fails', async () => {
+  const bench = await setup()
+  const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
+  const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
+  schedule.catalog.mockRejectedValueOnce(new Error('catalog down'))
+  expect(await bench.open()).toEqual({ kind: 'success' })
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('catalog down'))
+  expect(JSON.stringify(bench.model().node)).not.toContain('Reminders')
+})
+
+it('stays quiet when the reminder catalog fails after the signal aborted', async () => {
+  const bench = await setup()
+  const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
+  const caller = new AbortController()
+  const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
+  schedule.catalog.mockImplementationOnce(async () => { caller.abort(); throw new Error('late catalog failure') })
   expect(await openSessions(bench.ctx, caller.signal, interactionTranslator(bench.ctx))).toEqual({ kind: 'success' })
   expect(warn).not.toHaveBeenCalled()
 })

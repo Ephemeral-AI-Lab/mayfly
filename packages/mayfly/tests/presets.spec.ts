@@ -38,7 +38,7 @@ function preset(source: string): unknown {
   return parse(source, { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }] })
 }
 
-const mayflyOnlyRowIds = new Set(['schedule', 'time-context'])
+const mayflyOnlyRowIds = new Set(['time-context'])
 
 /** Exclude Mayfly's additive preset rows so the remaining composition tracks upstream exactly. */
 function withoutMayflyAdditions(value: unknown): unknown {
@@ -100,27 +100,34 @@ describe('Mayfly preset roster', () => {
     }
   })
 
-  it('scopes the Schedule capability to the standard preset only', () => {
+  it('mounts Schedule as a disabled Host row and keeps time-context preset-scoped', () => {
     const mayflyRoot = new URL('../presets/', import.meta.url)
+    // Harness 0.1.7-rc.2 turned Schedule into a durable Host-wide service whose
+    // tools attach to every root Agent, so the row lives in the host patch and
+    // ships disabled — a preset-scoped mount would instantiate one service per
+    // scope racing on the same task store.
+    const host = preset(readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')) as readonly {
+      readonly insert?: readonly { readonly id?: unknown; readonly name?: unknown; readonly disabled?: unknown }[]
+    }[]
+    const schedule = host.flatMap(entry => entry.insert ?? []).find(row => row.id === 'schedule')
+    expect(schedule?.name).toBe('@deepseek-ai/dsh-schedule')
+    expect(schedule?.disabled).toBe(true)
     const standard = preset(readFileSync(new URL('standard.patch.yml', mayflyRoot), 'utf8')) as readonly {
       readonly insert?: readonly { readonly id?: unknown; readonly config?: { readonly plugins?: readonly { readonly id?: unknown; readonly name?: unknown; readonly disabled?: unknown; readonly config?: unknown }[] } }[]
     }[]
     const rows = standard.flatMap(entry => entry.insert ?? []).find(row => row.id === 'preset-standard')?.config?.plugins ?? []
-    const schedule = rows.find(row => row.id === 'schedule')
-    expect(schedule?.name).toBe('@deepseek-ai/dsh-schedule')
-    expect(schedule?.disabled).toBeUndefined()
     const timeContext = rows.find(row => row.id === 'time-context')
     expect(timeContext?.name).toBe('@deepseek-ai/dsh-time-context')
     expect(timeContext?.config).toEqual({ refreshIntervalMs: 300000 })
-    // No other preset may reference the capability: scoped event flow is the
-    // only isolation mechanism, and a dormant row elsewhere could not be
-    // flipped through profile patches anyway.
-    for (const id of ['minimal', 'ptc', 'cordis', 'mayfly-cordis']) {
+    // No preset may publish the service: host rows are the only legal mount.
+    for (const id of ['standard', 'minimal', 'ptc', 'cordis', 'mayfly-cordis']) {
       const source = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
       expect(source).not.toContain('dsh-schedule')
+    }
+    for (const id of ['minimal', 'ptc', 'cordis', 'mayfly-cordis']) {
+      const source = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
       expect(source).not.toContain('dsh-time-context')
     }
-    expect(readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')).not.toContain('dsh-schedule')
   })
 
   it('ships discoverable creative skills with valid frontmatter', () => {

@@ -97,6 +97,15 @@
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
 
+    # Durable Host-wide reminders. The Schedule service owns the task store and
+    # delivers each due occurrence as a follow-up in its original Session; it
+    # attaches schedule_* tools to every root Agent. Shipped disabled — enable
+    # it in profile files to turn on reminder management. (Upstream mounts the
+    # same row disabled in its Web bundle.)
+    - id: schedule
+      name: '@deepseek-ai/dsh-schedule'
+      disabled: true
+
     # Whole-log turn/step counts and model/tool wall times (the `sessionStats`
     # projection), mounted as in the upstream Web composition. Session titles
     # stay on the base `session-title` service and its first-prompt provider.

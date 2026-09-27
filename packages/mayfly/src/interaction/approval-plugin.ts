@@ -17,9 +17,12 @@ interface ApprovalAnswer { readonly outcome: ApprovalOutcome, readonly session?:
 const feedbackPath = [{ controlId: 'approval', itemId: 'feedback' }]
 const decisionPath = [{ controlId: 'approval', itemId: 'decision' }]
 
-function view(request: ApprovalRequest, t: MayflyTranslate) {
+function view(request: ApprovalRequest, t: MayflyTranslate, locale?: string) {
+  const reason = request.displayReason === undefined
+    ? request.reason
+    : request.displayReason[locale ?? ''] ?? request.displayReason.en
   return ui.stack.column([
-    ...request.reason === undefined ? [] : [ui.scroll(ui.text(request.reason), { scrollbar: true })],
+    ...reason === undefined ? [] : [ui.scroll(ui.text(reason), { scrollbar: true })],
     ui.tabs({ id: 'approval', activeId: 'decision', items: [{ id: 'decision', label: t('Decision') }, { id: 'feedback', label: t('Reject with feedback'), backId: 'decision' }] }),
     ui.child(ui.actions({ id: 'decisions', items: [
       { id: 'reject', label: t('Reject'), defaultFocus: true },
@@ -82,7 +85,7 @@ export function apply(ctx: Context): void {
         const prompt = requestOverlay(ctx, {
           id: `mayfly.approval.${++sequence}`, title: () => t('Approve {tool}?', { tool: request.toolName }), agent: request.agent, dismissal: 'discard',
           ...request.signal === undefined ? {} : { signal: request.signal },
-          view: () => view(request, t), answer,
+          view: () => view(request, t, ctx.get('mayflyLocale')?.snapshot.locale), answer,
           accepted: result => {
             if (result.session) {
               const tools = allowances.get(request.agent) ?? new Set<string>()

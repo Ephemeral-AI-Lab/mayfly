@@ -27,8 +27,14 @@ async function setup() {
   const agents = new Map([[agent.id, agent], [other.id, other]])
   ctx.provide('agents', { get: (id: Agent['id']) => agents.get(id) } as never)
   let selection = { provider: 'p', model: 'one', reasoningEffort: 'low' as string | undefined }
-  const select = vi.fn(async (value: { provider: string, model: string, reasoningEffort?: string }) => { selection = { ...value, reasoningEffort: value.reasoningEffort }; return { selected: selection } })
   const save = vi.fn(async (_value: unknown) => {})
+  // Mirrors the rc.2 contract: the Session-local selection is installed
+  // synchronously and the default save runs in the background.
+  const select = vi.fn(async (value: { provider: string, model: string, reasoningEffort?: string }) => {
+    selection = { ...value, reasoningEffort: value.reasoningEffort }
+    void save(selection).catch(() => {})
+    return { selected: selection }
+  })
   ctx.provide('sessionController', { selectModel: select } as never)
   ctx.provide('sessionProjections', { snapshot: () => ({ values: { modelSelection: { next: selection } } }) } as never)
   ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'p', model: 'one' }), saveSelection: save } as never)
@@ -41,7 +47,7 @@ async function setup() {
 const two = JSON.stringify(['p', 'two'])
 
 describe('native model selection UI', () => {
-  it('chooses a model and effort through shared controls without persisting a session-only selection', async () => {
+  it('chooses a model and effort through shared controls on the shared commit path', async () => {
     const bench = await setup()
     await openModelPicker(bench.ctx, new AbortController().signal)
     const picker = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
@@ -49,16 +55,16 @@ describe('native model selection UI', () => {
     picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: two, direction: 1 })
     picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: two, direction: 1 })
     expect(bench.select).not.toHaveBeenCalled()
-    picker.invoke('session')
-    picker.invoke('session')
+    picker.invoke('default')
+    picker.invoke('default')
     await flush()
     expect(bench.select).toHaveBeenCalledOnce()
     expect(bench.select).toHaveBeenCalledWith({ sessionId: bench.agent.id, provider: 'p', model: 'two', reasoningEffort: 'high' })
-    expect(bench.save).not.toHaveBeenCalled()
+    expect(bench.save).toHaveBeenCalledOnce()
     expect(picker.disposed).toBe(true)
   })
 
-  it('reports default persistence failure and retries it without repeating the session write', async () => {
+  it('settles the selection even when the Host default save fails', async () => {
     const bench = await setup()
     bench.save.mockRejectedValueOnce(new Error('disk unavailable'))
     await openModelPicker(bench.ctx, new AbortController().signal)
@@ -68,13 +74,9 @@ describe('native model selection UI', () => {
     picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: two, direction: 1 })
     picker.invoke('default')
     await flush()
-    expect(picker.disposed).toBe(false)
-    expect(picker.feedbackSnapshot().at(-1)?.severity).toBe('error')
-    picker.invoke('default')
-    await flush()
-    expect(bench.select).toHaveBeenCalledOnce()
-    expect(bench.save).toHaveBeenCalledTimes(2)
     expect(picker.disposed).toBe(true)
+    expect(bench.select).toHaveBeenCalledOnce()
+    expect(bench.save).toHaveBeenCalledOnce()
   })
 
   it('retires registrations when selection changes and cannot use their old callbacks', async () => {

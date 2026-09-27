@@ -1,6 +1,6 @@
 # Native Harness features in Mayfly
 
-Mayfly targets Harness 0.1.7-rc.1. Native services own session lifecycle,
+Mayfly targets Harness 0.1.7-rc.2. Native services own session lifecycle,
 scheduling, Team coordination, and tool execution. Mayfly provides terminal
 presentation and current-Agent selection.
 
@@ -17,24 +17,22 @@ presentation and current-Agent selection.
   explicit Stop activity and archive decision. Archive does not delete the
   session log. `/rename` writes a user-pinned title through the native session
   controller.
-- `/schedule` displays the current Agent's active reminders, overdue first,
+- `/schedule` displays the current Agent's Session reminders, overdue first,
   with local and relative times. Creation/cancellation stays in the
-  conversation. The shipped `standard` preset mounts
-  `@deepseek-ai/dsh-schedule` inside its own composition, so the
-  `schedule_create`/`schedule_list`/`schedule_delete` tools and the reminder
-  runtime exist only for Agents under that preset — `minimal`, `ptc`,
-  `mayfly-cordis`, and other presets carry no row and get no tools — `/schedule`
-  there reports the capability as unavailable rather than an empty list. A
-  custom preset opts in by adding the same row to its own `config.plugins`. The same
-  composition mounts `@deepseek-ai/dsh-time-context` with a five-minute
-  durable-injection throttle; terminal sessions carry no browser timezone
-  metadata, so timestamps fall back to the process zone. Delivery requires a
-  live root Agent; overdue reminders resume when their session resumes. There
-  is no independent background daemon. Reminder tools register on the Agent's
-  own scope at creation, so a `/preset` switch can neither retract nor grant
-  them: the command refuses selections that would flip schedule capability
-  against the target composition, and `/new <preset>` starts a session that
-  composes the chosen preset instead.
+  conversation. Harness 0.1.7-rc.2 turned Schedule into a durable Host-wide
+  service (`ctx.schedule`): the base composition mounts the
+  `@deepseek-ai/dsh-schedule` row disabled, and enabling it — `disabled:
+  false` on the `schedule` row in a profile `cordis.patch.yml` — attaches
+  `schedule_*` tools to every root Agent regardless of preset. `/schedule`
+  reads the selected Agent's Session list through the native service,
+  observes `schedule/changed`, and reports the capability as unavailable
+  while the row stays disabled. `/sessions` reminder badges come from the
+  Host catalog. Delivery is durable: a due reminder resolves its original
+  Session through the session controller and wakes it even when no Agent is
+  running. The `standard` preset still mounts
+  `@deepseek-ai/dsh-time-context` with a five-minute durable-injection
+  throttle; terminal sessions carry no browser timezone metadata, so
+  timestamps fall back to the process zone.
 - `/files` displays native `present` deliveries. Preview reads at most 256 KiB;
   binary and rich documents use an explicit external Open action where available.
 - `/mcp` server details expose Resources and Templates. Listing reads metadata;
