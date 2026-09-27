@@ -85,6 +85,8 @@ const ROLES: (keyof MayflySemanticColors)[] = [
   'diffRemovedStrong',
   'diffGutter',
   'diffMeta',
+  'diffAddedBg',
+  'diffRemovedBg',
 ]
 
 /** A palette whose every token tags its text, so mappings show in output. */

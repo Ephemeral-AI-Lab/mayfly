@@ -1,6 +1,6 @@
 /**
  * `mayfly-theme-ocean` plugin entry: registration and disposal on the fiber,
- * and the ocean semantic color table (32 tokens) — the blue-tinted dark
+ * and the ocean semantic color table (34 tokens) — the blue-tinted dark
  * palette with its teal logo sweep.
  */
 
@@ -40,6 +40,8 @@ const EXPECTED_ROLES: (keyof MayflySemanticColors)[] = [
   'diffRemovedStrong',
   'diffGutter',
   'diffMeta',
+  'diffAddedBg',
+  'diffRemovedBg',
   'modelHighlight',
   'logoGradient',
 ]
@@ -85,6 +87,10 @@ describe('mayfly-theme-ocean plugin', () => {
     expect(colors.textMuted('hi')).toBe('\x1b[38;2;92;116;153mhi\x1b[39m')
     // selectedBg #22406b → rgb(34, 64, 107)
     expect(colors.selectedBg('hi')).toBe('\x1b[48;2;34;64;107mhi\x1b[49m')
+    // diffAddedBg #163f3a → rgb(22, 63, 58)
+    expect(colors.diffAddedBg('hi')).toBe('\x1b[48;2;22;63;58mhi\x1b[49m')
+    // diffRemovedBg #4a2432 → rgb(74, 36, 50)
+    expect(colors.diffRemovedBg('hi')).toBe('\x1b[48;2;74;36;50mhi\x1b[49m')
     // modelHighlight #5fd9e8 → rgb(95, 217, 232)
     expect(colors.modelHighlight('hi')).toBe('\x1b[38;2;95;217;232mhi\x1b[39m')
   })

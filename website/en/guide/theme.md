@@ -55,6 +55,7 @@ Rules:
 - only write the tokens you want to override; the rest fall through to base;
 - **unknown tokens** (not in the table below, nor `logoGradient`) and **invalid colors** (not `#rrggbb`) are dropped with a warning, falling back to the base entry;
 - `logoGradient` is the only token taking an array — a non-empty list of `#rrggbb` hexes painting the banner logo row by row, top to bottom;
+- `selectedBg`, `diffAddedBg`, and `diffRemovedBg` paint backgrounds; every other color token paints a foreground;
 - an unreadable or non-object file falls back to the whole base palette.
 
 ## Semantic tokens
@@ -100,8 +101,10 @@ Reference values from the dark palette (light/ocean/paper have their own; auto p
 
 | token | dark | used for |
 | --- | --- | --- |
-| `diffAdded` | `#4ec87e` | added lines |
-| `diffRemoved` | `#e85454` | removed lines |
+| `diffAdded` | `#4ec87e` | added-line `+` sign |
+| `diffRemoved` | `#e85454` | removed-line `-` sign |
+| `diffAddedBg` | `#1E3A2B` | added-line background band |
+| `diffRemovedBg` | `#43232A` | removed-line background band |
 | `diffAddedStrong` | `#7ad99b` | added lines (strong) |
 | `diffRemovedStrong` | `#f08585` | removed lines (strong) |
 | `diffGutter` | `#5C6476` | diff gutter |

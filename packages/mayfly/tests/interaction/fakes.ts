@@ -213,6 +213,8 @@ function fakeColors(): MayflySemanticColors {
     diffRemovedStrong: text => `/${text}/`,
     diffGutter: text => `:${text}:`,
     diffMeta: text => `;${text};`,
+    diffAddedBg: text => `[+${text}+]`,
+    diffRemovedBg: text => `[-${text}-]`,
   }
 }
 
