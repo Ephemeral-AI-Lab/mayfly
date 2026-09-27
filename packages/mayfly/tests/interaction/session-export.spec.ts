@@ -612,6 +612,8 @@ describe('registerExportCommands', () => {
             { kind: 'error', id: 'e', seq: 5, turn: 0, message: 'failed' },
             { kind: 'error', id: 'e-code', seq: 6, turn: 0, message: 'coded', code: 'E_CODE' },
             { kind: 'interrupted', id: 'i', seq: 7, turn: 0 },
+            // Compaction markers are transcript chrome; the overview drops them.
+            { kind: 'compaction', id: 'cmp', seq: 8, turn: 0, state: 'ok', trigger: 'manual', startedAt: 1, endedAt: 2 },
           ],
         },
       } }),

@@ -8,7 +8,7 @@
  *
  * @module @ephemeral-ai/mayfly/tests/transcript/flow-scenarios
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import type { MayflySemanticColors } from '../../src/core/index.ts'
 import type { ConversationEntry, ConversationProjection } from '../../src/conversation/types.ts'
@@ -16,6 +16,8 @@ import type { TranscriptModel } from '../../src/frontend/models.ts'
 import { conversationTranscriptModel } from '../../src/transcript/official-model.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import { TranscriptPresentationPolicy, type TranscriptViewMode } from '../../src/transcript/presentation-policy.ts'
+import { setProcessRowTimers } from '../../src/transcript/process-rows.ts'
+import { setCompactionTimers } from '../../src/transcript/compaction.ts'
 import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
@@ -79,6 +81,11 @@ function tool(step: number, name: string, args: Args, result?: { readonly text: 
 }
 const lines = (path: string, count: number) => Array.from({ length: count }, (_, index) => ({ number: index + 1, text: `${path} ${String(index + 1)}` }))
 
+function compaction(overrides: Partial<Extract<ConversationEntry, { kind: 'compaction' }>> = {}): ConversationEntry {
+  const id = ++seq
+  return { kind: 'compaction', id: `compaction:c${String(id)}`, seq: id, updatedSeq: id, turn: 1, state: 'ok', trigger: 'manual', startedAt: T0, endedAt: T0 + 9_000, ...overrides }
+}
+
 function scenario(running: boolean): ConversationProjection {
   seq = 0
   const entries: ConversationEntry[] = [
@@ -119,6 +126,11 @@ function render(model: TranscriptModel, mode: TranscriptViewMode, expanded = fal
   component.setExpanded(expanded)
   return { rows: component.render(120).map(strip), component }
 }
+
+afterEach(() => {
+  setProcessRowTimers(undefined)
+  setCompactionTimers(undefined)
+})
 
 describe('conversation flow scenarios', () => {
   it('keeps chronology, honest statuses, and correct tool families when everything is shown', () => {
@@ -212,5 +224,36 @@ describe('conversation flow scenarios', () => {
     expect(rows).toContain('▾ Stopped')
     expect(rows).toContain('Read 1 file · 1 cancelled')
     expect(rows).toContain('missing.ts ⊘')
+  })
+
+  it('renders the compaction boundary marker in every fold mode and state', () => {
+    const base = (overrides: Partial<Extract<ConversationEntry, { kind: 'compaction' }>>): ConversationProjection => ({
+      entries: [user('Fix the flaky login test'), thinking(0, 'plan'), reply(4, 'Done.'), compaction(overrides)],
+      streaming: false, settledSteps: [],
+      turns: [{ turn: 1, startedAt: T0, endedAt: T0 + 38_000, outcome: 'completed' }],
+    })
+    for (const mode of ['compact', 'standard', 'detailed', 'verbose'] as const) {
+      const { rows, component } = render(conversationTranscriptModel(base({
+        shadowedCount: 47, shadowedTokens: 18_200, summary: 'checkpoint summary body',
+      }), tools), mode)
+      expect(rows.join('\n')).toContain('✓ compacted 47 items · ~17.8k')
+      component.dispose()
+    }
+    // Ctrl-O previews the checkpoint summary under the settled marker.
+    const open = render(conversationTranscriptModel(base({ shadowedCount: 1, shadowedTokens: 512, summary: 'checkpoint summary body' }), tools), 'standard', true)
+    expect(open.rows.join('\n')).toContain('checkpoint summary body')
+    open.component.dispose()
+    // The live row animates the label; the failure row carries the reason.
+    const live = render(conversationTranscriptModel(base({ state: 'running', trigger: 'auto', startedAt: Date.now(), endedAt: undefined }), tools), 'standard')
+    expect(live.rows.join('\n')).toContain('compacting context…')
+    expect(live.rows.join('\n')).toContain('· auto')
+    live.component.dispose()
+    const failed = render(conversationTranscriptModel(base({ state: 'error', error: 'summary was not smaller than the shadowed content' }), tools), 'standard')
+    expect(failed.rows.join('\n')).toContain('✗ summary was not smaller than the shadowed content')
+    failed.component.dispose()
+    // A never-started attempt settles through the command's detail text.
+    const empty = render(conversationTranscriptModel(base({ shadowedCount: undefined, shadowedTokens: undefined, detail: 'No compactable history yet.' }), tools), 'standard')
+    expect(empty.rows.join('\n')).toContain('✓ No compactable history yet.')
+    empty.component.dispose()
   })
 })

@@ -225,7 +225,10 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     if (folded) {
       const answer = rest.findLast(entry => entry.kind === 'transcript-assistant')
       for (const entry of rest) {
-        if (entry === answer || !isSemantic(entry) || content(entry)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+        // Compaction rows are system-level boundary markers, not process work:
+        // they survive the fold so "context was condensed here" stays visible
+        // in every work-details mode.
+        if (entry === answer || !isSemantic(entry) || entry.kind === 'transcript-compaction' || content(entry)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
       }
       lastSeq = (rest.findLast(isSemantic) as TranscriptEntryModel).seq
       continue

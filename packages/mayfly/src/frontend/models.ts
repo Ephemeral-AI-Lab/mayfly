@@ -158,7 +158,20 @@ export interface CommandCallModel {
 export interface TranscriptCommandGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-command-group'; readonly step: number; readonly commands: readonly CommandCallModel[] }
 export interface TranscriptErrorModel extends TranscriptEntryBase { readonly kind: 'transcript-error'; readonly message: string; readonly code?: string }
 export interface TranscriptInterruptedModel extends TranscriptEntryBase { readonly kind: 'transcript-interrupted' }
-export type TranscriptEntryModel = TranscriptUserModel | TranscriptAssistantModel | TranscriptThinkingModel | TranscriptToolModel | TranscriptReadGroupModel | TranscriptSearchGroupModel | TranscriptCommandGroupModel | TranscriptErrorModel | TranscriptInterruptedModel
+/** One compaction transaction's lifecycle, rendered as the durable boundary marker. */
+export interface TranscriptCompactionModel extends TranscriptEntryBase {
+  readonly kind: 'transcript-compaction'
+  readonly state: 'running' | 'ok' | 'error'
+  readonly trigger: 'manual' | 'auto'
+  readonly startedAt: number
+  readonly endedAt?: number
+  readonly shadowedCount?: number
+  readonly shadowedTokens?: number
+  readonly summary?: string
+  readonly detail?: string
+  readonly error?: string
+}
+export type TranscriptEntryModel = TranscriptUserModel | TranscriptAssistantModel | TranscriptThinkingModel | TranscriptToolModel | TranscriptReadGroupModel | TranscriptSearchGroupModel | TranscriptCommandGroupModel | TranscriptErrorModel | TranscriptInterruptedModel | TranscriptCompactionModel
 export interface TranscriptLiveOverlay {
   readonly turn: number
   readonly step: number

@@ -20,6 +20,7 @@ import {
 import {
   freezeModel,
   materializeTranscriptEntries,
+  type TranscriptCompactionModel,
   type TranscriptEntryModel,
   type TranscriptImageModel,
   type TranscriptModel,
@@ -37,6 +38,7 @@ import {
   type UserMessageImages,
 } from './components.ts'
 import { ThinkingComponent } from './thinking.ts'
+import { CompactionRowComponent } from './compaction.ts'
 import { ToolLineComponent, isLineTool } from './tool-line.ts'
 import { ProcessTitleComponent, TurnHeaderComponent } from './process-rows.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
@@ -663,6 +665,18 @@ export class TranscriptModelComponent implements MayflyComponent {
       case 'transcript-interrupted':
         target = new InterruptedMarkerComponent(renderer.colors, renderer.components, renderer.t)
         break
+      case 'transcript-compaction': {
+        const component = new CompactionRowComponent(entry, renderer.colors, renderer.components, () => {
+          this.invalidateEntry(entry.id)
+          renderer.requestRender?.()
+        }, t)
+        target = component
+        update = (next): boolean => {
+          component.update(next as TranscriptCompactionModel)
+          return true
+        }
+        break
+      }
     }
     return {
       kind: entry.kind,
@@ -698,6 +712,12 @@ export class TranscriptModelComponent implements MayflyComponent {
       }
       case 'transcript-error': return entry.code === undefined ? entry.message : `${entry.message} (${entry.code})`
       case 'transcript-interrupted': return 'Interrupted'
+      case 'transcript-compaction': {
+        if (entry.state === 'running') return 'Compacting context'
+        if (entry.state === 'error') return `Compaction failed${entry.error === undefined ? '' : `: ${entry.error}`}`
+        if (entry.shadowedCount === undefined) return entry.detail ?? 'Compacted'
+        return `Compacted ${String(entry.shadowedCount)} items${entry.shadowedTokens === undefined ? '' : ` (~${String(entry.shadowedTokens)} tokens)`}`
+      }
     }
   }
 
