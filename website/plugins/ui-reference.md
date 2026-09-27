@@ -302,15 +302,15 @@ ui.chart({
 ui.chart({
   chart: 'bar',
   layout?: 'grouped' | 'stacked' | 'normalized',
-  // 'horizontal' 仅与 layout: 'normalized' 组合：按 series 比例把每个
-  // category 画成 height 行高的满宽分段条（逐行折叠填充），用于 /context 式
-  // 的占比视图；free space 之类的份额由调用方作为显式 series 给出。
+  // 'horizontal' 仅与 layout: 'normalized' 组合：把每个 category 画成
+  // height 行（默认 10）× ⌈100/height⌉ 列的按比例格网——每格约 1%，非零
+  // 份额保底一格；empty: true 的 series 渲成 '░' 空轨（如 free space）。
   orientation?: 'vertical' | 'horizontal',
   title?: string,
   yLabel?: string,
   height?: number, // 4..20
   categories: readonly string[],
-  series: [{ id: string, label?: string, tone?: MayflyTone, values: readonly (number | null)[] }],
+  series: [{ id: string, label?: string, tone?: MayflyTone, empty?: boolean, values: readonly (number | null)[] }],
 })
 
 ui.chart({ chart: 'sparkline', values: [2, 4, null, 7], label: 'Load', tone: 'warning' })

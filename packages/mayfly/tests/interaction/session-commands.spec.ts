@@ -123,6 +123,8 @@ describe('native session information', () => {
     expect(value).toContain('"chart":"bar"')
     expect(value).toContain('"layout":"normalized"')
     expect(value).toContain('"orientation":"horizontal"')
+    expect(value).toContain('"empty":true')
+    expect(value).toContain('"text":"░ "')
     expect(value).toContain('0.1%')
     expect(value).toContain('Context usage (heuristic)')
     expect(value).toContain('"Model"')
@@ -152,7 +154,7 @@ describe('native session information', () => {
       ...facts,
       composition: { system: Number.NaN, tools: -1, messages: Number.POSITIVE_INFINITY },
     }, key => key))
-    expect(normalizedComposition.match(/"values":\[0\]/gu)).toHaveLength(3)
+    expect(normalizedComposition.match(/"values":\[0\]/gu)).toHaveLength(6)
   })
 
   it('renders fractional native context estimates through the command surface', async () => {

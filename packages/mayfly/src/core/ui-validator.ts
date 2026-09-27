@@ -705,10 +705,12 @@ function barSeries(value: unknown, path: string, state: ValidationState): Mayfly
     const values = collection(required(object, 'values', path), `${path}.values`)
       .map((item, index) => nullableNumber(item, `${path}.values[${String(index)}]`))
     addChartCells(state, values.length)
+    const emptyValue = own(object, 'empty', path)
     return {
       id: identifier(required(object, 'id', path), `${path}.id`, state),
       ...optional(optionalText(object, 'label', path, state), 'label'),
       ...optional(chartTone(object, path), 'tone'),
+      ...optional(emptyValue === undefined ? undefined : boolean(emptyValue, `${path}.empty`), 'empty'),
       values,
     }
   })

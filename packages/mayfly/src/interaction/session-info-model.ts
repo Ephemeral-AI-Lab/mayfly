@@ -95,6 +95,17 @@ export function usageNode(facts: SessionInfoFacts, t: MayflyTranslate): MayflyUi
   ]
   if (parts.length > 0 && contextWindow !== undefined && contextWindow > 0) parts.push({ id: 'free', label: t('Estimated free space'), tokens: Math.max(0, contextWindow - parts.reduce((sum, part) => sum + part.tokens, 0)), tone: 'muted' })
   const contextField = contextWindowField(context, t)
+  const shareText = (tokens: number): string => `${formatTokens(tokens)}${contextWindow === undefined || contextWindow <= 0 ? '' : ` (${Math.min(100, Math.max(0, tokens / contextWindow * 100)).toFixed(1)}%)`}`
+  const grid = (): MayflyUiNode => ui.chart({
+    chart: 'bar', layout: 'normalized', orientation: 'horizontal', height: 10,
+    categories: [''],
+    series: parts.map(part => ({ id: part.id, label: part.label, tone: part.tone, ...(part.id === 'free' ? { empty: true } : {}), values: [part.tokens] })),
+  })
+  const legend = (): MayflyUiNode => ui.fields(parts.map(part => ({
+    label: part.label,
+    value: [{ text: part.id === 'free' ? '░ ' : '█ ', tone: part.tone }, { text: shareText(part.tokens) }],
+  })))
+  const caption = (): MayflyUiNode => ui.text(t('Estimated usage by category'))
   return ui.stack.column([
     ui.fields([
       field(t('Model'), facts.model === undefined ? t('not set') : `${facts.model.model} (${facts.model.provider})`),
@@ -108,15 +119,13 @@ export function usageNode(facts: SessionInfoFacts, t: MayflyTranslate): MayflyUi
     ]),
     ...parts.length === 0 ? [] : [
       ui.divider({ label: t('Context usage (heuristic)') }),
-      ...parts.every(part => part.tokens <= 0) ? [] : [ui.chart({
-        chart: 'bar', layout: 'normalized', orientation: 'horizontal', height: 4,
-        categories: [t('Estimated usage by category')],
-        series: parts.map(part => ({ id: part.id, label: part.label, tone: part.tone, values: [part.tokens] })),
-      })],
-      ui.fields(parts.map(part => ({
-        label: part.label,
-        value: [{ text: '█ ', tone: part.tone }, { text: `${formatTokens(part.tokens)}${contextWindow === undefined || contextWindow <= 0 ? '' : ` (${Math.min(100, Math.max(0, part.tokens / contextWindow * 100)).toFixed(1)}%)`}` }],
-      }))),
+      ...parts.every(part => part.tokens <= 0) ? [legend()] : [
+        ui.child(ui.stack.row([
+          ui.child(grid(), { basis: 12, grow: 0, shrink: 1 }),
+          ui.child(ui.stack.column([caption(), legend()]), { grow: 1, shrink: 1, minSize: 1 }),
+        ], { gap: 2 }), { when: { minWidth: 56 } }),
+        ui.child(ui.stack.column([caption(), grid(), legend()]), { when: { maxWidth: 55 } }),
+      ],
     ],
   ])
 }

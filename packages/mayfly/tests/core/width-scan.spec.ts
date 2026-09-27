@@ -177,6 +177,7 @@ describe('core width-scan', () => {
         series: [
           { id: 'ok', label: text, tone: 'success' as const, values: [2, 4] },
           { id: 'failed', label: 'failed', tone: 'danger' as const, values: [1, 3] },
+          { id: 'free', label: 'free', empty: true, values: [4, 2] },
         ],
       }
       const mermaid = `graph LR\n  A[${text}] --> B[done]`

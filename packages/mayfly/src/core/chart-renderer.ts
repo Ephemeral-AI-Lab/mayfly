@@ -145,45 +145,57 @@ function renderBars(node: Extract<MayflyChartNode, { readonly chart: 'bar' }>, w
   }), width, tones, components, colors)
 }
 
-/** Horizontal normalized bars: each category folds its proportional series fill row-major over `height` full-width rows. */
+/** Horizontal normalized bars: each category folds its proportional series fill row-major over a `height`-row grid of ~1% cells; `empty` series paint as the muted empty track. */
 function renderHorizontalBars(node: Extract<MayflyChartNode, { readonly chart: 'bar' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
+  if (node.categories.length === 0) return undefined
   const tones = node.series.map((series, index) => toneAt(series.tone, index))
-  const height = Math.max(1, node.height ?? 4)
+  const height = Math.max(1, node.height ?? 10)
+  const columns = Math.max(1, Math.min(width, Math.ceil(100 / height)))
+  const cells = height * columns
   const result: string[] = []
   if (node.title !== undefined) result.push(colors.textStrong(components.truncateToWidth(node.title, width)))
   for (const [categoryIndex, category] of node.categories.entries()) {
     if (category.length > 0) result.push(colors.textStrong(components.truncateToWidth(category, width)))
     const totals = node.series.map(series => Math.max(0, series.values[categoryIndex] ?? 0))
     const total = totals.reduce((sum, value) => sum + value, 0)
-    if (!(total > 0)) {
-      const empty = paintPluginTone(colors, 'muted')('░'.repeat(width))
-      for (let row = 0; row < height; row += 1) result.push(empty)
-      continue
+    const counts = node.series.map(() => 0)
+    if (total > 0) {
+      let cumulative = 0
+      let boundary = 0
+      for (const [index, value] of totals.entries()) {
+        cumulative += value
+        const next = Math.round((cumulative / total) * cells)
+        counts[index] = next - boundary
+        boundary = next
+      }
+      for (const [index, value] of totals.entries()) {
+        if (value <= 0 || counts[index]! > 0) continue
+        let donor = -1
+        for (const [candidate, count] of counts.entries()) if (count > 1 && (donor === -1 || count > counts[donor]!)) donor = candidate
+        if (donor === -1) break
+        counts[donor]! -= 1
+        counts[index] = 1
+      }
     }
-    const cells = width * height
-    const assignments: (MayflyTone | undefined)[] = Array.from({ length: cells })
-    let cumulative = 0
-    let cursor = 0
-    for (const [index, value] of totals.entries()) {
-      cumulative += value
-      const end = Math.round((cumulative / total) * cells)
-      while (cursor < end) { assignments[cursor] = tones[index]; cursor += 1 }
-    }
+    const assignments = counts.flatMap((count, index) => Array.from({ length: count }, () => index))
+    while (assignments.length < cells) assignments.push(-1)
     for (let row = 0; row < height; row += 1) {
-      const base = row * width
       let line = ''
-      let runTone = assignments[base]
+      let run = -1
       let runLength = 0
-      for (let column = 0; column < width; column += 1) {
-        const tone = assignments[base + column]
-        if (tone !== runTone) {
-          line += paintPluginTone(colors, runTone)('█'.repeat(runLength))
-          runTone = tone
-          runLength = 0
-        }
+      const flush = (): void => {
+        if (runLength === 0) return
+        const series = run >= 0 ? node.series[run] : undefined
+        line += paintPluginTone(colors, run >= 0 ? tones[run] : 'muted')((series?.empty === true || run < 0 ? '░' : '█').repeat(runLength))
+        runLength = 0
+      }
+      for (let column = 0; column < columns; column += 1) {
+        const index = assignments[row * columns + column]!
+        if (index !== run) { flush(); run = index }
         runLength += 1
       }
-      result.push(line + paintPluginTone(colors, runTone)('█'.repeat(runLength)))
+      flush()
+      result.push(line)
     }
   }
   return result

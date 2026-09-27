@@ -322,16 +322,16 @@ ui.chart({
 ui.chart({
   chart: 'bar',
   layout?: 'grouped' | 'stacked' | 'normalized',
-  // 'horizontal' requires layout: 'normalized': each category renders as
-  // `height` full-width rows of proportional series segments (row-major
-  // fill) — the /context-style share view. Shares such as free space are
-  // provided by the caller as explicit series.
+  // 'horizontal' requires layout: 'normalized': each category renders as a
+  // `height`-row (default 10) grid of `ceil(100/height)` proportional cells —
+  // each cell ~1%, and every non-zero share keeps at least one cell; a series
+  // flagged empty: true paints '░' empty track (e.g. free space).
   orientation?: 'vertical' | 'horizontal',
   title?: string,
   yLabel?: string,
   height?: number, // 4..20
   categories: readonly string[],
-  series: [{ id: string, label?: string, tone?: MayflyTone, values: readonly (number | null)[] }],
+  series: [{ id: string, label?: string, tone?: MayflyTone, empty?: boolean, values: readonly (number | null)[] }],
 })
 
 ui.chart({ chart: 'sparkline', values: [2, 4, null, 7], label: 'Load', tone: 'warning' })

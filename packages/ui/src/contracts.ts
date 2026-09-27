@@ -141,7 +141,7 @@ export interface MayflyDividerNode { readonly kind: 'divider', readonly label?: 
 
 export interface MayflyChartPoint { readonly x: number, readonly y: number | null }
 export interface MayflyChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly points: readonly MayflyChartPoint[] }
-export interface MayflyBarChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly values: readonly (number | null)[] }
+export interface MayflyBarChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly values: readonly (number | null)[], readonly empty?: boolean }
 export interface MayflyChartLevel { readonly value: number | string, readonly label: string, readonly tone?: MayflyTone }
 export interface MayflyLineChartNode { readonly kind: 'chart', readonly chart: 'line' | 'point', readonly series: readonly MayflyChartSeries[], readonly title?: string, readonly xLabel?: string, readonly yLabel?: string, readonly height?: number }
 export interface MayflyBarChartNode { readonly kind: 'chart', readonly chart: 'bar', readonly layout?: 'grouped' | 'stacked' | 'normalized', readonly orientation?: 'vertical' | 'horizontal', readonly categories: readonly string[], readonly series: readonly MayflyBarChartSeries[], readonly title?: string, readonly yLabel?: string, readonly height?: number }

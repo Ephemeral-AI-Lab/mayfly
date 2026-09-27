@@ -62,11 +62,11 @@ describe('renderChartRows', () => {
   it('renders horizontal bar labels, default height, and muted empty fills', () => {
     const single = renderChartRows(ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: ['ctx'], series: [{ id: 'a', values: [1] }] }), 8, components, colors)
     expect(single[0]).toBe('ctx')
-    expect(single).toHaveLength(5)
+    expect(single).toHaveLength(11)
     expect(single.slice(1).every(row => row === '█'.repeat(8))).toBe(true)
 
     const zero = renderChartRows({ kind: 'chart', chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: [{ id: 'a', values: [0] }] } as const, 6, components, colors)
-    expect(zero).toEqual(Array.from({ length: 4 }, () => '░'.repeat(6)))
+    expect(zero).toEqual(Array.from({ length: 10 }, () => '░'.repeat(6)))
 
     const multi = renderChartRows(ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', height: 4, categories: ['one', 'two'], series: [
       { id: 'a', values: [1, null] },
@@ -77,6 +77,37 @@ describe('renderChartRows', () => {
     expect(multi[5]).toBe('two')
     expect(multi).toHaveLength(10)
     expect(multi.every(row => visibleWidth(row) <= 4)).toBe(true)
+  })
+
+  it('paints empty series as the muted track and keeps sub-cell shares visible', () => {
+    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (text: string) => `<${String(key)}>${text}` }) as MayflySemanticColors
+    const rows = renderChartRows(ui.chart({
+      chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: [
+        { id: 'a', tone: 'primary', values: [1] },
+        { id: 'free', tone: 'muted', empty: true, values: [999] },
+      ],
+    }), 40, components, tagged)
+    expect(rows).toHaveLength(10)
+    expect(rows[0]).toBe(`<primary>█<muted>${'░'.repeat(9)}`)
+    expect(rows.slice(1).every(row => row === `<muted>${'░'.repeat(10)}`)).toBe(true)
+
+    const emptyGrid = { kind: 'chart', chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [], series: [{ id: 'a', values: [] }] } as const
+    expect(renderChartRows(emptyGrid, 10, components, colors).join()).toContain('no data')
+
+    const crowded = { kind: 'chart', chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: Array.from({ length: 12 }, (_, index) => ({ id: `s${String(index)}`, values: [1] })) } as const
+    const tight = renderChartRows(crowded, 1, components, colors)
+    expect(tight).toHaveLength(10)
+    expect(tight.every(row => visibleWidth(row) <= 1)).toBe(true)
+
+    const donors = renderChartRows(ui.chart({
+      chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: [
+        { id: 'tiny', values: [1] },
+        { id: 'mid', values: [200] },
+        { id: 'large', values: [300] },
+        { id: 'small', values: [250] },
+      ],
+    }), 40, components, tagged)
+    expect(donors[0]).toBe(`<accent>█<success>${'█'.repeat(9)}`)
   })
 
   it('contains every chart at narrow widths with a chart or textual summary fallback', () => {
