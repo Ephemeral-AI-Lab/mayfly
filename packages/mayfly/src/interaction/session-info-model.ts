@@ -87,6 +87,7 @@ export function statusNode(facts: SessionInfoFacts, version: VersionFacts, t: Ma
 export function usageNode(facts: SessionInfoFacts, t: MayflyTranslate): MayflyUiNode {
   const { buckets, context } = facts.usage
   const total = totalTokens(buckets)
+  const promptTokens = buckets.input + buckets.cacheRead + buckets.cacheWrite
   const contextWindow = tokenInteger(context.window)
   const parts = facts.composition === undefined ? [] : [
     { id: 'system', label: t('System prompt'), tokens: tokenInteger(facts.composition.system) ?? 0, tone: 'muted' as const },
@@ -115,7 +116,9 @@ export function usageNode(facts: SessionInfoFacts, t: MayflyTranslate): MayflyUi
     ui.divider({ label: t('Session usage') }),
     total === 0 ? ui.text(t('no provider usage recorded yet'), { tone: 'muted' }) : ui.fields([
       field(t('Input'), formatTokens(buckets.input)), field(t('Cache read'), formatTokens(buckets.cacheRead)),
-      field(t('Cache write'), formatTokens(buckets.cacheWrite)), field(t('Output'), formatTokens(buckets.output)), field(t('Total'), formatTokens(total)),
+      field(t('Cache write'), formatTokens(buckets.cacheWrite)),
+      ...(promptTokens > 0 ? [field(t('Cache hit rate'), `${Math.round(buckets.cacheRead / promptTokens * 100)}%`)] : []),
+      field(t('Output'), formatTokens(buckets.output)), field(t('Total'), formatTokens(total)),
     ]),
     ...parts.length === 0 ? [] : [
       ui.divider({ label: t('Context usage (heuristic)') }),

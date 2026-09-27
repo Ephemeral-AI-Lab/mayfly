@@ -317,6 +317,7 @@ const zh: Readonly<Record<string, string>> = {
   'Total': '合计',
   'Cache read': '缓存读取',
   'Cache write': '缓存写入',
+  'Cache hit rate': '缓存命中率',
   'Estimated usage by category': '按类别估算的用量',
   'Context usage (heuristic)': '上下文用量（估算）',
   'not set': '未设置',
