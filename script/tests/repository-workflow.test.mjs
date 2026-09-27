@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, test } from 'node:test'
@@ -105,17 +105,57 @@ describe('change impact planning', () => {
     const plan = classifyChanges(['packages/mayfly/package.json'])
     assert.equal(plan.checks.build, true)
     assert.equal(plan.checks.checkLib, true)
-    assert.deepEqual(plan.validatePackages, ['packages/mayfly'])
+    assert.equal(plan.checks.pack, true)
     const plugin = classifyChanges(['examples/header/package.json'])
-    assert.deepEqual(plugin.validatePackages, ['examples/header'])
+    assert.equal(plugin.checks.examples, true)
   })
 
   test('widens executable compositions and verifies shipped presets', () => {
     assert.equal(classifyChanges(['packages/mayfly/cordis.patch.yml']).mode, 'full')
-    const preset = classifyChanges(['packages/mayfly/presets/mayfly-cordis/preset.yml'])
-    assert.equal(preset.checks.authorDocs, true)
+    const preset = classifyChanges(['packages/mayfly/presets/mayfly-cordis/skills/mayfly-plugin-development/SKILL.md'])
+    assert.equal(preset.mode, 'full')
+    assert.equal(preset.checks.agentDocs, true)
+    assert.equal(preset.checks.pack, true)
     assert.equal(preset.checks.build, true)
     assert.ok(preset.tests.direct.includes('packages/mayfly/tests/presets.spec.ts'))
+  })
+
+  test('classifies Website and runtime acceptance separately from automatic checks', () => {
+    const plan = classifyChanges(['website/en/index.md', 'packages/mayfly/src/transcript/status-context.ts'])
+    assert.equal(plan.checks.website, true)
+    assert.deepEqual(plan.manualAcceptance, ['runtime-profile', 'website-preview'])
+  })
+
+  test('ignores generated artifacts without ignoring tracked composition', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mayfly-impact-repository-'))
+    try {
+      execFileSync('git', ['init', '--initial-branch', 'main', root], { stdio: 'ignore' })
+      writeFileSync(join(root, '.gitignore'), readFileSync(join(ROOT, '.gitignore'), 'utf8'))
+      mkdirSync(join(root, 'packages', 'mayfly'), { recursive: true })
+      writeFileSync(join(root, 'packages', 'mayfly', 'cordis.patch.yml'), 'original\n')
+      execFileSync('git', ['add', '.'], { cwd: root })
+      execFileSync('git', ['commit', '-m', 'baseline'], {
+        cwd: root, stdio: 'ignore',
+        env: { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid' },
+      })
+      mkdirSync(join(root, '.artifacts', 'pack'), { recursive: true })
+      writeFileSync(join(root, '.artifacts', 'pack', 'cordis.patch.yml'), 'generated\n')
+      const verify = () => JSON.parse(execFileSync(process.execPath, [
+        join(ROOT, 'script/verify-changed.mjs'), '--plan',
+      ], { cwd: root, encoding: 'utf8' }))
+      assert.equal(verify().mode, 'none')
+      mkdirSync(join(root, 'website'), { recursive: true })
+      writeFileSync(join(root, 'website', 'index.md'), 'website\n')
+      const full = JSON.parse(execFileSync(process.execPath, [
+        join(ROOT, 'script/verify-changed.mjs'), '--plan', '--full',
+      ], { cwd: root, encoding: 'utf8' }))
+      assert.equal(full.checks.website, true)
+      assert.ok(full.commands.some(command => command.join(' ') === 'pnpm run website:build'))
+      writeFileSync(join(root, 'packages', 'mayfly', 'cordis.patch.yml'), 'updated\n')
+      assert.equal(verify().mode, 'full')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   test('recognizes every package manifest shape as structural', () => {
@@ -175,5 +215,12 @@ describe('agent documentation drift', () => {
     const root = fixture('Use verify:changed verify:full check:agent-docs. Old `0.1.1-rc.9`.\n')
     const problems = auditAgentDocs(root, { packageDirs: [], checkPreset: false, allowedVersions: ['0.1.0-alpha.1'] })
     assert.ok(problems.some(problem => problem.includes('stale prerelease 0.1.1-rc.9')))
+  })
+
+  test('generated artifacts cannot introduce instruction drift', () => {
+    const root = fixture('Use verify:changed verify:full check:agent-docs.\n')
+    mkdirSync(join(root, '.artifacts', 'unpacked'), { recursive: true })
+    writeFileSync(join(root, '.artifacts', 'unpacked', 'AGENTS.md'), 'As of 2026-01-01, 10 passed.\n')
+    assert.deepEqual(auditAgentDocs(root, { packageDirs: [], checkPreset: false }), [])
   })
 })

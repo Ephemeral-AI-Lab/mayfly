@@ -54,10 +54,12 @@ export function promoteToFull(plan, reason) {
       typecheck: true,
       build: true,
       checkLib: true,
+      pack: plan.checks.pack,
+      examples: true,
+      shots: true,
       agentDocs: true,
       diagrams: true,
       website: plan.checks.website,
-      authorDocs: true,
       repoWorkflowTests: true,
     },
   }
@@ -71,27 +73,32 @@ export function classifyChanges(inputFiles) {
   const coverage = new Set()
   const packageTests = new Set()
   const directTests = new Set()
-  const validatePackages = new Set()
+  const manualAcceptance = new Set()
   let full = false
   let lint = false
   let typecheck = false
   let build = false
   let checkLib = false
+  let pack = false
+  let examples = false
+  let shots = false
   let agentDocs = false
   let diagrams = false
   let website = false
-  let authorDocs = false
   let repoWorkflowTests = false
 
   for (const file of files) {
     const owner = owningPackage(file)
     if (GLOBAL_PATHS.has(file) || file.startsWith('.github/workflows/')) {
       full = true
+      if (file === 'pnpm-lock.yaml' || file === 'pnpm-workspace.yaml' || file === 'script/package-contract.mjs') pack = true
       reasons.push(`${file}: cross-cutting repository input`)
       continue
     }
     if (file.startsWith('script/')) {
       repoWorkflowTests = true
+      if (['script/check-pack.mjs', 'script/pack-cli-runtime.mjs', 'script/release-packages.mjs',
+        'script/release-preflight.mjs', 'script/registry-release.mjs'].includes(file)) pack = true
       if (!/^script\/(?:test-impact|change-files|verify-changed|build-changed|check-agent-docs)\.mjs$/u.test(file)
         && !file.startsWith('script/tests/')) {
         full = true
@@ -105,21 +112,30 @@ export function classifyChanges(inputFiles) {
     }
     if (file.startsWith('docs/diagrams/') || file === 'README.md' || file === 'README.zh.md'
       || file === 'docs/mayfly-architecture.md') diagrams = true
-    if (file.startsWith('website/')) website = true
-    if (file.startsWith('packages/mayfly/presets/mayfly-cordis/')) {
-      authorDocs = true
+    if (file.startsWith('website/')) {
+      website = true
+      manualAcceptance.add('website-preview')
+    }
+    if (file.startsWith('packages/mayfly/presets/')) {
+      full = true
+      pack = true
       build = true
       directTests.add('packages/mayfly/tests/presets.spec.ts')
     }
     if (file.endsWith('/cordis.patch.yml')) {
       full = true
+      if (owner === 'packages/mayfly') pack = true
       reasons.push(`${file}: executable composition contract`)
     }
+    if (owner === 'packages/mayfly' && (file.includes('/src/') || file.startsWith('packages/mayfly/presets/') || file === 'packages/mayfly/cordis.patch.yml')
+      || owner === 'packages/ui' && file.includes('/src/')) manualAcceptance.add('runtime-profile')
     if (isStructuralBuildPath(file)) {
       build = true
       checkLib = true
-      if (owner !== undefined && file.endsWith('package.json')) validatePackages.add(owner)
+      if (owner?.startsWith('examples/') && file.endsWith('package.json')) examples = true
+      if (owner?.startsWith('packages/') && file.endsWith('package.json')) pack = true
     }
+    if (owner?.startsWith('examples/') && file.includes('/src/')) examples = true
     if (!CODE_PATTERN.test(file)) continue
 
     lint ||= file.startsWith('packages/') || file.startsWith('examples/')
@@ -132,6 +148,7 @@ export function classifyChanges(inputFiles) {
 
     if (owner === 'packages/ui' && file.includes('/src/')) {
       full = true
+      pack = true
       reasons.push(`${file}: public contract or construction layer`)
       continue
     }
@@ -155,14 +172,14 @@ export function classifyChanges(inputFiles) {
     files,
     mode: full ? 'full' : files.length === 0 ? 'none' : 'changed',
     reasons: [...new Set(reasons)],
-    checks: { lint, typecheck, build, checkLib, agentDocs, diagrams, website, authorDocs, repoWorkflowTests },
+    checks: { lint, typecheck, build, checkLib, pack, examples, shots, agentDocs, diagrams, website, repoWorkflowTests },
     tests: {
       related: [...related],
       coverage: [...coverage],
       packageTests: [...packageTests],
       direct: [...directTests],
     },
-    validatePackages: [...validatePackages],
+    manualAcceptance: [...manualAcceptance],
   }
   return full ? promoteToFull(plan, 'full gate required by change classification') : plan
 }
