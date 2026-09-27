@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Session } from '@deepseek-ai/dsh-session'
 import * as basic from '../../src/transcript/status-basic-model.ts'
-import { userEvent } from './helpers.ts'
+import { event, userEvent } from './helpers.ts'
 import { asAgent, bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
 
 describe('mayfly-status-basic-model', () => {
@@ -100,6 +100,51 @@ describe('mayfly-status-basic-model', () => {
     harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'switched-model' } })
     expect(harness.entry.render(80)).toBe('switched-model')
     await harness.dispose()
+  })
+
+  it('appends the capitalized effort of a committed selection', async () => {
+    const agent = fakeAgent([], { model: 'boot-model', headerModel: 'header-model' })
+    const harness = await bootStatusPlugin(basic, agent)
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'step-5-preview', reasoningEffort: 'max' } })
+    expect(harness.entry.render(80)).toBe('step-5-preview Max')
+    // An explicit 'off' is a selection too, not the provider default.
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'step-5-preview', reasoningEffort: 'off' } })
+    expect(harness.entry.render(80)).toBe('step-5-preview Off')
+    await harness.dispose()
+  })
+
+  it('drops the suffix when the next selection restores the provider default', async () => {
+    const agent = fakeAgent([], { headerModel: 'header-model', headerEffort: 'high' })
+    const harness = await bootStatusPlugin(basic, agent)
+    expect(harness.entry.render(80)).toBe('header-model High')
+    // `/model <id>` commits without an effort; the stale header level must
+    // not bleed into the new model's row.
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'fresh-model' } })
+    expect(harness.entry.render(80)).toBe('fresh-model')
+    await harness.dispose()
+  })
+
+  it('pairs the request-header effort with its own model, before any projection', async () => {
+    const harness = await bootStatusPlugin(basic, fakeAgent([], { headerModel: 'header-model', headerEffort: 'max' }))
+    expect(harness.entry.render(80)).toBe('header-model Max')
+    await harness.dispose()
+  })
+
+  it('pairs the options effort with options.model', async () => {
+    const harness = await bootStatusPlugin(basic, fakeAgent([], { model: 'deepseek-chat', effort: 'low' }))
+    expect(harness.entry.render(80)).toBe('deepseek-chat Low')
+    await harness.dispose()
+  })
+
+  it('reads the effort folded from a request/header event', async () => {
+    const agent = fakeAgent([])
+    const { ctx, entry, dispose } = await bootStatusPlugin(basic, agent)
+    expect(entry.render(80)).toBe('no model')
+    ctx.emit('session/event', agent.session as unknown as Session, event('request/header', {
+      header: { config: { provider: 'deepseek', model: 'event-model', reasoningEffort: 'high' } },
+    }))
+    expect(entry.render(80)).toBe('event-model High')
+    await dispose()
   })
 
   it('ignores model-selection commits from other sessions and a null next', async () => {
