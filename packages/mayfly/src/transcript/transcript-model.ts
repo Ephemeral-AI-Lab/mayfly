@@ -70,8 +70,14 @@ export interface TranscriptModelRenderer extends CanonicalNodeRenderer {
   readonly colors: MayflySemanticColors
   readonly components: MayflyComponents
   readonly images: () => UserMessageImages
-  readonly requestRender: () => void
+  /** Redraw nudge for rows that tick on their own (the opt-in running header). */
+  readonly requestRender?: () => void
   readonly presentation?: TranscriptPresentationPolicy
+  /**
+   * Keep the ticking running-turn header. Only for surfaces with no activity
+   * row (which otherwise owns every live fact), such as the child panel.
+   */
+  readonly liveTurnHeader?: boolean
   /** Dynamic translator for transcript-owned renderer chrome. */
   readonly t?: MayflyTranslate
   /** Disable semantic component chrome while retaining canonical width-safe rendering. */
@@ -318,6 +324,7 @@ export class TranscriptModelComponent implements MayflyComponent {
     const display = (entries: TranscriptModel['entries'], previousSeq?: number): DisplayItem[] => buildDisplay({
       entries, policy: policy.process, runningTurn: plan.runningTurn, turns: model.turns,
       expanded: this.expanded, scope: plan.expandableTurns, flat, previousSeq,
+      runningHeader: this.renderer.liveTurnHeader === true,
     })
     let prefix = this.prefix
     if (prefix === undefined || prefix.width !== width || prefix.expanded !== this.expanded) {
@@ -424,16 +431,16 @@ export class TranscriptModelComponent implements MayflyComponent {
     // Header and title ids carry distinct prefixes, so an id never changes kind.
     let row = this.rowComponents.get(item.id)
     if (row === undefined) {
-      const onTick = (): void => {
-        this.renderedRows = undefined
-        this.renderer.requestRender()
-      }
       const t = this.renderer.t ?? interpolateLocaleMessage
       if (item.kind === 'turn-header') {
+        const onTick = (): void => {
+          this.renderedRows = undefined
+          this.renderer.requestRender?.()
+        }
         const target = new TurnHeaderComponent(this.renderer.colors, this.renderer.components, onTick, t)
         row = { kind: 'turn-header', target, component: new GutterComponent(target) }
       } else {
-        const target = new ProcessTitleComponent(this.renderer.colors, this.renderer.components, onTick, t)
+        const target = new ProcessTitleComponent(this.renderer.colors, this.renderer.components, t)
         row = { kind: 'process-title', target, component: new GutterComponent(target) }
       }
       this.rowComponents.set(item.id, row)
@@ -585,19 +592,15 @@ export class TranscriptModelComponent implements MayflyComponent {
       case 'transcript-thinking': {
         const item: TranscriptThinkingItem = {
           kind: 'thinking', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming,
-          outputProgress: entry.outputProgress, durationMs: entry.durationMs, startedAt: entry.startedAt,
+          outputProgress: entry.outputProgress, durationMs: entry.durationMs,
         }
-        target = new ThinkingComponent(item, renderer.colors, renderer.components, () => {
-          this.invalidateEntry(entry.id)
-          renderer.requestRender()
-        }, () => this.presentation().process.settledReasoningPreview, t)
+        target = new ThinkingComponent(item, renderer.colors, renderer.components, () => this.presentation().process.settledReasoningPreview, t)
         update = (next): boolean => {
           const thinking = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-thinking' }>
           item.text = thinking.text
           item.streaming = thinking.streaming
           item.outputProgress = thinking.outputProgress
           item.durationMs = thinking.durationMs
-          item.startedAt = thinking.startedAt
           target.invalidate()
           return true
         }

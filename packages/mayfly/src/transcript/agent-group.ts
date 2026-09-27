@@ -20,8 +20,8 @@
  * at render with a cache key, and pi-tui's `requestRender` already
  * coalesces per tick. The only timer is the 1 Hz tick
  * that advances non-terminal members' elapsed seconds; it stands itself down
- * on the first tick that finds none left (the ThinkingTimers retire pattern
- * — a replay of settled steps starts zero timers). No `setExpanded`: the
+ * on the first tick that finds none left, so a replay of settled steps
+ * starts zero timers. No `setExpanded`: the
  * group never expands, and the Ctrl-O toggle skips components without one.
  *
  * @module @ephemeral-ai/mayfly/transcript/agent-group
@@ -65,7 +65,7 @@ export interface AgentMemberLive {
 /** Resolves a member's live overlay; absent on replay and unit tests. */
 export type AgentLiveLookup = (member: TranscriptToolItem) => AgentMemberLive | undefined
 
-/** The timer + clock primitives; replaceable in tests (ThinkingTimers precedent). */
+/** The timer + clock primitives; replaceable in tests. */
 export interface AgentGroupTimers {
   /** Start a repeating callback; mirrors the global `setInterval`. */
   setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>

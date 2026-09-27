@@ -21,7 +21,8 @@ import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCall
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
-import { toolActivity, toolDetail } from './process-activity.ts'
+import { toolDetail } from '../conversation/activity-detail.ts'
+import { toolActivity } from './process-activity.ts'
 
 /**
  * Live assistant-stream draft source. Harness `0.1.5` publishes streaming

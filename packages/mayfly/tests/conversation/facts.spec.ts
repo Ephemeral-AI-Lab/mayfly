@@ -43,8 +43,29 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 }
 
 describe('mayflyConversationFacts projection', () => {
-  it('invalidates checkpoints after the latest-step cache-read fact is added', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(6)
+  it('invalidates checkpoints after the turn-start anchor and activity detail are added', () => {
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(7)
+  })
+
+  it('records the turn start and the running action detail for the activity row', () => {
+    seq = 0
+    let state = foldConversationFacts(initialConversationFacts(), event('turn/start', { turn: 1 }, 5_000))
+    expect(state.turnStartedAt).toBe(5_000)
+    state = foldConversationFacts(state, event('step/start', { turn: 1, step: 0 }))
+    state = foldConversationFacts(state, attempt(1, 0, 'reasoning', 'Plan.\n\n**Read the auth module**'))
+    expect(state.activity).toEqual({ kind: 'reasoning', detail: 'Read the auth module' })
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c1', name: 'bash', arguments: '{"command":"pnpm test"}' }))
+    expect(state.activity).toEqual({ kind: 'tool', name: 'bash', detail: 'pnpm test' })
+    // A plan update carries no detail, so the row never shows the raw tool name.
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c2', name: 'todo_write', arguments: '{"todos":[]}' }))
+    expect(state.activity).toEqual({ kind: 'tool', name: 'todo_write', detail: '' })
+    // The agents pane owns spawn detail.
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c3', name: 'subagent', arguments: '{"description":"Review"}' }))
+    expect(state.activity).toEqual({ kind: 'tool', name: 'subagent' })
+    state = foldConversationFacts(state, event('turn/end', { turn: 1, reason: { kind: 'completed' } }))
+    expect(state.turnStartedAt).toBe(5_000)
+    expect(foldConversationFacts(state, event('turn/start', { turn: 2 }, 9_000)).turnStartedAt).toBe(9_000)
+    expect(conversationFactsSchema.safeParse(state).success).toBe(true)
   })
 
   it('folds lifecycle, streaming, usage, todos, request metadata, and agents', () => {

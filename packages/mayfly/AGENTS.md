@@ -36,6 +36,10 @@ slots, never arbitrary root components.
   Live overlays share stable history; completion comes from explicit settled
   steps, never a reasoning block's animation flag. Verify through the actual
   source-to-component path, including settlement and renderer reload.
+  The activity pane is the sole owner of live status (phase, elapsed time,
+  current action, throughput); transcript rows show content and settled
+  summaries only, and only surfaces without an activity row opt into the
+  running turn header.
 - Core retains the cold-conversation editor layer beneath registered editor overlays.
   Registry refreshes must never clear the retained conversation; a submitted reply
   acknowledges its form snapshot before dismissal.

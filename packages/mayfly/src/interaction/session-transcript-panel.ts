@@ -23,6 +23,7 @@ import {
   TranscriptModelComponent,
   type TranscriptModelRenderer,
 } from '../transcript/transcript-model.ts'
+import { transcriptTranslator } from '../transcript/locale.ts'
 import { TranscriptPresentationPolicy } from '../transcript/presentation-policy.ts'
 import type { ToolPresentationSource } from '../transcript/present.ts'
 import type { TranscriptModel } from '../frontend/index.ts'
@@ -55,8 +56,10 @@ export class SessionTranscriptPanel implements MayflyFocusable {
     const childAgent = ctx.agents.get(SessionId(target.sessionId))
     const live = childAgent?.session ?? [...ctx.sessions.list()].find(session => String(session.id) === target.sessionId)
     const tools: ToolPresentationSource = { get: name => ctx.tools.get(name, childAgent) }
-    // The panel is a deliberate inspection surface — it keeps the collapsed
-    // baseline regardless of the main transcript's compact default.
+    // The panel is a deliberate inspection surface — it keeps every card open
+    // regardless of the main transcript's work-details mode. It has no
+    // activity row of its own (the dock follows the parent Agent), so it keeps
+    // the ticking running-turn header as its live signal.
     const presentation = new TranscriptPresentationPolicy()
     presentation.apply({ transcriptView: 'verbose' })
     const renderer: TranscriptModelRenderer = {
@@ -72,6 +75,8 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       },
       requestRender: () => screen.requestRender(),
       presentation,
+      liveTurnHeader: true,
+      t: transcriptTranslator(ctx, 'transcript'),
     }
     this.body = new TranscriptModelComponent(
       live === undefined ? () => this.model : () => this.source.snapshot(),

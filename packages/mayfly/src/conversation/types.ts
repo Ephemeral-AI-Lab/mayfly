@@ -159,6 +159,8 @@ export interface ConversationFacts {
   readonly phase: 'idle' | 'waiting' | 'thinking' | 'composing' | 'tool'
   readonly active: boolean
   readonly turn: number
+  /** Envelope time of the latest `turn/start`; the activity row's elapsed anchor. */
+  readonly turnStartedAt?: number | undefined
   readonly flowUp?: number | undefined
   readonly currentStep?: number | undefined
   readonly lastCompletedStep?: number | undefined
@@ -181,8 +183,17 @@ export interface ConversationFacts {
   readonly epochTokens?: number | undefined
   /** Projection-private usage buckets retained as plain readonly data. */
   readonly usageByStep?: Readonly<Record<string, number>> | undefined
-  /** Latest running activity marker. */
-  readonly activity?: Readonly<{ readonly kind: 'reasoning' | 'text' | 'tool', readonly name?: string | undefined }> | undefined
+  /**
+   * Latest running activity marker. `detail` is the bounded salient argument
+   * of a non-spawn call or the latest reasoning paragraph; `preparing` marks a
+   * call whose arguments are still streaming.
+   */
+  readonly activity?: Readonly<{
+    readonly kind: 'reasoning' | 'text' | 'tool'
+    readonly name?: string | undefined
+    readonly detail?: string | undefined
+    readonly preparing?: boolean | undefined
+  }> | undefined
   /** Terminal outcome of the latest run. */
   readonly runOutcome?: 'completed' | 'failed' | undefined
   /** Envelope timestamp of the latest terminal outcome. */

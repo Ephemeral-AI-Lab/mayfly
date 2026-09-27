@@ -1,11 +1,12 @@
 /**
  * Work-details row components: the turn header (the whole-turn disclosure
  * with its lifecycle label, upstream `TurnProcessNodeView`) and the collapsed
- * process-group title. A running header refreshes its elapsed label each
- * second and shows no counts, because the bottom dock owns live progress; a
- * settled header adds its tool-call and subagent counts to describe what the
- * fold hides. A running title holds each label for a short minimum so rapid
- * tool switches do not flicker. Both retire their timers once their turn closes.
+ * process-group title. A settled header adds its tool-call and subagent
+ * counts to describe what the fold hides. The running header, whose elapsed
+ * label refreshes each second, renders only in trees without an activity row
+ * (the display plan omits it elsewhere); its clock retires once the turn
+ * closes. A group title is static past tense: it summarizes settled work and
+ * never ticks.
  *
  * @module @ephemeral-ai/mayfly/transcript/process-rows
  */
@@ -19,23 +20,16 @@ import type { ProcessTitleItem, TurnHeaderItem } from './process-groups.ts'
 /** Refresh cadence of a running turn's elapsed label (upstream live-run clock). */
 export const TURN_CLOCK_INTERVAL_MS = 1000
 
-/** Minimum time one running title stays up before a newer one replaces it (upstream). */
-export const PROCESS_TITLE_MINIMUM_MS = 150
-
-/** The timer and clock primitives behind the rows; replaceable in tests. */
+/** The timer and clock primitives behind the running header; replaceable in tests. */
 export interface ProcessRowTimers {
   setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
   clearInterval: (handle: ReturnType<typeof setInterval>) => void
-  setTimeout: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
-  clearTimeout: (handle: ReturnType<typeof setTimeout>) => void
   now: () => number
 }
 
 const defaultTimers: ProcessRowTimers = {
   setInterval: (callback, ms) => setInterval(callback, ms),
   clearInterval: handle => clearInterval(handle),
-  setTimeout: (callback, ms) => setTimeout(callback, ms),
-  clearTimeout: handle => clearTimeout(handle),
   now: () => Date.now(),
 }
 
@@ -127,17 +121,14 @@ export class TurnHeaderComponent implements MayflyComponent {
   }
 }
 
-/** One collapsed process-group row with a flicker-free running title. */
+/** One collapsed process-group row: the static past-tense title of its settled work. */
 export class ProcessTitleComponent implements MayflyComponent {
   private item: ProcessTitleItem | undefined
-  private shown: { readonly title: string, readonly at: number } | undefined
-  private hold: ReturnType<typeof setTimeout> | undefined
   private cache: { readonly key: string, readonly rows: string[] } | undefined
 
   constructor(
     private readonly colors: MayflySemanticColors,
     private readonly components: MayflyComponents,
-    private readonly onTick: () => void,
     private readonly t: MayflyTranslate = interpolateLocaleMessage,
   ) {}
 
@@ -149,49 +140,16 @@ export class ProcessTitleComponent implements MayflyComponent {
 
   invalidate(): void { this.cache = undefined }
 
-  /** Cancel a pending title commit; the mounter calls this when the row retires. */
-  dispose(): void {
-    if (this.hold !== undefined) rowTimers.clearTimeout(this.hold)
-    this.hold = undefined
-  }
-
   render(width: number): string[] {
     const item = this.item
     if (item === undefined) return []
-    const title = this.title(item)
+    const title = processTitle(item.summary, this.t)
     const failed = item.summary.failed === 0 ? '' : ` · ${this.t('{count} failed', { count: item.summary.failed })}`
     const key = `${String(width)}:${title}:${failed}`
     if (this.cache?.key === key) return this.cache.rows
-    const paint = item.closed ? this.colors.muted : this.colors.primary
-    const row = `${this.colors.muted(marker(true))}${paint(sanitizePluginText(title))}${this.colors.error(failed)}`
+    const row = `${this.colors.muted(marker(true))}${this.colors.muted(sanitizePluginText(title))}${this.colors.error(failed)}`
     const rows = ['', this.components.truncateToWidth(row, width)]
     this.cache = { key, rows }
     return rows
-  }
-
-  /** The displayed title: a closed title shows at once; a running one holds briefly. */
-  private title(item: ProcessTitleItem): string {
-    const desired = processTitle(item.summary, item.closed, item.liveDetail, this.t)
-    const now = rowTimers.now()
-    const shown = this.shown
-    if (item.closed || shown === undefined || shown.title === desired) {
-      if (shown?.title !== desired) this.shown = { title: desired, at: now }
-      this.dispose()
-      return desired
-    }
-    const remaining = PROCESS_TITLE_MINIMUM_MS - (now - shown.at)
-    if (remaining <= 0) {
-      this.shown = { title: desired, at: now }
-      this.dispose()
-      return desired
-    }
-    if (this.hold === undefined) {
-      this.hold = rowTimers.setTimeout(() => {
-        this.hold = undefined
-        this.cache = undefined
-        this.onTick()
-      }, remaining)
-    }
-    return shown.title
   }
 }

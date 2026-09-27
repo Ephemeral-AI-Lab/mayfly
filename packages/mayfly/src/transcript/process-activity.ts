@@ -1,9 +1,10 @@
 /**
  * Process-activity vocabulary ported from the upstream Harness Chat client
  * (`dsh-client-ui-chat` process-activity and process-groups): the category a
- * tool call contributes to group titles, the bounded live detail a running
- * title shows, the ranked summary of one process group, and the localized
- * group title. Pure data helpers; renderers pass their own translator.
+ * tool call contributes, the ranked summary of one process group's settled
+ * members, the past-tense group title the transcript shows, and the
+ * present-tense labels the activity row shows. Pure data helpers; renderers
+ * pass their own translator.
  *
  * @module @ephemeral-ai/mayfly/transcript/process-activity
  */
@@ -44,74 +45,6 @@ export function toolActivity(name: string, call?: ToolCallView, result?: ToolRes
   return 'tools'
 }
 
-/** Upper bound, in graphemes, of one live title detail. */
-export const LIVE_DETAIL_MAX_CHARS = 160
-
-/** Argument keys consulted for a live detail, in priority order (upstream list). */
-const LIVE_DETAIL_KEYS = [
-  'title', 'description', 'objective', 'task', 'task_name', 'name', 'question', 'questions', 'prompt',
-  'message', 'command', 'cmd', 'queries', 'query', 'pattern', 'url', 'uri', 'file_path', 'path',
-  'target', 'action', 'status',
-]
-
-const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
-
-/**
- * Collapse whitespace and bound a detail value to {@link LIVE_DETAIL_MAX_CHARS}
- * graphemes; string arrays join with commas and anything else is empty.
- * @param value - a raw argument value.
- * @returns the one-line detail, or `''`.
- */
-export function normalizeDetail(value: unknown): string {
-  const text = typeof value === 'string'
-    ? value
-    : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join(', ') : ''
-  const normalized = text.replace(/\s+/g, ' ').trim()
-  const parts = Array.from(graphemes.segment(normalized), part => part.segment)
-  return parts.length <= LIVE_DETAIL_MAX_CHARS ? normalized : `${parts.slice(0, LIVE_DETAIL_MAX_CHARS - 1).join('').trimEnd()}…`
-}
-
-function questionDetail(value: unknown): string {
-  if (!Array.isArray(value)) return ''
-  for (const item of value) {
-    if (item === null || typeof item !== 'object') continue
-    const detail = normalizeDetail((item as Record<string, unknown>)['question'])
-    if (detail !== '') return detail
-  }
-  return ''
-}
-
-/**
- * The salient argument a running title shows for one call.
- * @param name - tool name, the fallback detail.
- * @param args - parsed arguments, `undefined` when unparseable.
- * @returns the bounded detail.
- */
-export function toolDetail(name: string, args: unknown): string {
-  if (args === null || typeof args !== 'object') return normalizeDetail(name)
-  const record = args as Record<string, unknown>
-  for (const key of LIVE_DETAIL_KEYS) {
-    if (!(key in record)) continue
-    const detail = key === 'questions' ? questionDetail(record[key]) : normalizeDetail(record[key])
-    if (detail !== '') return detail
-  }
-  return normalizeDetail(name)
-}
-
-/**
- * The latest non-empty reasoning paragraph, bold markers stripped.
- * @param text - one step's reasoning text.
- * @returns the bounded detail, or `''`.
- */
-export function reasoningDetail(text: string): string {
-  const paragraphs = text.split(/\r?\n[\t ]*\r?\n/)
-  for (let index = paragraphs.length - 1; index >= 0; index -= 1) {
-    const detail = normalizeDetail(paragraphs[index]!.replaceAll('**', ''))
-    if (detail !== '') return detail
-  }
-  return ''
-}
-
 /** One process member as the summary sees it. */
 export interface ProcessMemberFact {
   readonly activity: ProcessActivity
@@ -119,53 +52,32 @@ export interface ProcessMemberFact {
   readonly running: boolean
   readonly preparing?: boolean
   readonly failed?: boolean
-  readonly detail: string
 }
 
-/** Ranked counts plus the latest running member of one process group. */
+/** Ranked category counts and failures of one process group's settled members. */
 export interface ProcessSummary {
   readonly counts: readonly { readonly activity: ProcessActivity, readonly count: number }[]
   readonly failed: number
-  readonly running?: ProcessActivity | undefined
-  /**
-   * The running member's detail, or the latest reasoning when no tool runs.
-   * Preparing calls and subagent spawns carry none: the agents pane owns
-   * per-agent task labels.
-   */
-  readonly runningDetail: string
-  readonly preparing: boolean
 }
 
 /**
- * Rank categories by call count, ties by first appearance, and pick the latest
- * running member (the upstream `processActivity`).
- * @param members - the group's tool members in order.
- * @param reasoning - the latest reasoning text, the detail when no tool runs.
+ * Rank categories by call count, ties by first appearance (the upstream
+ * `processActivity` ranking).
+ * @param members - the group's settled tool members in order.
  * @returns the group summary.
  */
-export function summarizeProcess(members: readonly ProcessMemberFact[], reasoning = ''): ProcessSummary {
+export function summarizeProcess(members: readonly ProcessMemberFact[]): ProcessSummary {
   const counts = new Map<ProcessActivity, number>()
-  let running: ProcessMemberFact | undefined
   let failed = 0
   for (const member of members) {
     counts.set(member.activity, (counts.get(member.activity) ?? 0) + 1)
-    if (member.running) running = member
     if (member.failed === true) failed += 1
   }
   const ranked = [...counts].map(([activity, count]) => ({ activity, count })).sort((a, b) => b.count - a.count)
-  return {
-    counts: ranked,
-    failed,
-    running: running?.activity,
-    runningDetail: running === undefined
-      ? reasoningDetail(reasoning)
-      : running.preparing === true || running.activity === 'subagents' ? '' : running.detail,
-    preparing: running?.preparing === true,
-  }
+  return { counts: ranked, failed }
 }
 
-const RUNNING_LABEL: Readonly<Record<ProcessActivity | 'thinking', string>> = {
-  thinking: 'Analyzing the request',
+const RUNNING_LABEL: Readonly<Record<ProcessActivity, string>> = {
   read: 'Reading files',
   readImage: 'Reading images',
   write: 'Writing files',
@@ -197,8 +109,7 @@ const PREPARING_LABEL: Readonly<Record<ProcessActivity, string>> = {
   tools: 'Preparing tool calls',
 }
 
-const DONE_LABEL: Readonly<Record<ProcessActivity | 'thinking', string>> = {
-  thinking: 'Analysis completed',
+const DONE_LABEL: Readonly<Record<ProcessActivity, string>> = {
   read: 'Read files',
   readImage: 'Read images',
   write: 'Wrote files',
@@ -218,11 +129,10 @@ const DONE_LABEL: Readonly<Record<ProcessActivity | 'thinking', string>> = {
 export const SHARED_DONE_PREFIX_KEY = 'process.shared-done-prefix'
 
 /**
- * The English process-title catalog (identity keys) plus Chinese copy, taken
- * from the upstream Chat locale so both clients read alike.
+ * The activity row's present-tense labels (identity English keys) plus
+ * Chinese copy, taken from the upstream Chat locale.
  */
-export const PROCESS_TITLE_ZH: Readonly<Record<string, string>> = {
-  'Analyzing the request': '正在分析请求',
+export const PROCESS_ACTIVE_ZH: Readonly<Record<string, string>> = {
   'Reading files': '正在读取文件',
   'Reading images': '正在读取图片',
   'Writing files': '正在写入文件',
@@ -249,7 +159,13 @@ export const PROCESS_TITLE_ZH: Readonly<Record<string, string>> = {
   'Preparing to update the plan': '准备更新计划',
   'Preparing questions': '准备提问',
   'Preparing tool calls': '准备调用工具',
-  'Analysis completed': '已完成分析',
+}
+
+/**
+ * The transcript's past-tense group titles and their joiners (identity
+ * English keys) plus Chinese copy, taken from the upstream Chat locale.
+ */
+export const PROCESS_DONE_ZH: Readonly<Record<string, string>> = {
   'Read files': '已读取文件',
   'Read images': '已读取图片',
   'Wrote files': '已写入文件',
@@ -269,24 +185,35 @@ export const PROCESS_TITLE_ZH: Readonly<Record<string, string>> = {
 }
 
 /**
- * The localized title of one process group: the live label (with detail when
- * the policy allows it) while open, the ranked done labels once closed.
- * @param summary - the group summary.
- * @param closed - whether the group has closed.
- * @param liveDetail - whether a running title appends its detail.
- * @param t - translator for the transcript namespace.
- * @returns the title text.
+ * The present-tense label of one running category (an English locale key).
+ * @param activity - the running call's category.
+ * @returns the untranslated label.
  */
-export function processTitle(summary: ProcessSummary, closed: boolean, liveDetail: boolean, t: MayflyTranslate): string {
-  if (!closed) {
-    const label = summary.preparing && summary.running !== undefined
-      ? t(PREPARING_LABEL[summary.running])
-      : t(RUNNING_LABEL[summary.running ?? 'thinking'])
-    return liveDetail && summary.runningDetail !== '' ? `${label} · ${summary.runningDetail}` : label
-  }
+export function runningLabel(activity: ProcessActivity): string {
+  return RUNNING_LABEL[activity]
+}
+
+/**
+ * The present-tense label of one category whose call is still streaming its
+ * arguments (an English locale key).
+ * @param activity - the preparing call's category.
+ * @returns the untranslated label.
+ */
+export function preparingLabel(activity: ProcessActivity): string {
+  return PREPARING_LABEL[activity]
+}
+
+/**
+ * The localized past-tense title of one process group: its top three
+ * categories' done labels, joined.
+ * @param summary - the summary of the group's settled members.
+ * @param t - translator for the transcript namespace.
+ * @returns the title text, or `''` when nothing has settled.
+ */
+export function processTitle(summary: ProcessSummary, t: MayflyTranslate): string {
   const labels = summary.counts.slice(0, 3).map(({ activity }) => t(DONE_LABEL[activity]))
   const first = labels[0]
-  if (first === undefined) return t(DONE_LABEL.thinking)
+  if (first === undefined) return ''
   const second = labels[1]
   if (second === undefined) return first
   const continuation = (label: string): string => label.charAt(0).toLowerCase() + label.slice(1)

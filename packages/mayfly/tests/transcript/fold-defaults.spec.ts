@@ -24,18 +24,22 @@ it('preserves valid numeric settings without supporting retired keys', () => {
   expect(policy.apply({ transcript: { default: 'full' }, windowTurns: -1, expandTurns: 'many', userFoldLines: 0, userFoldChars: null })).toBe(false)
 })
 
-it('resolves each mode to the upstream capability table', () => {
+it('resolves each mode to its capability table', () => {
   const policy = new TranscriptPresentationPolicy()
   const table = (['compact', 'standard', 'detailed', 'verbose'] as const).map(mode => {
     policy.apply({ transcriptView: mode })
-    const { foldCompletedTurns, stepGrouping, liveProcessDetail, settledReasoningPreview } = policy.snapshot().process
-    return [mode, foldCompletedTurns, stepGrouping, liveProcessDetail, settledReasoningPreview]
+    const { foldCompletedTurns, liveProcess, settledProcess, fileChanges, liveProcessDetail, settledReasoningPreview } = policy.snapshot().process
+    return [mode, foldCompletedTurns, liveProcess, settledProcess, fileChanges, liveProcessDetail, settledReasoningPreview]
   })
   expect(table).toEqual([
-    ['compact', true, 'collapsed', false, false],
-    ['standard', true, 'collapsed', true, true],
-    ['detailed', true, 'history', true, true],
-    ['verbose', false, 'none', false, true],
+    ['compact', true, 'hidden', 'titles', 'process', false, false],
+    ['standard', true, 'titles', 'titles', 'content', true, true],
+    ['detailed', true, 'cards', 'titles', 'content', false, true],
+    ['verbose', false, 'cards', 'cards', 'content', false, true],
   ])
+  // The activity row carries the running detail exactly where no card shows it.
+  for (const process of Object.values(PROCESS_POLICIES)) {
+    expect(process.liveProcessDetail).toBe(process.liveProcess === 'titles')
+  }
   expect(PROCESS_POLICIES.standard).toBe(DEFAULT_TRANSCRIPT_PRESENTATION.process)
 })

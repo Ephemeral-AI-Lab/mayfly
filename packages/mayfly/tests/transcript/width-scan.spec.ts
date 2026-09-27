@@ -30,7 +30,10 @@ import { ThinkingComponent } from '../../src/transcript/thinking.ts'
 import { ToolLineComponent } from '../../src/transcript/tool-line.ts'
 import { ProcessTitleComponent, TurnHeaderComponent } from '../../src/transcript/process-rows.ts'
 import type { TranscriptToolModel } from '../../src/frontend/models.ts'
+import * as activityPane from '../../src/transcript/pane-activity.ts'
 import * as agentsPane from '../../src/transcript/pane-agents.ts'
+import { initialConversationFacts } from '../../src/conversation/facts.ts'
+import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import * as todoPane from '../../src/transcript/pane-todo.ts'
 import { workflowNode, type WorkflowRunState } from '../../src/transcript/pane-workflow.ts'
 import { goalStatusText } from '../../src/transcript/status-goal.ts'
@@ -98,17 +101,13 @@ function renderNode(node: MayflyUiNode, width: number): string[] {
 }
 
 describe('transcript width-scan', () => {
-  it('keeps live thinking metrics within every scan width', () => {
+  it('keeps the live reasoning tail within every scan width', () => {
     const now = Date.now()
     const component = new ThinkingComponent({
       kind: 'thinking', seq: 1, turn: 1, step: 1, text: '界'.repeat(4_800), streaming: true,
       outputProgress: { chars: 4_800, initialChars: 4, startedAt: now - 1_000, updatedAt: now },
     }, colors, fakeMayflyComponents())
-    try {
-      for (const width of SCAN_WIDTHS) expectLinesFit('Thinking/LiveMetrics', component.render(width), width)
-    } finally {
-      component.dispose()
-    }
+    for (const width of SCAN_WIDTHS) expectLinesFit('Thinking/LiveTail', component.render(width), width)
   })
 
   for (const locale of ['en', 'zh'] as const) {
@@ -128,9 +127,9 @@ describe('transcript width-scan', () => {
       header.update({ kind: 'turn-header', id: 'h', turn: 1, seq: 1, running: false, startedAt: 0, endedAt: 65_000, toolCalls: 3, subagents: 1, folded: true, hint: true })
       const runningHeader = new TurnHeaderComponent(colors, components, () => {}, transcriptT)
       runningHeader.update({ kind: 'turn-header', id: 'r', turn: 2, seq: 2, running: true, toolCalls: 3, subagents: 1, folded: false, hint: false })
-      const title = new ProcessTitleComponent(colors, components, () => {}, transcriptT)
-      title.update({ kind: 'process-title', id: 'p', turn: 1, seq: 1, closed: true, liveDetail: true, summary: { counts: [{ activity: 'read', count: 3 }, { activity: 'search', count: 2 }, { activity: 'commands', count: 1 }, { activity: 'edit', count: 1 }], failed: 2, runningDetail: '', preparing: false } })
-      const thought = new ThinkingComponent({ kind: 'thinking', seq: 1, turn: 1, step: 0, text: '界🙂 reasoning\nmore', streaming: false, durationMs: 4_000 }, colors, components, undefined, () => true, transcriptT)
+      const title = new ProcessTitleComponent(colors, components, transcriptT)
+      title.update({ kind: 'process-title', id: 'p', turn: 1, seq: 1, summary: { counts: [{ activity: 'read', count: 3 }, { activity: 'search', count: 2 }, { activity: 'commands', count: 1 }, { activity: 'edit', count: 1 }], failed: 2 } })
+      const thought = new ThinkingComponent({ kind: 'thinking', seq: 1, turn: 1, step: 0, text: '界🙂 reasoning\nmore', streaming: false, durationMs: 4_000 }, colors, components, () => true, transcriptT)
       const bannerDeps = {
         colors,
         strong: (text: string) => components.strong(text),
@@ -281,17 +280,13 @@ describe('transcript width-scan', () => {
     it(`ThinkingComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
       const item = { kind: 'thinking' as const, seq: 1, turn: 1, step: 1, text, streaming: false, durationMs: 4_000 }
-      const streaming = new ThinkingComponent({ ...item, streaming: true, startedAt: Date.now() - 3_000 }, colors, components)
-      const expanded = new ThinkingComponent(item, colors, components, undefined, () => false)
+      const streaming = new ThinkingComponent({ ...item, streaming: true }, colors, components)
+      const expanded = new ThinkingComponent(item, colors, components, () => false)
       expanded.setExpanded(true)
-      try {
-        for (const width of SCAN_WIDTHS) {
-          expectLinesFit(`Thinking/${name}`, new ThinkingComponent(item, colors, components).render(width), width)
-          expectLinesFit(`ThinkingLive/${name}`, streaming.render(width), width)
-          expectLinesFit(`ThinkingExpanded/${name}`, expanded.render(width), width)
-        }
-      } finally {
-        streaming.dispose()
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`Thinking/${name}`, new ThinkingComponent(item, colors, components).render(width), width)
+        expectLinesFit(`ThinkingLive/${name}`, streaming.render(width), width)
+        expectLinesFit(`ThinkingExpanded/${name}`, expanded.render(width), width)
       }
     })
 
@@ -299,8 +294,8 @@ describe('transcript width-scan', () => {
       const components = fakeMayflyComponents()
       const header = new TurnHeaderComponent(colors, components, () => {})
       header.update({ kind: 'turn-header', id: 'h', turn: 1, seq: 1, running: false, startedAt: 0, endedAt: 3_723_000, toolCalls: 12, subagents: 2, folded: true, hint: true })
-      const title = new ProcessTitleComponent(colors, components, () => {})
-      title.update({ kind: 'process-title', id: 'p', turn: 1, seq: 1, closed: false, liveDetail: true, summary: { counts: [{ activity: 'commands', count: 2 }], failed: 1, running: 'commands', runningDetail: text, preparing: false } })
+      const title = new ProcessTitleComponent(colors, components)
+      title.update({ kind: 'process-title', id: 'p', turn: 1, seq: 1, summary: { counts: [{ activity: 'commands', count: 2 }, { activity: 'read', count: 1 }, { activity: 'search', count: 1 }, { activity: 'edit', count: 1 }], failed: 1 } })
       const tool = (overrides: Partial<TranscriptToolModel>): TranscriptToolModel => ({
         kind: 'transcript-tool', id: 't', seq: 1, updatedSeq: 1, turn: 1, step: 0, callId: 'c', name: 'subagent', family: 'other',
         activity: 'subagents', detail: text, arguments: JSON.stringify({ description: text, name: text }), startedAt: 0,
@@ -324,7 +319,6 @@ describe('transcript width-scan', () => {
         }
       } finally {
         header.dispose()
-        title.dispose()
       }
     })
 
@@ -417,6 +411,59 @@ describe('transcript width-scan', () => {
       } finally {
         await harness.dispose()
         agentsPane.setPaneAgentsClock(undefined)
+      }
+    })
+
+    it(`activity row survives ${name}`, async () => {
+      activityPane.setActivityTimers({ setInterval: () => 0 as never, clearInterval: () => {}, setTimeout: () => 0 as never, clearTimeout: () => {} })
+      activityPane.setActivityClock(() => 3_723_000)
+      let facts = { ...initialConversationFacts(), active: true, turnStartedAt: 0, flowUp: 30_200, flowDownChars: 16_400 }
+      let listener: ((value: typeof facts) => void) | undefined
+      const section = { value: { transcriptView: 'standard' } as Record<string, unknown> }
+      const agent = fakeAgent([])
+      agent.status = 'running'
+      const harness = await bootPanePlugin(activityPane, agent, {
+        mayflyInteractionState: { settingsSource: () => section.value },
+        mayflySessionFacts: {
+          get current() { return facts },
+          subscribe(next: (value: typeof facts) => void) { listener = next; next(facts); return () => {} },
+          subscribeAgent(next: (value: unknown) => void) { next(agent); return () => {} },
+        },
+      })
+      const locale = await harness.ctx.plugin({
+        name: 'activity-width-locale',
+        apply(ctx: Context) {
+          const service = new MayflyLocaleService(ctx, { systemLocale: 'en' })
+          ctx.effect(() => () => service.dispose())
+        },
+      })
+      await Promise.resolve()
+      try {
+        const phases = [
+          { phase: 'waiting', activity: { kind: 'tool', name: 'write', preparing: true } },
+          { phase: 'thinking', activity: { kind: 'reasoning', detail: text } },
+          { phase: 'composing', activity: { kind: 'text' } },
+          { phase: 'tool', activity: { kind: 'tool', name: 'bash', detail: text } },
+        ] as const
+        for (const language of ['en', 'zh'] as const) {
+          harness.ctx.mayflyLocale.setPreference(language)
+          for (const view of ['compact', 'standard', 'detailed', 'verbose']) {
+            section.value = { transcriptView: view }
+            harness.ctx.emit('settings/document-updated', 'mayfly' as never)
+            for (const next of phases) {
+              facts = { ...facts, ...next }
+              listener?.(facts)
+              for (const width of SCAN_WIDTHS) {
+                expectLinesFit(`ActivityRow/${language}/${view}/${next.phase}/${name}`, harness.screen.paneLines(width), width)
+              }
+            }
+          }
+        }
+      } finally {
+        await locale.dispose()
+        await harness.dispose()
+        activityPane.setActivityTimers(undefined)
+        activityPane.setActivityClock(undefined)
       }
     })
 

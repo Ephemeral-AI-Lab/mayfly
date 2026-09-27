@@ -88,8 +88,11 @@ describe('SessionTranscriptPanel', () => {
     }
     expect(screen.renderRequests).toHaveLength(requests + 1)
     const rendered = panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')
-    expect(rendered).toContain('✻ Thinking')
-    expect(rendered).toContain('latest thought')
+    // The panel has no activity row, so it keeps the live turn header; the
+    // reasoning itself is a captionless tail.
+    expect(rendered).toMatch(/▾ Deep diving/u)
+    expect(rendered).not.toContain('Thinking')
+    expect(rendered).toContain('✻ latest thought')
     ctx.emit('tools/change')
     expect(panel.render(60).map(row => row.replace(ANSI_OR_OSC, '')).join('\n')).toContain('latest thought')
     const settled = assistantEvent(1, 1, [{ type: 'text', text: 'final live answer' }])

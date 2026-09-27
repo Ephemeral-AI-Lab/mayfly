@@ -1,19 +1,13 @@
 /**
- * The thinking block: the live `✻ Thinking` header over the reasoning tail
- * with its one-second refresh, the one-row settled form with its duration and
- * policy-gated preview, Ctrl-O expansion and scope-aware hints, the
- * blank-reasoning zero-row settle, and dispose discipline. Width behavior
- * asserts against pi-tui's own width helpers.
+ * The thinking block: the captionless live `✻` tail over the reasoning's last
+ * wrapped lines (no clock: the activity row owns elapsed time), the one-row
+ * settled form with its duration and policy-gated preview, Ctrl-O expansion
+ * and scope-aware hints, and the blank-reasoning zero-row renders. Width
+ * behavior asserts against pi-tui's own width helpers.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  setThinkingTimers,
-  ThinkingComponent,
-  THINKING_PREVIEW_LINES,
-  THINKING_REFRESH_MS,
-  type ThinkingTimers,
-} from '../../src/transcript/thinking.ts'
+import { describe, expect, it, vi } from 'vitest'
+import { ThinkingComponent, THINKING_PREVIEW_LINES } from '../../src/transcript/thinking.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'
 import { STREAMING_RENDER_MAX_CHARS } from '../../src/transcript/components.ts'
@@ -45,28 +39,6 @@ function tagged(): MayflySemanticColors {
   }
 }
 
-/** Fake timers recording interval creation/clearing; ticks run manually. */
-class FakeTimers implements ThinkingTimers {
-  readonly ticks: (() => void)[] = []
-  cleared = 0
-
-  readonly intervals: number[] = []
-
-  setInterval(callback: () => void, ms: number): ReturnType<typeof setInterval> {
-    this.ticks.push(callback)
-    this.intervals.push(ms)
-    return this.ticks.length as unknown as ReturnType<typeof setInterval>
-  }
-
-  clearInterval(_handle: ReturnType<typeof setInterval>): void {
-    this.cleared += 1
-  }
-}
-
-afterEach(() => {
-  setThinkingTimers(undefined)
-})
-
 function thinkingItem(partial: Partial<TranscriptThinkingItem> = {}): TranscriptThinkingItem {
   return { kind: 'thinking', seq: 1, turn: 1, step: 1, text: 'thought', streaming: false, ...partial }
 }
@@ -75,18 +47,16 @@ function thinkingItem(partial: Partial<TranscriptThinkingItem> = {}): Transcript
 const SIX_WORDS = 'l0 l1 l2 l3 l4 l5'
 
 describe('ThinkingComponent', () => {
-  it('reuses wrapped reasoning across refresh ticks, but recomputes for text, width, and invalidation', () => {
-    const timers = new FakeTimers()
-    setThinkingTimers(timers)
+  it('reuses wrapped reasoning across renders, but recomputes for text, width, and invalidation', () => {
     const components = fakeMayflyComponents()
     const wrap = vi.spyOn(components, 'wrapText')
     const item = thinkingItem({ text: 'thinking '.repeat(1_000), streaming: true })
     const component = new ThinkingComponent(item, COLORS, components)
     const first = component.render(80)
-    for (let i = 0; i < 3; i += 1) {
-      timers.ticks[0]!()
-      expect(component.render(80).slice(2)).toEqual(first.slice(2))
-    }
+    component.invalidate()
+    wrap.mockClear()
+    expect(component.render(80)).toEqual(first)
+    expect(component.render(80)).toBe(component.render(80))
     expect(wrap).toHaveBeenCalledOnce()
     item.text += 'new thought'
     component.render(80)
@@ -100,30 +70,23 @@ describe('ThinkingComponent', () => {
     component.invalidate()
     component.render(40)
     expect(wrap).toHaveBeenCalledTimes(4)
-    component.dispose()
   })
 
-  it('renders the live header with elapsed time over the reasoning\'s tail window', () => {
-    const timers = new FakeTimers()
-    setThinkingTimers(timers)
-    const now = Date.now()
-    const component = new ThinkingComponent(
-      thinkingItem({ text: SIX_WORDS, streaming: true, startedAt: now - 6_500 }),
-      tagged(),
-      fakeMayflyComponents(),
-    )
-    expect(timers.intervals).toEqual([THINKING_REFRESH_MS])
-    const wide = component.render(60)
-    expect(wide[0]).toBe('')
-    expect(wide[1]).toMatch(/^\[M\]✻ \[\/M\]\[M\]Thinking · [67]s\[\/M\]$/u)
-    // The tail window keeps the last two wrapped words, italic-indented and width-safe.
-    const narrow = new ThinkingComponent(thinkingItem({ text: SIX_WORDS, streaming: true }), COLORS, fakeMayflyComponents()).render(5)
-    expect(narrow.slice(2)).toEqual(['  \x1b[3ml4\x1b[23m', '  \x1b[3ml5\x1b[23m'])
-    // A tick nudges a redraw without animating a glyph.
-    const renders: number[] = []
-    new ThinkingComponent(thinkingItem({ text: 'x', streaming: true }), COLORS, fakeMayflyComponents(), () => { renders.push(1) })
-    timers.ticks[2]!()
-    expect(renders).toHaveLength(1)
+  it('renders the live tail without a caption or clock: the marker leads the last wrapped lines', () => {
+    const now = vi.spyOn(Date, 'now')
+    const component = new ThinkingComponent(thinkingItem({ text: SIX_WORDS, streaming: true }), COLORS, fakeMayflyComponents())
+    expect(component.render(5)).toEqual(['', '✻ \x1b[3ml4\x1b[23m', '  \x1b[3ml5\x1b[23m'])
+    // Marker and body are muted; the body is italic.
+    expect(new ThinkingComponent(thinkingItem({ text: 'x', streaming: true }), tagged(), fakeMayflyComponents()).render(40))
+      .toEqual(['', '[M]✻ [/M]\x1b[3m[M]x[/M]\x1b[23m'])
+    // Nothing reads the clock: the activity row owns elapsed time.
+    expect(now).not.toHaveBeenCalled()
+    now.mockRestore()
+    // Trailing blank lines never take a tail slot; one line fits on the marker row.
+    expect(new ThinkingComponent(thinkingItem({ text: 'only\n\n', streaming: true }), COLORS, fakeMayflyComponents()).render(40))
+      .toEqual(['', '✻ \x1b[3monly\x1b[23m'])
+    expect(new ThinkingComponent(thinkingItem({ text: SIX_WORDS, streaming: true }), COLORS, fakeMayflyComponents()).render(40))
+      .toEqual(['', `✻ \x1b[3m${SIX_WORDS}\x1b[23m`])
   })
 
   it('settles into one row with its duration, previewing the first line when the policy allows', () => {
@@ -133,30 +96,26 @@ describe('ThinkingComponent', () => {
     expect(new ThinkingComponent(thinkingItem({ text: 'x' }), COLORS, fakeMayflyComponents()).render(80)[1]).toBe('✻ Thought for a while · \x1b[3mx\x1b[23m · ctrl+o to expand')
     expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 200 }), COLORS, fakeMayflyComponents()).render(80)[1]).toContain('Thought for 1s')
     // Compact drops the preview; out of Ctrl-O's reach the hint goes.
-    const bare = new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 2_000 }), COLORS, fakeMayflyComponents(), undefined, () => false)
+    const bare = new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 2_000 }), COLORS, fakeMayflyComponents(), () => false)
     expect(bare.render(80)).toEqual(['', '✻ Thought for 2s · ctrl+o to expand'])
     bare.setScope({ hint: false })
     expect(bare.render(80)).toEqual(['', '✻ Thought for 2s'])
     // A hint that would not fit whole is dropped rather than cut.
-    expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 2_000 }), COLORS, fakeMayflyComponents(), undefined, () => false).render(20)).toEqual(['', '✻ Thought for 2s'])
+    expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 2_000 }), COLORS, fakeMayflyComponents(), () => false).render(20)).toEqual(['', '✻ Thought for 2s'])
     // Ctrl-O opens the complete body under the title.
     component.setExpanded(true)
     expect(component.render(40)).toEqual(['', '[M]✻ [/M][M]Thought for 4s[/M]', '  \x1b[3m[M]l0 l1 l2 l3 l4 l5[/M]\x1b[23m'])
   })
 
-  it('localizes the header and settled title', () => {
+  it('localizes the settled title', () => {
     const t = (key: string, values?: Record<string, string | number>) => interpolateLocaleMessage(TRANSCRIPT_LOCALE.zh[key] ?? key, values)
-    const live = new ThinkingComponent(thinkingItem({ text: 'x', streaming: true }), COLORS, fakeMayflyComponents(), undefined, () => true, t)
-    expect(live.render(40)[1]).toBe('✻ 思考中')
-    live.dispose()
-    expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 3_000 }), COLORS, fakeMayflyComponents(), undefined, () => false, t).render(40)[1]).toBe('✻ 已思考 3s · 按 Ctrl-O 展开')
+    expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 3_000 }), COLORS, fakeMayflyComponents(), () => false, t).render(40)[1]).toBe('✻ 已思考 3s · 按 Ctrl-O 展开')
   })
 
-  it('renders zero rows for a blank finalized block and a bare header for an empty live one', () => {
+  it('renders zero rows for blank reasoning, live or finalized', () => {
     expect(new ThinkingComponent(thinkingItem({ text: '' }), tagged(), fakeMayflyComponents()).render(40)).toEqual([])
-    const empty = new ThinkingComponent(thinkingItem({ text: '', streaming: true }), tagged(), fakeMayflyComponents())
-    expect(empty.render(40)).toEqual(['', '[M]✻ [/M][M]Thinking[/M]', '  \x1b[3m[M][/M]\x1b[23m'])
-    empty.dispose()
+    expect(new ThinkingComponent(thinkingItem({ text: '', streaming: true }), tagged(), fakeMayflyComponents()).render(40)).toEqual([])
+    expect(new ThinkingComponent(thinkingItem({ text: ' \n ', streaming: true }), tagged(), fakeMayflyComponents()).render(40)).toEqual([])
   })
 
   it('bounds an oversized finalized reasoning render to the retained tail', () => {
@@ -169,30 +128,6 @@ describe('ThinkingComponent', () => {
     new ThinkingComponent(thinkingItem({ text: 'x'.repeat(STREAMING_RENDER_MAX_CHARS * 2), streaming: false }), COLORS, fakeMayflyComponents()).render(80)
   })
 
-  it('stands the refresh down once the item finalizes, and on dispose', () => {
-    const timers = new FakeTimers()
-    setThinkingTimers(timers)
-    const item = thinkingItem({ text: 'x', streaming: true })
-    const renders: number[] = []
-    const component = new ThinkingComponent(item, COLORS, fakeMayflyComponents(), () => { renders.push(1) })
-    item.streaming = false
-    timers.ticks[0]!()
-    expect(timers.cleared).toBe(1)
-    expect(renders).toHaveLength(0)
-    component.dispose()
-    expect(timers.cleared).toBe(1)
-    const live = new ThinkingComponent(thinkingItem({ text: 'x', streaming: true }), COLORS, fakeMayflyComponents())
-    live.dispose()
-    expect(timers.cleared).toBe(2)
-    // A block that resumes streaming restarts its refresh on render; a settled render stops it.
-    item.streaming = true
-    component.render(40)
-    expect(timers.ticks).toHaveLength(3)
-    item.streaming = false
-    component.render(40)
-    expect(timers.cleared).toBe(3)
-  })
-
   it('caches by item state and rebuilds after invalidate', () => {
     const component = new ThinkingComponent(thinkingItem({ text: 'a' }), COLORS, fakeMayflyComponents())
     expect(component.render(40)).toBe(component.render(40))
@@ -202,24 +137,6 @@ describe('ThinkingComponent', () => {
     const rebuilt = component.render(40)
     expect(rebuilt).toEqual(component.render(40))
     expect(rebuilt.length).toBeGreaterThan(0)
-  })
-
-  it('starts no timer for a finalized item and refreshes with the default timers', async () => {
-    const timers = new FakeTimers()
-    setThinkingTimers(timers)
-    new ThinkingComponent(thinkingItem({ text: 'done' }), COLORS, fakeMayflyComponents())
-    expect(timers.ticks).toHaveLength(0)
-    setThinkingTimers(undefined)
-    vi.useFakeTimers()
-    try {
-      const renders: number[] = []
-      const live = new ThinkingComponent(thinkingItem({ text: 'live', streaming: true }), COLORS, fakeMayflyComponents(), () => { renders.push(1) })
-      vi.advanceTimersByTime(THINKING_REFRESH_MS)
-      expect(renders).toHaveLength(1)
-      live.dispose()
-    } finally {
-      vi.useRealTimers()
-    }
   })
 })
 
