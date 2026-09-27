@@ -117,7 +117,7 @@ function createService(tui: TuiMainScreen): MayflyComponentsService {
  * real SGR sequences, because the chrome post-processing locates visible
  * columns by stripping SGR runs (the «role:» tags above are opaque to it).
  */
-const SGR = { border: '\x1b[38;5;240m', shellMode: '\x1b[38;5;99m' }
+const SGR = { border: '\x1b[38;5;240m', shellMode: '\x1b[38;5;99m', textMuted: '\x1b[38;5;245m' }
 const RESET = '\x1b[0m'
 
 function sgrTheme(): MayflyTheme {
@@ -125,7 +125,7 @@ function sgrTheme(): MayflyTheme {
   const colors = Object.fromEntries(
     ROLES.map(role => [
       role,
-      role === 'border' || role === 'shellMode'
+      role === 'border' || role === 'shellMode' || role === 'textMuted'
         ? (text: string) => SGR[role] + text + RESET
         : identity,
     ]),
@@ -346,6 +346,33 @@ describe('createEditor', () => {
     const connected = editor.render(30)
     expect(connected[0]).toContain(`${SGR.border}├${RESET}`)
     expect(connected.at(-1)).toBe(` ${SGR.border}╰${'─'.repeat(26)}╯${RESET}`)
+    stop()
+  })
+
+  it('lays the sanitized session title into the top rule beside the label', () => {
+    const { tui, stop } = bootTui()
+    const components = createSgrService(tui)
+    const editor = components.createEditor({ paddingX: 4 })
+    editor.setBorderTitle('  dock\x1b[31m-transcript\n redesign \x07')
+    const titled = editor.render(40)
+    // Controls are stripped and whitespace collapses: ` dock-transcript redesign ` (26) + `─`.
+    expect(titled[0]).toBe(
+      `${SGR.border}╭${RESET}${SGR.border}${'─'.repeat(11)}${RESET}${SGR.textMuted} dock-transcript redesign ${RESET}${SGR.border}─${RESET}${SGR.border}╮${RESET}`,
+    )
+    expect(piVisibleWidth(titled[0] ?? '')).toBe(40)
+
+    editor.setBorderLabel(`${SGR.shellMode}! shell mode${RESET}`)
+    const both = editor.render(40)
+    expect(both[0]).toContain(`${SGR.shellMode}! shell mode${RESET}`)
+    // 38 rule columns − 12 label − 1 separator − 3 title chrome leave 22.
+    expect(both[0]).toContain(`${SGR.shellMode}! shell mode${RESET}${SGR.border}─${RESET}${SGR.textMuted} dock-transcript redes… ${RESET}`)
+    expect(piVisibleWidth(both[0] ?? '')).toBe(40)
+
+    editor.setBorderTitle(' \t ')
+    expect(editor.render(40)[0]).not.toContain(SGR.textMuted)
+    editor.setBorderLabel(undefined)
+    editor.setBorderTitle(undefined)
+    expect(editor.render(40)[0]).toBe(`${SGR.border}╭${'─'.repeat(38)}╮${RESET}`)
     stop()
   })
 

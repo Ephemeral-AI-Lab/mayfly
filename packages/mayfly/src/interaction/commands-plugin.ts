@@ -18,6 +18,7 @@ import { cycleMode } from './mode-commands.ts'
 import { registerModelCommands } from './model-commands.ts'
 import { registerExportCommands } from './session-export.ts'
 import { registerInitCommand } from './session-init.ts'
+import { registerRenameCommand } from './rename-command.ts'
 import { registerThemeCommand } from './theme-switch.ts'
 import { registerUpdateCommand } from './update-command.ts'
 import { registerTraceCommand } from './trace-command.ts'
@@ -224,6 +225,8 @@ export function apply(ctx: Context): void {
     // before `ctx.commands.execute` (the S24a dogfood ruling: /resume and
     // /sessions were one command wearing two names).
     const sessionsAliases = aliasRegistry.register('sessions', ['resume'])
+    // `/rename` writes a user-owned title through the native controller.
+    const rename = registerRenameCommand(ctx)
     const help = ctx.commands.register({
       name: 'help',
       description: 'Show available commands and key bindings',
@@ -263,6 +266,7 @@ export function apply(ctx: Context): void {
       rewind()
       sessions()
       sessionsAliases()
+      rename()
       help()
       mode()
       theme()

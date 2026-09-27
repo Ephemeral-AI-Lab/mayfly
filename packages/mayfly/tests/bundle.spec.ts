@@ -88,7 +88,6 @@ describe('mayfly bundle', () => {
       'mayfly-status-basic',
       'mayfly-status-cwd',
       'mayfly-status-git',
-      'mayfly-status-title',
       'mayfly-status-context',
       'mayfly-status-mode',
       'mayfly-status-jobs',
@@ -152,6 +151,22 @@ describe('mayfly bundle', () => {
       'mayflySessionProjections',
       'mayflyChildAttach',
     ]))
+  })
+
+  it('names sessions through the base title service and mounts session statistics like the web-app', () => {
+    // Titles come from the base `session-title` service and its first-prompt
+    // provider; Mayfly neither swaps the provider nor schedules refreshes.
+    expect(basePatch).toContain('- id: session-title-llm')
+    expect(disabledIds(patch)).not.toContain('session-title-llm')
+    expect(patch).not.toContain('session-title-all-prompts-llm')
+    const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>
+    }
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-session-title-all-prompts-llm']).toBeUndefined()
+    // `/status` and `/sessions` read the `sessionStats` projection the
+    // web-app composition mounts under the same row.
+    expect(webAppPatch).toContain("name: '@deepseek-ai/dsh-session-stats'")
+    expect(insertedRows.find(row => row.id === 'session-stats')?.name).toBe('@deepseek-ai/dsh-session-stats')
   })
 
   it('keeps opt-in ecosystem examples out of the default product composition', () => {
@@ -234,11 +249,7 @@ describe('mayfly bundle', () => {
     // rows the web-app bundle disables must equal Mayfly's, so when the base
     // grows a new agent-plane row and the harness rules on it, this spec goes
     // red until Mayfly follows. `hmr` rides along (both surfaces keep it off).
-    // Mayfly additionally carries non-agent-plane overrides the web-app makes
-    // no ruling on — the session-title cadence swap (S30): the base's
-    // first-prompt provider stands down for the all-prompts sibling row in
-    // the insert, and that is Mayfly's own call, outside the lockstep list.
-    const mayflyOnly = new Set(['hmr', 'session-title-llm'])
+    const mayflyOnly = new Set(['hmr'])
     expect(disabledIds(patch).filter(id => !mayflyOnly.has(id))).toEqual(disabledIds(webAppPatch))
     // A typo'd id would silently disable nothing, leaving the row's tools in
     // the global layer: every disable must address a row the base defines.

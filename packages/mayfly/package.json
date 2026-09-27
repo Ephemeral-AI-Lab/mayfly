@@ -88,10 +88,6 @@
       "types": "./lib/types/status-cwd.d.ts",
       "default": "./lib/status-cwd.js"
     },
-    "./status-title": {
-      "types": "./lib/types/status-title.d.ts",
-      "default": "./lib/status-title.js"
-    },
     "./status-git": {
       "types": "./lib/types/status-git.d.ts",
       "default": "./lib/status-git.js"
@@ -207,7 +203,6 @@
     "@deepseek-ai/dsh-cmdline": "0.1.7-rc.1",
     "@deepseek-ai/dsh-cordis-host-runner": "0.1.7-rc.1",
     "@deepseek-ai/dsh-mcp-client": "0.1.7-rc.1",
-    "@deepseek-ai/dsh-session-title-all-prompts-llm": "0.1.7-rc.1",
     "@deepseek-ai/dsh-tool-subagent": "0.1.7-rc.1",
     "@deepseek-ai/dsh-workspace": "0.1.7-rc.1",
     "@deepseek-ai/schemastery": "3.18.4",

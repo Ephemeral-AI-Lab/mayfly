@@ -9,10 +9,14 @@ presentation and current-Agent selection.
 - `/plugin` retains the marketplace browser, cache, install/remove commands,
   `marketIndexUrl`, and CLI-backed installer. Package changes take effect after
   restarting Mayfly and starting a new session. HMR remains disabled.
-- `/sessions` lists native session summaries, filters titles, searches contents
-  when native full-text search is configured, and archives/restores sessions.
-  Active work requires an explicit Stop activity and archive decision. Archive
-  does not delete the session log.
+- `/sessions` lists native session summaries — title, wall-clock span, token
+  totals, status, and path joined with the stored header — filters names,
+  searches contents when native full-text search is configured, and
+  archives/restores sessions. Enter opens a detail sheet with the preset,
+  timings, turn/step counts, and the token split. Active work requires an
+  explicit Stop activity and archive decision. Archive does not delete the
+  session log. `/rename` writes a user-pinned title through the native session
+  controller.
 - `/schedule` displays the current Agent's active reminders, overdue first,
   with local and relative times. Creation/cancellation stays in the
   conversation. The shipped `standard` preset mounts

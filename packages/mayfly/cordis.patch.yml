@@ -63,9 +63,6 @@
 - id: tool-web
   disabled: true
 
-- id: session-title-llm
-  disabled: true
-
 - insert:
     - id: subagent-model-selection-settings
       name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
@@ -100,14 +97,11 @@
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
 
-    - id: session-title-all-prompts-llm
-      name: '@deepseek-ai/dsh-session-title-all-prompts-llm'
-      config:
-        targetWords: 5
-        targetCjkCharacters: 10
-        maxInputBytes: 4096
-        maxOutputTokens: 64
-        timeoutMs: 60000
+    # Whole-log turn/step counts and model/tool wall times (the `sessionStats`
+    # projection), mounted as in the upstream Web composition. Session titles
+    # stay on the base `session-title` service and its first-prompt provider.
+    - id: session-stats
+      name: '@deepseek-ai/dsh-session-stats'
 
     # Direct Mayfly UI services. Plugin lifetime is ordinary Cordis Fiber lifetime.
     - id: mayfly-ui-provider
@@ -146,8 +140,6 @@
       name: '@ephemeral-ai/mayfly/status-cwd'
     - id: mayfly-status-git
       name: '@ephemeral-ai/mayfly/status-git'
-    - id: mayfly-status-title
-      name: '@ephemeral-ai/mayfly/status-title'
     - id: mayfly-status-context
       name: '@ephemeral-ai/mayfly/status-context'
     - id: mayfly-status-mode

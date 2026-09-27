@@ -21,7 +21,6 @@ import { armExitEpitaph, epitaphFor } from './exit-epitaph.ts'
 import { profileNameFromArgv } from '../internal/profile.ts'
 import { createMayflyRequestController } from './request-lifecycle.ts'
 import { installRetractionService } from './retraction.ts'
-import { installSessionTitleCadence } from './title-cadence.ts'
 
 export {
   MayflyCurrentAgentService,
@@ -94,8 +93,6 @@ export function apply(ctx: Context, config: Config): void {
   })
   ctx.effect(() => offSelection)
 
-  const offTitleCadence = installSessionTitleCadence(ctx, () => current.current()?.session)
-  ctx.effect(() => offTitleCadence)
   installRetractionService(
     ctx,
     () => current.current(),

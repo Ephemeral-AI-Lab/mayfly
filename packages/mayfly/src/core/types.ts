@@ -566,6 +566,14 @@ export interface MayflyEditor extends MayflyFocusable {
    */
   setBorderLabel(text: string | undefined): void
   /**
+   * Lay plain text into the right end of the editor's top border as
+   * `─ title ─╮` (the session name). Core strips terminal controls,
+   * collapses whitespace, ellipsizes the title to the room the border label
+   * leaves, and drops it on narrow or scroll-indicator borders.
+   * @param text - the plain title, or `undefined` (or blank) to remove it.
+   */
+  setBorderTitle(text: string | undefined): void
+  /**
    * Switch the top corners between `╭╮` and `├┤`, the latter reading as a
    * frame docked to a panel above (the S13 btw dock).
    * @param connected - whether a panel is docked above the editor.

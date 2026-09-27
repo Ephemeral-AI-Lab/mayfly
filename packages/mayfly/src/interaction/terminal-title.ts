@@ -2,9 +2,9 @@
  * `mayfly-terminal-title` plugin: mirrors the session title onto the terminal
  * window/tab title through `mayflyScreen.setTitle` (the core OSC 0 emitter).
  * The title itself is generated upstream — the harness session-title
- * service derives it from the conversation with an auxiliary model (the
- * Mayfly bundle runs the all-prompts cadence, so it tracks the latest task)
- * — so this plugin mirrors the official `title` session projection through
+ * service derives it from the first human prompt (a deterministic fallback,
+ * then one auxiliary-model title) and honors explicit renames — so this
+ * plugin mirrors the official `title` session projection through
  * `mayflySessionFacts`. It never receives an Agent or folds Harness events.
  *
  * Emission is deduped: the fold is re-derived cheaply on every event, but

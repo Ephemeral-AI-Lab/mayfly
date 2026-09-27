@@ -394,10 +394,11 @@ describe('mayfly-commands plugin', () => {
     expect(rows.join('\n')).toContain('/update')
     expect(rows.join('\n')).toContain('/effort (/thinking)')
     expect(rows.join('\n')).toContain('/mode')
-    expect(rows.some(row => row.includes('Keys'))).toBe(true)
     // The command roster grew past the first window; scroll down to the
     // Keys rows the window no longer shows on the first paint.
     for (let i = 0; i < 5; i += 1) panel.handleInput(KEY.down)
+    expect(panel.render(80).join('\n')).toContain('/rename')
+    expect(panel.render(80).some(row => row.includes('Keys'))).toBe(true)
     expect(panel.render(80).some(row => row.includes('Enter') && row.includes('Submit input'))).toBe(true)
     panel.invalidate()
     panel.handleInput(KEY.escape)
