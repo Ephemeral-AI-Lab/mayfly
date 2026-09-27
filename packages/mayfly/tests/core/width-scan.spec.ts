@@ -52,6 +52,7 @@ function scanEditor(text: string): MayflyEditor {
     setBorderColor: () => {},
     setPromptSymbol: () => {},
     setBorderLabel: () => {},
+    setBorderTitle: () => {},
     setConnectedAbove: () => {},
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},

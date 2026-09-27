@@ -16,17 +16,29 @@ afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.di
 async function setup() {
   const ctx = new Context(); contexts.push(ctx)
   const bench = await informationFixture(ctx)
+  const start = Date.now()
   const controller = {
     list: vi.fn(async () => ({ items: [
-      { sessionId: 'current', cwd: '/repo', running: false, projections: { values: { title: 'Current' } } },
-      { sessionId: 'other', running: true, projections: { values: { schedule: [{ id: 'r1' }] } } },
-      { sessionId: 'child', origin: 'subagent', parentSessionId: 'current', running: false },
+      { sessionId: 'current', cwd: '/repo', running: false, updatedAt: start - 60_000, projections: { values: {
+        title: 'Current',
+        tokenUsage: { uncachedInputTokens: 1200, outputTokens: 800, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        sessionStats: { turns: 3, steps: 5, llmMs: 12_000, toolMs: 3_000, ttftMs: 800, ttftSteps: 3, decodeMs: 9_000, decodeTokens: 800 },
+        modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat' } },
+      } } },
+      { sessionId: 'other', running: true, updatedAt: start - 30_000, projections: { values: { schedule: [{ id: 'r1' }] } } },
+      { sessionId: 'child', origin: 'subagent', parentSessionId: 'current', running: false, updatedAt: start - 20_000 },
     ] })),
     search: vi.fn(async () => ({ items: [{ sessionId: 'other', snippet: 'matching text' }], hasMore: true })),
   }
+  const query = { listSessions: vi.fn(async () => [
+    { header: { id: 'current', createdAt: start - 3_600_000, cwd: '/repo', agentPreset: 'standard' } },
+    { header: { id: 'other', createdAt: start - 7_200_000, cwd: '/repo/other' } },
+    { header: { id: 'child', createdAt: start - 900_000 } },
+  ]) }
   const registry = { archivedSessionIds: [] as string[], archiveSession: vi.fn(async (id: string, _options: unknown) => { registry.archivedSessionIds.push(id) }), unarchiveSession: vi.fn(async (id: string) => { registry.archivedSessionIds = registry.archivedSessionIds.filter(item => item !== id) }) }
   const subagents = { listDescendants: vi.fn(async () => [{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }]) }
   ctx.provide('sessionController', controller as never)
+  ctx.provide('sessionQuery', query as never)
   ctx.provide('workspaceRegistry', registry as never)
   ctx.provide('subagents', subagents as never)
   const open = () => openSessions(ctx, new AbortController().signal, interactionTranslator(ctx))
@@ -34,7 +46,7 @@ async function setup() {
   const select = async (id: string) => { model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'sessions', selectedIds: [id] }); await flushRequests() }
   const act = async (id: string, detail = true) => { model(detail ? 'mayfly.sessions.detail' : 'mayfly.sessions').invoke(id); await flushRequests() }
   const confirm = async () => { model('mayfly.sessions.detail').answerDecision(true); await flushRequests() }
-  return { ...bench, controller, registry, subagents, open, model, select, act, confirm }
+  return { ...bench, controller, query, registry, subagents, open, model, select, act, confirm }
 }
 it('lists native summaries, searches explicitly, and preserves title filtering on search refusal', async () => {
   const bench = await setup()
@@ -113,11 +125,12 @@ it('contains stale selections, unknown actions, and archive failures without red
 })
 it('shows complete search results and ignores a late archive repaint after closing', async () => {
   const bench = await setup()
-  bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: 'current', snippet: 'hit' }], hasMore: false })
+  bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: 'current', snippet: 'hit' }, { sessionId: 'gone', snippet: 'orphan' }], hasMore: false })
   await bench.open()
   bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'text')
   await bench.act('search', false)
   expect(JSON.stringify(bench.model().node)).toContain('Current')
+  expect(JSON.stringify(bench.model().node)).toContain('gone')
   await bench.act('refresh', false)
   const gate = Promise.withResolvers<void>()
   bench.registry.archiveSession.mockReturnValueOnce(gate.promise)
@@ -134,4 +147,53 @@ it('uses the native child id when no label is available', async () => {
   bench.subagents.listDescendants.mockResolvedValueOnce([{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable' }] as never)
   await bench.open(); await bench.select('child'); await bench.act('open')
   expect(bench.ctx.mayflyCurrentAgent.view().auxiliary?.label).toBe('child')
+})
+
+it('renders the title, span, token total, status, and path in rows and detail', async () => {
+  const bench = await setup()
+  expect(await bench.open()).toEqual({ kind: 'success' })
+  const node = JSON.stringify(bench.model().node)
+  expect(node).toContain('Current')
+  expect(node).toContain('59m')
+  expect(node).toContain('2k tok')
+  expect(node).toContain('/repo')
+  expect(node).toContain('current')
+  expect(node).toContain('running')
+  expect(node).toContain('Untitled · other')
+  expect(bench.query.listSessions).toHaveBeenCalledWith(expect.any(AbortSignal))
+  await bench.select('current')
+  const detail = JSON.stringify(bench.model('mayfly.sessions.detail').node)
+  expect(detail).toContain('Current')
+  expect(detail).toContain('/repo')
+  expect(detail).toContain('inactive · current')
+  expect(detail).toContain('standard')
+  expect(detail).toContain('59m')
+  expect(detail).toContain('model 12s')
+  expect(detail).toContain('tools 3s')
+  expect(detail).toContain('3 turns · 5 steps')
+  expect(detail).toContain('2k (input 1.2k')
+  expect(detail).toContain('deepseek-chat (deepseek)')
+})
+
+it('renders placeholders without headers or projections and tolerates a query listing failure', async () => {
+  const bench = await setup()
+  bench.controller.list.mockResolvedValueOnce({ items: [{ sessionId: 'bare', running: false, updatedAt: Date.now() - 1_000 }] })
+  bench.query.listSessions.mockRejectedValueOnce(new Error('corpus unavailable'))
+  expect(await bench.open()).toEqual({ kind: 'success' })
+  const node = JSON.stringify(bench.model().node)
+  expect(node).toContain('Untitled · bare')
+  expect(node).not.toContain('tok')
+  await bench.select('bare')
+  const detail = JSON.stringify(bench.model('mayfly.sessions.detail').node)
+  expect(detail).toContain('inactive')
+  expect(detail).toContain('—')
+})
+
+it('stays quiet when the header listing fails after the signal aborted', async () => {
+  const bench = await setup()
+  const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
+  const caller = new AbortController()
+  bench.query.listSessions.mockImplementationOnce(async () => { caller.abort(); throw new Error('late failure') })
+  expect(await openSessions(bench.ctx, caller.signal, interactionTranslator(bench.ctx))).toEqual({ kind: 'success' })
+  expect(warn).not.toHaveBeenCalled()
 })

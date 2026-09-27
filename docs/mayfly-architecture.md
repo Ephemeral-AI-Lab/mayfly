@@ -144,7 +144,7 @@ fold in a second copy of Harness session-event truth.
 flowchart TB
     BASE["dsh-base"]
     subgraph GRAPH["flat Cordis sibling graph"]
-        SUPPORT["dsh support rows<br/>subagent settings · presets · host runner · workspace<br/>connection · file upload · session controller · title"]
+        SUPPORT["dsh support rows<br/>subagent settings · presets · host runner · workspace<br/>connection · file upload · session controller · session stats"]
         UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
         RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]
         PLUGINS["external Cordis plugins"]

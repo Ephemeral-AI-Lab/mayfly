@@ -10,7 +10,8 @@
 | `/new` | `/clear` | `[preset]` | 开始新会话（可选指定 agent 预设） | `mayfly-commands` |
 | `/fork` | — | — | 把当前会话 fork 成新会话 | `mayfly-commands` |
 | `/rewind` | — | — | 从当前会话较早的用户回合创建安全分支 | `mayfly-commands` |
-| `/sessions` | `/resume` | `[<session-id>]` | 以 lineage 树列出持久化会话并切换；带 id 直接恢复 | `mayfly-commands` |
+| `/sessions` | `/resume` | `[<session-id>]` | 以 lineage 树浏览持久化会话——每行显示名称、时长、token 与路径；带 id 直接恢复 | `mayfly-commands` |
+| `/rename` | — | `[<name>]` | 重命名当前会话（不带名称打开编辑框） | `mayfly-commands` |
 | `/btw` | — | `<question>` | 创建临时旁路 Agent，并把整套 UI 切到该会话；空参数关闭 | `mayfly-btw-command` |
 | `/agents` | — | `[stop <id>]` | 浏览 subagent 树、查看 child，或停止 continuable child | `mayfly-agents-command` |
 | `/jobs` | — | — | 浏览当前 Agent 的后台任务（列表 + 详情 + Read 输出） | `mayfly-jobs` |
@@ -39,7 +40,8 @@
 
 ## 会话与模型
 
-- **`/resume <session-id>`** —— `/sessions` 的别名：带 id 直接恢复，不带参数与 `/sessions` 一样打开 lineage 树选择器（按 `parentSession` 组织、兄弟节点按创建时间降序、当前会话标 `← current`；当前会话的祖先路径自动展开且不带出旁支，其他分支用 **Space 切换展开/折叠**）。列表按当前工作目录圈定，每行显示会话标题，**直接输入即过滤**且能搜到折叠节点；`Esc` 退出筛选但保留 query，聚焦 `Clear filter` action 才清空，再按焦点层级取消。
+- **`/sessions` / `/resume <session-id>`** —— `/resume` 是 `/sessions` 的别名：带 id 直接恢复，不带参数打开会话选择器。行按 `parentSession` 嵌套（兄弟节点新的在前），显示会话名（未命名时为 `Untitled · <短 id>`）、状态徽章（`current`、`running`、`archived`、`Reminders`）、墙钟时长、总 token、相对最后活动时间与工作目录。**回车**打开详情页（状态、预设、创建/最后活动时间、墙钟与 Agent 耗时、轮次/步数、input/cache-read/cache-write/output 的 token 细分、模型与父会话），内含打开/归档/恢复操作；**直接输入即按名称、id 或路径过滤**。`Search contents` 字段搜索持久化的会话内容。
+- **`/rename [<name>]`** —— 重命名当前会话：带名称直接改名，不带参数打开一个预填当前名称的单字段编辑框。用户命名的标题会被锁定，自动命名不再覆盖；名称显示在编辑器上边框与 `/sessions` 中。
 - **`/fork`** —— agent 非 idle（正在运行）时返回 `cannot fork while the agent is running`。
 - **`/rewind`** —— 单层列出当前会话的直接用户回合；选择一个回合会从该完整回合之前创建普通子 session。父会话不截断、不删除，仍可从 `/sessions` 恢复；agent 运行时拒绝。
 - **`/btw` / `/agents`** —— 共用一个辅助会话槽。live BTW/continuable child 复用完整主布局和编辑器，one-shot child 使用全保真只读 transcript panel；状态栏显式显示 `F7 switch · F8 close`。`/agents stop <id>` 只接受没有 live 后代的 live continuable child，浏览器里的停止需在 Yes / No 确认中选择 Yes；cold/inactive child 不会被误报为已停止，父节点需先从叶子向上停止，避免 Harness 的递归 teardown 扩大操作范围。

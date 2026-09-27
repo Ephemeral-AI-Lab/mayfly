@@ -41,6 +41,7 @@ import {
   topRule as renderTopRule,
   withSideBorders,
 } from './chrome.ts'
+import { sanitizePluginText } from './plugin-view.ts'
 import { WrappingSelectList } from './wrapping-select-list.ts'
 import type {
   MayflyAutocompleteProvider,
@@ -143,6 +144,8 @@ export interface EditorChromePaints {
   readonly slashTokenPaint: (text: string) => string
   /** Styling for the argument-hint ghost (`textMuted`). */
   readonly ghostHintPaint: (text: string) => string
+  /** Styling for the top-border title (`textMuted`). */
+  readonly borderTitlePaint: (text: string) => string
 }
 
 function withoutFakeEditorCursor(row: string): string {
@@ -186,6 +189,9 @@ class EditorAdapter implements MayflyEditor {
 
   /** Pre-styled text laid into the top border; none while unset. */
   private borderLabel: string | undefined
+
+  /** Sanitized one-line title laid into the top border's right end; none while unset. */
+  private borderTitle: string | undefined
 
   /** Whether the top corners open into a panel docked above (S13 btw dock). */
   private connectedAbove = false
@@ -286,6 +292,11 @@ class EditorAdapter implements MayflyEditor {
 
   setBorderLabel(text: string | undefined): void {
     this.borderLabel = text
+  }
+
+  setBorderTitle(text: string | undefined): void {
+    const title = text === undefined ? '' : sanitizePluginText(text).replace(/\s+/gu, ' ').trim()
+    this.borderTitle = title === '' ? undefined : title
   }
 
   setConnectedAbove(connected: boolean): void {
@@ -393,6 +404,8 @@ class EditorAdapter implements MayflyEditor {
     const framed = withSideBorders(lines, (text: string) => this.editor.borderColor(text), {
       connectedAbove: this.connectedAbove,
       label: this.borderLabel,
+      title: this.borderTitle,
+      titlePaint: this.chrome.borderTitlePaint,
     })
     return this.connectedAbove ? padColumns(framed, 1) : framed
   }
@@ -682,6 +695,7 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     return new EditorAdapter(editor, {
       slashTokenPaint: (text) => `\x1b[1m${colors.primary(text)}\x1b[22m`,
       ghostHintPaint: colors.textMuted,
+      borderTitlePaint: colors.textMuted,
     })
   }
 

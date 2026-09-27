@@ -11,7 +11,7 @@
  * @module mayfly-core/chrome
  */
 
-import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
+import { sliceByColumn, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
 const ANSI_SGR = /\x1b\[[0-9;]*m/g
@@ -163,6 +163,32 @@ export interface SideBordersOptions {
    * indicator row.
    */
   readonly label?: string | undefined
+  /**
+   * Plain one-line text laid into the right end of the top border as
+   * `─ title ─╮`. It takes only the columns the label leaves free (one dash
+   * always separates the two), is ellipsized to fit, and is dropped when
+   * fewer than {@link MIN_BORDER_TITLE_COLUMNS} columns remain. Never applied
+   * to a scroll indicator row.
+   */
+  readonly title?: string | undefined
+  /** Styling for the title text; defaults to the border paint. */
+  readonly titlePaint?: ((text: string) => string) | undefined
+}
+
+/** Narrowest title, in visible columns, worth laying into a top border. */
+export const MIN_BORDER_TITLE_COLUMNS = 6
+
+/**
+ * Fit a border title into `maxWidth` visible columns, ending an elided
+ * title with `…`.
+ * @param title - plain one-line title text.
+ * @param maxWidth - the columns available for the title text.
+ * @returns the fitted title, or `undefined` when it is empty or no longer
+ *   fits {@link MIN_BORDER_TITLE_COLUMNS}.
+ */
+function fitBorderTitle(title: string | undefined, maxWidth: number): string | undefined {
+  if (title === undefined || title === '' || maxWidth < MIN_BORDER_TITLE_COLUMNS) return undefined
+  return visibleWidth(title) <= maxWidth ? title : `${sliceByColumn(title, 0, maxWidth - 1, true)}…`
 }
 
 /**
@@ -173,11 +199,12 @@ export interface SideBordersOptions {
  * keep their inner SGR intact; `│` is overlaid on column 0 and the last
  * column only when they hold a literal space, which protects the
  * inverse-video cursor an editor can park in the outermost column. The
- * `label` is laid into the top border when its middle is a pure dash run,
- * and only when it fits.
+ * `label` (left) and `title` (right) are laid into the top border only when
+ * its middle is a pure dash run: the label only when it fits whole, the
+ * title in whatever room the label leaves.
  * @param lines - the block's rendered rows, all padded to one width.
  * @param paint - the border color function for corners, bars, and rules.
- * @param options - corner style and top-border label.
+ * @param options - corner style, top-border label, and top-border title.
  * @returns the boxed rows, width preserved.
  */
 export function withSideBorders(
@@ -195,13 +222,18 @@ export function withSideBorders(
       seenTop = true
       if (plain.length === 1) return paint(leftCorner)
       const middle = plain.slice(1, -1)
-      if (isTop && options.label !== undefined && /^─+$/.test(middle)) {
-        const labelWidth = visibleWidth(options.label)
-        if (labelWidth <= middle.length) {
+      if (isTop && /^─+$/.test(middle)) {
+        const label = options.label !== undefined && visibleWidth(options.label) <= middle.length ? options.label : undefined
+        const labelWidth = label === undefined ? 0 : visibleWidth(label)
+        // The title segment is ` title ─` after at least one separating dash.
+        const title = fitBorderTitle(options.title, middle.length - labelWidth - 4)
+        if (label !== undefined || title !== undefined) {
+          const titleWidth = title === undefined ? 0 : visibleWidth(title) + 3
           return (
             paint(leftCorner)
-            + options.label
-            + paint('─'.repeat(middle.length - labelWidth))
+            + (label ?? '')
+            + paint('─'.repeat(middle.length - labelWidth - titleWidth))
+            + (title === undefined ? '' : (options.titlePaint ?? paint)(` ${title} `) + paint('─'))
             + paint(rightCorner)
           )
         }

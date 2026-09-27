@@ -1,7 +1,10 @@
 /**
  * `mayfly-status-context` plugin: enhancement footer entry showing the context
- * occupancy of the latest model step — right-aligned on band 2 in the full
- * `text` foreground (priority 20), the kimi footer's readout. Occupancy is
+ * occupancy of the latest model step — right-aligned on the single footer row
+ * in the full `text` foreground, the kimi footer's readout. Its priority 4
+ * ranks it after the model, mode, goal, and jobs entries but ahead of the cwd
+ * and git entries, so under width pressure those truncate or drop first and
+ * the readout hides only when it no longer fits whole. Occupancy is
  * the `assistant/message` usage's disjoint input side — `inputTokens +
  * cacheReadTokens + cacheWriteTokens` (output and reasoning tokens are new
  * generation, not occupied context). When the session-facts projection
@@ -139,7 +142,7 @@ export function apply(ctx: Context): void {
       : `context: ${String(contextPercent(facts.contextTokens, max))}% (${formatTokens(facts.contextTokens)}/${formatTokens(max)})`
     return { kind: 'text', content: `${cache}${occupancy}` }
   }
-  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 20, band: 'right', row: 2, overflow: 'hide' }, node())
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 4, band: 'right', overflow: 'hide' }, node())
   const offFacts = factsService?.subscribe(next => {
     const changed = next.contextTokens !== facts.contextTokens
       || next.contextCacheReadTokens !== facts.contextCacheReadTokens

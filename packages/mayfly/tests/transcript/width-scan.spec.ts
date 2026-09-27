@@ -546,6 +546,8 @@ describe('transcript width-scan', () => {
       const footer = new StatusFooterComponent(status, components, colors)
       status.register({ id: 'scan-title', priority: 90, visible: true, band: 'right', node: { kind: 'text', content: text } })
       status.register({ id: 'scan-left', priority: 10, visible: true, node: { kind: 'text', content: text } })
+      status.register({ id: 'scan-context', priority: 4, band: 'right', overflow: 'hide', node: { kind: 'text', content: 'cache 34%  context: 18% (22.9k/128k)' } })
+      status.register({ id: 'scan-center', priority: 0, band: 'center', node: { kind: 'rich-text', spans: [{ text: 'MAIN', tone: 'accent' }, { text: ` · ${text}`, tone: 'muted' }] } })
       status.register({
         id: 'scan-goal',
         priority: 2,

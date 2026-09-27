@@ -245,13 +245,21 @@ async function scenePermission(tree: AppShotTree): Promise<void> {
 }
 
 /** Fabricated persisted headers for the `/sessions` lineage tree (fixed ids/times). */
-function sessionHeader(id: string, createdAt: number, parentSession?: string): SessionHeader {
+function sessionHeader(
+  id: string,
+  createdAt: number,
+  parentSession?: string,
+  shot: { readonly updatedAt?: number, readonly usage?: { uncachedInputTokens: number, outputTokens: number, cacheReadTokens: number, cacheWriteTokens: number }, readonly stats?: { turns: number, steps: number, llmMs: number, toolMs: number, ttftMs: number, ttftSteps: number, decodeMs: number, decodeTokens: number } } = {},
+): SessionHeader {
   return {
     version: 1,
     id: SessionId(id),
     createdAt,
     cwd: SHOT_CWD,
     ...(parentSession === undefined ? {} : { parentSession: SessionId(parentSession) }),
+    ...(shot.updatedAt === undefined ? {} : { shotUpdatedAt: shot.updatedAt }),
+    ...(shot.usage === undefined ? {} : { shotUsage: shot.usage }),
+    ...(shot.stats === undefined ? {} : { shotStats: shot.stats }),
   } as SessionHeader
 }
 
@@ -259,13 +267,25 @@ function sessionHeader(id: string, createdAt: number, parentSession?: string): S
 async function sceneSessions(tree: AppShotTree): Promise<void> {
   const agent = await tree.currentAgent()
   const day = 86_400_000
+  const hour = 3_600_000
   tree.setPersistedHeaders([
-    sessionHeader('shot-root', SHOT_EPOCH - 3 * day),
-    sessionHeader('shot-topic', SHOT_EPOCH - 2 * day, 'shot-root'),
-    agent.session.header,
-    sessionHeader('shot-side', SHOT_EPOCH - day, 'shot-root'),
-    sessionHeader('shot-hotfix', SHOT_EPOCH - 4 * day),
-    sessionHeader('shot-hotfix-2', SHOT_EPOCH - 4 * day + 3_600_000, 'shot-hotfix'),
+    sessionHeader('shot-root', SHOT_EPOCH - 3 * day, undefined, {
+      updatedAt: SHOT_EPOCH - 3 * day + 2 * hour,
+      usage: { uncachedInputTokens: 4_100, outputTokens: 1_900, cacheReadTokens: 28_000, cacheWriteTokens: 900 },
+      stats: { turns: 6, steps: 14, llmMs: 74_000, toolMs: 9_000, ttftMs: 800, ttftSteps: 6, decodeMs: 60_000, decodeTokens: 1_900 },
+    }),
+    sessionHeader('shot-topic', SHOT_EPOCH - 2 * day, 'shot-root', {
+      updatedAt: SHOT_EPOCH - 2 * day + 45 * 60_000,
+      usage: { uncachedInputTokens: 1_300, outputTokens: 400, cacheReadTokens: 9_000, cacheWriteTokens: 0 },
+    }),
+    { ...agent.session.header, shotUpdatedAt: SHOT_EPOCH + 30_000 } as SessionHeader,
+    sessionHeader('shot-side', SHOT_EPOCH - day, 'shot-root', {
+      updatedAt: SHOT_EPOCH - day + 8 * hour,
+      usage: { uncachedInputTokens: 64_000, outputTokens: 12_000, cacheReadTokens: 480_000, cacheWriteTokens: 3_000 },
+      stats: { turns: 11, steps: 29, llmMs: 9 * 60_000, toolMs: 42_000, ttftMs: 1_100, ttftSteps: 11, decodeMs: 7 * 60_000, decodeTokens: 12_000 },
+    }),
+    sessionHeader('shot-hotfix', SHOT_EPOCH - 4 * day, undefined, { updatedAt: SHOT_EPOCH - 4 * day + 90_000 }),
+    sessionHeader('shot-hotfix-2', SHOT_EPOCH - 4 * day + hour, 'shot-hotfix', { updatedAt: SHOT_EPOCH - 4 * day + hour + 12 * 60_000 }),
   ])
   tree.setPersistedTitles(new Map([
     ['shot-root', 'Mayfly branding exploration'],

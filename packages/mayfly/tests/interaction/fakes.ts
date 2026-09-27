@@ -247,6 +247,8 @@ export class FakeMayflyEditor implements MayflyEditor {
   promptSymbol: '>' | '!' | undefined
   /** The last border label set, if any. */
   borderLabel: string | undefined
+  /** The last border title set, if any. */
+  borderTitle: string | undefined
   /** Whether the frame currently opens into a panel above. */
   connectedAbove = false
   /** The last ghost hint set, if any. */
@@ -317,6 +319,10 @@ export class FakeMayflyEditor implements MayflyEditor {
 
   setBorderLabel(text: string | undefined): void {
     this.borderLabel = text
+  }
+
+  setBorderTitle(text: string | undefined): void {
+    this.borderTitle = text
   }
 
   setConnectedAbove(connected: boolean): void {

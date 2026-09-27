@@ -36,6 +36,7 @@ export function createFakeEditor(): MayflyEditor {
     setBorderColor: () => {},
     setPromptSymbol: () => {},
     setBorderLabel: () => {},
+    setBorderTitle: () => {},
     setConnectedAbove: () => {},
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},

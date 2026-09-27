@@ -109,9 +109,10 @@ describe('mayfly-status-context', () => {
     ])
     const harness = await bootStatusPlugin(context, agent)
     expect(harness.entry.id).toBe('mayfly.status.context')
-    expect(harness.entry.priority).toBe(20)
+    expect(harness.entry.priority).toBe(4)
     expect(harness.entry.align).toBe('right')
-    expect(harness.entry.row).toBe(2)
+    // No `row`: the entry shares the footer's single row with the left band.
+    expect(harness.entry.row).toBeUndefined()
     // 1300 of 12300 occupied tokens are cache reads: 10.5% rounded down.
     expect(harness.entry.render(80)).toBe('cache 10%  ctx 12k')
     await harness.dispose()

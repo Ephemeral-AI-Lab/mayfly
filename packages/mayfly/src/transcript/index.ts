@@ -213,9 +213,9 @@ export function apply(ctx: Context): void {
   })
   ctx.effect(() => offStatus)
   transcript.attach(screen)
-  // The footer pins to the dock's lowest slot (S12): the two-row status
-  // stays on the terminal's last rows beneath the editor, the kimi layout
-  // dialog panels pull up over.
+  // The footer pins to the dock's lowest slot (S12): the status row stays
+  // on the terminal's last row beneath the editor, the kimi layout dialog
+  // panels pull up over.
   ctx.effect(() => {
     const slot = screen.mountDockSlot('status.footer', new GutterComponent(footer), 'bottom')
     return () => slot.dispose()

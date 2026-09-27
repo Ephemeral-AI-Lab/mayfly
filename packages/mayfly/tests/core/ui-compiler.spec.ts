@@ -71,6 +71,7 @@ function createTestEditor(): MayflyEditor {
     setBorderColor: () => {},
     setPromptSymbol: () => {},
     setBorderLabel: () => {},
+    setBorderTitle: () => {},
     setConnectedAbove: () => {},
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},
