@@ -1,6 +1,6 @@
 # Native Harness features in Mayfly
 
-Mayfly targets Harness 0.1.7-rc.1. Native services own session lifecycle,
+Mayfly targets Harness 0.1.7-rc.2. Native services own session lifecycle,
 scheduling, Team coordination, and tool execution. Mayfly provides terminal
 presentation and current-Agent selection.
 
@@ -13,10 +13,10 @@ presentation and current-Agent selection.
   when native full-text search is configured, and archives/restores sessions.
   Active work requires an explicit Stop activity and archive decision. Archive
   does not delete the session log.
-- `/schedule` displays active native reminders. Creation/cancellation stays in
-  the conversation. Delivery requires a live root Agent; overdue reminders resume
-  when their session resumes. Mount `@deepseek-ai/dsh-schedule` in profile files
-  before creating/resuming that Agent. There is no independent background daemon.
+- `/schedule` lists the selected session's active native reminders through the
+  Host Schedule service. Creation/cancellation stays in the conversation. The
+  Host delivers reminders to their original session without a live Agent. Mount
+  `@deepseek-ai/dsh-schedule` in profile files to enable reminder management.
 - `/files` displays native `present` deliveries. Preview reads at most 256 KiB;
   binary and rich documents use an explicit external Open action where available.
 - `/mcp` server details expose Resources and Templates. Listing reads metadata;

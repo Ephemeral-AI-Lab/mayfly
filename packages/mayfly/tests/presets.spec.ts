@@ -167,7 +167,7 @@ it('ships native Team services once and keeps all preset tool names conflict-fre
   expect(patch).toContain("name: '@deepseek-ai/dsh-experimental-tool-agent-team'")
   expect(patch).toContain('- id: hmr\n  disabled: true')
   const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-  for (const name of ['@deepseek-ai/dsh-experimental-agent-team', '@deepseek-ai/dsh-experimental-tool-agent-team']) expect(manifest.dependencies[name]).toBe('0.1.7-rc.1')
+  for (const name of ['@deepseek-ai/dsh-experimental-agent-team', '@deepseek-ai/dsh-experimental-tool-agent-team']) expect(manifest.dependencies[name]).toBe('0.1.7-rc.2')
   for (const id of ['standard', 'ptc', 'minimal', 'cordis', 'mayfly-cordis']) {
     const source = readFileSync(new URL(`../presets/${id}.patch.yml`, import.meta.url), 'utf8')
     for (const retired of legacyDelegationIds) expect(source).not.toMatch(new RegExp(`- id: ${retired}\\s*\n`))

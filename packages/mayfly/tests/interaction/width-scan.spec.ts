@@ -248,7 +248,7 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
   try {
     const nodes = [
       teamNode({ members: [{ id: text as never, name: text, role: 'lead', phase: 'active' }], tasks: [], failure: text }, '', new Map(), new Map()),
-      scheduleNode([{ id: 'schedule', prompt: text, scheduledAt: '2099-01-01T00:00:00Z' }] as never),
+      scheduleNode([{ id: 'schedule', title: text, prompt: 'Body', scheduledAt: '2099-01-01T00:00:00Z' }] as never),
     ]
     for (const node of nodes) {
       const handle = bench.ctx.mayflyOverlays.open({ id: 'native-width', capturing: true }, node)

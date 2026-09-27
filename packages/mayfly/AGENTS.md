@@ -39,6 +39,9 @@ slots, never arbitrary root components.
 - Core retains the cold-conversation editor layer beneath registered editor overlays.
   Registry refreshes must never clear the retained conversation; a submitted reply
   acknowledges its form snapshot before dismissal.
+- Schedule reminders belong to the Host, not a session projection. `/schedule`
+  reads the exact selected Agent's Session through the optional native service,
+  observes `schedule/changed`, and fences late reads across selection and unload.
 - `conversation/` owns phase-local output measurements from session timestamps.
   Renderer timers animate or expire labels; they do not measure domain progress.
 
