@@ -31,6 +31,7 @@ import type {
   SurfaceIntent,
 } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
+import SessionTitlePlugin from '@deepseek-ai/dsh-session-title'
 import * as uiProviderPlugin from '../../../ui/src/provider.ts'
 import * as appPlugin from '../../src/app/index.ts'
 import {
@@ -62,7 +63,6 @@ import * as statusBasicPlugin from '../../src/transcript/status-basic-model.ts'
 import * as statusContextPlugin from '../../src/transcript/status-context.ts'
 import * as statusCwdPlugin from '../../src/transcript/status-cwd.ts'
 import * as statusJobsPlugin from '../../src/transcript/status-jobs.ts'
-import * as statusTitlePlugin from '../../src/transcript/status-title.ts'
 import { pinTestTerminalCapabilities } from '../core/fake-terminal.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import type { VtTerminal } from '../vt-terminal.ts'
@@ -230,6 +230,11 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
     list: () => Promise.resolve(persistedHeaders.map(header => ({ header }))),
   } as never)
   ctx.provide('sessionQuery', {
+    listSessions: () => Promise.resolve(persistedHeaders.map(header => ({
+      header,
+      live: agents.has(String(header.id)),
+      persisted: true,
+    }))),
     readSession: (id: unknown) => {
       const session = [...agents.values()].find(agent => String(agent.id) === String(id))?.session
       if (session === undefined) return Promise.reject(new Error(`unknown session ${String(id)}`))
@@ -255,18 +260,35 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   ;(ctx.commands as unknown as { instanceToken: string }).instanceToken = 'shotcmd0'
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
+  // The real title service gives scripted sessions their logged fallback
+  // names, which the editor's top-right border then paints. Config mirrors
+  // the dsh-base row.
+  await ctx.plugin(SessionTitlePlugin, { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 })
 
   // The session controller is the one factory path the app plugin uses; it
   // creates REAL store sessions so projections, facts, and the transcript all
   // fold genuine events.
   ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   ctx.provide('sessionController', {
-    list: async () => ({ items: persistedHeaders.map(header => ({
-      sessionId: header.id, cwd: header.cwd, updatedAt: header.createdAt, running: false, blank: false,
-      agentAvailable: agents.has(String(header.id)),
-      ...(header.parentSession === undefined ? {} : { parentSessionId: header.parentSession }),
-      projections: { kind: 'cached', asOfSeq: 0, values: { title: persistedTitles.get(String(header.id)) ?? null } },
-    })) }),
+    list: async () => ({ items: persistedHeaders.map(header => {
+      // Shot-only extras smuggled on the fabricated header keep the
+      // `/sessions` rows' span, age, tokens, and stats deterministic.
+      const shot = header as SessionHeader & {
+        readonly shotUpdatedAt?: number
+        readonly shotUsage?: { uncachedInputTokens: number, outputTokens: number, cacheReadTokens: number, cacheWriteTokens: number }
+        readonly shotStats?: { turns: number, steps: number, llmMs: number, toolMs: number, ttftMs: number, ttftSteps: number, decodeMs: number, decodeTokens: number }
+      }
+      return {
+        sessionId: header.id, cwd: header.cwd, updatedAt: shot.shotUpdatedAt ?? header.createdAt, running: false, blank: false,
+        agentAvailable: agents.has(String(header.id)),
+        ...(header.parentSession === undefined ? {} : { parentSessionId: header.parentSession }),
+        projections: { kind: 'cached', asOfSeq: 0, values: {
+          title: persistedTitles.get(String(header.id)) ?? null,
+          ...(shot.shotUsage === undefined ? {} : { tokenUsage: shot.shotUsage }),
+          ...(shot.shotStats === undefined ? {} : { sessionStats: shot.shotStats }),
+        } },
+      }
+    }) }),
     async *follow() {
       yield { type: 'snapshot', assistantStream: { revision: 0 } }
     },
@@ -319,7 +341,6 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   await ctx.plugin(transcriptPlugin)
   await ctx.plugin(statusBasicPlugin)
   await ctx.plugin(statusCwdPlugin)
-  await ctx.plugin(statusTitlePlugin)
   await ctx.plugin(statusContextPlugin)
   await ctx.plugin(modeStatusPlugin)
   await ctx.plugin(statusJobsPlugin)

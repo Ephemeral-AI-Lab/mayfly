@@ -6,6 +6,15 @@ import { compileMayflyStatusNode, type MayflyComponent, type MayflyComponents, t
 
 export type { MayflyStatusEntry } from '@ephemeral-ai/mayfly-ui'
 
+type StatusBand = 'left' | 'center' | 'right'
+
+/**
+ * The fixed footer. Each row admits its entries in registry order — priority,
+ * then id — across all three bands: an entry takes its full width when it
+ * fits the room earlier entries left, otherwise it truncates to that room or,
+ * with `overflow: 'hide'`, drops out. Admitted parts then lay out as a left
+ * cluster, a centered cluster, and a right-aligned cluster.
+ */
 export class StatusFooterComponent implements MayflyComponent {
   private cache: { key: string, lines: string[] } | null = null
 
@@ -22,70 +31,74 @@ export class StatusFooterComponent implements MayflyComponent {
     const visible = this.models.list().filter(model => model.node !== null)
     const sourceKey = `${width}:${visible.map(entry => `${entry.id}:${String(entry.revision)}`).join(',')}`
     if (this.cache?.key === sourceKey) return this.cache.lines
-    const bands: { left: MayflyStatusEntry[], center: MayflyStatusEntry[], right: MayflyStatusEntry[] }[] = [
-      { left: [], center: [], right: [] },
-      { left: [], center: [], right: [] },
-    ]
-    for (const model of visible) {
-      const band = Math.min(2, Math.max(1, model.definition.row ?? 1)) - 1
-      bands[band]![model.definition.band ?? 'left'].push(model)
-    }
     const lines: string[] = []
-    for (const band of bands) {
-      const leftText = this.renderCluster(band.left, width)
-      const leftWidth = this.components.visibleWidth(leftText)
-      const rightBudget = band.right.length === 0 ? 0 : Math.max(0, width - leftWidth - (leftText === '' ? 0 : 2))
-      const rightText = rightBudget > 0 ? this.renderCluster(band.right, rightBudget) : ''
-      const rightWidth = this.components.visibleWidth(rightText)
-      const middleStart = leftWidth + (leftText === '' ? 0 : 2)
-      const middleEnd = Math.max(middleStart, width - rightWidth - (rightText === '' ? 0 : 2))
-      const centerText = this.renderCluster(band.center, Math.max(0, middleEnd - middleStart))
-      const centerWidth = this.components.visibleWidth(centerText)
-      if (leftText === '' && centerText === '' && rightText === '') continue
-      const idealCenter = Math.max(middleStart, Math.floor((width - centerWidth) / 2))
-      const centerStart = Math.min(Math.max(middleStart, idealCenter), Math.max(middleStart, middleEnd - centerWidth))
-      const line = centerText === '' && rightText === ''
-        ? leftText + ' '.repeat(Math.max(0, width - leftWidth))
-        : leftText === '' && centerText === ''
-          ? ' '.repeat(Math.max(0, width - rightWidth)) + rightText
-          : leftText
-            + ' '.repeat(Math.max(0, centerStart - leftWidth))
-            + centerText
-            + ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))
-            + rightText
-      lines.push(this.components.truncateToWidth(line, width))
+    for (const row of [1, 2]) {
+      const line = this.renderRow(visible.filter(model => Math.min(2, Math.max(1, model.definition.row ?? 1)) === row), width)
+      if (line !== undefined) lines.push(line)
     }
     this.cache = { key: sourceKey, lines }
     return lines
   }
 
-  private renderCluster(entries: readonly MayflyStatusEntry[], width: number): string {
-    if (width <= 0) return ''
-    const parts: string[] = []
+  /** Admit one row's entries by priority, then lay out the three bands. */
+  private renderRow(entries: readonly MayflyStatusEntry[], width: number): string | undefined {
+    const admitted = new Map<MayflyStatusEntry, string>()
     let used = 0
     for (const entry of entries) {
-      const remaining = width - used - (parts.length > 0 ? 2 : 0)
+      const remaining = width - used - (admitted.size > 0 ? 2 : 0)
       if (remaining <= 0) break
-      const result = compileMayflyStatusNode(entry.node!, {
-        components: this.components,
-        colors: this.colors,
-        getViewport: this.viewport,
-        screenMode: 'main',
-        maxRows: 1,
-      })
-      const component = result.ok ? result.value.component : result.errorComponent
-      const renderWidth = result.ok && result.value.node.kind === 'text'
-        ? Math.max(remaining, result.value.node.content.length * 2 + 1)
-        : remaining
-      const rendered = component.renderStatus(renderWidth)
-      const fullPart = (rendered.rows[0] ?? '').replace(/ +$/u, '')
-      const fullWidth = this.components.visibleWidth(fullPart)
-      if (entry.definition.overflow === 'hide' && (rendered.overflowed || fullWidth > remaining)) continue
-      const part = this.components.truncateToWidth(fullPart, remaining).replace(/ +$/u, '')
+      const part = this.renderPart(entry, remaining)
       if (part === '') continue
-      parts.push(part)
-      used += (parts.length > 1 ? 2 : 0) + this.components.visibleWidth(part)
+      admitted.set(entry, part)
+      used += (admitted.size > 1 ? 2 : 0) + this.components.visibleWidth(part)
     }
-    return parts.join('  ')
+    const cluster = (band: StatusBand): string => entries
+      .filter(entry => (entry.definition.band ?? 'left') === band && admitted.has(entry))
+      .map(entry => admitted.get(entry)!)
+      .join('  ')
+    const leftText = cluster('left')
+    const centerText = cluster('center')
+    const rightText = cluster('right')
+    if (leftText === '' && centerText === '' && rightText === '') return undefined
+    const leftWidth = this.components.visibleWidth(leftText)
+    const centerWidth = this.components.visibleWidth(centerText)
+    const rightWidth = this.components.visibleWidth(rightText)
+    const middleStart = leftWidth + (leftText === '' ? 0 : 2)
+    const middleEnd = Math.max(middleStart, width - rightWidth - (rightText === '' ? 0 : 2))
+    const idealCenter = Math.max(middleStart, Math.floor((width - centerWidth) / 2))
+    const centerStart = Math.min(idealCenter, Math.max(middleStart, middleEnd - centerWidth))
+    const line = centerText === '' && rightText === ''
+      ? leftText + ' '.repeat(Math.max(0, width - leftWidth))
+      : leftText === '' && centerText === ''
+        ? ' '.repeat(Math.max(0, width - rightWidth)) + rightText
+        : leftText
+          + ' '.repeat(Math.max(0, centerStart - leftWidth))
+          + centerText
+          + ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))
+          + rightText
+    return this.components.truncateToWidth(line, width)
+  }
+
+  /**
+   * Render one entry into at most `width` columns.
+   * @returns the painted part, or `''` when it is empty or hides on overflow.
+   */
+  private renderPart(entry: MayflyStatusEntry, width: number): string {
+    const result = compileMayflyStatusNode(entry.node!, {
+      components: this.components,
+      colors: this.colors,
+      getViewport: this.viewport,
+      screenMode: 'main',
+      maxRows: 1,
+    })
+    const component = result.ok ? result.value.component : result.errorComponent
+    const renderWidth = result.ok && result.value.node.kind === 'text'
+      ? Math.max(width, result.value.node.content.length * 2 + 1)
+      : width
+    const rendered = component.renderStatus(renderWidth)
+    const fullPart = (rendered.rows[0] ?? '').replace(/ +$/u, '')
+    const fullWidth = this.components.visibleWidth(fullPart)
+    if (entry.definition.overflow === 'hide' && (rendered.overflowed || fullWidth > width)) return ''
+    return this.components.truncateToWidth(fullPart, width).replace(/ +$/u, '')
   }
 }

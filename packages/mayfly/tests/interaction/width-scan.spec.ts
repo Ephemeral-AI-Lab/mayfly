@@ -21,6 +21,7 @@ import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
+import { sessionDetailNode as sessionListDetailNode, sessionListItem } from '../../src/interaction/session-list-model.ts'
 import { documentPages } from '../../src/interaction/document-pages.ts'
 import { SessionTranscriptPanel } from '../../src/interaction/session-transcript-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
@@ -160,6 +161,45 @@ describe('interaction width-scan', () => {
               viewport.columns = width; viewport.rows = height
               const rows = renderer.component.render(width)
               expectLinesFit(`native-jobs-${index}/${name}/${height}`, rows, width)
+              expect(rows.length).toBeLessThanOrEqual(height)
+            }
+          } finally { renderer.runtime.dispose(); handle.close() }
+        }
+      } finally { await bench.ctx.fiber.dispose() }
+    })
+    it(`sessions rows and detail survive ${name}`, async () => {
+      const bench = await requestFixture()
+      const facts = {
+        id: `session-${name}`,
+        title: text,
+        cwd: `/repo/${name}`,
+        createdAt: 1_000,
+        lastActiveAt: 61_000,
+        running: true,
+        archived: true,
+        current: true,
+        reminders: true,
+        parentId: 'parent-id',
+        preset: 'standard',
+        tokens: { input: 1_500, cacheRead: 100, cacheWrite: 50, output: 500 },
+        stats: { turns: 2, steps: 4, llmMs: 61_000, toolMs: 2_000, ttftMs: 100, ttftSteps: 1, decodeMs: 900, decodeTokens: 50 },
+        model: { provider: 'deepseek', model: text },
+      }
+      const nodes = [
+        ui.list({ id: 'sessions', role: 'browse', selectedIds: [], items: [sessionListItem(facts, 1_800_000_000_000, '/home/dev', key => key)] }),
+        sessionListDetailNode(facts, 1_800_000_000_000, key => key),
+      ]
+      try {
+        for (const [index, node] of nodes.entries()) {
+          const handle = bench.ctx.mayflyOverlays.open({ id: 'session-view', capturing: true }, ui.surface({ title: 'Sessions', chrome: 'overlay', child: node }))
+          const model = bench.ctx.mayflyUiInteraction.get('overlay', 'session-view')!
+          const viewport = { columns: 80, rows: 20 }
+          const renderer = renderRequest(model, viewport)
+          try {
+            for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+              viewport.columns = width; viewport.rows = height
+              const rows = renderer.component.render(width)
+              expectLinesFit(`sessions-${index}/${name}/${height}`, rows, width)
               expect(rows.length).toBeLessThanOrEqual(height)
             }
           } finally { renderer.runtime.dispose(); handle.close() }

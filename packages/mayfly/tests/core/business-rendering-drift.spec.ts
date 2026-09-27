@@ -30,9 +30,7 @@ const widthOperators = new Set([
 
 const approvedWidthMath = new Set([
   'packages/mayfly/src/transcript/banner.ts:const logoWidth = Math.max(...LOGO_ART.map(art => art.length))',
-  "packages/mayfly/src/transcript/status-model.ts:const remaining = width - used - (parts.length > 0 ? 2 : 0)",
   "packages/mayfly/src/transcript/status-model.ts:const renderWidth = result.ok && result.value.node.kind === 'text'",
-  'packages/mayfly/src/transcript/status-model.ts:used += (parts.length > 1 ? 2 : 0) + this.components.visibleWidth(part)',
   'packages/mayfly/src/transcript/thinking.ts:const contentWidth = Math.max(1, width - THINKING_INDENT.length)',
 ])
 

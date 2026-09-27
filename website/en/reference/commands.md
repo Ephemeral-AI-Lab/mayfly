@@ -10,7 +10,8 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 | `/new` | `/clear` | `[preset]` | Start a new session (optionally under a chosen agent preset) | `mayfly-commands` |
 | `/fork` | — | — | Fork the current session into a new one | `mayfly-commands` |
 | `/rewind` | — | — | Create a safe branch from an earlier user turn | `mayfly-commands` |
-| `/sessions` | `/resume` | `[<session-id>]` | List persisted sessions as a lineage tree and switch; an id resumes directly | `mayfly-commands` |
+| `/sessions` | `/resume` | `[<session-id>]` | Browse persisted sessions as a lineage tree — name, span, tokens, and path per row; an id resumes directly | `mayfly-commands` |
+| `/rename` | — | `[<name>]` | Rename the current session (no name opens an editor) | `mayfly-commands` |
 | `/btw` | — | `<question>` | Create a temporary side Agent and switch the complete UI to it; empty input closes | `mayfly-btw-command` |
 | `/agents` | — | `[stop <id>]` | Browse the subagent tree, view a child, or stop a continuable child | `mayfly-agents-command` |
 | `/jobs` | — | — | Browse the current Agent's background jobs (list, detail, Read output) | `mayfly-jobs` |
@@ -39,7 +40,8 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 
 ## Sessions and models
 
-- **`/resume <session-id>`** — the alias of `/sessions`: with an id it resumes directly; without one it opens the same lineage tree (`parentSession` defines nesting, siblings are newest first, and the current session is badged `← current`; its ancestor path opens automatically without sibling branches, while **Space toggles** other branches). The list is scoped to the current working directory, rows show session titles, and **typing filters live** across collapsed descendants. `Esc` ends filtering but preserves the query; the focused `Clear filter` action clears it, after which layered Escape cancels.
+- **`/sessions` / `/resume <session-id>`** — `/resume` is the alias of `/sessions`: with an id it resumes directly; without one it opens the session picker. Rows nest by `parentSession` (siblings newest first) and show the session name (`Untitled · <short id>` until titled), status badges (`current`, `running`, `archived`, `Reminders`), the wall-clock span, total tokens, relative last activity, and the working directory. **Enter** opens a detail sheet (status, preset, created/last-active times, wall and Agent time, turns/steps, the input/cache-read/cache-write/output token split, model, and parent session) with Open/Archive/Restore actions, and **typing filters** by name, id, or path. The `Search contents` field searches persisted transcripts.
+- **`/rename [<name>]`** — rename the current session: an argument renames directly, a bare call opens a one-field editor prefilled with the current name. A user name pins the title, so automatic titling no longer replaces it; the name shows on the editor's top border and in `/sessions`.
 - **`/fork`** — returns `cannot fork while the agent is running` while the agent is not idle.
 - **`/rewind`** — lists the current session's direct user turns in one level. Selecting a turn creates an ordinary child session from the complete boundary before it; the parent is never truncated or deleted and remains resumable through `/sessions`. A running agent is refused.
 - **`/btw` / `/agents`** — share one auxiliary slot. A live BTW/continuable child reuses the complete main layout and editor; a one-shot or cold child uses the full-fidelity readonly transcript panel. The status bar explicitly shows `F7 switch · F8 close`. `/agents stop <id>` accepts only live continuable children without live descendants, while browser stops require selecting Yes in a Yes / No confirmation; cold/inactive children are not falsely reported as stopped, and parents must be stopped leaf-first so Harness recursive teardown cannot widen the operation.
