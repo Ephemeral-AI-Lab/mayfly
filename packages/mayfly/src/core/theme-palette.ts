@@ -36,31 +36,37 @@ export function backgroundColor(hex: string): MayflyColorFn {
   return text => `\x1b[48;2;${r};${g};${b}m${text}\x1b[49m`
 }
 
+const BACKGROUND_TOKEN_NAMES = ['selectedBg', 'diffAddedBg', 'diffRemovedBg'] as const
+
+/** The palette tokens painted as backgrounds rather than foregrounds. */
+export const BACKGROUND_TOKENS: ReadonlySet<string> = new Set(BACKGROUND_TOKEN_NAMES)
+
+/** The background tokens of a palette as `#rrggbb` hexes. */
+export type MayflyBackgroundHexes = Record<typeof BACKGROUND_TOKEN_NAMES[number], string>
+
 /**
- * The 27 foreground tokens of a palette as `#rrggbb` hexes. `selectedBg`
- * is excluded: it is the palette's only background token and is passed
- * separately to {@link colorsFromForegrounds}.
+ * The foreground tokens of a palette as `#rrggbb` hexes. The background
+ * tokens and the logo gradient are excluded and passed separately to
+ * {@link colorsFromForegrounds}.
  */
-export type MayflyForegroundHexes = Record<Exclude<keyof MayflySemanticColors, 'selectedBg' | 'logoGradient'>, string>
+export type MayflyForegroundHexes = Record<Exclude<keyof MayflySemanticColors, keyof MayflyBackgroundHexes | 'logoGradient'>, string>
 
 /** Build the renderer-neutral companion model for a semantic palette. */
-export function themeModel(id: string, name: string, dark: boolean, foregrounds: MayflyForegroundHexes, selectedBg: string): Omit<ThemeModel, 'colors'> & { readonly colors: Readonly<Record<string, string>> } {
-  return { kind: 'theme', id, name, dark, colors: Object.freeze({ ...foregrounds, selectedBg }) }
+export function themeModel(id: string, name: string, dark: boolean, foregrounds: MayflyForegroundHexes, backgrounds: MayflyBackgroundHexes): Omit<ThemeModel, 'colors'> & { readonly colors: Readonly<Record<string, string>> } {
+  return { kind: 'theme', id, name, dark, colors: Object.freeze({ ...foregrounds, ...backgrounds }) }
 }
 
 /**
- * Build the frozen 28-token semantic color table from palette hexes.
+ * Build the frozen semantic color table from palette hexes.
  * @param foregrounds - one hex per foreground token.
- * @param selectedBg - the hex behind the selected list entry.
+ * @param backgrounds - one hex per background token.
+ * @param logoGradient - the banner logo foregrounds, top row first.
  * @returns the frozen semantic color table.
  */
-export function colorsFromForegrounds(foregrounds: MayflyForegroundHexes, selectedBg: string, logoGradient: readonly string[]): MayflySemanticColors {
-  const colors = Object.fromEntries(
-    Object.entries(foregrounds).map(([role, hex]) => [role, foregroundColor(hex)]),
-  )
+export function colorsFromForegrounds(foregrounds: MayflyForegroundHexes, backgrounds: MayflyBackgroundHexes, logoGradient: readonly string[]): MayflySemanticColors {
   return Object.freeze({
-    ...colors,
-    selectedBg: backgroundColor(selectedBg),
+    ...Object.fromEntries(Object.entries(foregrounds).map(([role, hex]) => [role, foregroundColor(hex)])),
+    ...Object.fromEntries(Object.entries(backgrounds).map(([role, hex]) => [role, backgroundColor(hex)])),
     logoGradient: Object.freeze(logoGradient.map(hex => foregroundColor(hex))),
   }) as MayflySemanticColors
 }

@@ -52,16 +52,20 @@ const OCEAN_LOGO_GRADIENT = [
   '#2ed3ea', '#52e2f2', '#7cecf6', '#a8f4fa',
 ] as const
 
-const OCEAN_SELECTED_BG = '#22406b'
+const OCEAN_BACKGROUNDS = {
+  selectedBg: '#22406b',
+  diffAddedBg: '#163f3a',
+  diffRemovedBg: '#4a2432',
+} as const
 
 /** The built-in ocean palette as a frozen semantic color table. */
-export const OCEAN_COLORS: MayflySemanticColors = colorsFromForegrounds(OCEAN_FOREGROUNDS, OCEAN_SELECTED_BG, OCEAN_LOGO_GRADIENT)
+export const OCEAN_COLORS: MayflySemanticColors = colorsFromForegrounds(OCEAN_FOREGROUNDS, OCEAN_BACKGROUNDS, OCEAN_LOGO_GRADIENT)
 
 /**
  * The ocean `mayflyTheme` provider. Exposes the frozen semantic color table;
  * unregistered automatically when the plugin's fiber unloads.
  */
-export class MayflyThemeService extends defineThemeService(OCEAN_COLORS, themeModel('ocean', 'Ocean', true, OCEAN_FOREGROUNDS, OCEAN_SELECTED_BG)) {}
+export class MayflyThemeService extends defineThemeService(OCEAN_COLORS, themeModel('ocean', 'Ocean', true, OCEAN_FOREGROUNDS, OCEAN_BACKGROUNDS)) {}
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-theme-ocean'

@@ -206,14 +206,15 @@ ui.code([
 
 ![`diff` 节点渲染效果](/shots/diff.svg)
 
-*多行 before/after：上下文行原样保留，改动行以 `-`/`+` 标出（宽度 64）。*
+*多行 before/after：上下文行原样保留，改动行以 `-`/`+` 标出并铺红/绿背景色带（宽度 64）。*
 
 ```ts
 ui.diff(before: string, after: string)
 ```
 
 表达同一内容修改前后的语义对比，例如待确认的编辑。插件提供原始文本，不手工
-添加 diff 颜色。上面的截图渲染的就是这个节点：
+添加 diff 颜色：Mayfly 用主题的 `diffRemovedBg`/`diffAddedBg` 色带铺满分配宽度，
+标出删除行与新增行。上面的截图渲染的就是这个节点：
 
 ```ts
 ui.diff(

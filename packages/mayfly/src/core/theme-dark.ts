@@ -55,16 +55,20 @@ const DARK_LOGO_GRADIENT = [
   '#B2A1EC', '#9A86E6', '#8371D6', '#6C5BBF',
 ] as const
 
-export const DARK_SELECTED_BG = '#221E38'
+export const DARK_BACKGROUNDS = {
+  selectedBg: '#221E38',
+  diffAddedBg: '#1E3A2B',
+  diffRemovedBg: '#43232A',
+} as const
 
 /** The built-in dark palette as a frozen semantic color table. */
-export const DARK_COLORS: MayflySemanticColors = colorsFromForegrounds(DARK_FOREGROUNDS, DARK_SELECTED_BG, DARK_LOGO_GRADIENT)
+export const DARK_COLORS: MayflySemanticColors = colorsFromForegrounds(DARK_FOREGROUNDS, DARK_BACKGROUNDS, DARK_LOGO_GRADIENT)
 
 /**
  * The built-in `mayflyTheme` provider. Exposes the frozen semantic color
  * table; unregistered automatically when the plugin's fiber unloads.
  */
-export class MayflyThemeService extends defineThemeService(DARK_COLORS, themeModel('dark', 'Dark', true, DARK_FOREGROUNDS, DARK_SELECTED_BG)) {}
+export class MayflyThemeService extends defineThemeService(DARK_COLORS, themeModel('dark', 'Dark', true, DARK_FOREGROUNDS, DARK_BACKGROUNDS)) {}
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-theme-dark'

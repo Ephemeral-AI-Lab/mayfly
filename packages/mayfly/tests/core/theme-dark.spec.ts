@@ -1,6 +1,6 @@
 /**
  * `mayfly-theme-dark` plugin entry: registration and disposal on the fiber,
- * and the built-in dark semantic color table (28 tokens).
+ * and the built-in dark semantic color table (34 tokens).
  */
 
 import { describe, expect, it } from 'vitest'
@@ -40,6 +40,8 @@ const EXPECTED_ROLES: (keyof MayflySemanticColors)[] = [
   'diffRemovedStrong',
   'diffGutter',
   'diffMeta',
+  'diffAddedBg',
+  'diffRemovedBg',
   'modelHighlight',
   'logoGradient',
 ]
@@ -87,6 +89,10 @@ describe('mayfly-theme-dark plugin', () => {
     expect(colors.textMuted('hi')).toBe('\x1b[38;2;92;100;118mhi\x1b[39m')
     // selectedBg #221E38 → rgb(34, 30, 56)
     expect(colors.selectedBg('hi')).toBe('\x1b[48;2;34;30;56mhi\x1b[49m')
+    // diffAddedBg #1E3A2B → rgb(30, 58, 43)
+    expect(colors.diffAddedBg('hi')).toBe('\x1b[48;2;30;58;43mhi\x1b[49m')
+    // diffRemovedBg #43232A → rgb(67, 35, 42)
+    expect(colors.diffRemovedBg('hi')).toBe('\x1b[48;2;67;35;42mhi\x1b[49m')
     // shellMode #C9C0F0 → rgb(201, 192, 240)
     expect(colors.shellMode('hi')).toBe('\x1b[38;2;201;192;240mhi\x1b[39m')
   })

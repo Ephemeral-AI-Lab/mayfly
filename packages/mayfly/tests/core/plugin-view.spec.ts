@@ -15,6 +15,7 @@ import {
   sanitizePluginText,
   summarizePluginView,
 } from '../../src/core/plugin-view.ts'
+import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
@@ -67,16 +68,18 @@ describe('canonical basic-content leaf renderer', () => {
       '<mdCodeBlock>next</mdCodeBlock>',
     ])
     expect(renderView({ kind: 'code', code: 'plain' }, 80)).toEqual(['<mdCodeBlock>plain</mdCodeBlock>'])
-    expect(renderView({ kind: 'diff', before: 'old', after: 'new' }, 80)).toEqual([
-      '<diffRemoved>- old</diffRemoved>',
-      '<diffAdded>+ new</diffAdded>',
-    ])
+    // Changes sit on full-width bands: the sign keeps its diff color, the
+    // text the body color. Real SGR keeps the padded band measurable.
+    const { diffAdded, diffAddedBg, diffRemoved, diffRemovedBg, text } = DARK_COLORS
+    const removed = (lead: string, body: string, fill: number): string => diffRemovedBg(`${lead}${text(body)}${' '.repeat(fill)}`)
+    const added = (lead: string, body: string, fill: number): string => diffAddedBg(`${lead}${text(body)}${' '.repeat(fill)}`)
+    const renderDiff = (before: string, after: string, width: number): string[] =>
+      renderCanonicalView({ kind: 'diff', before, after }, width, components, DARK_COLORS)
+    expect(renderDiff('old', 'new', 12)).toEqual([removed(diffRemoved('- '), 'old', 7), added(diffAdded('+ '), 'new', 7)])
     // The shared alignment renders context once between removal and addition.
-    expect(renderView({ kind: 'diff', before: 'a\nb', after: 'a\nc' }, 80)).toEqual([
-      '  a',
-      '<diffRemoved>- b</diffRemoved>',
-      '<diffAdded>+ c</diffAdded>',
-    ])
+    expect(renderDiff('a\nb', 'a\nc', 6)).toEqual(['  a', removed(diffRemoved('- '), 'b', 3), added(diffAdded('+ '), 'c', 3)])
+    // Long lines wrap under the gutter instead of re-wrapping painted rows.
+    expect(renderDiff('', 'one two', 5)).toEqual([added(diffAdded('+ '), 'one', 0), added('  ', 'two', 0)])
     expect(renderView({
       kind: 'sections',
       sections: [

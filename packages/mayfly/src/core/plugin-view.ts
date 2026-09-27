@@ -93,12 +93,11 @@ function renderView(
       return [...heading, ...body]
     }
     case 'diff': {
-      // Same alignment and paint as the tool-card panel (diff-align); only
-      // the wrapping primitive differs (the components service's width truth).
+      // The painter wraps under its sign gutter and pads each change band to
+      // the full width, so it takes the components service's width truth.
       const before = checkedText(view.before, 'diff before')
       const after = checkedText(view.after, 'diff after')
-      return paintDiffRows(alignDiffLines(before, after), colors)
-        .flatMap(row => wrapped(row, width, components))
+      return paintDiffRows(alignDiffLines(before, after), width, components, colors)
     }
     case 'sections': {
       if (!Array.isArray(view.sections)) throw new TypeError('sections must be an array')
