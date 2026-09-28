@@ -1,7 +1,11 @@
 /**
- * The plugin-market installer: everything that touches the profile. Install
- * and removal shell out to `dsh plugin --profile <name> add|remove <specs>`
- * (which forwards verbatim to pnpm) exactly like the updater's swap does;
+ * The plugin-market installer: everything that touches the profile. Install,
+ * update, and removal shell out to `dsh plugin --profile <name> add|remove
+ * <specs>` (which forwards verbatim to pnpm) exactly like the updater's swap
+ * does; installing over installed rows is an update or repair — the add
+ * replaces the manifest rows in place — and a failed operation rolls back by
+ * removing newly introduced rows, re-adding the previous rows pinned to their
+ * pre-operation versions, and restoring the captured files byte-exactly.
  * `profile-patch` rows additionally append to — and remove from — the
  * profile's `cordis.patch.yml`, and declared `allowBuilds` names are merged
  * into the profile's `pnpm-workspace.yaml` before pnpm runs. Installed-state
@@ -266,44 +270,74 @@ export interface InstallerInput {
   readonly onProgress?: (phase: 'verify' | 'rollback') => void
 }
 
-/** Remove a newly installed entry and restore its pre-install files. */
+/**
+ * The spec that reproduces a previously installed row on rollback: npm
+ * ranges and tags pin to the resolved pre-operation version — a bare range
+ * would re-resolve to something newer, the swap's repair-recipe lesson —
+ * while registry-external specs (`github:`, `file:`, `link:`) reinstall
+ * exactly as declared.
+ */
+function rollbackSpec(plugin: InstalledPlugin): string {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(plugin.spec)) return plugin.spec
+  return `${plugin.name}@${plugin.version ?? plugin.spec}`
+}
+
+/**
+ * Undo a failed install or update: remove the rows the operation introduced,
+ * re-add previously installed rows pinned to their pre-operation state, then
+ * restore the captured files so the manifest and lockfile return
+ * byte-exactly to the pre-operation state. An update's rollback re-imports
+ * the restored rows before reporting completion.
+ */
 async function rollbackInstall(
   input: InstallerInput,
-  names: readonly string[],
+  rows: readonly MarketInstallRow[],
+  previous: readonly InstalledPlugin[],
   files: readonly FileSnapshot[],
   reason: string,
 ): Promise<InstallOutcome> {
   input.onProgress?.('rollback')
-  const removal = await updaterInternals.spawnOnce(input.dshCommand.command,
-    [...input.dshCommand.args, 'plugin', '--profile', input.profile, 'remove', ...names],
-    { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
-  let restoreError: string | undefined
+  const problems: string[] = []
+  const added = rows.map(row => row.name).filter(name => previous.every(plugin => plugin.name !== name))
+  if (added.length > 0) {
+    const removal = await updaterInternals.spawnOnce(input.dshCommand.command,
+      [...input.dshCommand.args, 'plugin', '--profile', input.profile, 'remove', ...added],
+      { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
+    if (removal.code !== 0) problems.push(describeFailure('automatic rollback', removal))
+  }
+  if (previous.length > 0) {
+    const reinstall = await updaterInternals.spawnOnce(input.dshCommand.command,
+      [...input.dshCommand.args, 'plugin', '--profile', input.profile, 'add', ...previous.map(rollbackSpec)],
+      { cwd: input.root, timeoutMs: INSTALL_TIMEOUT_MS })
+    if (reinstall.code !== 0) problems.push(describeFailure('automatic rollback reinstall', reinstall))
+  }
   try {
     restoreTransactionFiles(files)
   } catch (error) {
-    restoreError = errorText(error)
+    problems.push(`restoring profile files failed: ${errorText(error)}`)
   }
-  if (removal.code !== 0 || restoreError !== undefined) {
-    const details = [removal.code === 0 ? undefined : describeFailure('automatic rollback', removal), restoreError === undefined ? undefined : `restoring profile files failed: ${restoreError}`]
-      .filter((detail): detail is string => detail !== undefined).join('; ')
-    return { kind: 'error', text: `${reason}; rollback incomplete: ${details}` }
+  if (problems.length === 0 && previous.length > 0) {
+    const restored = await importInstalledRows(input.root, rows.filter(row => previous.some(plugin => plugin.name === row.name)))
+    if (restored.code !== 0) problems.push(describeFailure('post-rollback import check', restored))
+  }
+  if (problems.length > 0) {
+    return { kind: 'error', text: `${reason}; rollback incomplete: ${problems.join('; ')}` }
   }
   return { kind: 'error', text: `${reason}; changes rolled back` }
 }
 
 /**
- * Install one entry: allowBuilds first, then one `dsh plugin add` carrying
- * every row's spec together (sibling rows satisfy each other's peers), then
- * the `profile-patch` rows into the user patch layer.
+ * Install or update one entry: allowBuilds first, then one `dsh plugin add`
+ * carrying every row's spec together (sibling rows satisfy each other's
+ * peers, and rows already in the manifest are replaced in place — the
+ * updater's swap seam), then the `profile-patch` rows into the user patch
+ * layer. The pre-operation rows are captured for rollback.
  */
 export async function installEntry(input: InstallerInput): Promise<InstallOutcome> {
   const blocked = marketEntryInstallBlock(input.entry)
   if (blocked !== undefined) return { kind: 'error', text: blocked }
   const rows = input.entry.install.rows
-  const installedNames = new Set(readInstalledPlugins(input.root).map(plugin => plugin.name))
-  if (rows.some(row => installedNames.has(row.name))) {
-    return { kind: 'error', text: `"${input.entry.displayName}" is already or partially installed; uninstall it before reinstalling` }
-  }
+  const previous = readInstalledPlugins(input.root).filter(plugin => rows.some(row => row.name === plugin.name))
   const specs = rows.map(row => rowSpec(row, input.source)).filter((spec): spec is string => spec !== undefined)
   if (specs.length !== rows.length || specs.length === 0) {
     return { kind: 'error', text: `"${input.entry.displayName}" has no ${input.source} install source` }
@@ -326,12 +360,12 @@ export async function installEntry(input: InstallerInput): Promise<InstallOutcom
   input.onProgress?.('verify')
   const imported = await importInstalledRows(input.root, rows)
   if (imported.code !== 0) {
-    return rollbackInstall(input, rows.map(row => row.name), files, describeFailure(`checking "${input.entry.displayName}" compatibility`, imported))
+    return rollbackInstall(input, rows, previous, files, describeFailure(`checking "${input.entry.displayName}" compatibility`, imported))
   }
   try {
     if (patchEdit !== undefined) updaterInternals.writeTextFile(patchEdit.path, patchEdit.text)
   } catch (error) {
-    return rollbackInstall(input, rows.map(row => row.name), files, `activating "${input.entry.displayName}" failed: ${errorText(error)}`)
+    return rollbackInstall(input, rows, previous, files, `activating "${input.entry.displayName}" failed: ${errorText(error)}`)
   }
   return { kind: 'success' }
 }

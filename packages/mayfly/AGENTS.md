@@ -89,8 +89,8 @@ not custom confirm pages or post-confirmation rejections.
 
 ## Native writes and sensitive data
 
-- `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation
-  and removal apply after restart; HMR stays disabled in the default bundle.
+- `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation,
+  update, and removal apply after restart; HMR stays disabled in the default bundle.
 - Optional collaboration plugins own their preset, tools, and UI contributions.
   The default bundle and shipped presets do not mount Agent Team. Keep upstream
   ordinary delegation available. Generic child navigation and the shared
