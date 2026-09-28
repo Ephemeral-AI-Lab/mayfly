@@ -3,7 +3,7 @@
  * listing's projection hints plus the stored session header.
  * @module @ephemeral-ai/mayfly/interaction/session-list-model
  */
-import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
+import type { SessionProjectionBaseline, SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionStatsProjection } from '@deepseek-ai/dsh-session-stats'
 import type {} from '@deepseek-ai/dsh-token-meter'
@@ -27,7 +27,7 @@ export interface SessionListFacts {
   /** Header creation time; absent when the header listing is unavailable. */
   readonly createdAt?: number
   /** Latest human prompt, settled turn, or — while running — the listing time. */
-  readonly lastActiveAt: number
+  readonly lastActiveAt?: number
   readonly running: boolean
   readonly archived: boolean
   readonly current: boolean
@@ -45,6 +45,8 @@ export interface SessionListFacts {
 /** Listing-time context the summary itself does not carry. */
 export interface SessionListContext {
   readonly header?: SessionHeader | undefined
+  readonly title?: string | undefined
+  readonly projections?: SessionProjectionBaseline | undefined
   readonly archived: boolean
   readonly current: boolean
   /** Sessions with at least one active Host reminder; absent without Schedule. */
@@ -60,18 +62,25 @@ export interface SessionListContext {
  * @returns the display facts.
  */
 export function sessionListFacts(summary: SessionSummary, context: SessionListContext): SessionListFacts {
-  const values = summary.projections?.values
+  const values = context.projections?.values ?? summary.projections?.values
+  const title = (values?.title === undefined ? context.title : values.title)?.trim()
+  // Native updatedAt falls back to creation on a cache miss. Only a later
+  // value establishes activity independently of the optional metadata cell.
+  const promptedAt = values?.sessionListMetadata?.lastPromptAt
+    ?? (context.header !== undefined && summary.updatedAt > context.header.createdAt ? summary.updatedAt : 0)
   const usage = values?.tokenUsage
   const model = values?.modelSelection?.lastUsed ?? values?.modelSelection?.next ?? undefined
   const settledAt = values?.mayflyConversationFacts?.endedAt ?? 0
   const cwd = summary.cwd ?? context.header?.cwd
   return {
     id: String(summary.sessionId),
-    ...(typeof values?.title === 'string' && values.title !== '' ? { title: values.title } : {}),
+    ...(title === undefined || title === '' ? {} : { title }),
     ...(cwd === undefined ? {} : { cwd }),
     ...(context.header === undefined ? {} : { createdAt: context.header.createdAt }),
     ...(context.header?.agentPreset === undefined ? {} : { preset: context.header.agentPreset }),
-    lastActiveAt: Math.max(summary.updatedAt, settledAt, summary.running ? context.now : 0),
+    ...(!summary.running && promptedAt === 0 && settledAt === 0 ? {} : {
+      lastActiveAt: Math.max(promptedAt, settledAt, summary.running ? context.now : 0),
+    }),
     running: summary.running,
     archived: context.archived,
     current: context.current,
@@ -119,7 +128,7 @@ export function formatAgo(ms: number, t: MayflyTranslate): string {
  * @returns the span in milliseconds, or `undefined` without a creation time.
  */
 export function sessionSpan(facts: SessionListFacts): number | undefined {
-  return facts.createdAt === undefined ? undefined : Math.max(0, facts.lastActiveAt - facts.createdAt)
+  return facts.createdAt === undefined || facts.lastActiveAt === undefined ? undefined : Math.max(0, facts.lastActiveAt - facts.createdAt)
 }
 
 /**
@@ -129,7 +138,7 @@ export function sessionSpan(facts: SessionListFacts): number | undefined {
  * @returns the label text.
  */
 export function sessionLabel(facts: SessionListFacts, t: MayflyTranslate): string {
-  return facts.title ?? `${t('Untitled')} · ${facts.id.slice(0, 8)}`
+  return facts.title ?? `${t('Untitled')} · ${facts.id.replace(/^session-/, '').slice(0, 8)}`
 }
 
 /**
@@ -148,7 +157,8 @@ export function sessionListItem(facts: SessionListFacts, now: number, home: stri
   const tokens = facts.tokens === undefined ? 0 : totalTokens(facts.tokens)
   if (span !== undefined) segments.push({ text: formatDuration(span) })
   if (tokens > 0) segments.push({ text: `${formatTokens(tokens)} tok` })
-  segments.push({ text: formatAgo(now - facts.lastActiveAt, t), tone: 'muted' })
+  if (facts.lastActiveAt !== undefined) segments.push({ text: formatAgo(now - facts.lastActiveAt, t), tone: 'muted' })
+  else if (facts.createdAt !== undefined) segments.push({ text: `${t('Created')} ${formatAgo(now - facts.createdAt, t)}`, tone: 'muted' })
   if (facts.cwd !== undefined) segments.push({ text: shortenCwd(facts.cwd, home), tone: 'muted' })
   const badges = [
     ...(facts.current ? [t('current')] : []),
@@ -196,7 +206,7 @@ export function sessionDetailNode(facts: SessionListFacts, now: number, t: Mayfl
     ...(facts.preset === undefined ? [] : [field(t('Preset'), facts.preset)]),
     ...(facts.parentId === undefined ? [] : [field(t(facts.origin === 'subagent' ? 'Parent session' : 'Forked from'), facts.parentId)]),
     field(t('Created'), facts.createdAt === undefined ? unknown : formatCreated(facts.createdAt)),
-    field(t('Last active'), `${formatCreated(facts.lastActiveAt)} (${formatAgo(now - facts.lastActiveAt, t)})`),
+    field(t('Last active'), facts.lastActiveAt === undefined ? unknown : `${formatCreated(facts.lastActiveAt)} (${formatAgo(now - facts.lastActiveAt, t)})`),
     field(t('Duration'), span === undefined ? unknown : formatDuration(span)),
     field(t('Agent time'), facts.stats === undefined
       ? unknown

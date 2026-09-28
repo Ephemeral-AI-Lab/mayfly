@@ -2,6 +2,11 @@ import { nativeAction, activate, select as selection } from './native-action-fix
 /** Native session management preserves archive admission and child ownership.
  * @module @ephemeral-ai/mayfly/tests/interaction/native-sessions
  */
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionQueryEngine } from '@deepseek-ai/dsh-session-query'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { titleProjectionDefinition } from '@deepseek-ai/dsh-session-title'
+import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import { Context } from '@deepseek-ai/cordis'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -11,9 +16,10 @@ import { openSessions } from '../../src/interaction/native-sessions.ts'
 import { interactionTranslator } from '../../src/interaction/locale.ts'
 
 const flushRequests = async () => { await flushOneRequest(); await flushOneRequest() }
+registerTempDirCleanup()
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-async function setup() {
+async function setup(withQuery = true) {
   const ctx = new Context(); contexts.push(ctx)
   const bench = await informationFixture(ctx)
   const start = Date.now()
@@ -21,6 +27,7 @@ async function setup() {
     list: vi.fn(async () => ({ items: [
       { sessionId: 'current', cwd: '/repo', running: false, updatedAt: start - 60_000, projections: { values: {
         title: 'Current',
+        sessionListMetadata: { blank: false, lastPromptAt: start - 60_000 },
         tokenUsage: { uncachedInputTokens: 1200, outputTokens: 800, cacheReadTokens: 0, cacheWriteTokens: 0 },
         sessionStats: { turns: 3, steps: 5, llmMs: 12_000, toolMs: 3_000, ttftMs: 800, ttftSteps: 3, decodeMs: 9_000, decodeTokens: 800 },
         modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat' } },
@@ -28,9 +35,10 @@ async function setup() {
       { sessionId: 'other', running: true, updatedAt: start - 30_000 },
       { sessionId: 'child', origin: 'subagent', parentSessionId: 'current', running: false, updatedAt: start - 20_000 },
     ] })),
+    projections: vi.fn(async ({ sessionId }: { sessionId: string }): Promise<import('@deepseek-ai/dsh-api-session-controller').SessionProjectionsValue> => ({ asOfSeq: 10, values: sessionId === 'current' ? (await controller.list()).items[0]!.projections!.values : {} })),
     search: vi.fn(async () => ({ items: [{ sessionId: 'other', snippet: 'matching text' }], hasMore: true })),
   }
-  const query = { listSessions: vi.fn(async () => [
+  const query = { readTitleSnapshots: vi.fn(async (_ids: readonly string[], _signal: AbortSignal) => [] as import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]), listSessions: vi.fn(async () => [
     { header: { id: 'current', createdAt: start - 3_600_000, cwd: '/repo', agentPreset: 'standard' } },
     { header: { id: 'other', createdAt: start - 7_200_000, cwd: '/repo/other' } },
     { header: { id: 'child', createdAt: start - 900_000 } },
@@ -39,7 +47,7 @@ async function setup() {
   const subagents = { listDescendants: vi.fn(async () => [{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }]) }
   const schedule = { catalog: vi.fn(async () => [{ sessionId: 'other', status: 'active' }] as never) }
   ctx.provide('sessionController', controller as never)
-  ctx.provide('sessionQuery', query as never)
+  if (withQuery) ctx.provide('sessionQuery', query as never)
   ctx.provide('workspaceRegistry', registry as never)
   ctx.provide('subagents', subagents as never)
   ctx.provide('schedule', schedule as never)
@@ -233,4 +241,203 @@ it('stays quiet when the reminder catalog fails after the signal aborted', async
   schedule.catalog.mockImplementationOnce(async () => { caller.abort(); throw new Error('late catalog failure') })
   expect(await openSessions(bench.ctx, caller.signal, interactionTranslator(bench.ctx))).toEqual({ kind: 'success' })
   expect(warn).not.toHaveBeenCalled()
+})
+
+it('recovers missing titles in bounded batches without delaying the catalog or replacing drafts', async () => {
+  const bench = await setup()
+  const sessions = Array.from({ length: 65 }, (_, index) => ({ sessionId: `session-${index.toString().padStart(8, '0')}`, running: false, updatedAt: Date.now() }))
+  bench.controller.list.mockResolvedValue({ items: sessions })
+  const gate = Promise.withResolvers<import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]>()
+  bench.query.readTitleSnapshots.mockReturnValueOnce(gate.promise)
+  await bench.open()
+  expect(JSON.stringify(bench.model().node)).toContain('Untitled · 00000000')
+  expect(bench.query.readTitleSnapshots.mock.calls[0]![0]).toHaveLength(32)
+  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'draft')
+  gate.resolve([
+    { sessionId: sessions[0]!.sessionId, status: 'fulfilled', value: { title: { title: 'Repair compiler' } } },
+    { sessionId: sessions[1]!.sessionId, status: 'fulfilled', value: {} },
+    { sessionId: sessions[2]!.sessionId, status: 'rejected', reason: new Error('corrupt') },
+  ] as never)
+  await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('Repair compiler') })
+  expect(bench.query.readTitleSnapshots.mock.calls.map(call => call[0].length)).toEqual([32, 32, 1])
+  await bench.act('search', false)
+  expect(bench.controller.search).toHaveBeenLastCalledWith({ query: 'draft' }, expect.any(AbortSignal))
+})
+
+it('discards old title reads after refresh or closure and contains title read failures', async () => {
+  const bench = await setup()
+  const old = Promise.withResolvers<import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]>()
+  bench.query.readTitleSnapshots.mockReturnValueOnce(old.promise)
+  await bench.open()
+  await bench.act('refresh', false)
+  expect(bench.query.readTitleSnapshots.mock.calls[0]![1].aborted).toBe(true)
+  old.resolve([{ sessionId: 'other', status: 'fulfilled', value: { title: { title: 'Obsolete' } } }] as never)
+  await flushRequests()
+  expect(JSON.stringify(bench.model().node)).not.toContain('Obsolete')
+  bench.query.readTitleSnapshots.mockRejectedValueOnce(new Error('title store unavailable'))
+  const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
+  await bench.act('refresh', false)
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('title store unavailable'))
+  const late = Promise.withResolvers<import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]>()
+  bench.query.readTitleSnapshots.mockReturnValueOnce(late.promise)
+  await bench.act('refresh', false)
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  late.reject(new Error('closed'))
+  await flushRequests()
+  expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('closed'))
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it('reads complete native projections only for the selected detail and fences a late result', async () => {
+  const bench = await setup()
+  await bench.open()
+  expect(bench.controller.projections).not.toHaveBeenCalled()
+  bench.controller.projections.mockResolvedValueOnce({ asOfSeq: 25, values: {
+    title: 'Fresh native title', sessionListMetadata: { blank: false, lastPromptAt: Date.now() },
+  } })
+  await bench.select('other')
+  expect(JSON.stringify(bench.model('mayfly.sessions.detail').node)).toContain('Fresh native title')
+  bench.ctx.mayflyOverlays.close('mayfly.sessions.detail')
+  const gate = Promise.withResolvers<import('@deepseek-ai/dsh-api-session-controller').SessionProjectionsValue>()
+  bench.controller.projections.mockReturnValueOnce(gate.promise)
+  const pending = nativeAction(bench.model(), selection('sessions', 'other'))
+  await flushRequests()
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  gate.resolve({ asOfSeq: 0, values: {} })
+  await pending
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it('reports missing or unreadable detail data without activating a session', async () => {
+  const bench = await setup()
+  await bench.open()
+  bench.controller.projections.mockResolvedValueOnce(null)
+  expect(await nativeAction(bench.model(), selection('sessions', 'other'))).toMatchObject({ kind: 'failed', message: expect.stringContaining('no longer available') })
+  bench.controller.projections.mockRejectedValueOnce(new Error('corrupt log'))
+  expect(await nativeAction(bench.model(), selection('sessions', 'other'))).toMatchObject({ kind: 'failed', message: expect.stringContaining('corrupt log') })
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
+  const gate = Promise.withResolvers<never>()
+  bench.controller.projections.mockReturnValueOnce(gate.promise)
+  const pending = nativeAction(bench.model(), selection('sessions', 'other'))
+  await flushRequests()
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  gate.reject(new Error('cancelled read'))
+  await pending
+})
+
+it('does not navigate after a child detail closes or the exact lead Agent changes', async () => {
+  const bench = await setup()
+  await bench.open(); await bench.select('child')
+  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.subagents.listDescendants>>>()
+  bench.subagents.listDescendants.mockReturnValueOnce(gate.promise)
+  const pending = nativeAction(bench.model('mayfly.sessions.detail'), activate('open'))
+  await flushRequests()
+  bench.ctx.mayflyOverlays.close('mayfly.sessions.detail')
+  gate.resolve([{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }])
+  await pending
+  expect(bench.ctx.mayflyCurrentAgent.view().auxiliary).toBeNull()
+  await bench.select('child')
+  bench.subagents.listDescendants.mockImplementationOnce(async () => {
+    const replacement = { ...bench.agent }
+    bench.agents.set(bench.agent.id, replacement)
+    bench.ctx.mayflyCurrentAgent.select(replacement)
+    return [{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }]
+  })
+  expect(await nativeAction(bench.model('mayfly.sessions.detail'), activate('open'))).toMatchObject({ kind: 'failed', message: expect.stringContaining('lead session changed') })
+  expect(bench.ctx.mayflyCurrentAgent.view().auxiliary).toBeNull()
+})
+
+it('does not publish recovered titles over a pending content search or retain cancelled search results', async () => {
+  const bench = await setup()
+  const titles = Promise.withResolvers<import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]>()
+  bench.query.readTitleSnapshots.mockReturnValueOnce(titles.promise)
+  await bench.open()
+  const search = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.search>>>()
+  bench.controller.search.mockReturnValueOnce(search.promise)
+  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
+  bench.model().invoke('search')
+  await flushRequests()
+  titles.resolve([{ sessionId: 'other', status: 'fulfilled', value: { title: { title: 'Recovered other' } } }] as never)
+  await flushRequests()
+  expect(JSON.stringify(bench.model().node)).not.toContain('Recovered other')
+  search.resolve({ items: [{ sessionId: 'other', snippet: 'needle match' }], hasMore: false })
+  await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('needle match') })
+  expect(JSON.stringify(bench.model().node)).toContain('Recovered other')
+  const late = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.search>>>()
+  bench.controller.search.mockReturnValueOnce(late.promise)
+  bench.model().invoke('search')
+  await flushRequests()
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  late.resolve({ items: [], hasMore: false })
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it.each(['search', 'refresh'])('cancels a catalog refresh triggered by %s before replacing rows', async action => {
+  const bench = await setup()
+  await bench.open()
+  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.list>>>()
+  bench.controller.list.mockReturnValueOnce(gate.promise)
+  if (action === 'search') {
+    bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: 'new', snippet: 'new conversation' }], hasMore: false })
+    bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
+  }
+  bench.model().invoke(action)
+  await flushRequests()
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  gate.resolve({ items: [] })
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it('ignores an archive catalog read after its detail closes', async () => {
+  const bench = await setup()
+  await bench.open(); await bench.select('other')
+  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.list>>>()
+  bench.controller.list.mockReturnValueOnce(gate.promise)
+  const pending = nativeAction(bench.model('mayfly.sessions.detail'), activate('archive'))
+  await flushRequests()
+  bench.ctx.mayflyOverlays.close('mayfly.sessions.detail')
+  gate.resolve({ items: [] })
+  await pending
+  expect(JSON.stringify(bench.model().node)).toContain('Current')
+})
+
+
+it('recovers a title from real cold JSONL storage without attaching the Session or creating an Agent', async () => {
+  const bench = await setup(false)
+  class Query extends SessionQueryEngine {
+    async searchSessions(): Promise<never> { throw new Error('unused') }
+    async searchEvents(): Promise<never> { throw new Error('unused') }
+  }
+  await bench.ctx.plugin(JsonlSessionPersistence, { root: mkdtempTracked('mayfly-session-catalog-') })
+  const query = new Query(bench.ctx)
+  bench.ctx.sessionProjections.register(titleProjectionDefinition)
+  const session = bench.ctx.sessions.prepare(SessionId('session-12345678-cold'), { meta: { cwd: '/repo/cold', createdAt: 1_000 } })
+  session.append('session/title', { title: 'Investigate compiler crash', messageSeqs: [], source: { kind: 'user' } })
+  const stored = await bench.ctx.sessionPersistence.create(session.header)
+  await stored.append(session.snapshotEvents())
+  await stored.close()
+  bench.controller.list.mockResolvedValue({ items: [{ sessionId: session.id, cwd: '/repo/cold', running: false, updatedAt: 1_000 }] })
+  bench.controller.projections.mockImplementation(async ({ sessionId }) => {
+    using observation = await query.observeSession(SessionId(sessionId))
+    return { asOfSeq: observation.cursor, values: observation.projections!.values }
+  })
+  const sessionsBefore = bench.ctx.sessions.list()
+  const agentsBefore = [...bench.agents.values()]
+  await bench.open()
+  await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('Investigate compiler crash') })
+  expect(JSON.stringify(bench.model().node)).not.toContain('0s')
+  expect(await nativeAction(bench.model(), selection('sessions', session.id))).toMatchObject({ kind: 'completed' })
+  expect(JSON.stringify(bench.model('mayfly.sessions.detail').node)).toContain('Investigate compiler crash')
+  expect(bench.ctx.sessions.list()).toEqual(sessionsBefore)
+  expect([...bench.agents.values()]).toEqual(agentsBefore)
+})
+
+it('marks the displayed Agent current and avoids reading titles already present in native hints', async () => {
+  const bench = await setup()
+  bench.ctx.mayflyCurrentAgent.select(bench.other)
+  await bench.open()
+  expect(JSON.stringify(bench.model().node)).toContain('current · running · Reminders')
+  expect(bench.query.readTitleSnapshots.mock.calls[0]![0]).toEqual(['other', 'child'])
 })

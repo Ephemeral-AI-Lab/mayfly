@@ -55,10 +55,8 @@ export function apply(ctx: Context): void {
   const aliasRegistry = ctx.mayflyInteractionState.aliases
   const notifications = createInteractionNotificationOwner(ctx, 'mayfly.commands', 'commands')
   /**
-   * The `/sessions` handler: list this directory's persisted sessions
-   * newest-first with their titles (the optional batch title read) and
-   * offer them in a type-to-filter picker; picking another session emits
-   * `mayfly/request-resume`, picking the live one only flashes a notice.
+   * Browse the native session catalog, recover missing titles, search content,
+   * and inspect current facts before resuming or archiving a conversation.
    * @param signal - the dispatching UI request's cancellation signal.
    * @returns the command outcome.
    */
