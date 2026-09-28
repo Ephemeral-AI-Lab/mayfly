@@ -17,7 +17,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { statSync, type Dirent } from 'node:fs'
+import type { Dirent } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { posix } from 'node:path'
@@ -306,7 +306,9 @@ export async function listDirectoryMentions(
     let isDirectory = entry.isDirectory()
     if (!isDirectory && entry.isSymbolicLink()) {
       try {
-        isDirectory = statSync(join(resolved, entry.name)).isDirectory()
+        // Async like the scanner above: the editor's autocomplete task chain
+        // must not block on one stat per symlink.
+        isDirectory = (await stat(join(resolved, entry.name))).isDirectory()
       } catch {
         // Broken symlink or permission error — stays a file candidate.
       }
