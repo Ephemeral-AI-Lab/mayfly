@@ -14,6 +14,8 @@ import { informationFixture } from './information-fixture.ts'
 import { flushRequests as flushOneRequest } from './request-fixture.ts'
 import { createSessionListCache } from '../../src/interaction/session-list-reads.ts'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
+import { sessionWorkspaceId } from '../../src/interaction/session-workspaces-model.ts'
+import { openSessionWorkspace } from '../../src/interaction/session-workspace-panel.ts'
 import { openSessions } from '../../src/interaction/native-sessions.ts'
 import { interactionTranslator } from '../../src/interaction/locale.ts'
 
@@ -41,14 +43,20 @@ async function setup(withQuery = true) {
   const controller = {
     list: vi.fn(async () => { throw new Error('catalog must not call controller.list') }),
     projections: vi.fn(async ({ sessionId }: { sessionId: string }): Promise<import('@deepseek-ai/dsh-api-session-controller').SessionProjectionsValue> => ({ asOfSeq: 10, values: sessionId === 'current' ? values : {} })),
-    search: vi.fn(async () => ({ items: [{ sessionId: 'other', snippet: 'matching text' }], hasMore: true })),
+    search: vi.fn(async () => ({ items: [{ sessionId: 'child', snippet: 'matching text' }], hasMore: true })),
   }
   const observation = (id = 'child', title?: string, revision = 'r1'): SessionObservation => ({
     header: headers.get(id) ?? { ...bench.session.header, id: SessionId(id) }, source: 'prepared', revision,
     events: title === undefined ? [] : [{ type: 'session/title', seq: 0, time: start, data: { title, messageSeqs: [], source: { kind: 'user' } } }],
     [Symbol.dispose]: vi.fn(),
   } as never)
-  const query = { observeSession: vi.fn(async (id: string, _options: { signal: AbortSignal, projectionMode: string }) => observation(id)) }
+  const query = {
+    observeSession: vi.fn(async (id: string, _options: { signal: AbortSignal, projectionMode: string }) => observation(id)),
+    searchSessions: vi.fn(async (request: { query: string }, options: { signal: AbortSignal }) => {
+      const result = await controller.search({ query: request.query }, options.signal)
+      return { items: result.items.map(item => ({ header: headers.get(item.sessionId) ?? { ...bench.session.header, id: SessionId(item.sessionId) }, bestMatch: { sessionId: item.sessionId, snippet: item.snippet } })), ...(result.hasMore ? { nextCursor: 'next' } : {}) }
+    }),
+  }
   Object.assign(persistence, { open: vi.fn(async (id: string, access: string, options: { signal: AbortSignal }) => {
     expect(access).toBe('read')
     const read = await query.observeSession(id, { signal: options.signal, projectionMode: 'none' })
@@ -56,7 +64,7 @@ async function setup(withQuery = true) {
   }) })
   const registry = { archivedSessionIds: [] as string[], archiveSession: vi.fn(async (id: string, _options: unknown) => { registry.archivedSessionIds.push(id) }), unarchiveSession: vi.fn(async (id: string) => { registry.archivedSessionIds = registry.archivedSessionIds.filter(item => item !== id) }) }
   const subagents = { listDescendants: vi.fn(async () => [{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }]) }
-  const schedule = { catalog: vi.fn(async () => [{ sessionId: 'other', status: 'active' }] as never) }
+  const schedule = { catalog: vi.fn(async () => [{ sessionId: 'other', status: 'active' }, { sessionId: 'child', status: 'active' }] as never) }
   ctx.provide('sessionController', controller as never)
   if (withQuery) {
     ctx.provide('sessionQuery', query as never)
@@ -66,16 +74,35 @@ async function setup(withQuery = true) {
   ctx.provide('subagents', subagents as never)
   ctx.provide('schedule', schedule as never)
   const cache = createSessionListCache(ctx)
-  const open = async () => {
+  const rootModel = () => ctx.mayflyUiInteraction.get('overlay', 'mayfly.sessions')!
+  const model = (id = 'mayfly.sessions.workspace') => ctx.mayflyUiInteraction.get('overlay', id)!
+  let workspace: string | undefined
+  const openRoot = async () => {
     const result = await openSessions(ctx, new AbortController().signal, interactionTranslator(ctx), cache)
     await flushRequests()
     return result
   }
-  const model = (id = 'mayfly.sessions') => ctx.mayflyUiInteraction.get('overlay', id)!
-  const select = async (id: string) => { model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'sessions', selectedIds: [id] }); await flushRequests() }
-  const act = async (id: string, detail = true) => { model(detail ? 'mayfly.sessions.detail' : 'mayfly.sessions').invoke(id); await flushRequests() }
+  const chooseWorkspace = async (cwd: string | undefined) => {
+    ctx.mayflyOverlays.close('mayfly.sessions.workspace')
+    const id = sessionWorkspaceId(cwd)
+    await vi.waitFor(() => { expect(JSON.stringify(rootModel().node)).toContain(JSON.stringify(id)) })
+    rootModel().emit({ kind: 'selection-accept', pagePath: [], controlId: 'workspaces', selectedIds: [id] })
+    workspace = cwd
+    await flushRequests()
+  }
+  const open = async (cwd = ctx.mayflyCurrentAgent.current()?.session.header.cwd) => {
+    const result = await openRoot()
+    if (result.kind === 'success') await chooseWorkspace(cwd)
+    return result
+  }
+  const select = async (id: string) => {
+    const header = headers.get(id)
+    if (header !== undefined && header.cwd !== workspace) await chooseWorkspace(header.cwd)
+    model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'sessions', selectedIds: [id] }); await flushRequests()
+  }
+  const act = async (id: string, detail = true) => { model(detail ? 'mayfly.sessions.detail' : 'mayfly.sessions.workspace').invoke(id); await flushRequests() }
   const confirm = async () => { model('mayfly.sessions.detail').answerDecision(true); await flushRequests() }
-  return { ...bench, controller, query, registry, subagents, persistence, headers, snapshot, observation, cache, open, model, select, act, confirm }
+  return { ...bench, controller, query, registry, subagents, persistence, headers, snapshot, observation, cache, open, openRoot, chooseWorkspace, rootModel, model, select, act, confirm }
 }
 it('lists native summaries, searches explicitly, and preserves title filtering on search refusal', async () => {
   const bench = await setup()
@@ -122,14 +149,14 @@ it('opens roots by native resume and children through descendant addresses', asy
 it('opens immediately, contains catalog failures, and cancels a late listing', async () => {
   const bench = await setup()
   bench.persistence.list.mockRejectedValueOnce(new Error('disk unavailable'))
-  expect(await bench.open()).toEqual({ kind: 'success' })
-  expect(JSON.stringify(bench.model().node)).toContain('disk unavailable')
+  expect(await bench.openRoot()).toEqual({ kind: 'success' })
+  expect(JSON.stringify(bench.rootModel().node)).toContain('disk unavailable')
   bench.ctx.mayflyOverlays.close('mayfly.sessions')
   const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.persistence.list>>>()
   bench.persistence.list.mockReturnValueOnce(gate.promise)
   const abort = new AbortController()
   expect(await openSessions(bench.ctx, abort.signal, interactionTranslator(bench.ctx), bench.cache)).toEqual({ kind: 'success' })
-  expect(JSON.stringify(bench.model().node)).toContain('Loading sessions')
+  expect(JSON.stringify(bench.rootModel().node)).toContain('Loading workspaces')
   abort.abort(); gate.resolve([])
   await flushRequests()
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
@@ -189,8 +216,7 @@ it('renders the title, span, token total, status, and path in rows and detail', 
   expect(node).toContain('2k tok')
   expect(node).toContain('/repo')
   expect(node).toContain('current')
-  expect(node).toContain('running')
-  expect(node).toContain('Untitled · other')
+  expect(node).toContain('Untitled · child')
   expect(bench.persistence.list).toHaveBeenCalledWith({ signal: expect.any(AbortSignal) })
   await bench.select('current')
   const detail = JSON.stringify(bench.model('mayfly.sessions.detail').node)
@@ -257,6 +283,9 @@ it('stays quiet when the reminder catalog fails after the signal aborted', async
   const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
   schedule.catalog.mockImplementationOnce(async () => { caller.abort(); throw new Error('late catalog failure') })
   expect(await openSessions(bench.ctx, caller.signal, interactionTranslator(bench.ctx))).toEqual({ kind: 'success' })
+  await flushRequests()
+  await bench.chooseWorkspace('/repo/current')
+  expect(schedule.catalog).toHaveBeenCalledOnce()
   expect(warn).not.toHaveBeenCalled()
 })
 
@@ -325,12 +354,12 @@ it('reads complete native projections only for the selected detail and fences a 
 
 it('reports missing or unreadable detail data without activating a session', async () => {
   const bench = await setup()
-  await bench.open()
+  await bench.open('/repo/other')
   bench.controller.projections.mockResolvedValueOnce(null)
   expect(await nativeAction(bench.model(), selection('sessions', 'other'))).toMatchObject({ kind: 'failed', message: expect.stringContaining('no longer available') })
   bench.controller.projections.mockRejectedValueOnce(new Error('corrupt log'))
   expect(await nativeAction(bench.model(), selection('sessions', 'other'))).toMatchObject({ kind: 'failed', message: expect.stringContaining('corrupt log') })
-  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(2)
   const gate = Promise.withResolvers<never>()
   bench.controller.projections.mockReturnValueOnce(gate.promise)
   const pending = nativeAction(bench.model(), selection('sessions', 'other'))
@@ -442,7 +471,7 @@ it.each([undefined, null, '', 'Old cached name'])('recovers the cold stored titl
   })
   const sessionsBefore = bench.ctx.sessions.list()
   const agentsBefore = [...bench.agents.values()]
-  await bench.open()
+  await bench.open('/repo/cold')
   await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('Investigate compiler crash') })
   expect(bench.controller.projections).not.toHaveBeenCalled()
   expect(JSON.stringify(bench.model().node)).not.toContain('0s')
@@ -457,7 +486,7 @@ it('marks the displayed Agent current and reads live titles through native proje
   bench.ctx.mayflyCurrentAgent.select(bench.other)
   await bench.open()
   expect(JSON.stringify(bench.model().node)).toContain('current · running · Reminders')
-  expect(bench.query.observeSession.mock.calls.map(call => call[0])).toEqual(['child'])
+  expect(bench.query.observeSession.mock.calls.map(call => call[0])).toEqual([])
 })
 
 it('reopens retained rows before validation and rereads only changed native revisions', async () => {
@@ -469,6 +498,7 @@ it('reopens retained rows before validation and rereads only changed native revi
   const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.persistence.list>>>()
   bench.persistence.list.mockReturnValueOnce(gate.promise)
   expect(await openSessions(bench.ctx, new AbortController().signal, interactionTranslator(bench.ctx), bench.cache)).toEqual({ kind: 'success' })
+  await bench.chooseWorkspace('/repo/current')
   expect(JSON.stringify(bench.model().node)).toContain('Saved title')
   expect(bench.query.observeSession).toHaveBeenCalledTimes(1)
   gate.resolve([...bench.headers.values()].map(header => ({ header, revision: 'r1' })))
@@ -498,7 +528,7 @@ it('reports incompatible retained headers without leaking the opening lifetime',
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
 })
 
-it('cancels an initial refresh even when the optional reminder read finishes last', async () => {
+it('closes a workspace while reminder metadata is pending', async () => {
   const bench = await setup()
   const gate = Promise.withResolvers<never[]>()
   const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
@@ -549,23 +579,7 @@ it('lists live sessions when persistence is absent and rejects an empty selectio
   expect(await nativeAction(bench.model(), selection('sessions'))).toMatchObject({ kind: 'failed' })
 })
 
-it.each(['search', 'refresh'])('cancels %s while waiting for reminder metadata after the native listing settled', async action => {
-  const bench = await setup()
-  await bench.open()
-  const gate = Promise.withResolvers<never[]>()
-  const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
-  schedule.catalog.mockReturnValueOnce(gate.promise)
-  if (action === 'search') {
-    bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: 'new', snippet: 'new' }], hasMore: false })
-    bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
-  }
-  bench.model().invoke(action)
-  await flushRequests()
-  bench.ctx.mayflyOverlays.close('mayfly.sessions')
-  gate.resolve([])
-  await flushRequests()
-  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
-})
+
 
 it('fences cancellation between retaining a completed read and publishing it', async () => {
   const bench = await setup()
@@ -577,4 +591,223 @@ it('fences cancellation between retaining a completed read and publishing it', a
   })
   await bench.open()
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it('starts with workspace counts and performs no title or projection reads until a workspace opens', async () => {
+  const bench = await setup()
+  bench.snapshot.mockClear()
+  await bench.openRoot()
+  const text = JSON.stringify(bench.rootModel().node)
+  expect(text).toContain('/repo/current')
+  expect(text).toContain('/repo/other')
+  expect(text.indexOf('/repo/current')).toBeLessThan(text.indexOf('/repo/other'))
+  expect(text).toContain('2 sessions')
+  expect(text).toContain('1 session')
+  expect(bench.snapshot).not.toHaveBeenCalled()
+  expect(bench.query.observeSession).not.toHaveBeenCalled()
+  expect(bench.persistence.list).toHaveBeenCalledOnce()
+  await bench.chooseWorkspace('/repo/other')
+  expect(JSON.stringify(bench.model().node)).not.toContain('Current')
+  expect(bench.query.observeSession).not.toHaveBeenCalled()
+  await bench.chooseWorkspace('/repo/current')
+  expect(bench.query.observeSession.mock.calls.map(call => call[0])).toEqual(['child'])
+  expect(bench.persistence.list).toHaveBeenCalledOnce()
+})
+
+it('shows workspace loading immediately, then numeric progress only for the opened workspace', async () => {
+  const bench = await setup()
+  const listing = Promise.withResolvers<Awaited<ReturnType<typeof bench.persistence.list>>>()
+  bench.persistence.list.mockReturnValueOnce(listing.promise)
+  await bench.openRoot()
+  expect(JSON.stringify(bench.rootModel().node)).toContain('Loading workspaces…')
+  expect(bench.query.observeSession).not.toHaveBeenCalled()
+  await bench.chooseWorkspace('/repo/current')
+  expect(JSON.stringify(bench.model().node)).toContain('Loading workspace sessions…')
+  const title = Promise.withResolvers<SessionObservation>()
+  bench.query.observeSession.mockReturnValueOnce(title.promise)
+  listing.resolve([...bench.headers.values()].map(header => ({ header, revision: 'r1' })))
+  await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('Loading session names… 0/1') })
+  expect(JSON.stringify(bench.rootModel().node)).not.toContain('Loading workspaces…')
+  title.resolve(bench.observation('child', 'Recovered child'))
+  await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('Recovered child') })
+  expect(JSON.stringify(bench.model().node)).not.toContain('Loading session names')
+})
+
+it('cancels a previous workspace read on navigation and ignores its late result', async () => {
+  const bench = await setup()
+  const late = Promise.withResolvers<SessionObservation>()
+  bench.query.observeSession.mockReturnValueOnce(late.promise)
+  await bench.open()
+  await bench.chooseWorkspace('/repo/other')
+  expect(bench.query.observeSession.mock.calls[0]![1].signal.aborted).toBe(true)
+  late.resolve(bench.observation('child', 'Wrong workspace title'))
+  await flushRequests()
+  expect(JSON.stringify(bench.model().node)).not.toContain('Wrong workspace title')
+})
+
+it('scopes content search before pagination and excludes mismatched workspace results', async () => {
+  const bench = await setup()
+  await bench.open()
+  bench.query.searchSessions.mockResolvedValueOnce({ items: [
+    { header: bench.headers.get('child')!, bestMatch: { sessionId: 'child', snippet: 'in this workspace' } },
+    { header: bench.headers.get('other')!, bestMatch: { sessionId: 'other', snippet: 'outside workspace' } },
+  ] } as never)
+  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
+  await bench.act('search', false)
+  expect(bench.query.searchSessions).toHaveBeenCalledWith({
+    query: 'needle', sessionFilters: [{ kind: 'cwd', values: ['/repo/current'] }],
+    eventFilters: [{ kind: 'type', values: ['user/message', 'assistant/message'] }, { kind: 'surface', values: ['current'] }],
+  }, { signal: expect.any(AbortSignal) })
+  expect(JSON.stringify(bench.model().node)).toContain('in this workspace')
+  expect(JSON.stringify(bench.model().node)).not.toContain('outside workspace')
+})
+
+it('preserves global content search without warming unrelated workspaces', async () => {
+  const bench = await setup()
+  await bench.openRoot()
+  bench.rootModel().invoke('search-all')
+  await flushRequests()
+  expect(JSON.stringify(bench.model().node)).toContain('All workspaces')
+  expect(bench.query.observeSession).not.toHaveBeenCalled()
+  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
+  await bench.act('search', false)
+  expect(bench.controller.search).toHaveBeenCalledWith({ query: 'needle' }, expect.any(AbortSignal))
+  expect(bench.query.searchSessions).not.toHaveBeenCalled()
+  expect(JSON.stringify(bench.model().node)).toContain('matching text')
+  expect(bench.query.observeSession.mock.calls.map(call => call[0])).toEqual(['child'])
+})
+
+it('keeps name-read errors visible after progress completes', async () => {
+  const bench = await setup()
+  bench.query.observeSession.mockRejectedValueOnce(new Error('unreadable log'))
+  await bench.open()
+  expect(JSON.stringify(bench.model().node)).toContain('1 session name could not be loaded. Refresh to retry.')
+  expect(JSON.stringify(bench.model().node)).not.toContain('Loading session names')
+})
+
+it('refreshes and validates workspace selections, and ignores unrelated events', async () => {
+  const bench = await setup()
+  await bench.openRoot()
+  expect(await nativeAction(bench.rootModel(), selection('workspaces', 'missing'))).toMatchObject({ kind: 'failed' })
+  expect(await nativeAction(bench.rootModel(), selection('unrelated'))).toMatchObject({ kind: 'completed' })
+  expect(await nativeAction(bench.rootModel(), activate('unknown'))).toMatchObject({ kind: 'completed' })
+  expect(await nativeAction(bench.rootModel(), { kind: 'dismiss', pagePath: [] })).toMatchObject({ kind: 'completed' })
+  await bench.chooseWorkspace('/repo/current')
+  expect(await nativeAction(bench.rootModel(), activate('refresh'))).toMatchObject({ kind: 'accepted' })
+  expect(bench.persistence.list).toHaveBeenCalledTimes(2)
+})
+
+it('shows loading and empty states when no workspace is available', async () => {
+  const bench = await setup()
+  bench.ctx.mayflyCurrentAgent.select(null)
+  vi.spyOn(bench.ctx.sessions, 'list').mockReturnValue([])
+  const gate = Promise.withResolvers<never[]>()
+  bench.persistence.list.mockReturnValueOnce(gate.promise)
+  await bench.openRoot()
+  expect(JSON.stringify(bench.rootModel().node)).toContain('Loading workspaces…')
+  expect(JSON.stringify(bench.rootModel().node)).not.toContain('No workspaces')
+  gate.resolve([])
+  await flushRequests()
+  expect(JSON.stringify(bench.rootModel().node)).toContain('No workspaces')
+})
+
+it('contains catalog failures while an early workspace view is open', async () => {
+  const bench = await setup()
+  const gate = Promise.withResolvers<never[]>()
+  bench.persistence.list.mockReturnValueOnce(gate.promise)
+  await bench.open()
+  gate.reject(new Error('disk unavailable'))
+  await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('disk unavailable') })
+  expect(JSON.stringify(bench.model().node)).not.toContain('Loading workspace sessions')
+})
+
+it('ignores a catalog completion after its publication closes the picker', async () => {
+  const bench = await setup()
+  const gate = Promise.withResolvers<never[]>()
+  bench.persistence.list.mockReturnValueOnce(gate.promise)
+  await bench.openRoot()
+  let armed = false
+  const off = bench.ctx.mayflyOverlays.subscribe(delta => {
+    if (armed && delta.kind === 'upsert' && delta.entry.id === 'mayfly.sessions') bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  })
+  armed = true
+  gate.resolve([])
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+  off()
+})
+
+it('fences cancellation between a workspace refresh and its action acknowledgement', async () => {
+  const bench = await setup()
+  await bench.openRoot()
+  const list = bench.ctx.sessions.list.bind(bench.ctx.sessions)
+  vi.spyOn(bench.ctx.sessions, 'list').mockImplementationOnce(() => {
+    queueMicrotask(() => bench.ctx.mayflyOverlays.close('mayfly.sessions'))
+    return list()
+  })
+  await nativeAction(bench.rootModel(), activate('refresh'))
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it.each(['search', 'refresh'])('retires %s when a parent update closes its workspace', async action => {
+  const bench = await setup()
+  await bench.open()
+  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.persistence.list>>>()
+  bench.persistence.list.mockReturnValueOnce(gate.promise)
+  if (action === 'search') {
+    bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: 'new', snippet: 'new' }], hasMore: false })
+    bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
+  }
+  bench.model().invoke(action)
+  await flushRequests()
+  let armed = false
+  const off = bench.ctx.mayflyOverlays.subscribe(delta => {
+    if (armed && delta.kind === 'upsert' && delta.entry.id === 'mayfly.sessions') bench.ctx.mayflyOverlays.close('mayfly.sessions.workspace')
+  })
+  armed = true
+  gate.resolve([...bench.headers.values()].map(header => ({ header, revision: 'r1' })))
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.sessions'])
+  off()
+})
+
+it('handles a workspace without cwd and missing content-search capability', async () => {
+  const bench = await setup()
+  bench.ctx.sessions.create(SessionId('without-cwd'))
+  await bench.openRoot()
+  await bench.chooseWorkspace(undefined)
+  bench.query.searchSessions.mockResolvedValueOnce({ items: [] } as never)
+  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
+  await bench.act('search', false)
+  expect(bench.query.searchSessions.mock.calls[0]![0]).toMatchObject({ sessionFilters: [{ kind: 'cwd', values: [null] }] })
+  bench.ctx.set('sessionQuery', undefined as never)
+  await bench.act('search', false)
+  expect(bench.model().feedbackSnapshot().some(item => item.message === 'Content search is unavailable')).toBe(true)
+})
+
+it('keeps cross-workspace ancestors out of the local tree and reports multiple failed names', async () => {
+  const bench = await setup()
+  bench.headers.set('child', { ...bench.headers.get('child')!, parentSession: SessionId('other') })
+  bench.headers.set('child-2', { ...bench.headers.get('child')!, id: SessionId('child-2') })
+  bench.query.observeSession.mockRejectedValue(new Error('unreadable'))
+  await bench.open()
+  const node = JSON.stringify(bench.model().node)
+  expect(node).not.toContain('"parentId":"other"')
+  expect(node).toContain('2 session names could not be loaded')
+})
+
+it('cleans up a failed workspace opening and ignores updates after closing', async () => {
+  const bench = await setup()
+  await bench.openRoot()
+  const options = {
+    scope: { kind: 'workspace' as const, cwd: '/repo/current' }, loading: () => false,
+    refresh: async () => {}, changed: vi.fn(), closeAll: vi.fn(), onClosed: vi.fn(),
+  }
+  const panel = openSessionWorkspace(bench.ctx, new AbortController().signal, interactionTranslator(bench.ctx), bench.cache, options)
+  panel.handle.close()
+  panel.catalogChanged('late update')
+  expect(bench.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.sessions'])
+  bench.cache.stored = [{ header: { ...bench.session.header, cwd: '/conflict' }, revision: 'other' } as never]
+  expect(() => openSessionWorkspace(bench.ctx, new AbortController().signal, interactionTranslator(bench.ctx), bench.cache, options)).toThrow()
+  expect(bench.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.sessions'])
 })

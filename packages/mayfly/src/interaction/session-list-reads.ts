@@ -13,12 +13,17 @@ import type {} from '../conversation/types.ts'
 
 const KEYS = ['title', 'sessionListMetadata', 'mayflyConversationFacts', 'tokenUsage', 'sessionStats', 'modelSelection'] as const
 
-export interface SessionListRow {
+export interface SessionListHeader {
   readonly header: SessionHeader
-  readonly summary: SessionSummary
   readonly revision?: string | undefined
   readonly live: boolean
 }
+
+export interface SessionListRow extends SessionListHeader {
+  readonly summary: SessionSummary
+}
+
+export interface SessionListSelection { readonly cwd?: string | undefined, readonly ids?: ReadonlySet<string> }
 
 /** Read results retained by the command Fiber, including confirmed absent titles. */
 export interface SessionListCache {
@@ -55,8 +60,8 @@ export async function refreshSessionList(ctx: Context, cache: SessionListCache, 
   for (const [id, title] of cache.titles) if (revisions.get(id) !== title.revision) cache.titles.delete(id)
 }
 
-/** Join native live state and cold hints without materializing cold logs or transcript views. */
-export function sessionListRows(ctx: Context, cache: SessionListCache): readonly SessionListRow[] {
+/** Header-only catalog for workspace grouping; no projection or log reads. */
+export function sessionListHeaders(ctx: Context, cache: SessionListCache): readonly SessionListHeader[] {
   bindSources(ctx, cache)
   const records = new Map((cache.stored ?? []).map(item => [item.header.id, item]))
   const live = new Map(ctx.sessions.list().map(session => [session.id, session]))
@@ -64,15 +69,27 @@ export function sessionListRows(ctx: Context, cache: SessionListCache): readonly
     const stored = records.get(session.id)
     if (stored !== undefined) assertSessionHeadersCompatible(session.header, stored.header)
   }
-  const ids = new Set([...records.keys(), ...live.keys()])
-  const rows: SessionListRow[] = []
-  const projectionCache = ctx.get('sessionProjectionCache')
-  const agents = ctx.agents
-  for (const id of ids) {
+  const rows: SessionListHeader[] = []
+  for (const id of new Set([...records.keys(), ...live.keys()])) {
     const session = live.get(id)
     const stored = records.get(id)
     const header = session?.header ?? stored!.header
     if (session === undefined && header.cwd === undefined) continue
+    rows.push({ header, revision: stored?.revision, live: session !== undefined })
+  }
+  return rows
+}
+
+/** Materialize only the selected workspace or explicit search results. */
+export function sessionListRows(ctx: Context, cache: SessionListCache, selection?: SessionListSelection): readonly SessionListRow[] {
+  const rows: SessionListRow[] = []
+  const projectionCache = ctx.get('sessionProjectionCache')
+  const agents = ctx.agents
+  for (const record of sessionListHeaders(ctx, cache)) {
+    const { header } = record
+    const id = header.id
+    if (selection !== undefined && (('cwd' in selection && header.cwd !== selection.cwd) || (selection.ids !== undefined && !selection.ids.has(id)))) continue
+    const session = ctx.sessions.get(id)
     let projections: SessionSummary['projections']
     try {
       const snapshot = session === undefined
@@ -85,7 +102,7 @@ export function sessionListRows(ctx: Context, cache: SessionListCache): readonly
     const agent = agents.get(id)
     const metadata = projections?.values.sessionListMetadata
     rows.push({
-      header, revision: stored?.revision, live: session !== undefined,
+      ...record,
       summary: {
         sessionId: id,
         updatedAt: Math.max(header.createdAt, metadata?.lastPromptAt ?? 0),

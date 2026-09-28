@@ -153,7 +153,7 @@ export function sessionLabel(facts: SessionListFacts, t: MayflyTranslate): strin
  * @param t - interaction translator.
  * @returns the list item.
  */
-export function sessionListItem(facts: SessionListFacts, now: number, home: string, t: MayflyTranslate): MayflyListItem {
+export function sessionListItem(facts: SessionListFacts, now: number, home: string, t: MayflyTranslate, showCwd = true): MayflyListItem {
   const segments: MayflyInlineSpan[] = []
   const span = sessionSpan(facts)
   const tokens = facts.tokens === undefined ? 0 : totalTokens(facts.tokens)
@@ -161,7 +161,7 @@ export function sessionListItem(facts: SessionListFacts, now: number, home: stri
   if (tokens > 0) segments.push({ text: `${formatTokens(tokens)} tok` })
   if (facts.lastActiveAt !== undefined) segments.push({ text: formatAgo(now - facts.lastActiveAt, t), tone: 'muted' })
   else if (facts.createdAt !== undefined) segments.push({ text: `${t('Created')} ${formatAgo(now - facts.createdAt, t)}`, tone: 'muted' })
-  if (facts.cwd !== undefined) segments.push({ text: shortenCwd(facts.cwd, home), tone: 'muted' })
+  if (showCwd && facts.cwd !== undefined) segments.push({ text: shortenCwd(facts.cwd, home), tone: 'muted' })
   const badges = [
     ...(facts.current ? [t('current')] : []),
     ...(facts.running ? [t('running')] : []),

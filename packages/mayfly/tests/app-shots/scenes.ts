@@ -16,6 +16,7 @@ import type { AssistantMessage, ContentBlock, ToolResultMessage, UserMessage } f
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session, SessionHeader } from '@deepseek-ai/dsh-session'
 import { waitForRender } from '../core/fake-terminal.ts'
+import { sessionWorkspaceId } from '../../src/interaction/session-workspaces-model.ts'
 import { openPermissionPanel } from '../../src/interaction/permission-panel.ts'
 import { appendAt, pinShotClock, SHOT_CWD, SHOT_EPOCH, SHOT_MAIN_ID, withShotTime, type AppShotTree } from './boot.ts'
 
@@ -264,7 +265,7 @@ function sessionHeader(
   } as SessionHeader
 }
 
-/** `app-sessions`: the lineage picker — current chain revealed, side branches collapsed. */
+/** `/sessions` starts with cwd groups; the workspace scene shows its lineage list. */
 async function sceneSessions(tree: AppShotTree): Promise<void> {
   const agent = await tree.currentAgent()
   const day = 86_400_000
@@ -287,6 +288,8 @@ async function sceneSessions(tree: AppShotTree): Promise<void> {
     }),
     sessionHeader('shot-hotfix', SHOT_EPOCH - 4 * day, undefined, { updatedAt: SHOT_EPOCH - 4 * day + 90_000 }),
     sessionHeader('shot-hotfix-2', SHOT_EPOCH - 4 * day + hour, 'shot-hotfix', { updatedAt: SHOT_EPOCH - 4 * day + hour + 12 * 60_000 }),
+    { ...sessionHeader('shot-docs', SHOT_EPOCH - day), cwd: '/home/mayfly/docs' },
+    { ...sessionHeader('shot-api', SHOT_EPOCH - 2 * day), cwd: '/home/mayfly/api' },
   ])
   tree.setPersistedTitles(new Map([
     ['shot-root', 'Mayfly branding exploration'],
@@ -306,6 +309,16 @@ async function sceneSessions(tree: AppShotTree): Promise<void> {
   }
 }
 
+async function sceneSessionWorkspace(tree: AppShotTree): Promise<void> {
+  await sceneSessions(tree)
+  const agent = await tree.currentAgent()
+  await withShotTime(SHOT_EPOCH + 60_000, async () => {
+    const picker = tree.ctx.mayflyUiInteraction.get('overlay', 'mayfly.sessions')!
+    picker.emit({ kind: 'selection-accept', pagePath: [], controlId: 'workspaces', selectedIds: [sessionWorkspaceId(agent.session.header.cwd)] })
+    await waitForRender()
+  })
+}
+
 /** Scene runners keyed by the ids of `script/shots/app-manifest.mjs`. */
 export const APP_SCENE_RUNNERS: Record<string, (tree: AppShotTree) => Promise<void>> = {
   'app-conversation': sceneConversation,
@@ -313,4 +326,5 @@ export const APP_SCENE_RUNNERS: Record<string, (tree: AppShotTree) => Promise<vo
   'app-agents': sceneAgents,
   'app-permission': scenePermission,
   'app-sessions': sceneSessions,
+  'app-session-workspace': sceneSessionWorkspace,
 }

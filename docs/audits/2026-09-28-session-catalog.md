@@ -1,7 +1,7 @@
 # Session catalog audit, 2026-09-28
 
 Scope: the pinned Harness `0.1.7-rc.2` persistence, query, projection, and session
-controller contracts, plus Mayfly's `/sessions` loading, names, details, search,
+controller contracts, plus Mayfly's `/sessions` workspace grouping, loading, names, details, search,
 navigation, archive admission, cancellation, and unload.
 
 ## Findings and final behavior
@@ -11,10 +11,12 @@ navigation, archive admission, cancellation, and unload.
 | Untitled conversations all displayed `session-`. | The label truncated the shared native ID prefix. | Strip the prefix before abbreviating; retain the complete ID in filtering and details. |
 | Existing titles appeared as `Untitled`, including after the first repair. | Listing hints can be absent or stale. The first repair skipped cached `null` and let it mask a recovered title. | Prefer an authoritative title read over cached hints. Retain both named and genuinely untitled results against the native storage revision. Exact detail baselines remain authoritative. |
 | Cold sessions showed invented `0s` durations. | Native `updatedAt` falls back to creation when activity hints are missing. | Use known prompt/settlement times, running state, or an update later than creation. Otherwise show creation age and leave activity/duration unknown. |
-| Opening blocked for seconds before showing the panel. | The overlay opened only after disk listing completed. | Paint the panel immediately with live and retained rows; refresh storage in the background. |
+| Opening blocked for seconds before showing the panel. | The overlay opened only after disk listing completed. | Paint the workspace picker immediately with a loading indicator and retained directory counts; refresh storage in the background. |
 | Each opening scanned the catalog twice. | The controller list and the header join each enumerated persistence. | One native `sessionPersistence.list()` returns both headers and revisions. Join exact live Sessions and Agents in memory. |
 | Recovery rescanned the entire catalog for every 32 titles. | `readTitleSnapshots` internally enumerates the corpus on every call. | Use Harness `readColdSessionLog` for individual changed sessions, with four workers. Its read handles close on success, failure, and cancellation. |
-| Listing processed unnecessary transcript data. | The generic controller list views every cached projection, including full conversation projections. | Request only title, list metadata, conversation facts, tokens, statistics, and model selection. Never retain logs or prepared Sessions in the UI cache. |
+| Listing processed unnecessary transcript data. | The generic controller list views every cached projection, including full conversation projections. | The directory picker reads headers only. The opened workspace requests only title, list metadata, conversation facts, tokens, statistics, and model selection. Never retain logs or prepared Sessions in the UI cache. |
+| Browsing one project loaded names for every project. | The catalog was a flat session list with one recovery queue for the entire corpus. | Group by exact cwd. Opening a workspace materializes only its projections and names; leaving cancels its work. Explicit global search loads only matching results. |
+| Pending work was hard to distinguish from missing data. | Sparse rows could look complete while asynchronous reads continued. | Show a loader during directory discovery and workspace metadata loading, a completed/total counter during name recovery, and a refresh hint for failed reads. |
 | Reopening reread unchanged histories. | Recovery results belonged to the panel and were discarded on close. | The command Fiber retains compact headers and title results, keyed by native persistence identity and revision. Changed/deleted records are invalidated; storage replacement and unload retire the cache. |
 | Progress caused repeated whole-list work. | Each batch rebuilt data, searched arrays by ID, and repeatedly copied archive membership. | Coalesce title publication to at most one scheduled update per 100 ms, index rows by ID, and snapshot archive/current state once per row build. |
 | Archive/restore waited for an unnecessary rescan. | The panel rescanned all sessions after changing an archive flag. | Repaint the native archive state directly. Membership has not changed, so this path needs no listing. |
@@ -40,14 +42,15 @@ refresh; an older read is never reused for a new revision. Header compatibility
 is checked before accepting a cold result. If a Session becomes live during the
 read, its actual live title wins and the result is not cached as a durable cut.
 
-Closing the panel aborts queued/in-flight title work while retaining completed
-read results. Refresh cancels the previous recovery before starting another.
+Closing a workspace aborts its queued/in-flight title work while retaining
+completed read results. Returning to the directory picker does not enumerate
+storage again or warm other workspaces. Refresh cancels the previous recovery before starting another.
 Reissuing `/sessions` focuses the existing panel. Live title changes arrive via
 native projection notifications. Native service lifetimes and command Fiber
 unload release listeners, timers, and retained data.
 
-A reopened catalog displays retained rows while the native revision listing is
-in progress; the loading label makes that refresh visible. Normal data updates
+A reopened catalog displays retained workspace counts while the native revision
+listing is in progress; the loading label makes that refresh visible. Normal data updates
 preserve form drafts, list filters, focus, and pending shared actions. Title
 publication is deferred while an action is running. Details still request a
 fresh native projection baseline, and archive/restore retain native admission
@@ -64,21 +67,24 @@ Backend measurements on the existing 2,379-record history:
 | Reconstruct retained catalog rows and recent titles | Discarded on close | 10 ms |
 | History reads for those unchanged titles after revision validation | Repeated | 0 |
 
-A separate real-terminal stress test seeded 2,379 isolated persisted
-conversations and exercised the complete installed profile:
+The final grouped-design terminal test seeded 2,379 isolated conversations across
+65 working directories. The current workspace contained 12 stored conversations
+plus its live session:
 
 | Measurement | Result |
 | --- | ---: |
-| Initial panel frame | 51 ms |
-| First cold title | 1,890 ms |
-| All initial titles available | 10,276 ms |
-| Reopen with retained names visible | 176 ms |
+| Initial workspace picker frame, with loading feedback | 50 ms |
+| Workspace counts available | 1,461 ms |
+| Selected workspace's 12 cold names loaded after Enter | 380 ms |
+| Reopen picker and selected workspace with retained names | 77 ms |
 
-That terminal test also filtered to the oldest retained conversation, completed
-background revision validation, resized from 110 to 40 columns, and exited
-cleanly. A second PTY test used a temporary copy of the reported real session
-and its stale-null checkpoint, confirming that its name appears in the list
-before opening any detail.
+The test navigated into another workspace, confirmed that conversations from
+the previous directory were absent, resized from 110 to 40 columns, and exited
+cleanly. Unit tests separately enforce zero title/projection reads in the
+workspace picker, no reads for unopened directories, cancellation when leaving,
+and progress/error feedback throughout asynchronous loading. Scoped content
+search passes cwd filters to the native query provider before pagination;
+**Search all contents** retains the native global search path.
 
 The native JSONL catalog enumeration still takes roughly two seconds on the
 existing history. It now runs after the panel paints. A fresh command/persistence
@@ -90,7 +96,7 @@ catalog requires an upstream durable index with a freshness contract.
 ## Verification and acceptance
 
 The full deterministic gate passed: build, typecheck, lint, agent documentation,
-screenshot freshness, example checks, package checks, 3,764 tests passed (seven
+screenshot freshness, Website build, example checks, package checks, 3,783 tests passed (eight
 skipped), 100% per-file executable-source coverage, and headless happy smoke.
 
 Regression coverage includes stale/null/empty/obsolete titles, actual cold JSONL
@@ -109,18 +115,19 @@ the rebuilt code; the isolated pinned CLI is available from this worktree:
 
 Human acceptance:
 
-1. Open `/sessions`. The panel should appear immediately and recover cold names
-   as needed. Close and reopen it: retained names should appear immediately
-   while revisions refresh in the background.
-2. Rename a live conversation, then check its listing. Change a saved session
-   from another process and use All sessions; only changed histories should
-   need new title reads.
-3. Type a search draft or list filter during loading. Verify it survives title
-   publication, and open a root/child detail to check full identity and current
-   native facts.
-4. Check a narrow terminal, close/reopen during loading, and archive/restore.
-   Explicit stop-and-archive confirmation and lead-session ownership must still
-   apply.
+1. Run `/sessions`: expect workspace paths and counts, with the current cwd
+   first. A loading indicator should remain visible until the catalog settles.
+2. Enter a workspace: expect only its conversations and name progress while
+   needed. Back/Escape returns to directories; reopening reuses valid names.
+3. Search inside one workspace, then use **Search all contents** from the
+   directory picker. Open session details and check resume, archive, and restore.
+4. Switch directories while names are loading, close/reopen, and check a narrow
+   terminal. Late results must not populate the wrong workspace.
+5. Review the updated command references and screenshots at
+   `http://192.168.8.188:4393/reference/commands` and
+   `http://192.168.8.188:4393/en/reference/commands`. The persistent Website preview
+   is running from this worktree; home and key-reference routes were updated in
+   both languages as well.
 
 Keep the worktree and profile until acceptance. No merge is part of this audit.
 

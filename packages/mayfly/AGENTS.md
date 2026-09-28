@@ -29,9 +29,11 @@ slots, never arbitrary root components.
   separate Fiber services. Editor presentations are ordinary overlays projected
   into the fixed editor host; preserve and restore the prompt lease.
 - `/sessions` retains only native catalog headers and revision-keyed title
-  read results in the command Fiber across panel opens. Enumerate persistence
-  once per refresh, request only displayed projection fields, and bound cold
-  reads. Storage replacement and unload retire retained results; browsing must
+  read results in the command Fiber across panel opens. Group the picker by
+  exact cwd using headers only; materialize projections and names only for the
+  opened workspace or explicit global search results. Show loading/progress
+  until pending reads settle. Enumerate persistence once per refresh and bound
+  cold reads. Storage replacement and unload retire retained results; browsing must
   never activate Agents, retain logs, or create a second session domain store.
 - `transcript/` has one selected-session controller, generation-keyed reuse, and
   lazy conversion of the latest unread native snapshot. Preserve complete

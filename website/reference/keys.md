@@ -69,7 +69,7 @@
 | 表面 | 键位 |
 | --- | --- |
 | `/help` 浮层 | ↑↓ / PageUp / PageDown / Home / End 滚动；`Ctrl+E` 展开；`Tab` 到 Close；`Escape` 关闭 |
-| `/sessions` 选择器 | 输入即筛选；↑↓ 移动，`Space` 或 `←` / `→` 折叠分支，`Enter` 恢复；`Esc` 先结束筛选（query 保留，`Ctrl+U` 清空），再关闭 |
+| `/sessions` 选择器 | 输入筛选工作区或对话；↑↓ 移动；`Enter` 打开工作区，再打开会话详情；`←` / `→` 折叠会话分支；`Esc` 先结束编辑/筛选，再返回上一层面板 |
 | 审批面板 | 默认聚焦 **Reject**；用 `←` / `→` 或 `Tab` 到 Allow once、本会话允许与 Reject with feedback；`Enter` 执行；`Escape` 拒绝。在反馈页 `Enter` 发送、`Alt+Enter` 换行，`Esc` 先结束编辑再返回决策页。没有数字快捷键 |
 | 问卷面板 | `1`–`9` 或 ↑↓ + `Enter` 选择并前进；多选用 `Space` 勾选、`Enter` 确认；在 Other 中输入即开始作答，`Enter` 提交、`Alt+Enter` 换行；问题 tabs 在标签栏上用 `←` / `→`，任意位置用 `Alt+←` / `Alt+→` 切换，向前切换会校验当前问题 |
 | 表单面板 | ↑↓ 在字段间移动；直接输入或 `Enter` 开始编辑文本，`Enter` 确认并前进，textarea 用 `Alt+Enter` 换行；下拉字段用 `←` / `→` 切换或 `Enter` 打开；多选字段用 `Enter` 或 `Space` 打开；`Delete` 把显式覆盖的字段恢复为继承值；`Tab` 提交并切到下一组；`Escape` 先结束编辑，再关闭（有未保存修改时先确认） |

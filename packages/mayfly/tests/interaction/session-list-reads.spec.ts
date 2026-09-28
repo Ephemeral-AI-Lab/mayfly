@@ -203,3 +203,18 @@ it('does not publish a read into a cache rebound to another source generation', 
   expect(await reading).toBeUndefined()
   expect(bench.cache.titles.size).toBe(0)
 })
+
+it('does not read projections for a workspace directory listing or for unselected sessions', async () => {
+  const bench = await setup()
+  await refreshSessionList(bench.ctx, bench.cache, signal())
+  const { sessionListHeaders } = await import('../../src/interaction/session-list-reads.ts')
+  const snapshot = vi.spyOn(bench.ctx.sessionProjections, 'snapshot')
+  expect(sessionListHeaders(bench.ctx, bench.cache)).toHaveLength(3)
+  expect(bench.nativeCache.cachedSnapshot).not.toHaveBeenCalled()
+  expect(snapshot).not.toHaveBeenCalled()
+  expect(sessionListRows(bench.ctx, bench.cache, { cwd: '/repo/current' }).map(row => row.header.id)).toEqual(['current'])
+  expect(bench.nativeCache.cachedSnapshot).not.toHaveBeenCalled()
+  expect(sessionListRows(bench.ctx, bench.cache, { ids: new Set(['cold']) }).map(row => row.header.id)).toEqual(['cold'])
+  expect(bench.nativeCache.cachedSnapshot).toHaveBeenCalledOnce()
+  expect(sessionListRows(bench.ctx, bench.cache, { cwd: '/cold', ids: new Set(['current']) })).toEqual([])
+})
