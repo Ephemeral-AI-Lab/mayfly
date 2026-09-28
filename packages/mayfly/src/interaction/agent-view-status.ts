@@ -6,6 +6,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type {} from '../app/current-agent.ts'
+import { interactionTranslator } from './locale.ts'
 import { ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from './keys.ts'
 
 /** Stable child-plugin name. */
@@ -15,26 +16,27 @@ export const inject = ['mayflyCurrentAgent', 'mayflyStatus', 'mayflyKeymap']
 
 /** Register the centered primary/auxiliary scope indicator. */
 export function apply(ctx: Context): void {
+  const t = interactionTranslator(ctx)
   const node = (): MayflyStatusNode | null => {
     const snapshot = ctx.mayflyCurrentAgent.view()
     const auxiliary = snapshot.auxiliary
     if (auxiliary === null) return null
-    const kind = auxiliary.kind === 'btw' ? 'BTW' : 'SUBAGENT'
+    const kind = auxiliary.kind === 'btw' ? 'BTW' : t('SUBAGENT')
     const controls = ` · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} switch · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} close`
     return {
       kind: 'rich-text',
       spans: snapshot.displayed === 'primary'
         ? [
-            { text: 'MAIN', tone: 'accent', styles: ['strong'] },
+            { text: t('MAIN'), tone: 'accent', styles: ['strong'] },
             { text: controls, tone: 'muted' },
             { text: ` ⇄ ${kind} · ${auxiliary.label}`, tone: 'muted' },
-            ...(auxiliary.access === 'interactive' ? [] : [{ text: auxiliary.access === 'resumable' ? ' · reply to resume' : ' · read-only', tone: 'muted' as const }]),
+            ...(auxiliary.access === 'interactive' ? [] : [{ text: auxiliary.access === 'resumable' ? t(' · reply to resume') : t(' · read-only'), tone: 'muted' as const }]),
           ]
         : [
             { text: kind, tone: 'accent', styles: ['strong'] },
             { text: controls, tone: 'muted' },
-            { text: ` · ${auxiliary.label} ⇄ MAIN`, tone: 'muted' },
-            ...(auxiliary.access === 'interactive' ? [] : [{ text: auxiliary.access === 'resumable' ? ' · reply to resume' : ' · read-only', tone: 'muted' as const }]),
+            { text: ` · ${auxiliary.label} ⇄ ${t('MAIN')}`, tone: 'muted' },
+            ...(auxiliary.access === 'interactive' ? [] : [{ text: auxiliary.access === 'resumable' ? t(' · reply to resume') : t(' · read-only'), tone: 'muted' as const }]),
           ],
     }
   }

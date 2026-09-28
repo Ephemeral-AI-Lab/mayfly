@@ -2,9 +2,10 @@
  * Tests for `/plugin` over the real command runtime: the catalog browse
  * panel (groups, badges, detail panel), the installed view (updates and
  * removed-from-market rows), the argument paths (install with npm and
- * GitHub sources, uninstall, info, list, refresh, usage errors), the
- * dsh-CLI seam (allowBuilds preflight, profile-patch row insertion and
- * removal, failure reporting), and the offline catalog state — all over
+ * GitHub sources, in-place update, uninstall, info, list, refresh, usage
+ * errors), the dsh-CLI seam (allowBuilds preflight, profile-patch row
+ * insertion and removal, update rollback and repair, failure reporting),
+ * and the offline catalog state — all over
  * scripted `updaterInternals` seams like the update-command specs.
  */
 
@@ -313,13 +314,99 @@ describe('installer unit seams', () => {
     expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
   })
 
-  it('refuses to reinstall an entry while any of its rows are present', async () => {
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.4' } }))
+  it('updates an entry whose rows are already present instead of refusing it', async () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
-    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' }))
-      .toMatchObject({ kind: 'error', text: expect.stringContaining('already or partially installed') })
-    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
+    const root = mkdtempTracked('mayfly-install-')
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.3' } }))
+    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
+    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
+    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })).toEqual({ kind: 'success' })
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'add', 'dsh-loop'], expect.any(Object))
+    expect(updaterInternals.spawnOnce).not.toHaveBeenCalledWith('dsh', expect.arrayContaining(['remove']), expect.any(Object))
+  })
+
+  it('rolls an update back to the pre-operation rows pinned at their versions', async () => {
+    const root = mkdtempTracked('mayfly-install-')
+    const manifest = JSON.stringify({ dependencies: { 'dsh-loop': '^0.1.0' } })
+    writeFileSync(join(root, 'package.json'), manifest)
+    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
+    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
+    let imports = 0
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => {
+      if (cmd !== process.execPath) return ok()
+      imports += 1
+      return imports === 1 ? { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false } : ok()
+    })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
+    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('changes rolled back') })
+    // Nothing is removed — the only row was installed before — and the
+    // reinstall pins the pre-operation version instead of trusting the range.
+    expect(updaterInternals.spawnOnce).not.toHaveBeenCalledWith('dsh', expect.arrayContaining(['remove']), expect.any(Object))
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'add', 'dsh-loop@0.1.3'], expect.any(Object))
+    expect(updaterInternals.readTextFile(join(root, 'package.json'))).toBe(manifest)
+    // The verify import runs once before and once after the rollback.
+    expect(imports).toBe(2)
+  })
+
+  it('repair rollback removes introduced rows and re-pins previously installed ones', async () => {
+    const partial = entry({ install: { rows: [{ name: 'dsh-loop', npm: { spec: 'dsh-loop' } }, { name: 'dsh-loop-extra', npm: { spec: 'dsh-loop-extra' } }] } })
+    const root = mkdtempTracked('mayfly-install-')
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.3' } }))
+    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
+    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
+    let imports = 0
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => {
+      if (cmd !== process.execPath) return ok()
+      imports += 1
+      return imports === 1 ? { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false } : ok()
+    })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: partial, source: 'npm' })
+    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('changes rolled back') })
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'remove', 'dsh-loop-extra'], expect.any(Object))
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'add', 'dsh-loop@0.1.3'], expect.any(Object))
+  })
+
+  it('reinstalls registry-external and versionless rows by their declared specs on rollback', async () => {
+    const root = mkdtempTracked('mayfly-install-')
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'gh-row': 'github:a/b#r', 'range-row': '^1.0.0' } }))
+    const both = entry({ install: { rows: [
+      { name: 'gh-row', npm: { spec: 'gh-row' }, github: { repo: 'a/b', ref: 'r' } },
+      { name: 'range-row', npm: { spec: 'range-row' }, github: { repo: 'a/b', ref: 'r2' } },
+    ] } })
+    let imports = 0
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => {
+      if (cmd !== process.execPath) return ok()
+      imports += 1
+      return imports === 1 ? { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false } : ok()
+    })
+    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: both, source: 'npm' })
+    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('changes rolled back') })
+    // A scheme-prefixed spec reinstalls verbatim; a range without a readable
+    // node_modules version falls back to the declared spec.
+    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'add', 'github:a/b#r', 'range-row@^1.0.0'], expect.any(Object))
+  })
+
+  it('reports an incomplete update rollback when the reinstall or the restored rows fail', async () => {
+    const root = mkdtempTracked('mayfly-install-')
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.3' } }))
+    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
+    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false }
+      if (args.includes('add') && args.includes('dsh-loop@0.1.3')) return { code: 1, signal: null, stdout: '', stderr: 'registry down', timedOut: false }
+      return ok()
+    })
+    const failed = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
+    expect(failed).toMatchObject({ kind: 'error', text: expect.stringContaining('rollback incomplete') })
+    expect(failed.kind === 'error' ? failed.text : '').toContain('automatic rollback reinstall')
+
+    // The reinstall succeeds but the restored rows no longer import.
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => cmd === process.execPath
+      ? { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false }
+      : ok())
+    const broken = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
+    expect(broken).toMatchObject({ kind: 'error', text: expect.stringContaining('rollback incomplete') })
+    expect(broken.kind === 'error' ? broken.text : '').toContain('post-rollback import check')
   })
 
   it('reads installed plugins, skipping Mayfly itself', () => {
@@ -973,6 +1060,84 @@ describe('/plugin surface actions', () => {
     const operation = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'install', inputs: { forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
     expect(await root.definition.onEvent!.action!(operation, context)).toMatchObject({ kind: 'accepted', feedback: { message: '"Loop" is already installed and up to date' } })
     expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('runs Update / repair as a real upgrade from the installed tab', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      profileDependencies: { 'dsh-loop': '0.1.3' },
+      installedVersions: { 'dsh-loop': '0.1.3' },
+    })
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      world.spawns.push({ cmd, args: [...args] })
+      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
+      if (cmd === process.execPath) return ok()
+      if (args.includes('add') && args.includes('dsh-loop')) {
+        writeFileSync(join(world.root, 'package.json'), JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '0.1.0-alpha.1', 'dsh-loop': '0.1.4' } }))
+        writeFileSync(join(world.root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.4' }))
+      }
+      return ok()
+    })
+    await world.run('/plugin list')
+    const model = world.surface()!
+    expect(JSON.stringify(model.node)).toContain('up 0.1.4')
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'install', pagePath: marketPage(model), enabled: true }),
+    ]))
+    invokeMarketAction(model, 'install')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('updated; restart Mayfly and start a new session to apply'))
+    expect(world.spawns).toContainEqual({ cmd: '/usr/bin/dsh', args: ['plugin', '--profile', 'mayfly', 'add', 'dsh-loop'] })
+    // The refreshed list no longer advertises an update.
+    expect(JSON.stringify(model.node)).not.toContain('up 0.1.4')
+    world.dispose()
+  })
+
+  it('reports update failures with update wording', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      profileDependencies: { 'dsh-loop': '0.1.3' },
+      installedVersions: { 'dsh-loop': '0.1.3' },
+      spawn: { plugin: () => ({ code: 1, signal: null, stdout: '', stderr: 'boom', timedOut: false }) },
+    })
+    expect(await world.run('/plugin install loop')).toEqual({ kind: 'success' })
+    expect(world.notices.at(-1)).toBe('update failed: installing "Loop" failed: boom')
+    world.dispose()
+  })
+
+  it('runs Install and Remove from the /plugin info panel like the browser detail does', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      world.spawns.push({ cmd, args: [...args] })
+      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
+      if (cmd === process.execPath) return ok()
+      const manifestPath = join(world.root, 'package.json')
+      const manifest = JSON.parse(updaterInternals.readTextFile(manifestPath) ?? '{}') as { dependencies: Record<string, string> }
+      if (args.includes('add') && args.includes('dsh-loop')) {
+        manifest.dependencies['dsh-loop'] = '0.1.4'
+        mkdirSync(join(world.root, 'node_modules', 'dsh-loop'), { recursive: true })
+        writeFileSync(join(world.root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ version: '0.1.4' }))
+      } else if (args.includes('remove') && args.includes('dsh-loop')) delete manifest.dependencies['dsh-loop']
+      writeFileSync(manifestPath, JSON.stringify(manifest))
+      return ok()
+    })
+    expect(await world.run('/plugin info loop')).toEqual({ kind: 'success' })
+    const info = world.surface('mayfly.plugin-detail.loop')!
+    expect(info.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'install', enabled: true })]))
+    info.invoke('install')
+    await vi.waitFor(() => expect(marketFeedback(info)).toContain('installed; restart Mayfly'))
+    expect(world.spawns).toContainEqual({ cmd: '/usr/bin/dsh', args: ['plugin', '--profile', 'mayfly', 'add', 'dsh-loop'] })
+    // The refreshed panel drops Install and offers Remove instead.
+    expect(info.availableActions().some(action => action.actionId === 'install')).toBe(false)
+    expect(info.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'remove', enabled: true })]))
+    info.invoke('remove')
+    expect(JSON.stringify(info.decisionNode)).toContain('Remove the selected plugin?')
+    info.answerDecision(true)
+    await vi.waitFor(() => expect(marketFeedback(info)).toContain('removed; restart Mayfly'))
+    expect(world.spawns).toContainEqual({ cmd: '/usr/bin/dsh', args: ['plugin', '--profile', 'mayfly', 'remove', 'dsh-loop'] })
+    // Close still works through the shared handler's completed fallthrough.
+    info.invoke('close')
+    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.loop')).toBeUndefined())
     world.dispose()
   })
 

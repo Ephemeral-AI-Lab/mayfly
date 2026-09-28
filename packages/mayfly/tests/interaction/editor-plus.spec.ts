@@ -22,6 +22,7 @@ import * as fileMention from '../../src/interaction/file-mention.ts'
 import * as mentionPaths from '../../src/internal/mention.ts'
 import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
+import { COMMON_LOCALE } from '../../src/frontend/common-locale.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
@@ -54,6 +55,7 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
     ? undefined
     : new MayflyLocaleService(ctx, { systemLocale: options.locale })
   locale?.register('interaction', INTERACTION_LOCALE)
+  locale?.register('common', COMMON_LOCALE)
   if (options.locals !== undefined) ctx.provide('mayflyTranscriptLocals', options.locals)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)

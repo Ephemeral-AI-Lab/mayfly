@@ -7,11 +7,13 @@ import { ui, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import type {} from '../conversation/deliverables.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
+import { interactionTranslator } from './locale.ts'
 
 export const name = 'mayfly-deliverables-command'
 export const inject = ['commands', 'sessionProjections', 'sessionController', 'mayflyCurrentAgent', 'mayflyOverlays']
 
 export function apply(ctx: Context): void {
+  const t = interactionTranslator(ctx)
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
   ctx.commands.register({ name: 'files', description: 'Browse files delivered by the agent', handler: async invocation => {
@@ -35,7 +37,7 @@ export function apply(ctx: Context): void {
         if (context.signal.aborted || ctx.mayflyCurrentAgent.current() !== agent) return { kind: 'cancelled' }
         const path = fs.processPath(target)
         await openAgentOverlay(owner, agent, { id: 'mayfly.files.detail', title: file.path, presentation: 'editor', capturing: true }, ui.surface({ title: file.path, chrome: 'overlay', child: ui.stack.column([
-          ui.text(`${file.description ?? ''}\n${target.displayPath}\n${stat === undefined ? 'File unavailable' : `${stat.type} · ${stat.size ?? 'unknown'} bytes`}`),
+          ui.text(`${file.description ?? ''}\n${target.displayPath}\n${stat === undefined ? t('File unavailable') : `${stat.type} · ${stat.size ?? t('unknown')} ${t('bytes')}`}`),
           ui.actions({ id: 'file-actions', items: [
             { id: 'copy', label: 'Copy path' },
             ...(stat?.type === 'file' ? [{ id: 'preview', label: 'Preview text' }, ...(ctx.sessionController.canOpenWorkspacePath() ? [{ id: 'open', label: 'Open' }] : [])] : []),

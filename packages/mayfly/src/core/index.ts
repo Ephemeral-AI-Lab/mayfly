@@ -118,6 +118,7 @@ export type {
   MayflySelectList,
   MayflySelectListOptions,
   MayflySemanticColors,
+  MayflySubmittedDraft,
   MayflyTerminalInfo,
   MayflyTheme,
   MayflyTopRuleOptions,

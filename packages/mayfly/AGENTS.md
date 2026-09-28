@@ -17,6 +17,13 @@ slots, never arbitrary root components.
   Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
   reload. Renderer teardown releases editors/handles, not drafts or choice state.
   Registry observers dispose only models from registrations they own.
+  Locale namespaces are refcounted shared catalogs: any surface plugin may
+  register the same namespace when its catalog is equivalent, and the catalog
+  lives until the last owner unloads; a conflicting catalog is a programming
+  error. Vocabulary shared across namespaces belongs to `common`. English
+  strings are the stable keys, so changing one means updating its emitting
+  call site; `tests/locale-catalog.spec.ts` enforces used-key completeness,
+  dead-key liveness, placeholder parity, and zh terminology in both directions.
   It also owns exact-Agent assistant drafts and the session-facts bridge;
   neither depends on theme/core. Recovery reads native assistant-stream
   baselines, fences Agent replacement and late continuations, and never folds
@@ -89,8 +96,8 @@ not custom confirm pages or post-confirmation rejections.
 
 ## Native writes and sensitive data
 
-- `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation
-  and removal apply after restart; HMR stays disabled in the default bundle.
+- `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation,
+  update, and removal apply after restart; HMR stays disabled in the default bundle.
 - Optional collaboration plugins own their preset, tools, and UI contributions.
   The default bundle and shipped presets do not mount Agent Team. Keep upstream
   ordinary delegation available. Generic child navigation and the shared

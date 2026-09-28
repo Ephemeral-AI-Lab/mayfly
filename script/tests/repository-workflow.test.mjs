@@ -85,6 +85,7 @@ describe('change impact planning', () => {
     assert.equal(plan.checks.build, true)
     assert.deepEqual(plan.tests.coverage, ['packages/mayfly/src/frontend/locale.ts'])
     assert.deepEqual(plan.tests.related, ['packages/mayfly/src/frontend/locale.ts'])
+    assert.ok(plan.tests.direct.includes('packages/mayfly/tests/locale-catalog.spec.ts'))
   })
 
   test('adds width and lifecycle package gates where required', () => {

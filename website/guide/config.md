@@ -78,6 +78,8 @@ Providers 面板里**选中一个已配置的路由即进入编辑**：可改显
 
 新增完成后弹出新路由的模型选择器；取消选择不会撤销新增（provider 留在原处，`/provider list` 可见）。
 
+路由档案写在 **Harness home 的用户级 `~/.dsh/cordis.patch.yml`** 的 `llm-pi-ai:` 行：npm 安装的生产 profile（`mayfly`）与开发 profile（`mayfly-dev` / `mayfly-<tag>`）共享同一份 provider 配置，切换 profile 不再丢失。保存时同一份配置也会镜像进当前 profile 的 `cordis.patch.yml`，运行中的会话即时生效。
+
 ## 文件体系：settings.yaml 与凭据
 
 界面命令之外，dsh 的全部配置落在 Harness home 的几个文件里，**外部编辑实时热生效**（watcher 默认开启）：
@@ -87,6 +89,7 @@ Providers 面板里**选中一个已配置的路由即进入编辑**：可改显
 | `~/.dsh/settings.yaml` | 所有插件的设置段（一个文档承载全部命名空间） |
 | `~/.dsh/.credentials.yaml` | 凭据（权限强制 `0600`，目录 `0700`） |
 | `~/.dsh/.env` | 用户级环境变量层 |
+| `~/.dsh/cordis.patch.yml` | home 级用户装配覆盖层；Mayfly 的 provider 路由存在这里，对所有 profile 生效 |
 | `~/.dsh/profiles/<name>/cordis.patch.yml` | profile 的装配覆盖层（见 [Profile 与目录](/dsh/profiles)） |
 
 启动时文档已存在但格式非法 → 启动失败（fail loud）；运行中的非法编辑 → 保留上一份好快照并告警。手工编辑 settings.yaml 的注释会尽量保留（写入按叶子级 diff 落笔）。

@@ -50,6 +50,7 @@ import type {
   MayflyEditor,
   MayflyEditorOptions,
   MayflyEditorSubmitAttempt,
+  MayflySubmittedDraft,
   MayflyFuzzyMatch,
   MayflyImage,
   MayflyImageOptions,
@@ -184,6 +185,9 @@ class EditorAdapter implements MayflyEditor {
   /** Original pi-tui submit implementation, captured before the shadow. */
   private readonly nativeSubmit: () => void
 
+  /** Buffer and paste table captured by the in-flight native submission. */
+  private submittedDraft: MayflySubmittedDraft | undefined
+
   /** The prompt symbol overlaid on the first content row; none while unset. */
   private promptSymbol: string | undefined
 
@@ -205,8 +209,43 @@ class EditorAdapter implements MayflyEditor {
   ) {
     this.observedBuffer = { raw: editor.getText(), expanded: editor.getExpandedText() }
     const bridge = editor as unknown as { submitValue(): void }
-    this.nativeSubmit = bridge.submitValue.bind(editor)
+    const submitValue = bridge.submitValue.bind(editor)
+    this.nativeSubmit = () => {
+      // Snapshot before pi-tui's submitValue clears the buffer, paste table,
+      // undo stack, and history cursor: the withdrawn-message restore needs
+      // the raw marker text and the table its `[paste #N]` markers expand
+      // through.
+      this.submittedDraft = this.captureDraft()
+      submitValue()
+    }
     bridge.submitValue = () => { this.requestSubmit() }
+  }
+
+  captureDraft(): MayflySubmittedDraft {
+    // pi-tui's `pastes` is a private field (0.84.2) though it is a plain
+    // instance field; the structural cast is pinned by the components spec,
+    // the `getHistory` precedent.
+    const internals = this.editor as unknown as { pastes: Map<number, string> }
+    return { raw: this.editor.getText(), pastes: new Map(internals.pastes) }
+  }
+
+  consumeSubmittedDraft(): MayflySubmittedDraft | undefined {
+    const draft = this.submittedDraft
+    this.submittedDraft = undefined
+    return draft
+  }
+
+  restoreSubmittedDraft(draft: MayflySubmittedDraft): void {
+    this.setText(draft.raw)
+    // `setText` cleared the paste table; repopulate it (and never rewind
+    // `pasteCounter` below the marker ids) so the restored `[paste #N]`
+    // markers expand again — the same private-field cast as `captureDraft`.
+    const internals = this.editor as unknown as { pastes: Map<number, string>, pasteCounter: number }
+    internals.pastes = new Map(draft.pastes)
+    for (const id of draft.pastes.keys()) {
+      internals.pasteCounter = Math.max(internals.pasteCounter, id)
+    }
+    this.observeMutation()
   }
 
   get focused(): boolean {
@@ -384,7 +423,7 @@ class EditorAdapter implements MayflyEditor {
       row = highlightLeadingSlashToken(row, this.chrome.slashTokenPaint) ?? row
     }
     if (this.ghostHint !== undefined && this.cursorAtInputEnd()) {
-      row = injectGhostHint(row, this.ghostHint, this.editor.getText().length, renderWidth, this.chrome.ghostHintPaint)
+      row = injectGhostHint(row, this.ghostHint, this.editor.getText(), renderWidth, this.chrome.ghostHintPaint)
     }
     // The bash `!` shares the border hue so the mode reads as one unit; the
     // neutral `>` stays in the terminal's default foreground (kimi rule).

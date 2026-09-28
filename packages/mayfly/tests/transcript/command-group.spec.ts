@@ -142,6 +142,10 @@ describe('CommandGroupComponent', () => {
     expect(rows[1]).toContain('Ran 1 command')
     // The width:expanded:detail cache returns the identical array.
     expect(settled.render(80)).toBe(rows)
+    const failed = new CommandGroupComponent(group([
+      command({ callId: 'a', command: 'pnpm dev', state: 'error', error: 'boom' }),
+    ]), IDENTITY, COMPONENTS)
+    expect(failed.render(80)[1]).toContain('Ran 1 command · failed')
   })
 
   it('swaps snapshots on update while preserving expansion state', () => {

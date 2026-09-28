@@ -168,8 +168,8 @@ describe('work-details display plan', () => {
     seq = 0
     const pendingCall = tool(1, { result: undefined })
     const preparing = tool(1, { id: 'p', name: 'write', activity: 'write', result: undefined, preparing: { characters: 9 } })
-    expect(shape(plan([user(1), pendingCall, preparing], 'standard', { runningTurn: 1 }))).toEqual(['user'])
-    expect(plan([user(1), pendingCall, preparing], 'standard', { runningTurn: 1, runningHeader: true })[1]).toMatchObject({ kind: 'turn-header', toolCalls: 1 })
+    expect(shape(plan([user(1), pendingCall, preparing], 'standard', { runningTurn: 1, turns: open }))).toEqual(['user'])
+    expect(plan([user(1), pendingCall, preparing], 'standard', { runningTurn: 1, turns: open, runningHeader: true })[1]).toMatchObject({ kind: 'turn-header', toolCalls: 1 })
     expect(memberFacts(pendingCall, true)).toEqual([expect.objectContaining({ running: false, failed: false })])
     expect(memberFacts(tool(1, { terminal: { command: 'x', exitCode: 2 } }), true)).toEqual([expect.objectContaining({ failed: true })])
     expect(memberFacts(tool(1, { terminal: { command: 'x', signal: 'SIGTERM' } }), true)).toEqual([expect.objectContaining({ failed: true })])
@@ -205,5 +205,22 @@ describe('work-details display plan', () => {
     expect(runningTurnOf(model({ streaming: true, turns: [...closed, { turn: 2, startedAt: 50 }] }), entries)).toBe(2)
     expect(runningTurnOf(model({ streaming: true, turns: closed }), entries)).toBeUndefined()
     expect(runningTurnOf(model({ streaming: true }), entries)).toBe(1)
+  })
+
+  it('ignores a live overlay pinned to a turn the model already closed or moved past', () => {
+    const entries = turnOne()
+    const model = (overrides: Partial<TranscriptModel>): TranscriptModel => ({ kind: 'transcript', id: 'm', generation: 0, entries, ...overrides })
+    // The turn row carries an end time: the overlay is stale, the turn closes.
+    expect(runningTurnOf(model({ live: { turn: 1, step: 4, entries: [] }, streaming: true, turns: closed }), entries)).toBeUndefined()
+    // A newer open turn row supersedes the pinned turn.
+    expect(runningTurnOf(model({ live: { turn: 1, step: 4, entries: [] }, streaming: true, turns: [...closed, { turn: 2, startedAt: 50 }] }), entries)).toBe(2)
+    // Newer durable entries alone supersede it when no turn rows exist.
+    expect(runningTurnOf(model({ live: { turn: 0, step: 0, entries: [] }, streaming: true, turns: [] }), entries)).toBe(1)
+    // Fresh overlays for the current or a not-yet-recorded turn still win.
+    expect(runningTurnOf(model({ live: { turn: 1, step: 4, entries: [] }, streaming: true, turns: open }), entries)).toBe(1)
+    expect(runningTurnOf(model({ live: { turn: 2, step: 0, entries: [] }, turns: closed }), entries)).toBe(2)
+    // The display plan's last line of defense: a recorded end closes the turn
+    // no matter which runningTurn the caller resolved.
+    expect(shape(plan(turnOne(), 'standard', { runningTurn: 1 }))).toEqual(['user', 'header:closed:folded:hint', 'assistant'])
   })
 })

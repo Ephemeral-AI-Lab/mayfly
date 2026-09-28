@@ -696,6 +696,24 @@ export class OfficialConversationModelSource {
 }
 
 /**
+ * Durable evidence the draft's turn already ended or was superseded: its turn
+ * row carries an end time, a newer turn row exists, or a newer durable entry
+ * does. Mirrors the session-facts fence so a stale stream draft never reopens
+ * a settled turn (the step-level `settledSteps` gate misses abandoned attempts,
+ * which finalize nothing).
+ * @param durable - the already-mapped durable model.
+ * @param turn - the draft's pinned turn.
+ * @returns whether the draft is provably behind the durable projection.
+ */
+function staleTurn(durable: TranscriptModel, turn: number): boolean {
+  /* v8 ignore next -- durable models all come from conversationTranscriptModel, which always emits turns */
+  const turns = durable.turns ?? []
+  if (turns.some(item => item.turn > turn || (item.turn === turn && item.endedAt !== undefined))) return true
+  const last = durable.entries.findLast((entry): entry is TranscriptEntryModel => entry.kind.startsWith('transcript-'))
+  return last !== undefined && last.turn > turn
+}
+
+/**
  * Overlay only the current step onto the already-mapped durable model. Stable
  * history entries retain identity and never rerun their tool presenters during
  * token updates. Live revision tokens remain separate from durable event seqs.
@@ -708,7 +726,7 @@ function withLiveDraft(
   updatedSeq: number,
   dispatched: ReadonlySet<string>,
 ): TranscriptModel {
-  if (draft === undefined || settledSteps.has(`${String(draft.turn)}:${String(draft.step)}`)) return durable
+  if (draft === undefined || settledSteps.has(`${String(draft.turn)}:${String(draft.step)}`) || staleTurn(durable, draft.turn)) return durable
   const renderRevision = `live:${draft.attemptId}:${String(draft.revision)}`
   const liveEntries: TranscriptEntryModel[] = []
   // A recorded span proves visible reasoning without trimming the whole text.

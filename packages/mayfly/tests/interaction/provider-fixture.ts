@@ -6,7 +6,27 @@ import z from '@deepseek-ai/schemastery'
 import { CredentialProvider, type CredentialRef, type CredentialKey, type CredentialRecord } from '@deepseek-ai/dsh-credentials'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as frontend from '../../src/frontend/index.ts'
+import { providerStoreInternals } from '../../src/interaction/provider-store.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
+
+/** The in-memory home patch every fixture shares for provider-store writes. */
+const homeFiles = new Map<string, string>()
+let homeInstalled = false
+
+/** Redirect provider-store file I/O into memory so specs never touch the real home. */
+export function installProviderHome(): void {
+  if (homeInstalled) return
+  homeInstalled = true
+  providerStoreInternals.homePatchPath = () => '/mayfly-test-home/cordis.patch.yml'
+  providerStoreInternals.readTextFile = path => homeFiles.get(path)
+  providerStoreInternals.writeTextFile = (path, text) => { homeFiles.set(path, text) }
+  providerStoreInternals.removeFile = path => { homeFiles.delete(path) }
+}
+
+/** The in-memory home patch text, for provider-store assertions. */
+export function testHomeText(): string | undefined {
+  return homeFiles.get('/mayfly-test-home/cordis.patch.yml')
+}
 
 export class MemoryCredentials extends CredentialProvider {
   readonly values = new Map<string, string>([['CUSTOM_KEY', 'stored-secret']])
@@ -43,6 +63,7 @@ export class ProviderCommands extends Service {
 }
 
 export async function providerFixture(ctx: Context, profiles: Record<string, unknown> = {}, llm?: unknown, options?: { readonly registerNamespace?: boolean }) {
+  installProviderHome()
   await ctx.plugin(MemorySettings)
   await ctx.plugin(MemoryCredentials)
   await ctx.plugin(ProviderCommands)

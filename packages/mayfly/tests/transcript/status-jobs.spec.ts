@@ -79,7 +79,7 @@ describe('mayfly-status-jobs', () => {
     registry.publish([job('a', 'running')], current.id)
     expect(harness.entry.id).toBe('mayfly.status.jobs')
     expect(harness.entry.priority).toBe(3)
-    expect(harness.entry.render(80)).toBe('[Ac]⏵ 1 jobs[/Ac]')
+    expect(harness.entry.render(80)).toBe('[Ac]⏵ 1 job[/Ac]')
     const baseline = harness.screen.renderRequests.length
     registry.publish([job('a', 'running'), job('done', 'completed')])
     expect(harness.screen.renderRequests.length).toBe(baseline)

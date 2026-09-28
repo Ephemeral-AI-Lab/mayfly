@@ -46,7 +46,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { ConversationAgentCall, ConversationFacts } from '../conversation/index.ts'
+import type { MayflyTranslate } from '../frontend/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
+import { transcriptTranslator } from './locale.ts'
 import {
   agentCallLabel,
   agentPhasePresentation,
@@ -199,13 +201,13 @@ function memberNodes(view: MemberRowView, compact: boolean, last: boolean): Mayf
 }
 
 /** The whole pane node for one computed view; null renders zero rows. */
-function paneNode(view: PaneView, cachedRows: Map<string, CachedRow>): MayflyUiNode | null {
+function paneNode(view: PaneView, cachedRows: Map<string, CachedRow>, t: MayflyTranslate): MayflyUiNode | null {
   if (view.rows.length === 0) return null
   const counts = new Map<string, number>()
   for (const row of view.rows) counts.set(row.phaseLabel, (counts.get(row.phaseLabel) ?? 0) + 1)
   const maxElapsed = Math.max(...view.rows.map(row => row.elapsed))
   const settled = view.rows.every(row => row.phaseLabel === 'done' || row.phaseLabel === 'failed' || row.phaseLabel === 'cancelled')
-  const noun = view.rows.length === 1 ? 'agent' : 'agents'
+  const one = view.rows.length === 1
   const clock = view.rows.length > 1 ? ` · ${formatElapsed(maxElapsed)}` : ''
   const breakdown = !settled && counts.size > 1
     ? ` (${['done', 'failed', 'cancelled', 'running', 'waiting'].flatMap(label => {
@@ -216,11 +218,11 @@ function paneNode(view: PaneView, cachedRows: Map<string, CachedRow>): MayflyUiN
   const summary: MayflyInlineSpan[] = settled
     ? [
         { text: '✓ ', tone: 'success' },
-        { text: `${String(view.rows.length)} ${noun} finished`, tone: 'accent', styles: ['strong'] },
+        { text: t(one ? '{count} agent finished' : '{count} agents finished', { count: view.rows.length }), tone: 'accent', styles: ['strong'] },
       ]
     : [
         { text: '● ', tone: 'accent' },
-        { text: `Running ${String(view.rows.length)} ${noun}`, tone: 'accent', styles: ['strong'] },
+        { text: t(one ? 'Running {count} agent' : 'Running {count} agents', { count: view.rows.length }), tone: 'accent', styles: ['strong'] },
       ]
   if (breakdown !== '' || clock !== '') summary.push({ text: `${breakdown}${clock}`, tone: 'muted' })
   const compact = view.rows.length > COMPACT_MEMBER_LIMIT
@@ -247,6 +249,7 @@ function paneNode(view: PaneView, cachedRows: Map<string, CachedRow>): MayflyUiN
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
+  const t = transcriptTranslator(ctx, 'transcript')
   let members: PaneMember[] = []
   let tracker: ReturnType<typeof trackChildAgentModels> | undefined
   let liveLookup: AgentLiveLookup | undefined
@@ -423,7 +426,7 @@ export function apply(ctx: Context): void {
     lastStructure = view.structure
     lastVolatile = view.volatile
     volatilePending = false
-    pane.set(paneNode(view, rowCache))
+    pane.set(paneNode(view, rowCache, t))
     if (rowCache.size > view.rows.length) {
       const live = new Set(view.rows.map(row => row.item.callId))
       for (const id of rowCache.keys()) if (!live.has(id)) rowCache.delete(id)

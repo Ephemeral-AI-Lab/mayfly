@@ -5,7 +5,9 @@
  */
 
 import type { MayflyComponent, MayflyFocusable } from './types.ts'
+import { interpolateLocaleMessage } from '../frontend/locale.ts'
 import { sanitizePluginText } from './plugin-view.ts'
+import { renderOverflowRow } from './ui-patterns.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
 
 export type SurfacePlacement = 'header' | 'left' | 'right' | 'bottom'
@@ -315,7 +317,7 @@ export function planBottomLane(lane: SurfaceLaneLayout, width: number, maxRows: 
     if (!item.passive) return { entry: item.entry, passive: false, rows: item.rows.slice(0, size), size }
     const paint = laneRows(item.entry).renderOverflow
     const overflow = (hidden: number): string => fit(paint === undefined
-      ? `  … +${String(hidden)} more rows`
+      ? renderOverflowRow(hidden, interpolateLocaleMessage)
       : paint.call(item.entry.component, hidden, available), available)
     return { entry: item.entry, passive: true, rows: fitSurfaceRows(item.rows, size, overflow), size }
   })

@@ -16,7 +16,8 @@ export interface AgentPhasePresentation {
 export function compactElapsedSeconds(seconds: number): string {
   const safe = Math.max(0, Math.floor(seconds))
   if (safe < 60) return `${String(safe)}s`
-  return `${String(Math.floor(safe / 60))}m ${String(safe % 60)}s`
+  if (safe < 3600) return `${String(Math.floor(safe / 60))}m ${String(safe % 60)}s`
+  return `${String(Math.floor(safe / 3600))}h ${String(Math.floor((safe % 3600) / 60))}m ${String(safe % 60)}s`
 }
 
 /** Compact non-negative duration from elapsed milliseconds. */

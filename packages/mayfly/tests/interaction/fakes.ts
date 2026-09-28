@@ -40,6 +40,7 @@ import type {
   MayflySelectList,
   MayflySelectListOptions,
   MayflySemanticColors,
+  MayflySubmittedDraft,
   MayflyTheme,
 } from '../../src/core/index.ts'
 import type { MayflyScreenService, MayflyKeymapService, MayflyComponentsService } from '../../src/core/index.ts'
@@ -257,6 +258,12 @@ export class FakeMayflyEditor implements MayflyEditor {
   autocompleteProvider: MayflyAutocompleteProvider | undefined
   /** Number of explicit autocomplete refresh requests. */
   autocompleteRefreshes = 0
+  /** Paste-id to pasted content, mirroring pi-tui's paste table. */
+  readonly pastes = new Map<number, string>()
+  /** Next paste marker id, mirroring pi-tui's counter. */
+  pasteCounter = 0
+  /** Buffer drafts captured by each submission, in order. */
+  readonly submittedDrafts: MayflySubmittedDraft[] = []
   private text = ''
   private cursor = 0
   private submitRevision = 0
@@ -267,9 +274,13 @@ export class FakeMayflyEditor implements MayflyEditor {
     return this.text
   }
 
-  /** The fake carries no paste markers, so expansion is the text itself. */
+  /** Expand `[paste #N]` markers through the fake's paste table, like pi-tui. */
   getExpandedText(): string {
-    return this.text
+    let result = this.text
+    for (const [id, content] of this.pastes) {
+      result = result.replace(new RegExp(`\\[paste #${id}( (\\+\\d+ lines|\\d+ chars))?\\]`, 'g'), () => content)
+    }
+    return result
   }
 
   renderContent(width: number, masked = false): string[] {
@@ -279,9 +290,26 @@ export class FakeMayflyEditor implements MayflyEditor {
 
   setText(text: string): void {
     this.abortPendingSubmit()
+    // pi-tui's setText clears the paste table and counter (0.84.2).
+    this.pastes.clear()
+    this.pasteCounter = 0
     this.text = text
     this.cursor = text.length
     this.onChange?.(text)
+  }
+
+  captureDraft(): MayflySubmittedDraft {
+    return { raw: this.text, pastes: new Map(this.pastes) }
+  }
+
+  consumeSubmittedDraft(): MayflySubmittedDraft | undefined {
+    return this.submittedDrafts.pop()
+  }
+
+  restoreSubmittedDraft(draft: MayflySubmittedDraft): void {
+    this.setText(draft.raw)
+    for (const [id, content] of draft.pastes) this.pastes.set(id, content)
+    for (const id of draft.pastes.keys()) this.pasteCounter = Math.max(this.pasteCounter, id)
   }
 
   addToHistory(text: string): void {
@@ -353,7 +381,10 @@ export class FakeMayflyEditor implements MayflyEditor {
   submit(): void {
     if (this.disableSubmit) return
     this.abortPendingSubmit()
-    const submitted = this.text
+    // Like pi-tui, the attempt and the onSubmit value are the expanded,
+    // trimmed text; the raw marker text is what the draft snapshot keeps.
+    const raw = this.text
+    const submitted = this.getExpandedText().trim()
     const handler = this.submitBarrier
     if (handler === undefined) {
       this.commitSubmit(submitted)
@@ -367,7 +398,8 @@ export class FakeMayflyEditor implements MayflyEditor {
       && !controller.signal.aborted
       && this.pendingSubmit === controller
       && this.submitRevision === revision
-      && this.text === submitted
+      && this.text === raw
+      && this.getExpandedText().trim() === submitted
     handler(Object.freeze({
       text: submitted,
       signal: controller.signal,
@@ -408,8 +440,15 @@ export class FakeMayflyEditor implements MayflyEditor {
       return
     }
     const paste = /^\x1b\[200~([\s\S]*)\x1b\[201~$/u.exec(data)
-    const inserted = paste?.[1] ?? data
+    let inserted = paste?.[1] ?? data
     this.abortPendingSubmit()
+    // pi-tui collapses a large bracketed paste (>10 lines or >1000 chars)
+    // into a `[paste #N]` marker backed by the paste table.
+    if (paste !== null && (inserted.split('\n').length > 10 || inserted.length > 1000)) {
+      const lines = inserted.split('\n').length
+      this.pastes.set(++this.pasteCounter, inserted)
+      inserted = lines > 10 ? `[paste #${this.pasteCounter} +${lines} lines]` : `[paste #${this.pasteCounter} ${inserted.length} chars]`
+    }
     this.text = `${this.text.slice(0, this.cursor)}${inserted}${this.text.slice(this.cursor)}`
     this.cursor += inserted.length
     this.onChange?.(this.text)
@@ -429,7 +468,11 @@ export class FakeMayflyEditor implements MayflyEditor {
   }
 
   private commitSubmit(submitted: string): void {
+    // Capture before clearing, mirroring the adapter's submit funnel.
+    this.submittedDrafts.push({ raw: this.text, pastes: new Map(this.pastes) })
     this.text = ''
+    this.pastes.clear()
+    this.pasteCounter = 0
     this.cursor = 0
     this.onChange?.('')
     this.onSubmit?.(submitted)

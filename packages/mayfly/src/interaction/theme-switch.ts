@@ -73,7 +73,7 @@ function openThemePicker(ctx: Context): CommandResult {
       if (event.kind !== 'selection-accept') return { kind: 'completed' }
       const key = event.selectedIds[0]
       if (key === undefined || key === ctx.mayflyInteractionState.currentThemeKey) return { kind: 'completed', dismiss: true }
-      if (key === 'custom') return { kind: 'completed', feedback: { severity: 'info', message: USAGE } }
+      if (key === 'custom') return { kind: 'completed', feedback: { severity: 'info', message: t(USAGE) } }
       const target = BUILTIN.get(key)
       if (target === undefined) return { kind: 'failed', message: t('unknown theme "{key}"', { key }) }
       const result = await switchTheme(ctx, target)
@@ -86,7 +86,7 @@ function openThemePicker(ctx: Context): CommandResult {
     items: KNOWN_KEYS.map(key => ({
       id: key, label: key,
       ...(key === current ? { badge: CURRENT_MARK } : {}),
-      ...(key === 'custom' ? { detail: USAGE } : {}),
+      ...(key === 'custom' ? { detail: t(USAGE) } : {}),
     })),
   }) }), { reopen: 'replace' })
   return { kind: 'success' }
@@ -101,6 +101,7 @@ function openThemePicker(ctx: Context): CommandResult {
  * @returns the command outcome.
  */
 async function switchTheme(ctx: Context, next: ThemeTarget, config?: themeCustom.Config): Promise<CommandResult> {
+  const t = interactionTranslator(ctx)
   const current = ctx.mayflyInteractionState.currentThemeKey === 'custom'
     ? CUSTOM
     : BUILTIN.get(ctx.mayflyInteractionState.currentThemeKey) ?? DARK
@@ -121,18 +122,19 @@ async function switchTheme(ctx: Context, next: ThemeTarget, config?: themeCustom
     return {
       kind: 'error',
       /* v8 ignore next -- mount failures are Error instances (config validation or service conflicts) */
-      text: `failed to apply theme "${next.key}": ${error instanceof Error ? error.message : String(error)}`,
+      text: t('failed to apply theme "{key}": {error}', { key: next.key, error: error instanceof Error ? error.message : String(error) }),
     }
   }
   ctx.mayflyInteractionState.currentThemeKey = next.key
-  return { kind: 'success', text: `switched to theme "${next.key}"` }
+  return { kind: 'success', text: t('switched to theme "{key}"', { key: next.key }) }
 }
 
 /** Apply a built-in theme by key for the persisted settings default. */
 export async function applyTheme(ctx: Context, key: string): Promise<CommandResult> {
+  const t = interactionTranslator(ctx)
   const target = BUILTIN.get(key)
   if (target === undefined) {
-    return { kind: 'error', text: `unknown theme "${key}" (known: ${[...BUILTIN.keys()].join(', ')})` }
+    return { kind: 'error', text: t('unknown theme "{key}" (known: {known})', { key, known: [...BUILTIN.keys()].join(', ') }) }
   }
   return switchTheme(ctx, target)
 }
@@ -143,6 +145,7 @@ export async function applyTheme(ctx: Context, key: string): Promise<CommandResu
  * @returns the registration disposer.
  */
 export function registerThemeCommand(ctx: Context): () => void {
+  const t = interactionTranslator(ctx)
   return ctx.commands.register({
     name: 'theme',
     description: 'Switch the color theme',
@@ -154,18 +157,18 @@ export function registerThemeCommand(ctx: Context): () => void {
       if (name === undefined) return openThemePicker(ctx)
       const builtin = BUILTIN.get(name)
       if (builtin !== undefined) {
-        if (args.length > 0) return { kind: 'error', text: USAGE }
+        if (args.length > 0) return { kind: 'error', text: t(USAGE) }
         return switchTheme(ctx, builtin)
       }
       if (name === 'custom') {
         const path = args.shift()
         const base = args.shift()
-        if (path === undefined || args.length > 0) return { kind: 'error', text: USAGE }
+        if (path === undefined || args.length > 0) return { kind: 'error', text: t(USAGE) }
         // The base reaches theme-custom's Config schema unvalidated: an
         // invalid value fails the mount, and switchTheme restores dark.
         return switchTheme(ctx, CUSTOM, { path, base: base ?? 'dark' } as themeCustom.Config)
       }
-      return { kind: 'error', text: USAGE }
+      return { kind: 'error', text: t(USAGE) }
     },
   })
 }

@@ -78,6 +78,8 @@ Selecting a configured route in the Providers panel opens its **edit form**: dis
 
 After the add completes, the new route's model picker opens; cancelling it keeps the provider (visible via `/provider list`).
 
+Routes live in the **Harness home's user-level `~/.dsh/cordis.patch.yml`** (`llm-pi-ai:` row): the npm production profile (`mayfly`) and development profiles (`mayfly-dev` / `mayfly-<tag>`) share one provider set, so switching profiles no longer loses it. Saving mirrors the same value into the active profile's `cordis.patch.yml`, so a running session applies it live.
+
 ## The file system: settings.yaml and credentials
 
 Beyond the in-app commands, all of dsh's configuration sits in a handful of files under the Harness home, and **external edits hot-apply** (the watcher is on by default):
@@ -87,6 +89,7 @@ Beyond the in-app commands, all of dsh's configuration sits in a handful of file
 | `~/.dsh/settings.yaml` | Every plugin's settings section (one document, all namespaces) |
 | `~/.dsh/.credentials.yaml` | Credentials (enforced mode `0600` under a `0700` directory) |
 | `~/.dsh/.env` | User-level environment layer |
+| `~/.dsh/cordis.patch.yml` | The home-level user overlay; Mayfly stores provider routes here so every profile sees them |
 | `~/.dsh/profiles/<name>/cordis.patch.yml` | The profile's composition overlay (see [Profiles & directories](/en/dsh/profiles)) |
 
 A document that exists but fails to parse fails boot (loud); an invalid edit while running keeps the last good snapshot and warns. Hand edits to settings.yaml keep their comments (writes diff at the leaf level).

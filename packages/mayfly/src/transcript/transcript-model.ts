@@ -674,7 +674,7 @@ export class TranscriptModelComponent implements MayflyComponent {
         target = new ErrorMessageComponent({
           kind: 'error', seq: entry.seq, turn: entry.turn, message: entry.message,
           ...(entry.code === undefined ? {} : { code: entry.code }),
-        }, renderer.colors, renderer.components)
+        }, renderer.colors, renderer.components, renderer.t)
         break
       case 'transcript-interrupted':
         target = new InterruptedMarkerComponent(renderer.colors, renderer.components, renderer.t)

@@ -616,6 +616,42 @@ export interface MayflyEditor extends MayflyFocusable {
    * @param text - the text to insert.
    */
   insertText(text: string): void
+  /**
+   * Snapshot the live buffer as a {@link MayflySubmittedDraft} without
+   * disturbing it — the raw marker-bearing text plus the paste table.
+   * Submit paths that bypass the native funnel (e.g. steering) capture the
+   * draft this way before clearing the buffer. Optional for structural test
+   * editors; the core adapter implements it.
+   * @returns the captured draft.
+   */
+  captureDraft?(): MayflySubmittedDraft
+  /**
+   * Read the draft captured by the latest native submission, clearing the
+   * slot. The adapter snapshots buffer and paste table inside the submit
+   * funnel, before the editing engine clears them, so the value is always
+   * the submission currently in flight.
+   * @returns the captured draft, or undefined when none was recorded.
+   */
+  consumeSubmittedDraft?(): MayflySubmittedDraft | undefined
+  /**
+   * Restore a previously captured draft into the editor: the raw text
+   * returns to the buffer and the paste table re-arms its `[paste #N]`
+   * markers, reproducing the input-time appearance.
+   * @param draft - the captured submission.
+   */
+  restoreSubmittedDraft?(draft: MayflySubmittedDraft): void
+}
+
+/**
+ * One submitted buffer captured before the native submit cleared it: the
+ * raw marker-bearing text plus the paste table, so `[paste #N]` markers in
+ * `raw` re-expand through the restored table.
+ */
+export interface MayflySubmittedDraft {
+  /** The buffer text as edited, with `[paste #N]`/`[image #N]` markers. */
+  readonly raw: string
+  /** Paste-id to pasted content, as tracked by the editing engine. */
+  readonly pastes: ReadonlyMap<number, string>
 }
 
 /** One revision-fenced editor submission captured before L0 clears state. */

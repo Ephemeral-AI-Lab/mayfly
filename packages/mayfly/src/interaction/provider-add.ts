@@ -8,6 +8,7 @@ import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySubmission, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { loadModelsDevIndex } from './models-dev.ts'
+import { persistProviders } from './provider-store.ts'
 import { deriveKeyRef, normalizeBaseURL, providerProfile } from './provider-profile.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { openAuthorization } from './authorization-ui.ts'
@@ -76,7 +77,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
         { kind: 'secret' as const, id: 'key', label: t('API key'), value: '', required: true },
       ] }),
       ...known === undefined ? [ui.actions({ id: 'connection-actions', items: [
-        { id: 'next', label: t('Next'), intent: 'primary', read: [address('connection')], disabled: created !== undefined },
+        { id: 'next', label: t('Next step'), intent: 'primary', read: [address('connection')], disabled: created !== undefined },
       ] })] : [],
     ], { gap: 1 }), { tab: { controlId: 'provider-tabs', itemId: 'connection' } }),
     ...known !== undefined ? [] : [ui.child(ui.stack.column([
@@ -204,7 +205,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
     } : { apiKeyEnv: deriveKeyRef(route) }
     try {
       if (created === undefined) {
-        await settings.mutate(NAMESPACE, [{ op: 'set', path: ['providers', route], value: profile }], expected)
+        await persistProviders(settings, [{ op: 'set', path: ['providers', route], value: profile }], expected)
         created = { route, profile }
       }
       if (cancellation.aborted) return { kind: 'cancelled' }
@@ -269,7 +270,7 @@ export function openProviderSetup(ctx: Context, onCreated: (route: string) => vo
           const route = selected.selectedIds[0]!
           if (kind === 'oauth') openAuthorization(ctx, route, async () => {
             const descriptor = settings.describe().find(item => String(item.ns) === NAMESPACE)!
-            if (providerProfile(descriptor.value, route) === undefined) await settings.mutate(NAMESPACE, [{ op: 'set', path: ['providers', route], value: {} }], descriptor.revision)
+            if (providerProfile(descriptor.value, route) === undefined) await persistProviders(settings, [{ op: 'set', path: ['providers', route], value: {} }], descriptor.revision)
             onCreated(route)
           }, signal)
           else openEndpoint(ctx, route, onCreated, signal)

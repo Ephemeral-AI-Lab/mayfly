@@ -56,9 +56,15 @@ export interface MayflyLocaleServiceOptions {
   readonly preference?: MayflyLocaleId
 }
 
+/** One shared namespace entry: its frozen catalog and live owner count. */
+interface LocaleCatalogEntry {
+  readonly catalog: MayflyLocaleCatalog
+  count: number
+}
+
 /** Renderer-neutral locale registry scoped to one frontend tree. */
 export class MayflyLocaleService extends Service {
-  private readonly catalogs = new Map<string, MayflyLocaleCatalog>()
+  private readonly catalogs = new Map<string, LocaleCatalogEntry>()
   private readonly listeners = new Set<(snapshot: MayflyLocaleSnapshot) => void>()
   private readonly systemLocale: MayflyLocaleId
   private explicitPreference: MayflyLocalePreference
@@ -108,29 +114,48 @@ export class MayflyLocaleService extends Service {
   }
 
   /**
-   * Register one package-owned dictionary namespace.
+   * Register one package-owned dictionary namespace. Independent owners may
+   * register the same namespace when their catalogs are equivalent: the entry
+   * is shared by reference count and released only by the last owner. A
+   * conflicting catalog for a live namespace stays a programming error.
    * @param namespace - stable dictionary namespace.
    * @param catalog - English and Simplified Chinese messages.
    * @returns idempotent registration disposer.
    */
   register(namespace: string, catalog: MayflyLocaleCatalog): () => void {
     if (this.disposed) throw new Error('locale service is disposed')
-    if (this.catalogs.has(namespace)) {
-      throw new Error(`locale namespace "${namespace}" is already registered`)
+    const existing = this.catalogs.get(namespace)
+    if (existing !== undefined) {
+      if (!catalogsEqual(existing.catalog, catalog)) {
+        throw new Error(`locale namespace "${namespace}" is already registered`)
+      }
+      existing.count += 1
+    } else {
+      this.catalogs.set(namespace, {
+        catalog: Object.freeze({
+          zh: Object.freeze({ ...catalog.zh }),
+          en: Object.freeze({ ...catalog.en }),
+        }),
+        count: 1,
+      })
+      this.touch()
     }
-    const frozen = Object.freeze({
-      zh: Object.freeze({ ...catalog.zh }),
-      en: Object.freeze({ ...catalog.en }),
-    })
-    this.catalogs.set(namespace, frozen)
-    this.touch()
     let disposed = false
     return () => {
       if (disposed) return
       disposed = true
-      if (!this.catalogs.delete(namespace) || this.disposed) return
-      this.touch()
+      this.release(namespace)
     }
+  }
+
+  /** Drop one owner of a namespace, deleting the catalog only at zero. */
+  private release(namespace: string): void {
+    const entry = this.catalogs.get(namespace)
+    if (entry === undefined) return
+    entry.count -= 1
+    if (entry.count > 0) return
+    this.catalogs.delete(namespace)
+    this.touch()
   }
 
   /**
@@ -151,8 +176,8 @@ export class MayflyLocaleService extends Service {
    */
   translate(namespace: string, key: string, values?: MayflyLocaleValues): string {
     const locale = this.locale
-    const own = this.catalogs.get(namespace)
-    const common = this.catalogs.get('common')
+    const own = this.catalogs.get(namespace)?.catalog
+    const common = this.catalogs.get('common')?.catalog
     const message = own?.[locale][key]
       ?? own?.en[key]
       ?? common?.[locale][key]
@@ -205,4 +230,14 @@ function interpolate(message: string, values: MayflyLocaleValues): string {
     const value = values[name]
     return value === undefined ? placeholder : String(value)
   })
+}
+
+/** Whether two catalogs carry identical English and Chinese messages. */
+function catalogsEqual(left: MayflyLocaleCatalog, right: MayflyLocaleCatalog): boolean {
+  return sameMessages(left.en, right.en) && sameMessages(left.zh, right.zh)
+}
+
+function sameMessages(left: Readonly<Record<string, string>>, right: Readonly<Record<string, string>>): boolean {
+  const keys = Object.keys(left)
+  return keys.length === Object.keys(right).length && keys.every(key => left[key] === right[key])
 }

@@ -191,6 +191,44 @@ describe('conversation flow scenarios', () => {
     }
   })
 
+  it('keeps the fold when a stale live overlay pins an ended turn open', () => {
+    const settled = conversationTranscriptModel(scenario(false), tools)
+    const header = ' ▸ Took 38s · 14 tool calls · 1 subagent · ctrl+o to expand'
+    let current: TranscriptModel = settled
+    const policy = new TranscriptPresentationPolicy()
+    policy.apply({ transcriptView: 'standard' })
+    const component = new TranscriptModelComponent(() => current, {
+      colors: COLORS as MayflySemanticColors, components: fakeMayflyComponents(), viewportRows: () => 40,
+      images: () => ({}), requestRender: () => {}, presentation: policy,
+    })
+    component.setExpanded(false)
+    const folded = component.render(120).map(strip)
+    expect(folded.join('\n')).toContain(header)
+    expect(folded.join('\n')).not.toContain('pnpm lint')
+    // A stale overlay for the ended turn must not reopen it: Ctrl-O stays put
+    // until the next explicit toggle.
+    current = {
+      ...settled,
+      streaming: true,
+      live: { turn: 1, step: 5, entries: [] },
+    }
+    expect(component.render(120).map(strip)).toEqual(folded)
+    // Even one that still carries ghost entries keeps every durable member hidden.
+    current = {
+      ...settled,
+      streaming: true,
+      live: {
+        turn: 1, step: 5,
+        entries: [{ kind: 'transcript-thinking', id: 'thinking:1:5', seq: 99, updatedSeq: 99, turn: 1, step: 5, text: 'ghost', streaming: false }],
+      },
+    }
+    const stale = component.render(120).map(strip).join('\n')
+    expect(stale).toContain(header)
+    expect(stale).not.toContain('pnpm lint')
+    expect(stale).not.toContain('ghost')
+    component.dispose()
+  })
+
   it('shows a running turn in the past tense by mode, with no live status rows', () => {
     const model = conversationTranscriptModel(scenario(true), tools)
     const standard = render(model, 'standard').rows.join('\n')

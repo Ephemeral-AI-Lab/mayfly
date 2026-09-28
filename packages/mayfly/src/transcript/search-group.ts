@@ -93,22 +93,23 @@ export class SearchGroupComponent implements MayflyComponent {
     const pending = this.closed ? 0 : unsettled
     const failed = searches.filter(call => call.state === 'error').length
     const bold = (text: string): string => components.strong(String(text))
+    const one = searches.length === 1
     const label = pending > 0
-      ? bold(colors.primary(`Searching ${String(searches.length)} ${searches.length === 1 ? 'pattern' : 'patterns'}…`))
+      ? bold(colors.primary(this.t(one ? 'Searching {count} pattern…' : 'Searching {count} patterns…', { count: searches.length })))
       : failed === searches.length
-        ? bold(colors.error(`Searched ${String(searches.length)} ${searches.length === 1 ? 'pattern' : 'patterns'} · failed`))
-        : bold(colors.primary(`Searched ${String(searches.length)} ${searches.length === 1 ? 'pattern' : 'patterns'}`))
+        ? bold(colors.error(this.t(one ? 'Searched {count} pattern · failed' : 'Searched {count} patterns · failed', { count: searches.length })))
+        : bold(colors.primary(this.t(one ? 'Searched {count} pattern' : 'Searched {count} patterns', { count: searches.length })))
     let header = `${String(pending > 0 ? colors.text('● ') : failed === searches.length ? colors.error('✗ ') : failed > 0 ? colors.warning('◐ ') : colors.success('✓ '))}${String(label)}`
     const files = searches.reduce((sum, call) => sum + (call.shape === 'matches' ? call.files?.length ?? 0 : 0), 0)
     const matches = searches.reduce((sum, call) => sum + (call.shape === 'matches' ? call.total ?? call.files?.reduce((inner, file) => inner + file.count, 0) ?? 0 : 0), 0)
     const paths = searches.reduce((sum, call) => sum + (call.shape === 'paths' ? call.pathsTotal ?? call.paths?.length ?? 0 : 0), 0)
     const chips: string[] = []
-    if (files > 0) chips.push(`${String(files)} ${files === 1 ? 'file' : 'files'}`)
-    if (matches > 0) chips.push(`${String(matches)} ${matches === 1 ? 'match' : 'matches'}`)
-    if (paths > 0) chips.push(`${String(paths)} ${paths === 1 ? 'path' : 'paths'}`)
+    if (files > 0) chips.push(this.t(files === 1 ? '{count} file' : '{count} files', { count: files }))
+    if (matches > 0) chips.push(this.t(matches === 1 ? '{count} match' : '{count} matches', { count: matches }))
+    if (paths > 0) chips.push(this.t(paths === 1 ? '{count} path' : '{count} paths', { count: paths }))
     if (chips.length > 0) header += colors.muted(` · ${chips.join(', ')}`)
-    if (failed > 0 && failed < searches.length) header += colors.error(` · ${String(failed)} failed`)
-    if (this.closed && unsettled > 0) header += colors.muted(` · ${String(unsettled)} cancelled`)
+    if (failed > 0 && failed < searches.length) header += colors.error(` · ${this.t('{count} failed', { count: failed })}`)
+    if (this.closed && unsettled > 0) header += colors.muted(` · ${String(unsettled)} ${this.t('cancelled')}`)
     return components.truncateToWidth(header, width)
   }
 

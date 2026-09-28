@@ -7,6 +7,7 @@
  */
 
 import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
 import { displayKey } from './key-actions.ts'
 import { sanitizePluginText } from './plugin-view.ts'
@@ -395,13 +396,30 @@ export function renderActions(node: ActionsNode, width: number, focus: PatternFo
   return vertical ? tokens.map(token => fit(token.value, width)) : [compactTokens(tokens, width)]
 }
 
+/**
+ * The muted row a bottom lane paints in place of the `hidden` rows it cut.
+ * @param hidden - number of rows the lane could not show.
+ * @param translate - translator for the owning surface.
+ * @returns the localized overflow row.
+ */
+export function renderOverflowRow(hidden: number, translate: MayflyTranslate): string {
+  return translate('  … +{count} more rows', { count: hidden })
+}
+
+/** Compact non-negative duration from milliseconds: `45s`, or `2m 10s` past a minute. */
+function formatElapsedMs(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000))
+  if (seconds < 60) return `${String(seconds)}s`
+  return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
+}
+
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
 const TIDE_FRAMES = ['≈', '≋', '∿', '≋'] as const
 
 export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0): string[] {
   const frames = node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
   const indicator = frames[frame % frames.length]!
-  const elapsed = node.elapsedMs === undefined ? '' : ` ${String(node.elapsedMs)}ms`
+  const elapsed = node.elapsedMs === undefined ? '' : ` ${formatElapsedMs(node.elapsedMs)}`
   return [fit(`${colors.primary(indicator)} ${colors.text(node.message)}${colors.textMuted(elapsed)}`, width)]
 }
 

@@ -6,7 +6,7 @@ import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import type { MayflyOverlayEntry } from '../../../ui/src/contracts.ts'
-import { providerFixture } from './provider-fixture.ts'
+import { providerFixture, testHomeText } from './provider-fixture.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { openProviderEditor } from '../../src/interaction/provider-edit.ts'
 const contexts: Context[] = []
@@ -537,6 +537,7 @@ describe('provider editor', () => {
       requestContext(entry),
     )).toMatchObject({ kind: 'accepted', feedback: { severity: 'warning' } })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: {} })
+    expect(testHomeText()).not.toContain('custom')
     expect(bench.credentials.values.has('CUSTOM_KEY')).toBe(true)
   })
 

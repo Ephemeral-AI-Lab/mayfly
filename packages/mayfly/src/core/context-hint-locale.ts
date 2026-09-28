@@ -7,39 +7,23 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { interpolateLocaleMessage, type MayflyLocaleCatalog, type MayflyTranslate } from '../frontend/locale.ts'
+import { mountCommonLocale } from '../frontend/common-locale.ts'
 
 const zh = Object.freeze({
-  // Contextual hint labels and key words.
+  // Contextual hint labels and key words specific to the core compiler.
+  // Shared vocabulary (tabs/actions/choose/toggle/…, Yes/No) lives in `common`.
   Type: '输入',
-  tabs: '标签',
-  actions: '操作',
-  options: '选项',
-  fields: '字段',
-  groups: '分组',
-  choose: '选择',
   focus: '定位',
   open: '打开',
-  toggle: '切换',
   'toggle / confirm': '切换 / 确认',
   branch: '展开/折叠',
-  run: '执行',
-  edit: '编辑',
-  adjust: '调整',
   pick: '选择',
-  apply: '应用',
-  submit: '提交',
   next: '下一项',
-  newline: '换行',
-  confirm: '确认',
   cancel: '取消',
   done: '完成编辑',
   'end search': '结束搜索',
-  back: '返回',
-  close: '关闭',
-  leave: '离开',
   clear: '清除',
   filter: '筛选',
-  scroll: '滚动',
   expand: '展开',
   collapse: '收起',
   'use inherited': '改用继承值',
@@ -51,8 +35,6 @@ const zh = Object.freeze({
   'Keep my changes': '保留我的修改',
   // Shared decisions, placeholders, and default controls.
   'Discard unsaved changes?': '放弃未保存的修改？',
-  No: '否',
-  Yes: '是',
   'No matches': '无匹配项',
   'Choose…': '请选择…',
   'None selected': '未选择',
@@ -99,6 +81,7 @@ export function contextHintTranslator(ctx: Context): MayflyTranslate {
  * @param onChange - terminal repaint requested on locale/catalog changes.
  */
 export function mountContextHintLocale(ctx: Context, onChange: () => void): void {
+  mountCommonLocale(ctx)
   ctx.inject(['mayflyLocale'], (localeCtx) => {
     const unregister = localeCtx.mayflyLocale.register('core-context-hints', CORE_CONTEXT_HINT_LOCALE)
     const unsubscribe = localeCtx.mayflyLocale.subscribe(onChange)
