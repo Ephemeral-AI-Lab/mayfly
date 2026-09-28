@@ -37,15 +37,16 @@ export function apply(ctx: Context): void {
     if (displayed === undefined || counterpart === undefined) return null
     const controls = ` · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} switch · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} close`
     const more = snapshot.views.length - 2
+    // Identity first, key hints last: a narrow footer truncates the hints first.
     return {
       kind: 'rich-text',
       spans: [
         { text: badge(displayed), tone: KIND_TONE[displayed.kind], styles: ['strong'] },
-        { text: controls, tone: 'muted' },
         ...displayed.kind === 'primary'
           ? [{ text: ` ⇄ ${title(counterpart)}`, tone: 'muted' as const }, ...access(counterpart)]
           : [{ text: ` · ${displayed.label} ⇄ ${title(counterpart)}`, tone: 'muted' as const }, ...access(displayed)],
         ...more > 0 ? [{ text: t(' · {count} more open', { count: more }), tone: 'muted' as const }] : [],
+        { text: controls, tone: 'muted' },
       ],
     }
   }
