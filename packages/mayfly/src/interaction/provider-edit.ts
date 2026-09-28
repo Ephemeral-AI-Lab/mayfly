@@ -7,6 +7,7 @@ import { SettingsConflictError, type SettingsPathOp } from '@deepseek-ai/dsh-set
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { deriveKeyRef, normalizeBaseURL, providerProfile, type ProviderProfile } from './provider-profile.ts'
+import { persistProviders } from './provider-store.ts'
 import { loadModelsDevIndex } from './models-dev.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
@@ -252,7 +253,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
           if (expectedCredential !== credentialRevision) return { kind: 'conflict', ...reply(view), message: t('The credential changed elsewhere; review before continuing') }
           try {
             if (event.actionId === 'delete') {
-              await settings.mutate(NAMESPACE, [{ op: 'unset', path: ['providers', route] }], expected)
+              await persistProviders(settings, [{ op: 'unset', path: ['providers', route] }], expected)
               settingsRemoved = true
             }
             /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
@@ -298,7 +299,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
         if (key !== undefined && (!view.credential.writable || expectedCredential !== credentialRevision)) return { kind: 'conflict', ...reply(view), message: t('The credential changed elsewhere; review before saving') }
         let settingsWritten = false
         try {
-          if (ops.length > 0) { await settings.mutate(NAMESPACE, ops, expected); settingsWritten = true }
+          if (ops.length > 0) { await persistProviders(settings, ops, expected); settingsWritten = true }
           /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
           if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
           if (key !== undefined && key.length > 0) await credentials.set(credentialRef(openedRef!), key)

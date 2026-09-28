@@ -10,7 +10,7 @@ import * as uiProvider from '../../../ui/src/provider.ts'
 import { ENDPOINT_PROTOCOLS, openProviderSetup } from '../../src/interaction/provider-add.ts'
 import { deriveKeyRef, normalizeBaseURL, providerProfile } from '../../src/interaction/provider-profile.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
-import { providerFixture } from './provider-fixture.ts'
+import { providerFixture, testHomeText } from './provider-fixture.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { setModelsDevLoader(undefined); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
@@ -591,5 +591,18 @@ describe('provider creation', () => {
     const bench = await setup()
     await bench.choose('oauth')
     expect(JSON.stringify(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.add.oauth')!.node)).toContain('No providers available')
+  })
+
+  it('persists a new route to the user-level home patch', async () => {
+    const bench = await setup()
+    const entry = await customEntry(bench)
+    const saved = await entry.events.prepare(
+      { kind: 'submit', submission: submission(entry, { route: 'home-route' }) },
+      context(entry),
+    )
+    expect(saved.reply).toMatchObject({ kind: 'accepted' })
+    const home = testHomeText()!
+    expect(home).toContain('id: llm-pi-ai')
+    expect(home).toContain('home-route')
   })
 })
