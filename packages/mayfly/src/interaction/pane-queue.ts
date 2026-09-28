@@ -36,7 +36,7 @@ export function apply(ctx: Context): void {
       direction: 'column',
       children: [
         { node: { kind: 'divider' } },
-        ...rows.map(content => ({ node: { kind: 'text' as const, content, tone: 'muted' as const } })),
+        ...rows.map(content => ({ node: { kind: 'text' as const, content, tone: 'muted' as const, overflow: 'truncate' as const } })),
       ],
     }
   }

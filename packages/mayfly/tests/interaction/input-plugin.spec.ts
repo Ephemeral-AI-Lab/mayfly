@@ -8,7 +8,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { MayflyComponent, MayflyFocusable } from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyEditor, MayflyFocusable } from '../../src/core/index.ts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime, { type CommandResult } from '@deepseek-ai/dsh-commands'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
@@ -356,6 +356,31 @@ describe('mayfly-input plugin', () => {
     })
     expect(followup).not.toHaveBeenCalled()
     expect(ctx.mayflyRequests.active()?.scope).toBe('subagent')
+  })
+
+  it('routes interactive subagent input when the editor lacks the draft seam', async () => {
+    const prompt = vi.fn(async () => ({ messageId: 'subagent-message' }))
+    const view = {
+      primarySessionId: 'parent',
+      displayed: 'auxiliary' as const,
+      auxiliary: {
+        kind: 'subagent' as const,
+        sessionId: 'input-spec',
+        parentSessionId: 'parent',
+        label: 'worker',
+        mode: 'continuable' as const,
+        access: 'interactive' as const,
+      },
+      revision: 6,
+    }
+    const { editor } = await mount({ view, subagents: { prompt, interruptByParent: vi.fn() } })
+    ;(editor as MayflyEditor).consumeSubmittedDraft = undefined
+    type(editor, 'seamless subagent text')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledOnce())
+    expect(prompt.mock.calls[0]?.[0]).toMatchObject({
+      content: [{ type: 'text', text: 'seamless subagent text' }],
+    })
   })
 
   it('converts image blocks for the native subagent prompt API', async () => {
@@ -1582,15 +1607,343 @@ describe('mayfly-input plugin', () => {
     })
   })
 
-  describe('queued-message pane key ownership', () => {
-    it('leaves Up/Down to editor history even while queued messages are visible', async () => {
-      const inbox = fakeInbox({ nextTurn: [queued('queued draft')] })
+  describe('queued-message withdrawal', () => {
+    /** Route follow-up submissions into the fake inbox's queued lane. */
+    function enqueueFollowups(inbox: ReturnType<typeof fakeInbox>, followup: ReturnType<typeof vi.fn>): void {
+      followup.mockImplementation((message: UserMessage) => { inbox.nextTurn.push(message) })
+    }
+
+    /** Register a minimal `[image #N]` transformer mirroring paste-image's consume/rollback. */
+    function installImageMarkerTransformer(ctx: Context): { rolledBack: () => boolean } {
+      const pastedImages = ctx.mayflyInteractionState.pasteImage.pastedImages
+      let rolledBack = false
+      registerSubmitTransformer(ctx, (text) => {
+        const match = /\[image #\d+\]/.exec(text)
+        if (match === null || !pastedImages.has(match[0])) return []
+        const marker = match[0]
+        const attachment = pastedImages.get(marker)!
+        pastedImages.delete(marker)
+        return {
+          blocks: [
+            { type: 'image' as const, attachment },
+            { type: 'text' as const, text: text.slice(match.index + marker.length) },
+          ],
+          rollback: () => { pastedImages.set(marker, attachment); rolledBack = true },
+        }
+      })
+      return { rolledBack: () => rolledBack }
+    }
+
+    /**
+     * Mirror the native inbox: `remove()` emits `agent/inbox/discarded`
+     * synchronously before returning, so a withdrawal must snapshot its
+     * restore record before calling it.
+     */
+    function emitDiscardsOnRemove(ctx: Context, agent: Agent, inbox: ReturnType<typeof fakeInbox>): void {
+      inbox.remove.mockImplementation((id: string) => {
+        const message = [...inbox.nextTurn, ...inbox.nextStep].find(entry => String(entry.id) === String(id))
+        if (message === undefined) return false
+        for (const lane of [inbox.nextTurn, inbox.nextStep]) {
+          const index = lane.indexOf(message)
+          if (index >= 0) lane.splice(index, 1)
+        }
+        ctx.emit('agent/inbox/discarded', { agent, message } as never)
+        return true
+      })
+    }
+
+    it('withdraws the newest queued message into the editor on Up', async () => {
+      const inbox = fakeInbox({ nextTurn: [queued('first'), queued('second')] })
       const { ctx, editor } = await mount({ inbox })
       await ctx.plugin(paneQueuePlugin)
-      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(inbox.remove).toHaveBeenCalledWith(inbox.nextTurn[1]!.id)
+      expect(inbox.remove).toHaveBeenCalledTimes(1)
+      expect(editor.getText()).toBe('second')
+    })
+
+    it('withdraws the steer lane tail before the queued lane', async () => {
+      const inbox = fakeInbox({ nextTurn: [queued('follow-up')], nextStep: [queued('steered')] })
+      const { editor } = await mount({ inbox })
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(inbox.remove).toHaveBeenCalledWith(inbox.nextStep[0]!.id)
+      expect(editor.getText()).toBe('steered')
+    })
+
+    it('leaves Down to the editor even while queued messages are visible', async () => {
+      const inbox = fakeInbox({ nextTurn: [queued('queued draft')] })
+      const { editor } = await mount({ inbox })
       expect(editor.onKey?.(KEY.down)).toBe(false)
       expect(inbox.remove).not.toHaveBeenCalled()
       expect(editor.getText()).toBe('')
+    })
+
+    it('keeps Up on cursor duty while the buffer holds text', async () => {
+      const inbox = fakeInbox({ nextTurn: [queued('queued draft')] })
+      const { editor } = await mount({ inbox })
+      type(editor, 'draft')
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(inbox.remove).not.toHaveBeenCalled()
+      expect(editor.getText()).toBe('draft')
+    })
+
+    it('declines Up while the autocomplete dropdown is open', async () => {
+      const inbox = fakeInbox({ nextTurn: [queued('queued draft')] })
+      const { editor } = await mount({ inbox })
+      editor.showingAutocomplete = true
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(inbox.remove).not.toHaveBeenCalled()
+    })
+
+    it('declines Up in bash input mode', async () => {
+      const inbox = fakeInbox({ nextTurn: [queued('queued draft')] })
+      const { editor } = await mount({ inbox })
+      type(editor, '!')
+      expect(editor.getText()).toBe('')
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(inbox.remove).not.toHaveBeenCalled()
+    })
+
+    it('passes Up through to history navigation when the queue is empty', async () => {
+      const { editor, followup } = await mount()
+      type(editor, 'earlier')
+      editor.handleInput(KEY.enter)
+      expect(followup).toHaveBeenCalledOnce()
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+    })
+
+    it('restores a self-submitted draft with its raw text, history removal, and rollback', async () => {
+      const inbox = fakeInbox()
+      const { ctx, editor, followup, agent } = await mount({ inbox })
+      enqueueFollowups(inbox, followup)
+      emitDiscardsOnRemove(ctx, agent, inbox)
+      const pastedImages = ctx.mayflyInteractionState.pasteImage.pastedImages
+      const ref = imageRef('queued-image')
+      pastedImages.set('[image #1]', ref)
+      const transform = installImageMarkerTransformer(ctx)
+      type(editor, '[image #1] caption')
+      editor.handleInput(KEY.enter)
+      expect(followup).toHaveBeenCalledOnce()
+      const message = inbox.nextTurn[0]!
+      expect(pastedImages.has('[image #1]')).toBe(false)
+      expect(editor.history).toEqual(['[image #1] caption'])
+
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(inbox.remove).toHaveBeenCalledWith(message.id)
+      expect(inbox.nextTurn).toHaveLength(0)
+      expect(editor.getText()).toBe('[image #1] caption')
+      expect(transform.rolledBack()).toBe(true)
+      expect(pastedImages.get('[image #1]')).toBe(ref)
+      expect(editor.history).toEqual([])
+    })
+
+    it('re-expands paste markers after a withdrawal', async () => {
+      const inbox = fakeInbox()
+      const { ctx, editor, followup, agent } = await mount({ inbox })
+      enqueueFollowups(inbox, followup)
+      emitDiscardsOnRemove(ctx, agent, inbox)
+      const pasted = 'y'.repeat(1500)
+      type(editor, 'see ')
+      editor.handleInput(`\x1b[200~${pasted}\x1b[201~`)
+      expect(editor.getText()).toBe('see [paste #1 1500 chars]')
+      editor.handleInput(KEY.enter)
+      expect(followup.mock.calls[0]![0].content).toEqual([{ type: 'text', text: `see ${pasted}` }])
+
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(editor.getText()).toBe('see [paste #1 1500 chars]')
+      expect(editor.getExpandedText()).toBe(`see ${pasted}`)
+    })
+
+    it('mints fresh image markers for messages this editor did not submit', async () => {
+      const ref = imageRef('foreign-image')
+      const foreign = createUserMessage({
+        content: [
+          { type: 'text', text: 'look ' },
+          { type: 'image', attachment: ref },
+        ],
+        source: { kind: 'user' },
+      })
+      const inbox = fakeInbox({ nextTurn: [foreign] })
+      const { ctx, editor } = await mount({ inbox })
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(editor.getText()).toBe('look [image #1]')
+      expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toEqual(ref)
+    })
+
+    it('skips a message claimed between render and keypress', async () => {
+      const alive = queued('still pending')
+      const gone = queued('just claimed')
+      const inbox = fakeInbox({
+        nextTurn: [alive, gone],
+        remove: id => String(id) === String(alive.id),
+      })
+      const { editor } = await mount({ inbox })
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(inbox.remove).toHaveBeenNthCalledWith(1, gone.id)
+      expect(inbox.remove).toHaveBeenNthCalledWith(2, alive.id)
+      expect(editor.getText()).toBe('still pending')
+    })
+
+    it('ignores queued messages that did not come from the user', async () => {
+      const policy = createUserMessage({ content: [{ type: 'text', text: 'Policy' }], source: { kind: 'system-prompt' } })
+      const inbox = fakeInbox({ nextStep: [policy] })
+      const { editor } = await mount({ inbox })
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+      expect(inbox.remove).not.toHaveBeenCalled()
+    })
+
+    it('drops the retraction candidate a withdrawal consumes', async () => {
+      const retract = vi.fn(() => true)
+      const inbox = fakeInbox()
+      const { editor, followup, cancel } = await mount({ inbox, running: true, retract })
+      enqueueFollowups(inbox, followup)
+      type(editor, 'retractable')
+      editor.handleInput(KEY.enter)
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(editor.getText()).toBe('retractable')
+      editor.setText('')
+      editor.handleInput('\x1b')
+      expect(retract).not.toHaveBeenCalled()
+      expect(cancel).toHaveBeenCalled()
+    })
+
+    it('passes Up through when no session is active', async () => {
+      const { editor } = await mount({ withAgent: false })
+      expect(editor.onKey?.(KEY.up)).toBe(false)
+    })
+
+    it('reconstructs text and skips blocks the editor cannot express', async () => {
+      const foreign = createUserMessage({
+        content: [
+          { type: 'text', text: 'edit ' },
+          { type: 'reasoning', text: 'internal' } as never,
+          { type: 'text', text: 'this' },
+        ],
+        source: { kind: 'user' },
+      })
+      const inbox = fakeInbox({ nextTurn: [foreign] })
+      const { editor } = await mount({ inbox })
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(editor.getText()).toBe('edit this')
+    })
+
+    it('restores the raw buffer through setText when the editor lacks the restore seam', async () => {
+      const inbox = fakeInbox()
+      const { editor, followup } = await mount({ inbox })
+      enqueueFollowups(inbox, followup)
+      ;(editor as MayflyEditor).restoreSubmittedDraft = undefined
+      type(editor, 'plain restore')
+      editor.handleInput(KEY.enter)
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(editor.getText()).toBe('plain restore')
+    })
+
+    it('restores retraction through setText when the editor lacks the draft seam', async () => {
+      const retract = vi.fn(() => true)
+      const { editor, followup } = await mount({ running: true, retract })
+      ;(editor as MayflyEditor).consumeSubmittedDraft = undefined
+      ;(editor as MayflyEditor).restoreSubmittedDraft = undefined
+      type(editor, 'retract me')
+      editor.handleInput(KEY.enter)
+      expect(followup).toHaveBeenCalledOnce()
+      expect(editor.onKey?.(KEY.escape)).toBe(true)
+      expect(editor.getText()).toBe('retract me')
+    })
+
+    it('keeps a steered message withdrawable with its transformer rollback', async () => {
+      const inbox = fakeInbox()
+      const { ctx, editor, steer, agent } = await mount({ inbox, running: true })
+      steer.mockImplementation((message: UserMessage) => { inbox.nextStep.push(message) })
+      emitDiscardsOnRemove(ctx, agent, inbox)
+      const pastedImages = ctx.mayflyInteractionState.pasteImage.pastedImages
+      const ref = imageRef('steer-image')
+      pastedImages.set('[image #1]', ref)
+      const transform = installImageMarkerTransformer(ctx)
+      type(editor, '[image #1] steer note')
+      editor.handleInput(KEY.ctrlS)
+      expect(steer).toHaveBeenCalledOnce()
+      expect(inbox.nextStep).toHaveLength(1)
+      expect(pastedImages.has('[image #1]')).toBe(false)
+
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(editor.getText()).toBe('[image #1] steer note')
+      expect(transform.rolledBack()).toBe(true)
+      expect(pastedImages.get('[image #1]')).toBe(ref)
+    })
+
+    it('drops the restore record when its message is claimed', async () => {
+      const inbox = fakeInbox()
+      const { ctx, editor, followup, agent } = await mount({ inbox })
+      enqueueFollowups(inbox, followup)
+      const transform = installImageMarkerTransformer(ctx)
+      ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', imageRef('claimed'))
+      type(editor, '[image #1] gone')
+      editor.handleInput(KEY.enter)
+      const message = inbox.nextTurn[0]!
+      ctx.emit('agent/inbox/claimed', { agent, message })
+
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      // The record is gone: no rollback ran and the image re-minted its marker.
+      expect(transform.rolledBack()).toBe(false)
+      expect(editor.getText()).toBe('[image #1] gone')
+      expect(ctx.mayflyInteractionState.pasteImage.pastedImages.has('[image #1]')).toBe(true)
+    })
+
+    it('drops the restore record when its message is discarded elsewhere', async () => {
+      const inbox = fakeInbox()
+      const { ctx, editor, followup, agent } = await mount({ inbox })
+      enqueueFollowups(inbox, followup)
+      const transform = installImageMarkerTransformer(ctx)
+      ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', imageRef('dropped'))
+      type(editor, '[image #1] gone')
+      editor.handleInput(KEY.enter)
+      const message = inbox.nextTurn[0]!
+      ctx.emit('agent/inbox/discarded', { agent, message })
+
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(transform.rolledBack()).toBe(false)
+      expect(editor.getText()).toBe('[image #1] gone')
+    })
+
+    it('keeps the restore record when inbox events name another agent', async () => {
+      const inbox = fakeInbox()
+      const { ctx, editor, followup } = await mount({ inbox })
+      enqueueFollowups(inbox, followup)
+      const transform = installImageMarkerTransformer(ctx)
+      ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', imageRef('kept'))
+      type(editor, '[image #1] kept')
+      editor.handleInput(KEY.enter)
+      const message = inbox.nextTurn[0]!
+      const other = { id: 'other-agent' }
+      ctx.emit('agent/inbox/claimed', { agent: other, message } as never)
+      ctx.emit('agent/inbox/discarded', { agent: other, message } as never)
+
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(transform.rolledBack()).toBe(true)
+      expect(editor.getText()).toBe('[image #1] kept')
+    })
+
+    it('restores a withdrawn draft from content blocks when the editor lacks the capture seam', async () => {
+      const inbox = fakeInbox()
+      const { editor, followup } = await mount({ inbox })
+      enqueueFollowups(inbox, followup)
+      ;(editor as MayflyEditor).consumeSubmittedDraft = undefined
+      type(editor, 'no seam')
+      editor.handleInput(KEY.enter)
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(editor.getText()).toBe('no seam')
+    })
+
+    it('withdraws a plain steered message when the editor lacks the capture seam', async () => {
+      const inbox = fakeInbox()
+      const { editor, steer } = await mount({ inbox, running: true })
+      steer.mockImplementation((message: UserMessage) => { inbox.nextStep.push(message) })
+      ;(editor as MayflyEditor).captureDraft = undefined
+      type(editor, 'plain steer')
+      editor.handleInput(KEY.ctrlS)
+      expect(steer).toHaveBeenCalledOnce()
+      expect(editor.onKey?.(KEY.up)).toBe(true)
+      expect(editor.getText()).toBe('plain steer')
     })
   })
 

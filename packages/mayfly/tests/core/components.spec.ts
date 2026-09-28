@@ -771,6 +771,36 @@ describe('createEditor', () => {
     stop()
   })
 
+  it('captures the submitted buffer and restores its paste markers through the draft seam', () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    const submits: string[] = []
+    editor.onSubmit = text => submits.push(text)
+
+    const pasted = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join('\n')
+    editor.handleInput(`\x1b[200~${pasted}\x1b[201~`)
+    expect(editor.getText()).toBe('[paste #1 +12 lines]')
+
+    // captureDraft snapshots without disturbing the live buffer.
+    const draft = editor.captureDraft!()
+    expect(draft.raw).toBe('[paste #1 +12 lines]')
+    expect(draft.pastes.get(1)).toBe(pasted)
+    expect(editor.getText()).toBe('[paste #1 +12 lines]')
+
+    // The native funnel captures the same draft, then clears the buffer.
+    editor.handleInput('\r')
+    expect(submits).toEqual([pasted])
+    expect(editor.getText()).toBe('')
+    expect(editor.consumeSubmittedDraft!()).toEqual(draft)
+    expect(editor.consumeSubmittedDraft!()).toBeUndefined()
+
+    // Restoring re-arms the paste table so the marker re-expands.
+    editor.restoreSubmittedDraft!(draft)
+    expect(editor.getText()).toBe('[paste #1 +12 lines]')
+    expect(editor.getExpandedText()).toBe(pasted)
+    stop()
+  })
+
   it('aborts stale attempts on mutation, supersession, and barrier replacement', () => {
     const { tui, stop } = bootTui()
     const editor = createService(tui).createEditor()
