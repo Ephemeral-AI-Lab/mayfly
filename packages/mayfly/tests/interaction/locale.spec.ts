@@ -75,4 +75,29 @@ describe('interaction locale lifecycle', () => {
     expect(seen).toHaveLength(before)
     await second.dispose()
   })
+
+  it('keeps the shared catalog alive while any mounter remains loaded', async () => {
+    const ctx = new Context()
+    const provider = await ctx.plugin(localePlugin('zh'))
+    await settle()
+    const mounter = () => ({
+      name: 'test-interaction-mounter',
+      apply(owner: Context) { mountInteractionLocale(owner) },
+    })
+    const first = await ctx.plugin(mounter())
+    const second = await ctx.plugin(mounter())
+    await settle()
+    const t = interactionTranslator(ctx)
+    expect(t('Language')).toBe('语言')
+    expect(t('run')).toBe('执行')
+
+    await first.dispose()
+    expect(t('Language')).toBe('语言')
+    expect(t('run')).toBe('执行')
+
+    await second.dispose()
+    expect(t('Language')).toBe('Language')
+    expect(t('run')).toBe('run')
+    await provider.dispose()
+  })
 })

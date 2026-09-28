@@ -92,7 +92,9 @@ import {
   ACTION_PAGE_UP,
   ACTION_SHIFT_TAB,
   ACTION_STEER,
+  interactionKeyHint,
 } from './keys.ts'
+import { interactionTranslator } from './locale.ts'
 import { createModelListCache, cycleSessionModel } from './model-commands.ts'
 import { cycleMode } from './mode-commands.ts'
 import { openPermissionPanel } from './permission-panel.ts'
@@ -174,6 +176,7 @@ export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayfl
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
+  const t = interactionTranslator(ctx)
   const screen = ctx.mayflyScreen
   const colors = ctx.mayflyTheme.colors
   const currentAgent = ctx.mayflyCurrentAgent
@@ -485,7 +488,7 @@ export function apply(ctx: Context): void {
     draft.stashHistory(editor.getHistory())
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null) {
-      showFeedback('prompt-submit', 'no active session', 'error')
+      showFeedback('prompt-submit', t('no active session'), 'error')
       return
     }
     const parsed = parseCommand(line)
@@ -556,7 +559,7 @@ export function apply(ctx: Context): void {
         // The fiber may be gone — `/theme` unloads it mid-execution — and
         // the reloaded fiber repaints, so a late notice is moot.
         if (unloaded) return
-        if (execution === undefined) showFeedback('command', `unknown command: ${line}`, 'error')
+        if (execution === undefined) showFeedback('command', t('unknown command: {command}', { command: line }), 'error')
         else if (execution.result.kind === 'error') showFeedback('command', execution.result.text, 'error')
         else if (execution.result.text !== undefined && !QUIET_COMMANDS.has(commandName)) showFeedback('command', execution.result.text, 'info')
       },
@@ -580,7 +583,7 @@ export function apply(ctx: Context): void {
   async function runExternalEditorFlow(): Promise<void> {
     const command = resolveExternalEditorCommand(process.env, currentMayflySettings(ctx).editorCommand)
     if (command === undefined) {
-      showFeedback('external-editor', 'set $VISUAL or $EDITOR to edit drafts externally', 'warning')
+      showFeedback('external-editor', t('set $VISUAL or $EDITOR to edit drafts externally'), 'warning')
       return
     }
     externalEditorRunning = true
@@ -618,7 +621,7 @@ export function apply(ctx: Context): void {
     editor.setText('')
     currentText = ''
     draft.clearDraft()
-    showFeedback('draft', 'draft cleared · ↑ restores', 'info')
+    showFeedback('draft', t('draft cleared · ↑ restores'), 'info')
     refreshHint()
     screen.requestRender()
     return true
@@ -637,8 +640,8 @@ export function apply(ctx: Context): void {
     // sit there looking ignored while it does.
     ctx.mayflyRequests.requestStop()
     showFeedback('interrupt', result.failures.length === 0
-      ? 'interrupt requested'
-      : `interrupt requested with failures: ${result.failures.join('; ')}`, result.failures.length === 0 ? 'info' : 'warning')
+      ? t('interrupt requested')
+      : t('interrupt requested with failures: {failures}', { failures: result.failures.join('; ') }), result.failures.length === 0 ? 'info' : 'warning')
     return true
   }
 
@@ -720,7 +723,7 @@ export function apply(ctx: Context): void {
         return true
       }
       lastInterruptAt = now
-      showFeedback('exit', 'press ctrl+c again to exit', 'warning')
+      showFeedback('exit', t('press ctrl+c again to exit'), 'warning')
       return true
     }
     // Ctrl-S: steer the current turn with the draft — an idle agent starts
@@ -936,7 +939,7 @@ export function apply(ctx: Context): void {
   })
   /* v8 ignore start -- notification is driven by live streaming events */
   ctx.effect(() => ctx.on('mayfly/transcript-content-changed', paused => {
-    if (paused) showFeedback('transcript-follow', 'new messages available · press End to follow', 'info')
+    if (paused) showFeedback('transcript-follow', t('new messages available · press {key} to follow', { key: interactionKeyHint(ctx.mayflyKeymap, ACTION_END, 'End') }), 'info')
     else notificationOwner.clear('transcript-follow')
   }))
   /* v8 ignore stop */

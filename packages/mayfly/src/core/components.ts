@@ -423,7 +423,7 @@ class EditorAdapter implements MayflyEditor {
       row = highlightLeadingSlashToken(row, this.chrome.slashTokenPaint) ?? row
     }
     if (this.ghostHint !== undefined && this.cursorAtInputEnd()) {
-      row = injectGhostHint(row, this.ghostHint, this.editor.getText().length, renderWidth, this.chrome.ghostHintPaint)
+      row = injectGhostHint(row, this.ghostHint, this.editor.getText(), renderWidth, this.chrome.ghostHintPaint)
     }
     // The bash `!` shares the border hue so the mode reads as one unit; the
     // neutral `>` stays in the terminal's default foreground (kimi rule).

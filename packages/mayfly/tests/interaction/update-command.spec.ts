@@ -40,6 +40,7 @@ import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/u
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
+import { COMMON_LOCALE } from '../../src/frontend/common-locale.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 import { checkCooldown, checkHostLine, repairRecipe } from '../../src/interaction/updater/preflight.ts'
 import { classifyInstallFailure } from '../../src/interaction/updater/swap.ts'
@@ -260,6 +261,7 @@ describe('/update guards', () => {
     const world = await mountWorld({ agentStatus: 'running' })
     const locale = new MayflyLocaleService(world.ctx, { systemLocale: 'zh' })
     locale.register('interaction', INTERACTION_LOCALE)
+    locale.register('common', COMMON_LOCALE)
     const t = locale.bind('interaction')
     expect(await world.run()).toEqual({ kind: 'error', text: '代理正在运行，请等当前轮次结束后再更新' })
     const state = createUpdateProgressState()

@@ -54,7 +54,7 @@ it('lists native summaries, searches explicitly, and preserves title filtering o
   const bench = await setup()
   expect(await bench.open()).toEqual({ kind: 'success' })
   expect(JSON.stringify(bench.model().node)).toContain('Current')
-  expect(JSON.stringify(bench.model().node)).toContain('Reminders')
+  expect(JSON.stringify(bench.model().node)).toContain('reminders')
   expect(bench.controller.search).not.toHaveBeenCalled()
   await bench.act('search', false)
   expect(bench.controller.search).not.toHaveBeenCalled()
@@ -204,7 +204,7 @@ it('lists sessions without reminder badges when the Host schedule service is abs
   const bench = await setup()
   bench.ctx.set('schedule', undefined as never)
   expect(await bench.open()).toEqual({ kind: 'success' })
-  expect(JSON.stringify(bench.model().node)).not.toContain('Reminders')
+  expect(JSON.stringify(bench.model().node)).not.toContain('reminders')
 })
 
 it('lists sessions without headers when the query service is absent', async () => {
@@ -222,7 +222,7 @@ it('degrades reminder badges when the Host catalog fails', async () => {
   schedule.catalog.mockRejectedValueOnce(new Error('catalog down'))
   expect(await bench.open()).toEqual({ kind: 'success' })
   expect(warn).toHaveBeenCalledWith(expect.stringContaining('catalog down'))
-  expect(JSON.stringify(bench.model().node)).not.toContain('Reminders')
+  expect(JSON.stringify(bench.model().node)).not.toContain('reminders')
 })
 
 it('stays quiet when the reminder catalog fails after the signal aborted', async () => {

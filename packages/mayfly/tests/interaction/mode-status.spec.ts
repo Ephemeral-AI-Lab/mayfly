@@ -63,7 +63,7 @@ describe('mayfly-status-mode', () => {
     expect(active.entry()).toMatchObject({ node: { kind: 'text', content: 'plan', tone: 'accent' } })
 
     const pending = await mount({ active: true, pending: true })
-    expect(pending.entry()?.node).toMatchObject({ content: 'plan...' })
+    expect(pending.entry()?.node).toMatchObject({ content: 'plan…' })
 
     normal.permissions.set(normal.agent, 'danger-full-access')
     normal.agent.session.append('permission/preset', { preset: 'danger-full-access' })
@@ -76,7 +76,7 @@ describe('mayfly-status-mode', () => {
     world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
     const node = world.entry()!.node!
     expect(node).toEqual({ kind: 'stack', direction: 'row', gap: 1, children: [
-      { node: { kind: 'text', content: pending ? 'plan...' : 'plan', tone: 'accent' } },
+      { node: { kind: 'text', content: pending ? 'plan…' : 'plan', tone: 'accent' } },
       { node: { kind: 'text', content: 'yolo', tone: 'warning' } },
     ] })
     const identity = (text: string) => text
@@ -88,12 +88,12 @@ describe('mayfly-status-mode', () => {
     })
     expect(compiled.ok).toBe(true)
     if (!compiled.ok) throw new Error('mode status compilation failed')
-    expect(stripVTControlCharacters(compiled.value.component.render(20).join('')).trim()).toBe(pending ? 'plan... yolo' : 'plan yolo')
+    expect(stripVTControlCharacters(compiled.value.component.render(20).join('')).trim()).toBe(pending ? 'plan… yolo' : 'plan yolo')
     for (const width of SCAN_WIDTHS) expectLinesFit('plan-yolo-status', compiled.value.component.render(width), width)
 
     world.states.set(world.agent, { active: false, pending: true })
     world.agent.session.append('plan/mode', { active: false })
-    expect(world.entry()?.node).toMatchObject({ children: [{ node: { content: 'plan...' } }, { node: { content: 'yolo' } }] })
+    expect(world.entry()?.node).toMatchObject({ children: [{ node: { content: 'plan…' } }, { node: { content: 'yolo' } }] })
     world.states.set(world.agent, { active: false })
     world.agent.session.append('plan/mode', { active: false })
     expect(world.entry()?.node).toEqual({ kind: 'text', content: 'yolo', tone: 'warning' })

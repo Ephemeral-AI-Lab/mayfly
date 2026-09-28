@@ -5,6 +5,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { interactionTranslator } from './locale.ts'
 import type {} from '../app/index.ts'
 
 export const name = 'mayfly-pane-queue'
@@ -23,12 +24,13 @@ function messageText(message: UserMessage): string {
 
 /** Register one ordinary bottom pane over the selected Agent's inbox. */
 export function apply(ctx: Context): void {
+  const t = interactionTranslator(ctx)
   const render = (): MayflyUiNode | null => {
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null || (agent.inbox.nextTurn.length === 0 && agent.inbox.nextStep.length === 0)) return null
     const rows = [
-      ...agent.inbox.nextTurn.filter(message => message.source.kind === 'user').map(message => `Queued: ${messageText(message)}`),
-      ...agent.inbox.nextStep.filter(message => message.source.kind === 'user').map(message => `Steer: ${messageText(message)}`),
+      ...agent.inbox.nextTurn.filter(message => message.source.kind === 'user').map(message => t('Queued: {text}', { text: messageText(message) })),
+      ...agent.inbox.nextStep.filter(message => message.source.kind === 'user').map(message => t('Steer: {text}', { text: messageText(message) })),
     ]
     if (rows.length === 0) return null
     return {

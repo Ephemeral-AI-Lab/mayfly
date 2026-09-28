@@ -23,6 +23,7 @@ import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
+import { COMMON_LOCALE } from '../../src/frontend/common-locale.ts'
 import { registerTempDirCleanup } from '../core/temp-dir.ts'
 import { renderRequest } from './request-fixture.ts'
 
@@ -75,6 +76,7 @@ async function mount(options: {
     ? undefined
     : new MayflyLocaleService(ctx, { systemLocale: options.locale })
   locale?.register('interaction', INTERACTION_LOCALE)
+  locale?.register('common', COMMON_LOCALE)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
   if (options.appExit !== undefined) ctx.provide('appExit', options.appExit)

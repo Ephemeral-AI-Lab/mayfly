@@ -77,7 +77,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
         { kind: 'secret' as const, id: 'key', label: t('API key'), value: '', required: true },
       ] }),
       ...known === undefined ? [ui.actions({ id: 'connection-actions', items: [
-        { id: 'next', label: t('Next'), intent: 'primary', read: [address('connection')], disabled: created !== undefined },
+        { id: 'next', label: t('Next step'), intent: 'primary', read: [address('connection')], disabled: created !== undefined },
       ] })] : [],
     ], { gap: 1 }), { tab: { controlId: 'provider-tabs', itemId: 'connection' } }),
     ...known !== undefined ? [] : [ui.child(ui.stack.column([

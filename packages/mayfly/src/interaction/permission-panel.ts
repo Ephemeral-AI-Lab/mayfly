@@ -73,19 +73,19 @@ const CUSTOM_BLOCKED = 'custom is the derived state — pick a preset'
  * @param ctx - plugin context (`commands` via the calling plugin).
  */
 export function openPermissionPanel(ctx: Context): void {
+  const t = interactionTranslator(ctx)
   const notifications = createInteractionNotificationOwner(ctx, 'mayfly.permission', 'permission')
   const presets = ctx.get('permissionPresets') as PermissionPresetsService | undefined
   if (presets === undefined) return
   const overlays = ctx.get('mayflyOverlays')
   if (overlays === undefined) {
-    notifications.report('open', { message: 'permission picker is unavailable: the Mayfly UI registry is not mounted', severity: 'error' })
+    notifications.report('open', { message: t('permission picker is unavailable: the Mayfly UI registry is not mounted'), severity: 'error' })
     return
   }
   const currentAgents = ctx.get('mayflyCurrentAgent')
   if (currentAgents === undefined) return
   const agent = currentAgents.current()
   if (agent === null) return
-  const t = interactionTranslator(ctx)
   const current = presets.current(agent.session)
   const rows: MayflyListItem[] = presets.names.map(name => {
     const spec = presets.resolve(name)
@@ -113,7 +113,7 @@ export function openPermissionPanel(ctx: Context): void {
     void ctx.commands.execute(agent, `/permission ${name}`, [], new AbortController().signal).then(
       execution => {
         if (execution === undefined) {
-          notifications.report('dispatch', { message: 'permission command is unavailable', severity: 'error' })
+          notifications.report('dispatch', { message: t('permission command is unavailable'), severity: 'error' })
           return
         }
         const { result } = execution
@@ -121,7 +121,7 @@ export function openPermissionPanel(ctx: Context): void {
         notifications.report('dispatch', { message: result.text, severity: result.kind === 'error' ? 'error' : 'success' })
       },
       error => {
-        notifications.report('dispatch', { message: `permission dispatch failed: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' })
+        notifications.report('dispatch', { message: t('permission dispatch failed: {error}', { error: error instanceof Error ? error.message : String(error) }), severity: 'error' })
       },
     )
   }

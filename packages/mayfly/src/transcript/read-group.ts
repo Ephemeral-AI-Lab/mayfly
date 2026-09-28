@@ -144,15 +144,16 @@ export class ReadGroupComponent implements MayflyComponent {
     const pending = this.closed ? 0 : unsettled
     const failed = reads.filter(read => read.state === 'error').length
     const bold = (text: string): string => components.strong(String(text))
+    const one = files === 1
     const label = pending > 0
-      ? bold(colors.primary(`Reading ${String(files)} ${files === 1 ? 'file' : 'files'}…`))
+      ? bold(colors.primary(this.t(one ? 'Reading {count} file…' : 'Reading {count} files…', { count: files })))
       : failed === reads.length
-        ? bold(colors.error(`Read ${String(files)} ${files === 1 ? 'file' : 'files'} · failed`))
-        : bold(colors.primary(`Read ${String(files)} ${files === 1 ? 'file' : 'files'}`))
+        ? bold(colors.error(this.t(one ? 'Read {count} file · failed' : 'Read {count} files · failed', { count: files })))
+        : bold(colors.primary(this.t(one ? 'Read {count} file' : 'Read {count} files', { count: files })))
     let header = `${String(pending > 0 ? colors.text('● ') : failed === reads.length ? colors.error('✗ ') : failed > 0 ? colors.warning('◐ ') : colors.success('✓ '))}${String(label)}`
-    if (reads.length > files) header += colors.muted(` · ${String(reads.length)} reads`)
-    if (failed > 0 && failed < reads.length) header += colors.error(` · ${String(failed)} failed`)
-    if (this.closed && unsettled > 0) header += colors.muted(` · ${String(unsettled)} cancelled`)
+    if (reads.length > files) header += colors.muted(` · ${this.t('{count} reads', { count: reads.length })}`)
+    if (failed > 0 && failed < reads.length) header += colors.error(` · ${this.t('{count} failed', { count: failed })}`)
+    if (this.closed && unsettled > 0) header += colors.muted(` · ${String(unsettled)} ${this.t('cancelled')}`)
     return components.truncateToWidth(header, width)
   }
 

@@ -61,12 +61,12 @@ function strike(text: string): string {
 
 /** The folded view's footer (identity colors: the muted paint vanishes). */
 function foldFooter(hidden: number, distribution = ''): string {
-  return `  … +${hidden} more${distribution.length > 0 ? ` (${distribution})` : ''} · ctrl+t to expand`
+  return `  … +${hidden} more${distribution.length > 0 ? ` (${distribution})` : ''} · Ctrl+T to expand`
 }
 
 /** The expanded view's footer. */
 function allFooter(total: number): string {
-  return `  all ${total} items · ctrl+t to collapse`
+  return `  all ${total} items · Ctrl+T to collapse`
 }
 
 describe('selectVisibleTodos', () => {

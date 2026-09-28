@@ -70,21 +70,21 @@ export function apply(ctx: Context): void {
   function rewindSession(): CommandResult {
     const active = ctx.mayflyCurrentAgent.primary()
     ctx.mayflyCurrentAgent.closeAuxiliary()
-    if (active === null) return { kind: 'error', text: 'no active session' }
-    if (active.status !== 'idle') return { kind: 'error', text: 'cannot rewind while the agent is running' }
+    if (active === null) return { kind: 'error', text: t('no active session') }
+    if (active.status !== 'idle') return { kind: 'error', text: t('cannot rewind while the agent is running') }
     const candidates = rewindCandidates(active.session.snapshotEvents())
-    if (candidates.length === 0) return { kind: 'success', text: 'no user turns to rewind' }
+    if (candidates.length === 0) return { kind: 'success', text: t('no user turns to rewind') }
     const first = candidates[0]!
     const id = 'mayfly.rewind'
-    openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: 'Rewind current session', scope: { kind: 'session', sessionId: active.id }, onEvent: { action: event => {
+    openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Rewind current session'), scope: { kind: 'session', sessionId: active.id }, onEvent: { action: event => {
       if (event.kind === 'selection-accept' && event.selectedIds[0] !== undefined) {
         ctx.emit('mayfly/request-rewind', String(active.id), Number(event.selectedIds[0]))
         return { kind: 'completed' as const, dismiss: true }
       }
       return { kind: 'completed' as const }
-    } } }, ui.surface({ chrome: 'overlay', title: 'Rewind current session', child: ui.stack.column([
-      ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: [String(first.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: `Turn ${String(candidate.turn)} · ${candidate.prompt}`, detail: `${candidate.response === undefined ? '' : `↳ ${candidate.response} · `}rewinds ${String(candidate.discarded)} ${candidate.discarded === 1 ? 'message' : 'messages'}` })) }),
-      ui.text('The original session stays available in /sessions.', { tone: 'muted' }),
+    } } }, ui.surface({ chrome: 'overlay', title: t('Rewind current session'), child: ui.stack.column([
+      ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: [String(first.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: t('Turn {turn} · {prompt}', { turn: candidate.turn, prompt: candidate.prompt }), detail: `${candidate.response === undefined ? '' : `↳ ${candidate.response} · `}${t('rewinds')} ${t(candidate.discarded === 1 ? '{count} message' : '{count} messages', { count: candidate.discarded })}` })) }),
+      ui.text(t('The original session stays available in /sessions.'), { tone: 'muted' }),
     ]) }), { reopen: 'focus' })
     return { kind: 'success' }
   }
@@ -97,7 +97,7 @@ export function apply(ctx: Context): void {
    */
   function showHelp(): CommandResult {
     const keymap = ctx.get('mayflyKeymap')
-    if (keymap === undefined) return { kind: 'error', text: 'help is unavailable: the Mayfly keymap is not mounted' }
+    if (keymap === undefined) return { kind: 'error', text: t('help is unavailable: the Mayfly keymap is not mounted') }
     const sections = (): HelpSection[] => [
       {
         heading: 'Commands',
@@ -150,7 +150,7 @@ export function apply(ctx: Context): void {
         // optional and never an injected dependency.
         const exit = ctx.get('appExit')
         if (exit === undefined) {
-          return { kind: 'error' as const, text: 'exit is unavailable: the launcher provided no appExit hook' }
+          return { kind: 'error' as const, text: t('exit is unavailable: the launcher provided no appExit hook') }
         }
         exit(0)
         return { kind: 'success' as const }
@@ -180,7 +180,7 @@ export function apply(ctx: Context): void {
           if (invocation.signal.aborted) return { kind: 'success' as const }
         }
         ctx.emit('mayfly/request-new', preset === '' ? undefined : preset)
-        return { kind: 'success' as const, text: 'starting a new session' }
+        return { kind: 'success' as const, text: t('starting a new session') }
       },
     })
     // `/clear` is the new-session command's alias (the S27 kimi naming:
@@ -196,10 +196,10 @@ export function apply(ctx: Context): void {
         // the dispatching agent; the app layer operates on the same value.
         const current = ctx.mayflyCurrentAgent.primary()
         if (current !== null && current.status !== 'idle') {
-          return { kind: 'error' as const, text: 'cannot fork while the agent is running' }
+          return { kind: 'error' as const, text: t('cannot fork while the agent is running') }
         }
         ctx.emit('mayfly/request-fork')
-        return { kind: 'success' as const, text: 'forking the current session' }
+        return { kind: 'success' as const, text: t('forking the current session') }
       },
     })
     const rewind = ctx.commands.register({
@@ -217,7 +217,7 @@ export function apply(ctx: Context): void {
         const sessionId = invocation.rawInput.trim()
         if (sessionId.length === 0) return listSessions(invocation.signal)
         ctx.emit('mayfly/request-resume', sessionId)
-        return { kind: 'success' as const, text: `resuming session ${sessionId}` }
+        return { kind: 'success' as const, text: t('resuming session {id}', { id: sessionId }) }
       },
     })
     // `/resume` is the sessions command's alias, not a registration — the

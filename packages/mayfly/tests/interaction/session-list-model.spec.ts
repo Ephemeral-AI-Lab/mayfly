@@ -150,7 +150,7 @@ describe('sessionListItem', () => {
   })
   it('joins status badges and keeps the parent id', () => {
     const item = sessionListItem(facts({ current: true, running: true, archived: true, reminders: true, parentId: 'parent' }), NOW, '/home/dev', t)
-    expect(item.badge).toBe('current · running · archived · Reminders')
+    expect(item.badge).toBe('current · running · archived · reminders')
     expect(item.parentId).toBe('parent')
   })
   it('omits missing span, zero tokens, and an absent path', () => {

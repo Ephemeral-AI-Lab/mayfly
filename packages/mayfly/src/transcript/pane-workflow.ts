@@ -12,8 +12,10 @@ import type {
   WorkflowStopReason,
 } from '@deepseek-ai/dsh-workflow'
 import type { MayflyInlineSpan, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds, hiddenMembersText, selectVisibleMembers } from './agent-presentation.ts'
+import { transcriptTranslator } from './locale.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-workflow'
@@ -68,36 +70,37 @@ export function formatWorkflowElapsed(seconds: number): string {
   return compactElapsedSeconds(seconds)
 }
 
-function phaseSegment(run: WorkflowRunState): string | undefined {
+function phaseSegment(run: WorkflowRunState, t: MayflyTranslate): string | undefined {
   const phases = run.phases
   if (phases === undefined || phases.length === 0 || run.currentPhase === undefined) return undefined
   const index = phases.findIndex(phase => phase.title === run.currentPhase)
   const current = index >= 0
     ? index + 1
     : Math.max(1, run.phasesSeen.filter(title => phases.some(phase => phase.title === title)).length)
-  return `phase ${String(current)}/${String(phases.length)}`
+  return t('phase {current}/{total}', { current, total: phases.length })
 }
 
-function runningHeader(run: WorkflowRunState, now: number): MayflyUiNode {
+function runningHeader(run: WorkflowRunState, now: number, t: MayflyTranslate): MayflyUiNode {
   const running = run.agents.filter(agent => agent.outcome === undefined).length
+  const runningText = t('{count} running', { count: running })
   const parts = [
-    phaseSegment(run),
-    `${String(running)} running`,
+    phaseSegment(run, t),
+    runningText,
     formatWorkflowElapsed(Math.max(0, Math.floor((now - run.startedAt) / 1000))),
   ].filter((value): value is string => value !== undefined)
   const spans: MayflyInlineSpan[] = [
-    { text: `  Workflow ${run.name}`, tone: 'accent', styles: ['strong'] },
+    { text: `  ${t('Workflow {name}', { name: run.name })}`, tone: 'accent', styles: ['strong'] },
     { text: '  ', tone: 'muted' },
   ]
   parts.forEach((part, index) => {
     if (index > 0) spans.push({ text: ' · ', tone: 'muted' })
-    if (part === `${String(running)} running` && running > 0) spans.push({ text: '● ', tone: 'accent', styles: ['strong'] })
+    if (part === runningText && running > 0) spans.push({ text: '● ', tone: 'accent', styles: ['strong'] })
     spans.push({ text: part, tone: 'muted' })
   })
   return { kind: 'rich-text', spans, overflow: 'truncate' }
 }
 
-function memberNode(agent: WorkflowAgentRow, last: boolean): MayflyUiNode {
+function memberNode(agent: WorkflowAgentRow, last: boolean, t: MayflyTranslate): MayflyUiNode {
   const phase = agentPhasePresentation(agent.outcome ?? 'running')
   const marker = {
     text: `${phase.marker} `,
@@ -110,14 +113,14 @@ function memberNode(agent: WorkflowAgentRow, last: boolean): MayflyUiNode {
       { text: `  ${agentTreeBranch(last)} `, tone: 'muted' },
       marker,
       { text: agent.label },
-      { text: ` — agent #${String(agent.seq)}`, tone: 'muted' },
+      { text: ` — ${t('agent #{seq}', { seq: agent.seq })}`, tone: 'muted' },
       ...(agent.phase === undefined ? [] : [{ text: ` · ${agent.phase}`, tone: 'muted' as const }]),
     ],
     overflow: 'truncate',
   }
 }
 
-function settledNode(run: WorkflowRunState): MayflyUiNode {
+function settledNode(run: WorkflowRunState, t: MayflyTranslate): MayflyUiNode {
   const reason = run.stopReason!
   const marker = reason === 'completed'
     ? { text: '✓ ', tone: 'success' as const }
@@ -131,29 +134,30 @@ function settledNode(run: WorkflowRunState): MayflyUiNode {
     spans: [
       { text: '  ' },
       marker,
-      { text: `Workflow ${run.name}`, tone: 'accent', styles: ['strong'] },
-      { text: ` — ${reason} · ${String(count)} agent${count === 1 ? '' : 's'} · ${elapsed}`, tone: 'muted' },
+      { text: t('Workflow {name}', { name: run.name }), tone: 'accent', styles: ['strong'] },
+      { text: ' — ', tone: 'muted' },
+      { text: t(count === 1 ? '{reason} · {count} agent · {elapsed}' : '{reason} · {count} agents · {elapsed}', { reason, count, elapsed }), tone: 'muted' },
     ],
     overflow: 'truncate',
   }
 }
 
 /** Build the canonical pane tree for attributed runs. */
-export function workflowNode(runs: readonly WorkflowRunState[], now: number): MayflyUiNode | null {
+export function workflowNode(runs: readonly WorkflowRunState[], now: number, t: MayflyTranslate = interpolateLocaleMessage): MayflyUiNode | null {
   if (runs.length === 0) return null
   const children: { readonly node: MayflyUiNode }[] = []
   for (const run of runs) {
     children.push({ node: { kind: 'divider' } })
     if (run.stopReason !== undefined) {
-      children.push({ node: settledNode(run) })
+      children.push({ node: settledNode(run, t) })
       continue
     }
-    children.push({ node: runningHeader(run, now) })
+    children.push({ node: runningHeader(run, now, t) })
     // A crowded run shows its running agents first, then the latest finished.
     const { shown, hidden } = selectVisibleMembers(run.agents.map(agent => ({
       agent, phaseLabel: agentPhasePresentation(agent.outcome ?? 'running').label,
     })))
-    shown.forEach(({ agent }, index) => children.push({ node: memberNode(agent, hidden.length === 0 && index === shown.length - 1) }))
+    shown.forEach(({ agent }, index) => children.push({ node: memberNode(agent, hidden.length === 0 && index === shown.length - 1, t) }))
     if (hidden.length > 0) children.push({ node: { kind: 'text', content: hiddenMembersText(hidden), tone: 'muted', overflow: 'truncate' } })
   }
   return { kind: 'stack', direction: 'column', gap: 0, children }
@@ -161,6 +165,7 @@ export function workflowNode(runs: readonly WorkflowRunState[], now: number): Ma
 
 /** Mount the native workflow event fold as a direct bottom-pane contribution. */
 export function apply(ctx: Context): void {
+  const t = transcriptTranslator(ctx, 'transcript')
   const runs = new Map<string, WorkflowRunState>()
   let tickHandle: ReturnType<typeof setInterval> | undefined
   let pane: ReturnType<typeof ctx.mayflyPanes.register>
@@ -184,7 +189,7 @@ export function apply(ctx: Context): void {
   // The one-second tick republishes (and recompiles) only a changed pane.
   let published: string | undefined
   const refresh = (): void => {
-    const node = workflowNode(attributedRuns(), workflowPaneTimers.now())
+    const node = workflowNode(attributedRuns(), workflowPaneTimers.now(), t)
     const signature = JSON.stringify(node)
     if (signature === published) return
     published = signature
@@ -292,7 +297,7 @@ export function apply(ctx: Context): void {
     ensureTick()
   })
 
-  const initial = workflowNode(attributedRuns(), workflowPaneTimers.now())
+  const initial = workflowNode(attributedRuns(), workflowPaneTimers.now(), t)
   published = JSON.stringify(initial)
   pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.workflow',

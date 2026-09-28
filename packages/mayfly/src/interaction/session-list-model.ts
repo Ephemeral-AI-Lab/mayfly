@@ -154,7 +154,7 @@ export function sessionListItem(facts: SessionListFacts, now: number, home: stri
     ...(facts.current ? [t('current')] : []),
     ...(facts.running ? [t('running')] : []),
     ...(facts.archived ? [t('archived')] : []),
-    ...(facts.reminders ? [t('Reminders')] : []),
+    ...(facts.reminders ? [t('reminders')] : []),
   ]
   const label = sessionLabel(facts, t)
   return {

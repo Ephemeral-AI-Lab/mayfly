@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type { PermissionPresetsService } from './permission-panel.ts'
 import type { InteractionFeedbackReporter } from './notifications.ts'
 import { getSharedEditor } from './editor-instance.ts'
+import { interactionTranslator } from './locale.ts'
 
 /** Independent native state for plan switching and status display. */
 export interface MayflySessionModeSnapshot {
@@ -42,15 +43,16 @@ function showResult(report: InteractionFeedbackReporter, result: { readonly kind
 
 /** Toggle only the current Agent's plan selection, preserving permissions. */
 export async function cycleMode(ctx: Context, reporter?: InteractionFeedbackReporter): Promise<void> {
+  const t = interactionTranslator(ctx)
   const report = reporter ?? getSharedEditor(ctx)?.report ?? (() => {})
   const agent = ctx.mayflyCurrentAgent.current()
   if (agent === null) {
-    report('mode', { message: 'no session is live yet', severity: 'error' })
+    report('mode', { message: t('no session is live yet'), severity: 'error' })
     return
   }
   const plan = ctx.sessionProjections.snapshot(agent.session, ['plan']).values.plan
   if (plan === undefined) {
-    report('mode', { message: 'plan mode is unavailable', severity: 'error' })
+    report('mode', { message: t('plan mode is unavailable'), severity: 'error' })
     return
   }
   // The wire projection's pending flag means the selected value is opposite active.
@@ -58,7 +60,7 @@ export async function cycleMode(ctx: Context, reporter?: InteractionFeedbackRepo
   try {
     const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
     if (execution === undefined) {
-      report('mode', { message: 'mode command is unavailable: /plan', severity: 'error' })
+      report('mode', { message: t('mode command is unavailable: /plan'), severity: 'error' })
       return
     }
     showResult(report, execution.result)

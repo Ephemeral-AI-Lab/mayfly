@@ -26,9 +26,10 @@ import {
 import { transcriptTranslator } from '../transcript/locale.ts'
 import { TranscriptPresentationPolicy } from '../transcript/presentation-policy.ts'
 import type { ToolPresentationSource } from '../transcript/present.ts'
-import type { TranscriptModel } from '../frontend/index.ts'
+import type { TranscriptModel, MayflyTranslate } from '../frontend/index.ts'
 import { watchAssistantStream } from '../frontend/assistant-stream.ts'
 import { ACTION_CANCEL, ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from './keys.ts'
+import { interactionTranslator } from './locale.ts'
 
 type SubagentView = Extract<MayflyAuxiliaryView, { readonly kind: 'subagent' }>
 
@@ -39,6 +40,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
   ], false, 1)
   private generation = 1
   private disposed = false
+  private readonly t: MayflyTranslate
   private readonly abort = new AbortController()
   private readonly source: OfficialConversationModelSource
   private readonly body: TranscriptModelComponent
@@ -53,6 +55,8 @@ export class SessionTranscriptPanel implements MayflyFocusable {
     onClose: () => void,
   ) {
     const screen = ctx.mayflyScreen
+    const t = interactionTranslator(ctx)
+    this.t = t
     const childAgent = ctx.agents.get(SessionId(target.sessionId))
     const live = childAgent?.session ?? [...ctx.sessions.list()].find(session => String(session.id) === target.sessionId)
     const tools: ToolPresentationSource = { get: name => ctx.tools.get(name, childAgent) }
@@ -88,10 +92,10 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       colors: ctx.mayflyTheme.colors,
       body: this.body,
       keymap: ctx.mayflyKeymap,
-      title: () => `Subagent · ${target.label}`,
-      hint: () => target.mode === 'continuable' ? 'continuable · i to reply' : 'one-shot · read-only',
+      title: () => t('Subagent · {label}', { label: target.label }),
+      hint: () => target.mode === 'continuable' ? t('continuable · i to reply') : t('one-shot · read-only'),
       footer: () => [
-        `${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} toggle · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} close · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CANCEL, 'Esc')} close`,
+        `${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} ${t('toggle')} · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} ${t('close')} · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CANCEL, 'Esc')} ${t('close')}`,
       ],
       onClose,
     })
@@ -138,7 +142,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
   private async loadCold(tools: ToolPresentationSource): Promise<void> {
     const controller = this.ctx.get('sessionController')
     if (controller === undefined) {
-      this.fail('the session controller is unavailable')
+      this.fail(this.t('the session controller is unavailable'))
       return
     }
     try {
@@ -148,7 +152,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
         if (frame.type !== 'snapshot') continue
         const parsed = conversationProjectionSchema.safeParse(frame.projections.values['mayflyConversation'])
         if (!parsed.success) {
-          this.fail('the stored subagent conversation is unavailable')
+          this.fail(this.t('the stored subagent conversation is unavailable'))
           return
         }
         this.generation += 1
@@ -159,14 +163,14 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       }
     } catch (error) {
       if (this.disposed) return
-      this.fail(`could not read the subagent conversation: ${error instanceof Error ? error.message : String(error)}`)
+      this.fail(this.t('could not read the subagent conversation: {error}', { error: error instanceof Error ? error.message : String(error) }))
     }
   }
 
   private fail(message: string): void {
     this.generation += 1
     this.model = createTranscriptModel('readonly-subagent', [
-      { kind: 'empty', title: 'conversation unavailable', description: message },
+      { kind: 'empty', title: this.t('conversation unavailable'), description: message },
     ], false, this.generation)
     this.shell.invalidate()
   }

@@ -173,8 +173,9 @@ async function providerModelIds(
     && Date.now() - cached.fetchedAt < MODEL_CACHE_TTL_MS) {
     return { ids: cached.ids }
   }
+  const t = interactionTranslator(ctx)
   const llm = ctx.get('llm')
-  if (llm === undefined) return { error: 'the llm service is unavailable' }
+  if (llm === undefined) return { error: t('the llm service is unavailable') }
   try {
     const models = await llm.listModels(provider)
     const ids = models.map(model => model.id)
@@ -257,8 +258,9 @@ async function catalogRows(
   signal: AbortSignal,
   filterProvider?: string,
 ): Promise<CatalogResult> {
+  const t = interactionTranslator(ctx)
   const llm = ctx.get('llm')
-  if (llm === undefined) return { error: 'the llm service is unavailable' }
+  if (llm === undefined) return { error: t('the llm service is unavailable') }
   const providers = llm.listProviders()
   /* v8 ignore next 3 -- callers pass routes taken from listProviders; the
      guard only trips when a route vanishes between the listing and here */
@@ -377,11 +379,12 @@ async function openPickerOverlay(
 
 /** Open a native-Agent-scoped catalog using the shared collection and form controls. */
 export async function openModelPicker(ctx: Context, signal: AbortSignal, filterProvider?: string): Promise<CommandResult> {
+  const t = interactionTranslator(ctx)
   const agent = ctx.get('mayflyCurrentAgent')?.current()
   const registry = ctx.get('mayflyOverlays')
   const selection = readSelection(ctx)
-  if (agent == null || 'error' in selection) return { kind: 'error', text: 'no session is live yet' }
-  if (registry === undefined) return { kind: 'error', text: 'model picker is unavailable' }
+  if (agent == null || 'error' in selection) return { kind: 'error', text: t('no session is live yet') }
+  if (registry === undefined) return { kind: 'error', text: t('model picker is unavailable') }
   if (registry.focus('mayfly.models')) return { kind: 'success' }
   const lifetime = new AbortController()
   const combined = AbortSignal.any([signal, lifetime.signal])
@@ -398,7 +401,6 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
     const catalog = await catalogRows(ctx, combined, filterProvider)
     if (combined.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { kind: 'success' }
     if ('error' in catalog) return { kind: 'error', text: catalog.error }
-    const t = interactionTranslator(ctx)
     const byId = new Map(catalog.items.map(item => [JSON.stringify([item.provider, item.id]), item]))
     const rows = catalog.items.map(item => ({
       id: JSON.stringify([item.provider, item.id]), label: `${item.providerLabel}/${item.name}`, group: item.providerLabel,
@@ -482,11 +484,12 @@ export function registerModelCommands(ctx: Context): () => void {
    * @returns the command outcome.
    */
   async function switchEffort(rawInput: string, signal: AbortSignal): Promise<CommandResult> {
+    const t = interactionTranslator(ctx)
     const selection = readSelection(ctx)
     if ('error' in selection) return { kind: 'error', text: selection.error }
     const current = selection.read
     const llm = ctx.get('llm')
-    if (llm === undefined) return { kind: 'error', text: 'the llm service is unavailable' }
+    if (llm === undefined) return { kind: 'error', text: t('the llm service is unavailable') }
     let info
     try {
       info = await llm.resolveModelInfo(current.provider, current.model, signal)
@@ -501,8 +504,7 @@ export function registerModelCommands(ctx: Context): () => void {
     const argument = rawInput.trim()
     if (argument === '') {
       const agent = ctx.get('mayflyCurrentAgent')?.current()
-      if (agent == null) return { kind: 'error', text: 'no session is live yet' }
-      const t = interactionTranslator(ctx)
+      if (agent == null) return { kind: 'error', text: t('no session is live yet') }
       const activeEffort = current.reasoningEffort === undefined ? 'default' : String(current.reasoningEffort)
       const items: MayflyListItem[] = [
         { id: 'default', label: t('Provider default'), ...(activeEffort === 'default' ? { badge: t('current') } : {}) },
@@ -513,7 +515,7 @@ export function registerModelCommands(ctx: Context): () => void {
           const effort = items.find(item => item.id === selectedId)
           return commitPickerRow(scope, effort === undefined ? undefined : { provider: current.provider, providerLabel: providerDisplayName(llm, current.provider), id: current.model, name: current.model }, effort?.id, eventSignal, t)
         })
-      return opened !== undefined ? { kind: 'success' } : { kind: 'error', text: 'model picker is unavailable' }
+      return opened !== undefined ? { kind: 'success' } : { kind: 'error', text: t('model picker is unavailable') }
     }
     if (argument === 'default') {
       const result = await commitModelSelection(

@@ -9,9 +9,11 @@ import {
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { matchesKey, type KeyId } from '@earendil-works/pi-tui'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
+import { renderOverflowRow } from './ui-patterns.ts'
 import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
@@ -135,7 +137,7 @@ class PaneComponent implements MayflyFocusable {
   /** The first rendered row is a plain rule the bottom lane may share. */
   leadingRule = false
 
-  constructor(private readonly colors: MayflySemanticColors) {}
+  constructor(private readonly colors: MayflySemanticColors, private readonly translate: MayflyTranslate) {}
 
   get focused(): boolean { return this.live && this.focusedValue }
   set focused(value: boolean) {
@@ -165,7 +167,7 @@ class PaneComponent implements MayflyFocusable {
   }
   /** The muted row the bottom lane paints in place of `hidden` cut rows. */
   renderOverflow(hidden: number): string {
-    return this.colors.textMuted(`  … +${String(hidden)} more rows`)
+    return this.colors.textMuted(renderOverflowRow(hidden, this.translate))
   }
   render(width: number): string[] { return this.live ? this.targetValue!.component.render(width) : [] }
   invalidate(): void { if (this.live) this.targetValue?.component.invalidate() }
@@ -339,7 +341,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction), component: new PaneComponent(ctx.mayflyTheme.colors), registration: undefined, renderedRevision: -1 }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
     schedulePane(record)
   }

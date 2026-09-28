@@ -1518,7 +1518,7 @@ describe('compileMayflyUiNode', () => {
     const interval = vi.spyOn(globalThis, 'setInterval')
     try {
       const loader = compiled(ui.loader({ message: 'Loading', variant: 'braille', elapsedMs: 10 }), fixture().options)
-      expect(loader.component.render(20)).toEqual(['⠋ Loading 10ms'])
+      expect(loader.component.render(20)).toEqual(['⠋ Loading 0s'])
       loader.component.invalidate()
       expect(timeout).not.toHaveBeenCalled()
       expect(interval).not.toHaveBeenCalled()

@@ -16,6 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { interactionTranslator } from './locale.ts'
 
 /**
  * The canned exploration prompt `/init` submits as a follow-up turn: the
@@ -43,13 +44,14 @@ const INIT_PROMPT = [
  * @returns the registration disposer.
  */
 export function registerInitCommand(ctx: Context): () => void {
+  const t = interactionTranslator(ctx)
   return ctx.commands.register({
     name: 'init',
     description: 'Analyze the codebase and write AGENTS.md',
     handler: (): CommandResult => {
       const agent = ctx.mayflyCurrentAgent.current()
       if (agent === null) {
-        return { kind: 'error', text: 'no active session' }
+        return { kind: 'error', text: t('no active session') }
       }
       if (agent.status !== 'idle') {
         return { kind: 'error', text: 'cannot run /init while the agent is running' }
