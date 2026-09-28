@@ -436,6 +436,20 @@ describe('mayfly-pane-activity', () => {
     await dispose()
   })
 
+  it('lets streamed output counters ride the spinner tick instead of every delta', async () => {
+    const agent = runningAgent(fakeAgent([]))
+    const { ctx, screen, timers, dispose } = await boot(agent)
+    emit2(ctx, agent, textDelta(1, 1, 'x'.repeat(40)))
+    expect(screen.paneLines()[0]).toContain('↓10')
+    emit2(ctx, agent, textDelta(1, 1, 'y'.repeat(80)))
+    // The row keeps its last counter until the running spinner repaints.
+    expect(screen.paneLines()[0]).toContain('↓10')
+    timers.ticks.at(-1)!()
+    await Promise.resolve()
+    expect(screen.paneLines()[0]).toMatch(/↓(20|30) /u)
+    await dispose()
+  })
+
   it('keeps a thinking row while the model reasons, so the dock never collapses', async () => {
     const agent = runningAgent(fakeAgent([]))
     const { ctx, screen, timers, dispose } = await boot(agent)

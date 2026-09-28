@@ -18,6 +18,8 @@
  * expansion persists across writes (kimi `setTodos` semantics) and resets on
  * a session change or a settled list. A list whose every entry is completed
  * closes the pane automatically (the kimi session-event-handler rule).
+ * A current goal rides the title row as its badge, round count, and
+ * objective (one truncated row); only a blocked goal adds its reason row.
  * A session without any `todo/write` renders zero rows, so the pane occupies
  * nothing. A dialog taking the editor slot also hides the pane temporarily,
  * preserving its todo snapshot and expansion choice until the editor returns.
@@ -224,6 +226,8 @@ function titleSpans(goal: GoalProjection | null, interrupted: boolean): readonly
     { text: `${paint.marker} ${badge.phase}`, tone: paint.tone, ...(badge.phase === 'active' ? { styles: ['strong'] as const } : {}) },
     { text: ` · ${badge.goal.roundsStarted}/${badge.goal.goal.maxGoalRounds}`, tone: 'muted' },
     ...stale,
+    // The objective rides the title row (truncated) instead of a row of its own.
+    { text: ` · ${badge.goal.goal.objective}`, tone: 'muted' },
   ]
 }
 
@@ -231,12 +235,9 @@ function titleSpans(goal: GoalProjection | null, interrupted: boolean): readonly
 function todoNode(state: TodoState): MayflyUiNode {
   const children: { readonly node: MayflyUiNode }[] = [
     { node: { kind: 'divider' } },
-    { node: { kind: 'rich-text', spans: titleSpans(state.goal, state.interrupted) } },
+    { node: { kind: 'rich-text', spans: titleSpans(state.goal, state.interrupted), overflow: 'truncate' } },
   ]
   const badge = goalBadge(state.goal)
-  if (badge !== null) {
-    children.push({ node: { kind: 'text', content: `  ${badge.goal.goal.objective}`, tone: 'muted' } })
-  }
   if (badge?.phase === 'blocked') {
     children.push({
       node: {
@@ -245,6 +246,7 @@ function todoNode(state: TodoState): MayflyUiNode {
           { text: '  blocked: ', tone: 'danger' },
           { text: blockedReasonText(badge.goal), tone: 'muted' },
         ],
+        overflow: 'truncate',
       },
     })
   }

@@ -30,7 +30,7 @@ import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from
 import { hintRow } from './chrome.ts'
 import { renderChartRows } from './chart-renderer.ts'
 import { ownDataErrorMessage } from './error-message.ts'
-import { paintPluginTone, renderCanonicalView, sanitizePluginText } from './plugin-view.ts'
+import { paintPluginTone, renderCanonicalView, sanitizePluginText, truncatedRow } from './plugin-view.ts'
 import type { MayflyComponent, MayflyComponents, MayflyEditor, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflySemanticColors } from './types.ts'
 import {
   renderActions,
@@ -313,6 +313,8 @@ interface FocusState {
   lastIndex: number
   focused: boolean
   layoutPass: boolean
+  /** The viewport this layout pass last reconciled focus for. */
+  layoutReconciled: MayflyUiViewport | undefined
   controls(): readonly ControlDescriptor[]
   allControls(): readonly ControlDescriptor[]
   emit(event: MayflyUiEvent): void
@@ -327,6 +329,16 @@ interface FocusState {
   setLayoutViewport(viewport: MayflyUiViewport): void
   bindControls(keys: readonly string[], binding: ControlBinding): void
   bindScroll(key: string, scroll: ScrollControl): void
+}
+
+/** Enter a layout pass; its first visible check reconciles focus again. */
+function beginLayoutPass(state: FocusState): void {
+  state.layoutPass = true
+  state.layoutReconciled = undefined
+}
+
+function sameViewport(left: MayflyUiViewport | undefined, right: MayflyUiViewport): boolean {
+  return left?.columns === right.columns && left.rows === right.rows
 }
 
 function safeViewport(getViewport: () => MayflyUiViewport): MayflyUiViewport {
@@ -405,6 +417,22 @@ function staticComponent(render: (width: number) => string[], options: RuntimeCo
     },
     invalidate: () => {},
   }
+}
+
+/**
+ * A static render that depends only on its immutable node and the width.
+ * Layout frames re-render every row on each paint (spinner ticks, scroll
+ * steps); these rows answer from a per-width memo until invalidated.
+ */
+function pureStaticComponent(render: (width: number) => string[], options: RuntimeCompilerOptions): MayflyComponent {
+  let memo: { readonly width: number, readonly rows: string[] } | undefined
+  const component = staticComponent(width => {
+    if (memo?.width === width) return memo.rows
+    const rows = render(width)
+    memo = { width, rows }
+    return rows
+  }, options)
+  return { render: component.render, invalidate: () => { memo = undefined } }
 }
 
 class SemanticScrollView extends ScrollView {
@@ -1040,7 +1068,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       state.bindControls([scopedControlKey('editor', 'editor-control')], { component, axis: 'none' })
       return component
     }
-    case 'text': return staticComponent(width => renderCanonicalView(
+    case 'text': return pureStaticComponent(width => renderCanonicalView(
         node,
         width,
         options.components,
@@ -1050,13 +1078,15 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'fields':
     case 'code':
     case 'diff':
-    case 'sections': return staticComponent(width => renderCanonicalView(
+    case 'sections': return pureStaticComponent(width => renderCanonicalView(
       node as MayflySectionContentNode,
       width,
       options.components,
       options.colors,
     ), options)
-    case 'rich-text': return staticComponent(width => options.components.wrapText(joinSpans(node, options.colors), Math.max(1, width)), options)
+    case 'rich-text': return pureStaticComponent(width => node.overflow === 'truncate'
+      ? [truncatedRow(joinSpans(node, options.colors), width, options.components)]
+      : options.components.wrapText(joinSpans(node, options.colors), Math.max(1, width)), options)
     case 'stack': {
       const stackOptions = {
         ...(node.gap === undefined ? {} : { gap: node.gap }),
@@ -1080,9 +1110,12 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
                 const current = state.layoutPass
                   ? { columns: viewport.width, rows: viewport.height }
                   : safeViewport(options.getViewport)
-                if (state.layoutPass) {
+                // Siblings laid out at the same viewport share one focus
+                // reconciliation per pass instead of one per child.
+                if (state.layoutPass && !sameViewport(state.layoutReconciled, current)) {
                   state.setLayoutViewport(current)
                   reconcile(state)
+                  state.layoutReconciled = current
                 }
                 return conditionMatches(child.when, current) && tabVisible(child, pagePath, options)
               },
@@ -1227,7 +1260,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     }
     case 'progress': return staticComponent(width => renderProgress(node, width, options.colors), options)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
-    case 'divider': return staticComponent(width => renderDivider(node.label, width, options.colors), options)
+    case 'divider': return pureStaticComponent(width => renderDivider(node.label, width, options.colors), options)
     case 'diagram': return diagramComponent(node, options)
     case 'chart': return chartComponent(node, options)
   }
@@ -1423,6 +1456,7 @@ export class MayflyUiSurfaceRuntime {
       lastIndex: 0,
       focused: false,
       layoutPass: false,
+      layoutReconciled: undefined,
       controls: () => this.node === undefined || this.options === undefined ? [] : controlsForNode(this.node, this.options),
       allControls: () => this.node === undefined || this.options === undefined ? [] : controlsForNode(this.node, this.options, '$', true),
       emit: event => {
@@ -1835,7 +1869,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     if (!this.surfaceRuntime.current(this.generation)) return { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
     this.viewport = safeViewport(this.options.getViewport)
     reconcile(this.state)
-    this.state.layoutPass = true
+    beginLayoutPass(this.state)
     return getLayoutNode(this.root) ?? {
       type: 'vstack',
       entries: [{ component: this.root, basis: 'auto', grow: 1, shrink: 1 }],
@@ -1861,7 +1895,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       if (this.state.expandedKey !== undefined && expandedScroll === undefined) this.state.expandedKey = undefined
       if (expandedScroll !== undefined) {
         const viewport = this.viewport
-        this.state.layoutPass = true
+        beginLayoutPass(this.state)
         try {
           const hint = this.hintRowsFor?.(safeWidth) ?? []
           const expandedComponent = expandedScroll as unknown as Component
@@ -1876,7 +1910,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       let rows: string[]
       const constrainedLayout = (): string[] => {
         const viewport = this.viewport
-        this.state.layoutPass = true
+        beginLayoutPass(this.state)
         try { return renderLayoutFrame(this.root, safeWidth, viewport.rows, () => {}).lines }
         finally { this.state.layoutPass = false; this.viewport = viewport }
       }
@@ -2052,7 +2086,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       ? Math.max(1, this.viewport.rows)
       : measuredHeight
     const previousLayoutPass = this.state.layoutPass
-    this.state.layoutPass = true
+    beginLayoutPass(this.state)
     try {
       /* v8 ignore next -- pi-tui does not request repaint during synchronous measurement. */
       const frame = renderLayoutFrame(this.root, width, height, () => {})

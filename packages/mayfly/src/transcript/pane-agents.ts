@@ -25,12 +25,20 @@
  * session rebuilds the settled card from the snapshot with no live overlay
  * — the A+ form — and the pane renders zero rows with no agents.
  *
+ * The pane stays compact when many children run: every row is one
+ * truncated line; more than {@link COMPACT_MEMBER_LIMIT} members list live
+ * members first and fold each activity into its row, and a crowded group
+ * ({@link selectVisibleMembers}) keeps every live member, then the most
+ * recent settled, with a `… +K more` row counting the rest by phase. The
+ * summary counts stay exact.
+ *
  * Publishing is signature-gated: every notification recomputes cheap
  * per-member keys, and `pane.set` only runs when the rendered content
  * actually changed. Structural fields (phases, labels, tool/token counts,
- * activity lines) publish immediately; volatile fields (streamed char
- * counts, elapsed seconds) ride a short tick so a swarm of streaming
- * children cannot publish faster than the cadence.
+ * whether an activity or error line exists) publish immediately; volatile
+ * fields (streamed char counts, elapsed seconds, activity text) ride a short
+ * tick so a swarm of streaming children cannot publish faster than the
+ * cadence.
  *
  * @module @ephemeral-ai/mayfly/transcript/pane-agents
  */
@@ -39,11 +47,19 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { ConversationAgentCall, ConversationFacts } from '../conversation/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
-import { agentCallLabel, agentPhasePresentation, agentTreeBranch, compactElapsedSeconds } from './agent-presentation.ts'
+import {
+  agentCallLabel,
+  agentPhasePresentation,
+  agentTreeBranch,
+  COMPACT_MEMBER_LIMIT,
+  compactElapsedSeconds,
+  hiddenMembersText,
+  selectVisibleMembers,
+} from './agent-presentation.ts'
 import type { AgentLiveLookup, AgentMemberLive } from './agent-group.ts'
 import { trackChildAgentModels } from './child-agent-model.ts'
 import { outputCounter } from './output-rate.ts'
-import { parseToolArguments } from './present.ts'
+import { ellipsize, parseToolArguments } from './present.ts'
 import { formatTokens } from './status-context.ts'
 import type { TranscriptToolItem } from './types.ts'
 
@@ -58,6 +74,9 @@ const WAITING_HOLD_MS = 1000
 
 /** Volatile labels (streamed chars, elapsed seconds) republish on this cadence. */
 export const PANE_TICK_MS = 250
+
+/** A member's task detail is ellipsized to this many characters. */
+const DETAIL_MAX_CHARS = 60
 
 let paneAgentsNow: () => number = Date.now
 
@@ -82,7 +101,6 @@ interface MemberRowView {
   readonly detailLine: string | undefined
   readonly elapsed: number
   readonly charsText: string | undefined
-  readonly last: boolean
   /** Fields that must publish immediately when they change. */
   readonly structure: string
   /** Fields that may republish on the cadence tick. */
@@ -151,25 +169,33 @@ function agentLabel(item: TranscriptToolItem): { readonly label: string, readonl
 
 const EMPTY_STRUCTURE = ''
 
-/** The stack items for one member; memoized by callId + full render key. */
-function memberNodes(view: MemberRowView): MayflyUiNode[] {
+/**
+ * The stack items for one member; memoized by callId + full render key. A
+ * compact row folds a running member's activity into its tail; a failed
+ * member always keeps its `Error:` line.
+ */
+function memberNodes(view: MemberRowView, compact: boolean, last: boolean): MayflyUiNode[] {
+  const failed = view.phaseLabel === 'failed'
+  const folded = compact && !failed && view.detailLine !== undefined ? [view.detailLine] : []
   const metrics = [
+    ...(view.detail === undefined ? [] : [ellipsize(view.detail, DETAIL_MAX_CHARS)]),
     view.live?.model,
     view.live?.effort,
     view.charsText,
     view.live?.toolCount === undefined ? undefined : `${String(view.live.toolCount)} ${view.live.toolCount === 1 ? 'tool' : 'tools'}`,
     formatElapsed(view.elapsed),
     view.live?.tokens === undefined ? undefined : `${formatTokens(view.live.tokens)} tokens`,
+    ...folded,
   ].filter((value): value is string => value !== undefined)
-  const failed = view.phaseLabel === 'failed'
   const row = ui.richText([
-    { text: `  ${agentTreeBranch(view.last)} `, tone: 'muted' },
+    { text: `  ${agentTreeBranch(last)} `, tone: 'muted' },
     { text: `${view.phaseLabel} `, tone: view.phaseTone, styles: ['strong'] },
     { text: view.label, tone: 'accent' },
-    { text: ` · ${[...(view.detail === undefined ? [] : [view.detail]), ...metrics].join(' · ')}`, tone: 'muted' },
-  ])
-  if (view.detailLine === undefined) return [row]
-  return [row, ui.text(`  ${view.last ? '   ' : '│  '}    ${failed ? `Error: ${view.detailLine}` : view.detailLine}`, { tone: failed ? 'danger' : 'muted' })]
+    { text: ` · ${metrics.join(' · ')}`, tone: 'muted' },
+  ], { overflow: 'truncate' })
+  const detailLine = folded.length > 0 ? undefined : view.detailLine
+  if (detailLine === undefined) return [row]
+  return [row, ui.text(`  ${last ? '   ' : '│  '}    ${failed ? `Error: ${detailLine}` : detailLine}`, { tone: failed ? 'danger' : 'muted', overflow: 'truncate' })]
 }
 
 /** The whole pane node for one computed view; null renders zero rows. */
@@ -197,17 +223,21 @@ function paneNode(view: PaneView, cachedRows: Map<string, CachedRow>): MayflyUiN
         { text: `Running ${String(view.rows.length)} ${noun}`, tone: 'accent', styles: ['strong'] },
       ]
   if (breakdown !== '' || clock !== '') summary.push({ text: `${breakdown}${clock}`, tone: 'muted' })
+  const compact = view.rows.length > COMPACT_MEMBER_LIMIT
+  const { shown, hidden } = selectVisibleMembers(view.rows)
   return ui.stack.column([
     ui.divider(),
-    ui.richText(summary),
-    ...view.rows.flatMap((row): readonly MayflyUiNode[] => {
-      const key = `${row.structure}${row.volatile}`
+    ui.richText(summary, { overflow: 'truncate' }),
+    ...shown.flatMap((row, index): readonly MayflyUiNode[] => {
+      const last = hidden.length === 0 && index === shown.length - 1
+      const key = `${String(compact)}:${String(last)}:${row.structure}${row.volatile}`
       const cached = cachedRows.get(row.item.callId)
       if (cached?.key === key) return cached.nodes
-      const nodes = memberNodes(row)
+      const nodes = memberNodes(row, compact, last)
       cachedRows.set(row.item.callId, { key, nodes })
       return nodes
     }),
+    ...(hidden.length === 0 ? [] : [ui.text(hiddenMembersText(hidden), { tone: 'muted', overflow: 'truncate' })]),
   ], { gap: 0 })
 }
 
@@ -282,7 +312,7 @@ export function apply(ctx: Context): void {
   const currentView = (): PaneView => {
     if (members.length === 0) return { rows: [], structure: EMPTY_STRUCTURE, volatile: '' }
     const now = paneAgentsNow()
-    const rows = members.map((member, index): MemberRowView => {
+    const rows = members.map((member): MemberRowView => {
       const item = member.item
       const live = displayLookup(item)
       const phase = phaseOf(item, live, turnEnded(item))
@@ -293,7 +323,6 @@ export function apply(ctx: Context): void {
           ? errorLineOf(item)
           : 'Failed'
         : live?.activity
-      const last = index === members.length - 1
       const down = outputCounter(live?.liveChars ?? 0)
       const charsText = down === '' ? undefined : down
       const structure = JSON.stringify([
@@ -306,13 +335,14 @@ export function apply(ctx: Context): void {
         live?.toolCount ?? null,
         live?.tokens ?? null,
         charsText !== undefined,
-        detailLine ?? null,
-        last,
+        // An error line is structural; a live activity line only exists
+        // structurally, while its text rides the volatile tick.
+        phase.label === 'failed' ? detailLine ?? null : detailLine !== undefined,
       ])
-      const volatile = JSON.stringify([charsText ?? null, elapsed])
+      const volatile = JSON.stringify([charsText ?? null, elapsed, phase.label === 'failed' ? null : detailLine ?? null])
       return {
         item, live, phaseLabel: phase.label, phaseTone: phase.tone, label, detail, detailLine,
-        elapsed, charsText, last, structure, volatile,
+        elapsed, charsText, structure, volatile,
       }
     })
     const maxElapsed = Math.max(...rows.map(row => row.elapsed))

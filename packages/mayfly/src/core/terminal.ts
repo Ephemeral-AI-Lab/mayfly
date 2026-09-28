@@ -23,15 +23,18 @@ import {
   type TuiInputListener,
 } from '@earendil-works/pi-tui'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
-import { clampFrame, createFileOverflowSink, defaultOverflowDirectory, type OverflowSink } from './frame-clamp.ts'
+import { clampFrame, clampFrameFrom, createFileOverflowSink, defaultOverflowDirectory, type OverflowSink } from './frame-clamp.ts'
 import { createOutputRecovery, type AmbientOutput } from './output-recovery.ts'
 import {
   SURFACE_HEADER_MAX_ROWS,
   SurfaceManager,
+  bottomLaneRows,
+  planBottomLane,
   renderSurfaceLane,
   renderSurfaceTabs,
   renderedSurfaceEntries,
   surfaceLaneTabRows,
+  type BottomLanePlan,
   type SurfaceLayout,
   type SurfacePlacement,
 } from './surface-manager.ts'
@@ -114,7 +117,11 @@ class FrameClampedContainer extends Container {
     return rows
   }
 
-  /** Clamp one child's rows, reporting overflow at frame-relative indexes. */
+  /**
+   * Clamp one child's rows, reporting overflow at frame-relative indexes. A
+   * new array at the same width is clamped against the previous one, so a
+   * live transcript frame measures only the rows that changed.
+   */
   private clampChild(child: Component, width: number, offset: number): string[] {
     const source = child.render(width)
     const previous = this.clampedChildren.get(child)
@@ -122,13 +129,28 @@ class FrameClampedContainer extends Container {
     const sink: OverflowSink = offset === 0
       ? this.overflow
       : { record: entry => this.overflow.record({ ...entry, index: entry.index + offset }) }
-    const rows = clampFrame(source, width, sink)
+    const rows = clampFrameFrom(previous?.width === width ? previous : undefined, source, width, sink)
     this.clampedChildren.set(child, { width, source, rows })
     return rows
   }
 }
 
-/** Layout-aware lane chrome that preserves a compiled pane's nested layout. */
+/** Fixed rows painted as one layout leaf. */
+function rowsLeaf(rows: readonly string[]): Component {
+  return {
+    render: () => [...rows],
+    /* v8 ignore next -- a leaf holds one frame's planned rows; the lane re-plans every frame */
+    invalidate: () => {},
+  }
+}
+
+/**
+ * Layout-aware lane chrome that preserves a compiled pane's nested layout.
+ * The bottom lane lays out from one {@link planBottomLane} per frame: passive
+ * panes become fixed-height leaves holding their head-first fitted rows, so
+ * an over-budget dock truncates each pane's tail instead of letting the
+ * layout engine shrink individual rows out of every pane's head.
+ */
 class SurfaceLaneContainer implements Component {
   private readonly tabs: Component = {
     render: width => {
@@ -137,7 +159,12 @@ class SurfaceLaneContainer implements Component {
     },
     invalidate: () => this.manager.invalidate(),
   }
-  private measured: { readonly width: number, readonly layout: SurfaceLayout, readonly rows: number } | undefined
+  private measured: {
+    readonly width: number
+    readonly layout: SurfaceLayout
+    readonly rows: number
+    readonly plan?: BottomLanePlan
+  } | undefined
 
   constructor(
     private readonly manager: SurfaceManager,
@@ -148,7 +175,13 @@ class SurfaceLaneContainer implements Component {
 
   render(width: number): string[] {
     const layout = this.getLayout()
-    const rows = renderSurfaceLane(layout[this.placement], width, this.maxRows())
+    const lane = layout[this.placement]
+    if (this.placement === 'bottom' && lane !== undefined) {
+      const plan = planBottomLane(lane, width, this.maxRows())
+      this.measured = { width, layout, rows: plan.rows, plan }
+      return bottomLaneRows(plan)
+    }
+    const rows = renderSurfaceLane(lane, width, this.maxRows())
     this.measured = { width, layout, rows: rows.length }
     return rows
   }
@@ -171,9 +204,25 @@ class SurfaceLaneContainer implements Component {
   }
 
   [LAYOUT_NODE](): LayoutNode {
-    const lane = this.getLayout()[this.placement]
+    const layout = this.getLayout()
+    const lane = layout[this.placement]
     const stack = new VStack()
     if (lane === undefined) return stack[LAYOUT_NODE]()
+    if (this.placement === 'bottom') {
+      // pi-tui measures (renders) the lane before laying it out in one frame;
+      // a layout that changed since then re-plans at the measured width.
+      const measured = this.measured
+      /* v8 ignore next -- a bottom measurement always carries a plan and precedes any layout */
+      const plan = measured?.layout === layout && measured.plan !== undefined ? measured.plan : planBottomLane(lane, measured?.width ?? 1, this.maxRows())
+      const fixed = (size: number) => ({ basis: size, grow: 0, shrink: 1, minSize: 0, maxSize: size })
+      if (plan.rule !== undefined) stack.addChild(rowsLeaf([plan.rule]), fixed(1))
+      if (plan.tabs !== undefined) stack.addChild(rowsLeaf([plan.tabs]), fixed(1))
+      for (const slot of plan.slots) {
+        if (slot.size === 0) continue
+        stack.addChild(slot.passive ? rowsLeaf(slot.rows) : slot.entry.component as Component, fixed(slot.size))
+      }
+      return stack[LAYOUT_NODE]()
+    }
     const tabRows = surfaceLaneTabRows(lane)
     if (tabRows > 0) stack.addChild(this.tabs, { basis: 1, grow: 0, shrink: 0, minSize: 1, maxSize: 1 })
     for (const entry of renderedSurfaceEntries(lane)) {
@@ -649,13 +698,16 @@ export async function startMayflyTerminal(
       if (next === null) surfacePreFocus = null
     },
   })
+  // Bottom panes share a third of the terminal; the lane plan allots it per
+  // pane each frame, and each pane renders against the whole lane budget.
+  const bottomLaneBudget = (): number => Math.floor(terminal.rows / 3)
   const linearLaneComponent = (placement: SurfacePlacement): Component => ({
     render: width => {
       const layout = surfaces.linearLayout(terminal.columns, terminal.rows)
       const maxRows = placement === 'header'
         ? SURFACE_HEADER_MAX_ROWS
         : placement === 'bottom'
-          ? Math.floor(terminal.rows / 3)
+          ? bottomLaneBudget()
           : Number.MAX_SAFE_INTEGER
       return renderSurfaceLane(layout[placement], width, maxRows)
     },
@@ -665,7 +717,7 @@ export async function startMayflyTerminal(
     header: new SurfaceLaneContainer(surfaces, 'header', () => surfaces.layout(terminal.columns, terminal.rows), () => SURFACE_HEADER_MAX_ROWS),
     left: new SurfaceLaneContainer(surfaces, 'left', () => surfaces.layout(terminal.columns, terminal.rows), () => Number.MAX_SAFE_INTEGER),
     right: new SurfaceLaneContainer(surfaces, 'right', () => surfaces.layout(terminal.columns, terminal.rows), () => Number.MAX_SAFE_INTEGER),
-    bottom: new SurfaceLaneContainer(surfaces, 'bottom', () => surfaces.layout(terminal.columns, terminal.rows), () => Math.floor(terminal.rows / 3)),
+    bottom: new SurfaceLaneContainer(surfaces, 'bottom', () => surfaces.layout(terminal.columns, terminal.rows), bottomLaneBudget),
   }
   const linearLanes: Record<SurfacePlacement, Component> = {
     header: linearLaneComponent('header'),
@@ -726,7 +778,6 @@ export async function startMayflyTerminal(
         grow: 0,
         shrink: 100,
         minSize: 0,
-        maxSize: Math.floor(terminal.rows / 3),
       })
     }
     root.addChild(dockContainer!, { basis: 'auto', grow: 0, shrink: 0, minSize: 1 })
@@ -844,7 +895,7 @@ export async function startMayflyTerminal(
       const rows = lane?.placement === 'header'
         ? Math.max(1, (lastSurfaceHeaderRows || SURFACE_HEADER_MAX_ROWS) - tabs)
         : lane?.placement === 'bottom'
-          ? Math.max(1, (lastSurfaceBottomRows || Math.floor(terminal.rows / 3)) - tabs)
+          ? Math.max(1, bottomLaneBudget() - tabs)
           : Math.max(1, terminal.rows - dockRows - lastSurfaceHeaderRows - lastSurfaceBottomRows - tabs)
       return { columns: Math.max(1, Math.min(terminal.columns, columns)), rows: Math.min(terminal.rows, rows) }
     },

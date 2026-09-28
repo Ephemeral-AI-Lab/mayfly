@@ -63,7 +63,7 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
 *危险 tone 的单行提示（宽度 48）。*
 
 ```ts
-ui.text(content: string, options?: { tone?: MayflyTone })
+ui.text(content: string, options?: { tone?: MayflyTone, overflow?: 'wrap' | 'truncate' })
 ```
 
 一段可换行的语义文本，用于状态提示、结果摘要等说明性内容；`tone` 省略时使用
@@ -100,6 +100,13 @@ ui.stack.column([
 ui.text('A long status message wraps at the allocated width instead of clipping, so narrow panes stay readable.', { tone: 'warning' })
 ```
 
+`overflow: 'truncate'` 则让节点恰好占一行：换行与制表符折叠为空格，超出部分以
+`…` 结尾。适合底部 pane 中的紧凑行——换行会多占 dock 一行：
+
+```ts
+ui.text(`${label} · ${activity}`, { tone: 'muted', overflow: 'truncate' })
+```
+
 ### `richText`
 
 ![`richText` 节点渲染效果](/shots/richText.svg)
@@ -107,7 +114,7 @@ ui.text('A long status message wraps at the allocated width instead of clipping,
 *muted 前缀接 strong accent 模型名（宽度 64）。*
 
 ```ts
-ui.richText(spans: readonly MayflyInlineSpan[])
+ui.richText(spans: readonly MayflyInlineSpan[], options?: { overflow?: 'wrap' | 'truncate' })
 
 type MayflyInlineSpan = {
   text: string
@@ -117,7 +124,8 @@ type MayflyInlineSpan = {
 ```
 
 在同一段文本中组合 tone 与强调，适合“标签 + 高亮值”这类行内混排。renderer
-负责换行，插件不要拼 ANSI。上面的截图渲染的就是这个节点：
+负责换行（设为 `overflow: 'truncate'` 时与 `text` 一样保持单行并以 `…` 截断），
+插件不要拼 ANSI。上面的截图渲染的就是这个节点：
 
 ```ts
 ui.richText([

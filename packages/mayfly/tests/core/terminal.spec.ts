@@ -801,6 +801,37 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
+  it('paints an over-budget bottom lane head-first with one shared rule', async () => {
+    // A 12-row terminal gives the bottom lane four rows.
+    const terminal = new AltScreenTerminal(40, 12)
+    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    runtime.addChild(textComponent('transcript'))
+    runtime.addBottomChild(textComponent('editor'))
+    runtime.addBottomChild(textComponent('status'), 'bottom')
+    const ruled = (...rows: string[]): MayflyComponent => ({ render: () => rows, invalidate: () => {}, leadingRule: true } as MayflyComponent)
+    runtime.surfaces.register({ id: 'workflow', placement: 'bottom', priority: 60, component: textComponent('workflow') })
+    runtime.surfaces.register({ id: 'agents', placement: 'bottom', priority: 50, component: ruled('──────', 'Agents', 'a1', 'a2', 'a3') })
+    runtime.surfaces.register({ id: 'todo', placement: 'bottom', priority: 30, component: ruled('──────', 'Todo', 't1') })
+    runtime.surfaces.register({ id: 'activity', placement: 'bottom', priority: 10, size: { max: 1 }, component: textComponent('spin') })
+    runtime.requestRender(true)
+    await waitForRender()
+    const screen = (await terminal.screen()).map(row => row.trimEnd())
+    const dock = screen.slice(screen.indexOf('──────'), screen.indexOf('editor'))
+    // The rule, then each pane's head nearest the editor first; the workflow
+    // pane is out of rows, and no pane loses its head to another's tail.
+    expect(dock).toEqual(['──────', 'Agents', 'Todo', 'spin'])
+
+    // A layout that changed since the lane was last measured re-plans it.
+    runtime.surfaces.register({ id: 'queue', placement: 'bottom', priority: 20, component: textComponent('queue') })
+    const layoutRoot = (runtime.tui as unknown as { layoutRoot: MayflyComponent & { [LAYOUT_NODE](): LayoutNode } }).layoutRoot
+    const lane = (layoutRoot[LAYOUT_NODE]() as { entries: { component: MayflyComponent & { [LAYOUT_NODE]?(): LayoutNode } }[] }).entries
+      .map(entry => entry.component)
+      .find(component => component !== layoutRoot && typeof component[LAYOUT_NODE] === 'function' && component.render(40).includes('spin'))!
+    expect((lane[LAYOUT_NODE]!() as { entries: unknown[] }).entries.length).toBeGreaterThan(0)
+    await runtime.stop()
+    terminal.dispose()
+  })
+
   it('reports measured lane viewports without recursive surface rendering', async () => {
     const terminal = new AltScreenTerminal(120, 12)
     const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
@@ -828,7 +859,9 @@ describe('alternate-screen runtime', () => {
     await waitForRender()
     expect(samples.get('header')?.at(-1)).toEqual({ columns: 120, rows: 1 })
     expect(samples.get('right')?.at(-1)).toEqual({ columns: 32, rows: 7 })
-    expect(samples.get('bottom')?.at(-1)).toEqual({ columns: 120, rows: 2 })
+    // Bottom panes render against the whole lane budget (a third of 12 rows);
+    // the lane plan allots rows per pane.
+    expect(samples.get('bottom')?.at(-1)).toEqual({ columns: 120, rows: 4 })
 
     runtime.surfaces.register({ id: 'right-peer', placement: 'right', component: textComponent('peer') })
     expect(runtime.surfaceViewport('right')).toEqual({ columns: 32, rows: 6 })
@@ -1391,11 +1424,12 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
-  it('rescans only the child whose row array changed and reports frame-relative indexes', async () => {
+  it('measures only rows that changed and reports frame-relative indexes', async () => {
     const terminal = new AltScreenTerminal(40, 10)
     const overflows: FrameOverflowEntry[] = []
     let stable = ['stable', 'y'.repeat(50)]
     let volatileRenders = 0
+    let volatileTail = 'z'.repeat(50)
     const runtime = await startMayflyTerminal(
       terminal,
       noProbe,
@@ -1405,26 +1439,34 @@ describe('alternate-screen runtime', () => {
     )
     runtime.addChild({ render: () => stable, invalidate: () => {} })
     // A stateless child hands back a fresh array every frame.
-    runtime.addChild({ render: () => { volatileRenders += 1; return ['fresh', 'z'.repeat(50)] }, invalidate: () => {} })
+    runtime.addChild({ render: () => { volatileRenders += 1; return ['fresh', volatileTail] }, invalidate: () => {} })
     const indexes = (): number[] => overflows.map(entry => entry.index)
     runtime.requestRender(true)
     await waitForRender()
     expect(volatileRenders).toBeGreaterThan(0)
-    // The stable child scanned once (frame row 1); the fresh child on every frame (row 3).
+    // Each over-wide row is measured once: frame row 1 (stable) and row 3 (fresh).
     expect(indexes().filter(index => index === 1)).toHaveLength(1)
-    expect(indexes().filter(index => index === 3)).toHaveLength(volatileRenders)
+    expect(indexes().filter(index => index === 3)).toHaveLength(1)
     expect(indexes().every(index => index === 1 || index === 3)).toBe(true)
 
+    // A fresh array with unchanged rows reuses the previous clamp row by row.
     const framesBefore = volatileRenders
     runtime.requestRender()
     await waitForRender()
     expect(volatileRenders).toBeGreaterThan(framesBefore)
     expect(indexes().filter(index => index === 1)).toHaveLength(1)
-    expect(indexes().filter(index => index === 3)).toHaveLength(volatileRenders)
+    expect(indexes().filter(index => index === 3)).toHaveLength(1)
     expect(stripWriterWrappers(terminal.output)).toContain('y'.repeat(40))
     expect(stripWriterWrappers(terminal.output)).toContain('z'.repeat(40))
 
-    // A replaced row array is the change signal: the stable child rescans once more.
+    // A changed row is measured again, at its frame-relative index.
+    volatileTail = 'w'.repeat(50)
+    runtime.requestRender()
+    await waitForRender()
+    expect(indexes().filter(index => index === 3)).toHaveLength(2)
+    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(40))
+
+    // A replaced row array is the change signal: the stable child rescans its changed row.
     stable = ['stable', 'x'.repeat(45)]
     runtime.requestRender()
     await waitForRender()

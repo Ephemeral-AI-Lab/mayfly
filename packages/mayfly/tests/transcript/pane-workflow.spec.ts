@@ -125,6 +125,20 @@ describe('workflow model helpers', () => {
       }], T0 + 2_000)
       expect(JSON.stringify(settled)).toContain(reason)
     }
+    // A crowded run keeps its running agents, then the latest finished one.
+    const crowded = JSON.stringify(workflowNode([{
+      id: 'crowded', name: 'crowded', phases: undefined, phasesSeen: [], currentPhase: undefined,
+      agents: Array.from({ length: 9 }, (_value, index) => ({
+        seq: index + 1, label: `agent-${String(index + 1)}`, childId: `c${String(index + 1)}`,
+        ...(index < 4 ? { outcome: 'completed' as const } : {}),
+      })),
+      startedAt: T0, stopReason: undefined, endedAt: undefined, agentsStarted: undefined, attributed: true,
+    }], T0))
+    expect(crowded).toContain('agent-4')
+    expect(crowded).toContain('agent-9')
+    expect(crowded).not.toContain('agent-1"')
+    expect(crowded).toContain('… +3 more (3 done)')
+    expect(crowded.indexOf('agent-5')).toBeLessThan(crowded.indexOf('agent-4'))
     expect(JSON.stringify(workflowNode([{
       id: 'fallback', name: 'fallback', phases: undefined, phasesSeen: [], currentPhase: undefined,
       agents: [{ seq: 1, label: 'member', childId: 'child' }], startedAt: T0,
@@ -248,6 +262,10 @@ describe('mayfly-pane-workflow', () => {
     ticks[0]!()
     expect(rig.screen.renderRequests.length).toBeGreaterThan(before)
     expect(plain(rig)[1]).toContain('1m 5s')
+    // An unchanged clock republishes nothing.
+    const settledRequests = rig.screen.renderRequests.length
+    ticks[0]!()
+    expect(rig.screen.renderRequests.length).toBe(settledRequests)
     rig.ctx.emit('workflow/end', first, { stopReason: 'error', agentsStarted: 1 })
     rig.ctx.emit('workflow/end', runInfo('run-2', 'beta'), { stopReason: 'cancelled', agentsStarted: 1 })
     expect(plain(rig).join('\n')).toContain('✗ Workflow publish-check')

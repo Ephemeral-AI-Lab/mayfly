@@ -15,6 +15,7 @@ import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-
 import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { outputRate } from '../../src/transcript/output-rate.ts'
 import * as activity from '../../src/transcript/pane-activity.ts'
+import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from '../../src/transcript/spinners.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
 import { assistantEvent, event, fakeMayflyComponents, resetSeq, turnEnd, turnStart } from './helpers.ts'
@@ -109,13 +110,15 @@ describe('phase-local output', () => {
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
       vi.setSystemTime(4_000)
       replay(answer('y'.repeat(80), 4_000))
+      // Streamed counters repaint on the running spinner's next frame.
+      vi.advanceTimersByTime(BRAILLE_SPINNER_INTERVAL_MS)
       expect(harness.screen.paneLines()[0]).toContain('Writing · 3s · ↓21 · ≈20 tok/s')
       for (const width of SCAN_WIDTHS) expectLinesFit('Activity/TPS', harness.screen.paneLines(width), width)
       expect(harness.screen.paneLines(40)[0]).toContain('≈20 tok/s')
       expect(harness.screen.paneLines(40)[0]).not.toContain('Tip:')
       expect(harness.screen.paneLines(20)[0]).toContain('↓21')
       expect(harness.screen.paneLines(20)[0]).not.toContain('tok/s')
-      expect(harness.screen.paneLines(12)[0]).toBe('⠋ Writing')
+      expect(harness.screen.paneLines(12)[0]).toBe(`${BRAILLE_SPINNER_FRAMES[1]!} Writing`)
 
       vi.advanceTimersByTime(2_100)
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')

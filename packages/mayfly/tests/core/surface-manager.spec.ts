@@ -4,6 +4,9 @@ import {
   SURFACE_TRANSCRIPT_MIN_COLUMNS,
   SURFACE_TRANSCRIPT_REOPEN_COLUMNS,
   SurfaceManager,
+  allocateBottomRows,
+  fitSurfaceRows,
+  planBottomLane,
   renderSurfaceLane,
   renderSurfaceTabs,
   renderedSurfaceEntries,
@@ -115,9 +118,56 @@ describe('SurfaceManager', () => {
     expect(renderSurfaceLane(lane, 80)).toEqual([
       'agents-title', 'agent-row', 'todo-title', 'todo-row', 'activity',
     ])
+    // Every pane keeps its head row; spare rows go nearest the editor first.
     expect(renderSurfaceLane(lane, 80, 4)).toEqual([
-      'agents-title', 'agent-row', 'todo-title', 'todo-row',
+      'agents-title', 'todo-title', 'todo-row', 'activity',
     ])
+  })
+
+  it('allots bottom rows by minimum first, then round-robin nearest the editor', () => {
+    // Paint order top to bottom: workflow, agents, todo, activity (max 1).
+    const demands = [{ rows: 5 }, { rows: 8 }, { rows: 7 }, { rows: 1, max: 1 }]
+    expect(allocateBottomRows(demands, 11)).toEqual([3, 3, 4, 1])
+    expect(allocateBottomRows(demands, 100)).toEqual([5, 8, 7, 1])
+    expect(allocateBottomRows(demands, 2)).toEqual([0, 0, 1, 1])
+    expect(allocateBottomRows(demands, 0)).toEqual([0, 0, 0, 0])
+    expect(allocateBottomRows(demands, Number.NaN)).toEqual([0, 0, 0, 0])
+    expect(allocateBottomRows([{ rows: 6, min: 3 }, { rows: 6 }], 5)).toEqual([3, 2])
+    expect(allocateBottomRows([{ rows: 6, max: 2 }, { rows: 0 }], 9)).toEqual([2, 0])
+    expect(allocateBottomRows([], 9)).toEqual([])
+  })
+
+  it('fits a pane head-first and names the rows it cut', () => {
+    const more = (hidden: number): string => `+${String(hidden)}`
+    expect(fitSurfaceRows(['a', 'b'], 3, more)).toEqual(['a', 'b'])
+    expect(fitSurfaceRows(['a', 'b', 'c', 'd'], 3, more)).toEqual(['a', 'b', '+2'])
+    expect(fitSurfaceRows(['a', 'b', 'c'], 1, more)).toEqual(['a'])
+    expect(fitSurfaceRows(['a', 'b'], 0, more)).toEqual([])
+  })
+
+  it('plans one shared rule for stacked ruled panes and themed overflow rows', () => {
+    const manager = new SurfaceManager()
+    const ruled = (...rows: string[]): MayflyComponent => ({ ...component(...rows), leadingRule: true } as MayflyComponent)
+    const themed = (...rows: string[]): MayflyComponent => ({
+      ...component(...rows), leadingRule: true, renderOverflow: (hidden: number) => `<more ${String(hidden)}>`,
+    } as MayflyComponent)
+    manager.register(contribution('activity', 'bottom', { priority: 10, size: { max: 1 } }, component('spin')))
+    manager.register(contribution('todo', 'bottom', { priority: 30 }, ruled('─todo', 'Todo', 't1', 't2')))
+    manager.register(contribution('agents', 'bottom', { priority: 50 }, themed('─agents', 'Agents', 'a1', 'a2', 'a3')))
+    const lane = manager.linearLayout(120, 24).bottom!
+
+    expect(renderSurfaceLane(lane, 80)).toEqual(['─agents', 'Agents', 'a1', 'a2', 'a3', 'Todo', 't1', 't2', 'spin'])
+    const plan = planBottomLane(lane, 80, 6)
+    expect(plan.rows).toBe(6)
+    expect(renderSurfaceLane(lane, 80, 6)).toEqual(['─agents', 'Agents', '<more 3>', 'Todo', '  … +2 more rows', 'spin'])
+    // With no row left for a ruled pane the shared rule is dropped.
+    expect(renderSurfaceLane(lane, 80, 1)).toEqual(['spin'])
+    expect(renderSurfaceLane(lane, 80, 0)).toEqual([])
+
+    // An unruled lane paints no rule; plain panes fall back to a plain overflow row.
+    const plain = new SurfaceManager()
+    plain.register(contribution('only', 'bottom', {}, component('head', 'r1', 'r2', 'r3')))
+    expect(renderSurfaceLane(plain.linearLayout(120, 24).bottom!, 80, 2)).toEqual(['head', '  … +3 more rows'])
   })
 
   it('stacks passive bottom progress around only the active focusable pane', () => {

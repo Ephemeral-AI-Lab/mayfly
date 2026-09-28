@@ -72,10 +72,14 @@ frontend interaction owner; plugins are not required to echo `set()` calls
 inside their handlers. Keys, focus, confirmations, and per-row action
 availability follow [interaction-model.md](./interaction-model.md).
 
-A null pane/status snapshot occupies no layout; overlays provide
-`focus/hide/show/close`, and `presentation: 'editor'` uses the existing editor
-host. Even if the caller never disposes manually, Cordis Fiber unload cleans up
-the registration.
+A null pane/status snapshot occupies no layout. Bottom panes share one dock
+of at most a third of the terminal height: `size.min/max` count rows there,
+every pane keeps its head row, an over-share pane ends in `… +K more rows`,
+and passive panes that open with a plain `divider` share one lane rule.
+`text`/`rich-text` accept `overflow: 'truncate'` for single-row dock lines.
+Overlays provide `focus/hide/show/close`, and `presentation: 'editor'` uses
+the existing editor host. Even if the caller never disposes manually, Cordis
+Fiber unload cleans up the registration.
 
 ## Current Agent
 

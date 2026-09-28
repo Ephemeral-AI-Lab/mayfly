@@ -32,6 +32,15 @@ describe('assistant stream accumulator', () => {
     expect(state).toMatchObject({ reasoningStartedAt: 100, reasoningEndedAt: 2_600 })
   })
 
+  it('counts leading blank reasoning once and later blank deltas as their own chars', () => {
+    let state = foldAssistantStreamChunk(initialAssistantStream(), { type: 'reasoning-delta', index: 0, text: ' \n' }, 10)
+    expect(state).toMatchObject({ reasoning: ' \n', chars: 0, phase: 'waiting' })
+    state = foldAssistantStreamChunk(state, { type: 'reasoning-delta', index: 0, text: 'go' }, 20)
+    expect(state).toMatchObject({ reasoning: ' \ngo', chars: 4, phase: 'thinking', reasoningStartedAt: 20 })
+    state = foldAssistantStreamChunk(state, { type: 'reasoning-delta', index: 0, text: '  ' }, 30)
+    expect(state).toMatchObject({ reasoning: ' \ngo  ', chars: 6, reasoningStartedAt: 20, reasoningEndedAt: 30 })
+  })
+
   it('ignores empty and unrelated chunks while preserving malformed streams', () => {
     const state = initialAssistantStream()
     expect(foldAssistantStreamChunk(state, { type: 'text-delta', index: 0, text: '' }, 1)).toBe(state)

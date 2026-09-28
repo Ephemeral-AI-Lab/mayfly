@@ -185,18 +185,18 @@ describe('mayfly-pane-todo', () => {
   it('adds active, paused, and blocked goal context to an existing Todo pane', async () => {
     const harness = await bootPanePlugin(todo, fakeAgent([todoWrite([{ content: 'next task', status: 'pending' }])]))
     harness.facts.setGoal(goalProjection('active'))
+    // The objective folds into the title row instead of taking a row of its own.
     expect(harness.screen.paneLines()).toEqual([
-      rule(), '  Todo · ● active · 2/8', '  ship the badge', row('○', 'next task'),
+      rule(), '  Todo · ● active · 2/8 · ship the badge', row('○', 'next task'),
     ])
     harness.facts.setGoal(goalProjection('paused', { rounds: 4, max: 12 }))
     expect(harness.screen.paneLines()).toEqual([
-      rule(), '  Todo · ❚❚ paused · 4/12', '  ship the badge', row('○', 'next task'),
+      rule(), '  Todo · ❚❚ paused · 4/12 · ship the badge', row('○', 'next task'),
     ])
     harness.facts.setGoal(goalProjection('blocked', { message: 'tests are red' }))
     expect(harness.screen.paneLines()).toEqual([
       rule(),
-      '  Todo · ✕ blocked · 2/8',
-      '  ship the badge',
+      '  Todo · ✕ blocked · 2/8 · ship the badge',
       '  blocked: tests are red',
       row('○', 'next task'),
     ])
@@ -215,10 +215,10 @@ describe('mayfly-pane-todo', () => {
     harness.ctx.emit('session/event', agent.session as unknown as Session, turnEnd(1, { kind: 'aborted', reason: { kind: 'user' } } as never))
     expect(harness.screen.paneLines()[1]).toBe('  Todo · interrupted')
     harness.facts.setGoal(goalProjection('active'))
-    expect(harness.screen.paneLines()[1]).toBe('  Todo · ● active · 2/8 · interrupted')
+    expect(harness.screen.paneLines()[1]).toBe('  Todo · ● active · 2/8 · interrupted · ship the badge')
     // The next run clears the marker.
     harness.ctx.emit('session/event', agent.session as unknown as Session, turnStart(2))
-    expect(harness.screen.paneLines()[1]).toBe('  Todo · ● active · 2/8')
+    expect(harness.screen.paneLines()[1]).toBe('  Todo · ● active · 2/8 · ship the badge')
     await harness.dispose()
   })
 

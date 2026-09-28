@@ -24,6 +24,14 @@ export function apply(ctx: Context): void {
 `narrow` 可设为 `bottom`、`overlay` 或 `hidden`。`set(null)` 会释放 lane，
 直到下一次发布非 null snapshot。
 
+`size` 对 `left`/`right` pane 计列数，对 `bottom` pane 计行数。所有 bottom pane
+叠放在同一个 dock 中，dock 最多占终端高度的三分之一：从最靠近编辑器的 pane
+开始，每个 pane 先得到 `size.min` 行（默认 1，即开头那一行），剩余行再轮流分配，
+不超过 `size.max`。分到的行数少于渲染行数的 pane 保留开头，末行显示灰色的
+`… +K more rows`，因此请把最重要的一行放在最前面。多个被动 bottom pane 都以普通
+`divider` 开头时，dock 只画一条分隔线。紧凑行建议使用 `overflow: 'truncate'`，
+避免一条内容占用两行 dock。
+
 ## Overlay
 
 ```ts

@@ -56,6 +56,47 @@ export function clampFrame(lines: string[], width: number, sink?: OverflowSink):
   return clamped ?? lines
 }
 
+/** A previous clamp of one source at the same width. */
+export interface ClampedRows {
+  /** The rows the component returned. */
+  readonly source: readonly string[]
+  /** The clamped rows handed to pi-tui for that source. */
+  readonly rows: readonly string[]
+}
+
+/**
+ * {@link clampFrame} against the previous clamp of the same child at the same
+ * width. A row equal to the previous source row at its index reuses the
+ * previous result, so a live frame that appends or rewrites its tail measures
+ * only the changed rows instead of rescanning the whole transcript (pi-tui's
+ * width cache is far smaller than a long session). Shifted rows fall back to
+ * measurement, so the result always equals `clampFrame(lines, width)`.
+ * @param previous - the previous clamp at this width, if any.
+ * @param lines - the rendered rows.
+ * @param width - the viewport width.
+ * @param sink - where newly clamped rows are recorded.
+ * @returns the clamped rows; the input array itself when nothing clamps.
+ */
+export function clampFrameFrom(previous: ClampedRows | undefined, lines: string[], width: number, sink?: OverflowSink): string[] {
+  if (previous === undefined) return clampFrame(lines, width, sink)
+  let clamped: string[] | undefined
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!
+    if (previous.source[index] === line) {
+      const row = previous.rows[index]!
+      if (row === line) continue
+      clamped ??= [...lines]
+      clamped[index] = row
+      continue
+    }
+    if (visibleWidth(line) <= width) continue
+    clamped ??= [...lines]
+    clamped[index] = sliceByColumn(line, 0, width, true)
+    sink?.record({ index, columns: width, width: visibleWidth(line), line })
+  }
+  return clamped ?? lines
+}
+
 /**
  * pi-tui's own log-directory chain (`PI_CODING_AGENT_DIR ?? ~/.pi/agent`),
  * so `mayfly-overflow.log` lands next to `pi-crash.log`.

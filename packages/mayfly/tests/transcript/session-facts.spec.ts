@@ -6,9 +6,9 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { GoalPhase, GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
-import { projectChildSessionFacts, SessionFactsService } from '../../src/transcript/session-facts.ts'
+import { CHILD_VOLATILE_MS, projectChildSessionFacts, SessionFactsService } from '../../src/transcript/session-facts.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 
 class ProjectionFake {
@@ -316,5 +316,99 @@ describe('SessionFactsService', () => {
     service.dispose()
     live.dispose()
     await ctx.fiber.dispose()
+  })
+
+  describe('child stream coalescing', () => {
+    afterEach(() => { vi.useRealTimers() })
+
+    function childFixture() {
+      const ctx = new Context()
+      const parentSession = session('parent')
+      const childSession = session('child', { origin: 'subagent', parentSession: 'parent' })
+      const current = agent(parentSession)
+      const childAgent = agent(childSession)
+      const projections = new ProjectionFake()
+      projections.set(parentSession, { mayflyConversationFacts: initialConversationFacts() })
+      projections.set(childSession, {
+        mayflyConversationFacts: { ...initialConversationFacts(), active: true, phase: 'waiting' as const, turn: 1, currentStep: 0 },
+      })
+      let listener: ((value: Agent | null) => void) | undefined
+      ctx.reflect.provide('sessionProjections', projections)
+      ctx.reflect.provide('sessions', { list: () => [parentSession, childSession] })
+      ctx.reflect.provide('agents', { get: (id: unknown) => String(id) === 'child' ? childAgent : undefined })
+      ctx.reflect.provide('mayflyCurrentAgent', { subscribe(next: (value: Agent | null) => void) { listener = next; next(current); return () => {} } })
+      const live = new LiveAssistantStreamService(ctx)
+      const service = new SessionFactsService(ctx, live)
+      const published: Array<ReadonlyArray<{ readonly liveChars?: number, readonly activity?: string }>> = []
+      service.subscribeChildren(value => published.push(value))
+      let revision = 0
+      const chunk = (text: string, kind: 'text-delta' | 'reasoning-delta' = 'text-delta'): void => {
+        revision += 1
+        live.accept(childAgent, { type: 'chunk', attemptId: 'run' as never, revision: revision + 1, index: revision - 1, time: revision, chunk: { type: kind, index: 0, text } })
+      }
+      live.accept(childAgent, { type: 'start', attemptId: 'run' as never, revision: 1, turn: 1, step: 0 })
+      return { ctx, live, service, published, chunk, switchAgent: (value: Agent | null) => listener?.(value) }
+    }
+
+    it('defers streamed-character-only changes to one trailing publish', async () => {
+      vi.useFakeTimers()
+      const { ctx, live, service, published, chunk } = childFixture()
+      chunk('draft')
+      await Promise.resolve()
+      expect(published.at(-1)?.[0]).toMatchObject({ activity: 'Writing…', liveChars: 5 })
+      const count = published.length
+      chunk(' more')
+      await Promise.resolve()
+      chunk(' text')
+      await Promise.resolve()
+      expect(published).toHaveLength(count)
+      vi.advanceTimersByTime(CHILD_VOLATILE_MS)
+      expect(published).toHaveLength(count + 1)
+      expect(published.at(-1)?.[0]).toMatchObject({ liveChars: 15 })
+      // The published list is reused until a child changes.
+      const list = published.at(-1)
+      service.subscribeChildren(value => { expect(value).toBe(list) })
+      service.dispose()
+      live.dispose()
+      await ctx.fiber.dispose()
+    })
+
+    it('flushes pending volatile state with the next structural change', async () => {
+      vi.useFakeTimers()
+      const { ctx, live, service, published, chunk } = childFixture()
+      chunk('draft')
+      await Promise.resolve()
+      chunk(' more')
+      await Promise.resolve()
+      const count = published.length
+      chunk('reason', 'reasoning-delta')
+      await Promise.resolve()
+      expect(published).toHaveLength(count + 1)
+      expect(published.at(-1)?.[0]).toMatchObject({ activity: 'Thinking…' })
+      vi.advanceTimersByTime(CHILD_VOLATILE_MS)
+      expect(published).toHaveLength(count + 1)
+      service.dispose()
+      live.dispose()
+      await ctx.fiber.dispose()
+    })
+
+    it('drops a pending volatile publish on agent switch and dispose', async () => {
+      vi.useFakeTimers()
+      const { ctx, live, service, published, chunk, switchAgent } = childFixture()
+      chunk('draft')
+      await Promise.resolve()
+      chunk(' more')
+      await Promise.resolve()
+      switchAgent(null)
+      const afterSwitch = published.length
+      expect(published.at(-1)).toEqual([])
+      vi.advanceTimersByTime(CHILD_VOLATILE_MS)
+      expect(published).toHaveLength(afterSwitch)
+      service.dispose()
+      vi.advanceTimersByTime(CHILD_VOLATILE_MS)
+      expect(published).toHaveLength(afterSwitch)
+      live.dispose()
+      await ctx.fiber.dispose()
+    })
   })
 })

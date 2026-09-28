@@ -28,12 +28,14 @@ export type MayflyTextStyle = 'strong' | 'italic' | 'strike'
 export interface MayflyInlineSpan { readonly text: string, readonly tone?: MayflyTone, readonly styles?: readonly MayflyTextStyle[] }
 export interface MayflyField { readonly label: string, readonly value: readonly MayflyInlineSpan[] }
 
-export interface MayflyTextNode { readonly kind: 'text', readonly content: string, readonly tone?: MayflyTone }
+/** How text wider than its row behaves: wrap onto more rows, or stay one ellipsized row. */
+export type MayflyTextOverflow = 'wrap' | 'truncate'
+export interface MayflyTextNode { readonly kind: 'text', readonly content: string, readonly tone?: MayflyTone, readonly overflow?: MayflyTextOverflow }
 export interface MayflyMarkdownNode { readonly kind: 'markdown', readonly source: string }
 export interface MayflyFieldsNode { readonly kind: 'fields', readonly rows: readonly MayflyField[] }
 export interface MayflyCodeNode { readonly kind: 'code', readonly code: string, readonly language?: string }
 export interface MayflyDiffNode { readonly kind: 'diff', readonly before: string, readonly after: string }
-export interface MayflyRichTextNode { readonly kind: 'rich-text', readonly spans: readonly MayflyInlineSpan[] }
+export interface MayflyRichTextNode { readonly kind: 'rich-text', readonly spans: readonly MayflyInlineSpan[], readonly overflow?: MayflyTextOverflow }
 export interface MayflyDiagramNode { readonly kind: 'diagram', readonly diagram: 'mermaid', readonly source: string }
 export type MayflySectionContentNode = MayflyTextNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode
 export interface MayflySection { readonly title?: string, readonly body: MayflySectionContentNode, readonly collapsed?: boolean }
@@ -159,6 +161,12 @@ export type MayflyRegistryDelta<Entry> = MayflyRegistryUpsert<Entry> | MayflyReg
 export type MayflyPanePlacement = 'header' | 'left' | 'right' | 'bottom'
 export interface MayflyInteractionDefinition { readonly scope?: MayflyUiScope, readonly source?: readonly MayflySourceStamp[] }
 export interface MayflyInteractionSnapshot { readonly scope: MayflyUiScope, readonly source: readonly MayflySourceStamp[] }
+/**
+ * A pane contribution. `size` is measured in columns for `left`/`right`
+ * panes and in rows for `bottom` panes, where the stacked dock grants each
+ * pane at least `min` rows (default 1, its head row) and never more than
+ * `max` before truncating its tail.
+ */
 export interface MayflyPaneDefinition extends MayflyInteractionDefinition { readonly id: string, readonly title?: string, readonly priority?: number, readonly placement: MayflyPanePlacement, readonly size?: { readonly min?: number, readonly preferred?: number | 'auto', readonly max?: number }, readonly narrow?: 'bottom' | 'overlay' | 'hidden', readonly onEvent?: MayflyUiEventHandlers<MayflyUiNode | null>, readonly load?: MayflySnapshotProvider<MayflyUiNode | null> }
 export interface MayflyPaneEntry extends MayflyInteractionSnapshot { readonly id: string, readonly definition: MayflyPaneDefinition, readonly node: MayflyUiNode | null, readonly revision: number, readonly update: MayflySnapshotChange, readonly events: MayflyUiEventEndpoint<MayflyUiNode | null> }
 export interface MayflyPaneRegistration extends MayflyNodeRegistration<MayflyUiNode> { refresh(): Promise<void>, loadMore(): Promise<boolean> }

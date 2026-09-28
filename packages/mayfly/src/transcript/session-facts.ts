@@ -37,6 +37,33 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /**
+ * Children whose only change is the streamed-character count republish on
+ * this trailing cadence; every other child change publishes at once. The
+ * agents pane already repaints volatile counters on the same cadence.
+ */
+export const CHILD_VOLATILE_MS = 250
+
+/** One admitted child: its facts, its current draft, and their projection. */
+interface ChildRecord {
+  readonly facts: ConversationFacts
+  readonly draft: LiveAssistantDraft | undefined
+  readonly projected: ChildSessionFacts
+}
+
+/** Whether two projections of one child differ only in `liveChars`. */
+function onlyLiveCharsChanged(previous: ChildSessionFacts, next: ChildSessionFacts): boolean {
+  return previous.liveChars !== next.liveChars
+    && previous.phase === next.phase
+    && previous.activity === next.activity
+    && previous.tokens === next.tokens
+    && previous.toolCount === next.toolCount
+    && previous.model === next.model
+    && previous.effort === next.effort
+    && previous.endedAt === next.endedAt
+    && previous.promptText === next.promptText
+}
+
+/**
  * The live draft's activity: the latest reasoning paragraph while thinking,
  * text while composing, and while waiting the newest call whose arguments are
  * still streaming, else the durable marker.
@@ -61,7 +88,9 @@ export class SessionFactsService extends Service {
   private readonly goalListeners = new Set<(goal: GoalProjection | null) => void>()
   private readonly agentListeners = new Set<(agent: Agent | null) => void>()
   private readonly childListeners = new Set<(children: readonly ChildSessionFacts[]) => void>()
-  private readonly children = new Map<string, { readonly facts: ConversationFacts, readonly draft: LiveAssistantDraft | undefined }>()
+  private readonly children = new Map<string, ChildRecord>()
+  private childList: readonly ChildSessionFacts[] | undefined
+  private volatileTimer: ReturnType<typeof setTimeout> | undefined
   private readonly offProjection: () => void
   private readonly offAgent: () => void
   private readonly offLive: () => void
@@ -94,14 +123,22 @@ export class SessionFactsService extends Service {
           this.facts = this.merged()
           for (const listener of this.listeners) listener(this.facts)
         }
-        let childrenChanged = false
+        // Only children whose draft identity changed are re-projected; a
+        // streamed-character-only change waits for the volatile cadence.
+        const agents = this.ctx.get('agents')
+        let structural = false
+        let volatile = false
         for (const [id, record] of this.children) {
-          const next = this.childDraft(id)
+          const next = this.childDraft(id, agents)
           if (next === record.draft) continue
-          this.children.set(id, { ...record, draft: next })
-          childrenChanged = true
+          const projected = projectChildSessionFacts(id, record.facts, next)
+          this.children.set(id, { facts: record.facts, draft: next, projected })
+          this.childList = undefined
+          if (onlyLiveCharsChanged(record.projected, projected)) volatile = true
+          else structural = true
         }
-        if (childrenChanged) this.publishChildren()
+        if (structural) this.publishChildren()
+        else if (volatile) this.scheduleChildren()
       })
   }
 
@@ -166,7 +203,9 @@ export class SessionFactsService extends Service {
     if (!switched) return
 
     this.live = agent === null ? undefined : this.liveStream?.get(agent)
+    this.cancelChildren()
     this.children.clear()
+    this.childList = undefined
     const snapshot = agent === null
       ? undefined
       : this.ctx.sessionProjections.snapshot(agent.session, ['mayflyConversationFacts', 'title', 'goal'])
@@ -178,7 +217,7 @@ export class SessionFactsService extends Service {
     this.publishGoal(isGoalProjection(goal) ? goal : null)
     for (const child of this.directChildren()) {
       const childFacts = this.ctx.sessionProjections.snapshot(child, ['mayflyConversationFacts']).values.mayflyConversationFacts
-      if (isFacts(childFacts)) this.children.set(String(child.id), { facts: childFacts, draft: this.childDraft(String(child.id)) })
+      if (isFacts(childFacts)) this.setChild(String(child.id), childFacts)
     }
     this.publishChildren()
   }
@@ -192,7 +231,9 @@ export class SessionFactsService extends Service {
     this.goalListeners.clear()
     this.agentListeners.clear()
     this.childListeners.clear()
+    this.cancelChildren()
     this.children.clear()
+    this.childList = undefined
     this.agent = null
     this.durable = initialConversationFacts()
     this.facts = initialConversationFacts()
@@ -242,22 +283,47 @@ export class SessionFactsService extends Service {
   }
 
   private publishChild(id: string, facts: ConversationFacts): void {
-    this.children.set(id, { facts, draft: this.childDraft(id) })
+    this.setChild(id, facts)
     this.publishChildren()
   }
 
+  private setChild(id: string, facts: ConversationFacts): void {
+    const draft = this.childDraft(id, this.ctx.get('agents'))
+    this.children.set(id, { facts, draft, projected: projectChildSessionFacts(id, facts, draft) })
+    this.childList = undefined
+  }
+
+  /** Publish now; any pending volatile republish is subsumed. */
   private publishChildren(): void {
+    this.cancelChildren()
     const children = this.childrenForCurrentSession()
     for (const listener of this.childListeners) listener(children)
   }
 
+  /** Coalesce streamed-character-only changes into one trailing publish. */
+  private scheduleChildren(): void {
+    if (this.volatileTimer !== undefined) return
+    this.volatileTimer = setTimeout(() => {
+      this.volatileTimer = undefined
+      this.publishChildren()
+    }, CHILD_VOLATILE_MS)
+    this.volatileTimer.unref()
+  }
+
+  private cancelChildren(): void {
+    if (this.volatileTimer === undefined) return
+    clearTimeout(this.volatileTimer)
+    this.volatileTimer = undefined
+  }
+
   private childrenForCurrentSession(): readonly ChildSessionFacts[] {
-    return [...this.children.entries()].map(([id, record]) => projectChildSessionFacts(id, record.facts, record.draft))
+    this.childList ??= [...this.children.values()].map(record => record.projected)
+    return this.childList
   }
 
   /** Latest transient stream draft for a child session's resident Agent. */
-  private childDraft(id: string): LiveAssistantDraft | undefined {
-    const agent = this.ctx.get('agents')?.get(SessionId(id))
+  private childDraft(id: string, agents: Context['agents'] | undefined): LiveAssistantDraft | undefined {
+    const agent = agents?.get(SessionId(id))
     return agent === undefined ? undefined : this.liveStream?.get(agent)
   }
 

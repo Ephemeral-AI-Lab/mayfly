@@ -35,6 +35,22 @@ function streamingTextWindow(text: string): string {
 }
 
 /**
+ * The newline-aligned tail a live block needs for its last wrapped lines.
+ * Wrapping restarts at every hard line break, so wrapping this tail yields
+ * exactly the final wrapped lines of the whole text; streaming then pays for
+ * the preview instead of rewrapping the entire reasoning on every delta.
+ * @param text - the raw reasoning.
+ * @param width - the content width.
+ * @returns the tail, or `undefined` when the whole text is short enough.
+ */
+function streamingPreviewTail(text: string, width: number): string | undefined {
+  const budget = (THINKING_PREVIEW_LINES + 2) * width * 2
+  if (text.length <= budget) return undefined
+  const boundary = text.lastIndexOf('\n', text.length - budget)
+  return boundary < 0 ? undefined : text.slice(boundary + 1)
+}
+
+/**
  * Renders one step's reasoning. The component reads the item on every
  * render, so the fold's mutations (delta appends, the authoritative
  * finalize rewrite) flow through with nothing but a cache-key change; it
@@ -102,10 +118,21 @@ export class ThinkingComponent implements MayflyComponent {
    */
   render(width: number): string[] {
     const { streaming } = this.item
-    const preview = this.preview()
-    const text = this.item.text.length > STREAMING_RENDER_MAX_CHARS
+    if (streaming) {
+      const contentWidth = Math.max(1, width - THINKING_INDENT.length)
+      const tail = streamingPreviewTail(this.item.text, contentWidth)
+      const lines = tail === undefined ? undefined : this.renderText(width, sanitizePluginText(tail))
+      // A tail without enough visible lines (trailing blank runs) falls back.
+      if (lines !== undefined && lines.length > THINKING_PREVIEW_LINES) return lines
+    }
+    return this.renderText(width, this.item.text.length > STREAMING_RENDER_MAX_CHARS
       ? streamingTextWindow(this.item.text)
-      : sanitizePluginText(this.item.text)
+      : sanitizePluginText(this.item.text))
+  }
+
+  private renderText(width: number, text: string): string[] {
+    const { streaming } = this.item
+    const preview = this.preview()
     const key = `${width}:${streaming}:${this.expanded}:${this.keyed}:${preview}:${this.item.durationMs ?? ''}:${text}`
     if (this.cache?.key === key) return this.cache.lines
 
