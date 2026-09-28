@@ -5,6 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import {
   type MayflyOverlayEntry,
   type MayflyPaneEntry,
+  type MayflyUiChild,
   type MayflyUiEvent,
   type MayflyUiNode,
 } from '@ephemeral-ai/mayfly-ui'
@@ -13,7 +14,7 @@ import { getLayoutNode, LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-
 import { matchesKey, type KeyId } from '@earendil-works/pi-tui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
-import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
+import { type SurfaceLaneEntry, type SurfaceRegistration } from './surface-manager.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
@@ -132,12 +133,28 @@ function leadsWithRule(node: MayflyUiNode): boolean {
   return first?.node.kind === 'divider' && first.node.label === undefined && (first.when ?? first.tab) === undefined
 }
 
+/**
+ * Whether a pane's content ends with an unconditional muted text row — the
+ * fold/expand affordance a bottom lane must keep visible when it clamps. A run
+ * of muted text rows is pane content (queued messages), not a single trailing
+ * affordance, so it declines.
+ */
+function endsWithAffordance(node: MayflyUiNode): boolean {
+  if (node.kind !== 'stack' || node.direction !== 'column' || (node.gap ?? 0) !== 0) return false
+  const unconditionalMutedText = (child: MayflyUiChild | undefined): boolean =>
+    child?.node.kind === 'text' && child.node.tone === 'muted' && (child.when ?? child.tab) === undefined
+  if (!unconditionalMutedText(node.children.at(-1))) return false
+  return !unconditionalMutedText(node.children.at(-2))
+}
+
 class PaneComponent implements MayflyFocusable {
   private targetValue: MayflyCompiledUi | null = null
   private focusedValue = false
   private live = true
   /** The first rendered row is a plain rule the bottom lane may share. */
   leadingRule = false
+  /** The final rendered row is a fold affordance the lane must keep visible. */
+  overflowKeepsTail = false
 
   constructor(private readonly colors: MayflySemanticColors, private readonly translate: MayflyTranslate) {}
 
@@ -151,12 +168,13 @@ class PaneComponent implements MayflyFocusable {
       ? { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
       : getLayoutNode(this.targetValue!.component)!
   }
-  replace(compiled: MayflyCompiledUi | null, leadingRule = false): void {
+  replace(compiled: MayflyCompiledUi | null, leadingRule = false, overflowKeepsTail = false): void {
     /* v8 ignore next -- record/map identity fences prevent replacement after one disposal. */
     if (!this.live) return
     setCompiledFocus(this.targetValue, false)
     this.targetValue = compiled
     this.leadingRule = compiled !== null && leadingRule
+    this.overflowKeepsTail = compiled !== null && overflowKeepsTail
     setCompiledFocus(compiled, this.focusedValue)
   }
   dispose(): void {
@@ -314,7 +332,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       return
     }
     // A compiled pane always had a node; null nodes returned above.
-    record.component.replace(compiled, entry.definition.title === undefined && leadsWithRule(node as MayflyUiNode))
+    record.component.replace(compiled, entry.definition.title === undefined && leadsWithRule(node as MayflyUiNode), endsWithAffordance(node as MayflyUiNode))
     if (record.registration === undefined) {
       record.registration = runtime.surfaces.register({
         id: entry.id,

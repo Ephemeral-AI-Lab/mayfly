@@ -41,6 +41,24 @@ function candidates(schema: Schema): readonly (string | number | boolean | null)
   return values.every(item => item !== undefined) ? values.map(item => item!.value) : undefined
 }
 
+/**
+ * Candidate options plus any stored off-list scalar, so a drifted value stays
+ * readable and selectable instead of surfacing its raw `JSON.stringify` id and
+ * failing save validation for a selection the user cannot see.
+ */
+function optionEntries(options: readonly (string | number | boolean | null)[], stored: readonly unknown[]): readonly { readonly id: string, readonly label: string }[] {
+  const entries: { id: string, label: string }[] = options.map(value => ({ id: JSON.stringify(value), label: String(value) }))
+  const seen = new Set(entries.map(entry => entry.id))
+  for (const value of stored) {
+    if (!scalar(value)) continue
+    const id = JSON.stringify(value)
+    if (seen.has(id)) continue
+    seen.add(id)
+    entries.push({ id, label: String(value) })
+  }
+  return entries
+}
+
 /** Project only declared scalar fields; unsupported containers never expose raw values or secrets. */
 export function settingsProjection(descriptor: SettingsDescriptor, writable: boolean, choices: SettingsChoices, t: MayflyTranslate): SettingsProjection {
   const root = new Schema(descriptor.schema as Partial<Schema>)
@@ -73,10 +91,10 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
       if (schema.type === 'string') field = { kind: 'secret', id, label, disabled, value: '', resetValue: '', placeholder: t(descriptor.secrets?.some(secret => secret.set && JSON.stringify(secret.path) === id) ? 'Configured; leave unchanged' : 'Not configured') }
     } else if (options !== undefined) {
       encoded = true
-      field = { ...base, disabled: disabled || dynamicKind !== undefined && choices[dynamicKind] === undefined, kind: 'select', value: value === undefined ? null : JSON.stringify(value), options: options.map(value => ({ id: JSON.stringify(value), label: String(value) })), ...resettable ? { resetValue: fallback === undefined ? null : JSON.stringify(fallback) } : {} }
+      field = { ...base, disabled: disabled || dynamicKind !== undefined && choices[dynamicKind] === undefined, kind: 'select', value: value === undefined ? null : JSON.stringify(value), options: optionEntries(options, value === undefined ? [] : [value]), ...resettable ? { resetValue: fallback === undefined ? null : JSON.stringify(fallback) } : {} }
     } else if (schema.type === 'array' && schema.inner !== undefined && candidates(schema.inner) !== undefined) {
       encoded = true
-      field = { ...base, kind: 'multiselect', value: Array.isArray(value) ? value.map(value => JSON.stringify(value)) : [], options: candidates(schema.inner)!.map(value => ({ id: JSON.stringify(value), label: String(value) })), ...resettable ? { resetValue: (fallback as unknown[]).map(value => JSON.stringify(value)) } : {}, ...schema.meta.min === undefined ? {} : { minSelected: schema.meta.min }, ...schema.meta.max === undefined ? {} : { maxSelected: schema.meta.max } }
+      field = { ...base, kind: 'multiselect', value: Array.isArray(value) ? value.map(value => JSON.stringify(value)) : [], options: optionEntries(candidates(schema.inner)!, Array.isArray(value) ? value : []), ...resettable ? { resetValue: (fallback as unknown[]).map(value => JSON.stringify(value)) } : {}, ...schema.meta.min === undefined ? {} : { minSelected: schema.meta.min }, ...schema.meta.max === undefined ? {} : { maxSelected: schema.meta.max } }
     } else if (schema.type === 'string') {
       field = { ...base, kind: schema.meta.role === 'textarea' ? 'textarea' : 'input', value: typeof value === 'string' ? value : '', ...resettable ? { resetValue: typeof fallback === 'string' ? fallback : '' } : {}, ...schema.meta.min === undefined ? {} : { minLength: schema.meta.min }, ...schema.meta.max === undefined ? {} : { maxLength: schema.meta.max } }
     } else if (schema.type === 'number') {

@@ -44,6 +44,20 @@ describe('SurfaceManager', () => {
     expect(renderSurfaceLane(manager.linearLayout(10, 2).header, 10)).toEqual(['one'])
   })
 
+  it('signals header-lane overflow instead of silently dropping the tail', () => {
+    const manager = new SurfaceManager()
+    manager.register(contribution('head', 'header', {}, component('a', 'b', 'c', 'd')))
+    expect(renderSurfaceLane(manager.linearLayout(120, 24).header, 80, 3)).toEqual(['a', 'b', '  … +2 more rows'])
+  })
+
+  it('keeps a marked affordance tail while clamping pane rows', () => {
+    const overflow = (hidden: number): string => `+${String(hidden)}`
+    expect(fitSurfaceRows(['a', 'b', 'c', 'd'], 3, overflow, true)).toEqual(['a', '+2', 'd'])
+    expect(fitSurfaceRows(['a', 'b', 'c', 'd'], 2, overflow, true)).toEqual(['a', '+3'])
+    expect(fitSurfaceRows(['a', 'b'], 4, overflow, true)).toEqual(['a', 'b'])
+    expect(fitSurfaceRows(['a', 'b', 'c'], 0, overflow, true)).toEqual([])
+  })
+
   it('orders deterministically and applies immutable user layout overrides', () => {
     const changes = vi.fn()
     const saves = vi.fn()

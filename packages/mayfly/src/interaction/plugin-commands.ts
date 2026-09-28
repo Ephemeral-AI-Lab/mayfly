@@ -127,7 +127,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     const pieces = [entry.source, surfaceBadge(entry)]
     /* v8 ignore next -- states() carries every indexed entry id */
     if (state?.installed === true) {
-      pieces.push(state.updateAvailable === true ? t('up {version}', { version: state.updateVersion! }) : 'installed')
+      pieces.push(state.updateAvailable === true ? t('update {version}', { version: state.updateVersion! }) : 'installed')
     } else if (entry.install.rows.some(row => installed.some(plugin => plugin.name === row.name))) {
       pieces.push('partial')
     }

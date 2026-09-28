@@ -31,7 +31,7 @@ export function helpNode(
     }
   }
   return ui.surface({
-    title: t('help'),
+    title: t('Help'),
     chrome: 'overlay',
     padding: 1,
     child: ui.stack.column([

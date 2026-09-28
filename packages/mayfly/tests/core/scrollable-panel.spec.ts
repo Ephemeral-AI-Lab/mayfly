@@ -27,11 +27,13 @@ describe('ScrollablePanel', () => {
       title: () => 'Transcript',
       hint: () => 'read-only',
       footer: () => ['keys'],
+      viewportRows: () => 8,
       onClose: close,
     })
     panel.focused = true
     expect(panel.focused).toBe(true)
     expect(plain(panel.render(20)).join('\n')).toContain('row 9')
+    expect(panel.bodyHeight).toBe(5)
 
     panel.handleInput('\x1b[A')
     expect(plain(panel.render(20)).join('\n')).toContain('row 4')
@@ -58,7 +60,12 @@ describe('ScrollablePanel', () => {
 
     panel.invalidate()
     expect(body.invalidate).toHaveBeenCalledOnce()
-    expect(panel.render(4)).toEqual([])
+    // Degenerate widths clamp instead of vanishing, and a long body shows its
+    // scroll position in the top rule.
+    const tiny = panel.render(4)
+    expect(tiny.length).toBeGreaterThan(0)
+    expect(tiny.every(row => new FakeMayflyComponents().visibleWidth(row) <= 4)).toBe(true)
+    expect(plain(panel.render(80)).join('\n')).toContain('(7-11/11)')
   })
 
   it('uses fallback row budgets, sanitizes chrome, clips body rows, and disposes once', () => {
@@ -103,6 +110,7 @@ describe('ScrollablePanel', () => {
       colors: new FakeTheme().colors,
       body: { render: () => ['fallback'], renderWindow, invalidate: vi.fn() },
       title: () => 'Windowed',
+      viewportRows: () => 6,
       onClose: vi.fn(),
     })
     expect(plain(panel.render(20)).join('\n')).toContain('windowed')
@@ -126,6 +134,7 @@ describe('ScrollablePanel', () => {
         invalidate: () => {},
       },
       title: () => 'Windowed',
+      viewportRows: () => 6,
       onClose: () => {},
     })
     const visible = () => plain(panel.render(20)).slice(1, 5).map(row => row.slice(2, -2).trim())

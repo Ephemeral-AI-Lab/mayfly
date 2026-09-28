@@ -403,6 +403,12 @@ export interface MayflyTerminalRuntime {
   readonly surfaces: SurfaceManager
   /** Current best-effort viewport budget for one managed surface. */
   surfaceViewport(id: string): { readonly columns: number, readonly rows: number }
+  /**
+   * Header plus bottom lane rows the dock is currently applying to the shared
+   * viewport. The editor slot and the content region both lose these rows, so
+   * the screen's `editorViewport` subtracts this one authoritative value.
+   */
+  surfaceLaneRows(): number
   /** Release one pane's focus back to the component active before it. */
   releaseSurfaceFocus(id: string): void
   /** Whether any visible modal overlay currently owns the input plane. */
@@ -663,6 +669,8 @@ export async function startMayflyTerminal(
   let surfaceBottomRows: () => number
   let lastSurfaceHeaderRows = 0
   let lastSurfaceBottomRows = 0
+  let lastAppliedHeaderRows = 0
+  let lastAppliedBottomRows = 0
   let lastDockRows = 0
   const dockContainer = alternate ? new DockLayoutContainer(overflow, fixedRows => {
     const fixedBudget = Math.min(Math.max(0, terminal.rows - 1), fixedRows)
@@ -670,6 +678,8 @@ export async function startMayflyTerminal(
     const headerRows = Math.min(surfaceBudget, surfaceHeaderRows())
     surfaceBudget -= headerRows
     const bottomRows = Math.min(surfaceBudget, surfaceBottomRows())
+    lastAppliedHeaderRows = headerRows
+    lastAppliedBottomRows = bottomRows
     return terminal.rows - headerRows - bottomRows
   }, rows => { lastDockRows = rows }) : undefined
   const scrollView = contentContainer === undefined ? undefined : new ScrollView(contentContainer, {
@@ -898,6 +908,9 @@ export async function startMayflyTerminal(
           ? Math.max(1, bottomLaneBudget() - tabs)
           : Math.max(1, terminal.rows - dockRows - lastSurfaceHeaderRows - lastSurfaceBottomRows - tabs)
       return { columns: Math.max(1, Math.min(terminal.columns, columns)), rows: Math.min(terminal.rows, rows) }
+    },
+    surfaceLaneRows() {
+      return lastAppliedHeaderRows + lastAppliedBottomRows
     },
     releaseSurfaceFocus(id) {
       if (surfaces.focusedId !== id) return

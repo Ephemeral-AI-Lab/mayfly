@@ -82,7 +82,7 @@ const WRITING_LABEL = 'Writing'
 const DETAIL_BUDGETS = [12, 24, 40, 64, 96]
 
 /** The stopping row's label; the `■` marker rides in error red beside it. */
-const STOPPING_LABEL = ' interrupting...'
+const STOPPING_LABEL = ' interrupting…'
 
 /**
  * Minimum time the stopping acknowledgment stays up. A plain-text abort

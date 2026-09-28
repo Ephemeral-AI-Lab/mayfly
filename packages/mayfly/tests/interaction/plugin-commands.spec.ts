@@ -903,7 +903,7 @@ describe('/plugin argument paths', () => {
     await world.run('/plugin list')
     const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
     expect(json).toContain('yanked')
-    expect(json).toContain('up 0.1.5')
+    expect(json).toContain('update 0.1.5')
     expect(json).toContain('Fresh')
     world.dispose()
   })
@@ -1081,7 +1081,7 @@ describe('/plugin surface actions', () => {
     })
     await world.run('/plugin list')
     const model = world.surface()!
-    expect(JSON.stringify(model.node)).toContain('up 0.1.4')
+    expect(JSON.stringify(model.node)).toContain('update 0.1.4')
     expect(model.availableActions()).toEqual(expect.arrayContaining([
       expect.objectContaining({ actionId: 'install', pagePath: marketPage(model), enabled: true }),
     ]))
@@ -1089,7 +1089,7 @@ describe('/plugin surface actions', () => {
     await vi.waitFor(() => expect(marketFeedback(model)).toContain('updated; restart Mayfly and start a new session to apply'))
     expect(world.spawns).toContainEqual({ cmd: '/usr/bin/dsh', args: ['plugin', '--profile', 'mayfly', 'add', 'dsh-loop'] })
     // The refreshed list no longer advertises an update.
-    expect(JSON.stringify(model.node)).not.toContain('up 0.1.4')
+    expect(JSON.stringify(model.node)).not.toContain('update 0.1.4')
     world.dispose()
   })
 

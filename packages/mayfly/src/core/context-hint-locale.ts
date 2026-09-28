@@ -58,6 +58,7 @@ const zh = Object.freeze({
   'The action completed, but newer data must be reviewed': '操作已完成，但需要查看更新的数据',
   'The action completed, but its result could not be displayed': '操作已完成，但无法显示结果',
   'The action could not be completed': '操作未能完成',
+  'This surface could not be displayed': '无法显示此界面',
 })
 
 const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))
