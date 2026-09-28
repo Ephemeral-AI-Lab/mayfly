@@ -58,6 +58,14 @@ describe('SurfaceManager', () => {
     expect(fitSurfaceRows(['a', 'b', 'c'], 0, overflow, true)).toEqual([])
   })
 
+  it('keeps the tail when a bottom pane marks the fold affordance', () => {
+    const manager = new SurfaceManager()
+    const pane = component('a', 'b', 'c', 'd') as MayflyComponent & { overflowKeepsTail: boolean }
+    pane.overflowKeepsTail = true
+    manager.register(contribution('fold', 'bottom', {}, pane))
+    expect(renderSurfaceLane(manager.linearLayout(120, 24).bottom, 80, 3)).toEqual(['a', '  … +2 more rows', 'd'])
+  })
+
   it('orders deterministically and applies immutable user layout overrides', () => {
     const changes = vi.fn()
     const saves = vi.fn()

@@ -14,7 +14,7 @@ import { getLayoutNode, LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-
 import { matchesKey, type KeyId } from '@earendil-works/pi-tui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
-import { type SurfaceLaneEntry, type SurfaceRegistration } from './surface-manager.ts'
+import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
@@ -135,11 +135,17 @@ function leadsWithRule(node: MayflyUiNode): boolean {
 
 /**
  * Whether a pane's content ends with an unconditional muted text row — the
- * fold/expand affordance a bottom lane must keep visible when it clamps. A run
- * of muted text rows is pane content (queued messages), not a single trailing
- * affordance, so it declines.
+ * fold/expand affordance a bottom lane must keep visible when it clamps.
+ *
+ * The contract this enforces: a column stack with `gap: 0` whose final child
+ * is a `text` node with `tone: 'muted'` and no `when`/`tab`, and whose
+ * second-to-last child is not another such row. A run of two or more muted
+ * rows is pane content (queued messages), not a single trailing affordance, so
+ * it declines; so do row stacks, gapped stacks, and conditional/tab-scoped
+ * tails. Panes that end in a fold footer (see `transcript/pane-todo.ts`) rely
+ * on this predicate staying true, so their specs pin it against the real node.
  */
-function endsWithAffordance(node: MayflyUiNode): boolean {
+export function endsWithAffordance(node: MayflyUiNode): boolean {
   if (node.kind !== 'stack' || node.direction !== 'column' || (node.gap ?? 0) !== 0) return false
   const unconditionalMutedText = (child: MayflyUiChild | undefined): boolean =>
     child?.node.kind === 'text' && child.node.tone === 'muted' && (child.when ?? child.tab) === undefined

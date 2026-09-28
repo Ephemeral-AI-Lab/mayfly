@@ -8,6 +8,7 @@
 import { ACTION_CANCEL, ACTION_END, ACTION_HOME, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyScreen, MayflySemanticColors } from './types.ts'
 import { sanitizePluginText } from './plugin-view.ts'
+import { OVERFLOW_ELLIPSIS } from './width.ts'
 
 /** Renderer dependencies and product callbacks for one read-only panel. */
 export interface ScrollablePanelOptions {
@@ -75,7 +76,12 @@ export class ScrollablePanel implements MayflyFocusable {
     const safeWidth = Math.max(1, Math.floor(width))
     const contentWidth = Math.max(1, safeWidth - 4)
     const footer = [...(this.options.footer?.() ?? [])]
-    this.bodyRows = this.bodyBudget(footer.length)
+    const grant = this.grantedRows()
+    if (grant !== undefined && grant <= 0) return []
+    // A host that cannot fit the frame gets the body alone rather than rows
+    // spilling past its grant: the screen clamp is only a diagnostic backstop.
+    const framed = grant === undefined || grant >= footer.length + 3
+    this.bodyRows = framed ? this.bodyBudget(footer.length, grant) : Math.max(1, grant!)
     const windowed = this.options.body as WindowedComponent
     const requestedOffset = this.scrollOffset
     let rendered = windowed.renderWindow?.(contentWidth, requestedOffset, this.bodyRows)
@@ -91,6 +97,7 @@ export class ScrollablePanel implements MayflyFocusable {
       ? (() => { const end = total - this.scrollOffset; return all!.slice(Math.max(0, end - this.bodyRows), end) })()
       : rendered.rows
     while (body.length < this.bodyRows) body.push('')
+    if (!framed) return body.slice(0, this.bodyRows).map(line => components.truncateToWidth(line, safeWidth, OVERFLOW_ELLIPSIS))
     const title = sanitizePluginText(this.options.title()).replace(/[\r\n]+/gu, ' ')
     const hint = sanitizePluginText(this.options.hint?.() ?? '').replace(/[\r\n]+/gu, ' ')
     // A long body shows its position so a read-only view cannot look complete.
@@ -108,7 +115,7 @@ export class ScrollablePanel implements MayflyFocusable {
     lines.push(colors.border(`╰${'─'.repeat(Math.max(1, safeWidth - 2))}╯`))
     // Below the frame's minimum the rules and furniture cannot fit; degrade
     // by clamping each row instead of making the whole panel vanish.
-    return width >= 5 ? lines : lines.map(line => components.truncateToWidth(line, Math.max(0, Math.floor(width))))
+    return width >= 5 ? lines : lines.map(line => components.truncateToWidth(line, Math.max(0, Math.floor(width)), OVERFLOW_ELLIPSIS))
   }
 
   dispose(): void {
@@ -117,8 +124,14 @@ export class ScrollablePanel implements MayflyFocusable {
     ;(this.options.body as MayflyComponent & { dispose?: () => void }).dispose?.()
   }
 
-  private bodyBudget(footerRows: number): number {
-    const rows = this.options.viewportRows?.() ?? this.options.screen.rows
+  /** Host-granted rows, or `undefined` when the panel owns the whole screen (isolated fixtures). */
+  private grantedRows(): number | undefined {
+    const rows = this.options.viewportRows?.()
+    return rows === undefined || !Number.isFinite(rows) ? undefined : Math.max(0, Math.floor(rows))
+  }
+
+  private bodyBudget(footerRows: number, grant: number | undefined): number {
+    const rows = grant ?? this.options.screen.rows
     if (!Number.isFinite(rows) || rows <= 0) return 12
     // The frame owns one top and one bottom rule beside the caller footer.
     return Math.max(1, Math.floor(rows) - footerRows - 2)
@@ -146,7 +159,7 @@ export class ScrollablePanel implements MayflyFocusable {
 
   private frame(line: string, width: number): string {
     const { colors, components } = this.options
-    const clipped = components.truncateToWidth(line, width, '…')
+    const clipped = components.truncateToWidth(line, width, OVERFLOW_ELLIPSIS)
     const padding = Math.max(0, width - components.visibleWidth(clipped))
     return colors.border('│') + ' ' + clipped + ' '.repeat(padding) + ' ' + colors.border('│')
   }

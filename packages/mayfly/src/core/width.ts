@@ -11,3 +11,11 @@
  */
 
 export { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '@earendil-works/pi-tui'
+
+/**
+ * The marker every signalling truncation uses when text must be elided. It is
+ * exactly one display column wide, so a caller can reserve it with one column
+ * and never split a grapheme. Silent clips keep their explicit `''` at the
+ * call site.
+ */
+export const OVERFLOW_ELLIPSIS = '…'

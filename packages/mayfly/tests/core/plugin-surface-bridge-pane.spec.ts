@@ -334,9 +334,18 @@ describe('direct pane surface renderer', () => {
       f.register({ id: 'conditional-tail', render: () => ui.stack.column([ui.child(ui.text('a', { tone: 'muted' }), { when: { minWidth: 1 } })]) })
       f.register({ id: 'tabbed-tail', render: () => ui.stack.column([ui.child(ui.text('a', { tone: 'muted' }), { tab: { controlId: 'tabs', itemId: 'one' } })]) })
       await flush()
+      const keepsTail = (id: string): boolean =>
+        (entry(f.runtime.surfaces, id).component as MayflyComponent & { overflowKeepsTail: boolean }).overflowKeepsTail
       expect(entries(f.runtime.surfaces).map(item => item.id)).toEqual(expect.arrayContaining([
         'row-stack', 'gapped-stack', 'empty-stack', 'plain-tail', 'muted-tail', 'conditional-tail', 'tabbed-tail',
       ]))
+      // A single trailing unconditional muted text row is the fold affordance.
+      expect(keepsTail('muted-tail')).toBe(true)
+      // Row stacks, gapped stacks, empty stacks, plain tails, and conditional
+      // or tab-scoped tails are pane content, not an unconditional affordance.
+      for (const id of ['row-stack', 'gapped-stack', 'empty-stack', 'plain-tail', 'conditional-tail', 'tabbed-tail']) {
+        expect(keepsTail(id)).toBe(false)
+      }
     } finally {
       await f.dispose()
     }

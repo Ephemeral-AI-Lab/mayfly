@@ -148,4 +148,39 @@ describe('ScrollablePanel', () => {
     rows.push('row 3', 'row 4')
     expect(visible()).toEqual(['row 1', 'row 2', 'row 3', 'row 4'])
   })
+
+  it('degrades height below the frame minimum and marks degenerate-width clips', () => {
+    const screen = new FakeScreen()
+    screen.rows = 20
+    const components = new FakeMayflyComponents()
+    const colors = new FakeTheme().colors
+    const options = (grant: number, viewportRows: () => number = () => grant): ConstructorParameters<typeof ScrollablePanel>[0] => ({
+      screen,
+      components,
+      colors,
+      body: { render: () => ['alpha', 'beta', 'gamma'], invalidate: vi.fn() },
+      title: () => 'Compact',
+      footer: () => ['keys'],
+      viewportRows,
+      onClose: vi.fn(),
+    })
+    // footer(1) + 3 is the smallest framed height: 2 rows cannot fit the frame,
+    // so the panel returns body rows alone instead of spilling past its grant.
+    const compact = new ScrollablePanel(options(2))
+    const compactRows = compact.render(20)
+    expect(compactRows).toHaveLength(2)
+    expect(compact.bodyHeight).toBe(2)
+    expect(plain(compactRows).join(' ')).not.toContain('Compact')
+    expect(plain(compactRows).join(' ')).not.toContain('keys')
+    // A zero grant has no room at all.
+    expect(new ScrollablePanel(options(0)).render(20)).toEqual([])
+    // A non-finite grant is isolated-fixture behavior: fall back to the screen.
+    expect(new ScrollablePanel(options(0, () => Number.NaN)).render(20).length).toBeGreaterThan(0)
+    // Degenerate widths clamp and mark the clip with the shared one-column marker.
+    const narrowRows = new ScrollablePanel(options(6)).render(3)
+    expect(narrowRows.length).toBeGreaterThan(0)
+    expect(narrowRows.join('')).toContain('…')
+    expect(narrowRows.join('')).not.toContain('...')
+    expect(narrowRows.every(row => components.visibleWidth(row) <= 3)).toBe(true)
+  })
 })
