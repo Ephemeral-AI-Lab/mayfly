@@ -150,7 +150,7 @@ export const ACTIVITY_LOCALE = identityCatalog({
   'Deep diving': '深度求索中',
   'Thinking': '思考中',
   'Writing': '输出中',
-  ' interrupting...': ' 正在中断...',
+  ' interrupting…': ' 正在中断…',
   ...PROCESS_ACTIVE_ZH,
 })
 

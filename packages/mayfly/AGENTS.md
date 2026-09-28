@@ -40,6 +40,15 @@ slots, never arbitrary root components.
 - `interaction/` keeps editor/autocomplete state and prompt-submit transforms in
   separate Fiber services. Editor presentations are ordinary overlays projected
   into the fixed editor host; preserve and restore the prompt lease.
+- `/sessions` retains only native catalog headers and revision-keyed title
+  read results in the command Fiber across panel opens. Group the picker by
+  exact cwd using headers only; materialize projections and names only for the
+  opened workspace or explicit global search results. Show loading/progress
+  until pending reads settle. Enumerate persistence once per refresh and bound
+  cold reads. A cold title comes from `readColdSessionLog` rather than a retained
+  `sessionQuery` observation, with `sessionProjectionCache` consulted first.
+  Storage replacement and unload retire retained results; browsing must
+  never activate Agents, retain logs, or create a second session domain store.
 - `transcript/` has one conversation controller with one view per displayed
   or retained conversation (listed ones hold nothing), generation-keyed
   reuse, and lazy conversion of the latest unread value from a feed: a live

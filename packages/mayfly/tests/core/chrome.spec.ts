@@ -206,7 +206,7 @@ describe('framePanel', () => {
       footer: ['esc cancel', 'enter resume', 'f6 next surface'],
       footerPaint: text => text,
     })
-    expect(lines[2]).toBe('  esc can\u001b[0m...\u001b[0m')
+    expect(lines[2]).toBe('  esc cance\u001b[0m…\u001b[0m')
     expect(lines).toHaveLength(4)
   })
 
@@ -216,7 +216,7 @@ describe('framePanel', () => {
       footerPaint: text => `_${text}_`,
     })
     // The joined row (22 wide) clips to the 20-column rule, paint and all.
-    expect(framed).toEqual(['─'.repeat(20), '', '_  esc cancel · ↵\u001b[0m...\u001b[0m', '─'.repeat(20)])
+    expect(framed).toEqual(['─'.repeat(20), '', '_  esc cancel · ↵ r\u001b[0m…\u001b[0m', '─'.repeat(20)])
   })
 
   it('skips the footer when the parts list is empty', () => {
@@ -225,7 +225,7 @@ describe('framePanel', () => {
 
   it('defaults the footer and rule paints to identity', () => {
     // No paints injected: the footer row and rules render unstyled.
-    expect(framePanel([''], 4, { footer: ['a', 'b'] })).toEqual(['────', '', ' \u001b[0m...\u001b[0m', '────'])
+    expect(framePanel([''], 4, { footer: ['a', 'b'] })).toEqual(['────', '', '  a\u001b[0m…\u001b[0m', '────'])
   })
 
   it('repaints the rules through the injected paint, clamped to the width', () => {
@@ -233,7 +233,7 @@ describe('framePanel', () => {
     // literals add columns reads past the frame — the D48 backstop cuts it
     // (the paint still lands: the marker survives the cut).
     const framed = framePanel([], 6, { rulePaint: text => `%${text}%` })
-    expect(framed).toEqual(['%──\x1b[0m...\x1b[0m', '%──\x1b[0m...\x1b[0m'])
+    expect(framed).toEqual(['%────\u001b[0m…\u001b[0m', '%────\u001b[0m…\u001b[0m'])
   })
 
   it('truncates an over-long title with styled hint to the width', () => {
@@ -300,11 +300,11 @@ describe('topRule', () => {
     expect(row).not.toContain('\x1b[22mcd')
   })
 
-  it('truncates an overflowing composite with no dash fill left', () => {
-    // ' BTW ─ Esc close · ↑↓ scroll ' is 29 wide at inner width 28: the
-    // trailing space is dropped and the reset appended.
+  it('truncates an overflowing composite with one ellipsis and no dash fill left', () => {
+    // ' BTW ─ Esc close · ↑↓ scroll ' is 29 wide at inner width 28: the tail
+    // makes room for the single `…` and the reset is appended.
     expect(topRule(30, { title: ' BTW ', hint: 'Esc close · ↑↓ scroll ' })).toBe(
-      '╭ BTW ─ Esc close · ↑↓ scroll\x1b[0m╮',
+      '╭ BTW ─ Esc close · ↑↓ scrol\u001b[0m…\u001b[0m╮',
     )
   })
 
@@ -420,7 +420,8 @@ describe('injectGhostHint', () => {
 
   it('falls back to the padding position when no cursor block renders', () => {
     // An unfocused editor renders no cursor; the ghost lands at the
-    // content-end column instead.
+    // content-end column instead. The bracket paint adds 2 columns and the
+    // display-width clamp trims them from the trailing padding.
     const row = `    /btw${' '.repeat(12)}`
     const ghosted = injectGhostHint(row, ' <q>', '/btw', 20, text => `[${text}]`)
     expect(ghosted).toBe(`    /btw[ <q>]${' '.repeat(8)}`)

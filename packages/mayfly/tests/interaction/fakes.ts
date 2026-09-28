@@ -737,6 +737,9 @@ export interface FakeOverlay {
 export class FakeScreen implements MayflyScreen {
   columns = 80
   rows = 24
+  get editorViewport(): { readonly columns: number, readonly rows: number } {
+    return { columns: this.columns, rows: this.rows }
+  }
   readonly children: MayflyComponent[] = []
   readonly overlays: FakeOverlay[] = []
   focused: MayflyComponent | null = null
@@ -917,6 +920,8 @@ export function fakeConversations(displayed: string[] = []): object {
   return {
     snapshot: () => snapshot,
     displayed: () => null,
+    displayedAgent: () => null,
+    primary: () => null,
     revision: () => 0,
     subscribe(listener: (value: typeof snapshot) => void) { listener(snapshot); return () => {} },
     display(id: string) { displayed.push(id); return false },

@@ -339,6 +339,23 @@ describe('provider editor', () => {
     expect(model.form(address('credentials'))).toBeUndefined()
   })
 
+  it('reports a clear-key request on a non-writable credential without claiming removal', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const bench = await providerFixture(ctx, { custom: profile })
+    vi.spyOn(bench.credentials, 'describe').mockResolvedValue({ configured: true, writable: false, source: 'environment' })
+    expect(await openProviderEditor(ctx, 'custom')).toBe(true)
+    const entry = ctx.mayflyOverlays.list()[0]!
+    const reply = await entry.definition.onEvent!.action!(
+      { kind: 'activate', actionId: 'clear-key' } as never,
+      requestContext(entry),
+    )
+    expect(reply).toEqual(expect.objectContaining({
+      kind: 'accepted',
+      feedback: { severity: 'warning', message: 'The external credential cannot be cleared here' },
+    }))
+  })
+
   it('returns false for incomplete services and opens without a caller signal', async () => {
     const empty = new Context()
     contexts.push(empty)

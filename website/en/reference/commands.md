@@ -10,7 +10,7 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 | `/new` | `/clear` | `[preset]` | Start a new session (optionally under a chosen agent preset) | `mayfly-commands` |
 | `/fork` | — | — | Fork the current session into a new one | `mayfly-commands` |
 | `/rewind` | — | — | Create a safe branch from an earlier user turn | `mayfly-commands` |
-| `/sessions` | `/resume` | `[<session-id>]` | Browse persisted sessions as a lineage tree — name, span, tokens, and path per row; an id resumes directly | `mayfly-commands` |
+| `/sessions` | `/resume` | `[<session-id>]` | Browse sessions by workspace (cwd), then open a conversation; an id resumes directly | `mayfly-commands` |
 | `/rename` | — | `[<name>]` | Rename the current session (no name opens an editor) | `mayfly-commands` |
 | `/btw` | — | `<question>` | Create a temporary side Agent and switch the complete UI to it; empty input closes | `mayfly-btw-command` |
 | `/agents` | — | `[stop <id>]` | Browse the subagent tree, view a child, or stop a continuable child | `mayfly-agents-command` |
@@ -40,7 +40,16 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 
 ## Sessions and models
 
-- **`/sessions` / `/resume <session-id>`** — `/resume` is the alias of `/sessions`: with an id it resumes directly; without one it opens the session picker. Rows nest by `parentSession` (siblings newest first) and show the session name (`Untitled · <short id>` until titled), status badges (`current`, `running`, `archived`, `Reminders`), the wall-clock span, total tokens, relative last activity, and the working directory. **Enter** opens a detail sheet (status, preset, created/last-active times, wall and Agent time, turns/steps, the input/cache-read/cache-write/output token split, model, and parent session) with Open/Archive/Restore actions, and **typing filters** by name, id, or path. The `Search contents` field searches persisted transcripts.
+- **`/sessions` / `/resume <session-id>`** — `/resume` is the alias of `/sessions`: with an id it resumes directly; without one it lists **workspaces grouped by working directory (`cwd`)**. The current workspace appears first, and each row shows its session count. Type to filter paths, then press **Enter** to browse that workspace. Only the opened workspace loads session names; leaving it cancels unfinished reads, and previously loaded names are reused when their stored revision is unchanged.
+
+  The workspace panel shows session names, status badges (`current`, `running`, `archived`, `Reminders`), known duration and token usage, and a lineage tree for sessions in that directory. Type to filter names or IDs. **Enter** opens details with Open/Archive/Restore actions. **Workspaces** or **Escape** returns to the directory picker after editing/filtering ends. Loading indicators remain visible while directories or sessions are being fetched, and name recovery shows progress such as `Loading session names… 12/40`; failed reads show a refresh hint.
+
+  **Search contents** inside a workspace searches that directory's conversations. **Search all contents** on the workspace picker searches across directories. Content search requires the native Harness search capability.
+
+  ![Sessions grouped by working directory](/shots/app-sessions.svg)
+
+  ![Conversations inside a workspace](/shots/app-session-workspace.svg)
+
 - **`/rename [<name>]`** — rename the current session: an argument renames directly, a bare call opens a one-field editor prefilled with the current name. A user name pins the title, so automatic titling no longer replaces it; the name shows on the editor's top border and in `/sessions`.
 - **`/fork`** — returns `cannot fork while the agent is running` while the agent is not idle.
 - **`/rewind`** — lists the current session's direct user turns in one level. Selecting a turn creates an ordinary child session from the complete boundary before it; the parent is never truncated or deleted and remains resumable through `/sessions`. A running agent is refused.

@@ -12,6 +12,8 @@ import { describe, expect, it } from 'vitest'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { GoalPhase, GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
+import { endsWithAffordance } from '../../src/core/surface-renderer.ts'
+import type { MayflyTranslate } from '../../src/frontend/index.ts'
 import * as todo from '../../src/transcript/pane-todo.ts'
 import { event, resetSeq, turnEnd, turnStart, userEvent } from './helpers.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
@@ -496,5 +498,16 @@ describe('mayfly-pane-todo', () => {
     pane.invalidate()
     expect(pane.render(10)).toEqual(narrow)
     await dispose()
+  })
+
+  it('pins the fold-affordance contract to the real todo node', () => {
+    const t: MayflyTranslate = key => key
+    const many: readonly TodoItem[] = Array.from({ length: 6 }, (_, index): TodoItem => ({ content: `t${String(index)}`, status: 'pending' }))
+    const state = (expanded: boolean, todos: readonly TodoItem[]): todo.TodoState => ({ todos, goal: null, expanded, dialog: false, interrupted: false })
+    // Folded and expanded past the cap both end in the muted fold/expand footer.
+    expect(endsWithAffordance(todo.todoNode(state(false, many), t, 'Ctrl+T'))).toBe(true)
+    expect(endsWithAffordance(todo.todoNode(state(true, many), t, 'Ctrl+T'))).toBe(true)
+    // A short list has no footer, so the tail is ordinary content.
+    expect(endsWithAffordance(todo.todoNode(state(false, many.slice(0, 2)), t, 'Ctrl+T'))).toBe(false)
   })
 })

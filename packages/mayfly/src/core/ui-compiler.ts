@@ -69,6 +69,7 @@ import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
+import { UiLoaderAnimation } from './ui-loader-animation.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
@@ -1243,7 +1244,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     }
     case 'loader': {
       const stack = new VStack()
-      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors), options))
+      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors, options.listRuntime.loaderFrame()), options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
         const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
@@ -1435,8 +1436,10 @@ export class MayflyUiSurfaceRuntime {
   private readonly fieldRecency = new Map<string, true>()
   private listRowBudget: number | undefined
   readonly state: FocusState
+  private readonly loaderAnimation: UiLoaderAnimation | undefined
 
-  constructor(readonly interaction?: UiSurfaceModel) {
+  constructor(readonly interaction?: UiSurfaceModel, requestRender?: () => void) {
+    this.loaderAnimation = requestRender === undefined ? undefined : new UiLoaderAnimation(requestRender)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
       const address = this.fieldAddresses.get(key)
       const draft = address === undefined ? undefined : this.interaction?.form(address)?.fields[address.fieldId]
@@ -1527,6 +1530,12 @@ export class MayflyUiSurfaceRuntime {
     this.generation += 1
     return this.generation
   }
+
+  /** Renderer clocks do not change shared model revisions or form state. */
+  get animationFrame(): number { return this.loaderAnimation?.frame ?? 0 }
+  loaderFrame(): number { return this.loaderAnimation?.render() ?? 0 }
+  beginAnimationFrame(): void { this.loaderAnimation?.beginFrame() }
+  pauseAnimation(): void { this.loaderAnimation?.stop() }
 
   current(generation: number): boolean { return this.live && this.interaction?.disposed !== true && generation === this.generation }
 
@@ -1631,6 +1640,7 @@ export class MayflyUiSurfaceRuntime {
 
   deactivate(): void {
     if (!this.live) return
+    this.pauseAnimation()
     this.generation += 1
     this.node = undefined
     this.options = undefined
@@ -1868,6 +1878,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   [LAYOUT_NODE](): LayoutNode {
     if (!this.surfaceRuntime.current(this.generation)) return { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
     this.viewport = safeViewport(this.options.getViewport)
+    this.surfaceRuntime.beginAnimationFrame()
     reconcile(this.state)
     beginLayoutPass(this.state)
     return getLayoutNode(this.root) ?? {
@@ -1882,6 +1893,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
     if (!this.surfaceRuntime.current(this.generation)) return { rows: [], overflowed: false }
     this.runtimeFailure = undefined
+    this.surfaceRuntime.beginAnimationFrame()
     try {
       this.state.layoutPass = false
       this.viewport = maxRows === undefined
@@ -1980,8 +1992,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
      pass, so identical renderFrame calls reuse the previous result. The
      key covers every input the frame reads from outside itself: runtime
      liveness (a rebind retires this surface), the caller-owned viewport
-     object, and the interaction revision that bumps on every model
-     mutation. Internal state changes — focus, input, scroll — all flow
+     object, the interaction revision, and the renderer animation frame.
+     Internal state changes — focus, input, scroll — all flow
      through the entry points below, which clear the memo eagerly. */
   private frameResult: {
     readonly current: boolean
@@ -1990,6 +2002,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     readonly columns: number
     readonly rows: number
     readonly revision: number | undefined
+    readonly animationFrame: number
     readonly result: MayflyStatusRenderResult
   } | undefined
 
@@ -1997,14 +2010,15 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const current = this.surfaceRuntime.current(this.generation)
     const viewport = safeViewport(this.options.getViewport)
     const revision = this.surfaceRuntime.interaction?.revision
+    const animationFrame = this.surfaceRuntime.animationFrame
     const cached = this.frameResult
     if (cached !== undefined
       && cached.current === current && cached.width === width && cached.maxRows === maxRows
-      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision) {
+      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision && cached.animationFrame === animationFrame) {
       return cached.result
     }
     const result = this.renderFrame(width, maxRows)
-    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, result }
+    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, animationFrame, result }
     return result
   }
 

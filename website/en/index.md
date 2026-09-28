@@ -44,7 +44,7 @@ brandFeatures:
       link: /en/dsh/modes
       linkText: Modes & permissions →
     - title: Sessions you can rewind
-      details: "/sessions lists past sessions, /fork branches from any point, and /rewind replays to an earlier state. Sessions and events are persisted by Harness — Mayfly is simply your way back."
+      details: "/sessions groups conversations by workspace and loads names as you browse, /fork branches from any point, and /rewind replays to an earlier state. Sessions and events are persisted by Harness — Mayfly is simply your way back."
       image: /shots/app-sessions.svg
       alt: Session list and rewind in the Mayfly terminal
       caption: /sessions · /fork · /rewind

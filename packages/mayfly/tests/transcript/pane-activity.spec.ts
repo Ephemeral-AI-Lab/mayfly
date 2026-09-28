@@ -211,13 +211,13 @@ describe('mayfly-pane-activity', () => {
       vi.setSystemTime(10_000)
       pending = true
       ctx.emit('mayfly/request-stop-changed', true)
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
       // The static row never arms the spinner: the animation timer stops and a
       // late tick cannot make the accepted interrupt look ignored again.
       expect(timers.cleared).toBe(1)
       expect(timers.intervals).toEqual([120])
       timers.ticks[0]!()
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
       for (const width of [18, 12, 4]) {
         expect(screen.paneLines(width).every(line => visibleWidth(line) <= width)).toBe(true)
       }
@@ -227,7 +227,7 @@ describe('mayfly-pane-activity', () => {
       vi.setSystemTime(10_050)
       pending = false
       ctx.emit('mayfly/request-stop-changed', false)
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
       expect(timers.timeouts).toHaveLength(1)
       expect(timers.timeouts[0]!.ms).toBe(550)
 
@@ -240,7 +240,7 @@ describe('mayfly-pane-activity', () => {
       pending = true
       ctx.emit('mayfly/request-stop-changed', true)
       expect(timers.cleared).toBe(2)
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
       vi.setSystemTime(10_450)
       pending = false
       ctx.emit('mayfly/request-stop-changed', false)
@@ -266,17 +266,17 @@ describe('mayfly-pane-activity', () => {
     vi.useFakeTimers()
     try {
       ctx.emit('mayfly/request-stop-changed', true)
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
       pending = false
       ctx.emit('mayfly/request-stop-changed', false)
       // The turn settled at once; the acknowledgment holds out its minimum.
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
       // A fresh stop cancels the pending hold through the default clearTimeout.
       pending = true
       ctx.emit('mayfly/request-stop-changed', true)
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
       vi.advanceTimersByTime(600)
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
       pending = false
       ctx.emit('mayfly/request-stop-changed', false)
       vi.advanceTimersByTime(600)
@@ -319,7 +319,7 @@ describe('mayfly-pane-activity', () => {
       mayflyRequests: { stopPending: () => true },
     })
     const { screen, dispose } = harness
-    expect(screen.paneLines()).toEqual(['■ interrupting...'])
+    expect(screen.paneLines()).toEqual(['■ interrupting…'])
     await dispose()
   })
 
@@ -336,7 +336,7 @@ describe('mayfly-pane-activity', () => {
       vi.setSystemTime(20_000)
       pending = true
       ctx.emit('mayfly/request-stop-changed', true)
-      expect(screen.paneLines()).toEqual(['■ interrupting...'])
+      expect(screen.paneLines()).toEqual(['■ interrupting…'])
 
       // A drain that outlasts the hold releases on the event itself.
       vi.setSystemTime(20_900)

@@ -50,6 +50,7 @@ async function mount(): Promise<{
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('theme-spec'))
   const agent = { id: session.id, session } as unknown as Agent
+  ctx.provide('agents', { get: () => agent, list: () => [agent] } as never)
   ctx.provide('mayflyCurrentAgent', {
     current: () => agent,
     revision: () => 0,

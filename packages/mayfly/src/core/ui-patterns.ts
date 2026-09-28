@@ -403,6 +403,8 @@ export function renderActions(node: ActionsNode, width: number, focus: PatternFo
  * @returns the localized overflow row.
  */
 export function renderOverflowRow(hidden: number, translate: MayflyTranslate): string {
+  // The full English string is the catalog key, so it stays a literal for
+  // `locale-catalog.spec.ts`'s dead-key scan instead of a template.
   return translate('  … +{count} more rows', { count: hidden })
 }
 
@@ -413,8 +415,12 @@ function formatElapsedMs(ms: number): string {
   return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
 }
 
-export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors): string[] {
-  const indicator = node.variant === 'tide' ? '≈' : '⠋'
+const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
+const TIDE_FRAMES = ['≈', '≋', '∿', '≋'] as const
+
+export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0): string[] {
+  const frames = node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
+  const indicator = frames[frame % frames.length]!
   const elapsed = node.elapsedMs === undefined ? '' : ` ${formatElapsedMs(node.elapsedMs)}`
   return [fit(`${colors.primary(indicator)} ${colors.text(node.message)}${colors.textMuted(elapsed)}`, width)]
 }

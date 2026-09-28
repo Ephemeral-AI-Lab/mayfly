@@ -100,6 +100,7 @@ const flushCommands = (): Promise<void> => new Promise(resolve => { setImmediate
 /** Provide native command dependencies without mounting Mayfly display services. */
 function provideAppBoundary(ctx: Context): void {
   const active = (): Agent | null => ctx.get('testSession')?.current ?? null
+  ctx.provide('agents', { get: () => undefined, list: () => [] } as never)
   ctx.provide('mayflyConversations', fakeConversations() as never)
   ctx.provide('mayflyCurrentAgent', {
     current: active,
@@ -392,7 +393,7 @@ describe('mayfly-commands plugin', () => {
     // overflow the window, so a `showing` line replaces the tail.
     const panel = overlay(ctx, 'mayfly.help')
     const rows = panel.render(80)
-    expect(rows.join('\n')).toContain('help')
+    expect(rows.join('\n')).toContain('Help')
     expect(rows.join('\n')).toContain('Commands')
     expect(rows.join('\n')).toContain('/plugin')
     expect(rows.join('\n')).toContain('/update')

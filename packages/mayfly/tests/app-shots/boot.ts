@@ -225,9 +225,34 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
       return { value: name, name: spec.name, description: spec.description }
     },
   } satisfies PermissionPresetsService as never)
+  const listingValues = (header: SessionHeader) => {
+    const shot = header as SessionHeader & {
+      readonly shotUpdatedAt?: number
+      readonly shotUsage?: { uncachedInputTokens: number, outputTokens: number, cacheReadTokens: number, cacheWriteTokens: number }
+      readonly shotStats?: { turns: number, steps: number, llmMs: number, toolMs: number }
+    }
+    return {
+      title: persistedTitles.get(String(header.id)) ?? null,
+      sessionListMetadata: { blank: false, lastPromptAt: shot.shotUpdatedAt ?? null },
+      ...(shot.shotUsage === undefined ? {} : { tokenUsage: shot.shotUsage }),
+      ...(shot.shotStats === undefined ? {} : { sessionStats: shot.shotStats }),
+    }
+  }
+  ctx.provide('sessionProjectionCache', {
+    cachedSnapshot: (header: SessionHeader) => ({ asOfSeq: 0, values: listingValues(header) }),
+    cachedPredecessorTitle: () => undefined,
+  } as never)
   ctx.provide('sessionPersistence', {
-    // Harness 0.1.5 lists snapshots carrying the stored header.
-    list: () => Promise.resolve(persistedHeaders.map(header => ({ header }))),
+    identity: Symbol('shot-persistence'),
+    list: () => Promise.resolve(persistedHeaders.map(header => ({ header, revision: 'shot' }))),
+    open: (id: string) => Promise.resolve({
+      header: persistedHeaders.find(header => header.id === id)!, inheritedEventCount: 0,
+      read: () => Promise.resolve({ eventState: 'shared-frozen', events: persistedTitles.has(id) ? [{
+        type: 'session/title', seq: 0, time: SHOT_EPOCH,
+        data: { title: persistedTitles.get(id), messageSeqs: [], source: { kind: 'user' } },
+      }] : [] }),
+      close: () => Promise.resolve(),
+    }),
   } as never)
   ctx.provide('sessionQuery', {
     listSessions: () => Promise.resolve(persistedHeaders.map(header => ({
@@ -260,6 +285,14 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   ;(ctx.commands as unknown as { instanceToken: string }).instanceToken = 'shotcmd0'
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
+  const projectionSnapshot = ctx.sessionProjections.snapshot.bind(ctx.sessionProjections)
+  ctx.sessionProjections.snapshot = (session, keys) => {
+    const snapshot = projectionSnapshot(session, keys)
+    const header = persistedHeaders.find(header => header.id === session.id)
+    return header !== undefined && keys?.includes('sessionListMetadata')
+      ? { ...snapshot, values: { ...snapshot.values, ...listingValues(header) } } as typeof snapshot
+      : snapshot
+  }
   // The real title service gives scripted sessions their logged fallback
   // names, which the editor's top-right border then paints. Config mirrors
   // the dsh-base row.
@@ -270,25 +303,6 @@ export async function bootAppShot(options: { readonly terminal: VtTerminal }): P
   // fold genuine events.
   ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
   ctx.provide('sessionController', {
-    list: async () => ({ items: persistedHeaders.map(header => {
-      // Shot-only extras smuggled on the fabricated header keep the
-      // `/sessions` rows' span, age, tokens, and stats deterministic.
-      const shot = header as SessionHeader & {
-        readonly shotUpdatedAt?: number
-        readonly shotUsage?: { uncachedInputTokens: number, outputTokens: number, cacheReadTokens: number, cacheWriteTokens: number }
-        readonly shotStats?: { turns: number, steps: number, llmMs: number, toolMs: number, ttftMs: number, ttftSteps: number, decodeMs: number, decodeTokens: number }
-      }
-      return {
-        sessionId: header.id, cwd: header.cwd, updatedAt: shot.shotUpdatedAt ?? header.createdAt, running: false, blank: false,
-        agentAvailable: agents.has(String(header.id)),
-        ...(header.parentSession === undefined ? {} : { parentSessionId: header.parentSession }),
-        projections: { kind: 'cached', asOfSeq: 0, values: {
-          title: persistedTitles.get(String(header.id)) ?? null,
-          ...(shot.shotUsage === undefined ? {} : { tokenUsage: shot.shotUsage }),
-          ...(shot.shotStats === undefined ? {} : { sessionStats: shot.shotStats }),
-        } },
-      }
-    }) }),
     async *follow() {
       yield { type: 'snapshot', assistantStream: { revision: 0 } }
     },

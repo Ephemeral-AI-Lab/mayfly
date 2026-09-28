@@ -130,7 +130,7 @@ describe('sessionSpan and sessionLabel', () => {
   })
   it('labels titled sessions and falls back to a short id', () => {
     expect(sessionLabel(facts({ title: 'Named' }), t)).toBe('Named')
-    expect(sessionLabel(facts(), t)).toBe('Untitled · session-')
+    expect(sessionLabel(facts(), t)).toBe('Untitled · id-abcde')
   })
 })
 
@@ -155,7 +155,7 @@ describe('sessionListItem', () => {
   })
   it('omits missing span, zero tokens, and an absent path', () => {
     const item = sessionListItem(facts({ createdAt: undefined, tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }, cwd: undefined, title: undefined }), NOW, '/home/dev', t)
-    expect(item.label).toBe('Untitled · session-')
+    expect(item.label).toBe('Untitled · id-abcde')
     expect(item.detailSpans?.map(span => span.text).join('')).toBe('50m ago')
   })
 })
@@ -195,4 +195,39 @@ describe('sessionDetailNode', () => {
     expect(detail.match(/—/g)?.length).toBe(7)
     expect(detail).not.toContain('Preset')
   })
+})
+
+it('keeps cache misses distinct from zero activity and reads exact detail baselines', () => {
+  const cold = sessionListFacts(summary({ updatedAt: NOW - 3_600_000 }), {
+    ...context(), header: header(), title: 'Recovered title',
+  })
+  expect(cold.title).toBe('Recovered title')
+  expect(cold.lastActiveAt).toBeUndefined()
+  expect(sessionSpan(cold)).toBeUndefined()
+  expect(text(sessionListItem(cold, NOW, '/home/dev', t))).toContain('Created 1h ago')
+  expect(text(sessionListItem(cold, NOW, '/home/dev', t))).not.toContain('0s')
+  const exact = sessionListFacts(summary(), { ...context(), header: header(), projections: {
+    asOfSeq: 10, values: { title: 'Fresh title', sessionListMetadata: { blank: false, lastPromptAt: NOW - 60_000 } },
+  } })
+  expect(exact.title).toBe('Fresh title')
+  expect(sessionSpan(exact)).toBe(3_540_000)
+  expect(text(sessionDetailNode(cold, NOW, t))).toContain('—')
+})
+
+it('distinguishes generated session IDs and preserves unprefixed IDs', () => {
+  const base = { running: false, archived: false, current: false, reminders: false }
+  expect(sessionLabel({ ...base, id: 'session-a1b2c3d4-0000-1111' }, t)).toBe('Untitled · a1b2c3d4')
+  expect(sessionLabel({ ...base, id: 'session-e5f6a7b8-0000-1111' }, t)).toBe('Untitled · e5f6a7b8')
+  expect(sessionLabel({ ...base, id: 'custom-id' }, t)).toBe('Untitled · custom-i')
+  expect(sessionListItem({ ...base, id: 'bare' }, NOW, '/home/dev', t).detailSpans).toEqual([])
+})
+
+
+it('prefers a recovered title over stale listing hints while keeping an exact detail baseline authoritative', () => {
+  const cached = summary({ projections: { kind: 'cached', asOfSeq: 4, values: { title: null } } })
+  expect(sessionListFacts(cached, { ...context(), title: '你好，我能帮你做什么' }).title).toBe('你好，我能帮你做什么')
+  const staleName = summary({ projections: { kind: 'cached', asOfSeq: 4, values: { title: 'Old name' } } })
+  expect(sessionListFacts(staleName, { ...context(), title: 'Renamed conversation' }).title).toBe('Renamed conversation')
+  expect(sessionListFacts(cached, { ...context(), title: 'Older read', projections: { asOfSeq: 10, values: { title: 'Latest title' } } }).title).toBe('Latest title')
+  expect(sessionListFacts(cached, { ...context(), title: 'Older read', projections: { asOfSeq: 10, values: { title: null } } }).title).toBeUndefined()
 })

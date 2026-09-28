@@ -1,149 +1,106 @@
-/** Session browsing, content search, and archive admission owned by Harness.
+/** Workspace-first session browsing over native catalog headers.
  * @module @ephemeral-ai/mayfly/interaction/native-sessions
  */
 import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
-import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
-import { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-schedule'
-import type {} from '@deepseek-ai/dsh-session-query'
-import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
-import { ui, type MayflyOverlayHandle, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import type {} from '../app/conversation-views.ts'
-import { sessionDetailNode, sessionLabel, sessionListFacts, sessionListItem, type SessionListFacts } from './session-list-model.ts'
+import { createSessionListCache, refreshSessionList, sessionListHeaders } from './session-list-reads.ts'
+import { sessionWorkspaceItem, sessionWorkspaces, type SessionWorkspace } from './session-workspaces-model.ts'
+import { openSessionWorkspace, type SessionWorkspacePanel, type SessionWorkspaceScope } from './session-workspace-panel.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
-export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyTranslate): Promise<CommandResult> {
+export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyTranslate, cache = createSessionListCache(ctx)): Promise<CommandResult> {
+  if (signal.aborted || ctx.mayflyOverlays.focus('mayfly.sessions.workspace') || ctx.mayflyOverlays.focus('mayfly.sessions')) return { kind: 'success' }
   const lifetime = new AbortController()
   const abort = AbortSignal.any([signal, lifetime.signal])
-  const cleanup = ctx.effect(() => () => lifetime.abort())
   const home = homedir()
   let handle: MayflyOverlayHandle | undefined
-  let detail: MayflyOverlayHandle | undefined
-  let sessions: readonly SessionSummary[] = []
-  let headers: ReadonlyMap<string, SessionHeader> = new Map()
-  let reminders: ReadonlySet<string> = new Set()
-  let now = Date.now()
-  let searchRows: readonly MayflyListItem[] | undefined
+  let selected: SessionWorkspacePanel | undefined
+  let groups: readonly SessionWorkspace[] = []
+  let loading = true
   let message = ''
-  // Stored headers carry the creation time and preset the summaries omit;
-  // without the query service (or on a listing failure) rows omit the span.
-  const readHeaders = async (): Promise<ReadonlyMap<string, SessionHeader>> => {
-    const query = ctx.get('sessionQuery')
-    if (query === undefined) return new Map()
-    try {
-      return new Map((await query.listSessions(abort)).map(record => [String(record.header.id), record.header]))
-    } catch (error) {
-      if (!abort.aborted) ctx.logger.warn(`sessions: stored header listing failed: ${String(error)}`)
-      return new Map()
-    }
-  }
-  // One Host catalog read badges every row; absent service leaves the set empty.
-  const readReminders = async (): Promise<ReadonlySet<string>> => {
-    const schedule = ctx.get('schedule')
-    if (schedule === undefined) return new Set()
-    try {
-      return new Set((await schedule.catalog()).filter(entry => entry.status === 'active').map(entry => String(entry.sessionId)))
-    } catch (error) {
-      if (!abort.aborted) ctx.logger.warn(`sessions: reminder catalog failed: ${String(error)}`)
-      return new Set()
-    }
-  }
-  const refresh = async () => {
-    const [listed, stored, reminding] = await Promise.all([ctx.sessionController.list({}, abort), readHeaders(), readReminders()])
-    sessions = listed.items
-    headers = stored
-    reminders = reminding
-    now = Date.now()
-  }
-  const factsOf = (session: SessionSummary): SessionListFacts => sessionListFacts(session, {
-    header: headers.get(String(session.sessionId)),
-    archived: ctx.workspaceRegistry.archivedSessionIds.includes(session.sessionId),
-    current: String(ctx.mayflyCurrentAgent.primary()?.id) === String(session.sessionId),
-    reminders,
-    now,
-  })
-  const rows = (): readonly MayflyListItem[] => searchRows ?? sessions.map(session => sessionListItem(factsOf(session), now, home, t))
-  const node = () => ui.surface({ title: 'Sessions', chrome: 'overlay', child: ui.stack.column([
-    ...(message === '' ? [] : [ui.text(message)]),
-    ui.form({ id: 'content-search', fields: [{ kind: 'input', id: 'query', label: 'Search conversation contents', value: '' }] }),
-    ui.list({ id: 'sessions', role: 'browse', tree: searchRows === undefined, filterable: true, selectedIds: [], items: rows(), empty: ui.empty({ title: 'No sessions' }) }),
-    ui.actions({ id: 'session-actions', items: [{ id: 'search', label: 'Search contents', read: [{ pagePath: [], formId: 'content-search' }] }, { id: 'refresh', label: 'All sessions' }, { id: 'close', label: 'Close', dismiss: true }] }),
+  let busy = false
+  let repaint: ReturnType<typeof setTimeout> | undefined
+  const cleanup = ctx.effect(() => () => { lifetime.abort(); clearTimeout(repaint) })
+  const currentCwd = () => ctx.mayflyConversations.primary()?.session.header.cwd ?? process.cwd()
+  const adopt = () => { groups = sessionWorkspaces(sessionListHeaders(ctx, cache), currentCwd()) }
+  const node = () => ui.surface({ title: t('Sessions · Workspaces'), chrome: 'overlay', child: ui.stack.column([
+    ...(loading ? [ui.loader({ message: t('Loading workspaces…') })] : []),
+    ...(message === '' ? [] : [ui.text(message, { tone: 'warning' })]),
+    ...(groups.length === 0 && loading ? [] : [ui.list({
+      id: 'workspaces', role: 'browse', filterable: true, selectedIds: [],
+      items: groups.map(group => sessionWorkspaceItem(group, currentCwd(), home, t)),
+      empty: ui.empty({ title: t('No workspaces') }),
+    })]),
+    ui.actions({ id: 'workspace-actions', items: [
+      { id: 'refresh', label: t('Refresh'), disabled: loading },
+      { id: 'search-all', label: t('Search all contents'), disabled: loading },
+      { id: 'close', label: t('Close'), dismiss: true },
+    ] }),
   ]) })
-  try {
-    await refresh()
-    if (abort.aborted) {
-      cleanup()
-      return { kind: 'success' }
+  const publish = () => {
+    if (!abort.aborted && handle?.closed === false && !busy) handle.set(node())
+  }
+  const refresh = async (readSignal: AbortSignal) => {
+    loading = true
+    try {
+      await refreshSessionList(ctx, cache, readSignal)
+      readSignal.throwIfAborted()
+      adopt()
+      message = ''
+    } finally {
+      loading = false
+      publish()
     }
-    handle = openUiOverlay(ctx, { id: 'mayfly.sessions', title: 'Sessions', presentation: 'editor', capturing: true, onEvent: { action: async (event, context) => {
-      if (event.kind === 'activate') {
-        if (event.actionId === 'search') {
-          const query = event.inputs?.forms[0]?.fields.find(field => field.id === 'query')?.value
-          if (typeof query !== 'string' || query.trim() === '') return { kind: 'failed', message: 'Enter search text' }
-          const result = await ctx.sessionController.search({ query: query.trim() }, context.signal)
-          searchRows = result.items.map(item => {
-            const session = sessions.find(session => session.sessionId === item.sessionId)
-            return { id: item.sessionId, label: session === undefined ? item.sessionId : sessionLabel(factsOf(session), t), detail: item.snippet }
-          })
-          message = result.hasMore ? 'More matches exist; narrow the search.' : ''
-        } else if (event.actionId === 'refresh') {
-          await refresh()
-          searchRows = undefined
-          message = ''
-        }
-        return { kind: 'accepted', node: node(), source: [] }
-      }
-      if (event.kind !== 'selection-accept') return { kind: 'completed' }
-      const id = event.selectedIds[0]
-      const session = sessions.find(session => session.sessionId === id)
-      if (session === undefined) return { kind: 'failed', message: 'Session is no longer listed; refresh the catalog.' }
-      const facts = factsOf(session)
-      const archived = facts.archived
-      const detailNode = (activity = '') => ui.surface({ title: sessionLabel(facts, t), chrome: 'overlay', child: ui.stack.column([
-        sessionDetailNode(facts, now, t),
-        ...(activity === '' ? [] : [ui.text(activity, { tone: 'warning' })]),
-        ui.actions({ id: 'session-detail-actions', items: [
-          { id: 'open', label: 'Open conversation', disabled: archived, ...(archived ? { disabledReason: 'Restore the session first' } : {}) },
-          { id: archived ? 'restore' : 'archive', label: archived ? 'Restore' : 'Archive', confirm: archived ? 'Restore this session?' : 'Archive this session?' },
-          ...(activity === '' ? [] : [{ id: 'stop-archive', label: 'Stop activity and archive', intent: 'danger' as const, confirm: { title: 'Stop this session’s activity and archive it?', detail: activity, confirmLabel: 'Stop and archive', tone: 'danger' as const } }]),
-          { id: 'close', label: 'Close', dismiss: true },
-        ] }),
-      ]) })
-      detail = openUiOverlay(ctx, { id: 'mayfly.sessions.detail', title: 'Session', presentation: 'editor', capturing: true, onEvent: { action: async action => {
-        if (action.kind !== 'activate') return { kind: 'completed' }
-        if (action.actionId === 'open') {
-          if (ctx.workspaceRegistry.archivedSessionIds.includes(session.sessionId)) return { kind: 'failed', message: 'Restore the session first' }
-          if (session.origin === 'subagent' && session.parentSessionId !== undefined) {
-            const primary = ctx.mayflyCurrentAgent.primary()
-            if (primary === null) return { kind: 'failed', message: 'Open the lead session first' }
-            const children = await ctx.subagents.listDescendants(primary.id, abort)
-            const child = children.find(child => child.kind === 'child' && child.id === session.sessionId)
-            if (child?.kind !== 'child') return { kind: 'failed', message: 'Open this child’s lead session first' }
-            ctx.mayflyConversations.open({ kind: 'subagent', sessionId: child.id, parentSessionId: child.parentId, mode: child.mode, label: child.label ?? child.id })
-          } else ctx.emit('mayfly/request-resume', session.sessionId)
-          handle?.close()
-          return { kind: 'completed' }
-        }
+  }
+  const open = (scope: SessionWorkspaceScope) => {
+    selected?.handle.close()
+    selected = openSessionWorkspace(ctx, abort, t, cache, {
+      scope, loading: () => loading, refresh,
+      changed: publish,
+      closeAll: () => handle?.close(),
+      onClosed: () => { selected = undefined },
+    })
+  }
+  try {
+    adopt()
+    handle = openUiOverlay(ctx, {
+      id: 'mayfly.sessions', title: t('Sessions · Workspaces'), presentation: 'editor', capturing: true,
+      onEvent: { action: async (event, context) => {
+        busy = true
+        const operation = AbortSignal.any([abort, context.signal])
         try {
-          if (action.actionId === 'restore') await ctx.workspaceRegistry.unarchiveSession(SessionId(session.sessionId))
-          else if (action.actionId === 'archive' || action.actionId === 'stop-archive') await ctx.workspaceRegistry.archiveSession(session.sessionId, { stopActivity: action.actionId === 'stop-archive' })
-          else return { kind: 'completed' }
-        } catch (error) {
-          if (error instanceof WorkspaceActiveSessionError) return { kind: 'accepted', node: detailNode(error.activity.map(item => `${item.kind}: ${JSON.stringify(item.items ?? [])}`).join('\n')), source: [] }
-          throw error
+          if (event.kind === 'selection-accept' && event.controlId === 'workspaces') {
+            const workspace = groups.find(item => item.id === event.selectedIds[0])
+            if (workspace === undefined) return { kind: 'failed', message: t('Workspace is no longer listed; refresh the catalog.') }
+            open({ kind: 'workspace', cwd: workspace.cwd })
+          } else if (event.kind === 'activate' && event.actionId === 'search-all') open({ kind: 'search' })
+          else if (event.kind === 'activate' && event.actionId === 'refresh') {
+            context.report({ message: t('Loading workspaces…'), severity: 'info' })
+            await refresh(operation)
+            if (operation.aborted) return { kind: 'cancelled' }
+            selected?.catalogChanged()
+            return { kind: 'accepted', node: node(), source: [] }
+          }
+          return { kind: 'completed' }
+        } finally {
+          busy = false
+          clearTimeout(repaint)
+          if (!abort.aborted) repaint = setTimeout(publish, 0)
         }
-        await refresh()
-        if (!abort.aborted && handle?.closed === false) handle.set(node())
-        return { kind: 'completed', dismiss: true }
-      } } }, detailNode(), { signal: abort, reopen: 'replace' })
-      return { kind: 'completed' }
-    } } }, node(), { signal: abort, reopen: 'replace', onClosed: () => {
-      detail?.close()
-      cleanup()
-    } })
+      } },
+    }, node(), { signal: abort, reopen: 'replace', onClosed: () => { selected?.handle.close(); cleanup() } })
+    void refresh(abort).then(() => {
+      if (!abort.aborted) selected?.catalogChanged()
+    }).catch(error => {
+      if (abort.aborted) return
+      message = t('Could not load workspaces: {error}', { error: String(error) })
+      publish()
+      selected?.catalogChanged(message)
+    })
     return { kind: 'success' }
   } catch (error) {
     cleanup()

@@ -195,11 +195,16 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return this.runtime.hasCapturingOverlay() || (this.editorReplacement !== null && this.fixed.get('editor.prompt')!.editorReplaced)
   }
 
-  /** The editor shares the terminal with the fixed footer and at least one content row. */
+  /**
+   * The editor slot the dock actually grants: the terminal minus the real
+   * status footer, the one-row transcript reserve, and the header/bottom lane
+   * rows the width-derived layout currently occupies (never a frame stale).
+   * Single source for panel bodies and editor overlays.
+   */
   get editorViewport(): { readonly columns: number, readonly rows: number } {
     const columns = this.runtime.columns
     const footerRows = this.fixed.get('status.footer')!.render(columns).length
-    return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1) }
+    return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1 - this.runtime.surfaceLaneRows()) }
   }
 
   /** A registered editor-presentation overlay takes the prompt's place. */

@@ -240,7 +240,9 @@ export class UiSurfaceModel {
     const admitted = this.publication?.source === snapshot.node ? { ok: true as const, value: this.publication.admitted }
       : snapshot.node === this.rawNode && this.admittedNode !== null ? { ok: true as const, value: this.admittedNode } : validateMayflyUiNode(snapshot.node)
     if (!admitted.ok) {
-      this.admissionError = freezeWire({ kind: 'text', tone: 'danger', content: admitted.message })
+      // The technical JSON-pointer path stays in the report/log; the surface
+      // shows a user-facing sentence instead.
+      this.admissionError = freezeWire({ kind: 'text', tone: 'danger', content: this.t('This surface could not be displayed') })
       this.report('snapshot', { severity: 'error', message: admitted.message })
       return
     }

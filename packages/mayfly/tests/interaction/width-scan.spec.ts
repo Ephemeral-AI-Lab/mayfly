@@ -21,6 +21,7 @@ import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
+import { sessionWorkspaceItem } from '../../src/interaction/session-workspaces-model.ts'
 import { sessionDetailNode as sessionListDetailNode, sessionListItem } from '../../src/interaction/session-list-model.ts'
 import { documentPages } from '../../src/interaction/document-pages.ts'
 import { FakeKeymap } from './fakes.ts'
@@ -189,6 +190,14 @@ describe('interaction width-scan', () => {
         model: { provider: 'deepseek', model: text },
       }
       const nodes = [
+        ui.stack.column([
+          ui.loader({ message: 'Loading workspaces…' }),
+          ui.list({ id: 'workspaces', role: 'browse', selectedIds: [], filterable: true, items: [sessionWorkspaceItem({ id: 'workspace', cwd: facts.cwd, count: 1284, createdAt: 1000 }, facts.cwd, '/home/dev', key => key)] }),
+        ]),
+        ui.stack.column([
+          ui.loader({ message: 'Loading session names… 12/1284' }),
+          ui.list({ id: 'sessions', role: 'browse', selectedIds: [], items: [sessionListItem(facts, 1_800_000_000_000, '/home/dev', key => key, false)] }),
+        ]),
         ui.list({ id: 'sessions', role: 'browse', selectedIds: [], items: [sessionListItem(facts, 1_800_000_000_000, '/home/dev', key => key)] }),
         sessionListDetailNode(facts, 1_800_000_000_000, key => key),
       ]
