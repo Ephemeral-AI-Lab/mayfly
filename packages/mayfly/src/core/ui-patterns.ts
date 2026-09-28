@@ -395,8 +395,12 @@ export function renderActions(node: ActionsNode, width: number, focus: PatternFo
   return vertical ? tokens.map(token => fit(token.value, width)) : [compactTokens(tokens, width)]
 }
 
-export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors): string[] {
-  const indicator = node.variant === 'tide' ? '≈' : '⠋'
+const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
+const TIDE_FRAMES = ['≈', '≋', '∿', '≋'] as const
+
+export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0): string[] {
+  const frames = node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
+  const indicator = frames[frame % frames.length]!
   const elapsed = node.elapsedMs === undefined ? '' : ` ${String(node.elapsedMs)}ms`
   return [fit(`${colors.primary(indicator)} ${colors.text(node.message)}${colors.textMuted(elapsed)}`, width)]
 }

@@ -131,6 +131,28 @@ Human acceptance:
 
 Keep the worktree and profile until acceptance. No merge is part of this audit.
 
+## Loading animation acceptance follow-up
+
+The loader initially rendered a fixed `⠋` character (and `≈` for the tide
+variant). Data updates repainted the same character, so it had no animation
+cadence. Core now owns an 80 ms frame clock for each rendered UI surface, shared
+by its loaders. Animation does not update the frontend model or session data;
+frame caching includes the animation frame, and snapshot replacement preserves
+the current phase. Standalone compiler consumers without a renderer remain
+fully deterministic and allocate no timers.
+
+A loader must paint to schedule its next frame. Hidden or covered editor
+overlays pause their clocks; replacing loading content, closing a registration,
+or unloading core stops repaint work. Tests cover compiler memoization,
+layout-driven panes, responsive hidden branches, snapshot updates, overlay
+hiding/covering, and renderer reload.
+
+The full gate passed 3,789 tests (eight skipped) at 100% per-file executable
+coverage. A real PTY run with 2,379 sessions across 65 workspaces sampled 19
+successive loader frames; the median interval was 81 ms. Workspace loading,
+workspace navigation, retained names, 110/40-column rendering, and clean exit
+also passed. Restart the dedicated profile for human animation acceptance.
+
 ## Native references
 
 - [Session query](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/session-query)
