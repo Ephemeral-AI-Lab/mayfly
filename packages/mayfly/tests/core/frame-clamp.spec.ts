@@ -130,14 +130,28 @@ describe('createFileOverflowSink', () => {
     expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(2)
   })
 
-  it('stops writing once maxEntries distinct lines are logged', () => {
+  it('rotates the dedupe window so distinct violations keep recording', () => {
     const directory = mkdtempTracked('mayfly-clamp-cap-')
     const sink = createFileOverflowSink({ directory, maxEntries: 2 })
-    for (let n = 0; n < 4; n += 1) {
-      sink.record({ index: n, columns: 40, width: 50, line: `row-${n}` })
-    }
+    const record = (line: string): void => sink.record({ index: 0, columns: 40, width: 50, line })
+    record('row-0')
+    record('row-1')
+    record('row-0') // still inside the window: deduped
+    record('row-2') // window full: resets, then records
+    record('row-3') // fresh window has room
     const rows = readFileSync(join(directory, 'mayfly-overflow.log'), 'utf8').trim().split('\n')
-    expect(rows).toHaveLength(2)
+    expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0', 'row-1', 'row-2', 'row-3'])
+  })
+
+  it('treats a sub-1 maxEntries as a one-line window', () => {
+    const directory = mkdtempTracked('mayfly-clamp-zero-')
+    const sink = createFileOverflowSink({ directory, maxEntries: 0 })
+    const record = (line: string): void => sink.record({ index: 0, columns: 40, width: 50, line })
+    record('row-0')
+    record('row-0') // deduped
+    record('row-1') // window full: resets, then records
+    const rows = readFileSync(join(directory, 'mayfly-overflow.log'), 'utf8').trim().split('\n')
+    expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0', 'row-1'])
   })
 
   it('swallows filesystem failures without throwing', () => {

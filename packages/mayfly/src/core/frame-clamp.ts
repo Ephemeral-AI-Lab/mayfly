@@ -110,26 +110,35 @@ export function defaultOverflowDirectory(): string {
 export interface FileOverflowSinkOptions {
   /** Directory to create on first write; holds `mayfly-overflow.log`. */
   readonly directory: string
-  /** Cap on distinct logged lines (and so on file lines); default 200. */
+  /**
+   * Distinct-line dedupe window. Once this many distinct lines are
+   * remembered the window resets, so later violations still record; the
+   * file can therefore exceed this many lines. Values below 1 behave as 1;
+   * default 200.
+   */
   readonly maxEntries?: number
 }
 
 /**
  * Deduplicating JSONL overflow log. Each distinct original line is appended
  * once (renders repeat at 16ms; without dedupe a single over-wide row would
- * flood the file), capped at `maxEntries` distinct entries. Every filesystem
- * failure is swallowed — the backstop must never take rendering down with
- * it. Entries look like
+ * flood the file). `maxEntries` is the dedupe window, not a fuse: once the
+ * window fills it resets, so a width regression surfacing late in a long
+ * session is still recorded (a still-visible line can therefore reappear
+ * after a reset). Every filesystem failure is swallowed — the backstop must
+ * never take rendering down with it. Entries look like
  * `{"time":"...","index":3,"columns":40,"width":61,"line":"..."}`.
- * @param options - target directory and cap.
+ * @param options - target directory and dedupe window.
  * @returns the file-backed `OverflowSink`.
  */
 export function createFileOverflowSink(options: FileOverflowSinkOptions): OverflowSink {
   const { directory, maxEntries = 200 } = options
+  const windowSize = Math.max(1, maxEntries)
   const seen = new Set<string>()
   return {
     record(entry) {
-      if (seen.size >= maxEntries || seen.has(entry.line)) return
+      if (seen.has(entry.line)) return
+      if (seen.size >= windowSize) seen.clear()
       seen.add(entry.line)
       try {
         mkdirSync(directory, { recursive: true })
