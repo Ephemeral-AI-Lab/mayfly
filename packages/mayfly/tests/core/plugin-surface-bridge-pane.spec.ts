@@ -1019,3 +1019,23 @@ describe('direct pane surface renderer', () => {
     }
   })
 })
+
+it('requests independent frames for pane loaders and releases their clock on removal', async () => {
+  const bench = await fixture()
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    const repaint = vi.spyOn(bench.runtime.runtime, 'requestRender')
+    const handle = bench.register({ id: 'loading-pane', placement: 'bottom', render: () => ui.loader({ message: 'Loading' }) })
+    await flush()
+    const component = entry(bench.runtime.surfaces, 'loading-pane').component
+    expect(component.render(40).join('\n')).toContain('⠋ Loading')
+    repaint.mockClear()
+    vi.advanceTimersByTime(80)
+    expect(repaint).toHaveBeenCalledOnce()
+    expect(component.render(40).join('\n')).toContain('⠙ Loading')
+    handle.dispose(); await flush()
+    repaint.mockClear()
+    vi.advanceTimersByTime(800)
+    expect(repaint).not.toHaveBeenCalled()
+  } finally { await bench.dispose(); vi.useRealTimers() }
+})

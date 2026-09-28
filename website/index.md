@@ -44,7 +44,7 @@ brandFeatures:
       link: /dsh/modes
       linkText: 权限与模式 →
     - title: 会话可回溯
-      details: "/sessions 列出历史会话，/fork 从任意节点分叉，/rewind 回放到更早的状态。会话与事件由 Harness 持久化，Mayfly 只是你回到过去的入口。"
+      details: "/sessions 按工作区组织会话并按需加载名称，/fork 从任意节点分叉，/rewind 回放到更早的状态。会话与事件由 Harness 持久化，Mayfly 只是你回到过去的入口。"
       image: /shots/app-sessions.svg
       alt: Mayfly 终端中的会话列表与回溯
       caption: /sessions · /fork · /rewind

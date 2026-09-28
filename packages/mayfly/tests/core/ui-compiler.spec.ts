@@ -2396,3 +2396,62 @@ describe('compileMayflyStatusNode', () => {
     expect(compileMayflyStatusNode(ui.text('x'), options)).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly status compilation failed safely' })
   })
 })
+
+it('animates shared loader frames through the compiler memo without rebuilding the model', () => {
+  vi.useFakeTimers()
+  const request = vi.fn()
+  const runtime = new MayflyUiSurfaceRuntime(undefined, request)
+  const f = fixture()
+  const render = (node: unknown) => {
+    const result = compileMayflyUiSurfaceNode(node, { ...f.options, surfaceRuntime: runtime })
+    if (!result.ok) throw new Error(result.message)
+    return result.value.component
+  }
+  try {
+    const node = ui.stack.column([ui.loader({ message: 'Loading' }), ui.loader({ message: 'Tide', variant: 'tide' })])
+    let component = render(node)
+    expect(component.render(30)).toEqual(['⠋ Loading', '≈ Tide'])
+    expect(component.render(30)).toEqual(['⠋ Loading', '≈ Tide'])
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(80)
+    expect(request).toHaveBeenCalledOnce()
+    expect(component.render(30)).toEqual(['⠙ Loading', '≋ Tide'])
+    // A progress snapshot rebuild does not reset the spinner to its first frame.
+    component = render(ui.loader({ message: 'Loading 1/10' }))
+    expect(component.render(30)).toEqual(['⠙ Loading 1/10'])
+    vi.advanceTimersByTime(80)
+    expect(component.render(30)).toEqual(['⠹ Loading 1/10'])
+    component = render(ui.text('Done'))
+    expect(component.render(30)).toEqual(['Done'])
+    const completed = request.mock.calls.length
+    vi.advanceTimersByTime(1000)
+    expect(request).toHaveBeenCalledTimes(completed)
+    expect(vi.getTimerCount()).toBe(0)
+    component = render(ui.loader({ message: 'Reload' }))
+    component.render(30)
+    runtime.dispose()
+    vi.advanceTimersByTime(1000)
+    expect(request).toHaveBeenCalledTimes(completed)
+    expect(component.render(30)).toEqual([])
+  } finally { runtime.dispose(); vi.useRealTimers() }
+})
+
+it('animates only visible loader branches through layout-driven paints', () => {
+  vi.useFakeTimers()
+  const runtime = new MayflyUiSurfaceRuntime(undefined, vi.fn())
+  const f = fixture()
+  const result = compileMayflyUiSurfaceNode(ui.stack.column([
+    ui.child(ui.loader({ message: 'Wide' }), { when: { minWidth: 60 } }),
+    ui.child(ui.text('Narrow'), { when: { maxWidth: 59 } }),
+  ]), { ...f.options, surfaceRuntime: runtime })
+  if (!result.ok) throw new Error(result.message)
+  try {
+    expect(layout(result.value.component as Component, 80, 10).lines.join('\n')).toContain('⠋ Wide')
+    vi.advanceTimersByTime(80)
+    expect(layout(result.value.component as Component, 80, 10).lines.join('\n')).toContain('⠙ Wide')
+    f.viewport.columns = 40
+    expect(layout(result.value.component as Component, 40, 10).lines.join('\n')).toContain('Narrow')
+    vi.advanceTimersByTime(80)
+    expect(vi.getTimerCount()).toBe(0)
+  } finally { runtime.dispose(); vi.useRealTimers() }
+})

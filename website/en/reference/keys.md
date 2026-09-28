@@ -69,7 +69,7 @@ These keys reach the editor even while a notice is shown under the prompt. Edito
 | Surface | Keys |
 | --- | --- |
 | `/help` overlay | ↑↓ / PageUp / PageDown / Home / End scroll; `Ctrl+E` expands; `Tab` reaches Close; `Escape` closes |
-| `/sessions` picker | Type to filter; ↑↓ moves, `Space` or `←` / `→` folds branches, `Enter` resumes; `Esc` first ends the filter (the query stays, `Ctrl+U` clears it), then closes |
+| `/sessions` picker | Type to filter workspaces or conversations; ↑↓ moves; `Enter` opens a workspace, then session details; `←` / `→` folds session branches; `Esc` ends editing/filtering, then returns one panel level |
 | Approval panel | The focused default is **Reject**; `←` / `→` or `Tab` reach Allow once, Allow for this session, and Reject with feedback; `Enter` runs; `Escape` rejects. On the feedback page, `Enter` sends, `Alt+Enter` adds a line, `Esc` ends editing and then returns to the decisions. There are no digit shortcuts |
 | Questionnaire | `1`–`9` or ↑↓ + `Enter` choose and advance; multi-choice toggles with `Space` and confirms with `Enter`; typing in Other starts an answer, `Enter` submits it, `Alt+Enter` adds a line; the question tabs switch with `←` / `→` on the strip or `Alt+←` / `Alt+→` anywhere, and moving forward validates the current question |
 | Form panel | ↑↓ move between fields; typing or `Enter` starts editing text, `Enter` confirms and moves on, `Alt+Enter` inserts a textarea newline; a select changes with `←` / `→` or opens with `Enter`; a multiselect opens with `Enter` or `Space`; `Delete` returns an overriding field to its inherited value; `Tab` commits and moves to the next group; `Escape` ends editing, then closes (asking first when there are unsaved changes) |

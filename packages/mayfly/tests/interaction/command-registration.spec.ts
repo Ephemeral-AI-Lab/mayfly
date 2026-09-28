@@ -23,6 +23,7 @@ async function setup() {
   await ctx.plugin(SessionStore)
   const session = ctx.sessions.create(SessionId('command-lifecycle'))
   const agent = { id: session.id, session, status: 'idle' } as Agent
+  ctx.provide('agents', { get: () => undefined, list: () => [] } as never)
   ctx.provide('mayflyCurrentAgent', {
     current: () => null,
     primary: () => null,

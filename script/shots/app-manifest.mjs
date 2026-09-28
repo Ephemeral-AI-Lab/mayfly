@@ -21,6 +21,7 @@ export const APP_SCENARIOS = [
   { id: 'app-agents', cols: 80, rows: 24 },
   // The bare-`/permission` preset picker with sandbox/approval combinations.
   { id: 'app-permission', cols: 80, rows: 24 },
-  // The `/sessions` lineage picker: current chain revealed, side branches collapsed.
+  // The `/sessions` workspace picker, followed by one workspace's conversations.
   { id: 'app-sessions', cols: 80, rows: 24 },
+  { id: 'app-session-workspace', cols: 80, rows: 24 },
 ]

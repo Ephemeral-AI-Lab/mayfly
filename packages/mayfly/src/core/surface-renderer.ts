@@ -1,4 +1,6 @@
-/** Mayfly renderer for the direct pane and overlay Cordis registries. */
+/** Mayfly renderer for the direct pane and overlay Cordis registries.
+ * @module @ephemeral-ai/mayfly/core/surface-renderer
+ */
 import type { Context } from '@deepseek-ai/cordis'
 import {
   type MayflyOverlayEntry,
@@ -341,7 +343,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
     schedulePane(record)
   }
@@ -354,7 +356,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addOverlay = (entry: MayflyOverlayEntry): void => {
     let record!: OverlayRecord
     const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)!
-    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction)
+    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() })
     const compiled = compile(interaction.decisionNode ?? interaction.node, 'overlay', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
@@ -507,6 +509,12 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       if (renderChanged) scheduleOverlay(record)
     }
     const editor = [...overlays.values()].filter(record => record.entry.definition.presentation === 'editor' && !record.entry.hidden).toSorted((left, right) => left.entry.order - right.entry.order).at(-1)
+    for (const record of overlays.values()) {
+      if (record.entry.hidden || (record.entry.definition.presentation === 'editor' && record !== editor)) {
+        record.runtime.pauseAnimation()
+        record.component.invalidate()
+      }
+    }
     const occupied = editor !== undefined
     if (occupied !== editorOccupied) {
       editorOccupied = occupied
