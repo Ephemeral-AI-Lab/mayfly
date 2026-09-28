@@ -486,20 +486,20 @@ export class ToolCallComponent implements MayflyComponent {
       const toolName = flat(this.item.name)
       if (toolName === 'bash') {
         // The body's `$ command` preview carries the command itself.
-        header = `${bullet}${components.strong(colors.primary(result === undefined ? 'Running a command' : 'Ran a command'))}`
+        header = `${bullet}${components.strong(colors.primary(this.t(result === undefined ? 'Running a command' : 'Ran a command')))}`
       } else {
         const name = components.strong(colors.primary(toolDisplayName(toolName)))
-        header = `${bullet}${result === undefined ? 'Using' : 'Used'} ${name}`
+        header = `${bullet}${this.t(result === undefined ? 'Using' : 'Used')} ${name}`
         const keyArg = extractKeyArgument(this.item)
         if (keyArg !== undefined) header += colors.muted(` (${flat(keyArg)})`)
       }
       if (!declined && result !== undefined) {
         const count = lineCount(sanitizePluginText(result.fullText ?? result.text))
-        const chip = this.resultChip ?? (count > 0 ? `${count} ${count === 1 ? 'line' : 'lines'}` : undefined)
+        const chip = this.resultChip ?? (count > 0 ? this.t(count === 1 ? '{count} line' : '{count} lines', { count }) : undefined)
         if (chip !== undefined) header += result.isError ? colors.error(` · ${chip}`) : colors.muted(` · ${chip}`)
       }
     }
-    if (declined) header += colors.warning(' · plan declined')
+    if (declined) header += colors.warning(this.t(' · plan declined'))
     if (cancelled) header += colors.muted(` · ${this.t('cancelled')}`)
     return components.truncateToWidth(header, width)
   }
@@ -661,6 +661,7 @@ export class ErrorMessageComponent implements MayflyComponent {
     private readonly item: import('./types.ts').TranscriptErrorItem,
     private readonly colors: MayflySemanticColors,
     private readonly components: MayflyComponents,
+    private readonly t: MayflyTranslate = interpolateLocaleMessage,
   ) {}
 
   /** No cached render state. */
@@ -675,8 +676,8 @@ export class ErrorMessageComponent implements MayflyComponent {
     const message = sanitizePluginText(this.item.message)
     const code = this.item.code === undefined ? undefined : sanitizePluginText(this.item.code)
     const label = code !== undefined
-      ? `✗ request failed (${code}): ${message}`
-      : `✗ request failed: ${message}`
+      ? this.t('✗ request failed ({code}): {message}', { code, message })
+      : this.t('✗ request failed: {message}', { message })
     return this.components.wrapText(label, width).map((line: string) => this.colors.error(line))
   }
 }

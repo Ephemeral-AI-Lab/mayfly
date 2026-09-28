@@ -165,8 +165,10 @@ export class PaneFakeKeymap implements MayflyKeymap {
     throw new Error('fake dispatch is out of scope for pane plugin tests')
   }
 
-  getKeys(): string[] {
-    throw new Error('fake getKeys is out of scope for pane plugin tests')
+  getKeys(action: string): string[] {
+    return this.actions
+      .filter(candidate => candidate.id === action)
+      .flatMap(candidate => Array.isArray(candidate.keys) ? candidate.keys : [candidate.keys])
   }
 
   list(): readonly MayflyKeyAction[] {

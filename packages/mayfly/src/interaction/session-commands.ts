@@ -50,21 +50,21 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => () => lifetime.abort())
   const version = { mayfly: config.displayVersion ?? MAYFLY_VERSION, harness: HARNESS_LINE }
   const t = interactionTranslator(ctx)
-  const frame = (title: string, body: MayflyUiNode, scrollable = true): MayflyUiNode => ui.surface({ title: t(title), chrome: 'overlay', padding: 1, child: ui.stack.column([
+  const frame = (title: string, body: MayflyUiNode, scrollable = true, refreshable = true): MayflyUiNode => ui.surface({ title: t(title), chrome: 'overlay', padding: 1, child: ui.stack.column([
     ...(scrollable ? [ui.child(ui.scroll(body, { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })] : [body]),
-    ui.actions({ id: 'information-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+    ui.actions({ id: 'information-actions', items: [
+      ...refreshable ? [{ id: 'refresh', label: t('Refresh') }] : [],
+      { id: 'close', label: t('Close'), dismiss: true },
+    ] }),
   ]) })
   for (const command of ['version', 'changelog'] as const) ctx.commands.register({
     name: command, description: t(command === 'version' ? 'Show the Mayfly and harness versions' : "Show the release changelog (what's new)"),
     handler: invocation => {
       if (lifetime.signal.aborted || invocation.signal.aborted) return { kind: 'success' }
       const id = `mayfly.${command}`
-      const view = () => frame(command === 'version' ? 'Version' : 'Changelog', command === 'version' ? versionNode(version) : changelogNode(CHANGELOG_ENTRIES, t), command !== 'version')
+      const view = () => frame(command === 'version' ? 'Version' : 'Changelog', command === 'version' ? versionNode(version) : changelogNode(CHANGELOG_ENTRIES, t), command !== 'version', false)
       let offLocale: (() => void) | undefined
-      const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: command }, onEvent: { action: event => {
-        if (event.kind === 'activate' && event.actionId === 'refresh') handle?.set(view())
-        return { kind: 'completed' }
-      } } }, view(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => offLocale?.() })
+      const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: command }, onEvent: { action: () => ({ kind: 'completed' }) } }, view(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => offLocale?.() })
       if (handle === undefined) return { kind: 'success' }
       offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
       return { kind: 'success' }

@@ -89,15 +89,15 @@ export class CommandGroupComponent implements MayflyComponent {
     const pending = this.closed ? 0 : unsettled
     const failed = commands.filter(call => call.state === 'error').length
     const bold = (text: string): string => components.strong(String(text))
-    const noun = count === 1 ? 'command' : 'commands'
+    const one = count === 1
     const label = pending > 0
-      ? bold(colors.primary(`Running ${String(count)} ${noun}…`))
+      ? bold(colors.primary(this.t(one ? 'Running {count} command…' : 'Running {count} commands…', { count })))
       : failed === count
-        ? bold(colors.error(`Ran ${String(count)} ${noun} · failed`))
-        : bold(colors.primary(`Ran ${String(count)} ${noun}`))
+        ? bold(colors.error(this.t(one ? 'Ran {count} command · failed' : 'Ran {count} commands · failed', { count })))
+        : bold(colors.primary(this.t(one ? 'Ran {count} command' : 'Ran {count} commands', { count })))
     let header = `${String(pending > 0 ? colors.text('● ') : failed === count ? colors.error('✗ ') : failed > 0 ? colors.warning('◐ ') : colors.success('✓ '))}${String(label)}`
-    if (failed > 0 && failed < count) header += colors.error(` · ${String(failed)} failed`)
-    if (this.closed && unsettled > 0) header += colors.muted(` · ${String(unsettled)} cancelled`)
+    if (failed > 0 && failed < count) header += colors.error(` · ${this.t('{count} failed', { count: failed })}`)
+    if (this.closed && unsettled > 0) header += colors.muted(` · ${String(unsettled)} ${this.t('cancelled')}`)
     return components.truncateToWidth(header, width)
   }
 

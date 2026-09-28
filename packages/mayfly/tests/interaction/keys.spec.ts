@@ -31,8 +31,8 @@ describe('interaction keys', () => {
   it('formats remapped key ids for contextual hints', () => {
     const keymap = { getKeys: () => ['f12', 'shift+tab', 'alt+x', 'meta+word'] } as never
     expect(keys.interactionKeyHint(keymap, keys.ACTION_SUBMIT, 'Enter')).toBe('F12/Shift+Tab/Alt+X/Meta+word')
-    expect(['enter', 'f10', 'ctrl+x', 'alt+x', 'shift+x', 'meta+x', 'ctrl+delete', 'word'].map(displayKey)).toEqual([
-      'Enter', 'F10', 'Ctrl+X', 'Alt+X', 'Shift+X', 'Meta+X', 'Ctrl+Delete', 'word',
+    expect(['enter', 'f10', 'ctrl+x', 'alt+x', 'shift+x', 'meta+x', 'ctrl+delete', 'word', 'shift+f6'].map(displayKey)).toEqual([
+      'Enter', 'F10', 'Ctrl+X', 'Alt+X', 'Shift+X', 'Meta+X', 'Ctrl+Delete', 'word', 'Shift+F6',
     ])
     expect(keyActionKeys(undefined, ACTION_SUBMIT)).toEqual(['enter'])
     expect(keyActionKeys(undefined, 'missing')).toEqual([])

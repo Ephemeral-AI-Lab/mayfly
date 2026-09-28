@@ -100,16 +100,18 @@ const EDITOR_LEFT_PADDING = 4
 const CURSOR_BLOCK = '\x1b[7m \x1b[0m'
 
 /**
- * Clip a ghost hint to `maxLen` visible columns with an ellipsis.
+ * Clip a ghost hint to `maxLen` display columns with an ellipsis. Column
+ * truth comes from pi-tui, so a CJK or emoji hint never renders wider than
+ * the row budget and a grapheme is never split.
  * @param hint - the hint text.
- * @param maxLen - the maximum visible length.
+ * @param maxLen - the maximum visible column count.
  * @returns the clipped hint, or `''` when there is no room at all.
  */
 function truncateHint(hint: string, maxLen: number): string {
   if (maxLen <= 0) return ''
-  if (hint.length <= maxLen) return hint
+  if (visibleWidth(hint) <= maxLen) return hint
   if (maxLen === 1) return '…'
-  return `${hint.slice(0, maxLen - 1)}…`
+  return `${sliceByColumn(hint, 0, maxLen - 1, true)}…`
 }
 
 /**
@@ -122,7 +124,7 @@ function truncateHint(hint: string, maxLen: number): string {
  * row is returned unchanged: the ghost belongs at the end of the input.
  * @param line - the first content row of an editor render (`paddingX: 4`).
  * @param hint - the ghost text, already lead-spaced by the caller.
- * @param textLength - the visible length of the real editor text.
+ * @param text - the real editor text; its display width reserves the room.
  * @param width - the full render width of the row.
  * @param paint - the ghost styling (`textMuted` at the call site).
  * @returns the row with the ghost spliced in, or the row unchanged when
@@ -131,7 +133,7 @@ function truncateHint(hint: string, maxLen: number): string {
 export function injectGhostHint(
   line: string,
   hint: string,
-  textLength: number,
+  text: string,
   width: number,
   paint: (text: string) => string,
 ): string {
@@ -143,14 +145,14 @@ export function injectGhostHint(
     if (stripSgr(line.slice(cursorIdx + CURSOR_BLOCK.length)).trim().length > 0) return line
   }
   const contentWidth = Math.max(1, width - EDITOR_LEFT_PADDING * 2)
-  const available = contentWidth - textLength - (cursorPresent ? 1 : 0)
+  const available = contentWidth - visibleWidth(text) - (cursorPresent ? 1 : 0)
   const trimmed = truncateHint(hint, available)
   if (trimmed.length === 0) return line
   const insertAt = cursorPresent
     ? cursorIdx + CURSOR_BLOCK.length
-    : visibleIndexToRaw(line, EDITOR_LEFT_PADDING + textLength)
+    : visibleIndexToRaw(line, EDITOR_LEFT_PADDING + [...text].length)
   const trailing = line.length - insertAt
-  return line.slice(0, insertAt) + paint(trimmed) + ' '.repeat(Math.max(0, trailing - trimmed.length))
+  return line.slice(0, insertAt) + paint(trimmed) + ' '.repeat(Math.max(0, trailing - visibleWidth(trimmed)))
 }
 
 /** Options for {@link withSideBorders}. */

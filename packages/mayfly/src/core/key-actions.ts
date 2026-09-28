@@ -68,6 +68,7 @@ export function displayKey(key: string): string {
     if (part === 'alt') return 'Alt'
     if (part === 'shift') return 'Shift'
     if (part === 'meta') return 'Meta'
+    if (/^f\d+$/u.test(part)) return part.toUpperCase()
     return DISPLAY_KEY_BY_ID[part] ?? (part.length === 1 ? part.toUpperCase() : part)
   }).join('+')
 }

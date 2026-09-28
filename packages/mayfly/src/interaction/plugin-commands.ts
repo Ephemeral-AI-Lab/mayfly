@@ -126,7 +126,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     const pieces = [entry.source, surfaceBadge(entry)]
     /* v8 ignore next -- states() carries every indexed entry id */
     if (state?.installed === true) {
-      pieces.push(state.updateAvailable === true ? `up ${state.updateVersion!}` : 'installed')
+      pieces.push(state.updateAvailable === true ? t('up {version}', { version: state.updateVersion! }) : 'installed')
     } else if (entry.install.rows.some(row => installed.some(plugin => plugin.name === row.name))) {
       pieces.push('partial')
     }
@@ -242,6 +242,10 @@ export function registerPluginCommand(ctx: Context): () => void {
     const installBlock = currentProfileInstallBlock(entry)
     const tuiFull = installBlock === undefined && usefulInTui(entry)
     const webFull = installBlock === undefined && (entry.surfaces.web !== undefined || entry.surfaces.server !== undefined)
+    const engineLabels = entry.engines === undefined
+      ? []
+      : ([['dsh', entry.engines.dsh], ['mayfly', entry.engines.mayfly], ['node', entry.engines.node]] as const)
+          .flatMap(([engine, range]) => range === undefined ? [] : [t('{engine} {range}', { engine, range })])
     const sections: DetailSection[] = [
       {
         heading: t('Overview'),
@@ -280,11 +284,9 @@ export function registerPluginCommand(ctx: Context): () => void {
       {
         heading: t('Details'),
         rows: [
-          ...(entry.engines === undefined ? [] : [{
+          ...(engineLabels.length === 0 ? [] : [{
             label: t('Engines'),
-            segments: [entry.engines.dsh, entry.engines.mayfly, entry.engines.node]
-              .filter((value): value is string => value !== undefined)
-              .map(value => ({ text: value })),
+            segments: segments(engineLabels.join(' · ')),
           }]),
           ...(entry.capabilities === undefined || entry.capabilities.length === 0 ? [] : [{
             label: t('Capabilities'),

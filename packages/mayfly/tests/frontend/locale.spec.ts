@@ -42,11 +42,38 @@ describe('MayflyLocaleService', () => {
     first.dispose(); second.dispose()
   })
 
-  it('rejects duplicate or late namespaces and makes retained handles inert', () => {
+  it('shares an equivalent namespace by reference count', () => {
+    const service = new MayflyLocaleService(new Context(), { systemLocale: 'zh' })
+    const seen: number[] = []
+    const off = service.subscribe(snapshot => seen.push(snapshot.revision))
+    const first = service.register('shared', { zh: { Hello: '你好' }, en: { Hello: 'Hello' } })
+    const second = service.register('shared', { zh: { Hello: '你好' }, en: { Hello: 'Hello' } })
+    expect(service.translate('shared', 'Hello')).toBe('你好')
+    first()
+    first()
+    expect(service.translate('shared', 'Hello')).toBe('你好')
+    second()
+    expect(service.translate('shared', 'Hello')).toBe('Hello')
+    expect(seen).toEqual([0, 1, 2])
+    off()
+    service.dispose()
+  })
+
+  it('rejects conflicting catalogs for a live namespace', () => {
+    const service = new MayflyLocaleService(new Context())
+    const dispose = service.register('owner', { zh: {}, en: { Value: 'value' } })
+    expect(() => service.register('owner', { zh: {}, en: { Value: 'other' } })).toThrow(/already registered/u)
+    expect(() => service.register('owner', { zh: { Extra: 'x' }, en: { Value: 'value' } })).toThrow(/already registered/u)
+    expect(() => service.register('owner', { zh: {}, en: { Value: 'value', Extra: 'x' } })).toThrow(/already registered/u)
+    expect(() => service.register('owner', { zh: { Value: '值' }, en: { Value: 'value' } })).toThrow(/already registered/u)
+    dispose()
+    service.dispose()
+  })
+
+  it('rejects late namespaces and makes retained handles inert', () => {
     const service = new MayflyLocaleService(new Context())
     const catalog = { zh: {}, en: { Value: 'value' } }
     const dispose = service.register('owner', catalog)
-    expect(() => service.register('owner', catalog)).toThrow(/already registered/u)
     expect(service.translate('owner', 'Value')).toBe('value')
     service.dispose()
     expect(service.setPreference('zh')).toBe(false)

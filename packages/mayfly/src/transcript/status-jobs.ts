@@ -7,6 +7,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { JobView } from '@deepseek-ai/dsh-jobs'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
+import { transcriptTranslator } from './locale.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-jobs'
@@ -21,6 +22,7 @@ export function liveJobCount(jobs: readonly JobView[]): number {
 
 /** Register the direct status contribution. */
 export function apply(ctx: Context): void {
+  const t = transcriptTranslator(ctx, 'transcript')
   let text = ''
   let status: ReturnType<typeof ctx.mayflyStatus.register>
   const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'primary' }
@@ -32,7 +34,7 @@ export function apply(ctx: Context): void {
     } catch (error) {
       ctx.logger.warn(`could not list background jobs for status: ${error instanceof Error ? error.message : String(error)}`)
     }
-    const next = count > 0 ? `⏵ ${String(count)} jobs` : ''
+    const next = count > 0 ? t(count === 1 ? '⏵ 1 job' : '⏵ {count} jobs', { count }) : ''
     if (next === text) return
     text = next
     status?.set(node())

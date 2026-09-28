@@ -31,8 +31,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyInlineSpan, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
+import type { MayflyTranslate } from '../frontend/index.ts'
+import { interactionKeyHint } from '../interaction/keys.ts'
 import type { ConversationFacts } from '../conversation/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
+import { transcriptTranslator } from './locale.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-todo'
@@ -214,9 +217,9 @@ function blockedReasonText(goal: GoalProjection): string {
   return goal.goal.blockedReason?.message ?? ''
 }
 
-function titleSpans(goal: GoalProjection | null, interrupted: boolean): readonly MayflyInlineSpan[] {
-  const title: MayflyInlineSpan = { text: '  Todo', tone: 'accent', styles: ['strong'] }
-  const stale: readonly MayflyInlineSpan[] = interrupted ? [{ text: ' · interrupted', tone: 'muted' }] : []
+function titleSpans(goal: GoalProjection | null, interrupted: boolean, t: MayflyTranslate): readonly MayflyInlineSpan[] {
+  const title: MayflyInlineSpan = { text: t('  Todo'), tone: 'accent', styles: ['strong'] }
+  const stale: readonly MayflyInlineSpan[] = interrupted ? [{ text: t(' · interrupted'), tone: 'muted' }] : []
   const badge = goalBadge(goal)
   if (badge === null) return [title, ...stale]
   const paint = GOAL_BADGE[badge.phase]
@@ -232,10 +235,10 @@ function titleSpans(goal: GoalProjection | null, interrupted: boolean): readonly
 }
 
 /** Build the canonical todo tree; the core compiler owns paint and width. */
-function todoNode(state: TodoState): MayflyUiNode {
+function todoNode(state: TodoState, t: MayflyTranslate, keyHint: string): MayflyUiNode {
   const children: { readonly node: MayflyUiNode }[] = [
     { node: { kind: 'divider' } },
-    { node: { kind: 'rich-text', spans: titleSpans(state.goal, state.interrupted), overflow: 'truncate' } },
+    { node: { kind: 'rich-text', spans: titleSpans(state.goal, state.interrupted, t), overflow: 'truncate' } },
   ]
   const badge = goalBadge(state.goal)
   if (badge?.phase === 'blocked') {
@@ -243,7 +246,7 @@ function todoNode(state: TodoState): MayflyUiNode {
       node: {
         kind: 'rich-text',
         spans: [
-          { text: '  blocked: ', tone: 'danger' },
+          { text: `  ${t('blocked: ')}`, tone: 'danger' },
           { text: blockedReasonText(badge.goal), tone: 'muted' },
         ],
         overflow: 'truncate',
@@ -253,13 +256,13 @@ function todoNode(state: TodoState): MayflyUiNode {
   if (state.expanded) {
     for (const todo of state.todos) children.push({ node: { kind: 'rich-text', spans: todoSpans(todo) } })
     if (state.todos.length > MAX_VISIBLE) {
-      children.push({ node: { kind: 'text', content: `  all ${state.todos.length} items · ctrl+t to collapse`, tone: 'muted' } })
+      children.push({ node: { kind: 'text', content: t('  all {count} items · {key} to collapse', { count: state.todos.length, key: keyHint }), tone: 'muted' } })
     }
   } else {
     const { rows, hidden, hiddenCounts } = selectVisibleTodos(state.todos)
     for (const todo of rows) children.push({ node: { kind: 'rich-text', spans: todoSpans(todo) } })
     if (hidden > 0) {
-      children.push({ node: { kind: 'text', content: `  … +${hidden} more (${formatHiddenCounts(hiddenCounts)}) · ctrl+t to expand`, tone: 'muted' } })
+      children.push({ node: { kind: 'text', content: t('  … +{count} more ({counts}) · {key} to expand', { count: hidden, counts: formatHiddenCounts(hiddenCounts), key: keyHint }), tone: 'muted' } })
     }
   }
   return { kind: 'stack', direction: 'column', gap: 0, children }
@@ -280,13 +283,27 @@ function todoNode(state: TodoState): MayflyUiNode {
 export function apply(ctx: Context): void {
   const state: TodoState = { todos: [], goal: null, expanded: false, dialog: false, interrupted: false }
   let rendered = signature(state)
+  const t = transcriptTranslator(ctx, 'transcript')
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.todo',
     placement: 'bottom',
     priority: 30,
     narrow: 'bottom',
   }, null)
-  const publish = (): void => pane.set(state.dialog || state.todos.length === 0 ? null : todoNode(state))
+  // Effect-bound so unloading this fiber unregisters the action. Registered
+  // before the first publish so the footer hint resolves the live keys.
+  ctx.effect(() => ctx.mayflyKeymap.register([{
+    id: ACTION_TOGGLE_TODO,
+    keys: 'ctrl+t',
+    description: 'Toggle todo list expansion',
+    handler: () => {
+      state.expanded = !state.expanded
+      rendered = signature(state)
+      publish()
+    },
+  }]))
+  const keyHint = interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_TODO, 'ctrl+t')
+  const publish = (): void => pane.set(state.dialog || state.todos.length === 0 ? null : todoNode(state, t, keyHint))
 
   /**
    * Install a new whole-list snapshot. A list whose every entry completed
@@ -335,18 +352,6 @@ export function apply(ctx: Context): void {
     rendered = signature(state)
     publish()
   })
-
-  // Effect-bound so unloading this fiber unregisters the action.
-  ctx.effect(() => ctx.mayflyKeymap.register([{
-    id: ACTION_TOGGLE_TODO,
-    keys: 'ctrl+t',
-    description: 'Toggle todo list expansion',
-    handler: () => {
-      state.expanded = !state.expanded
-      rendered = signature(state)
-      publish()
-    },
-  }]))
 
   ctx.effect(() => () => pane.dispose())
 }

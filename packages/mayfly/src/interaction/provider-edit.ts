@@ -160,7 +160,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
       ui.actions({ id: 'provider-actions', items: [
         { id: 'save', label: t('Save'), intent: 'primary', submit: [address('connection'), address('models'), address('credentials')], selections: [modelSelection], ...readonly },
         { id: 'cancel', label: t('Cancel'), dismiss: true },
-        { id: 'delete', label: t('Delete provider'), intent: 'danger', ...readonly, confirm: t('Delete provider "{route}"?', { route }) },
+        { id: 'delete', label: t('Delete provider'), intent: 'danger', ...readonly, confirm: { title: t('Delete provider "{route}"?', { route }), detail: t('Remove the provider configuration and its stored API key.'), confirmLabel: t('Delete provider'), tone: 'danger' } },
       ] }),
     ], { gap: 1 })
   }
