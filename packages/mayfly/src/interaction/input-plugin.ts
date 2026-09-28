@@ -31,9 +31,9 @@
  * are published through
  * `./editor-instance.ts` so `mayfly-editor-plus` can layer input modes and
  * autocomplete over the same component. The `mayfly-pane-queue` enhancement
- * shows pending messages without taking over editor history. Auxiliary live
- * Agents use this same editor and transcript; delivery scope follows the
- * app-owned current-Agent view instead of a pane-specific input path. The
+ * shows pending messages without taking over editor history. Live side
+ * conversations use this same editor and transcript; delivery scope follows
+ * the app-owned displayed conversation instead of a pane-specific input path. The
  * unsubmitted draft is mirrored
  * into `./draft-stash.ts`, so a theme-swap reload (the theme provider fiber
  * disposes, Cordis re-runs this `mayflyTheme` dependent) restores the text
@@ -168,7 +168,7 @@ function availableCommands(ctx: Context) {
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-input'
 /** Services required before the editor can mount. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyPromptSubmissions', 'mayflyUiInteraction', 'mayflyOverlays', 'commands', 'sessionProjections', 'agents', 'subagents', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyPromptSubmissions', 'mayflyUiInteraction', 'mayflyOverlays', 'commands', 'sessionProjections', 'agents', 'subagents', 'mayflyConversations', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
 
 /**
  * Mount the input editor with the hint line pinned below it and focus the
@@ -179,7 +179,7 @@ export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
   const screen = ctx.mayflyScreen
   const colors = ctx.mayflyTheme.colors
-  const currentAgent = ctx.mayflyCurrentAgent
+  const conversations = ctx.mayflyConversations
   const requests = ctx.mayflyRequests
   const subagents = ctx.subagents
   const aliases = ctx.mayflyInteractionState.aliases
@@ -339,13 +339,12 @@ export function apply(ctx: Context): void {
     transformed: ReturnType<typeof applyReversibleSubmitTransformers>,
     submitted: MayflySubmittedDraft | undefined,
   ): boolean {
-    const view = currentAgent.view()
-    const target = view.displayed === 'auxiliary' ? view.auxiliary : null
+    const target = conversations.displayed()
     if (target?.kind !== 'subagent' || target.mode !== 'continuable' || target.access === 'readonly') {
       restoreSubagentSubmission(value, historyText, transformed, submitted, 'the subagent is no longer available for input')
       return false
     }
-    const viewRevision = view.revision
+    const viewRevision = conversations.revision()
     const controller = new AbortController()
     pendingSubagentPrompts.add(controller)
     const ref = requests.begin('subagent')
@@ -360,7 +359,7 @@ export function apply(ctx: Context): void {
       delivery: 'queue',
       content,
     }, controller.signal)).then(receipt => {
-      if (unloaded || controller.signal.aborted || currentAgent.view().revision !== viewRevision) return
+      if (unloaded || controller.signal.aborted || conversations.revision() !== viewRevision) return
       retractionCandidate = {
         messageId: String(receipt.messageId),
         editorText: value,
@@ -370,7 +369,7 @@ export function apply(ctx: Context): void {
       }
     }, error => {
       requests.transition(ref, 'failed', error instanceof Error ? error.message : String(error))
-      if (unloaded || controller.signal.aborted || currentAgent.view().revision !== viewRevision) {
+      if (unloaded || controller.signal.aborted || conversations.revision() !== viewRevision) {
         transformed.rollback?.()
         return
       }
@@ -503,8 +502,8 @@ export function apply(ctx: Context): void {
               ? { ...block, text: rewriteSkillTokens(ctx, block.text) }
               : block),
           }
-      const view = ctx.mayflyCurrentAgent.view()
-      if (view.displayed === 'auxiliary' && view.auxiliary?.kind === 'subagent') {
+      const displayed = conversations.displayed()
+      if (displayed?.kind === 'subagent') {
         deliverSubagentPrompt(value, line, transformed, submitted)
         return
       }
@@ -533,7 +532,7 @@ export function apply(ctx: Context): void {
         showFeedback('prompt-submit', error instanceof Error ? error.message : String(error), 'error')
         return
       }
-      ctx.mayflyRequests.begin(view.displayed === 'auxiliary' && view.auxiliary?.kind === 'btw' ? 'btw' : 'main')
+      ctx.mayflyRequests.begin(displayed?.kind === 'btw' ? 'btw' : 'main')
       // The S29 skill pipeline rewrites only model-facing text; the editor
       // candidate and history retain exactly what the user submitted.
       return
@@ -632,7 +631,7 @@ export function apply(ctx: Context): void {
     retractionCandidate = undefined
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null) return false
-    const result = interruptAgentTree(ctx, agent, ctx.mayflyCurrentAgent.view())
+    const result = interruptAgentTree(ctx, agent, conversations.displayed())
     if (!result.requested) return false
     ctx.mayflyRequests.interrupt()
     // The activity row answers the keypress on this frame: the native turn
@@ -738,8 +737,8 @@ export function apply(ctx: Context): void {
       // Steered text runs the same `#name` → `/name` skill rewrite as a
       // submitted follow-up: the gesture reaches the model either way.
       const transformed = applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, text))
-      const view = ctx.mayflyCurrentAgent.view()
-      if (view.displayed === 'auxiliary' && view.auxiliary?.kind === 'subagent') {
+      const displayed = conversations.displayed()
+      if (displayed?.kind === 'subagent') {
         if (deliverSubagentPrompt(text, undefined, transformed, submitted)) {
           editor.setText('')
           currentText = ''
@@ -762,7 +761,7 @@ export function apply(ctx: Context): void {
         showFeedback('steer', error instanceof Error ? error.message : String(error), 'error')
         return true
       }
-      ctx.mayflyRequests.begin(view.displayed === 'auxiliary' && view.auxiliary?.kind === 'btw' ? 'btw' : 'main')
+      ctx.mayflyRequests.begin(displayed?.kind === 'btw' ? 'btw' : 'main')
       editor.setText('')
       currentText = ''
       // Steered text is consumed too: keep no stashed copy for a reload.

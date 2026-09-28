@@ -219,6 +219,7 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
         'jobs',
         'subagents',
         'sessions',
+        'mayflyConversations',
         'mayflyCurrentAgent',
         'mayflyPanes',
         'mayflyStatus',

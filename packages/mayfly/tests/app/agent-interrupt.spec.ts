@@ -5,7 +5,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import { hasRunningAgentWork, interruptAgentTree } from '../../src/app/agent-interrupt.ts'
-import type { MayflyAgentViewSnapshot } from '../../src/app/current-agent.ts'
+import type { MayflyConversationView } from '../../src/app/conversation-views.ts'
 
 function fakeAgent(id: string, status: 'idle' | 'running', parentId?: string): Agent {
   return {
@@ -16,8 +16,8 @@ function fakeAgent(id: string, status: 'idle' | 'running', parentId?: string): A
   } as unknown as Agent
 }
 
-function primaryView(agent: Agent): MayflyAgentViewSnapshot {
-  return { primarySessionId: String(agent.id), displayed: 'primary', auxiliary: null, revision: 1 }
+function primaryView(agent: Agent): MayflyConversationView {
+  return { kind: 'primary', id: `session:${String(agent.id)}`, sessionId: String(agent.id), access: 'interactive', residency: 'displayed' }
 }
 
 function harness(
@@ -46,7 +46,7 @@ describe('interruptAgentTree', () => {
     const interrupt = vi.fn()
     const ctx = harness([root, nested, child, idle, unrelated, orphan, cycleA, cycleB], interrupt)
 
-    expect(interruptAgentTree(ctx, root, primaryView(root))).toEqual({ requested: true, failures: [] })
+    expect(interruptAgentTree(ctx, root, null)).toEqual({ requested: true, failures: [] })
     expect(root.cancel).toHaveBeenCalledWith({ kind: 'user' })
     expect(interrupt).toHaveBeenCalledTimes(2)
     expect(interrupt.mock.calls).toEqual(expect.arrayContaining([
@@ -72,14 +72,9 @@ describe('interruptAgentTree', () => {
     const interrupt = vi.fn()
     const interruptByParent = vi.fn()
     const ctx = harness([child, nested], interrupt, interruptByParent)
-    const view: MayflyAgentViewSnapshot = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary',
-      auxiliary: {
-        kind: 'subagent', sessionId: 'child', parentSessionId: 'parent', label: 'worker',
-        mode: 'continuable', access: 'interactive',
-      },
-      revision: 2,
+    const view: MayflyConversationView = {
+      kind: 'subagent', id: 'session:child', sessionId: 'child', parentSessionId: 'parent', label: 'worker',
+      mode: 'continuable', access: 'interactive', residency: 'displayed',
     }
 
     expect(interruptAgentTree(ctx, child, view)).toEqual({ requested: true, failures: [] })

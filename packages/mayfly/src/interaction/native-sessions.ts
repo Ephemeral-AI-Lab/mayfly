@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-session-query'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import { ui, type MayflyOverlayHandle, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
+import type {} from '../app/conversation-views.ts'
 import { sessionDetailNode, sessionLabel, sessionListFacts, sessionListItem, type SessionListFacts } from './session-list-model.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
@@ -121,7 +122,7 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
             const children = await ctx.subagents.listDescendants(primary.id, abort)
             const child = children.find(child => child.kind === 'child' && child.id === session.sessionId)
             if (child?.kind !== 'child') return { kind: 'failed', message: 'Open this child’s lead session first' }
-            ctx.mayflyCurrentAgent.openAuxiliary({ kind: 'subagent', sessionId: child.id, parentSessionId: child.parentId, mode: child.mode, label: child.label ?? child.id })
+            ctx.mayflyConversations.open({ kind: 'subagent', sessionId: child.id, parentSessionId: child.parentId, mode: child.mode, label: child.label ?? child.id })
           } else ctx.emit('mayfly/request-resume', session.sessionId)
           handle?.close()
           return { kind: 'completed' }

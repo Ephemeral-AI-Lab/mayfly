@@ -28,6 +28,7 @@ import { SkillsCatalogService } from '../../src/interaction/skills-catalog.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { CURRENT_MARK } from '../../src/interaction/symbols.ts'
+import { fakeConversations } from './fakes.ts'
 
 const USAGE = 'usage: /theme [dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]'
 
@@ -57,6 +58,7 @@ async function mount(): Promise<{
       return () => {}
     },
   } as never)
+  ctx.provide('mayflyConversations', fakeConversations() as never)
   ctx.provide('sessionProjections', { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: () => () => {} } as never)
   ctx.provide('sessionController', { selectModel: async () => { throw new Error('not used') } } as never)
   ctx.provide('tools', { schemas: () => [] } as never)

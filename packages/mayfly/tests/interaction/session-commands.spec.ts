@@ -81,7 +81,7 @@ describe('native session information', () => {
     await bench.run('/context')
     const model = bench.model('mayfly.context')
     expect(JSON.stringify(model.node)).toContain('no provider usage recorded yet')
-    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
     await flushRequests()
     expect(model.disposed).toBe(true)
   })

@@ -89,7 +89,7 @@ export { setProcessRowTimers, type ProcessRowTimers } from './process-rows.ts'
 export const name = 'mayfly-transcript'
 
 /** Services the plugin requires before it can mount. */
-export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'tools']
+export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyConversations', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'tools']
 
 /** The global action toggling tool-output expansion (Ctrl-O). */
 export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
@@ -179,25 +179,25 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => officialSource.dispose())
   ctx.on('tools/change', () => officialSource.invalidateTools())
   transcript.setSource(() => officialSource.snapshot())
-  const transcriptAfterSeq = (): number | undefined => {
-    const view = ctx.mayflyCurrentAgent.view()
-    return view.displayed === 'auxiliary' && view.auxiliary?.kind === 'btw'
-      ? view.auxiliary.transcriptAfterSeq
-      : undefined
+  // The displayed conversation's history floor (a BTW's inherited seed) is
+  // presentation-only: entries at or below it never render.
+  const historyFloorSeq = (): number | undefined => {
+    const displayed = ctx.mayflyConversations.displayed()
+    return displayed?.kind === 'btw' ? displayed.historyFloorSeq : undefined
   }
   let selectedAgent = ctx.mayflyCurrentAgent.current()
-  let afterSeq = transcriptAfterSeq()
-  officialSource.attach(selectedAgent?.session ?? null, afterSeq, selectedAgent ?? undefined)
+  let floorSeq = historyFloorSeq()
+  officialSource.attach(selectedAgent?.session ?? null, floorSeq, selectedAgent ?? undefined)
   const syncSelection = (): void => {
     const next = ctx.mayflyCurrentAgent.current()
-    const cutoff = transcriptAfterSeq()
-    if (next === selectedAgent && cutoff === afterSeq) return
+    const floor = historyFloorSeq()
+    if (next === selectedAgent && floor === floorSeq) return
     selectedAgent = next
-    afterSeq = cutoff
-    officialSource.attach(next?.session ?? null, cutoff, next ?? undefined)
+    floorSeq = floor
+    officialSource.attach(next?.session ?? null, floor, next ?? undefined)
   }
   const offAgent = ctx.mayflyCurrentAgent.subscribe(syncSelection)
-  const offView = ctx.mayflyCurrentAgent.subscribeView(syncSelection)
+  const offView = ctx.mayflyConversations.subscribe(syncSelection)
   ctx.effect(() => () => offAgent())
   ctx.effect(() => () => offView())
   const footer = new StatusFooterComponent(

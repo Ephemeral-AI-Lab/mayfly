@@ -67,7 +67,7 @@ describe('native questions provider', () => {
     const pending = bench.ctx.userQuestions.ask({ questions, agent: bench.agent })
     const result = expect(pending).rejects.toMatchObject({ code: 'ASK_ABORTED' })
     const model = bench.model()
-    if (mode === 'agent-change') bench.ctx.mayflyCurrentAgent.select(bench.other)
+    if (mode === 'agent-change') bench.ctx.mayflyConversations.selectPrimary(bench.other)
     else await (mode === 'frontend-unload' ? bench.front : bench.app).dispose()
     await result
     model.invoke('submit-answers')

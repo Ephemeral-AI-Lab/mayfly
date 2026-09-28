@@ -9,7 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { MayflyAgentViewSnapshot } from './current-agent.ts'
+import type { MayflyConversationView } from './conversation-views.ts'
 
 /** Outcome of one synchronous tree-wide interrupt request. */
 export interface AgentTreeInterruptResult {
@@ -63,7 +63,7 @@ export function hasRunningAgentWork(ctx: Context, agent: Agent): boolean {
 export function interruptAgentTree(
   ctx: Context,
   agent: Agent,
-  view: MayflyAgentViewSnapshot,
+  displayed: MayflyConversationView | null,
   options: AgentTreeInterruptOptions = {},
 ): AgentTreeInterruptResult {
   const descendants = runningDescendants(ctx, agent)
@@ -73,13 +73,12 @@ export function interruptAgentTree(
   const failures: string[] = []
   if (selfRunning) {
     try {
-      if (view.displayed === 'auxiliary'
-        && view.auxiliary?.kind === 'subagent'
-        && view.auxiliary.mode === 'continuable'
-        && view.auxiliary.sessionId === String(agent.id)) {
+      if (displayed?.kind === 'subagent'
+        && displayed.mode === 'continuable'
+        && displayed.sessionId === String(agent.id)) {
         ctx.subagents.interruptByParent(
-          SessionId(view.auxiliary.sessionId),
-          SessionId(view.auxiliary.parentSessionId),
+          SessionId(displayed.sessionId),
+          SessionId(displayed.parentSessionId),
           'continuable',
         )
       } else if (options.keepInbox === true) {

@@ -15,6 +15,7 @@ import { openUiOverlay } from './ui-overlay.ts'
 import { formatTokens } from './usage.ts'
 import { compactElapsedMs } from '../transcript/agent-presentation.ts'
 import { outputCounter } from '../transcript/output-rate.ts'
+import { conversationId } from '../app/conversation-views.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-agents-command'
@@ -26,6 +27,7 @@ export const inject = [
   'agents',
   'sessions',
   'sessionProjections',
+  'mayflyConversations',
   'mayflyCurrentAgent',
   'mayflyOverlays',
   'mayflyLiveAssistantStream',
@@ -215,9 +217,7 @@ export function apply(ctx: Context): void {
     if (directParent === undefined) {
       return { kind: 'error', text: `cannot stop subagent ${String(current.id)}: its direct parent is not live` }
     }
-    if (ctx.mayflyCurrentAgent.view().auxiliary?.sessionId === String(current.id)) {
-      ctx.mayflyCurrentAgent.closeAuxiliary()
-    }
+    ctx.mayflyConversations.close(conversationId(String(current.id)))
     try {
       await ctx.subagents.drainContinuableChildren(directParent, [current.id])
       return { kind: 'success', text: `stopped subagent ${String(current.id)}` }
@@ -230,7 +230,8 @@ export function apply(ctx: Context): void {
     if (ctx.get('mayflyOverlays') === undefined) return { kind: 'error', text: t('agents panel is unavailable: the Mayfly screen is not mounted') }
     const parent = ctx.mayflyCurrentAgent.primary()
     if (parent === null) return { kind: 'error', text: t('no session is live yet') }
-    ctx.mayflyCurrentAgent.closeAuxiliary()
+    // The tree browses the primary's descendants: show the primary beneath it.
+    ctx.mayflyConversations.display(conversationId(String(parent.id)))
     let listed: readonly SubagentDescendantListEntry[]
     try {
       listed = await ctx.subagents.listDescendants(parent.id, signal)
@@ -300,7 +301,7 @@ export function apply(ctx: Context): void {
         const entry = selectedId === undefined ? undefined : byId.get(selectedId)
         if (entry?.kind !== 'child') return { kind: 'completed' }
         close()
-        ctx.mayflyCurrentAgent.openAuxiliary({ kind: 'subagent', sessionId: String(entry.id), parentSessionId: String(entry.parentId), label: entry.label ?? String(entry.id), mode: entry.mode })
+        ctx.mayflyConversations.open({ kind: 'subagent', sessionId: String(entry.id), parentSessionId: String(entry.parentId), label: entry.label ?? String(entry.id), mode: entry.mode })
         return { kind: 'completed' }
       }
       if (event.kind !== 'activate' || event.actionId !== 'stop') return { kind: 'completed' }

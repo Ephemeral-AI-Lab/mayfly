@@ -545,11 +545,11 @@ function admissibleEntry(candidate: unknown): candidate is ConversationEntry {
 /**
  * The registry schema-validates the complete wire value before publishing,
  * so admission here only checks the envelope and the entry fields this
- * mapper dereferences, then slices history when a resume cutoff applies.
+ * mapper dereferences, then slices history below a presentation floor.
  */
 function visibleProjection(
   value: unknown,
-  transcriptAfterSeq: number | undefined,
+  historyFloorSeq: number | undefined,
 ): ConversationProjection | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
   const envelope = value as { entries?: unknown, streaming?: unknown, settledSteps?: unknown, turns?: unknown }
@@ -560,9 +560,9 @@ function visibleProjection(
   const entries: ConversationEntry[] = []
   for (const candidate of envelope.entries) {
     if (!admissibleEntry(candidate)) return undefined
-    if (transcriptAfterSeq === undefined || candidate.seq > transcriptAfterSeq) entries.push(candidate)
+    if (historyFloorSeq === undefined || candidate.seq > historyFloorSeq) entries.push(candidate)
   }
-  const retained = transcriptAfterSeq === undefined ? undefined : new Set(entries.map(entry => entry.turn))
+  const retained = historyFloorSeq === undefined ? undefined : new Set(entries.map(entry => entry.turn))
   const turns = (Array.isArray(envelope.turns) ? envelope.turns as ConversationProjection['turns'] : [])
     .filter(turn => retained === undefined || retained.has(turn.turn))
   return { entries, streaming: envelope.streaming, settledSteps: envelope.settledSteps as string[], turns }
@@ -583,7 +583,7 @@ export class OfficialConversationModelSource {
   private toolsRevision = 0
   private dispatchedCalls: ReadonlySet<string> = new Set()
   private lastDraft: LiveAssistantDraft | undefined
-  private transcriptAfterSeq: number | undefined
+  private historyFloorSeq: number | undefined
   private readonly resolvedTools = new Map<string, ResolvedTool>()
   private disposed = false
   private readonly offChanged: () => void
@@ -619,7 +619,7 @@ export class OfficialConversationModelSource {
     const pending = this.pending
     if (pending !== undefined) {
       this.pending = undefined
-      const visible = visibleProjection(pending.value, this.transcriptAfterSeq)
+      const visible = visibleProjection(pending.value, this.historyFloorSeq)
       if (visible !== undefined) {
         this.watermark = pending.seq
         this.lastVisible = visible
@@ -652,11 +652,11 @@ export class OfficialConversationModelSource {
   }
 
   /** Attach to the app's current session, clearing stale content first. */
-  attach(session: Session | null, transcriptAfterSeq?: number, agent?: Agent): void {
+  attach(session: Session | null, historyFloorSeq?: number, agent?: Agent): void {
     if (this.disposed) return
     this.session = session
     this.agent = agent?.session === session ? agent : undefined
-    this.transcriptAfterSeq = transcriptAfterSeq
+    this.historyFloorSeq = historyFloorSeq
     this.generation += 1
     this.watermark = -1
     this.pending = undefined
@@ -690,7 +690,7 @@ export class OfficialConversationModelSource {
     this.resolvedTools.clear()
     this.settledSteps.clear()
     this.lastDraft = undefined
-    this.transcriptAfterSeq = undefined
+    this.historyFloorSeq = undefined
     this.model = createTranscriptModel('official-conversation', [], false)
   }
 }

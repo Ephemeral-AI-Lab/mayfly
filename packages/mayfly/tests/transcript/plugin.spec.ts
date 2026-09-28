@@ -9,6 +9,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { MayflyConversationView } from '../../src/app/conversation-views.ts'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
@@ -118,7 +119,7 @@ interface Harness {
   readonly screen: FakeScreen
   readonly keymap: FakeKeymap
   readonly select: (agent: FakeAgent | null) => void
-  readonly selectAuxiliary: (agent: FakeAgent, transcriptAfterSeq: number) => void
+  readonly selectAuxiliary: (agent: FakeAgent, historyFloorSeq: number) => void
   readonly setMayflySettings: (value: unknown) => void
 }
 
@@ -177,30 +178,23 @@ async function bootTranscript(
   const _status = new MayflyStatusService(ctx)
   let active = initial
   let revision = 0
-  let auxiliary: {
-    readonly kind: 'btw'
-    readonly sessionId: string
-    readonly parentSessionId: string
-    readonly label: string
-    readonly transcriptAfterSeq?: number
-  } | null = null
-  let displayed: 'primary' | 'auxiliary' = 'primary'
+  // The displayed conversation: the primary, or a BTW with its history floor.
+  let btw: MayflyConversationView | null = null
   const listeners = new Set<(agent: Agent | null, revision: number) => void>()
   const currentAgent = {
     current: () => active as unknown as Agent | null,
     revision: () => revision,
-    view: () => ({
-      primarySessionId: active === null ? null : String(active.id),
-      displayed,
-      auxiliary,
-      revision,
-    }),
     subscribe(listener: (agent: Agent | null, nextRevision: number) => void) {
       listeners.add(listener)
       listener(active as unknown as Agent | null, revision)
       return () => { listeners.delete(listener) }
     },
-    subscribeView(listener: () => void) {
+  }
+  const conversations = {
+    displayed: (): MayflyConversationView | null => btw ?? (active === null ? null : {
+      kind: 'primary', id: `session:${String(active.id)}`, sessionId: String(active.id), access: 'interactive', residency: 'displayed',
+    }),
+    subscribe(listener: () => void) {
       listeners.add(listener)
       listener()
       return () => { listeners.delete(listener) }
@@ -208,20 +202,21 @@ async function bootTranscript(
   }
   const select = (agent: FakeAgent | null): void => {
     active = agent
-    auxiliary = null
-    displayed = 'primary'
+    btw = null
     revision += 1
     for (const listener of listeners) listener(agent as unknown as Agent | null, revision)
   }
-  const selectAuxiliary = (agent: FakeAgent, transcriptAfterSeq: number): void => {
+  const selectAuxiliary = (agent: FakeAgent, historyFloorSeq: number): void => {
     active = agent
-    displayed = 'auxiliary'
-    auxiliary = {
+    btw = {
       kind: 'btw',
+      id: `session:${String(agent.id)}`,
       sessionId: String(agent.id),
       parentSessionId: 'parent-1',
       label: 'side question',
-      transcriptAfterSeq,
+      historyFloorSeq,
+      access: 'interactive',
+      residency: 'displayed',
     }
     revision += 1
     for (const listener of listeners) listener(agent as unknown as Agent, revision)
@@ -235,6 +230,7 @@ async function bootTranscript(
     mayflyComponents: fakeMayflyComponents(),
     mayflyKeymap: keymap,
     mayflyCurrentAgent: currentAgent,
+    mayflyConversations: conversations,
     mayflyInteractionState: { settingsSource: () => mayflyState.settings },
     sessionProjections: projections,
     sessions: { list: () => active === null ? [] : [active.session] },

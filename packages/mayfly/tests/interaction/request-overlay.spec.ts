@@ -93,7 +93,7 @@ describe('request overlay lifecycle', () => {
     bench.ctx.mayflyOverlays.subscribe(delta => {
       if (delta.kind !== 'remove' || delta.id !== 'request') return
       if (mode === 'abort') abort.abort()
-      else bench.ctx.mayflyCurrentAgent.select(bench.other)
+      else bench.ctx.mayflyConversations.selectPrimary(bench.other)
     })
     const request = requestOverlay(bench.ctx, { id: 'request', title: 'Request', agent: bench.agent, signal: abort.signal, view: () => node, answer: () => 'yes', accepted, cancelled: reason => reason })
     bench.model('request').invoke('accept')
@@ -172,7 +172,7 @@ describe('request overlay lifecycle', () => {
   it('settles stale when the selected Agent changes while idle', async () => {
     const bench = await setup()
     const request = requestOverlay(bench.ctx, { id: 'request', title: 'Request', agent: bench.agent, view: () => node, answer: () => 'yes', cancelled: reason => reason })
-    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
     await expect(request.result).resolves.toBe('stale')
   })
 

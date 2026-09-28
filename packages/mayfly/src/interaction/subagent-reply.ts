@@ -8,21 +8,22 @@ import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import { openUiOverlay } from './ui-overlay.ts'
 import { interactionTranslator } from './locale.ts'
+import type {} from '../app/conversation-views.ts'
 
 export const name = 'mayfly-subagent-reply'
-export const inject = ['mayflyCurrentAgent', 'mayflyOverlays', 'subagents']
+export const inject = ['mayflyConversations', 'mayflyCurrentAgent', 'mayflyOverlays', 'subagents']
 
 export function apply(ctx: Context): void {
   ctx.on('mayfly/request-subagent-reply', target => {
     const t = interactionTranslator(ctx)
     const primary = ctx.mayflyCurrentAgent.primary()
-    const initial = ctx.mayflyCurrentAgent.view()
-    const live = initial.auxiliary?.access === 'interactive' ? ctx.mayflyCurrentAgent.current() : undefined
+    const initial = ctx.mayflyConversations.displayed()
+    const live = initial?.access === 'interactive' ? ctx.mayflyCurrentAgent.current() : undefined
     const current = () => {
-      const view = ctx.mayflyCurrentAgent.view()
-      return view.displayed === 'auxiliary' && view.auxiliary?.kind === 'subagent'
-        && view.auxiliary.sessionId === target.sessionId && view.auxiliary.parentSessionId === target.parentSessionId
-        && view.auxiliary.mode === 'continuable'
+      const view = ctx.mayflyConversations.displayed()
+      return view?.kind === 'subagent'
+        && view.sessionId === target.sessionId && view.parentSessionId === target.parentSessionId
+        && view.mode === 'continuable'
         && ctx.mayflyCurrentAgent.primary() === primary
         && (live === undefined || ctx.mayflyCurrentAgent.current() === live)
     }
@@ -35,10 +36,11 @@ export function apply(ctx: Context): void {
           { id: 'steer', label: t('Steer'), detail: t('Process at the next step boundary') },
         ] },
       ] }),
-      ...(initial.auxiliary?.access === 'resumable' ? [ui.text(t('Sending resumes this member. Browsing and drafting do not.'), { tone: 'muted' })] : []),
+      ...(initial?.access === 'resumable' ? [ui.text(t('Sending resumes this member. Browsing and drafting do not.'), { tone: 'muted' })] : []),
       ui.actions({ id: 'reply-actions', items: [{ id: 'send', label: t('Send'), submit: [{ pagePath: [], formId: 'reply' }] }, { id: 'close', label: t('Cancel'), dismiss: true }] }),
     ]) })
     let offView: (() => void) | undefined
+    let offAgent: (() => void) | undefined
     const handle = openUiOverlay(ctx, { id: 'mayfly.subagent.reply', title: t('Reply to {name}', { name: target.label }), presentation: 'editor', capturing: true, onEvent: { action: async (event, context) => {
       if (event.kind !== 'submit') return { kind: 'completed' }
       const text = event.submission.forms[0]?.fields.find(field => field.id === 'message')?.value
@@ -57,8 +59,10 @@ export function apply(ctx: Context): void {
       } catch (error) {
         return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
       }
-    } } }, node(''), { reopen: 'focus', onClosed: () => offView?.() })
+    } } }, node(''), { reopen: 'focus', onClosed: () => { offView?.(); offAgent?.() } })
     if (handle === undefined) return
-    offView = ctx.mayflyCurrentAgent.subscribeView(() => { if (!current()) handle.close() })
+    // The displayed conversation or its exact Agent (a same-id replacement) may change.
+    offView = ctx.mayflyConversations.subscribe(() => { if (!current()) handle.close() })
+    offAgent = ctx.mayflyCurrentAgent.subscribe(() => { if (!current()) handle.close() })
   })
 }

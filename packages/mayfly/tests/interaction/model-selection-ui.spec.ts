@@ -5,6 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
+import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { openModelPicker } from '../../src/interaction/model-commands.ts'
 import { providerFixture } from './provider-fixture.ts'
 
@@ -38,8 +39,8 @@ async function setup() {
   ctx.provide('sessionController', { selectModel: select } as never)
   ctx.provide('sessionProjections', { snapshot: () => ({ values: { modelSelection: { next: selection } } }) } as never)
   ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'p', model: 'one' }), saveSelection: save } as never)
-  const app = await ctx.plugin({ name: 'app-selection', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner) } })
-  ctx.mayflyCurrentAgent.select(agent)
+  const app = await ctx.plugin({ name: 'app-selection', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
+  ctx.mayflyConversations.selectPrimary(agent)
   await flush()
   return { ...bench, agent, other, app, llm, select, save }
 }
@@ -83,7 +84,7 @@ describe('native model selection UI', () => {
     const bench = await setup()
     await openModelPicker(bench.ctx, new AbortController().signal)
     const picker = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
-    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
     await flush()
     expect(picker.disposed).toBe(true)
     picker.invoke('default')
@@ -98,8 +99,8 @@ describe('native model selection UI', () => {
     await bench.app.dispose()
     await flush()
     expect(picker.disposed).toBe(true)
-    await bench.ctx.plugin({ name: 'new-app-selection', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner) } })
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    await bench.ctx.plugin({ name: 'new-app-selection', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     expect(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')).toBeUndefined()
   })

@@ -42,32 +42,32 @@ describe('interaction keys', () => {
     expect(matchesKeyAction({ matches: () => false, getKeys: () => ['enter'] } as never, '\r', ACTION_SUBMIT)).toBe(false)
   })
 
-  it('dispatches F7 and F8 through the current-Agent view owner', async () => {
+  it('dispatches F7 and F8 through the app conversation registry', async () => {
     const ctx = new Context()
     await ctx.plugin(MayflyKeymapService)
     const interaction = new UiInteractionService(ctx)
-    const toggleAuxiliary = vi.fn(() => true)
-    const closeAuxiliary = vi.fn(() => ({ kind: 'btw' }))
-    ctx.reflect.provide('mayflyCurrentAgent', { current: () => null, toggleAuxiliary, closeAuxiliary })
-    ctx.on('mayfly/request-close-agent-view', () => { closeAuxiliary() })
+    const back = vi.fn(() => true)
+    const close = vi.fn()
+    ctx.reflect.provide('mayflyConversations', { back })
+    ctx.on('mayfly/request-close-conversation', close)
     const fiber = await ctx.plugin(keys)
     expect(ctx.mayflyKeymap.dispatch('\x1b[18~')).toBe(true)
-    expect(toggleAuxiliary).toHaveBeenCalledOnce()
+    expect(back).toHaveBeenCalledOnce()
 
     expect(ctx.mayflyKeymap.dispatch('\x1b[19~')).toBe(true)
-    expect(closeAuxiliary).toHaveBeenCalledOnce()
+    expect(close).toHaveBeenCalledOnce()
     expect(interaction.notificationSnapshot()).toEqual([])
     await fiber.dispose()
   })
 
-  it('reports an absent auxiliary without throwing from global dispatch', async () => {
+  it('reports that no other conversation is open without throwing from global dispatch', async () => {
     const ctx = new Context()
     await ctx.plugin(MayflyKeymapService)
     const interaction = new UiInteractionService(ctx)
-    ctx.reflect.provide('mayflyCurrentAgent', { current: () => null, toggleAuxiliary: () => false, closeAuxiliary: () => null })
+    ctx.reflect.provide('mayflyConversations', { back: () => false })
     await ctx.plugin(keys)
     ctx.mayflyKeymap.dispatch('\x1b[18~')
     ctx.mayflyKeymap.dispatch('\x1b[19~')
-    expect(interaction.notificationSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'warning', message: 'no auxiliary conversation is open' })]))
+    expect(interaction.notificationSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'warning', message: 'no other conversation is open' })]))
   })
 })

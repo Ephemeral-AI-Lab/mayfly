@@ -158,7 +158,7 @@ describe('shared MCP browser', () => {
 
     const lateSchemas = vi.spyOn(bench.ctx.tools, 'schemas').mockImplementationOnce(() => { throw new Error('late failure') })
     const late = command.handler({ agent: bench.agent, signal: new AbortController().signal } as never)
-    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
     expect(await late).toEqual({ kind: 'success' })
     lateSchemas.mockRestore()
   })
@@ -255,7 +255,7 @@ describe('shared MCP browser', () => {
     await bench.register({ name: 'mcp__demo__one', description: 'Details' })
     const schemas = vi.spyOn(bench.ctx.tools, 'schemas')
     const pending = bench.run(line)
-    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
     await pending
     await flushRequests()
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
@@ -273,7 +273,7 @@ describe('shared MCP browser', () => {
     server.emit({ kind: 'selection-accept', controlId: 'tools', pagePath: [{ controlId: 'server-pages', itemId: 'tools' }], selectedIds: ['mcp__demo__one'] })
     await flushRequests()
     const detail = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.mcp.tool')!
-    if (reason === 'agent') bench.ctx.mayflyCurrentAgent.select(bench.other)
+    if (reason === 'agent') bench.ctx.mayflyConversations.selectPrimary(bench.other)
     else if (reason === 'parent') browser.requestClose()
     else await (reason === 'loader' ? bench.loaderOwner : bench.front).dispose()
     await flushRequests()

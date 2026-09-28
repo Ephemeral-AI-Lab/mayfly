@@ -49,7 +49,7 @@ it('records successful native deliveries and loads file bytes only on Preview', 
   bench.ctx.mayflyOverlays.close('mayfly.files.preview')
   bench.model('mayfly.files.detail').invoke('open'); await flushRequests()
   expect(bench.controller.openWorkspacePath).toHaveBeenCalledWith({ path: '/repo/result.txt' }, expect.any(AbortSignal))
-  bench.ctx.mayflyCurrentAgent.select(bench.other)
+  bench.ctx.mayflyConversations.selectPrimary(bench.other)
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
 })
 it('reports unavailable and binary files without presenting binary bytes as text', async () => {
@@ -95,7 +95,7 @@ it('handles empty actions, unavailable current Agent, and late file resolution',
   bench.fs.resolve.mockReturnValueOnce(pending.promise)
   const call = nativeAction(bench.model(), selection('files', bench.ctx.sessionProjections.snapshot(bench.session, ['mayflyDeliverables']).values.mayflyDeliverables![0]!.id))
   await vi.waitFor(() => expect(bench.fs.resolve).toHaveBeenCalledTimes(2))
-  bench.ctx.mayflyCurrentAgent.select(bench.other)
+  bench.ctx.mayflyConversations.selectPrimary(bench.other)
   pending.resolve({ targetKey: 'result', displayPath: 'result' })
   await call
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)

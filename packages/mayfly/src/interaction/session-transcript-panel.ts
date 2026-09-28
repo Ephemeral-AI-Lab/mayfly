@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-session-query'
 import type { MayflyFocusable } from '../core/index.ts'
 import { ScrollablePanel } from '../core/scrollable-panel.ts'
 import { conversationProjectionSchema, type ConversationProjection } from '../conversation/index.ts'
-import type { MayflyAuxiliaryView } from '../app/current-agent.ts'
+import type { MayflyConversationsSnapshot, MayflySubagentOpen } from '../app/conversation-views.ts'
 import {
   conversationTranscriptModel,
   liveDraftsOf,
@@ -31,7 +31,7 @@ import { watchAssistantStream } from '../frontend/assistant-stream.ts'
 import { ACTION_CANCEL, ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from './keys.ts'
 import { interactionTranslator } from './locale.ts'
 
-type SubagentView = Extract<MayflyAuxiliaryView, { readonly kind: 'subagent' }>
+type SubagentView = MayflySubagentOpen
 
 /** One retained readonly viewer and its live/cold projection resources. */
 export class SessionTranscriptPanel implements MayflyFocusable {
@@ -179,11 +179,11 @@ export class SessionTranscriptPanel implements MayflyFocusable {
 /** Stable child-plugin name. */
 export const name = 'mayfly-session-transcript-panel'
 /** Renderer, projection, and editor-slot services required by the fallback. */
-export const inject = ['mayflyCurrentAgent', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'sessionProjections', 'sessions', 'tools', 'agents', 'sessionController']
+export const inject = ['mayflyConversations', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'sessionProjections', 'sessions', 'tools', 'agents', 'sessionController']
 
 /** Mount the retained readonly auxiliary when it is the displayed view. */
 export function apply(ctx: Context): void {
-  let retained: { readonly target: SubagentView, readonly panel: SessionTranscriptPanel, shown: boolean } | undefined
+  let retained: { readonly id: string, readonly target: SubagentView, readonly panel: SessionTranscriptPanel, shown: boolean } | undefined
 
   const clear = (): void => {
     const current = retained
@@ -191,10 +191,12 @@ export function apply(ctx: Context): void {
     if (current?.shown === true) ctx.mayflyScreen.setEditorReplacement(null, 'conversation')
     current?.panel.dispose()
   }
-  const sync = (): void => {
-    const snapshot = ctx.mayflyCurrentAgent.view()
-    const target = snapshot.auxiliary
-    if (target?.kind !== 'subagent' || target.access === 'interactive') {
+  const sync = (snapshot: MayflyConversationsSnapshot): void => {
+    // The displayed non-interactive child owns the panel; a hidden one keeps
+    // it retained while it stays open, so F7 back is instant.
+    const readable = (id: string | null | undefined) => snapshot.views.find(view => view.id === id && view.kind === 'subagent' && view.access !== 'interactive')
+    const target = readable(snapshot.displayedId) ?? (retained === undefined ? undefined : readable(retained.id))
+    if (target?.kind !== 'subagent') {
       clear()
       return
     }
@@ -208,21 +210,23 @@ export function apply(ctx: Context): void {
         mode: target.mode,
       }
       retained = {
+        id: target.id,
         target: admitted,
-        panel: new SessionTranscriptPanel(ctx, admitted, () => { ctx.emit('mayfly/request-close-agent-view') }),
+        panel: new SessionTranscriptPanel(ctx, admitted, () => { ctx.emit('mayfly/request-close-conversation') }),
         shown: false,
       }
     }
-    if (snapshot.displayed === 'auxiliary' && retained.shown === false) {
+    const shown = snapshot.displayedId === target.id
+    if (shown && retained.shown === false) {
       ctx.mayflyScreen.setEditorReplacement(retained.panel, 'conversation')
       retained.shown = true
-    } else if (snapshot.displayed === 'primary' && retained.shown === true) {
+    } else if (!shown && retained.shown === true) {
       ctx.mayflyScreen.setEditorReplacement(null, 'conversation')
       retained.shown = false
     }
   }
 
-  const offView = ctx.mayflyCurrentAgent.subscribeView(sync)
+  const offView = ctx.mayflyConversations.subscribe(sync)
   ctx.effect(() => offView)
   ctx.effect(() => clear)
 }

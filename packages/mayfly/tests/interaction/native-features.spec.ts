@@ -67,7 +67,7 @@ it('shows reminder timing without loading bodies or creating its own delivery ru
     expectLinesFit('native-feature', renderer.component.render(width), width)
     renderer.runtime.dispose()
   }
-  bench.ctx.mayflyCurrentAgent.select(bench.other)
+  bench.ctx.mayflyConversations.selectPrimary(bench.other)
   expect(model.disposed).toBe(true)
   await bench.scheduleFiber.dispose()
   expect(bench.ctx.mayflyStatus.list().some(item => item.id === 'mayfly.schedule')).toBe(false)
@@ -146,7 +146,7 @@ it('refreshes reminders only for the selected session and releases its timer', a
   expect(JSON.stringify(reminders.node)).toContain('No active reminders')
   expect(bench.list).toHaveBeenCalledWith({ sessionId: bench.session.id })
   await new Promise(resolve => setTimeout(resolve, 1010))
-  bench.ctx.mayflyCurrentAgent.select(null)
+  bench.ctx.mayflyConversations.selectPrimary(null)
   expect(reminders.disposed).toBe(true)
 })
 it('fences late reminder reads after Agent selection and unload', async () => {
@@ -155,7 +155,7 @@ it('fences late reminder reads after Agent selection and unload', async () => {
   const late = [{ id: 'late', title: 'Wrong session', prompt: 'Body', kind: 'at', scheduledAt: '2099-01-01T00:00:00Z' }] as never
   bench.list.mockImplementation(async request => request.sessionId === bench.session.id ? first.promise : [])
   await bench.run('/schedule')
-  bench.ctx.mayflyCurrentAgent.select(bench.other)
+  bench.ctx.mayflyConversations.selectPrimary(bench.other)
   expect(await bench.ctx.commands.execute(bench.other, '/schedule', [], new AbortController().signal)).toMatchObject({ result: { kind: 'success' } })
   await flushRequests()
   first.resolve(late)

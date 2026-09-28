@@ -18,7 +18,7 @@ import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type {} from '../../src/app/index.ts'
-import { fakeMayflyContext, KEY, type FakeMayflyComponents } from './fakes.ts'
+import { fakeConversations, fakeMayflyContext, KEY, type FakeMayflyComponents } from './fakes.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
@@ -100,12 +100,11 @@ const flushCommands = (): Promise<void> => new Promise(resolve => { setImmediate
 /** Provide native command dependencies without mounting Mayfly display services. */
 function provideAppBoundary(ctx: Context): void {
   const active = (): Agent | null => ctx.get('testSession')?.current ?? null
+  ctx.provide('mayflyConversations', fakeConversations() as never)
   ctx.provide('mayflyCurrentAgent', {
     current: active,
     primary: active,
-    view: () => ({ primarySessionId: active() === null ? null : String(active()!.id), displayed: 'primary', auxiliary: null, revision: 0 }),
     revision: () => 0,
-    closeAuxiliary: () => null,
     subscribe: (listener: (agent: Agent | null, revision: number) => void) => {
       listener(active(), 0)
       return () => {}
@@ -340,8 +339,11 @@ describe('mayfly-commands plugin', () => {
     }), { surfaceOp: 'append' })
     const onRewind = vi.fn()
     ctx.on('mayfly/request-rewind', onRewind)
+    const display = vi.spyOn(ctx.mayflyConversations, 'display')
     const execution = await ctx.commands.execute(agent, '/rewind', [], signal())
     expect(execution?.result).toEqual({ kind: 'success' })
+    // Rewind branches the primary, so it is shown beneath the picker.
+    expect(display).toHaveBeenCalledWith(`session:${String(agent.id)}`)
     const opened = ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.rewind')!
     expect((await ctx.commands.execute(agent, '/rewind', [], signal()))?.result).toEqual({ kind: 'success' })
     expect(ctx.mayflyOverlays.list().find(entry => entry.id === opened.id)!.focusRevision).toBeGreaterThan(opened.focusRevision)

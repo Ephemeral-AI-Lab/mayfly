@@ -22,6 +22,7 @@ import * as mayflyCore from '../../src/core/index.ts'
 import * as themeDark from '../../src/core/theme-dark.ts'
 import { apply } from '../../src/interaction/index.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
+import { fakeConversations } from './fakes.ts'
 
 
 registerTempDirCleanup()
@@ -113,6 +114,7 @@ export const apply = ctx => globalThis.__mayflyInteractionFixtures.interactionAp
       return () => {}
     },
   } as never)
+  ctx.provide('mayflyConversations', fakeConversations() as never)
   ctx.provide('skills', { snapshot: async () => ({ complete: true, skills: [] }) } as never)
   ctx.provide('sessionProjections', {
     snapshot: () => ({ asOfSeq: 0, values: {} }),

@@ -86,6 +86,8 @@ interface CommandHarness {
   readonly sessionState: { current: Agent | null }
   readonly projectionCalls: string[][]
   readonly opened: unknown[]
+  readonly displayed: string[]
+  readonly closed: string[]
   readonly drain: ReturnType<typeof vi.fn>
   readonly liveAgents: Map<string, Agent>
   readonly liveDrafts: Map<string, { readonly phase: string, readonly chars?: number }>
@@ -131,15 +133,19 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
   ctx.provide('mayflyCurrentAgent', {
     current: () => sessionState.current,
     primary: () => sessionState.current,
-    view: () => ({ primarySessionId: String(parent.id), displayed: 'primary', auxiliary: null, revision: 0 }),
     revision: () => 0,
     subscribe(listener: (agent: Agent | null, revision: number) => void) {
       listeners.add(listener)
       listener(sessionState.current, 0)
       return () => { listeners.delete(listener) }
     },
-    openAuxiliary(view: unknown) { opened.push(view) },
-    closeAuxiliary: () => null,
+  } as never)
+  const displayed: string[] = []
+  const closed: string[] = []
+  ctx.provide('mayflyConversations', {
+    open(view: unknown) { opened.push(view) },
+    display(id: string) { displayed.push(id); return true },
+    close(id: string) { closed.push(id); return null },
   } as never)
   const projectionCalls: string[][] = []
   const facts: Record<string, unknown> = { epochTokens: 2_048, epochToolCount: 3 }
@@ -177,6 +183,8 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     sessionState,
     projectionCalls,
     opened,
+    displayed,
+    closed,
     drain: vi.fn(async () => {}),
     liveAgents,
     liveDrafts,
@@ -303,20 +311,11 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
-  it('leaves an active child view before stopping it and rejects stop without a primary', async () => {
+  it('leaves an open child conversation before stopping it and rejects stop without a primary', async () => {
     const rig = await mountCommand()
     rig.tree = [child('child')]
-    vi.spyOn(rig.ctx.mayflyCurrentAgent, 'view').mockReturnValue({
-      primarySessionId: 'parent',
-      displayed: 'auxiliary',
-      auxiliary: {
-        kind: 'subagent', sessionId: 'child', parentSessionId: 'parent', label: 'child', mode: 'continuable', access: 'interactive',
-      },
-      revision: 1,
-    })
-    const close = vi.spyOn(rig.ctx.mayflyCurrentAgent, 'closeAuxiliary')
     expect(await execute(rig, 'stop child')).toMatchObject({ kind: 'success' })
-    expect(close).toHaveBeenCalledOnce()
+    expect(rig.closed).toEqual(['session:child'])
     await rig.fiber.dispose()
 
     const absent = await mountCommand({ current: false })
@@ -396,7 +395,7 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
-  it('browses native descendants, samples live metrics, expands, and opens an auxiliary view', async () => {
+  it('browses native descendants, samples live metrics, expands, and opens a child conversation', async () => {
     const rig = await mountCommand()
     rig.tree = [
       child('child', { activity: 'running', hasChildren: true, label: 'explore' }),
@@ -405,6 +404,8 @@ describe('mayfly-agents-command', () => {
       { kind: 'diagnostic', id: SessionId('broken'), parentId: SessionId('parent'), depth: 1, reason: 'corrupt' },
     ]
     expect(await execute(rig)).toEqual({ kind: 'success' })
+    // The browser lists the primary's tree, so it shows the primary beneath it.
+    expect(rig.displayed).toEqual(['session:parent'])
     const model = browser(rig)
     expect(browserRows(rig)).toContain('▸ ● explore')
     expect(browserRows(rig)).toContain('3 tools')

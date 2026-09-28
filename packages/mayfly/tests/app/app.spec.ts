@@ -8,6 +8,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { apply, Config, internals } from '../../src/app/index.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
+import { conversationId, MAX_SIDE_CONVERSATIONS, MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { armExitEpitaph, armedEpitaph } from '../../src/app/exit-epitaph.ts'
 
 const originalStderr = internals.stderr
@@ -307,7 +308,7 @@ describe('mayfly app driver', () => {
     test.ctx.emit('mayfly/request-rewind', String(current.id), 9)
     await vi.waitFor(() => { expect(test.errors()).toContain(`could not rewind session ${String(current.id)}: fork service failed`) })
 
-    test.ctx.mayflyCurrentAgent.select(null)
+    test.ctx.mayflyConversations.selectPrimary(null)
     test.ctx.emit('mayfly/request-fork')
     test.ctx.emit('mayfly/request-rewind', 'none', 1)
     await vi.waitFor(() => {
@@ -384,7 +385,7 @@ describe('mayfly app driver', () => {
     Object.assign(child, { status: 'running' })
     ;(child.session.surface.nodes as number[]).push(1)
     test.live.set(String(child.id), child)
-    test.ctx.mayflyCurrentAgent.openAuxiliary({
+    test.ctx.mayflyConversations.open({
       kind: 'subagent',
       sessionId: String(child.id),
       parentSessionId: String(parent.id),
@@ -398,189 +399,172 @@ describe('mayfly app driver', () => {
   })
 })
 
-describe('MayflyCurrentAgentService', () => {
-  it('selects exact live registry members, invalidates stale members, and observes disposal', () => {
+describe('MayflyConversationsService', () => {
+  function registry(ids: readonly string[] = ['primary']) {
     const ctx = new Context()
-    const agent = fakeAgent('exact')
-    let live: FakeAgent | undefined = agent
-    ctx.provide('agents', { get: () => live } as never)
-    const service = new MayflyCurrentAgentService(ctx)
+    const agents = new Map(ids.map(id => [id, fakeAgent(id)] as const))
+    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
+    const conversations = new MayflyConversationsService(ctx)
+    const current = new MayflyCurrentAgentService(ctx, conversations)
+    return { ctx, agents, conversations, current, agent: (id: string) => agents.get(id)! }
+  }
+  const child = (sessionId: string, mode: 'one-shot' | 'continuable' = 'continuable') => ({
+    kind: 'subagent' as const, sessionId, parentSessionId: 'primary', label: sessionId, mode,
+  })
+
+  it('selects an exact live primary, heals a stale one, and observes its disposal', () => {
+    const { ctx, agents, conversations, current, agent } = registry(['exact'])
+    const exact = agent('exact')
     const seen: Array<Agent | null> = []
-    const off = service.subscribe(value => { seen.push(value) })
-    service.select(agent)
-    service.select(agent)
-    expect(service.current()).toBe(agent)
-    expect(service.revision()).toBe(1)
-    expect(() => service.select(fakeAgent('foreign'))).toThrow('cannot select non-live Agent')
+    const off = current.subscribe(value => { seen.push(value) })
+    conversations.selectPrimary(exact)
+    conversations.selectPrimary(exact)
+    expect(current.current()).toBe(exact)
+    expect(current.primary()).toBe(exact)
+    expect(current.revision()).toBe(1)
+    expect(() => conversations.selectPrimary(fakeAgent('foreign'))).toThrow('cannot select non-live Agent')
     ctx.emit('agent/disposed', { agent: fakeAgent('other') } as never)
-    live = undefined
-    expect(service.current()).toBeNull()
-    live = agent
-    service.select(agent)
-    ctx.emit('agent/disposed', { agent } as never)
-    expect(service.current()).toBeNull()
+    agents.delete('exact')
+    expect(current.current()).toBeNull()
+    agents.set('exact', exact)
+    conversations.selectPrimary(exact)
+    ctx.emit('agent/disposed', { agent: exact } as never)
+    expect(current.current()).toBeNull()
+    expect(conversations.snapshot()).toMatchObject({ primaryId: null, displayedId: null, recent: [], views: [] })
+    expect(conversations.displayed()).toBeNull()
+    conversations.selectPrimary(null)
     off()
-    expect(seen).toEqual([null, agent, null, agent, null])
+    expect(seen).toEqual([null, exact, null, exact, null])
   })
 
-  it('toggles one live continuable auxiliary without replacing the primary', () => {
-    const ctx = new Context()
-    const primary = fakeAgent('primary')
-    const child = fakeAgent('child')
-    const agents = new Map([[String(primary.id), primary], [String(child.id), child]])
-    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
-    const service = new MayflyCurrentAgentService(ctx)
-    const views: string[] = []
-    service.subscribeView(view => { views.push(`${view.displayed}:${view.auxiliary?.access ?? 'none'}`) })
-    service.select(primary)
-    service.openAuxiliary({
-      kind: 'subagent', sessionId: String(child.id), parentSessionId: String(primary.id), label: 'worker', mode: 'continuable',
+  it('keeps several side conversations, returns to the previous one, and closes by recency', () => {
+    const { conversations, current, agent } = registry(['primary', 'worker', 'reviewer'])
+    const primary = agent('primary')
+    conversations.selectPrimary(primary)
+    const revisions: number[] = []
+    conversations.subscribe(snapshot => { revisions.push(snapshot.revision) })
+    expect(conversations.back()).toBe(false)
+    expect(conversations.close()).toBeNull()
+
+    const worker = conversations.open(child('worker'))
+    const reviewer = conversations.open(child('reviewer'))
+    expect(worker).toBe(conversationId('worker'))
+    expect(current.current()).toBe(agent('reviewer'))
+    expect(conversations.snapshot()).toMatchObject({
+      primaryId: 'session:primary',
+      displayedId: 'session:reviewer',
+      recent: ['session:reviewer', 'session:worker', 'session:primary'],
     })
-    expect(service.current()).toBe(child)
-    expect(service.primary()).toBe(primary)
-    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'interactive' } })
-    expect(service.toggleAuxiliary()).toBe(true)
-    expect(service.current()).toBe(primary)
-    expect(service.view().displayed).toBe('primary')
-    expect(service.toggleAuxiliary()).toBe(true)
-    expect(service.current()).toBe(child)
-    expect(service.closeAuxiliary()).toMatchObject({ sessionId: String(child.id) })
-    expect(service.current()).toBe(primary)
-    expect(service.toggleAuxiliary()).toBe(false)
-    expect(views).toEqual([
-      'primary:none',
-      'primary:none',
-      'auxiliary:interactive',
-      'primary:interactive',
-      'auxiliary:interactive',
-      'primary:none',
+    expect(conversations.snapshot().views.map(view => [view.id, view.residency])).toEqual([
+      ['session:primary', 'retained'],
+      ['session:worker', 'retained'],
+      ['session:reviewer', 'displayed'],
     ])
+    expect(conversations.back()).toBe(true)
+    expect(current.current()).toBe(agent('worker'))
+    expect(conversations.back()).toBe(true)
+    expect(current.current()).toBe(agent('reviewer'))
+    expect(conversations.display('session:primary')).toBe(true)
+    expect(conversations.display('session:primary')).toBe(true)
+    expect(conversations.display('session:missing')).toBe(false)
+    expect(current.current()).toBe(primary)
+    // From the primary, closing without an id closes the F7 counterpart.
+    expect(conversations.close()).toMatchObject({ id: reviewer, residency: 'retained' })
+    expect(conversations.close('session:missing')).toBeNull()
+    expect(conversations.display(worker)).toBe(true)
+    expect(conversations.close()).toMatchObject({ id: worker })
+    expect(conversations.displayed()).toMatchObject({ kind: 'primary', access: 'interactive', residency: 'displayed' })
+    conversations.open(child('worker'))
+    conversations.closeSides()
+    conversations.closeSides()
+    expect(conversations.snapshot()).toMatchObject({ displayedId: 'session:primary', recent: ['session:primary'] })
+    expect(new Set(revisions).size).toBe(revisions.length)
+    expect(conversations.revision()).toBe(revisions.at(-1))
   })
 
-  it('keeps one-shot history readonly and cold continuable children resumable', () => {
-    const ctx = new Context()
-    const primary = fakeAgent('primary')
-    const oneShot = fakeAgent('one-shot')
-    const agents = new Map([[String(primary.id), primary], [String(oneShot.id), oneShot]])
-    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
-    const service = new MayflyCurrentAgentService(ctx)
-    service.select(primary)
-    service.openAuxiliary({
-      kind: 'subagent', sessionId: String(oneShot.id), parentSessionId: String(primary.id), label: 'once', mode: 'one-shot',
-    })
-    expect(service.current()).toBe(primary)
-    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'readonly' } })
-    service.openAuxiliary({
-      kind: 'subagent', sessionId: 'cold', parentSessionId: String(primary.id), label: 'cold', mode: 'continuable',
-    })
-    expect(service.current()).toBe(primary)
-    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { sessionId: 'cold', access: 'resumable' } })
-  })
+  it('derives readonly, resumable, and interactive access and drives only interactive Agents', () => {
+    const { ctx, agents, conversations, current, agent } = registry(['primary', 'once', 'child'])
+    conversations.selectPrimary(agent('primary'))
+    conversations.open(child('once', 'one-shot'))
+    expect(current.current()).toBeNull()
+    expect(conversations.displayed()).toMatchObject({ access: 'readonly' })
+    // A one-shot child's own events never change its access.
+    ctx.emit('agent/created', { agent: agent('once') } as never)
+    ctx.emit('agent/disposed', { agent: agent('once') } as never)
+    expect(conversations.displayed()).toMatchObject({ access: 'readonly' })
 
-  it('downgrades a disposed continuable child and upgrades its next live identity', () => {
-    const ctx = new Context()
-    const primary = fakeAgent('primary')
-    const child = fakeAgent('child')
-    const agents = new Map([[String(primary.id), primary], [String(child.id), child]])
-    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
-    const service = new MayflyCurrentAgentService(ctx)
-    service.select(primary)
-    service.openAuxiliary({
-      kind: 'subagent', sessionId: String(child.id), parentSessionId: String(primary.id), label: 'worker', mode: 'continuable',
-    })
-    agents.delete(String(child.id))
-    ctx.emit('agent/disposed', { agent: child } as never)
-    expect(service.current()).toBe(primary)
-    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'resumable' } })
-
-    const resumed = fakeAgent('child')
-    agents.set(String(resumed.id), resumed)
-    ctx.emit('agent/created', { agent: resumed } as never)
-    expect(service.current()).toBe(resumed)
-    expect(service.view()).toMatchObject({ displayed: 'auxiliary', auxiliary: { access: 'interactive' } })
-  })
-
-  it('closes an owned BTW view when its exact Agent disappears', () => {
-    const ctx = new Context()
-    const primary = fakeAgent('primary')
-    const btw = fakeAgent('btw')
-    const agents = new Map([[String(primary.id), primary], [String(btw.id), btw]])
-    ctx.provide('agents', { get: (id: unknown) => agents.get(String(id)) } as never)
-    const service = new MayflyCurrentAgentService(ctx)
-    service.select(primary)
-    service.openAuxiliary({ kind: 'btw', sessionId: String(btw.id), parentSessionId: String(primary.id), label: 'side question' })
-    agents.delete(String(btw.id))
-    ctx.emit('agent/disposed', { agent: btw } as never)
-    expect(service.current()).toBe(primary)
-    expect(service.view()).toMatchObject({ displayed: 'primary', auxiliary: null })
-  })
-
-  it('rejects unsafe auxiliary identities and freezes published snapshots', () => {
-    const ctx = new Context()
-    const primary = fakeAgent('primary')
-    const live = new Map([[String(primary.id), primary]])
-    ctx.provide('agents', { get: (id: unknown) => live.get(String(id)) } as never)
-    const service = new MayflyCurrentAgentService(ctx)
-    expect(() => service.openAuxiliary({
-      kind: 'subagent', sessionId: 'child', parentSessionId: 'primary', label: 'child', mode: 'continuable',
-    })).toThrow('without a live primary Agent')
-    service.select(primary)
-    expect(() => service.openAuxiliary({
-      kind: 'subagent', sessionId: 'primary', parentSessionId: 'primary', label: 'self', mode: 'continuable',
-    })).toThrow('cannot open the primary Agent')
-    expect(() => service.openAuxiliary({
-      kind: 'btw', sessionId: 'missing', parentSessionId: 'primary', label: 'missing',
-    })).toThrow('cannot open non-live BTW Agent')
-
-    service.openAuxiliary({
-      kind: 'subagent', sessionId: 'cold', parentSessionId: 'primary', label: 'cold', mode: 'one-shot',
-    })
-    const snapshot = service.view()
-    expect(Object.isFrozen(snapshot)).toBe(true)
-    expect(Object.isFrozen(snapshot.auxiliary)).toBe(true)
-    ctx.emit('mayfly/request-close-agent-view')
-    expect(service.view().auxiliary).toBeNull()
-  })
-
-  it('invalidates a stale primary lookup and clears auxiliaries with it', () => {
-    const ctx = new Context()
-    const primary = fakeAgent('primary')
-    const child = fakeAgent('child')
-    const live = new Map([[String(primary.id), primary], [String(child.id), child]])
-    ctx.provide('agents', { get: (id: unknown) => live.get(String(id)) } as never)
-    const service = new MayflyCurrentAgentService(ctx)
-    service.select(primary)
-    service.openAuxiliary({
-      kind: 'subagent', sessionId: 'child', parentSessionId: 'primary', label: 'child', mode: 'continuable',
-    })
-    live.delete('primary')
-    expect(service.primary()).toBeNull()
-    expect(service.current()).toBeNull()
-    expect(service.view().auxiliary).toBeNull()
-  })
-
-  it('ignores unrelated Agent creation and upgrades a hidden continuable child', () => {
-    const ctx = new Context()
-    const primary = fakeAgent('primary')
-    const oneShot = fakeAgent('one-shot')
-    const live = new Map([[String(primary.id), primary], [String(oneShot.id), oneShot]])
-    ctx.provide('agents', { get: (id: unknown) => live.get(String(id)) } as never)
-    const service = new MayflyCurrentAgentService(ctx)
-    service.select(primary)
+    conversations.open(child('child'))
+    const live = agent('child')
+    expect(current.current()).toBe(live)
+    agents.delete('child')
+    ctx.emit('agent/disposed', { agent: live } as never)
+    expect(current.current()).toBeNull()
+    expect(conversations.displayed()).toMatchObject({ access: 'resumable' })
     ctx.emit('agent/created', { agent: fakeAgent('unrelated') } as never)
-    service.openAuxiliary({
-      kind: 'subagent', sessionId: 'one-shot', parentSessionId: 'primary', label: 'once', mode: 'one-shot',
-    })
-    ctx.emit('agent/created', { agent: oneShot } as never)
-    service.openAuxiliary({
-      kind: 'subagent', sessionId: 'cold', parentSessionId: 'primary', label: 'cold', mode: 'continuable',
-    })
-    ctx.emit('agent/created', { agent: fakeAgent('other') } as never)
-    service.toggleAuxiliary()
-    const resumed = fakeAgent('cold')
-    live.set('cold', resumed)
+    const resumed = fakeAgent('child')
+    agents.set('child', resumed)
     ctx.emit('agent/created', { agent: resumed } as never)
-    expect(service.current()).toBe(primary)
-    expect(service.view()).toMatchObject({ displayed: 'primary', auxiliary: { access: 'interactive' } })
+    expect(current.current()).toBe(resumed)
+    expect(conversations.displayed()).toMatchObject({ access: 'interactive' })
+  })
+
+  it('keeps one BTW with its history floor and closes it when its Agent disappears', () => {
+    const { ctx, agents, conversations, current, agent } = registry(['primary', 'btw-1', 'btw-2', 'worker'])
+    conversations.selectPrimary(agent('primary'))
+    conversations.open(child('worker'))
+    conversations.open({ kind: 'btw', sessionId: 'btw-1', parentSessionId: 'primary', label: 'first', historyFloorSeq: 41 })
+    expect(conversations.displayed()).toMatchObject({ kind: 'btw', label: 'first', historyFloorSeq: 41, access: 'interactive' })
+    conversations.open({ kind: 'btw', sessionId: 'btw-1', parentSessionId: 'primary', label: 'first again' })
+    expect(conversations.displayed()).not.toHaveProperty('historyFloorSeq')
+    conversations.open({ kind: 'btw', sessionId: 'btw-2', parentSessionId: 'primary', label: 'second' })
+    expect(conversations.snapshot().views.map(view => view.id)).toEqual(['session:primary', 'session:worker', 'session:btw-2'])
+    expect(current.current()).toBe(agent('btw-2'))
+
+    agents.delete('btw-2')
+    expect(conversations.displayed()).toMatchObject({ kind: 'btw', access: 'readonly' })
+    expect(current.current()).toBeNull()
+    ctx.emit('agent/disposed', { agent: agent('btw-1') } as never)
+    ctx.emit('agent/disposed', { agent: fakeAgent('btw-2') } as never)
+    expect(conversations.displayed()).toMatchObject({ id: 'session:worker' })
+    ctx.emit('mayfly/request-close-conversation')
+    expect(conversations.displayed()).toMatchObject({ kind: 'primary' })
+  })
+
+  it('rejects unsafe identities, freezes snapshots, and drops the least recent side past the cap', () => {
+    const { ctx, conversations, agent } = registry(['primary'])
+    expect(() => conversations.open(child('child'))).toThrow('without a live primary Agent')
+    expect(conversations.display('session:primary')).toBe(false)
+    conversations.selectPrimary(agent('primary'))
+    expect(() => conversations.open(child('primary'))).toThrow('cannot open the primary Agent')
+    expect(() => conversations.open({ kind: 'btw', sessionId: 'missing', parentSessionId: 'primary', label: 'missing' }))
+      .toThrow('cannot open non-live BTW Agent')
+
+    const admitted = { ...child('extra', 'one-shot'), access: 'interactive' }
+    conversations.open(admitted)
+    const snapshot = conversations.snapshot()
+    expect(Object.isFrozen(snapshot)).toBe(true)
+    expect(Object.isFrozen(snapshot.views)).toBe(true)
+    expect(Object.isFrozen(snapshot.views[1])).toBe(true)
+    expect(snapshot.views[1]).toMatchObject({ access: 'readonly' })
+
+    for (let index = 0; index < MAX_SIDE_CONVERSATIONS; index += 1) conversations.open(child(`child-${String(index)}`, 'one-shot'))
+    const ids = conversations.snapshot().views.map(view => view.id)
+    expect(ids).toHaveLength(MAX_SIDE_CONVERSATIONS + 1)
+    expect(ids).not.toContain('session:extra')
+    expect(ids.at(-1)).toBe(`session:child-${String(MAX_SIDE_CONVERSATIONS - 1)}`)
+    expect(conversations.snapshot().views.filter(view => view.residency === 'listed')).toHaveLength(MAX_SIDE_CONVERSATIONS - 2)
+    ctx.emit('agent/disposed', { agent: agent('primary') } as never)
+    expect(conversations.snapshot().views).toEqual([])
+  })
+
+  it('heals a stale primary before closing and clears every side with it', () => {
+    const { agents, conversations, current, agent } = registry(['primary', 'child'])
+    conversations.selectPrimary(agent('primary'))
+    conversations.open(child('child'))
+    agents.delete('primary')
+    expect(conversations.close('session:child')).toBeNull()
+    expect(current.primary()).toBeNull()
+    expect(current.current()).toBeNull()
+    expect(conversations.snapshot().views).toEqual([])
   })
 })

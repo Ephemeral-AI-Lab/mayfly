@@ -34,6 +34,7 @@ describe('Mayfly direct-service whole tree', () => {
     expect(tree.ctx.get('mayflyOverlays')).toBeDefined()
     expect(tree.ctx.get('mayflyEditorExtensions')).toBeDefined()
     expect(tree.ctx.get('mayflyCurrentAgent')).toBeDefined()
+    expect(tree.ctx.mayflyConversations.displayed()).toMatchObject({ kind: 'primary', sessionId: String(agent.id) })
     expect(tree.observations.selectedAgents).toEqual([agent])
   })
 
@@ -47,6 +48,7 @@ describe('Mayfly direct-service whole tree', () => {
       jobs: true,
       subagents: true,
       sessions: true,
+      mayflyConversations: true,
       mayflyCurrentAgent: true,
       mayflyPanes: true,
       mayflyStatus: true,
@@ -122,6 +124,10 @@ describe('Mayfly direct-service whole tree', () => {
     const tree = await bootDirectMayfly()
     const agent = await currentAgent(tree)
     const selection = tree.ctx.mayflyCurrentAgent
+    const conversations = tree.ctx.mayflyConversations
+    // A retained side conversation belongs to app state, not the renderer.
+    const side = conversations.open({ kind: 'subagent', sessionId: 'e2e-child', parentSessionId: String(agent.id), label: 'child', mode: 'one-shot' })
+    expect(conversations.back()).toBe(true)
     const stream = tree.ctx.mayflyLiveAssistantStream
     const facts = tree.ctx.mayflySessionFacts
     const emit = (frame: AssistantStreamFrame) => tree.ctx.emit('agent/assistant-stream', { agent, frame })
@@ -140,6 +146,11 @@ describe('Mayfly direct-service whole tree', () => {
     await waitForRender()
     expect(Reflect.get(tree.ctx.mayflyCurrentAgent, symbols.original) === Reflect.get(selection, symbols.original)).toBe(true)
     expect(selection.current()).toBe(agent)
+    expect(Reflect.get(tree.ctx.mayflyConversations, symbols.original) === Reflect.get(conversations, symbols.original)).toBe(true)
+    expect(conversations.snapshot().views.map(view => [view.id, view.residency])).toEqual([
+      [`session:${String(agent.id)}`, 'displayed'],
+      [side, 'retained'],
+    ])
     expect(tree.controller.created).toHaveLength(1)
     expect(Reflect.get(tree.ctx.mayflyLiveAssistantStream, symbols.original) === Reflect.get(stream, symbols.original)).toBe(true)
     expect(Reflect.get(tree.ctx.mayflySessionFacts, symbols.original) === Reflect.get(facts, symbols.original)).toBe(true)

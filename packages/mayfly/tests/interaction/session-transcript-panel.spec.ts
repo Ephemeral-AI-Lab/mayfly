@@ -7,6 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import type { MayflyFocusable } from '../../src/core/index.ts'
+import type { MayflyConversationsSnapshot, MayflyConversationView } from '../../src/app/conversation-views.ts'
 import * as transcriptPanelPlugin from '../../src/interaction/session-transcript-panel.ts'
 import { SessionTranscriptPanel } from '../../src/interaction/session-transcript-panel.ts'
 import { PaneFakeScreen, FakeProjectionService } from '../transcript/pane-fakes.ts'
@@ -264,59 +265,58 @@ describe('mayfly-session-transcript-panel plugin', () => {
         mounted.splice(0, mounted.length, component)
       },
     })
-    let snapshot: ReturnType<Context['mayflyCurrentAgent']['view']> = {
-      primarySessionId: 'parent', displayed: 'primary', auxiliary: null, revision: 0,
-    }
-    const listeners = new Set<() => void>()
-    ctx.reflect.provide('mayflyCurrentAgent', {
-      view: () => snapshot,
-      subscribeView(listener: () => void) {
+    const primary = { kind: 'primary' as const, id: 'session:parent', sessionId: 'parent', access: 'interactive' as const, residency: 'displayed' as const }
+    const state = (side: MayflyConversationView, shown: boolean): MayflyConversationsSnapshot => ({
+      primaryId: primary.id,
+      displayedId: shown ? side.id : primary.id,
+      recent: shown ? [side.id, primary.id] : [primary.id, side.id],
+      views: [primary, side],
+      revision: 0,
+    })
+    let snapshot: MayflyConversationsSnapshot = { primaryId: primary.id, displayedId: primary.id, recent: [primary.id], views: [primary], revision: 0 }
+    const listeners = new Set<(value: MayflyConversationsSnapshot) => void>()
+    ctx.reflect.provide('mayflyConversations', {
+      subscribe(listener: (value: MayflyConversationsSnapshot) => void) {
         listeners.add(listener)
-        listener()
+        listener(snapshot)
         return () => { listeners.delete(listener) }
       },
     })
-    const publish = (next: typeof snapshot): void => {
+    const publish = (next: MayflyConversationsSnapshot): void => {
       snapshot = next
-      for (const listener of listeners) listener()
+      for (const listener of listeners) listener(next)
     }
     const closed = vi.fn()
-    ctx.on('mayfly/request-close-agent-view', closed)
+    ctx.on('mayfly/request-close-conversation', closed)
     const fiber = await ctx.plugin(transcriptPanelPlugin)
-    const readonly = {
-      kind: 'subagent' as const,
+    const readonly: MayflyConversationView = {
+      kind: 'subagent',
+      id: 'session:child',
       sessionId: 'child',
       parentSessionId: 'parent',
       label: 'worker',
-      mode: 'one-shot' as const,
-      access: 'readonly' as const,
+      mode: 'one-shot',
+      access: 'readonly',
+      residency: 'displayed',
     }
-    publish({ primarySessionId: 'parent', displayed: 'auxiliary', auxiliary: readonly, revision: 1 })
+    publish(state(readonly, true))
     expect(mounted).toHaveLength(1)
     mounted[0]!.handleInput?.('\x1b')
     expect(closed).toHaveBeenCalledOnce()
 
-    publish({ primarySessionId: 'parent', displayed: 'primary', auxiliary: readonly, revision: 2 })
+    // Hidden but still open: the panel stays retained for F7 back.
+    publish(state(readonly, false))
     expect(mounted).toHaveLength(0)
-    publish({ primarySessionId: 'parent', displayed: 'auxiliary', auxiliary: readonly, revision: 3 })
+    publish(state(readonly, true))
     const retained = mounted[0]
-    publish({ primarySessionId: 'parent', displayed: 'auxiliary', auxiliary: readonly, revision: 4 })
+    publish(state(readonly, true))
     expect(mounted).toEqual([retained])
 
-    publish({
-      primarySessionId: 'parent',
-      displayed: 'auxiliary',
-      auxiliary: { ...readonly, sessionId: 'other', label: 'other' },
-      revision: 5,
-    })
+    const other = { ...readonly, id: 'session:other', sessionId: 'other', label: 'other' }
+    publish(state(other, true))
     expect(mounted).toHaveLength(1)
     expect(mounted[0]).not.toBe(retained)
-    publish({
-      primarySessionId: 'parent',
-      displayed: 'auxiliary',
-      auxiliary: { ...readonly, access: 'interactive' },
-      revision: 6,
-    })
+    publish(state({ ...other, access: 'interactive' }, true))
     expect(mounted).toHaveLength(0)
     await fiber.dispose()
     expect(listeners).toHaveLength(0)
@@ -336,7 +336,7 @@ it('resumes a cold continuable child only after explicit human Send', async () =
   const prompt = vi.fn(async () => ({ messageId: 'accepted' }))
   ctx.provide('subagents', { prompt } as never)
   await ctx.plugin(await import('../../src/interaction/subagent-reply.ts'))
-  ctx.mayflyCurrentAgent.openAuxiliary({ kind: 'subagent', sessionId: 'cold', parentSessionId: 'current', label: 'Cold', mode: 'continuable' })
+  ctx.mayflyConversations.open({ kind: 'subagent', sessionId: 'cold', parentSessionId: 'current', label: 'Cold', mode: 'continuable' })
   const panel = new SessionTranscriptPanel(ctx, { kind: 'subagent', sessionId: 'cold', parentSessionId: 'current', label: 'Cold', mode: 'continuable' }, () => {})
   try {
     await flushRequests()
@@ -361,7 +361,7 @@ it('resumes a cold continuable child only after explicit human Send', async () =
     ctx.emit('mayfly/request-subagent-reply', { kind: 'subagent', sessionId: 'cold', parentSessionId: 'current', label: 'Cold', mode: 'continuable' })
     const stale = ctx.mayflyUiInteraction.get('overlay', 'mayfly.subagent.reply')!
     stale.edit({ pagePath: [], formId: 'reply', fieldId: 'message' }, 'Late')
-    ctx.mayflyCurrentAgent.closeAuxiliary()
+    ctx.mayflyConversations.close()
     stale.invoke('send'); await flushRequests()
     expect(prompt).toHaveBeenCalledTimes(3)
   } finally { panel.dispose(); await ctx.fiber.dispose() }

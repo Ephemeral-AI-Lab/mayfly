@@ -21,11 +21,11 @@ it('admits only the displayed continuable address and fences a changed view befo
       { ...target, parentSessionId: 'different' },
       { ...target, mode: 'one-shot' as const },
     ]) {
-      bench.ctx.mayflyCurrentAgent.openAuxiliary(alternate)
+      bench.ctx.mayflyConversations.open(alternate)
       bench.ctx.emit('mayfly/request-subagent-reply', target)
       expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
     }
-    bench.ctx.mayflyCurrentAgent.openAuxiliary(target)
+    bench.ctx.mayflyConversations.open(target)
     bench.ctx.emit('mayfly/request-subagent-reply', target)
     const model = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.subagent.reply')!
     bench.ctx.emit('mayfly/request-subagent-reply', target)
@@ -33,12 +33,12 @@ it('admits only the displayed continuable address and fences a changed view befo
     const submit = (fields: unknown[]) => ({ kind: 'submit', pagePath: [], controlId: 'reply', submission: { actionId: 'send', draftRevision: 0, source: [], forms: [{ pagePath: [], formId: 'reply', draftRevision: 0, fields }] } }) as never
     expect(await nativeAction(model, submit([]))).toMatchObject({ kind: 'failed' })
     expect(await nativeAction(model, submit([{ id: 'message', value: 'hello' }, { id: 'delivery', value: 'invalid' }]))).toMatchObject({ kind: 'failed' })
-    const original = bench.ctx.mayflyCurrentAgent.view()
-    const spy = vi.spyOn(bench.ctx.mayflyCurrentAgent, 'view').mockReturnValue({ ...original, displayed: 'primary' })
+    const primary = bench.ctx.mayflyConversations.snapshot().views[0]!
+    const spy = vi.spyOn(bench.ctx.mayflyConversations, 'displayed').mockReturnValue(primary)
     expect(await nativeAction(model, submit([{ id: 'message', value: 'stale' }]))).toMatchObject({ kind: 'cancelled' })
     spy.mockRestore()
     expect(prompt).not.toHaveBeenCalled()
-    bench.ctx.mayflyCurrentAgent.closeAuxiliary()
+    bench.ctx.mayflyConversations.close()
     expect(model.disposed).toBe(true)
   } finally { await bench.ctx.fiber.dispose() }
 })
@@ -50,7 +50,7 @@ it('sends live-member guidance with Steer and retires a form after an exact-Agen
   await bench.ctx.plugin(reply)
   const target = { kind: 'subagent' as const, sessionId: 'other', parentSessionId: 'current', label: 'Other', mode: 'continuable' as const }
   try {
-    bench.ctx.mayflyCurrentAgent.openAuxiliary(target)
+    bench.ctx.mayflyConversations.open(target)
     bench.ctx.emit('mayfly/request-subagent-reply', target)
     const model = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.subagent.reply')!
     model.edit({ pagePath: [], formId: 'reply', fieldId: 'message' }, 'Change direction now')

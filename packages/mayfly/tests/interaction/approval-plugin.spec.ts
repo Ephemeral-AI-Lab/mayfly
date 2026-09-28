@@ -183,11 +183,11 @@ describe('native approval UI', () => {
     const first = bench.approve()
     const old = bench.model('mayfly.approval.')
     const second = bench.approve({ toolName: 'write' })
-    if (mode === 'selection') bench.ctx.mayflyCurrentAgent.select(bench.other)
+    if (mode === 'selection') bench.ctx.mayflyConversations.selectPrimary(bench.other)
     else if (mode === 'same-id') {
       const replacement = { ...bench.agent } as Agent
       bench.agents.set(bench.agent.id, replacement)
-      bench.ctx.mayflyCurrentAgent.select(replacement)
+      bench.ctx.mayflyConversations.selectPrimary(replacement)
     } else await (mode === 'app-unload' ? bench.app : bench.front).dispose()
     await expect(first).resolves.toBe('cancelled')
     await expect(second).resolves.toBe('cancelled')
@@ -201,16 +201,16 @@ describe('native approval UI', () => {
     const first = bench.approve()
     bench.model('mayfly.approval.').invoke('allow-session', decision)
     await first
-    bench.ctx.mayflyCurrentAgent.select(bench.other)
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await expect(bench.approve()).resolves.toBe('allowed-once')
     bench.ctx.emit('agent/disposed' as never, { agent: bench.agent } as never)
     // The fixture keeps the disposed object registered, so it can be displayed again.
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     const second = bench.approve()
     bench.model('mayfly.approval.').requestClose()
     await expect(second).resolves.toBe('rejected')
-    bench.ctx.mayflyCurrentAgent.select(null)
+    bench.ctx.mayflyConversations.selectPrimary(null)
     await expect(bench.approve()).resolves.toBe('unavailable')
   })
 

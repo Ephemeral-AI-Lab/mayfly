@@ -11,6 +11,7 @@ import * as frontend from '../../src/frontend/index.ts'
 import * as commands from '../../src/interaction/commands-plugin.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
+import { fakeConversations } from './fakes.ts'
 
 const roots: Context[] = []
 const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
@@ -29,6 +30,7 @@ async function setup() {
     revision: () => 0,
     subscribe(listener: (agent: Agent | null, revision: number) => void) { listener(null, 0); return () => {} },
   } as never)
+  ctx.provide('mayflyConversations', fakeConversations() as never)
   ctx.provide('skills', { snapshot: async () => ({ complete: true, skills: [] }) } as never)
   ctx.provide('sessionProjections', { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: () => () => {} } as never)
   ctx.provide('sessionController', {} as never)

@@ -87,7 +87,7 @@ it('opens roots by native resume and children through descendant addresses', asy
   await bench.open(); await bench.select('current'); await bench.act('open')
   expect(resume).toHaveBeenCalledWith('current')
   await bench.open(); await bench.select('child'); await bench.act('open')
-  expect(bench.ctx.mayflyCurrentAgent.view().auxiliary).toMatchObject({ sessionId: 'child', parentSessionId: 'current', access: 'resumable' })
+  expect(bench.ctx.mayflyConversations.displayed()).toMatchObject({ kind: 'subagent', sessionId: 'child', parentSessionId: 'current', access: 'resumable' })
   bench.subagents.listDescendants.mockResolvedValueOnce([])
   await bench.open(); await bench.select('child'); await bench.act('open')
   expect(bench.model('mayfly.sessions.detail').feedbackSnapshot().some(item => item.message.includes('lead session'))).toBe(true)
@@ -122,7 +122,7 @@ it('contains stale selections, unknown actions, and archive failures without red
   bench.ctx.mayflyOverlays.close('mayfly.sessions.detail')
   await bench.select('child')
   detail = bench.model('mayfly.sessions.detail')
-  bench.ctx.mayflyCurrentAgent.select(null)
+  bench.ctx.mayflyConversations.selectPrimary(null)
   expect(await nativeAction(detail, activate('open'))).toMatchObject({ kind: 'failed' })
 })
 it('shows complete search results and ignores a late archive repaint after closing', async () => {
@@ -148,7 +148,7 @@ it('uses the native child id when no label is available', async () => {
   const bench = await setup()
   bench.subagents.listDescendants.mockResolvedValueOnce([{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable' }] as never)
   await bench.open(); await bench.select('child'); await bench.act('open')
-  expect(bench.ctx.mayflyCurrentAgent.view().auxiliary?.label).toBe('child')
+  expect(bench.ctx.mayflyConversations.displayed()).toMatchObject({ label: 'child' })
 })
 
 it('renders the title, span, token total, status, and path in rows and detail', async () => {
