@@ -16,6 +16,7 @@ import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyRgbColor
 import {
   createStableTuiReference,
   createTerminalRelease,
+  measuredLaneRows,
   normalizeNavigationInput,
   normalizeWheelInput,
   startMayflyTerminal,
@@ -2062,5 +2063,19 @@ describe('createStableTuiReference', () => {
     expect((current as unknown as { extra: string }).extra).toBe('value')
     expect('mode' in stable).toBe(true)
     expect(Object.getPrototypeOf(stable)).toBe(Object.getPrototypeOf(current))
+  })
+})
+
+describe('measuredLaneRows', () => {
+  it('fits the header then the bottom lane into the terminal budget', () => {
+    expect(measuredLaneRows(24, 2, 3)).toBe(5)
+    expect(measuredLaneRows(10, 4, 4)).toBe(8)
+    // The header wins the budget; the bottom lane takes only what remains.
+    expect(measuredLaneRows(24, 2, 100)).toBe(23)
+    expect(measuredLaneRows(24, 30, 3)).toBe(23)
+    // Flooring and a zero/negative budget stay safe.
+    expect(measuredLaneRows(10.9, 1.2, 2.7)).toBe(3)
+    expect(measuredLaneRows(0, 2, 3)).toBe(0)
+    expect(measuredLaneRows(24, -1, -1)).toBe(0)
   })
 })

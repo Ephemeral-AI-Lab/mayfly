@@ -155,6 +155,16 @@ function visibleText(content: readonly ContentBlock[]): string {
   return parts.filter(Boolean).join('\n')
 }
 
+/**
+ * The user-message body without image placeholders: the attachment rows own
+ * the `[image]` marker, so inlining it here would render it twice.
+ */
+function bodyText(content: readonly ContentBlock[]): string {
+  const parts: string[] = []
+  for (const block of content) if (block.type === 'text' && block.text !== '') parts.push(block.text)
+  return parts.join('\n')
+}
+
 function reasoningText(content: readonly ContentBlock[]): string {
   return content.filter(block => block.type === 'reasoning').map(block => block.text).join('\n\n')
 }
@@ -463,8 +473,9 @@ export function foldConversationProjection(
     case 'user/message': {
       if (state.retractedTurns.includes(state.currentTurn)) return state
       if (!isAppendSurfaceEvent(event) || event.data.source.kind !== 'user') return state
-      const text = visibleText(event.data.content)
-      if (text.trim() === '') return state
+      const text = bodyText(event.data.content)
+      const images = imagesOf(event.data.content)
+      if (text.trim() === '' && images.length === 0) return state
       return appendEntry(state, {
         kind: 'user',
         id: `user:${String(event.seq)}`,
@@ -472,7 +483,7 @@ export function foldConversationProjection(
         updatedSeq: event.seq,
         turn: state.currentTurn,
         text,
-        images: imagesOf(event.data.content),
+        images,
       })
     }
     case 'assistant/attempt': {

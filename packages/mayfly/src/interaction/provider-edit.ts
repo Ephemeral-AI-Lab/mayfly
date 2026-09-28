@@ -258,7 +258,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
             }
             /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
             if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
-            if (!view.credential.writable) return { kind: 'accepted', ...reply(await read()), feedback: { severity: 'warning', message: t('Provider removed; its external credential remains unchanged') } }
+            if (!view.credential.writable) return { kind: 'accepted', ...reply(await read()), feedback: { severity: 'warning', message: t(event.actionId === 'delete' ? 'Provider removed; its external credential remains unchanged' : 'The external credential cannot be cleared here') } }
             await credentials.unset(credentialRef(openedRef!))
             /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
             if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }

@@ -12,6 +12,7 @@
  */
 
 import { sliceByColumn, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
+import { OVERFLOW_ELLIPSIS } from './width.ts'
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
 const ANSI_SGR = /\x1b\[[0-9;]*m/g
@@ -147,7 +148,7 @@ export function injectGhostHint(
   const contentWidth = Math.max(1, width - EDITOR_LEFT_PADDING * 2)
   const available = contentWidth - visibleWidth(text) - (cursorPresent ? 1 : 0)
   const trimmed = truncateHint(hint, available)
-  if (trimmed.length === 0) return line
+  if (trimmed === '') return line
   const insertAt = cursorPresent
     ? cursorIdx + CURSOR_BLOCK.length
     : visibleIndexToRaw(line, EDITOR_LEFT_PADDING + [...text].length)
@@ -338,12 +339,12 @@ export function framePanel(
     const titlePaint = options.titlePaint ?? identity
     const hint = options.titleHint
     if (hint === undefined) {
-      lines.push(truncateToWidth(titlePaint(`  ${title}`), ruleWidth))
+      lines.push(truncateToWidth(titlePaint(`  ${title}`), ruleWidth, OVERFLOW_ELLIPSIS))
     } else {
       const hintPaint = options.hintPaint ?? identity
       // The kimi title line: `  help · Esc / Enter / q to cancel · ↑↓ scroll`
       // — callers lead the hint with `· ` so the join is a single space.
-      lines.push(truncateToWidth(`${titlePaint(`  ${title}`)} ${hintPaint(hint)}`, ruleWidth))
+      lines.push(truncateToWidth(`${titlePaint(`  ${title}`)} ${hintPaint(hint)}`, ruleWidth, OVERFLOW_ELLIPSIS))
     }
   }
   lines.push(...body)
@@ -352,7 +353,7 @@ export function framePanel(
     // Key rows grow with every new panel action; an over-wide footer would
     // crash the renderer's width invariant, so it clips ANSI-safe like the
     // title line (the S23 model-family footer is the first to need it).
-    lines.push(truncateToWidth(hintRow(footer, options.footerPaint ?? identity), ruleWidth))
+    lines.push(truncateToWidth(hintRow(footer, options.footerPaint ?? identity), ruleWidth, OVERFLOW_ELLIPSIS))
   }
   lines.push(rulePaint('─'.repeat(ruleWidth)))
   // Body rows arrive pre-budgeted by their callers; only a degenerate
@@ -361,7 +362,7 @@ export function framePanel(
   // over-wide, and only then does the framer cut (D48). Wider frames
   // emit the body untouched.
   if (width >= FRAME_DEGENERATE_WIDTH) return lines
-  return lines.map(line => truncateToWidth(line, Math.max(1, width)))
+  return lines.map(line => truncateToWidth(line, Math.max(1, width), OVERFLOW_ELLIPSIS))
 }
 
 /**
@@ -411,7 +412,7 @@ export function topRule(width: number, options: TopRuleOptions = {}): string {
     composite === ''
       ? ''
       : visibleWidth(composite) > innerWidth
-        ? truncateToWidth(composite, innerWidth, '')
+        ? truncateToWidth(composite, innerWidth, OVERFLOW_ELLIPSIS)
         : composite
   return paint('╭') + clipped + paint('─'.repeat(Math.max(0, innerWidth - visibleWidth(clipped)))) + paint('╮')
 }

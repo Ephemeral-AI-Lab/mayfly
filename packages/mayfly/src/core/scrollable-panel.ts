@@ -8,6 +8,7 @@
 import { ACTION_CANCEL, ACTION_END, ACTION_HOME, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyScreen, MayflySemanticColors } from './types.ts'
 import { sanitizePluginText } from './plugin-view.ts'
+import { OVERFLOW_ELLIPSIS } from './width.ts'
 
 /** Renderer dependencies and product callbacks for one read-only panel. */
 export interface ScrollablePanelOptions {
@@ -21,6 +22,12 @@ export interface ScrollablePanelOptions {
   readonly hint?: () => string
   readonly footer?: () => readonly string[]
   readonly onClose: () => void
+  /**
+   * Rows the host grants this panel, including its own frame and footer. The
+   * subagent panel passes `screen.editorViewport.rows` so the panel and its
+   * inner renderer share one budget; isolated fixtures may omit it.
+   */
+  readonly viewportRows?: () => number
 }
 
 interface WindowedComponent extends MayflyComponent {
@@ -36,6 +43,11 @@ export class ScrollablePanel implements MayflyFocusable {
   private bodyRows = 1
 
   constructor(private readonly options: ScrollablePanelOptions) {}
+
+  /** Body rows granted by the last render; the inner renderer reads this so both agree. */
+  get bodyHeight(): number {
+    return this.bodyRows
+  }
 
   handleInput(data: string): void {
     if (this.disposed) return
@@ -59,11 +71,17 @@ export class ScrollablePanel implements MayflyFocusable {
   }
 
   render(width: number): string[] {
-    if (this.disposed || width < 5) return []
+    if (this.disposed) return []
     const { colors, components } = this.options
-    const contentWidth = Math.max(1, width - 4)
+    const safeWidth = Math.max(1, Math.floor(width))
+    const contentWidth = Math.max(1, safeWidth - 4)
     const footer = [...(this.options.footer?.() ?? [])]
-    this.bodyRows = this.bodyBudget(footer.length)
+    const grant = this.grantedRows()
+    if (grant !== undefined && grant <= 0) return []
+    // A host that cannot fit the frame gets the body alone rather than rows
+    // spilling past its grant: the screen clamp is only a diagnostic backstop.
+    const framed = grant === undefined || grant >= footer.length + 3
+    this.bodyRows = framed ? this.bodyBudget(footer.length, grant) : Math.max(1, grant!)
     const windowed = this.options.body as WindowedComponent
     const requestedOffset = this.scrollOffset
     let rendered = windowed.renderWindow?.(contentWidth, requestedOffset, this.bodyRows)
@@ -79,17 +97,25 @@ export class ScrollablePanel implements MayflyFocusable {
       ? (() => { const end = total - this.scrollOffset; return all!.slice(Math.max(0, end - this.bodyRows), end) })()
       : rendered.rows
     while (body.length < this.bodyRows) body.push('')
+    if (!framed) return body.slice(0, this.bodyRows).map(line => components.truncateToWidth(line, safeWidth, OVERFLOW_ELLIPSIS))
     const title = sanitizePluginText(this.options.title()).replace(/[\r\n]+/gu, ' ')
     const hint = sanitizePluginText(this.options.hint?.() ?? '').replace(/[\r\n]+/gu, ' ')
-    const lines = [components.topRule(width, {
+    // A long body shows its position so a read-only view cannot look complete.
+    const shownEnd = this.bodyTotal - this.scrollOffset
+    const shownStart = Math.max(1, shownEnd - this.bodyRows + 1)
+    const scrollInfo = this.bodyTotal > this.bodyRows ? `(${String(shownStart)}-${String(shownEnd)}/${String(this.bodyTotal)})` : ''
+    const topHint = [hint, scrollInfo].filter(part => part !== '').join(' · ')
+    const lines = [components.topRule(safeWidth, {
       title: colors.primary(` ${title} `),
-      ...(hint === '' ? {} : { hint: colors.textMuted(`${hint} `) }),
+      ...(topHint === '' ? {} : { hint: colors.textMuted(`${topHint} `) }),
       paint: colors.border,
     })]
     lines.push(...body.map(line => this.frame(line, contentWidth)))
     lines.push(...footer.map(line => this.frame(colors.textMuted(sanitizePluginText(line).replace(/[\r\n]+/gu, ' ')), contentWidth)))
-    lines.push(colors.border(`╰${'─'.repeat(Math.max(1, width - 2))}╯`))
-    return lines
+    lines.push(colors.border(`╰${'─'.repeat(Math.max(1, safeWidth - 2))}╯`))
+    // Below the frame's minimum the rules and furniture cannot fit; degrade
+    // by clamping each row instead of making the whole panel vanish.
+    return width >= 5 ? lines : lines.map(line => components.truncateToWidth(line, Math.max(0, Math.floor(width)), OVERFLOW_ELLIPSIS))
   }
 
   dispose(): void {
@@ -98,10 +124,17 @@ export class ScrollablePanel implements MayflyFocusable {
     ;(this.options.body as MayflyComponent & { dispose?: () => void }).dispose?.()
   }
 
-  private bodyBudget(footerRows: number): number {
-    const rows = this.options.screen.rows
+  /** Host-granted rows, or `undefined` when the panel owns the whole screen (isolated fixtures). */
+  private grantedRows(): number | undefined {
+    const rows = this.options.viewportRows?.()
+    return rows === undefined || !Number.isFinite(rows) ? undefined : Math.max(0, Math.floor(rows))
+  }
+
+  private bodyBudget(footerRows: number, grant: number | undefined): number {
+    const rows = grant ?? this.options.screen.rows
     if (!Number.isFinite(rows) || rows <= 0) return 12
-    return Math.max(1, Math.floor(rows) - footerRows - 4)
+    // The frame owns one top and one bottom rule beside the caller footer.
+    return Math.max(1, Math.floor(rows) - footerRows - 2)
   }
 
   private scrollBy(delta: number): void {
@@ -126,7 +159,7 @@ export class ScrollablePanel implements MayflyFocusable {
 
   private frame(line: string, width: number): string {
     const { colors, components } = this.options
-    const clipped = components.truncateToWidth(line, width, '…')
+    const clipped = components.truncateToWidth(line, width, OVERFLOW_ELLIPSIS)
     const padding = Math.max(0, width - components.visibleWidth(clipped))
     return colors.border('│') + ' ' + clipped + ' '.repeat(padding) + ' ' + colors.border('│')
   }

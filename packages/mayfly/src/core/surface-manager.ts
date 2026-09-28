@@ -234,16 +234,21 @@ export function allocateBottomRows(demands: readonly BottomRowDemand[], budget: 
 
 /**
  * Fit one pane's rows to its allotment, keeping the head: an over-tall pane
- * shows its first rows and ends in a row naming how many were cut.
+ * shows its first rows and ends in a row naming how many were cut. When
+ * `keepTail` is set the pane's own final row (a fold affordance) survives and
+ * the overflow row moves in front of it.
  * @param rows - the pane's rows.
  * @param size - the allotted row count.
  * @param overflow - renders the replacement row for `hidden` cut rows.
+ * @param keepTail - keep the final affordance row when at least 3 rows fit.
  * @returns at most `size` rows.
  */
-export function fitSurfaceRows(rows: readonly string[], size: number, overflow: (hidden: number) => string): string[] {
+export function fitSurfaceRows(rows: readonly string[], size: number, overflow: (hidden: number) => string, keepTail = false): string[] {
   if (rows.length <= size) return [...rows]
   if (size <= 1) return rows.slice(0, Math.max(0, size))
-  return [...rows.slice(0, size - 1), overflow(rows.length - size + 1)]
+  const hidden = rows.length - size + 1
+  if (keepTail && size >= 3) return [...rows.slice(0, size - 2), overflow(hidden), rows[rows.length - 1]!]
+  return [...rows.slice(0, size - 1), overflow(hidden)]
 }
 
 /** Lane hooks a bottom pane component may offer beyond `render`. */
@@ -252,6 +257,8 @@ export interface SurfaceLaneRows {
   readonly leadingRule?: boolean
   /** Paint the muted row that replaces `hidden` cut rows. */
   renderOverflow?(hidden: number, width: number): string
+  /** Whether the final row is a fold affordance the lane must keep visible. */
+  readonly overflowKeepsTail?: boolean
 }
 
 /** One painted entry of a planned bottom lane. */
@@ -319,7 +326,8 @@ export function planBottomLane(lane: SurfaceLaneLayout, width: number, maxRows: 
     const overflow = (hidden: number): string => fit(paint === undefined
       ? renderOverflowRow(hidden, interpolateLocaleMessage)
       : paint.call(item.entry.component, hidden, available), available)
-    return { entry: item.entry, passive: true, rows: fitSurfaceRows(item.rows, size, overflow), size }
+    const keepTail = laneRows(item.entry).overflowKeepsTail === true
+    return { entry: item.entry, passive: true, rows: fitSurfaceRows(item.rows, size, overflow, keepTail), size }
   })
   const rows = (rule === undefined ? 0 : 1) + (tabs === undefined ? 0 : 1) + sizes.reduce((sum, size) => sum + size, 0)
   return { rule, tabs, slots, rows }
@@ -343,7 +351,13 @@ export function renderSurfaceLane(lane: SurfaceLaneLayout | undefined, width: nu
   const body = renderedSurfaceEntries(lane)
     .flatMap(entry => entry.component.render(available))
     .map(row => fit(row, available))
-  return [...tabs, ...body].slice(0, Math.max(0, finiteInteger(maxRows, 0)))
+  const rows = [...tabs, ...body]
+  const budget = Math.max(0, finiteInteger(maxRows, 0))
+  if (rows.length <= budget) return rows
+  // A header/body lane that runs out of rows names the loss instead of
+  // silently dropping the tail (the bottom lane already does).
+  if (budget <= 1) return rows.slice(0, budget)
+  return [...rows.slice(0, budget - 1), fit(renderOverflowRow(rows.length - budget + 1, interpolateLocaleMessage), available)]
 }
 
 /**

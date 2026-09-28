@@ -323,6 +323,34 @@ describe('direct pane surface renderer', () => {
     }
   })
 
+  it('classifies pane tails when deciding the fold-affordance clamp', async () => {
+    const f = await fixture()
+    try {
+      f.register({ id: 'row-stack', render: () => ui.stack.row([ui.text('a')]) })
+      f.register({ id: 'gapped-stack', render: () => ui.stack.column([ui.text('a')], { gap: 1 }) })
+      f.register({ id: 'empty-stack', render: () => ui.stack.column([]) })
+      f.register({ id: 'plain-tail', render: () => ui.stack.column([ui.text('a')]) })
+      f.register({ id: 'muted-tail', render: () => ui.stack.column([ui.text('a', { tone: 'muted' })]) })
+      f.register({ id: 'conditional-tail', render: () => ui.stack.column([ui.child(ui.text('a', { tone: 'muted' }), { when: { minWidth: 1 } })]) })
+      f.register({ id: 'tabbed-tail', render: () => ui.stack.column([ui.child(ui.text('a', { tone: 'muted' }), { tab: { controlId: 'tabs', itemId: 'one' } })]) })
+      await flush()
+      const keepsTail = (id: string): boolean =>
+        (entry(f.runtime.surfaces, id).component as MayflyComponent & { overflowKeepsTail: boolean }).overflowKeepsTail
+      expect(entries(f.runtime.surfaces).map(item => item.id)).toEqual(expect.arrayContaining([
+        'row-stack', 'gapped-stack', 'empty-stack', 'plain-tail', 'muted-tail', 'conditional-tail', 'tabbed-tail',
+      ]))
+      // A single trailing unconditional muted text row is the fold affordance.
+      expect(keepsTail('muted-tail')).toBe(true)
+      // Row stacks, gapped stacks, empty stacks, plain tails, and conditional
+      // or tab-scoped tails are pane content, not an unconditional affordance.
+      for (const id of ['row-stack', 'gapped-stack', 'empty-stack', 'plain-tail', 'conditional-tail', 'tabbed-tail']) {
+        expect(keepsTail(id)).toBe(false)
+      }
+    } finally {
+      await f.dispose()
+    }
+  })
+
   it('contains null, hostile, and over-wide snapshot output', async () => {
     const f = await fixture()
     try {
@@ -331,7 +359,7 @@ describe('direct pane surface renderer', () => {
       f.register({ id: 'invalid', render: () => ({ kind: 'unknown' }) as never })
       await flush()
       const invalid = entry(f.runtime.surfaces, 'invalid').component.render(12)
-      expect(invalid.join(' ')).toContain('Mayfly UI')
+      expect(invalid.join(' ')).toContain('This surface')
       expect(invalid.every(row => visibleWidth(row) <= 12)).toBe(true)
       const nullableComponent = entry(f.runtime.surfaces, 'nullable').component
       expect(getLayoutNode(nullableComponent).entries.length).toBeGreaterThan(0)

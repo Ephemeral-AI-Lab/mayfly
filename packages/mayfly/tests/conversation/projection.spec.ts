@@ -190,7 +190,8 @@ describe('mayflyConversation projection', () => {
     expect(state.entries).toHaveLength(2)
     expect(state.entries[0]).toEqual(expect.objectContaining({
       kind: 'user',
-      text: '[image]\n[image]',
+      // The attachment rows own the `[image]` marker; the body stays empty.
+      text: '',
       images: [{
         attachmentId: 'image-1',
         mediaType: 'image/png',

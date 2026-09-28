@@ -403,6 +403,8 @@ export function renderActions(node: ActionsNode, width: number, focus: PatternFo
  * @returns the localized overflow row.
  */
 export function renderOverflowRow(hidden: number, translate: MayflyTranslate): string {
+  // The full English string is the catalog key, so it stays a literal for
+  // `locale-catalog.spec.ts`'s dead-key scan instead of a template.
   return translate('  … +{count} more rows', { count: hidden })
 }
 

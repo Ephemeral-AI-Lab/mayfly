@@ -17,6 +17,8 @@ import {
 } from '../frontend/index.ts'
 
 const zh: Readonly<Record<string, string>> = {
+  'The external credential cannot be cleared here': '无法在此清除外部凭据',
+  'Help': '帮助',
   'Reply to {name}': '回复 {name}',
   'Message': '消息',
   'Delivery': '发送方式',
@@ -242,7 +244,6 @@ const zh: Readonly<Record<string, string>> = {
   'Analyze the codebase and write AGENTS.md': '分析代码库并编写 AGENTS.md',
   'Commands': '命令',
   'Keys': '按键',
-  'help': '帮助',
   'Select a theme': '选择主题',
   'Toggle plan mode (same as Shift+Tab)': '切换计划模式（同 Shift+Tab）',
   'unknown theme "{key}"': '未知主题「{key}」',
@@ -604,7 +605,7 @@ const zh: Readonly<Record<string, string>> = {
   'permission command is unavailable': '权限命令不可用',
   'permission dispatch failed: {error}': '权限分发失败：{error}',
   'permission picker is unavailable: the Mayfly UI registry is not mounted': '权限选择器不可用：Mayfly UI 注册表尚未挂载',
-  'up {version}': '可升级到 {version}',
+  'update {version}': '可升级到 {version}',
   '{engine} {range}': '引擎 {engine} {range}',
   'reminders': '提醒',
   'failed to apply theme "{key}": {error}': '应用主题 "{key}" 失败：{error}',

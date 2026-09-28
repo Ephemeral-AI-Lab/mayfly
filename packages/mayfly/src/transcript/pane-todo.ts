@@ -172,7 +172,7 @@ function todoSpans(todo: TodoItem): readonly MayflyInlineSpan[] {
 }
 
 /** The pane's render state, mutated by the subscriptions in `apply`. */
-interface TodoState {
+export interface TodoState {
   /** The latest whole-list snapshot; empty until the first `todo/write`. */
   todos: readonly TodoItem[]
   /** The current official goal projection, when one is active. */
@@ -234,8 +234,13 @@ function titleSpans(goal: GoalProjection | null, interrupted: boolean, t: Mayfly
   ]
 }
 
-/** Build the canonical todo tree; the core compiler owns paint and width. */
-function todoNode(state: TodoState, t: MayflyTranslate, keyHint: string): MayflyUiNode {
+/**
+ * Build the canonical todo tree; the core compiler owns paint and width. The
+ * final child is the muted fold/expand footer whenever the list is folded or
+ * expanded past {@link MAX_VISIBLE}; `core/surface-renderer.ts`'s
+ * `endsWithAffordance` contract keeps that footer visible when a lane clamps.
+ */
+export function todoNode(state: TodoState, t: MayflyTranslate, keyHint: string): MayflyUiNode {
   const children: { readonly node: MayflyUiNode }[] = [
     { node: { kind: 'divider' } },
     { node: { kind: 'rich-text', spans: titleSpans(state.goal, state.interrupted, t), overflow: 'truncate' } },

@@ -23,7 +23,7 @@ interface Recorded {
   contentChanges: number
 }
 
-function recordingRuntime(): MayflyTerminalRuntime & Recorded {
+function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
   const handle: MayflyOverlayHandle = {
     hide: () => {},
     setHidden: () => {},
@@ -38,6 +38,7 @@ function recordingRuntime(): MayflyTerminalRuntime & Recorded {
     get contentChanges() { return recorded.contentChanges },
     columns: 120,
     rows: 24,
+    surfaceLaneRows: () => laneRows,
     hasCapturingOverlay: () => false,
     addChild(component) {
       recorded.added.push(component)
@@ -118,6 +119,16 @@ describe('MayflyScreenService', () => {
     expect(restored.component.render(80)).toEqual(['prompt'])
     expect(prompt.focused).toBe(true)
     expect(panel.focused).toBe(false)
+    await ctx.fiber.dispose()
+  })
+
+  it('subtracts the applied lane rows from the editor slot budget', async () => {
+    const runtime = recordingRuntime(3)
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    screen.mountDockSlot('status.footer', { render: () => ['footer'], invalidate() {} }, 'bottom')
+    expect(screen.editorViewport).toEqual({ columns: 120, rows: 19 })
     await ctx.fiber.dispose()
   })
 

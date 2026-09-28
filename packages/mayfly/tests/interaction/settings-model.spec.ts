@@ -27,6 +27,30 @@ describe('native settings projections', () => {
     expect(JSON.stringify(projection.node)).not.toMatch(/opaque-value|hidden/)
   })
 
+  it('appends off-list stored values as readable options instead of raw encoded ids', () => {
+    const schema = Schema.object({ choice: Schema.union(['a', 'b']), many: Schema.array(Schema.union(['a', 'b'])) })
+    const projection = project(schema, { choice: 'custom', many: ['a', 'deleted'] })
+    const choice = projection.bindings.get(settingsField('choice').fieldId)!.field
+    expect(choice).toMatchObject({ kind: 'select', value: '"custom"' })
+    expect('options' in choice ? choice.options : []).toEqual([
+      { id: '"a"', label: 'a' }, { id: '"b"', label: 'b' }, { id: '"custom"', label: 'custom' },
+    ])
+    const many = projection.bindings.get(settingsField('many').fieldId)!.field
+    expect('options' in many ? many.options : []).toEqual([
+      { id: '"a"', label: 'a' }, { id: '"b"', label: 'b' }, { id: '"deleted"', label: 'deleted' },
+    ])
+    // A hand-edited non-scalar stored value is ignored rather than rendered,
+    // and the projected value no longer masquerades as a raw encoded id.
+    const malformed = project(schema, { choice: { nested: true }, many: [{ nested: true }] })
+    const malformedChoice = malformed.bindings.get(settingsField('choice').fieldId)!.field
+    expect('options' in malformedChoice ? malformedChoice.options : []).toEqual([{ id: '"a"', label: 'a' }, { id: '"b"', label: 'b' }])
+    expect(malformedChoice).toMatchObject({ kind: 'select', value: null })
+    expect(malformed.bindings.get(settingsField('many').fieldId)!.field).toMatchObject({ kind: 'multiselect', value: [] })
+    // A non-boolean stored value does not masquerade as an On/Off option id.
+    const booleanSchema = Schema.object({ flag: Schema.boolean() })
+    expect(project(booleanSchema, { flag: 'yes' }).bindings.get(settingsField('flag').fieldId)!.field).toMatchObject({ kind: 'select', value: null })
+  })
+
   it('never projects secrets hidden inside unsupported schema containers or secret defaults', () => {
     const schema = Schema.object({
       secret: Schema.string().role('secret').default('sensitive-default'),

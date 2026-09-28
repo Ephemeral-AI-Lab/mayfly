@@ -327,6 +327,24 @@ class DockLayoutContainer extends Container {
 }
 
 /**
+ * Header plus bottom lane rows the dock may apply to the shared viewport.
+ * Lanes are width-derived, so measuring them at read time keeps the editor
+ * slot current instead of a frame behind the dock's own allocation. The
+ * fixed-content clamp is deliberately omitted: over-counting lanes can only
+ * shrink the editor slot, never spill past the grant.
+ * @param rows - the terminal's row count.
+ * @param headerRows - the header lane's measured rows.
+ * @param bottomRows - the bottom lane's measured rows.
+ * @returns the lane rows the editor slot must subtract.
+ */
+export function measuredLaneRows(rows: number, headerRows: number, bottomRows: number): number {
+  const budget = Math.max(0, Math.floor(rows) - 1)
+  const header = Math.min(budget, Math.max(0, Math.floor(headerRows)))
+  const bottom = Math.min(budget - header, Math.max(0, Math.floor(bottomRows)))
+  return header + bottom
+}
+
+/**
  * Normalize terminal wheel reports to the direction-key sequences consumed by
  * Mayfly's focused components. Main-screen mode leaves mouse reporting disabled
  * so the terminal retains native selection and scrollback. This boundary still
@@ -403,6 +421,13 @@ export interface MayflyTerminalRuntime {
   readonly surfaces: SurfaceManager
   /** Current best-effort viewport budget for one managed surface. */
   surfaceViewport(id: string): { readonly columns: number, readonly rows: number }
+  /**
+   * Header plus bottom lane rows the width-derived layout currently
+   * occupies. The editor slot subtracts this one authoritative value so it
+   * never lags the dock's own allocation by a frame; content panes read
+   * `surfaceViewport` instead.
+   */
+  surfaceLaneRows(): number
   /** Release one pane's focus back to the component active before it. */
   releaseSurfaceFocus(id: string): void
   /** Whether any visible modal overlay currently owns the input plane. */
@@ -898,6 +923,9 @@ export async function startMayflyTerminal(
           ? Math.max(1, bottomLaneBudget() - tabs)
           : Math.max(1, terminal.rows - dockRows - lastSurfaceHeaderRows - lastSurfaceBottomRows - tabs)
       return { columns: Math.max(1, Math.min(terminal.columns, columns)), rows: Math.min(terminal.rows, rows) }
+    },
+    surfaceLaneRows() {
+      return measuredLaneRows(terminal.rows, surfaceHeaderRows(), surfaceBottomRows())
     },
     releaseSurfaceFocus(id) {
       if (surfaces.focusedId !== id) return

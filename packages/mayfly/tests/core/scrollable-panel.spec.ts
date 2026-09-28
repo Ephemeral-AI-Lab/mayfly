@@ -27,11 +27,13 @@ describe('ScrollablePanel', () => {
       title: () => 'Transcript',
       hint: () => 'read-only',
       footer: () => ['keys'],
+      viewportRows: () => 8,
       onClose: close,
     })
     panel.focused = true
     expect(panel.focused).toBe(true)
     expect(plain(panel.render(20)).join('\n')).toContain('row 9')
+    expect(panel.bodyHeight).toBe(5)
 
     panel.handleInput('\x1b[A')
     expect(plain(panel.render(20)).join('\n')).toContain('row 4')
@@ -58,7 +60,12 @@ describe('ScrollablePanel', () => {
 
     panel.invalidate()
     expect(body.invalidate).toHaveBeenCalledOnce()
-    expect(panel.render(4)).toEqual([])
+    // Degenerate widths clamp instead of vanishing, and a long body shows its
+    // scroll position in the top rule.
+    const tiny = panel.render(4)
+    expect(tiny.length).toBeGreaterThan(0)
+    expect(tiny.every(row => new FakeMayflyComponents().visibleWidth(row) <= 4)).toBe(true)
+    expect(plain(panel.render(80)).join('\n')).toContain('(7-11/11)')
   })
 
   it('uses fallback row budgets, sanitizes chrome, clips body rows, and disposes once', () => {
@@ -103,6 +110,7 @@ describe('ScrollablePanel', () => {
       colors: new FakeTheme().colors,
       body: { render: () => ['fallback'], renderWindow, invalidate: vi.fn() },
       title: () => 'Windowed',
+      viewportRows: () => 6,
       onClose: vi.fn(),
     })
     expect(plain(panel.render(20)).join('\n')).toContain('windowed')
@@ -126,6 +134,7 @@ describe('ScrollablePanel', () => {
         invalidate: () => {},
       },
       title: () => 'Windowed',
+      viewportRows: () => 6,
       onClose: () => {},
     })
     const visible = () => plain(panel.render(20)).slice(1, 5).map(row => row.slice(2, -2).trim())
@@ -138,5 +147,40 @@ describe('ScrollablePanel', () => {
     expect(visible()).toEqual(['row 0', 'row 1', 'row 2', ''])
     rows.push('row 3', 'row 4')
     expect(visible()).toEqual(['row 1', 'row 2', 'row 3', 'row 4'])
+  })
+
+  it('degrades height below the frame minimum and marks degenerate-width clips', () => {
+    const screen = new FakeScreen()
+    screen.rows = 20
+    const components = new FakeMayflyComponents()
+    const colors = new FakeTheme().colors
+    const options = (grant: number, viewportRows: () => number = () => grant): ConstructorParameters<typeof ScrollablePanel>[0] => ({
+      screen,
+      components,
+      colors,
+      body: { render: () => ['alpha', 'beta', 'gamma'], invalidate: vi.fn() },
+      title: () => 'Compact',
+      footer: () => ['keys'],
+      viewportRows,
+      onClose: vi.fn(),
+    })
+    // footer(1) + 3 is the smallest framed height: 2 rows cannot fit the frame,
+    // so the panel returns body rows alone instead of spilling past its grant.
+    const compact = new ScrollablePanel(options(2))
+    const compactRows = compact.render(20)
+    expect(compactRows).toHaveLength(2)
+    expect(compact.bodyHeight).toBe(2)
+    expect(plain(compactRows).join(' ')).not.toContain('Compact')
+    expect(plain(compactRows).join(' ')).not.toContain('keys')
+    // A zero grant has no room at all.
+    expect(new ScrollablePanel(options(0)).render(20)).toEqual([])
+    // A non-finite grant is isolated-fixture behavior: fall back to the screen.
+    expect(new ScrollablePanel(options(0, () => Number.NaN)).render(20).length).toBeGreaterThan(0)
+    // Degenerate widths clamp and mark the clip with the shared one-column marker.
+    const narrowRows = new ScrollablePanel(options(6)).render(3)
+    expect(narrowRows.length).toBeGreaterThan(0)
+    expect(narrowRows.join('')).toContain('…')
+    expect(narrowRows.join('')).not.toContain('...')
+    expect(narrowRows.every(row => components.visibleWidth(row) <= 3)).toBe(true)
   })
 })

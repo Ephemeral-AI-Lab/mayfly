@@ -66,10 +66,14 @@ export class SessionTranscriptPanel implements MayflyFocusable {
     // the ticking running-turn header as its live signal.
     const presentation = new TranscriptPresentationPolicy()
     presentation.apply({ transcriptView: 'verbose' })
+    // The shell is built after the body, so the renderer reads its granted body
+    // height lazily (the shell assigns `bodyRows` before it renders the body);
+    // both then share the one editor-slot budget.
+    let shell!: ScrollablePanel
     const renderer: TranscriptModelRenderer = {
       colors: ctx.mayflyTheme.colors,
       components: ctx.mayflyComponents,
-      viewportRows: () => screen.editorViewport.rows,
+      viewportRows: () => shell.bodyHeight,
       images: () => {
         const attachments = ctx.get('attachments') as { readImage(ref: unknown): Promise<{ data: Uint8Array }> } | undefined
         return attachments === undefined ? {} : {
@@ -86,7 +90,7 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       live === undefined ? () => this.model : () => this.source.snapshot(),
       renderer,
     )
-    this.shell = new ScrollablePanel({
+    shell = new ScrollablePanel({
       screen,
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
@@ -97,8 +101,10 @@ export class SessionTranscriptPanel implements MayflyFocusable {
       footer: () => [
         `${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} ${t('toggle')} · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} ${t('close')} · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CANCEL, 'Esc')} ${t('close')}`,
       ],
+      viewportRows: () => screen.editorViewport.rows,
       onClose,
     })
+    this.shell = shell
     this.source = new OfficialConversationModelSource(
       ctx.sessionProjections,
       tools,

@@ -391,7 +391,7 @@ describe('mayfly-commands plugin', () => {
     // overflow the window, so a `showing` line replaces the tail.
     const panel = overlay(ctx, 'mayfly.help')
     const rows = panel.render(80)
-    expect(rows.join('\n')).toContain('help')
+    expect(rows.join('\n')).toContain('Help')
     expect(rows.join('\n')).toContain('Commands')
     expect(rows.join('\n')).toContain('/plugin')
     expect(rows.join('\n')).toContain('/update')
