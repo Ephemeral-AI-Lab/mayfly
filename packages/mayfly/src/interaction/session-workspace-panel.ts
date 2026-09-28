@@ -90,8 +90,7 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
         try {
           const title = await readSessionListTitle(ctx, cache, row, signal)
           if (signal.aborted) return
-          if (title !== undefined) titles.set(row.header.id, title)
-          else failedNames++
+          if (title === undefined) failedNames++
           completedNames++
           dirty = true
           schedulePaint()
@@ -122,10 +121,6 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
     sessions = catalogRows.map(row => row.summary)
     titles.clear()
     baselines.clear()
-    for (const row of catalogRows) {
-      const title = cachedSessionTitle(cache, row)
-      if (title !== undefined) titles.set(row.header.id, title)
-    }
     now = Date.now()
   }
   // One Host catalog read badges every row; absent service leaves the set empty.
@@ -146,15 +141,20 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
     if (readSignal.aborted || abort.aborted) return
     adoptRows()
   }
-  const factsOf = (session: SessionSummary, archived = new Set(ctx.workspaceRegistry.archivedSessionIds), current = ctx.mayflyCurrentAgent.current()?.id): SessionListFacts => sessionListFacts(session, {
-    header: byId.get(session.sessionId)?.header,
-    title: titles.get(session.sessionId),
-    projections: baselines.get(session.sessionId),
-    archived: archived.has(session.sessionId),
-    current: current === session.sessionId,
-    reminders,
-    now,
-  })
+  const factsOf = (session: SessionSummary, archived = new Set(ctx.workspaceRegistry.archivedSessionIds), current = ctx.mayflyCurrentAgent.current()?.id): SessionListFacts => {
+    // Every row this panel renders was adopted into `byId`, so the lookup is total.
+    const row = byId.get(session.sessionId)!
+    return sessionListFacts(session, {
+      header: row.header,
+      // A live `onChanged` value wins until the next adopt; cold titles come from the shared revision cache.
+      title: titles.has(session.sessionId) ? titles.get(session.sessionId) : cachedSessionTitle(cache, row),
+      projections: baselines.get(session.sessionId),
+      archived: archived.has(session.sessionId),
+      current: current === session.sessionId,
+      reminders,
+      now,
+    })
+  }
   const rows = (): readonly MayflyListItem[] => {
     const archived = new Set(ctx.workspaceRegistry.archivedSessionIds)
     const current = ctx.mayflyCurrentAgent.current()?.id

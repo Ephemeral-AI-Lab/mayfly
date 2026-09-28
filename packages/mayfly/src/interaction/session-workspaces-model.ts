@@ -3,7 +3,7 @@
  */
 import type { MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
-import { displayPath, platformPath } from '../internal/paths.ts'
+import { displayPath, homeRelative } from '../internal/paths.ts'
 import type { SessionListHeader } from './session-list-reads.ts'
 
 export interface SessionWorkspace {
@@ -20,11 +20,7 @@ export function sessionWorkspaceId(cwd: string | undefined): string {
 /** Keep the complete workspace path distinct; only abbreviate the home prefix. */
 export function sessionWorkspaceLabel(cwd: string | undefined, home: string, t: MayflyTranslate, platform: NodeJS.Platform = process.platform): string {
   if (cwd === undefined) return t('No working directory')
-  const paths = platformPath(platform)
-  const relative = displayPath(paths.relative(home, cwd), platform)
-  if (home !== '' && relative === '') return '~'
-  if (home !== '' && relative !== '..' && !relative.startsWith('../') && !paths.isAbsolute(relative)) return `~/${relative}`
-  return displayPath(cwd, platform)
+  return homeRelative(cwd, home, platform) ?? displayPath(cwd, platform)
 }
 
 export function sessionWorkspaces(records: readonly SessionListHeader[], currentCwd: string | undefined): readonly SessionWorkspace[] {
