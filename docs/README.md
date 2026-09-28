@@ -11,23 +11,21 @@ The current runtime is described by three architecture documents:
   confirmation and availability contract for panes, overlays, and editor
   extensions.
 
+The component design catalog is
+[design/component-library.md](./design/component-library.md): wire interfaces,
+ASCII state diagrams, key behavior, and composition recipes for every shared
+UI component.
+
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.
 
 See [package-release.md](./package-release.md) for release maintenance.
-Historical investigation and acceptance records live in [audits/](./audits/),
-and interaction design documents live in [design/](./design/); dated audits
-only describe their point in time and do not define the current API.
+Historical investigation and acceptance records live in [audits/](./audits/);
+dated audits only describe their point in time and do not define the current
+API.
 
 See [platform-acceptance.md](./platform-acceptance.md) for the cross-platform
 automation and desktop acceptance checklist.
-
-The documents in [design/](./design/) are historical records superseded by
-[interaction-model.md](./interaction-model.md): the
-[UI/UX unified model design](./design/ui-ux-unification.md), the
-[PR #15 implementation plan](./design/pr15-interaction-refactor-plan.md), and
-the [terminal UX optimization design](./design/ui-ux-optimization.md). They
-explain how the model came to be; they do not define current behavior.
 
 Plugin authors should start from the Website
 [developer manual](../website/plugins/index.md) and use the

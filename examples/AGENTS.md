@@ -8,7 +8,9 @@ contribution contract. Package membership comes from
 Use published package imports, native dsh services, and direct Mayfly UI
 services; never import runtime internals or add a provider/host facade. Core
 owns layout, rendering, focus, width, and narrow-layout fallback. Plugins own
-Fiber registrations; the shared user kit is pure wire construction.
+Fiber registrations; the shared user kit is pure wire construction. Compose
+wire nodes with the `ui.*` builders per the
+[component catalog](../docs/design/component-library.md).
 
 Preserve build, coverage, pack, and independent-install validation through
 `pnpm run check:examples`. The ecosystem test boots publish-shaped packages,

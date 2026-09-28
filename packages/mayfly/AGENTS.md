@@ -105,6 +105,13 @@ the editor. Choice reducers never focus disabled rows. Consumers express
 per-row availability with `unavailableActions` and questions with `confirm`,
 not custom confirm pages or post-confirmation rejections.
 
+Build surfaces from the component patterns in
+[docs/design/component-library.md](../../docs/design/component-library.md)
+(actions row, text/choice fields, lists, tabs, tabbed page layouts, decision
+panels, questionnaire, loader/progress/empty). Never hand-roll pi-tui panels outside
+`core/`; `core/scrollable-panel.ts` is a retained legacy exception, not a
+model.
+
 ## Native writes and sensitive data
 
 - `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation,

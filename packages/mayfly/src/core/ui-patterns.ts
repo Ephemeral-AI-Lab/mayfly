@@ -416,7 +416,7 @@ function formatElapsedMs(ms: number): string {
 }
 
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
-const TIDE_FRAMES = ['≈', '≋', '∿', '≋'] as const
+const TIDE_FRAMES = ['·', '•', '●', '•', '·'] as const
 
 export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0): string[] {
   const frames = node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
