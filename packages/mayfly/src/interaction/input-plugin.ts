@@ -53,7 +53,9 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
   MayflyScreen,
+  MayflySubmittedDraft,
 } from '../core/index.ts'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { normalizeWheelInput } from '../core/terminal.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
@@ -61,7 +63,7 @@ import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-subagent'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
 import { hasRunningAgentWork, interruptAgentTree } from '../app/agent-interrupt.ts'
@@ -116,6 +118,13 @@ const BARE_COMMAND_ROUTES: Readonly<Record<string, (ctx: Context) => boolean>> =
 
 /** Commands whose result text never flashes the footer — the command's own UX already carries it. */
 const QUIET_COMMANDS: ReadonlySet<string> = new Set(['goal'])
+
+/** Per-message restore data kept while a submission waits in the inbox. */
+interface QueuedDraft {
+  readonly buffer?: MayflySubmittedDraft
+  readonly historyText?: string
+  readonly rollback?: () => void
+}
 
 interface AttachmentReader {
   readImage(ref: Extract<ContentBlock, { readonly type: 'image' }>['attachment'], signal?: AbortSignal): Promise<StoredImageAttachment>
@@ -189,8 +198,17 @@ export function apply(ctx: Context): void {
     readonly messageId: string
     readonly editorText: string
     readonly historyText: string
+    readonly submitted?: MayflySubmittedDraft
     readonly rollback?: () => void
   } | undefined
+  /**
+   * Per-message restore data for inbox-pending submissions, keyed by message
+   * id: the captured buffer (raw marker text plus its paste table) and the
+   * submit transformer's rollback. A withdrawal reproduces exactly what the
+   * editor showed; entries drop when the message leaves the inbox or the
+   * session switches.
+   */
+  const queuedDrafts = new Map<string, QueuedDraft>()
   /**
    * Set when this fiber unloads: a submitted command can dispose it while
    * `execute()` is still in flight (`/theme` swaps the provider, reloading
@@ -276,11 +294,27 @@ export function apply(ctx: Context): void {
   }
   ctx.effect(() => ctx.mayflyUiInteraction.subscribe(refreshHint))
 
+  /**
+   * Restore one captured submission buffer through the adapter — raw marker
+   * text plus its paste table — falling back to the expanded submission
+   * text for structural editors without the seam.
+   * @param submitted - the funnel capture, when the editor exposes it.
+   * @param fallbackText - the text to show when no capture exists.
+   */
+  function restoreDraftIntoEditor(submitted: MayflySubmittedDraft | undefined, fallbackText: string): void {
+    if (submitted !== undefined && editor.restoreSubmittedDraft !== undefined) {
+      editor.restoreSubmittedDraft(submitted)
+      return
+    }
+    editor.setText(submitted?.raw ?? fallbackText)
+  }
+
   /** Restore a subagent submission that never reached its addressed child. */
   function restoreSubagentSubmission(
     value: string,
     historyText: string | undefined,
     transformed: ReturnType<typeof applyReversibleSubmitTransformers>,
+    submitted: MayflySubmittedDraft | undefined,
     error: unknown,
   ): void {
     transformed.rollback?.()
@@ -288,7 +322,7 @@ export function apply(ctx: Context): void {
       editor.removeLatestHistory?.(historyText)
       draft.stashHistory(editor.getHistory())
     }
-    editor.setText(value)
+    restoreDraftIntoEditor(submitted, value)
     currentText = editor.getText()
     draft.stashDraft(currentText)
     showFeedback('subagent-submit', error instanceof Error ? error.message : String(error), 'error')
@@ -300,11 +334,12 @@ export function apply(ctx: Context): void {
     value: string,
     historyText: string | undefined,
     transformed: ReturnType<typeof applyReversibleSubmitTransformers>,
+    submitted: MayflySubmittedDraft | undefined,
   ): boolean {
     const view = currentAgent.view()
     const target = view.displayed === 'auxiliary' ? view.auxiliary : null
     if (target?.kind !== 'subagent' || target.mode !== 'continuable' || target.access === 'readonly') {
-      restoreSubagentSubmission(value, historyText, transformed, 'the subagent is no longer available for input')
+      restoreSubagentSubmission(value, historyText, transformed, submitted, 'the subagent is no longer available for input')
       return false
     }
     const viewRevision = view.revision
@@ -327,6 +362,7 @@ export function apply(ctx: Context): void {
         messageId: String(receipt.messageId),
         editorText: value,
         historyText: historyText ?? '',
+        ...(submitted === undefined ? {} : { submitted }),
         ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
       }
     }, error => {
@@ -335,11 +371,90 @@ export function apply(ctx: Context): void {
         transformed.rollback?.()
         return
       }
-      restoreSubagentSubmission(value, historyText, transformed, error)
+      restoreSubagentSubmission(value, historyText, transformed, submitted, error)
     }).finally(() => {
       pendingSubagentPrompts.delete(controller)
     })
     return true
+  }
+
+  /** Whether the message still sits in either of the Agent's pending lanes. */
+  function messagePending(agent: Agent, messageId: string): boolean {
+    return [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(message => String(message.id) === messageId)
+  }
+
+  /**
+   * Rebuild editable text for a queued message this editor did not submit:
+   * text blocks concatenate as stored; each image block mints a fresh
+   * `[image #N]` marker into the paste-image state, so a resubmission
+   * re-splits it into an image block.
+   * @param message - the withdrawn message.
+   * @returns the editor-ready text.
+   */
+  function foreignDraftText(message: UserMessage): string {
+    const state = ctx.mayflyInteractionState.pasteImage
+    return message.content.map((block) => {
+      if (block.type === 'text') return block.text
+      if (block.type === 'image') {
+        state.pasteCount += 1
+        const marker = `[image #${state.pasteCount}]`
+        state.pastedImages.set(marker, block.attachment)
+        return marker
+      }
+      return ''
+    }).join('')
+  }
+
+  /**
+   * Put one withdrawn message back into the editor: the captured buffer —
+   * raw marker text plus its paste table — when this editor submitted it,
+   * otherwise the reconstruction from content blocks. History and rollback
+   * follow the same rules as the Escape retraction restore.
+   * @param message - the removed inbox message.
+   * @param record - its restore data, snapshotted before `remove()`.
+   */
+  function restoreQueuedMessage(message: UserMessage, record: QueuedDraft | undefined): void {
+    const id = String(message.id)
+    queuedDrafts.delete(id)
+    if (retractionCandidate?.messageId === id) retractionCandidate = undefined
+    record?.rollback?.()
+    if (record?.historyText !== undefined) {
+      editor.removeLatestHistory?.(record.historyText)
+      draft.stashHistory(editor.getHistory())
+    }
+    // `foreignDraftText` mints fresh image markers — the `??` keeps it lazy
+    // so a recorded buffer never triggers the fallback's registrations.
+    const buffer = record?.buffer
+    if (buffer !== undefined && editor.restoreSubmittedDraft !== undefined) editor.restoreSubmittedDraft(buffer)
+    else editor.setText(buffer?.raw ?? foreignDraftText(message))
+    currentText = editor.getText()
+    draft.stashDraft(currentText)
+    refreshHint()
+    screen.requestRender()
+  }
+
+  /**
+   * Withdraw the bottom-most still-pending user message into the editor:
+   * the queue pane renders nextTurn rows above nextStep rows, so the last
+   * visible entry is the steer lane tail, then the queued lane tail. A
+   * message claimed between render and keypress fails `remove()` and the
+   * next entry is tried.
+   * @returns whether a message was withdrawn.
+   */
+  function withdrawQueued(): boolean {
+    const agent = ctx.mayflyCurrentAgent.current()
+    if (agent === null) return false
+    const pending = [...agent.inbox.nextTurn, ...agent.inbox.nextStep]
+    for (const message of pending.reverse()) {
+      if (message.source.kind !== 'user') continue
+      // `remove()` emits `agent/inbox/discarded` synchronously, which
+      // retires this entry — snapshot the restore data first.
+      const record = queuedDrafts.get(String(message.id))
+      if (!agent.inbox.remove(message.id)) continue
+      restoreQueuedMessage(message, record)
+      return true
+    }
+    return false
   }
 
   /**
@@ -350,6 +465,9 @@ export function apply(ctx: Context): void {
   function submitPrompt(value: string): void {
     const line = value.trim()
     retractionCandidate = undefined
+    // The funnel captured this submission's raw buffer and paste table;
+    // read it once here regardless of which route the line takes.
+    const submitted = editor.consumeSubmittedDraft?.()
     notificationOwner.clearAll()
     editor.setText('')
     // Re-sync explicitly: whether setText fires onChange is the component's
@@ -384,16 +502,27 @@ export function apply(ctx: Context): void {
           }
       const view = ctx.mayflyCurrentAgent.view()
       if (view.displayed === 'auxiliary' && view.auxiliary?.kind === 'subagent') {
-        deliverSubagentPrompt(value, line, transformed)
+        deliverSubagentPrompt(value, line, transformed, submitted)
         return
       }
       try {
         const message = createUserMessage({ content: transformed.blocks, source: { kind: 'user' } })
         agent.followup(message)
+        // Keep restore data only while the message still waits in the
+        // inbox — an idle agent claims it inside this call, and only a
+        // pending entry is withdrawable.
+        if (messagePending(agent, String(message.id))) {
+          queuedDrafts.set(String(message.id), {
+            ...(submitted === undefined ? {} : { buffer: submitted }),
+            historyText: line,
+            ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
+          })
+        }
         retractionCandidate = {
           messageId: String(message.id),
           editorText: value,
           historyText: line,
+          ...(submitted === undefined ? {} : { submitted }),
           ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
         }
       } catch (error) {
@@ -545,7 +674,8 @@ export function apply(ctx: Context): void {
           candidate.rollback?.()
           editor.removeLatestHistory?.(candidate.historyText)
           draft.stashHistory(editor.getHistory())
-          editor.setText(candidate.editorText)
+          queuedDrafts.delete(candidate.messageId)
+          restoreDraftIntoEditor(candidate.submitted, candidate.editorText)
           currentText = editor.getText()
           draft.stashDraft(currentText)
           retractionCandidate = undefined
@@ -599,12 +729,15 @@ export function apply(ctx: Context): void {
       const text = editor.getText().trim()
       const agent = ctx.mayflyCurrentAgent.current()
       if (text.length === 0 || agent === null) return false
+      // The steer path never crosses the submit funnel, so snapshot the
+      // buffer and paste table directly for a possible withdrawal.
+      const submitted = editor.captureDraft?.()
       // Steered text runs the same `#name` → `/name` skill rewrite as a
       // submitted follow-up: the gesture reaches the model either way.
       const transformed = applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, text))
       const view = ctx.mayflyCurrentAgent.view()
       if (view.displayed === 'auxiliary' && view.auxiliary?.kind === 'subagent') {
-        if (deliverSubagentPrompt(text, undefined, transformed)) {
+        if (deliverSubagentPrompt(text, undefined, transformed, submitted)) {
           editor.setText('')
           currentText = ''
           draft.clearDraft()
@@ -613,7 +746,14 @@ export function apply(ctx: Context): void {
         return true
       }
       try {
-        agent.steer(createUserMessage({ content: transformed.blocks, source: { kind: 'user' } }))
+        const message = createUserMessage({ content: transformed.blocks, source: { kind: 'user' } })
+        agent.steer(message)
+        if (messagePending(agent, String(message.id))) {
+          queuedDrafts.set(String(message.id), {
+            ...(submitted === undefined ? {} : { buffer: submitted }),
+            ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
+          })
+        }
       } catch (error) {
         transformed.rollback?.()
         showFeedback('steer', error instanceof Error ? error.message : String(error), 'error')
@@ -651,6 +791,15 @@ export function apply(ctx: Context): void {
       void cycleSessionModel(ctx, modelListCache, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }
+    // Up on an empty prompt withdraws the newest still-pending queued
+    // message back into the draft — the folded queue pane's recall gesture.
+    // A non-empty buffer, an open autocomplete dropdown, and bash mode all
+    // keep Up for the editor's own cursor and history navigation.
+    if (keymap.matches(data, ACTION_MOVE_UP)
+      && editor.getText().length === 0
+      && !editor.isShowingAutocomplete()
+      && draft.getStashedInputMode() !== 'bash'
+      && withdrawQueued()) return true
     return false
   }
 
@@ -692,6 +841,7 @@ export function apply(ctx: Context): void {
     if (nextId !== sessionId) {
       sessionId = nextId
       retractionCandidate = undefined
+      queuedDrafts.clear()
       for (const controller of pendingSubagentPrompts) controller.abort()
       pendingSubagentPrompts.clear()
     }
@@ -700,6 +850,16 @@ export function apply(ctx: Context): void {
     refreshHint()
   })
   ctx.effect(() => sessionRegistration)
+  // A queued draft is only useful while its message still waits in the
+  // current Agent's inbox: claims consume it for real, discards and
+  // withdrawals retire the record.
+  ctx.on('agent/inbox/claimed', ({ agent, message }) => {
+    if (agent === ctx.mayflyCurrentAgent.current()) queuedDrafts.delete(String(message.id))
+  })
+  ctx.on('agent/inbox/discarded', ({ agent, message }) => {
+    if (agent === ctx.mayflyCurrentAgent.current()) queuedDrafts.delete(String(message.id))
+  })
+  ctx.effect(() => () => queuedDrafts.clear())
   // The session name rides the right end of the editor's top border: the
   // official `title` projection of the exact current Agent, read through
   // the frontend session-facts bridge whenever that service is mounted.

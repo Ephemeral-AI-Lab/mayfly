@@ -45,9 +45,24 @@ describe('mayfly-pane-queue', () => {
       direction: 'column',
       children: [
         { node: { kind: 'divider' } },
-        { node: { kind: 'text', content: 'Queued: first turn', tone: 'muted' } },
-        { node: { kind: 'text', content: 'Queued: second turn', tone: 'muted' } },
-        { node: { kind: 'text', content: 'Steer: steer this', tone: 'muted' } },
+        { node: { kind: 'text', content: 'Queued: first turn', tone: 'muted', overflow: 'truncate' } },
+        { node: { kind: 'text', content: 'Queued: second turn', tone: 'muted', overflow: 'truncate' } },
+        { node: { kind: 'text', content: 'Steer: steer this', tone: 'muted', overflow: 'truncate' } },
+      ],
+    })
+  })
+
+  it('folds each message to a single row no matter its length', async () => {
+    const long = 'x'.repeat(1024)
+    const world = await mount(true, fakeInbox([message(long)]))
+    // The truncated overflow contract bounds every row to one rendered line:
+    // a thousand-character message folds instead of wrapping into a wall.
+    expect(world.entry()?.node).toEqual({
+      kind: 'stack',
+      direction: 'column',
+      children: [
+        { node: { kind: 'divider' } },
+        { node: { kind: 'text', content: `Queued: ${long}`, tone: 'muted', overflow: 'truncate' } },
       ],
     })
   })
