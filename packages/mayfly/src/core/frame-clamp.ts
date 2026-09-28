@@ -112,11 +112,20 @@ export interface FileOverflowSinkOptions {
   readonly directory: string
   /**
    * Distinct-line dedupe window. Once this many distinct lines are
-   * remembered the window resets, so later violations still record; the
-   * file can therefore exceed this many lines. Values below 1 behave as 1;
-   * default 200.
+   * remembered the window resets, so later violations still record. Values
+   * below 1 behave as 1; default 200.
    */
   readonly maxEntries?: number
+  /**
+   * Total lines the sink ever appends. The dedupe window keeps late
+   * violations recording, but a *changing* over-wide row (a spinner,
+   * elapsed time, progress) is distinct every frame, so without a total
+   * budget the file would grow one synchronous write per frame for the
+   * rest of the session. Once this budget is spent the sink stays silent —
+   * bounded telemetry beats a backstop that can flood the disk. Values
+   * below 1 behave as 1; default 1000.
+   */
+  readonly maxLines?: number
 }
 
 /**
@@ -125,21 +134,26 @@ export interface FileOverflowSinkOptions {
  * flood the file). `maxEntries` is the dedupe window, not a fuse: once the
  * window fills it resets, so a width regression surfacing late in a long
  * session is still recorded (a still-visible line can therefore reappear
- * after a reset). Every filesystem failure is swallowed — the backstop must
- * never take rendering down with it. Entries look like
+ * after a reset). `maxLines` bounds the total appended lines so a *changing*
+ * over-wide row cannot drive a synchronous write per frame indefinitely.
+ * Every filesystem failure is swallowed — the backstop must never take
+ * rendering down with it. Entries look like
  * `{"time":"...","index":3,"columns":40,"width":61,"line":"..."}`.
- * @param options - target directory and dedupe window.
+ * @param options - target directory, dedupe window, and line budget.
  * @returns the file-backed `OverflowSink`.
  */
 export function createFileOverflowSink(options: FileOverflowSinkOptions): OverflowSink {
-  const { directory, maxEntries = 200 } = options
+  const { directory, maxEntries = 200, maxLines = 1000 } = options
   const windowSize = Math.max(1, maxEntries)
+  const lineBudget = Math.max(1, maxLines)
   const seen = new Set<string>()
+  let written = 0
   return {
     record(entry) {
-      if (seen.has(entry.line)) return
+      if (written >= lineBudget || seen.has(entry.line)) return
       if (seen.size >= windowSize) seen.clear()
       seen.add(entry.line)
+      written += 1
       try {
         mkdirSync(directory, { recursive: true })
         appendFileSync(

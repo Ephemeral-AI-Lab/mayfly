@@ -154,6 +154,28 @@ describe('createFileOverflowSink', () => {
     expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0', 'row-1'])
   })
 
+  it('stops at the total line budget so a changing row cannot write every frame', () => {
+    const directory = mkdtempTracked('mayfly-clamp-budget-')
+    const sink = createFileOverflowSink({ directory, maxEntries: 1, maxLines: 2 })
+    const record = (line: string): void => sink.record({ index: 0, columns: 40, width: 50, line })
+    record('row-0') // budget 1/2
+    record('row-1') // window resets, budget 2/2
+    record('row-2') // budget spent: silent
+    record('row-3')
+    const rows = readFileSync(join(directory, 'mayfly-overflow.log'), 'utf8').trim().split('\n')
+    expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0', 'row-1'])
+  })
+
+  it('treats a sub-1 maxLines as a one-line budget', () => {
+    const directory = mkdtempTracked('mayfly-clamp-budget-zero-')
+    const sink = createFileOverflowSink({ directory, maxEntries: 1, maxLines: 0 })
+    const record = (line: string): void => sink.record({ index: 0, columns: 40, width: 50, line })
+    record('row-0')
+    record('row-1')
+    const rows = readFileSync(join(directory, 'mayfly-overflow.log'), 'utf8').trim().split('\n')
+    expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0'])
+  })
+
   it('swallows filesystem failures without throwing', () => {
     // A regular file where the directory should be: mkdirSync cannot win.
     const root = mkdtempTracked('mayfly-clamp-err-')
