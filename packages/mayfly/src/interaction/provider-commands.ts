@@ -9,6 +9,7 @@ import { ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { openProviderEditor } from './provider-edit.ts'
 import { openModelPicker } from './model-commands.ts'
 import { deriveKeyRef, providerProfile } from './provider-profile.ts'
+import { scheduleProviderMigration } from './provider-store.ts'
 import { interactionTranslator } from './locale.ts'
 import { openProviderSetup } from './provider-add.ts'
 import { openUiOverlay } from './ui-overlay.ts'
@@ -21,6 +22,7 @@ export const inject = ['commands', 'settings', 'credentials', 'mayflyOverlays']
 export function apply(ctx: Context): void {
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
+  scheduleProviderMigration(ctx)
   const t = interactionTranslator(ctx)
   const add = async (signal: AbortSignal): Promise<CommandResult> => {
     if (signal.aborted || lifetime.signal.aborted) return { kind: 'success' }
