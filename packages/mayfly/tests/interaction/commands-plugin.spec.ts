@@ -98,6 +98,7 @@ const flushCommands = (): Promise<void> => new Promise(resolve => { setImmediate
 /** Provide native command dependencies without mounting Mayfly display services. */
 function provideAppBoundary(ctx: Context): void {
   const active = (): Agent | null => ctx.get('testSession')?.current ?? null
+  ctx.provide('agents', { get: () => undefined, list: () => [] } as never)
   ctx.provide('mayflyCurrentAgent', {
     current: active,
     primary: active,

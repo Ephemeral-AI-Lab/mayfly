@@ -5,6 +5,7 @@
 
 import { registerPluginCommand } from './plugin-commands.ts'
 import { openSessions } from './native-sessions.ts'
+import { createSessionListCache } from './session-list-reads.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
@@ -34,6 +35,7 @@ export const name = 'mayfly-commands'
 /** Services required before the commands can register. */
 export const inject = [
   'commands',
+  'agents',
   'mayflyOverlays',
   'mayflyCurrentAgent',
   'mayflySkillsCatalog',
@@ -52,6 +54,7 @@ export const inject = [
  */
 export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
+  const sessionListCache = createSessionListCache(ctx)
   const aliasRegistry = ctx.mayflyInteractionState.aliases
   const notifications = createInteractionNotificationOwner(ctx, 'mayfly.commands', 'commands')
   /**
@@ -61,7 +64,7 @@ export function apply(ctx: Context): void {
    * @returns the command outcome.
    */
   async function listSessions(signal: AbortSignal): Promise<CommandResult> {
-    return openSessions(ctx, signal, t)
+    return openSessions(ctx, signal, t, sessionListCache)
   }
 
   /** Open a picker of safe branch points from the live session. */

@@ -12,6 +12,8 @@ import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import { afterEach, expect, it, vi } from 'vitest'
 import { informationFixture } from './information-fixture.ts'
 import { flushRequests as flushOneRequest } from './request-fixture.ts'
+import { createSessionListCache } from '../../src/interaction/session-list-reads.ts'
+import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { openSessions } from '../../src/interaction/native-sessions.ts'
 import { interactionTranslator } from '../../src/interaction/locale.ts'
 
@@ -23,40 +25,57 @@ async function setup(withQuery = true) {
   const ctx = new Context(); contexts.push(ctx)
   const bench = await informationFixture(ctx)
   const start = Date.now()
+  Object.assign(bench.other, { status: 'running' })
+  const values = {
+    title: 'Current', sessionListMetadata: { blank: false, lastPromptAt: start - 60_000 },
+    tokenUsage: { uncachedInputTokens: 1200, outputTokens: 800, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    sessionStats: { turns: 3, steps: 5, llmMs: 12_000, toolMs: 3_000, ttftMs: 800, ttftSteps: 3, decodeMs: 9_000, decodeTokens: 800 },
+    modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat' } },
+  }
+  const snapshot = vi.spyOn(ctx.sessionProjections, 'snapshot').mockImplementation(session => ({ asOfSeq: 10, values: session.id === 'current' ? values : {} }) as never)
+  const headers = new Map([
+    ['current', bench.session.header], ['other', bench.otherSession.header],
+    ['child', { ...bench.session.header, id: SessionId('child'), createdAt: start - 900_000, parentSession: SessionId('current'), origin: 'subagent' as const }],
+  ])
+  const persistence = { identity: Symbol('storage'), list: vi.fn(async () => [...headers.values()].map(header => ({ header, revision: 'r1' }))) }
   const controller = {
-    list: vi.fn(async () => ({ items: [
-      { sessionId: 'current', cwd: '/repo', running: false, updatedAt: start - 60_000, projections: { values: {
-        title: 'Current',
-        sessionListMetadata: { blank: false, lastPromptAt: start - 60_000 },
-        tokenUsage: { uncachedInputTokens: 1200, outputTokens: 800, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        sessionStats: { turns: 3, steps: 5, llmMs: 12_000, toolMs: 3_000, ttftMs: 800, ttftSteps: 3, decodeMs: 9_000, decodeTokens: 800 },
-        modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat' } },
-      } } },
-      { sessionId: 'other', running: true, updatedAt: start - 30_000 },
-      { sessionId: 'child', origin: 'subagent', parentSessionId: 'current', running: false, updatedAt: start - 20_000 },
-    ] })),
-    projections: vi.fn(async ({ sessionId }: { sessionId: string }): Promise<import('@deepseek-ai/dsh-api-session-controller').SessionProjectionsValue> => ({ asOfSeq: 10, values: sessionId === 'current' ? (await controller.list()).items[0]!.projections!.values : {} })),
+    list: vi.fn(async () => { throw new Error('catalog must not call controller.list') }),
+    projections: vi.fn(async ({ sessionId }: { sessionId: string }): Promise<import('@deepseek-ai/dsh-api-session-controller').SessionProjectionsValue> => ({ asOfSeq: 10, values: sessionId === 'current' ? values : {} })),
     search: vi.fn(async () => ({ items: [{ sessionId: 'other', snippet: 'matching text' }], hasMore: true })),
   }
-  const query = { readTitleSnapshots: vi.fn(async (_ids: readonly string[], _signal: AbortSignal) => [] as import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]), listSessions: vi.fn(async () => [
-    { header: { id: 'current', createdAt: start - 3_600_000, cwd: '/repo', agentPreset: 'standard' } },
-    { header: { id: 'other', createdAt: start - 7_200_000, cwd: '/repo/other' } },
-    { header: { id: 'child', createdAt: start - 900_000 } },
-  ]) }
+  const observation = (id = 'child', title?: string, revision = 'r1'): SessionObservation => ({
+    header: headers.get(id) ?? { ...bench.session.header, id: SessionId(id) }, source: 'prepared', revision,
+    events: title === undefined ? [] : [{ type: 'session/title', seq: 0, time: start, data: { title, messageSeqs: [], source: { kind: 'user' } } }],
+    [Symbol.dispose]: vi.fn(),
+  } as never)
+  const query = { observeSession: vi.fn(async (id: string, _options: { signal: AbortSignal, projectionMode: string }) => observation(id)) }
+  Object.assign(persistence, { open: vi.fn(async (id: string, access: string, options: { signal: AbortSignal }) => {
+    expect(access).toBe('read')
+    const read = await query.observeSession(id, { signal: options.signal, projectionMode: 'none' })
+    return { header: read.header, inheritedEventCount: 0, read: async () => ({ events: read.events, eventState: 'shared-frozen' }), close: read[Symbol.dispose] }
+  }) })
   const registry = { archivedSessionIds: [] as string[], archiveSession: vi.fn(async (id: string, _options: unknown) => { registry.archivedSessionIds.push(id) }), unarchiveSession: vi.fn(async (id: string) => { registry.archivedSessionIds = registry.archivedSessionIds.filter(item => item !== id) }) }
   const subagents = { listDescendants: vi.fn(async () => [{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }]) }
   const schedule = { catalog: vi.fn(async () => [{ sessionId: 'other', status: 'active' }] as never) }
   ctx.provide('sessionController', controller as never)
-  if (withQuery) ctx.provide('sessionQuery', query as never)
+  if (withQuery) {
+    ctx.provide('sessionQuery', query as never)
+    ctx.provide('sessionPersistence', persistence as never)
+  }
   ctx.provide('workspaceRegistry', registry as never)
   ctx.provide('subagents', subagents as never)
   ctx.provide('schedule', schedule as never)
-  const open = () => openSessions(ctx, new AbortController().signal, interactionTranslator(ctx))
+  const cache = createSessionListCache(ctx)
+  const open = async () => {
+    const result = await openSessions(ctx, new AbortController().signal, interactionTranslator(ctx), cache)
+    await flushRequests()
+    return result
+  }
   const model = (id = 'mayfly.sessions') => ctx.mayflyUiInteraction.get('overlay', id)!
   const select = async (id: string) => { model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'sessions', selectedIds: [id] }); await flushRequests() }
   const act = async (id: string, detail = true) => { model(detail ? 'mayfly.sessions.detail' : 'mayfly.sessions').invoke(id); await flushRequests() }
   const confirm = async () => { model('mayfly.sessions.detail').answerDecision(true); await flushRequests() }
-  return { ...bench, controller, query, registry, subagents, open, model, select, act, confirm }
+  return { ...bench, controller, query, registry, subagents, persistence, headers, snapshot, observation, cache, open, model, select, act, confirm }
 }
 it('lists native summaries, searches explicitly, and preserves title filtering on search refusal', async () => {
   const bench = await setup()
@@ -100,16 +119,19 @@ it('opens roots by native resume and children through descendant addresses', asy
   await bench.open(); await bench.select('child'); await bench.act('open')
   expect(bench.model('mayfly.sessions.detail').feedbackSnapshot().some(item => item.message.includes('lead session'))).toBe(true)
 })
-it('contains read failures and cancels a late opening', async () => {
+it('opens immediately, contains catalog failures, and cancels a late listing', async () => {
   const bench = await setup()
-  bench.controller.list.mockRejectedValueOnce(new Error('disk unavailable'))
-  expect(await bench.open()).toMatchObject({ kind: 'error', text: expect.stringContaining('disk unavailable') })
-  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.list>>>()
-  bench.controller.list.mockReturnValueOnce(gate.promise)
+  bench.persistence.list.mockRejectedValueOnce(new Error('disk unavailable'))
+  expect(await bench.open()).toEqual({ kind: 'success' })
+  expect(JSON.stringify(bench.model().node)).toContain('disk unavailable')
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.persistence.list>>>()
+  bench.persistence.list.mockReturnValueOnce(gate.promise)
   const abort = new AbortController()
-  const opening = openSessions(bench.ctx, abort.signal, interactionTranslator(bench.ctx))
-  abort.abort(); gate.resolve({ items: [] })
-  await opening
+  expect(await openSessions(bench.ctx, abort.signal, interactionTranslator(bench.ctx), bench.cache)).toEqual({ kind: 'success' })
+  expect(JSON.stringify(bench.model().node)).toContain('Loading sessions')
+  abort.abort(); gate.resolve([])
+  await flushRequests()
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
 })
 
@@ -164,20 +186,17 @@ it('renders the title, span, token total, status, and path in rows and detail', 
   expect(await bench.open()).toEqual({ kind: 'success' })
   const node = JSON.stringify(bench.model().node)
   expect(node).toContain('Current')
-  expect(node).toContain('59m')
   expect(node).toContain('2k tok')
   expect(node).toContain('/repo')
   expect(node).toContain('current')
   expect(node).toContain('running')
   expect(node).toContain('Untitled · other')
-  expect(bench.query.listSessions).toHaveBeenCalledWith(expect.any(AbortSignal))
+  expect(bench.persistence.list).toHaveBeenCalledWith({ signal: expect.any(AbortSignal) })
   await bench.select('current')
   const detail = JSON.stringify(bench.model('mayfly.sessions.detail').node)
   expect(detail).toContain('Current')
   expect(detail).toContain('/repo')
   expect(detail).toContain('inactive · current')
-  expect(detail).toContain('standard')
-  expect(detail).toContain('59m')
   expect(detail).toContain('model 12s')
   expect(detail).toContain('tools 3s')
   expect(detail).toContain('3 turns · 5 steps')
@@ -185,26 +204,24 @@ it('renders the title, span, token total, status, and path in rows and detail', 
   expect(detail).toContain('deepseek-chat (deepseek)')
 })
 
-it('renders placeholders without headers or projections and tolerates a query listing failure', async () => {
+it('renders a sparse cold row with its header and unknown projection fields', async () => {
   const bench = await setup()
-  bench.controller.list.mockResolvedValueOnce({ items: [{ sessionId: 'bare', running: false, updatedAt: Date.now() - 1_000 }] })
-  bench.query.listSessions.mockRejectedValueOnce(new Error('corpus unavailable'))
+  bench.headers.set('bare', { ...bench.session.header, id: SessionId('bare'), createdAt: Date.now() - 1000 })
   expect(await bench.open()).toEqual({ kind: 'success' })
-  const node = JSON.stringify(bench.model().node)
-  expect(node).toContain('Untitled · bare')
-  expect(node).not.toContain('tok')
+  expect(JSON.stringify(bench.model().node)).toContain('Untitled · bare')
   await bench.select('bare')
   const detail = JSON.stringify(bench.model('mayfly.sessions.detail').node)
   expect(detail).toContain('inactive')
   expect(detail).toContain('—')
 })
 
-it('stays quiet when the header listing fails after the signal aborted', async () => {
+it('stays quiet when the listing fails after cancellation', async () => {
   const bench = await setup()
   const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
   const caller = new AbortController()
-  bench.query.listSessions.mockImplementationOnce(async () => { caller.abort(); throw new Error('late failure') })
-  expect(await openSessions(bench.ctx, caller.signal, interactionTranslator(bench.ctx))).toEqual({ kind: 'success' })
+  bench.persistence.list.mockImplementationOnce(async () => { caller.abort(); throw new Error('late failure') })
+  expect(await openSessions(bench.ctx, caller.signal, interactionTranslator(bench.ctx), bench.cache)).toEqual({ kind: 'success' })
+  await flushRequests()
   expect(warn).not.toHaveBeenCalled()
 })
 
@@ -215,7 +232,7 @@ it('lists sessions without reminder badges when the Host schedule service is abs
   expect(JSON.stringify(bench.model().node)).not.toContain('Reminders')
 })
 
-it('lists sessions without headers when the query service is absent', async () => {
+it('keeps native persistence headers when the query service is absent', async () => {
   const bench = await setup()
   bench.ctx.set('sessionQuery', undefined as never)
   expect(await bench.open()).toEqual({ kind: 'success' })
@@ -243,49 +260,47 @@ it('stays quiet when the reminder catalog fails after the signal aborted', async
   expect(warn).not.toHaveBeenCalled()
 })
 
-it('recovers missing titles in bounded batches without delaying the catalog or replacing drafts', async () => {
+it('limits cold reads to four, avoids repeated listings, and preserves drafts', async () => {
   const bench = await setup()
-  const sessions = Array.from({ length: 65 }, (_, index) => ({ sessionId: `session-${index.toString().padStart(8, '0')}`, running: false, updatedAt: Date.now() }))
-  bench.controller.list.mockResolvedValue({ items: sessions })
-  const gate = Promise.withResolvers<import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]>()
-  bench.query.readTitleSnapshots.mockReturnValueOnce(gate.promise)
+  for (let i = 0; i < 65; i++) bench.headers.set(`session-${i}`, { ...bench.session.header, id: SessionId(`session-${i}`) })
+  const gates = Array.from({ length: 4 }, () => Promise.withResolvers<SessionObservation>())
+  for (const gate of gates) bench.query.observeSession.mockReturnValueOnce(gate.promise)
   await bench.open()
-  expect(JSON.stringify(bench.model().node)).toContain('Untitled · 00000000')
-  expect(bench.query.readTitleSnapshots.mock.calls[0]![0]).toHaveLength(32)
+  expect(bench.query.observeSession).toHaveBeenCalledTimes(4)
+  expect(bench.persistence.list).toHaveBeenCalledTimes(1)
   bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'draft')
-  gate.resolve([
-    { sessionId: sessions[0]!.sessionId, status: 'fulfilled', value: { title: { title: 'Repair compiler' } } },
-    { sessionId: sessions[1]!.sessionId, status: 'fulfilled', value: {} },
-    { sessionId: sessions[2]!.sessionId, status: 'rejected', reason: new Error('corrupt') },
-  ] as never)
-  await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('Repair compiler') })
-  expect(bench.query.readTitleSnapshots.mock.calls.map(call => call[0].length)).toEqual([32, 32, 1])
+  for (const [index, gate] of gates.entries()) gate.resolve(bench.observation(bench.query.observeSession.mock.calls[index]![0], 'Recovered title'))
+  await vi.waitFor(() => { expect(bench.query.observeSession).toHaveBeenCalledTimes(66) })
+  expect(bench.persistence.list).toHaveBeenCalledTimes(1)
+  expect(bench.controller.list).not.toHaveBeenCalled()
   await bench.act('search', false)
   expect(bench.controller.search).toHaveBeenLastCalledWith({ query: 'draft' }, expect.any(AbortSignal))
 })
 
-it('discards old title reads after refresh or closure and contains title read failures', async () => {
+it('discards old title reads after refresh or closure and contains read failures', async () => {
   const bench = await setup()
-  const old = Promise.withResolvers<import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]>()
-  bench.query.readTitleSnapshots.mockReturnValueOnce(old.promise)
+  const old = Promise.withResolvers<SessionObservation>()
+  bench.query.observeSession.mockReturnValueOnce(old.promise)
   await bench.open()
   await bench.act('refresh', false)
-  expect(bench.query.readTitleSnapshots.mock.calls[0]![1].aborted).toBe(true)
-  old.resolve([{ sessionId: 'other', status: 'fulfilled', value: { title: { title: 'Obsolete' } } }] as never)
+  expect(bench.query.observeSession.mock.calls[0]![1].signal.aborted).toBe(true)
+  const observation = bench.observation('child', 'Obsolete')
+  old.resolve(observation)
   await flushRequests()
+  expect(observation[Symbol.dispose]).toHaveBeenCalled()
   expect(JSON.stringify(bench.model().node)).not.toContain('Obsolete')
-  bench.query.readTitleSnapshots.mockRejectedValueOnce(new Error('title store unavailable'))
+  bench.cache.titles.clear()
+  bench.query.observeSession.mockRejectedValueOnce(new Error('title store unavailable'))
   const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
   await bench.act('refresh', false)
   expect(warn).toHaveBeenCalledWith(expect.stringContaining('title store unavailable'))
-  const late = Promise.withResolvers<import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]>()
-  bench.query.readTitleSnapshots.mockReturnValueOnce(late.promise)
+  const late = Promise.withResolvers<SessionObservation>()
+  bench.query.observeSession.mockReturnValueOnce(late.promise)
   await bench.act('refresh', false)
   bench.ctx.mayflyOverlays.close('mayfly.sessions')
   late.reject(new Error('closed'))
   await flushRequests()
   expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('closed'))
-  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
 })
 
 it('reads complete native projections only for the selected detail and fences a late result', async () => {
@@ -349,20 +364,20 @@ it('does not navigate after a child detail closes or the exact lead Agent change
 
 it('does not publish recovered titles over a pending content search or retain cancelled search results', async () => {
   const bench = await setup()
-  const titles = Promise.withResolvers<import('@deepseek-ai/dsh-session-query').SessionTitleObservationResult[]>()
-  bench.query.readTitleSnapshots.mockReturnValueOnce(titles.promise)
+  const titles = Promise.withResolvers<SessionObservation>()
+  bench.query.observeSession.mockReturnValueOnce(titles.promise)
   await bench.open()
   const search = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.search>>>()
   bench.controller.search.mockReturnValueOnce(search.promise)
   bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
   bench.model().invoke('search')
   await flushRequests()
-  titles.resolve([{ sessionId: 'other', status: 'fulfilled', value: { title: { title: 'Recovered other' } } }] as never)
+  titles.resolve(bench.observation('child', 'Recovered child'))
   await flushRequests()
-  expect(JSON.stringify(bench.model().node)).not.toContain('Recovered other')
-  search.resolve({ items: [{ sessionId: 'other', snippet: 'needle match' }], hasMore: false })
+  expect(JSON.stringify(bench.model().node)).not.toContain('Recovered child')
+  search.resolve({ items: [{ sessionId: 'child', snippet: 'needle match' }], hasMore: false })
   await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('needle match') })
-  expect(JSON.stringify(bench.model().node)).toContain('Recovered other')
+  expect(JSON.stringify(bench.model().node)).toContain('Recovered child')
   const late = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.search>>>()
   bench.controller.search.mockReturnValueOnce(late.promise)
   bench.model().invoke('search')
@@ -376,8 +391,8 @@ it('does not publish recovered titles over a pending content search or retain ca
 it.each(['search', 'refresh'])('cancels a catalog refresh triggered by %s before replacing rows', async action => {
   const bench = await setup()
   await bench.open()
-  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.list>>>()
-  bench.controller.list.mockReturnValueOnce(gate.promise)
+  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.persistence.list>>>()
+  bench.persistence.list.mockReturnValueOnce(gate.promise)
   if (action === 'search') {
     bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: 'new', snippet: 'new conversation' }], hasMore: false })
     bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
@@ -385,22 +400,18 @@ it.each(['search', 'refresh'])('cancels a catalog refresh triggered by %s before
   bench.model().invoke(action)
   await flushRequests()
   bench.ctx.mayflyOverlays.close('mayfly.sessions')
-  gate.resolve({ items: [] })
+  gate.resolve([])
   await flushRequests()
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
 })
 
-it('ignores an archive catalog read after its detail closes', async () => {
+it('updates archive badges without rescanning the catalog', async () => {
   const bench = await setup()
   await bench.open(); await bench.select('other')
-  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.controller.list>>>()
-  bench.controller.list.mockReturnValueOnce(gate.promise)
-  const pending = nativeAction(bench.model('mayfly.sessions.detail'), activate('archive'))
-  await flushRequests()
-  bench.ctx.mayflyOverlays.close('mayfly.sessions.detail')
-  gate.resolve({ items: [] })
-  await pending
-  expect(JSON.stringify(bench.model().node)).toContain('Current')
+  expect(bench.persistence.list).toHaveBeenCalledTimes(1)
+  await bench.act('archive'); await bench.confirm()
+  expect(bench.persistence.list).toHaveBeenCalledTimes(1)
+  expect(JSON.stringify(bench.model().node)).toContain('archived')
 })
 
 
@@ -418,9 +429,13 @@ it.each([undefined, null, '', 'Old cached name'])('recovers the cold stored titl
   const stored = await bench.ctx.sessionPersistence.create(session.header)
   await stored.append(session.snapshotEvents())
   await stored.close()
-  bench.controller.list.mockResolvedValue({ items: [{ sessionId: session.id, cwd: '/repo/cold', running: false, updatedAt: 1_000,
-    ...(cachedTitle === undefined ? {} : { projections: { kind: 'cached', asOfSeq: 0, values: { title: cachedTitle } } }),
-  }] } as never)
+  bench.snapshot.mockRestore()
+  Object.assign(bench.other, { status: 'idle' })
+  bench.ctx.provide('sessionProjectionCache', {
+    cachedSnapshot: () => cachedTitle === undefined ? undefined : { asOfSeq: 0, values: { title: cachedTitle } },
+    cachedPredecessorTitle: () => undefined,
+    hydratePrepared: (session: typeof bench.session) => bench.ctx.sessionProjections.snapshot(session),
+  } as never)
   bench.controller.projections.mockImplementation(async ({ sessionId }) => {
     using observation = await query.observeSession(SessionId(sessionId))
     return { asOfSeq: observation.cursor, values: observation.projections!.values }
@@ -437,10 +452,129 @@ it.each([undefined, null, '', 'Old cached name'])('recovers the cold stored titl
   expect([...bench.agents.values()]).toEqual(agentsBefore)
 })
 
-it('marks the displayed Agent current and avoids reading titles already present in native hints', async () => {
+it('marks the displayed Agent current and reads live titles through native projections', async () => {
   const bench = await setup()
   bench.ctx.mayflyCurrentAgent.select(bench.other)
   await bench.open()
   expect(JSON.stringify(bench.model().node)).toContain('current · running · Reminders')
-  expect(bench.query.readTitleSnapshots.mock.calls[0]![0]).toEqual(['other', 'child'])
+  expect(bench.query.observeSession.mock.calls.map(call => call[0])).toEqual(['child'])
+})
+
+it('reopens retained rows before validation and rereads only changed native revisions', async () => {
+  const bench = await setup()
+  bench.query.observeSession.mockResolvedValueOnce(bench.observation('child', 'Saved title'))
+  await bench.open()
+  expect(JSON.stringify(bench.model().node)).toContain('Saved title')
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.persistence.list>>>()
+  bench.persistence.list.mockReturnValueOnce(gate.promise)
+  expect(await openSessions(bench.ctx, new AbortController().signal, interactionTranslator(bench.ctx), bench.cache)).toEqual({ kind: 'success' })
+  expect(JSON.stringify(bench.model().node)).toContain('Saved title')
+  expect(bench.query.observeSession).toHaveBeenCalledTimes(1)
+  gate.resolve([...bench.headers.values()].map(header => ({ header, revision: 'r1' })))
+  await flushRequests()
+  expect(bench.query.observeSession).toHaveBeenCalledTimes(1)
+  bench.persistence.list.mockResolvedValueOnce([...bench.headers.values()].map(header => ({ header, revision: header.id === 'child' ? 'r2' : 'r1' })))
+  bench.query.observeSession.mockResolvedValueOnce(bench.observation('child', 'Renamed title'))
+  await bench.act('refresh', false)
+  expect(bench.query.observeSession).toHaveBeenCalledTimes(2)
+  expect(JSON.stringify(bench.model().node)).toContain('Renamed title')
+})
+
+it('focuses an existing catalog without repeating reads and ignores an aborted invocation', async () => {
+  const bench = await setup()
+  const aborted = new AbortController(); aborted.abort()
+  expect(await openSessions(bench.ctx, aborted.signal, interactionTranslator(bench.ctx), bench.cache)).toEqual({ kind: 'success' })
+  expect(bench.persistence.list).not.toHaveBeenCalled()
+  await bench.open(); await bench.open()
+  expect(bench.persistence.list).toHaveBeenCalledTimes(1)
+})
+
+it('reports incompatible retained headers without leaking the opening lifetime', async () => {
+  const bench = await setup()
+  await bench.open(); bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  bench.cache.stored = [{ header: { ...bench.session.header, cwd: '/recreated' }, revision: 'changed' } as never]
+  expect(await bench.open()).toMatchObject({ kind: 'error' })
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it('cancels an initial refresh even when the optional reminder read finishes last', async () => {
+  const bench = await setup()
+  const gate = Promise.withResolvers<never[]>()
+  const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
+  schedule.catalog.mockReturnValueOnce(gate.promise)
+  await bench.open()
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  gate.resolve([])
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it('does not publish a title from a replaced storage service', async () => {
+  const bench = await setup()
+  const gate = Promise.withResolvers<SessionObservation>()
+  bench.query.observeSession.mockReturnValueOnce(gate.promise)
+  await bench.open()
+  bench.ctx.set('sessionPersistence', { ...bench.persistence, identity: Symbol('replacement') } as never)
+  gate.resolve(bench.observation('child', 'Wrong storage'))
+  await flushRequests()
+  expect(JSON.stringify(bench.model().node)).not.toContain('Wrong storage')
+})
+
+it('updates live titles from native projections without reading history and releases the listener', async () => {
+  const bench = await setup()
+  const listeners: Parameters<typeof bench.ctx.sessionProjections.onChanged>[0][] = []
+  const off = vi.fn()
+  vi.spyOn(bench.ctx.sessionProjections, 'onChanged').mockImplementation(listener => { listeners.push(listener); return off })
+  await bench.open()
+  const notify = listeners.at(-1)!
+  notify(bench.session, 'tokenUsage', {}, 2 as never)
+  notify(bench.session, 'title', 123, 2 as never)
+  notify({ ...bench.session, header: {} } as never, 'title', 'Wrong header', 2 as never)
+  notify(bench.session, 'title', 'A new live title', 2 as never)
+  await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('A new live title') })
+  expect(bench.query.observeSession.mock.calls.map(call => call[0])).toEqual(['child'])
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  expect(off).toHaveBeenCalledOnce()
+  notify(bench.session, 'title', 'After close', 3 as never)
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it('lists live sessions when persistence is absent and rejects an empty selection', async () => {
+  const bench = await setup()
+  bench.ctx.set('sessionPersistence', undefined as never)
+  await bench.open()
+  expect(JSON.stringify(bench.model().node)).toContain('Current')
+  expect(bench.query.observeSession).not.toHaveBeenCalled()
+  expect(await nativeAction(bench.model(), selection('sessions'))).toMatchObject({ kind: 'failed' })
+})
+
+it.each(['search', 'refresh'])('cancels %s while waiting for reminder metadata after the native listing settled', async action => {
+  const bench = await setup()
+  await bench.open()
+  const gate = Promise.withResolvers<never[]>()
+  const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
+  schedule.catalog.mockReturnValueOnce(gate.promise)
+  if (action === 'search') {
+    bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: 'new', snippet: 'new' }], hasMore: false })
+    bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
+  }
+  bench.model().invoke(action)
+  await flushRequests()
+  bench.ctx.mayflyOverlays.close('mayfly.sessions')
+  gate.resolve([])
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+})
+
+it('fences cancellation between retaining a completed read and publishing it', async () => {
+  const bench = await setup()
+  const retain = bench.cache.titles.set.bind(bench.cache.titles)
+  vi.spyOn(bench.cache.titles, 'set').mockImplementationOnce((id, title) => {
+    retain(id, title)
+    bench.ctx.mayflyOverlays.close('mayfly.sessions')
+    return bench.cache.titles
+  })
+  await bench.open()
+  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
 })

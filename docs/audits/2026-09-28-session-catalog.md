@@ -1,91 +1,134 @@
-# Session catalog review, 2026-09-28
+# Session catalog audit, 2026-09-28
 
-Scope: the pinned Harness `0.1.7-rc.2` persistence/query/controller contracts and
-Mayfly's `/sessions` listing, filtering, content search, detail reads, root/child
-navigation, archive admission, cancellation, and unload. This review does not
-change Harness storage or regenerate user titles.
+Scope: the pinned Harness `0.1.7-rc.2` persistence, query, projection, and session
+controller contracts, plus Mayfly's `/sessions` loading, names, details, search,
+navigation, archive admission, cancellation, and unload.
 
-## Findings and changes
+## Findings and final behavior
 
-| Finding | Cause | Resolution |
+| Finding | Cause | Correction |
 | --- | --- | --- |
-| Untitled conversations all displayed `session-`. | `sessionLabel` took the first eight characters of native `session-<uuid>` IDs. The test explicitly expected the shared prefix. | Strip the native prefix before abbreviating. Preserve the complete ID in filtering and the detail sheet. |
-| Existing saved titles appeared as `Untitled`. | Native `list()` carries partial cached projection hints. Missing cells and cached values (including `null`) can precede later title events; listing deliberately does not replay cold logs. Mayfly never performed a title read. | Read missing/empty titles and every cold cached title through `sessionQuery.readTitleSnapshots`, in batches of 32. Show cached hints immediately, then prefer the logged title read; an exact detail baseline takes precedence over both. |
-| Cold sessions showed an invented `0s` duration and creation time as last activity. | Native `updatedAt` falls back to `header.createdAt` when the list metadata cache is absent. | Use explicit prompt/settlement times, running state, or an `updatedAt` later than creation. Otherwise label the creation age and leave duration/last activity unknown. |
-| Detail sheets repeated incomplete or stale listing hints. | The detail sheet reused the catalog's captured facts without an authoritative read. | Read `sessionController.projections` for the selected session. Missing/unreadable sessions produce feedback; reading never resolves or activates an Agent. |
-| Content matches could lose identity and become unselectable. | Search rows dropped status and ID/path search metadata, and the catalog was not reconciled when a match was created after opening the panel. | Preserve status and searchable ID/path/snippet; refresh the catalog when search returns a previously unlisted session. |
-| Late child reads could navigate after close or after lead replacement. | `listDescendants` used the whole catalog lifetime and did not recheck the exact lead Agent after awaiting. | Use the detail action signal, recheck cancellation and exact Agent identity, then open the child through the native descendant address. |
-| The current badge pointed at the primary Agent while viewing a live child. | The catalog compared with `primary()` instead of `current()`. | Compare with the exact currently selected Agent. |
+| Untitled conversations all displayed `session-`. | The label truncated the shared native ID prefix. | Strip the prefix before abbreviating; retain the complete ID in filtering and details. |
+| Existing titles appeared as `Untitled`, including after the first repair. | Listing hints can be absent or stale. The first repair skipped cached `null` and let it mask a recovered title. | Prefer an authoritative title read over cached hints. Retain both named and genuinely untitled results against the native storage revision. Exact detail baselines remain authoritative. |
+| Cold sessions showed invented `0s` durations. | Native `updatedAt` falls back to creation when activity hints are missing. | Use known prompt/settlement times, running state, or an update later than creation. Otherwise show creation age and leave activity/duration unknown. |
+| Opening blocked for seconds before showing the panel. | The overlay opened only after disk listing completed. | Paint the panel immediately with live and retained rows; refresh storage in the background. |
+| Each opening scanned the catalog twice. | The controller list and the header join each enumerated persistence. | One native `sessionPersistence.list()` returns both headers and revisions. Join exact live Sessions and Agents in memory. |
+| Recovery rescanned the entire catalog for every 32 titles. | `readTitleSnapshots` internally enumerates the corpus on every call. | Use Harness `readColdSessionLog` for individual changed sessions, with four workers. Its read handles close on success, failure, and cancellation. |
+| Listing processed unnecessary transcript data. | The generic controller list views every cached projection, including full conversation projections. | Request only title, list metadata, conversation facts, tokens, statistics, and model selection. Never retain logs or prepared Sessions in the UI cache. |
+| Reopening reread unchanged histories. | Recovery results belonged to the panel and were discarded on close. | The command Fiber retains compact headers and title results, keyed by native persistence identity and revision. Changed/deleted records are invalidated; storage replacement and unload retire the cache. |
+| Progress caused repeated whole-list work. | Each batch rebuilt data, searched arrays by ID, and repeatedly copied archive membership. | Coalesce title publication to at most one scheduled update per 100 ms, index rows by ID, and snapshot archive/current state once per row build. |
+| Archive/restore waited for an unnecessary rescan. | The panel rescanned all sessions after changing an archive flag. | Repaint the native archive state directly. Membership has not changed, so this path needs no listing. |
+| A pending child read could navigate after close or lead replacement. | It used the catalog lifetime and did not check the exact lead Agent after awaiting. | Use the detail action signal and recheck cancellation and exact Agent identity before navigation. |
+| The current badge followed the primary Agent while viewing a live child. | The row compared against `primary()`. | Compare with the actual selected Agent. |
 
-Recovery belongs to the panel lifetime. Refresh supersedes the previous title
-read; close/unload abort it. Title publication waits for a pending shared action
-to settle so that an asynchronous data refresh cannot cancel a content search
-or replace its acknowledgement. Form drafts survive ordinary data refreshes.
-Archive/restore continue to use native Workspace admission and the existing
-explicit confirmation for stopping activity.
+The first acceptance failure was a concrete stale-cache case: the stored
+checkpoint had `title: null` at seq 4 while the log had a title at seq 20. The
+regression tests preserve this distinction. Cached nulls and older nonempty
+names are hints, not authoritative absence or current names.
 
-## Native contracts checked
+## Ownership and freshness
 
-- [`session-query`](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/session-query):
-  complete live-preferred listing, bounded batch title inspection, per-session
-  read failures, and cancellable observations.
-- [`session-title`](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/session-title):
-  logged titles, the string-or-null wire projection, and explicit title ownership.
-- [`session-projection`](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/session-projection):
-  readonly values, partial cached hints, and exact observations.
-- The installed controller's `ApiSessionList.projectionsFor`, `updatedAt`,
-  `search`, and `SessionController.projections` implementations. Cold listing
-  reads cache hints only; its complete projection read uses a disposable query
-  observation without Agent activation. Content search is bounded and exposes
-  `hasMore`; the panel retains its instruction to narrow such a query.
+The retained data contains native header/revision snapshots and `title | null`
+read results. It contains no event log, transcript, Agent, or prepared Session.
+Harness owns log parsing, interrupted-turn recovery, title folding, projections,
+Agent activation, and every write. Browsing never activates an Agent or asks an
+LLM to regenerate a title.
+
+Native revisions are compared only within the same persistence instance. A
+concurrent append after listing can cause a conservative reread on the next
+refresh; an older read is never reused for a new revision. Header compatibility
+is checked before accepting a cold result. If a Session becomes live during the
+read, its actual live title wins and the result is not cached as a durable cut.
+
+Closing the panel aborts queued/in-flight title work while retaining completed
+read results. Refresh cancels the previous recovery before starting another.
+Reissuing `/sessions` focuses the existing panel. Live title changes arrive via
+native projection notifications. Native service lifetimes and command Fiber
+unload release listeners, timers, and retained data.
+
+A reopened catalog displays retained rows while the native revision listing is
+in progress; the loading label makes that refresh visible. Normal data updates
+preserve form drafts, list filters, focus, and pending shared actions. Title
+publication is deferred while an action is running. Details still request a
+fresh native projection baseline, and archive/restore retain native admission
+and explicit stop-and-archive confirmation.
+
+## Measurements
+
+Backend measurements on the existing 2,379-record history:
+
+| Operation | Previous implementation | Optimized implementation |
+| --- | ---: | ---: |
+| First 32 title reads | 4.03 s | 2.39 s |
+| Corpus enumeration | Twice at opening, again for every title batch | Once per refresh |
+| Reconstruct retained catalog rows and recent titles | Discarded on close | 10 ms |
+| History reads for those unchanged titles after revision validation | Repeated | 0 |
+
+A separate real-terminal stress test seeded 2,379 isolated persisted
+conversations and exercised the complete installed profile:
+
+| Measurement | Result |
+| --- | ---: |
+| Initial panel frame | 51 ms |
+| First cold title | 1,890 ms |
+| All initial titles available | 10,276 ms |
+| Reopen with retained names visible | 176 ms |
+
+That terminal test also filtered to the oldest retained conversation, completed
+background revision validation, resized from 110 to 40 columns, and exited
+cleanly. A second PTY test used a temporary copy of the reported real session
+and its stale-null checkpoint, confirming that its name appears in the list
+before opening any detail.
+
+The native JSONL catalog enumeration still takes roughly two seconds on the
+existing history. It now runs after the panel paints. A fresh command/persistence
+lifetime must validate previously unread histories; reuse is deliberately scoped
+to the native revision contract, which does not promise comparable revisions
+across persistence instances or process restarts. A faster first-ever cold
+catalog requires an upstream durable index with a freshness contract.
 
 ## Verification and acceptance
 
-Regression coverage includes generated IDs, cached/absent titles, unknown and
-known activity times, batch sizes, draft preservation, per-session title errors,
-refresh supersession, close during each async read, search publication ordering,
-missing/corrupt details, and replacement of the lead Agent with the same ID.
-A real JSONL persistence/query test stores a title in a cold session, recovers it
-in the catalog and detail sheet, and checks that neither the live Session store
-nor Agent registry grows. The existing width scan covers session rows and detail
-sheets, including narrow terminals and long Unicode text.
+The full deterministic gate passed: build, typecheck, lint, agent documentation,
+screenshot freshness, example checks, package checks, 3,764 tests passed (seven
+skipped), 100% per-file executable-source coverage, and headless happy smoke.
 
-Initial automated verification passed: `verify:full` with the pinned rc.2 CLI;
-3,735 tests passed, seven skipped, and every executable source file met 100%
-coverage. Build, typecheck, lint, screenshot freshness, example checks, and the
-headless happy smoke passed. A PTY smoke using real cold persisted conversations
-passed title recovery, distinct untitled IDs, detail projection reads, 110/40
-column rendering, close/reopen, and clean exit. Human acceptance is pending.
+Regression coverage includes stale/null/empty/obsolete titles, actual cold JSONL
+reads, single enumeration, four-worker bounds, immediate opening, warm reopen,
+changed/deleted revisions, storage replacement, source/header incompatibility,
+live title updates, close during reads, action/publication ordering, exact lead
+Agent replacement, and cleanup. The existing width scan covers the rows and
+detail sheets with long Unicode text and narrow terminal sizes.
 
-The first human acceptance found a missed stale-null case: a saved checkpoint
-contained `title: null` at seq 4 while the durable log contained a title at seq
-20. The initial recovery skipped null hints, and the row model would also let a
-cached null mask a recovered title. Both conditions are corrected. Regression
-cases now cover absent, null, empty, and obsolete nonempty cache values against
-real cold JSONL reads, asserting that the title appears before any detail read.
-The follow-up `verify:changed -- --base HEAD` gate passed 3,483 tests (seven
-skipped), with 100% coverage of both changed implementations. A PTY using a
-temporary copy of the reported session and its unchanged stale checkpoint
-confirmed the name appears in the catalog before opening any detail, at 110
-and 40 columns and after close/reopen.
-
-The system CLI was rc.1 during this review. From this worktree, the isolated
-pinned CLI is available without changing the system installation:
+The dedicated profile remains `mayfly-session-management`. Restart it to load
+the rebuilt code; the isolated pinned CLI is available from this worktree:
 
 ```sh
 .artifacts/session-review-cli/node_modules/.bin/dsh --profile mayfly-session-management
 ```
 
-Human acceptance uses the dedicated `mayfly-session-management` profile:
+Human acceptance:
 
-1. Open `/sessions` against an existing session history. Saved titles should
-   appear as recovery completes; genuinely untitled sessions should have
-   distinct abbreviated IDs. Missing activity metadata must not imply `0s`.
-2. Type a content-search draft while titles load, then search. The draft and
-   result snippets must survive; filter by full ID/path and open a result.
-3. Open a session detail and check title, times, tokens, model, and full ID.
-   Resume a root; open a child under its lead; switch back to the primary.
-4. Exercise a narrow terminal, close/reopen while reads are pending, and check
-   archive/restore and the explicit stop-and-archive confirmation.
+1. Open `/sessions`. The panel should appear immediately and recover cold names
+   as needed. Close and reopen it: retained names should appear immediately
+   while revisions refresh in the background.
+2. Rename a live conversation, then check its listing. Change a saved session
+   from another process and use All sessions; only changed histories should
+   need new title reads.
+3. Type a search draft or list filter during loading. Verify it survives title
+   publication, and open a root/child detail to check full identity and current
+   native facts.
+4. Check a narrow terminal, close/reopen during loading, and archive/restore.
+   Explicit stop-and-archive confirmation and lead-session ownership must still
+   apply.
 
-Keep the worktree and profile until acceptance. No merge is part of this review.
+Keep the worktree and profile until acceptance. No merge is part of this audit.
+
+## Native references
+
+- [Session query](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/session-query)
+- [Session title](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/session-title)
+- [Session projection](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/session-projection)
+- Installed `ApiSessionList`, `SessionProjectionCache`, `SessionPersistence`,
+  JSONL persistence, `readColdSessionLog`, and `foldSessionTitle` implementations
+  and their public contracts on the pinned Harness line.

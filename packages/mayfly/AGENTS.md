@@ -28,6 +28,11 @@ slots, never arbitrary root components.
 - `interaction/` keeps editor/autocomplete state and prompt-submit transforms in
   separate Fiber services. Editor presentations are ordinary overlays projected
   into the fixed editor host; preserve and restore the prompt lease.
+- `/sessions` retains only native catalog headers and revision-keyed title
+  read results in the command Fiber across panel opens. Enumerate persistence
+  once per refresh, request only displayed projection fields, and bound cold
+  reads. Storage replacement and unload retire retained results; browsing must
+  never activate Agents, retain logs, or create a second session domain store.
 - `transcript/` has one selected-session controller, generation-keyed reuse, and
   lazy conversion of the latest unread native snapshot. Preserve complete
   cutoff-eligible history; BTW hides seeded history only in presentation. Do not

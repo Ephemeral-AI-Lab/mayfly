@@ -15,6 +15,7 @@ import { MessageId, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { AssistantMessage, ContentBlock, ToolResultMessage, UserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session, SessionHeader } from '@deepseek-ai/dsh-session'
+import { waitForRender } from '../core/fake-terminal.ts'
 import { openPermissionPanel } from '../../src/interaction/permission-panel.ts'
 import { appendAt, pinShotClock, SHOT_CWD, SHOT_EPOCH, SHOT_MAIN_ID, withShotTime, type AppShotTree } from './boot.ts'
 
@@ -295,8 +296,11 @@ async function sceneSessions(tree: AppShotTree): Promise<void> {
     ['shot-hotfix', 'Hotfix release notes'],
     ['shot-hotfix-2', 'Hotfix follow-up'],
   ]))
-  const execution = await withShotTime(SHOT_EPOCH + 60_000, () =>
-    tree.ctx.commands.execute(agent, '/sessions', [], new AbortController().signal))
+  const execution = await withShotTime(SHOT_EPOCH + 60_000, async () => {
+    const result = await tree.ctx.commands.execute(agent, '/sessions', [], new AbortController().signal)
+    await waitForRender()
+    return result
+  })
   if (execution === undefined || execution.result.kind === 'error') {
     throw new Error(`app-sessions: /sessions did not open (${JSON.stringify(execution?.result ?? null)})`)
   }

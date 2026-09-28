@@ -113,6 +113,7 @@ export const apply = ctx => globalThis.__mayflyInteractionFixtures.interactionAp
       return () => {}
     },
   } as never)
+  ctx.provide('agents', { get: () => undefined, list: () => [] } as never)
   ctx.provide('skills', { snapshot: async () => ({ complete: true, skills: [] }) } as never)
   ctx.provide('sessionProjections', {
     snapshot: () => ({ asOfSeq: 0, values: {} }),

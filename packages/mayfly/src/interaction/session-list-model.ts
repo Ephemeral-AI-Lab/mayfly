@@ -45,7 +45,7 @@ export interface SessionListFacts {
 /** Listing-time context the summary itself does not carry. */
 export interface SessionListContext {
   readonly header?: SessionHeader | undefined
-  readonly title?: string | undefined
+  readonly title?: string | null | undefined
   readonly projections?: SessionProjectionBaseline | undefined
   readonly archived: boolean
   readonly current: boolean
@@ -65,7 +65,7 @@ export function sessionListFacts(summary: SessionSummary, context: SessionListCo
   const values = context.projections?.values ?? summary.projections?.values
   const title = (context.projections?.values.title !== undefined
     ? context.projections.values.title
-    : context.title ?? values?.title)?.trim()
+    : context.title === undefined ? values?.title : context.title)?.trim()
   // Native updatedAt falls back to creation on a cache miss. Only a later
   // value establishes activity independently of the optional metadata cell.
   const promptedAt = values?.sessionListMetadata?.lastPromptAt
