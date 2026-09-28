@@ -244,7 +244,6 @@ const zh: Readonly<Record<string, string>> = {
   'Analyze the codebase and write AGENTS.md': '分析代码库并编写 AGENTS.md',
   'Commands': '命令',
   'Keys': '按键',
-  'help': '帮助',
   'Select a theme': '选择主题',
   'Toggle plan mode (same as Shift+Tab)': '切换计划模式（同 Shift+Tab）',
   'unknown theme "{key}"': '未知主题「{key}」',

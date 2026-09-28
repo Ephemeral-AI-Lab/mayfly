@@ -39,10 +39,16 @@ describe('native settings projections', () => {
     expect('options' in many ? many.options : []).toEqual([
       { id: '"a"', label: 'a' }, { id: '"b"', label: 'b' }, { id: '"deleted"', label: 'deleted' },
     ])
-    // A hand-edited non-scalar stored value is ignored rather than rendered.
+    // A hand-edited non-scalar stored value is ignored rather than rendered,
+    // and the projected value no longer masquerades as a raw encoded id.
     const malformed = project(schema, { choice: { nested: true }, many: [{ nested: true }] })
     const malformedChoice = malformed.bindings.get(settingsField('choice').fieldId)!.field
     expect('options' in malformedChoice ? malformedChoice.options : []).toEqual([{ id: '"a"', label: 'a' }, { id: '"b"', label: 'b' }])
+    expect(malformedChoice).toMatchObject({ kind: 'select', value: null })
+    expect(malformed.bindings.get(settingsField('many').fieldId)!.field).toMatchObject({ kind: 'multiselect', value: [] })
+    // A non-boolean stored value does not masquerade as an On/Off option id.
+    const booleanSchema = Schema.object({ flag: Schema.boolean() })
+    expect(project(booleanSchema, { flag: 'yes' }).bindings.get(settingsField('flag').fieldId)!.field).toMatchObject({ kind: 'select', value: null })
   })
 
   it('never projects secrets hidden inside unsupported schema containers or secret defaults', () => {

@@ -91,10 +91,10 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
       if (schema.type === 'string') field = { kind: 'secret', id, label, disabled, value: '', resetValue: '', placeholder: t(descriptor.secrets?.some(secret => secret.set && JSON.stringify(secret.path) === id) ? 'Configured; leave unchanged' : 'Not configured') }
     } else if (options !== undefined) {
       encoded = true
-      field = { ...base, disabled: disabled || dynamicKind !== undefined && choices[dynamicKind] === undefined, kind: 'select', value: value === undefined ? null : JSON.stringify(value), options: optionEntries(options, value === undefined ? [] : [value]), ...resettable ? { resetValue: fallback === undefined ? null : JSON.stringify(fallback) } : {} }
+      field = { ...base, disabled: disabled || dynamicKind !== undefined && choices[dynamicKind] === undefined, kind: 'select', value: value === undefined || !scalar(value) ? null : JSON.stringify(value), options: optionEntries(options, value === undefined ? [] : [value]), ...resettable ? { resetValue: fallback === undefined ? null : JSON.stringify(fallback) } : {} }
     } else if (schema.type === 'array' && schema.inner !== undefined && candidates(schema.inner) !== undefined) {
       encoded = true
-      field = { ...base, kind: 'multiselect', value: Array.isArray(value) ? value.map(value => JSON.stringify(value)) : [], options: optionEntries(candidates(schema.inner)!, Array.isArray(value) ? value : []), ...resettable ? { resetValue: (fallback as unknown[]).map(value => JSON.stringify(value)) } : {}, ...schema.meta.min === undefined ? {} : { minSelected: schema.meta.min }, ...schema.meta.max === undefined ? {} : { maxSelected: schema.meta.max } }
+      field = { ...base, kind: 'multiselect', value: Array.isArray(value) ? value.filter(scalar).map(value => JSON.stringify(value)) : [], options: optionEntries(candidates(schema.inner)!, Array.isArray(value) ? value : []), ...resettable ? { resetValue: (fallback as unknown[]).filter(scalar).map(value => JSON.stringify(value)) } : {}, ...schema.meta.min === undefined ? {} : { minSelected: schema.meta.min }, ...schema.meta.max === undefined ? {} : { maxSelected: schema.meta.max } }
     } else if (schema.type === 'string') {
       field = { ...base, kind: schema.meta.role === 'textarea' ? 'textarea' : 'input', value: typeof value === 'string' ? value : '', ...resettable ? { resetValue: typeof fallback === 'string' ? fallback : '' } : {}, ...schema.meta.min === undefined ? {} : { minLength: schema.meta.min }, ...schema.meta.max === undefined ? {} : { maxLength: schema.meta.max } }
     } else if (schema.type === 'number') {
@@ -102,7 +102,7 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     } else if (schema.type === 'boolean') {
       if (schema.meta.required !== true && fallback === undefined) {
         encoded = true
-        field = { ...base, kind: 'select', value: value === undefined ? null : JSON.stringify(value), options: [{ id: 'true', label: t('On') }, { id: 'false', label: t('Off') }], resetValue: null }
+        field = { ...base, kind: 'select', value: typeof value === 'boolean' ? JSON.stringify(value) : null, options: [{ id: 'true', label: t('On') }, { id: 'false', label: t('Off') }], resetValue: null }
       } else field = { ...base, kind: 'toggle', value: value === true, ...resettable ? { resetValue: fallback === true } : {} }
     }
     if (field === undefined) {

@@ -135,7 +135,7 @@ export function apply(ctx: Context): void {
     ]
     const view = () => helpNode(sections(), t)
     let offLocale: (() => void) | undefined
-    const handle = openUiOverlay(ctx, { id: 'mayfly.help', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('help'), scope: { kind: 'app', targetId: 'help' } }, view(), { reopen: 'focus', onClosed: () => offLocale?.() })
+    const handle = openUiOverlay(ctx, { id: 'mayfly.help', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Help'), scope: { kind: 'app', targetId: 'help' } }, view(), { reopen: 'focus', onClosed: () => offLocale?.() })
     if (handle === undefined) return { kind: 'success' }
     offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
     return { kind: 'success' }
