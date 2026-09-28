@@ -202,7 +202,8 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   /**
    * The editor slot the dock actually grants: the terminal minus the real
    * status footer, the one-row transcript reserve, and the header/bottom lane
-   * rows currently applied. Single source for panel bodies and editor overlays.
+   * rows the width-derived layout currently occupies (never a frame stale).
+   * Single source for panel bodies and editor overlays.
    */
   get editorViewport(): { readonly columns: number, readonly rows: number } {
     const columns = this.runtime.columns
