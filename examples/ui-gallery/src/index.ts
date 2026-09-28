@@ -185,5 +185,13 @@ export function apply(ctx: Context): void {
     placement: 'right',
     size: { min: 24, preferred: 36, max: 48 },
     narrow: 'bottom',
+    /* The gallery owns no state, but every action must still settle with a
+       structured reply: submit acknowledges a freshly rendered snapshot and
+       other activations complete with a demo note. */
+    onEvent: {
+      action: event => event.kind === 'submit'
+        ? { kind: 'accepted', node: renderGallery(), source: [] }
+        : { kind: 'completed', feedback: { severity: 'info', message: 'Static gallery demo — there is no state to change' } },
+    },
   }, renderGallery())
 }

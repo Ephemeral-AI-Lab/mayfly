@@ -79,10 +79,12 @@ function isObservation(event: MayflyUiEvent): event is MayflyUiObservationEvent 
 function admitReply<Node>(
   reply: void | MayflyUiActionReply<Node> | MayflyUiObservationReply,
   event: MayflyUiEvent,
-  handled: boolean,
 ): MayflyUiActionReply<Node> | MayflyUiObservationReply | undefined {
   if (reply === undefined) {
-    if (!isObservation(event) && (handled || event.kind === 'submit')) throw new TypeError('UI actions require a structured reply')
+    /* Observations are fire-and-forget; every action — handled or not — must
+       settle with a structured reply so a missing handler can never record
+       silent success downstream. */
+    if (!isObservation(event)) throw new TypeError('UI actions require a structured reply')
     return undefined
   }
   const admitted = freezeWire(reply)
@@ -164,7 +166,7 @@ export class UiEventEndpoint<Node> {
           })) : undefined),
           cancelled,
         ])
-        if (current()) reply = admitReply(result, event, handler !== undefined) as MayflyUiActionReply<Node> | undefined
+        if (current()) reply = admitReply(result, event) as MayflyUiActionReply<Node> | undefined
       } finally {
         handling = false
         signal.removeEventListener('abort', abort)

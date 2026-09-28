@@ -145,7 +145,11 @@ describe.each(['pane', 'overlay'] as const)('%s action publication', kind => {
   it('requires action settlements while observation handlers may return void', async () => {
     const { current } = await setup(kind)
     await expect(current().events.prepare(submit, context())).rejects.toThrow('structured reply')
-    expect((await current().events.prepare(activate, context())).publish()).toBe(false)
+    /* A handler-less action can never settle silently: activation and row
+       acceptance are contract violations, not successes. */
+    await expect(current().events.prepare(activate, context())).rejects.toThrow('structured reply')
+    const accept: MayflyUiEvent = { kind: 'selection-accept', controlId: 'list', pagePath: [], selectedIds: ['a'] }
+    await expect(current().events.prepare(accept, context())).rejects.toThrow('structured reply')
     const action = await setup(kind, () => undefined as never)
     await expect(action.current().events.prepare(activate, context())).rejects.toThrow('structured reply')
     const observation = vi.fn(() => undefined)
