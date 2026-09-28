@@ -71,7 +71,7 @@ key bindings.
 *A single-line hint in the danger tone (width 48).*
 
 ```ts
-ui.text(content: string, options?: { tone?: MayflyTone })
+ui.text(content: string, options?: { tone?: MayflyTone, overflow?: 'wrap' | 'truncate' })
 ```
 
 A semantic text block that the renderer may wrap — use it for status hints,
@@ -109,6 +109,14 @@ Long text wraps at the allocated width instead of clipping:
 ui.text('A long status message wraps at the allocated width instead of clipping, so narrow panes stay readable.', { tone: 'warning' })
 ```
 
+`overflow: 'truncate'` keeps the node to exactly one row instead: line breaks
+and tabs fold to spaces and the tail ends in `…`. Use it for dense rows in a
+bottom pane, where a wrapped row would cost the dock a line:
+
+```ts
+ui.text(`${label} · ${activity}`, { tone: 'muted', overflow: 'truncate' })
+```
+
 ### `richText`
 
 ![`richText` node rendering](/shots/richText.svg)
@@ -116,7 +124,7 @@ ui.text('A long status message wraps at the allocated width instead of clipping,
 *A muted prefix followed by a strong accent model name (width 64).*
 
 ```ts
-ui.richText(spans: readonly MayflyInlineSpan[])
+ui.richText(spans: readonly MayflyInlineSpan[], options?: { overflow?: 'wrap' | 'truncate' })
 
 type MayflyInlineSpan = {
   text: string
@@ -126,7 +134,8 @@ type MayflyInlineSpan = {
 ```
 
 Combines tone and emphasis within one text block — ideal for "label +
-highlighted value" inline mixes. The renderer wraps the text; the plugin must
+highlighted value" inline mixes. The renderer wraps the text (or, with
+`overflow: 'truncate'`, keeps one ellipsized row like `text`); the plugin must
 not assemble ANSI. The screenshot above renders exactly this node:
 
 ```ts

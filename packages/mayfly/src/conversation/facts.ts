@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-tool-todo'
 // the meter cases below consume.
 import type {} from '@deepseek-ai/dsh-compaction/types'
 import { z } from 'zod'
+import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
 import type { ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
@@ -253,13 +254,32 @@ type ConversationFactsProjectionDefinition = Omit<
   'wire'
 > & { wire: NonNullable<ProjectionDefinition<'mayflyConversationFacts', ConversationFactsState>['wire']> }
 
+/* Every committed event of every session re-validates a changed facts view.
+   Spawn-class calls and the per-step usage record are retained by identity
+   across folds, so they pass their strict schemas once; the small remainder
+   stays strictly checked on each view. */
+const admitAgentCalls = everyAdmitted(identityAdmission(conversationFactsSchema.shape.agentCalls.element))
+const admitUsageByStep = identityAdmission(conversationFactsSchema.shape.usageByStep.unwrap())
+const factsRemainderSchema = conversationFactsSchema.omit({ agentCalls: true, usageByStep: true })
+
+function isFactsView(value: unknown): value is ConversationFactsState {
+  if (typeof value !== 'object' || value === null) return false
+  const { agentCalls, usageByStep, ...remainder } = value as Record<string, unknown>
+  return admitAgentCalls(agentCalls)
+    && (usageByStep === undefined || admitUsageByStep(usageByStep))
+    && factsRemainderSchema.safeParse(remainder).success
+}
+
+/** Client-visible facts schema: strict, with retained objects memoized by identity. */
+const conversationFactsViewSchema = z.custom<ConversationFactsState>(isFactsView, 'invalid conversation facts view')
+
 export const conversationFactsProjectionDefinition: ConversationFactsProjectionDefinition = {
   key: 'mayflyConversationFacts',
   stateSchema: conversationFactsSchema,
   init: initialConversationFacts,
   apply: foldConversationFacts,
   wire: {
-    viewSchema: conversationFactsSchema,
+    viewSchema: conversationFactsViewSchema,
     view: state => ({
       ...state,
       todos: state.todos.map(todo => ({ ...todo })),

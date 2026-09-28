@@ -28,8 +28,18 @@ export function apply(ctx: Context): void {
     if (yolo === null) return plan
     return { kind: 'stack', direction: 'row', gap: 1, children: [{ node: plan }, { node: yolo }] }
   }
-  const registration = ctx.mayflyStatus.register({ id: 'mayfly.status.mode', priority: 2 }, node())
-  const refresh = (): void => registration.set(node())
+  const initial = node()
+  let signature = JSON.stringify(initial)
+  const registration = ctx.mayflyStatus.register({ id: 'mayfly.status.mode', priority: 2 }, initial)
+  // Every current-session event re-reads the modes; only a changed badge
+  // republishes (and recompiles the footer).
+  const refresh = (): void => {
+    const next = node()
+    const nextSignature = JSON.stringify(next)
+    if (nextSignature === signature) return
+    signature = nextSignature
+    registration.set(next)
+  }
   const offAgent = ctx.mayflyCurrentAgent.subscribe(refresh)
   const offSession = ctx.on('session/event', (session) => {
     if (session === ctx.mayflyCurrentAgent.current()?.session) refresh()

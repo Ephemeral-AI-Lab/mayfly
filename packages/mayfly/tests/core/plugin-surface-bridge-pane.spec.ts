@@ -959,6 +959,40 @@ describe('direct pane surface renderer', () => {
     }
   })
 
+  it('shares one leading rule among stacked passive panes and paints themed overflow rows', async () => {
+    const f = await fixture()
+    try {
+      const ruled = (title: string, ...rows: string[]): MayflyUiNode => ui.stack.column([ui.divider(), ui.text(title), ...rows.map(row => ui.text(row))], { gap: 0 })
+      f.register({ id: 'agents', priority: 50, render: () => ruled('Agents', 'a1', 'a2', 'a3') })
+      f.register({ id: 'todo', priority: 30, render: () => ruled('Todo', 't1') })
+      const others = [
+        f.register({ id: 'row', priority: 20, render: () => ui.stack.row([ui.divider(), ui.text('row')]) }),
+        f.register({ id: 'gapped', priority: 19, render: () => ui.stack.column([ui.divider(), ui.text('gap')], { gap: 1 }) }),
+        f.register({ id: 'labelled', priority: 18, render: () => ui.stack.column([ui.divider({ label: 'Label' }), ui.text('label')]) }),
+        f.register({ id: 'scoped', priority: 17, render: () => ({ kind: 'stack', direction: 'column', children: [{ node: ui.divider(), when: { minColumns: 1 } }, { node: ui.text('scoped') }] }) }),
+        f.register({ id: 'plain', priority: 16, render: () => ui.text('plain') }),
+      ]
+      await flush()
+      const leading = (id: string): unknown => (entry(f.runtime.surfaces, id).component as { leadingRule?: boolean }).leadingRule
+      expect(['agents', 'todo', 'row', 'gapped', 'labelled', 'scoped', 'plain'].map(leading))
+        .toEqual([true, true, false, false, false, false, false])
+      for (const other of others) other.setHidden(true)
+      await flush()
+      const lane = f.runtime.surfaces.layout(120, 20).bottom!
+      expect(renderSurfaceLane(lane, 40)).toHaveLength(7)
+      const rows = renderSurfaceLane(lane, 40, 5)
+      expect(rows).toHaveLength(5)
+      // One shared rule, then each pane's head; the agents tail folds into a themed row.
+      expect(rows[0]).toMatch(/^─+$/u)
+      expect(rows.filter(row => /^─+$/u.test(row))).toHaveLength(1)
+      expect(rows).toContain('Agents')
+      expect(rows).toContain('Todo')
+      expect(rows.some(row => row.includes('more rows'))).toBe(true)
+    } finally {
+      await f.dispose()
+    }
+  })
+
   it('passes the live allocated viewport to responsive pane nodes', async () => {
     const runtime = createRuntime('alternate', 100, 20)
     const f = await fixture(runtime)

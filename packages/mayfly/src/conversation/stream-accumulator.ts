@@ -44,8 +44,12 @@ export function foldAssistantStreamChunk(state: AssistantStreamState, chunk: Str
     const reasoning = chunk.type === 'reasoning-delta'
     const text = reasoning ? state.reasoning + chunk.text : state.text + chunk.text
     const phase = reasoning ? 'thinking' : 'composing'
-    if (reasoning && text.trim() === '') return { ...state, reasoning: text }
-    const chars = reasoning && state.reasoning.trim() === '' ? text.length : chunk.text.length
+    // `reasoningStartedAt` is set exactly on the first visible reasoning
+    // delta, so blank-so-far is known without trimming (and flattening) the
+    // whole accumulated string on every delta.
+    const blankSoFar = state.reasoningStartedAt === undefined
+    if (reasoning && blankSoFar && chunk.text.trim() === '') return { ...state, reasoning: text }
+    const chars = reasoning && blankSoFar ? text.length : chunk.text.length
     return {
       ...state,
       ...(reasoning ? { reasoning: text, reasoningStartedAt: state.reasoningStartedAt ?? time, reasoningEndedAt: time } : { text }),

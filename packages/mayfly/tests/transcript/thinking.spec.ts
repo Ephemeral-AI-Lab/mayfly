@@ -47,6 +47,22 @@ function thinkingItem(partial: Partial<TranscriptThinkingItem> = {}): Transcript
 const SIX_WORDS = 'l0 l1 l2 l3 l4 l5'
 
 describe('ThinkingComponent', () => {
+  it('wraps only a newline-aligned tail while streaming long reasoning, with exact fallbacks', () => {
+    const components = fakeMayflyComponents()
+    const wrap = vi.spyOn(components, 'wrapText')
+    const long = `${'earlier reasoning line\n'.repeat(400)}penultimate thought\nfinal thought`
+    const live = new ThinkingComponent(thinkingItem({ text: long, streaming: true }), COLORS, components)
+    const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
+    expect(plain(live.render(40))).toEqual(['', '✻ penultimate thought', '  final thought'])
+    expect(wrap.mock.calls.every(([text]) => text.length < 400)).toBe(true)
+    // A tail of trailing blank lines falls back to the whole text.
+    const blankTail = new ThinkingComponent(thinkingItem({ text: `real thought\n${' \n'.repeat(400)}`, streaming: true }), COLORS, components)
+    expect(plain(blankTail.render(40))).toEqual(['', '✻ real thought'])
+    // One unbroken paragraph has no line boundary to cut at.
+    const unbroken = new ThinkingComponent(thinkingItem({ text: `${'word '.repeat(400)}end`, streaming: true }), COLORS, components)
+    expect(unbroken.render(40).at(-1)).toContain('end')
+  })
+
   it('reuses wrapped reasoning across renders, but recomputes for text, width, and invalidation', () => {
     const components = fakeMayflyComponents()
     const wrap = vi.spyOn(components, 'wrapText')

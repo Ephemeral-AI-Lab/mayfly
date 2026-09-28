@@ -62,6 +62,18 @@ function wrapped(text: string, width: number, components: MayflyComponents): str
   return components.wrapText(text, Math.max(1, width))
 }
 
+/**
+ * One ellipsized row for `overflow: 'truncate'`: line breaks and tabs fold
+ * to spaces so the text can never take a second row.
+ * @param text - the (possibly painted) text.
+ * @param width - the row width.
+ * @param components - the width helpers.
+ * @returns exactly one row.
+ */
+export function truncatedRow(text: string, width: number, components: MayflyComponents): string {
+  return components.truncateToWidth(text.replace(/[\r\n\t]+/gu, ' '), Math.max(1, width), '…')
+}
+
 function renderView(
   view: BasicContentNode,
   width: number,
@@ -74,7 +86,8 @@ function renderView(
   switch (view.kind) {
     case 'text': {
       const content = checkedText(view.content, 'text content')
-      return wrapped(content, width, components).map(paintPluginTone(colors, view.tone))
+      const rows = view.overflow === 'truncate' ? [truncatedRow(content, width, components)] : wrapped(content, width, components)
+      return rows.map(paintPluginTone(colors, view.tone))
     }
     case 'fields': {
       if (!Array.isArray(view.rows)) throw new TypeError('fields rows must be an array')

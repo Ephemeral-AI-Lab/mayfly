@@ -340,6 +340,7 @@ export function apply(ctx: Context): void {
   let timer: ReturnType<typeof setInterval> | undefined
   let timerMs = 0
   let tipKind: TipKind | undefined
+  let flowUp: number | undefined
   const rotation = buildTipRotation(STATUS_TIPS)
   let tipIndex = 0
   const currentNode = (): MayflyUiNode | null => state.mode === 'hidden'
@@ -401,7 +402,13 @@ export function apply(ctx: Context): void {
     const nextLabel = activityLabel(mode, facts)
     const nextDetail = activityDetail(mode, facts, policy)
     const nextStart = facts.active ? facts.turnStartedAt : undefined
-    const changed = mode !== state.mode || tipChanged || nextFlow !== state.flow || progress !== state.outputProgress
+    // A running spinner republishes every frame, so streamed output counters
+    // ride its tick instead of recompiling the row on every delta; a usage
+    // (↑) change lands once per step and publishes at once.
+    const upChanged = facts.flowUp !== flowUp
+    flowUp = facts.flowUp
+    const counters = nextFlow !== state.flow || progress !== state.outputProgress
+    const changed = mode !== state.mode || tipChanged || (counters && (!spinner || upChanged))
       || nextLabel !== state.label || nextDetail !== state.detail || nextStart !== state.turnStartedAt
     state.mode = mode
     state.flow = nextFlow

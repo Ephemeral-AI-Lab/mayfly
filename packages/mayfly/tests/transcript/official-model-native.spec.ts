@@ -34,9 +34,11 @@ it('handles cloned native snapshots, multi-entry settlement, retraction, and lat
     { type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['partial'] },
     { type: 'reasoning-chunks', time0: 2, index: 1, dt: [], texts: ['thought'] },
   ] })
-  expect(values[0]!.entries[0]).toEqual(baseline.entries[0])
-  expect(values[0]!.entries[0]).not.toBe(baseline.entries[0])
-  expect(values[1]!.entries[0]).not.toBe(values[0]!.entries[0])
+  // Live wire values are admitted without a deep copy, so a retained entry
+  // keeps its identity; the model must still accept the cloned checkpoint
+  // views exercised below.
+  expect(values[0]!.entries[0]).toBe(baseline.entries[0])
+  expect(values[1]!.entries[0]).toBe(values[0]!.entries[0])
   expect(source.snapshot().entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-thinking', 'transcript-assistant'])
   const settledSeq = session.seq
   session.append('assistant/message', {
@@ -56,6 +58,8 @@ it('handles cloned native snapshots, multi-entry settlement, retraction, and lat
   expect(source.snapshot().entries).toEqual(conversationTranscriptModel(values.at(-1)!, tools).entries)
   const checkpoint = ctx.sessionProjections.checkpoint(session)
   const checkpointView = ctx.sessionProjections.viewCheckpoint(checkpoint).mayflyConversation as ConversationProjection
+  expect(checkpointView.entries[0]).toEqual(values.at(-1)!.entries[0])
+  expect(checkpointView.entries[0]).not.toBe(values.at(-1)!.entries[0])
   source.attach(null)
   source.attach(session)
   expect(source.snapshot().entries).toEqual(conversationTranscriptModel(checkpointView, tools).entries)

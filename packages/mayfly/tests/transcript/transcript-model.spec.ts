@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponent, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/index.ts'
-import { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptLocalsService, TranscriptModelComponent, type TranscriptModelRenderer } from '../../src/transcript/transcript-model.ts'
+import { appendTranscriptNode, createTranscriptModel, FOLLOW_NOTICE_INTERVAL_MS, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptLocalsService, TranscriptModelComponent, type TranscriptModelRenderer } from '../../src/transcript/transcript-model.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 import { ToolCallComponent } from '../../src/transcript/components.ts'
 import { DEFAULT_TRANSCRIPT_PRESENTATION, TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
@@ -573,6 +573,35 @@ describe('TranscriptController', () => {
     service.refresh()
     expect(changed).toEqual([true, false])
     service.dispose()
+  })
+
+  it('announces paused content on transitions and at most once per interval', () => {
+    vi.useFakeTimers()
+    try {
+      const ctx = new Context()
+      const changed: boolean[] = []
+      ctx.on('mayfly/transcript-content-changed', paused => changed.push(paused))
+      const service = new TranscriptController(ctx, undefined, { renderer: plainRenderer() })
+      const f = fixture()
+      let paused = true
+      f.screen.contentChanged = () => paused
+      service.attach(f.screen)
+      service.setSource(model('live'))
+      service.refresh()
+      service.refresh()
+      service.refresh()
+      expect(changed).toEqual([true])
+      vi.advanceTimersByTime(FOLLOW_NOTICE_INTERVAL_MS)
+      service.refresh()
+      expect(changed).toEqual([true, true])
+      paused = false
+      service.refresh()
+      service.refresh()
+      expect(changed).toEqual([true, true, false])
+      service.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('reports the shipped presentation policy without a renderer', () => {

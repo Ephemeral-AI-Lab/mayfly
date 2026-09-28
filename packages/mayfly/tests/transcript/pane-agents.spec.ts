@@ -339,6 +339,73 @@ describe('mayfly-pane-agents plugin', () => {
     await rig.dispose()
   })
 
+  it('folds activity into one truncated row per member beyond the detail limit', async () => {
+    const description = `Audit ${'the persistence layer and every migration path '.repeat(3)}`
+    const rig = await boot([
+      turnStart(1),
+      stepStart(1, 1),
+      toolCallEvent(1, 1, 'broken', 'subagent', JSON.stringify({ description: 'Broken' })),
+      toolResultEvent(1, 1, 'broken', 'boom', { isError: true, time: T0 + 1_000 }),
+      toolCallEvent(1, 1, 'named', 'subagent', JSON.stringify({ name: 'auditor', description })),
+      toolCallEvent(1, 1, 'three', 'subagent', JSON.stringify({ description: 'Three' })),
+      toolResultEvent(1, 1, 'three', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 70 }),
+      toolCallEvent(1, 1, 'four', 'subagent', JSON.stringify({ description: 'Four' })),
+    ])
+    rig.ctx.emit('session/event', childSession('9f5c4086a0674b55b621c3eaf8b88c0e'), childTurnStart())
+    const screen = rig.screen
+    const rows = screen.paneLines(200)
+    // A crowded group folds the live activity into the member's own row.
+    expect(rows.find(row => row.includes('Three'))).toMatch(/Three · .*· Starting…$/u)
+    // Divider, summary, one row per member, and the failed member's error line.
+    expect(rows).toHaveLength(7)
+    expect(rows.join('\n')).toContain('Error: boom')
+    expect(rows.find(row => row.includes('auditor'))).toContain('…')
+    // Rows never wrap: a narrow pane keeps one row per member.
+    expect(screen.paneLines(40)).toHaveLength(7)
+  })
+
+  it('caps crowded groups with live members first and counts the rest by phase', async () => {
+    const events: SessionEvent[] = [turnStart(1), stepStart(1, 1)]
+    for (let index = 0; index < 9; index += 1) {
+      events.push(toolCallEvent(1, 1, `m${String(index)}`, 'subagent', JSON.stringify({ description: `Member ${String(index)}` })))
+      if (index < 4) events.push(toolResultEvent(1, 1, `m${String(index)}`, 'done', { time: T0 + 1_000 }))
+    }
+    const { screen } = await boot(events)
+    const text = screen.paneLines(140).join('\n')
+    expect(text).toContain('Running 9 agents')
+    // Five live members, then the most recently spawned settled one.
+    for (const index of [3, 4, 5, 6, 7, 8]) expect(text).toContain(`Member ${String(index)}`)
+    expect(text).not.toContain('Member 0')
+    // Live members lead, so a dock that cuts the pane short still shows them.
+    expect(text.indexOf('Member 4')).toBeLessThan(text.indexOf('Member 3'))
+    expect(text).toContain('└─ … +3 more (3 done)')
+  })
+
+  it('repaints a changed activity line on the pane tick', async () => {
+    vi.useFakeTimers()
+    const rig = await boot([
+      turnStart(1),
+      stepStart(1, 1),
+      subagentCallEvent(1, 1, 'a1', 'subagent', 'Survey', 'survey', { time: T0 }),
+      toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 70 }),
+    ])
+    const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
+    rig.ctx.emit('session/event', child, childTurnStart())
+    const draft = (phase: 'thinking' | 'composing') => ({
+      sessionId: '9f5c4086a0674b55b621c3eaf8b88c0e',
+      attemptId: 'a1', revision: 1, turn: 1, step: 0,
+      phase, reasoning: 'draft', text: '', outputProgress: undefined, chars: 2_048, updatedAt: T0 + 2_000,
+    })
+    rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', draft('thinking'))
+    expect(rig.screen.paneLines(140).join('\n')).toContain('Thinking…')
+    // Only the activity text changed: the republish waits for the tick.
+    rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', draft('composing'))
+    expect(rig.screen.paneLines(140).join('\n')).toContain('Thinking…')
+    vi.advanceTimersByTime(paneAgents.PANE_TICK_MS)
+    expect(rig.screen.paneLines(140).join('\n')).toContain('Writing…')
+    await rig.dispose()
+  })
+
   it('coalesces volatile streamed-chars churn onto the pane tick', async () => {
     vi.useFakeTimers()
     const rig = await boot([

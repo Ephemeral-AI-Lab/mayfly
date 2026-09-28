@@ -1,6 +1,10 @@
 # Bottom panes
 
-Between the status bar and the input editor sits the **bottom dock**: five passive panes stacked by priority (activity → queue → todo → agents → workflow, editor last). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they switch the current Agent or use the shared readonly session panel.
+Between the transcript and the input editor sits the **bottom dock**: five passive panes stacked by priority, top to bottom workflow → agents → todo → queue → activity, so the activity row sits directly above the editor (the status bar stays below it). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they switch the current Agent or use the shared readonly session panel.
+
+## Dock budget
+
+The dock never takes more than a third of the terminal height. When several panes are active they share one rule instead of repeating it, and rows are handed out by a fixed rule: every pane first gets its head row (title or summary), starting nearest the editor, then the remaining rows go round-robin in the same order. A pane with more rows than its share keeps its head and ends in a muted `… +K more rows`; panes never lose rows from the middle or run into each other. Each pane row is a single line — long labels truncate with `…` instead of wrapping.
 
 ## Activity pane
 
@@ -40,6 +44,7 @@ The session's todo list (whole-list snapshots, last-write-wins) renders under a 
 - **All-completed auto-close** — the next write reopens folded.
 
 - **Interrupted runs** — when the latest run failed or was stopped while the list is unsettled, the title adds a muted `· interrupted`.
+- **Goal** — a current goal rides the title row: `Todo · ● active · 2/5 · <objective>` (truncated to one row); only a blocked goal adds a `blocked:` reason row.
 
 `todo_write` calls appear in the transcript only as one-row process members (`✓ Updated the plan · 3/5 done`); this pane is the list's live surface.
 
@@ -55,8 +60,10 @@ Mayfly retains one auxiliary conversation slot. `/btw <question>` creates a temp
 
 ## Subagent-group pane (agents)
 
-While the agent's **subagent group** runs, its group card is pinned directly above the editor — the last dock row (the kimi swarm-pane semantics). Spawn-class calls (`subagent` and any `subagent_*` provider) appear in the transcript as one-row members, count as subagents in the settled turn header, and join a group title (`Coordinated subagents`) once they settle; the activity row leaves them to this pane. This pane alone shows each agent live: its task, phase, model, effort, estimated output (`↓`, characters / 4), tools, elapsed time, tokens, and current activity. The summary row adds a phase breakdown only when phases differ, and a group clock only when several agents run. A settled group stays until the next turn starts; a call left unanswered when its turn ended reads `cancelled` rather than running forever.
+While the agent's **subagent group** runs, its group card stays in the dock above the todo pane (the kimi swarm-pane semantics). Spawn-class calls (`subagent` and any `subagent_*` provider) appear in the transcript as one-row members, count as subagents in the settled turn header, and join a group title (`Coordinated subagents`) once they settle; the activity row leaves them to this pane. This pane alone shows each agent live: its task, phase, model, effort, estimated output (`↓`, characters / 4), tools, elapsed time, tokens, and current activity. The summary row adds a phase breakdown only when phases differ, and a group clock only when several agents run. A settled group stays until the next turn starts; a call left unanswered when its turn ended reads `cancelled` rather than running forever.
+
+The card stays compact as the group grows: every member is one truncated row; with more than three members, running members are listed first and the current activity folds into the end of each row instead of a line of its own (a failed member keeps its `Error:` line); and with more than six members the card keeps every running member, then the most recent settled ones, closing with `└─ … +K more (3 done, 1 failed)`. The summary counts always cover the whole group.
 
 ## Workflow pane
 
-After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. A settled summary remains until the next relevant state replacement; switching primary/auxiliary Agents switches this pane with every other session-scoped surface.
+After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. Like the agents card, a run with more than six agents lists its running agents first and counts the rest in a closing `… +K more` row. A settled summary remains until the next relevant state replacement; switching primary/auxiliary Agents switches this pane with every other session-scoped surface.

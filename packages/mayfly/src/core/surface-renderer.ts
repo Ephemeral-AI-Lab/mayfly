@@ -117,10 +117,25 @@ function setCompiledFocus(compiled: MayflyCompiledUi | null, focused: boolean): 
   if (target !== undefined && target !== null) target.focused = focused
 }
 
+/**
+ * Whether a pane's content opens with a plain full-width rule. Stacked bottom
+ * panes share one such rule painted by the lane instead of one per pane.
+ */
+function leadsWithRule(node: MayflyUiNode): boolean {
+  if (node.kind !== 'stack' || node.direction !== 'column' || (node.gap ?? 0) !== 0) return false
+  const first = node.children[0]
+  // A viewport- or tab-scoped rule may be hidden, so only an unconditional one counts.
+  return first?.node.kind === 'divider' && first.node.label === undefined && (first.when ?? first.tab) === undefined
+}
+
 class PaneComponent implements MayflyFocusable {
   private targetValue: MayflyCompiledUi | null = null
   private focusedValue = false
   private live = true
+  /** The first rendered row is a plain rule the bottom lane may share. */
+  leadingRule = false
+
+  constructor(private readonly colors: MayflySemanticColors) {}
 
   get focused(): boolean { return this.live && this.focusedValue }
   set focused(value: boolean) {
@@ -132,11 +147,12 @@ class PaneComponent implements MayflyFocusable {
       ? { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
       : getLayoutNode(this.targetValue!.component)!
   }
-  replace(compiled: MayflyCompiledUi | null): void {
+  replace(compiled: MayflyCompiledUi | null, leadingRule = false): void {
     /* v8 ignore next -- record/map identity fences prevent replacement after one disposal. */
     if (!this.live) return
     setCompiledFocus(this.targetValue, false)
     this.targetValue = compiled
+    this.leadingRule = compiled !== null && leadingRule
     setCompiledFocus(compiled, this.focusedValue)
   }
   dispose(): void {
@@ -146,6 +162,10 @@ class PaneComponent implements MayflyFocusable {
     setCompiledFocus(this.targetValue, false)
     this.targetValue = null
     this.focusedValue = false
+  }
+  /** The muted row the bottom lane paints in place of `hidden` cut rows. */
+  renderOverflow(hidden: number): string {
+    return this.colors.textMuted(`  … +${String(hidden)} more rows`)
   }
   render(width: number): string[] { return this.live ? this.targetValue!.component.render(width) : [] }
   invalidate(): void { if (this.live) this.targetValue?.component.invalidate() }
@@ -266,7 +286,8 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
 
   const renderPane = (record: PaneRecord): void => {
     const entry = record.entry
-    const compiled = compile(record.interaction.decisionNode ?? record.interaction.node, 'pane', {
+    const node = record.interaction.decisionNode ?? record.interaction.node
+    const compiled = compile(node, 'pane', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
@@ -288,7 +309,8 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       record.registration = undefined
       return
     }
-    record.component.replace(compiled)
+    // A compiled pane always had a node; null nodes returned above.
+    record.component.replace(compiled, entry.definition.title === undefined && leadsWithRule(node as MayflyUiNode))
     if (record.registration === undefined) {
       record.registration = runtime.surfaces.register({
         id: entry.id,
@@ -317,7 +339,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction), component: new PaneComponent(), registration: undefined, renderedRevision: -1 }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction), component: new PaneComponent(ctx.mayflyTheme.colors), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
     schedulePane(record)
   }

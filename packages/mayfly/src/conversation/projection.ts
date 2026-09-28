@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-commands/types'
 import type {} from '@deepseek-ai/dsh-compaction/types'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
+import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
 import { foldAssistantStreamRecords, initialAssistantStream, type AssistantStreamState } from './stream-accumulator.ts'
 import type {
@@ -633,13 +634,33 @@ type ConversationProjectionDefinition = Omit<
    unchanged states answer the identical view for the lifetime of the state. */
 const conversationViewCache = new WeakMap<ConversationProjectionState, ConversationProjection>()
 
+/* A changed view still passes `viewSchema` on every committed event of every
+   session, child sessions included. Entries, step keys, and turn records are
+   retained by identity across folds, so each object is admitted through the
+   strict element schema once and the view leaves without a deep copy. */
+const admitEntries = everyAdmitted(identityAdmission(conversationEntriesSchema.element))
+const admitSettledSteps = identityAdmission(z.array(z.string()))
+const admitTurns = identityAdmission(turnsSchema)
+
+function isConversationView(value: unknown): value is ConversationProjection {
+  if (typeof value !== 'object' || value === null) return false
+  const view = value as Partial<Record<keyof ConversationProjection, unknown>>
+  return typeof view.streaming === 'boolean'
+    && admitSettledSteps(view.settledSteps)
+    && admitTurns(view.turns)
+    && admitEntries(view.entries)
+}
+
+/** Client-visible wire schema: strict per object, memoized by identity. */
+const conversationViewSchema = z.custom<ConversationProjection>(isConversationView, 'invalid conversation projection view')
+
 export const conversationProjectionDefinition: ConversationProjectionDefinition = {
   key: 'mayflyConversation',
   stateSchema: conversationProjectionStateSchema,
   init: initialConversationState,
   apply: foldConversationProjection,
   wire: {
-    viewSchema: conversationProjectionSchema,
+    viewSchema: conversationViewSchema,
     view: state => {
       let view = conversationViewCache.get(state)
       if (view === undefined) {

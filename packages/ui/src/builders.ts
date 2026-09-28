@@ -30,6 +30,7 @@ import type {
 } from './contracts.ts'
 
 type TextOptions = Omit<MayflyTextNode, 'kind' | 'content'>
+type RichTextOptions = Omit<MayflyRichTextNode, 'kind' | 'spans'>
 type CodeOptions = Omit<MayflyCodeNode, 'kind' | 'code'>
 type ChildOptions = Omit<MayflyUiChild, 'node'>
 type StackOptions = Omit<MayflyStackNode, 'kind' | 'direction' | 'children'>
@@ -109,8 +110,8 @@ function sections(value: readonly MayflySection[]): MayflySectionsNode {
   return frozen({ kind: 'sections', sections: value })
 }
 
-function richText(spans: readonly MayflyInlineSpan[]): MayflyRichTextNode {
-  return frozen({ kind: 'rich-text', spans })
+function richText(spans: readonly MayflyInlineSpan[], options: RichTextOptions = {}): MayflyRichTextNode {
+  return frozen({ ...frozen(options), kind: 'rich-text', spans })
 }
 
 function child(node: MayflyUiNode, options: ChildOptions = {}): MayflyUiChild {

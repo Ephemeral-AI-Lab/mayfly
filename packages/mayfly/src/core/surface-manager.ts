@@ -186,9 +186,156 @@ export function surfaceLaneTabRows(lane: SurfaceLaneLayout): 0 | 1 {
   return selectableSurfaceEntries(lane).length > 1 ? 1 : 0
 }
 
+/** One bottom pane's row demand for {@link allocateBottomRows}. */
+export interface BottomRowDemand {
+  /** Rows the pane rendered. */
+  readonly rows: number
+  /** Rows granted before any pane grows; default 1 (the head row). */
+  readonly min?: number | undefined
+  /** Rows the pane may never exceed. */
+  readonly max?: number | undefined
+}
+
+/**
+ * Allot the bottom lane's row budget. Demands are in paint order (top to
+ * bottom) and are served nearest the editor first: every pane first receives
+ * its minimum (the head row by default), then rows are handed out one at a
+ * time round-robin until the budget or every demand is exhausted. The result
+ * is deterministic and never exceeds a pane's rows or `max`.
+ * @param demands - the painted panes' demands, top to bottom.
+ * @param budget - the lane rows available to panes.
+ * @returns the rows granted to each demand, in the same order.
+ */
+export function allocateBottomRows(demands: readonly BottomRowDemand[], budget: number): number[] {
+  const sizes = demands.map(() => 0)
+  const caps = demands.map(demand => Math.max(0, Math.min(demand.rows, finiteInteger(demand.max, demand.rows))))
+  const order = demands.map((_demand, index) => demands.length - 1 - index)
+  let remaining = Math.max(0, finiteInteger(budget, 0))
+  for (const index of order) {
+    const grant = Math.min(remaining, caps[index]!, Math.max(1, finiteInteger(demands[index]!.min, 1)))
+    sizes[index] = grant
+    remaining -= grant
+  }
+  let grew = true
+  while (remaining > 0 && grew) {
+    grew = false
+    for (const index of order) {
+      if (remaining === 0) break
+      if (sizes[index]! >= caps[index]!) continue
+      sizes[index]! += 1
+      remaining -= 1
+      grew = true
+    }
+  }
+  return sizes
+}
+
+/**
+ * Fit one pane's rows to its allotment, keeping the head: an over-tall pane
+ * shows its first rows and ends in a row naming how many were cut.
+ * @param rows - the pane's rows.
+ * @param size - the allotted row count.
+ * @param overflow - renders the replacement row for `hidden` cut rows.
+ * @returns at most `size` rows.
+ */
+export function fitSurfaceRows(rows: readonly string[], size: number, overflow: (hidden: number) => string): string[] {
+  if (rows.length <= size) return [...rows]
+  if (size <= 1) return rows.slice(0, Math.max(0, size))
+  return [...rows.slice(0, size - 1), overflow(rows.length - size + 1)]
+}
+
+/** Lane hooks a bottom pane component may offer beyond `render`. */
+export interface SurfaceLaneRows {
+  /** Whether the first rendered row is a plain rule the lane paints once. */
+  readonly leadingRule?: boolean
+  /** Paint the muted row that replaces `hidden` cut rows. */
+  renderOverflow?(hidden: number, width: number): string
+}
+
+/** One painted entry of a planned bottom lane. */
+export interface BottomLaneSlot {
+  readonly entry: SurfaceLaneEntry
+  /** Passive panes paint `rows`; an interactive pane lays out in `size` rows. */
+  readonly passive: boolean
+  readonly rows: readonly string[]
+  readonly size: number
+}
+
+/** A bottom lane's rows for one width and budget. */
+export interface BottomLanePlan {
+  /** The single rule stacked passive panes share, when any leads with one. */
+  readonly rule: string | undefined
+  readonly tabs: string | undefined
+  readonly slots: readonly BottomLaneSlot[]
+  /** Total painted rows: rule, tabs, and every slot size. */
+  readonly rows: number
+}
+
+function laneRows(entry: SurfaceLaneEntry): SurfaceLaneRows {
+  return entry.component as MayflyComponent & SurfaceLaneRows
+}
+
+/**
+ * Plan the bottom lane: passive panes whose content leads with a rule share
+ * one lane rule, rows are allotted by {@link allocateBottomRows}, and passive
+ * panes are fit head-first by {@link fitSurfaceRows}. Measurement, main-mode
+ * painting, and the alternate-screen layout all read this plan, so they agree.
+ * @param lane - the bottom lane.
+ * @param width - the lane width.
+ * @param maxRows - the lane's row budget.
+ * @returns the plan.
+ */
+export function planBottomLane(lane: SurfaceLaneLayout, width: number, maxRows: number): BottomLanePlan {
+  const available = safeDimension(width)
+  let budget = Math.max(0, finiteInteger(maxRows, 0))
+  const tabs = surfaceLaneTabRows(lane) === 1 && budget > 0 ? renderSurfaceTabs(lane, available) : undefined
+  if (tabs !== undefined) budget -= 1
+  const painted = renderedSurfaceEntries(lane).map(entry => {
+    const passive = contributionFocusTarget(entry) === null
+    const rows = entry.component.render(available).map(row => fit(row, available))
+    const ruled = passive && laneRows(entry).leadingRule === true && rows.length > 0
+    return { entry, passive, ruled, rule: ruled ? rows[0] : undefined, rows: ruled ? rows.slice(1) : rows }
+  })
+  const allocate = (rows: number): number[] => allocateBottomRows(painted.map(item => ({
+    rows: item.rows.length,
+    ...(item.passive ? { min: item.entry.size?.min, max: item.entry.size?.max } : {}),
+  })), rows)
+  const ruledFirst = painted.find(item => item.ruled)
+  let rule: string | undefined
+  let sizes = allocate(budget)
+  if (ruledFirst !== undefined && budget > 0) {
+    const ruledSizes = allocate(budget - 1)
+    if (painted.some((item, index) => item.ruled && ruledSizes[index]! > 0)) {
+      rule = ruledFirst.rule
+      sizes = ruledSizes
+    }
+  }
+  const slots = painted.map((item, index): BottomLaneSlot => {
+    const size = sizes[index]!
+    if (!item.passive) return { entry: item.entry, passive: false, rows: item.rows.slice(0, size), size }
+    const paint = laneRows(item.entry).renderOverflow
+    const overflow = (hidden: number): string => fit(paint === undefined
+      ? `  … +${String(hidden)} more rows`
+      : paint.call(item.entry.component, hidden, available), available)
+    return { entry: item.entry, passive: true, rows: fitSurfaceRows(item.rows, size, overflow), size }
+  })
+  const rows = (rule === undefined ? 0 : 1) + (tabs === undefined ? 0 : 1) + sizes.reduce((sum, size) => sum + size, 0)
+  return { rule, tabs, slots, rows }
+}
+
+/** Flatten a planned bottom lane to its painted rows. */
+export function bottomLaneRows(plan: BottomLanePlan): string[] {
+  return [
+    ...(plan.rule === undefined ? [] : [plan.rule]),
+    ...(plan.tabs === undefined ? [] : [plan.tabs]),
+    ...plan.slots.flatMap(slot => slot.rows),
+  ]
+}
+
 /** Render one lane and clamp hostile component output. */
 export function renderSurfaceLane(lane: SurfaceLaneLayout | undefined, width: number, maxRows = Number.MAX_SAFE_INTEGER): string[] {
   if (lane === undefined) return []
+  if (lane.placement === 'bottom') return bottomLaneRows(planBottomLane(lane, width, maxRows))
   const available = safeDimension(width)
   const tabs = surfaceLaneTabRows(lane) === 1 ? [renderSurfaceTabs(lane, available)] : []
   const body = renderedSurfaceEntries(lane)

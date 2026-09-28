@@ -222,6 +222,12 @@ function enumeration<Value extends string | number>(value: unknown, values: read
   return value as Value
 }
 
+/** A text node's optional overflow mode. */
+function textOverflow(object: Record<string, unknown>, path: string): 'wrap' | 'truncate' | undefined {
+  const value = own(object, 'overflow', path)
+  return value === undefined ? undefined : enumeration(value, ['wrap', 'truncate'] as const, `${path}.overflow`)
+}
+
 function collection(value: unknown, path: string): readonly unknown[] {
   if (!Array.isArray(value)) invalid(`${path} must be an array`)
   const prototype = Object.getPrototypeOf(value)
@@ -896,14 +902,19 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
     switch (kind) {
       case 'text': {
         const toneValue = own(object, 'tone', path)
-        return { kind, content: text(required(object, 'content', path), `${path}.content`, state), ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone') }
+        return {
+          kind,
+          content: text(required(object, 'content', path), `${path}.content`, state),
+          ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone'),
+          ...optional(textOverflow(object, path), 'overflow'),
+        }
       }
       case 'markdown': return { kind, source: text(required(object, 'source', path), `${path}.source`, state) }
       case 'fields': return { kind, rows: collection(required(object, 'rows', path), `${path}.rows`).map((item, index) => field(item, `${path}.rows[${String(index)}]`, state)) }
       case 'code': return { kind, code: text(required(object, 'code', path), `${path}.code`, state), ...optional(optionalText(object, 'language', path, state), 'language') }
       case 'diff': return { kind, before: text(required(object, 'before', path), `${path}.before`, state), after: text(required(object, 'after', path), `${path}.after`, state) }
       case 'sections': return { kind, sections: collection(required(object, 'sections', path), `${path}.sections`).map((item, index) => section(item, `${path}.sections[${String(index)}]`, state, depth + 1)) }
-      case 'rich-text': return { kind, spans: spans(required(object, 'spans', path), `${path}.spans`, state) }
+      case 'rich-text': return { kind, spans: spans(required(object, 'spans', path), `${path}.spans`, state), ...optional(textOverflow(object, path), 'overflow') }
       case 'stack': {
         const gapValue = own(object, 'gap', path)
         const alignValue = own(object, 'align', path)

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { visibleWidth } from '../../src/core/width.ts'
 import {
   clampFrame,
+  clampFrameFrom,
   createFileOverflowSink,
   defaultOverflowDirectory,
   type FrameOverflowEntry,
@@ -22,6 +23,30 @@ function recordingSink(): { entries: FrameOverflowEntry[]; sink: { record(entry:
   const entries: FrameOverflowEntry[] = []
   return { entries, sink: { record: (entry) => entries.push(entry) } }
 }
+
+describe('clampFrameFrom', () => {
+  it('reuses previous results for unchanged rows and measures only changed ones', () => {
+    const wide = 'w'.repeat(30)
+    const first = ['keep', wide, 'tail']
+    const { entries, sink } = recordingSink()
+    const previous = { source: first, rows: clampFrame(first, 10, sink) }
+    expect(entries).toHaveLength(1)
+    const next = ['keep', wide, 'x'.repeat(12), 'new']
+    const rows = clampFrameFrom(previous, next, 10, sink)
+    // The reused wide row is not re-recorded; the changed over-wide row is.
+    expect(rows).toEqual(clampFrame(next, 10))
+    expect(entries.map(entry => entry.index)).toEqual([1, 2])
+    expect(visibleWidth(rows[1]!)).toBeLessThanOrEqual(10)
+  })
+
+  it('returns the input when nothing clamps and falls back without a previous clamp', () => {
+    const lines = ['a', 'b']
+    expect(clampFrameFrom({ source: ['a'], rows: ['a'] }, lines, 10)).toBe(lines)
+    expect(clampFrameFrom(undefined, lines, 10)).toBe(lines)
+    const shifted = ['z'.repeat(20), 'a']
+    expect(clampFrameFrom({ source: ['a'], rows: ['a'] }, shifted, 10)).toEqual(clampFrame(shifted, 10))
+  })
+})
 
 describe('clampFrame', () => {
   it('returns a clean frame untouched, as the same array', () => {

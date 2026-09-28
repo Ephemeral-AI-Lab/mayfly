@@ -78,6 +78,27 @@ describe('core width-scan', () => {
       }
     })
 
+    it(`truncating text and rich-text rows stay one fitting row over ${name}`, () => {
+      const node = ui.stack.column([
+        ui.text(`${text}\n${text}`, { tone: 'muted', overflow: 'truncate' }),
+        ui.richText([{ text, tone: 'accent', styles: ['strong'] }, { text: `\t${text}` }], { overflow: 'truncate' }),
+      ])
+      const result = compileMayflyUiNode(node, {
+        components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
+        colors: DARK_COLORS,
+        getViewport: () => ({ columns: 80, rows: 20 }),
+        screenMode: 'alternate',
+        emit: () => {},
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      for (const width of SCAN_WIDTHS) {
+        const rows = result.value.component.render(width)
+        expect(rows).toHaveLength(2)
+        expectLinesFit(`truncate/${name}`, rows, width)
+      }
+    })
+
     it(`framePanel survives ${name}`, () => {
       // framePanel's body rows arrive pre-budgeted by their callers (the
       // HelpOverlay/InfoPanel pattern); the scan feeds them the same way.

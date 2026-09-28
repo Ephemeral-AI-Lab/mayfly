@@ -711,7 +711,8 @@ function withLiveDraft(
   if (draft === undefined || settledSteps.has(`${String(draft.turn)}:${String(draft.step)}`)) return durable
   const renderRevision = `live:${draft.attemptId}:${String(draft.revision)}`
   const liveEntries: TranscriptEntryModel[] = []
-  if (draft.reasoning.trim() !== '') {
+  // A recorded span proves visible reasoning without trimming the whole text.
+  if (draft.reasoningSpan !== undefined || draft.reasoning.trim() !== '') {
     const thinking = draft.phase === 'thinking'
     const span = draft.reasoningSpan
     liveEntries.push({

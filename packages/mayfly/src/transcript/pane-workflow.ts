@@ -13,7 +13,7 @@ import type {
 } from '@deepseek-ai/dsh-workflow'
 import type { MayflyInlineSpan, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { SessionFactsService } from './session-facts.ts'
-import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds } from './agent-presentation.ts'
+import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds, hiddenMembersText, selectVisibleMembers } from './agent-presentation.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-workflow'
@@ -94,7 +94,7 @@ function runningHeader(run: WorkflowRunState, now: number): MayflyUiNode {
     if (part === `${String(running)} running` && running > 0) spans.push({ text: '● ', tone: 'accent', styles: ['strong'] })
     spans.push({ text: part, tone: 'muted' })
   })
-  return { kind: 'rich-text', spans }
+  return { kind: 'rich-text', spans, overflow: 'truncate' }
 }
 
 function memberNode(agent: WorkflowAgentRow, last: boolean): MayflyUiNode {
@@ -113,6 +113,7 @@ function memberNode(agent: WorkflowAgentRow, last: boolean): MayflyUiNode {
       { text: ` — agent #${String(agent.seq)}`, tone: 'muted' },
       ...(agent.phase === undefined ? [] : [{ text: ` · ${agent.phase}`, tone: 'muted' as const }]),
     ],
+    overflow: 'truncate',
   }
 }
 
@@ -133,6 +134,7 @@ function settledNode(run: WorkflowRunState): MayflyUiNode {
       { text: `Workflow ${run.name}`, tone: 'accent', styles: ['strong'] },
       { text: ` — ${reason} · ${String(count)} agent${count === 1 ? '' : 's'} · ${elapsed}`, tone: 'muted' },
     ],
+    overflow: 'truncate',
   }
 }
 
@@ -147,7 +149,12 @@ export function workflowNode(runs: readonly WorkflowRunState[], now: number): Ma
       continue
     }
     children.push({ node: runningHeader(run, now) })
-    run.agents.forEach((agent, index) => children.push({ node: memberNode(agent, index === run.agents.length - 1) }))
+    // A crowded run shows its running agents first, then the latest finished.
+    const { shown, hidden } = selectVisibleMembers(run.agents.map(agent => ({
+      agent, phaseLabel: agentPhasePresentation(agent.outcome ?? 'running').label,
+    })))
+    shown.forEach(({ agent }, index) => children.push({ node: memberNode(agent, hidden.length === 0 && index === shown.length - 1) }))
+    if (hidden.length > 0) children.push({ node: { kind: 'text', content: hiddenMembersText(hidden), tone: 'muted', overflow: 'truncate' } })
   }
   return { kind: 'stack', direction: 'column', gap: 0, children }
 }
@@ -174,7 +181,15 @@ export function apply(ctx: Context): void {
     return run.attributed
   }
   const attributedRuns = (): readonly WorkflowRunState[] => [...runs.values()].filter(run => run.attributed)
-  const refresh = (): void => pane?.set(workflowNode(attributedRuns(), workflowPaneTimers.now()))
+  // The one-second tick republishes (and recompiles) only a changed pane.
+  let published: string | undefined
+  const refresh = (): void => {
+    const node = workflowNode(attributedRuns(), workflowPaneTimers.now())
+    const signature = JSON.stringify(node)
+    if (signature === published) return
+    published = signature
+    pane?.set(node)
+  }
   const standDownTick = (): void => {
     if (tickHandle === undefined) return
     workflowPaneTimers.clearInterval(tickHandle)
@@ -277,12 +292,14 @@ export function apply(ctx: Context): void {
     ensureTick()
   })
 
+  const initial = workflowNode(attributedRuns(), workflowPaneTimers.now())
+  published = JSON.stringify(initial)
   pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.workflow',
     placement: 'bottom',
     priority: WORKFLOW_PRIORITY,
     narrow: 'bottom',
-  }, workflowNode(attributedRuns(), workflowPaneTimers.now()))
+  }, initial)
   ctx.effect(() => () => {
     standDownTick()
     offFacts()

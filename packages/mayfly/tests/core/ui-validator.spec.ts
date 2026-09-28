@@ -42,18 +42,20 @@ describe('validateMayflyUiNode', () => {
     [{ kind: 'actions', id: 'x', items: [{ id: 'a', label: 'A', disabled: 'yes' }] }, 'boolean'],
     [{ kind: 'tabs', id: 'x', activeId: 'a', items: [{ id: 'a', label: 'A', count: -1 }] }, 'finite integer'],
     [{ kind: 'text', content: 'x', tone: 'neon' }, 'invalid'],
+    [{ kind: 'text', content: 'x', overflow: 'clip' }, 'overflow is invalid'],
+    [{ kind: 'rich-text', spans: [], overflow: 1 }, 'overflow is invalid'],
   ])('contains malformed primitive/schema input %j', (value, message) => {
     expect(validateMayflyUiNode(value)).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: expect.stringContaining(message) })
   })
 
   it('canonicalizes every public node kind and drops unknown fields', () => {
     const all = ui.stack.column([
-      ui.text('text', { tone: 'accent' }),
+      ui.text('text', { tone: 'accent', overflow: 'truncate' }),
       ui.fields([{ label: 'field', value: [{ text: 'value', styles: ['strong'] }] }]),
       ui.code('const x = 1', { language: 'ts' }),
       ui.diff('before', 'after'),
       ui.sections([{ title: 'section', body: ui.text('body'), collapsed: false }]),
-      ui.richText([{ text: 'rich', tone: 'success' }]),
+      ui.richText([{ text: 'rich', tone: 'success' }], { overflow: 'wrap' }),
       ui.surface({ title: 'title', subtitle: 'subtitle', badges: [{ text: 'badge' }], chrome: 'surface', padding: 1, child: ui.text('child'), footer: ui.text('footer') }),
       ui.scroll(ui.text('scroll'), { follow: 'start', scrollbar: true }),
       ui.tabs({ id: 'tabs', activeId: 'one', items: [{ id: 'one', label: 'One', count: 2 }, { id: 'two', label: 'Two', disabled: true }] }),

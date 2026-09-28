@@ -191,6 +191,8 @@ interface TranscriptRenderPlan {
   readonly runningTurn: number | undefined
   /** Index of the running turn's first entry; everything before it is stable. */
   readonly split: number
+  /** Semantic entry ids before `split`, whose invalidation drops the prefix. */
+  readonly prefixIds: ReadonlySet<string>
 }
 
 /** Rows of every turn before the running one, reused across live frames. */
@@ -200,6 +202,8 @@ interface PrefixRowsCache {
   readonly items: readonly DisplayItem[]
   readonly rows: string[]
   readonly lastSeq: number | undefined
+  /** Header and group-title row ids the prefix keeps alive. */
+  readonly rowIds: readonly string[]
 }
 
 /** One header or group-title row component and its gutter. */
@@ -226,6 +230,11 @@ function entryRevision(entry: TranscriptEntryModel): number | string {
 /** A tool entry renders as one row or as a card; other kinds have one form. */
 function variantOf(entry: TranscriptEntryModel): string {
   return entry.kind === 'transcript-tool' ? isLineTool(entry) ? 'line' : 'card' : entry.kind
+}
+
+/** Ids of the header and group-title rows among display items. */
+function rowIdsOf(items: readonly DisplayItem[]): string[] {
+  return items.flatMap(item => item.kind === 'entry' ? [] : [item.id])
 }
 
 /** The anchor-ordering seq of the last item that carries one. */
@@ -303,10 +312,12 @@ export class TranscriptModelComponent implements MayflyComponent {
       const ids = new Set(entries.filter(isSemantic).map(entry => entry.id))
       const runningTurn = runningTurnOf(model, entries)
       const first = runningTurn === undefined ? -1 : entries.findIndex(entry => isSemantic(entry) && entry.turn === runningTurn)
+      const split = first < 0 ? entries.length : first
       plan = {
         sourceEntries: model.entries, policy, liveTurn: model.live?.turn, liveStep: model.live?.step,
         streaming: model.streaming, turns: model.turns, entries, ids,
-        expandableTurns: new Set(turns.slice(-policy.expandTurns)), runningTurn, split: first < 0 ? entries.length : first,
+        expandableTurns: new Set(turns.slice(-policy.expandTurns)), runningTurn, split,
+        prefixIds: new Set(entries.slice(0, split).filter(isSemantic).map(entry => entry.id)),
       }
       this.plan = plan
       this.prefix = undefined
@@ -332,11 +343,14 @@ export class TranscriptModelComponent implements MayflyComponent {
     if (prefix === undefined || prefix.width !== width || prefix.expanded !== this.expanded) {
       const items = display(plan.entries.slice(0, plan.split))
       const anchors = [...this.anchored.values()].filter(item => tailFirst === undefined || item.seq < tailFirst)
-      prefix = { width, expanded: this.expanded, items, rows: this.renderItems(items, anchors, width, policy), lastSeq: lastItemSeq(items, undefined) }
+      prefix = {
+        width, expanded: this.expanded, items, rows: this.renderItems(items, anchors, width, policy),
+        lastSeq: lastItemSeq(items, undefined), rowIds: rowIdsOf(items),
+      }
       this.prefix = prefix
     }
     const tailItems = tailEntries.length === 0 ? [] : display(tailEntries, prefix.lastSeq)
-    this.pruneRows(new Set([...prefix.items, ...tailItems].flatMap(item => item.kind === 'entry' ? [] : [item.id])))
+    this.pruneRows(new Set([...prefix.rowIds, ...rowIdsOf(tailItems)]))
     // A live frame is a fresh array over the shared stable rows: identity
     // caches downstream (the frame clamp) see the change without a scan.
     let rows = prefix.rows
@@ -550,7 +564,7 @@ export class TranscriptModelComponent implements MayflyComponent {
     const cached = this.cached.get(id)
     if (cached !== undefined) cached.rows = undefined
     this.renderedRows = undefined
-    if (this.plan?.ids.has(id)) this.prefix = undefined
+    if (this.plan?.prefixIds.has(id)) this.prefix = undefined
   }
 
   /** Current tree policy, or immutable shipped defaults for standalone consumers. */
@@ -739,6 +753,13 @@ interface MountedTranscript {
   readonly unmount: () => void
 }
 
+/**
+ * While the viewport is scrolled away, new content re-announces itself at
+ * most this often: often enough to keep the follow notice alive, without a
+ * notification record per streamed delta.
+ */
+export const FOLLOW_NOTICE_INTERVAL_MS = 1000
+
 /** Single-source bridge from the selected conversation projection to its fixed slot. */
 export class TranscriptController {
   private source: Source | undefined
@@ -746,6 +767,7 @@ export class TranscriptController {
   private screen: MayflyScreen | undefined
   private expanded = false
   private localSerial = 0
+  private followNotice: { readonly paused: boolean, readonly at: number } | undefined
 
   constructor(
     private readonly owner: Context,
@@ -772,7 +794,12 @@ export class TranscriptController {
     const screen = this.screen
     if (screen === undefined) return
     const paused = screen.contentChanged()
-    this.owner.emit('mayfly/transcript-content-changed', paused)
+    const now = Date.now()
+    const last = this.followNotice
+    if (last?.paused !== paused || (paused && now - last.at >= FOLLOW_NOTICE_INTERVAL_MS)) {
+      this.followNotice = { paused, at: now }
+      this.owner.emit('mayfly/transcript-content-changed', paused)
+    }
     screen.requestRender()
   }
 

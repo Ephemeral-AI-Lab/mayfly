@@ -49,4 +49,22 @@ describe('highlightCodeLines', () => {
     })
     expect(highlightCodeLines('a\nb', 'js', base)).toEqual(['a', 'b'])
   })
+
+  it('memoizes highlighted blocks by resolved base color, language, and code', () => {
+    vi.mocked(highlight).mockClear()
+    const first = highlightCodeLines('let memo = 1', 'js', base)
+    first.push('mutated')
+    expect(highlightCodeLines('let memo = 1', ' JS', base)).toEqual(first.slice(0, -1))
+    expect(highlight).toHaveBeenCalledTimes(1)
+    // A theme switch resolves the base differently and misses.
+    highlightCodeLines('let memo = 1', 'js', text => `«other:${text}»`)
+    expect(highlight).toHaveBeenCalledTimes(2)
+    // The oldest entries leave once the memo is full.
+    for (let index = 0; index < 64; index += 1) highlightCodeLines(`let n${String(index)} = 1`, 'js', base)
+    vi.mocked(highlight).mockClear()
+    highlightCodeLines('let n63 = 1', 'js', base)
+    expect(highlight).not.toHaveBeenCalled()
+    highlightCodeLines('let memo = 1', 'js', base)
+    expect(highlight).toHaveBeenCalledTimes(1)
+  })
 })

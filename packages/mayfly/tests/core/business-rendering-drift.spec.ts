@@ -37,7 +37,7 @@ const approvedWidthMath = new Set([
 const approvedPresentation = new Set([
   "border:packages/mayfly/src/transcript/agent-group.ts:const branch = isLast ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/agent-group.ts:const prefix = isLast ? '   ' : '│  '",
-  "border:packages/mayfly/src/transcript/pane-agents.ts:return [row, ui.text(`  ${view.last ? '   ' : '│  '}    ${failed ? `Error: ${view.detailLine}` : view.detailLine}`, { tone: failed ? 'danger' : 'muted' })]",
+  "border:packages/mayfly/src/transcript/pane-agents.ts:return [row, ui.text(`  ${last ? '   ' : '│  '}    ${failed ? `Error: ${detailLine}` : detailLine}`, { tone: failed ? 'danger' : 'muted', overflow: 'truncate' })]",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:return last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:export function agentTreeBranch(last: boolean): '└─' | '├─' {",
   "border:packages/mayfly/src/transcript/command-group.ts:const branch = last ? '└─' : '├─'",

@@ -24,6 +24,16 @@ export function apply(ctx: Context): void {
 `narrow` may be `bottom`, `overlay`, or `hidden`. `set(null)` releases the
 lane until the next non-null snapshot.
 
+`size` counts columns for `left`/`right` panes and rows for `bottom` panes.
+Bottom panes stack in one dock that takes at most a third of the terminal
+height: each pane first receives `size.min` rows (default 1, its head row),
+nearest the editor first, and the remaining rows are shared round-robin up to
+`size.max`. A pane that gets fewer rows than it rendered keeps its head and
+ends in a muted `… +K more rows`, so put the most important row first. When
+several passive bottom panes begin with a plain `divider`, the dock paints a
+single rule for all of them. Use `overflow: 'truncate'` on dense rows so one
+entry never costs two dock rows.
+
 ## Overlay
 
 ```ts
