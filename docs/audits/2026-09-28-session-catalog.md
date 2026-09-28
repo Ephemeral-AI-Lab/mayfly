@@ -153,6 +153,14 @@ successive loader frames; the median interval was 81 ms. Workspace loading,
 workspace navigation, retained names, 110/40-column rendering, and clean exit
 also passed. Restart the dedicated profile for human animation acceptance.
 
+## PR integration verification
+
+Integrated `main` through `d648b0e`, preserving its localized overflow labels
+and loader elapsed-time formatting alongside the animation clock. Build,
+packaging, Website, screenshots, locale checks, and examples passed; the full
+coverage suite passed 3,851 tests (eight skipped) with 100% per-file executable
+coverage. The headless happy smoke passed after the integration.
+
 ## Native references
 
 - [Session query](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/session-query)

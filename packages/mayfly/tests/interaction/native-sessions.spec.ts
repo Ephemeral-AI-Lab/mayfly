@@ -485,7 +485,7 @@ it('marks the displayed Agent current and reads live titles through native proje
   const bench = await setup()
   bench.ctx.mayflyCurrentAgent.select(bench.other)
   await bench.open()
-  expect(JSON.stringify(bench.model().node)).toContain('current · running · Reminders')
+  expect(JSON.stringify(bench.model().node)).toContain('current · running · reminders')
   expect(bench.query.observeSession.mock.calls.map(call => call[0])).toEqual([])
 })
 
