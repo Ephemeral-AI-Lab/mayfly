@@ -75,4 +75,24 @@ describe('interaction locale lifecycle', () => {
     expect(seen).toHaveLength(before)
     await second.dispose()
   })
+
+  it('shares the interaction catalog across owners and survives the first owner unloading', async () => {
+    const ctx = new Context()
+    const owner = (name: string) => ({
+      name,
+      apply(ownerCtx: Context) { mountInteractionLocale(ownerCtx) },
+    })
+    const first = await ctx.plugin(owner('interaction-owner-one'))
+    const second = await ctx.plugin(owner('interaction-owner-two'))
+    const provider = await ctx.plugin(localePlugin('zh'))
+    await settle()
+    const t = interactionTranslator(ctx)
+    expect(t('Language')).toBe('语言')
+
+    await first.dispose()
+    expect(t('Language')).toBe('语言')
+    await second.dispose()
+    expect(t('Language')).toBe('Language')
+    await provider.dispose()
+  })
 })

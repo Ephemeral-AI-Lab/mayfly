@@ -617,7 +617,10 @@ const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key
 export const INTERACTION_LOCALE: MayflyLocaleCatalog = Object.freeze({ en, zh: Object.freeze(zh) })
 
 /**
- * Register the package catalog whenever a locale provider is active.
+ * Register the package catalog whenever a locale provider is active. Many
+ * independently mounted interaction plugins call this with the same
+ * `INTERACTION_LOCALE` instance; the registry shares one reference-counted
+ * registration, so only the last owner's unload removes the catalog.
  * @param ctx - interaction root context.
  */
 export function mountInteractionLocale(ctx: Context): void {

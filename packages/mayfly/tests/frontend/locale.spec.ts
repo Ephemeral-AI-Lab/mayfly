@@ -42,12 +42,23 @@ describe('MayflyLocaleService', () => {
     first.dispose(); second.dispose()
   })
 
-  it('rejects duplicate or late namespaces and makes retained handles inert', () => {
+  it('shares one namespace across owners and still rejects a conflicting catalog', () => {
+    const service = new MayflyLocaleService(new Context())
+    const catalog = { zh: {}, en: { Value: 'value' } }
+    const first = service.register('owner', catalog)
+    const second = service.register('owner', catalog)
+    expect(service.translate('owner', 'Value')).toBe('value')
+    expect(() => service.register('owner', { zh: {}, en: { Value: 'other' } })).toThrow(/already registered/u)
+    first()
+    expect(service.translate('owner', 'Value')).toBe('value')
+    second(); second()
+    expect(service.translate('owner', 'Value')).toBe('Value')
+  })
+
+  it('rejects late namespaces and makes retained handles inert after dispose', () => {
     const service = new MayflyLocaleService(new Context())
     const catalog = { zh: {}, en: { Value: 'value' } }
     const dispose = service.register('owner', catalog)
-    expect(() => service.register('owner', catalog)).toThrow(/already registered/u)
-    expect(service.translate('owner', 'Value')).toBe('value')
     service.dispose()
     expect(service.setPreference('zh')).toBe(false)
     const off = service.subscribe(() => { throw new Error('should not run') })

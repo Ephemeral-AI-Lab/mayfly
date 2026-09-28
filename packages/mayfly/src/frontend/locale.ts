@@ -56,9 +56,19 @@ export interface MayflyLocaleServiceOptions {
   readonly preference?: MayflyLocaleId
 }
 
+/** One reference-counted namespace registration shared by its owners. */
+interface LocaleRegistration {
+  /** First-registered catalog, used to reject conflicting re-registrations. */
+  readonly source: MayflyLocaleCatalog
+  /** Frozen copy served to translators. */
+  readonly catalog: MayflyLocaleCatalog
+  /** Live owner count; the namespace is removed at zero. */
+  refs: number
+}
+
 /** Renderer-neutral locale registry scoped to one frontend tree. */
 export class MayflyLocaleService extends Service {
-  private readonly catalogs = new Map<string, MayflyLocaleCatalog>()
+  private readonly entries = new Map<string, LocaleRegistration>()
   private readonly listeners = new Set<(snapshot: MayflyLocaleSnapshot) => void>()
   private readonly systemLocale: MayflyLocaleId
   private explicitPreference: MayflyLocalePreference
@@ -108,27 +118,54 @@ export class MayflyLocaleService extends Service {
   }
 
   /**
-   * Register one package-owned dictionary namespace.
+   * Register one package-owned dictionary namespace. Re-registering the same
+   * catalog instance shares one reference-counted registration, so several
+   * independently mounted plugins can own a namespace together and only the
+   * final release removes it. A different catalog instance for a live
+   * namespace still conflicts.
    * @param namespace - stable dictionary namespace.
    * @param catalog - English and Simplified Chinese messages.
    * @returns idempotent registration disposer.
    */
   register(namespace: string, catalog: MayflyLocaleCatalog): () => void {
     if (this.disposed) throw new Error('locale service is disposed')
-    if (this.catalogs.has(namespace)) {
-      throw new Error(`locale namespace "${namespace}" is already registered`)
+    const existing = this.entries.get(namespace)
+    if (existing !== undefined) {
+      if (existing.source !== catalog) {
+        throw new Error(`locale namespace "${namespace}" is already registered`)
+      }
+      existing.refs += 1
+      return this.release(namespace, existing)
     }
-    const frozen = Object.freeze({
-      zh: Object.freeze({ ...catalog.zh }),
-      en: Object.freeze({ ...catalog.en }),
-    })
-    this.catalogs.set(namespace, frozen)
+    const entry: LocaleRegistration = {
+      source: catalog,
+      catalog: Object.freeze({
+        zh: Object.freeze({ ...catalog.zh }),
+        en: Object.freeze({ ...catalog.en }),
+      }),
+      refs: 1,
+    }
+    this.entries.set(namespace, entry)
     this.touch()
-    let disposed = false
+    return this.release(namespace, entry)
+  }
+
+  /**
+   * Build one disposer that drops a single owner and removes the namespace
+   * once no owner remains.
+   * @param namespace - registered dictionary namespace.
+   * @param entry - shared registration record.
+   * @returns idempotent release disposer.
+   */
+  private release(namespace: string, entry: LocaleRegistration): () => void {
+    let released = false
     return () => {
-      if (disposed) return
-      disposed = true
-      if (!this.catalogs.delete(namespace) || this.disposed) return
+      if (released) return
+      released = true
+      if (this.disposed) return
+      entry.refs -= 1
+      if (entry.refs > 0) return
+      this.entries.delete(namespace)
       this.touch()
     }
   }
@@ -151,8 +188,8 @@ export class MayflyLocaleService extends Service {
    */
   translate(namespace: string, key: string, values?: MayflyLocaleValues): string {
     const locale = this.locale
-    const own = this.catalogs.get(namespace)
-    const common = this.catalogs.get('common')
+    const own = this.entries.get(namespace)?.catalog
+    const common = this.entries.get('common')?.catalog
     const message = own?.[locale][key]
       ?? own?.en[key]
       ?? common?.[locale][key]
@@ -178,7 +215,7 @@ export class MayflyLocaleService extends Service {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
-    this.catalogs.clear()
+    this.entries.clear()
     this.listeners.clear()
   }
 
