@@ -162,6 +162,9 @@ export function classifyChanges(inputFiles) {
     } else if (owner === 'examples/mayfly-user-kit' && file.includes('/src/')) {
       directTests.add('examples/mayfly-user-kit/tests/width-scan.spec.ts')
     }
+    if (/^packages\/mayfly\/src\/.*(?:locale|hints)\.ts$/u.test(file)) {
+      directTests.add('packages/mayfly/tests/locale-catalog.spec.ts')
+    }
     if (file === 'packages/mayfly/tests/core/width-scan.ts' || file === 'packages/mayfly/tests/core/temp-dir.ts') {
       full = true
       reasons.push(`${file}: shared test infrastructure`)
