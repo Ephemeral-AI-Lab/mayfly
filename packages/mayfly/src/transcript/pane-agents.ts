@@ -57,8 +57,9 @@ import {
   compactElapsedSeconds,
   hiddenMembersText,
   selectVisibleMembers,
+  type AgentLiveLookup,
+  type AgentMemberLive,
 } from './agent-presentation.ts'
-import type { AgentLiveLookup, AgentMemberLive } from './agent-group.ts'
 import { trackChildAgentModels } from './child-agent-model.ts'
 import { outputCounter } from './output-rate.ts'
 import { ellipsize, parseToolArguments } from './present.ts'

@@ -4,6 +4,7 @@
  */
 
 import type { MayflyTone } from '@ephemeral-ai/mayfly-ui'
+import type { TranscriptToolItem } from './types.ts'
 
 /** Canonical visual semantics of one Agent lifecycle phase. */
 export interface AgentPhasePresentation {
@@ -11,6 +12,32 @@ export interface AgentPhasePresentation {
   readonly marker: '●' | '✓' | '✗' | '⊘'
   readonly tone: MayflyTone
 }
+
+/**
+ * The live overlay one member renders from — the child-session tracker's
+ * snapshot (kimi-level fields the fold has no source for; D39).
+ */
+export interface AgentMemberLive {
+  /** The refined phase; `running`/`waiting` override a premature ack. */
+  readonly phase: 'running' | 'waiting' | 'completed' | 'failed'
+  /** Wall clock of the epoch's close, while terminal. */
+  readonly endedAt?: number
+  /** Total tokens, once at least one usage record landed. */
+  readonly tokens?: number
+  /** Streamed output chars of the live attempt; absent once it settles. */
+  readonly liveChars?: number
+  /** Dispatched tool calls this epoch. */
+  readonly toolCount: number
+  /** The activity second line, non-terminal states only. */
+  readonly activity?: string
+  /** The child's latest `request/header` model. */
+  readonly model?: string
+  /** The child's latest `request/header` reasoning effort. */
+  readonly effort?: string
+}
+
+/** Resolves a member's live overlay; absent on replay and unit tests. */
+export type AgentLiveLookup = (member: TranscriptToolItem) => AgentMemberLive | undefined
 
 /** Compact non-negative duration from elapsed seconds. */
 export function compactElapsedSeconds(seconds: number): string {

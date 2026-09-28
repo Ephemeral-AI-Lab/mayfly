@@ -27,7 +27,6 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { ConversationFacts } from '../conversation/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
@@ -40,12 +39,10 @@ export const inject = ['mayflyStatus', 'mayflySessionFacts']
 
 /**
  * The context occupancy of one step: the disjoint input-side token counts.
- * @param usage - the step's token accounting.
- * @returns occupied context tokens.
+ * Re-exported so the `./status-context` subpath keeps its public surface; the
+ * implementation lives with the facts projection that also consumes it.
  */
-export function contextTokens(usage: TokenUsage): number {
-  return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
-}
+export { contextTokens } from '../conversation/facts.ts'
 
 /**
  * One decimal, trailing `.0` trimmed: 1 → `1`, 1.5 → `1.5`, 2.04 → `2`.

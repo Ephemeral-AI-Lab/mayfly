@@ -14,7 +14,7 @@
 
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
-import { STREAMING_RENDER_MAX_CHARS } from './components.ts'
+import { streamingWindow, STREAMING_RENDER_MAX_CHARS } from './components.ts'
 import type { TranscriptThinkingItem } from './types.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 
@@ -26,13 +26,6 @@ export const THINKING_MARKER = '✻ '
 
 /** Continuation indent: the marker's visible width, so body text aligns. */
 const THINKING_INDENT = '  '
-
-function streamingTextWindow(text: string): string {
-  const start = text.length - STREAMING_RENDER_MAX_CHARS
-  const boundary = text.indexOf('\n', start)
-  const visible = sanitizePluginText(text.slice(boundary < 0 ? start : boundary + 1))
-  return `... (${String(text.length - visible.length)} earlier characters)\n${visible}`
-}
 
 /**
  * The newline-aligned tail a live block needs for its last wrapped lines.
@@ -126,7 +119,7 @@ export class ThinkingComponent implements MayflyComponent {
       if (lines !== undefined && lines.length > THINKING_PREVIEW_LINES) return lines
     }
     return this.renderText(width, this.item.text.length > STREAMING_RENDER_MAX_CHARS
-      ? streamingTextWindow(this.item.text)
+      ? streamingWindow(this.item.text)
       : sanitizePluginText(this.item.text))
   }
 

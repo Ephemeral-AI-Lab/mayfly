@@ -45,7 +45,6 @@ export {
   USER_PREVIEW_LINES,
   UserMessageComponent,
 } from './components.ts'
-export { AgentGroupComponent, setAgentGroupTimers, type AgentGroupTimers } from './agent-group.ts'
 export { ReadGroupComponent, groupReadsByFile, READ_GROUP_ROW_LIMIT, READ_GROUP_EXPANDED_ROW_LIMIT, type ReadFileGroup } from './read-group.ts'
 export { SearchGroupComponent, SEARCH_GROUP_ROW_LIMIT, SEARCH_GROUP_EXPANDED_ROW_LIMIT } from './search-group.ts'
 export { CommandGroupComponent, COMMAND_GROUP_ROW_LIMIT } from './command-group.ts'
