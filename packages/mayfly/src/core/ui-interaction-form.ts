@@ -3,7 +3,7 @@
  */
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyFieldError, MayflyFieldValue, MayflyFormAddress, MayflyFormField, MayflyFormNode, MayflySubmittedField, MayflySubmittedForm } from '@ephemeral-ai/mayfly-ui'
-import { createChoiceState, reconcileChoice, reduceChoice, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
+import { createChoiceState, reconcileChoice, reduceChoice, selectionError, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
 import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
 
 export interface UiFieldState {
@@ -255,11 +255,8 @@ function fieldError(field: UiFieldState, t: UiTranslate): string | undefined {
     }
   } else if (definition.kind === 'select' || definition.kind === 'multiselect') {
     const selected = Array.isArray(value) ? value : value === null ? [] : [String(value)]
-    if (selected.some(id => !definition.options.some(option => option.id === id && option.disabled !== true))) return t('A selected option is unavailable')
-    if (definition.kind === 'multiselect') {
-      if (selected.length < (definition.minSelected ?? 0)) return t('Select at least {count} options', { count: definition.minSelected! })
-      if (definition.maxSelected !== undefined && selected.length > definition.maxSelected) return t('Select at most {count} options', { count: definition.maxSelected })
-    }
+    const error = selectionError(selected, definition.options, definition.kind === 'multiselect' ? definition : {}, t)
+    if (error !== undefined) return error
   } else if (definition.kind !== 'toggle') {
     const length = Array.from(String(value)).length
     if (definition.minLength !== undefined && length < definition.minLength) return t('Minimum length: {value}', { value: definition.minLength })

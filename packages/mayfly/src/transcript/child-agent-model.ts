@@ -6,7 +6,7 @@
  * @module @ephemeral-ai/mayfly/transcript/child-agent-model
  */
 
-import type { AgentMemberLive } from './agent-group.ts'
+import type { AgentMemberLive } from './agent-presentation.ts'
 import type { ChildSessionFacts, SessionFactsService } from './session-facts.ts'
 import type { TranscriptToolItem } from './types.ts'
 

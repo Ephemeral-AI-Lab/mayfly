@@ -114,7 +114,7 @@ interface RenderCache {
 }
 
 /** Keep live rendering bounded while retaining the complete model for history. */
-function streamingWindow(text: string): string {
+export function streamingWindow(text: string): string {
   const start = text.length - STREAMING_RENDER_MAX_CHARS
   const boundary = text.indexOf('\n', start)
   const visible = sanitizePluginText(text.slice(boundary < 0 ? start : boundary + 1))

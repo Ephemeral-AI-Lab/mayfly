@@ -359,13 +359,31 @@ export function choiceSegment(state: UiChoiceState, itemId: string): string | un
     : segment.options.find(option => option.disabled !== true)?.id
 }
 
-export function choiceError(state: UiChoiceState, t: UiTranslate = untranslated): string | undefined {
-  const { definition, selectedIds } = state
-  if (selectedIds.length < (definition.minSelected ?? 0)) return t('Select at least {count} options', { count: definition.minSelected! })
-  if (definition.maxSelected !== undefined && selectedIds.length > definition.maxSelected) return t('Select at most {count} options', { count: definition.maxSelected })
+/**
+ * Shared selection validation for the choice and form surfaces: cardinality
+ * bounds report before an unavailable selection, so both owners yield the same
+ * message for the same draft.
+ * @param selectedIds - the draft's selected option ids.
+ * @param items - the option rows; admitted lazily by id.
+ * @param bounds - the allowed selection count.
+ * @param t - translator for the message keys.
+ * @returns the first error message, or undefined when the selection is valid.
+ */
+export function selectionError(
+  selectedIds: readonly string[],
+  items: MayflyListNode['items'],
+  bounds: { readonly minSelected?: number, readonly maxSelected?: number },
+  t: UiTranslate = untranslated,
+): string | undefined {
+  if (selectedIds.length < (bounds.minSelected ?? 0)) return t('Select at least {count} options', { count: bounds.minSelected! })
+  if (bounds.maxSelected !== undefined && selectedIds.length > bounds.maxSelected) return t('Select at most {count} options', { count: bounds.maxSelected })
   for (const id of selectedIds) {
-    const item = admittedListItem(definition.items, admittedListIndex(definition.items, id))
+    const item = admittedListItem(items, admittedListIndex(items, id))
     if (item === undefined || item.disabled === true) return t('A selected option is unavailable')
   }
   return undefined
+}
+
+export function choiceError(state: UiChoiceState, t: UiTranslate = untranslated): string | undefined {
+  return selectionError(state.selectedIds, state.definition.items, state.definition, t)
 }
