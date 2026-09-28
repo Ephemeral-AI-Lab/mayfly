@@ -5,6 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
+import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
 import { providerFixture } from './provider-fixture.ts'
 
@@ -19,7 +20,7 @@ async function setup(profiles: Record<string, unknown> = {}, configured = false,
   if (configured) bench.credentials.values.set(DEEPSEEK_KEY, 'configured')
   const agent = { id: 'root', session: {} } as Agent
   ctx.provide('agents', { get: (id: string) => id === agent.id ? agent : undefined } as never)
-  const mount = () => ctx.plugin({ name: 'onboarding-app', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner) } })
+  const mount = () => ctx.plugin({ name: 'onboarding-app', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
   const app = await mount()
   return { ...bench, agent, app, mount, model: () => ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.onboarding') }
 }
@@ -29,7 +30,7 @@ describe('provider onboarding', () => {
     const bench = await setup()
     await flush()
     expect(bench.model()).toBeUndefined()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const model = bench.model()!
     expect(model.scope).toEqual({ kind: 'app', targetId: DEEPSEEK_KEY })
@@ -46,14 +47,14 @@ describe('provider onboarding', () => {
 
   it.each([true, false])('skips setup when a native credential is configured (official=%s)', async official => {
     const bench = await setup(official ? {} : { custom: { apiKeyEnv: 'CUSTOM_KEY' } }, official)
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     expect(bench.model()).toBeUndefined()
   })
 
   it('retains the app-scoped key draft through current-Agent service reload and can save during the gap', async () => {
     const bench = await setup()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const model = bench.model()!
     model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'retained-key')
@@ -64,14 +65,14 @@ describe('provider onboarding', () => {
     await flush()
     expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('retained-key')
     await bench.mount()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     expect(bench.model()).toBeUndefined()
   })
 
   it('keeps failed input and permits a retry without reopening the form', async () => {
     const bench = await setup()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const model = bench.model()!
     bench.credentials.failWrite = true
@@ -89,13 +90,13 @@ describe('provider onboarding', () => {
 
   it('does not offer setup again after a deliberate skip and app reload', async () => {
     const bench = await setup()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     bench.model()!.invoke('cancel')
     await flush()
     await bench.app.dispose()
     await bench.mount()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     expect(bench.model()).toBeUndefined()
     expect(bench.credentials.writes).toBe(0)
@@ -105,7 +106,7 @@ describe('provider onboarding', () => {
     const bench = await setup()
     const read = Promise.withResolvers<{ configured: boolean, writable: boolean, source: string }>()
     vi.spyOn(bench.credentials, 'describe').mockReturnValue(read.promise)
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     await bench.front.dispose()
     read.resolve({ configured: false, writable: true, source: 'memory' })
@@ -126,7 +127,7 @@ describe('provider onboarding', () => {
       if (String(ref) === 'ANTHROPIC_API_KEY') throw new Error('unreadable')
       return { configured: false, writable: true, source: 'memory' }
     })
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     expect(describe).toHaveBeenCalled()
     expect(credentials.mock.calls.map(([ref]) => String(ref))).toEqual(expect.arrayContaining([DEEPSEEK_KEY, 'ANTHROPIC_API_KEY', 'EXTRA_KEY']))
@@ -136,14 +137,14 @@ describe('provider onboarding', () => {
   it.each([null, 42, { providers: null }, { providers: 'invalid' }])('treats malformed settings as having no extra references (%j)', async section => {
     const bench = await setup()
     vi.spyOn(bench.settings, 'describe').mockReturnValue([{ ns: 'llm-pi-ai', value: section } as never])
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     expect(bench.model()).toBeDefined()
   })
 
   it('validates forged empty submissions and rejects read-only credential sources', async () => {
     const bench = await setup()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')!
     const event = (value: unknown) => ({
@@ -159,7 +160,7 @@ describe('provider onboarding', () => {
 
   it('requires review before replacing a credential configured after the initial check', async () => {
     const bench = await setup()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const model = bench.model()!
     bench.credentials.values.set(DEEPSEEK_KEY, 'external')
@@ -175,7 +176,7 @@ describe('provider onboarding', () => {
 
   it('settles as cancelled when an action aborts after describe or write', async () => {
     const bench = await setup()
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')!
     const event = {
@@ -206,7 +207,7 @@ describe('provider onboarding', () => {
   it('shows a fallback surface when readiness cannot inspect settings', async () => {
     const bench = await setup()
     vi.spyOn(bench.settings, 'describe').mockImplementation(() => { throw new Error('unavailable') })
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     expect(JSON.stringify(bench.model()!.node)).toContain('Provider setup could not be checked')
   })
@@ -215,7 +216,7 @@ describe('provider onboarding', () => {
     const bench = await setup()
     const existing = bench.ctx.mayflyOverlays.open({ id: 'mayfly.provider.onboarding', title: 'Existing', presentation: 'editor', capturing: true }, { kind: 'text', content: 'existing' })
     vi.spyOn(bench.settings, 'describe').mockImplementation(() => { throw new Error('unavailable') })
-    bench.ctx.mayflyCurrentAgent.select(bench.agent)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     expect(bench.ctx.mayflyOverlays.list().find(item => item.id === existing.events.id)?.focusRevision).toBe(1)
   })
@@ -229,8 +230,8 @@ describe('provider onboarding', () => {
       const bench = await providerFixture(ctx)
       const agent = { id: `root-${outcome}`, session: {} } as Agent
       ctx.provide('agents', { get: () => agent } as never)
-      await ctx.plugin({ name: `onboarding-app-${outcome}`, inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner) } })
-      ctx.mayflyCurrentAgent.select(agent)
+      await ctx.plugin({ name: `onboarding-app-${outcome}`, inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
+      ctx.mayflyConversations.selectPrimary(agent)
       await flush()
       await bench.front.dispose()
       if (outcome === 'resolve') loading.resolve()

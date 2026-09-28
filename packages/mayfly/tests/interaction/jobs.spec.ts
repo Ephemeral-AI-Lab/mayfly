@@ -133,7 +133,7 @@ describe('shared jobs browsing', () => {
     const get = bench.registry.get.bind(bench.registry)
     vi.spyOn(bench.registry, 'get').mockImplementationOnce((id, caller) => {
       const view = get(id, caller)
-      bench.ctx.mayflyCurrentAgent.select(bench.other)
+      bench.ctx.mayflyConversations.selectPrimary(bench.other)
       return view
     })
     select(bench.model('mayfly.jobs'), source.id)
@@ -144,7 +144,7 @@ describe('shared jobs browsing', () => {
 
   it('keeps native dispatch for a different selected Agent from opening stale UI', async () => {
     const bench = await setup()
-    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
     await bench.run('/jobs')
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
   })
@@ -190,7 +190,7 @@ describe('shared jobs browsing', () => {
     const bench = await setup()
     const source = bench.start()
     const readAt = vi.spyOn(bench.registry, 'readAt').mockImplementationOnce(() => {
-      bench.ctx.mayflyCurrentAgent.select(bench.other)
+      bench.ctx.mayflyConversations.selectPrimary(bench.other)
       return { chunks: [{ at: 0, text: 'old Agent output' }], next: 16, lossy: false }
     })
     await bench.run('/jobs')
@@ -465,11 +465,11 @@ describe('shared jobs browsing', () => {
     action(detail, 'read'); await flushRequests()
     const output = bench.model('mayfly.jobs.output')
     action(detail, 'stop')
-    if (reason === 'agent') bench.ctx.mayflyCurrentAgent.select(bench.other)
+    if (reason === 'agent') bench.ctx.mayflyConversations.selectPrimary(bench.other)
     else if (reason === 'same-id') {
       const replacement = { ...bench.agent } as Agent
       bench.agents.set(bench.agent.id, replacement)
-      bench.ctx.mayflyCurrentAgent.select(replacement)
+      bench.ctx.mayflyConversations.selectPrimary(replacement)
     } else if (reason === 'parent') browser.requestClose()
     else await (reason === 'provider' ? bench.provider : bench.consumer).dispose()
     await flushRequests()

@@ -152,7 +152,7 @@ const DOCK_HOSTS = ['editor.prompt', 'status.footer'] as const
  */
 export class MayflyScreenService extends Service implements MayflyScreen {
   private readonly runtime: MayflyTerminalRuntime
-  private readonly editorLayers: Record<'overlay' | 'conversation', MayflyFocusable | null> = { overlay: null, conversation: null }
+  private editorReplacement: MayflyFocusable | null = null
   private readonly fixed = new Map<string, StableSlotHost>()
   private readonly claimed = new Set<string>()
   private readonly local = new LocalActivityRegion()
@@ -190,13 +190,9 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return this.runtime.rows
   }
 
-  /**
-   * Whether a modal overlay or an overlay-layer editor replacement currently
-   * owns input. A retained readonly conversation is a view, not a modal
-   * surface, so global keys such as F7/F8 keep working over it.
-   */
+  /** Whether a modal overlay or an editor replacement currently owns input. */
   get capturesInput(): boolean {
-    return this.runtime.hasCapturingOverlay() || (this.editorLayers.overlay !== null && this.fixed.get('editor.prompt')!.editorReplaced)
+    return this.runtime.hasCapturingOverlay() || (this.editorReplacement !== null && this.fixed.get('editor.prompt')!.editorReplaced)
   }
 
   /**
@@ -211,11 +207,11 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1 - this.runtime.surfaceLaneRows()) }
   }
 
-  /** Registered overlays take precedence over a retained cold conversation and the prompt. */
-  setEditorReplacement(component: MayflyFocusable | null, layer: 'overlay' | 'conversation' = 'overlay'): void {
-    this.editorLayers[layer] = component
+  /** A registered editor-presentation overlay takes the prompt's place. */
+  setEditorReplacement(component: MayflyFocusable | null): void {
+    this.editorReplacement = component
     const host = this.fixed.get('editor.prompt')!
-    if (host.replaceEditor(this.editorLayers.overlay ?? this.editorLayers.conversation) && !this.runtime.hasCapturingOverlay()) host.focus()
+    if (host.replaceEditor(component) && !this.runtime.hasCapturingOverlay()) host.focus()
   }
 
   mountContentSlot(id: string, component: MayflyComponent | null): MayflyScreenSlot {

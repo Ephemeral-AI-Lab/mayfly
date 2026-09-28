@@ -25,7 +25,20 @@ root UI plugin reads the native `plan` projection and executes the native
 `mayflyCurrentAgent.current()` returns `Agent | null`.
 `subscribe(listener)` immediately replays the current selection and reports
 revision changes. Pass the current Agent or `agent.session` to native dsh
-services.
+services. It is null while a read-only or resumable side conversation is
+displayed, so Agent-scoped writes never reach a conversation the user cannot
+drive.
+
+## Conversations
+
+`mayflyConversations.snapshot()` / `subscribe(listener)` describe the
+conversations the user can switch between: the primary plus BTW and subagent
+side conversations, each a frozen descriptor with `kind`, `label`, derived
+`access` (`interactive`, `resumable`, `readonly`), and `residency`, plus the
+displayed id. `open({ kind: 'subagent', sessionId, parentSessionId, label,
+mode })` shows a child conversation; `display(id)`, `back()`, and `close(id)`
+move between them. Descriptors carry no Agent or Session: read native services
+for the conversation's data.
 
 ## Lifecycle
 

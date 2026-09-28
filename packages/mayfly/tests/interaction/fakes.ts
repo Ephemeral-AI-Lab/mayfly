@@ -911,6 +911,26 @@ interface TestSessionState {
   readonly modelRef?: { current: { provider: string, model: string, reasoningEffort?: string } }
 }
 
+/**
+ * A conversation-registry fake with no side conversations. `display` records
+ * the requested ids so callers can assert which conversation was shown.
+ */
+export function fakeConversations(displayed: string[] = []): object {
+  const snapshot = Object.freeze({ primaryId: null, displayedId: null, recent: [], views: [], revision: 0 })
+  return {
+    snapshot: () => snapshot,
+    displayed: () => null,
+    displayedAgent: () => null,
+    primary: () => null,
+    revision: () => 0,
+    subscribe(listener: (value: typeof snapshot) => void) { listener(snapshot); return () => {} },
+    display(id: string) { displayed.push(id); return false },
+    back: () => false,
+    close: () => null,
+    closeSides: () => {},
+  }
+}
+
 /** A context with the renderer services and native dsh session seams provided. */
 export function fakeMayflyContext(options: { readonly display?: boolean; readonly dock?: boolean; readonly agents?: boolean } = {}): {
   ctx: Context
@@ -961,24 +981,43 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     current: active,
     primary: active,
     revision: () => revision,
-    view: () => ({
-      primarySessionId: (active() as { readonly id?: unknown } | null)?.id === undefined ? null : String((active() as { readonly id: unknown }).id),
-      displayed: 'primary',
-      auxiliary: null,
-      revision,
-    }),
     subscribe(listener: (agent: unknown | null, revision: number) => void) {
       listeners.add(listener)
       listener(active(), revision)
       return ctx.effect(() => () => { listeners.delete(listener) })
     },
-    subscribeView(listener: (view: unknown) => void) {
+  } as never)
+  // Only the test session's primary conversation is ever displayed here.
+  const primaryView = () => {
+    const agent = active() as { readonly id?: unknown } | null
+    return agent?.id === undefined ? null : {
+      kind: 'primary', id: `session:${String(agent.id)}`, sessionId: String(agent.id), access: 'interactive', residency: 'displayed',
+    }
+  }
+  const conversationsSnapshot = () => {
+    const primary = primaryView()
+    return {
+      primaryId: primary?.id ?? null,
+      displayedId: primary?.id ?? null,
+      recent: primary === null ? [] : [primary.id],
+      views: primary === null ? [] : [primary],
+      revision,
+    }
+  }
+  ctx.provide('mayflyConversations', {
+    primary: active,
+    displayed: primaryView,
+    snapshot: conversationsSnapshot,
+    revision: () => revision,
+    subscribe(listener: (snapshot: unknown) => void) {
       viewListeners.add(listener)
-      listener({ primarySessionId: null, displayed: 'primary', auxiliary: null, revision })
+      listener(conversationsSnapshot())
       return ctx.effect(() => () => { viewListeners.delete(listener) })
     },
-    toggleAuxiliary: () => false,
-    closeAuxiliary: () => null,
+    display: () => false,
+    back: () => false,
+    close: () => null,
+    closeSides: () => {},
   } as never)
   new MayflyPaneService(ctx)
   new MayflyStatusService(ctx)

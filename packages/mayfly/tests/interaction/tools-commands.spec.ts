@@ -196,7 +196,7 @@ describe('shared native tool catalogs', () => {
     browser.emit(accept('tools', 'alpha'))
     await flushRequests()
     const detail = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.tools.detail')!
-    if (reason === 'agent') bench.ctx.mayflyCurrentAgent.select(bench.other)
+    if (reason === 'agent') bench.ctx.mayflyConversations.selectPrimary(bench.other)
     else if (reason === 'parent') browser.requestClose()
     else await (reason === 'tools' ? bench.toolsOwner : bench.front).dispose()
     await flushRequests()

@@ -15,7 +15,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { ui } from '../../../ui/src/index.ts'
 import type { JobView } from '@deepseek-ai/dsh-jobs'
-import { SessionId, type Session } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
@@ -24,11 +24,14 @@ import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/j
 import { sessionWorkspaceItem } from '../../src/interaction/session-workspaces-model.ts'
 import { sessionDetailNode as sessionListDetailNode, sessionListItem } from '../../src/interaction/session-list-model.ts'
 import { documentPages } from '../../src/interaction/document-pages.ts'
-import { SessionTranscriptPanel } from '../../src/interaction/session-transcript-panel.ts'
-import { fakeMayflyContext } from './fakes.ts'
+import { FakeKeymap } from './fakes.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
-import { FakeProjectionService } from '../transcript/pane-fakes.ts'
-import { userEvent } from '../transcript/helpers.ts'
+import { fakeMayflyComponents } from '../transcript/helpers.ts'
+import { COLORS } from '../transcript/status-fakes.ts'
+import { MayflyStatusService } from '../../../ui/src/services.ts'
+import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
+import * as conversationViewStatus from '../../src/interaction/conversation-view-status.ts'
+import { StatusFooterComponent } from '../../src/transcript/status-model.ts'
 import { renderRequest, requestFixture } from './request-fixture.ts'
 import { settingsFixture, settingsField } from './settings-fixture.ts'
 
@@ -215,23 +218,23 @@ describe('interaction width-scan', () => {
         }
       } finally { await bench.ctx.fiber.dispose() }
     })
-    it(`SessionTranscriptPanel survives ${name}`, () => {
-      const { ctx } = fakeMayflyContext({ agents: false })
-      const child = {
-        id: SessionId(`readonly-${name}`),
-        header: { cwd: '/repo', origin: 'subagent', parentSession: SessionId('parent') },
-        events: [userEvent(text)],
-      } as unknown as Session
-      ctx.set('sessionProjections', new FakeProjectionService() as never)
-      ctx.provide('sessions', { list: () => [child] } as never)
-      ctx.provide('agents', { get: () => undefined } as never)
-      const panel = new SessionTranscriptPanel(ctx, {
-        kind: 'subagent', sessionId: String(child.id), parentSessionId: 'parent', label: text, mode: 'one-shot',
-      }, vi.fn())
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`SessionTranscriptPanel/${name}`, panel.render(width), width)
-      }
-      panel.dispose()
+    it(`conversation view status survives ${name}`, async () => {
+      const ctx = new Context()
+      const agents = new Map([['primary', { id: SessionId('primary') }], ['btw', { id: SessionId('btw') }]])
+      ctx.reflect.provide('agents', { get: (id: unknown) => agents.get(String(id)) })
+      ctx.reflect.provide('mayflyKeymap', new FakeKeymap())
+      const conversations = new MayflyConversationsService(ctx)
+      conversations.selectPrimary(agents.get('primary') as never)
+      conversations.open({ kind: 'subagent', sessionId: 'child', parentSessionId: 'primary', label: text, mode: 'one-shot' })
+      conversations.open({ kind: 'btw', sessionId: 'btw', parentSessionId: 'primary', label: text })
+      conversations.open({ kind: 'subagent', sessionId: 'cold', parentSessionId: 'primary', label: text, mode: 'continuable' })
+      const status = new MayflyStatusService(ctx)
+      await ctx.plugin(conversationViewStatus)
+      const footer = new StatusFooterComponent(status, fakeMayflyComponents(), COLORS)
+      for (const width of SCAN_WIDTHS) expectLinesFit(`ConversationViewStatus/${name}`, footer.render(width), width)
+      conversations.back()
+      for (const width of SCAN_WIDTHS) expectLinesFit(`ConversationViewStatus/back/${name}`, footer.render(width), width)
+      await ctx.fiber.dispose()
     })
 
     for (const kind of ['approval', 'plan', 'questionnaire'] as const) it(`shared request ${kind} survives ${name}`, async () => {

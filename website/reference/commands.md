@@ -53,7 +53,7 @@
 - **`/rename [<name>]`** —— 重命名当前会话：带名称直接改名，不带参数打开一个预填当前名称的单字段编辑框。用户命名的标题会被锁定，自动命名不再覆盖；名称显示在编辑器上边框与 `/sessions` 中。
 - **`/fork`** —— agent 非 idle（正在运行）时返回 `cannot fork while the agent is running`。
 - **`/rewind`** —— 单层列出当前会话的直接用户回合；选择一个回合会从该完整回合之前创建普通子 session。父会话不截断、不删除，仍可从 `/sessions` 恢复；agent 运行时拒绝。
-- **`/btw` / `/agents`** —— 共用一个辅助会话槽。live BTW/continuable child 复用完整主布局和编辑器，one-shot child 使用全保真只读 transcript panel；状态栏显式显示 `F7 switch · F8 close`。`/agents stop <id>` 只接受没有 live 后代的 live continuable child，浏览器里的停止需在 Yes / No 确认中选择 Yes；cold/inactive child 不会被误报为已停止，父节点需先从叶子向上停止，避免 Harness 的递归 teardown 扩大操作范围。
+- **`/btw` / `/agents`** —— 在主会话旁打开旁支会话，可同时保留多个，新的 BTW 会替换旧的 BTW。所有会话都在 transcript 面板中渲染：live BTW/continuable child 驱动完整布局和编辑器，one-shot 或 cold child 从原生历史读取并标注 `只读` 或 `回复以恢复`；状态栏显式显示 `F7 switch · F8 close`。`/agents stop <id>` 只接受没有 live 后代的 live continuable child，浏览器里的停止需在 Yes / No 确认中选择 Yes；cold/inactive child 不会被误报为已停止，父节点需先从叶子向上停止，避免 Harness 的递归 teardown 扩大操作范围。
 - **`/model` / `/effort`** —— 无参数分别打开模型选择面板与横向力度选择器；面板用不循环的 `←` `→` 移动 provider/effort tabs、`Enter` 下钻、内容态 `Tab` 切到 action。`Enter` 提交 **`Set as default`**：切换并持久化为新默认。带参数直接切换并持久化。免开面板的快路：**`Alt+M`** 在当前 provider 的模型列表里逐个切换（草稿保留；见[键位参考](/reference/keys)）。
 - **`/provider`** —— 三条子命令：`list` 列出可用 provider 与当前路由；`switch <name>` 切换；`add` 进入新增 provider 流程。
 - **`/preset`** —— 在薄宿主预设名册（上游 `standard` / `minimal` / `ptc` / `cordis`，以及 Mayfly `mayfly-cordis`）上切换 agent 组合：工具面、人格与 plan 模式都来自当前预设。没有 `code` alias。仅在**空会话**允许切换——已开始的会话返回 `cannot switch presets: this session has already started (blank sessions only)`。提醒工具（`schedule_*`）由 Host 级 `schedule` 行决定（内置组合默认禁用，可在 profile `cordis.patch.yml` 中设 `disabled: false` 启用），与预设无关。

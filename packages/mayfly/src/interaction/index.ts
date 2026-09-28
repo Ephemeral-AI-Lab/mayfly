@@ -19,14 +19,13 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import * as agentViewStatusPlugin from './agent-view-status.ts'
+import * as conversationViewStatusPlugin from './conversation-view-status.ts'
 import * as scheduleCommand from './schedule-command.ts'
 import * as deliverablesCommand from './deliverables-command.ts'
 import * as commandsPlugin from './commands-plugin.ts'
 import * as inputPlugin from './input-plugin.ts'
 import * as keysPlugin from './keys.ts'
 import * as subagentReplyPlugin from './subagent-reply.ts'
-import * as sessionTranscriptPanelPlugin from './session-transcript-panel.ts'
 import * as terminalTitlePlugin from './terminal-title.ts'
 import * as updateCheckPlugin from './updater/check.ts'
 import { PromptEditorController } from './editor-instance.ts'
@@ -54,12 +53,11 @@ export function apply(ctx: Context): void {
   const promptSubmissions = new PromptSubmitPipeline(ctx)
   ctx.effect(() => () => promptSubmissions.dispose())
   ctx.plugin(keysPlugin)
-  ctx.plugin(agentViewStatusPlugin)
+  ctx.plugin(conversationViewStatusPlugin)
   ctx.plugin(commandsPlugin)
   ctx.plugin(deliverablesCommand)
   ctx.plugin(scheduleCommand)
   ctx.plugin(inputPlugin)
-  ctx.plugin(sessionTranscriptPanelPlugin)
   ctx.plugin(subagentReplyPlugin)
   ctx.plugin(terminalTitlePlugin)
   ctx.plugin(updateCheckPlugin)

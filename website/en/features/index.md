@@ -9,8 +9,9 @@ lives in `cordis.patch.yml`).
 - native Harness `sessionProjections` drive conversation, token/context,
   title, and session facts;
 - built-in commands register directly on native `commands`;
-- app owns the primary Agent and one auxiliary slot, exposing the exact
-  displayed identity through `mayflyCurrentAgent`;
+- app owns the conversation registry (`mayflyConversations`: the primary
+  plus side conversations) and exposes the exact displayed identity through
+  `mayflyCurrentAgent`;
 - transcript and interaction do not maintain a second Agent/Session truth.
 
 ## Terminal UI
@@ -18,7 +19,7 @@ lives in `cordis.patch.yml`).
 - core is the only pi-tui/raw-terminal owner;
 - status producers register directly on `mayflyStatus`;
 - activity, queue, todo, Agent, and workflow panes register on `mayflyPanes`;
-- BTW and live continuable subagents reuse the complete main layout; cold or one-shot children use a core-owned readonly transcript panel;
+- BTW, subagents, and stored children all render in the one transcript pane; live ones drive the complete main layout, cold or one-shot ones are read from native history as read-only or resumable;
 - the jobs footer, `/jobs`, and `/agents` consume native Harness services;
 - `mayflyOverlays` renders overlay contributions;
 - `mayflyEditorExtensions` composes extensions around the one Mayfly editor.

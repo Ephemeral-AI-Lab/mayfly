@@ -106,8 +106,8 @@ mayfly
 `/agents` 浏览当前会话的 subagent 树；Enter 打开 child，
 `/agents stop <id>` 停止没有 live 后代的 live continuable child；仍有 live 后代的
 父节点会被拒绝，避免一次操作静默销毁整棵子树。`/btw <question>` 打开临时
-旁路 Agent。live 辅助 Agent 复用完整的 Mayfly 布局与编辑器：`F7` 在主/辅助会话间
-切换，`F8` 关闭辅助视图。中断当前会话时也会中断它仍在运行的所有 continuable
+旁路 Agent。旁支会话（BTW 与 subagent，可同时打开多个）在同一个 transcript 面板中
+使用完整的 Mayfly 布局与编辑器：`F7` 返回上一个会话，`F8` 关闭当前显示的会话。中断当前会话时也会中断它仍在运行的所有 continuable
 后代，但不会关闭这些 Agent。
 
 ## 架构
@@ -128,7 +128,7 @@ flowchart TB
     ROOT["一个 dsh 进程 · 一张 Cordis service graph"]
     DSH["dsh 原生服务<br/>commands · sessionProjections · tools · agents"]
     PLUGIN["普通 Cordis 插件<br/>Mayfly 官方行与外部 sibling"]
-    AGENT["mayflyCurrentAgent<br/>主会话 + 单辅助槽<br/>当前展示的精确 Agent"]
+    AGENT["mayflyConversations · mayflyCurrentAgent<br/>主会话 + 旁支对话<br/>当前展示的精确 Agent"]
     UI["Mayfly 直接 UI 服务<br/>mayflyPanes · mayflyStatus<br/>mayflyOverlays · mayflyEditorExtensions"]
     CORE["@ephemeral-ai/mayfly core 区域<br/>唯一 pi-tui 与原始终端 owner"]
     TERM["终端"]

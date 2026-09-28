@@ -12,6 +12,7 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 // Empty type import carries the app-owned session reader/actions Context
 // merges and the `'mayfly/request-*'` Events merges this plugin emits.
 import type {} from '../app/index.ts'
+import { conversationId } from '../app/conversation-views.ts'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { HelpSection } from './help.ts'
 import { helpNode } from './help.ts'
@@ -37,6 +38,7 @@ export const inject = [
   'commands',
   'agents',
   'mayflyOverlays',
+  'mayflyConversations',
   'mayflyCurrentAgent',
   'mayflySkillsCatalog',
   'mayflyInteractionState',
@@ -70,8 +72,9 @@ export function apply(ctx: Context): void {
   /** Open a picker of safe branch points from the live session. */
   function rewindSession(): CommandResult {
     const active = ctx.mayflyCurrentAgent.primary()
-    ctx.mayflyCurrentAgent.closeAuxiliary()
     if (active === null) return { kind: 'error', text: t('no active session') }
+    // Rewind branches the primary: show it beneath the picker.
+    ctx.mayflyConversations.display(conversationId(String(active.id)))
     if (active.status !== 'idle') return { kind: 'error', text: t('cannot rewind while the agent is running') }
     const candidates = rewindCandidates(active.session.snapshotEvents())
     if (candidates.length === 0) return { kind: 'success', text: t('no user turns to rewind') }

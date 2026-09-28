@@ -9,6 +9,7 @@ import { vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
+import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
@@ -27,8 +28,8 @@ export async function requestFixture(ctx = new Context()) {
   const other = { id: 'other', steer: vi.fn() } as unknown as Agent
   const agents = new Map([[agent.id, agent], [other.id, other]])
   ctx.provide('agents', { get: (id: Agent['id']) => agents.get(id), roots: () => [...agents.values()] } as never)
-  const app = await ctx.plugin({ name: 'test-current-agent', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner) } })
-  ctx.mayflyCurrentAgent.select(agent)
+  const app = await ctx.plugin({ name: 'test-current-agent', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
+  ctx.mayflyConversations.selectPrimary(agent)
   await ctx.plugin(uiProvider)
   await ctx.plugin(UserQuestionService)
   /* questions-plugin mounts plan documents through the screen/components/theme

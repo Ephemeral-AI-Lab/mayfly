@@ -9,10 +9,15 @@ slots, never arbitrary root components.
 
 ## State and lifetime ownership
 
-- `app/` owns primary/current-Agent selection, one auxiliary-view slot, and
-  startup. Live auxiliary Agents become the exact current Agent; one-shot children use the shared readonly transcript panel. Cold continuable
-  children use addressed native history and explicit reply-to-resume. Interrupt descendants
-  through native ancestor authority without draining retained Activations/inbox.
+- `app/` owns startup and the conversation registry (`mayflyConversations`):
+  the primary plus any number of side conversations (at most one BTW), one
+  displayed selection, and the most-recently-displayed order behind F7.
+  Access is derived, never declared. `mayflyCurrentAgent.current()` is the
+  exact Agent only while an interactive conversation is displayed; readonly
+  and resumable views yield null, never the primary. Cold continuable
+  children use addressed native history and explicit reply-to-resume.
+  Interrupt descendants through native ancestor authority without draining
+  retained Activations/inbox.
 - `frontend/index.ts` owns `mayflyUiInteraction` and independent consumer Fibers.
   Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
   reload. Renderer teardown releases editors/handles, not drafts or choice state.
@@ -44,10 +49,14 @@ slots, never arbitrary root components.
   `sessionQuery` observation, with `sessionProjectionCache` consulted first.
   Storage replacement and unload retire retained results; browsing must
   never activate Agents, retain logs, or create a second session domain store.
-- `transcript/` has one selected-session controller, generation-keyed reuse, and
-  lazy conversion of the latest unread native snapshot. Preserve complete
-  cutoff-eligible history; BTW hides seeded history only in presentation. Do not
-  rely on entry identity across native parsing or introduce a second session view.
+- `transcript/` has one conversation controller with one view per displayed
+  or retained conversation (listed ones hold nothing), generation-keyed
+  reuse, and lazy conversion of the latest unread value from a feed: a live
+  Session through the native registry, or a stored child through its native
+  address. Hidden views stash values without converting or waking the
+  renderer. Preserve complete floor-eligible history; a history floor (BTW's
+  seed) hides entries only in presentation. Do not rely on entry identity
+  across native parsing or render a conversation outside the transcript pane.
   Durable sequence numbers and transient presentation revisions are separate.
   Live overlays share stable history; completion comes from explicit settled
   steps, never a reasoning block's animation flag. Verify through the actual
@@ -56,9 +65,9 @@ slots, never arbitrary root components.
   current action, throughput); transcript rows show content and settled
   summaries only, and only surfaces without an activity row opt into the
   running turn header.
-- Core retains the cold-conversation editor layer beneath registered editor overlays.
-  Registry refreshes must never clear the retained conversation; a submitted reply
-  acknowledges its form snapshot before dismissal.
+- A submitted reply acknowledges its form snapshot before dismissal. The
+  editor stays visible for every conversation: readonly ones keep the draft,
+  resumable ones hand it to the explicit reply form.
 - Schedule reminders belong to the Host, not a session projection. `/schedule`
   reads the exact selected Agent's Session through the optional native service,
   observes `schedule/changed`, and fences late reads across selection and unload.

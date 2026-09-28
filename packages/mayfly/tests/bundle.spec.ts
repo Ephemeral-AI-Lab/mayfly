@@ -132,6 +132,7 @@ describe('mayfly bundle', () => {
       'agents',
       'sessions',
       'sessionProjections',
+      'mayflyConversations',
       'mayflyCurrentAgent',
       'mayflyOverlays',
       'mayflyLiveAssistantStream',

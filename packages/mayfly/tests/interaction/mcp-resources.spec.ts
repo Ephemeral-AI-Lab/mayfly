@@ -32,7 +32,7 @@ it('paginates metadata and reads one explicit URI without exposing binary conten
   bench.model('mayfly.mcp.resource').invoke('read'); await flushRequests()
   const text = JSON.stringify(bench.model('mayfly.mcp.resource.body').node)
   expect(text).toContain('Document body'); expect(text).toContain('Binary resource'); expect(text).not.toContain('SECRET_BINARY')
-  bench.ctx.mayflyCurrentAgent.select(bench.other)
+  bench.ctx.mayflyConversations.selectPrimary(bench.other)
   expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
 })
 it('supports templates and the native PTC transport without bypassing tool execution', async () => {

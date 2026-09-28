@@ -1,6 +1,6 @@
 # Bottom panes
 
-Between the transcript and the input editor sits the **bottom dock**: five passive panes stacked by priority, top to bottom workflow → agents → todo → queue → activity, so the activity row sits directly above the editor (the status bar stays below it). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they switch the current Agent or use the shared readonly session panel.
+Between the transcript and the input editor sits the **bottom dock**: five passive panes stacked by priority, top to bottom workflow → agents → todo → queue → activity, so the activity row sits directly above the editor (the status bar stays below it). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they are side conversations shown in the transcript pane.
 
 ## Dock budget
 
@@ -48,14 +48,15 @@ The session's todo list (whole-list snapshots, last-write-wins) renders under a 
 
 `todo_write` calls appear in the transcript only as one-row process members (`✓ Updated the plan · 3/5 done`); this pane is the list's live surface.
 
-## Auxiliary conversations (/btw and /agents)
+## Side conversations (/btw and /agents)
 
-Mayfly retains one auxiliary conversation slot. `/btw <question>` creates a temporary side Agent seeded from the current session's complete event stream and inheriting its provider, model, reasoning effort, and agent preset. `/agents` opens the primary session's complete descendant tree:
+Mayfly keeps the primary conversation and any number of side conversations open at once and shows exactly one of them in the transcript pane. `/btw <question>` creates a temporary side Agent seeded from the current session's complete event stream and inheriting its provider, model, reasoning effort, and agent preset. `/agents` opens the primary session's complete descendant tree:
 
-- a live BTW or continuable subagent becomes `mayflyCurrentAgent.current()`, switching the existing transcript, status, bottom panes, commands, and complete editor to that Session; BTW retains the full parent seed for model context, while the transcript starts at BTW's first question and hides inherited history; images, follow-ups, steer, retraction, and interrupts use the same input pipeline;
-- a one-shot or currently non-resident continuable child does not activate an Agent. It opens a core-owned, full-fidelity readonly transcript panel in the editor slot, reusing the official transcript model, tool presentation, image loading, width containment, and scrolling;
-- the centered status explicitly shows the active side and `F7 switch · F8 close`. `F7` toggles primary/auxiliary; `F8` closes the auxiliary view and returns to main. Closing a normal subagent only detaches it, while closing BTW also disposes its temporary Agent;
-- opening another BTW or child replaces the retained auxiliary. A bare `/btw` closes the current BTW; `/new`, `/resume`, `/fork`, `/rewind`, and the `/agents` browser return to primary first;
+- every conversation renders in the same transcript pane. A live BTW or continuable subagent becomes `mayflyCurrentAgent.current()`, switching the status, bottom panes, commands, and complete editor to that Session; BTW retains the full parent seed for model context, while the transcript starts at BTW's first question and hides inherited history; images, follow-ups, steer, retraction, and interrupts use the same input pipeline;
+- a one-shot child, or a continuable child that is not resident, does not activate an Agent: its transcript loads from native history into the same pane, keeps its own running-turn header (no activity row follows it), and the status marks it `read-only` or `reply to resume`. The editor stays: in a read-only conversation a submitted draft stays in the editor with a notice; in a resumable one it opens the Queue / Steer reply form seeded with the draft, and only **Send** resumes the child. Slash commands still run against the primary;
+- the centered status shows the displayed kind and label, its `F7` counterpart, its access, how many more conversations are open, and `F7 switch · F8 close`. `F7` returns to the previously displayed conversation; `F8` closes the displayed side conversation, or the `F7` counterpart while main is displayed. Closing a normal subagent only detaches it, while closing BTW also disposes its temporary Agent;
+- opening another child keeps the others open; a new BTW replaces the previous BTW. A bare `/btw` closes the current BTW; `/new`, `/resume`, and `/fork` close every side conversation, while `/rewind` and the `/agents` browser show main first;
+- only the displayed conversation and its `F7` counterpart keep transcript state; the others hold nothing until you return to them, so many open conversations stay cheap;
 - in `/agents`, `Enter` views a child, `Space` or `←` / `→` expand a branch, and `Tab` reaches **Stop selected**, which asks a Yes / No confirmation (No focused) before stopping a live continuable child. For a one-shot or cold/inactive child, or one that still owns live descendants, Stop shows why it cannot run instead of asking. `/agents stop <id>` is the direct path. Harness recursively releases live descendants owned by a destroyed Agent, so Mayfly refuses a target that still owns live descendants and requires leaf-first teardown.
 
 ## Subagent-group pane (agents)
@@ -66,4 +67,4 @@ The card stays compact as the group grows: every member is one truncated row; wi
 
 ## Workflow pane
 
-After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. Like the agents card, a run with more than six agents lists its running agents first and counts the rest in a closing `… +K more` row. A settled summary remains until the next relevant state replacement; switching primary/auxiliary Agents switches this pane with every other session-scoped surface.
+After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. Like the agents card, a run with more than six agents lists its running agents first and counts the rest in a closing `… +K more` row. A settled summary remains until the next relevant state replacement; switching the displayed conversation switches this pane with every other session-scoped surface.

@@ -16,7 +16,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyKeyAction, MayflyKeymap } from '../core/index.ts'
-import type {} from '../app/current-agent.ts'
+import type {} from '../app/conversation-views.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
 import {
   ACTION_BACKSPACE, ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_CLOSE_AGENT_VIEW, ACTION_CYCLE_MODEL,
@@ -65,14 +65,14 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_RESET_FIELD, keys: 'delete', description: 'Return the focused form field to its inherited or default value' },
   { id: ACTION_EXTERNAL_EDITOR, keys: 'ctrl+g', description: 'Edit the draft in your external editor ($VISUAL/$EDITOR)' },
   { id: ACTION_CYCLE_MODEL, keys: 'alt+m', description: 'Cycle the session model within the current provider (contextual)' },
-  { id: ACTION_TOGGLE_AGENT_VIEW, keys: 'f7', description: 'Toggle the primary and auxiliary conversation' },
-  { id: ACTION_CLOSE_AGENT_VIEW, keys: 'f8', description: 'Close the auxiliary conversation' },
+  { id: ACTION_TOGGLE_AGENT_VIEW, keys: 'f7', description: 'Return to the previous conversation' },
+  { id: ACTION_CLOSE_AGENT_VIEW, keys: 'f8', description: 'Close the displayed side conversation' },
 ]
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-interaction-keys'
 /** Services required before the key batch can register. */
-export const inject = ['mayflyKeymap', 'mayflyCurrentAgent', 'mayflyUiInteraction']
+export const inject = ['mayflyKeymap', 'mayflyConversations', 'mayflyUiInteraction']
 
 /**
  * Register the shared interaction key actions, unregistered automatically
@@ -85,13 +85,13 @@ export function apply(ctx: Context): void {
     ? {
         ...action,
         handler: () => {
-          if (!ctx.mayflyCurrentAgent.toggleAuxiliary()) notifications.report('toggle-agent-view', { message: 'no auxiliary conversation is open', severity: 'warning' })
+          if (!ctx.mayflyConversations.back()) notifications.report('toggle-agent-view', { message: 'no other conversation is open', severity: 'warning' })
         },
       }
     : action.id === ACTION_CLOSE_AGENT_VIEW
       ? {
           ...action,
-          handler: () => { ctx.emit('mayfly/request-close-agent-view') },
+          handler: () => { ctx.emit('mayfly/request-close-conversation') },
         }
       : action)
   ctx.effect(() => ctx.mayflyKeymap.register(actions))

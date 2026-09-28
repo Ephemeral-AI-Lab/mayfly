@@ -10,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-session-query'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import { ui, type MayflyOverlayHandle, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
+import type {} from '../app/conversation-views.ts'
 import { sessionDetailNode, sessionLabel, sessionListFacts, sessionListItem, type SessionListFacts } from './session-list-model.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { sessionWorkspaceLabel } from './session-workspaces-model.ts'
@@ -141,7 +142,7 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
     if (readSignal.aborted || abort.aborted) return
     adoptRows()
   }
-  const factsOf = (session: SessionSummary, archived = new Set(ctx.workspaceRegistry.archivedSessionIds), current = ctx.mayflyCurrentAgent.current()?.id): SessionListFacts => {
+  const factsOf = (session: SessionSummary, archived = new Set(ctx.workspaceRegistry.archivedSessionIds), current = ctx.mayflyConversations.displayed()?.sessionId): SessionListFacts => {
     // Every row this panel renders was adopted into `byId`, so the lookup is total.
     const row = byId.get(session.sessionId)!
     return sessionListFacts(session, {
@@ -157,7 +158,7 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
   }
   const rows = (): readonly MayflyListItem[] => {
     const archived = new Set(ctx.workspaceRegistry.archivedSessionIds)
-    const current = ctx.mayflyCurrentAgent.current()?.id
+    const current = ctx.mayflyConversations.displayed()?.sessionId
     return searchItems === undefined ? sessions.map(session => {
       const { parentId, ...item } = sessionListItem(factsOf(session, archived, current), now, home, t, false)
       return parentId !== undefined && byId.has(parentId) ? { ...item, parentId } : item
@@ -264,7 +265,7 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
               if (ctx.mayflyCurrentAgent.primary() !== primary) return { kind: 'failed', message: 'The lead session changed; reopen this conversation.' }
               const child = children.find(child => child.kind === 'child' && child.id === session.sessionId)
               if (child?.kind !== 'child') return { kind: 'failed', message: 'Open this child’s lead session first' }
-              ctx.mayflyCurrentAgent.openAuxiliary({ kind: 'subagent', sessionId: child.id, parentSessionId: child.parentId, mode: child.mode, label: child.label ?? child.id })
+              ctx.mayflyConversations.open({ kind: 'subagent', sessionId: child.id, parentSessionId: child.parentId, mode: child.mode, label: child.label ?? child.id })
             } else ctx.emit('mayfly/request-resume', session.sessionId)
             options.closeAll()
             return { kind: 'completed' }

@@ -44,7 +44,7 @@ Ctrl-V 把剪贴板图片存入附件库，并在光标处插入 `[image #N]` �
 
 ## 编辑器语境键位
 
-编辑器焦点下有一组语境键链（详见[键位参考](/reference/keys)）：**会话流进行中**（所选 Agent 或其 live 后代正在运行）时 Escape 中断这条流——buffer 为空且刚提交的消息可安全撤回时优先撤回（恢复进编辑器），草稿始终不动；Ctrl-C 有草稿时只清空草稿、流继续，空 buffer 时中断这条流。两者都空闲时清空草稿，Ctrl-C 在空 buffer 上进入 1 秒内双击退出。中断按下后活动行立即切换为静态 `■ 正在中断...`，直到当前 step/工具排空、turn 真正结束（原生 drain 语义：已启动的工具调用会跑完以保证 replay 有效）。子 Agent 只中断当前 turn，Activation 与未领取 inbox 保留。Ctrl-S 把非空草稿 steer 注入当前 turn。↑/↓ 始终归编辑器历史（queue 面板只展示排队消息，不接管按键），PageUp/PageDown 滚动当前会话流。live BTW/subagent 复用这套编辑器链；`F7` 切换主/辅助会话，`F8` 关闭辅助槽。one-shot/cold child 的只读 transcript panel 替换 editor 槽位时，则由该 panel 处理滚动和 Escape 关闭。
+编辑器焦点下有一组语境键链（详见[键位参考](/reference/keys)）：**会话流进行中**（所选 Agent 或其 live 后代正在运行）时 Escape 中断这条流——buffer 为空且刚提交的消息可安全撤回时优先撤回（恢复进编辑器），草稿始终不动；Ctrl-C 有草稿时只清空草稿、流继续，空 buffer 时中断这条流。两者都空闲时清空草稿，Ctrl-C 在空 buffer 上进入 1 秒内双击退出。中断按下后活动行立即切换为静态 `■ 正在中断...`，直到当前 step/工具排空、turn 真正结束（原生 drain 语义：已启动的工具调用会跑完以保证 replay 有效）。子 Agent 只中断当前 turn，Activation 与未领取 inbox 保留。Ctrl-S 把非空草稿 steer 注入当前 turn。↑/↓ 始终归编辑器历史（queue 面板只展示排队消息，不接管按键），PageUp/PageDown 滚动当前会话流。每个旁支会话都保留这个编辑器：live BTW/subagent 使用完整键链；只读会话中提交的草稿留在编辑器并给出提示；可恢复（cold continuable）会话中提交会打开以草稿预填的 Queue / Steer 回复表单。斜杠命令始终可用。`F7` 返回上一个会话，`F8` 关闭当前显示的旁支会话。
 
 ## 草稿存活
 

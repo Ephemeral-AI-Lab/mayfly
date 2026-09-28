@@ -1,13 +1,15 @@
 /**
  * Projection mapper from the official `mayflyConversation` session projection
- * to Mayfly's renderer-neutral transcript model. It reads the native projection
- * registry for the exact current session and never folds Harness events.
+ * to Mayfly's renderer-neutral transcript model. It reads one conversation
+ * feed — a live Session through the native registry or a stored child through
+ * its native address — and never folds Harness events.
  *
  * @module @ephemeral-ai/mayfly/transcript/official-model
  */
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
@@ -17,23 +19,19 @@ import {
   type ConversationToolEntry,
 } from '../conversation/index.ts'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
+import {
+  SessionConversationFeed,
+  type ConversationFeed,
+  type ConversationFeedState,
+  type ConversationProjectionSource,
+  type LiveDraftSource,
+} from './conversation-feed.ts'
 import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/index.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
 import { toolDetail } from '../conversation/activity-detail.ts'
 import { toolActivity } from './process-activity.ts'
-
-/**
- * Live assistant-stream draft source. Harness `0.1.5` publishes streaming
- * deltas as transient Agent frames the session projection never sees; the
- * mapper overlays the current draft as synthetic streaming entries until the
- * durable settlement rewrites the step.
- */
-export interface LiveDraftSource {
-  subscribe(listener: () => void): () => void
-  get(agent: Agent): LiveAssistantDraft | undefined
-}
 
 /** Adapt the optional ctx live-stream service into a draft source. */
 export function liveDraftsOf(ctx: { get(name: 'mayflyLiveAssistantStream'): unknown }): LiveDraftSource | undefined {
@@ -43,20 +41,6 @@ export function liveDraftsOf(ctx: { get(name: 'mayflyLiveAssistantStream'): unkn
     subscribe: listener => service.subscribe(listener),
     get: agent => service.get(agent),
   }
-}
-
-/**
- * Native projection read face consumed by the transcript mapper. The registry
- * validates complete values; the mapper repeats admission on the next read.
- */
-export interface ConversationProjectionSource {
-  snapshot(session: Session, keys?: readonly ['mayflyConversation']): { readonly asOfSeq: number, readonly values: Readonly<Record<string, unknown>> }
-  onChanged(listener: (session: Session, key: string, value: unknown, seq: number) => void): () => void
-}
-
-interface PendingProjection {
-  readonly value: unknown
-  readonly seq: number
 }
 
 /** Preview lines a read window carries for the expanded group view. */
@@ -545,11 +529,11 @@ function admissibleEntry(candidate: unknown): candidate is ConversationEntry {
 /**
  * The registry schema-validates the complete wire value before publishing,
  * so admission here only checks the envelope and the entry fields this
- * mapper dereferences, then slices history when a resume cutoff applies.
+ * mapper dereferences, then slices history below a presentation floor.
  */
 function visibleProjection(
   value: unknown,
-  transcriptAfterSeq: number | undefined,
+  historyFloorSeq: number | undefined,
 ): ConversationProjection | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
   const envelope = value as { entries?: unknown, streaming?: unknown, settledSteps?: unknown, turns?: unknown }
@@ -560,22 +544,31 @@ function visibleProjection(
   const entries: ConversationEntry[] = []
   for (const candidate of envelope.entries) {
     if (!admissibleEntry(candidate)) return undefined
-    if (transcriptAfterSeq === undefined || candidate.seq > transcriptAfterSeq) entries.push(candidate)
+    if (historyFloorSeq === undefined || candidate.seq > historyFloorSeq) entries.push(candidate)
   }
-  const retained = transcriptAfterSeq === undefined ? undefined : new Set(entries.map(entry => entry.turn))
+  const retained = historyFloorSeq === undefined ? undefined : new Set(entries.map(entry => entry.turn))
   const turns = (Array.isArray(envelope.turns) ? envelope.turns as ConversationProjection['turns'] : [])
     .filter(turn => retained === undefined || retained.has(turn.turn))
   return { entries, streaming: envelope.streaming, settledSteps: envelope.settledSteps as string[], turns }
 }
 
-/** Projection-to-model source scoped to one frontend tree and provider Fiber. */
+/** Failure copy of one feed state, in English source keys the renderer translates. */
+const FEED_FAILURE_COPY = {
+  'controller-unavailable': 'the session controller is unavailable',
+  'invalid': 'the stored conversation is unavailable',
+  'read-failed': 'could not read the conversation: {error}',
+} as const
+
+/**
+ * Projection-to-model source for one displayed conversation. It reads one
+ * feed at a time, converts only the latest unread whole value, and overlays
+ * the feed's live draft without rerunning history mapping.
+ */
 export class OfficialConversationModelSource {
   private model: TranscriptModel = createTranscriptModel('official-conversation', [], false)
-  private session: Session | null = null
-  private agent: Agent | undefined
+  private feed: ConversationFeed | undefined
   private generation = 0
   private watermark = -1
-  private pending: PendingProjection | undefined
   private durableModel: TranscriptModel | undefined
   private lastVisible: ConversationProjection | undefined
   private settledSteps = new Set<string>()
@@ -583,45 +576,30 @@ export class OfficialConversationModelSource {
   private toolsRevision = 0
   private dispatchedCalls: ReadonlySet<string> = new Set()
   private lastDraft: LiveAssistantDraft | undefined
-  private transcriptAfterSeq: number | undefined
+  private historyFloorSeq: number | undefined
+  private stateModel: { readonly state: ConversationFeedState, readonly model: TranscriptModel } | undefined
   private readonly resolvedTools = new Map<string, ResolvedTool>()
   private disposed = false
-  private readonly offChanged: () => void
-  private readonly offLive: () => void
 
   constructor(
     private readonly projections: ConversationProjectionSource,
     private readonly tools: ToolPresentationSource,
     private readonly publish: () => void,
     private readonly live?: LiveDraftSource,
-  ) {
-    this.offChanged = projections.onChanged((session, key, value, seq) => {
-      if (this.disposed || session !== this.session || key !== 'mayflyConversation' || seq <= Math.max(this.watermark, this.pending?.seq ?? -1)) return
-      // Native changes are complete, validated values. Keep only the latest
-      // until a renderer reads it, so a burst never maps history per token.
-      const notify = this.pending === undefined
-      this.pending = { value, seq }
-      if (notify) this.publish()
-    })
-    this.offLive = live === undefined ? () => {} : live.subscribe(() => {
-      // Live notifications cover every Agent. Repaint only when the exact
-      // selected Agent's draft identity changed; this keeps unrelated child
-      // streams from invalidating the main transcript while still waking it
-      // for every reasoning/text delta and for draft removal on end.
-      const draft = this.agent === undefined ? undefined : live.get(this.agent)
-      if (draft !== this.lastDraft) this.publish()
-    })
-  }
+    private readonly t: MayflyTranslate = interpolateLocaleMessage,
+  ) {}
 
-  /** Convert the latest unread native value once, then reuse its model. */
+  /** Convert the latest unread value once, then reuse its model. */
   snapshot(): TranscriptModel {
-    const draft = this.agent === undefined ? undefined : this.live?.get(this.agent)
-    const pending = this.pending
+    const feed = this.feed
+    if (feed === undefined) return this.model
+    const draft = feed.draft()
+    const pending = feed.take()
     if (pending !== undefined) {
-      this.pending = undefined
-      const visible = visibleProjection(pending.value, this.transcriptAfterSeq)
+      const visible = visibleProjection(pending.value, this.historyFloorSeq)
       if (visible !== undefined) {
         this.watermark = pending.seq
+        feed.settle(pending.seq)
         this.lastVisible = visible
         this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, undefined, this.resolvedTools)
         this.dispatchedCalls = new Set(visible.entries.flatMap(entry => entry.kind === 'tool' ? [entry.callId] : []))
@@ -634,7 +612,7 @@ export class OfficialConversationModelSource {
       this.lastDraft = draft
       this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
     }
-    return this.model
+    return this.durableModel === undefined ? this.feedStateModel(feed.state()) : this.model
   }
 
   /** Re-resolve durable tool presenters without changing session generation. */
@@ -644,54 +622,76 @@ export class OfficialConversationModelSource {
       this.toolsRevision += 1
       this.resolvedTools.clear()
       this.durableModel = conversationTranscriptModel(this.lastVisible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`, this.resolvedTools)
-      const draft = this.agent === undefined ? undefined : this.live?.get(this.agent)
+      const draft = this.feed?.draft()
       this.lastDraft = draft
       this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
     }
     this.publish()
   }
 
-  /** Attach to the app's current session, clearing stale content first. */
-  attach(session: Session | null, transcriptAfterSeq?: number, agent?: Agent): void {
+  /** Follow one live Session, clearing stale content first. */
+  attach(session: Session | null, historyFloorSeq?: number, agent?: Agent): void {
     if (this.disposed) return
-    this.session = session
-    this.agent = agent?.session === session ? agent : undefined
-    this.transcriptAfterSeq = transcriptAfterSeq
+    this.attachFeed(session === null ? undefined : new SessionConversationFeed(
+      this.projections,
+      session,
+      agent?.session === session ? agent : undefined,
+      this.live,
+      () => this.publish(),
+    ), historyFloorSeq)
+  }
+
+  /** Read one feed from now on, disposing the previous one and clearing stale content. */
+  attachFeed(feed: ConversationFeed | undefined, historyFloorSeq?: number): void {
+    if (this.disposed) {
+      feed?.dispose()
+      return
+    }
+    this.feed?.dispose()
+    this.feed = feed
+    this.historyFloorSeq = historyFloorSeq
     this.generation += 1
     this.watermark = -1
-    this.pending = undefined
     this.durableModel = undefined
     this.lastVisible = undefined
     this.resolvedTools.clear()
     this.settledSteps.clear()
     this.lastDraft = undefined
+    this.stateModel = undefined
     this.model = createTranscriptModel('official-conversation', [], false, this.generation)
-    if (session === null) {
-      this.publish()
-      return
-    }
-    const snapshot = this.projections.snapshot(session, ['mayflyConversation'])
-    this.watermark = snapshot.asOfSeq
-    this.pending = { value: snapshot.values.mayflyConversation, seq: snapshot.asOfSeq }
     this.publish()
   }
 
-  /** Drop the subscription and reject every late projection callback. */
+  /** Drop the feed and reject every late callback. */
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
-    this.offChanged()
-    this.offLive()
-    this.session = null
-    this.agent = undefined
-    this.pending = undefined
+    this.feed?.dispose()
+    this.feed = undefined
     this.durableModel = undefined
     this.lastVisible = undefined
     this.resolvedTools.clear()
     this.settledSteps.clear()
     this.lastDraft = undefined
-    this.transcriptAfterSeq = undefined
+    this.historyFloorSeq = undefined
+    this.stateModel = undefined
     this.model = createTranscriptModel('official-conversation', [], false)
+  }
+
+  /** A loading or failure placeholder, stable per feed state so rows stay cached. */
+  private feedStateModel(state: ConversationFeedState): TranscriptModel {
+    if (state.kind === 'ready') return this.model
+    if (this.stateModel?.state === state) return this.stateModel.model
+    const node = state.kind === 'loading'
+      ? { kind: 'loader' as const, message: this.t('loading conversation...'), variant: 'braille' as const }
+      : {
+          kind: 'empty' as const,
+          title: this.t('conversation unavailable'),
+          description: this.t(FEED_FAILURE_COPY[state.reason], { error: state.detail ?? '' }),
+        }
+    const model = createTranscriptModel('official-conversation', [node], false, this.generation)
+    this.stateModel = { state, model }
+    return model
   }
 }
 

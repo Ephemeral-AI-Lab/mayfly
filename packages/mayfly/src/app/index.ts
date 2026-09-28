@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import type { MayflyRequestLifecycle } from './request-lifecycle.ts'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
+import { MayflyConversationsService } from './conversation-views.ts'
 import { MayflyCurrentAgentService } from './current-agent.ts'
 import { hasRunningAgentWork, interruptAgentTree } from './agent-interrupt.ts'
 import { armExitEpitaph, epitaphFor } from './exit-epitaph.ts'
@@ -22,11 +23,19 @@ import { profileNameFromArgv } from '../internal/profile.ts'
 import { createMayflyRequestController } from './request-lifecycle.ts'
 import { installRetractionService } from './retraction.ts'
 
+export { MayflyCurrentAgentService } from './current-agent.ts'
 export {
-  MayflyCurrentAgentService,
-  type MayflyAgentViewSnapshot,
-  type MayflyAuxiliaryView,
-} from './current-agent.ts'
+  conversationId,
+  MAX_SIDE_CONVERSATIONS,
+  MayflyConversationsService,
+  type MayflyConversationAccess,
+  type MayflyConversationOpen,
+  type MayflyConversationResidency,
+  type MayflyConversationsSnapshot,
+  type MayflyConversationView,
+  type MayflySubagentConversation,
+  type MayflySubagentOpen,
+} from './conversation-views.ts'
 export { createMayflyRequestController, type MayflyRequestController } from './request-lifecycle.ts'
 export type { MayflyRetractionService, MayflyTurnRetraction } from './retraction.ts'
 export type { MayflyRequestLifecycle, MayflyRequestRef, MayflyRequestState } from './request-lifecycle.ts'
@@ -82,7 +91,8 @@ export function apply(ctx: Context, config: Config): void {
   const exit = ctx.get('appExit')
   if (exit === undefined) throw new Error('mayfly-app: the launcher must provide ctx.appExit before the tree mounts')
   const io: MayflyIo = { stderr: internals.stderr, exit }
-  const current = new MayflyCurrentAgentService(ctx)
+  const conversations = new MayflyConversationsService(ctx)
+  const current = new MayflyCurrentAgentService(ctx, conversations)
   const requests = createMayflyRequestController(ctx)
   const controller = ctx.sessionController
   let selectedRevision = current.revision()
@@ -99,7 +109,7 @@ export function apply(ctx: Context, config: Config): void {
     requests,
     message => { io.stderr.write(`dsh: ${message}\n`) },
     (agent) => {
-      const result = interruptAgentTree(ctx, agent, current.view(), { keepInbox: true })
+      const result = interruptAgentTree(ctx, agent, conversations.displayed(), { keepInbox: true })
       for (const failure of result.failures) io.stderr.write(`dsh: could not interrupt ${failure}\n`)
     },
   )
@@ -147,7 +157,7 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   const select = (agent: Agent): void => {
-    current.select(agent)
+    conversations.selectPrimary(agent)
   }
 
   const resolve = async (sessionId: string): Promise<Agent> => {
@@ -183,7 +193,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('mayfly/request-resume', (sessionId) => {
     enqueue(async () => {
-      current.closeAuxiliary()
+      conversations.closeSides()
       try { select(await resolve(sessionId)) }
       catch (error) { io.stderr.write(`dsh: could not resume session ${sessionId}: ${describe(error)}\n`) }
     })
@@ -191,7 +201,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('mayfly/request-new', (agentPreset) => {
     enqueue(async () => {
-      current.closeAuxiliary()
+      conversations.closeSides()
       try { select(await create(agentPreset)) }
       catch (error) { io.stderr.write(`dsh: could not start a new session: ${describe(error)}\n`) }
     })
@@ -200,7 +210,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('mayfly/request-fork', () => {
     enqueue(async () => {
       const agent = current.primary()
-      current.closeAuxiliary()
+      conversations.closeSides()
       if (agent === null) {
         io.stderr.write('dsh: no live session to fork\n')
         return
@@ -217,7 +227,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('mayfly/request-rewind', (sessionId, atSeq) => {
     enqueue(async () => {
       const agent = current.primary()
-      current.closeAuxiliary()
+      conversations.closeSides()
       if (agent === null || String(agent.id) !== sessionId) {
         io.stderr.write(`dsh: rewind request is stale for session ${sessionId}\n`)
         return

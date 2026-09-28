@@ -11,7 +11,7 @@ flowchart TB
     ROOT["one dsh process · one Cordis service graph"]
     DSH["native dsh services<br/>commands · sessionProjections · tools · agents"]
     PLUGIN["ordinary Cordis plugins<br/>official Mayfly rows and external siblings"]
-    AGENT["mayflyCurrentAgent<br/>primary + one auxiliary slot<br/>exact displayed Agent"]
+    AGENT["mayflyConversations · mayflyCurrentAgent<br/>primary + side conversations<br/>exact displayed Agent"]
     UI["direct Mayfly UI services<br/>mayflyPanes · mayflyStatus<br/>mayflyOverlays · mayflyEditorExtensions"]
     CORE["@ephemeral-ai/mayfly core area<br/>only pi-tui and raw-terminal owner"]
     TERM["terminal"]
@@ -36,12 +36,15 @@ flowchart TB
 2. Mayfly only adds the four services a terminal UI needs:
    `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and
    `mayflyEditorExtensions`.
-3. `mayflyCurrentAgent` holds one primary Agent and one auxiliary session slot;
-   `current()` always returns the exact live Agent currently displayed. A
-   plugin that obtains an Agent still calls native dsh services; the object is
-   not a renderer model. BTW and continuable subagents therefore reuse the same
-   transcript, status, pane, command, and editor without building a second
-   session renderer.
+3. `mayflyConversations` holds the primary conversation and any number of
+   side conversations (BTW, subagents), the one displayed selection, and the
+   most-recently-displayed order. `mayflyCurrentAgent.current()` returns the
+   exact live Agent while an interactive conversation is displayed and null
+   while a readonly or resumable one is. A plugin that obtains an Agent still
+   calls native dsh services; the object is not a renderer model. Every kind
+   of conversation therefore renders in the same transcript pane with the
+   same status, panes, commands, and editor, without a second session
+   renderer.
 4. Registrations, listeners, timers, and async continuations belong to the
    Cordis Fiber that created them. Fiber unload is the only cleanup mechanism
    for plugin contributions.
@@ -84,18 +87,17 @@ plugin bridge, and no app session facade.
 
 - Agent, Session, command, tool, and projection state remains owned by the
   Harness packages.
-- App holds the primary Agent selection, the single auxiliary slot, and the
-  currently displayed side; it does not reimplement the Harness
-  command/tool/projection APIs. A live auxiliary session becomes the exact
-  current Agent; a one-shot child is shown by the shared readonly transcript
-  panel, which lives in `interaction/` and is projected into a core-owned
-  editor host slot.
-  App does not depend on the terminal screen, so a core/theme reload creates no
-  new session and resets no selection.
-- A BTW Agent still carries the complete seed as model context, but
-  `mayflyCurrentAgent`'s BTW metadata records the seed cutoff, and the
-  transcript source only presents new questions, tools, and answers after the
-  cutoff.
+- App holds the conversation registry: the primary Agent, the open side
+  conversations with their derived access (`interactive`, `resumable`,
+  `readonly`) and residency (`displayed`, `retained`, `listed`), and the
+  displayed selection. It does not reimplement the Harness
+  command/tool/projection APIs, and it does not depend on the terminal
+  screen, so a core/theme reload creates no new session and resets no
+  selection. At most 32 side conversations stay open; the least recent
+  hidden one drops first.
+- A BTW Agent still carries the complete seed as model context, but its
+  conversation records a `historyFloorSeq`, and the transcript only presents
+  new questions, tools, and answers after that floor.
 - The `mayfly-ui` provider holds the current UI contribution snapshots, and
   every registration is cleaned up with its consumer Fiber.
 - The frontend `mayflyUiInteraction` holds renderer-neutral Form, Choice,
@@ -119,11 +121,15 @@ plugin bridge, and no app session facade.
   registration; the old panel/controller stack has been deleted. Features only
   publish readonly nodes and write back authoritative snapshots through
   structured action replies.
-- The transcript has a single selected-session conversation controller; when
-  the session generation changes, the old entry cache is destroyed.
-  The native projection registry validates complete values; the transcript
-  source stashes the latest unread native value and converts cutoff-eligible
-  durable entries on the next snapshot. Live updates separately carry the
+- The transcript has one conversation controller with one view per displayed
+  or retained conversation; listed conversations hold no view, feed, or model.
+  Switching the displayed conversation swaps the mounted view, so returning
+  with F7 reuses its rendered rows. Each view reads one feed: a live Session
+  through the native projection registry, or a stored child's first addressed
+  snapshot through the session controller, which never activates it. The
+  native projection registry validates complete values; a view stashes the
+  latest unread value and converts floor-eligible durable entries only when
+  it is displayed. Live updates separately carry the
   current attempt's overlay and reuse converted history and tool presenter
   results; the renderer caches historical layouts and only repaints the
   affected live entries. Switching, detach, and unload discard pending values;

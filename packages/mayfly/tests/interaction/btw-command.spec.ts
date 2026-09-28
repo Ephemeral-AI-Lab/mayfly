@@ -1,5 +1,5 @@
 /**
- * `/btw` auxiliary-Agent ownership, switching, cancellation, and cleanup.
+ * `/btw` side-conversation Agent ownership, switching, cancellation, and cleanup.
  * @module btw-command
  */
 
@@ -8,6 +8,7 @@ import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
+import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import * as btw from '../../src/interaction/btw-command.ts'
 import { PaneFakeCommands } from '../transcript/pane-fakes.ts'
 
@@ -75,10 +76,16 @@ async function boot(options: { hold?: boolean, ignoreAbort?: boolean, reject?: u
   ctx.reflect.provide('agentPresets', { mount: presetMount })
   const begin = vi.fn()
   ctx.reflect.provide('mayflyRequests', { begin })
-  const current = new MayflyCurrentAgentService(ctx)
-  current.select(parent)
+  const conversations = new MayflyConversationsService(ctx)
+  const current = new MayflyCurrentAgentService(ctx, conversations)
+  conversations.selectPrimary(parent)
   const fiber = await ctx.plugin(btw)
-  return { ctx, commands, current, parent, live, handles, create, begin, presetMount, release: () => release?.(), dispose: () => fiber.dispose() }
+  return { ctx, commands, conversations, current, parent, live, handles, create, begin, presetMount, release: () => release?.(), dispose: () => fiber.dispose() }
+}
+
+/** The open BTW conversation, if any. */
+function btwView(test: { readonly conversations: MayflyConversationsService }) {
+  return test.conversations.snapshot().views.find(view => view.kind === 'btw')
 }
 
 describe('mayfly-btw-command', () => {
@@ -88,16 +95,15 @@ describe('mayfly-btw-command', () => {
     const child = test.handles[0]!.agent
     expect(test.current.primary()).toBe(test.parent)
     expect(test.current.current()).toBe(child)
-    expect(test.current.view()).toMatchObject({
-      displayed: 'auxiliary',
-      auxiliary: { kind: 'btw', parentSessionId: String(test.parent.id), access: 'interactive' },
+    expect(test.conversations.displayed()).toMatchObject({
+      kind: 'btw', parentSessionId: String(test.parent.id), access: 'interactive', residency: 'displayed',
     })
     expect(child.followup).toHaveBeenCalledOnce()
     expect(test.begin).toHaveBeenCalledWith('btw')
 
-    expect(test.current.toggleAuxiliary()).toBe(true)
+    expect(test.conversations.back()).toBe(true)
     expect(test.current.current()).toBe(test.parent)
-    expect(test.current.toggleAuxiliary()).toBe(true)
+    expect(test.conversations.back()).toBe(true)
     expect(test.current.current()).toBe(child)
     await test.dispose()
     expect(test.handles[0]!.dispose).toHaveBeenCalledOnce()
@@ -119,7 +125,7 @@ describe('mayfly-btw-command', () => {
     await test.commands.run('btw', 'question')
     expect(await test.commands.run('btw', '')).toEqual({ kind: 'success', text: 'dismissed the side question' })
     expect(test.current.current()).toBe(test.parent)
-    expect(test.current.view().auxiliary).toBeNull()
+    expect(btwView(test)).toBeUndefined()
     await vi.waitFor(() => { expect(test.handles[0]!.dispose).toHaveBeenCalledOnce() })
     await test.dispose()
   })
@@ -128,16 +134,16 @@ describe('mayfly-btw-command', () => {
     const test = await boot({ hold: true })
     const pending = test.commands.run('btw', 'slow question')
     await vi.waitFor(() => { expect(test.create).toHaveBeenCalledOnce() })
-    test.ctx.emit('mayfly/request-close-agent-view')
+    test.ctx.emit('mayfly/request-close-conversation')
     expect(await pending).toEqual({ kind: 'error', text: 'the side question was replaced before it opened' })
     expect(test.current.current()).toBe(test.parent)
-    expect(test.current.view().auxiliary).toBeNull()
+    expect(btwView(test)).toBeUndefined()
     await test.dispose()
   })
 
   it('ignores the global close action when no creation is pending', async () => {
     const test = await boot()
-    test.ctx.emit('mayfly/request-close-agent-view')
+    test.ctx.emit('mayfly/request-close-conversation')
     expect(test.create).not.toHaveBeenCalled()
     await test.dispose()
   })
@@ -146,10 +152,35 @@ describe('mayfly-btw-command', () => {
     const test = await boot({ hold: true, ignoreAbort: true })
     const pending = test.commands.run('btw', 'slow question')
     await vi.waitFor(() => { expect(test.create).toHaveBeenCalledOnce() })
-    test.ctx.emit('mayfly/request-close-agent-view')
+    test.ctx.emit('mayfly/request-close-conversation')
     test.release()
     expect(await pending).toEqual({ kind: 'error', text: 'the side question was replaced before it opened' })
     await vi.waitFor(() => { expect(test.handles[0]!.dispose).toHaveBeenCalledOnce() })
+    await test.dispose()
+  })
+
+  it('discards a late handle once the primary it asked from was replaced', async () => {
+    const test = await boot({ hold: true, ignoreAbort: true })
+    const pending = test.commands.run('btw', 'slow question')
+    await vi.waitFor(() => { expect(test.create).toHaveBeenCalledOnce() })
+    const next = agent('next-primary')
+    test.live.set(String(next.id), next)
+    test.conversations.selectPrimary(next)
+    test.release()
+    expect(await pending).toEqual({ kind: 'error', text: 'the side question was replaced before it opened' })
+    expect(test.handles[0]!.dispose).toHaveBeenCalledOnce()
+    expect(btwView(test)).toBeUndefined()
+    await test.dispose()
+  })
+
+  it('keeps an open BTW while another conversation is displayed', async () => {
+    const test = await boot()
+    await test.commands.run('btw', 'question')
+    const worker = agent('worker')
+    test.live.set(String(worker.id), worker)
+    test.conversations.open({ kind: 'subagent', sessionId: 'worker', parentSessionId: String(test.parent.id), label: 'worker', mode: 'continuable' })
+    expect(btwView(test)).toMatchObject({ residency: 'retained' })
+    expect(test.handles[0]!.dispose).not.toHaveBeenCalled()
     await test.dispose()
   })
 
@@ -159,7 +190,7 @@ describe('mayfly-btw-command', () => {
       kind: 'error', text: 'could not start the side session: factory unavailable',
     })
     expect(test.current.current()).toBe(test.parent)
-    expect(test.current.view().auxiliary).toBeNull()
+    expect(btwView(test)).toBeUndefined()
     await test.dispose()
   })
 
@@ -190,11 +221,11 @@ describe('mayfly-btw-command', () => {
       meta: { isSeeded: true },
       agentOptions: { provider: 'provider-x', model: 'model-y', reasoningEffort: 'high' },
     })
-    expect(test.current.view().auxiliary).toMatchObject({ transcriptAfterSeq: 1 })
+    expect(btwView(test)).toMatchObject({ historyFloorSeq: 1 })
     const agentCtx = new Context()
     await request.setup(agentCtx)
     expect(test.presetMount).toHaveBeenCalledWith(agentCtx, 'reviewer')
-    const label = test.current.view().auxiliary?.label ?? ''
+    const label = btwView(test)?.label ?? ''
     expect(label).toHaveLength(60)
     expect(label.endsWith('...')).toBe(true)
     expect(label).not.toContain('\n')
@@ -204,7 +235,7 @@ describe('mayfly-btw-command', () => {
   it('reports empty-close and absent-parent requests', async () => {
     const test = await boot()
     expect(await test.commands.run('btw', '')).toEqual({ kind: 'error', text: 'no side question is open' })
-    test.current.select(null)
+    test.conversations.selectPrimary(null)
     expect(await test.commands.run('btw', 'question')).toEqual({ kind: 'error', text: 'no active session for a side question' })
     await test.dispose()
   })
@@ -224,7 +255,7 @@ describe('mayfly-btw-command', () => {
         kind: 'error', text: `could not ask the side question: ${reason instanceof Error ? reason.message : reason}`,
       })
       expect(test.handles[0]!.dispose).toHaveBeenCalledOnce()
-      expect(test.current.view().auxiliary).toBeNull()
+      expect(btwView(test)).toBeUndefined()
       await test.dispose()
     }
   })

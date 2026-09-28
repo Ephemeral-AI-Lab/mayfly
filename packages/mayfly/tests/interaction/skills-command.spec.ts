@@ -82,7 +82,7 @@ describe('shared skills listing', () => {
     const old = bench.model('mayfly.skills')
     const replacement = { ...bench.agent } as Agent
     bench.agents.set(bench.agent.id, replacement)
-    bench.ctx.mayflyCurrentAgent.select(replacement)
+    bench.ctx.mayflyConversations.selectPrimary(replacement)
     await bench.ctx.mayflySkillsCatalog.refresh()
     expect(old.disposed).toBe(true)
     expect(bench.ctx.mayflySkillsCatalog.userInvocable().map(skill => skill.name)).not.toContain('old-only')
@@ -96,7 +96,7 @@ describe('shared skills listing', () => {
     bench.invalidate()
     const pending = bench.ctx.mayflySkillsCatalog.refresh()
     await vi.waitFor(() => expect(signal).toBeDefined())
-    bench.ctx.mayflyCurrentAgent.select(bench.other)
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
     expect(signal.aborted).toBe(true)
     gate.resolve({ candidates: [candidate('stale')], complete: true })
     await pending

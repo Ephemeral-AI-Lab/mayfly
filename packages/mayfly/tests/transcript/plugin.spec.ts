@@ -9,6 +9,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { MayflyConversationView } from '../../src/app/conversation-views.ts'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
@@ -20,7 +21,8 @@ import { ACTION_TOGGLE_COLLAPSE, apply, inject } from '../../src/transcript/inde
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import * as statusBasicModel from '../../src/transcript/status-basic-model.ts'
-import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, textDelta, toolCallEvent, toolResultEvent, turnStart, userEvent } from './helpers.ts'
+import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, stepStart, textDelta, toolCallEvent, toolResultEvent, turnStart, userEvent } from './helpers.ts'
+import { setProcessRowTimers } from '../../src/transcript/process-rows.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
@@ -73,6 +75,8 @@ class FakeScreen implements MayflyScreen {
   showOverlay(): MayflyOverlayHandle { throw new Error('overlays are out of scope') }
   requestRender(force?: boolean): void { this.renderRequests.push(force) }
   contentChanged(): boolean { this.requestRender(); return false }
+  follows = 0
+  followContent(): void { this.follows += 1 }
   suspend<T>(fn: () => Promise<T>): Promise<T> { return fn() }
   setTitle(): void {}
 }
@@ -118,7 +122,8 @@ interface Harness {
   readonly screen: FakeScreen
   readonly keymap: FakeKeymap
   readonly select: (agent: FakeAgent | null) => void
-  readonly selectAuxiliary: (agent: FakeAgent, transcriptAfterSeq: number) => void
+  readonly selectAuxiliary: (agent: FakeAgent, historyFloorSeq: number) => void
+  readonly showReadonlyChild: (agent: FakeAgent) => void
   readonly setMayflySettings: (value: unknown) => void
 }
 
@@ -177,30 +182,45 @@ async function bootTranscript(
   const _status = new MayflyStatusService(ctx)
   let active = initial
   let revision = 0
-  let auxiliary: {
-    readonly kind: 'btw'
-    readonly sessionId: string
-    readonly parentSessionId: string
-    readonly label: string
-    readonly transcriptAfterSeq?: number
-  } | null = null
-  let displayed: 'primary' | 'auxiliary' = 'primary'
+  // The displayed conversation: the primary, or a BTW with its history floor.
+  let primary = initial
+  let btw: { readonly agent: FakeAgent, readonly view: MayflyConversationView } | null = null
+  const showReadonlyChild = (agent: FakeAgent): void => {
+    // A readonly child drives no Agent: current() is null while it is displayed.
+    active = null
+    btw = {
+      agent,
+      view: {
+        kind: 'subagent', id: `session:${String(agent.id)}`, sessionId: String(agent.id), parentSessionId: 'parent-1',
+        label: 'worker', mode: 'one-shot', access: 'readonly', residency: 'displayed',
+      },
+    }
+    revision += 1
+    for (const listener of listeners) listener(null, revision)
+  }
   const listeners = new Set<(agent: Agent | null, revision: number) => void>()
   const currentAgent = {
     current: () => active as unknown as Agent | null,
     revision: () => revision,
-    view: () => ({
-      primarySessionId: active === null ? null : String(active.id),
-      displayed,
-      auxiliary,
-      revision,
-    }),
     subscribe(listener: (agent: Agent | null, nextRevision: number) => void) {
       listeners.add(listener)
       listener(active as unknown as Agent | null, revision)
       return () => { listeners.delete(listener) }
     },
-    subscribeView(listener: () => void) {
+  }
+  const primaryView = (): MayflyConversationView | null => primary === null ? null : {
+    kind: 'primary', id: `session:${String(primary.id)}`, sessionId: String(primary.id), access: 'interactive', residency: btw === null ? 'displayed' : 'retained',
+  }
+  const conversations = {
+    primary: () => primary as unknown as Agent | null,
+    displayed: (): MayflyConversationView | null => btw?.view ?? primaryView(),
+    snapshot: () => {
+      const main = primaryView()
+      const views = [...main === null ? [] : [main], ...btw === null ? [] : [btw.view]]
+      const displayedId = btw?.view.id ?? main?.id ?? null
+      return { primaryId: main?.id ?? null, displayedId, recent: views.map(view => view.id).reverse(), views, revision }
+    },
+    subscribe(listener: () => void) {
       listeners.add(listener)
       listener()
       return () => { listeners.delete(listener) }
@@ -208,20 +228,25 @@ async function bootTranscript(
   }
   const select = (agent: FakeAgent | null): void => {
     active = agent
-    auxiliary = null
-    displayed = 'primary'
+    primary = agent
+    btw = null
     revision += 1
     for (const listener of listeners) listener(agent as unknown as Agent | null, revision)
   }
-  const selectAuxiliary = (agent: FakeAgent, transcriptAfterSeq: number): void => {
+  const selectAuxiliary = (agent: FakeAgent, historyFloorSeq: number): void => {
     active = agent
-    displayed = 'auxiliary'
-    auxiliary = {
-      kind: 'btw',
-      sessionId: String(agent.id),
-      parentSessionId: 'parent-1',
-      label: 'side question',
-      transcriptAfterSeq,
+    btw = {
+      agent,
+      view: {
+        kind: 'btw',
+        id: `session:${String(agent.id)}`,
+        sessionId: String(agent.id),
+        parentSessionId: 'parent-1',
+        label: 'side question',
+        historyFloorSeq,
+        access: 'interactive',
+        residency: 'displayed',
+      },
     }
     revision += 1
     for (const listener of listeners) listener(agent as unknown as Agent, revision)
@@ -235,6 +260,8 @@ async function bootTranscript(
     mayflyComponents: fakeMayflyComponents(),
     mayflyKeymap: keymap,
     mayflyCurrentAgent: currentAgent,
+    mayflyConversations: conversations,
+    agents: { get: (id: unknown) => [primary, btw?.agent].find(agent => agent != null && String(agent.id) === String(id)) },
     mayflyInteractionState: { settingsSource: () => mayflyState.settings },
     sessionProjections: projections,
     sessions: { list: () => active === null ? [] : [active.session] },
@@ -254,7 +281,7 @@ async function bootTranscript(
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
   disposers.push(async () => { await ctx.fiber.dispose() })
-  return { ctx, screen, keymap, select, selectAuxiliary, setMayflySettings: value => { mayflyState.settings = value } }
+  return { ctx, screen, keymap, select, selectAuxiliary, showReadonlyChild, setMayflySettings: value => { mayflyState.settings = value } }
 }
 
 function stripGutter(lines: string[]): string[] {
@@ -328,6 +355,8 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(contentLines(screen).join('\n')).toContain('main history')
 
     selectAuxiliary(btw, 2)
+    // A different conversation opens at its newest content.
+    expect(screen.follows).toBe(1)
     const side = contentLines(screen).join('\n')
     expect(side).toContain('BTW question')
     expect(side).toContain('BTW answer')
@@ -340,6 +369,32 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(restored).toContain('main answer')
     expect(restored).not.toContain('BTW answer')
     await ctx.fiber.dispose()
+  })
+
+  it('shows a readonly child in the main pane with its own ticking running header', async () => {
+    const timers = { intervals: [] as Array<() => void>, setInterval: (callback: () => void) => { timers.intervals.push(callback); return 0 as unknown as ReturnType<typeof setInterval> }, clearInterval: () => {}, now: () => 5_000 }
+    setProcessRowTimers(timers)
+    try {
+      resetSeq()
+      const main = fakeAgent([userEvent('main history')])
+      resetSeq()
+      const worker = fakeAgent([turnStart(1), stepStart(1, 1), userEvent('child question'), reasoningDelta(1, 1, 'child thought')])
+      worker.id = 'worker-1'
+      worker.session.id = 'worker-1'
+      const { screen, showReadonlyChild, select } = await bootTranscript(main)
+      showReadonlyChild(worker)
+      const child = contentLines(screen).join('\n')
+      expect(child).toContain('child question')
+      expect(child).not.toContain('main history')
+      expect(child).toMatch(/▾ Deep diving/u)
+      // No activity row follows a readonly child, so its transcript keeps the running header.
+      expect(timers.intervals).toHaveLength(1)
+      const before = screen.renderRequests.length
+      timers.intervals[0]!()
+      expect(screen.renderRequests.length).toBeGreaterThan(before)
+      select(main)
+      expect(contentLines(screen).join('\n')).toContain('main history')
+    } finally { setProcessRowTimers(undefined) }
   })
 
   it('isolates populated sessions whose transcript ids and revisions collide', async () => {

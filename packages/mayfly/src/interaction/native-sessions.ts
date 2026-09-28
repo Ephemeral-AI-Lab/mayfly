@@ -6,6 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { ui, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
+import type {} from '../app/conversation-views.ts'
 import { createSessionListCache, refreshSessionList, sessionListHeaders } from './session-list-reads.ts'
 import { sessionWorkspaceItem, sessionWorkspaces, type SessionWorkspace } from './session-workspaces-model.ts'
 import { openSessionWorkspace, type SessionWorkspacePanel, type SessionWorkspaceScope } from './session-workspace-panel.ts'
@@ -24,7 +25,7 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
   let busy = false
   let repaint: ReturnType<typeof setTimeout> | undefined
   const cleanup = ctx.effect(() => () => { lifetime.abort(); clearTimeout(repaint) })
-  const currentCwd = () => ctx.mayflyCurrentAgent.current()?.session.header.cwd ?? process.cwd()
+  const currentCwd = () => ctx.mayflyConversations.primary()?.session.header.cwd ?? process.cwd()
   const adopt = () => { groups = sessionWorkspaces(sessionListHeaders(ctx, cache), currentCwd()) }
   const node = () => ui.surface({ title: t('Sessions · Workspaces'), chrome: 'overlay', child: ui.stack.column([
     ...(loading ? [ui.loader({ message: t('Loading workspaces…') })] : []),

@@ -82,6 +82,22 @@ describe('TurnHeaderComponent', () => {
     component.dispose()
     expect(timers.clearedIntervals).toBe(1)
   })
+
+  it('runs and retires the clock on the default timers', () => {
+    vi.useFakeTimers()
+    try {
+      const ticks: number[] = []
+      const component = new TurnHeaderComponent(colors, fakeMayflyComponents(), () => ticks.push(1))
+      component.update(header({ running: true, startedAt: Date.now() }))
+      vi.advanceTimersByTime(TURN_CLOCK_INTERVAL_MS)
+      expect(ticks).toHaveLength(1)
+      expect(component.render(80)[1]).toBe('▾ Deep diving for 1s')
+      component.update(header({ startedAt: 0, endedAt: 1_000 }))
+      vi.advanceTimersByTime(TURN_CLOCK_INTERVAL_MS * 3)
+      expect(ticks).toHaveLength(1)
+      component.dispose()
+    } finally { vi.useRealTimers() }
+  })
 })
 
 describe('ProcessTitleComponent', () => {

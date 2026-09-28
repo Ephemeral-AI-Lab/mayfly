@@ -7,6 +7,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionFollowRequest, SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
+import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 import * as recovery from '../../src/frontend/assistant-stream.ts'
 
@@ -26,7 +27,8 @@ describe('frontend assistant stream recovery', () => {
     ctx.provide('agents', { get: (id: Agent['id']) => agents.get(id) } as never)
     const live = new LiveAssistantStreamService(ctx)
     ctx.effect(() => () => live.dispose())
-    const current = new MayflyCurrentAgentService(ctx)
+    const conversations = new MayflyConversationsService(ctx)
+    new MayflyCurrentAgentService(ctx, conversations)
     const signals: AbortSignal[] = []
     const follow = vi.fn(async function* (request: SessionFollowRequest, signal: AbortSignal): AsyncIterable<SessionFollowFrame> {
       signals.push(signal)
@@ -40,18 +42,18 @@ describe('frontend assistant stream recovery', () => {
     })
     ctx.provide('sessionController', { follow } as never)
     const owner = await ctx.plugin(recovery)
-    current.select(first)
+    conversations.selectPrimary(first)
     await flush()
     expect(live.get(first)?.text).toBe('first')
     const calls = follow.mock.calls.length
-    current.select(first)
+    conversations.selectPrimary(first)
     expect(follow).toHaveBeenCalledTimes(calls)
     agents.set(first.id, replacement)
-    current.select(replacement)
+    conversations.selectPrimary(replacement)
     await flush()
     expect(live.get(replacement)?.text).toBe('replacement')
     expect(signals[0]!.aborted).toBe(true)
-    current.select(null)
+    conversations.selectPrimary(null)
     expect(signals.at(-1)!.aborted).toBe(true)
     await owner.dispose()
   })

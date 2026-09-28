@@ -16,6 +16,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyEditorSubmitRequest, MayflyEditorSubmitValue } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyConversationView } from '../../src/app/conversation-views.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import * as paneQueuePlugin from '../../src/interaction/pane-queue.ts'
@@ -84,6 +85,17 @@ function imageRef(id: string): ImageAttachmentRef {
   }
 }
 
+/** The displayed conversation and registry revision an input test routes against. */
+interface DisplayedFixture {
+  readonly displayed: MayflyConversationView
+  readonly revision: number
+}
+
+/** A displayed side conversation at one registry revision. */
+function sideView(side: Omit<Extract<MayflyConversationView, { readonly kind: 'btw' | 'subagent' }>, 'id' | 'residency'>, revision: number): DisplayedFixture {
+  return { displayed: { ...side, id: `session:${side.sessionId}`, residency: 'displayed' } as MayflyConversationView, revision }
+}
+
 async function mount(options: {
   withAgent?: boolean
   running?: boolean
@@ -91,7 +103,7 @@ async function mount(options: {
   inbox?: ReturnType<typeof fakeInbox>
   modelRef?: unknown
   retract?: (messageId: string) => boolean
-  view?: ReturnType<Context['mayflyCurrentAgent']['view']>
+  view?: DisplayedFixture
   subagents?: { prompt: ReturnType<typeof vi.fn>, interruptByParent: ReturnType<typeof vi.fn> }
 } = {}): Promise<{
   ctx: Context
@@ -130,7 +142,10 @@ async function mount(options: {
     inbox: options.inbox ?? fakeInbox(),
   } as unknown as Agent
   ctx.provide('testSession', { current: options.withAgent === false ? null : agent, modelRef: options.modelRef ?? undefined })
-  if (options.view !== undefined) vi.spyOn(ctx.mayflyCurrentAgent, 'view').mockReturnValue(options.view)
+  if (options.view !== undefined) {
+    vi.spyOn(ctx.mayflyConversations, 'displayed').mockReturnValue(options.view.displayed)
+    vi.spyOn(ctx.mayflyConversations, 'revision').mockReturnValue(options.view.revision)
+  }
   if (options.subagents !== undefined) ctx.set('subagents', options.subagents as never)
   if (options.retract !== undefined) {
     ctx.set('mayflyRetractions', { tryRetract: options.retract })
@@ -300,12 +315,7 @@ describe('mayfly-input plugin', () => {
   })
 
   it('uses the ordinary editor for BTW and records the BTW request scope', async () => {
-    const view = {
-      primarySessionId: 'primary',
-      displayed: 'auxiliary' as const,
-      auxiliary: { kind: 'btw' as const, sessionId: 'input-spec', parentSessionId: 'primary', label: 'side', access: 'interactive' as const },
-      revision: 1,
-    }
+    const view = sideView({ kind: 'btw' as const, sessionId: 'input-spec', parentSessionId: 'primary', label: 'side', access: 'interactive' as const }, 1)
     const { ctx, editor, followup } = await mount({ view })
     type(editor, 'continue the side question')
     editor.handleInput(KEY.enter)
@@ -314,12 +324,7 @@ describe('mayfly-input plugin', () => {
   })
 
   it('uses the BTW request scope for Ctrl-S steering too', async () => {
-    const view = {
-      primarySessionId: 'primary',
-      displayed: 'auxiliary' as const,
-      auxiliary: { kind: 'btw' as const, sessionId: 'input-spec', parentSessionId: 'primary', label: 'side', access: 'interactive' as const },
-      revision: 2,
-    }
+    const view = sideView({ kind: 'btw' as const, sessionId: 'input-spec', parentSessionId: 'primary', label: 'side', access: 'interactive' as const }, 2)
     const { ctx, editor, steer } = await mount({ view })
     type(editor, 'steer the side question')
     expect(editor.onKey?.(KEY.ctrlS)).toBe(true)
@@ -331,19 +336,14 @@ describe('mayfly-input plugin', () => {
   it('routes interactive subagent input through the native parent address', async () => {
     const prompt = vi.fn(async () => ({ messageId: 'subagent-message' }))
     const interruptByParent = vi.fn()
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 2,
-    }
+      }, 2)
     const { ctx, editor, followup } = await mount({ view, subagents: { prompt, interruptByParent } })
     type(editor, 'continue the work')
     editor.handleInput(KEY.enter)
@@ -360,19 +360,14 @@ describe('mayfly-input plugin', () => {
 
   it('routes interactive subagent input when the editor lacks the draft seam', async () => {
     const prompt = vi.fn(async () => ({ messageId: 'subagent-message' }))
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 6,
-    }
+      }, 6)
     const { editor } = await mount({ view, subagents: { prompt, interruptByParent: vi.fn() } })
     ;(editor as MayflyEditor).consumeSubmittedDraft = undefined
     type(editor, 'seamless subagent text')
@@ -385,19 +380,14 @@ describe('mayfly-input plugin', () => {
 
   it('converts image blocks for the native subagent prompt API', async () => {
     const prompt = vi.fn(async () => ({ messageId: 'subagent-image-message' }))
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 3,
-    }
+      }, 3)
     const { ctx, editor } = await mount({ view, subagents: { prompt, interruptByParent: vi.fn() } })
     const ref = { ...imageRef('subagent-image'), name: 'plot.png' }
     ctx.provide('attachments', {
@@ -420,19 +410,14 @@ describe('mayfly-input plugin', () => {
 
   it('restores subagent text, history, and images when prompt delivery fails', async () => {
     const prompt = vi.fn(async () => { throw 'child rejected the prompt' })
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 4,
-    }
+      }, 4)
     const { ctx, editor, hint } = await mount({ view, subagents: { prompt, interruptByParent: vi.fn() } })
     const ref = imageRef('failed-subagent-image')
     ctx.provide('attachments', {
@@ -450,19 +435,14 @@ describe('mayfly-input plugin', () => {
   })
 
   it('contains missing attachment storage and unsupported subagent blocks', async () => {
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 40,
-    }
+      }, 40)
     const missing = await mount({ view, subagents: { prompt: vi.fn(), interruptByParent: vi.fn() } })
     const ref = imageRef('missing-store-image')
     missing.ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', ref)
@@ -484,19 +464,14 @@ describe('mayfly-input plugin', () => {
 
   it('restores a subagent submission rejected before delivery starts', async () => {
     const prompt = vi.fn()
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'readonly' as const,
-      },
-      revision: 5,
-    }
+      }, 5)
     const { editor, hint } = await mount({ view, subagents: { prompt, interruptByParent: vi.fn() } })
     type(editor, 'keep the race-safe draft')
     editor.handleInput(KEY.enter)
@@ -506,24 +481,19 @@ describe('mayfly-input plugin', () => {
     expect(hint.render(80)).toEqual(['!the subagent is no longer available for input!'])
   })
 
-  it('restores a submission when the auxiliary closes between routing and delivery', async () => {
+  it('restores a submission when the child conversation closes between routing and delivery', async () => {
     const prompt = vi.fn()
-    const auxiliary = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const child = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 41,
-    }
-    const rig = await mount({ view: auxiliary, subagents: { prompt, interruptByParent: vi.fn() } })
-    const primary = { primarySessionId: 'parent', displayed: 'primary' as const, auxiliary: auxiliary.auxiliary, revision: 42 }
-    vi.mocked(rig.ctx.mayflyCurrentAgent.view).mockReturnValueOnce(auxiliary).mockReturnValue(primary)
+      }, 41)
+    const rig = await mount({ view: child, subagents: { prompt, interruptByParent: vi.fn() } })
+    const primary = { kind: 'primary' as const, id: 'session:parent', sessionId: 'parent', access: 'interactive' as const, residency: 'displayed' as const }
+    vi.mocked(rig.ctx.mayflyConversations.displayed).mockReturnValueOnce(child.displayed).mockReturnValue(primary)
     type(rig.editor, 'race-safe prompt')
     rig.editor.handleInput(KEY.enter)
     expect(prompt).not.toHaveBeenCalled()
@@ -534,19 +504,14 @@ describe('mayfly-input plugin', () => {
   it('restores subagent images after a successful prompt is safely retracted', async () => {
     const prompt = vi.fn(async () => ({ messageId: 'retract-subagent-message' }))
     const retract = vi.fn(() => true)
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 6,
-    }
+      }, 6)
     const { ctx, editor } = await mount({ running: true, retract, view, subagents: { prompt, interruptByParent: vi.fn() } })
     const ref = imageRef('retracted-subagent-image')
     ctx.provide('attachments', {
@@ -567,19 +532,14 @@ describe('mayfly-input plugin', () => {
 
   it('routes Ctrl-S through the subagent API and preserves a readonly target draft', async () => {
     const prompt = vi.fn(async () => ({ messageId: 'steered-subagent-message' }))
-    const interactive = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const interactive = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 7,
-    }
+      }, 7)
     const sent = await mount({ view: interactive, subagents: { prompt, interruptByParent: vi.fn() } })
     type(sent.editor, 'steer child')
     expect(sent.editor.onKey?.(KEY.ctrlS)).toBe(true)
@@ -589,7 +549,7 @@ describe('mayfly-input plugin', () => {
     await sent.fiber.dispose()
 
     const readonly = await mount({
-      view: { ...interactive, auxiliary: { ...interactive.auxiliary, access: 'readonly' as const }, revision: 8 },
+      view: { displayed: { ...interactive.displayed, access: 'readonly' }, revision: 8 },
       subagents: { prompt: vi.fn(), interruptByParent: vi.fn() },
     })
     type(readonly.editor, 'keep child steer')
@@ -601,19 +561,14 @@ describe('mayfly-input plugin', () => {
   it('rolls back attachments when a pending subagent prompt fails after unload', async () => {
     const gate = Promise.withResolvers<{ messageId: string }>()
     const prompt = vi.fn(() => gate.promise)
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 9,
-    }
+      }, 9)
     const { ctx, editor, fiber } = await mount({ view, subagents: { prompt, interruptByParent: vi.fn() } })
     const ref = imageRef('late-subagent-image')
     ctx.provide('attachments', { readImage: async () => ({ ref, data: Uint8Array.of(1) }) } as never)
@@ -630,25 +585,20 @@ describe('mayfly-input plugin', () => {
   it('drops a late subagent receipt after a view or Agent switch', async () => {
     const gate = Promise.withResolvers<{ messageId: string }>()
     const prompt = vi.fn(() => gate.promise)
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 50,
-    }
+      }, 50)
     const interruptByParent = vi.fn()
     const rig = await mount({ running: true, view, subagents: { prompt, interruptByParent } })
     type(rig.editor, 'late receipt')
     rig.editor.handleInput(KEY.enter)
     await vi.waitFor(() => expect(prompt).toHaveBeenCalledOnce())
-    vi.mocked(rig.ctx.mayflyCurrentAgent.view).mockReturnValue({ ...view, revision: 51 })
+    vi.mocked(rig.ctx.mayflyConversations.revision).mockReturnValue(51)
     gate.resolve({ messageId: 'late-message' })
     await Promise.resolve()
     await Promise.resolve()
@@ -673,19 +623,14 @@ describe('mayfly-input plugin', () => {
   it('interrupts an interactive subagent through its parent address', async () => {
     const prompt = vi.fn()
     const interruptByParent = vi.fn()
-    const view = {
-      primarySessionId: 'parent',
-      displayed: 'auxiliary' as const,
-      auxiliary: {
+    const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
         parentSessionId: 'parent',
         label: 'worker',
         mode: 'continuable' as const,
         access: 'interactive' as const,
-      },
-      revision: 3,
-    }
+      }, 3)
     const { editor, cancel } = await mount({ running: true, view, subagents: { prompt, interruptByParent } })
     editor.handleInput(KEY.escape)
     expect(interruptByParent).toHaveBeenCalledWith('input-spec', 'parent', 'continuable')
@@ -829,6 +774,49 @@ describe('mayfly-input plugin', () => {
     editor.handleInput(KEY.enter)
     expect(hint.render(80)).toEqual(['!no active session!'])
     expect(screen.renderRequests).toBeGreaterThan(0)
+  })
+
+  it('keeps a draft typed into a readonly conversation and says why it was not sent', async () => {
+    const view = sideView({ kind: 'subagent', sessionId: 'once', parentSessionId: 'parent', label: 'once', mode: 'one-shot', access: 'readonly' }, 4)
+    const { ctx, editor, hint, followup } = await mount({ view })
+    vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockReturnValue(null)
+    type(editor, 'please continue')
+    editor.handleInput(KEY.enter)
+    expect(hint.render(80)).toEqual(['?this conversation is read-only?'])
+    expect(editor.getText()).toBe('please continue')
+    expect(editor.history).toEqual([])
+    expect(followup).not.toHaveBeenCalled()
+  })
+
+  it('hands a draft for a stored continuable child to the explicit reply form and drops it once sent', async () => {
+    const view = sideView({ kind: 'subagent', sessionId: 'cold', parentSessionId: 'parent', label: 'cold', mode: 'continuable', access: 'resumable' }, 5)
+    const { ctx, editor, followup } = await mount({ view })
+    vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockReturnValue(null)
+    const requested = vi.fn()
+    ctx.on('mayfly/request-subagent-reply', requested)
+    type(editor, 'resume with this')
+    editor.handleInput(KEY.enter)
+    expect(requested).toHaveBeenCalledWith(view.displayed, 'resume with this')
+    expect(editor.getText()).toBe('resume with this')
+    expect(followup).not.toHaveBeenCalled()
+    ctx.emit('mayfly/subagent-reply-sent', 'a different draft')
+    expect(editor.getText()).toBe('resume with this')
+    ctx.emit('mayfly/subagent-reply-sent', 'resume with this')
+    expect(editor.getText()).toBe('')
+    expect(editor.history).toEqual(['resume with this'])
+  })
+
+  it('runs commands against the primary while a conversation without a driven Agent is displayed', async () => {
+    const view = sideView({ kind: 'subagent', sessionId: 'once', parentSessionId: 'parent', label: 'once', mode: 'one-shot', access: 'readonly' }, 6)
+    const { ctx, editor, hint, agent } = await mount({ view })
+    vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockReturnValue(null)
+    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'ran' }))
+    ctx.commands.register({ name: 'poke', description: 'Poke the primary', handler })
+    type(editor, '/poke')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(hint.render(80)).toEqual(['~ran~']))
+    expect(ctx.commands.find(agent, 'poke')).toBeDefined()
+    expect(handler).toHaveBeenCalledOnce()
   })
 
   it('dispatches slash commands through the real registry and logs lifecycle events', async () => {

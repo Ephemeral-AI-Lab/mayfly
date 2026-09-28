@@ -90,7 +90,7 @@ async function setup(withQuery = true) {
     workspace = cwd
     await flushRequests()
   }
-  const open = async (cwd = ctx.mayflyCurrentAgent.current()?.session.header.cwd) => {
+  const open = async (cwd = ctx.mayflyConversations.primary()?.session.header.cwd) => {
     const result = await openRoot()
     if (result.kind === 'success') await chooseWorkspace(cwd)
     return result
@@ -141,7 +141,7 @@ it('opens roots by native resume and children through descendant addresses', asy
   await bench.open(); await bench.select('current'); await bench.act('open')
   expect(resume).toHaveBeenCalledWith('current')
   await bench.open(); await bench.select('child'); await bench.act('open')
-  expect(bench.ctx.mayflyCurrentAgent.view().auxiliary).toMatchObject({ sessionId: 'child', parentSessionId: 'current', access: 'resumable' })
+  expect(bench.ctx.mayflyConversations.displayed()).toMatchObject({ kind: 'subagent', sessionId: 'child', parentSessionId: 'current', access: 'resumable' })
   bench.subagents.listDescendants.mockResolvedValueOnce([])
   await bench.open(); await bench.select('child'); await bench.act('open')
   expect(bench.model('mayfly.sessions.detail').feedbackSnapshot().some(item => item.message.includes('lead session'))).toBe(true)
@@ -179,7 +179,7 @@ it('contains stale selections, unknown actions, and archive failures without red
   bench.ctx.mayflyOverlays.close('mayfly.sessions.detail')
   await bench.select('child')
   detail = bench.model('mayfly.sessions.detail')
-  bench.ctx.mayflyCurrentAgent.select(null)
+  bench.ctx.mayflyConversations.selectPrimary(null)
   expect(await nativeAction(detail, activate('open'))).toMatchObject({ kind: 'failed' })
 })
 it('shows complete search results and ignores a late archive repaint after closing', async () => {
@@ -205,7 +205,7 @@ it('uses the native child id when no label is available', async () => {
   const bench = await setup()
   bench.subagents.listDescendants.mockResolvedValueOnce([{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable' }] as never)
   await bench.open(); await bench.select('child'); await bench.act('open')
-  expect(bench.ctx.mayflyCurrentAgent.view().auxiliary?.label).toBe('child')
+  expect(bench.ctx.mayflyConversations.displayed()).toMatchObject({ label: 'child' })
 })
 
 it('renders the title, span, token total, status, and path in rows and detail', async () => {
@@ -379,16 +379,16 @@ it('does not navigate after a child detail closes or the exact lead Agent change
   bench.ctx.mayflyOverlays.close('mayfly.sessions.detail')
   gate.resolve([{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }])
   await pending
-  expect(bench.ctx.mayflyCurrentAgent.view().auxiliary).toBeNull()
+  expect(bench.ctx.mayflyConversations.displayed()?.kind).toBe('primary')
   await bench.select('child')
   bench.subagents.listDescendants.mockImplementationOnce(async () => {
     const replacement = { ...bench.agent }
     bench.agents.set(bench.agent.id, replacement)
-    bench.ctx.mayflyCurrentAgent.select(replacement)
+    bench.ctx.mayflyConversations.selectPrimary(replacement)
     return [{ kind: 'child', id: 'child', parentId: 'current', mode: 'continuable', label: 'Worker' }]
   })
   expect(await nativeAction(bench.model('mayfly.sessions.detail'), activate('open'))).toMatchObject({ kind: 'failed', message: expect.stringContaining('lead session changed') })
-  expect(bench.ctx.mayflyCurrentAgent.view().auxiliary).toBeNull()
+  expect(bench.ctx.mayflyConversations.displayed()?.kind).toBe('primary')
 })
 
 it('does not publish recovered titles over a pending content search or retain cancelled search results', async () => {
@@ -483,7 +483,7 @@ it.each([undefined, null, '', 'Old cached name'])('recovers the cold stored titl
 
 it('marks the displayed Agent current and reads live titles through native projections', async () => {
   const bench = await setup()
-  bench.ctx.mayflyCurrentAgent.select(bench.other)
+  bench.ctx.mayflyConversations.selectPrimary(bench.other)
   await bench.open()
   expect(JSON.stringify(bench.model().node)).toContain('current · running · reminders')
   expect(bench.query.observeSession.mock.calls.map(call => call[0])).toEqual([])
@@ -699,7 +699,7 @@ it('refreshes and validates workspace selections, and ignores unrelated events',
 
 it('shows loading and empty states when no workspace is available', async () => {
   const bench = await setup()
-  bench.ctx.mayflyCurrentAgent.select(null)
+  bench.ctx.mayflyConversations.selectPrimary(null)
   vi.spyOn(bench.ctx.sessions, 'list').mockReturnValue([])
   const gate = Promise.withResolvers<never[]>()
   bench.persistence.list.mockReturnValueOnce(gate.promise)
