@@ -13,7 +13,9 @@ disagree, the code wins and this document must be updated. Companion
 documents: [interaction-model.md](../interaction-model.md) owns input routing,
 the key grammar, the Escape ladder, and focus rules;
 [mayfly-seams.md](../mayfly-seams.md) owns the four contribution services and
-the layout limits.
+the layout limits. The refinement roadmap in §7 carries explicit
+`shipped` / `target` / `backlog` labels; only `shipped` items describe running
+behavior.
 
 ## 1. How a component works
 
@@ -85,9 +87,10 @@ Surface chrome anatomy:
 ╰────────────────────────────────────────────────────────╯
 ```
 
-- Chrome kinds: `overlay` (`╭ ╮`, focus-colored border), `surface` (`┌ ┐`),
-  `lane` (`─` rules), `none` (bare title). A surface's `footer` node carries
-  custom content above the generated hint row.
+- Chrome kinds: `overlay` (`╭ ╮`, focus-colored border), `surface`
+  (currently `┌ ┐`, target `╭ ╮` — see §7 A2), `lane` (`─` rules), `none`
+  (bare title). A surface's `footer` node carries custom content above the
+  generated hint row.
 - The hint row is indented two columns, fragments joined by ` · `
   (`Esc close · Enter run · Tab actions`).
 
@@ -111,11 +114,75 @@ Marker legend:
 | `⠋` | braille loader frame |
 | `█` / `░` | filled / empty progress-bar cells |
 
+The marker legend covers control state. The transcript and status vocabulary
+uses a second, equally fixed set (§3.2); the brand cues in §3.1 and the motion
+rules in §3.3 apply to every component.
+
+### 3.1 Brand layer
+
+Mayfly's identity is quiet by construction: violet ink, rounded frames, and a
+single ripple motif. Components express it through palette tokens and glyphs,
+never through surface-specific paint. The palette itself is owned by the theme
+plugins (`core/theme-dark.ts`, `-light`, `-ocean`, `-paper`, `-custom`,
+`-auto`).
+
+| Cue | Token / glyph | Where it appears |
+| --- | --- | --- |
+| Brand violet | `primary` (`#9A86E6` in the dark palette) | focus, active tab, primary action, loader indicator |
+| Focus frame | `borderFocus` | overlay chrome, focused editor border |
+| Quiet frame | `border` | inline `surface` chrome, panels |
+| Waiting ripple | `·· ·≈ ≈≈ ≈·`, 120 ms | "waiting on an external action" |
+| Working rotation | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, 80 ms | the model or a tool is actively computing |
+| Logomark | eight-row braille mark + `logoGradient` | welcome banner only |
+
+Rules:
+
+- **Rounded chrome is the Mayfly frame.** `overlay` and `surface` both use
+  `╭ ╮ ╰ ╯`; square corners are not used. Overlays paint with `borderFocus`,
+  inline surfaces with `border`, and `lane` with `muted`.
+- **The ripple means "waiting on something outside the model"** (network,
+  authorization, a child process); the braille rotation means "the model or a
+  tool is working". Never run both in one surface (§3.3).
+- **Color never carries meaning alone.** Every tone-coded state also carries a
+  glyph or a word, so `NO_COLOR` terminals stay unambiguous.
+
+### 3.2 Transcript and status glyph vocabulary
+
+One glyph, one meaning. These are transcript and status glyphs, distinct from
+the control markers above.
+
+| Glyph | Meaning |
+| --- | --- |
+| `●` | assistant block; tool running |
+| `»` | user block |
+| `✻` | thinking / reasoning |
+| `✓` | tool or step done |
+| `✗` | tool or step failed |
+| `◐` | declined (plan) |
+| `⊘` | cancelled |
+| `■` | stopping / interrupted |
+| `⏵` | background jobs count |
+| `›` | collapsed child |
+
+### 3.3 Motion policy
+
+- **At most one animated indicator per surface.** The wire loader already
+  shares one clock per surface (`core/ui-loader-animation.ts`); the transcript
+  and panes must match that rule rather than running competing spinners.
+- **The renderer owns every clock.** Wire data carries only `variant` and
+  plain elapsed data; a surface that hides or unloads stops its clock.
+- **Color and motion are degradable.** `NO_COLOR` removes paint but keeps
+  weight, inversion, and glyphs; a reduced-motion setting freezes animation on
+  its first frame. Both are roadmap items (§7 D1), not shipped behavior today.
+
 ## 4. Components
 
 Each entry gives the wire interface (trimmed; see `contracts.ts` for the full
-type), the builder, the rendered states, and the keys. All states are painted
-by `core/ui-patterns.ts`; authors only supply data.
+type), the builder, the rendered states, and the keys. Interactive states are
+painted by `core/ui-patterns.ts`; content nodes (`markdown`, `code`, `diff`,
+`sections`, `chart`, `diagram`) are painted by the content painters in
+`core/plugin-view.ts`, `core/rich-document.ts`, `core/chart-renderer.ts`, and
+`core/diff-align.ts`; authors only supply data.
 
 ### 4.1 Actions row (buttons)
 
@@ -374,6 +441,9 @@ content.
 
 ### 4.6 Tabbed pages with labels on the left: sessions and settings
 
+> **Status: target.** Today `/sessions` and `/settings` ship as list-based
+> overlays; this section is the intended layout.
+
 Sessions and settings are separate panels sharing one layout: a horizontal
 split whose **left column is the tab strip rendered vertically** — labels
 stacked top to bottom — and whose right side shows the active group's
@@ -463,6 +533,10 @@ Rules (owned by `interaction-model.md`, restated for authors):
   may only bind modifier accelerators.
 
 ### 4.8 Decision panels: approval, plan review, permission
+
+> **Status: mixed.** Permission and plan review ship the vertical-list shape;
+> tool approval still ships a horizontal actions row. §7 B1 unifies all three
+> onto one skeleton.
 
 Every "the agent asks, the user decides" surface — tool approval, plan
 review, the permission preset ask — is the same composition of basic
@@ -569,6 +643,9 @@ plain data the owner publishes (painted as `45s`, then `2m 10s`). Loaders
 live in panes and overlays only: the status and editor-extension unions
 exclude them, and live turn status belongs to the activity pane.
 
+> **Status: revision planned.** The wire `tide` frames (`·•●•·`) are not the
+> transcript's ripple yet; §7 A1 aligns them into one waiting animation.
+
 **progress** — determinate work only:
 
 ```
@@ -643,3 +720,245 @@ Verification duties for any new or changed surface:
    `core/ui-key-grammar.ts` and both Website key references together
    (`tests/core/key-grammar-docs.spec.ts`).
 4. `packages/ui` contract or builder changes run the root full gate.
+5. A roadmap item in §7 is not shipped behavior until its status flips to
+   **shipped**; only the code and §1–§6 describe what runs today.
+
+## 7. Refinement roadmap
+
+This section collects the agreed visual and interaction refinements for the
+components above. Unlike §1–§6, these are not all shipped: every item carries a
+status, and the code remains the executable authority.
+
+| Status | Meaning |
+| --- | --- |
+| **shipped** | implemented and covered by tests |
+| **target** | agreed design; not implemented yet |
+| **backlog** | candidate; not yet agreed |
+
+Wave 1 items are priority **P1**, wave 2 **P2**, wave 3 **P3**. Waves are
+ordered by risk and dependency; an item may move earlier only when it has no
+cross-surface dependency. Every delivered item flips its status to
+**shipped** in the change that implements it.
+
+### 7.1 Wave 1 — identity and clarity (P1)
+
+Low risk; no new node kinds.
+
+**A1 · Unify the waiting ripple — target.**
+The wire `tide` loader frames (`· • ● • ·`, 80 ms) are unused by any surface,
+while the transcript's waiting animation is the moon ripple
+(`·· ·≈ ≈≈ ≈·`, 120 ms). Align them into one ripple, keeping braille for work
+that is actively computing:
+
+```
+  ripple (waiting on external action)   ·· → ·≈ → ≈≈ → ≈·      120 ms  [primary]
+  braille (model or tool working)       ⠋  → ⠙  → ⠹  → ⠸  ...   80 ms  [primary]
+
+  ⠋ Discovering models from api.example.com 12s
+  ·· Waiting for authorization
+```
+
+Touch points: `core/ui-patterns.ts` (`TIDE_FRAMES`, `renderLoader`),
+`core/ui-loader-animation.ts` (frame interval), `transcript/spinners.ts`;
+`ui-patterns.spec.ts`, `ui-compiler.spec.ts`, `loader-tide.svg`.
+
+**A2 · Rounded chrome everywhere — target.**
+Square corners become rounded; the overlay/surface distinction moves to paint
+only, and the §3.1 rules apply:
+
+```
+  now   overlay ╭ Approve bash? ─────╮   surface ┌ Select a model ────┐
+  then  overlay ╭ Approve bash? ─────╮   surface ╭ Select a model ────╮
+        [borderFocus]                           [border]
+```
+
+Touch points: `core/ui-patterns.ts` (`renderSurfaceHead`, `renderSurfaceTail`);
+every `surface*` / `app-*` shot.
+
+**A4 · Consolidate the transcript glyph vocabulary — target.**
+Move the §3.2 glyphs into one owned module and enforce one meaning per glyph.
+
+Touch points: `transcript/components.ts`, `transcript/thinking.ts`,
+`transcript/pane-activity.ts`, `interaction/symbols.ts`.
+
+**B4 · Editor mode labels, not a multicolored frame — target.**
+The editor border already recolors for bash mode
+(`interaction/editor-plus.ts`). Keep that input-mode recolor, and carry the
+session modes as tinted **label text only** — the frame itself stays
+`border` / `borderFocus`. Retire the plan/yolo badges from the status line so
+the two surfaces can never disagree:
+
+```
+  normal      ╭──────────────────────────────╮  border
+  focused     ╭──────────────────────────────╮  borderFocus
+  plan        ╭ PLAN ────────────────────────╮  border; label [accent]
+  yolo        ╭ YOLO ────────────────────────╮  border; label [warning]
+  plan+yolo   ╭ PLAN · YOLO ─────────────────╮  border; PLAN [accent] · YOLO [warning]
+  bash        ╭ BASH ────────────────────────╮  shellMode; label [shellMode]
+              > Write a message▌
+              ╰──────────────────────────────╯
+```
+
+Rules:
+
+- **The frame carries at most the input mode.** Only bash repaints the frame
+  `shellMode`; plan and yolo never do. Focus still moves `border` →
+  `borderFocus`.
+- **Each label token keeps its own tone:** `PLAN` is `accent`, `YOLO` is
+  `warning`, `BASH` is `shellMode`. There is no merged "highest alert" frame
+  hue, so `PLAN · YOLO` reads lighter than a pure `YOLO` — one violet token
+  beside one amber token, not a fully amber frame.
+- The label never carries a "dirty" or "unsaved" word; unsubmitted work is the
+  save action's business.
+- Session modes stack in one label in a fixed order (`PLAN` before `YOLO`);
+  the bash label may stack too (`╭ BASH · PLAN ─╮`).
+- The status footer stops registering the plan/yolo badge
+  (`interaction/mode-status.ts`); the editor label is the single source for
+  those two modes.
+
+Touch points: `interaction/editor-plus.ts`
+(`setBorderLabel`/`setPromptSymbol`, bash `setBorderColor`),
+`core/components.ts`, `interaction/mode-status.ts` (retire the badge);
+`interaction/mode-commands.ts` still owns the session-mode snapshot.
+
+**B5 · Feedback severity prefix — target.**
+The feedback lane renders one unprefixed row. Add the severity glyph and keep
+the existing lifetime rules:
+
+```
+  ✓ Saved to clipboard                        success, auto-dismiss
+  · 12 files indexed                          info, auto-dismiss
+  ! permission picker is unavailable: ...     warning, sticky
+  ✗ Plan copy failed                          error, sticky
+```
+
+Touch points: `core/ui-compiler.ts` (feedback row),
+`core/ui-interaction-notifications.ts`.
+
+**C1 · Use the diff tokens and add hunk headers — target.**
+`diffAddedStrong`, `diffRemovedStrong`, and `diffGutter` are defined in every
+theme but painted nowhere. Use them, and add an `@@` header when more than one
+hunk is shown:
+
+```
+  @@ -12,6 +12,8 @@ function render()
+      const before = 1
+  -   const mid = 2          ← sign [diffGutter], body [diffRemoved] on diffRemovedBg
+  +   const mid = 3          ← sign [diffGutter], body [diffAddedStrong]
+      return before
+  ⋯ 42 unchanged lines
+```
+
+Touch points: `core/diff-align.ts`, `core/plugin-view.ts`; `diff.svg`.
+
+**C2 · Highlight standalone code — target.**
+`ui.code` currently paints every line with `mdCodeBlock`; only fenced code
+inside `markdown` is highlighted. Route `code` through the same highlighter
+when `language` is known.
+
+Touch points: `core/plugin-view.ts` (code arm), `core/highlight.ts`.
+
+**D1 · `NO_COLOR` and reduced motion — target.**
+Neither is handled today. `NO_COLOR` degrades every palette token to identity
+(keeping bold, inverse, and glyphs); reduced motion freezes animation on its
+first frame.
+
+Touch points: `core/theme-palette.ts`, `core/ui-loader-animation.ts`,
+`transcript/spinners.ts`.
+
+**D3 · One animation per surface — target.**
+Encode §3.3 as a test-time audit so the rule cannot regress.
+
+Touch points: the loader clock and the pane/transcript timers; a guard spec.
+
+### 7.2 Wave 2 — decision and navigation consistency (P2)
+
+**B1 · One decision-card skeleton — target.**
+Tool approval, plan review, and the permission ask render three different
+shapes today. Use one skeleton: title, scrollable reason, numbered vertical
+options (safe default focused), an optional same-line input, and the grammar
+hint row.
+
+```
+  ╭ Approve bash? ───────────────────────────╮
+  │ rm -rf build && pnpm build               │
+  │ → 1. Allow once                          │
+  │   2. Allow bash for this session         │
+  │   3. Reject                              │
+  │   Feedback: ▌                            │
+  │   Esc reject · 1-3 choose · Enter choose │
+  ╰──────────────────────────────────────────╯
+```
+
+Touch points: `interaction/approval-plugin.ts`,
+`interaction/plan-review-panel.ts`, `interaction/permission-panel.ts`,
+`interaction/authorization-ui.ts`; interaction width scans.
+
+**B2 · List navigation affordances — target.**
+Show a live match count while filtering, a scroll position, and a next-step
+line in empty states:
+
+```
+  / deep▌                                    3 matches
+  → deepseek-v4-pro — 256k context [current]
+    deepseek-v4 — 128k context
+    ↑2 / ↓7
+```
+
+Touch points: `core/ui-compiler.ts` (list runtime), `core/ui-patterns.ts`
+(`renderList`), locale catalogs.
+
+**C4 · Status grid and priority overflow — target.**
+The status definitions already carry `band`, `row`, `priority`, and
+`overflow`. Lay the footer on a fixed grid and drop the lowest-priority
+entries when the row is full. The plan/yolo badge retires with B4, so the grid
+no longer reserves a slot for it.
+
+Touch points: `transcript/status-model.ts` and the status plugins.
+
+### 7.3 Wave 3 — deeper presentation (P3)
+
+**A3 · Running-block cue without a rail — backlog.**
+Signal the streaming/running block through the marker it already has instead of
+reserving a left column. While the block is active its bullet and header line
+paint `primary` and the header shows the live clock; when it settles the tone
+returns to `text` and the clock disappears. No reserved column, no background
+band, and no second spinner (the §3.3 single-animation rule keeps the activity
+pane as the only animated indicator).
+
+```
+  ● Deep diving for 12s        ← running: bullet + header [primary], live clock
+    ├─ read  src/core/ui-patterns.ts
+    └─ ✓ grep  "renderLoader"
+  ● previous turn              ← settled: [text], clock gone
+```
+
+Touch points: `transcript/process-rows.ts` (`TurnHeaderComponent`),
+`transcript/components.ts`.
+
+**B3 · Busy elapsed and unsaved marker — backlog.**
+Busy actions append their elapsed time; a form with unsubmitted edits shows an
+`unsaved` marker in the action row — never in the editor frame — and confirms
+on Escape.
+
+```
+  [ Save ]   … Saving 4s        · unsaved
+```
+
+Touch points: `core/ui-patterns.ts` (`renderActions`), `core/ui-compiler.ts`
+(action pending timing).
+
+**C3 · Expose chart and Mermaid — backlog.**
+Both already render but are absent from this catalog. Document them, add a
+usage-chart legend, and keep the existing bounded fallbacks.
+
+Touch points: `interaction/session-info-model.ts`, this catalog, the Website
+gallery.
+
+**D2 · Unicode fallback — backlog.**
+Provide ASCII fallbacks for braille spinners, rounded/box chrome, tree
+markers, and progress cells, and drop the logomark when Unicode is
+unavailable.
+
+Touch points: `core/chrome.ts`, `core/ui-patterns.ts`,
+`transcript/banner.ts`, `transcript/spinners.ts`.
