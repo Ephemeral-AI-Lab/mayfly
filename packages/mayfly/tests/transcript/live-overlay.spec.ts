@@ -132,6 +132,57 @@ describe('live draft overlays', () => {
     live.dispose()
   })
 
+  it('never overlays a draft whose turn the durable projection already closed or moved past', () => {
+    const ctx = new Context()
+    const live = new LiveAssistantStreamService(ctx)
+    const projections = new ProjectionFake()
+    const { agent, session } = liveAgent(ctx, 'overlay-stale')
+    projections.set(session, {})
+    const source = new OfficialConversationModelSource(projections as never, { get: () => undefined }, () => {}, {
+      subscribe: listener => live.subscribe(listener),
+      get: id => live.get(id),
+    })
+    source.attach(session, undefined, agent)
+    const settled = {
+      ...projection([
+        { kind: 'user', id: 'user:2', seq: 2, updatedSeq: 2, turn: 1, text: 'question', images: [] },
+        { kind: 'assistant', id: 'assistant:1:0', seq: 3, updatedSeq: 3, turn: 1, step: 0, text: 'settled', streaming: false },
+      ], false, ['1:0']),
+      turns: [{ turn: 1, startedAt: 0, endedAt: 5, outcome: 'completed' }],
+    }
+    projections.emit(session, 'mayflyConversation', settled)
+    // A draft still pinned to the ended turn never marks the model live again:
+    // abandoned attempts finalize nothing, so settledSteps cannot fence them.
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'stale' as never, revision: 1, turn: 1, step: 1 } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'stale' as never, revision: 2, index: 0, time: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'ghost' } } } as never)
+    let model = source.snapshot()
+    expect(model.live).toBeUndefined()
+    expect(model.streaming).toBe(false)
+    expect(JSON.stringify(materializeTranscriptEntries(model))).not.toContain('ghost')
+
+    // Once the projection moves to a newer turn, the same draft stays stale.
+    projections.emit(session, 'mayflyConversation', {
+      ...settled,
+      entries: [...settled.entries, { kind: 'user', id: 'user:3', seq: 4, updatedSeq: 4, turn: 2, text: 'next', images: [] }],
+      streaming: true,
+      turns: [...settled.turns, { turn: 2, startedAt: 6 }],
+    })
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'stale' as never, revision: 3, index: 1, time: 2, chunk: { type: 'text-delta', index: 0, text: 'late' } } } as never)
+    model = source.snapshot()
+    expect(model.live).toBeUndefined()
+    expect(JSON.stringify(materializeTranscriptEntries(model))).not.toContain('late')
+
+    // A draft for the genuinely-open turn still overlays normally.
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'end', attemptId: 'stale' as never, revision: 4, index: 2, outcome: { kind: 'abandoned' } } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'fresh' as never, revision: 5, turn: 2, step: 0 } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'fresh' as never, revision: 6, index: 0, time: 3, chunk: { type: 'text-delta', index: 0, text: 'live' } } } as never)
+    model = source.snapshot()
+    expect(model.live?.turn).toBe(2)
+    expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('live')
+    source.dispose()
+    live.dispose()
+  })
+
   it('drops superseded projection streaming entries when the draft takes over the step', () => {
     const ctx = new Context()
     const live = new LiveAssistantStreamService(ctx)

@@ -141,11 +141,27 @@ export function memberFacts(entry: Entry, closed: boolean): ProcessMemberFact[] 
  * @returns the running turn, or `undefined`.
  */
 export function runningTurnOf(model: TranscriptModel, entries: readonly Entry[]): number | undefined {
-  if (model.live !== undefined) return model.live.turn
+  const live = model.live
+  if (live !== undefined && !liveTurnStale(model, live.turn, entries)) return live.turn
   if (model.streaming !== true) return undefined
   const turns = model.turns ?? []
   if (turns.length > 0) return turns.findLast(turn => turn.endedAt === undefined)?.turn
   return entries.findLast(isSemantic)?.turn
+}
+
+/**
+ * Whether the model itself proves the live overlay's turn ended or was
+ * superseded: its turn row carries an end time, a newer turn row exists, or a
+ * newer durable entry does. A stale overlay must not pin a settled turn open.
+ * @param model - the transcript model.
+ * @param turn - the overlay's pinned turn.
+ * @param entries - the model's windowed entries.
+ * @returns whether the overlay turn is stale.
+ */
+function liveTurnStale(model: TranscriptModel, turn: number, entries: readonly Entry[]): boolean {
+  const turns = model.turns ?? []
+  if (turns.some(item => item.turn > turn || (item.turn === turn && item.endedAt !== undefined))) return true
+  return (entries.findLast(isSemantic)?.turn ?? -1) > turn
 }
 
 /**
@@ -179,8 +195,10 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
       block.push(entry)
       index += 1
     }
-    // A flat model carries no lifecycle: its pending calls stay pending.
-    const closed = !input.flat && turn !== input.runningTurn
+    // A flat model carries no lifecycle: its pending calls stay pending. A turn
+    // row with a recorded end is closed no matter what runningTurn says.
+    const info = turnInfo.get(turn)
+    const closed = !input.flat && (info?.endedAt !== undefined || turn !== input.runningTurn)
     const inScope = input.scope.has(turn)
     const expandedTurn = input.expanded && inScope
     if (input.flat || !block.some(isMember)) {
@@ -189,7 +207,6 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     }
     const lead = block.findIndex(entry => entry.kind !== 'transcript-user')
     const rest = block.slice(lead)
-    const info = turnInfo.get(turn)
     const interleaved = rest.some(entry => entry.kind === 'transcript-user')
     const abnormal = (info?.outcome !== undefined && ABNORMAL_OUTCOMES.has(info.outcome))
       || rest.some(entry => entry.kind === 'transcript-error' || entry.kind === 'transcript-interrupted')
