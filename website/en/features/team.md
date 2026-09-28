@@ -34,8 +34,8 @@ overview. Task details can open the owner's conversation.
 Native Agent tools create teammates, exchange messages and modify tasks;
 the board remains read-only.
 
-Select a teammate to open its conversation. F7 switches the retained primary
-and auxiliary views; F8 closes the auxiliary view without stopping the teammate.
+Select a teammate to open its conversation. F7 returns to the previous
+conversation; F8 closes the teammate's conversation without stopping it.
 Replies offer Queue (after the current turn) and Steer (at the next step boundary).
 An unloaded member first opens as history; press `i` to reply. Only Send resumes
 it. Drafts survive renderer reloads.

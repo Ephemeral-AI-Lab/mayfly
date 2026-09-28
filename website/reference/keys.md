@@ -4,15 +4,15 @@
 
 ## 全局动作
 
-除非有 capturing 面板（编辑器槽中的选择器、表单或审批）占用输入，否则生效。只读 subagent transcript 是视图而不是 capturing 面板，因此这些键在其上依旧可用：
+除非有 capturing 面板（编辑器槽中的选择器、表单或审批）占用输入，否则生效：
 
 | 键 | 动作 | 说明 |
 | --- | --- | --- |
 | `Ctrl-O` | 切换工具输出展开 | 在最近 **3 个 turn** 的工具卡与思考块的一行摘要与完整输出之间切换 |
 | `Ctrl-T` | 切换 todo 面板折叠 | 五行折叠视图 ↔ 整表视图 |
 | `F6` / `Shift+F6` | 切换 surface 焦点 | 按布局顺序在 Editor 与 pane lane 间前进/后退；到边界回到 Editor |
-| `F7` | 切换主/辅助会话 | 在主会话与保留的 BTW/subagent 会话间切换整套 UI；无辅助槽时显示提示 |
-| `F8` | 关闭辅助会话 | detach subagent 或 dispose 临时 BTW Agent，并返回主会话 |
+| `F7` | 上一个会话 | 将整套 UI 切回上一个显示的会话（主会话、BTW 或 subagent）；没有其他打开的会话时显示提示 |
+| `F8` | 关闭旁支会话 | 关闭当前显示的旁支会话（显示主会话时关闭 `F7` 对端）：detach subagent 或 dispose 临时 BTW Agent |
 
 ## 共享面板键位
 
@@ -79,8 +79,7 @@
 | `/permission` 选择器 | `1`–`9` 或 ↑↓ + `Enter` 切换预设；完全访问会先弹出默认聚焦“否”的确认 |
 | `/agents` 浏览器 | 输入即筛选；↑↓ 选择，`Space` 或 `←` / `→` 展开/折叠，`Enter` 查看；`Tab` 到 **Stop selected**，停止前先确认，对 one-shot、未运行或仍有运行中下级的行会直接说明原因 |
 | `/plugin` 市场 | Installed / Not installed 标签（标签栏上 `←` / `→` 或 `Alt+←` / `Alt+→`）；输入即筛选；`Tab` 到 Details、Install 或 Update/repair 与 Remove，可用性按行判断；`Ctrl+R` 刷新 |
-| 只读 subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` 滚动；`Escape` 关闭；`F7` 切回、`F8` 关闭；可继续的子 Agent 用 `i` 回复 |
-| live BTW/subagent | 使用完整主编辑器与同一套 panel 键位；`F7` 切回主会话，`F8` 关闭辅助槽 |
+| 旁支会话 | 使用完整主编辑器与同一套 panel 键位；`PageUp` / `PageDown` 滚动其 transcript；可恢复会话中 `Enter` 打开回复表单；`F7` 切回、`F8` 关闭 |
 
 ## 自定义键位
 

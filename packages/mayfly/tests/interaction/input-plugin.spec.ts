@@ -776,6 +776,49 @@ describe('mayfly-input plugin', () => {
     expect(screen.renderRequests).toBeGreaterThan(0)
   })
 
+  it('keeps a draft typed into a readonly conversation and says why it was not sent', async () => {
+    const view = sideView({ kind: 'subagent', sessionId: 'once', parentSessionId: 'parent', label: 'once', mode: 'one-shot', access: 'readonly' }, 4)
+    const { ctx, editor, hint, followup } = await mount({ view })
+    vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockReturnValue(null)
+    type(editor, 'please continue')
+    editor.handleInput(KEY.enter)
+    expect(hint.render(80)).toEqual(['?this conversation is read-only?'])
+    expect(editor.getText()).toBe('please continue')
+    expect(editor.history).toEqual([])
+    expect(followup).not.toHaveBeenCalled()
+  })
+
+  it('hands a draft for a stored continuable child to the explicit reply form and drops it once sent', async () => {
+    const view = sideView({ kind: 'subagent', sessionId: 'cold', parentSessionId: 'parent', label: 'cold', mode: 'continuable', access: 'resumable' }, 5)
+    const { ctx, editor, followup } = await mount({ view })
+    vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockReturnValue(null)
+    const requested = vi.fn()
+    ctx.on('mayfly/request-subagent-reply', requested)
+    type(editor, 'resume with this')
+    editor.handleInput(KEY.enter)
+    expect(requested).toHaveBeenCalledWith(view.displayed, 'resume with this')
+    expect(editor.getText()).toBe('resume with this')
+    expect(followup).not.toHaveBeenCalled()
+    ctx.emit('mayfly/subagent-reply-sent', 'a different draft')
+    expect(editor.getText()).toBe('resume with this')
+    ctx.emit('mayfly/subagent-reply-sent', 'resume with this')
+    expect(editor.getText()).toBe('')
+    expect(editor.history).toEqual(['resume with this'])
+  })
+
+  it('runs commands against the primary while a conversation without a driven Agent is displayed', async () => {
+    const view = sideView({ kind: 'subagent', sessionId: 'once', parentSessionId: 'parent', label: 'once', mode: 'one-shot', access: 'readonly' }, 6)
+    const { ctx, editor, hint, agent } = await mount({ view })
+    vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockReturnValue(null)
+    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'ran' }))
+    ctx.commands.register({ name: 'poke', description: 'Poke the primary', handler })
+    type(editor, '/poke')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => expect(hint.render(80)).toEqual(['~ran~']))
+    expect(ctx.commands.find(agent, 'poke')).toBeDefined()
+    expect(handler).toHaveBeenCalledOnce()
+  })
+
   it('dispatches slash commands through the real registry and logs lifecycle events', async () => {
     const { ctx, editor, hint, agent, followup } = await mount()
     ctx.commands.register({

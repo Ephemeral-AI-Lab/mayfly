@@ -940,7 +940,8 @@ describe('OfficialConversationModelSource', () => {
     source.dispose()
     source.dispose()
     f.emit('mayflyConversation', projection(), 8)
-    expect(f.off).toHaveBeenCalledOnce()
+    // Each attached Session feed owns one subscription, released when replaced.
+    expect(f.off).toHaveBeenCalledTimes(2)
   })
 
   it('accepts a projection snapshot without sequence metadata', () => {

@@ -15,8 +15,11 @@ declare module '@deepseek-ai/cordis' {
   interface Events {
     /** Close the displayed side conversation, or the F7 counterpart while the primary is displayed. */
     'mayfly/request-close-conversation'(): void
-    /** Open the shared reply form for the displayed continuable child; does not send or resume it. */
-    'mayfly/request-subagent-reply'(target: MayflySubagentOpen): void
+    /**
+     * Open the shared reply form for the displayed continuable child, seeded
+     * with an optional editor draft; does not send or resume it.
+     */
+    'mayfly/request-subagent-reply'(target: MayflySubagentOpen, draft?: string): void
   }
 }
 

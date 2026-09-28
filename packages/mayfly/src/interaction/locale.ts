@@ -544,6 +544,7 @@ const zh: Readonly<Record<string, string>> = {
   ' · read-only': ' · 只读',
   ' · reply to resume': ' · 回复以恢复',
   ' · {count} more open': ' · 另有 {count} 个打开',
+  'this conversation is read-only': '此对话为只读',
   'help is unavailable: the Mayfly keymap is not mounted': '帮助不可用：Mayfly 键位表尚未挂载',
   'exit is unavailable: the launcher provided no appExit hook': '退出不可用：启动器未提供 appExit 钩子',
   'starting a new session': '正在开始新会话',

@@ -1,6 +1,6 @@
 # 底部面板
 
-会话记录与输入编辑器之间是**底部 dock**：五个被动面板按优先级自上而下叠放——workflow → agents → todo → queue → activity，activity 行紧贴编辑器上方（状态栏仍在编辑器下方）。无内容时各面板渲染零行——dock 不会跳变。BTW 和 `/agents` 打开的会话不属于 pane：它们切换当前 Agent 或使用统一的只读会话 panel。
+会话记录与输入编辑器之间是**底部 dock**：五个被动面板按优先级自上而下叠放——workflow → agents → todo → queue → activity，activity 行紧贴编辑器上方（状态栏仍在编辑器下方）。无内容时各面板渲染零行——dock 不会跳变。BTW 和 `/agents` 打开的会话不属于 pane：它们是显示在 transcript 面板中的旁支会话。
 
 ## Dock 行数预算
 
@@ -48,14 +48,15 @@ Standard 模式下，提示的位置改为显示当前动作：命令、路径�
 
 `todo_write` 调用在会话流里只作为单行过程成员出现（`✓ 更新了计划 · 已完成 3/5`）；这个面板是 todo 的实时呈现面。
 
-## 辅助会话（/btw 与 /agents）
+## 旁支会话（/btw 与 /agents）
 
-Mayfly 只保留一个辅助会话槽。`/btw <question>` 创建临时旁路 Agent——以当前会话的全量事件流为种子，并继承 provider、model、reasoning effort 和 agent preset。`/agents` 则打开当前主会话的完整 descendant 树：
+Mayfly 同时保留主会话与任意数量的旁支会话，但 transcript 面板一次只显示其中一个。`/btw <question>` 创建临时旁路 Agent——以当前会话的全量事件流为种子，并继承 provider、model、reasoning effort 和 agent preset。`/agents` 则打开当前主会话的完整 descendant 树：
 
-- live BTW 或 continuable subagent 成为 `mayflyCurrentAgent.current()`，原有 transcript、status、底部 pane、命令和完整编辑器整体切到该 Session；BTW 仍继承完整主会话上下文，但 transcript 从 BTW 自己的第一条提问开始，隐藏 seed 历史；图片、follow-up、steer、撤回和中断都走同一输入链；
-- one-shot 或当前不驻留的 continuable child 不激活 Agent，而是在 editor 槽位打开 core-owned 的全保真只读 transcript panel；它复用正式 transcript model、工具呈现、图片加载、宽度约束与滚动逻辑；
-- 状态栏中央显式显示当前侧以及 `F7 switch · F8 close`；`F7` 在主/辅助会话间切换，`F8` 完全关闭辅助视图并返回主会话；关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
-- 再次打开 BTW 或 child 会替换旧辅助槽。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork`、`/rewind` 和 `/agents` 浏览会先回到主会话；
+- 所有会话都在同一个 transcript 面板中渲染。live BTW 或 continuable subagent 成为 `mayflyCurrentAgent.current()`，状态栏、底部面板、命令与完整编辑器随之切换到该 Session；BTW 保留完整父会话种子作为模型上下文，但 transcript 从 BTW 的第一个问题开始，隐藏继承的历史；图片、follow-up、steer、撤回与中断走同一条输入管线；
+- one-shot child 或当前不驻留的 continuable child 不激活 Agent：它的 transcript 从原生历史加载到同一面板，保留自己的运行中 turn 标题（没有活动行跟随它），状态栏标注 `只读` 或 `回复以恢复`。编辑器仍在：只读会话中提交的草稿留在编辑器并给出提示；可恢复会话中提交会打开以该草稿预填的 Queue / Steer 回复表单，只有 **Send** 才会恢复 child。斜杠命令仍作用于主会话；
+- 状态栏中央显示当前会话的类型与标签、它的 `F7` 对端、访问方式、另有多少个打开的会话，以及 `F7 switch · F8 close`。`F7` 返回上一个显示的会话；`F8` 关闭当前显示的旁支会话，显示主会话时则关闭 `F7` 对端。关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
+- 再打开其他 child 不会关闭已打开的会话；新的 BTW 会替换旧的 BTW。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork` 会关闭所有旁支会话，`/rewind` 与 `/agents` 浏览会先显示主会话；
+- 只有当前显示的会话和它的 `F7` 对端保留 transcript 状态；其余会话在你切回之前不占用任何 transcript 资源，因此同时打开很多会话依然轻量；
 - `/agents` 中 `Enter` 查看 child，`Space` 或 `←` / `→` 展开分支，`Tab` 到 **Stop selected**，停止 live continuable child 前会弹出 Yes / No 确认（默认聚焦 No）。对 one-shot、cold/inactive 或仍有 live 后代的 child，Stop 会直接说明为何不可用而不弹确认。`/agents stop <id>` 提供直接停止路径。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。
 
 ## 子代理分组面板（agents）
@@ -66,4 +67,4 @@ agent 派生的**子代理组**（subagent group）运行时，组卡片留在 d
 
 ## Workflow 面板
 
-原生 `workflow/*` lifecycle 归因到当前 Agent 后，面板显示 workflow 名称、当前 phase、运行/完成/失败的子 Agent 树与逐秒 elapsed。与 agents 卡片一样，超过六个子 Agent 的运行先列出运行中的子 Agent，其余在末行 `… +K more` 中计数。运行结束的摘要会保留到下一次相关状态替换；切换主/辅助 Agent 时，面板与其他 session-scoped UI 一起切换。
+原生 `workflow/*` lifecycle 归因到当前 Agent 后，面板显示 workflow 名称、当前 phase、运行/完成/失败的子 Agent 树与逐秒 elapsed。与 agents 卡片一样，超过六个子 Agent 的运行先列出运行中的子 Agent，其余在末行 `… +K more` 中计数。运行结束的摘要会保留到下一次相关状态替换；切换显示的会话时，面板与其他 session-scoped UI 一起切换。

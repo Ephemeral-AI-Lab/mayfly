@@ -2,9 +2,10 @@
  * @ephemeral-ai/mayfly/transcript — terminal transcript surfaces for the frontend runtime.
  * The official conversation plugin publishes a renderer-neutral transcript
  * model from the Harness projection; this plugin owns component
- * reconciliation, Ctrl-O expansion, settings, dock chrome, and the
- * canonical status footer. It does not fold a Harness event log. Unloading removes
- * mounted components and keymap actions.
+ * reconciliation, one view per displayed or retained conversation, Ctrl-O
+ * expansion, settings, dock chrome, and the canonical status footer. It does
+ * not fold a Harness event log. Unloading removes mounted components and
+ * keymap actions.
  *
  * @module @ephemeral-ai/mayfly/transcript
  */
@@ -18,7 +19,9 @@ import type {} from '../app/index.ts'
 import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
 import { TranscriptController, TranscriptLocalsService } from './transcript-model.ts'
-import { OfficialConversationModelSource, type LiveDraftSource } from './official-model.ts'
+import { OfficialConversationModelSource } from './official-model.ts'
+import type { LiveDraftSource } from './conversation-feed.ts'
+import { ConversationSlots } from './conversation-slots.ts'
 import {
   DEFAULT_EXPAND_TURNS,
   followPresentationSettings,
@@ -163,43 +166,34 @@ export function apply(ctx: Context): void {
   // conversation flow through this seam and scroll up with later history;
   // the service unregisters when this fiber unloads.
   new TranscriptLocalsService(ctx, transcript)
-  const officialSource = new OfficialConversationModelSource(
-    ctx.sessionProjections,
-    { get: toolName => {
-      const definition = ctx.tools.get(toolName, ctx.mayflyCurrentAgent.current()!)
-      if (definition === undefined) return undefined
-      return {
-        ...(definition.presentCall === undefined ? {} : { presentCall: definition.presentCall }),
-        ...(definition.presentResult === undefined ? {} : { presentResult: definition.presentResult }),
-      }
-    } },
-    () => transcript.refresh(),
-    liveDrafts,
-  )
-  ctx.effect(() => () => officialSource.dispose())
-  ctx.on('tools/change', () => officialSource.invalidateTools())
-  transcript.setSource(() => officialSource.snapshot())
-  // The displayed conversation's history floor (a BTW's inherited seed) is
-  // presentation-only: entries at or below it never render.
-  const historyFloorSeq = (): number | undefined => {
-    const displayed = ctx.mayflyConversations.displayed()
-    return displayed?.kind === 'btw' ? displayed.historyFloorSeq : undefined
-  }
-  let selectedAgent = ctx.mayflyCurrentAgent.current()
-  let floorSeq = historyFloorSeq()
-  officialSource.attach(selectedAgent?.session ?? null, floorSeq, selectedAgent ?? undefined)
-  const syncSelection = (): void => {
-    const next = ctx.mayflyCurrentAgent.current()
-    const floor = historyFloorSeq()
-    if (next === selectedAgent && floor === floorSeq) return
-    selectedAgent = next
-    floorSeq = floor
-    officialSource.attach(next?.session ?? null, floor, next ?? undefined)
-  }
-  const offAgent = ctx.mayflyCurrentAgent.subscribe(syncSelection)
-  const offView = ctx.mayflyConversations.subscribe(syncSelection)
-  ctx.effect(() => () => offAgent())
+  // Every displayed or retained conversation reads its own native path; the
+  // registry decides which views exist, the controller which one is mounted.
+  const slots = new ConversationSlots(ctx, transcript, {
+    source: (agent, publish) => new OfficialConversationModelSource(
+      ctx.sessionProjections,
+      { get: toolName => {
+        const definition = ctx.tools.get(toolName, agent)
+        if (definition === undefined) return undefined
+        return {
+          ...(definition.presentCall === undefined ? {} : { presentCall: definition.presentCall }),
+          ...(definition.presentResult === undefined ? {} : { presentResult: definition.presentResult }),
+        }
+      } },
+      publish,
+      liveDrafts,
+      t,
+    ),
+    headed: { liveTurnHeader: true, requestRender: () => screen.requestRender() },
+    history: () => ctx.get('sessionController'),
+  })
+  ctx.effect(() => () => slots.dispose())
+  ctx.on('tools/change', () => slots.invalidateTools())
+  const sync = (): void => { slots.sync(ctx.mayflyConversations.snapshot()) }
+  // A same-id Agent replacement changes the exact Agent without a registry change.
+  const offView = ctx.mayflyConversations.subscribe(sync)
+  const offAgent = ctx.mayflyCurrentAgent.subscribe(sync)
   ctx.effect(() => () => offView())
+  ctx.effect(() => () => offAgent())
   const footer = new StatusFooterComponent(
     ctx.mayflyStatus,
     ctx.mayflyComponents,

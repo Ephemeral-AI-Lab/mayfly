@@ -66,6 +66,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import { SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
+import type {} from './subagent-reply.ts'
 import { hasRunningAgentWork, interruptAgentTree } from '../app/agent-interrupt.ts'
 // Empty type import carries the `permissionPresets` Context merge the
 // bare-/permission interception probes (the service rides dsh-base).
@@ -312,6 +313,17 @@ export function apply(ctx: Context): void {
     editor.setText(submitted?.raw ?? fallbackText)
   }
 
+  /** Put an undelivered submission back into the editor and out of its history. */
+  function restoreSubmission(value: string, historyText: string | undefined, submitted: MayflySubmittedDraft | undefined): void {
+    if (historyText !== undefined) {
+      editor.removeLatestHistory?.(historyText)
+      draft.stashHistory(editor.getHistory())
+    }
+    restoreDraftIntoEditor(submitted, value)
+    currentText = editor.getText()
+    draft.stashDraft(currentText)
+  }
+
   /** Restore a subagent submission that never reached its addressed child. */
   function restoreSubagentSubmission(
     value: string,
@@ -321,13 +333,7 @@ export function apply(ctx: Context): void {
     error: unknown,
   ): void {
     transformed.rollback?.()
-    if (historyText !== undefined) {
-      editor.removeLatestHistory?.(historyText)
-      draft.stashHistory(editor.getHistory())
-    }
-    restoreDraftIntoEditor(submitted, value)
-    currentText = editor.getText()
-    draft.stashDraft(currentText)
+    restoreSubmission(value, historyText, submitted)
     showFeedback('subagent-submit', error instanceof Error ? error.message : String(error), 'error')
     screen.requestRender()
   }
@@ -354,7 +360,7 @@ export function apply(ctx: Context): void {
       parentSessionId: SessionId(target.parentSessionId),
       childSessionId: SessionId(target.sessionId),
       mode: 'continuable',
-      // Queue for the child's next turn: the auxiliary input panel is a
+      // Queue for the child's next turn: the child conversation's editor is a
       // follow-up channel, not mid-step steering (the upstream host default).
       delivery: 'queue',
       content,
@@ -485,12 +491,24 @@ export function apply(ctx: Context): void {
     // entry must reach the reload stash before the swap tears the
     // component down.
     draft.stashHistory(editor.getHistory())
-    const agent = ctx.mayflyCurrentAgent.current()
+    const parsed = parseCommand(line)
+    // A displayed conversation without a driven Agent still runs commands
+    // against its primary; only its messages follow the displayed access.
+    const agent = ctx.mayflyCurrentAgent.current() ?? (parsed === undefined ? null : ctx.mayflyCurrentAgent.primary())
     if (agent === null) {
-      showFeedback('prompt-submit', t('no active session'), 'error')
+      const displayed = conversations.displayed()
+      if (displayed === null) {
+        showFeedback('prompt-submit', t('no active session'), 'error')
+        return
+      }
+      restoreSubmission(value, line, submitted)
+      // A stored continuable child resumes only through the explicit reply
+      // form; the draft stays here until that form sends it.
+      if (displayed.kind === 'subagent' && displayed.access === 'resumable') ctx.emit('mayfly/request-subagent-reply', displayed, line)
+      else showFeedback('prompt-submit', t('this conversation is read-only'), 'warning')
+      screen.requestRender()
       return
     }
-    const parsed = parseCommand(line)
     if (parsed === undefined) {
       const prepared = extensionRuntime.takePrepared(value)
       const preparedTransformation = prepared?.transformation
@@ -937,6 +955,17 @@ export function apply(ctx: Context): void {
     return () => dispose?.()
   })
   /* v8 ignore start -- notification is driven by live streaming events */
+  // A reply form opened from this draft sent it: the draft left the editor.
+  ctx.effect(() => ctx.on('mayfly/subagent-reply-sent', sent => {
+    if (editor.getText().trim() !== sent) return
+    editor.addToHistory(sent)
+    draft.stashHistory(editor.getHistory())
+    editor.setText('')
+    currentText = ''
+    draft.clearDraft()
+    refreshHint()
+    screen.requestRender()
+  }))
   ctx.effect(() => ctx.on('mayfly/transcript-content-changed', paused => {
     if (paused) showFeedback('transcript-follow', t('new messages available · press {key} to follow', { key: interactionKeyHint(ctx.mayflyKeymap, ACTION_END, 'End') }), 'info')
     else notificationOwner.clear('transcript-follow')

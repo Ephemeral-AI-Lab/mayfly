@@ -92,19 +92,26 @@ if (agent !== null) {
 }
 ```
 
-`current()` returns the currently displayed `Agent | null`; `primary()` retains
-the primary session. `subscribe()` replays the exact Agent selection.
-`view()` / `subscribeView()` expose readonly metadata for one primary session
-plus one auxiliary slot, together with the currently displayed side and
-`interactive | resumable | readonly` access. Only an exact Agent still alive in
-the registry can enter `current()`: a live BTW/continuable child drives the
-entire existing UI directly, while a one-shot child keeps the primary Agent and
-is handed to the generic readonly transcript panel. `F7` toggles the displayed
-side and `F8` closes the auxiliary slot; closing a BTW additionally releases
-its temporary Agent, while closing an ordinary subagent only detaches. A BTW
-seed is used only as model context; its `transcriptAfterSeq` cutoff makes the
-stream the user sees start from the BTW's own first question, without repeating
-primary-session history.
+`current()` returns the exact live Agent the displayed conversation drives, or
+null; `primary()` retains the primary session. `subscribe()` replays the exact
+Agent selection. Only an exact Agent still alive in the registry can enter
+`current()`, and only while an interactive conversation is displayed: a
+readonly or resumable conversation yields null rather than the primary, so no
+Agent-scoped write or fact reaches the wrong conversation.
+
+`mayflyConversations` holds the conversations the frontend can display: the
+primary plus any number of side conversations. `snapshot()` / `subscribe()`
+expose frozen descriptors (`kind`, `sessionId`, `parentSessionId`, `label`,
+`mode`, `historyFloorSeq`) with derived `access` (`interactive | resumable |
+readonly`) and `residency` (`displayed | retained | listed`), the displayed id,
+and the most-recently-displayed order. `open()` adds or refreshes a BTW or
+subagent conversation and displays it; a new BTW replaces the old one.
+`display()`, `back()` (`F7`), and `close()` (`F8`) move between them; closing a
+BTW releases its temporary Agent, closing a subagent only detaches, and the
+primary never closes. Selecting a new primary closes every side conversation.
+A BTW seed is used only as model context; its `historyFloorSeq` makes the
+stream the user sees start from the BTW's own first question, without
+repeating primary-session history.
 
 `@ephemeral-ai/mayfly/app` declares the `mayfly/request-subagent-reply` event.
 An external plugin can request the shared reply form for the currently
@@ -112,7 +119,9 @@ displayed continuable child session; the event itself does not send a message
 or resume an Agent. On submit the user explicitly chooses Queue or Steer; the
 write still goes through the native addressed-subagent path and checks the
 exact identities of the primary Agent and the online child Agent. Browsing and
-draft editing of an unloaded child session stay readonly.
+draft editing of an unloaded child session stay readonly. The event carries an
+optional editor draft: submitting in a resumable conversation opens the form
+seeded with it instead of sending.
 
 `ui.child(..., { tab })` gives a page a stable `pagePath`; hidden pages retain
 list/form state. Viewport matching and visible width remain core's decision;
@@ -125,7 +134,8 @@ running continuable descendant via `subagents.interrupt(..., { kind:
 preserves Activations and the unclaimed inbox; it does not use the drain API
 that would recursively destroy the subtree.
 
-Plugins that need Agent identity inject `mayflyCurrentAgent`. A plugin that
+Plugins that need Agent identity inject `mayflyCurrentAgent`; plugins that
+show or switch conversations inject `mayflyConversations`. A plugin that
 only contributes static UI should not take this dependency, because Cordis
 unloads consumers by dependency when app or core reloads.
 

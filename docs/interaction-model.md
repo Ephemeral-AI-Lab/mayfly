@@ -22,9 +22,9 @@ interaction state.
 ## Routing
 
 1. A capturing overlay (picker, form, approval, or other editor-slot surface)
-   receives keys before the global keymap. The readonly child transcript is a
-   view in the `conversation` layer, not a capturing overlay, so global actions
-   such as `F7`/`F8` keep working over it.
+   receives keys before the global keymap. Every conversation, including a
+   readonly or stored child, renders in the transcript pane with the ordinary
+   editor below it, so global actions such as `F7`/`F8` keep working.
 2. A focused pane receives keys after `F6` moves focus to it; Escape in a pane
    releases focus back to the editor (`leave`).
 3. In an editor shell (`presentation: 'editor'` decorations such as footer

@@ -77,7 +77,7 @@ export interface TranscriptModelRenderer extends CanonicalNodeRenderer {
   readonly presentation?: TranscriptPresentationPolicy
   /**
    * Keep the ticking running-turn header. Only for surfaces with no activity
-   * row (which otherwise owns every live fact), such as the child panel.
+   * row (which otherwise owns every live fact), such as a readonly child view.
    */
   readonly liveTurnHeader?: boolean
   /** Dynamic translator for transcript-owned renderer chrome. */
@@ -485,14 +485,6 @@ export class TranscriptModelComponent implements MayflyComponent {
     this.prefix = undefined
   }
 
-  renderWindow(width: number, offset: number, rows: number): { readonly rows: string[], readonly total: number } {
-    const rendered = this.render(width)
-    const safeRows = Math.max(1, Number.isFinite(rows) ? Math.floor(rows) : 1)
-    const safeOffset = Math.max(0, Number.isFinite(offset) ? Math.floor(offset) : 0)
-    const end = Math.max(0, rendered.length - safeOffset)
-    return { rows: rendered.slice(Math.max(0, end - safeRows), end), total: rendered.length }
-  }
-
   /** Apply the global recent-detail expansion state to mounted entries. */
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return
@@ -760,9 +752,24 @@ interface MountedTranscript {
  */
 export const FOLLOW_NOTICE_INTERVAL_MS = 1000
 
-/** Single-source bridge from the selected conversation projection to its fixed slot. */
+/** View key `setSource` mounts when a caller has a single conversation. */
+const DEFAULT_VIEW = 'default'
+
+/** One retained conversation view: its source and, once shown, its component. */
+interface ControllerView {
+  readonly source: Source
+  readonly renderer: Partial<TranscriptModelRenderer> | undefined
+  component: TranscriptModelComponent | undefined
+}
+
+/**
+ * The one conversation controller behind the fixed transcript slot. It keeps
+ * a component per retained view, so switching the displayed conversation
+ * swaps the mounted component without rebuilding the others' row caches.
+ */
 export class TranscriptController {
-  private source: Source | undefined
+  private readonly views = new Map<string, ControllerView>()
+  private active: string | undefined
   private mounted: MountedTranscript | undefined
   private screen: MayflyScreen | undefined
   private expanded = false
@@ -779,18 +786,58 @@ export class TranscriptController {
 
   attach(screen: MayflyScreen): void {
     this.unmount()
+    // Components cache rows for one renderer generation; a new screen rebuilds them.
+    for (const view of this.views.values()) this.release(view)
     this.screen = screen
     this.mount()
   }
 
+  /** Mount one source as the only view. */
   setSource(source: Source): void {
+    for (const key of this.views.keys()) if (key !== DEFAULT_VIEW) this.dropView(key)
+    this.setView(DEFAULT_VIEW, source)
+    this.show(DEFAULT_VIEW)
+  }
+
+  /**
+   * Create or replace one retained view.
+   * @param key - stable view key, such as the conversation id.
+   * @param source - the view's model source.
+   * @param renderer - renderer options overriding the controller defaults for this view.
+   */
+  setView(key: string, source: Source, renderer?: Partial<TranscriptModelRenderer>): void {
+    const previous = this.views.get(key)
+    if (key === this.active) this.unmount()
+    if (previous !== undefined) this.release(previous)
+    this.views.set(key, { source, renderer, component: undefined })
+    if (key === this.active) this.mount()
+  }
+
+  /** Display one retained view; the previous one keeps its rendered rows. */
+  show(key: string | undefined): void {
+    if (key === this.active) return
+    const switched = this.active !== undefined && key !== undefined
     this.unmount()
-    this.source = source
+    this.active = key
     this.mount()
+    // A different conversation opens at its newest content.
+    if (switched) this.screen?.followContent()
+  }
+
+  /** Dispose one retained view. */
+  dropView(key: string): void {
+    const view = this.views.get(key)
+    if (view === undefined) return
+    if (key === this.active) {
+      this.unmount()
+      this.active = undefined
+    }
+    this.release(view)
+    this.views.delete(key)
   }
 
   refresh(): void {
-    if (this.source === undefined) return
+    if (this.active === undefined) return
     const screen = this.screen
     if (screen === undefined) return
     const paused = screen.contentChanged()
@@ -805,18 +852,18 @@ export class TranscriptController {
 
   setExpanded(expanded: boolean): void {
     this.expanded = expanded
-    this.mounted?.component.setExpanded(expanded)
+    for (const view of this.views.values()) view.component?.setExpanded(expanded)
   }
 
-  /** Re-read presentation policy and invalidate mounted semantic components. */
+  /** Re-read presentation policy and invalidate every retained view. */
   refreshPresentationPolicy(): void {
-    this.mounted?.component.invalidate()
+    for (const view of this.views.values()) view.component?.invalidate()
     this.screen?.requestRender(true)
   }
 
   /** Invalidate renderer-owned copy after a locale provider revision. */
   refreshLocale(): void {
-    this.mounted?.component.invalidate()
+    for (const view of this.views.values()) view.component?.invalidate()
     this.screen?.requestRender(true)
   }
 
@@ -826,19 +873,19 @@ export class TranscriptController {
   }
 
   /**
-   * Append an ephemeral component into the conversation flow at the current
-   * durable tail: later durable entries render below it and it scrolls up with
-   * the transcript instead of pinning above the editor. The entry never becomes
-   * session data and drops on generation change or explicit removal.
+   * Append an ephemeral component into the displayed conversation flow at the
+   * current durable tail: later durable entries render below it and it scrolls
+   * up with the transcript instead of pinning above the editor. The entry never
+   * becomes session data and drops on generation change or explicit removal.
    * @param component - the component to mount; the transcript applies its gutter.
    * @returns a disposer removing the entry early; a no-op when nothing is mounted.
    */
   appendLocal(component: MayflyComponent): () => void {
     const mounted = this.mounted
     if (mounted === undefined) return () => {}
-    // `mounted` implies `setSource` ran, so the source exists; a function
-    // source may still report a null model (no session attached).
-    const source = this.source!
+    // `mounted` implies the active view exists; a function source may still
+    // report a null model (no session attached).
+    const source = this.views.get(this.active!)!.source
     const model = typeof source === 'function' ? source() : source
     let seq = -1
     for (const entry of model?.entries ?? []) {
@@ -858,19 +905,23 @@ export class TranscriptController {
 
   dispose(): void {
     this.unmount()
-    this.source = undefined
+    for (const view of this.views.values()) this.release(view)
+    this.views.clear()
+    this.active = undefined
     this.screen = undefined
   }
 
   private mount(): void {
     const screen = this.screen
-    const source = this.source
+    const view = this.active === undefined ? undefined : this.views.get(this.active)
     const renderer = this.options.renderer
-    if (screen === undefined || source === undefined || renderer === undefined) return
-    const component = new TranscriptModelComponent(
+    if (screen === undefined || view === undefined || renderer === undefined) return
+    const source = view.source
+    view.component ??= new TranscriptModelComponent(
       () => typeof source === 'function' ? source() : source,
-      renderer,
+      view.renderer === undefined ? renderer : { ...renderer, ...view.renderer },
     )
+    const component = view.component
     component.setExpanded(this.expanded)
     const slot = screen.mountContentSlot('transcript.conversation', component)
     this.mounted = { component, unmount: () => slot.dispose() }
@@ -880,9 +931,13 @@ export class TranscriptController {
   private unmount(): void {
     const mounted = this.mounted
     if (mounted === undefined) return
-    mounted.component.dispose()
     mounted.unmount()
     this.mounted = undefined
+  }
+
+  private release(view: ControllerView): void {
+    view.component?.dispose()
+    view.component = undefined
   }
 }
 

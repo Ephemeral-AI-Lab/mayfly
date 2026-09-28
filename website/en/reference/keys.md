@@ -4,15 +4,15 @@ Keys register through the `mayflyKeymap` service; duplicate bindings are rejecte
 
 ## Global actions
 
-In effect unless a capturing panel (a picker, form, or approval in the editor slot) owns input. The read-only subagent transcript is a view, not a capturing panel, so these keys keep working over it:
+In effect unless a capturing panel (a picker, form, or approval in the editor slot) owns input:
 
 | Key | Action | Description |
 | --- | --- | --- |
 | `Ctrl-O` | Toggle tool output expansion | Switch the most recent **3 turns** of tool cards and thinking blocks between one-line summary and full output |
 | `Ctrl-T` | Toggle todo pane folding | Five-row folded view ↔ full list |
 | `F6` / `Shift+F6` | Move surface focus | Traverse the Editor and pane lanes in layout order; crossing an end returns to the Editor |
-| `F7` | Toggle primary/auxiliary | Switch the complete UI between main and the retained BTW/subagent conversation; show a notice when no auxiliary exists |
-| `F8` | Close auxiliary | Detach a subagent or dispose the temporary BTW Agent, returning to main |
+| `F7` | Previous conversation | Switch the complete UI back to the previously displayed conversation (main, BTW, or subagent); show a notice when no other conversation is open |
+| `F8` | Close side conversation | Close the displayed side conversation (from main, the `F7` counterpart): detach a subagent or dispose the temporary BTW Agent |
 
 ## Shared panel keys
 
@@ -79,8 +79,7 @@ These keys reach the editor even while a notice is shown under the prompt. Edito
 | `/permission` picker | `1`–`9` or ↑↓ + `Enter` switch presets; full access first asks a Yes/No decision with No focused |
 | `/agents` browser | Type to filter; ↑↓ selects, `Space` or `←` / `→` expands/collapses, `Enter` views; `Tab` reaches **Stop selected**, which asks first and names why it cannot run for a one-shot, cold, or parent-of-live row |
 | `/plugin` marketplace | Installed / Not installed tabs (`←` / `→` on the strip or `Alt+←` / `Alt+→`); type to filter; `Tab` reaches Details, Install or Update/repair, and Remove, each available per row; `Ctrl+R` refreshes |
-| Readonly subagent transcript | ↑↓ / `PageUp` / `PageDown` / `Home` / `End` scroll; `Escape` closes; `F7` switches back, `F8` closes; `i` replies to a continuable child |
-| Live BTW/subagent | Uses the complete main editor and the same panel keys; `F7` returns to main and `F8` closes the auxiliary slot |
+| Side conversation | Uses the complete main editor and the same panel keys; `PageUp` / `PageDown` scroll its transcript; in a resumable one `Enter` opens the reply form; `F7` switches back and `F8` closes it |
 
 ## Custom bindings
 

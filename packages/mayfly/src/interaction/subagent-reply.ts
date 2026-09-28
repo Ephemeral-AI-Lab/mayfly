@@ -10,11 +10,18 @@ import { openUiOverlay } from './ui-overlay.ts'
 import { interactionTranslator } from './locale.ts'
 import type {} from '../app/conversation-views.ts'
 
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** A reply form sent a message it was seeded with from the editor draft. */
+    'mayfly/subagent-reply-sent'(draft: string): void
+  }
+}
+
 export const name = 'mayfly-subagent-reply'
 export const inject = ['mayflyConversations', 'mayflyCurrentAgent', 'mayflyOverlays', 'subagents']
 
 export function apply(ctx: Context): void {
-  ctx.on('mayfly/request-subagent-reply', target => {
+  ctx.on('mayfly/request-subagent-reply', (target, draft) => {
     const t = interactionTranslator(ctx)
     const primary = ctx.mayflyCurrentAgent.primary()
     const initial = ctx.mayflyConversations.displayed()
@@ -55,11 +62,12 @@ export function apply(ctx: Context): void {
           childSessionId: SessionId(target.sessionId),
           mode: 'continuable', delivery, content: [{ type: 'text', text }],
         }, context.signal)
+        if (draft !== undefined) ctx.emit('mayfly/subagent-reply-sent', draft)
         return { kind: 'accepted', node: node(text, delivery), source: [], dismiss: true }
       } catch (error) {
         return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
       }
-    } } }, node(''), { reopen: 'focus', onClosed: () => { offView?.(); offAgent?.() } })
+    } } }, node(draft ?? ''), { reopen: 'focus', onClosed: () => { offView?.(); offAgent?.() } })
     if (handle === undefined) return
     // The displayed conversation or its exact Agent (a same-id replacement) may change.
     offView = ctx.mayflyConversations.subscribe(() => { if (!current()) handle.close() })
