@@ -221,3 +221,13 @@ it('distinguishes generated session IDs and preserves unprefixed IDs', () => {
   expect(sessionLabel({ ...base, id: 'custom-id' }, t)).toBe('Untitled · custom-i')
   expect(sessionListItem({ ...base, id: 'bare' }, NOW, '/home/dev', t).detailSpans).toEqual([])
 })
+
+
+it('prefers a recovered title over stale listing hints while keeping an exact detail baseline authoritative', () => {
+  const cached = summary({ projections: { kind: 'cached', asOfSeq: 4, values: { title: null } } })
+  expect(sessionListFacts(cached, { ...context(), title: '你好，我能帮你做什么' }).title).toBe('你好，我能帮你做什么')
+  const staleName = summary({ projections: { kind: 'cached', asOfSeq: 4, values: { title: 'Old name' } } })
+  expect(sessionListFacts(staleName, { ...context(), title: 'Renamed conversation' }).title).toBe('Renamed conversation')
+  expect(sessionListFacts(cached, { ...context(), title: 'Older read', projections: { asOfSeq: 10, values: { title: 'Latest title' } } }).title).toBe('Latest title')
+  expect(sessionListFacts(cached, { ...context(), title: 'Older read', projections: { asOfSeq: 10, values: { title: null } } }).title).toBeUndefined()
+})

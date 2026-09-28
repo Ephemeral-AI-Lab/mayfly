@@ -404,7 +404,7 @@ it('ignores an archive catalog read after its detail closes', async () => {
 })
 
 
-it('recovers a title from real cold JSONL storage without attaching the Session or creating an Agent', async () => {
+it.each([undefined, null, '', 'Old cached name'])('recovers the cold stored title before opening details when the cached title is %s', async cachedTitle => {
   const bench = await setup(false)
   class Query extends SessionQueryEngine {
     async searchSessions(): Promise<never> { throw new Error('unused') }
@@ -418,7 +418,9 @@ it('recovers a title from real cold JSONL storage without attaching the Session 
   const stored = await bench.ctx.sessionPersistence.create(session.header)
   await stored.append(session.snapshotEvents())
   await stored.close()
-  bench.controller.list.mockResolvedValue({ items: [{ sessionId: session.id, cwd: '/repo/cold', running: false, updatedAt: 1_000 }] })
+  bench.controller.list.mockResolvedValue({ items: [{ sessionId: session.id, cwd: '/repo/cold', running: false, updatedAt: 1_000,
+    ...(cachedTitle === undefined ? {} : { projections: { kind: 'cached', asOfSeq: 0, values: { title: cachedTitle } } }),
+  }] } as never)
   bench.controller.projections.mockImplementation(async ({ sessionId }) => {
     using observation = await query.observeSession(SessionId(sessionId))
     return { asOfSeq: observation.cursor, values: observation.projections!.values }
@@ -427,6 +429,7 @@ it('recovers a title from real cold JSONL storage without attaching the Session 
   const agentsBefore = [...bench.agents.values()]
   await bench.open()
   await vi.waitFor(() => { expect(JSON.stringify(bench.model().node)).toContain('Investigate compiler crash') })
+  expect(bench.controller.projections).not.toHaveBeenCalled()
   expect(JSON.stringify(bench.model().node)).not.toContain('0s')
   expect(await nativeAction(bench.model(), selection('sessions', session.id))).toMatchObject({ kind: 'completed' })
   expect(JSON.stringify(bench.model('mayfly.sessions.detail').node)).toContain('Investigate compiler crash')

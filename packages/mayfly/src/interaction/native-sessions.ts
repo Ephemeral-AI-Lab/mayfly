@@ -38,13 +38,14 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
     dirty = false
     handle.set(node())
   }
-  // Native title reads borrow logs with bounded concurrency. Small batches
+  // Cached titles (including null) may precede later title events. Re-read
+  // cold hints; a nonempty live title is already current. Small batches
   // let the catalog paint immediately and release reads as soon as it closes.
   const recoverTitles = async (generation: AbortController) => {
     const query = ctx.get('sessionQuery')
     if (query === undefined) return
     const signal = AbortSignal.any([abort, generation.signal])
-    const missing = sessions.filter(session => session.projections?.values.title === undefined && !titles.has(session.sessionId))
+    const missing = sessions.filter(session => (session.projections?.kind === 'cached' || !session.projections?.values.title?.trim()) && !titles.has(session.sessionId))
     recovering = missing.length > 0
     dirty = true
     publish()

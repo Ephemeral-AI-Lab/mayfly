@@ -63,7 +63,9 @@ export interface SessionListContext {
  */
 export function sessionListFacts(summary: SessionSummary, context: SessionListContext): SessionListFacts {
   const values = context.projections?.values ?? summary.projections?.values
-  const title = (values?.title === undefined ? context.title : values.title)?.trim()
+  const title = (context.projections?.values.title !== undefined
+    ? context.projections.values.title
+    : context.title ?? values?.title)?.trim()
   // Native updatedAt falls back to creation on a cache miss. Only a later
   // value establishes activity independently of the optional metadata cell.
   const promptedAt = values?.sessionListMetadata?.lastPromptAt

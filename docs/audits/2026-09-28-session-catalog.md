@@ -10,7 +10,7 @@ change Harness storage or regenerate user titles.
 | Finding | Cause | Resolution |
 | --- | --- | --- |
 | Untitled conversations all displayed `session-`. | `sessionLabel` took the first eight characters of native `session-<uuid>` IDs. The test explicitly expected the shared prefix. | Strip the native prefix before abbreviating. Preserve the complete ID in filtering and the detail sheet. |
-| Existing saved titles appeared as `Untitled`. | Native `list()` carries partial cached projection hints. A missing `title` cell means unknown; listing deliberately does not replay cold logs. Mayfly never performed a title read. | Recover missing cells through `sessionQuery.readTitleSnapshots`, in batches of 32. Show the catalog before those reads finish. Preserve native cached titles and explicit `null` titles. |
+| Existing saved titles appeared as `Untitled`. | Native `list()` carries partial cached projection hints. Missing cells and cached values (including `null`) can precede later title events; listing deliberately does not replay cold logs. Mayfly never performed a title read. | Read missing/empty titles and every cold cached title through `sessionQuery.readTitleSnapshots`, in batches of 32. Show cached hints immediately, then prefer the logged title read; an exact detail baseline takes precedence over both. |
 | Cold sessions showed an invented `0s` duration and creation time as last activity. | Native `updatedAt` falls back to `header.createdAt` when the list metadata cache is absent. | Use explicit prompt/settlement times, running state, or an `updatedAt` later than creation. Otherwise label the creation age and leave duration/last activity unknown. |
 | Detail sheets repeated incomplete or stale listing hints. | The detail sheet reused the catalog's captured facts without an authoritative read. | Read `sessionController.projections` for the selected session. Missing/unreadable sessions produce feedback; reading never resolves or activates an Agent. |
 | Content matches could lose identity and become unselectable. | Search rows dropped status and ID/path search metadata, and the catalog was not reconciled when a match was created after opening the panel. | Preserve status and searchable ID/path/snippet; refresh the catalog when search returns a previously unlisted session. |
@@ -50,12 +50,24 @@ in the catalog and detail sheet, and checks that neither the live Session store
 nor Agent registry grows. The existing width scan covers session rows and detail
 sheets, including narrow terminals and long Unicode text.
 
-Automated verification passed: `verify:full` with the pinned rc.2 CLI;
+Initial automated verification passed: `verify:full` with the pinned rc.2 CLI;
 3,735 tests passed, seven skipped, and every executable source file met 100%
 coverage. Build, typecheck, lint, screenshot freshness, example checks, and the
 headless happy smoke passed. A PTY smoke using real cold persisted conversations
 passed title recovery, distinct untitled IDs, detail projection reads, 110/40
 column rendering, close/reopen, and clean exit. Human acceptance is pending.
+
+The first human acceptance found a missed stale-null case: a saved checkpoint
+contained `title: null` at seq 4 while the durable log contained a title at seq
+20. The initial recovery skipped null hints, and the row model would also let a
+cached null mask a recovered title. Both conditions are corrected. Regression
+cases now cover absent, null, empty, and obsolete nonempty cache values against
+real cold JSONL reads, asserting that the title appears before any detail read.
+The follow-up `verify:changed -- --base HEAD` gate passed 3,483 tests (seven
+skipped), with 100% coverage of both changed implementations. A PTY using a
+temporary copy of the reported session and its unchanged stale checkpoint
+confirmed the name appears in the catalog before opening any detail, at 110
+and 40 columns and after close/reopen.
 
 The system CLI was rc.1 during this review. From this worktree, the isolated
 pinned CLI is available without changing the system installation:
