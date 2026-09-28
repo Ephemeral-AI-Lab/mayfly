@@ -22,6 +22,20 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.2-rc.1',
+    summary: 'Hold many conversations in one transcript pane, browse sessions by workspace, and share locale catalogs across surfaces.',
+    highlights: [
+      'Conversations - keep the primary plus side conversations in one registry and render every displayed conversation through the single transcript pane.',
+      'Session browsing - group /sessions by exact workspace with visible loading progress, revision-keyed titles, and bounded cold reads.',
+      'Localization - share locale catalogs across surfaces, complete the zh coverage, and enforce used-key completeness, dead-key liveness, placeholder parity, and glossary terms in tests.',
+      'Plugin lifecycle - make /plugin Update and repair perform real upgrades and expose live info actions.',
+      'Queue - fold long queued rows and withdraw pending messages with Up.',
+      'Provider setup - keep discovered routes in the user-level home patch so profiles share provider configuration.',
+      'Rendering and performance - harden display fidelity and layout budgets, unify overflow signalling, and cut subagent, dock, and scroll cost.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.1-rc.2',
     summary: 'Align with Harness 0.1.7-rc.2 and reshape /context usage as a folded proportional bar.',
     highlights: [
