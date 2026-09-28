@@ -22,7 +22,6 @@ import {
   ToolCallComponent,
   UserMessageComponent,
 } from '../../src/transcript/components.ts'
-import { AgentGroupComponent } from '../../src/transcript/agent-group.ts'
 import { CommandGroupComponent } from '../../src/transcript/command-group.ts'
 import { ReadGroupComponent } from '../../src/transcript/read-group.ts'
 import { SearchGroupComponent } from '../../src/transcript/search-group.ts'
@@ -74,19 +73,6 @@ function bashItem(text: string): TranscriptToolItem {
     name: 'bash',
     arguments: '{}',
     parsedArguments: { command: text, run_in_background: true },
-  } as TranscriptToolItem
-}
-
-/** A subagent tool item whose description is the fixture text. */
-function subagentItem(text: string): TranscriptToolItem {
-  return {
-    kind: 'tool',
-    seq: 1,
-    turn: 1,
-    callId: 'c2',
-    name: 'subagent',
-    arguments: '{}',
-    parsedArguments: { description: text, prompt: text },
   } as TranscriptToolItem
 }
 
@@ -397,13 +383,6 @@ describe('transcript width-scan', () => {
       }
       component.dispose()
       flow.dispose()
-    })
-
-    it(`AgentGroupComponent survives ${name}`, () => {
-      const components = fakeMayflyComponents()
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`AgentGroup/${name}`, new AgentGroupComponent(subagentItem(text), colors, components).render(width), width)
-      }
     })
 
     it(`workflow pane survives ${name}`, () => {

@@ -2,8 +2,9 @@
  * @module @ephemeral-ai/mayfly/tests/core/ui-interaction-form
  */
 import { describe, expect, it } from 'vitest'
-import type { MayflyFormAddress, MayflyFormField, MayflyFormNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyFormAddress, MayflyFormField, MayflyFormNode, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import { createFormState, formAddressKey, formDirty, inspectForm, reconcileForm, reduceForm, submitForm, validateForm } from '../../src/core/ui-interaction-form.ts'
+import { choiceError, createChoiceState } from '../../src/core/ui-interaction-choice.ts'
 
 const address: MayflyFormAddress = { pagePath: [{ controlId: 'pages', itemId: 'connection' }], formId: 'config' }
 const form = (fields: readonly MayflyFormField[]): MayflyFormNode => ({ kind: 'form', id: 'config', fields, submitActionId: 'save', cancelActionId: 'cancel' })
@@ -152,6 +153,22 @@ describe('shared form editing', () => {
     state = reduceForm(state, { kind: 'edit', fieldId: 'choices', value: [] })
     state = reconcileForm(state, form([{ kind: 'multiselect', id: 'choices', label: 'Choices', options, value: [], minSelected: 1 }]))
     expect(validateForm(state)[0]!.message).toContain('at least')
+  })
+
+  it('reports the same selection error on the list and form surfaces', () => {
+    const options = [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'off', label: 'Off', disabled: true }]
+    const field: MayflyFormField = { kind: 'multiselect', id: 'pick', label: 'Pick', options, value: [], minSelected: 1, maxSelected: 1 }
+    const definition: MayflyListNode = { kind: 'list', id: 'pick', role: 'choose', mode: 'multiple', selectedIds: [], items: options, minSelected: 1, maxSelected: 1 }
+    const messageFor = (value: readonly string[]): string | undefined => {
+      const state = reduceForm(createFormState(address, form([field])), { kind: 'edit', fieldId: 'pick', value })
+      const message = validateForm(state)[0]?.message
+      expect(choiceError({ ...createChoiceState(definition), selectedIds: value })).toBe(message)
+      return message
+    }
+    expect(messageFor([])).toBe('Select at least 1 options')
+    expect(messageFor(['one', 'two'])).toBe('Select at most 1 options')
+    expect(messageFor(['off'])).toBe('A selected option is unavailable')
+    expect(messageFor(['one'])).toBeUndefined()
   })
 
   it('enforces field constraints without trimming text or changing disabled fields', () => {

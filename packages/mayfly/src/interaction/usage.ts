@@ -40,32 +40,11 @@ export interface CompositionFacts {
 }
 
 /**
- * One decimal, trailing `.0` trimmed: 1 → `1`, 1.5 → `1.5`.
- * @param value - the value to format.
- * @returns the trimmed one-decimal representation.
+ * Compact 1024-base token formatting: re-exported from the single
+ * `transcript/status-context` owner so the `/usage` port and the footer share
+ * one rule.
  */
-function trimDecimal(value: number): string {
-  return value.toFixed(1).replace(/\.0$/, '')
-}
-
-/**
- * Compact 1024-base token formatting (the kimi `/usage` port; the footer's
- * `status-context` twin): the plain integer below 1024, `x.yk` at or above
- * it (rounded at 100k), `x.yM` at or above 1 MiB. Context windows are
- * powers of two, so the binary base keeps abbreviations exact — 262144
- * renders as `256k`. Non-finite or negative input formats as `0`.
- * @param tokens - the token count.
- * @returns the formatted count.
- */
-export function formatTokens(tokens: number): string {
-  if (!Number.isFinite(tokens) || tokens < 0) return '0'
-  if (tokens >= 1024 * 1024) return `${trimDecimal(tokens / (1024 * 1024))}M`
-  if (tokens >= 1024) {
-    const k = tokens / 1024
-    return `${k >= 100 ? String(Math.round(k)) : trimDecimal(k)}k`
-  }
-  return String(tokens)
-}
+export { formatTokens } from '../transcript/status-context.ts'
 
 /**
  * The usage share of a context window, in whole percents: rounded up so
