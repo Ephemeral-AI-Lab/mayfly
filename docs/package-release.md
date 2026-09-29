@@ -1,6 +1,6 @@
 # Mayfly package and release workflow
 
-Mayfly publishes three packages as one `0.1.3-rc.1` lockstep release:
+Mayfly publishes three packages as one `0.1.3-rc.2` lockstep release:
 `@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`, and
 `@ephemeral-ai/mayfly-cli`. The exact release order lives in
 `script/package-contract.mjs`. The supported Harness line is `0.2.0-rc.2`.
@@ -15,7 +15,7 @@ After preparing a new release and writing its changelog entry, set `VERSION`
 to that release and run:
 
 ```sh
-VERSION=0.1.3-rc.1
+VERSION=0.1.3-rc.2
 pnpm run verify:changed -- --plan
 pnpm release:preflight "$VERSION"
 pnpm run verify:full
