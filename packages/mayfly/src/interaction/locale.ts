@@ -98,6 +98,8 @@ const zh: Readonly<Record<string, string>> = {
   'The pasted link was not accepted — copy the full address bar URL and try again': '粘贴的链接未被接受——请复制完整地址栏链接后重试',
   'The callback could not be delivered': '回调无法送达',
   'Callback delivered — finishing sign-in': '回调已送达——正在完成登录',
+  'Restart sign-in': '重新发起登录',
+  'Sign-in restarted with a fresh link': '已用新链接重新发起登录',
   'toggle / confirm': '切换 / 确认',
   'OAuth provider': 'OAuth 提供商',
   'Known provider': '已知提供商',

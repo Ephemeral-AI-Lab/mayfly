@@ -123,7 +123,7 @@ export function accountPanelNode(
     ui.actions({ id: 'account-actions', items: [
       ...(view.status === 'credential-stored' ? [] : canSignIn && (attempt === null || failed) ? [{ id: 'sign-in', label: signInLabel, intent: 'primary' as const }] : []),
       ...(waiting && callbackPort !== undefined ? [{ id: 'deliver-callback', label: t('Deliver callback'), submit: [{ pagePath: [], formId: 'callback-paste' }] }] : []),
-      ...(waiting ? [{ id: 'cancel-sign-in', label: t('Cancel sign-in') }] : []),
+      ...(waiting ? [{ id: 'restart-sign-in', label: t('Restart sign-in') }, { id: 'cancel-sign-in', label: t('Cancel sign-in') }] : []),
       ...(view.status === 'credential-stored' ? [{ id: 'sign-out', label: t('Sign out'), intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') }] : []),
       { id: 'close', label: t('Close'), dismiss: true },
     ] }),
@@ -200,24 +200,43 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
           return { kind: 'failed', message: t('The callback could not be delivered') }
         }
       }
-      /* v8 ignore next -- only the three panel actions reach activate */
-      if (event.kind !== 'activate' || event.actionId !== 'sign-in') return { kind: 'completed' }
-      const origin = callbackOrigin(ctx)
-      /* v8 ignore next -- the Sign in action only renders while a webserver is composed */
-      if (origin === undefined) return { kind: 'failed', message: t('Sign-in needs the local webserver — enable the webserver row') }
-      try {
-        const view = await service.startSignIn(clientMetadata(ctx), origin, 'desktop')
-        const url = view.attempt?.authorizeUrl
-        const opened = url === undefined ? false : await openUrlInBrowser(url)
-        return {
-          kind: 'accepted',
-          node: paint(view),
-          source: [],
-          feedback: { severity: 'success', message: opened ? t('Opened the sign-in page in a browser') : t('Sign-in started — open the link below in a browser') },
+      /* v8 ignore next -- every other activate action returns in its own branch above */
+      if (event.kind === 'activate' && ['sign-in', 'restart-sign-in'].includes(event.actionId)) {
+        const origin = callbackOrigin(ctx)
+        /* v8 ignore next -- both actions only render while a webserver is composed */
+        if (origin === undefined) return { kind: 'failed', message: t('Sign-in needs the local webserver — enable the webserver row') }
+        try {
+          if (event.actionId === 'restart-sign-in') {
+            // The platform keeps one live attempt per host process and answers
+            // startSignIn idempotently with its URL while it waits, so a fresh
+            // authorize link requires retiring the current attempt first.
+            const current = (await service.getState()).attempt
+            /* v8 ignore next -- the restart action only renders while a live attempt waits */
+            if (current !== null && !attemptTerminal(current)) await service.cancelSignIn(current.id)
+            const restarted = await service.startSignIn(clientMetadata(ctx), origin, 'desktop')
+            const url = restarted.attempt?.authorizeUrl
+            /* v8 ignore next -- a fresh attempt may still be initializing without its URL */
+            const opened = url === undefined ? false : await openUrlInBrowser(url)
+            // Two state hops (retire, then fresh attempt) race the watch
+            // repaint; the watch stream owns the final node, this replies
+            // with the outcome only.
+            return { kind: 'completed', feedback: { severity: 'success', message: opened ? t('Opened the sign-in page in a browser') : t('Sign-in restarted with a fresh link') } }
+          }
+          const view = await service.startSignIn(clientMetadata(ctx), origin, 'desktop')
+          const url = view.attempt?.authorizeUrl
+          const opened = url === undefined ? false : await openUrlInBrowser(url)
+          return {
+            kind: 'accepted',
+            node: paint(view),
+            source: [],
+            feedback: { severity: 'success', message: opened ? t('Opened the sign-in page in a browser') : t('Sign-in started — open the link below in a browser') },
+          }
+        } catch {
+          return { kind: 'failed', message: t('Sign-in could not start — try again') }
         }
-      } catch {
-        return { kind: 'failed', message: t('Sign-in could not start — try again') }
       }
+      /* v8 ignore next -- only the three panel actions reach activate */
+      return { kind: 'completed' }
     } },
   }, paint(await service.getState()), { signal: cancellation, reopen: 'focus', onClosed: () => cleanup() })
   if (handle === undefined) { releaseLifetime(); return true }

@@ -35,7 +35,7 @@ function fakeAccount(initial: AccountView) {
       if (failures.start) throw new Error('unavailable')
       publish({ ...view, attempt: failures.initializing
         ? { id: 'attempt' as never, phase: 'initializing' }
-        : { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: `https://auth.example/authorize?origin=${origin}`, expiresAt: Date.now() + 600_000 } })
+        : { id: `attempt-${String(starts.length)}` as never, phase: 'waiting-browser', authorizeUrl: `https://auth.example/authorize?origin=${origin}&n=${String(starts.length)}`, expiresAt: Date.now() + 600_000 } })
       return view
     },
     async cancelSignIn(id: SignInAttemptId): Promise<AccountView> {
@@ -135,7 +135,7 @@ describe('DeepSeek account panel', () => {
       expect(account.starts[0]).toMatchObject({ origin: 'http://localhost:45678', source: 'desktop' })
       expect(account.starts[0]!.client).toMatchObject({ version: MAYFLY_VERSION, locale: expect.any(String), timezoneOffsetSeconds: expect.any(Number) })
       expect(spawned).toHaveLength(1)
-      expect(spawned[0]!.args.at(-1)).toBe('https://auth.example/authorize?origin=http://localhost:45678')
+      expect(spawned[0]!.args.at(-1)).toBe('https://auth.example/authorize?origin=http://localhost:45678&n=1')
       const json = JSON.stringify(model.node)
       expect(json).toContain('Sign-in link')
       expect(json).toContain('http://localhost:45678')
@@ -146,7 +146,7 @@ describe('DeepSeek account panel', () => {
       expect(json).toContain('http://localhost:45678/oauth/callback')
       model.invoke('cancel-sign-in')
       await flush()
-      expect(account.cancels).toEqual(['attempt' as never])
+      expect(account.cancels).toEqual(['attempt-1' as never])
       expect(JSON.stringify(model.node)).toContain('"Sign in"')
     } finally {
       accountInternals.spawnOpener = original
@@ -243,6 +243,49 @@ describe('DeepSeek account panel', () => {
     cancelModel.invoke('cancel-sign-in')
     await flush()
     expect(cancelModel.feedbackSnapshot().at(-1)?.severity).toBe('error')
+  })
+
+  it('restarts with a fresh authorize URL by retiring the waiting attempt first', async () => {
+    const urls: string[] = []
+    const originalFetch = accountInternals.fetchCallback
+    const originalOpener = accountInternals.spawnOpener
+    accountInternals.fetchCallback = originalFetch
+    accountInternals.spawnOpener = async () => false
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush()
+      urls.push(JSON.stringify(model.node).match(/authorize\?origin=([^"]+)/)![1]!)
+      expect(JSON.stringify(model.node)).toContain('"Restart sign-in"')
+      model.invoke('restart-sign-in')
+      await flush(8)
+      expect(account.cancels).toHaveLength(1)
+      expect(account.starts).toHaveLength(2)
+      expect(model.feedbackSnapshot().at(-1)?.message).toContain('restarted')
+      const fresh = (await account.api.getState()).attempt?.authorizeUrl
+      expect(fresh).toBeDefined()
+      expect(fresh).not.toBe(urls[0])
+
+    } finally {
+      accountInternals.spawnOpener = originalOpener
+    }
+
+    const opened = await bench(signedOut, { port: 45678 })
+    accountInternals.spawnOpener = async () => true
+    try {
+      expect(await openAccountPanel(opened.ctx, 'deepseek-account')).toBe(true)
+      const openedModel = opened.ctx.mayflyUiInteraction.get('overlay', panelId)!
+      openedModel.invoke('sign-in')
+      await flush()
+      openedModel.invoke('restart-sign-in')
+      await flush(8)
+      expect(opened.account.starts).toHaveLength(2)
+      expect(openedModel.feedbackSnapshot().at(-1)?.message).toContain('Opened the sign-in page')
+    } finally {
+      accountInternals.spawnOpener = originalOpener
+    }
   })
 
   it('offers retry after a failed attempt and signs out through the native service', async () => {
