@@ -209,6 +209,19 @@ describe('mayfly-pane-todo', () => {
     await harness.dispose()
   })
 
+  it('omits the reason row for a blocked goal without a message', async () => {
+    const harness = await bootPanePlugin(todo, fakeAgent([todoWrite([{ content: 'next task', status: 'pending' }])]))
+    harness.facts.setGoal(goalProjection('blocked'))
+    // The ✕ badge carries the state; an empty reason never renders a bare
+    // `blocked: ` line.
+    expect(harness.screen.paneLines()).toEqual([
+      rule(),
+      '  Todo · ✕ blocked · 2/8 · ship the badge',
+      row('○', 'next task'),
+    ])
+    await harness.dispose()
+  })
+
   it('marks an unsettled list after an interrupted or failed run, alone or beside a goal', async () => {
     resetSeq()
     const agent = fakeAgent([turnStart(1), todoWrite([{ content: 'half done', status: 'in_progress' }])])
@@ -229,7 +242,9 @@ describe('mayfly-pane-todo', () => {
     const first = fakeAgent([todoWrite([{ content: 'keep me', status: 'pending' }])])
     const harness = await bootPanePlugin(todo, first)
     harness.facts.setGoal(goalProjection('blocked'))
-    expect(harness.screen.paneLines()).toContain('  blocked: ')
+    expect(harness.screen.paneLines()).toContain('  Todo · ✕ blocked · 2/8 · ship the badge')
+    // No message means no reason row — the badge alone carries the state.
+    expect(harness.screen.paneLines()).not.toContain('  blocked: ')
     harness.facts.setGoal(goalProjection('complete'))
     expect(harness.screen.paneLines()).toEqual([rule(), TITLE, row('○', 'keep me')])
     harness.ctx.emit('test/session-changed', asAgent(fakeAgent([])))

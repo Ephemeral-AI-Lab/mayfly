@@ -25,20 +25,21 @@ const PHASE_LABEL = {
   complete: 'complete',
 } as const satisfies Record<GoalView['phase'], string>
 
-/** Process-local activation spellings resolved through the catalog. */
-const ACTIVATION_LABEL = {
-  armed: 'armed',
-  disarmed: 'disarmed',
-} as const satisfies Record<GoalView['activation'], string>
-
-/** Render the bounded goal summary shared by the live producer and tests. */
+/** Render the bounded goal summary shared by the live producer and tests.
+ *
+ * Completed goals render nothing (the todo pane hides them too, so a finished
+ * goal never lingers in the footer). The fraction carries its `round` unit,
+ * and the process-local activation flag stays silent in its default `armed`
+ * state — only a disarmed goal appends the human `auto-continue off` marker.
+ */
 export function goalStatusText(goal: GoalView | undefined, t: MayflyTranslate = interpolateLocaleMessage): string {
-  if (goal === undefined) return ''
-  return t('Goal {phase} · {rounds}/{total} · {activation}', {
+  if (goal === undefined || goal.phase === 'complete') return ''
+  return t(goal.activation === 'disarmed'
+    ? 'Goal {phase} · round {rounds}/{total} · auto-continue off'
+    : 'Goal {phase} · round {rounds}/{total}', {
     phase: t(PHASE_LABEL[goal.phase]),
     rounds: goal.roundsStarted,
     total: goal.maxGoalRounds,
-    activation: t(ACTIVATION_LABEL[goal.activation]),
   })
 }
 
@@ -46,7 +47,7 @@ export function goalStatusText(goal: GoalView | undefined, t: MayflyTranslate = 
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   let text = ''
-  let tone: 'accent' | 'success' | 'warning' | 'muted' = 'muted'
+  let tone: 'accent' | 'muted' | 'danger' = 'muted'
   let status: ReturnType<typeof ctx.mayflyStatus.register>
   const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone }
   const derive = (): void => {
@@ -58,13 +59,13 @@ export function apply(ctx: Context): void {
       ctx.logger.warn(`could not read current goal for status: ${error instanceof Error ? error.message : String(error)}`)
     }
     const nextText = goalStatusText(goal, t)
+    // Tone follows the todo pane's goal badge: accent while active, danger
+    // when blocked, muted otherwise (paused, or unreachable completed goals).
     const nextTone = goal?.phase === 'active'
       ? 'accent'
-      : goal?.phase === 'complete'
-        ? 'success'
-        : goal?.phase === 'blocked' || goal?.phase === 'paused'
-          ? 'warning'
-          : 'muted'
+      : goal?.phase === 'blocked'
+        ? 'danger'
+        : 'muted'
     if (nextText === text && nextTone === tone) return
     text = nextText
     tone = nextTone

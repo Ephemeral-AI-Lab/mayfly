@@ -246,13 +246,17 @@ export function todoNode(state: TodoState, t: MayflyTranslate, keyHint: string):
     { node: { kind: 'rich-text', spans: titleSpans(state.goal, state.interrupted, t), overflow: 'truncate' } },
   ]
   const badge = goalBadge(state.goal)
-  if (badge?.phase === 'blocked') {
+  // Only a blocked goal with an actual message adds its reason row; the
+  // `✕ blocked` badge already carries the state, so an empty reason never
+  // renders a bare `blocked: ` line.
+  const blockedReason = badge?.phase === 'blocked' ? blockedReasonText(badge.goal) : ''
+  if (blockedReason !== '') {
     children.push({
       node: {
         kind: 'rich-text',
         spans: [
           { text: `  ${t('blocked: ')}`, tone: 'danger' },
-          { text: blockedReasonText(badge.goal), tone: 'muted' },
+          { text: blockedReason, tone: 'muted' },
         ],
         overflow: 'truncate',
       },
