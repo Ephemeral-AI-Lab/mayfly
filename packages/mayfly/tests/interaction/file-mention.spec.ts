@@ -12,6 +12,7 @@ import * as os from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_FALLBACK_SUGGESTIONS,
+  createMentionScanCache,
   detectFdPath,
   extractAtPrefix,
   fsMentionSuggestions,
@@ -359,5 +360,90 @@ describe('fsMentionSuggestions', () => {
     }
     const suggestions = await listDirectoryMentions(root, '@', signal())
     expect(suggestions?.items).toHaveLength(50)
+  })
+})
+
+describe('createMentionScanCache', () => {
+  it('reuses one walk between consecutive keystrokes on the same base', async () => {
+    const root = fixture()
+    const cache = createMentionScanCache()
+    const reads = vi.spyOn(fsPromises, 'readdir')
+    const first = await fsMentionSuggestions(root, '@a', signal(), undefined, cache)
+    const singleWalk = reads.mock.calls.length
+    expect(singleWalk).toBeGreaterThan(0)
+    const second = await fsMentionSuggestions(root, '@a.', signal(), undefined, cache)
+    expect(second?.items.map(item => item.value)).toEqual(['@src/a.ts'])
+    expect(reads.mock.calls.length).toBe(singleWalk)
+  })
+
+  it('joins an already-running walk instead of starting a second one', async () => {
+    const root = fixture()
+    const cache = createMentionScanCache()
+    const reads = vi.spyOn(fsPromises, 'readdir')
+    const [one, two] = await Promise.all([
+      fsMentionSuggestions(root, '@a', signal(), undefined, cache),
+      fsMentionSuggestions(root, '@b', signal(), undefined, cache),
+    ])
+    expect(one).not.toBeNull()
+    expect(two).not.toBeNull()
+    const sharedWalk = reads.mock.calls.length
+    expect(sharedWalk).toBeGreaterThan(0)
+    // Two fresh uncached walks read the tree twice more on top of the one
+    // shared walk.
+    await fsMentionSuggestions(root, '@a', signal())
+    await fsMentionSuggestions(root, '@b', signal())
+    expect(reads.mock.calls.length).toBe(sharedWalk * 3)
+  })
+
+  it('rewalks once the TTL has passed', async () => {
+    const root = fixture()
+    const cache = createMentionScanCache(0)
+    const reads = vi.spyOn(fsPromises, 'readdir')
+    await fsMentionSuggestions(root, '@a', signal(), undefined, cache)
+    const first = reads.mock.calls.length
+    await fsMentionSuggestions(root, '@a', signal(), undefined, cache)
+    expect(reads.mock.calls.length).toBe(first * 2)
+  })
+
+  it('evicts the oldest base beyond the LRU limit', async () => {
+    const root = mkdtempTracked('mayfly-mention-cache-lru-')
+    const bases: string[] = []
+    for (let index = 0; index < 9; index += 1) {
+      const base = join(root, `d${index}`)
+      bases.push(base)
+      mkdirSync(base)
+      writeFileSync(join(base, `f${index}.txt`), 'x')
+    }
+    const cache = createMentionScanCache()
+    const reads = vi.spyOn(fsPromises, 'readdir')
+    await Promise.all(bases.map(base => cache.scan(base, 'linux')))
+    const afterFirstRound = reads.mock.calls.length
+    // d0 was evicted by the eight newer bases: rescanning it rewalks.
+    await cache.scan(bases[0]!, 'linux')
+    expect(reads.mock.calls.length).toBe(afterFirstRound + 1)
+    // d8, the newest base, is still memoized.
+    await cache.scan(bases[8]!, 'linux')
+    expect(reads.mock.calls.length).toBe(afterFirstRound + 1)
+  })
+
+  it('clear() aborts an in-flight walk and drops memoized results', async () => {
+    const root = fixture()
+    const cache = createMentionScanCache()
+    const realReaddir = fsPromises.readdir.bind(fsPromises)
+    let release: (() => void) | undefined
+    vi.spyOn(fsPromises, 'readdir').mockImplementation(async (path, options) => {
+      if (String(path) === root && release !== undefined) {
+        await new Promise<void>(resolve => { release = () => { resolve(); release = undefined } })
+      }
+      return realReaddir(path, options) as never
+    })
+    const first = cache.scan(root, 'linux')
+    cache.clear()
+    release?.()
+    // The aborted walk stops between entries before recording anything.
+    await expect(first).resolves.toEqual([])
+    const reads = vi.spyOn(fsPromises, 'readdir').mockImplementation(async (path, options) => realReaddir(path, options) as never)
+    await cache.scan(root, 'linux')
+    expect(reads.mock.calls.length).toBeGreaterThan(0)
   })
 })
