@@ -100,8 +100,10 @@
     # Durable Host-wide reminders. The Schedule service owns the task store and
     # delivers each due occurrence as a follow-up in its original Session; it
     # attaches schedule_* tools to every root Agent. Shipped disabled — enable
-    # it in profile files to turn on reminder management. (Upstream mounts the
-    # same row disabled in its Web bundle.)
+    # it in profile files to turn on reminder management. (Harness 0.2.0 moved
+    # upstream's own Web rows into the optional dsh-experimental-schedule-bundle;
+    # Mayfly inserts its row directly, so the capability does not depend on
+    # that experimental bundle.)
     - id: schedule
       name: '@deepseek-ai/dsh-schedule'
       disabled: true

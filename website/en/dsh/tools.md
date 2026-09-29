@@ -6,7 +6,7 @@ The catalog of dsh's built-in tools, grouped by purpose. Which tools actually ap
 
 | Tool | Description |
 | --- | --- |
-| `ask_user_question` | pauses the tool call to ask the user for confirmation or multiple-choice answers |
+| `ask_user_question` | pauses the tool call to ask the user for confirmation or multiple-choice answers; since 0.2.0 it also supports `mode: timed` with `timeout` — the agent continues at the deadline and a late answer is appended as a user message |
 | `exit_plan_mode` | submits a Markdown plan for review and exits plan mode on approval |
 | `skill` | loads the full instructions of a named skill |
 

@@ -31,6 +31,7 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
       'Plugin lifecycle - make /plugin Update and repair perform real upgrades and expose live info actions.',
       'Queue - fold long queued rows and withdraw pending messages with Up.',
       'Provider setup - keep discovered routes in the user-level home patch so profiles share provider configuration.',
+      'Harness 0.2.0-rc.2 - align the pinned line: late question answers render in the transcript, web search can ride a signed-in DeepSeek account without a separate API key, and the otel telemetry channel joins the base composition.',
       'Rendering and performance - harden display fidelity and layout budgets, unify overflow signalling, and cut subagent, dock, and scroll cost.',
     ],
     knownIssues: [],
