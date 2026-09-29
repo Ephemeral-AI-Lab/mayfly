@@ -45,9 +45,18 @@ function currentAgentService(initial: Agent | null) {
 }
 
 describe('goalStatusText', () => {
-  it('formats the bounded phase, round, and activation summary', () => {
+  it('labels the round unit and hides completed goals', () => {
     expect(goalStatus.goalStatusText(undefined)).toBe('')
-    expect(goalStatus.goalStatusText(goal('active'))).toBe('Goal active · 2/8 · armed')
+    expect(goalStatus.goalStatusText(goal('active'))).toBe('Goal active · round 2/8')
+    expect(goalStatus.goalStatusText(goal('paused', { rounds: 4, max: 12 }))).toBe('Goal paused · round 4/12')
+    expect(goalStatus.goalStatusText(goal('blocked'))).toBe('Goal blocked · round 2/8')
+    expect(goalStatus.goalStatusText(goal('complete'))).toBe('')
+  })
+
+  it('keeps armed silent and words disarmed as auto-continue off', () => {
+    expect(goalStatus.goalStatusText(goal('active', { activation: 'armed' }))).toBe('Goal active · round 2/8')
+    expect(goalStatus.goalStatusText(goal('active', { activation: 'disarmed' }))).toBe('Goal active · round 2/8 · auto-continue off')
+    expect(goalStatus.goalStatusText(goal('complete', { activation: 'disarmed' }))).toBe('')
   })
 })
 
@@ -71,7 +80,7 @@ describe('mayfly-status-goal', () => {
     harness.ctx.emit('goal/changed', { agent: first } as never)
     expect(harness.entry.id).toBe('mayfly.status.goal')
     expect(harness.entry.priority).toBe(2)
-    expect(harness.entry.render(80)).toBe('Goal active · 2/8 · armed')
+    expect(harness.entry.render(80)).toBe('Goal active · round 2/8')
     expect(harness.entry.render(5)).toBe('')
 
     const baseline = harness.screen.renderRequests.length
@@ -80,24 +89,24 @@ describe('mayfly-status-goal', () => {
 
     views.set(first, goal('paused', { rounds: 4, max: 12, activation: 'disarmed' }))
     ;(harness.ctx.get('mayflySessionFacts') as FakeFactsService).setGoal(null)
-    expect(harness.entry.render(80)).toBe('Goal paused · 4/12 · disarmed')
+    expect(harness.entry.render(80)).toBe('Goal paused · round 4/12 · auto-continue off')
     views.set(first, goal('blocked'))
     harness.ctx.emit('goal/changed', { agent: first } as never)
-    expect(harness.entry.render(80)).toBe('Goal blocked · 2/8 · armed')
+    expect(harness.entry.render(80)).toBe('Goal blocked · round 2/8')
     views.set(first, goal('complete', { activation: 'disarmed' }))
     harness.ctx.emit('goal/changed', { agent: first } as never)
-    expect(harness.entry.render(80)).toBe('Goal complete · 2/8 · disarmed')
+    expect(harness.entry.id).toBe('')
 
     views.set(first, goal('active', { activation: 'armed' }))
     harness.ctx.emit('agent/created', { agent: foreign, source: 'resume' } as never)
-    expect(harness.entry.render(80)).toBe('Goal complete · 2/8 · disarmed')
+    expect(harness.entry.id).toBe('')
     harness.ctx.emit('agent/created', { agent: first, source: 'resume' } as never)
-    expect(harness.entry.render(80)).toBe('Goal active · 2/8 · armed')
+    expect(harness.entry.render(80)).toBe('Goal active · round 2/8')
 
     views.set(second, goal('paused', { rounds: 1, activation: 'disarmed' }))
     selected.switchTo(second)
     expect(get).toHaveBeenLastCalledWith(second)
-    expect(harness.entry.render(80)).toBe('Goal paused · 1/8 · disarmed')
+    expect(harness.entry.render(80)).toBe('Goal paused · round 1/8 · auto-continue off')
     selected.switchTo(null)
     expect(harness.entry.id).toBe('')
     await harness.dispose()
@@ -127,5 +136,30 @@ describe('mayfly-status-goal', () => {
     expect(absent.entry.id).toBe('')
     expect(absentGet).not.toHaveBeenCalled()
     await absent.dispose()
+  })
+
+  it('paints the phase tone aligned with the todo pane badge', async () => {
+    const agent = fakeAgent([]) as unknown as Agent
+    const selected = currentAgentService(agent)
+    const views = new Map<Agent, GoalView>()
+    const get = vi.fn((query: Agent) => views.get(query))
+    const marker = (tag: string) => (text: string) => `<${tag}>${text}`
+    const harness = await bootStatusPlugin(goalStatus, agent as never, {
+      colors: {
+        accent: marker('accent'), error: marker('danger'), muted: marker('muted'),
+        warning: marker('warning'), success: marker('success'),
+      },
+      services: { mayflyCurrentAgent: selected.service, goals: { get } },
+    })
+    views.set(agent, goal('active'))
+    harness.ctx.emit('goal/changed', { agent } as never)
+    expect(harness.entry.render(80)).toBe('<accent>Goal active · round 2/8')
+    views.set(agent, goal('blocked'))
+    harness.ctx.emit('goal/changed', { agent } as never)
+    expect(harness.entry.render(80)).toBe('<danger>Goal blocked · round 2/8')
+    views.set(agent, goal('paused'))
+    harness.ctx.emit('goal/changed', { agent } as never)
+    expect(harness.entry.render(80)).toBe('<muted>Goal paused · round 2/8')
+    await harness.dispose()
   })
 })
