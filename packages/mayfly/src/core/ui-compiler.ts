@@ -264,6 +264,13 @@ interface ControlBase {
   readonly navigation: 'horizontal' | 'vertical' | 'none'
 }
 
+/** A hidden action's accelerator: fires its activate event without a button or focus stop. */
+interface HiddenAccelerator {
+  readonly key: string
+  readonly label: string
+  readonly event: MayflyUiEvent
+}
+
 type TextField = Extract<MayflyFormField, { readonly kind: 'input' | 'textarea' | 'secret' | 'number' }>
 type SelectField = Extract<MayflyFormField, { readonly kind: 'select' | 'multiselect' }>
 type ToggleField = Extract<MayflyFormField, { readonly kind: 'toggle' }>
@@ -318,6 +325,7 @@ interface FocusState {
   layoutReconciled: MayflyUiViewport | undefined
   controls(): readonly ControlDescriptor[]
   allControls(): readonly ControlDescriptor[]
+  accelerators(): readonly HiddenAccelerator[]
   emit(event: MayflyUiEvent): void
   field(field: MayflyFormField, key: string): MayflyFormField
   fieldValue(field: MayflyFormField, key: string): MayflyFieldValue
@@ -788,7 +796,11 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       pasting: node.filterable === true && choice !== undefined && runtime.search(node).pending,
       ...(numbered === undefined || numbered === false ? {} : { numbered: { accept: numbered === true, count: Math.min(9, choice === undefined ? node.items.length : choiceVisibleCount(choice)) } }),
     } }),
-    keyed: controls.flatMap((candidate, index) => candidate.kind === 'event' && candidate.keyed !== undefined ? [{ control: index, key: candidate.keyed.key, label: candidate.keyed.label }] : []),
+    keyed: [
+      ...controls.flatMap((candidate, index) => candidate.kind === 'event' && candidate.keyed !== undefined ? [{ control: index, key: candidate.keyed.key, label: candidate.keyed.label }] : []),
+      // Hidden accelerators follow the focusable controls in the index space.
+      ...state.accelerators().map((accelerator, index) => ({ control: controls.length + index, key: accelerator.key, label: accelerator.label })),
+    ],
     tabs: groups.some(group => group.kind === 'tabs'),
     groups: groups.length,
     siblings: active === undefined ? 0 : controls.filter(candidate => candidate.group === active.group).length,
@@ -918,7 +930,7 @@ function listRowLimit(options: RuntimeCompilerOptions): number {
   return options.listRuntime.listRowLimit(safeViewport(options.getViewport).rows)
 }
 
-function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, path = '$', includeHidden = false): ControlDescriptor[] {
+function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, path = '$', includeHidden = false, accelerators?: HiddenAccelerator[]): ControlDescriptor[] {
   const controls: ControlDescriptor[] = []
   const visit = (current: CompilableNode, currentPath: string): void => {
     const pagePath = options.listRuntime.pagePath(current)
@@ -1001,7 +1013,13 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('form-cancel', current.id), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
       case 'actions':
-        for (const item of current.items.map(entry => effectiveActionItem(entry, options))) if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
+        for (const item of current.items.map(entry => effectiveActionItem(entry, options))) {
+          if (item.hidden === true) {
+            if (item.disabled !== true && item.busy !== true && item.key !== undefined) accelerators?.push({ key: item.key, label: item.label, event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id } })
+            continue
+          }
+          if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
+        }
         break
       case 'loader':
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
@@ -1230,7 +1248,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       const items = () => node.items.map(entry => {
         const item = effectiveActionItem(entry, options)
         return item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item
-      })
+      }).filter(item => item.hidden !== true)
       const bind = (current: readonly MayflyActionItem[]): void => {
         state.bindControls(current.filter(item => item.disabled !== true && item.busy !== true).map(item => scopedControlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
       }
@@ -1462,6 +1480,12 @@ export class MayflyUiSurfaceRuntime {
       layoutReconciled: undefined,
       controls: () => this.node === undefined || this.options === undefined ? [] : controlsForNode(this.node, this.options),
       allControls: () => this.node === undefined || this.options === undefined ? [] : controlsForNode(this.node, this.options, '$', true),
+      accelerators: () => {
+        const found: HiddenAccelerator[] = []
+        /* v8 ignore next -- accelerators are only read while a node is compiled */
+        if (this.node !== undefined && this.options !== undefined) controlsForNode(this.node, this.options, '$', false, found)
+        return found
+      },
       emit: event => {
         if (!this.live) return
         try {
@@ -2319,7 +2343,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       }
       case 'escape': this.escape(intent.step, active); return
       case 'close': this.options.onUnhandledEscape?.(); return
-      case 'keyed': this.state.emit((controls[intent.control] as Extract<ControlDescriptor, { readonly kind: 'event' }>).event); return
+      case 'keyed': this.state.emit(intent.control < controls.length ? (controls[intent.control] as Extract<ControlDescriptor, { readonly kind: 'event' }>).event : this.state.accelerators()[intent.control - controls.length]!.event); return
       case 'numbered': this.numbered(data, active!); return
       case 'tab-switch': this.switchTab(intent.delta, controls, active); return
       case 'search-clear': {

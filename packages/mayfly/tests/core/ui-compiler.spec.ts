@@ -1961,6 +1961,32 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(f.events).toHaveLength(1)
   })
 
+  it('runs hidden actions from their accelerator without drawing or focusing them', () => {
+    const f = fixture()
+    const result = compiledSurface(ui.stack.column([
+      ui.actions({ id: 'visible', items: [{ id: 'go', label: 'Go' }] }),
+      ui.actions({ id: 'shortcuts', items: [
+        { id: 'copy', label: 'Copy link', key: 'ctrl+y', hidden: true },
+        { id: 'off', label: 'Turned off', key: 'ctrl+o', hidden: true, disabled: true },
+        { id: 'bare', label: 'Bare', hidden: true },
+      ] }),
+    ]), f.options)
+    const focus = result.focusTarget!
+    focus.focused = true
+    const rows = focus.render(80)
+    expect(rows.join('\n')).toContain('Go')
+    expect(rows.at(-1)).toContain('Ctrl+Y Copy link')
+    expect(rows.join('\n')).not.toContain('Turned off')
+    expect(rows.join('\n')).not.toContain('Bare')
+    focus.handleInput?.('\x19')
+    expect(f.events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'copy', actionId: 'copy' }])
+    focus.handleInput?.('\x0f')
+    expect(f.events).toHaveLength(1)
+    // The hidden action is not a focus stop: Tab keeps the only visible control.
+    focus.handleInput?.('\t')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'go' })
+  })
+
   it('lets text fields consume printable accelerators and keeps every accelerator out of editing', () => {
     const f = fixture()
     const result = compiledSurface(ui.stack.column([

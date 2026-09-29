@@ -141,19 +141,21 @@ describe('DeepSeek account panel', () => {
       const json = JSON.stringify(model.node)
       expect(json).toContain('Sign-in link')
       expect(json).toContain('http://localhost:45678')
-      expect(json).toContain('"Cancel sign-in"')
+      expect(json).toContain('Ctrl+Y copy link · Ctrl+R new link')
       expect(json).toContain('Expires')
       // Same-machine browsers finish through the loopback callback on their own;
       // the optional paste box stays visible for browsers on another machine.
       expect(json).toContain('sign-in finishes by itself')
       expect(json).toContain('Browser on another machine?')
       expect(json).toContain('Callback link')
-      expect(json).toContain('"Deliver callback"')
       expect(json).toContain('http://localhost:45678/oauth/callback')
-      model.invoke('cancel-sign-in')
-      await flush()
-      expect(account.cancels).toEqual(['attempt-1' as never])
-      expect(JSON.stringify(model.node)).toContain('"Sign in"')
+      // Waiting-state controls are shortcuts only: hidden actions with accelerators, Enter delivers the paste.
+      expect(json).toContain('"enterSubmits":"deliver-callback"')
+      expect(json).toContain('"id":"copy-link","label":"Copy link","key":"ctrl+y","hidden":true')
+      expect(json).toContain('"id":"restart-sign-in","label":"New link","key":"ctrl+r","hidden":true')
+      expect(json).toContain('"id":"deliver-callback","label":"Deliver callback","hidden":true')
+      expect(json).not.toContain('"Cancel sign-in"')
+      expect(account.cancels).toEqual([])
     } finally {
       accountInternals.spawnOpener = original
     }
@@ -330,7 +332,7 @@ describe('DeepSeek account panel', () => {
     cancelFail.account.failures.cancel = true
     expect(await openAccountPanel(cancelFail.ctx, 'deepseek-account')).toBe(true)
     const cancelModel = cancelFail.ctx.mayflyUiInteraction.get('overlay', panelId)!
-    cancelModel.invoke('cancel-sign-in')
+    cancelModel.invoke('restart-sign-in')
     await flush()
     expect(cancelModel.feedbackSnapshot().at(-1)?.severity).toBe('error')
   })
@@ -348,7 +350,7 @@ describe('DeepSeek account panel', () => {
       model.invoke('sign-in')
       await flush()
       urls.push(JSON.stringify(model.node).match(/authorize\?origin=([^"]+)/)![1]!)
-      expect(JSON.stringify(model.node)).toContain('"Restart sign-in"')
+      expect(JSON.stringify(model.node)).toContain('"New link"')
       model.invoke('restart-sign-in')
       await flush(8)
       expect(account.cancels).toHaveLength(1)
@@ -427,38 +429,32 @@ describe('DeepSeek account panel', () => {
     expect(JSON.stringify(inGuide.ctx.mayflyUiInteraction.get('overlay', panelId)!.node)).toContain('"Start chatting"')
   })
 
-  it('gives the guide its API key and Back exits and retires a live attempt on the way out', async () => {
+  it('returns to the guide when the account step closes before connecting, and only then', async () => {
     const exits: string[] = []
-    const guide = { onBack: () => { exits.push('back') }, onUseKey: () => { exits.push('key') } }
-    const { ctx, account } = await bench(signedOut, { port: 45678 })
-    expect(await openAccountPanel(ctx, 'deepseek-account', undefined, guide)).toBe(true)
-    const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
-    expect(JSON.stringify(model.node)).toContain('"Enter a DeepSeek API key"')
-    model.invoke('sign-in')
+    const guide = { onBack: () => { exits.push('back') } }
+    const idle = await bench(signedOut, { port: 45678 })
+    await openAccountPanel(idle.ctx, 'deepseek-account', undefined, guide)
+    idle.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
     await flush()
-    model.invoke('use-key')
-    await flush()
-    expect(account.cancels).toHaveLength(1)
-    expect(exits).toEqual(['key'])
+    expect(exits).toEqual(['back'])
 
-    const again = await bench(signedOut)
-    await openAccountPanel(again.ctx, 'deepseek-account', undefined, guide)
-    const noServer = again.ctx.mayflyUiInteraction.get('overlay', panelId)!
-    expect(JSON.stringify(noServer.node)).toContain('"intent":"primary"')
-    noServer.invoke('back')
+    const done = await bench(signedOut, { port: 45678 })
+    await openAccountPanel(done.ctx, 'deepseek-account', undefined, guide)
     await flush()
-    expect(exits).toEqual(['key', 'back'])
-  })
+    done.account.complete()
+    await flush()
+    done.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
+    await flush()
+    expect(exits).toEqual(['back'])
 
-  it('still leaves the guide when retiring the live attempt fails', async () => {
-    const exits: string[] = []
-    const { ctx, account } = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => { exits.push('back') }, onUseKey: () => {} })
-    const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
-    model.invoke('sign-in')
-    await flush()
-    account.failures.cancel = true
-    model.invoke('back')
+    const unloading = await bench(signedOut, { port: 45678 })
+    await openAccountPanel(unloading.ctx, 'deepseek-account', undefined, guide)
+    await unloading.ctx.fiber.dispose()
+    expect(exits).toEqual(['back'])
+
+    const standalone = await bench(signedOut, { port: 45678 })
+    await openAccountPanel(standalone.ctx, 'deepseek-account')
+    standalone.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
     await flush()
     expect(exits).toEqual(['back'])
   })

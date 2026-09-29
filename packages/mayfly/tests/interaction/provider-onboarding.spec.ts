@@ -3,11 +3,16 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import z from '@deepseek-ai/schemastery'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
+import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
+import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
 import { providerFixture } from './provider-fixture.ts'
+
+vi.mock('../../src/interaction/theme-switch.ts', () => ({ applyTheme: async () => ({ kind: 'success' }) }))
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
@@ -16,6 +21,7 @@ const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 async function setup(profiles: Record<string, unknown> = {}, configured = false, llm?: unknown) {
   const ctx = new Context()
   contexts.push(ctx)
+  new InteractionStateService(ctx, DEFAULT_SETTINGS)
   const bench = await providerFixture(ctx, profiles, llm)
   if (configured) bench.credentials.values.set(DEEPSEEK_KEY, 'configured')
   const agent = { id: 'root', session: {} } as Agent
@@ -296,7 +302,7 @@ describe('provider onboarding', () => {
     expect(bench.model()).toBeUndefined()
   })
 
-  it('returns to the guide from the account panel: to the key form or back to the choice', async () => {
+  it('returns to the choice when the account step is closed before connecting', async () => {
     const bench = await setup({}, false, accountLlm)
     bench.ctx.provide('deepseekAccount', fakeAccount('signed-out') as never)
     bench.ctx.provide('webServer', { port: 45678 } as never)
@@ -304,17 +310,40 @@ describe('provider onboarding', () => {
     await flush()
     bench.model()!.invoke('sign-in')
     await flush()
-    const panel = () => bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider-account.deepseek-account')!
-    panel().invoke('use-key')
-    await flush()
-    expect(JSON.stringify(bench.model()!.node)).toContain('DEEPSEEK_API_KEY')
-    bench.model()!.invoke('back')
-    await flush()
-    bench.model()!.invoke('sign-in')
-    await flush()
-    panel().invoke('back')
+    expect(bench.model()).toBeUndefined()
+    bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider-account.deepseek-account')!.invoke('close')
     await flush()
     expect(JSON.stringify(bench.model()!.node)).toContain('Sign in with a DeepSeek account')
+  })
+
+  it('opens the welcome first on a first run and then the guide in the chosen language', async () => {
+    const bench = await setup({}, false, accountLlm)
+    bench.settings.register('locale', z.object({ preference: z.string().volatile() }))
+    bench.settings.register('mayfly', z.object({ theme: z.string().default('dark').volatile() }))
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    await flush()
+    const welcome = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.welcome')!
+    expect(welcome).toBeDefined()
+    expect(bench.model()).toBeUndefined()
+    welcome.edit({ pagePath: [], formId: 'welcome', fieldId: 'language' }, 'zh')
+    welcome.invoke('continue')
+    await flush(); await flush(); await flush()
+    expect(bench.ctx.mayflyLocale.preference).toBe('zh')
+    expect(bench.model()).toBeDefined()
+    expect(JSON.stringify(bench.model()!.node)).toContain('第 1 步')
+  })
+
+  it('does not open the guide when the frontend unloads during the welcome', async () => {
+    const bench = await setup({}, false, accountLlm)
+    bench.settings.register('locale', z.object({ preference: z.string().volatile() }))
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    await flush()
+    expect(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.welcome')).toBeDefined()
+    // The frontend's services go with it; the unload must not reopen the guide or throw.
+    await expect(bench.front.dispose()).resolves.toBeUndefined()
+    await flush()
   })
 
   it('falls back to the key-only guide when no account service is composed', async () => {

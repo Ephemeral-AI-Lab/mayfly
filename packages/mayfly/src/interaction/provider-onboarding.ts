@@ -1,5 +1,7 @@
 /** First-run connection guide owned by the frontend and triggered by app readiness.
  *
+ * A first run opens the welcome (language and theme) before the guide.
+ *
  * When no credential is configured and no DeepSeek account grant is stored,
  * the guide offers the two supported paths: signing in with a DeepSeek
  * account (browser PKCE through the account panel — no API key needed) or
@@ -17,6 +19,7 @@ import { ui } from '@ephemeral-ai/mayfly-ui'
 import { deriveKeyRef } from './provider-profile.ts'
 import { ACCOUNT_SETTINGS_NS, openAccountPanel } from './provider-account.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { openWelcome, welcomeDue } from './welcome.ts'
 import { interactionTranslator } from './locale.ts'
 
 export const DEEPSEEK_KEY = 'DEEPSEEK_API_KEY'
@@ -97,14 +100,14 @@ export function apply(ctx: Context): void {
     const stamp = [{ resourceId: 'provider-onboarding', revision: 0 }]
     const choiceNode = () => onboardingChoiceNode(t, signInRoute !== undefined)
     const keyNode = () => onboardingKeyNode(t)
-    /** Open (or refocus) the guide on one view; account exits reopen it here. */
-    const open = (view: 'choice' | 'key'): void => {
+    /** Open (or refocus) the guide on its choice; backing out of the account step reopens it here. */
+    const open = (): void => {
       openUiOverlay(ctx, {
         id: 'mayfly.provider.onboarding', title: t('Connect to DeepSeek'), presentation: 'editor', capturing: true,
         scope: { kind: 'app', targetId: DEEPSEEK_KEY }, source: stamp,
         onEvent: { action: async (event, context) => {
           if (event.kind === 'activate' && event.actionId === 'sign-in' && signInRoute !== undefined) {
-            const opened = await openAccountPanel(ctx, signInRoute, lifetime.signal, { onBack: () => open('choice'), onUseKey: () => open('key') })
+            const opened = await openAccountPanel(ctx, signInRoute, lifetime.signal, { onBack: open })
             /* v8 ignore next -- the guide only offers sign-in after the same service and route check */
             if (!opened) return { kind: 'failed', message: t('Account sign-in is unavailable') }
             return { kind: 'completed', dismiss: true }
@@ -131,9 +134,12 @@ export function apply(ctx: Context): void {
             return { kind: 'accepted', node: keyNode(), source: [], dismiss: true, feedback: { severity: 'success', message: t('DeepSeek API key saved') } }
           } catch { return { kind: 'failed', message: t('The API key could not be saved') } }
         } },
-      }, view === 'key' ? keyNode() : choiceNode(), { signal: lifetime.signal, reopen: 'focus' })
+      }, choiceNode(), { signal: lifetime.signal, reopen: 'focus' })
     }
-    open('choice')
+    // A first run picks language and theme first; the guide then speaks the chosen language.
+    if (welcomeDue(ctx)) await openWelcome(ctx, lifetime.signal)
+    if (lifetime.signal.aborted) return
+    open()
   }
   ctx.plugin({
     name: 'mayfly-onboarding-readiness', inject: ['mayflyCurrentAgent'],

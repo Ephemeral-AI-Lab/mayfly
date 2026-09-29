@@ -18,6 +18,7 @@ import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
 import { accountPanelNode } from '../../src/interaction/provider-account.ts'
+import { welcomeNode } from '../../src/interaction/welcome.ts'
 import { onboardingChoiceNode, onboardingKeyNode } from '../../src/interaction/provider-onboarding.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
@@ -318,6 +319,8 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
           onboardingChoiceNode(t, true),
           onboardingChoiceNode(t, false),
           onboardingKeyNode(t),
+          welcomeNode(t, 'en', 'dark'),
+          welcomeNode(t, 'zh', 'ocean'),
           scheduleNode(reminders, Date.now(), t, locale),
           scheduleNode([], Date.now(), t, locale),
           scheduleNode(undefined, Date.now(), t, locale),
