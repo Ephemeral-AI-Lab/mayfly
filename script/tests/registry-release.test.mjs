@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readNpmView, releaseRegistry } from '../registry-release.mjs'
+import { isStagedRelease, readNpmView, releaseRegistry } from '../registry-release.mjs'
 
 const version = '0.1.1-rc.1'
 const packages = ['mayfly-ui', 'mayfly', 'mayfly-cli'].map(name => ({
@@ -99,4 +99,44 @@ test('promotes only registry artifacts with matching integrity and removes their
   assert.equal(world.calls.filter(([action]) => action === 'remove').length, packages.length)
   await releaseRegistry('promote', packages, { ...world, log() {}, warn() {} })
   assert.equal(world.calls.filter(([action]) => action === 'tag').length, packages.length * 2)
+})
+
+test('recognizes npm staged-publish conflicts and reports approval guidance', async () => {
+  assert.equal(isStagedRelease(new Error(`Cannot publish over previously staged version "${version}".`)), true)
+  assert.equal(isStagedRelease(new Error('interrupted upload')), false)
+  const world = fixture()
+  const publish = world.registry.publish
+  world.registry.publish = pkg => {
+    if (pkg.name === packages[2].name) throw new Error(`npm error 409 Conflict - Cannot publish over previously staged version "${version}".`)
+    publish(pkg)
+  }
+  await assert.rejects(
+    releaseRegistry('publish', packages, { ...world, log() {}, warn() {} }),
+    /staged on npm, awaiting maintainer approval: .*mayfly-cli@0\.1\.1-rc\.1/u,
+  )
+  assert.deepEqual(world.calls.filter(([action]) => action === 'publish').map(([, name]) => name), packages.slice(0, 2).map(pkg => pkg.name))
+})
+
+test('an approved staged release resumes without republishing immutable versions', async () => {
+  const world = fixture()
+  const publish = world.registry.publish
+  let staged = false
+  world.registry.publish = pkg => {
+    if (pkg.name === packages[2].name && !staged) {
+      staged = true
+      throw new Error(`Cannot publish over previously staged version "${version}".`)
+    }
+    publish(pkg)
+  }
+  await assert.rejects(releaseRegistry('publish', packages, { ...world, log() {}, warn() {} }), /staged on npm/u)
+  const publishCalls = world.calls.filter(([action]) => action === 'publish').length
+  world.visible.set(`${packages[2].name}@${version}`, `sha512-${packages[2].filename}`)
+  await releaseRegistry('publish', packages, { ...world, log() {}, warn() {} })
+  assert.equal(world.calls.filter(([action]) => action === 'publish').length, publishCalls)
+})
+
+test('a publish that never becomes visible points at the staged-approval path', async () => {
+  const world = fixture()
+  world.registry.publish = () => {}
+  await assert.rejects(releaseRegistry('publish', packages, { ...world, log() {}, warn() {} }), /a staged release needs maintainer approval/u)
 })

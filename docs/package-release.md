@@ -52,6 +52,23 @@ trusted publisher for `Ephemeral-AI-Lab/mayfly`, workflow
 `.github/workflows/release.yml`, and environment `npm`. Keep the token until
 dist-tag promotion also has an OIDC-capable path.
 
+npm may accept a publish into its staged-publish queue instead of releasing it
+immediately. The publish step then reports the exact staged packages and stops
+with the approval command; an owner with a 2FA challenge approves them before
+they become installable:
+
+```sh
+npm stage list
+npm stage approve <stage-id>
+```
+
+Re-run the same workflow after approval: every version whose registry integrity
+already matches is skipped, so the re-run continues from where it stopped.
+`npm stage` needs CLI 11.15 or newer; the release job also lists pending stages
+on failure. Pair staged publishing with trusted publishing (OIDC) when possible,
+and keep the `npm` environment's required reviewers enabled so both the
+candidate publish and the staged approval keep a human gate.
+
 Tags execute the CI release workflow after acceptance: publish verified artifacts to
 `candidate`, install the exact registry versions on Linux/macOS/Windows, then
 promote alpha and stable versions to `latest`, and RC versions to both `rc`
