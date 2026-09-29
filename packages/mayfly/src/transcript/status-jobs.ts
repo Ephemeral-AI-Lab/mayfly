@@ -44,7 +44,11 @@ export function apply(ctx: Context): void {
     priority: 3,
   }, node())
   const offJobs = ctx.jobs.events.subscribe({ owners: 'scope' }, event => {
-    const owner = event.type === 'output' ? event.owner : event.job.owner
+    // Output chunks cannot change the running/stopping count: every status
+    // transition arrives as its own registered/progress/stopping/settled/
+    // removed event, so a chatty background job no longer lists per chunk.
+    if (event.type === 'output') return
+    const owner = event.job.owner
     const current = ctx.mayflyCurrentAgent.current()
     if (owner === undefined || owner === current?.id) refresh()
   })

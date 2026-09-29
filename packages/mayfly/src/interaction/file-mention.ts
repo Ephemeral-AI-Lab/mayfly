@@ -144,6 +144,74 @@ async function collectFsMentionCandidates(root: string, signal: AbortSignal, pla
   return out
 }
 
+/** Memoized bases per cache: a drill-down session touches few directories. */
+const MENTION_CACHE_LIMIT = 8
+/** How long a settled scan stays reusable between keystrokes. */
+const MENTION_CACHE_TTL_MS = 3000
+
+/**
+ * The fallback-walk memo (UX-33): consecutive keystrokes resolve the same
+ * base directory, so each walk is shared while in flight and reused for a
+ * short window afterwards instead of rewalking the tree per keystroke. One
+ * entry per resolved base (LRU-bounded); `clear()` aborts in-flight walks.
+ * The cache has no filesystem invalidation — the TTL bounds staleness, and
+ * it lives with the editor fiber that owns it.
+ */
+export interface MentionScanCache {
+  /**
+   * The candidates for `base`: an already-running scan is joined, and a
+   * settled one within the TTL is returned without touching the disk.
+   * @param base - the resolved absolute directory to walk.
+   * @param platform - the platform whose separators the walk uses.
+   * @returns the scan's candidates, in discovery order.
+   */
+  scan(base: string, platform: NodeJS.Platform): Promise<readonly FsMentionCandidate[]>
+  /** Abort in-flight walks and drop every memoized result. */
+  clear(): void
+}
+
+/**
+ * Build a {@link MentionScanCache}. Scans run on their own abort control —
+ * a superseded keystroke's signal never cancels the shared walk — and a
+ * settled scan refreshes its timestamp on completion, so a slow walk is
+ * still reusable for a full TTL after it lands.
+ * @param ttlMs - how long a settled scan stays fresh; default 3000.
+ * @returns the cache.
+ */
+export function createMentionScanCache(ttlMs: number = MENTION_CACHE_TTL_MS): MentionScanCache {
+  const entries = new Map<string, { promise: Promise<readonly FsMentionCandidate[]>, at: number }>()
+  const controllers = new Set<AbortController>()
+  return {
+    scan(base, platform) {
+      const cached = entries.get(base)
+      // An in-flight entry carries `at = Infinity` until it settles, so
+      // rapid keystrokes always join the walk already running.
+      if (cached !== undefined && Date.now() - cached.at < ttlMs) return cached.promise
+      const controller = new AbortController()
+      controllers.add(controller)
+      const entry: { promise: Promise<readonly FsMentionCandidate[]>, at: number } = {
+        promise: Promise.resolve([]),
+        at: Number.POSITIVE_INFINITY,
+      }
+      entry.promise = collectFsMentionCandidates(base, controller.signal, platform)
+        .then(result => {
+          entry.at = Date.now()
+          return result
+        })
+        .finally(() => { controllers.delete(controller) })
+      entries.set(base, entry)
+      // The loop condition guarantees a next key; LRU eviction by insertion order.
+      while (entries.size > MENTION_CACHE_LIMIT) entries.delete(entries.keys().next().value!)
+      return entry.promise
+    },
+    clear() {
+      for (const controller of controllers) controller.abort()
+      controllers.clear()
+      entries.clear()
+    },
+  }
+}
+
 /**
  * Score one candidate against the query (the kimi fallback scoring,
  * verbatim): empty queries rank shallow entries first; otherwise basename
@@ -227,6 +295,11 @@ function resolveMentionBase(cwd: string, base: string, platform: NodeJS.Platform
  * @param cwd - the project root.
  * @param atPrefix - the mention token with its `@` (the returned prefix).
  * @param signal - aborts the walk and yields `null` on abort.
+ * @param platform - the platform whose separators the query uses.
+ * @param cache - when given, the resolved base's walk is shared in flight
+ *   and reused for the cache's TTL instead of rewalking per keystroke; the
+ *   walk then runs on the cache's own control, so a superseded keystroke
+ *   never cancels a reusable result.
  * @returns the suggestion set, or `null`.
  */
 export async function fsMentionSuggestions(
@@ -234,13 +307,17 @@ export async function fsMentionSuggestions(
   atPrefix: string,
   signal: AbortSignal,
   platform: NodeJS.Platform = process.platform,
+  cache?: MentionScanCache,
 ): Promise<MayflyAutocompleteSuggestions | null> {
   if (signal.aborted) return null
   const query = displayPath(mentionPath(atPrefix), platform)
   const slash = query.lastIndexOf('/')
   const base = query.slice(0, slash + 1)
   const tail = query.slice(slash + 1)
-  const candidates = await collectFsMentionCandidates(resolveMentionBase(cwd, base, platform), signal, platform)
+  const resolved = resolveMentionBase(cwd, base, platform)
+  const candidates = cache === undefined
+    ? await collectFsMentionCandidates(resolved, signal, platform)
+    : await cache.scan(resolved, platform)
   if (candidates.length === 0 || signal.aborted) return null
   const ranked = rankFsMentionCandidates(candidates, tail).slice(0, MAX_FALLBACK_SUGGESTIONS)
   if (ranked.length === 0) return null

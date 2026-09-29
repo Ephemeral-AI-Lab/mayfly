@@ -111,7 +111,7 @@ describe('defaultOverflowDirectory', () => {
 })
 
 describe('createFileOverflowSink', () => {
-  it('appends each distinct line once as JSONL and creates the directory', () => {
+  it('queues each distinct line off the render path and flushes them as JSONL', async () => {
     const root = mkdtempTracked('mayfly-clamp-sink-')
     const directory = join(root, 'nested', 'logs')
     const sink = createFileOverflowSink({ directory })
@@ -119,6 +119,9 @@ describe('createFileOverflowSink', () => {
     sink.record(entry)
     sink.record(entry)
     const file = join(directory, 'mayfly-overflow.log')
+    // The render path never waits on the filesystem: records queue in memory.
+    expect(existsSync(file)).toBe(false)
+    await sink.flush()
     expect(existsSync(file)).toBe(true)
     const rows = readFileSync(file, 'utf8').trim().split('\n')
     expect(rows).toHaveLength(1)
@@ -127,10 +130,43 @@ describe('createFileOverflowSink', () => {
     expect(typeof parsed.time).toBe('string')
 
     sink.record({ ...entry, line: 'another row' })
+    await sink.flush()
     expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(2)
   })
 
-  it('rotates the dedupe window so distinct violations keep recording', () => {
+  it('flushes the queued batch on the timer, without a manual flush', async () => {
+    const directory = mkdtempTracked('mayfly-clamp-timer-')
+    const sink = createFileOverflowSink({ directory, flushDelayMs: 10 })
+    sink.record({ index: 0, columns: 40, width: 50, line: 'row-0' })
+    const file = join(directory, 'mayfly-overflow.log')
+    // Immediately after the record no filesystem work has happened at all.
+    expect(existsSync(file)).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(existsSync(file)).toBe(true)
+    expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(1)
+    // A record after the flush starts a fresh timer and lands in its own
+    // batch.
+    sink.record({ index: 1, columns: 40, width: 50, line: 'row-1' })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(2)
+    await sink.dispose()
+  })
+
+  it('flushes the queue on dispose and drops records afterwards', async () => {
+    const directory = mkdtempTracked('mayfly-clamp-dispose-')
+    const sink = createFileOverflowSink({ directory })
+    sink.record({ index: 0, columns: 40, width: 50, line: 'row-0' })
+    sink.record({ index: 1, columns: 40, width: 50, line: 'row-1' })
+    await sink.dispose()
+    const file = join(directory, 'mayfly-overflow.log')
+    expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(2)
+    sink.record({ index: 2, columns: 40, width: 50, line: 'row-2' })
+    await sink.flush()
+    expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(2)
+    await sink.dispose() // idempotent: no queue, no timer
+  })
+
+  it('rotates the dedupe window so distinct violations keep recording', async () => {
     const directory = mkdtempTracked('mayfly-clamp-cap-')
     const sink = createFileOverflowSink({ directory, maxEntries: 2 })
     const record = (line: string): void => sink.record({ index: 0, columns: 40, width: 50, line })
@@ -139,22 +175,24 @@ describe('createFileOverflowSink', () => {
     record('row-0') // still inside the window: deduped
     record('row-2') // window full: resets, then records
     record('row-3') // fresh window has room
+    await sink.flush()
     const rows = readFileSync(join(directory, 'mayfly-overflow.log'), 'utf8').trim().split('\n')
     expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0', 'row-1', 'row-2', 'row-3'])
   })
 
-  it('treats a sub-1 maxEntries as a one-line window', () => {
+  it('treats a sub-1 maxEntries as a one-line window', async () => {
     const directory = mkdtempTracked('mayfly-clamp-zero-')
     const sink = createFileOverflowSink({ directory, maxEntries: 0 })
     const record = (line: string): void => sink.record({ index: 0, columns: 40, width: 50, line })
     record('row-0')
     record('row-0') // deduped
     record('row-1') // window full: resets, then records
+    await sink.flush()
     const rows = readFileSync(join(directory, 'mayfly-overflow.log'), 'utf8').trim().split('\n')
     expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0', 'row-1'])
   })
 
-  it('stops at the total line budget so a changing row cannot write every frame', () => {
+  it('stops at the total line budget so a changing row cannot write every frame', async () => {
     const directory = mkdtempTracked('mayfly-clamp-budget-')
     const sink = createFileOverflowSink({ directory, maxEntries: 1, maxLines: 2 })
     const record = (line: string): void => sink.record({ index: 0, columns: 40, width: 50, line })
@@ -162,26 +200,32 @@ describe('createFileOverflowSink', () => {
     record('row-1') // window resets, budget 2/2
     record('row-2') // budget spent: silent
     record('row-3')
+    await sink.flush()
     const rows = readFileSync(join(directory, 'mayfly-overflow.log'), 'utf8').trim().split('\n')
     expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0', 'row-1'])
   })
 
-  it('treats a sub-1 maxLines as a one-line budget', () => {
+  it('treats a sub-1 maxLines as a one-line budget', async () => {
     const directory = mkdtempTracked('mayfly-clamp-budget-zero-')
     const sink = createFileOverflowSink({ directory, maxEntries: 1, maxLines: 0 })
     const record = (line: string): void => sink.record({ index: 0, columns: 40, width: 50, line })
     record('row-0')
     record('row-1')
+    await sink.flush()
     const rows = readFileSync(join(directory, 'mayfly-overflow.log'), 'utf8').trim().split('\n')
     expect(rows.map(row => (JSON.parse(row) as FrameOverflowEntry).line)).toEqual(['row-0'])
   })
 
-  it('swallows filesystem failures without throwing', () => {
-    // A regular file where the directory should be: mkdirSync cannot win.
+  it('swallows filesystem failures without throwing and goes silent afterwards', async () => {
+    // A regular file where the directory should be: mkdir cannot win.
     const root = mkdtempTracked('mayfly-clamp-err-')
     const blocked = join(root, 'blocked')
     writeFileSync(blocked, 'not a directory')
     const sink = createFileOverflowSink({ directory: join(blocked, 'logs') })
     expect(() => sink.record({ index: 0, columns: 40, width: 41, line: 'x'.repeat(41) })).not.toThrow()
+    await expect(sink.flush()).resolves.toBeUndefined()
+    // One failed flush disables the sink: later records drop without I/O.
+    expect(() => sink.record({ index: 0, columns: 40, width: 41, line: 'y'.repeat(41) })).not.toThrow()
+    await sink.dispose()
   })
 })

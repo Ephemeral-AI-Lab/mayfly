@@ -110,6 +110,23 @@ describe('mayfly-status-mode', () => {
     expect(world.entry()?.node).toMatchObject({ content: 'plan' })
   })
 
+  it('skips non-mode session facts: stream deltas never re-read the projections', async () => {
+    const world = await mount({ active: true })
+    const snapshots = world.ctx.sessionProjections.snapshot as unknown as { mock: { calls: unknown[] } }
+    const reads = () => snapshots.mock.calls.length
+    const baseline = reads()
+    // A turn fact (or any non-plan, non-permission event, stream deltas
+    // included) cannot change the badges, so it never reaches refresh().
+    world.agent.session.append('turn/start', { turn: 1 })
+    expect(reads()).toBe(baseline)
+    expect(world.entry()?.node).toMatchObject({ content: 'plan' })
+    // A permission fact still refreshes immediately.
+    world.permissions.set(world.agent, 'danger-full-access')
+    world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
+    expect(reads()).toBe(baseline + 1)
+    expect(world.entry()?.node).toMatchObject({ children: [{ node: { content: 'plan' } }, { node: { content: 'yolo' } }] })
+  })
+
   it('follows exact current-Agent changes', async () => {
     const world = await mount({ active: true })
     const nextSession = world.ctx.sessions.create(SessionId('mode-status-next'))

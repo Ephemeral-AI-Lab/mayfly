@@ -51,7 +51,7 @@ import {
   registerEditorAutocompleteSource,
   type SharedEditor,
 } from './editor-instance.ts'
-import { detectFdPath, extractAtPrefix, fsMentionSuggestions, listDirectoryMentions } from './file-mention.ts'
+import { detectFdPath, extractAtPrefix, createMentionScanCache, fsMentionSuggestions, listDirectoryMentions } from './file-mention.ts'
 import { requiresFilesystemMention } from '../internal/mention.ts'
 import { ACTION_BACKSPACE, ACTION_CANCEL } from './keys.ts'
 import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catalog.ts'
@@ -153,14 +153,22 @@ function createAutocompleteProvider(
   // theme-swap reload may dispose this fiber first — the service object
   // reference stays callable where the context proxy would not.
   const components = ctx.mayflyComponents
-  // Rebuilt when the probe settles: the combined provider reads its fdPath
-  // at suggestion time, so a late detection needs a fresh instance. Until
-  // then fdPath is null and the @ branch runs the filesystem fallback.
+  // Rebuilt only when the fd probe settles or the session cwd moves: the
+  // combined provider reads its fdPath at suggestion time, so a late
+  // detection needs a fresh instance and nothing else does. Until the probe
+  // settles fdPath is null and the @ branch runs the filesystem fallback.
   let fdPath: string | null = null
-  let inner = components.createFileMentionProvider(process.cwd(), null)
+  let builtCwd = process.cwd()
+  let builtFdPath: string | null = null
+  let inner = components.createFileMentionProvider(builtCwd, null)
   void detectFdPath(ctx.mayflyInteractionState.fdProbe).then(resolved => {
     fdPath = resolved
   })
+  // The fallback-walk memo (UX-33): consecutive keystrokes reuse one
+  // bounded scan per resolved base instead of rewalking the tree. It dies
+  // with this provider's registration — the walks are read-only and
+  // LRU-bounded, and pi-tui's request-currency checks fence late results.
+  const mentionCache = createMentionScanCache()
   return {
     triggerCharacters: ['/', '@', '#'],
     async getSuggestions(lines, cursorLine, cursorCol, options): Promise<MayflyAutocompleteSuggestions | null> {
@@ -168,7 +176,11 @@ function createAutocompleteProvider(
       const atPrefix = extractAtPrefix(line.slice(0, cursorCol))
       if (atPrefix !== null) {
         const cwd = process.cwd()
-        inner = components.createFileMentionProvider(cwd, fdPath)
+        if (cwd !== builtCwd || fdPath !== builtFdPath) {
+          builtCwd = cwd
+          builtFdPath = fdPath
+          inner = components.createFileMentionProvider(cwd, fdPath)
+        }
         let suggestions: MayflyAutocompleteSuggestions | null = null
         // Empty-tail tokens (a bare `@` or a directory drill-down) take the
         // one-level listing: deterministic, shallow, exactly the entries of
@@ -187,7 +199,7 @@ function createAutocompleteProvider(
           }
         }
         if (suggestions === null && fellBack) {
-          suggestions = await fsMentionSuggestions(cwd, atPrefix, options.signal)
+          suggestions = await fsMentionSuggestions(cwd, atPrefix, options.signal, undefined, mentionCache)
         }
         // An empty mention result would close the dropdown without a
         // trace — the empty-session-cwd corner read as "@ is dead". Flash

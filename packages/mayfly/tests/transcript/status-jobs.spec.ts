@@ -91,7 +91,7 @@ describe('mayfly-status-jobs', () => {
     expect(registry.listenerCount()).toBe(0)
   })
 
-  it('refreshes on owned and unowned output events but ignores foreign owners', async () => {
+  it('ignores output chunks entirely: no registry list per output event', async () => {
     const current = fakeAgent([])
     const foreign = fakeAgent([]) as unknown as Agent
     const registry = fakeJobs()
@@ -109,12 +109,13 @@ describe('mayfly-status-jobs', () => {
     })
     const listed = () => registry.service.list.mock.calls.length
     const baseline = listed()
+    // Output chunks cannot change the running/stopping count — every status
+    // transition arrives as its own lifecycle event — so owned, foreign, and
+    // unowned output alike never re-list the registry.
     registry.output(foreign.id)
-    expect(listed()).toBe(baseline)
     registry.output(current.id)
-    expect(listed()).toBe(baseline + 1)
     registry.output()
-    expect(listed()).toBe(baseline + 2)
+    expect(listed()).toBe(baseline)
     await harness.dispose()
   })
 

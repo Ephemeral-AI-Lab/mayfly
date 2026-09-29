@@ -2481,3 +2481,61 @@ it('animates only visible loader branches through layout-driven paints', () => {
     expect(vi.getTimerCount()).toBe(0)
   } finally { runtime.dispose(); vi.useRealTimers() }
 })
+
+describe('control walk memoization (UX-34)', () => {
+  const listNode = () => ui.list({ id: 'items', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }] })
+
+  function mountList() {
+    const f = fixture()
+    const model = new UiSurfaceModel('memo-spec', {
+      scope: { kind: 'app', targetId: 'memo-spec' }, source: [], revision: 1, update: { reason: 'data' },
+      node: listNode(),
+      events: { prepare: async event => { void event; return { reply: { kind: 'completed' as const }, publish: () => true } } }, definition: { onEvent: {} },
+    })
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    const surface = compiledSurface(model.node!, f.options, runtime)
+    surface.component.render(80)
+    const windows = vi.spyOn(runtime, 'listWindow')
+    return { f, model, runtime, surface, windows }
+  }
+
+  it('repeat reads share one memoized walk; a revision bump rewalks once', () => {
+    const { model, runtime, windows } = mountList()
+    const visible = runtime.state.controls()
+    const baseline = windows.mock.calls.length
+    expect(baseline).toBeLessThanOrEqual(1)
+    expect(runtime.state.controls()).toBe(visible)
+    const all = runtime.state.allControls()
+    expect(runtime.state.allControls()).toBe(all)
+    expect(windows.mock.calls.length).toBe(baseline)
+    // A choice update bumps the interaction revision: exactly one rewalk
+    // serves the next read, and repeat reads share it again.
+    model.updateChoice({ pagePath: [], controlId: 'items' }, { kind: 'move', direction: 1, count: 1 })
+    const rewalked = runtime.state.controls()
+    expect(rewalked).not.toBe(visible)
+    expect(windows.mock.calls.length).toBe(baseline + 1)
+    expect(runtime.state.controls()).toBe(rewalked)
+    expect(runtime.state.allControls()).not.toBe(all)
+    expect(windows.mock.calls.length).toBe(baseline + 1)
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('walks at most once per input round, not once per reconcile call', () => {
+    const { model, runtime, surface, windows } = mountList()
+    // One arrow key drives handleInput's reconcile, the grammar read, and
+    // moveTo's reconcile; a pre-memo compiler walked the tree four times.
+    surface.focusTarget!.handleInput?.('\x1b[B')
+    // The round bumps the interaction revision twice (choice focus plus
+    // focus control), so at most one walk per distinct revision — the
+    // pre-memo compiler walked the tree six times per arrow key.
+    expect(windows.mock.calls.length).toBeLessThanOrEqual(2)
+    expect(runtime.state.activeKey).toContain('b')
+    const afterFirst = windows.mock.calls.length
+    surface.focusTarget!.handleInput?.('\x1b[B')
+    expect(windows.mock.calls.length).toBeLessThanOrEqual(afterFirst + 2)
+    expect(runtime.state.activeKey).toContain('c')
+    runtime.dispose()
+    model.dispose()
+  })
+})
