@@ -5,13 +5,17 @@
  * tree only, from `git diff --numstat HEAD`), a bare `±` when dirty without
  * counts, and the ahead/behind sync against the upstream (from
  * `git status --porcelain -b`); a clean synced tree shows the bare branch.
- * The probe data flows through a TTL cache (branch 5 s, status 15 s, the
- * kimi cadences) refreshed asynchronously by the controller timer. Rendering
+ * A failed working-tree probe is never painted as clean: it renders
+ * `branch [?]` while the branch name is known, and retries on the branch
+ * cadence instead of poisoning the badge for the full status TTL. The probe
+ * data flows through a TTL cache (branch 5 s, status 15 s — 5 s once
+ * unknown, the kimi cadences) refreshed asynchronously by the controller
+ * timer. Rendering
  * only reads the latest immutable status snapshot and never starts a process.
  * The working directory comes from the app-owned current-session snapshot,
  * falling back to `process.cwd()`, and a session switch rebuilds the cache
- * for the new cwd. Outside a git repository (or on any
- * probe failure) the entry renders '' and occupies nothing. The git
+ * for the new cwd. Outside a git repository (or on a failed branch probe)
+ * the entry renders '' and occupies nothing. The git
  * invocation and the clock are module-level replaceable so tests inject
  * fakes (the `editor-plus` runner precedent).
  *
@@ -35,6 +39,13 @@ export const BRANCH_TTL_MS = 5_000
 /** Working-tree status probe cadence in milliseconds. */
 export const STATUS_TTL_MS = 15_000
 
+/**
+ * Working-tree status retry cadence once a probe failed: an unknown state
+ * re-probes on the controller-timer rhythm instead of asserting clean for
+ * the full status TTL.
+ */
+export const STATUS_RETRY_MS = 5_000
+
 /** How long one git invocation may take before it is abandoned. */
 const SPAWN_TIMEOUT_MS = 500
 
@@ -56,6 +67,21 @@ export interface GitBadgeStatus {
   /** Deleted lines under `HEAD` (dirty tree only). */
   readonly diffDeleted: number
 }
+
+/**
+ * The degraded badge facts: the branch probe resolved, but the working-tree
+ * probe failed or timed out, so dirty/ahead/behind are unknown — rendered
+ * as `branch [?]`, never as a clean tree.
+ */
+export interface GitUnknownBadgeStatus {
+  /** Checked-out branch name. */
+  readonly branch: string
+  /** Discriminant: always true, marks the tree state as unknown. */
+  readonly unknown: true
+}
+
+/** The probed working-tree facts without the branch name. */
+export type GitTreeFacts = Pick<GitBadgeStatus, 'dirty' | 'ahead' | 'behind' | 'diffAdded' | 'diffDeleted'>
 
 /**
  * One git invocation: runs `git` with `args` in `cwd`, returning trimmed
@@ -171,16 +197,17 @@ function readNumstatDump(output: string): { added: number, deleted: number } {
 /** One cache's branch and status slots, with their fetch stamps. */
 interface CacheSlots {
   branch: { value: string | null, fetchedAt: number }
-  status: { value: Pick<GitBadgeStatus, 'dirty' | 'ahead' | 'behind' | 'diffAdded' | 'diffDeleted'>, fetchedAt: number }
+  status: { value: GitTreeFacts | null, fetchedAt: number }
 }
 
 /** A TTL-cached git badge reader for one working directory. */
 export interface GitBadgeCache {
   /**
    * The current facts, probing whatever its TTL expired.
-   * @returns the facts, or null outside a repository.
+   * @returns the facts, an unknown-status badge when the branch resolved but
+   * the working-tree probe failed, or null outside a repository.
    */
-  getStatus(): Promise<GitBadgeStatus | null>
+  getStatus(): Promise<GitBadgeStatus | GitUnknownBadgeStatus | null>
 }
 
 /**
@@ -191,16 +218,13 @@ export interface GitBadgeCache {
 export function createGitBadgeCache(cwd: string): GitBadgeCache {
   let slots: CacheSlots = {
     branch: { value: null, fetchedAt: 0 },
-    status: {
-      value: { dirty: false, ahead: 0, behind: 0, diffAdded: 0, diffDeleted: 0 },
-      fetchedAt: 0,
-    },
+    status: { value: null, fetchedAt: 0 },
   }
 
   const probeStatus = async (fetchedAt: number): Promise<CacheSlots['status']> => {
     const output = await gitCommandRunner(['status', '--porcelain', '-b'], cwd)
     if (output === null) {
-      return { value: { dirty: false, ahead: 0, behind: 0, diffAdded: 0, diffDeleted: 0 }, fetchedAt }
+      return { value: null, fetchedAt }
     }
     const base = readStatusDump(output)
     const diff = base.dirty
@@ -221,20 +245,24 @@ export function createGitBadgeCache(cwd: string): GitBadgeCache {
       }
       if (slots.branch.value === null) return null
 
-      if (now - slots.status.fetchedAt >= STATUS_TTL_MS) {
+      const statusTtl = slots.status.value === null ? STATUS_RETRY_MS : STATUS_TTL_MS
+      if (now - slots.status.fetchedAt >= statusTtl) {
         slots.status = await probeStatus(now)
       }
+      if (slots.status.value === null) return { branch: slots.branch.value, unknown: true }
       return { branch: slots.branch.value, ...slots.status.value }
     },
   }
 }
 
 /**
- * Render the badge text: `branch [+N -M ↑a ↓b]`.
- * @param status - the git facts.
+ * Render the badge text: `branch [+N -M ↑a ↓b]`, or `branch [?]` when the
+ * working-tree probe failed and the tree state is unknown.
+ * @param status - the git facts (known or unknown-status).
  * @returns the badge (one style-free line; the entry paints it).
  */
-export function formatGitBadge(status: GitBadgeStatus): string {
+export function formatGitBadge(status: GitBadgeStatus | GitUnknownBadgeStatus): string {
+  if ('unknown' in status) return `${status.branch} [?]`
   const parts: string[] = []
   if (status.diffAdded > 0) parts.push(`+${String(status.diffAdded)}`)
   if (status.diffDeleted > 0) parts.push(`-${String(status.diffDeleted)}`)
