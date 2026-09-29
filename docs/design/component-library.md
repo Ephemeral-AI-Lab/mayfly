@@ -154,6 +154,9 @@ Two orderings exist and are easy to confuse:
   last**. `Esc` is always kept but always trails, so the row reads
   "what I can do … how I leave" and the exit sits in a fixed place.
 
+Style: the key token paints in `text`, its label in `textMuted` (bold key under
+`NO_COLOR`), so the eye lands on the key. The same rule applies to status row 2 of §2.3.
+
 Key notation: `Enter`, `Esc`, `Tab/Shift+Tab`, `Space`, `↑/↓`, `←/→`,
 `Alt+←→`, `PgUp/PgDn`, `Ctrl+U`; ranges as `1-3`; the literal word `Type` for
 type-to-filter. Slashes join alternatives of one fragment.
@@ -191,6 +194,428 @@ Rules:
   actions row, the `Tab/Shift+Tab groups` fragment does not appear either.
 - Editor decorations do not get a hint row; they declare `hint?: string` and
   may only bind modifier accelerators.
+
+### 2.3 Key prompts across the interface
+
+§2.2 governs the row inside a capturing surface. The rest of the interface —
+the main screen, the transcript, panes, side conversations — needs the same
+guarantee: **wherever the user is, the keys that help right now are visible,
+and each one sits with the thing it acts on.**
+
+**Today.** Outside overlays the main screen has no persistent key prompt: the
+footer is one status row, and every key is cued (or not) by whichever component
+happens to own it.
+
+| Key | Cue today | Problem |
+| --- | --- | --- |
+| `Ctrl+O` | inline `ctrl+o to expand` on a folded turn header or block, only for the last `expandTurns` (3) turns | invisible when nothing is folded or the folded turn is older; once expanded, nothing says how to collapse; dropped silently when the row is too narrow; hard-coded lowercase text, not read from the keymap |
+| `Esc` interrupt / take back | none until the activity row shows `Stopping` | the most important running-state key is unadvertised |
+| `Ctrl+S` steer, `Alt+Enter` newline, `Ctrl+G` external editor | none | invisible until the user reads `/help` |
+| `Shift+Tab` plan, `Alt+M` model | a lowercase `plan` / `yolo` text or the model name, without the key | state is shown, the way to change it is not |
+| `↑` recall a queued message | none (the Website even says the queue pane never takes `↑`) | |
+| `Ctrl+T` todos | `ctrl+t to expand` in the pane footer, read from the keymap | good pattern |
+| `F7` / `F8` | centered `F7 switch · F8 close` while a side conversation exists | good pattern, but the identity and the keys share one crowded row |
+| `/` `@` `#` `!` triggers | rotating `Tip:` text on the activity row, only while a turn runs | the idle screen teaches nothing |
+| `Ctrl+C` twice to exit | a `press ctrl+c again to exit` notice after the first press | good pattern |
+
+#### Placement: each key lives with its owner
+
+The editor box stays as it is — a rounded frame with the session title in the
+top-right corner and nothing else. Prompts go where the thing they act on is:
+
+| Key belongs to | Its prompt lives in | Examples |
+| --- | --- | --- |
+| a pane | that pane's own footer or head row | `Ctrl+T expand` in the todo footer; `↑ recall newest` in the queue head |
+| a panel or overlay | that panel's hint row, at its bottom (§2.2) | `/jobs`, `/agents`, `/model`, approval, settings |
+| the completion list | the last line of the list | `↑/↓ options · Tab complete · Enter run · Esc close` |
+| a foldable block | the block's own summary row, on the newest block | `▸ Took 6s · 2 tool calls · Ctrl+O expand` |
+| the typed prefixes `/` `@` `#` `!` | **the editor's empty-state placeholder** (ghost text inside the content row, gone on the first keystroke) | `Ask anything · / commands · @ files · # skills · ! shell` |
+| the editor or the session (no visible owner) | **status bar row 2** | `Enter send`, `Esc interrupt`, `Ctrl+S steer`, `Shift+Tab plan`, `Alt+M model` |
+| the conversation being viewed | status bar row 2, right cluster | `F7 switch · F8 close` |
+
+A key has one home. `Ctrl+O` is the one exception, because it is both a block
+key and a global toggle: row 2 carries it whenever any block is in scope, and
+the block cue appears on the newest foldable block only, so the screen never
+repeats the same sentence three times. Transient outcomes (`press ctrl+c again
+to exit`, `interrupt requested`) stay notifications.
+
+#### The two-line status bar
+
+Row 1 says **what is true**; row 2 says **where you are and what you can
+press**. Nothing about the rows needs a new contract: `MayflyStatusDefinition`
+already carries `row: 1 | 2`, `band`, `priority`, and `overflow`, and the footer
+already renders both rows.
+
+| Entry | Row · band | Priority | Content |
+| --- | --- | --- | --- |
+| `basic` | 1 · left | 0 | model, plus an explicit thinking effort (`deepseek-chat High`) |
+| `mode` | 1 · left | 1 | mode chips: `PLAN` (accent, `PLAN…` while pending), `YOLO` (warning), `SHELL` in `!` mode |
+| `goal`, `schedule` | 1 · left | 2 | as today |
+| `jobs` | 1 · left | 3 | `⏵ N jobs` |
+| `cwd`, `git` | 1 · left | 5, 10 | as today |
+| `context` | 1 · right | 4, `hide` | `cache 34%  context: 18% (22.9k/128k)` |
+| `scope` | 2 · left | 0 | side conversations only: kind badge, label, access, counterpart (`BTW … ⇄ MAIN`) |
+| `keys` | 2 · left | 2 | the contextual key fragments (catalog below) |
+| `switch` | 2 · right | 1 | `F7 switch · F8 close` / `detach`, only with two or more conversations |
+
+The centered `conversation-view` entry retires: it splits into `scope` (identity)
+and `switch` (keys). Identity and switching outrank ordinary hints, so a narrow
+terminal drops the ordinary hints first, then trims labels, and only then the
+switch keys.
+
+Main conversation, by state (editor unchanged, status rows below it):
+
+```
+[1 main, idle, empty — the placeholder teaches the typed prefixes]
+  Ready.
+
+╭─────────────────────────────────────────────────────────────────── Update the landing page hero ─╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  ⏵ 2 jobs  ~/work/mayfly  main ±3          cache 34%  context: 18% (22.9k/128k)
+  Shift+Tab plan · Alt+M model                                                            /help keys
+```
+
+```
+[2 main, idle, a settled turn is in Ctrl+O scope, plan mode on]
+  » Update the landing page hero copy and run the tests.
+  ▸ Took 6s · 2 tool calls · Ctrl+O expand
+  ● Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.
+
+╭─────────────────────────────────────────────────────────────────── Update the landing page hero ─╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  PLAN  ⏵ 2 jobs  ~/work/mayfly  main ±3    cache 34%  context: 18% (22.9k/128k)
+  Ctrl+O expand · Shift+Tab exit plan · Alt+M model                                       /help keys
+```
+
+```
+[3 main, a turn is running, empty draft]
+  » Update the landing page hero copy and run the tests.
+  ⠋ Working · 12s · ↑4.1k ↓1.2k
+
+╭─────────────────────────────────────────────────────────────────── Update the landing page hero ─╮
+│ > ▌Type a follow-up to queue it · @ files · # skills                                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  ⏵ 2 jobs  ~/work/mayfly  main ±3          cache 34%  context: 18% (22.9k/128k)
+  Ctrl+O expand · Esc interrupt
+```
+
+```
+[4 main, a turn is running, draft typed — the placeholder is gone]
+  » Update the landing page hero copy and run the tests.
+  ⠋ Working · 12s · ↑4.1k ↓1.2k
+
+╭─────────────────────────────────────────────────────────────────── Update the landing page hero ─╮
+│ > Also update the footer▌                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  ⏵ 2 jobs  ~/work/mayfly  main ±3          cache 34%  context: 18% (22.9k/128k)
+  Enter queue · Ctrl+S steer · Alt+Enter newline · Esc interrupt
+```
+
+```
+[5 shell mode]
+  » Update the landing page hero copy and run the tests.
+
+╭─────────────────────────────────────────────────────────────────── Update the landing page hero ─╮
+│ ! ▌Run a shell command                                                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  SHELL  ⏵ 2 jobs  ~/work/mayfly  main ±3   cache 34%  context: 18% (22.9k/128k)
+  Backspace exit shell · Alt+M model
+```
+
+```
+[6 main, a BTW is open in the background]
+  » Update the landing page hero copy and run the tests.
+
+╭─────────────────────────────────────────────────────────────────── Update the landing page hero ─╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  ⏵ 2 jobs  ~/work/mayfly  main ±3          cache 34%  context: 18% (22.9k/128k)
+  Shift+Tab plan · Alt+M model                                          ⇄ BTW · F7 switch · F8 close
+```
+
+```
+[7 BTW displayed (live)]
+  » why does the cache miss?
+  ● The prefix changes when the system prompt is rebuilt…
+
+╭──────────────────────────────────────────────────────────────────────── why does the cache miss ─╮
+│ > ▌Continue the side question · @ files · # skills                                               │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  ⏵ 2 jobs  ~/work/mayfly  main ±3          cache 34%  context: 18% (22.9k/128k)
+  BTW why does the cache miss ⇄ MAIN │ Shift+Tab plan · Alt+M model             F7 switch · F8 close
+```
+
+```
+[8 subagent displayed, one-shot (read-only)]
+  ● reviewer finished: 3 findings
+
+╭─────────────────────────────────────────────────────────────────────────────────────── reviewer ─╮
+│ > ▌Read-only conversation                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  ⏵ 2 jobs  ~/work/mayfly  main ±3          cache 34%  context: 18% (22.9k/128k)
+  SUBAGENT reviewer · read-only ⇄ MAIN │ PgUp/PgDn scroll                      F7 switch · F8 detach
+```
+
+```
+[9 subagent displayed, continuable and cold (resumable)]
+  ● reviewer paused after 3 findings
+
+╭─────────────────────────────────────────────────────────────────────────────────────── reviewer ─╮
+│ > ▌Reply to reviewer — sending resumes it                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  deepseek-chat High  ⏵ 2 jobs  ~/work/mayfly  main ±3          cache 34%  context: 18% (22.9k/128k)
+  SUBAGENT reviewer · reply to resume ⇄ MAIN │ Enter reply · PgUp/PgDn scroll  F7 switch · F8 detach
+```
+
+Side conversations — the same two rows; `scope` leads row 2 and `switch` is
+right-aligned so it never moves:
+
+
+#### The placeholder: typed prefixes get their own area
+
+The typed prefixes — `/` commands, `@` files, `#` skills, `!` shell — are not
+keys to press but syntax to type, and there are four of them plus their
+completion lists. Putting them beside `Esc`/`Enter`/`Ctrl+O` on row 2 would
+crowd out the keys that matter most, so they get a different home: the
+**editor's empty-state placeholder**. It is the dimmed ghost text every empty
+prompt shows (the `> ▌Ask anything …` of screens 1–2), rendered *inside* the
+content row, so the frame still carries only the title. It costs no row, sits
+exactly where the user is about to type, and vanishes on the first keystroke —
+which is precisely "tips during normal editing".
+
+That splits the bottom of the screen by what the user is about to *do*:
+
+| Question | Answered by | Cadence |
+| --- | --- | --- |
+| What can I type? | the placeholder (`/ @ # !`) | only while the buffer is empty |
+| What can I press right now? | status row 2 (`Enter`, `Esc`, `Ctrl+S`, `Ctrl+O`, …) | changes with state |
+| What is true right now? | status row 1 (model, `PLAN`, `YOLO`, jobs, context) | changes with facts |
+| Where am I? | row 2 `scope` / `switch` | only in side conversations |
+| Everything else | `/help` (linked from row 2 while idle) | on demand |
+
+Placeholder by state:
+
+| State | Placeholder variants, longest first |
+| --- | --- |
+| Main, idle | `Ask anything · / commands · @ files · # skills · ! shell` → `… # skills` → `… @ files` → `Ask anything · / commands` → `Ask anything` |
+| Main, running | `Type a follow-up to queue it · @ files · # skills` → `Type a follow-up to queue it` |
+| Shell mode | `Run a shell command` |
+| BTW, live | `Continue the side question · @ files · # skills` → `Continue the side question` |
+| Subagent, live | `Message <name> · @ files · # skills` → `Message <name>` |
+| Subagent, resumable | `Reply to <name> — sending resumes it` |
+| Read-only conversation | `Read-only conversation` |
+
+Rules:
+
+- **Whole triggers only.** The renderer takes the longest variant that fits the
+  content width and never cuts a trigger in half (`# ski…`); the last variant
+  may truncate with `…`.
+- **Empty buffer, cursor at the end, no completion list open.** Any character —
+  including `/` — removes it in the same frame. It never appears in a
+  multi-line buffer, under an IME composition, or while a `/command` argument
+  hint (the existing ghost) applies; the argument hint wins.
+- **Tone.** `textMuted`, no chips, no key styling: it reads as ordinary
+  placeholder text, not as a second toolbar.
+- **Words match the triggers' lists.** `commands`, `files`, `skills`, `shell`
+  are the same words the completion lists and `/help` use.
+- **Owned by the mode.** Shell mode swaps it; a side conversation's access
+  swaps it; a plugin may not add to it (extensions keep `hint?: string`).
+- **Quiet on request.** `mayfly.keyHints: 'minimal'` shortens it to `Ask
+  anything`; `off` removes it.
+
+API: additive on the editor component, reusing the ghost path that already
+paints command argument hints (`injectGhostHint`, which clips and drops itself
+when there is no room):
+
+```ts
+setGhostHint(hint: string | readonly string[] | undefined): void
+// a list is longest-first variants; the renderer picks the first that fits whole
+// interaction/placeholder.ts computes them from mode, run state, and access;
+// interaction/editor-plus.ts ghostHintFor(text) returns them for text === ''
+```
+
+Row 2 then stays small. Capacity budget: at most **four** fragments from 80
+columns and **five** from 120, right cluster excluded, ordered by the §2.2
+scale. A full idle row is `Ctrl+O expand · Shift+Tab plan · Alt+M model` plus
+`/help keys`; a full running row is `Enter queue · Ctrl+S steer · Ctrl+O expand ·
+Esc interrupt`. A new global key must displace a lower-priority fragment or take
+an owner-local home; it does not get a third row.
+
+Alternatives considered and rejected:
+
+- **A third status row for tips.** A permanent row (about 4% of a 24-row
+  terminal) that duplicates row 2's job and, for a learned user, is dead weight.
+- **Rotating tips on row 2.** Moving text is hard to scan and steals the fixed
+  place that `Esc`/`Ctrl+O` need. The activity row already rotates tips while a
+  turn runs; that stays (roadmap H5).
+- **Triggers as row 2 fragments.** Works at 120 columns, fails at 80: four
+  syntaxes crowd out the keys, and the fragment limit would silently drop them.
+- **Text in the editor frame.** The frame carries only the session title.
+
+Keys that stay with their owner (not in the status bar):
+
+```
+[a] a slash-command list — its keys sit at the bottom of the list
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ > /mo▌                                                                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  /model   Switch the session model
+  /effort  Switch the thinking effort
+  ↑/↓ options · Tab complete · Enter run · Esc close
+
+[b] the todo pane — its own keys sit in its own footer (shipped)
+  Todo · ● active · 2/5
+  ✓ read the config   ● wire the row   ○ update tests   ○ …
+  … +2 more (1 done · 1 pending) · Ctrl+T expand
+
+[c] the queue pane — the key that acts on it sits in its head row
+  ── Queued (2) · ↑ recall newest ─────────────────────────────────────────────────────────────────
+  Queued: also update the footer
+  Steer:  keep the hero copy short
+
+[d] a command panel (/jobs, /agents, /model, …) — the panel's own hint row
+╭ Background jobs ─────────────────────────────────────────────────────────────────────────────────╮
+│ → 1. pnpm test — running 42s                                                                     │
+│   2. pnpm build — done                                                                           │
+│                                                                                                  │
+│   Enter open · Type filter · Esc close                                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+Narrow widths — row 1 sheds by its priorities; row 2 drops ordinary hints
+first and never the identity or `F7`/`F8`:
+
+```
+[60 columns — the placeholder drops whole triggers, never half a word]
+╭─────────────────────────── Update the landing page hero ─╮
+│ > ▌Ask anything · / commands · @ files · # skills        │
+╰──────────────────────────────────────────────────────────╯
+  deepseek-chat High  ~/work/mayfly                  ctx 18%
+  Ctrl+O expand · Shift+Tab plan                  /help keys
+```
+
+```
+[60 columns, BTW]
+╭─────────────────────────── Update the landing page hero ─╮
+│ > ▌Continue the side question · @ files                  │
+╰──────────────────────────────────────────────────────────╯
+  deepseek-chat High  ~/work/mayfly                  ctx 18%
+  BTW ⇄ MAIN │ Esc interrupt                         F7 · F8
+```
+
+```
+[40 columns]
+╭─────── Update the landing page hero ─╮
+│ > ▌Ask anything · / commands         │
+╰──────────────────────────────────────╯
+  deepseek-chat High                 18%
+  Ctrl+O expand · Shift+Tab plan
+```
+
+Fragment catalog for `keys`. Priority uses the §2.2 scale and is also the
+display order, left to right, with `Esc` always last.
+
+| Fragment | Key action | Shown when | Priority |
+| --- | --- | --- | --- |
+| `Esc interrupt` | `mayfly.interaction.cancel` | a turn or live descendant runs and no take-back is eligible | 120 |
+| `Esc take back` | same | running, buffer empty, the just-sent message is still withdrawable | 120 |
+| `Enter send` / `queue` | `submit` | draft non-empty; `queue` while running | 100 |
+| `Enter reply` | `submit` | the displayed conversation is resumable (opens the reply form) | 100 |
+| `Esc clear` | `cancel` | idle and draft non-empty | 98 |
+| `Ctrl+S steer` | `steer` | running and draft non-empty | 96 |
+| `Ctrl+O expand` / `collapse` | `mayfly.transcript.toggle-collapse` | any block in `expandTurns` scope is foldable / the scope is expanded | 92 |
+| `Alt+Enter newline` | `newline` | draft non-empty | 88 |
+| `Ctrl+G editor` | `external-editor` | draft non-empty | 84 |
+| `PgUp/PgDn scroll` | `page-up`/`page-down` | the displayed conversation is read-only or resumable | 82 |
+| `Shift+Tab plan` / `exit plan` | `shift-tab` | editor focused; label follows plan state | 78 |
+| `F6 panes` | `mayfly.surface.next` | at least one interactive pane is mounted (built-in panes are passive) | 76 |
+| `/help keys` (right cluster) | none (a command) | idle and buffer empty | 10 |
+| `Alt+M model` | `cycle-model` | the provider lists more than one model | 50 |
+| `Backspace exit shell` | `backspace` | `!` mode and buffer empty | 100 |
+
+Side conversations by access, which decides both the editor's behavior and the
+row:
+
+| Displayed | Access | Editor | `scope` badge | `keys` | `switch` |
+| --- | --- | --- | --- | --- | --- |
+| BTW | interactive | the full chain | `BTW <question> ⇄ MAIN` | as main | `F7 switch · F8 close` |
+| Subagent, live | interactive | the full chain | `SUBAGENT <name> ⇄ MAIN` | as main | `F7 switch · F8 detach` |
+| Subagent, continuable and cold | resumable | `Enter` opens the reply form | `… · reply to resume` | `Enter reply · PgUp/PgDn scroll` | `F7 switch · F8 detach` |
+| Subagent, one-shot | read-only | the draft is kept with a notice | `… · read-only` | `PgUp/PgDn scroll` | `F7 switch · F8 detach` |
+| Main, with a side conversation open | interactive | the full chain | none | as main | `⇄ BTW · F7 switch · F8 close` |
+
+`F8` names what it does: closing BTW disposes its temporary Agent (`close`),
+closing a subagent only detaches the view and leaves it running (`detach`).
+From main it acts on the `F7` counterpart, and the label says so
+(`F8 close BTW`, `F8 detach reviewer`). With no counterpart the `F7`/`F8`
+fragments are absent: a hint never names a key that does nothing.
+
+The reply form (`Reply to <name>`) is a normal surface (§2.2). It follows the
+redundancy rule: `Enter` sends (`enterSubmits`), `Esc` cancels, and its `Send`
+and `Cancel` buttons go; the `Delivery` select (`‹ Queue ›`, `←`/`→` to `Steer`)
+stays, because no bare key expresses it.
+
+Rules:
+
+- **Computed, never authored.** Row 2 is a pure function of app facts: running
+  state and take-back eligibility (session facts), draft text (editor),
+  disclosure state (transcript), queued messages, mounted panes, plan state,
+  input mode, and the displayed conversation and its access. It recomputes on
+  those changes only — no timers, no animation.
+- **Keys come from the keymap.** A fragment names a key *action id*; its label
+  renders `displayKey(keymap.getKeys(id))`. A rebound key updates the row, and a
+  literal `ctrl+o` string is forbidden.
+- **One notation: `Ctrl+O`.** Not `ctrl+o`, not `Ctrl-O`; the zh copy reads
+  `按 Ctrl+O 展开`.
+- **Toggles name the direction available now:** `expand` or `collapse`, never
+  a bare key.
+- **Verbs** extend the §2.2 vocabulary with `send`, `queue`, `reply`, `steer`,
+  `interrupt`, `take back`, `clear`, `newline`, `editor`, `expand`, `collapse`,
+  `scroll`, `plan`, `model`, `panes`, `switch`, `close`, `detach`, `commands`,
+  `files`, `shell`.
+- **Truthful scope.** A fragment appears only when its key would change
+  something. Blocks older than `expandTurns` never advertise `Ctrl+O`; they say
+  what is hidden, and roadmap H6 gives them a route.
+- **Style.** Key token in `text`, label in `textMuted`, chips (`PLAN`, `YOLO`,
+  `SHELL`, badges) bold in their tone; `NO_COLOR` keeps weight and glyphs.
+- **Width.** Row 2 ladders the fragments with `when: { minWidth, maxWidth }`
+  variants — the mechanism the activity row already uses — so the narrowest
+  fitting variant never wraps.
+- **Quiet on request.** `mayfly.keyHints: 'full' | 'minimal' | 'off'` (default
+  `full`). `minimal` keeps interrupt/take back, `Ctrl+O`, and `F7`/`F8` on row 2
+  and shortens the placeholder to `Ask anything`; `off` removes row 2, so the
+  footer returns to one row, and the placeholder.
+- **The editor frame is not decorated.** No hint, badge, or mode text is written
+  into the frame; input mode is the prompt symbol, the frame hue, and the
+  `SHELL` chip. The only text inside the box besides the buffer is the dimmed
+  placeholder above.
+
+Internal shape (interaction-owned, **not** a fifth public contribution
+service — the four services of §1 stay the only seams; a plugin that wants a
+fragment registers its own `mayflyStatus` entry on row 2):
+
+```ts
+interface KeyHint {
+  id: string                    // 'expand', 'interrupt', …
+  action: string                // key action id; the label is resolved, never typed
+  label: string                 // localized verb from the vocabulary above
+  priority: number              // §2.2 scale; higher survives narrower widths
+}
+// interaction/key-hints-status.ts computes KeyHint[] from facts and publishes
+// one status entry on row 2 as a ladder of rich-text variants;
+// interaction/conversation-view-status.ts splits into `scope` and `switch`.
+```
+
+Verification when this lands: a table-driven spec asserting the exact row 2 and
+placeholder for every state above at 40, 60, 80, and 120 columns (whole triggers
+only, gone on the first keystroke, absent in a multi-line buffer and under an
+argument hint); an e2e that rebinds `Ctrl+O`
+and sees row 2 and the block cue follow; the status footer's two-row width
+scan; a locale spec for the zh copy; and a lifecycle spec that a side
+conversation closing removes `scope` and `switch`. Runtime change:
+dedicated-profile acceptance.
 
 ## 3. Visual language
 
@@ -1183,7 +1608,11 @@ Verification duties for any new or changed surface:
    the only verbs it may use.
 7. Run the redundancy test (§4.1) on every action, and the stray-key test
    (§4.8) on every surface that opens without the user asking for it.
-8. Diagrams are exact renderings at a stated width: the top rule, every row,
+8. Key prompts: every key a screen state makes useful is visible in that state
+   (§2.3) — the surface row inside overlays, the owner's own footer for pane
+   and block keys, status row 2 for editor and session keys. A new global key or
+   state extends the §2.3 fragment catalog and its exact-row spec.
+9. Diagrams are exact renderings at a stated width: the top rule, every row,
    and the bottom rule of a box share one width.
 
 ## 7. Refinement roadmap
@@ -1246,45 +1675,39 @@ Move the §3.2 glyphs into one owned module and enforce one meaning per glyph.
 Touch points: `transcript/components.ts`, `transcript/thinking.ts`,
 `transcript/pane-activity.ts`, `interaction/symbols.ts`.
 
-**B4 · Editor mode labels, not a multicolored frame — target.**
-The editor border already recolors for bash mode
-(`interaction/editor-plus.ts`). Keep that input-mode recolor, and carry the
-session modes as tinted **label text only** — the frame itself stays
-`border` / `borderFocus`. Retire the plan/yolo badges from the status line so
-the two surfaces can never disagree:
+**B4 · Mode chips in the status bar, an undecorated editor — target.**
+The editor frame carries the session title in the top-right corner and nothing
+else. Session and input modes are status, so they live in status row 1 as
+chips (§2.3), next to the model they modify:
 
 ```
-  normal      ╭──────────────────────────────╮  border
-  focused     ╭──────────────────────────────╮  borderFocus
-  plan        ╭ PLAN ────────────────────────╮  border; label [accent]
-  yolo        ╭ YOLO ────────────────────────╮  border; label [warning]
-  plan+yolo   ╭ PLAN · YOLO ─────────────────╮  border; PLAN [accent] · YOLO [warning]
-  bash        ╭ BASH ────────────────────────╮  shellMode; label [shellMode]
-              > Write a message▌
-              ╰──────────────────────────────╯
+  normal      deepseek-chat High
+  plan        deepseek-chat High  PLAN
+  yolo        deepseek-chat High  YOLO
+  plan+yolo   deepseek-chat High  PLAN  YOLO
+  shell       deepseek-chat High  SHELL
 ```
 
 Rules:
 
-- **The frame carries at most the input mode.** Only bash repaints the frame
-  `shellMode`; plan and yolo never do. Focus still moves `border` →
-  `borderFocus`.
-- **Each label token keeps its own tone:** `PLAN` is `accent`, `YOLO` is
-  `warning`, `BASH` is `shellMode`. There is no merged "highest alert" frame
-  hue, so `PLAN · YOLO` reads lighter than a pure `YOLO` — one violet token
-  beside one amber token, not a fully amber frame.
-- The label never carries a "dirty" or "unsaved" word; unsubmitted work is the
-  save action's business.
-- Session modes stack in one label in a fixed order (`PLAN` before `YOLO`);
-  the bash label may stack too (`╭ BASH · PLAN ─╮`).
-- The status footer stops registering the plan/yolo badge
-  (`interaction/mode-status.ts`); the editor label is the single source for
-  those two modes.
+- **`PLAN` is `accent`, `YOLO` is `warning`, `SHELL` is `shellMode`**, each
+  bold, each with its own tone. There is no merged "highest alert" hue, so
+  `PLAN  YOLO` reads as one violet chip beside one amber chip. `PLAN…` marks a
+  pending toggle.
+- **Chips outrank goal, schedule, and jobs** (priority 1), so a narrow footer
+  never drops the mode the user is in.
+- **The way to change a mode is a key fragment on row 2**
+  (`Shift+Tab plan` / `exit plan`), never text on the chip.
+- **The editor frame changes only in paint**: `border` ↔ `borderFocus`, and the
+  existing `shellMode` recolor plus `!` prompt symbol in shell mode. The
+  left-edge `! shell mode` label of the shipped bash mode moves to the `SHELL`
+  chip so the frame has no text but the title.
+- The chip never carries a "dirty" or "unsaved" word.
 
-Touch points: `interaction/editor-plus.ts`
-(`setBorderLabel`/`setPromptSymbol`, bash `setBorderColor`),
-`core/components.ts`, `interaction/mode-status.ts` (retire the badge);
-`interaction/mode-commands.ts` still owns the session-mode snapshot.
+Touch points: `interaction/mode-status.ts` (uppercase chips, priority 1, add
+`SHELL`), `interaction/editor-plus.ts` (drop `setBorderLabel` for bash, keep
+`setBorderColor` and `setPromptSymbol`), `interaction/mode-commands.ts` (still
+owns the mode snapshot); `website/**/features/status-bar.md` and `modes.md`.
 
 **B5 · Feedback severity prefix — target.**
 The feedback lane renders one unprefixed row. Add the severity glyph and keep
@@ -1362,6 +1785,70 @@ picker's row and hint vocabulary.
 
 Touch points: `interaction/model-commands.ts` (badge text, locale keys).
 
+**H1 · Two-line status bar with a key row — target.**
+Add the state-driven `keys` entry of §2.3 on status row 2, and split the
+centered `conversation-view` entry into `scope` (row 2, left) and `switch` (row
+2, right). It covers running-state keys (`Esc` interrupt / take back, `Enter`
+queue, `Ctrl+S` steer), draft keys (`Alt+Enter`, `Ctrl+G`, `Esc` clear), view
+keys (`Ctrl+O`), mode keys (`Shift+Tab`, `Alt+M`), `/help keys` while idle, and
+the side-conversation access states (`Enter reply`, read-only
+scroll). No contract change: `row`, `band`, `priority`, and `overflow` exist.
+
+Touch points: new `interaction/key-hints-status.ts`,
+`interaction/conversation-view-status.ts` (split), `interaction/keys.ts`,
+`interaction/locale.ts` and zh copy, `interaction/subagent-reply.ts` (reply form
+loses `Send`/`Cancel`, gains `enterSubmits`); the status footer width scan;
+a table-driven state spec; an e2e that rebinds a key; `website/**/features/
+status-bar.md` and `panes.md` (the footer becomes two rows). Runtime change:
+dedicated-profile acceptance.
+
+**H8 · Editor placeholder for the typed prefixes — target.**
+An empty prompt shows state-driven ghost text that teaches `/` commands, `@`
+files, `#` skills, and `!` shell (§2.3), in whole-trigger variants that shrink
+with the width; it vanishes on the first keystroke and never touches the frame.
+`setGhostHint` accepts a longest-first variant list, and
+`interaction/placeholder.ts` picks the text from input mode, run state, and the
+displayed conversation's access.
+
+Touch points: `core/components.ts` and `core/chrome.ts` (`setGhostHint`,
+`injectGhostHint` variant selection), `core/types.ts` (editor interface),
+`interaction/editor-plus.ts` (`ghostHintFor` for the empty buffer, argument
+hint precedence), new `interaction/placeholder.ts`, `interaction/locale.ts` and
+zh copy; the editor width scan and a state spec. Runtime change:
+dedicated-profile acceptance.
+
+**H7 · Owner-local prompts — target.**
+Keys that belong to a visible owner are cued there: `↑ recall newest` in the
+queue pane's head row (`Queued (2) · ↑ recall newest`), the slash-completion
+list's own last line, and `Ctrl+T` in the todo footer (shipped). The Website
+statement that the queue pane never takes `↑` is corrected: `↑` on an empty
+prompt withdraws the newest queued message.
+
+Touch points: `interaction/pane-queue.ts`, `interaction/editor-plus.ts`
+(completion footer), `website/**/features/panes.md` and `editor.md`.
+
+**H2 · Complete the `Ctrl+O` cue — target.**
+One shared helper builds the inline cue from the live keymap and names the
+direction available (`expand` / `collapse`). Turn headers, thinking blocks,
+tool groups, and search/read/command groups use it; only the newest foldable
+block shows it, and a narrow row drops counts before the key.
+
+Touch points: `transcript/hints.ts`, `transcript/process-rows.ts`,
+`transcript/thinking.ts`, `transcript/components.ts`,
+`transcript/read-group.ts`, `transcript/search-group.ts`,
+`transcript/command-group.ts`, `transcript/tool-line.ts`,
+`transcript/locale.ts`; expose a readonly disclosure projection (expanded,
+foldable count in scope) for the H1 `keys` entry.
+
+**H3 · One key notation — target.**
+`Ctrl+O` everywhere: inline cues (`ctrl+o`), zh copy (`按 Ctrl-O`), Website
+pages (`Ctrl-O`), `/help`, and the tips. Keys always render through
+`displayKey`.
+
+Touch points: `transcript/hints.ts` (`HINTS_ZH`), `transcript/locale.ts`,
+`transcript/pane-todo.ts` fallback, `website/**/reference/keys.md`,
+`website/**/features/streaming.md`, `website/**/guide/config.md`.
+
 ### 7.2 Wave 2 — decision and navigation consistency (P2)
 
 **B1 · One decision-card skeleton — target.**
@@ -1403,8 +1890,9 @@ Touch points: `core/ui-compiler.ts` (list runtime), `core/ui-patterns.ts`
 **C4 · Status grid and priority overflow — target.**
 The status definitions already carry `band`, `row`, `priority`, and
 `overflow`. Lay the footer on a fixed grid and drop the lowest-priority
-entries when the row is full. The plan/yolo badge retires with B4, so the grid
-no longer reserves a slot for it.
+entries when the row is full. With B4 the mode chips hold a reserved
+first-cluster slot on row 1, and row 2 (§2.3) is a second grid for scope, keys,
+and switch entries.
 
 Touch points: `transcript/status-model.ts` and the status plugins.
 
@@ -1482,6 +1970,31 @@ content as the cursor moves.
 Touch points: `packages/ui/src/interaction.ts`,
 `core/ui-interaction-choice.ts`, the sessions and settings panels.
 
+**H4 · Quiet key hints setting — backlog.**
+`mayfly.keyHints: 'full' | 'minimal' | 'off'` for users who have learned the
+keys. `minimal` keeps interrupt / take back, `Ctrl+O`, and `F7`/`F8`; `off`
+removes status row 2.
+
+Touch points: `interaction/settings.ts`, settings model and locale,
+`interaction/prompt-hints.ts`.
+
+**H5 · Teach keys, not only commands — backlog.**
+The activity row's rotating tips are ASCII command teasers shown only while a
+turn runs. Add key tips (`Shift+Tab` plan, `Ctrl+G` editor, `Alt+M` model,
+`Ctrl+S` steer) to that rotation. The idle screen's teaching is the H8
+placeholder, not tips.
+
+Touch points: `transcript/tips-content.ts`, `transcript/status-tips.ts`,
+`transcript/pane-activity.ts`.
+
+**H6 · A keyboard route to older folded turns — backlog.**
+Turns older than `expandTurns` say how much is hidden but offer no key. Either
+let `F6` focus the transcript with `Enter` to open the block under the cursor,
+or raise the scope from `/settings` and say so in the hidden-lines text.
+
+Touch points: `transcript/transcript-model.ts`, `transcript/hints.ts`,
+`core/surface-renderer.ts`.
+
 ### 7.4 Conformance register
 
 Known gaps between this catalog and the code, or defects the audit found while
@@ -1498,3 +2011,13 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | G7 | Redundant buttons: `Set as default` + `Cancel` (pickers); `Back`/`Next`/`Submit answers`/`Cancel` (questionnaire); loader `[ Cancel ]`; single-field form `Submit`/`Cancel` | see §4.1 redundancy rule | E2, F1 |
 | G8 | Three checkbox notations: `●`/`○` (multiple lists), `[x]`/`[ ]` (pickers), `[on]`/`[off]` (toggle); `●` is also the "selected" marker in single lists (UX-24) | `core/ui-patterns.ts` `renderList`, `renderFormField` | multiple lists adopt `[x]`/`[ ]`; `●` stays transcript-only |
 | G9 | Hint verbs overlap: `pick` (open a select), `choose`, `apply`, `open` (UX-23) | `core/ui-key-grammar.ts` | settle on the §2.2 vocabulary; rename `pick` |
+| G10 | The main screen has no persistent key prompt; `Esc` interrupt, `Ctrl+S`, `Alt+Enter`, `Ctrl+G`, `Shift+Tab`, `Alt+M`, and `F6` are cued nowhere | `interaction/input-plugin.ts`, `interaction/keys.ts` | H1 |
+| G11 | The `Ctrl+O` cue is scope-limited (last `expandTurns` turns), one-directional (no `collapse` after expanding), silently dropped on narrow rows, and hard-coded as `ctrl+o` instead of read from the keymap (the todo pane does read it) | `transcript/hints.ts`, `process-rows.ts`, `thinking.ts`, `locale.ts` | H2 |
+| G12 | Three notations for one key: `ctrl+o` (inline), `Ctrl-O` (zh copy, Website), `Ctrl+O` (grammar, `/help`) | `transcript/hints.ts`, `website/**` | H3 |
+| G13 | Tips teach only slash commands and only while a turn runs; the idle screen teaches nothing, and the `#` skills and `!` shell prefixes are cued nowhere | `transcript/tips-content.ts`, `interaction/editor-plus.ts` | H5, H8 |
+| G14 | No keyboard route to blocks older than `expandTurns` | `transcript/transcript-model.ts` | H6 |
+| G15 | The Website says the queue pane never takes `↑`, but `↑` on an empty prompt withdraws the newest queued message (`withdrawQueued`) | `website/**/features/panes.md`, `editor.md`; `interaction/input-plugin.ts` | H7 |
+| G16 | The status-bar page documents a single-row footer with plan/yolo as lowercase text; the footer already renders two rows and nothing uses row 2 | `website/**/features/status-bar.md`, `transcript/status-model.ts` | H1, B4 |
+| G17 | Side-conversation identity and `F7`/`F8` share one centered entry on the crowded state row; `F8` says `close` for a subagent although it only detaches | `interaction/conversation-view-status.ts` | H1 |
+| G18 | The subagent reply form draws `Send` and `Cancel` buttons, and `Enter` in its textarea does not send | `interaction/subagent-reply.ts` | H1 |
+| G19 | Bash mode writes `! shell mode` into the editor's left border, the only text besides the session title | `interaction/editor-plus.ts` | B4 |
