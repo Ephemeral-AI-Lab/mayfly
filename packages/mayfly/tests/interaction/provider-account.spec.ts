@@ -3,9 +3,10 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { AccountClientMetadata, AccountView, SignInAttemptId, SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
-import { accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
+import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
+import { GUIDE_CLOSE_DELAY_MS, accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
 import { providerFixture } from './provider-fixture.ts'
 
 const contexts: Context[] = []
@@ -177,6 +178,69 @@ describe('DeepSeek account panel', () => {
     } finally {
       accountInternals.spawnOpener = original
     }
+  })
+
+  it('copies the authorize link and reports a clipboard failure without leaving the panel', async () => {
+    const copied: string[] = []
+    let fail = false
+    setClipboardTextWriter(async text => { if (fail) throw new Error('no clipboard'); copied.push(text) })
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    try {
+      const { ctx } = await bench(signedOut, { port: 45678 })
+      await openAccountPanel(ctx, 'deepseek-account')
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush()
+      expect(JSON.stringify(model.node)).toContain('"Copy link"')
+      model.invoke('copy-link')
+      await flush()
+      expect(copied).toEqual(['https://auth.example/authorize?origin=http://localhost:45678&n=1'])
+      fail = true
+      model.invoke('copy-link')
+      await flush()
+      expect(copied).toHaveLength(1)
+      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain(panelId)
+    } finally {
+      setClipboardTextWriter(undefined)
+      accountInternals.spawnOpener = original
+    }
+  })
+
+  it('shows the guide step and closes itself shortly after a successful sign-in', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onUseKey: () => {} })
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      expect(JSON.stringify(model.node)).toContain('Step 2 of 2 · Finish in your browser')
+      model.invoke('sign-in')
+      await vi.advanceTimersByTimeAsync(0)
+      account.complete()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(JSON.stringify(model.node)).not.toContain('Step 2 of 2')
+      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain(panelId)
+      account.complete()
+      await vi.advanceTimersByTimeAsync(GUIDE_CLOSE_DELAY_MS)
+      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).not.toContain(panelId)
+    } finally {
+      vi.useRealTimers()
+      accountInternals.spawnOpener = original
+    }
+  })
+
+  it('cancels the pending close when the panel unloads first', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onUseKey: () => {} })
+      account.complete()
+      await vi.advanceTimersByTimeAsync(0)
+      await ctx.fiber.dispose()
+      await vi.advanceTimersByTimeAsync(GUIDE_CLOSE_DELAY_MS)
+    } finally { vi.useRealTimers() }
   })
 
   it('delivers a pasted callback to the loopback server and reports rejection', async () => {

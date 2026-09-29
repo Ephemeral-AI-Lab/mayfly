@@ -16,6 +16,7 @@ import type { AccountClientMetadata, AccountView, SignInAttemptView } from '@dee
 import { ui, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { interactionTranslator } from './locale.ts'
+import { copyTextToClipboard } from './clipboard-write.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
 /** The settings namespace the account adapter owns; routes in it are not pi-ai profiles. */
@@ -127,6 +128,7 @@ export function accountPanelNode(
   const retry = attempt !== null && !live && attempt.phase !== 'succeeded'
   const justConnected = stored && attempt?.phase === 'succeeded'
   return ui.stack.column([
+    ...(options.guide === true && !stored ? [ui.text(t('Step 2 of 2 · Finish in your browser'), { tone: 'muted' })] : []),
     ui.fields([
       { label: t('Status'), value: [{ text: t(stored ? 'Signed in' : 'Not signed in') }] },
       ...(live ? [{ label: t('Sign-in'), value: [{ text: t('Signing in…') }] }] : retry ? [{ label: t('Sign-in'), value: [{ text: outcomeText(attempt, t) }] }] : []),
@@ -144,6 +146,7 @@ export function accountPanelNode(
     ...(stored || canSignIn ? [] : [ui.text(t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' })]),
     ui.actions({ id: 'account-actions', items: [
       ...(!stored && canSignIn && !live ? [{ id: 'sign-in', label: retry && attempt.phase !== 'cancelled' ? t('Try again') : t('Sign in'), intent: 'primary' as const }] : []),
+      ...(waiting ? [{ id: 'copy-link', label: t('Copy link') }] : []),
       ...(waiting && callbackPort !== undefined ? [{ id: 'deliver-callback', label: t('Deliver callback'), submit: [{ pagePath: [], formId: 'callback-paste' }] }] : []),
       ...(waiting ? [{ id: 'restart-sign-in', label: t('Restart sign-in') }, { id: 'cancel-sign-in', label: t('Cancel sign-in') }] : []),
       ...(options.guide === true && !stored ? [{ id: 'use-key', label: t('Enter a DeepSeek API key'), ...(canSignIn ? {} : { intent: 'primary' as const }) }, { id: 'back', label: t('Back') }] : []),
@@ -152,6 +155,9 @@ export function accountPanelNode(
     ] }),
   ])
 }
+
+/** How long the guide shows the connected confirmation before closing. */
+export const GUIDE_CLOSE_DELAY_MS = 1500
 
 /** Exits the first-run guide hands the account panel so no path dead-ends. */
 export interface AccountGuideExits {
@@ -204,6 +210,17 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
         if (event.actionId === 'use-key') guide.onUseKey()
         else guide.onBack()
         return { kind: 'completed', dismiss: true }
+      }
+      if (event.kind === 'activate' && event.actionId === 'copy-link') {
+        const url = (await service.getState()).attempt?.authorizeUrl
+        /* v8 ignore next -- the copy action only renders while a link waits */
+        if (url === undefined) return { kind: 'completed' }
+        try {
+          await copyTextToClipboard(url)
+          return { kind: 'completed', feedback: { severity: 'success', message: t('Sign-in link copied') } }
+        } catch {
+          return { kind: 'failed', message: t('The link could not be copied — select it in the panel instead') }
+        }
       }
       if (event.kind === 'activate' && event.actionId === 'sign-out') {
         try {
@@ -281,9 +298,19 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
     } },
   }, paint(await service.getState()), { signal: cancellation, reopen: 'focus', onClosed: () => cleanup() })
   if (handle === undefined) { releaseLifetime(); return true }
+  let closing = false
   const repaint = (view: AccountView): void => {
     /* v8 ignore next -- the watch stops with the panel; a late view races its own abort */
     if (!handle?.closed) handle?.set(paint(view))
+    // Inside the guide a finished sign-in is the end of setup: show the
+    // confirmation briefly, then hand the session back.
+    if (guide !== undefined && !closing && view.status === 'credential-stored' && view.attempt?.phase === 'succeeded') {
+      closing = true
+      ctx.effect(() => {
+        const timer = setTimeout(() => handle?.close(), GUIDE_CLOSE_DELAY_MS)
+        return () => clearTimeout(timer)
+      })
+    }
   }
   const offWatch = ctx.effect(() => {
     const controller = new AbortController()

@@ -50,11 +50,14 @@ async function accountConnected(ctx: Context): Promise<boolean> {
 /** The choice view: sign in with a DeepSeek account or enter an API key. */
 export function onboardingChoiceNode(t: (key: string) => string, canSignIn: boolean): ReturnType<typeof ui.stack.column> {
   return ui.stack.column([
-    ui.text(t('Connect with a DeepSeek account — no API key needed — or paste a DeepSeek API key.'), { tone: 'muted' }),
+    ui.text(t('Step 1 of 2 · Choose how to connect'), { tone: 'muted' }),
+    ui.text(t('Mayfly needs a DeepSeek connection to start.')),
+    ...(canSignIn ? [ui.text(t('Sign in with a DeepSeek account: browser sign-in, no API key needed.'), { tone: 'muted' })] : []),
+    ui.text(t('Enter a DeepSeek API key: paste a key from platform.deepseek.com.'), { tone: 'muted' }),
     ui.actions({ id: 'onboarding-choice', items: [
       ...(canSignIn ? [{ id: 'sign-in', label: t('Sign in with a DeepSeek account'), intent: 'primary' as const }] : []),
       { id: 'use-key', label: t('Enter a DeepSeek API key'), ...(canSignIn ? {} : { intent: 'primary' as const }) },
-      { id: 'close', label: t('Close'), dismiss: true },
+      { id: 'close', label: t('Skip for now'), dismiss: true },
     ] }),
   ])
 }
@@ -62,6 +65,7 @@ export function onboardingChoiceNode(t: (key: string) => string, canSignIn: bool
 /** The API key view with a way back to the choice. */
 export function onboardingKeyNode(t: (key: string) => string): ReturnType<typeof ui.stack.column> {
   return ui.stack.column([
+    ui.text(t('Step 2 of 2 · Enter your API key'), { tone: 'muted' }),
     ui.form({ id: 'onboarding', enterSubmits: 'save', fields: [{ kind: 'secret', id: 'key', label: DEEPSEEK_KEY, value: '', required: true }] }),
     ui.actions({ id: 'onboarding-actions', items: [
       { id: 'save', label: t('Save'), submit: [{ pagePath: [], formId: 'onboarding' }] },
