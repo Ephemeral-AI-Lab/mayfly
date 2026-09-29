@@ -33,6 +33,7 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
       'Provider setup - keep discovered routes in the user-level home patch so profiles share provider configuration.',
       'Harness 0.2.0-rc.2 - align the pinned line: late question answers render in the transcript, web search can ride a signed-in DeepSeek account without a separate API key, and the otel telemetry channel joins the base composition.',
       'DeepSeek Account panel - /provider on the account route now signs in from the terminal: a loopback webserver hosts the OAuth callback, Sign in opens the authorize link in the browser while the panel follows the attempt to completion, and Sign out removes the shared grant.',
+      'First-run guide - a fresh install with no key and no login now opens a connection guide offering account sign-in or pasting a DeepSeek API key; a stored account grant counts as connected and skips the guide.',
       'Rendering and performance - harden display fidelity and layout budgets, unify overflow signalling, and cut subagent, dock, and scroll cost.',
     ],
     knownIssues: [],

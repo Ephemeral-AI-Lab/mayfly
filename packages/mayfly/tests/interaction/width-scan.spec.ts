@@ -18,6 +18,7 @@ import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
 import { accountPanelNode } from '../../src/interaction/provider-account.ts'
+import { onboardingChoiceNode, onboardingKeyNode } from '../../src/interaction/provider-onboarding.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
@@ -310,6 +311,9 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
           accountPanelNode({ status: 'credential-stored', links, attempt: null }, t, true),
           accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: 1 } }, t, true),
           accountPanelNode({ status: 'signed-out', links, attempt: null }, t, false),
+          onboardingChoiceNode(t, true),
+          onboardingChoiceNode(t, false),
+          onboardingKeyNode(t),
           scheduleNode(reminders, Date.now(), t, locale),
           scheduleNode([], Date.now(), t, locale),
           scheduleNode(undefined, Date.now(), t, locale),

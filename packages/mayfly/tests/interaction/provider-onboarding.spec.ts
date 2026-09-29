@@ -25,6 +25,25 @@ async function setup(profiles: Record<string, unknown> = {}, configured = false,
   return { ...bench, agent, app, mount, model: () => ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.onboarding') }
 }
 
+
+/** The account adapter route listing for guide discovery. */
+const accountLlm = {
+  listProviders: () => [],
+  listConfigurableProviders: () => [{ provider: 'deepseek-account', settingsNs: 'llm-deepseek-account' }],
+}
+
+/** Minimal account double: only the state the guide reads. */
+function fakeAccount(status: 'signed-out' | 'credential-stored') {
+  return {
+    async getState() { return { status, links: { usageUrl: 'https://example/u', topUpUrl: 'https://example/t' }, attempt: null } },
+    async signOut() { return this.getState() },
+    watch(signal: AbortSignal): AsyncIterable<unknown> {
+      void signal
+      return { [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) }
+    },
+  }
+}
+
 describe('provider onboarding', () => {
   it('waits for app readiness and saves only the official credential through explicit Save', async () => {
     const bench = await setup()
@@ -34,6 +53,8 @@ describe('provider onboarding', () => {
     await flush()
     const model = bench.model()!
     expect(model.scope).toEqual({ kind: 'app', targetId: DEEPSEEK_KEY })
+    model.invoke('use-key')
+    await flush()
     model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'new-key')
     expect(bench.credentials.writes).toBe(0)
     model.invoke('save')
@@ -57,6 +78,8 @@ describe('provider onboarding', () => {
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const model = bench.model()!
+    model.invoke('use-key')
+    await flush()
     model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'retained-key')
     await bench.app.dispose()
     expect(model.disposed).toBe(false)
@@ -75,6 +98,8 @@ describe('provider onboarding', () => {
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const model = bench.model()!
+    model.invoke('use-key')
+    await flush()
     bench.credentials.failWrite = true
     model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'retry-key')
     model.invoke('save')
@@ -92,7 +117,7 @@ describe('provider onboarding', () => {
     const bench = await setup()
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
-    bench.model()!.invoke('cancel')
+    bench.model()!.invoke('close')
     await flush()
     await bench.app.dispose()
     await bench.mount()
@@ -164,6 +189,8 @@ describe('provider onboarding', () => {
     await flush()
     const model = bench.model()!
     bench.credentials.values.set(DEEPSEEK_KEY, 'external')
+    model.invoke('use-key')
+    await flush()
     model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'replacement')
     model.invoke('save')
     await flush()
@@ -239,5 +266,58 @@ describe('provider onboarding', () => {
       await flush()
       expect(ctx.mayflyOverlays.list()).toEqual([])
     }
+  })
+
+  it('skips the guide entirely when a DeepSeek account grant is already stored', async () => {
+    const bench = await setup({}, false, accountLlm)
+    bench.ctx.provide('deepseekAccount', fakeAccount('credential-stored') as never)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    expect(bench.model()).toBeUndefined()
+  })
+
+  it('offers account sign-in, opens the account panel from the guide, and does not return to it', async () => {
+    const bench = await setup({}, false, accountLlm)
+    bench.ctx.provide('deepseekAccount', fakeAccount('signed-out') as never)
+    bench.ctx.provide('webServer', { port: 45678 } as never)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    const model = bench.model()!
+    expect(JSON.stringify(model.node)).toContain('Sign in with a DeepSeek account')
+    model.invoke('use-key')
+    await flush()
+    expect(JSON.stringify(model.node)).toContain('DEEPSEEK_API_KEY')
+    model.invoke('back')
+    await flush()
+    expect(JSON.stringify(model.node)).not.toContain('DEEPSEEK_API_KEY')
+    model.invoke('sign-in')
+    await flush()
+    expect(bench.ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.provider-account.deepseek-account')
+    expect(bench.model()).toBeUndefined()
+  })
+
+  it('falls back to the key-only guide when no account service is composed', async () => {
+    const bench = await setup({}, false, accountLlm)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    const model = bench.model()!
+    const json = JSON.stringify(model.node)
+    expect(json).not.toContain('Sign in with a DeepSeek account')
+    expect(json).toContain('Enter a DeepSeek API key')
+    model.invoke('use-key')
+    await flush()
+    expect(JSON.stringify(model.node)).toContain('DEEPSEEK_API_KEY')
+  })
+
+  it('still offers the guide when the account state read fails', async () => {
+    const bench = await setup({}, false, accountLlm)
+    bench.ctx.provide('deepseekAccount', {
+      async getState() { throw new Error('unavailable') },
+      async signOut() { throw new Error('unavailable') },
+      watch(signal: AbortSignal): AsyncIterable<unknown> { void signal; return { [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) } },
+    } as never)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    expect(bench.model()).toBeDefined()
   })
 })
