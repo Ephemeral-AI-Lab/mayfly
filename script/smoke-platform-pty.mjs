@@ -104,6 +104,24 @@ async function command(text) {
   await delay(100)
   terminal.write('\r')
 }
+// Hosted Windows runners can stall the first marketplace install (Defender
+// scanning, indexing). Give the interactive step a longer window and one
+// re-issue instead of failing on the first timeout.
+async function waitForCommand(text, predicate, label, { attempts = 2, timeout = 240_000, retryDelay = 2_000 } = {}) {
+  let lastError
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await command(text)
+    try {
+      await waitFor(predicate, label, timeout)
+      return
+    } catch (error) {
+      lastError = error
+      if (exitCode !== undefined) throw error
+      if (attempt < attempts) await delay(retryDelay)
+    }
+  }
+  throw lastError
+}
 const manifestPath = join(home, 'profiles', profile, 'package.json')
 const installed = () => JSON.parse(readFileSync(manifestPath, 'utf8')).dependencies?.[fixtureName] !== undefined
 
@@ -176,10 +194,8 @@ try {
   await waitFor(() => !view().includes('Provider Name'), 'provider form cancellation')
   scenarios.push('form-edit-cancel')
 
-  await command('/plugin install platform-fixture')
-  await waitFor(() => installed() && /installed; restart|restart Mayfly/.test(view()), 'in-app plugin install', 120_000)
-  await command('/plugin uninstall platform-fixture')
-  await waitFor(() => !installed() && /removed|uninstalled|restart Mayfly/.test(view()), 'in-app plugin removal', 120_000)
+  await waitForCommand('/plugin install platform-fixture', () => installed() && /installed; restart|restart Mayfly/.test(view()), 'in-app plugin install')
+  await waitForCommand('/plugin uninstall platform-fixture', () => !installed() && /removed|uninstalled|restart Mayfly/.test(view()), 'in-app plugin removal', { timeout: 180_000 })
   scenarios.push('plugin-install', 'plugin-uninstall')
 
   await command('/quit')

@@ -18,10 +18,29 @@ export function readNpmView(result, spec, field) {
   }
 }
 
+/** Registry-visibility window: npm's ~130 MB CLI tarball regularly needs minutes. */
+const visibilityAttempts = 40
+const visibilityIntervalMs = 15_000
+
+/**
+ * npm's staged publishing accepts a publish into a queue that an owner with a
+ * 2FA challenge must approve before the version becomes installable. A repeat
+ * publish inside that window fails with an E409 that names the staged version.
+ */
+export function isStagedRelease(error) {
+  return /previously staged version/iu.test(error?.message ?? '')
+}
+
+/** Actionable guidance for versions waiting in npm's staged-publish queue. */
+export function stagedApprovalError(packages) {
+  const specs = packages.map(pkg => `${pkg.name}@${pkg.version}`).join(', ')
+  return new Error(`staged on npm, awaiting maintainer approval: ${specs}. Run \`npm stage list\` and \`npm stage approve <stage-id>\` (npm 11.15 or newer), then re-run this release`)
+}
+
 async function waitFor(pkg, expected, registry, sleep, log, warn) {
   // The ~130 MB CLI tarball regularly needs more than five minutes to become
   // visible after npm accepts it; the window has to outlive that processing.
-  for (let attempt = 1; attempt <= 40; attempt += 1) {
+  for (let attempt = 1; attempt <= visibilityAttempts; attempt += 1) {
     const integrity = registry.view(`${pkg.name}@${pkg.version}`, 'dist.integrity')
     if (integrity === expected) {
       const attestations = registry.view(`${pkg.name}@${pkg.version}`, 'dist.attestations')
@@ -30,10 +49,10 @@ async function waitFor(pkg, expected, registry, sleep, log, warn) {
       return
     }
     if (integrity !== undefined) throw new Error(`${pkg.name}@${pkg.version}: registry integrity differs from local tarball`)
-    log(`${pkg.name}@${pkg.version}: not visible yet (${attempt}/40)`)
-    await sleep(15_000)
+    log(`${pkg.name}@${pkg.version}: not visible yet (${attempt}/${visibilityAttempts})`)
+    await sleep(visibilityIntervalMs)
   }
-  throw new Error(`${pkg.name}@${pkg.version}: not visible after ten minutes`)
+  throw new Error(`${pkg.name}@${pkg.version}: not visible after ${Math.round((visibilityAttempts * visibilityIntervalMs) / 60_000)} minutes; a staged release needs maintainer approval (\`npm stage list\`, \`npm stage approve <stage-id>\`) before it becomes installable`)
 }
 
 async function waitForTag(pkg, tag, version, registry, sleep, log) {
@@ -56,11 +75,19 @@ export async function releaseRegistry(mode, packages, { registry, integrity, sle
   if (!['publish', 'verify', 'promote'].includes(mode)) throw new Error('usage: release-packages.mjs publish|verify|promote')
   const testRelease = version.includes('-test.')
   if (mode === 'publish' || mode === 'verify') {
+    const staged = []
     for (const pkg of packages) {
       const expected = integrity(pkg)
       const current = registry.view(`${pkg.name}@${pkg.version}`, 'dist.integrity')
       if (current === undefined && mode === 'publish') {
-        registry.publish(pkg, publishTag ?? (testRelease ? 'rc9-test' : 'candidate'))
+        try {
+          registry.publish(pkg, publishTag ?? (testRelease ? 'rc9-test' : 'candidate'))
+        } catch (error) {
+          if (!isStagedRelease(error)) throw error
+          log(`${pkg.name}@${pkg.version}: accepted into npm's staged queue; awaiting maintainer approval`)
+          staged.push(pkg)
+          continue
+        }
       } else if (current !== undefined && current !== expected && !testRelease) {
         throw new Error(`${pkg.name}@${pkg.version}: immutable registry version has different integrity`)
       } else if (current !== undefined && current !== expected) {
@@ -70,6 +97,7 @@ export async function releaseRegistry(mode, packages, { registry, integrity, sle
       }
       if (!testRelease) await waitFor(pkg, expected, registry, sleep, log, warn)
     }
+    if (staged.length > 0) throw stagedApprovalError(staged)
     if (testRelease && mode === 'publish') {
       // npm assigns `latest` on a package's first publish even when a custom
       // tag is supplied. Keep production consumers on the previous rc line.

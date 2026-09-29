@@ -32,9 +32,21 @@ function npmView(spec, field) {
   return readNpmView(result, spec, field)
 }
 
+/**
+ * Run npm with captured output so a staged-publish E409 reaches the release
+ * controller; stream the output back so the workflow log stays identical.
+ */
+function runNpm(args) {
+  const result = spawnSync('npm', args, { cwd: ROOT, encoding: 'utf8' })
+  process.stdout.write(result.stdout ?? '')
+  process.stderr.write(result.stderr ?? '')
+  if (result.error !== undefined) throw result.error
+  if (result.status !== 0) throw new Error((result.stderr || result.stdout || `npm ${args[0]} failed with status ${result.status}`).trim())
+}
+
 const registry = {
   view: npmView,
-  publish: (pkg, tag) => execFileSync('npm', ['publish', pkg.filename, '--tag', tag, '--access', 'public', '--provenance'], { cwd: ROOT, stdio: 'inherit' }),
+  publish: (pkg, tag) => runNpm(['publish', pkg.filename, '--tag', tag, '--access', 'public', '--provenance']),
   addTag: (pkg, tag) => execFileSync('npm', ['dist-tag', 'add', `${pkg.name}@${pkg.version}`, tag], { cwd: ROOT, stdio: 'inherit' }),
   removeTag: (pkg, tag) => execFileSync('npm', ['dist-tag', 'rm', pkg.name, tag], { cwd: ROOT, stdio: 'inherit' }),
 }

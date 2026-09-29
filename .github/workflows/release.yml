@@ -100,6 +100,13 @@ jobs:
       - run: node script/release-packages.mjs publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Staged publishing can accept a publish without making it installable.
+      # Surface the maintainer approval queue in the failing run's log.
+      - name: list npm staged releases awaiting approval
+        if: failure()
+        run: npx --yes npm@12 stage list || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   registry-install:
     name: registry install (${{ matrix.os }}, node ${{ matrix.node }})
