@@ -13,6 +13,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
 import type { AccountClientMetadata, AccountView, SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
+import { hostname, userInfo as userInfoSync } from 'node:os'
 import { ui, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { interactionTranslator } from './locale.ts'
@@ -21,8 +22,10 @@ import { openUiOverlay } from './ui-overlay.ts'
 /** The settings namespace the account adapter owns; routes in it are not pi-ai profiles. */
 export const ACCOUNT_SETTINGS_NS = 'llm-deepseek-account'
 
-/** Process seams for specs: the best-effort system browser opener. */
+/** Process seams for specs: the best-effort system browser opener and SSH detection. */
 export const accountInternals = {
+  /** Whether this mayfly runs inside an interactive SSH session (the `~C` escape works inline). */
+  isSshSession: (): boolean => process.env.SSH_TTY !== undefined || process.env.SSH_CONNECTION !== undefined,
   /** Spawn one opener command detached; resolves false when the opener is missing. */
   spawnOpener: async (command: string, args: readonly string[]): Promise<boolean> => {
     try {
@@ -59,7 +62,7 @@ export function clientMetadata(ctx: Context): AccountClientMetadata {
 }
 
 /** The loopback callback origin for a browser sign-in, when a web carrier is composed. */
-function callbackOrigin(ctx: Context): string | undefined {
+export function callbackOrigin(ctx: Context): string | undefined {
   const server = ctx.get('webServer')
   return server === undefined ? undefined : `http://localhost:${String(server.port)}`
 }
@@ -69,8 +72,34 @@ function attemptTerminal(attempt: SignInAttemptView): boolean {
   return attempt.phase === 'succeeded' || attempt.phase === 'cancelled' || attempt.phase === 'expired' || attempt.phase === 'failed'
 }
 
-/** The panel content for one account view. */
-export function accountPanelNode(view: AccountView, t: (key: string) => string, canSignIn: boolean): MayflyUiNode {
+/** Callback-guidance facts for a waiting attempt, when the callback port is known. */
+export interface RemoteCallbackHint {
+  /** The loopback port the OAuth callback server listens on this boot. */
+  readonly port: number
+  /** The full `ssh -L` command a local machine runs to reach this port. */
+  readonly command: string
+  /** Whether this mayfly itself runs inside an SSH session (`~C` works inline). */
+  readonly sshSession: boolean
+}
+
+/** Build the SSH port-forward guidance for one callback port. */
+export function remoteCallbackHint(port: number, sshSession: boolean): RemoteCallbackHint {
+  const forward = `-L ${String(port)}:localhost:${String(port)}`
+  const userInfo = userInfoSync()
+  return { port, command: `ssh ${forward} ${userInfo.username}@${hostname()}`, sshSession }
+}
+
+/**
+ * The panel content for one account view.
+ * @param hint - callback-forwarding guidance while an attempt waits for a
+ * browser; omit it to render without the remote-browser rows.
+ */
+export function accountPanelNode(
+  view: AccountView,
+  t: (key: string, values?: Record<string, string | number>) => string,
+  canSignIn: boolean,
+  hint?: RemoteCallbackHint,
+): MayflyUiNode {
   const attempt = view.attempt
   const failed = attempt !== null && (attempt.phase === 'failed' || attempt.phase === 'expired')
   const waiting = attempt !== null && attempt.authorizeUrl !== undefined && !attemptTerminal(attempt)
@@ -79,10 +108,16 @@ export function accountPanelNode(view: AccountView, t: (key: string) => string, 
     ui.fields([
       { label: t('Status'), value: [{ text: t(view.status === 'credential-stored' ? 'Signed in' : 'Not signed in') }] },
       ...(attempt === null ? [] : [{ label: t('Sign-in'), value: [{ text: failed ? t('Sign-in failed — try again') : t('Signing in…') }] }]),
+      ...(waiting && attempt!.expiresAt !== undefined ? [{ label: t('Expires'), value: [{ text: new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(new Date(attempt!.expiresAt)) }] }] : []),
     ]),
     ...(waiting ? [
       ui.text(t('Open the link in a browser to finish signing in'), { tone: 'muted' }),
       ui.fields([{ label: t('Sign-in link'), value: [{ text: attempt!.authorizeUrl! }] }]),
+      ...(hint === undefined ? [] : [
+        ui.text(t('Browsing on your local machine? Forward the callback port over SSH, then open the link there.'), { tone: 'muted' }),
+        ui.fields([{ label: t('Port forward'), value: [{ text: hint.command }] }]),
+        ...(hint.sshSession ? [ui.text(t('Inside this SSH session, press ~C and run: {command}', { command: `-L ${String(hint.port)}:localhost:${String(hint.port)}` }), { tone: 'muted' })] : []),
+      ]),
     ] : []),
     ...(view.status === 'credential-stored' || canSignIn ? [] : [ui.text(t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' })]),
     ui.actions({ id: 'account-actions', items: [
@@ -116,7 +151,14 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   const releaseLifetime = ctx.effect(() => () => lifetime.abort())
   /* v8 ignore next -- reassigned to the watch-disposal effect before the overlay can close */
   let cleanup = (): void => {}
-  const paint = (view: AccountView): MayflyUiNode => accountPanelNode(view, t, callbackOrigin(ctx) !== undefined)
+  /** Paint one view: while an attempt waits, carry the callback-forwarding guidance. */
+  const paint = (view: AccountView): MayflyUiNode => {
+    const server = ctx.get('webServer')
+    const waiting = view.attempt !== null && view.attempt.authorizeUrl !== undefined && !attemptTerminal(view.attempt)
+    return accountPanelNode(view, t, server !== undefined, waiting && server !== undefined
+      ? remoteCallbackHint(server.port, accountInternals.isSshSession())
+      : undefined)
+  }
   let handle = openUiOverlay(ctx, {
     id, title: t('DeepSeek Account'), presentation: 'editor', capturing: true,
     scope: { kind: 'app', targetId: `account/${route}` },

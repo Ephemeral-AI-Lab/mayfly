@@ -57,7 +57,13 @@ presentation and current-Agent selection.
   link stays visible as the fallback), the panel follows the attempt phases
   to completion, and Sign out removes the stored grant. Hosts whose
   composition has no webserver show the Desktop/Web sign-in hint instead —
-  the stored grant is shared across hosts of one machine. The first-run guide
+  the stored grant is shared across hosts of one machine. While the attempt
+  waits, the panel carries callback guidance for remote browsers: the local
+  expiry time, and the exact `ssh -L <port>:localhost:<port> user@host`
+  forward for the live callback port (plus the inline `~C` alternative when
+  mayfly itself runs inside an SSH session) — forward the port on the
+  browsing machine, open the link there, and the tunnel delivers the
+  callback. The first-run guide
   (no configured credential and no stored grant) offers both paths: account
   sign-in, which opens the account panel, or pasting a DeepSeek API key.
 - `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,

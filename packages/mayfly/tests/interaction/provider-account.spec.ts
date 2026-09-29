@@ -5,7 +5,8 @@ import { Context } from '@deepseek-ai/cordis'
 import type { AccountClientMetadata, AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
-import { accountInternals, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor } from '../../src/interaction/provider-account.ts'
+import { accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, remoteCallbackHint } from '../../src/interaction/provider-account.ts'
+import { hostname, userInfo } from 'node:os'
 import { providerFixture } from './provider-fixture.ts'
 
 const contexts: Context[] = []
@@ -35,7 +36,7 @@ function fakeAccount(initial: AccountView) {
       if (failures.start) throw new Error('unavailable')
       publish({ ...view, attempt: failures.initializing
         ? { id: 'attempt' as never, phase: 'initializing' }
-        : { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: `https://auth.example/authorize?origin=${origin}`, expiresAt: 2 } })
+        : { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: `https://auth.example/authorize?origin=${origin}`, expiresAt: Date.now() + 600_000 } })
       return view
     },
     async cancelSignIn(id: SignInAttemptId): Promise<AccountView> {
@@ -124,7 +125,9 @@ describe('DeepSeek account panel', () => {
   it('starts browser sign-in through the loopback callback and cancels it by attempt id', async () => {
     const spawned: Array<{ command: string, args: readonly string[] }> = []
     const original = accountInternals.spawnOpener
+    const originalSsh = accountInternals.isSshSession
     accountInternals.spawnOpener = async (command, args) => { spawned.push({ command, args }); return true }
+    accountInternals.isSshSession = () => false
     try {
       const { ctx, account } = await bench(signedOut, { port: 45678 })
       expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
@@ -140,12 +143,37 @@ describe('DeepSeek account panel', () => {
       expect(json).toContain('Sign-in link')
       expect(json).toContain('http://localhost:45678')
       expect(json).toContain('"Cancel sign-in"')
+      expect(json).toContain('Expires')
+      expect(json).toContain(`ssh -L 45678:localhost:45678 `)
+      expect(json).not.toContain('~C')
       model.invoke('cancel-sign-in')
       await flush()
       expect(account.cancels).toEqual(['attempt' as never])
       expect(JSON.stringify(model.node)).toContain('"Sign in"')
     } finally {
       accountInternals.spawnOpener = original
+      accountInternals.isSshSession = originalSsh
+    }
+  })
+
+  it('offers the inline ~C forward while mayfly itself runs inside an SSH session', async () => {
+    const originalSsh = accountInternals.isSshSession
+    const originalOpener = accountInternals.spawnOpener
+    accountInternals.isSshSession = () => true
+    accountInternals.spawnOpener = async () => false
+    try {
+      const { ctx } = await bench(signedOut, { port: 45678 })
+      expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush()
+      const json = JSON.stringify(model.node)
+      expect(json).toContain('~C')
+      expect(json).toContain('-L 45678:localhost:45678')
+      expect(json).toContain('Browsing on your local machine')
+    } finally {
+      accountInternals.isSshSession = originalSsh
+      accountInternals.spawnOpener = originalOpener
     }
   })
 
@@ -217,6 +245,32 @@ describe('DeepSeek account browser openers', () => {
   it('resolves false for a missing opener executable and true for a real spawn', async () => {
     await expect(accountInternals.spawnOpener('mayfly-missing-opener-x', ['https://example'])).resolves.toBe(false)
     await expect(accountInternals.spawnOpener(process.execPath, ['--version'])).resolves.toBe(true)
+  })
+
+  it('derives the callback origin only while a webserver is composed', () => {
+    const bare = new Context()
+    contexts.push(bare)
+    expect(callbackOrigin(bare)).toBeUndefined()
+    const served = new Context()
+    contexts.push(served)
+    served.provide('webServer', { port: 41321 } as never)
+    expect(callbackOrigin(served)).toBe('http://localhost:41321')
+  })
+
+  it('renders a waiting attempt without forwarding rows when no hint is available', () => {
+    const waiting: AccountView = { status: 'signed-out', links: LINKS, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 } }
+    const json = JSON.stringify(accountPanelNode(waiting, key => key, true))
+    expect(json).toContain('Sign-in link')
+    expect(json).toContain('Expires')
+    expect(json).not.toContain('Port forward')
+    expect(json).not.toContain('Browsing on your local machine')
+  })
+
+  it('builds the port-forward command from the live user and host', () => {
+    const hint = remoteCallbackHint(41321, false)
+    expect(hint.port).toBe(41321)
+    expect(hint.command).toBe(`ssh -L 41321:localhost:41321 ${userInfo().username}@${hostname()}`)
+    expect(hint.sshSession).toBe(false)
   })
 
   it('opens through the current platform opener with the URL last', async () => {
