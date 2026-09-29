@@ -1,7 +1,8 @@
 /**
  * `mayfly-status-git` plugin: the git-badge footer entry. The git invocation
  * and the TTL clock are faked for behavior specs (badge composition, TTL
- * cadences, session rebinding); `formatGitBadge` is asserted pure; the
+ * cadences, the unknown-status retry cadence, session rebinding);
+ * `formatGitBadge` is asserted pure; the
  * default runner is exercised against real temporary directories (a true
  * repository, a non-repository, and a missing cwd) like the editor-plus
  * default-executor specs.
@@ -78,6 +79,10 @@ describe('formatGitBadge', () => {
     expect(git.formatGitBadge(facts({ ahead: 1, behind: 2 }))).toBe('main [↑1↓2]')
     expect(git.formatGitBadge(facts({ dirty: true, diffAdded: 1, diffDeleted: 2, ahead: 3 })))
       .toBe('main [+1 -2 ↑3]')
+  })
+
+  it('renders the unknown marker for a failed status probe', () => {
+    expect(git.formatGitBadge({ branch: 'main', unknown: true })).toBe('main [?]')
   })
 })
 
@@ -192,6 +197,20 @@ describe('mayfly-status-git', () => {
     await harness.dispose()
   })
 
+  it('shows the unknown marker instead of a clean badge when the status probe fails', async () => {
+    // A failed porcelain probe must not read as a clean synced tree: the
+    // branch fact survives and the tree state renders as unknown.
+    const { runner } = scriptedGit({
+      'branch --show-current': 'main',
+      'status --porcelain -b': null,
+    })
+    git.setGitCommandRunner(runner)
+    git.setGitClock(() => T0)
+    const harness = await bootStatusPlugin(git)
+    expect(harness.entry.render(80)).toBe('main [?]')
+    await harness.dispose()
+  })
+
   it('composes the badge from the probed status and numstat dumps', async () => {
     const { runner, calls } = scriptedGit({
       'branch --show-current': 'trunk',
@@ -269,7 +288,8 @@ describe('mayfly-status-git', () => {
 
   it('re-probes on the cadence even across renders far apart', async () => {
     captureTicker()
-    // A failed status probe degrades to the bare branch, not to nothing.
+    // A failed status probe renders the unknown marker, never a clean badge,
+    // and the far-apart render still finds the cadence-expired re-probe.
     const { runner, calls } = scriptedGit({
       'branch --show-current': 'main',
       'status --porcelain -b': null,
@@ -278,18 +298,68 @@ describe('mayfly-status-git', () => {
     let now = T0
     git.setGitClock(() => now)
     const harness = await bootStatusPlugin(git)
-    expect(harness.entry.render(80)).toBe('main')
+    expect(harness.entry.render(80)).toBe('main [?]')
 
     now += git.STATUS_TTL_MS
     tick()
     await settleProbe()
-    expect(harness.entry.render(80)).toBe('main')
+    expect(harness.entry.render(80)).toBe('main [?]')
     expect(calls.map(args => args.join(' '))).toEqual([
       'branch --show-current',
       'status --porcelain -b',
       'branch --show-current',
       'status --porcelain -b',
     ])
+    await harness.dispose()
+  })
+
+  it('retries an unknown status on the retry cadence, not the status TTL', async () => {
+    captureTicker()
+    const { runner, calls } = scriptedGit({
+      'branch --show-current': 'main',
+      'status --porcelain -b': null,
+    })
+    git.setGitCommandRunner(runner)
+    let now = T0
+    git.setGitClock(() => now)
+    const harness = await bootStatusPlugin(git)
+    expect(harness.entry.render(80)).toBe('main [?]')
+    expect(calls).toHaveLength(2)
+
+    // Inside the retry window: neither slot re-probes.
+    now += git.STATUS_RETRY_MS - 1
+    tick()
+    await settleProbe()
+    expect(calls).toHaveLength(2)
+
+    // Past the retry cadence: the failed status probe runs again instead of
+    // sitting out the full status TTL painted as clean.
+    now += 1
+    tick()
+    await settleProbe()
+    expect(calls).toHaveLength(4)
+    await harness.dispose()
+  })
+
+  it('recovers the full badge once the status probe succeeds again', async () => {
+    captureTicker()
+    const dumps: Record<string, string | null> = {
+      'branch --show-current': 'main',
+      'status --porcelain -b': null,
+    }
+    const { runner } = scriptedGit(dumps)
+    git.setGitCommandRunner(runner)
+    let now = T0
+    git.setGitClock(() => now)
+    const harness = await bootStatusPlugin(git)
+    expect(harness.entry.render(80)).toBe('main [?]')
+
+    dumps['status --porcelain -b'] = '## main\n M x\n'
+    dumps['diff --numstat HEAD --'] = '1\t2\tx\n'
+    now += git.STATUS_RETRY_MS
+    tick()
+    await settleProbe()
+    expect(harness.entry.render(80)).toBe('main [+1 -2]')
     await harness.dispose()
   })
 
