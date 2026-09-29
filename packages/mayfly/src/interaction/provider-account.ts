@@ -134,10 +134,10 @@ export function accountPanelNode(
     ]),
     ...(justConnected ? [ui.text(t('Connected — account models need no API key.'), { tone: 'muted' })] : []),
     ...(waiting ? [
-      ui.text(t('Open the link in a browser to finish signing in'), { tone: 'muted' }),
+      ui.text(t('Approve in the browser — on this machine sign-in finishes by itself'), { tone: 'muted' }),
       ui.fields([{ label: t('Sign-in link'), value: [{ text: attempt.authorizeUrl! }] }]),
       ...(callbackPort === undefined ? [] : [
-        ui.text(t('If the browser cannot reach the page, copy the full address from its address bar and deliver it below.'), { tone: 'muted' }),
+        ui.text(t('Browser on another machine? Paste the address it ends on (the page may fail to load) — otherwise leave this empty'), { tone: 'muted' }),
         ui.form({ id: 'callback-paste', fields: [{ kind: 'input', id: 'callback-url', label: t('Callback link'), value: '', placeholder: `http://localhost:${String(callbackPort)}/oauth/callback?…` }] }),
       ]),
     ] : []),

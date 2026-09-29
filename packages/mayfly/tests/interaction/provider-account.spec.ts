@@ -71,7 +71,8 @@ function fakeAccount(initial: AccountView) {
       }
     },
   }
-  return { api, starts, cancels, signOuts, failures }
+  const complete = (): void => { publish({ ...view, status: 'credential-stored', attempt: { id: 'attempt-1' as never, phase: 'succeeded' } }) }
+  return { api, starts, cancels, signOuts, failures, complete }
 }
 
 const accountLlm = {
@@ -141,6 +142,10 @@ describe('DeepSeek account panel', () => {
       expect(json).toContain('http://localhost:45678')
       expect(json).toContain('"Cancel sign-in"')
       expect(json).toContain('Expires')
+      // Same-machine browsers finish through the loopback callback on their own;
+      // the optional paste box stays visible for browsers on another machine.
+      expect(json).toContain('sign-in finishes by itself')
+      expect(json).toContain('Browser on another machine?')
       expect(json).toContain('Callback link')
       expect(json).toContain('"Deliver callback"')
       expect(json).toContain('http://localhost:45678/oauth/callback')
@@ -148,6 +153,27 @@ describe('DeepSeek account panel', () => {
       await flush()
       expect(account.cancels).toEqual(['attempt-1' as never])
       expect(JSON.stringify(model.node)).toContain('"Sign in"')
+    } finally {
+      accountInternals.spawnOpener = original
+    }
+  })
+
+  it('completes on the watch stream alone when the local browser hits the callback, with no paste', async () => {
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      await openAccountPanel(ctx, 'deepseek-account')
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush()
+      expect(JSON.stringify(model.node)).toContain('callback-paste')
+      // The loopback server completes the attempt; only the watch stream reports it.
+      account.complete()
+      await flush()
+      const json = JSON.stringify(model.node)
+      expect(json).toContain('Connected — account models need no API key.')
+      expect(json).not.toContain('callback-paste')
     } finally {
       accountInternals.spawnOpener = original
     }
