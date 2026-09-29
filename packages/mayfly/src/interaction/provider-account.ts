@@ -13,7 +13,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
 import type { AccountClientMetadata, AccountView, SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
-import { hostname, userInfo as userInfoSync } from 'node:os'
 import { ui, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { interactionTranslator } from './locale.ts'
@@ -22,10 +21,13 @@ import { openUiOverlay } from './ui-overlay.ts'
 /** The settings namespace the account adapter owns; routes in it are not pi-ai profiles. */
 export const ACCOUNT_SETTINGS_NS = 'llm-deepseek-account'
 
-/** Process seams for specs: the best-effort system browser opener and SSH detection. */
+/** Process seams for specs: the best-effort system browser opener and callback delivery. */
 export const accountInternals = {
-  /** Whether this mayfly runs inside an interactive SSH session (the `~C` escape works inline). */
-  isSshSession: (): boolean => process.env.SSH_TTY !== undefined || process.env.SSH_CONNECTION !== undefined,
+  /** Deliver one pasted callback location to the local callback server (loopback only). */
+  fetchCallback: async (url: string, signal: AbortSignal): Promise<{ readonly status: number }> => {
+    const deadline = AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+    return await fetch(url, { signal: deadline, redirect: 'manual' })
+  },
   /** Spawn one opener command detached; resolves false when the opener is missing. */
   spawnOpener: async (command: string, args: readonly string[]): Promise<boolean> => {
     try {
@@ -72,33 +74,32 @@ function attemptTerminal(attempt: SignInAttemptView): boolean {
   return attempt.phase === 'succeeded' || attempt.phase === 'cancelled' || attempt.phase === 'expired' || attempt.phase === 'failed'
 }
 
-/** Callback-guidance facts for a waiting attempt, when the callback port is known. */
-export interface RemoteCallbackHint {
-  /** The loopback port the OAuth callback server listens on this boot. */
-  readonly port: number
-  /** The full `ssh -L` command a local machine runs to reach this port. */
-  readonly command: string
-  /** Whether this mayfly itself runs inside an SSH session (`~C` works inline). */
-  readonly sshSession: boolean
-}
-
-/** Build the SSH port-forward guidance for one callback port. */
-export function remoteCallbackHint(port: number, sshSession: boolean): RemoteCallbackHint {
-  const forward = `-L ${String(port)}:localhost:${String(port)}`
-  const userInfo = userInfoSync()
-  return { port, command: `ssh ${forward} ${userInfo.username}@${hostname()}`, sshSession }
+/**
+ * Validate one pasted callback location: the browser's address bar keeps the
+ * full redirect URL (with its code) even when the connection itself failed.
+ * Only the live loopback callback endpoint is accepted, so a paste can never
+ * aim the host's own fetch anywhere else.
+ */
+export function parseCallbackLocation(raw: string, port: number): URL | undefined {
+  let url: URL
+  try { url = new URL(raw.trim()) } catch { return undefined }
+  if (url.protocol !== 'http:') return undefined
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return undefined
+  if (url.port !== String(port)) return undefined
+  if (url.pathname !== '/oauth/callback') return undefined
+  return url
 }
 
 /**
  * The panel content for one account view.
- * @param hint - callback-forwarding guidance while an attempt waits for a
- * browser; omit it to render without the remote-browser rows.
+ * @param callbackPort - the live loopback callback port while an attempt
+ * waits for a browser; omit it to render without the paste-back rows.
  */
 export function accountPanelNode(
   view: AccountView,
   t: (key: string, values?: Record<string, string | number>) => string,
   canSignIn: boolean,
-  hint?: RemoteCallbackHint,
+  callbackPort?: number,
 ): MayflyUiNode {
   const attempt = view.attempt
   const failed = attempt !== null && (attempt.phase === 'failed' || attempt.phase === 'expired')
@@ -113,15 +114,15 @@ export function accountPanelNode(
     ...(waiting ? [
       ui.text(t('Open the link in a browser to finish signing in'), { tone: 'muted' }),
       ui.fields([{ label: t('Sign-in link'), value: [{ text: attempt!.authorizeUrl! }] }]),
-      ...(hint === undefined ? [] : [
-        ui.text(t('Browsing on your local machine? Forward the callback port over SSH, then open the link there.'), { tone: 'muted' }),
-        ui.fields([{ label: t('Port forward'), value: [{ text: hint.command }] }]),
-        ...(hint.sshSession ? [ui.text(t('Inside this SSH session, press ~C and run: {command}', { command: `-L ${String(hint.port)}:localhost:${String(hint.port)}` }), { tone: 'muted' })] : []),
+      ...(callbackPort === undefined ? [] : [
+        ui.text(t('If the browser cannot reach the page, copy the full address from its address bar and deliver it below.'), { tone: 'muted' }),
+        ui.form({ id: 'callback-paste', fields: [{ kind: 'input', id: 'callback-url', label: t('Callback link'), value: '', placeholder: `http://localhost:${String(callbackPort)}/oauth/callback?…` }] }),
       ]),
     ] : []),
     ...(view.status === 'credential-stored' || canSignIn ? [] : [ui.text(t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' })]),
     ui.actions({ id: 'account-actions', items: [
       ...(view.status === 'credential-stored' ? [] : canSignIn && (attempt === null || failed) ? [{ id: 'sign-in', label: signInLabel, intent: 'primary' as const }] : []),
+      ...(waiting && callbackPort !== undefined ? [{ id: 'deliver-callback', label: t('Deliver callback'), submit: [{ pagePath: [], formId: 'callback-paste' }] }] : []),
       ...(waiting ? [{ id: 'cancel-sign-in', label: t('Cancel sign-in') }] : []),
       ...(view.status === 'credential-stored' ? [{ id: 'sign-out', label: t('Sign out'), intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') }] : []),
       { id: 'close', label: t('Close'), dismiss: true },
@@ -151,21 +152,19 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   const releaseLifetime = ctx.effect(() => () => lifetime.abort())
   /* v8 ignore next -- reassigned to the watch-disposal effect before the overlay can close */
   let cleanup = (): void => {}
-  /** Paint one view: while an attempt waits, carry the callback-forwarding guidance. */
+  /** Paint one view: while an attempt waits, accept pasted callback delivery. */
   const paint = (view: AccountView): MayflyUiNode => {
     const server = ctx.get('webServer')
     const waiting = view.attempt !== null && view.attempt.authorizeUrl !== undefined && !attemptTerminal(view.attempt)
-    return accountPanelNode(view, t, server !== undefined, waiting && server !== undefined
-      ? remoteCallbackHint(server.port, accountInternals.isSshSession())
-      : undefined)
+    return accountPanelNode(view, t, server !== undefined, waiting && server !== undefined ? server.port : undefined)
   }
   let handle = openUiOverlay(ctx, {
     id, title: t('DeepSeek Account'), presentation: 'editor', capturing: true,
     scope: { kind: 'app', targetId: `account/${route}` },
-    onEvent: { action: async (event): Promise<MayflyUiActionReply> => {
-      /* v8 ignore next -- only activate reaches a panel without submit or read actions */
-      if (event.kind !== 'activate') return { kind: 'completed' }
-      if (event.actionId === 'sign-out') {
+    onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
+      /* v8 ignore next -- activate and the paste submit are the only panel events */
+      if (event.kind !== 'activate' && event.kind !== 'submit') return { kind: 'completed' }
+      if (event.kind === 'activate' && event.actionId === 'sign-out') {
         try {
           await service.signOut(clientMetadata(ctx))
           return { kind: 'completed' }
@@ -173,7 +172,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
           return { kind: 'failed', message: t('Sign-out failed — try again') }
         }
       }
-      if (event.actionId === 'cancel-sign-in') {
+      if (event.kind === 'activate' && event.actionId === 'cancel-sign-in') {
         const attempt = (await service.getState()).attempt
         /* v8 ignore next -- the cancel action only renders while an attempt is live */
         if (attempt === null) return { kind: 'completed' }
@@ -184,8 +183,25 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
           return { kind: 'failed', message: t('Sign-in could not be cancelled') }
         }
       }
+      if (event.kind === 'submit' && event.submission.actionId === 'deliver-callback') {
+        const server = ctx.get('webServer')
+        const raw = event.submission.forms[0]?.fields.find(field => field.id === 'callback-url')?.value
+        /* v8 ignore next -- the paste form only renders while a webserver is composed */
+        const location = server === undefined || typeof raw !== 'string' ? undefined : parseCallbackLocation(raw, server.port)
+        if (location === undefined) {
+          return { kind: 'invalid', errors: [{ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url', message: t('Paste the full callback address from the browser address bar') }] }
+        }
+        try {
+          const response = await accountInternals.fetchCallback(location.href, context.signal)
+          return response.status >= 400
+            ? { kind: 'failed', message: t('The pasted link was not accepted — copy the full address bar URL and try again') }
+            : { kind: 'accepted', node: paint(await service.getState()), source: [], feedback: { severity: 'success', message: t('Callback delivered — finishing sign-in') } }
+        } catch {
+          return { kind: 'failed', message: t('The callback could not be delivered') }
+        }
+      }
       /* v8 ignore next -- only the three panel actions reach activate */
-      if (event.actionId !== 'sign-in') return { kind: 'completed' }
+      if (event.kind !== 'activate' || event.actionId !== 'sign-in') return { kind: 'completed' }
       const origin = callbackOrigin(ctx)
       /* v8 ignore next -- the Sign in action only renders while a webserver is composed */
       if (origin === undefined) return { kind: 'failed', message: t('Sign-in needs the local webserver — enable the webserver row') }

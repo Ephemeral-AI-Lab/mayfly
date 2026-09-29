@@ -309,7 +309,7 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
         return [
           accountPanelNode({ status: 'signed-out', links, attempt: null }, t, true),
           accountPanelNode({ status: 'credential-stored', links, attempt: null }, t, true),
-          accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: Date.now() + 600_000 } }, t, true, { port: 41321, command: `ssh -L 41321:localhost:41321 ${text}`, sshSession: true }),
+          accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: Date.now() + 600_000 } }, t, true, 41321),
           accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: 1 } }, t, true),
           accountPanelNode({ status: 'signed-out', links, attempt: null }, t, false),
           onboardingChoiceNode(t, true),

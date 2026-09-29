@@ -5,8 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { AccountClientMetadata, AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
-import { accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, remoteCallbackHint } from '../../src/interaction/provider-account.ts'
-import { hostname, userInfo } from 'node:os'
+import { accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
 import { providerFixture } from './provider-fixture.ts'
 
 const contexts: Context[] = []
@@ -125,9 +124,7 @@ describe('DeepSeek account panel', () => {
   it('starts browser sign-in through the loopback callback and cancels it by attempt id', async () => {
     const spawned: Array<{ command: string, args: readonly string[] }> = []
     const original = accountInternals.spawnOpener
-    const originalSsh = accountInternals.isSshSession
     accountInternals.spawnOpener = async (command, args) => { spawned.push({ command, args }); return true }
-    accountInternals.isSshSession = () => false
     try {
       const { ctx, account } = await bench(signedOut, { port: 45678 })
       expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
@@ -144,22 +141,23 @@ describe('DeepSeek account panel', () => {
       expect(json).toContain('http://localhost:45678')
       expect(json).toContain('"Cancel sign-in"')
       expect(json).toContain('Expires')
-      expect(json).toContain(`ssh -L 45678:localhost:45678 `)
-      expect(json).not.toContain('~C')
+      expect(json).toContain('Callback link')
+      expect(json).toContain('"Deliver callback"')
+      expect(json).toContain('http://localhost:45678/oauth/callback')
       model.invoke('cancel-sign-in')
       await flush()
       expect(account.cancels).toEqual(['attempt' as never])
       expect(JSON.stringify(model.node)).toContain('"Sign in"')
     } finally {
       accountInternals.spawnOpener = original
-      accountInternals.isSshSession = originalSsh
     }
   })
 
-  it('offers the inline ~C forward while mayfly itself runs inside an SSH session', async () => {
-    const originalSsh = accountInternals.isSshSession
+  it('delivers a pasted callback to the loopback server and reports rejection', async () => {
+    const delivered: string[] = []
+    const originalFetch = accountInternals.fetchCallback
     const originalOpener = accountInternals.spawnOpener
-    accountInternals.isSshSession = () => true
+    accountInternals.fetchCallback = async url => { delivered.push(url); return { status: 204 } }
     accountInternals.spawnOpener = async () => false
     try {
       const { ctx } = await bench(signedOut, { port: 45678 })
@@ -167,14 +165,45 @@ describe('DeepSeek account panel', () => {
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
       await flush()
-      const json = JSON.stringify(model.node)
-      expect(json).toContain('~C')
-      expect(json).toContain('-L 45678:localhost:45678')
-      expect(json).toContain('Browsing on your local machine')
+      await flush()
+      model.edit({ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url' }, 'http://localhost:45678/oauth/callback?code=a&state=b')
+      model.invoke('deliver-callback')
+      await flush()
+      expect(delivered).toEqual(['http://localhost:45678/oauth/callback?code=a&state=b'])
+      expect(model.feedbackSnapshot().at(-1)?.message).toContain('Callback delivered')
+
+      accountInternals.fetchCallback = async () => { throw new Error('unreachable') }
+      model.edit({ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url' }, 'http://localhost:45678/oauth/callback?code=e&state=f')
+      model.invoke('deliver-callback')
+      await flush()
+      expect(model.feedbackSnapshot().at(-1)?.message).toContain('could not be delivered')
+
+      accountInternals.fetchCallback = async () => ({ status: 400 })
+      model.edit({ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url' }, 'http://localhost:45678/oauth/callback?code=c&state=d')
+      model.invoke('deliver-callback')
+      await flush()
+      expect(model.feedbackSnapshot().at(-1)?.severity).toBe('error')
+
+      model.edit({ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url' }, 'https://evil.example/oauth/callback?code=a&state=b')
+      model.invoke('deliver-callback')
+      await flush()
+      expect(model.form({ pagePath: [], formId: 'callback-paste' })!.fields['callback-url']!.error).toContain('Paste the full callback address')
+      expect(delivered).toHaveLength(1)
     } finally {
-      accountInternals.isSshSession = originalSsh
+      accountInternals.fetchCallback = originalFetch
       accountInternals.spawnOpener = originalOpener
     }
+  })
+
+  it('validates pasted locations against the live loopback endpoint only', () => {
+    const good = 'http://localhost:45678/oauth/callback?code=a&state=b'
+    expect(parseCallbackLocation(good, 45678)?.href).toBe(good)
+    expect(parseCallbackLocation('http://localhost:45678/oauth/callback?code=a&state=b', 45679)).toBeUndefined()
+    expect(parseCallbackLocation('https://localhost:45678/oauth/callback', 45678)).toBeUndefined()
+    expect(parseCallbackLocation('http://evil.example:45678/oauth/callback', 45678)).toBeUndefined()
+    expect(parseCallbackLocation('http://localhost:45678/other', 45678)).toBeUndefined()
+    expect(parseCallbackLocation('http://127.0.0.1:45678/oauth/callback?code=a', 45678)?.pathname).toBe('/oauth/callback')
+    expect(parseCallbackLocation('not a url', 45678)).toBeUndefined()
   })
 
   it('surfaces a visible link instead of an error when the browser cannot open and reports native failures', async () => {
@@ -266,11 +295,17 @@ describe('DeepSeek account browser openers', () => {
     expect(json).not.toContain('Browsing on your local machine')
   })
 
-  it('builds the port-forward command from the live user and host', () => {
-    const hint = remoteCallbackHint(41321, false)
-    expect(hint.port).toBe(41321)
-    expect(hint.command).toBe(`ssh -L 41321:localhost:41321 ${userInfo().username}@${hostname()}`)
-    expect(hint.sshSession).toBe(false)
+  it('delivers through the real fetch to a live loopback server', async () => {
+    const { createServer } = await import('node:http')
+    const server = createServer((request, response) => { response.writeHead(204).end() })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    try {
+      const address = server.address()
+      const url = `http://localhost:${typeof address === 'object' && address !== null ? address.port : 0}/oauth/callback?code=a`
+      await expect(accountInternals.fetchCallback(url, new AbortController().signal)).resolves.toMatchObject({ status: 204 })
+    } finally {
+      server.close()
+    }
   })
 
   it('opens through the current platform opener with the URL last', async () => {
