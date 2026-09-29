@@ -1122,6 +1122,9 @@ export async function startMayflyTerminal(
         removeContentScrollHandler()
         removeNavigationNormalizer()
         outputRecovery?.deactivate()
+        // Final teardown: drain overflow telemetry still queued off the
+        // render path before the runtime goes away.
+        await overflow.dispose?.()
         if (activeRuntime === runtime) activeRuntime = undefined
         return
       }
@@ -1134,6 +1137,7 @@ export async function startMayflyTerminal(
       removeViewportInput()
       removeContentScrollHandler()
       removeNavigationNormalizer()
+      await overflow.dispose?.()
       if (activeRuntime === runtime) activeRuntime = undefined
     },
   }

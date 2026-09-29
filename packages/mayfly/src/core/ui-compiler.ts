@@ -918,16 +918,32 @@ function listRowLimit(options: RuntimeCompilerOptions): number {
   return options.listRuntime.listRowLimit(safeViewport(options.getViewport).rows)
 }
 
-function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, path = '$', includeHidden = false): ControlDescriptor[] {
-  const controls: ControlDescriptor[] = []
-  const visit = (current: CompilableNode, currentPath: string): void => {
+/**
+ * One control-tree walk: the visible descriptors plus the same walk with the
+ * conditionally hidden stack branches appended. The `all` set feeds
+ * order-free membership checks only (reconcile's key pruning and
+ * hidden-desired checks), so appending — not interleaving — the hidden
+ * entries keeps every visible index identical to the visible-only walk.
+ */
+interface ControlWalk {
+  readonly visible: ControlDescriptor[]
+  readonly all: ControlDescriptor[]
+}
+
+const EMPTY_CONTROL_WALK: ControlWalk = { visible: [], all: [] }
+
+function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, path = '$'): ControlWalk {
+  const visible: ControlDescriptor[] = []
+  const hidden: ControlDescriptor[] = []
+  const visit = (current: CompilableNode, currentPath: string, isHidden: boolean): void => {
     const pagePath = options.listRuntime.pagePath(current)
     const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
     const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
     const scopedFocusIdentity = (id: string, itemId?: string) => focusIdentity(id, itemId, pagePath)
+    const controls = isHidden ? hidden : visible
     if (current.kind !== 'editor-control' && isDeferredUiNode(current as MayflyUiNode)) {
       const admitted = materializeDeferredUiNode(current as MayflyUiNode)
-      if (admitted?.ok === true) { options.listRuntime.admitDeferred(admitted.value, pagePath); visit(admitted.value, currentPath) }
+      if (admitted?.ok === true) { options.listRuntime.admitDeferred(admitted.value, pagePath); visit(admitted.value, currentPath, isHidden) }
       return
     }
     switch (current.kind) {
@@ -936,22 +952,26 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
         break
       case 'stack':
         for (const [index, child] of current.children.entries()) {
-          const visible = conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
-          if (visible) visit(child.node, `${currentPath}.${String(index)}`)
-          else if (includeHidden) {
-            const admitted = materializedDeferredUiNode(child.node as MayflyUiNode)
-            if (admitted?.ok === true) visit(admitted.value, `${currentPath}.${String(index)}`)
-            else if (!isDeferredUiNode(child.node as MayflyUiNode)) visit(child.node, `${currentPath}.${String(index)}`)
+          const shown = conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
+          if (shown) {
+            visit(child.node, `${currentPath}.${String(index)}`, isHidden)
+            continue
           }
+          // Hidden branches feed only the `all` set. A materialized
+          // responsive subtree is read as-is; activating it here would
+          // eagerly admit hidden-tab state.
+          const admitted = materializedDeferredUiNode(child.node as MayflyUiNode)
+          if (admitted?.ok === true) visit(admitted.value, `${currentPath}.${String(index)}`, true)
+          else if (!isDeferredUiNode(child.node as MayflyUiNode)) visit(child.node, `${currentPath}.${String(index)}`, true)
         }
         break
       case 'surface':
-        visit(current.child, `${currentPath}.child`)
-        if (current.footer !== undefined) visit(current.footer, `${currentPath}.footer`)
+        visit(current.child, `${currentPath}.child`, isHidden)
+        if (current.footer !== undefined) visit(current.footer, `${currentPath}.footer`, isHidden)
         break
       case 'scroll': {
         const before = controls.length
-        visit(current.child, `${currentPath}.scroll`)
+        visit(current.child, `${currentPath}.scroll`, isHidden)
         if (controls.length === before && (options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined)) {
           const key = scopedControlKey('scroll', currentPath)
           controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none' })
@@ -961,9 +981,10 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
       case 'tabs':
         for (const item of current.items) if (item.disabled !== true) controls.push({ kind: 'event', role: 'tab', activation: 'enter', key: scopedControlKey('tabs', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(current.id, item.id), preferred: item.id === (options.listRuntime.activeTab({ pagePath, controlId: current.id }) ?? current.activeId), group: scopedControlGroup('tabs', current.id), navigation: 'horizontal', event: { kind: 'tab-change', pagePath, controlId: current.id, tabId: item.id } })
         break
-      case 'list':
-        if (options.listRuntime.listWindow(current, listRowLimit(options)).length === 0) controls.push({ kind: 'list', node: current, key: scopedControlKey('empty-list', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('list', current.id), navigation: 'none' })
-        for (const { item, index } of options.listRuntime.listWindow(current, listRowLimit(options))) if (item.disabled !== true) {
+      case 'list': {
+        const window = options.listRuntime.listWindow(current, listRowLimit(options))
+        if (window.length === 0) controls.push({ kind: 'list', node: current, key: scopedControlKey('empty-list', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('list', current.id), navigation: 'none' })
+        for (const { item, index } of window) if (item.disabled !== true) {
           const selected = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })?.selectedIds ?? current.selectedIds
           const selectedIds = current.mode === 'multiple'
             ? selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id]
@@ -983,8 +1004,9 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
             ...(current.mode === 'multiple' ? { commitEvent: { kind: 'selection-accept', pagePath, controlId: current.id, selectedIds: selected } as MayflyUiEvent } : {}),
           })
         }
-        if (current.items.length === 0 && current.empty !== undefined) visit(current.empty, `${currentPath}.empty`)
+        if (current.items.length === 0 && current.empty !== undefined) visit(current.empty, `${currentPath}.empty`, isHidden)
         break
+      }
       case 'form':
         for (const field of current.fields) if (field.disabled !== true) {
           const base: ControlBase = { key: scopedControlKey('form-field', current.id, field.id), renderKey: field.id, identity: scopedFocusIdentity(field.id), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical' }
@@ -1006,12 +1028,12 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
       case 'loader':
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
-      case 'empty': if (current.actions !== undefined) visit(current.actions, `${currentPath}.actions`); break
+      case 'empty': if (current.actions !== undefined) visit(current.actions, `${currentPath}.actions`, isHidden); break
       default: break
     }
   }
-  visit(node, path)
-  return controls
+  visit(node, path, false)
+  return { visible, all: visible.concat(hidden) }
 }
 
 function containsDeferredNode(node: CompilableNode): boolean {
@@ -1435,6 +1457,22 @@ export class MayflyUiSurfaceRuntime {
   private readonly fieldOwners = new Map<string, string>()
   private readonly fieldRecency = new Map<string, true>()
   private listRowBudget: number | undefined
+  /**
+   * One control walk per reconcile round (UX-34), keyed by everything the
+   * walk reads: node and options identity, the surface generation, the
+   * viewport, and the interaction revision covering choice, tab, focus, and
+   * admission state. `handleInput` → `moveTo` → render re-reads all hit the
+   * same walk instead of rewalking the tree.
+   */
+  private controlsWalkMemo: {
+    readonly node: CompilableNode
+    readonly options: RuntimeCompilerOptions
+    readonly generation: number
+    readonly columns: number
+    readonly rows: number
+    readonly revision: number
+    readonly walk: ControlWalk
+  } | undefined
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
 
@@ -1460,8 +1498,8 @@ export class MayflyUiSurfaceRuntime {
       focused: false,
       layoutPass: false,
       layoutReconciled: undefined,
-      controls: () => this.node === undefined || this.options === undefined ? [] : controlsForNode(this.node, this.options),
-      allControls: () => this.node === undefined || this.options === undefined ? [] : controlsForNode(this.node, this.options, '$', true),
+      controls: () => this.walkControlsCached().visible,
+      allControls: () => this.walkControlsCached().all,
       emit: event => {
         if (!this.live) return
         try {
@@ -1636,6 +1674,27 @@ export class MayflyUiSurfaceRuntime {
   admitDeferred(node: MayflyUiNode, pagePath: MayflyPagePath): void {
     this.interaction?.admitVisibleControls()
     this.admitFields(node, new Set(), pagePath)
+  }
+
+  /**
+   * The memoized control walk behind `FocusState.controls()` and
+   * `allControls()`: one tree walk per input/render round instead of one per
+   * read, with the same membership semantics.
+   */
+  private walkControlsCached(): ControlWalk {
+    const node = this.node
+    const options = this.options
+    if (node === undefined || options === undefined) return EMPTY_CONTROL_WALK
+    const viewport = safeViewport(options.getViewport)
+    const revision = this.interaction?.revision ?? 0
+    const cached = this.controlsWalkMemo
+    if (cached !== undefined && cached.generation === this.generation && cached.node === node && cached.options === options
+      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision) {
+      return cached.walk
+    }
+    const walk = walkControls(node, options)
+    this.controlsWalkMemo = { generation: this.generation, node, options, columns: viewport.columns, rows: viewport.rows, revision, walk }
+    return walk
   }
 
   deactivate(): void {
@@ -2095,10 +2154,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
     /* v8 ignore next -- input returns before geometry lookup when no control exists. */
     if (controls.length === 0) return rectangles
     const width = Math.max(1, this.viewport.columns)
-    const measuredHeight = Math.max(1, this.root.render(width).length)
+    // Alternate and interaction surfaces size geometry from the viewport;
+    // only the passive inline case needs a measurement render (UX-34).
     const height = this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined
       ? Math.max(1, this.viewport.rows)
-      : measuredHeight
+      : Math.max(1, this.root.render(width).length)
     const previousLayoutPass = this.state.layoutPass
     beginLayoutPass(this.state)
     try {

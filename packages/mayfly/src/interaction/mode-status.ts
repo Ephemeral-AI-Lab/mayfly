@@ -43,8 +43,13 @@ export function apply(ctx: Context): void {
     registration.set(next)
   }
   const offAgent = ctx.mayflyCurrentAgent.subscribe(refresh)
-  const offSession = ctx.on('session/event', (session) => {
-    if (session === ctx.mayflyCurrentAgent.current()?.session) refresh()
+  const offSession = ctx.on('session/event', (session, event) => {
+    if (session !== ctx.mayflyCurrentAgent.current()?.session) return
+    // Only plan and permission facts can change the badges; stream deltas
+    // and the rest of the session log cannot, so they never re-read the
+    // projections.
+    if (event.type !== 'plan/mode' && event.type !== 'permission/preset') return
+    refresh()
   })
   ctx.effect(() => () => {
     offAgent()

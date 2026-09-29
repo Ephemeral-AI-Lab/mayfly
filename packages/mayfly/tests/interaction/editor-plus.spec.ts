@@ -851,7 +851,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     for (const token of tokens) {
       const controller = new AbortController()
       expect(await provider.getSuggestions([token], 0, token.length, { signal: controller.signal })).toMatchObject({ items: [{ value: '@found' }] })
-      expect(fallback).toHaveBeenLastCalledWith(process.cwd(), token, expect.any(AbortSignal))
+      expect(fallback).toHaveBeenLastCalledWith(process.cwd(), token, expect.any(AbortSignal), undefined, expect.anything())
       const forwarded = fallback.mock.lastCall![2]
       controller.abort()
       expect(forwarded.aborted).toBe(true)

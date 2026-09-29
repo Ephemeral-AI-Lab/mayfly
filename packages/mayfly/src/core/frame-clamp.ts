@@ -10,7 +10,7 @@
  * @module @ephemeral-ai/mayfly/core/frame-clamp
  */
 
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { sliceByColumn, visibleWidth } from './width.ts'
@@ -30,6 +30,20 @@ export interface FrameOverflowEntry {
 /** Receives clamped-line records; implementations must never throw. */
 export interface OverflowSink {
   record(entry: FrameOverflowEntry): void
+  /** Optional teardown: flush buffered records, then stop the sink. */
+  dispose?(): Promise<void>
+}
+
+/**
+ * The file-backed sink's face beyond {@link OverflowSink}: records queue in
+ * memory and drain through an explicit async flush, so the render path never
+ * waits on the filesystem.
+ */
+export interface FileOverflowSink extends OverflowSink {
+  /** Drain queued records now; never rejects. */
+  flush(): Promise<void>
+  /** Drain queued records, then stop accepting new ones; never rejects. */
+  dispose(): Promise<void>
 }
 
 /**
@@ -120,49 +134,91 @@ export interface FileOverflowSinkOptions {
    * Total lines the sink ever appends. The dedupe window keeps late
    * violations recording, but a *changing* over-wide row (a spinner,
    * elapsed time, progress) is distinct every frame, so without a total
-   * budget the file would grow one synchronous write per frame for the
-   * rest of the session. Once this budget is spent the sink stays silent —
+   * budget the file would grow one queued line per frame for the rest of
+   * the session. Once this budget is spent the sink stays silent —
    * bounded telemetry beats a backstop that can flood the disk. Values
    * below 1 behave as 1; default 1000.
    */
   readonly maxLines?: number
+  /**
+   * Coalescing window before queued records flush off the render path
+   * (milliseconds). Values below 0 behave as 0; default 250.
+   */
+  readonly flushDelayMs?: number
 }
 
 /**
- * Deduplicating JSONL overflow log. Each distinct original line is appended
+ * Deduplicating JSONL overflow log. Each distinct original line is queued
  * once (renders repeat at 16ms; without dedupe a single over-wide row would
- * flood the file). `maxEntries` is the dedupe window, not a fuse: once the
- * window fills it resets, so a width regression surfacing late in a long
- * session is still recorded (a still-visible line can therefore reappear
- * after a reset). `maxLines` bounds the total appended lines so a *changing*
- * over-wide row cannot drive a synchronous write per frame indefinitely.
- * Every filesystem failure is swallowed — the backstop must never take
- * rendering down with it. Entries look like
+ * flood the file); `record` only touches memory, and a timer flushes the
+ * queue off the render path after {@link FileOverflowSinkOptions.flushDelayMs}
+ * — the render exit never waits on the filesystem. `maxEntries` is the
+ * dedupe window, not a fuse: once the window fills it resets, so a width
+ * regression surfacing late in a long session is still recorded (a
+ * still-visible line can therefore reappear after a reset). `maxLines`
+ * bounds the total appended lines so a *changing* over-wide row cannot
+ * drive a queued line per frame indefinitely. A pending flush keeps the
+ * event loop alive, so an orderly exit drains the queue; only a hard crash
+ * can lose the last window. One failed flush disables the sink, and every
+ * filesystem failure is swallowed — the backstop must never take rendering
+ * down with it. Entries look like
  * `{"time":"...","index":3,"columns":40,"width":61,"line":"..."}`.
- * @param options - target directory, dedupe window, and line budget.
+ * @param options - target directory, dedupe window, line budget, flush delay.
  * @returns the file-backed `OverflowSink`.
  */
-export function createFileOverflowSink(options: FileOverflowSinkOptions): OverflowSink {
-  const { directory, maxEntries = 200, maxLines = 1000 } = options
+export function createFileOverflowSink(options: FileOverflowSinkOptions): FileOverflowSink {
+  const { directory, maxEntries = 200, maxLines = 1000, flushDelayMs = 250 } = options
   const windowSize = Math.max(1, maxEntries)
   const lineBudget = Math.max(1, maxLines)
+  const delayMs = Math.max(0, flushDelayMs)
   const seen = new Set<string>()
+  const queued: string[] = []
   let written = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  // Flushes serialize through one chain. The batch work never rejects (the
+  // only await points sit inside the try/catch below), so the chain needs
+  // no rejection handling and a flush racing the timer (or dispose) cannot
+  // interleave half-written batches.
+  let chain: Promise<void> = Promise.resolve()
+  let stopped = false
+  const flush = (): Promise<void> => {
+    const run = chain.then(async () => {
+      if (queued.length === 0) return
+      const batch = queued.splice(0, queued.length).join('')
+      try {
+        await mkdir(directory, { recursive: true })
+        await appendFile(join(directory, 'mayfly-overflow.log'), batch)
+      } catch {
+        // A broken target will not heal by retrying every frame; the batch
+        // is dropped and the sink goes silent.
+        stopped = true
+      }
+    })
+    chain = run
+    return run
+  }
   return {
     record(entry) {
-      if (written >= lineBudget || seen.has(entry.line)) return
+      if (stopped || written >= lineBudget || seen.has(entry.line)) return
       if (seen.size >= windowSize) seen.clear()
       seen.add(entry.line)
       written += 1
-      try {
-        mkdirSync(directory, { recursive: true })
-        appendFileSync(
-          join(directory, 'mayfly-overflow.log'),
-          `${JSON.stringify({ time: new Date().toISOString(), ...entry })}\n`,
-        )
-      } catch {
-        // The backstop's own log must never break rendering.
+      queued.push(`${JSON.stringify({ time: new Date().toISOString(), ...entry })}\n`)
+      if (timer === undefined) {
+        timer = setTimeout(() => {
+          timer = undefined
+          void flush()
+        }, delayMs)
       }
+    },
+    flush,
+    async dispose() {
+      stopped = true
+      if (timer !== undefined) {
+        clearTimeout(timer)
+        timer = undefined
+      }
+      await flush()
     },
   }
 }
