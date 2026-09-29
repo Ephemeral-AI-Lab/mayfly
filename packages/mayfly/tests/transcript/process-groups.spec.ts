@@ -70,8 +70,8 @@ describe('work-details display plan', () => {
   })
 
   it('keeps verbose flat under an open header, and Ctrl-O opens everything in scope only', () => {
-    expect(shape(plan(turnOne(), 'verbose'))).toEqual(['user', 'header:closed:open', 'thinking', 'read-group', 'assistant', 'tool', 'thinking', 'tool', 'assistant'])
-    expect(shape(plan(turnOne(), 'compact', { expanded: true }))).toEqual(['user+', 'header:closed:open', 'thinking+', 'read-group+', 'assistant+', 'tool+', 'thinking+', 'tool+', 'assistant+'])
+    expect(shape(plan(turnOne(), 'verbose'))).toEqual(['user', 'header:closed:open:hint', 'thinking', 'read-group', 'assistant', 'tool', 'thinking', 'tool', 'assistant'])
+    expect(shape(plan(turnOne(), 'compact', { expanded: true }))).toEqual(['user+', 'header:closed:open:hint', 'thinking+', 'read-group+', 'assistant+', 'tool+', 'thinking+', 'tool+', 'assistant+'])
     expect(shape(plan(turnOne(), 'compact', { expanded: true, scope: [] }))).toEqual(['user', 'header:closed:folded', 'assistant'])
   })
 
@@ -82,7 +82,7 @@ describe('work-details display plan', () => {
     expect(running.at(-1)).toMatchObject({ kind: 'process-title', summary: { counts: [{ activity: 'commands', count: 1 }, { activity: 'subagents', count: 1 }], failed: 0 } })
     // A tree without an activity row keeps its live header, still without counts rendered.
     const headed = plan(turnOne(false), 'standard', { runningTurn: 1, turns: open, runningHeader: true })
-    expect(shape(headed)).toEqual(['user', 'header:running:open', 'title:read', 'assistant', 'title:commands+subagents'])
+    expect(shape(headed)).toEqual(['user', 'header:running:open:hint', 'title:read', 'assistant', 'title:commands+subagents'])
     // A still-running spawn is not summarized: only settled work is titled.
     const spawning = [...turnOne(false).slice(0, -1), tool(1, { name: 'subagent', activity: 'subagents', detail: 'Review', result: undefined })]
     expect(shape(plan(spawning, 'standard', { runningTurn: 1, turns: open }))).toEqual(['user', 'title:read', 'assistant', 'title:commands'])
@@ -102,18 +102,18 @@ describe('work-details display plan', () => {
   it('never folds a stopped, failed, or steered turn, yet still groups it', () => {
     for (const mode of ['compact', 'standard', 'detailed'] as const) {
       expect(shape(plan(turnOne(), mode, { turns: [{ turn: 1, startedAt: 0, endedAt: 5, outcome: 'aborted' }] })))
-        .toEqual(['user', 'header:closed:open', 'title:read', 'assistant', 'title:commands+subagents', 'assistant'])
+        .toEqual(['user', 'header:closed:open:hint', 'title:read', 'assistant', 'title:commands+subagents', 'assistant'])
     }
     seq = 0
     const failed = [user(1), tool(1), { kind: 'transcript-error' as const, id: 'e', ...base(1), message: 'down' }]
-    expect(shape(plan(failed, 'standard', { turns: [] }))).toEqual(['user', 'header:closed:open', 'title:commands', 'error'])
+    expect(shape(plan(failed, 'standard', { turns: [] }))).toEqual(['user', 'header:closed:open:hint', 'title:commands', 'error'])
     seq = 0
     const steered = [user(1), tool(1), user(1, 'steer'), tool(1), reply(1, 2, 'done')]
-    expect(shape(plan(steered, 'standard'))).toEqual(['user', 'header:closed:open', 'title:commands', 'user', 'title:commands', 'assistant'])
+    expect(shape(plan(steered, 'standard'))).toEqual(['user', 'header:closed:open:hint', 'title:commands', 'user', 'title:commands', 'assistant'])
     // A call cut off by the stop counts as settled once the turn has ended.
     seq = 0
     expect(shape(plan([user(1), think(1, 0), tool(1, { result: undefined }), think(1, 1)], 'standard', { turns: [{ turn: 1, startedAt: 0, endedAt: 5, outcome: 'aborted' }] })))
-      .toEqual(['user', 'header:closed:open', 'title:commands'])
+      .toEqual(['user', 'header:closed:open:hint', 'title:commands'])
   })
 
   it('treats file changes as content from Standard up: cards that close groups and survive the fold', () => {
@@ -129,17 +129,17 @@ describe('work-details display plan', () => {
       expect(folded[1]).toMatchObject({ kind: 'turn-header', toolCalls: 3 })
     }
     expect(shape(plan(turn(true), 'compact'))).toEqual(['user', 'header:closed:folded:hint', 'assistant'])
-    expect(shape(plan(turn(true), 'verbose'))).toEqual(['user', 'header:closed:open', 'read-group', 'tool', 'tool', 'assistant'])
+    expect(shape(plan(turn(true), 'verbose'))).toEqual(['user', 'header:closed:open:hint', 'read-group', 'tool', 'tool', 'assistant'])
     // Running: the edit card shows at once, even pending, splitting the groups around it.
     const pending = [...turn(false).slice(0, 2), edit(1, { result: undefined }), tool(1, { result: undefined })]
     expect(shape(plan(pending, 'standard', { runningTurn: 1, turns: open }))).toEqual(['user', 'title:read', 'tool'])
     expect(shape(plan(pending, 'compact', { runningTurn: 1, turns: open }))).toEqual(['user'])
     // A failed turn keeps titles around its file changes; Compact titles them too.
     const failed = [...turn(false), { kind: 'transcript-error' as const, id: 'e', ...base(1), message: 'down' }]
-    expect(shape(plan(failed, 'standard', { turns: [] }))).toEqual(['user', 'header:closed:open', 'title:read', 'tool', 'title:commands', 'error'])
-    expect(shape(plan(failed, 'compact', { turns: [] }))).toEqual(['user', 'header:closed:open', 'title:read+edit+commands', 'error'])
+    expect(shape(plan(failed, 'standard', { turns: [] }))).toEqual(['user', 'header:closed:open:hint', 'title:read', 'tool', 'title:commands', 'error'])
+    expect(shape(plan(failed, 'compact', { turns: [] }))).toEqual(['user', 'header:closed:open:hint', 'title:read+edit+commands', 'error'])
     // Ctrl-O opens everything in scope.
-    expect(shape(plan(turn(true), 'standard', { expanded: true }))).toEqual(['user+', 'header:closed:open', 'read-group+', 'tool+', 'tool+', 'assistant+'])
+    expect(shape(plan(turn(true), 'standard', { expanded: true }))).toEqual(['user+', 'header:closed:open:hint', 'read-group+', 'tool+', 'tool+', 'assistant+'])
   })
 
   it('keeps compaction boundary rows visible in every mode and out of process groups', () => {
@@ -153,7 +153,7 @@ describe('work-details display plan', () => {
     }
     seq = 0
     expect(shape(plan([...turnOne(), compaction()], 'verbose')))
-      .toEqual(['user', 'header:closed:open', 'thinking', 'read-group', 'assistant', 'tool', 'thinking', 'tool', 'assistant', 'compaction'])
+      .toEqual(['user', 'header:closed:open:hint', 'thinking', 'read-group', 'assistant', 'tool', 'thinking', 'tool', 'assistant', 'compaction'])
     // In a running turn the marker flushes the pending process group like an
     // error row does, splitting it into two titled groups.
     seq = 0
@@ -191,7 +191,7 @@ describe('work-details display plan', () => {
     const entries = turnOne()
     const items = plan([node, ...entries.slice(0, 3), node, ...entries.slice(3)], 'verbose', { previousSeq: 0 })
     expect(items[0]).toMatchObject({ kind: 'entry', seq: 0 })
-    expect(shape(items)).toEqual(['text', 'user', 'header:closed:open', 'thinking', 'read-group', 'text', 'assistant', 'tool', 'thinking', 'tool', 'assistant'])
+    expect(shape(items)).toEqual(['text', 'user', 'header:closed:open:hint', 'thinking', 'read-group', 'text', 'assistant', 'tool', 'thinking', 'tool', 'assistant'])
     // A canonical node inside a folded turn stays visible.
     expect(shape(plan([...entries.slice(0, 3), node, ...entries.slice(3)], 'standard'))).toEqual(['user', 'header:closed:folded:hint', 'text', 'assistant'])
   })

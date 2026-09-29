@@ -18,7 +18,7 @@ export interface UiChoiceState {
   readonly matches: readonly number[] | undefined
   readonly expandedIds: readonly string[]
   /** Per-row segment drafts keyed by item id; ephemeral and excluded from `dirty`. */
-  readonly segments?: Readonly<Record<string, string>>
+  readonly segments?: Readonly<Record<string, string | null>>
   readonly treeIndex?: UiChoiceTreeIndex
   readonly visibleTreeIndices?: readonly number[]
 }
@@ -38,6 +38,7 @@ export type UiChoiceIntent =
   | { readonly kind: 'toggle', readonly id: string }
   | { readonly kind: 'select', readonly ids: readonly string[] }
   | { readonly kind: 'segment', readonly id: string, readonly direction: -1 | 1 }
+  | { readonly kind: 'reset-segment', readonly id: string }
   | { readonly kind: 'query', readonly query: string }
   | { readonly kind: 'stop-search' }
   | { readonly kind: 'clear-search' }
@@ -311,17 +312,22 @@ export function reduceChoice(state: UiChoiceState, intent: UiChoiceIntent): UiCh
     }), preferred))
   }
   if (intent.kind === 'stop-search') return state.searching ? freezeChoice({ ...state, searching: false }) : state
+  if (intent.kind === 'reset-segment') return choiceSegment(state, intent.id) === undefined ? state : freezeChoice({ ...state, segments: { ...state.segments, [intent.id]: null } })
   if (intent.kind === 'segment') {
     const index = admittedListIndex(definition.items, intent.id)
     const segment = index < 0 ? undefined : admittedListItem(definition.items, index)?.segment
     if (segment === undefined) return state
     const options = segment.options.filter(option => option.disabled !== true)
-    if (options.length < 2) return state
-    const current = choiceSegment(state, intent.id)!
-    const position = options.findIndex(option => option.id === current)
-    const next = options[Math.max(0, Math.min(options.length - 1, (position < 0 ? 0 : position) + intent.direction))]!
-    if (next.id === current) return state
-    return freezeChoice({ ...state, segments: { ...state.segments, [intent.id]: next.id } })
+    if (options.length === 0) return state
+    const selected = choiceSegment(state, intent.id)
+    const draft = state.segments?.[intent.id]
+    const current = selected ?? (draft === null ? undefined : draft ?? segment.selectedId) ?? segment.inheritedId
+    const position = segment.options.findIndex(option => option.id === current)
+    let cursor = position < 0 ? intent.direction === 1 ? 0 : segment.options.length - 1 : position + intent.direction
+    while (cursor >= 0 && cursor < segment.options.length && segment.options[cursor]!.disabled === true) cursor += intent.direction
+    const next = segment.options[cursor] ?? options[intent.direction === 1 ? options.length - 1 : 0]!
+    if (next.id === selected || selected === undefined && next.id === segment.inheritedId && (draft === undefined || draft === null)) return state
+    return freezeChoice({ ...state, segments: { ...state.segments, [intent.id]: next.id === segment.inheritedId ? null : next.id } })
   }
   if (intent.kind === 'expand') {
     const collapsing = state.expandedIds.includes(intent.id)
@@ -353,10 +359,11 @@ export function choiceSegment(state: UiChoiceState, itemId: string): string | un
   const segment = index < 0 ? undefined : admittedListItem(state.definition.items, index)?.segment
   if (segment === undefined) return undefined
   const draft = state.segments?.[itemId]
-  if (draft !== undefined && segment.options.some(option => option.id === draft)) return draft
-  return segment.selectedId !== undefined && segment.options.some(option => option.id === segment.selectedId)
+  if (draft === null) return undefined
+  if (draft !== undefined && segment.options.some(option => option.id === draft && option.disabled !== true)) return draft
+  return segment.selectedId !== undefined && segment.options.some(option => option.id === segment.selectedId && option.disabled !== true)
     ? segment.selectedId
-    : segment.options.find(option => option.disabled !== true)?.id
+    : undefined
 }
 
 /**

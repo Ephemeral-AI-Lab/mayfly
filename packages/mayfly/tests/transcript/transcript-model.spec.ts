@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ui } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyComponent, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyFocusable, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { matchesKeyAction } from '../../src/core/key-actions.ts'
+import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/index.ts'
 import { appendTranscriptNode, createTranscriptModel, FOLLOW_NOTICE_INTERVAL_MS, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptLocalsService, TranscriptModelComponent, type TranscriptModelRenderer } from '../../src/transcript/transcript-model.ts'
 import { visibleWidth } from '../../src/core/width.ts'
@@ -373,6 +376,8 @@ describe('TranscriptController', () => {
         ? {
             '■ interrupted': '■ 已中断',
             '... ({remaining} more lines, {total} total, ctrl+o to expand)': '...（还有 {remaining} 行，共 {total} 行，按 Ctrl-O 展开）',
+            '... ({remaining} more lines, {total} total)': '还有 {remaining} 行',
+            '... ({remaining} more lines)': '还有 {remaining} 行',
           }[key] ?? key
         : key
       return message.replace(/\{(remaining|total)\}/gu, (placeholder, name) => String(values?.[name] ?? placeholder))
@@ -736,4 +741,151 @@ describe('TranscriptController', () => {
     remove()
     empty()
   })
+})
+
+it('navigates older turns outside the visible window and retains per-generation disclosure across renderer replacement', () => {
+  const entries: TranscriptEntryModel[] = Array.from({ length: 24 }, (_, index) => ({
+    kind: 'transcript-thinking', id: `reason-${index}`, seq: index + 1, turn: index + 1, step: 0, text: `reasoning ${index + 1}`, streaming: false,
+  }))
+  const turns = entries.map(entry => ({ turn: entry.turn, startedAt: 0, endedAt: 1000 }))
+  let current: TranscriptModel | null = createTranscriptModel('navigation', entries, false, 1, turns)
+  const state: { generation?: number, selected?: number, expanded: Map<number, boolean> } = { expanded: new Map() }
+  const component = new TranscriptModelComponent(() => current, { ...renderer(), navigationHint: expanded => expanded ? 'Enter collapse' : 'Enter expand' }, state)
+  component.render(80)
+  expect(component.navigate(true, 80)).toBeDefined()
+  expect(state.selected).toBe(24)
+  component.navigate('first', 80)
+  expect(state.selected).toBe(1)
+  component.navigate('toggle', 80)
+  expect(state.expanded.get(1)).toBe(true)
+  expect(component.render(80).join('\n')).toContain('reasoning 1')
+  component.navigate('next', 80)
+  expect(state.selected).toBe(2)
+  component.navigate('previous', 80)
+  expect(state.selected).toBe(1)
+  component.navigate('previous', 80)
+  expect(state.selected).toBe(1)
+  component.navigate(false, 80)
+  expect(component.render(80).join('\n')).not.toContain('> ')
+  component.dispose()
+  const replacement = new TranscriptModelComponent(() => current, renderer(), state)
+  replacement.render(80)
+  expect(state.expanded.get(1)).toBe(true)
+  replacement.navigate('last', 80)
+  expect(state.selected).toBe(24)
+  replacement.navigate('toggle', 80)
+  replacement.setExpanded(true)
+  expect(state.expanded.has(24)).toBe(false)
+  replacement.navigate(true, 80)
+  replacement.navigate('toggle', 80)
+  expect(state.expanded.get(24)).toBe(false)
+  current = { ...current!, generation: 2 }
+  replacement.render(80)
+  expect(state.expanded.size).toBe(0)
+  expect(state.selected).toBeUndefined()
+  current = null
+  expect(replacement.navigate('first', 80)).toBeUndefined()
+  replacement.dispose()
+})
+
+it('reports disclosure only for foldable turns in the configured recent scope', () => {
+  const ctx = new Context()
+  const view = fixture()
+  const service = new TranscriptController(ctx, view.screen, { renderer: renderer() })
+  expect(service.disclosure()).toEqual({ expanded: false, count: 0 })
+  expect(service.canNavigate()).toBe(false)
+  const entries: TranscriptEntryModel[] = [
+    { kind: 'transcript-thinking', id: 'old', seq: 1, turn: 1, step: 0, text: 'old reasoning', streaming: false },
+    ...[2, 3, 4, 5].map(turn => ({ kind: 'transcript-assistant' as const, id: `answer-${turn}`, seq: turn, turn, step: 0, text: 'short answer', streaming: false })),
+  ]
+  service.setSource(createTranscriptModel('scope', entries, false, 0))
+  view.children[0]!.render(80)
+  expect(service.disclosure()).toEqual({ expanded: false, count: 0 })
+  expect(service.canNavigate()).toBe(true)
+  expect(service.disclosure()).toEqual({ expanded: false, count: 0 })
+  service.setExpanded(true)
+  expect(service.disclosure().expanded).toBe(true)
+  service.dispose()
+  expect(service.disclosure().count).toBe(0)
+})
+
+it('keeps disclosure reads lazy and restores frontend navigation through controller reload', async () => {
+  const ctx = new Context()
+  const interaction = new UiInteractionService(ctx)
+  const entries = new Map(INTERACTION_KEY_ACTIONS.map(action => [action.id, typeof action.keys === 'string' ? [action.keys] : action.keys]))
+  ctx.provide('mayflyKeymap', { getKeys: (id: string) => entries.get(id) ?? [], matches: (data: string, id: string) => matchesKeyAction(undefined, data, id) } as never)
+  const f = fixture()
+  const reveal = vi.fn()
+  const mount = f.screen.mountContentSlot.bind(f.screen)
+  let mounted!: MayflyFocusable
+  Object.assign(f.screen, { columns: 80, rows: 24, revealTranscriptRow: reveal,
+    mountContentSlot(id: string, content: MayflyComponent | null) {
+      mounted = content as MayflyFocusable
+      return mount(id, content)
+    },
+  })
+  let current = createTranscriptModel('navigation', [
+    { kind: 'transcript-user', id: 'long-user', seq: 1, turn: 1, text: 'long prompt\n'.repeat(12), images: [] },
+    { kind: 'transcript-thinking', id: 'reasoning', seq: 2, turn: 2, step: 0, text: 'reasoning detail', streaming: false },
+  ], false, 1, [{ turn: 1, startedAt: 0, endedAt: 1 }, { turn: 2, startedAt: 2, endedAt: 3 }])
+  const source = vi.fn(() => current)
+  const notices = vi.fn()
+  ctx.on('mayfly/transcript-disclosure-changed', notices)
+  let controller = new TranscriptController(ctx, f.screen, { renderer: renderer() })
+  const locals = new TranscriptLocalsService(ctx, controller)
+  controller.setView('conversation', source)
+  controller.show('conversation')
+  expect(locals.disclosure().count).toBe(0)
+  expect(source).not.toHaveBeenCalled()
+  let focus = mounted
+  focus.render(80)
+  await Promise.resolve()
+  expect(notices).toHaveBeenCalledOnce()
+  const reads = source.mock.calls.length
+  expect(focus.canFocus).toBe(true)
+  expect(locals.disclosure().count).toBe(2)
+  expect(source).toHaveBeenCalledTimes(reads)
+  focus.focused = true
+  focus.handleInput?.('\x1b[H')
+  expect(reveal).toHaveBeenCalledWith(expect.any(Number))
+  expect(focus.render(80).join('\n')).toContain('Enter expand')
+  focus.handleInput?.('\r')
+  expect(focus.render(80).join('\n')).toContain('Enter collapse')
+  const state = interaction.transcriptNavigation.get('conversation')!
+  expect(state.selected).toBe(1)
+  expect(state.expanded.get(1)).toBe(true)
+  await Promise.resolve()
+  expect(notices).toHaveBeenCalledOnce()
+  controller.dispose()
+  controller = new TranscriptController(ctx, f.screen, { renderer: renderer(() => {}, undefined, true, value => value) })
+  controller.setView('conversation', source)
+  controller.show('conversation')
+  focus = mounted
+  focus.render(80)
+  focus.focused = true
+  expect(focus.render(80).join('\n')).toContain('Enter collapse')
+  expect(interaction.transcriptNavigation.get('conversation')).toBe(state)
+  current = { ...current, generation: 2 }
+  focus.handleInput?.('\x1b[F')
+  expect(state.expanded.size).toBe(0)
+  expect(state.selected).toBe(2)
+  controller.dispose()
+  await Promise.resolve()
+  interaction.dispose()
+  await ctx.fiber.dispose()
+})
+
+it('ignores navigation on ordinary text and updates standalone user disclosure', () => {
+  const policy = new TranscriptPresentationPolicy()
+  policy.apply({ userFoldChars: 4, userFoldLines: 2 })
+  let current: TranscriptModel = createTranscriptModel('user', [{ kind: 'text', content: 'ordinary' }])
+  const state = { expanded: new Map<number, boolean>() }
+  const component = new TranscriptModelComponent(() => current, renderer(() => {}, policy), state)
+  expect(component.navigate(true, 50)).toBeUndefined()
+  current = createTranscriptModel('user', [{ kind: 'transcript-user', id: 'user', turn: 1, seq: 1, text: 'a\nb\nc', images: [] }])
+  expect(component.navigate(true, 50)).toBeDefined()
+  component.navigate('toggle', 50)
+  expect(component.render(50).join('\n')).toContain('c')
+  component.navigate(false, 50)
+  component.dispose()
 })

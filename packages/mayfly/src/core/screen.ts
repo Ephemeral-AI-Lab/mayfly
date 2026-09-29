@@ -21,6 +21,8 @@ declare module '@deepseek-ai/cordis' {
  */
 const NO_ROWS = Object.freeze([]) as unknown as string[]
 
+declare module '@deepseek-ai/cordis' { interface Events { 'mayfly/input-focus-changed'(): void } }
+
 class StableSlotHost implements MayflyFocusable {
   private active = true
   private focusedValue = false
@@ -30,14 +32,18 @@ class StableSlotHost implements MayflyFocusable {
     readonly id: string,
     private target: MayflyComponent | null,
     private readonly runtime: MayflyTerminalRuntime,
+    private readonly onFocusChange?: () => void,
   ) {}
 
   get focused(): boolean { return this.active && this.focusedValue }
+  get navigable(): boolean { const target = this.focusTarget(); return target !== null && target.canFocus !== false }
   get editorReplaced(): boolean { return this.active && this.replacement !== null }
   set focused(value: boolean) {
+    const previous = this.focusedValue
     this.focusedValue = this.active && this.currentTarget() !== null && value
     const target = this.focusTarget()
     if (target !== null) target.focused = this.focusedValue
+    if (previous !== this.focusedValue) this.onFocusChange?.()
   }
 
   replace(component: MayflyComponent | null): void {
@@ -171,7 +177,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
       runtime.addChild(host)
     }
     runtime.addChild(this.local)
-    const editor = new StableSlotHost('editor.prompt', null, runtime)
+    const editor = new StableSlotHost('editor.prompt', null, runtime, () => ctx.emit('mayfly/input-focus-changed'))
     const footer = new StableSlotHost('status.footer', null, runtime)
     this.fixed.set('editor.prompt', editor)
     this.fixed.set('status.footer', footer)
@@ -213,6 +219,13 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     const host = this.fixed.get('editor.prompt')!
     if (host.replaceEditor(component) && !this.runtime.hasCapturingOverlay()) host.focus()
   }
+
+  contentFocusTarget(): MayflyFocusable | null {
+    const host = this.fixed.get('transcript.conversation')!
+    return host.navigable ? host : null
+  }
+  focusPrompt(): void { this.fixed.get('editor.prompt')!.focus() }
+  revealTranscriptRow(row: number): void { this.runtime.revealContent?.(this.fixed.get('transcript.conversation')!, row) }
 
   mountContentSlot(id: string, component: MayflyComponent | null): MayflyScreenSlot {
     const fixed = this.fixed.get(id)

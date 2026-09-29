@@ -447,3 +447,23 @@ describe('injectGhostHint', () => {
     expect(visibleWidth(ghosted)).toBe(14)
   })
 })
+
+
+it('uses whole placeholder variants and falls back to the shortest text at very narrow widths', () => {
+  const line = ' '.repeat(70)
+  const variants = ['Ask anything · / commands · @ files', 'Ask anything · / commands', 'Ask anything']
+  expect(injectGhostHint(line, variants, '', 70, plain)).toContain(variants[0])
+  expect(injectGhostHint(line, variants, '', 34, plain)).toContain(variants[1])
+  expect(injectGhostHint(line, variants, '', 22, plain)).toContain(variants[2])
+  expect(injectGhostHint(line, variants, '', 12, plain)).toContain('Ask…')
+  expect(injectGhostHint(line, [], '', 12, plain)).toBe(line)
+})
+
+it('renders ASCII frame furniture while preserving title and content Unicode', () => {
+  const rows = withSideBorders(['─'.repeat(30), ' 中文 content '.padEnd(30), '─'.repeat(30)], plain, { ascii: true, connectedAbove: true, title: '会话', label: ' mode ' })
+  expect(rows[0]).toContain('+ mode ')
+  expect(rows[0]).toContain('会话')
+  expect(rows[1]).toContain('|中文 content')
+  expect(rows[2]).toBe('+' + '-'.repeat(28) + '+')
+  expect(withSideBorders(['─'], plain, { ascii: true })).toEqual(['+'])
+})

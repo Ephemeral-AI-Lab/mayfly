@@ -10,6 +10,7 @@
 
 import type { MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import { SelectList, type SelectItem, type SelectListLayoutOptions, type SelectListTheme } from '@earendil-works/pi-tui'
+import { truncateToWidth } from './width.ts'
 import { renderAutocompleteList } from './ui-patterns.ts'
 
 /** The private pi-tui row state the render override reads (see module doc). */
@@ -23,6 +24,7 @@ interface SelectListInternals {
 
 /** A select list whose canonical item descriptions wrap to at most two lines. */
 export class WrappingSelectList extends SelectList {
+  hint: (() => string) | undefined
   override render(width: number): string[] {
     const { filteredItems, selectedIndex, maxVisible, theme, layout } = this.internals()
     const node: MayflyListNode = {
@@ -36,7 +38,7 @@ export class WrappingSelectList extends SelectList {
         ...(item.description === undefined ? {} : { detail: item.description }),
       })),
     }
-    return renderAutocompleteList(node, width, maxVisible, {
+    const rows = renderAutocompleteList(node, width, maxVisible, {
       description: theme.description,
       noMatch: theme.noMatch,
       scrollInfo: theme.scrollInfo,
@@ -52,6 +54,7 @@ export class WrappingSelectList extends SelectList {
         },
       }),
     })
+    return this.hint === undefined ? rows : [...rows, truncateToWidth(theme.scrollInfo(this.hint()), width)]
   }
 
   /** Read pi-tui's private row state through the single sanctioned cast. */

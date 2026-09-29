@@ -5,6 +5,8 @@ import { defineConfig } from 'vitest/config'
 // node_modules (pnpm workspace links + the npm registry).
 export default defineConfig({
   test: {
+    // Renderer fixtures are reproducible; accessibility specs override these explicitly.
+    env: { NO_COLOR: '', TERM: 'xterm-256color', LC_ALL: 'C.UTF-8' },
     include: ['packages/*/tests/**/*.spec.ts', 'examples/*/tests/**/*.spec.ts'],
     // Forked workers avoid Node 24's worker-thread CJS lexer crashes.
     pool: 'forks',

@@ -57,6 +57,7 @@ export interface MayflyScreenSlot {
  * components may emit pi-tui's cursor marker to position the IME cursor.
  */
 export interface MayflyFocusable extends MayflyComponent {
+  readonly canFocus?: boolean
   /** Whether the component currently holds focus. Managed by the screen. */
   focused: boolean
   /** Capture the renderer-private semantic control currently holding focus. */
@@ -160,6 +161,10 @@ export interface MayflyOverlayHandle {
  * or keybinding responsibility.
  */
 export interface MayflyScreen {
+  /** Internal fixed transcript focus participates in the pane cycle. */
+  contentFocusTarget?(): MayflyFocusable | null
+  focusPrompt?(): void
+  revealTranscriptRow?(row: number): void
   /** Whether an active overlay or editor replacement must receive input before global actions. */
   readonly capturesInput?: boolean
   /** Mount one stable content slot in the scroll region. */
@@ -589,7 +594,7 @@ export interface MayflyEditor extends MayflyFocusable {
    * @param hint - the ghost text with any leading space, or `undefined` to
    *   remove it.
    */
-  setGhostHint(hint: string | undefined): void
+  setGhostHint(hint: string | readonly string[] | undefined): void
   /**
    * Attach the autocomplete provider driving the suggestion dropdown.
    * @param provider - the suggestion source.
@@ -773,6 +778,8 @@ export interface MayflyTopRuleOptions {
  * re-exported under Mayfly signatures so no consumer imports pi-tui.
  */
 export interface MayflyComponents {
+  readonly reducedMotion?: boolean
+  readonly asciiGlyphs?: boolean
   /** Apply renderer-owned strong emphasis without exposing ANSI. */
   strong(text: string): string
   /** Apply renderer-owned italic emphasis without exposing ANSI. */

@@ -42,6 +42,7 @@ import {
   withSideBorders,
 } from './chrome.ts'
 import { sanitizePluginText } from './plugin-view.ts'
+import { contextHintTranslator } from './context-hint-locale.ts'
 import { WrappingSelectList } from './wrapping-select-list.ts'
 import type {
   MayflyAutocompleteProvider,
@@ -141,6 +142,7 @@ const SLASH_SELECT_LIST_LAYOUT = { minPrimaryColumnWidth: 12, maxPrimaryColumnWi
 
 /** Theme-derived paints the editor chrome overlays (S14 completion polish). */
 export interface EditorChromePaints {
+  readonly ascii?: () => boolean
   /** Styling for the leading `/command` token (bold + `primary`). */
   readonly slashTokenPaint: (text: string) => string
   /** Styling for the argument-hint ghost (`textMuted`). */
@@ -201,7 +203,7 @@ class EditorAdapter implements MayflyEditor {
   private connectedAbove = false
 
   /** The argument-hint ghost (S14); none while unset. */
-  private ghostHint: string | undefined
+  private ghostHint: string | readonly string[] | undefined
 
   constructor(
     private readonly editor: Editor,
@@ -342,7 +344,7 @@ class EditorAdapter implements MayflyEditor {
     this.connectedAbove = connected
   }
 
-  setGhostHint(hint: string | undefined): void {
+  setGhostHint(hint: string | readonly string[] | undefined): void {
     this.ghostHint = hint
   }
 
@@ -422,7 +424,7 @@ class EditorAdapter implements MayflyEditor {
     if (this.promptSymbol !== '!' && this.editor.getText().trimStart().startsWith('/')) {
       row = highlightLeadingSlashToken(row, this.chrome.slashTokenPaint) ?? row
     }
-    if (this.ghostHint !== undefined && this.cursorAtInputEnd()) {
+    if (this.ghostHint !== undefined && !this.editor.isShowingAutocomplete() && this.cursorAtInputEnd()) {
       row = injectGhostHint(row, this.ghostHint, this.editor.getText(), renderWidth, this.chrome.ghostHintPaint)
     }
     // The bash `!` shares the border hue so the mode reads as one unit; the
@@ -442,6 +444,7 @@ class EditorAdapter implements MayflyEditor {
     // the whole frame in sync without re-entering this adapter.
     const framed = withSideBorders(lines, (text: string) => this.editor.borderColor(text), {
       connectedAbove: this.connectedAbove,
+      ascii: this.chrome.ascii?.() === true,
       label: this.borderLabel,
       title: this.borderTitle,
       titlePaint: this.chrome.borderTitlePaint,
@@ -700,6 +703,12 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     this.tui = deps.tui
   }
 
+  get reducedMotion(): boolean { return this.ctx.get('mayflyInteractionState')?.settingsSource().reducedMotion === true }
+  get asciiGlyphs(): boolean {
+    const glyphs = this.ctx.get('mayflyInteractionState')?.settingsSource().glyphs ?? 'auto'
+    return glyphs === 'ascii' || glyphs === 'auto' && (process.env.TERM === 'dumb' || /^(C|POSIX)$/.test(process.env.LC_ALL ?? process.env.LC_CTYPE ?? process.env.LANG ?? ''))
+  }
+
   strong(text: string): string { return `\x1b[1m${text}\x1b[22m` }
   italic(text: string): string { return `\x1b[3m${text}\x1b[23m` }
   strike(text: string): string { return `\x1b[9m${text}\x1b[29m` }
@@ -727,13 +736,17 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     // cast lands on a local — the repo's no-semicolon style cannot start a
     // statement with `(`.
     const factory = editor as unknown as AutocompleteListFactory
-    factory.createAutocompleteList = (prefix: string, items: MayflySelectItem[]): SelectList =>
-      prefix.startsWith('/')
-        ? new WrappingSelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList, SLASH_SELECT_LIST_LAYOUT)
-        : new SelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList)
+    factory.createAutocompleteList = (prefix: string, items: MayflySelectItem[]): SelectList => {
+      if (!prefix.startsWith('/')) return new SelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList)
+      const list = new WrappingSelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList, SLASH_SELECT_LIST_LAYOUT)
+      const t = contextHintTranslator(this.ctx)
+      list.hint = () => t('↑/↓ options · Tab complete · Enter run · Esc close')
+      return list
+    }
     return new EditorAdapter(editor, {
       slashTokenPaint: (text) => `\x1b[1m${colors.primary(text)}\x1b[22m`,
       ghostHintPaint: colors.textMuted,
+      ascii: () => this.asciiGlyphs,
       borderTitlePaint: colors.textMuted,
     })
   }

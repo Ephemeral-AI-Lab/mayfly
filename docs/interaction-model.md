@@ -117,7 +117,7 @@ asks "Discard unsaved changes?" unless its definition declares
   therefore never accept a disabled row.
 - The compiler places the list cursor on the choice model's focused row, so
   the model and the painted cursor agree.
-- A focused action that becomes busy keeps its focus highlight.
+- Busy actions are skipped by navigation. Pending actions show elapsed time; dirty forms show an unsaved marker in the action area.
 
 ## Search
 
@@ -177,3 +177,29 @@ core `core-context-hints` catalog.
   `agent/disposed`, not per displayed view.
 - Clearing a non-empty prompt draft with Escape or `Ctrl+C` stores it in
   history so one `↑` restores it.
+
+## Contextual status and accessible presentation
+
+`mayfly.keyHints` controls the built-in second status row: `full` by default,
+`minimal` for essential running/disclosure/switching cues, and `off` to hide it.
+The same setting controls empty-editor teaching text. Capturing panels retain
+their own grammar hints. Hints read the live keymap and displayed access state.
+
+Unprompted request overlays use a 300 ms arm delay. Only Escape is admitted
+before arming; grant digits continue to focus options and require Enter.
+The guard belongs to the frontend registration, survives renderer reload, and
+restarts after hiding. Dismissal labels describe native outcomes without
+changing the Escape ladder.
+
+Model/effort pickers commit on Enter without action buttons. Inherited effort
+is unpinned; Delete restores it and acceptance omits the segment id. List
+segment previews remain frontend state and never write native settings.
+
+F6 includes transcript disclosure navigation. The selected turn and individual
+expansion overrides are retained per conversation generation in frontend state.
+Core owns raw keys, focus, and scrolling; the existing transcript source remains
+the only content model.
+
+`reducedMotion` freezes decorative frames. `glyphs` selects Unicode or ASCII
+furniture, with `auto` following terminal/locale capability. Nonempty `NO_COLOR`
+disables foreground/background color while retaining emphasis.

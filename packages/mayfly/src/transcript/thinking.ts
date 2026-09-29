@@ -12,6 +12,7 @@
  * @module @ephemeral-ai/mayfly/transcript/thinking
  */
 
+import { furniture } from '../core/glyphs.ts'
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import { streamingWindow, STREAMING_RENDER_MAX_CHARS } from './components.ts'
@@ -134,7 +135,7 @@ export class ThinkingComponent implements MayflyComponent {
       ? this.wrapped.lines
       : text.length > 0 ? this.components.wrapText(text, contentWidth) : ['']
     this.wrapped = { text, width: contentWidth, lines: contentLines }
-    const marker = this.colors.muted(THINKING_MARKER)
+    const marker = (streaming ? this.colors.primary : this.colors.text)(furniture(THINKING_MARKER, this.components.asciiGlyphs === true))
     let lines: string[]
     if (text.trim() === '') {
       // Blank reasoning, live or finalized, renders nothing.

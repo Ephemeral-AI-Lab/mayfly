@@ -12,6 +12,11 @@ import type { MayflyLocaleCatalog } from './locale.ts'
 
 const zh: Readonly<Record<string, string>> = {
   // Contextual hint vocabulary shared by the compiler and the interaction layer.
+  'expand': '展开',
+  'collapse': '收起',
+  'clear': '清除',
+  'turns': '轮次',
+  'focus': '定位',
   'tabs': '标签',
   'actions': '操作',
   'options': '选项',
@@ -31,6 +36,7 @@ const zh: Readonly<Record<string, string>> = {
   'newline': '换行',
   'scroll': '滚动',
   // Shared decisions.
+  'Confirm': '确认',
   'Yes': '是',
   'No': '否',
   // Shared surface chrome.

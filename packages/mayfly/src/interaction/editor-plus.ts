@@ -35,6 +35,7 @@
 import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
+import { promptPlaceholder } from './placeholder.ts'
 import type {
   MayflyAutocompleteItem,
   MayflyAutocompleteProvider,
@@ -446,7 +447,6 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
 }
 
 /** The bash-mode border label text (styled at attach time). */
-const BASH_LABEL = '! shell mode'
 
 /**
  * Chain the mode routing and autocomplete provider onto the shared editor,
@@ -472,7 +472,7 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     mode = 'bash'
     draft.stashInputMode('bash')
     editor.setPromptSymbol('!')
-    editor.setBorderLabel(` ${colors.shellMode(BASH_LABEL)} `)
+    editor.setBorderLabel(undefined)
     editor.setBorderColor(colors.shellMode)
   }
 
@@ -503,7 +503,8 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
    * @param text - the current editor buffer.
    * @returns the ghost text, or `undefined` when none applies.
    */
-  const ghostHintFor = (text: string): string | undefined => {
+  const ghostHintFor = (text: string): string | readonly string[] | undefined => {
+    if (text.length === 0) return promptPlaceholder(ctx)
     if (mode === 'bash') return undefined
     const match = /^\/(\S+)( ?)$/.exec(text)
     if (match === null) return undefined
@@ -520,8 +521,14 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
   }
 
   /** Re-apply the ghost after every buffer change. */
-  const refreshGhost = (text: string): void => {
-    editor.setGhostHint(ghostHintFor(text))
+  let ghostSignature: string | undefined
+  const refreshGhost = (text: string): boolean => {
+    const hint = ghostHintFor(text)
+    const signature = JSON.stringify(hint)
+    if (signature === ghostSignature) return false
+    ghostSignature = signature
+    editor.setGhostHint(hint)
+    return true
   }
 
   const unmark = markEditorEnhancement(ctx, ENHANCEMENT_EDITOR_PLUS)
@@ -532,7 +539,7 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     if (mode === 'prompt' && text === '!') {
       enterBash()
       editor.setText('')
-      editor.setGhostHint(undefined)
+      refreshGhost('')
       return
     }
     // While bash is active the shell hue wins over `mayfly-input`'s
@@ -583,8 +590,15 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
   // A draft restored before this attach (a theme-swap reload) deserves its
   // ghost without waiting for the next edit.
   refreshGhost(editor.getText())
+  const refreshPlaceholder = (): void => { if (refreshGhost(editor.getText())) ctx.mayflyScreen.requestRender() }
+  const offDraft = draft.subscribe(refreshPlaceholder)
+  const offViews = ctx.mayflyConversations.subscribe(refreshPlaceholder)
+  const offSession = ctx.on('session/event', refreshPlaceholder)
+  const offSettings = ctx.on('settings/document-updated', refreshPlaceholder)
+  const offPlaceholderLocale = observeInteractionLocale(ctx, refreshPlaceholder)
 
   return () => {
+    offDraft(); offViews(); offSession(); offSettings(); offPlaceholderLocale()
     unmark()
     unregisterAutocomplete()
     editor.onChange = previousOnChange

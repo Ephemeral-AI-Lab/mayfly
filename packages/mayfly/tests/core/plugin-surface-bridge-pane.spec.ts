@@ -1067,3 +1067,30 @@ it('requests independent frames for pane loaders and releases their clock on rem
     expect(repaint).not.toHaveBeenCalled()
   } finally { await bench.dispose(); vi.useRealTimers() }
 })
+
+it('cycles F6 through transcript and panes and returns focus to the prompt', async () => {
+  const f = await fixture()
+  const prompt = f.root.mayflyScreen.mountDockSlot('editor.prompt', f.runtime.editor)
+  const transcript = { focused: false, canFocus: true, render: () => ['history'], invalidate() {} }
+  const content = f.root.mayflyScreen.mountContentSlot('transcript.conversation', transcript)
+  f.register({ id: 'navigation', render: () => ui.actions({ id: 'actions', items: [{ id: 'inspect', label: 'Inspect' }] }) })
+  await flush()
+  prompt.focus()
+  f.keymap.invoke('mayfly.surface.next')
+  expect(f.runtime.focused()).toBe(content.component)
+  f.keymap.invoke('mayfly.surface.next')
+  expect(f.runtime.surfaces.focusedId).toBe('navigation')
+  f.keymap.invoke('mayfly.surface.previous')
+  expect(f.runtime.focused()).toBe(content.component)
+  f.keymap.invoke('mayfly.surface.previous')
+  expect(f.runtime.focused()).toBe(prompt.component)
+  f.keymap.invoke('mayfly.surface.next')
+  transcript.canFocus = false
+  f.keymap.invoke('mayfly.surface.next')
+  expect(f.runtime.surfaces.focusedId).toBe('navigation')
+  f.keymap.invoke('mayfly.surface.next')
+  expect(f.runtime.focused()).toBe(prompt.component)
+  content.dispose()
+  prompt.dispose()
+  await f.dispose()
+})

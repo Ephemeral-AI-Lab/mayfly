@@ -33,7 +33,7 @@ In Standard, the tip's slot carries the running action instead: the command, pat
 
 Follow-ups you submit while the agent runs queue in the harness inbox — the pane leads with a divider and lists one row per message: messages awaiting the next turn carry a `Queued:` prefix and steer messages carry a `Steer:` prefix (user messages only). Empty queue, zero rows.
 
-↑/↓ always belong to editor history — the queue pane only displays pending messages and never takes over keys (see [Input editor](/en/features/editor)).
+↑ on an empty prompt withdraws the newest queued message; otherwise ↑/↓ retain editor navigation and history (see [Input editor](/en/features/editor)).
 
 ## Todo pane
 
@@ -68,3 +68,5 @@ The card stays compact as the group grows: every member is one truncated row; wi
 ## Workflow pane
 
 After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. Like the agents card, a run with more than six agents lists its running agents first and counts the rest in a closing `… +K more` row. A settled summary remains until the next relevant state replacement; switching the displayed conversation switches this pane with every other session-scoped surface.
+
+With an empty prompt, ↑ withdraws the newest queued message into the editor; the queue header advertises this action. F6 includes the transcript: ↑/↓ select a turn, Home/End select the first/last, Enter expands or collapses it, and Esc returns to the editor. Navigation can reach older turns outside the recent Ctrl+O scope.

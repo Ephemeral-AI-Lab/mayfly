@@ -81,6 +81,7 @@ import { EditorExtensionRuntime } from './editor-extension-runtime.ts'
 import { mountEditorPlus } from './editor-plus.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { currentMayflySettings } from './settings.ts'
+import { mountKeyHintsStatus, promptPlanState } from './key-hints-status.ts'
 import {
   ACTION_CANCEL,
   ACTION_CYCLE_MODEL,
@@ -247,7 +248,7 @@ export function apply(ctx: Context): void {
   }
   const feedbackNode = (): MayflyUiNode | undefined => {
     const record = visibleNotification()
-    if (record !== undefined) return ui.text(record.message, { tone: record.severity === 'error' ? 'danger' : record.severity === 'info' ? 'muted' : record.severity })
+    if (record !== undefined) return ui.text(`${({ success: '✓', info: '·', warning: '!', error: '✗' })[record.severity]} ${record.message}`, { tone: record.severity === 'error' ? 'danger' : record.severity === 'info' ? 'muted' : record.severity })
     const hint = slashHint()
     return hint === undefined ? undefined : ui.text(hint, { tone: 'muted' })
   }
@@ -290,11 +291,23 @@ export function apply(ctx: Context): void {
   }
 
   /** Recompile the prompt footer from structured feedback or slash state. */
+  const refreshKeys = mountKeyHintsStatus(ctx, () => ({
+    editorFocused: extensionRuntime.focused,
+    access: conversations.displayed()?.access ?? 'readonly',
+    running: sessionFlowInProgress(),
+    stopping: requests.stopPending(),
+    hasRetractionCandidate: editor.getText().length === 0 && retractionCandidate !== undefined,
+    draft: editor.getText().length > 0,
+    shell: draft.getStashedInputMode() === 'bash',
+    plan: promptPlanState(ctx),
+    focusable: ctx.mayflyScreen.contentFocusTarget?.() != null,
+    ...(ctx.get('mayflyTranscriptLocals')?.disclosure === undefined ? {} : { disclosure: ctx.get('mayflyTranscriptLocals')!.disclosure() }),
+  }))
   let refreshingHint = false
   function refreshHint(): void {
     if (refreshingHint) return
     refreshingHint = true
-    try { extensionRuntime.refreshPresentation() } finally { refreshingHint = false }
+    try { extensionRuntime.refreshPresentation(); refreshKeys() } finally { refreshingHint = false }
   }
   ctx.effect(() => ctx.mayflyUiInteraction.subscribe(refreshHint))
 
@@ -472,6 +485,7 @@ export function apply(ctx: Context): void {
    */
   function submitPrompt(value: string): void {
     const line = value.trim()
+    const submitView = conversations.displayed()
     retractionCandidate = undefined
     // The funnel captured this submission's raw buffer and paste table;
     // read it once here regardless of which route the line takes.
@@ -496,7 +510,7 @@ export function apply(ctx: Context): void {
     // against its primary; only its messages follow the displayed access.
     const agent = ctx.mayflyCurrentAgent.current() ?? (parsed === undefined ? null : ctx.mayflyCurrentAgent.primary())
     if (agent === null) {
-      const displayed = conversations.displayed()
+      const displayed = submitView
       if (displayed === null) {
         showFeedback('prompt-submit', t('no active session'), 'error')
         return
@@ -520,7 +534,7 @@ export function apply(ctx: Context): void {
               ? { ...block, text: rewriteSkillTokens(ctx, block.text) }
               : block),
           }
-      const displayed = conversations.displayed()
+      const displayed = submitView
       if (displayed?.kind === 'subagent') {
         deliverSubagentPrompt(value, line, transformed, submitted)
         return

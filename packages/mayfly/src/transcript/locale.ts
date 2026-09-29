@@ -13,6 +13,7 @@ import {
   type MayflyLocaleSnapshot,
   type MayflyTranslate,
 } from '../frontend/index.ts'
+import { mountCommonLocale } from '../frontend/common-locale.ts'
 import { HINTS_ZH } from './hints.ts'
 import { PROCESS_ACTIVE_ZH, PROCESS_DONE_ZH, SHARED_DONE_PREFIX_KEY } from './process-activity.ts'
 
@@ -48,7 +49,8 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   '{count} subagent': '{count} 个 subagent',
   '{count} subagents': '{count} 个 subagent',
   '{count} failed': '{count} 个失败',
-  'ctrl+o to expand': '按 Ctrl-O 展开',
+  'ctrl+o to collapse': 'Ctrl+O 收起',
+  'ctrl+o to expand': 'Ctrl+O 展开',
   'Thought for a while': '已思考',
   'Thought for {duration}': '已思考 {duration}',
   'Preparing {name} · {count} chars': '准备 {name} · {count} 字符',
@@ -145,6 +147,11 @@ export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = Object.freeze({
 
 /** Activity-pane copy: phase labels plus the running and preparing process labels. */
 export const ACTIVITY_LOCALE = identityCatalog({
+  '{key}: toggle plan mode': '{key}：切换计划模式',
+  '{key}: edit the draft in your editor': '{key}：在编辑器中修改草稿',
+  '{key}: cycle the model': '{key}：切换模型',
+  '{key}: steer the running turn': '{key}：引导当前轮次',
+  '#: mention skills': '#：引用技能',
   ' · Tip: ': ' · 提示：',
   'Deep diving': '深度求索中',
   'Thinking': '思考中',
@@ -160,6 +167,7 @@ export const ACTIVITY_LOCALE = identityCatalog({
  * @param catalog - localized messages.
  */
 export function mountTranscriptLocale(ctx: Context, namespace: string, catalog: MayflyLocaleCatalog): void {
+  mountCommonLocale(ctx)
   ctx.inject(['mayflyLocale'], (localeCtx) => {
     localeCtx.effect(() => localeCtx.mayflyLocale.register(namespace, catalog))
   })

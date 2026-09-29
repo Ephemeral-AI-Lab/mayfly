@@ -81,7 +81,7 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
       ] }),
     ])
     child = openUiOverlay(ctx, {
-      id: promptId, title: t('Sign in'), presentation: 'editor', capturing: true,
+      id: promptId, title: t('Sign in'), presentation: 'editor', capturing: true, armMs: 300,
       scope: { kind: 'app', targetId: `authorization/${route}` },
       onEvent: { action: (event, context) => {
         if (event.kind === 'dismiss') { finish(true); return { kind: 'cancelled' } }

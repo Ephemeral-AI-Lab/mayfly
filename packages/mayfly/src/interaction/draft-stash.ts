@@ -18,6 +18,12 @@
 
 /** Draft, mode, and history owned by one frontend tree. */
 export class DraftStash {
+  private readonly listeners = new Set<() => void>()
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+  private changed(): void { for (const listener of this.listeners) listener() }
   private draft = ''
   private inputMode: 'prompt' | 'bash' = 'prompt'
   private history: readonly string[] = []
@@ -26,12 +32,17 @@ export class DraftStash {
  * Mirror the editor's current text into the stash.
  * @param text - the editor content to preserve across reloads.
  */
-  stashDraft(text: string): void { this.draft = text }
+  stashDraft(text: string): void {
+    if (this.draft === text) return
+    this.draft = text
+    this.changed()
+  }
 
 /** Clear the draft stash; called when the draft is consumed (submitted/steered). */
   clearDraft(): void {
     this.draft = ''
     this.inputMode = 'prompt'
+    this.changed()
   }
 
 /**
@@ -44,7 +55,11 @@ export class DraftStash {
  * Mirror the editor's input mode into the stash.
  * @param mode - `'prompt'` or `'bash'`.
  */
-  stashInputMode(mode: 'prompt' | 'bash'): void { this.inputMode = mode }
+  stashInputMode(mode: 'prompt' | 'bash'): void {
+    if (this.inputMode === mode) return
+    this.inputMode = mode
+    this.changed()
+  }
 
 /**
  * Read the stashed input mode.

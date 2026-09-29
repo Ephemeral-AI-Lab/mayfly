@@ -28,8 +28,8 @@ export type GrammarControl =
   | { readonly kind: 'toggle' }
   | { readonly kind: 'submit' }
   | { readonly kind: 'field-action' }
-  | { readonly kind: 'tab' }
-  | { readonly kind: 'row', readonly role: 'browse' | 'choose', readonly multiple: boolean, readonly tree: boolean, readonly segment?: string }
+  | { readonly kind: 'tab', readonly vertical?: boolean }
+  | { readonly kind: 'row', readonly role: 'browse' | 'choose', readonly acceptVerb?: 'open' | 'choose', readonly resetSegment?: boolean, readonly multiple: boolean, readonly tree: boolean, readonly segment?: string }
   | { readonly kind: 'empty-list' }
   | { readonly kind: 'action', readonly decision: boolean }
   | { readonly kind: 'cancel' }
@@ -53,6 +53,7 @@ export interface GrammarState {
   readonly groups: number
   readonly siblings: number
   readonly escape: EscapeStep | undefined
+  readonly escapeVerb?: 'close' | 'cancel' | 'reject'
   /** Ctrl+C requests the same close as the outermost Escape. */
   readonly closable: boolean
   /** What resetting the focused field does, when it has a changed or overriding value. */
@@ -88,6 +89,7 @@ export type GrammarIntent =
   | { readonly kind: 'tab-descend' }
   | { readonly kind: 'list-move', readonly movement: ListMovement }
   | { readonly kind: 'segment', readonly delta: -1 | 1 }
+  | { readonly kind: 'reset-segment' }
   | { readonly kind: 'branch', readonly expand?: boolean }
   | { readonly kind: 'accept' }
   | { readonly kind: 'commit' }
@@ -211,7 +213,7 @@ function rowBindings(bindings: GrammarBinding[], state: GrammarState, control: E
     push(bindings, action(ACTION_TOGGLE), { kind: 'toggle-row' }, { id: 'activate', label: 'toggle / confirm', priority: PRIORITY.primary, actions: [ACTION_TOGGLE, ACTION_SUBMIT], compact: 'Space/Enter' })
     push(bindings, action(ACTION_SUBMIT), { kind: 'commit' })
   } else {
-    push(bindings, action(ACTION_SUBMIT), { kind: 'accept' }, { id: 'activate', label: control.role === 'browse' ? 'open' : 'choose', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+    push(bindings, action(ACTION_SUBMIT), { kind: 'accept' }, { id: 'activate', label: control.acceptVerb ?? (control.role === 'browse' ? 'open' : 'choose'), priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
     if (control.tree && !searching) push(bindings, action(ACTION_TOGGLE), { kind: 'branch' }, { id: 'branch', label: 'branch', priority: PRIORITY.adjust, actions: [ACTION_TOGGLE] })
   }
 }
@@ -225,6 +227,7 @@ function listText(bindings: GrammarBinding[], state: GrammarState): void {
 
 function rowMovement(bindings: GrammarBinding[], control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
   listMovement(bindings)
+  if (control.resetSegment === true) push(bindings, action(ACTION_RESET_FIELD), { kind: 'reset-segment' }, { id: 'reset', label: 'use default', priority: PRIORITY.secondary, actions: [ACTION_RESET_FIELD] })
   if (control.segment !== undefined) {
     push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'segment', delta: -1 }, { id: 'adjust', label: control.segment, priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
     push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'segment', delta: 1 })
@@ -260,7 +263,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     return bindings
   }
   if (state.escape !== undefined) {
-    push(bindings, action(ACTION_CANCEL), { kind: 'escape', step: state.escape }, { id: 'escape', label: ESCAPE_LABEL[state.escape], priority: PRIORITY.escape, actions: [ACTION_CANCEL] })
+    push(bindings, action(ACTION_CANCEL), { kind: 'escape', step: state.escape }, { id: 'escape', label: state.escapeVerb ?? ESCAPE_LABEL[state.escape], priority: PRIORITY.escape, actions: [ACTION_CANCEL] })
   }
   if (state.closable) push(bindings, action(ACTION_INTERRUPT), { kind: 'close' })
   if (control.kind === 'text' && control.editing) { textEditing(bindings, state, control); return bindings }
@@ -315,11 +318,18 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
         push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'select-cycle', delta: -1 }, { id: 'adjust', label: 'adjust', priority: PRIORITY.primary, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
         push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'select-cycle', delta: 1 })
       }
-      push(bindings, action(ACTION_SUBMIT), { kind: 'picker-open' }, { id: 'activate', label: 'pick', priority: control.multiple ? PRIORITY.primary : PRIORITY.adjust, actions: control.multiple ? [ACTION_SUBMIT, ACTION_TOGGLE] : [ACTION_SUBMIT] })
+      push(bindings, action(ACTION_SUBMIT), { kind: 'picker-open' }, { id: 'activate', label: 'open', priority: control.multiple ? PRIORITY.primary : PRIORITY.adjust, actions: control.multiple ? [ACTION_SUBMIT, ACTION_TOGGLE] : [ACTION_SUBMIT] })
       if (control.multiple) push(bindings, action(ACTION_TOGGLE), { kind: 'picker-open' })
       navigation(bindings, state, ['left', 'right'], 'fields')
       break
     case 'tab':
+      if (control.vertical) {
+        push(bindings, action(ACTION_MOVE_UP), { kind: 'tab-move', delta: -1 }, { id: 'navigate', label: 'tabs', priority: PRIORITY.navigate, actions: [ACTION_MOVE_UP, ACTION_MOVE_DOWN] })
+        push(bindings, action(ACTION_MOVE_DOWN), { kind: 'tab-move', delta: 1 })
+        push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'tab-descend' })
+        push(bindings, action(ACTION_SUBMIT), { kind: 'tab-descend' }, { id: 'activate', label: 'open', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+        break
+      }
       push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'tab-move', delta: -1 }, { id: 'navigate', label: 'tabs', priority: PRIORITY.navigate, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
       push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'tab-move', delta: 1 })
       push(bindings, action(ACTION_SUBMIT), { kind: 'tab-descend' }, { id: 'activate', label: 'open', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })

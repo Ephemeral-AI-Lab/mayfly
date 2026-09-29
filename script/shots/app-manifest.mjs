@@ -12,6 +12,9 @@
  */
 
 export const APP_SCENARIOS = [
+  { id: 'app-model', cols: 80, rows: 24 },
+  { id: 'app-settings', cols: 80, rows: 24 },
+  { id: 'app-approval', cols: 80, rows: 24 },
   // README hero: a real finished turn — thinking card, tool cards, the
   // editor dock, and the status bar.
   { id: 'app-conversation', cols: 80, rows: 24 },

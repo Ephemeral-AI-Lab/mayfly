@@ -17,6 +17,9 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session, SessionHeader } from '@deepseek-ai/dsh-session'
 import { waitForRender } from '../core/fake-terminal.ts'
 import { sessionWorkspaceId } from '../../src/interaction/session-workspaces-model.ts'
+import { openModelPicker } from '../../src/interaction/model-commands.ts'
+import { Config as MayflySettingsConfig } from '../../src/interaction/settings.ts'
+import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 import { openPermissionPanel } from '../../src/interaction/permission-panel.ts'
 import { appendAt, pinShotClock, SHOT_CWD, SHOT_EPOCH, SHOT_MAIN_ID, withShotTime, type AppShotTree } from './boot.ts'
 
@@ -314,13 +317,44 @@ async function sceneSessionWorkspace(tree: AppShotTree): Promise<void> {
   const agent = await tree.currentAgent()
   await withShotTime(SHOT_EPOCH + 60_000, async () => {
     const picker = tree.ctx.mayflyUiInteraction.get('overlay', 'mayfly.sessions')!
-    picker.emit({ kind: 'selection-accept', pagePath: [], controlId: 'workspaces', selectedIds: [sessionWorkspaceId(agent.session.header.cwd)] })
+    picker.invoke('open-workspace', [{ controlId: 'workspaces', itemId: sessionWorkspaceId(agent.session.header.cwd) }])
     await waitForRender()
   })
 }
 
+/** Catalog data is fixed; the picker and native service readers are production code. */
+async function sceneModel(tree: AppShotTree): Promise<void> {
+  const agent = await tree.currentAgent()
+  scriptBaseConversation(agent.session)
+  tree.ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat' }) } as never)
+  tree.ctx.provide('llm', {
+    listProviders: () => [{ id: 'deepseek', name: 'DeepSeek' }],
+    listModels: async () => [{ id: 'deepseek-chat', name: 'DeepSeek Chat' }, { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner' }],
+    resolveModelInfo: async () => ({ context: { contextWindow: 131072 }, reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }, { id: 'max', name: 'Max' }], defaultEffort: 'high' } }),
+  } as never)
+  await openModelPicker(tree.ctx, new AbortController().signal)
+  tree.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'focus', id: JSON.stringify(['deepseek', 'deepseek-reasoner']) })
+}
+
+async function sceneSettings(tree: AppShotTree): Promise<void> {
+  const settings = new MemorySettings(tree.ctx)
+  settings.register('mayfly', MayflySettingsConfig)
+  await waitForRender()
+  const agent = await tree.currentAgent()
+  await tree.ctx.commands.execute(agent, '/settings', [], new AbortController().signal)
+}
+
+async function sceneApproval(tree: AppShotTree): Promise<void> {
+  const agent = await tree.currentAgent()
+  scriptBaseConversation(agent.session)
+  void tree.ctx.waterfall('approval/request', { agent, toolName: 'bash', reason: 'rm -rf build && pnpm build' }, () => Promise.resolve('unavailable' as const))
+}
+
 /** Scene runners keyed by the ids of `script/shots/app-manifest.mjs`. */
 export const APP_SCENE_RUNNERS: Record<string, (tree: AppShotTree) => Promise<void>> = {
+  'app-model': sceneModel,
+  'app-settings': sceneSettings,
+  'app-approval': sceneApproval,
   'app-conversation': sceneConversation,
   'app-trace': sceneTrace,
   'app-agents': sceneAgents,

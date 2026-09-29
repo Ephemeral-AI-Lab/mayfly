@@ -11,6 +11,7 @@
  * @module @ephemeral-ai/mayfly/transcript/process-rows
  */
 
+import { furniture } from '../core/glyphs.ts'
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
@@ -105,10 +106,17 @@ export class TurnHeaderComponent implements MayflyComponent {
       ...(item.toolCalls === 0 ? [] : [t(item.toolCalls === 1 ? '{count} tool call' : '{count} tool calls', { count: item.toolCalls })]),
       ...(item.subagents === 0 ? [] : [t(item.subagents === 1 ? '{count} subagent' : '{count} subagents', { count: item.subagents })]),
     ]
-    const tail = `${counts.map(count => ` · ${count}`).join('')}${item.hint ? ` · ${t('ctrl+o to expand')}` : ''}`
+    const tail = `${counts.map(count => ` · ${count}`).join('')}${item.hint ? ` · ${item.disclosureExpanded === true ? t('ctrl+o to collapse') : t('ctrl+o to expand')}` : ''}`
     const key = `${String(width)}:${String(item.folded)}:${label}:${tail}`
     if (this.cache?.key === key) return this.cache.rows
-    const row = `${colors.muted(marker(item.folded))}${paint(label)}${colors.textMuted(tail)}`
+    let cue = item.hint ? ` · ${item.disclosureExpanded === true ? t('ctrl+o to collapse') : t('ctrl+o to expand')}` : ''
+    if (this.components.visibleWidth(cue) > width) {
+      const bare = cue.replace(/^ · /u, '')
+      cue = this.components.visibleWidth(bare) <= width ? bare : bare.split(' ')[0]!
+    }
+    const full = `${colors.muted(furniture(marker(item.folded), this.components.asciiGlyphs === true))}${paint(label)}${colors.textMuted(tail)}`
+    const row = this.components.visibleWidth(full) <= width || cue === '' ? full
+      : `${this.components.truncateToWidth(`${colors.muted(furniture(marker(item.folded), this.components.asciiGlyphs === true))}${paint(label)}`, Math.max(0, width - this.components.visibleWidth(cue)))}${colors.textMuted(cue)}`
     const rows = ['', this.components.truncateToWidth(row, width)]
     this.cache = { key, rows }
     return rows

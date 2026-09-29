@@ -42,6 +42,8 @@ describe('shared questionnaire', () => {
     expect(model.focus).toMatchObject({ pagePath: path('one'), controlId: 'options', itemId: '1' })
     recompiled().input('\x1b[1;3C')
     expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBe('two')
+    expect(recompiled().component.render(80).join('\n')).not.toContain('Submit answers')
+    for (let index = 0; index < 3; index += 1) recompiled().input('\t')
     expect(recompiled().component.render(80).join('\n').match(/Submit answers/gu)).toHaveLength(1)
     renderer.runtime.dispose()
     model.invoke('submit-answers')

@@ -34,10 +34,10 @@ export function questionnaireView(questions: readonly AskUserQuestionItem[], t: 
           items: question.multiSelect === true ? options : [...options, { id: 'none', label: t('No selection') }],
           acceptActionId: last ? 'submit-answers' : 'next' })],
         ui.form({ id: 'answer', enterSubmits: last ? 'submit-answers' : 'next', fields: [{ kind: 'textarea', id: 'custom', label: t(options.length === 0 ? 'Answer' : 'Other'), value: '' }] }),
-        ...navigation.length === 0 ? [] : [ui.actions({ id: 'navigation', items: navigation })],
+        ...navigation.length === 0 ? [] : [ui.actions({ reveal: 'focus', id: 'navigation', items: navigation })],
       ]), questions.length === 1 ? {} : { tab: { controlId: STEPS, itemId: question.id } })
     }),
-    ui.actions({ id: 'question-actions', items: [
+    ui.actions({ reveal: 'focus', id: 'question-actions', items: [
       { id: 'submit-answers', label: t('Submit answers'), intent: 'primary', submit, ...selections.length === 0 ? {} : { selections } },
       { id: 'cancel', label: t('Cancel'), dismiss: true },
     ] }),

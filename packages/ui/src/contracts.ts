@@ -23,7 +23,7 @@ export interface MayflySnapshotRequest { readonly cursor?: string, readonly sign
 export interface MayflySnapshotPage<Node> { readonly node: Node, readonly nextCursor?: string, readonly total?: number }
 export type MayflySnapshotProvider<Node> = (request: MayflySnapshotRequest) => MayflySnapshotPage<Node> | Promise<MayflySnapshotPage<Node>>
 
-export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
+export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger' | 'shell'
 export type MayflyTextStyle = 'strong' | 'italic' | 'strike'
 export interface MayflyInlineSpan { readonly text: string, readonly tone?: MayflyTone, readonly styles?: readonly MayflyTextStyle[] }
 export interface MayflyField { readonly label: string, readonly value: readonly MayflyInlineSpan[] }
@@ -57,10 +57,10 @@ export interface MayflyStackNode { readonly kind: 'stack', readonly direction: '
 export interface MayflySurfaceNode { readonly kind: 'surface', readonly title?: string, readonly subtitle?: string, readonly badges?: readonly MayflyInlineSpan[], readonly chrome?: 'none' | 'lane' | 'surface' | 'overlay', readonly padding?: 0 | 1 | 2, readonly child: MayflyUiNode, readonly footer?: MayflyUiNode }
 export interface MayflyScrollNode { readonly kind: 'scroll', readonly id?: string, readonly child: MayflyUiNode, readonly follow?: 'none' | 'start' | 'end', readonly scrollbar?: boolean }
 export interface MayflyTabItem { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly count?: number, readonly backId?: string }
-export interface MayflyTabsNode { readonly kind: 'tabs', readonly id: string, readonly activeId: string, readonly items: readonly MayflyTabItem[], readonly mode?: 'tabs' | 'wizard' }
+export interface MayflyTabsNode { readonly kind: 'tabs', readonly orientation?: 'horizontal' | 'vertical', readonly id: string, readonly activeId: string, readonly items: readonly MayflyTabItem[], readonly mode?: 'tabs' | 'wizard' }
 export interface MayflyListSegmentOption { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly disabledReason?: string }
 /** A horizontal option strip bound to one list row; left/right steps it while the row is focused and `selection-accept` reports it as `segmentId`. */
-export interface MayflyListSegment { readonly label?: string, readonly options: readonly MayflyListSegmentOption[], readonly selectedId?: string }
+export interface MayflyListSegment { readonly label?: string, readonly options: readonly MayflyListSegmentOption[], readonly selectedId?: string, readonly inheritedId?: string }
 export interface MayflyListItem {
   readonly id: string
   readonly label: string
@@ -78,7 +78,7 @@ export interface MayflyListItem {
   /** Shared decision shown before accepting this single row. */
   readonly confirm?: string | MayflyConfirmation
 }
-export interface MayflyListNode { readonly kind: 'list', readonly id: string, readonly role: 'browse' | 'choose', readonly mode?: 'single' | 'multiple', readonly selectedIds: readonly string[], readonly items: readonly MayflyListItem[], readonly filter?: string, readonly filterable?: boolean, readonly tree?: boolean, readonly numbered?: boolean | 'focus', readonly minSelected?: number, readonly maxSelected?: number, readonly acceptActionId?: string, readonly empty?: MayflyUiNode }
+export interface MayflyListNode { readonly kind: 'list', readonly id: string, readonly role: 'browse' | 'choose', readonly acceptVerb?: 'open' | 'choose', readonly mode?: 'single' | 'multiple', readonly selectedIds: readonly string[], readonly items: readonly MayflyListItem[], readonly filter?: string, readonly filterable?: boolean, readonly tree?: boolean, readonly numbered?: boolean | 'focus', readonly minSelected?: number, readonly maxSelected?: number, readonly acceptActionId?: string, readonly empty?: MayflyUiNode }
 export interface MayflyFormFieldBase {
   readonly id: string
   readonly label: string
@@ -134,7 +134,7 @@ export interface MayflyActionItem {
   /** Surface accelerator key id. Semantic navigation keys are reserved; printable keys are rejected on surfaces with a filterable list. */
   readonly key?: string
 }
-export interface MayflyActionsNode { readonly kind: 'actions', readonly id: string, readonly items: readonly MayflyActionItem[] }
+export interface MayflyActionsNode { readonly kind: 'actions', readonly reveal?: 'always' | 'focus', readonly id: string, readonly items: readonly MayflyActionItem[] }
 export interface MayflyLoaderNode { readonly kind: 'loader', readonly message: string, readonly variant?: 'braille' | 'tide', readonly elapsedMs?: number, readonly cancelActionId?: string, readonly cancelLabel?: string }
 export interface MayflyEmptyNode { readonly kind: 'empty', readonly title: string, readonly description?: string, readonly actions?: MayflyActionsNode }
 export interface MayflyProgressNode { readonly kind: 'progress', readonly label?: string, readonly value: number, readonly max: number }
@@ -173,7 +173,7 @@ export interface MayflyPaneRegistration extends MayflyNodeRegistration<MayflyUiN
 export interface MayflyPaneRegistry { register(definition: MayflyPaneDefinition, initialNode?: MayflyUiNode | null): MayflyPaneRegistration, list(): readonly MayflyPaneEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyPaneEntry>) => void): () => void }
 
 export type MayflyOverlayAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right'
-export interface MayflyOverlayDefinition extends MayflyInteractionDefinition { readonly id: string, readonly title?: string, readonly presentation?: 'overlay' | 'editor', readonly capturing?: boolean, readonly dismissible?: boolean, readonly dismissal?: 'confirm-dirty' | 'discard', readonly anchor?: MayflyOverlayAnchor, readonly width?: number | `${number}%`, readonly minWidth?: number, readonly maxHeight?: number | `${number}%`, readonly contentScroll?: boolean, readonly onEvent?: MayflyUiEventHandlers, readonly load?: MayflySnapshotProvider<MayflyUiNode> }
+export interface MayflyOverlayDefinition extends MayflyInteractionDefinition { readonly armMs?: number, readonly escapeLabel?: 'close' | 'cancel' | 'reject', readonly id: string, readonly title?: string, readonly presentation?: 'overlay' | 'editor', readonly capturing?: boolean, readonly dismissible?: boolean, readonly dismissal?: 'confirm-dirty' | 'discard', readonly anchor?: MayflyOverlayAnchor, readonly width?: number | `${number}%`, readonly minWidth?: number, readonly maxHeight?: number | `${number}%`, readonly contentScroll?: boolean, readonly onEvent?: MayflyUiEventHandlers, readonly load?: MayflySnapshotProvider<MayflyUiNode> }
 export interface MayflyOverlayEntry extends MayflyInteractionSnapshot { readonly id: string, readonly definition: MayflyOverlayDefinition, readonly node: MayflyUiNode, readonly revision: number, readonly order: number, readonly hidden: boolean, readonly focusRevision: number, readonly update: MayflySnapshotChange, readonly events: MayflyUiEventEndpoint }
 export interface MayflyOverlayHandle extends MayflyRegistration { readonly revision: number, readonly closed: boolean, set(node: MayflyUiNode, update?: MayflySnapshotUpdate): void, focus(): void, hide(): void, show(): void, close(): void }
 export interface MayflyOverlayRegistry { open(definition: MayflyOverlayDefinition, initialNode: MayflyUiNode): MayflyOverlayHandle, close(id: string): boolean, focus(id: string): boolean, list(): readonly MayflyOverlayEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyOverlayEntry>) => void): () => void }

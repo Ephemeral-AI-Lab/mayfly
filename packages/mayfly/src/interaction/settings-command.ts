@@ -140,26 +140,83 @@ export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
   ctx.commands.register({
     name: 'settings', description: 'Edit user settings by namespace',
-    handler: () => {
-      const view = () => ui.surface({ child: ui.stack.column([
-        ui.list({ id: 'namespaces', role: 'browse', selectedIds: [], filterable: true, items: ctx.settings.describe({ redactSecrets: true }).map(item => ({ id: String(item.ns), label: String(item.ns) })), empty: ui.empty({ title: t('No settings namespaces') }) }),
-        ui.actions({ id: 'browser-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), disabled: !ctx.settings.writable }, { id: 'close', label: t('Close'), dismiss: true }] }),
-      ]), title: t('Settings'), chrome: 'overlay', padding: 1 })
+    handler: async (request) => {
+      const signal = request.signal === undefined ? lifetime.signal : AbortSignal.any([lifetime.signal, request.signal])
+      let dynamic = await choices(ctx)
+      if (signal.aborted) return { kind: 'success' }
+      const snapshot = () => {
+        const descriptors = ctx.settings.describe({ redactSecrets: true })
+        if (descriptors.length === 0) return { node: ui.empty({ title: t('No settings namespaces') }), source: [] }
+        const pages = descriptors.map(descriptor => {
+          const ns = String(descriptor.ns)
+          const page = { controlId: 'namespaces', itemId: ns }
+          const projection = settingsProjection(descriptor, ctx.settings.writable, dynamic, t, [page])
+          return { ns, page, projection, source: source(descriptor, projection) }
+        })
+        return {
+          source: pages.flatMap(page => page.source),
+          node: ui.surface({ title: t('Settings'), chrome: 'overlay', padding: 1, child: ui.stack.column([
+            ui.stack.row([
+              ui.child(ui.tabs({ id: 'namespaces', orientation: 'vertical', activeId: pages[0]!.ns, items: pages.map(page => ({ id: page.ns, label: page.ns })) }), { basis: 24, shrink: 1, minSize: 8 }),
+              ...pages.map(page => ui.child(page.projection.node, { tab: page.page, grow: 1, minSize: 1 })),
+            ]),
+            ui.actions({ id: 'browser-actions', items: [{ id: 'open-file', label: t('Open profile configuration in $EDITOR'), disabled: !ctx.settings.writable }] }),
+          ]) }),
+        }
+      }
+      const initial = snapshot()
       let teardown: (() => void) | undefined
       const opened = openUiOverlay(ctx, {
-        id: ROOT_ID, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'settings' },
+        id: ROOT_ID, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'settings' }, source: initial.source,
         onEvent: { action: async (event, context) => {
-          if (event.kind === 'selection-accept') return await openSettingsNamespace(ctx, event.selectedIds[0]!, lifetime.signal) ? { kind: 'completed' } : { kind: 'failed', message: t('Settings namespace is unavailable') }
+          if (context.signal.aborted || signal.aborted) return { kind: 'cancelled' }
+          if (event.kind === 'submit' || event.kind === 'activate' && event.actionId === 'refresh') {
+            const next = await choices(ctx)
+            if (context.signal.aborted || signal.aborted) return { kind: 'cancelled' }
+            dynamic = next
+          }
+          if (event.kind === 'submit') {
+            const form = event.submission.forms.find(value => value.formId === 'settings-form')
+            const ns = form?.pagePath.find(page => page.controlId === 'namespaces')?.itemId
+            const descriptor = ctx.settings.describe({ redactSecrets: true }).find(value => String(value.ns) === ns)
+            if (form === undefined || ns === undefined || descriptor === undefined) return { kind: 'failed', message: t('Settings namespace is unavailable') }
+            const projection = settingsProjection(descriptor, ctx.settings.writable, dynamic, t, form.pagePath)
+            const expected = event.submission.source.find(stamp => stamp.resourceId === `settings/${ns}`)?.revision
+            const expectedFields = event.submission.source.find(stamp => stamp.resourceId === `settings/${ns}/fields`)?.revision
+            if (expected !== descriptor.revision || expectedFields !== projection.revision) return { kind: 'conflict', ...snapshot(), message: t('Settings changed elsewhere; review before saving') }
+            try {
+              const operations = settingsOperations(projection, form)
+              if (operations.length > 0) await ctx.settings.mutate(ns, operations, descriptor.revision)
+              if (context.signal.aborted || signal.aborted) return { kind: 'cancelled' }
+              return { kind: 'accepted', ...snapshot(), feedback: { severity: 'success', message: t('Settings saved') } }
+            } catch (error) {
+              if (context.signal.aborted || signal.aborted) return { kind: 'cancelled' }
+              return error instanceof SettingsConflictError
+                ? { kind: 'conflict', ...snapshot(), message: t('Settings changed elsewhere; review before saving') }
+                : { kind: 'failed', ...snapshot(), message: t('Settings could not be saved') }
+            }
+          }
           if (event.kind === 'activate' && event.actionId === 'open-file') return editDocument(ctx, context.signal)
-          if (event.kind === 'activate' && event.actionId === 'refresh') opened?.set(view())
+          if (event.kind === 'activate' && event.actionId === 'refresh') return { kind: 'accepted', ...snapshot() }
           return { kind: 'completed' }
         } },
-      }, view(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => teardown?.() })
+      }, initial.node, { signal, reopen: 'focus', onClosed: () => teardown?.() })
       if (opened === undefined) return { kind: 'success' }
-      const refresh = () => { opened.set(view()) }
-      const offDocument = ctx.on('settings/document-updated', refresh)
-      const offLocale = observeInteractionLocale(ctx, refresh)
-      teardown = () => { offDocument(); offLocale() }
+      let refreshSequence = 0
+      const refresh = async () => {
+        if (opened.closed || signal.aborted) return
+        const sequence = ++refreshSequence
+        const next = await choices(ctx)
+        if (opened.closed || signal.aborted || sequence !== refreshSequence) return
+        dynamic = next
+        const value = snapshot()
+        opened.set(value.node, { source: value.source })
+      }
+      const schedule = () => { void refresh() }
+      const offDocument = ctx.on('settings/document-updated', schedule)
+      const offLocale = observeInteractionLocale(ctx, schedule)
+      const dynamicFibers = ['permissionPresets', 'agentPresets'].map(name => ctx.inject([name], owner => { schedule(); owner.effect(() => () => schedule()) }))
+      teardown = () => { offDocument(); offLocale(); for (const fiber of dynamicFibers) void fiber.dispose() }
       return { kind: 'success' }
     },
   })

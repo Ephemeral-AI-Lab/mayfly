@@ -4,17 +4,14 @@ When the agent needs a human decision, Mayfly answers with full-width pull-up pa
 
 ## Approval panel
 
-When a tool call needs authorization, a panel titled `Approve {tool}?` opens with the tool's reason (scrollable when long) and one row of choices:
+When a tool call needs authorization, the panel shows its scrollable reason,
+numbered vertical choices (Reject, Allow once, Allow for this session), and an
+inline Feedback field. Reject starts focused. Digits move focus; Enter confirms.
+The first 300 ms admits only Escape, which rejects immediately. A session grant
+belongs to the exact Agent and survives view switches until that Agent is disposed.
 
-```
-[ Reject ]  Allow once  Allow {tool} for this session  Reject with feedback
-```
-
-- **Reject is focused first**, so an accidental Enter never grants access. `←` / `→` or `Tab` move between choices and `Enter` runs one; there are no digit shortcuts on this gate.
-- **Session-level remember** — *Allow {tool} for this session* records the tool for this Agent; later requests for the same Agent and tool pass without a panel. The allowance survives switching the displayed view (for example with `F7`) and ends when that Agent is disposed.
-- **Reject with feedback** opens a reason field on a second page; `Enter` sends, `Alt+Enter` adds a line, `Esc` ends editing and a second `Esc` returns to the choices. Sending steers the agent with a user message (`User rejected …: <reason>`), so it sees why; an empty reason is a plain Reject.
-- **Escape rejects**; an aborted request settles as cancelled.
-- **FIFO serialization** — concurrent approval requests queue; one panel shows at a time.
+Enter in Feedback rejects and sends the supplied reason; an empty reason is a
+plain rejection. Native abort remains cancellation. Requests retain FIFO order.
 
 Requests from other agents (not the one displayed) don't open a panel — they pass down the waterfall to the next answerer.
 
@@ -53,18 +50,20 @@ Provider onboarding, provider and settings editing, and similar panels use one f
 When the agent calls `exit_plan_mode` to wrap up a plan, the plan renders into the conversation and the review decision opens in the editor slot:
 
 ```
-1. <approve label>
-2. <decline label>
-3. Other — type feedback to revise the plan
+1. <decline label>
+2. <approve label>
+Revise: <inline feedback>
 ```
 
-- the decline row is focused first; digits `1`–`3` or ↑↓ only move between decisions, and `Enter` confirms the focused one, so approving always takes an explicit Enter;
-- `c` copies the plan, `o` opens the feedback field; `PageUp` / `PageDown` / `Shift+↑↓` scroll the plan above;
-- feedback submits with `Enter` and becomes a decline-with-feedback (the harness folds it into "their feedback: …"), so the agent iterates on the plan; an empty submission returns to the decisions;
+- the decline row is focused first; digits `1`–`2` or ↑↓ only move between decisions, and `Enter` confirms the focused one, so approving always takes an explicit Enter;
+- `c` copies the plan; revision feedback is available inline; `PageUp` / `PageDown` / `Shift+↑↓` scroll the plan above;
+- feedback submits with `Enter` and becomes a decline-with-feedback (the harness folds it into "their feedback: …"), so the agent iterates on the plan; an empty submission reports an inline error and keeps the request open;
 - an aborted signal closes the panel with the cancellation code (`ASK_CANCELLED`).
 
 `Shift+Tab` toggles only normal and plan (see [Session modes](/en/features/modes)), preserving current permissions. YOLO is controlled separately through `/permission` and does not skip plan review; the footer can show plan and yolo together.
 
 ## Permission-preset panel
 
-`/permission` opens the permission-preset selector (the same single-select list shape as `/sessions` and `/preset`): one numbered row per preset (a named bundle of sandbox mode + approval policy), the active one marked `← current`. `1`–`9` or ↑↓ + `Enter` switch through the host's same write path; full access first asks the shared decision with its sandbox consequence spelled out. The derived `custom` state is shown but cannot be chosen, and says why. A bare invocation is intercepted by the input layer to open the panel; the command itself is registered by the upstream `dsh-permission-presets`, and argumented calls pass through.
+`/permission` opens the permission-preset selector (the same single-select list shape as `/sessions` and `/preset`): one numbered row per preset (a named bundle of sandbox mode + approval policy), the active one marked `[current]`. `1`–`9` or ↑↓ + `Enter` switch through the host's same write path; full access first asks the shared decision with its sandbox consequence spelled out. The derived `custom` state is shown but cannot be chosen, and says why. A bare invocation is intercepted by the input layer to open the panel; the command itself is registered by the upstream `dsh-permission-presets`, and argumented calls pass through.
+
+![Approval panel](/shots/app-approval.svg)

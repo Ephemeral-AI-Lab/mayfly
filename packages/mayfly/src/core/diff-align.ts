@@ -33,7 +33,7 @@ const GUTTER_COLUMNS = 2
 const MIN_TEXT_COLUMNS = 2
 
 /** The palette slice a diff panel paints with. */
-export type DiffPaintColors = Pick<MayflySemanticColors, 'text' | 'diffAdded' | 'diffRemoved' | 'diffAddedBg' | 'diffRemovedBg' | 'diffMeta'>
+export type DiffPaintColors = Pick<MayflySemanticColors, 'text' | 'diffAdded' | 'diffRemoved' | 'diffAddedBg' | 'diffRemovedBg' | 'diffMeta'> & Partial<Pick<MayflySemanticColors, 'diffAddedStrong' | 'diffRemovedStrong' | 'diffGutter'>>
 
 /** The width truth a diff panel wraps and pads with. */
 export type DiffWidthHelpers = Pick<MayflyComponents, 'wrapText' | 'visibleWidth'>
@@ -148,6 +148,37 @@ export function diffChangeCounts(before: string, after: string): { readonly adde
  */
 export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: DiffWidthHelpers, colors?: DiffPaintColors): string[] {
   const columns = Math.max(1, width)
+  const hunks: { start: number, end: number }[] = []
+  for (let index = 0; index < ops.length; index++) {
+    if (ops[index]!.type === 'ctx') continue
+    const start = Math.max(0, index - CTX_EDGE_ROWS)
+    const end = Math.min(ops.length, index + CTX_EDGE_ROWS + 1)
+    const previous = hunks.at(-1)
+    if (previous !== undefined && start <= previous.end) previous.end = end
+    else hunks.push({ start, end })
+  }
+  if (hunks.length > 1) {
+    const rows: string[] = []
+    let cursor = 0
+    let oldLine = 1
+    let newLine = 1
+    for (const hunk of hunks) {
+      const omitted = hunk.start - cursor
+      // Every changed operation belongs to a hunk; skipped rows are context.
+      oldLine += omitted
+      newLine += omitted
+      if (omitted > 0) rows.push(...helpers.wrapText(`⋯ ${omitted} unchanged lines`, columns).map(line => colors?.diffMeta(line) ?? line))
+      const slice = ops.slice(hunk.start, hunk.end)
+      const oldCount = slice.filter(op => op.type !== 'add').length
+      const newCount = slice.filter(op => op.type !== 'del').length
+      const header = `@@ -${oldLine},${oldCount} +${newLine},${newCount} @@`
+      rows.push(...helpers.wrapText(header, columns).map(line => colors?.diffMeta(line) ?? line), ...paintDiffRows(slice, columns, helpers, colors))
+      oldLine += oldCount
+      newLine += newCount
+      cursor = hunk.end
+    }
+    return rows
+  }
   const gutter = columns >= GUTTER_COLUMNS + MIN_TEXT_COLUMNS ? GUTTER_COLUMNS : 0
   const segments = (text: string, available: number): string[] => helpers.wrapText(text.replace(/\t/gu, '   '), available)
   const rows: string[] = []
@@ -163,9 +194,10 @@ export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: Di
         continue
       }
       const band = op.type === 'del' ? colors.diffRemovedBg : colors.diffAddedBg
-      const signColor = op.type === 'del' ? colors.diffRemoved : colors.diffAdded
+      const signColor = colors.diffGutter ?? (op.type === 'del' ? colors.diffRemoved : colors.diffAdded)
+      const bodyColor = op.type === 'del' ? colors.diffRemovedStrong ?? colors.text : colors.diffAddedStrong ?? colors.text
       const fill = ' '.repeat(Math.max(0, columns - gutter - helpers.visibleWidth(segment)))
-      rows.push(band(`${index === 0 && gutter > 0 ? signColor(mark) : mark}${colors.text(segment)}${fill}`))
+      rows.push(band(`${index === 0 && gutter > 0 ? signColor(mark) : mark}${bodyColor(segment)}${fill}`))
     }
   }
   let ctxRun: string[] = []

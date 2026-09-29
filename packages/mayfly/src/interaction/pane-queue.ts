@@ -7,6 +7,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
 import type {} from '../app/index.ts'
+import { ACTION_MOVE_UP, interactionKeyHint } from './keys.ts'
 
 export const name = 'mayfly-pane-queue'
 export const inject = ['mayflyPanes', 'mayflyCurrentAgent']
@@ -33,11 +34,16 @@ export function apply(ctx: Context): void {
       ...agent.inbox.nextStep.filter(message => message.source.kind === 'user').map(message => t('Steer: {text}', { text: messageText(message) })),
     ]
     if (rows.length === 0) return null
+    const draft = ctx.get('mayflyInteractionState')?.draft
+    const keymap = ctx.get('mayflyKeymap')
+    const recall = draft !== undefined && draft.getStashedDraft().length === 0 && draft.getStashedInputMode() !== 'bash'
+      && ctx.get('mayflyPromptEditor')?.current?.editor.isShowingAutocomplete() === false
+      && (keymap?.getKeys(ACTION_MOVE_UP).length ?? 0) > 0
     return {
       kind: 'stack',
       direction: 'column',
       children: [
-        { node: { kind: 'divider' } },
+        { node: { kind: 'text', content: recall ? t('Queued ({count}) · {key} recall newest', { count: rows.length, key: interactionKeyHint(keymap!, ACTION_MOVE_UP, '↑') }) : t('Queued ({count})', { count: rows.length }), tone: 'muted', overflow: 'truncate' } },
         ...rows.map(content => ({ node: { kind: 'text' as const, content, tone: 'muted' as const, overflow: 'truncate' as const } })),
       ],
     }
@@ -49,6 +55,9 @@ export function apply(ctx: Context): void {
     narrow: 'bottom',
   }, render())
   const refresh = (): void => pane.set(render())
+  ctx.inject(['mayflyInteractionState'], owner => { owner.effect(() => owner.mayflyInteractionState.draft.subscribe(refresh)); refresh() })
+  ctx.on('mayfly/keymap-changed', refresh)
+  ctx.on('mayfly/input-editor-changed', refresh)
   const offAgent = ctx.mayflyCurrentAgent.subscribe(refresh)
   const offInserted = ctx.on('agent/inbox/inserted', ({ agent }) => {
     if (agent === ctx.mayflyCurrentAgent.current()) refresh()

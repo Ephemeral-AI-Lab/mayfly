@@ -27,7 +27,7 @@ import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
 import { SkillsCatalogService } from '../../src/interaction/skills-catalog.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
-import { CURRENT_MARK } from '../../src/interaction/symbols.ts'
+const CURRENT_MARK = 'current'
 import { fakeConversations } from './fakes.ts'
 
 const USAGE = 'usage: /theme [dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]'

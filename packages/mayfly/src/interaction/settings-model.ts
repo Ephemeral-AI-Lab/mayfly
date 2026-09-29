@@ -4,15 +4,18 @@
 import Schema from '@deepseek-ai/schemastery'
 import { createHash } from 'node:crypto'
 import type { SettingsDescriptor, SettingsPathOp } from '@deepseek-ai/dsh-settings'
-import { ui, type MayflyFieldValue, type MayflyFormField, type MayflySubmittedForm, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyPagePath, type MayflyFieldValue, type MayflyFormField, type MayflySubmittedForm, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
 
 const LABELS: Readonly<Record<string, string>> = {
   'locale.preference': 'Language', 'mayfly.updateCheck': 'Update check', 'mayfly.updateChannel': 'Update channel',
   'mayfly.theme': 'Theme',
+  'mayfly.keyHints': 'Status key hints',
+  'mayfly.reducedMotion': 'Reduced motion',
+  'mayfly.glyphs': 'Terminal glyphs',
   'mayfly.transcriptView': 'Work details',
   'mayfly.windowTurns': 'Transcript window (turns)',
-  'mayfly.expandTurns': 'Ctrl-O range (turns)', 'mayfly.userFoldLines': 'User fold lines', 'mayfly.userFoldChars': 'User fold chars',
+  'mayfly.expandTurns': 'Ctrl+O range (turns)', 'mayfly.userFoldLines': 'User fold lines', 'mayfly.userFoldChars': 'User fold chars',
   'mayfly.editorCommand': 'External editor', 'mayfly.pasteImageBackend': 'Paste backend', 'mayfly.marketIndexUrl': 'Plugin market index',
   'shell.timeoutMs': 'Shell timeout (ms)', 'shell.maxTimeoutMs': 'Shell max timeout (ms)', 'shell.maxOutputBytes': 'Shell max output (bytes)',
   'shell.maxSpillBytes': 'Shell spill budget (bytes)', 'shell.graceMs': 'Shell grace (ms)',
@@ -60,7 +63,7 @@ function optionEntries(options: readonly (string | number | boolean | null)[], s
 }
 
 /** Project only declared scalar fields; unsupported containers never expose raw values or secrets. */
-export function settingsProjection(descriptor: SettingsDescriptor, writable: boolean, choices: SettingsChoices, t: MayflyTranslate): SettingsProjection {
+export function settingsProjection(descriptor: SettingsDescriptor, writable: boolean, choices: SettingsChoices, t: MayflyTranslate, pagePath: MayflyPagePath = []): SettingsProjection {
   const root = new Schema(descriptor.schema as Partial<Schema>)
   const bindings = new Map<string, SettingBinding>()
   const readonly: MayflyUiNode[] = []
@@ -122,7 +125,7 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     ui.form({ id: 'settings-form', fields: [...bindings.values()].map(binding => binding.field) }),
     ...readonly,
     ui.actions({ id: 'settings-actions', items: [
-      { id: 'save', label: t('Save'), submit: [{ pagePath: [], formId: 'settings-form' }], disabled: !writable || bindings.size === 0 },
+      { id: 'save', label: t('Save'), submit: [{ pagePath, formId: 'settings-form' }], disabled: !writable || bindings.size === 0 },
       { id: 'refresh', label: t('Refresh') },
       { id: 'cancel', label: t('Cancel'), dismiss: true },
     ] }),

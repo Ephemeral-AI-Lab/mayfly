@@ -30,14 +30,14 @@ describe('native settings UI', () => {
   it('browses native namespaces without a renderer or current Agent and focuses an existing editor', async () => {
     const bench = await setup()
     const invoke = () => bench.commands.entries.get('settings')!.handler({} as never)
-    expect(invoke()).toEqual({ kind: 'success' })
+    expect(await invoke()).toEqual({ kind: 'success' })
     const browser = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.settings')!
     browser.emit({ kind: 'selection-accept', pagePath: [], controlId: 'namespaces', selectedIds: ['test-settings'] })
     await flushRequests()
     const model = await bench.open()
     model.edit(field('name'), 'draft')
     expect(await bench.open()).toBe(model)
-    expect(invoke()).toEqual({ kind: 'success' })
+    expect(await invoke()).toEqual({ kind: 'success' })
     expect(bench.ctx.mayflyOverlays.list()).toHaveLength(2)
     expect(model.form(field('name'))!.fields[field('name').fieldId]!.value).toBe('draft')
   })
@@ -299,7 +299,7 @@ describe('native settings UI', () => {
     const gate = Promise.withResolvers<string | undefined>()
     const launch = vi.fn(async () => gate.promise)
     setExternalEditorLauncher(launch)
-    bench.commands.entries.get('settings')!.handler({} as never)
+    await bench.commands.entries.get('settings')!.handler({} as never)
     const model = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.settings')!
     model.invoke('open-file')
     await vi.waitFor(() => expect(launch).toHaveBeenCalledOnce())
@@ -343,7 +343,7 @@ describe('native settings UI', () => {
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id.includes(Buffer.from('test-settings').toString('hex')))!
     const action = entry.definition.onEvent!.action!
     expect(await action({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, actionContext(entry))).toEqual({ kind: 'completed' })
-    expect(await action({ kind: 'activate', pagePath: [], controlId: 'settings-actions', actionId: 'refresh' }, actionContext(entry))).toEqual({ kind: 'completed' })
+    expect(await action({ kind: 'activate', pagePath: [], controlId: 'settings-actions', actionId: 'refresh' }, actionContext(entry))).toMatchObject({ kind: 'completed' })
     const aborted = new AbortController()
     aborted.abort()
     expect(await action(save(entry), actionContext(entry, aborted.signal))).toEqual({ kind: 'cancelled' })
@@ -431,12 +431,12 @@ describe('native settings UI', () => {
   it('covers raw document guards and failures through the root handler', async () => {
     const readonly = await setup()
     Object.defineProperty(readonly.settings, 'writable', { value: false })
-    readonly.commands.entries.get('settings')!.handler({} as never)
+    await readonly.commands.entries.get('settings')!.handler({} as never)
     let entry = readonly.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.settings')!
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'browser-actions', actionId: 'open-file' }, actionContext(entry))).toMatchObject({ kind: 'failed', message: 'Settings are read-only' })
 
     const bench = await setup()
-    bench.commands.entries.get('settings')!.handler({} as never)
+    await bench.commands.entries.get('settings')!.handler({} as never)
     entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.settings')!
     const openFile = () => entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'browser-actions', actionId: 'open-file' }, actionContext(entry))
     expect(await openFile()).toMatchObject({ kind: 'failed', message: 'The terminal is unavailable' })
@@ -466,9 +466,9 @@ describe('native settings UI', () => {
     gate.reject(new Error('cancelled editor'))
     expect(await pending).toEqual({ kind: 'cancelled' })
 
-    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'browser-actions', actionId: 'refresh' }, actionContext(entry))).toEqual({ kind: 'completed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'browser-actions', actionId: 'refresh' }, actionContext(entry))).toMatchObject({ kind: 'accepted' })
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, actionContext(entry))).toEqual({ kind: 'completed' })
-    expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'namespaces', selectedIds: ['missing'] }, actionContext(entry))).toMatchObject({ kind: 'failed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'settings-form', submission: { actionId: 'save', draftRevision: 0, source: [], forms: [{ pagePath: [{ controlId: 'namespaces', itemId: 'missing' }], formId: 'settings-form', draftRevision: 0, fields: [] }] } }, actionContext(entry))).toMatchObject({ kind: 'failed' })
     bench.ctx.mayflyOverlays.close(entry.id)
   })
 
@@ -485,7 +485,7 @@ describe('native settings UI', () => {
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
 
     bench.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.settings') bench.ctx.mayflyOverlays.close('mayfly.settings') })
-    expect(bench.commands.entries.get('settings')!.handler({} as never)).toEqual({ kind: 'success' })
+    expect(await bench.commands.entries.get('settings')!.handler({} as never)).toEqual({ kind: 'success' })
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
   })
 
@@ -493,10 +493,110 @@ describe('native settings UI', () => {
     const bench = await setup()
     // Every field ordinary: the row is not a configurable settings entry.
     await bench.ctx.plugin({ name: 'static-settings', inject: ['settings'], apply(ctx: Context) { (ctx.settings as unknown as MemorySettings).register('static-settings', Schema.object({ value: Schema.string() })) } })
-    bench.commands.entries.get('settings')!.handler({} as never)
+    await bench.commands.entries.get('settings')!.handler({} as never)
     const browser = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.settings')!
     const listed = JSON.stringify(browser.node)
     expect(listed).toContain('test-settings')
     expect(listed).not.toContain('static-settings')
   })
+})
+
+/** Open the settings browser and admit one namespace's scoped form. */
+async function openBrowser(bench: Awaited<ReturnType<typeof setup>>, caller = new AbortController()) {
+  await bench.commands.entries.get('settings')!.handler({ signal: caller.signal } as never)
+  const model = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.settings')!
+  const path = [{ controlId: 'namespaces', itemId: 'test-settings' }]
+  model.activateTab({ pagePath: [], controlId: 'namespaces' }, 'test-settings')
+  const renderer = renderRequest(model)
+  renderer.component.render(80)
+  renderer.runtime.dispose()
+  const entry = () => bench.ctx.mayflyOverlays.list().find(value => value.id === 'mayfly.settings')!
+  const event = (change: 'set' | 'unchanged' = 'set') => ({
+    kind: 'submit' as const, pagePath: path, controlId: 'settings-form', submission: {
+      actionId: 'save', draftRevision: 0, source: entry().source,
+      forms: [{ pagePath: path, formId: 'settings-form', draftRevision: 0, fields: [{ id: '["name"]', change, value: 'saved' }] }],
+    },
+  })
+  return { model, path, entry, event, caller }
+}
+
+it('saves a scoped browser form while retaining another namespace draft and supports a no-op save', async () => {
+  const bench = await setup()
+  bench.settings.register('other', Schema.object({ name: Schema.string().default('other') }).volatile())
+  const browser = await openBrowser(bench)
+  browser.model.activateTab({ pagePath: [], controlId: 'namespaces' }, 'other')
+  const renderer = renderRequest(browser.model)
+  renderer.component.render(80)
+  const other = { pagePath: [{ controlId: 'namespaces', itemId: 'other' }], formId: 'settings-form', fieldId: '["name"]' }
+  browser.model.edit(other, 'keep this draft')
+  browser.model.activateTab({ pagePath: [], controlId: 'namespaces' }, 'test-settings')
+  browser.model.edit({ ...field('name'), pagePath: browser.path }, 'saved')
+  browser.model.invoke('save', browser.path)
+  await flushRequests()
+  expect(bench.settings.get('test-settings')).toMatchObject({ name: 'saved' })
+  expect(bench.settings.get('other')).toMatchObject({ name: 'other' })
+  expect(browser.model.form(other)?.fields['["name"]']?.value).toBe('keep this draft')
+  const writes = bench.settings.writes
+  expect(await browser.entry().definition.onEvent!.action!(browser.event('unchanged'), actionContext(browser.entry()))).toMatchObject({ kind: 'accepted' })
+  expect(bench.settings.writes).toBe(writes)
+  renderer.runtime.dispose()
+})
+
+it('refuses stale browser revisions and malformed form scopes before writing settings', async () => {
+  const bench = await setup()
+  const browser = await openBrowser(bench)
+  const action = browser.entry().definition.onEvent!.action!
+  const stale = browser.event()
+  await bench.settings.mutate('test-settings', [{ op: 'set', path: ['name'], value: 'external' }])
+  expect(await action(stale, actionContext(browser.entry()))).toMatchObject({ kind: 'conflict' })
+  const event = browser.event()
+  const mismatch = { ...event, submission: { ...event.submission, source: event.submission.source.filter(stamp => !stamp.resourceId.endsWith('/fields')) } }
+  expect(await action(mismatch, actionContext(browser.entry()))).toMatchObject({ kind: 'conflict' })
+  const missingForm = { ...event, submission: { ...event.submission, forms: [] } }
+  expect(await action(missingForm, actionContext(browser.entry()))).toMatchObject({ kind: 'failed' })
+  const missingScope = { ...event, submission: { ...event.submission, forms: [{ ...event.submission.forms[0]!, pagePath: [] }] } }
+  expect(await action(missingScope, actionContext(browser.entry()))).toMatchObject({ kind: 'failed' })
+  expect(bench.settings.get('test-settings')).toMatchObject({ name: 'external' })
+})
+
+it.each(['conflict', 'failure', 'cancel-resolve', 'cancel-reject'] as const)('contains browser save %s without retrying', async outcome => {
+  const bench = await setup()
+  const browser = await openBrowser(bench)
+  const controller = new AbortController()
+  const mutate = vi.spyOn(bench.settings, 'mutate').mockImplementationOnce(async () => {
+    if (outcome.startsWith('cancel')) controller.abort()
+    if (outcome === 'conflict') throw new SettingsConflictError('test-settings' as never, 0, 1)
+    if (outcome !== 'cancel-resolve') throw new Error('storage failed')
+  })
+  const reply = await browser.entry().definition.onEvent!.action!(browser.event(), actionContext(browser.entry(), controller.signal))
+  expect(reply).toMatchObject({ kind: outcome.startsWith('cancel') ? 'cancelled' : outcome === 'conflict' ? 'conflict' : 'failed' })
+  expect(mutate).toHaveBeenCalledOnce()
+})
+
+it('contains cancelled discovery and late browser refreshes, and renders an empty settings catalog', async () => {
+  const bench = await setup()
+  const gate = Promise.withResolvers<never[]>()
+  bench.ctx.provide('agentPresets', { list: () => gate.promise } as never)
+  const controller = new AbortController()
+  const pending = bench.commands.entries.get('settings')!.handler({ signal: controller.signal } as never)
+  controller.abort()
+  gate.resolve([])
+  await expect(pending).resolves.toEqual({ kind: 'success' })
+  expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  const browser = await openBrowser(bench)
+  const action = browser.entry().definition.onEvent!.action!
+  expect(await action(browser.event(), actionContext(browser.entry(), controller.signal))).toMatchObject({ kind: 'cancelled' })
+  const late = Promise.withResolvers<never[]>()
+  bench.ctx.set('agentPresets', { list: () => late.promise } as never)
+  const active = new AbortController()
+  const refresh = action({ kind: 'activate', pagePath: [], controlId: 'refresh', actionId: 'refresh' }, actionContext(browser.entry(), active.signal))
+  active.abort()
+  browser.model.requestClose()
+  late.resolve([])
+  await expect(refresh).resolves.toMatchObject({ kind: 'cancelled' })
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  vi.spyOn(bench.settings, 'describe').mockReturnValue([])
+  await bench.commands.entries.get('settings')!.handler({} as never)
+  expect(JSON.stringify(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.settings')?.node)).toContain('No settings namespaces')
 })

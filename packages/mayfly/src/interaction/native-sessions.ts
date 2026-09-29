@@ -7,7 +7,7 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { ui, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import type {} from '../app/conversation-views.ts'
-import { createSessionListCache, refreshSessionList, sessionListHeaders } from './session-list-reads.ts'
+import { createSessionListCache, refreshSessionList, sessionListHeaders, type SessionListHeader } from './session-list-reads.ts'
 import { sessionWorkspaceItem, sessionWorkspaces, type SessionWorkspace } from './session-workspaces-model.ts'
 import { openSessionWorkspace, type SessionWorkspacePanel, type SessionWorkspaceScope } from './session-workspace-panel.ts'
 import { openUiOverlay } from './ui-overlay.ts'
@@ -20,21 +20,37 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
   let handle: MayflyOverlayHandle | undefined
   let selected: SessionWorkspacePanel | undefined
   let groups: readonly SessionWorkspace[] = []
+  let previews = new Map<string | undefined, SessionListHeader[]>()
   let loading = true
   let message = ''
   let busy = false
   let repaint: ReturnType<typeof setTimeout> | undefined
   const cleanup = ctx.effect(() => () => { lifetime.abort(); clearTimeout(repaint) })
   const currentCwd = () => ctx.mayflyConversations.primary()?.session.header.cwd ?? process.cwd()
-  const adopt = () => { groups = sessionWorkspaces(sessionListHeaders(ctx, cache), currentCwd()) }
+  const adopt = () => {
+    const headers = sessionListHeaders(ctx, cache)
+    groups = sessionWorkspaces(headers, currentCwd())
+    previews = new Map()
+    for (const row of headers) {
+      const rows = previews.get(row.header.cwd) ?? []
+      if (rows.length < 12) rows.push(row)
+      previews.set(row.header.cwd, rows)
+    }
+  }
   const node = () => ui.surface({ title: t('Sessions · Workspaces'), chrome: 'overlay', child: ui.stack.column([
     ...(loading ? [ui.loader({ message: t('Loading workspaces…') })] : []),
     ...(message === '' ? [] : [ui.text(message, { tone: 'warning' })]),
-    ...(groups.length === 0 && loading ? [] : [ui.list({
-      id: 'workspaces', role: 'browse', filterable: true, selectedIds: [],
-      items: groups.map(group => sessionWorkspaceItem(group, currentCwd(), home, t)),
-      empty: ui.empty({ title: t('No workspaces') }),
-    })]),
+    ...(groups.length === 0 ? loading ? [] : [ui.empty({ title: t('No workspaces') })] : [ui.stack.row([
+      ui.child(ui.tabs({ id: 'workspaces', orientation: 'vertical', activeId: groups[0]!.id, items: groups.map(group => ({ id: group.id, label: sessionWorkspaceItem(group, currentCwd(), home, t).label, count: group.count })) }), { basis: 24, shrink: 1, minSize: 8 }),
+      ...groups.map(group => ui.child(ui.stack.column([
+        ui.text(sessionWorkspaceItem(group, currentCwd(), home, t).label, { tone: 'muted', overflow: 'truncate' }),
+        ...previews.get(group.cwd)!.map(row => {
+          const cached = cache.titles.get(String(row.header.id))
+          return ui.text(cached !== undefined && cached.revision === row.revision && cached.title ? cached.title : String(row.header.id), { overflow: 'truncate' })
+        }),
+        ui.actions({ id: 'workspace-open', items: [{ id: 'open-workspace', label: t('Open workspace') }] }),
+      ]), { tab: { controlId: 'workspaces', itemId: group.id }, grow: 1, minSize: 1 })),
+    ])]),
     ui.actions({ id: 'workspace-actions', items: [
       { id: 'refresh', label: t('Refresh'), disabled: loading },
       { id: 'search-all', label: t('Search all contents'), disabled: loading },
@@ -62,7 +78,7 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
       scope, loading: () => loading, refresh,
       changed: publish,
       closeAll: () => handle?.close(),
-      onClosed: () => { selected = undefined },
+      onClosed: () => { selected = undefined; publish() },
     })
   }
   try {
@@ -73,8 +89,8 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
         busy = true
         const operation = AbortSignal.any([abort, context.signal])
         try {
-          if (event.kind === 'selection-accept' && event.controlId === 'workspaces') {
-            const workspace = groups.find(item => item.id === event.selectedIds[0])
+          if (event.kind === 'activate' && event.actionId === 'open-workspace') {
+            const workspace = groups.find(item => item.id === event.pagePath.find(page => page.controlId === 'workspaces')?.itemId)
             if (workspace === undefined) return { kind: 'failed', message: t('Workspace is no longer listed; refresh the catalog.') }
             open({ kind: 'workspace', cwd: workspace.cwd })
           } else if (event.kind === 'activate' && event.actionId === 'search-all') open({ kind: 'search' })

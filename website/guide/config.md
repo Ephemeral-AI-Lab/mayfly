@@ -49,10 +49,9 @@ key 仍在**每次请求时**解析，因此运行期间补充或轮换凭据无
 
 ### 模型与思考力度
 
-- **`/model`** —— 无参数打开模型选择面板；带 id 直接切换。面板内选择 `Set as default` 会持久化为新默认。
+- **`/model`** —— 打开可筛选的模型列表。方向键浏览，`Enter` 切换并持久化选择；带 id 时直接切换。
 - **`Alt+M`** —— 不开面板直接循环切换模型。
-- **`Use for this session`**（面板 action）—— 下一步路由立即切换，但不写回持久默认。
-- **`/effort`**（别名 `/thinking`）—— 切换当前模型的思考力度；`default` 恢复 provider 默认。
+- **`/effort`**（别名 `/thinking`）—— 用 `Enter` 选择当前模型的思考力度。在 `/model` 中，`←`/`→` 预览该行力度，`Delete` 恢复继承，仅 `Enter` 提交。`/effort default` 恢复 provider 默认。
 
 `/model` 的持久化写入 settings.yaml 的 `agent-default-model:` 段（形状见[下文](#settings-yaml-三个核心段)）。
 
@@ -163,7 +162,7 @@ mayfly:
   theme: dark              # 持久默认主题：dark | light | ocean | paper | auto（启动时应用）
   transcriptView: standard # compact | standard | detailed | verbose
   windowTurns: 15          # transcript 窗口：只挂载最近 N 个已完成回合
-  expandTurns: 3           # ctrl+o 展开的作用范围（自末尾起的回合数）
+  expandTurns: 3           # Ctrl+O 展开的作用范围（自末尾起的回合数）
   userFoldLines: 10        # 长用户消息折叠阈值（行数）
   userFoldChars: 1000      # 长用户消息折叠阈值（字符数）
   editorCommand: ''        # 外部编辑器命令（空 = 按 $VISUAL/$EDITOR 自动探测）
@@ -172,7 +171,7 @@ mayfly:
 
 `transcriptView` 沿用 Harness Chat 的四种工作详情模式名（见[流式会话](/features/streaming#工作详情)）。实时状态由 activity 行负责，会话记录只显示已经发生的事。回合运行中，Compact 只显示对话；Standard 另外显示文件修改的 diff 卡片与过去时分组标题，其 activity 行还会显示正在运行的命令、路径、查询或思考内容；Detailed 实时显示所有卡片。Compact、Standard 与 Detailed 把已完成回合折叠到 `用时 38s` 标题下，最终回答（从 Standard 起还有文件修改）保持可见；Verbose 逐卡展开。Ctrl+O 展开最近 `expandTurns` 个回合。原有按类型配置的 `transcript` 设置与 `recentStepsRetention` 不再生效。
 
-面板分两级：第一级从 `locale` 开始，并按命名空间分组（`mayfly`、`shell`、`agent-loop`、`web-search-deepseek:` 等宿主段在内），Enter 进入第二级逐行调整，`Enter`/`Space` 步进预设值、每次改动即落盘；语言切换与 `mayfly.theme` 都实时生效（`/theme` 仍是会话级切换，见[主题](/guide/theme)），`transcriptView`与数值项的改动同样立即作用于当前会话（Ctrl-O 的全局展开状态优先）。第一级末行可在 `$EDITOR` 里打开整份 settings.yaml。
+面板分两级：第一级从 `locale` 开始，并按命名空间分组（`mayfly`、`shell`、`agent-loop`、`web-search-deepseek:` 等宿主段在内），Enter 进入第二级逐行调整，`Enter`/`Space` 步进预设值、每次改动即落盘；语言切换与 `mayfly.theme` 都实时生效（`/theme` 仍是会话级切换，见[主题](/guide/theme)），`transcriptView`与数值项的改动同样立即作用于当前会话（Ctrl+O 的全局展开状态优先）。第一级末行可在 `$EDITOR` 里打开整份 settings.yaml。
 
 ### 改完怎么验证
 
@@ -208,3 +207,5 @@ settings.yaml 的效果则直接在界面里看：`/model` 面板列出各路由
 ::: warning 哪些变量不能写进 .env
 `DEEPSEEK_API_KEY` 四层都认（含 `.env`），但 `DEEPSEEK_BASE_URL` 与**一切 `DSH_*` 前缀变量**属于 bootstrap 变量——`.env` 文件里出现会被直接拒绝（提示 export 它），只能在启动环境里设置。凭据类环境变量永远赢过文件层——想临时换 key，`DEEPSEEK_API_KEY=sk-… dsh --profile mayfly` 即可。
 :::
+
+`mayfly` 设置包含 `keyHints: full | minimal | off`（默认 `full`）、`reducedMotion: boolean`（默认 `false`）及 `glyphs: auto | unicode | ascii`（默认 `auto`）。通过 `/settings` 修改。减少动态效果会冻结装饰动画，但进度数据继续更新。`NO_COLOR` 关闭前景与背景着色，并保留强调与键盘焦点。

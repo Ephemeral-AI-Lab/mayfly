@@ -11,7 +11,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as activity from '../../src/transcript/pane-activity.ts'
 import { buildTipRotation } from '../../src/transcript/status-tips.ts'
-import { MOON_SPINNER_FRAMES, MOON_SPINNER_INTERVAL_MS } from '../../src/transcript/spinners.ts'
+import { MOON_SPINNER_FRAMES, MOON_SPINNER_INTERVAL_MS } from '../../src/core/glyphs.ts'
+import { fakeMayflyComponents } from './helpers.ts'
 import { STATUS_TIPS } from '../../src/transcript/tips-content.ts'
 import { bootPanePlugin, type PanePluginHarness } from './pane-fakes.ts'
 import { asAgent, fakeAgent, type FakeAgent } from './status-fakes.ts'
@@ -727,4 +728,61 @@ describe('mayfly-pane-activity', () => {
       await harness.dispose()
     })
   })
+})
+
+
+it('live-applies motion and glyph settings and teaches only keys that remain registered', async () => {
+  const timers = new FakeTimers()
+  activity.setActivityTimers(timers)
+  activity.setActivityClock(() => NOW)
+  const flags = { reducedMotion: true, asciiGlyphs: true }
+  const agent = runningAgent(fakeAgent([]))
+  let registered = true
+  let facts = { ...initialConversationFacts(), phase: 'waiting' as 'waiting' | 'composing', active: true, turn: 1, turnStartedAt: NOW - 2000 }
+  let listener: ((next: typeof facts) => void) | undefined
+  const harness = await bootPanePlugin(activity, agent, {
+    mayflyComponents: { ...fakeMayflyComponents(), get reducedMotion() { return flags.reducedMotion }, get asciiGlyphs() { return flags.asciiGlyphs } },
+    mayflyKeymap: { getKeys: () => registered ? ['ctrl+p'] : [] },
+    mayflySessionFacts: {
+      get current() { return facts }, currentAgent: asAgent(agent),
+      subscribe(next: typeof listener) { listener = next; next?.(facts); return () => {} },
+      subscribeAgent(next: (agent: ReturnType<typeof asAgent>) => void) { next(asAgent(agent)); return () => {} },
+    },
+  })
+  expect(timers.intervals.at(-1)).toBe(1000)
+  for (let attempt = 0; attempt < 20 && !harness.screen.paneLines().join('').includes('Ctrl+P'); attempt += 1) {
+    harness.ctx.emit('mayfly/keymap-changed')
+  }
+  expect(harness.screen.paneLines().join('')).toContain('Ctrl+P')
+  registered = false
+  timers.ticks.at(-1)!()
+  expect(harness.screen.paneLines().join('')).not.toContain('Ctrl+P')
+  const get = harness.ctx.get.bind(harness.ctx)
+  const missing = vi.spyOn(harness.ctx, 'get').mockImplementation(name => name === 'mayflyKeymap' ? undefined : get(name))
+  timers.ticks.at(-1)!()
+  expect(harness.screen.paneLines().join('')).not.toContain('Ctrl+P')
+  harness.ctx.emit('mayfly/keymap-changed')
+  missing.mockRestore()
+  registered = true
+  const first = harness.screen.paneLines()[0]
+  timers.ticks.at(-1)!()
+  expect(harness.screen.paneLines()[0]).toBe(first)
+  flags.reducedMotion = false
+  harness.ctx.emit('settings/document-updated', 'mayfly' as never)
+  const animated = new Set(Array.from({ length: 4 }, () => {
+    timers.ticks.at(-1)!()
+    return harness.screen.paneLines()[0]
+  }))
+  expect(animated.size).toBe(4)
+  flags.reducedMotion = true
+  flags.asciiGlyphs = false
+  harness.ctx.emit('settings/document-updated', 'mayfly' as never)
+  expect(harness.screen.paneLines()[0]).toContain('··')
+  facts = { ...facts, phase: 'composing' }
+  listener?.(facts)
+  expect(harness.screen.paneLines()[0]).toContain('⠋')
+  registered = false
+  harness.ctx.emit('mayfly/keymap-changed')
+  expect(harness.screen.paneLines().join('')).not.toContain('Ctrl+P')
+  await harness.dispose()
 })

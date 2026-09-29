@@ -265,7 +265,7 @@ function span(value: unknown, path: string, state: ValidationState): MayflyInlin
   return enter(value, path, state, object => {
     const toneValue = own(object, 'tone', path)
     const stylesValue = own(object, 'styles', path)
-    const tone = toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`)
+    const tone = toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger', 'shell'], `${path}.tone`)
     const styles = stylesValue === undefined
       ? undefined
       : collection(stylesValue, `${path}.styles`).map((style, index) => enumeration(style, ['strong', 'italic', 'strike'], `${path}.styles[${String(index)}]`))
@@ -338,6 +338,8 @@ function listSegment(value: unknown, path: string, state: ValidationState): Mayf
     const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => segmentOption(item, `${path}.options[${String(index)}]`, state))
     if (options.length === 0) invalid(`${path}.options must not be empty`)
     uniqueIds(options, `${path}.options`)
+    const inheritedId = optionalText(object, 'inheritedId', path, state)
+    if (inheritedId !== undefined && !options.some(option => option.id === inheritedId && option.disabled !== true)) invalid(`${path}.inheritedId is not an enabled option`)
     const selectedIdValue = own(object, 'selectedId', path)
     const selectedId = selectedIdValue === undefined ? undefined : text(selectedIdValue, `${path}.selectedId`, state)
     if (selectedId !== undefined && !options.some(option => option.id === selectedId)) invalid(`${path}.selectedId is not an option`)
@@ -345,6 +347,7 @@ function listSegment(value: unknown, path: string, state: ValidationState): Mayf
       options,
       ...optional(optionalText(object, 'label', path, state), 'label'),
       ...optional(selectedId, 'selectedId'),
+      ...optional(inheritedId, 'inheritedId'),
     }
   })
 }
@@ -673,7 +676,7 @@ function viewportCondition(value: unknown, path: string): MayflyViewportConditio
   })
 }
 
-const CHART_TONES = ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'] as const
+const CHART_TONES = ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger', 'shell'] as const
 
 function chartTone(object: Record<string, unknown>, path: string): MayflyInlineSpan['tone'] | undefined {
   const value = own(object, 'tone', path)
@@ -905,7 +908,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         return {
           kind,
           content: text(required(object, 'content', path), `${path}.content`, state),
-          ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone'),
+          ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger', 'shell'], `${path}.tone`), 'tone'),
           ...optional(textOverflow(object, path), 'overflow'),
         }
       }
@@ -996,7 +999,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         }
         const id = identifier(required(object, 'id', path), `${path}.id`, state, true)
         state.budget.tabs.set(pageControl(state.pagePath, id), new Set(items.map(item => item.id)))
-        return { kind, id, activeId, items, ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['tabs', 'wizard'], `${path}.mode`), 'mode') }
+        return { kind, id, activeId, items, ...optional(own(object, 'orientation', path) === undefined ? undefined : enumeration(own(object, 'orientation', path), ['horizontal', 'vertical'], `${path}.orientation`), 'orientation'), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['tabs', 'wizard'], `${path}.mode`), 'mode') }
       }
       case 'list': {
         const role = enumeration(required(object, 'role', path), ['browse', 'choose'], `${path}.role`)
@@ -1030,7 +1033,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
             }
           }
         }
-        return { kind, role, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(numbered === undefined ? undefined : numbered === 'focus' ? 'focus' as const : boolean(numbered, `${path}.numbered`), 'numbered'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
+        return { kind, role, ...optional(own(object, 'acceptVerb', path) === undefined ? undefined : enumeration(own(object, 'acceptVerb', path), ['open', 'choose'], `${path}.acceptVerb`), 'acceptVerb'), id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(numbered === undefined ? undefined : numbered === 'focus' ? 'focus' as const : boolean(numbered, `${path}.numbered`), 'numbered'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
       }
       case 'form': {
         const fields = collection(required(object, 'fields', path), `${path}.fields`).map((item, index) => formField(item, `${path}.fields[${String(index)}]`, state))
@@ -1058,7 +1061,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           if (mode === 'editor' && (item.key === undefined || printableKey(item.key))) invalid(`${path}.items key is required: the editor owns unmodified keys, so a shell action needs a modifier accelerator`)
           reserveControl(item.id, state)
         }
-        return { kind, id: text(required(object, 'id', path), `${path}.id`, state), items }
+        return { kind, id: text(required(object, 'id', path), `${path}.id`, state), items, ...optional(own(object, 'reveal', path) === undefined ? undefined : enumeration(own(object, 'reveal', path), ['always', 'focus'], `${path}.reveal`), 'reveal') }
       }
       case 'loader': {
         const variantValue = own(object, 'variant', path)

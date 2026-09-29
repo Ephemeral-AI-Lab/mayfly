@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/transcript/tests/plugin
  */
 
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -96,7 +97,7 @@ class FakeKeymap implements MayflyKeymap {
   }
   matches(): boolean { return false }
   dispatch(): boolean { return false }
-  getKeys(): string[] { return [] }
+  getKeys(id: string): string[] { const action = this.actions.find(action => action.id === id); return action === undefined ? [] : typeof action.keys === 'string' ? [action.keys] : action.keys }
   list(): readonly MayflyKeyAction[] { return this.actions }
 }
 
@@ -176,6 +177,8 @@ async function bootTranscript(
   globals.__mayflyStatusFixtureApply = fixtureApply
 
   const ctx = new Context()
+  const interactions = new UiInteractionService(ctx)
+  ctx.effect(() => () => interactions.dispose())
   const screen = new FakeScreen()
   const keymap = new FakeKeymap()
   const projections = new FakeProjectionService()

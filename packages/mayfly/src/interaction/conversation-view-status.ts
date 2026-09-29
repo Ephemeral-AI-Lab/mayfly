@@ -7,7 +7,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyInlineSpan, MayflyStatusNode, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyConversationsSnapshot, MayflyConversationView } from '../app/conversation-views.ts'
-import { interactionTranslator } from './locale.ts'
+import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from './keys.ts'
 
 /** Stable child-plugin name. */
@@ -35,7 +35,6 @@ export function apply(ctx: Context): void {
     const displayed = snapshot.displayedId === null ? undefined : byId.get(snapshot.displayedId)
     const counterpart = snapshot.recent[1] === undefined ? undefined : byId.get(snapshot.recent[1])
     if (displayed === undefined || counterpart === undefined) return null
-    const controls = ` · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} switch · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} close`
     const more = snapshot.views.length - 2
     // Identity first, key hints last: a narrow footer truncates the hints first.
     return {
@@ -46,16 +45,39 @@ export function apply(ctx: Context): void {
           ? [{ text: ` ⇄ ${title(counterpart)}`, tone: 'muted' as const }, ...access(counterpart)]
           : [{ text: ` · ${displayed.label} ⇄ ${title(counterpart)}`, tone: 'muted' as const }, ...access(displayed)],
         ...more > 0 ? [{ text: t(' · {count} more open', { count: more }), tone: 'muted' as const }] : [],
-        { text: controls, tone: 'muted' },
       ],
     }
   }
   const registration = ctx.mayflyStatus.register({
-    id: 'mayfly.status.conversation-view',
+    id: 'mayfly.status.scope',
     priority: 0,
-    band: 'center',
+    band: 'left', row: 2,
   }, node(ctx.mayflyConversations.snapshot()))
-  const offView = ctx.mayflyConversations.subscribe((snapshot) => { registration.set(node(snapshot)) })
+  const switching = ctx.mayflyStatus.register({ id: 'mayfly.status.switch', row: 2, band: 'right', priority: 1, overflow: 'hide' }, null)
+  const refresh = (): void => {
+    const snapshot = ctx.mayflyConversations.snapshot()
+    const off = ctx.get('mayflyInteractionState')?.settingsSource().keyHints === 'off'
+    registration.set(off ? null : node(snapshot))
+    const displayed = snapshot.views.find(view => view.id === snapshot.displayedId)
+    const target = displayed?.kind === 'primary' ? snapshot.views.find(view => view.id === snapshot.recent[1]) : displayed
+    const captured = ctx.get('mayflyOverlays')?.list().some(entry => !entry.hidden && entry.definition.capturing === true) === true
+    switching.set(off || captured || snapshot.views.length < 2 ? null : {
+      kind: 'rich-text', spans: [
+        { text: interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7'), styles: ['strong'] },
+        { text: ` ${t('switch')} · `, tone: 'muted' },
+        { text: interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8'), styles: ['strong'] },
+        { text: ` ${target?.kind === 'subagent' ? t('detach') : t('close')}`, tone: 'muted' },
+      ],
+    })
+  }
+  ctx.effect(() => observeInteractionLocale(ctx, refresh))
+  ctx.inject(['mayflyOverlays'], owner => { owner.effect(() => owner.mayflyOverlays.subscribe(refresh)); refresh() })
+  const offView = ctx.mayflyConversations.subscribe(refresh)
+  ctx.on('settings/document-updated', refresh)
+  ctx.on('mayfly/keymap-changed', refresh)
+  ctx.on('mayfly/settings-source-ready', refresh)
+  ctx.effect(() => () => switching.dispose())
+  refresh()
   ctx.effect(() => offView)
   ctx.effect(() => () => registration.dispose())
 }

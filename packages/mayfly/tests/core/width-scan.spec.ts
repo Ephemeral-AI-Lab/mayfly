@@ -275,3 +275,22 @@ describe('core width-scan', () => {
     expect(clampRowsToWidth(rows, 12, truncate)).toEqual(['fits', 'an over-w...'])
   })
 })
+
+it('contains labels-left pages, inherited segments, hidden actions, and ASCII furniture at every scan width', () => {
+  const node = ui.stack.column([
+    ui.stack.row([
+      ui.child(ui.tabs({ id: 'pages', orientation: 'vertical', activeId: 'one', items: [{ id: 'one', label: 'Appearance 外观' }, { id: 'two', label: 'Providers' }] }), { basis: 24 }),
+      ui.child(ui.list({ id: 'models', role: 'browse', acceptVerb: 'choose', selectedIds: [], items: [{ id: 'a', label: '模型 😀', segment: { inheritedId: 'high', options: [{ id: 'low', label: '低' }, { id: 'high', label: '高' }, { id: 'max', label: '最大' }] } }] }), { tab: { controlId: 'pages', itemId: 'one' } }),
+      ui.child(ui.text('Other'), { tab: { controlId: 'pages', itemId: 'two' } }),
+    ]),
+    ui.actions({ id: 'save', reveal: 'focus', items: [{ id: 'save', label: 'Save 保存' }] }),
+  ])
+  for (const width of SCAN_WIDTHS) {
+    const result = compileMayflyUiNode(node, {
+      components: { visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi, asciiGlyphs: true } as MayflyComponents,
+      colors: statusColors as MayflySemanticColors, getViewport: () => ({ columns: width, rows: 24 }), screenMode: 'alternate', emit: () => {},
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) expectLinesFit('labels-left-catalog', result.value.component.render(width), width)
+  }
+})

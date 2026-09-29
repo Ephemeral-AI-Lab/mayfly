@@ -134,7 +134,7 @@ describe('openPermissionPanel', () => {
     expect(lines.join('\n')).toContain('sandbox read-only · approval ask')
     expect(lines.join('\n')).toContain('sandbox danger-full-access · approval never')
     const currentRow = lines.find(line => line.includes('workspace-write')) ?? ''
-    expect(currentRow).toContain('← current')
+    expect(currentRow).toContain('current')
   })
 
   it('dispatches the selected preset through the command runtime', async () => {

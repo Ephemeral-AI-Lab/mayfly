@@ -13,6 +13,7 @@
 export interface StatusTip {
   /** The tip's display text (ASCII-only). */
   readonly text: string
+  readonly keyAction?: string
   /**
    * Long or important tips render on their own: they never pair with a
    * neighbour and never appear as the second half of someone else's pair.
@@ -27,6 +28,11 @@ export interface StatusTip {
 
 /** The rotation pool. */
 export const STATUS_TIPS: readonly StatusTip[] = [
+  { text: '{key}: toggle plan mode', keyAction: 'mayfly.interaction.shift-tab', solo: true },
+  { text: '{key}: edit the draft in your editor', keyAction: 'mayfly.interaction.external-editor', solo: true },
+  { text: '{key}: cycle the model', keyAction: 'mayfly.interaction.cycle-model', solo: true },
+  { text: '{key}: steer the running turn', keyAction: 'mayfly.interaction.steer', solo: true },
+  { text: '#: mention skills' },
   { text: '/help: show commands' },
   { text: '/sessions to browse and resume earlier sessions' },
   { text: '/fork to branch the conversation and explore safely' },

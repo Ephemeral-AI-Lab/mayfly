@@ -28,7 +28,6 @@ import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
 import { ui, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
-import { CURRENT_MARK } from './symbols.ts'
 
 /** The sandbox + approval bundle one preset resolves to. */
 export interface PermissionPresetSpec {
@@ -94,7 +93,7 @@ export function openPermissionPanel(ctx: Context): void {
       id: name,
       label,
       detail: presetDescription(spec),
-      ...(name === current ? { badge: CURRENT_MARK } : {}),
+      ...(name === current ? { badge: t('current') } : {}),
       /* Full access changes the sandbox and approval policy together, so it
          runs through the shared decision with its consequence spelled out. */
       ...(spec.sandbox === 'danger-full-access' ? { confirm: {

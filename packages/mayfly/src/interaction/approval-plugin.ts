@@ -14,40 +14,35 @@ export const name = 'mayfly-approval'
 export const inject = ['mayflyOverlays', 'mayflyCurrentAgent']
 
 interface ApprovalAnswer { readonly outcome: ApprovalOutcome, readonly session?: boolean, readonly reason?: string }
-const feedbackPath = [{ controlId: 'approval', itemId: 'feedback' }]
-const decisionPath = [{ controlId: 'approval', itemId: 'decision' }]
-
 function view(request: ApprovalRequest, t: MayflyTranslate, locale?: string) {
   const reason = request.displayReason === undefined
     ? request.reason
     : request.displayReason[locale ?? ''] ?? request.displayReason.en
   return ui.stack.column([
     ...reason === undefined ? [] : [ui.scroll(ui.text(reason), { scrollbar: true })],
-    ui.tabs({ id: 'approval', activeId: 'decision', items: [{ id: 'decision', label: t('Decision') }, { id: 'feedback', label: t('Reject with feedback'), backId: 'decision' }] }),
-    ui.child(ui.actions({ id: 'decisions', items: [
-      { id: 'reject', label: t('Reject'), defaultFocus: true },
+    ui.list({ id: 'decisions', role: 'choose', acceptActionId: 'decide', selectedIds: ['reject'], numbered: 'focus', items: [
+      { id: 'reject', label: t('Reject') },
       { id: 'allow-once', label: t('Allow once') },
       { id: 'allow-session', label: t('Allow {tool} for this session', { tool: request.toolName }) },
-      { id: 'feedback', label: t('Reject with feedback'), navigate: feedbackPath },
-    ] }), { tab: decisionPath[0]! }),
-    ui.child(ui.stack.column([
-      ui.form({ id: 'feedback-form', enterSubmits: 'send-feedback', fields: [{ kind: 'textarea', id: 'reason', label: t('Reason'), value: '' }] }),
-      ui.actions({ id: 'feedback-actions', items: [
-        { id: 'send-feedback', label: t('Reject with feedback'), submit: [{ pagePath: feedbackPath, formId: 'feedback-form' }] },
-        { id: 'back', label: t('Back'), navigate: decisionPath },
-      ] }),
-    ]), { tab: feedbackPath[0]! }),
+    ] }),
+    ui.form({ id: 'feedback-form', enterSubmits: 'send-feedback', fields: [{ kind: 'input', id: 'reason', label: t('Feedback'), value: '' }] }),
+    ui.actions({ id: 'feedback-actions', reveal: 'focus', items: [
+      { id: 'decide', label: t('Confirm'), submit: [{ pagePath: [], formId: 'feedback-form' }], selections: [{ pagePath: [], controlId: 'decisions' }] },
+      { id: 'send-feedback', label: t('Reject with feedback'), submit: [{ pagePath: [], formId: 'feedback-form' }] },
+    ] }),
   ])
 }
 
 function answer(event: MayflyUiEvent): ApprovalAnswer | undefined {
-  if (event.kind === 'activate') {
-    if (event.actionId === 'reject') return { outcome: 'rejected' }
-    if (event.actionId === 'allow-once' || event.actionId === 'allow-session') return { outcome: 'allowed-once', session: event.actionId === 'allow-session' }
-  }
-  if (event.kind !== 'submit' || event.submission.actionId !== 'send-feedback') return undefined
+  if (event.kind !== 'submit') return undefined
   const reason = event.submission.forms[0]?.fields.find(field => field.id === 'reason')?.value
-  return { outcome: 'rejected', ...typeof reason === 'string' && reason.length > 0 ? { reason } : {} }
+  const feedback = typeof reason === 'string' && reason.length > 0 ? { reason } : {}
+  if (event.submission.actionId === 'send-feedback') return { outcome: 'rejected', ...feedback }
+  if (event.submission.actionId !== 'decide') return undefined
+  const actionId = event.submission.selections?.find(selection => selection.controlId === 'decisions')?.selectedIds[0]
+  if (actionId === 'reject') return { outcome: 'rejected', ...feedback }
+  if (actionId === 'allow-once' || actionId === 'allow-session') return { outcome: 'allowed-once', session: actionId === 'allow-session' }
+  return undefined
 }
 
 export function apply(ctx: Context): void {
@@ -83,7 +78,7 @@ export function apply(ctx: Context): void {
         if (allowances.get(request.agent)?.has(request.toolName)) { finish('allowed-once'); return }
         const t = interactionTranslator(ctx)
         const prompt = requestOverlay(ctx, {
-          id: `mayfly.approval.${++sequence}`, title: () => t('Approve {tool}?', { tool: request.toolName }), agent: request.agent, dismissal: 'discard',
+          id: `mayfly.approval.${++sequence}`, title: () => t('Approve {tool}?', { tool: request.toolName }), agent: request.agent, dismissal: 'discard', escapeLabel: 'reject',
           ...request.signal === undefined ? {} : { signal: request.signal },
           view: () => view(request, t, ctx.get('mayflyLocale')?.snapshot.locale), answer,
           accepted: result => {

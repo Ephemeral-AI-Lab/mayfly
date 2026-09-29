@@ -23,7 +23,8 @@ export interface UiSurfaceSnapshot {
   readonly scope: MayflyUiScope
   readonly update: MayflySnapshotChange
   readonly events: MayflyUiEventEndpoint<MayflyUiNode | null>
-  readonly definition: { readonly onEvent?: unknown, readonly dismissal?: 'confirm-dirty' | 'discard' }
+  readonly hidden?: boolean
+  readonly definition: { readonly armMs?: number, readonly escapeLabel?: 'close' | 'cancel' | 'reject', readonly onEvent?: unknown, readonly dismissal?: 'confirm-dirty' | 'discard' }
 }
 
 interface UiAction {
@@ -43,6 +44,7 @@ export interface UiAvailableAction {
 }
 
 interface UiOperation {
+  readonly startedAt: number
   readonly id: string
   readonly key: string
   readonly actionId: string
@@ -96,6 +98,10 @@ function baselineData(node: MayflyUiNode | null): string {
 
 /** One registration instance owns every draft and continuation for its surface. */
 export class UiSurfaceModel {
+  private armedAt: number | undefined
+  /** Presentation begins the guard; renderer reloads preserve the deadline. */
+  present(now = Date.now()): void { this.armedAt ??= now + (this.input.definition.armMs ?? 0) }
+  inputArmed(now = Date.now()): boolean { this.present(now); return now >= this.armedAt! }
   private live = true
   private rawNode: MayflyUiNode | null = null
   private admittedNode: MayflyUiNode | null = null
@@ -211,6 +217,11 @@ export class UiSurfaceModel {
 
   /** True while the addressed action has a handled invoke in flight. */
   actionPending(address: UiControlAddress): boolean { return this.activeKeys.has(uiControlKey(address)) }
+  actionElapsed(address: UiControlAddress, now = Date.now()): number | undefined {
+    const id = this.activeKeys.get(uiControlKey(address))
+    const operation = id === undefined ? undefined : this.operations.get(id)
+    return operation === undefined ? undefined : Math.max(0, now - operation.startedAt)
+  }
 
   focusControl(address: UiControlAddress): void {
     const previous = this.focus
@@ -222,6 +233,7 @@ export class UiSurfaceModel {
 
   receive(snapshot: UiSurfaceSnapshot): void {
     if (!this.live) return
+    if (snapshot.hidden === true) this.armedAt = undefined
     if (snapshot.events !== this.input.events) throw new Error('replacement requires a new surface instance')
     if (snapshot.node === this.rawNode && snapshot.revision === this.input.revision) {
       this.input = snapshot
@@ -389,6 +401,12 @@ export class UiSurfaceModel {
     if (next === state) return
     this.choices.set(uiControlKey(address), next)
     this.changed()
+    if (next.focusedId !== undefined && next.focusedId !== state.focusedId) {
+      const itemId = next.focusedId
+      queueMicrotask(() => {
+        if (this.live && this.choice(address) === next) this.observe({ kind: 'focus-change', ...address, itemId })
+      })
+    }
   }
 
   activateTab(address: UiControlAddress, tabId: string): void {
@@ -460,6 +478,7 @@ export class UiSurfaceModel {
       return
     }
     switch (event.kind) {
+      case 'focus-change': if (this.choice(event)?.focusedId === event.itemId) this.observe(event); break
       case 'value-change': this.edit({ pagePath: event.pagePath, formId: event.formId, fieldId: event.controlId }, event.value); break
       case 'tab-change': if (this.wizardStepValid(event, event.tabId)) this.activateTab(event, event.tabId); break
       case 'dismiss': this.requestClose(); break
@@ -666,7 +685,7 @@ export class UiSurfaceModel {
     for (const operation of this.operations.values()) if (operation.key === key && operation.phase !== 'running') this.notifications.clear(operation.id, false)
     this.tasks.set(id, task)
     this.activeKeys.set(key, id)
-    this.operations.set(id, Object.freeze({ id, key, actionId: submission?.actionId ?? ('actionId' in event ? event.actionId : 'controlId' in event ? event.controlId : 'dismiss'), phase: 'running' }))
+    this.operations.set(id, Object.freeze({ id, key, startedAt: Date.now(), actionId: submission?.actionId ?? ('actionId' in event ? event.actionId : 'controlId' in event ? event.controlId : 'dismiss'), phase: 'running' }))
     this.changed()
     void this.execute(task)
   }
@@ -738,7 +757,7 @@ export class UiSurfaceModel {
       }
     } finally {
       if (this.live) {
-        if (task.controller.signal.aborted) this.setPhase(task, task.event.kind === 'value-change' || task.event.kind === 'selection-toggle' || task.event.kind === 'tab-change' || (task.event.kind === 'activate' && task.event.inputs !== undefined) ? 'cancelled' : 'unknown')
+        if (task.controller.signal.aborted) this.setPhase(task, task.event.kind === 'value-change' || task.event.kind === 'focus-change' || task.event.kind === 'selection-toggle' || task.event.kind === 'tab-change' || (task.event.kind === 'activate' && task.event.inputs !== undefined) ? 'cancelled' : 'unknown')
         if (this.notifications.get(task.id)?.purpose === 'progress') this.notifications.clear(task.id, false)
         for (const form of task.submission?.forms ?? []) this.updateForm(form, { kind: 'release', operationId: task.id })
         if (this.activeKeys.get(task.key) === task.id) this.activeKeys.delete(task.key)

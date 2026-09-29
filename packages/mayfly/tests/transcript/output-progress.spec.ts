@@ -15,7 +15,7 @@ import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-
 import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { outputRate } from '../../src/transcript/output-rate.ts'
 import * as activity from '../../src/transcript/pane-activity.ts'
-import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from '../../src/transcript/spinners.ts'
+import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from '../../src/core/glyphs.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
 import { assistantEvent, event, fakeMayflyComponents, resetSeq, turnEnd, turnStart } from './helpers.ts'

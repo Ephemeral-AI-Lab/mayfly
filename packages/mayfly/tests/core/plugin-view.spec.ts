@@ -5,6 +5,7 @@
  * @module @ephemeral-ai/mayfly/core/tests/plugin-view
  */
 
+import { stripVTControlCharacters } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import type { MayflySectionContentNode } from '../../../ui/src/contracts.ts'
 import {
@@ -62,24 +63,22 @@ describe('canonical basic-content leaf renderer', () => {
         { text: ' now' },
       ] }],
     }, 80)[0]).toContain('<muted>state: </muted>')
-    expect(renderView({ kind: 'code', language: 'ts', code: 'const x = 1\nnext' }, 80)).toEqual([
-      '<muted>ts</muted>',
-      '<mdCodeBlock>const x = 1</mdCodeBlock>',
-      '<mdCodeBlock>next</mdCodeBlock>',
-    ])
+    const code = renderView({ kind: 'code', language: 'ts', code: 'const x = 1\nnext' }, 80)
+    expect(code[0]).toBe('<muted>ts</muted>')
+    expect(code.slice(1).map(line => stripVTControlCharacters(line).replace(/<\/?mdCodeBlock>/gu, ''))).toEqual(['const x = 1', 'next'])
     expect(renderView({ kind: 'code', code: 'plain' }, 80)).toEqual(['<mdCodeBlock>plain</mdCodeBlock>'])
     // Changes sit on full-width bands: the sign keeps its diff color, the
     // text the body color. Real SGR keeps the padded band measurable.
-    const { diffAdded, diffAddedBg, diffRemoved, diffRemovedBg, text } = DARK_COLORS
-    const removed = (lead: string, body: string, fill: number): string => diffRemovedBg(`${lead}${text(body)}${' '.repeat(fill)}`)
-    const added = (lead: string, body: string, fill: number): string => diffAddedBg(`${lead}${text(body)}${' '.repeat(fill)}`)
+    const { diffAddedStrong, diffAddedBg, diffRemovedStrong, diffRemovedBg, diffGutter } = DARK_COLORS
+    const removed = (lead: string, body: string, fill: number): string => diffRemovedBg(`${lead}${diffRemovedStrong(body)}${' '.repeat(fill)}`)
+    const added = (lead: string, body: string, fill: number): string => diffAddedBg(`${lead}${diffAddedStrong(body)}${' '.repeat(fill)}`)
     const renderDiff = (before: string, after: string, width: number): string[] =>
       renderCanonicalView({ kind: 'diff', before, after }, width, components, DARK_COLORS)
-    expect(renderDiff('old', 'new', 12)).toEqual([removed(diffRemoved('- '), 'old', 7), added(diffAdded('+ '), 'new', 7)])
+    expect(renderDiff('old', 'new', 12)).toEqual([removed(diffGutter('- '), 'old', 7), added(diffGutter('+ '), 'new', 7)])
     // The shared alignment renders context once between removal and addition.
-    expect(renderDiff('a\nb', 'a\nc', 6)).toEqual(['  a', removed(diffRemoved('- '), 'b', 3), added(diffAdded('+ '), 'c', 3)])
+    expect(renderDiff('a\nb', 'a\nc', 6)).toEqual(['  a', removed(diffGutter('- '), 'b', 3), added(diffGutter('+ '), 'c', 3)])
     // Long lines wrap under the gutter instead of re-wrapping painted rows.
-    expect(renderDiff('', 'one two', 5)).toEqual([added(diffAdded('+ '), 'one', 0), added('  ', 'two', 0)])
+    expect(renderDiff('', 'one two', 5)).toEqual([added(diffGutter('+ '), 'one', 0), added('  ', 'two', 0)])
     expect(renderView({
       kind: 'sections',
       sections: [
@@ -136,4 +135,9 @@ describe('canonical basic-content leaf renderer', () => {
       }
     })
   }
+})
+
+
+it('maps the shell semantic tone to the shell palette token', () => {
+  expect(paintPluginTone(DARK_COLORS, 'shell')('SHELL')).toBe(DARK_COLORS.shellMode('SHELL'))
 })

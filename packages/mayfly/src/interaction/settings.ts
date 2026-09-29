@@ -48,6 +48,12 @@ declare module '@deepseek-ai/cordis' {
 
 /** The user-tunable Mayfly settings (the `mayfly` settings namespace). */
 export interface MayflySettings {
+  /** Contextual editor keys below the state row; off hides the key line. */
+  readonly keyHints: 'full' | 'minimal' | 'off'
+  /** Freeze decorative animation while retaining factual progress updates. */
+  readonly reducedMotion: boolean
+  /** Terminal glyph vocabulary; auto follows terminal capabilities. */
+  readonly glyphs: 'auto' | 'unicode' | 'ascii'
   /** Whether the boot update check runs at all; `false` is the offline switch. */
   readonly updateCheck: boolean
   /** The dist-tag the update check follows (`latest` by default). */
@@ -74,6 +80,9 @@ export interface MayflySettings {
 
 /** The settings schema; defaults double as the composition base. */
 export const Config = z.object({
+  keyHints: z.union([z.const('full'), z.const('minimal'), z.const('off')]).default('full').volatile(),
+  reducedMotion: z.boolean().default(false).volatile(),
+  glyphs: z.union([z.const('auto'), z.const('unicode'), z.const('ascii')]).default('auto').volatile(),
   updateCheck: z.boolean().default(true).volatile(),
   updateChannel: z.string().default('latest').volatile(),
   theme: z.union([z.const('dark'), z.const('light'), z.const('ocean'), z.const('paper'), z.const('auto')]).default('dark').volatile(),
@@ -89,6 +98,9 @@ export const Config = z.object({
 
 /** The resolved defaults, used until a settings service layers overrides. */
 export const DEFAULT_SETTINGS: MayflySettings = {
+  keyHints: 'full',
+  reducedMotion: false,
+  glyphs: 'auto',
   updateCheck: true,
   updateChannel: 'latest',
   theme: 'dark',

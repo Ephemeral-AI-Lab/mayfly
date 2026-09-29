@@ -556,7 +556,8 @@ describe('createEditor', () => {
     editor.handleInput('/')
     await waitForRender()
     const slash = editor.render(50)
-    expect(slash).toHaveLength(5)
+    expect(slash).toHaveLength(6)
+    expect(slash.at(-1)).toContain('Tab complete')
     expect(slash.join('\n')).toContain('«primary:→ /btw        aaaa bbbb cccc dddd eeee»')
     expect(slash.join('\n')).toContain(`«primary:${' '.repeat(14)}ffff»`)
 

@@ -30,6 +30,7 @@ const highlightCache = new Map<string, readonly string[]>()
  * @returns one string per input line, never more or fewer.
  */
 export function highlightCodeLines(code: string, lang: string | undefined, base: MayflyColorFn): string[] {
+  if (process.env.NO_COLOR) return code.split('\n')
   const normalized = lang?.trim().toLowerCase()
   if (normalized === undefined || normalized === '' || !supportsLanguage(normalized)) return code.split('\n')
   const key = `${base(' ')}\u0000${normalized}\u0000${code}`

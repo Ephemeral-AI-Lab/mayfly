@@ -39,6 +39,7 @@ import {
   renderFormField,
   renderList,
   renderListSegment,
+  inlineSegmentFits,
   renderLoader,
   renderProgress,
   renderSurfaceHead,
@@ -75,6 +76,7 @@ import { grammarHints, keyGrammar, type EscapeStep, type GrammarControl, type Gr
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
 import {
+  ACTION_CANCEL,
   displayKey,
   keyActionKeys,
   matchesKeyAction,
@@ -272,6 +274,7 @@ type FormNode = Extract<MayflyUiNode, { readonly kind: 'form' }>
 type ControlDescriptor =
   | (ControlBase & {
       readonly kind: 'event'
+      readonly tabOrientation?: 'horizontal' | 'vertical'
       readonly role: 'tab' | 'list-single' | 'list-multiple' | 'action' | 'cancel'
       readonly activation: 'enter' | 'space' | 'both'
       readonly event: MayflyUiEvent
@@ -592,7 +595,7 @@ function pad(component: Component, amount: number, options: RuntimeCompilerOptio
 
 function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
   const body = new VStack()
-  body.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors).slice(1), options))
+  body.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors, options.components.asciiGlyphs === true).slice(1), options))
   body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) body.addChild(footer)
   if (contextHint !== undefined) body.addChild(contextHint)
@@ -604,7 +607,7 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
   }
   const frameVisible = (viewport: LayoutViewport): boolean => viewport.width >= 3
   const paddingVisible = (index: number) => (viewport: LayoutViewport): boolean => viewport.width >= 5 + index * 2
-  const borderRows = (): string[] => Array.from({ length: layoutRows }, () => options.colors.borderFocus('│'))
+  const borderRows = (): string[] => Array.from({ length: layoutRows }, () => options.colors.borderFocus(options.components.asciiGlyphs === true ? '|' : '│'))
   const middle = new HStack()
   middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
   for (let index = 0; index < (node.padding ?? 0); index += 1) {
@@ -617,9 +620,9 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
   middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
 
   const layout = new VStack()
-  layout.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors).slice(0, 1), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+  layout.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors, options.components.asciiGlyphs === true).slice(0, 1), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
   layout.addChild(middle, { basis: 0, grow: 1, shrink: 1, minSize: 0 })
-  layout.addChild(staticComponent(width => renderSurfaceTail(node, width, options.colors), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+  layout.addChild(staticComponent(width => renderSurfaceTail(node, width, options.colors, options.components.asciiGlyphs === true), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
 
   return {
     [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
@@ -629,10 +632,10 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
       const requestedPadding = node.padding ?? 0
       const horizontalPadding = Math.min(requestedPadding, Math.max(0, Math.floor((available - 3) / 2)))
       const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
-      const head = renderSurfaceHead(node, available, options.colors)
+      const head = renderSurfaceHead(node, available, options.colors, options.components.asciiGlyphs === true)
       const bodyRows = body.render(contentWidth)
-      const tail = renderSurfaceTail(node, available, options.colors)
-      const border = options.colors.borderFocus('│')
+      const tail = renderSurfaceTail(node, available, options.colors, options.components.asciiGlyphs === true)
+      const border = options.colors.borderFocus(options.components.asciiGlyphs === true ? '|' : '│')
       const framed = bodyRows.map(row => {
         const clipped = options.components.truncateToWidth(row, contentWidth, '')
         const fill = ' '.repeat(Math.max(0, contentWidth - options.components.visibleWidth(clipped)))
@@ -648,11 +651,11 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
 function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent {
   if (node.chrome === 'overlay') return overlaySurfaceComponent(node, child, footer, contextHint, options)
   const component = new VStack()
-  component.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors), options))
+  component.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors, options.components.asciiGlyphs === true), options))
   component.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) component.addChild(footer)
   if (contextHint !== undefined) component.addChild(contextHint)
-  component.addChild(staticComponent(width => renderSurfaceTail(node, width, options.colors), options))
+  component.addChild(staticComponent(width => renderSurfaceTail(node, width, options.colors, options.components.asciiGlyphs === true), options))
   return pad(component, node.padding ?? 0, options)
 }
 
@@ -724,6 +727,23 @@ function coreText(options: Pick<MayflyUiCompilerOptions, 'contextHints'> | undef
   try { return options?.contextHints?.translate?.(key, values) ?? untranslated(key, values) } catch { return untranslated(key, values) }
 }
 
+/** Labels-left pages stack their labels above content in a narrow viewport. */
+class ResponsiveTabsStack {
+  private readonly horizontal: HStack
+  private readonly vertical: VStack
+  constructor(options: ConstructorParameters<typeof HStack>[1], private readonly narrow: () => boolean) {
+    this.horizontal = new HStack([], options)
+    this.vertical = new VStack([], options)
+  }
+  addChild(component: Component, options: Parameters<HStack['addChild']>[1] & { readonly visible: (viewport: LayoutViewport) => boolean }): void {
+    this.horizontal.addChild(component, options)
+    this.vertical.addChild(component, { visible: options.visible })
+  }
+  [LAYOUT_NODE](): LayoutNode { return (this.narrow() ? this.vertical : this.horizontal)[LAYOUT_NODE]() }
+  render(width: number): string[] { return (this.narrow() ? this.vertical : this.horizontal).render(width) }
+  invalidate(): void { this.horizontal.invalidate(); this.vertical.invalidate() }
+}
+
 /** An action a targeted selection row declares unavailable renders disabled with that row's reason. */
 function effectiveActionItem(item: MayflyActionItem, options: RuntimeCompilerOptions): MayflyActionItem {
   const reason = options.listRuntime.interaction?.unavailableReason(item)
@@ -756,13 +776,14 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
         return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable: enabled > 1 || (enabled === 1 && field.value === null) }
       }
       case 'event': {
-        if (active.role === 'tab') return { kind: 'tab' }
+        if (active.role === 'tab') return { kind: 'tab', vertical: active.tabOrientation === 'vertical' }
         if (active.role === 'action') return { kind: 'action', decision: active.event.kind === 'activate' && active.event.actionId.startsWith('mayfly.decision.') }
         if (active.role === 'cancel') return { kind: 'cancel' }
         const list = active.listEntry!.node
-        const segment = admittedListItem(list.items, active.listEntry!.index)?.segment
+        const item = admittedListItem(list.items, active.listEntry!.index)
+        const segment = item?.segment
         const adjustable = segment !== undefined && segment.options.filter(option => option.disabled !== true).length > 1
-        return { kind: 'row', role: list.role, multiple: active.role === 'list-multiple', tree: list.tree === true, ...(adjustable ? { segment: (segment.label ?? 'segment').toLowerCase() } : {}) }
+        return { kind: 'row', role: list.role, ...(list.acceptVerb === undefined ? {} : { acceptVerb: list.acceptVerb }), multiple: active.role === 'list-multiple', tree: list.tree === true, ...(segment !== undefined && choice !== undefined && choiceSegment(choice, item!.id) !== undefined ? { resetSegment: true } : {}), ...(adjustable ? { segment: (segment.label ?? 'segment').toLowerCase() } : {}) }
       }
     }
   })()
@@ -793,6 +814,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     groups: groups.length,
     siblings: active === undefined ? 0 : controls.filter(candidate => candidate.group === active.group).length,
     escape,
+    ...(escape === 'close' && interaction?.decisionNode === undefined && interaction?.registration.definition.escapeLabel !== undefined ? { escapeVerb: interaction.registration.definition.escapeLabel } : {}),
     closable: escapeLabel === 'close',
     ...(reset === undefined ? {} : { reset }),
   }
@@ -959,7 +981,7 @@ function controlsForNode(node: CompilableNode, options: RuntimeCompilerOptions, 
         break
       }
       case 'tabs':
-        for (const item of current.items) if (item.disabled !== true) controls.push({ kind: 'event', role: 'tab', activation: 'enter', key: scopedControlKey('tabs', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(current.id, item.id), preferred: item.id === (options.listRuntime.activeTab({ pagePath, controlId: current.id }) ?? current.activeId), group: scopedControlGroup('tabs', current.id), navigation: 'horizontal', event: { kind: 'tab-change', pagePath, controlId: current.id, tabId: item.id } })
+        for (const item of current.items) if (item.disabled !== true) controls.push({ kind: 'event', role: 'tab', ...(current.orientation === undefined ? {} : { tabOrientation: current.orientation }), activation: 'enter', key: scopedControlKey('tabs', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(current.id, item.id), preferred: item.id === (options.listRuntime.activeTab({ pagePath, controlId: current.id }) ?? current.activeId), group: scopedControlGroup('tabs', current.id), navigation: current.orientation === 'vertical' ? 'vertical' : 'horizontal', event: { kind: 'tab-change', pagePath, controlId: current.id, tabId: item.id } })
         break
       case 'list':
         if (options.listRuntime.listWindow(current, listRowLimit(options)).length === 0) controls.push({ kind: 'list', node: current, key: scopedControlKey('empty-list', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('list', current.id), navigation: 'none' })
@@ -1094,7 +1116,8 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         ...(node.align === undefined ? {} : { align: node.align }),
       }
       const spatial = mode === 'status' || options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined
-      const stack = !spatial || node.direction === 'column'
+      const labelsLeft = node.direction === 'row' && node.children.some(child => child.node.kind === 'tabs' && child.node.orientation === 'vertical')
+      const stack = labelsLeft ? new ResponsiveTabsStack(stackOptions, () => safeViewport(options.getViewport).columns < 80) : !spatial || node.direction === 'column'
         ? new VStack([], stackOptions)
         : new HStack([], stackOptions)
       for (const [index, child] of node.children.entries()) {
@@ -1148,7 +1171,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const completed = options.listRuntime.interaction?.completedSteps({ pagePath, controlId: node.id }) ?? []
         return renderTabs({ ...node, activeId: options.listRuntime.activeTab({ pagePath, controlId: node.id }) ?? node.activeId, items: node.items.map(item => completed.includes(item.id) ? { ...item, label: `✓ ${item.label}` } : item) }, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors)
       }, options)
-      state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: 'horizontal' })
+      state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: node.orientation === 'vertical' ? 'vertical' : 'horizontal' })
       return component
     }
     case 'list': {
@@ -1164,7 +1187,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const queryRows = choice?.searching === true ? options.listRuntime.search(node).render(Math.max(1, width - 2), state.focused && state.activeGroup === scopedControlGroup('list', node.id)).map(row => sliceByColumn(`/ ${row}`, 0, width, true)) : []
         const visibleCount = choice === undefined ? node.items.length : choiceVisibleCount(choice)
         const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
-        const counter = visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
+        const counter = query.length > 0 ? coreText(options, '{count} matches', { count: visibleCount }) : visibleCount > entries.length ? `↑${String(position)} / ↓${String(Math.max(0, visibleCount - position - 1))}` : undefined
         const focus = patternFocus(state, scopedControlGroup('list', node.id))
         const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? [] : renderList(
           { ...unfiltered, items, selectedIds: options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })?.selectedIds ?? node.selectedIds },
@@ -1173,10 +1196,13 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
           focus,
           options.colors,
           entries[0]!.position,
+          new Map(items.map(item => [item.id, choice === undefined ? item.segment?.selectedId : choiceSegment(choice, item.id)])),
+          options.components.asciiGlyphs === true,
+          key => coreText(options, key),
         )
         const focusedItem = focus.focused && focus.key !== '' ? entries.find(entry => entry.item.id === focus.key)?.item : undefined
         const segment = focusedItem?.segment
-        const segmentRows = segment === undefined ? [] : [renderListSegment(segment, choice === undefined ? segment.selectedId : choiceSegment(choice, focusedItem!.id), width, options.colors)]
+        const segmentRows = entries.length === 0 ? [] : [segment === undefined || inlineSegmentFits(focusedItem!, choice === undefined ? segment.selectedId : choiceSegment(choice, focusedItem!.id), width) ? '' : renderListSegment(segment, choice === undefined ? segment.selectedId : choiceSegment(choice, focusedItem!.id), width, options.colors, options.components.asciiGlyphs === true, key => coreText(options, key))]
         return [...(queryRows.length > 0 ? queryRows : query.length > 0 ? [sliceByColumn(`/ ${query}`, 0, width, true)] : []), ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body, ...segmentRows]
       }, options)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
@@ -1211,12 +1237,12 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         }
       }
       if (node.submitActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Submit'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', reveal: 'focus', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Submit'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('form-submit', node.id)], { component, axis: 'none' })
       }
       if (node.cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', reveal: 'focus', id: node.id, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('form-cancel', node.id)], { component, axis: 'none' })
       }
@@ -1229,7 +1255,12 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       /* Busy and row-unavailable states follow the live model, so they are read per frame. */
       const items = () => node.items.map(entry => {
         const item = effectiveActionItem(entry, options)
-        return item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item
+        const elapsed = options.listRuntime.interaction?.actionElapsed({ pagePath, controlId: item.id })
+        if (elapsed !== undefined) {
+          options.listRuntime.loaderFrame(1000, false, 'elapsed')
+          return { ...item, busy: true as const, label: `${item.label} ${Math.floor(elapsed / 1000)}s` }
+        }
+        return item
       })
       const bind = (current: readonly MayflyActionItem[]): void => {
         state.bindControls(current.filter(item => item.disabled !== true && item.busy !== true).map(item => scopedControlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
@@ -1237,17 +1268,23 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       const component: MayflyComponent = staticComponent(width => {
         const current = items()
         bind(current)
-        return renderActions({ ...node, items: current }, width, patternFocus(state, actionGroup(node, pagePath)), options.colors, vertical)
+        const rows = renderActions({ ...node, items: current }, width, patternFocus(state, actionGroup(node, pagePath)), options.colors, vertical)
+        if (options.listRuntime.interaction?.dirty && rows.length > 0) {
+          const marker = ` · ${coreText(options, 'unsaved')}`
+          const last = rows.length - 1
+          rows[last] = sliceByColumn(rows[last]!, 0, Math.max(0, width - visibleWidth(marker)), true) + sliceByColumn(options.colors.textMuted(marker), 0, width, true)
+        }
+        return rows
       }, options)
       bind(items())
       return component
     }
     case 'loader': {
       const stack = new VStack()
-      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors, options.listRuntime.loaderFrame()), options))
+      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors, options.listRuntime.loaderFrame(node.variant === 'tide' ? 120 : 80, options.components.reducedMotion === true, node), options.components.asciiGlyphs === true), options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
+        const component = staticComponent(width => renderActions({ kind: 'actions', reveal: 'focus', id: cancelActionId, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
       }
@@ -1259,7 +1296,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       if (node.actions !== undefined) stack.addChild(compileNode(node.actions, state, options, `${path}.actions`, mode))
       return stack
     }
-    case 'progress': return staticComponent(width => renderProgress(node, width, options.colors), options)
+    case 'progress': return staticComponent(width => renderProgress(node, width, options.colors, options.components.asciiGlyphs === true), options)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
     case 'divider': return pureStaticComponent(width => renderDivider(node.label, width, options.colors), options)
     case 'diagram': return diagramComponent(node, options)
@@ -1533,7 +1570,7 @@ export class MayflyUiSurfaceRuntime {
 
   /** Renderer clocks do not change shared model revisions or form state. */
   get animationFrame(): number { return this.loaderAnimation?.frame ?? 0 }
-  loaderFrame(): number { return this.loaderAnimation?.render() ?? 0 }
+  loaderFrame(interval = 80, reducedMotion = false, owner?: unknown): number { return this.loaderAnimation?.render(interval, reducedMotion, owner) ?? 0 }
   beginAnimationFrame(): void { this.loaderAnimation?.beginFrame() }
   pauseAnimation(): void { this.loaderAnimation?.stop() }
 
@@ -1945,7 +1982,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const severity = { info: 0, success: 1, warning: 2, error: 3 }
       const notice = this.surfaceRuntime.interaction?.feedbackSnapshot().toSorted((left, right) => severity[left.severity] - severity[right.severity]).at(-1)
       const feedbackRows = notice === undefined || rowLimit === 1 ? [] : [sliceByColumn(
-        (notice.severity === 'error' ? this.options.colors.error : notice.severity === 'warning' ? this.options.colors.warning : this.options.colors.textMuted)(sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')),
+        (notice.severity === 'error' ? this.options.colors.error : notice.severity === 'warning' ? this.options.colors.warning : this.options.colors.textMuted)(`${({ success: '✓', info: '·', warning: '!', error: '✗' })[notice.severity]} ${sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')}`),
         0, safeWidth, true,
       )]
       const contentLimit = rowLimit === undefined ? rows.length : Math.max(1, rowLimit - feedbackRows.length)
@@ -1955,13 +1992,15 @@ class CompiledSurface implements MayflyEditorShellComponent {
         && (this.node.chrome === 'overlay' || this.node.chrome === 'surface')
       let limited: string[]
       if (pinFrame && contentLimit > 1) {
-        const innerLength = Math.max(0, rows.length - 2)
-        const innerLimit = Math.max(0, contentLimit - 2)
+        const hintRows = this.hintRowsFor?.(safeWidth) ?? []
+        const hasHint = hintRows.length === 1 && contentLimit >= 3
+        const innerLength = Math.max(0, rows.length - 2 - (hasHint ? 1 : 0))
+        const innerLimit = Math.max(0, contentLimit - 2 - (hasHint ? 1 : 0))
         const innerFocus = focusRow > 0 && focusRow < rows.length - 1 ? focusRow - 1 : -1
         if (innerFocus >= 0 && innerFocus < this.viewportOffset) this.viewportOffset = innerFocus
         else if (innerFocus >= this.viewportOffset + innerLimit) this.viewportOffset = innerFocus - innerLimit + 1
         this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, innerLength - innerLimit))
-        limited = [rows[0]!, ...rows.slice(1 + this.viewportOffset, 1 + this.viewportOffset + innerLimit), rows.at(-1)!, ...feedbackRows]
+        limited = [rows[0]!, ...rows.slice(1 + this.viewportOffset, 1 + this.viewportOffset + innerLimit), ...(hasHint ? [rows.at(-2)!] : []), rows.at(-1)!, ...feedbackRows]
       } else {
         if (focusRow >= 0 && focusRow < this.viewportOffset) this.viewportOffset = focusRow
         else if (focusRow >= this.viewportOffset + contentLimit) this.viewportOffset = focusRow - contentLimit + 1
@@ -2003,22 +2042,25 @@ class CompiledSurface implements MayflyEditorShellComponent {
     readonly rows: number
     readonly revision: number | undefined
     readonly animationFrame: number
+    readonly presentation: string
     readonly result: MayflyStatusRenderResult
   } | undefined
 
   private renderFrameOnce(width: number, maxRows: number | undefined): MayflyStatusRenderResult {
+    this.surfaceRuntime.interaction?.present()
     const current = this.surfaceRuntime.current(this.generation)
     const viewport = safeViewport(this.options.getViewport)
     const revision = this.surfaceRuntime.interaction?.revision
     const animationFrame = this.surfaceRuntime.animationFrame
+    const presentation = `${this.options.components.reducedMotion}:${this.options.components.asciiGlyphs}`
     const cached = this.frameResult
     if (cached !== undefined
       && cached.current === current && cached.width === width && cached.maxRows === maxRows
-      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision && cached.animationFrame === animationFrame) {
+      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision && cached.animationFrame === animationFrame && cached.presentation === presentation) {
       return cached.result
     }
     const result = this.renderFrame(width, maxRows)
-    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, animationFrame, result }
+    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, animationFrame, presentation, result }
     return result
   }
 
@@ -2128,6 +2170,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   handleInput(data: string): void {
     this.frameResult = undefined
     if (!this.surfaceRuntime.current(this.generation)) return
+    if (this.surfaceRuntime.interaction?.inputArmed() === false && !matchesKeyAction(this.options.keymap, data, ACTION_CANCEL)) return
     this.viewport = safeViewport(this.options.getViewport)
     if (this.state.expandedKey !== undefined && !this.state.scrollViews.has(this.state.expandedKey)) this.state.expandedKey = undefined
     const controls = reconcile(this.state)
@@ -2414,6 +2457,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
         const target = this.surfaceRuntime.moveList(listNode!, intent.movement, Math.max(1, Math.min(10, this.viewport.rows - 1)))
         if (target === undefined || target.index === (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry!.index) return
         this.focusRow(listNode!, target.item.id, listAddress!.pagePath)
+        return
+      }
+      case 'reset-segment': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        model?.updateChoice(listAddress!, { kind: 'reset-segment', id: admittedListItem(listNode!.items, row.listEntry!.index)!.id })
         return
       }
       case 'segment': {

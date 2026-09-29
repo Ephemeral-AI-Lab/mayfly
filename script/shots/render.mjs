@@ -24,6 +24,8 @@ const coreLibUrl = new URL('../../packages/mayfly/lib/core.js', import.meta.url)
 if (!existsSync(coreLibUrl)) {
   throw new Error('packages/mayfly/lib is missing — run `pnpm build` before the shots pipeline')
 }
+delete process.env.NO_COLOR
+
 const { Context } = await import(new URL('../../packages/mayfly/node_modules/@deepseek-ai/cordis/lib/index.js', import.meta.url).href)
 const { compileMayflyUiNode } = await import(coreLibUrl.href)
 const uiProvider = await import(new URL('../../packages/ui/lib/provider.js', import.meta.url).href)

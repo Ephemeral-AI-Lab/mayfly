@@ -22,6 +22,8 @@ interface SurfaceRecord {
 
 /** Registrations, not renderer objects, define the lifetime of an interaction. */
 export class UiInteractionService extends Service {
+  transcriptExpanded = false
+  readonly transcriptNavigation = new Map<string, { generation?: number, selected?: number, readonly expanded: Map<number, boolean> }>()
   private live = true
   private serial = 0
   private notificationSerial = 0
@@ -111,6 +113,7 @@ export class UiInteractionService extends Service {
   }
 
   dispose(): void {
+    this.transcriptNavigation.clear()
     if (!this.live) return
     this.live = false
     this.notifyScheduled = false

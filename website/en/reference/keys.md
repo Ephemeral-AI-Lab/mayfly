@@ -8,7 +8,7 @@ In effect unless a capturing panel (a picker, form, or approval in the editor sl
 
 | Key | Action | Description |
 | --- | --- | --- |
-| `Ctrl-O` | Toggle tool output expansion | Switch the most recent **3 turns** of tool cards and thinking blocks between one-line summary and full output |
+| `Ctrl+O` | Toggle tool output expansion | Switch the most recent **3 turns** of tool cards and thinking blocks between one-line summary and full output |
 | `Ctrl-T` | Toggle todo pane folding | Five-row folded view ↔ full list |
 | `F6` / `Shift+F6` | Move surface focus | Traverse the Editor and pane lanes in layout order; crossing an end returns to the Editor |
 | `F7` | Previous conversation | Switch the complete UI back to the previously displayed conversation (main, BTW, or subagent); show a notice when no other conversation is open |

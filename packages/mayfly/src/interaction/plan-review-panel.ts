@@ -32,17 +32,14 @@ export function planReviewControls(question: AskUserQuestionItem, choices: PlanR
        still-unapproved plan as the current state — Enter must never approve.
        Digits only move the cursor: approving a plan, like granting a tool,
        always takes an explicit Enter on the focused decision. */
-    ui.list({ id: 'decision', role: 'choose', numbered: 'focus', selectedIds: ['reject'], items: [
-      { id: 'approve', label: choices.approve.label, ...choices.approve.description === undefined ? {} : { detail: choices.approve.description } },
+    ui.list({ id: 'decision', role: 'choose', acceptActionId: 'decide', numbered: 'focus', selectedIds: ['reject'], items: [
       { id: 'reject', label: choices.decline.label, ...choices.decline.description === undefined ? {} : { detail: choices.decline.description } },
-      { id: 'other', label: t('Other'), detail: t('Type feedback to revise the plan') },
+      { id: 'approve', label: choices.approve.label, ...choices.approve.description === undefined ? {} : { detail: choices.approve.description } },
     ] }),
     ui.actions({ id: 'decision-actions', items: [
       { id: 'copy-plan', label: t('Copy plan'), key: 'c' },
-      /* 'o' reaches the feedback input in one keypress even when the third
-         list row clips under tight height caps. */
-      { id: 'other-plan', label: t('Other'), key: 'o' },
     ] }),
+    planReviewFeedback(t),
     scrollHint(t),
   ])
 }
@@ -51,41 +48,26 @@ export function planReviewControls(question: AskUserQuestionItem, choices: PlanR
  *  same page — so typing starts immediately without tab navigation. */
 export function planReviewFeedback(t: MayflyTranslate): MayflyUiNode {
   return ui.stack.column([
-    ui.text(t('Tell the model what to change')),
-    ui.form({ id: 'revision', enterSubmits: 'send-feedback', fields: [{ kind: 'textarea', id: 'reason', label: t('Feedback'), value: '' }] }),
-    ui.actions({ id: 'feedback-actions', items: [
-      /* Reading the field keeps the submission an ordinary activate event:
-         a submit acknowledgement could never swap the form back out. */
+    ui.form({ id: 'revision', enterSubmits: 'send-feedback', fields: [{ kind: 'input', id: 'reason', label: t('Revise'), value: '' }] }),
+    ui.actions({ id: 'feedback-actions', reveal: 'focus', items: [
+      { id: 'decide', label: t('Confirm'), read: [{ pagePath: [], formId: 'revision' }], selections: [{ pagePath: [], controlId: 'decision' }] },
       { id: 'send-feedback', label: t('Submit'), read: [{ pagePath: [], formId: 'revision' }] },
-      { id: 'back', label: t('Back') },
     ] }),
-    scrollHint(t),
   ])
 }
 
 export function planReviewAnswer(question: AskUserQuestionItem, choices: PlanReviewChoices, event: MayflyUiEvent): AskUserQuestionAnswer | undefined {
-  if (event.kind === 'selection-accept' && event.controlId === 'decision') {
-    const id = event.selectedIds[0]
-    if (id === 'approve') return { answers: [{ id: question.id, selected: [choices.approve.label] }] }
-    if (id === 'reject') return { answers: [{ id: question.id, selected: [choices.decline.label] }] }
-    return undefined
-  }
-  if (event.kind !== 'activate' || event.actionId !== 'send-feedback') return undefined
+  if (event.kind !== 'activate' || (event.actionId !== 'send-feedback' && event.actionId !== 'decide')) return undefined
+  const selection = event.inputs?.selections?.find(value => value.controlId === 'decision')?.selectedIds[0]
+  if (event.actionId === 'decide' && selection === 'approve') return { answers: [{ id: question.id, selected: [choices.approve.label] }] }
   const reason = event.inputs?.forms[0]?.fields.find(field => field.id === 'reason')?.value
-  /* An empty read means the user changed their mind; leave the request open
-     for `planReviewAction` to restore the decision controls. */
-  return typeof reason === 'string' && reason.length > 0 ? { answers: [{ id: question.id, selected: [], custom: reason }] } : undefined
+  // Empty revision submissions keep the decision open with inline feedback.
+  return typeof reason === 'string' && reason.length > 0 ? { answers: [{ id: question.id, selected: [], custom: reason }] } : event.actionId === 'decide' && selection === 'reject' ? { answers: [{ id: question.id, selected: [choices.decline.label] }] } : undefined
 }
 
-/** Non-settling controls: 'Other' swaps in the feedback input, 'back' (or an
- *  empty feedback read) restores the decisions, copying writes the plan markdown
- *  to the clipboard. Node replies arrive unframed; requestOverlay wraps them
- *  in the request chrome before publication. */
-export async function planReviewAction(question: AskUserQuestionItem, choices: PlanReviewChoices, event: MayflyUiEvent, t: MayflyTranslate): Promise<MayflyUiActionReply | undefined> {
-  if (event.kind === 'selection-accept' && event.controlId === 'decision' && event.selectedIds[0] === 'other') return { kind: 'accepted', node: planReviewFeedback(t), source: [] }
-  if (event.kind === 'activate' && event.actionId === 'other-plan') return { kind: 'accepted', node: planReviewFeedback(t), source: [] }
-  if (event.kind === 'activate' && event.actionId === 'back') return { kind: 'accepted', node: planReviewControls(question, choices, t), source: [] }
-  if (event.kind === 'activate' && event.actionId === 'send-feedback') return { kind: 'accepted', node: planReviewControls(question, choices, t), source: [] }
+/** Empty revisions report inline feedback; copying writes the plan markdown to the clipboard. */
+export async function planReviewAction(question: AskUserQuestionItem, _choices: PlanReviewChoices, event: MayflyUiEvent, t: MayflyTranslate): Promise<MayflyUiActionReply | undefined> {
+  if (event.kind === 'activate' && event.actionId === 'send-feedback') return { kind: 'failed', message: t('Enter feedback to revise the plan') }
   if (event.kind !== 'activate' || event.actionId !== 'copy-plan') return undefined
   try {
     await copyTextToClipboard(question.detail ?? '')

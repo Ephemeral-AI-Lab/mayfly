@@ -65,3 +65,10 @@ not contain interactive controls.
 Pane and overlay ids are unique within their registry. Core still admits
 snapshot and event output. Fiber unload removes panes and closes overlays opened
 by that Fiber.
+
+Unprompted decisions can declare `armMs: 300` (valid range 0–2000, default 0).
+Only Escape is accepted until the frontend-owned deadline expires; the guard
+survives core reload and restarts after hiding. Pair grants with
+`numbered: 'focus'` so Enter still confirms. `escapeLabel` may be `close`,
+`cancel`, or `reject`; it describes the outer dismissal without changing the
+Escape ladder.

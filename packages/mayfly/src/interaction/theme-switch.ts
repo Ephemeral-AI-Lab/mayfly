@@ -23,7 +23,6 @@ import * as themeLight from '../core/theme-light.ts'
 import * as themeOcean from '../core/theme-ocean.ts'
 import * as themePaper from '../core/theme-paper.ts'
 import { interactionTranslator } from './locale.ts'
-import { CURRENT_MARK } from './symbols.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
 /** Usage text returned for malformed `/theme` invocations. */
@@ -85,7 +84,7 @@ function openThemePicker(ctx: Context): CommandResult {
     id: 'themes', role: 'choose', selectedIds: [current],
     items: KNOWN_KEYS.map(key => ({
       id: key, label: key,
-      ...(key === current ? { badge: CURRENT_MARK } : {}),
+      ...(key === current ? { badge: t('current') } : {}),
       ...(key === 'custom' ? { detail: t(USAGE) } : {}),
     })),
   }) }), { reopen: 'replace' })

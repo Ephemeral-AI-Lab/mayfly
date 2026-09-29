@@ -310,7 +310,7 @@ function bannerAgent(model: string, provider: string): Agent {
 }
 
 /** Boot the banner plugin on a fresh root context with faked services. */
-async function bootBanner(config: banner.Config = {}, localeId?: 'en' | 'zh'): Promise<{
+async function bootBanner(config: banner.Config = {}, localeId?: 'en' | 'zh', accessibility: { readonly asciiGlyphs?: boolean } = {}): Promise<{
   screen: BannerFakeScreen
   locale: MayflyLocaleService | undefined
   dispose(): Promise<void>
@@ -323,7 +323,7 @@ async function bootBanner(config: banner.Config = {}, localeId?: 'en' | 'zh'): P
   const state = bannerState()
   ctx.reflect.provide('mayflyScreen', screen)
   ctx.reflect.provide('mayflyTheme', { colors: COLORS })
-  ctx.reflect.provide('mayflyComponents', fakeMayflyComponents())
+  ctx.reflect.provide('mayflyComponents', { ...fakeMayflyComponents(), ...accessibility })
   ctx.reflect.provide('mayflyCurrentAgent', state.currentAgent)
   ctx.reflect.provide('sessionProjections', state.projections)
   ctx.reflect.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'p', model: 'm' }) })
@@ -429,4 +429,14 @@ describe('MAYFLY_VERSION', () => {
     const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }
     expect(MAYFLY_VERSION).toBe(pkg.version)
   })
+})
+
+
+it('omits the logomark in ASCII mode while retaining the product and model information', async () => {
+  const harness = await bootBanner({}, undefined, { asciiGlyphs: true })
+  const rows = harness.screen.children[0]!.render(80)
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toContain('Mayfly')
+  expect(rows[0]).not.toMatch(/[\u2800-\u28ff]/u)
+  await harness.dispose()
 })

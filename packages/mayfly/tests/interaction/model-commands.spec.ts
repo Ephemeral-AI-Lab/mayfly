@@ -25,6 +25,18 @@ import { choiceSegment } from '../../src/core/ui-interaction-choice.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { renderRequest } from './request-fixture.ts'
 
+/** Accept the focused row exactly as Enter does, including an unpinned segment. */
+function acceptPicker(picker: UiSurfaceModel): void {
+  const choice = picker.choice({ pagePath: [], controlId: 'selection' })
+  const id = choice?.focusedId
+  const segmentId = choice === undefined || id === undefined ? undefined : choiceSegment(choice, id)
+  picker.emit({ kind: 'selection-accept', pagePath: [], controlId: 'selection', selectedIds: id === undefined ? [] : [id], ...(segmentId === undefined ? {} : { segmentId }) })
+}
+function adjustEffort(picker: UiSurfaceModel, reset = false): void {
+  const choice = picker.choice({ pagePath: [], controlId: 'selection' })!
+  picker.updateChoice({ pagePath: [], controlId: 'selection' }, reset ? { kind: 'reset-segment', id: choice.focusedId! } : { kind: 'segment', id: choice.focusedId!, direction: -1 })
+}
+
 // Tests never touch the network catalog.
 setModelsDevLoader(() => Promise.resolve(undefined))
 
@@ -114,7 +126,7 @@ interface FakeCatalog {
   failInfoFor?: string[]
   /** Throw the catalog listing for these provider ids. */
   failListFor?: string[]
-  reasoning?: { efforts: { id: string, name: string }[], defaultEffort: string } | null
+  reasoning?: { efforts: { id: string, name: string }[], defaultEffort?: string } | null
 }
 
 function fakeLlm(catalog: FakeCatalog = {}): LlmRuntime {
@@ -254,13 +266,6 @@ function selectModel(ctx: Context, provider = 'mock', model = 'mock'): UiSurface
   return picker
 }
 
-/** Step a picker's row segment; direction counts through the enabled options. */
-function stepSegment(model: UiSurfaceModel, controlId: string, id: string, steps: number): void {
-  for (let index = 0; index < Math.abs(steps); index += 1) {
-    model.updateChoice({ pagePath: [], controlId }, { kind: 'segment', id, direction: steps > 0 ? 1 : -1 })
-  }
-}
-
 describe('model-family commands', () => {
   it('registers /model and /effort with the thinking alias', async () => {
     const { ctx, agent } = await mount()
@@ -322,10 +327,10 @@ describe('model-family commands', () => {
     const execution = await ctx.commands.execute(agent, '/model', [], signal())
     expect(execution?.result).toEqual({ kind: 'success' })
     const node = JSON.stringify(ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.models')?.node)
-    expect(node).toContain('"badge":"current"')
+    expect(node).toContain('"badge":"current · high"')
     expect(node).toContain('64k context')
     expect(node).toContain('Mock Pro')
-    expect(node).toContain('Set as default')
+    expect(node).not.toContain('Set as default')
     expect(node).not.toContain('alt+enter')
   })
 
@@ -381,12 +386,12 @@ describe('model-family commands', () => {
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
     const mock = JSON.stringify(['mock', 'mock'])
-    stepSegment(picker, 'selection', mock, 2)
+    picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: mock, direction: -1 })
     overlay(screen).handleInput(KEY.enter)
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
-    expect(writes).toEqual([{ provider: 'mock', model: 'mock', reasoningEffort: 'high' as never }])
-    expect(saveSelection).toHaveBeenCalledWith({ provider: 'mock', model: 'mock', reasoningEffort: 'high' as never })
-    expect(notices).toEqual(['Thinking set to high'])
+    expect(writes).toEqual([{ provider: 'mock', model: 'mock', reasoningEffort: 'low' as never }])
+    expect(saveSelection).toHaveBeenCalledWith({ provider: 'mock', model: 'mock', reasoningEffort: 'low' as never })
+    expect(notices).toEqual(['Thinking set to low'])
   })
 
   it('reports an Agent lost while the selection request was in flight', async () => {
@@ -402,7 +407,7 @@ describe('model-family commands', () => {
       return value
     }
     vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockImplementation(() => replaced ? null : agent)
-    picker.invoke('default')
+    acceptPicker(picker)
     await vi.waitFor(() => expect(picker.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining('agent changed before model selection completed') })])))
     expect(saveSelection).toHaveBeenCalled()
   })
@@ -412,7 +417,7 @@ describe('model-family commands', () => {
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = selectModel(ctx, 'mock', 'mock-pro')
     ;(ctx.get('testSession') as { current: Agent | null }).current = null
-    picker.invoke('default')
+    acceptPicker(picker)
     await vi.waitFor(() => { expect(picker.disposed).toBe(true) })
     expect(writes).toEqual([])
   })
@@ -422,7 +427,7 @@ describe('model-family commands', () => {
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = selectModel(ctx, 'mock', 'mock-pro')
     ;(ctx.get('testSession') as { current: Agent, modelRef?: TestModelRef }).modelRef = undefined
-    picker.invoke('default')
+    acceptPicker(picker)
     await vi.waitFor(() => expect(picker.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'error', message: 'no session is live yet' })])))
     expect(writes).toEqual([])
   })
@@ -437,8 +442,8 @@ describe('model-family commands', () => {
     })
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = selectModel(ctx, 'mock', 'mock-vision')
-    stepSegment(picker, 'selection', JSON.stringify(['mock', 'mock-vision']), 1)
-    picker.invoke('default')
+    picker.updateChoice({ pagePath: [], controlId: 'selection' }, { kind: 'segment', id: JSON.stringify(['mock', 'mock-vision']), direction: -1 })
+    acceptPicker(picker)
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
     expect(writes).toEqual([{ provider: 'mock', model: 'mock-vision', reasoningEffort: 'low' as never }])
   })
@@ -452,13 +457,13 @@ describe('model-family commands', () => {
     const pro = JSON.stringify(['mock', 'mock-pro'])
     const choice = () => picker.choice(address)!
     expect(choiceSegment(choice(), mock)).toBe('low')
-    expect(choiceSegment(choice(), pro)).toBe('default')
+    expect(choiceSegment(choice(), pro)).toBeUndefined()
     overlay(screen).handleInput(KEY.down)
-    expect(overlay(screen).render(80).join('\n')).toContain('‹ Provider default ›')
+    expect(overlay(screen).render(80).join('\n')).toContain('‹ high (default) ›')
     overlay(screen).handleInput(KEY.up)
     const rows = overlay(screen).render(80).join('\n')
     expect(rows).toContain('‹ low ›')
-    expect(rows).toContain('Thinking:')
+    expect(rows).not.toContain('Thinking:')
   })
 
   it('/model Enter commits the focused row segment without a second dialog', async () => {
@@ -467,16 +472,13 @@ describe('model-family commands', () => {
     const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
     const mock = JSON.stringify(['mock', 'mock'])
     const choice = () => picker.choice({ pagePath: [], controlId: 'selection' })!
-    // Left clamps at the seeded default; two Rights land on high.
+    // Left leaves inherited high and previews an explicit low.
     overlay(screen).handleInput(KEY.left)
-    expect(choiceSegment(choice(), mock)).toBe('default')
-    overlay(screen).handleInput(KEY.right)
-    overlay(screen).handleInput(KEY.right)
-    expect(choiceSegment(choice(), mock)).toBe('high')
+    expect(choiceSegment(choice(), mock)).toBe('low')
     overlay(screen).handleInput(KEY.enter)
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
-    expect(writes).toEqual([{ provider: 'mock', model: 'mock', reasoningEffort: 'high' as never }])
-    expect(saveSelection).toHaveBeenCalledWith({ provider: 'mock', model: 'mock', reasoningEffort: 'high' as never })
+    expect(writes).toEqual([{ provider: 'mock', model: 'mock', reasoningEffort: 'low' as never }])
+    expect(saveSelection).toHaveBeenCalledWith({ provider: 'mock', model: 'mock', reasoningEffort: 'low' as never })
     expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')).toBeUndefined()
     expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.model.options')).toBeUndefined()
   })
@@ -577,28 +579,28 @@ describe('model-family commands', () => {
     await ctx.commands.execute(agent, '/effort', [], signal())
     const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!
     const node = JSON.stringify(picker.node)
-    expect(node).toContain('Provider default')
+    expect(node).toContain('"inheritedId":"high"')
     expect(node).toContain('"id":"low"')
     expect(node).toContain('"id":"high"')
     const root = ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.effort')!
     const context = { surfaceId: root.id, operationId: 'select', source: root.source, revision: root.revision, signal: signal(), report: vi.fn() }
-    const activate = { kind: 'activate' as const, pagePath: [], controlId: 'default', actionId: 'default' }
+    const activate = { kind: 'selection-accept' as const, pagePath: [], controlId: 'selection', selectedIds: [] }
     expect(await root.definition.onEvent!.action!(activate, context)).toMatchObject({ kind: 'failed' })
-    focusRow(picker, 'selection', 'high')
-    picker.invoke('default')
+    adjustEffort(picker)
+    acceptPicker(picker)
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
-    expect(writes[0]).toMatchObject({ reasoningEffort: 'high' as never })
+    expect(writes[0]).toMatchObject({ reasoningEffort: 'low' as never })
     expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')).toBeUndefined()
   })
 
   it('/effort navigates levels with arrows and commits on Enter', async () => {
     const { ctx, screen, agent, writes } = await mount()
     await ctx.commands.execute(agent, '/effort', [], signal())
-    overlay(screen).handleInput(KEY.down)
-    overlay(screen).handleInput(KEY.down)
+    overlay(screen).handleInput(KEY.left)
+    overlay(screen).handleInput(KEY.left)
     overlay(screen).handleInput(KEY.enter)
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
-    expect(writes[0]).toMatchObject({ reasoningEffort: 'high' as never })
+    expect(writes[0]).toMatchObject({ reasoningEffort: 'low' as never })
   })
 
   it('/effort direct: valid level, default, and the invalid-level listing', async () => {
@@ -751,7 +753,7 @@ describe('model-family commands', () => {
     const { ctx, agent, writes } = await mount({ catalog: { reasoning: null } })
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = selectModel(ctx, 'mock', 'mock-pro')
-    picker.invoke('default')
+    acceptPicker(picker)
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
     expect('reasoningEffort' in (writes[0] ?? {})).toBe(false)
   })
@@ -761,7 +763,7 @@ describe('model-family commands', () => {
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = selectModel(ctx, 'mock', 'mock-pro')
     await fiber.dispose()
-    picker.invoke('default')
+    acceptPicker(picker)
     await new Promise(resolve => setImmediate(resolve))
     expect(writes).toEqual([])
     expect(notices).toEqual([])
@@ -780,8 +782,8 @@ describe('model-family commands', () => {
       const picker = command === 'model'
         ? selectModel(mounted.ctx, 'mock', 'mock-pro')
         : mounted.ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!
-      if (command === 'effort') focusRow(picker, 'selection', 'low')
-      picker.invoke('default')
+      if (command === 'effort') adjustEffort(picker)
+      acceptPicker(picker)
       await vi.waitFor(() => { expect(selectModelCall).toHaveBeenCalledOnce() })
       await mounted.fiber.dispose()
       resolveSelection({ selected: { provider: 'mock', model: command === 'model' ? 'mock-pro' : 'mock', reasoningEffort: 'low' as never } })
@@ -800,8 +802,8 @@ describe('model-family commands', () => {
     ctx.mayflyOverlays.close('mayfly.models')
     await ctx.commands.execute(agent, '/effort', [], signal())
     const effort = ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!
-    const low = JSON.stringify(effort.node).match(/"id":"low","label":"low","badge":"current"/)
-    expect(low).not.toBeNull()
+    expect(choiceSegment(effort.choice({ pagePath: [], controlId: 'selection' })!, 'mock')).toBe('low')
+    expect(JSON.stringify(effort.node)).toContain('current · low')
   })
 
   it('/effort panel commits the default segment directly', async () => {
@@ -809,8 +811,8 @@ describe('model-family commands', () => {
     const { ctx, agent } = await mount({ modelRef: preset.ref })
     await ctx.commands.execute(agent, '/effort', [], signal())
     const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!
-    focusRow(picker, 'selection', 'default')
-    picker.invoke('default')
+    adjustEffort(picker, true)
+    acceptPicker(picker)
     await vi.waitFor(() => { expect(preset.writes).toHaveLength(1) })
     expect('reasoningEffort' in (preset.writes[0] ?? {})).toBe(false)
   })
@@ -819,8 +821,8 @@ describe('model-family commands', () => {
     const { ctx, agent, writes } = await mount()
     await ctx.commands.execute(agent, '/effort', [], signal())
     const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!
-    focusRow(picker, 'selection', 'low')
-    picker.invoke('default')
+    adjustEffort(picker)
+    acceptPicker(picker)
     await vi.waitFor(() => { expect(writes).toHaveLength(1) })
     expect(notices).toEqual(['Thinking set to low'])
   })
@@ -959,9 +961,9 @@ describe('direct model picker boundaries', () => {
     expect(await openModelPicker(bench.ctx, signal())).toEqual({ kind: 'success' })
     expect(bench.ctx.mayflyOverlays.list().find(entry => entry.id === root.id)!.focusRevision).toBeGreaterThan(focus)
     const context = { surfaceId: root.id, operationId: 'select', source: root.source, revision: root.revision, signal: signal(), report: vi.fn() }
-    const activate = (selectedIds: string[]) => ({ kind: 'activate' as const, pagePath: [], controlId: 'default', actionId: 'default', inputs: { actionId: 'default', draftRevision: 0, forms: [], source: [], selections: [{ pagePath: [], controlId: 'selection', selectedIds }] } })
+    const activate = (selectedIds: string[]) => ({ kind: 'selection-accept' as const, pagePath: [], controlId: 'selection', selectedIds })
     expect(await root.definition.onEvent!.action!(activate([]), context)).toMatchObject({ kind: 'failed' })
-    expect(await root.definition.onEvent!.action!({ kind: 'activate' as const, pagePath: [], controlId: 'default', actionId: 'default' }, context)).toMatchObject({ kind: 'failed' })
+    expect(await root.definition.onEvent!.action!({ kind: 'activate' as const, pagePath: [], controlId: 'default', actionId: 'default' }, context)).toMatchObject({ kind: 'completed' })
     expect(await root.definition.onEvent!.action!(activate(['missing']), context)).toMatchObject({ kind: 'failed' })
     const selected = JSON.stringify(['mock', 'mock'])
     expect(await root.definition.onEvent!.action!(activate([selected]), context)).toMatchObject({ kind: 'completed', dismiss: true })
@@ -1030,7 +1032,7 @@ describe('direct model picker boundaries', () => {
     const picker = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
     focusRow(picker, 'selection', JSON.stringify(['mock', 'mock']))
     bench.ctx.set('sessionController', undefined as never)
-    picker.invoke('default')
+    acceptPicker(picker)
     await vi.waitFor(() => expect(picker.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ message: 'no session is live yet' })])))
   })
 
@@ -1041,4 +1043,19 @@ describe('direct model picker boundaries', () => {
     const command = bench.ctx.commands.find(bench.agent, 'effort')!
     expect(await command.handler({ rawInput: '', signal: signal() } as never)).toEqual({ kind: 'error', text: 'no session is live yet' })
   })
+})
+
+
+it.each([undefined, 'removed'])('keeps the model and effort pickers usable when the provider default is %s', async defaultEffort => {
+  const bench = await mount({ catalog: { reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }], ...(defaultEffort === undefined ? {} : { defaultEffort }) } } })
+  await bench.ctx.commands.execute(bench.agent, '/model', [], signal())
+  const model = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
+  expect(JSON.stringify(model.node)).not.toContain('inheritedId')
+  bench.ctx.mayflyOverlays.close('mayfly.models')
+  await bench.ctx.commands.execute(bench.agent, '/effort', [], signal())
+  const effort = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!
+  expect(JSON.stringify(effort.node)).not.toContain('inheritedId')
+  const renderer = renderRequest(effort)
+  expect(renderer.component.render(80).join('\n')).toContain('default')
+  renderer.runtime.dispose()
 })

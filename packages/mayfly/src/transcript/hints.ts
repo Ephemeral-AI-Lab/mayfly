@@ -6,6 +6,8 @@
  * @module @ephemeral-ai/mayfly/transcript/hints
  */
 
+import type { MayflyKeymap } from '../core/index.ts'
+import { displayKey } from '../core/key-actions.ts'
 import type { MayflyTranslate } from '../frontend/index.ts'
 
 /**
@@ -61,4 +63,12 @@ export const HINTS_ZH: Readonly<Record<string, string>> = {
   '... (more output)': '...（还有更多输出）',
   '... ({count} more, ctrl+o to expand)': '...（还有 {count} 项，按 Ctrl-O 展开）',
   '... ({count} more)': '...（还有 {count} 项）',
+}
+
+/** Resolve disclosure notation from the live keymap at render time. */
+export function withDisclosureKey(t: MayflyTranslate, keymap: MayflyKeymap): MayflyTranslate {
+  return (key, values) => {
+    const binding = keymap.getKeys('mayfly.transcript.toggle-collapse').map(displayKey).join('/')
+    return t(key, values).replace(/ctrl\+o|Ctrl-O|Ctrl\+O/gu, binding)
+  }
 }
