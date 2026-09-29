@@ -11,7 +11,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, sta
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { c as createTar } from 'tar'
+import { c as createTar, t as listTar } from 'tar'
 import { ROOT } from './package-contract.mjs'
 
 const CLI_DIR = join(ROOT, 'packages', 'cli')
@@ -111,6 +111,13 @@ function nativeSentinels(deployment, paths) {
   return files
 }
 
+/** Hardlink entries in one produced runtime archive (must stay zero). */
+function archiveHardlinks(file) {
+  let links = 0
+  listTar({ file, sync: true, onentry: entry => { if (entry.type === 'Link') links += 1 } })
+  return links
+}
+
 /** Write one deterministic internal runtime archive. */
 function writeArchive(deployment, filename, paths) {
   const output = join(CLI_DIR, filename)
@@ -124,6 +131,8 @@ function writeArchive(deployment, filename, paths) {
     sync: true,
     strict: true,
   }, paths)
+  const links = archiveHardlinks(output)
+  if (links > 0) throw new Error(`${filename} carries ${links} hardlink entries; archives must hold plain files only (NTFS caps a file at 1023 links)`)
   return statSync(output).size
 }
 
@@ -140,6 +149,11 @@ export async function buildCliRuntime() {
     execFileSync('pnpm', [
       'install', '--frozen-lockfile', '--ignore-scripts', '--prefer-offline',
       '--config.node-linker=hoisted',
+      // Copy files out of the content-addressed store: pnpm dedupes identical
+      // package files onto one inode, which becomes tar hardlink entries —
+      // and NTFS fails fs.link past 1023 links per file (UNKNOWN), so a
+      // deduped archive cannot extract on Windows.
+      '--config.package-import-method=copy',
       '--config.minimumReleaseAge=0',
     ], { cwd: deployment, stdio: 'pipe', maxBuffer: 16 * 1024 * 1024 })
 
