@@ -86,6 +86,14 @@ describe('mayflyConversationFacts projection', () => {
       source: { kind: 'user' },
       content: [{ type: 'text', text: 'ship it' }],
     }))).toBe(state)
+    // A late question reply (Harness 0.2.0 source kind `user-question-reply`)
+    // renders in the transcript projection but is not the turn's initiating
+    // prompt: the activity header keeps quoting the real prompt.
+    expect(foldConversationFacts(state, event('user/message', {
+      source: { kind: 'user-question-reply', callId: 'call-1', outcome: 'answered' },
+      content: [{ type: 'text', text: 'late answer' }],
+    }))).toBe(state)
+    expect(state.promptText).toBe('ship it')
     state = foldConversationFacts(state, event('turn/start', { turn: 1 }))
     expect(state).toMatchObject({ phase: 'waiting', active: true, turn: 1, flowDownChars: 0 })
     state = foldConversationFacts(state, event('step/start', { turn: 1, step: 0 }))

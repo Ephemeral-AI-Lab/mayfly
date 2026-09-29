@@ -207,6 +207,24 @@ describe('mayflyConversation projection', () => {
     expect(state.entries[1]).toEqual(expect.objectContaining({ kind: 'assistant', text: '[image]' }))
   })
 
+  it('renders a persisted late question reply as an ordinary user message', () => {
+    // Harness 0.2.0 persists a continued ask_user_question's late answer as a
+    // user/message whose source kind is `user-question-reply`: the transcript
+    // must show the reply, not swallow it as an injected source.
+    const state = fold([
+      event('turn/start', { turn: 1 }),
+      event('user/message', userMessage('hello'), { append: true }),
+      event('user/message', userMessage('yes, ship it', [], {
+        kind: 'user-question-reply',
+        callId: ToolCallId('call-1'),
+        outcome: 'answered',
+      }), { append: true }),
+    ])
+    expect(state.entries).toHaveLength(2)
+    expect(state.entries[0]).toEqual(expect.objectContaining({ kind: 'user', text: 'hello' }))
+    expect(state.entries[1]).toEqual(expect.objectContaining({ kind: 'user', text: 'yes, ship it' }))
+  })
+
   it('handles unpaired failures, interruptions, and rejects finalized or interrupted late chunks', () => {
     let state = fold([
       event('turn/start', { turn: 3 }),
