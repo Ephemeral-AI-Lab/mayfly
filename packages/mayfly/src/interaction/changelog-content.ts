@@ -22,6 +22,23 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.3-rc.1',
+    summary: 'Sign in to a DeepSeek account from the terminal with a guided first run, on Harness 0.2.0-rc.2, and close out the render-path hot spots.',
+    highlights: [
+      'Harness 0.2.0-rc.2 - align the pinned line: late question answers render in the transcript, web search can ride a signed-in DeepSeek account without a separate API key, and the otel telemetry channel joins the base composition.',
+      'DeepSeek Account panel - /provider on the account route now signs in from the terminal: a loopback webserver hosts the OAuth callback, Sign in opens the authorize link in the browser while the panel follows the attempt to completion, and Sign out removes the shared grant.',
+      'First-run guide - a fresh install with no key and no login now opens a connection guide offering account sign-in or pasting a DeepSeek API key; a stored account grant counts as connected and skips the guide.',
+      'Paste-back sign-in - while a browser sign-in waits, the panel shows the attempt expiry and accepts the callback URL pasted from the browser address bar, replaying it against the loopback callback server.',
+      'Sign-in recovery - a cancelled, expired or failed attempt offers Sign in again and names its reason (expired link, network, storage); closing the account step before it connects returns to the guide, so choosing sign-in never strands a first-run user.',
+      'Sign-in shortcuts - while a sign-in waits the panel shows no buttons: Ctrl+Y copies the link, Ctrl+R issues a new one, and Enter in the always-visible, optional paste box delivers the callback address (a browser on the same machine finishes by itself). Actions can now be declared hidden: no button or focus stop, still bound to their key.',
+      'Welcome - a first run opens a Welcome step to pick the language and theme before the connection guide; the choice applies immediately and is stored as the shared locale preference and mayfly.theme.',
+      'Model after connecting - saving an API key or finishing an account sign-in in the first-run guide now ends on the model list of that provider only, so the first message never starts on another route\'s default (which failed with MISSING_CREDENTIAL).',
+      'Hot paths - walk the control tree once per reconcile round and memoize its visible, all, and accelerator sets, reuse @-mention fallback scans between keystrokes, batch overflow telemetry off the render path, and refresh status badges only on the facts they read.',
+      'Transcript - humanize the goal footer, hide completed goals, and render a failed git status probe as unknown instead of clean.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.2-rc.1',
     summary: 'Hold many conversations in one transcript pane, browse sessions by workspace, and share locale catalogs across surfaces.',
     highlights: [
@@ -31,14 +48,6 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
       'Plugin lifecycle - make /plugin Update and repair perform real upgrades and expose live info actions.',
       'Queue - fold long queued rows and withdraw pending messages with Up.',
       'Provider setup - keep discovered routes in the user-level home patch so profiles share provider configuration.',
-      'Harness 0.2.0-rc.2 - align the pinned line: late question answers render in the transcript, web search can ride a signed-in DeepSeek account without a separate API key, and the otel telemetry channel joins the base composition.',
-      'DeepSeek Account panel - /provider on the account route now signs in from the terminal: a loopback webserver hosts the OAuth callback, Sign in opens the authorize link in the browser while the panel follows the attempt to completion, and Sign out removes the shared grant.',
-      'First-run guide - a fresh install with no key and no login now opens a connection guide offering account sign-in or pasting a DeepSeek API key; a stored account grant counts as connected and skips the guide.',
-      'Paste-back sign-in - while a browser sign-in waits, the panel shows the attempt expiry and accepts the callback URL pasted from the browser address bar, replaying it against the loopback callback server.',
-      'Sign-in recovery - a cancelled, expired or failed attempt offers Sign in again and names its reason (expired link, network, storage); closing the account step before it connects returns to the guide, so choosing sign-in never strands a first-run user.',
-      'Sign-in shortcuts - while a sign-in waits the panel shows no buttons: Ctrl+Y copies the link, Ctrl+R issues a new one, and Enter in the always-visible, optional paste box delivers the callback address (a browser on the same machine finishes by itself). Actions can now be declared hidden: no button or focus stop, still bound to their key.',
-      'Welcome - a first run opens a Welcome step to pick the language and theme before the connection guide; the choice applies immediately and is stored as the shared locale preference and mayfly.theme.',
-      'Model after connecting - saving an API key or finishing an account sign-in in the first-run guide now ends on the model list of that provider only, so the first message never starts on another route\'s default (which failed with MISSING_CREDENTIAL).',
       'Rendering and performance - harden display fidelity and layout budgets, unify overflow signalling, and cut subagent, dock, and scroll cost.',
     ],
     knownIssues: [],

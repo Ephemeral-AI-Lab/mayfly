@@ -84,7 +84,7 @@ my-plugin/
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-commands": "^0.1.5-rc.2",
-    "@ephemeral-ai/mayfly-ui": "^0.1.2-rc.1"
+    "@ephemeral-ai/mayfly-ui": "^0.1.3-rc.1"
   }
 }
 ```
