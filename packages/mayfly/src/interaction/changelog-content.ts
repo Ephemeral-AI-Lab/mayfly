@@ -22,7 +22,7 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
-    version: '0.1.3-rc.1',
+    version: '0.1.3-rc.2',
     summary: 'Sign in to a DeepSeek account from the terminal with a guided first run, on Harness 0.2.0-rc.2, and close out the render-path hot spots.',
     highlights: [
       'Harness 0.2.0-rc.2 - align the pinned line: late question answers render in the transcript, web search can ride a signed-in DeepSeek account without a separate API key, and the otel telemetry channel joins the base composition.',
@@ -34,6 +34,7 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
       'Welcome - a first run opens a Welcome step to pick the language and theme before the connection guide; the choice applies immediately and is stored as the shared locale preference and mayfly.theme.',
       'Model after connecting - saving an API key or finishing an account sign-in in the first-run guide now ends on the model list of that provider only, so the first message never starts on another route\'s default (which failed with MISSING_CREDENTIAL).',
       'Hot paths - walk the control tree once per reconcile round and memoize its visible, all, and accelerator sets, reuse @-mention fallback scans between keystrokes, batch overflow telemetry off the render path, and refresh status badges only on the facts they read.',
+      'Windows launcher - pack the bundled runtime as plain files: the earlier store-deduped archives exceeded NTFS\'s per-file hardlink cap, so the bundled host could not extract on Windows.',
       'Transcript - humanize the goal footer, hide completed goals, and render a failed git status probe as unknown instead of clean.',
     ],
     knownIssues: [],
