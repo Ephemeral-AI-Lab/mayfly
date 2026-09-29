@@ -51,10 +51,13 @@ presentation and current-Agent selection.
   provider route, `web_search` authenticates with the account token and needs
   no separate API key; a 401 surfaces sign-in guidance. Selecting "DeepSeek
   Account" in `/provider` opens an account panel (native `deepseekAccount`
-  service): it shows the sign-in state and, while signed out, explains the
-  honest path — the terminal host carries no local callback web server, so
-  browser sign-in happens in a Desktop or Web host on the same machine (the
-  stored grant is Host-shared) — and offers Sign out when a grant is stored.
+  service) that signs in from the terminal: the bundle mounts a loopback
+  webserver (OS-assigned port) that hosts the OAuth callback, Sign in starts
+  the PKCE attempt and opens the authorize link in the system browser (the
+  link stays visible as the fallback), the panel follows the attempt phases
+  to completion, and Sign out removes the stored grant. Hosts whose
+  composition has no webserver show the Desktop/Web sign-in hint instead —
+  the stored grant is shared across hosts of one machine.
 - `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,
   `standard` (default), `detailed`, and `verbose`, keeping the Harness Chat
   work-details mode names. Unlike Harness Chat, whose running turn header and

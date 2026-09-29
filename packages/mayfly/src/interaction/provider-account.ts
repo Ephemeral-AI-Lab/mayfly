@@ -1,11 +1,12 @@
-/** DeepSeek account status and sign-in guidance in the Providers panel.
+/** DeepSeek account sign-in inside the terminal.
  *
  * The account adapter (`llm-deepseek-account`) is not a pi-ai profile, so the
- * provider editor refuses it. This panel shows the native account state and,
- * while signed out, the honest sign-in path: the terminal host carries no
- * local callback web server, so browser sign-in happens in a Desktop or Web
- * host on the same machine — the stored grant is Host-shared — after which
- * account models work here with no API key.
+ * provider editor refuses it. This panel drives the native account service
+ * instead: with the bundle's loopback webserver present, Sign in starts the
+ * PKCE attempt (`startSignIn`), opens the authorize URL in the system
+ * browser, and follows the attempt phases to completion; without a webserver
+ * the panel falls back to explaining where browser sign-in can happen (the
+ * stored grant is Host-shared across hosts of one machine).
  *
  * @module @ephemeral-ai/mayfly/interaction/provider-account
  */
@@ -20,29 +21,73 @@ import { openUiOverlay } from './ui-overlay.ts'
 /** The settings namespace the account adapter owns; routes in it are not pi-ai profiles. */
 export const ACCOUNT_SETTINGS_NS = 'llm-deepseek-account'
 
+/** Process seams for specs: the best-effort system browser opener. */
+export const accountInternals = {
+  /** Spawn one opener command detached; resolves false when the opener is missing. */
+  spawnOpener: async (command: string, args: readonly string[]): Promise<boolean> => {
+    try {
+      const { spawn } = await import('node:child_process')
+      return await new Promise<boolean>(resolve => {
+        const child = spawn(command, args, { stdio: 'ignore', detached: true })
+        child.once('error', () => resolve(false))
+        child.once('spawn', () => { child.unref(); resolve(true) })
+      })
+    } catch {
+      /* v8 ignore next -- node:child_process and spawn failures surface as the error event */
+      return false
+    }
+  },
+}
+
+/** The system browser opener for one platform; every platform opens one URL. */
+export function openerFor(platform: NodeJS.Platform): { command: string, prefix: readonly string[] } {
+  if (platform === 'darwin') return { command: 'open', prefix: [] }
+  if (platform === 'win32') return { command: 'cmd', prefix: ['/c', 'start', ''] }
+  return { command: 'xdg-open', prefix: [] }
+}
+
+/** Open one URL in the system browser; a failure leaves the visible link as the fallback. */
+export async function openUrlInBrowser(url: string): Promise<boolean> {
+  const opener = openerFor(process.platform)
+  return await accountInternals.spawnOpener(opener.command, [...opener.prefix, url])
+}
+
 /** Native client identity for one account operation; the wire locale keeps the primary subtag only. */
-function clientMetadata(ctx: Context): AccountClientMetadata {
+export function clientMetadata(ctx: Context): AccountClientMetadata {
   const locale = ctx.get('mayflyLocale')?.snapshot.locale.split('-')[0] ?? 'en'
   return { version: MAYFLY_VERSION, locale, timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60 }
 }
 
-/** One localized attempt line; a terminal host never starts attempts itself. */
-function attemptText(attempt: SignInAttemptView, t: (key: string) => string): string {
-  if (attempt.authorizeUrl !== undefined) return t('Waiting for browser sign-in')
-  if (attempt.phase === 'failed' || attempt.phase === 'expired') return t('Sign-in failed — retry from a Desktop or Web host')
-  if (attempt.phase === 'succeeded') return t('Signed in')
-  return t('Signing in…')
+/** The loopback callback origin for a browser sign-in, when a web carrier is composed. */
+function callbackOrigin(ctx: Context): string | undefined {
+  const server = ctx.get('webServer')
+  return server === undefined ? undefined : `http://localhost:${String(server.port)}`
+}
+
+/** Whether one attempt phase is terminal (no cancel, maybe retry). */
+function attemptTerminal(attempt: SignInAttemptView): boolean {
+  return attempt.phase === 'succeeded' || attempt.phase === 'cancelled' || attempt.phase === 'expired' || attempt.phase === 'failed'
 }
 
 /** The panel content for one account view. */
-export function accountPanelNode(view: AccountView, t: (key: string) => string): MayflyUiNode {
+export function accountPanelNode(view: AccountView, t: (key: string) => string, canSignIn: boolean): MayflyUiNode {
+  const attempt = view.attempt
+  const failed = attempt !== null && (attempt.phase === 'failed' || attempt.phase === 'expired')
+  const waiting = attempt !== null && attempt.authorizeUrl !== undefined && !attemptTerminal(attempt)
+  const signInLabel = failed ? t('Try again') : t('Sign in')
   return ui.stack.column([
     ui.fields([
       { label: t('Status'), value: [{ text: t(view.status === 'credential-stored' ? 'Signed in' : 'Not signed in') }] },
-      ...(view.attempt === null ? [] : [{ label: t('Sign-in'), value: [{ text: attemptText(view.attempt, t) }] }]),
+      ...(attempt === null ? [] : [{ label: t('Sign-in'), value: [{ text: failed ? t('Sign-in failed — try again') : t('Signing in…') }] }]),
     ]),
-    ...(view.status === 'credential-stored' ? [] : [ui.text(t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' })]),
+    ...(waiting ? [
+      ui.text(t('Open the link in a browser to finish signing in'), { tone: 'muted' }),
+      ui.fields([{ label: t('Sign-in link'), value: [{ text: attempt!.authorizeUrl! }] }]),
+    ] : []),
+    ...(view.status === 'credential-stored' || canSignIn ? [] : [ui.text(t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' })]),
     ui.actions({ id: 'account-actions', items: [
+      ...(view.status === 'credential-stored' ? [] : canSignIn && (attempt === null || failed) ? [{ id: 'sign-in', label: signInLabel, intent: 'primary' as const }] : []),
+      ...(waiting ? [{ id: 'cancel-sign-in', label: t('Cancel sign-in') }] : []),
       ...(view.status === 'credential-stored' ? [{ id: 'sign-out', label: t('Sign out'), intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') }] : []),
       { id: 'close', label: t('Close'), dismiss: true },
     ] }),
@@ -66,27 +111,61 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   if (declared === undefined || declared.settingsNs !== ACCOUNT_SETTINGS_NS) return false
   const t = interactionTranslator(ctx)
   const id = `mayfly.provider-account.${route}`
-  if (overlays.focus(id)) return true
   const lifetime = new AbortController()
   const cancellation = signal === undefined ? lifetime.signal : AbortSignal.any([lifetime.signal, signal])
   const releaseLifetime = ctx.effect(() => () => lifetime.abort())
+  /* v8 ignore next -- reassigned to the watch-disposal effect before the overlay can close */
   let cleanup = (): void => {}
+  const paint = (view: AccountView): MayflyUiNode => accountPanelNode(view, t, callbackOrigin(ctx) !== undefined)
   let handle = openUiOverlay(ctx, {
     id, title: t('DeepSeek Account'), presentation: 'editor', capturing: true,
     scope: { kind: 'app', targetId: `account/${route}` },
     onEvent: { action: async (event): Promise<MayflyUiActionReply> => {
-      if (event.kind !== 'activate' || event.actionId !== 'sign-out') return { kind: 'completed' }
+      /* v8 ignore next -- only activate reaches a panel without submit or read actions */
+      if (event.kind !== 'activate') return { kind: 'completed' }
+      if (event.actionId === 'sign-out') {
+        try {
+          await service.signOut(clientMetadata(ctx))
+          return { kind: 'completed' }
+        } catch {
+          return { kind: 'failed', message: t('Sign-out failed — try again') }
+        }
+      }
+      if (event.actionId === 'cancel-sign-in') {
+        const attempt = (await service.getState()).attempt
+        /* v8 ignore next -- the cancel action only renders while an attempt is live */
+        if (attempt === null) return { kind: 'completed' }
+        try {
+          const view = await service.cancelSignIn(attempt.id)
+          return { kind: 'accepted', node: paint(view), source: [] }
+        } catch {
+          return { kind: 'failed', message: t('Sign-in could not be cancelled') }
+        }
+      }
+      /* v8 ignore next -- only the three panel actions reach activate */
+      if (event.actionId !== 'sign-in') return { kind: 'completed' }
+      const origin = callbackOrigin(ctx)
+      /* v8 ignore next -- the Sign in action only renders while a webserver is composed */
+      if (origin === undefined) return { kind: 'failed', message: t('Sign-in needs the local webserver — enable the webserver row') }
       try {
-        await service.signOut(clientMetadata(ctx))
-        return { kind: 'completed' }
+        const view = await service.startSignIn(clientMetadata(ctx), origin, 'desktop')
+        const url = view.attempt?.authorizeUrl
+        const opened = url === undefined ? false : await openUrlInBrowser(url)
+        return {
+          kind: 'accepted',
+          node: paint(view),
+          source: [],
+          feedback: { severity: 'success', message: opened ? t('Opened the sign-in page in a browser') : t('Sign-in started — open the link below in a browser') },
+        }
       } catch {
-        return { kind: 'failed', message: t('Sign-out failed — try again') }
+        return { kind: 'failed', message: t('Sign-in could not start — try again') }
       }
     } },
-  }, accountPanelNode(await service.getState(), t), { signal: cancellation, reopen: 'focus', onClosed: () => cleanup() })
+  }, paint(await service.getState()), { signal: cancellation, reopen: 'focus', onClosed: () => cleanup() })
   if (handle === undefined) { releaseLifetime(); return true }
   const repaint = (view: AccountView): void => {
-    if (!handle?.closed) handle?.set(accountPanelNode(view, t))
+    /* v8 ignore next -- the watch stops with the panel; a late view races its own abort */
+    if (!handle?.closed) handle?.set(paint(view))
   }
   const offWatch = ctx.effect(() => {
     const controller = new AbortController()

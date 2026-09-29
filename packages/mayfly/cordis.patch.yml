@@ -81,6 +81,17 @@
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
 
+    # Loopback web carrier: hosts the DeepSeek account OAuth callback
+    # (/oauth/callback, registered per attempt by the account platform) and
+    # the Connection plugin's lazy upload route. Port 0 binds an OS-assigned
+    # port so concurrent hosts never collide; the TUI serves no web frontend,
+    # and requests no registered route claims 404.
+    - id: webserver
+      name: '@deepseek-ai/dsh-host-webserver'
+      config:
+        host: 127.0.0.1
+        port: 0
+
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
 

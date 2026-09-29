@@ -32,7 +32,7 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
       'Queue - fold long queued rows and withdraw pending messages with Up.',
       'Provider setup - keep discovered routes in the user-level home patch so profiles share provider configuration.',
       'Harness 0.2.0-rc.2 - align the pinned line: late question answers render in the transcript, web search can ride a signed-in DeepSeek account without a separate API key, and the otel telemetry channel joins the base composition.',
-      'DeepSeek Account panel - /provider on the account route now opens a status panel with sign-in guidance (browser sign-in happens in a Desktop or Web host; the login is shared) and Sign out instead of a dead end.',
+      'DeepSeek Account panel - /provider on the account route now signs in from the terminal: a loopback webserver hosts the OAuth callback, Sign in opens the authorize link in the browser while the panel follows the attempt to completion, and Sign out removes the shared grant.',
       'Rendering and performance - harden display fidelity and layout budgets, unify overflow signalling, and cut subagent, dock, and scroll cost.',
     ],
     knownIssues: [],

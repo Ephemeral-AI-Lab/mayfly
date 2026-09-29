@@ -238,12 +238,11 @@ for (const relativeDir of PACKAGE_DIRS) {
 
 verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 
-// The consolidated runtime and UI declarations currently occupy about 2.0 MB
-// (the deterministic dock planner, identity-memoized projection admission,
-// and compact pane rows added about 9 KB); retain about 3% headroom while
-// still catching accidental entry/chunk growth.
+// The consolidated runtime and UI declarations currently occupy about 2.06 MB
+// (the terminal DeepSeek account sign-in panel added about 5 KB); retain
+// headroom while still catching accidental entry/chunk growth.
 if (libraryFiles > 222) fail(`library lib output has ${libraryFiles} files; budget is 222`)
-if (libraryBytes > 2_060_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2060000`)
+if (libraryBytes > 2_070_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2070000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

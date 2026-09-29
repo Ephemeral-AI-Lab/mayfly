@@ -202,6 +202,7 @@
     "@deepseek-ai/dsh-client-file-upload": "0.2.0-rc.2",
     "@deepseek-ai/dsh-cmdline": "0.2.0-rc.2",
     "@deepseek-ai/dsh-cordis-host-runner": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.0-rc.2",
     "@deepseek-ai/dsh-mcp-client": "0.2.0-rc.2",
     "@deepseek-ai/dsh-tool-subagent": "0.2.0-rc.2",
     "@deepseek-ai/dsh-workspace": "0.2.0-rc.2",

@@ -306,9 +306,10 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
       ...(['en', 'zh'] as const).flatMap((locale: MayflyLocaleId) => {
         const t = (key: string, values?: Record<string, string | number>) => interpolateLocaleMessage(INTERACTION_LOCALE[locale][key] ?? INTERACTION_LOCALE.en[key] ?? key, values)
         return [
-          accountPanelNode({ status: 'signed-out', links, attempt: null }, t),
-          accountPanelNode({ status: 'credential-stored', links, attempt: null }, t),
-          accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: 1 } }, t),
+          accountPanelNode({ status: 'signed-out', links, attempt: null }, t, true),
+          accountPanelNode({ status: 'credential-stored', links, attempt: null }, t, true),
+          accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: 1 } }, t, true),
+          accountPanelNode({ status: 'signed-out', links, attempt: null }, t, false),
           scheduleNode(reminders, Date.now(), t, locale),
           scheduleNode([], Date.now(), t, locale),
           scheduleNode(undefined, Date.now(), t, locale),
