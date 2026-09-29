@@ -12,10 +12,12 @@ import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
 import { providerFixture } from './provider-fixture.ts'
 
+const pickerCalls = vi.hoisted(() => [] as Array<string | undefined>)
+vi.mock('../../src/interaction/model-commands.ts', () => ({ openModelPicker: async (_ctx: unknown, _signal: unknown, provider?: string) => { pickerCalls.push(provider); return { kind: 'success' } } }))
 vi.mock('../../src/interaction/theme-switch.ts', () => ({ applyTheme: async () => ({ kind: 'success' }) }))
 
 const contexts: Context[] = []
-afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+afterEach(async () => { pickerCalls.length = 0; for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 async function setup(profiles: Record<string, unknown> = {}, configured = false, llm?: unknown) {
@@ -70,6 +72,8 @@ describe('provider onboarding', () => {
     expect(bench.credentials.writes).toBe(1)
     expect(bench.settings.writes).toBe(0)
     expect(bench.model()).toBeUndefined()
+    // A saved key ends on that provider's model list, not on another route's default.
+    expect(pickerCalls).toEqual(['deepseek-official'])
   })
 
   it.each([true, false])('skips setup when a native credential is configured (official=%s)', async official => {
@@ -344,6 +348,29 @@ describe('provider onboarding', () => {
     // The frontend's services go with it; the unload must not reopen the guide or throw.
     await expect(bench.front.dispose()).resolves.toBeUndefined()
     await flush()
+  })
+
+  it('continues to the account provider\'s model list once the guide sign-in completes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const bench = await setup({}, false, accountLlm)
+      const links = { usageUrl: 'https://example/u', topUpUrl: 'https://example/t' }
+      const done = { status: 'credential-stored', links, attempt: { id: 'a', phase: 'succeeded' } }
+      bench.ctx.provide('deepseekAccount', {
+        async getState() { return { status: 'signed-out', links, attempt: null } },
+        watch(): AsyncIterable<unknown> {
+          return { async *[Symbol.asyncIterator]() { yield { status: 'signed-out', links, attempt: null }; await new Promise<void>(resolve => setTimeout(resolve, 10)); yield done } }
+        },
+      } as never)
+      bench.ctx.provide('webServer', { port: 45678 } as never)
+      bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+      await vi.advanceTimersByTimeAsync(50)
+      bench.model()!.invoke('sign-in')
+      await vi.advanceTimersByTimeAsync(50)
+      expect(pickerCalls).toEqual([])
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(pickerCalls).toEqual(['deepseek-account'])
+    } finally { vi.useRealTimers() }
   })
 
   it('falls back to the key-only guide when no account service is composed', async () => {

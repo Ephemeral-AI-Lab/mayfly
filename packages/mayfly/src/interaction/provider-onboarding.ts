@@ -18,11 +18,14 @@ import type {} from '../app/index.ts'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import { deriveKeyRef } from './provider-profile.ts'
 import { ACCOUNT_SETTINGS_NS, openAccountPanel } from './provider-account.ts'
+import { openModelPicker } from './model-commands.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { openWelcome, welcomeDue } from './welcome.ts'
 import { interactionTranslator } from './locale.ts'
 
 export const DEEPSEEK_KEY = 'DEEPSEEK_API_KEY'
+/** The provider route that reads `DEEPSEEK_API_KEY`. */
+export const DEEPSEEK_KEY_ROUTE = 'deepseek-official'
 export const name = 'mayfly-provider-onboarding'
 export const inject = ['credentials', 'mayflyOverlays']
 
@@ -100,6 +103,8 @@ export function apply(ctx: Context): void {
     const stamp = [{ resourceId: 'provider-onboarding', revision: 0 }]
     const choiceNode = () => onboardingChoiceNode(t, signInRoute !== undefined)
     const keyNode = () => onboardingKeyNode(t)
+    /** Connecting ends on the model list of the provider just connected, so the session never starts on another route's default. */
+    const chooseModel = (route: string): void => { void openModelPicker(ctx, lifetime.signal, route) }
     /** Open (or refocus) the guide on its choice; backing out of the account step reopens it here. */
     const open = (): void => {
       openUiOverlay(ctx, {
@@ -107,7 +112,7 @@ export function apply(ctx: Context): void {
         scope: { kind: 'app', targetId: DEEPSEEK_KEY }, source: stamp,
         onEvent: { action: async (event, context) => {
           if (event.kind === 'activate' && event.actionId === 'sign-in' && signInRoute !== undefined) {
-            const opened = await openAccountPanel(ctx, signInRoute, lifetime.signal, { onBack: open })
+            const opened = await openAccountPanel(ctx, signInRoute, lifetime.signal, { onBack: open, onConnected: () => chooseModel(signInRoute!) })
             /* v8 ignore next -- the guide only offers sign-in after the same service and route check */
             if (!opened) return { kind: 'failed', message: t('Account sign-in is unavailable') }
             return { kind: 'completed', dismiss: true }
@@ -131,6 +136,7 @@ export function apply(ctx: Context): void {
             }
             await credentials.set(credentialRef(DEEPSEEK_KEY), value)
             if (context.signal.aborted) return { kind: 'cancelled' }
+            chooseModel(DEEPSEEK_KEY_ROUTE)
             return { kind: 'accepted', node: keyNode(), source: [], dismiss: true, feedback: { severity: 'success', message: t('DeepSeek API key saved') } }
           } catch { return { kind: 'failed', message: t('The API key could not be saved') } }
         } },

@@ -163,6 +163,8 @@ export const GUIDE_CLOSE_DELAY_MS = 1500
 export interface AccountGuideExits {
   /** Closing the panel before connecting returns to the guide's choice. */
   readonly onBack: () => void
+  /** A finished sign-in closed the panel: the guide continues with model selection. */
+  readonly onConnected: () => void
 }
 
 /**
@@ -171,7 +173,8 @@ export interface AccountGuideExits {
  * @param route - The provider route the Providers list selected.
  * @param signal - Optional caller lifetime.
  * @param guide - Set by the first-run guide: closing the panel before a
- * sign-in completes reopens the guide's choice.
+ * sign-in completes reopens the guide's choice, and a completed sign-in
+ * hands over to model selection.
  * @returns true when the panel opened (the route is the account adapter and
  * the native account service is available); false when the route is not the
  * account adapter, so callers fall back to their own handling.
@@ -294,7 +297,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
     if (guide !== undefined && !closing && view.status === 'credential-stored' && view.attempt?.phase === 'succeeded') {
       closing = true
       ctx.effect(() => {
-        const timer = setTimeout(() => handle?.close(), GUIDE_CLOSE_DELAY_MS)
+        const timer = setTimeout(() => { handle?.close(); guide.onConnected() }, GUIDE_CLOSE_DELAY_MS)
         return () => clearTimeout(timer)
       })
     }

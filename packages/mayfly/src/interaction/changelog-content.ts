@@ -38,6 +38,7 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
       'Sign-in recovery - a cancelled, expired or failed attempt offers Sign in again and names its reason (expired link, network, storage); closing the account step before it connects returns to the guide, so choosing sign-in never strands a first-run user.',
       'Sign-in shortcuts - while a sign-in waits the panel shows no buttons: Ctrl+Y copies the link, Ctrl+R issues a new one, and Enter in the always-visible, optional paste box delivers the callback address (a browser on the same machine finishes by itself). Actions can now be declared hidden: no button or focus stop, still bound to their key.',
       'Welcome - a first run opens a Welcome step to pick the language and theme before the connection guide; the choice applies immediately and is stored as the shared locale preference and mayfly.theme.',
+      'Model after connecting - saving an API key or finishing an account sign-in in the first-run guide now ends on the model list of that provider only, so the first message never starts on another route\'s default (which failed with MISSING_CREDENTIAL).',
       'Rendering and performance - harden display fidelity and layout budgets, unify overflow signalling, and cut subagent, dock, and scroll cost.',
     ],
     knownIssues: [],

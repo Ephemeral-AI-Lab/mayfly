@@ -215,7 +215,8 @@ describe('DeepSeek account panel', () => {
     accountInternals.spawnOpener = async () => true
     try {
       const { ctx, account } = await bench(signedOut, { port: 45678 })
-      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onUseKey: () => {} })
+      const connected: string[] = []
+      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => { connected.push('model') } })
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       expect(JSON.stringify(model.node)).toContain('Step 2 of 2 · Finish in your browser')
       model.invoke('sign-in')
@@ -225,8 +226,10 @@ describe('DeepSeek account panel', () => {
       expect(JSON.stringify(model.node)).not.toContain('Step 2 of 2')
       expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain(panelId)
       account.complete()
+      expect(connected).toEqual([])
       await vi.advanceTimersByTimeAsync(GUIDE_CLOSE_DELAY_MS)
       expect(ctx.mayflyOverlays.list().map(entry => entry.id)).not.toContain(panelId)
+      expect(connected).toEqual(['model'])
     } finally {
       vi.useRealTimers()
       accountInternals.spawnOpener = original
@@ -237,7 +240,7 @@ describe('DeepSeek account panel', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       const { ctx, account } = await bench(signedOut, { port: 45678 })
-      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onUseKey: () => {} })
+      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => {} })
       account.complete()
       await vi.advanceTimersByTimeAsync(0)
       await ctx.fiber.dispose()
@@ -425,13 +428,13 @@ describe('DeepSeek account panel', () => {
     expect(plainJson).not.toContain('Signing in…')
     expect(plainJson).toContain('"Close"')
     const inGuide = await bench(done, { port: 45678 })
-    await openAccountPanel(inGuide.ctx, 'deepseek-account', undefined, { onBack: () => {}, onUseKey: () => {} })
+    await openAccountPanel(inGuide.ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => {} })
     expect(JSON.stringify(inGuide.ctx.mayflyUiInteraction.get('overlay', panelId)!.node)).toContain('"Start chatting"')
   })
 
   it('returns to the guide when the account step closes before connecting, and only then', async () => {
     const exits: string[] = []
-    const guide = { onBack: () => { exits.push('back') } }
+    const guide = { onBack: () => { exits.push('back') }, onConnected: () => { exits.push('connected') } }
     const idle = await bench(signedOut, { port: 45678 })
     await openAccountPanel(idle.ctx, 'deepseek-account', undefined, guide)
     idle.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
