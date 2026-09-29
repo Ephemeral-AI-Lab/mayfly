@@ -15,7 +15,9 @@ the key grammar, the Escape ladder, and focus rules;
 [mayfly-seams.md](../mayfly-seams.md) owns the four contribution services and
 the layout limits. The refinement roadmap in §7 carries explicit
 `shipped` / `target` / `backlog` labels; only `shipped` items describe running
-behavior.
+behavior, and §7.4 registers the known gaps between this catalog and the code.
+Hint rows in every diagram use the strings the key grammar really produces
+(§2.2), not idealized ones.
 
 ## 1. How a component works
 
@@ -45,11 +47,14 @@ onEvent handlers ← structured event/reply ←   key grammar ← terminal keys
 
 ## 2. UX principles
 
-1. **Keys, not buttons.** Every operation is reachable from the keyboard
-   focus or a declared accelerator. The actions row exists to make operations
-   discoverable, not to be clicked. Prefer: `Enter` on the focused control,
-   digits on numbered lists, type-to-filter on long lists, and a declared
-   `key` accelerator for the few operations that deserve one.
+1. **Keys, not buttons.** Every operation is reachable from keyboard focus or a
+   declared accelerator. An actions row exists so an operation is discoverable,
+   not so it can be clicked. Apply the *redundancy test* before drawing a
+   button: if a bare key already performs the operation — `Enter` on the
+   focused row, `Esc` for cancel/close, a digit, type-to-filter, `←`/`→` on a
+   segment or select — do not draw it. Draw a button only for an operation no
+   bare key reaches: a secondary write, a destructive action, or a choice
+   between two equally valid commits.
 2. **Enter confirms.** The focused control activates with `Enter`; `Space`
    toggles. Single-field forms declare `enterSubmits` so `Enter` inside the
    field submits the form — there is never a separate "move to the Save
@@ -59,31 +64,148 @@ onEvent handlers ← structured event/reply ←   key grammar ← terminal keys
    operations render disabled with their `disabledReason`; a filterable list
    narrows as you type. Never add an extra dialog or a second `Enter` where
    an inline reply suffices.
-4. **One safe default.** `defaultFocus` sits on the least destructive action,
-   and every Yes/No question is the shared `[No] [Yes]` decision with No
-   focused first.
+4. **One safe default, and no stray-key commits.** `defaultFocus` sits on the
+   least destructive action, and every Yes/No question is the shared
+   `[No] [Yes]` decision with No focused first. A surface that opens
+   *unprompted* (tool approval, a question, a permission ask) can receive keys
+   the user was typing into the editor a moment earlier, so its first digit or
+   `Enter` must not grant anything (§4.8, roadmap E4).
 5. **Hints never lie.** The hint row is derived from the same ordered binding
    list that dispatches keys, and it updates with every state change
-   (searching, editing, busy, decision open). It shows up to three fragments
-   below 80 columns and four from 80; Escape is always first when it does
-   something.
-6. **Stable, additive interfaces.** Wire contracts evolve by addition only —
-   see §5.
+   (searching, editing, busy, decision open). A hint names the *real effect*:
+   `Enter open` is only truthful when `Enter` opens something (roadmap G2).
+6. **Stable geometry.** Moving focus never changes the number of rows a
+   surface paints and never shifts other rows. Per-row controls (segment
+   strips) render inline on their row and fold before they wrap; the fallback
+   footer line is reserved for the whole list, not just for the focused row
+   (§4.4, §4.11).
+7. **Recognition over recall.** Current state is visible without opening
+   anything: `[current]` on the live row, `(Inherited)` / `(Override)` on
+   fields, the active token of a strip, a select's value beside its label
+   (`Theme: ‹ dark ›`). Never hide a value behind a dialog when it fits on the
+   row.
+8. **Preview, then commit.** Navigation and adjustment (`↑`/`↓`, `←`/`→`,
+   filtering) never write anything. Only `Enter`, a digit on an unguarded
+   list, or a declared accelerator commits. Every commit is either reversible
+   in place (`Delete` reset, the Escape ladder) or asks first with No focused.
+9. **One verb per meaning.** Hints, button labels, and toasts draw from the
+   vocabulary in §2.2. A surface does not invent a synonym for `choose`,
+   `open`, `apply`, or `run`.
+10. **Stable, additive interfaces.** Wire contracts evolve by addition only —
+    see §5.
+
+Keystroke budget (from an open surface; digits and `Enter` count as one key):
+
+| Frequency | Budget | Example |
+| --- | --- | --- |
+| Every session | 1 key | approve a plan (`Enter` on the focused decision) |
+| Several per day | 2 keys | change thinking effort (`→`, `Enter`) |
+| Occasional | 3 keys | switch model (`/model`, type, `Enter`) |
+| Rare or destructive | as many as needed, with a confirm | delete a provider |
+
+### 2.1 Surface state machine
+
+Every capturing surface is the same small state machine. A control moves the
+surface into a *mode*; `Esc` always leaves exactly one mode, and the hint row
+names which (`end search`, `done`, `cancel`, `back`, `close`).
+
+```
+                       Esc: end search (query kept)
+              ┌───────────────────────────────────────────────┐
+              ▼                                               │
+ closed ─open─► BROWSING ────────── type · "/" ────────────► SEARCHING
+   ▲             │ │ │ │
+   │             │ │ │ └─ Enter on text ───► EDITING ─ Enter: commit · Esc: done ────► BROWSING
+   │             │ │ └─── Enter on select ─► PICKER ── Enter: apply · Esc: cancel ───► BROWSING
+   │             │ └───── Enter on confirm ► DECIDING ─ Yes: run · No/Esc: answer No ─► BROWSING
+   │             └─────── Enter on action ─► BUSY ──── reply ─┬─ completed ──────────► closed
+   │                                                          └─ invalid · failed ───► BROWSING + inline error
+   └── Esc / Ctrl+C in BROWSING (one layer per press) ──────────────────────────────────
+```
+
+| Mode | Entered by | `Enter` | `Esc` (hint word) | Also live |
+| --- | --- | --- | --- | --- |
+| BROWSING | open; every other mode returns here | primary operation of the focused control (`choose`, `open`, `run`, `submit`) | `close`, or `back` on a wizard page | arrows, digits, accelerators, `Tab` groups |
+| SEARCHING | typing or `/` on a filterable list | choose the focused match | `end search` (query kept) | `Ctrl+U` clear, `Backspace` |
+| EDITING | `Enter` or typing on a text field | `next`, or `submit` with `enterSubmits` | `done` (draft kept) | `Tab` commits and moves, `Alt+Enter` newline |
+| PICKER | `Enter` on a select or multiselect | `apply` | `cancel` | `↑`/`↓` candidate, `Space` toggles (multi) |
+| DECIDING | an action or row that declares `confirm` | the focused of `[No] [Yes]` | answers No | `←`/`→` switch |
+| BUSY | an action whose handler is in flight | ignored on the busy action | `close` | the busy action keeps focus |
+| EXPANDED | `Ctrl+E` on a scroll region | — | `collapse` | scroll keys |
+
+A reply settles BUSY: `completed` (optionally with `dismiss`) leaves the
+surface; `invalid`, `conflict`, `failed` return to BROWSING with feedback
+painted where the problem is; `cancelled` returns silently. Modes do not nest
+except EDITING/PICKER inside a form and DECIDING over any mode.
+
+### 2.2 Key prompts (the hint row)
+
+The hint row is one muted line, indented two columns, fragments joined by
+` · `, each fragment `Keys label`. It is computed, never authored.
+
+Two orderings exist and are easy to confuse:
+
+- **Admission priority** decides which fragments survive when the row is full
+  (three below 80 columns, four from 80): Escape (120) → primary operation and
+  filter (100) → declared accelerators (96) → adjustment (95) → navigation
+  (90) → digit range (88) → tabs/clear (85) → group moves (80).
+- **Display order** decides where a surviving fragment sits: navigation,
+  adjustment, primary operation, everything else, group moves, and **`Esc`
+  last**. `Esc` is always kept but always trails, so the row reads
+  "what I can do … how I leave" and the exit sits in a fixed place.
+
+Key notation: `Enter`, `Esc`, `Tab/Shift+Tab`, `Space`, `↑/↓`, `←/→`,
+`Alt+←→`, `PgUp/PgDn`, `Ctrl+U`; ranges as `1-3`; the literal word `Type` for
+type-to-filter. Slashes join alternatives of one fragment.
+
+Real rows (strings asserted in `tests/core/ui-compiler.spec.ts`, or derived
+from `core/ui-key-grammar.ts`):
+
+```
+action group focused    ↑/↓/←/→ actions · Enter run · Tab/Shift+Tab groups · Esc close
+single action           Enter run · Esc close
+tab strip focused       ←/→ tabs · Enter open · Esc close
+select picker open      ↑/↓ options · Enter apply · Tab/Shift+Tab groups · Esc cancel
+text field, editing     Enter next · Tab/Shift+Tab groups · Esc done
+list, filtering         Enter choose · Ctrl+U clear · Esc end search
+list row with strip     ←/→ thinking · Enter choose · Type filter · Esc close
+```
+
+Vocabulary — the only verbs a fragment may use:
+
+| Verb | Means | Used for |
+| --- | --- | --- |
+| `choose` | pick this row and commit | `role: 'choose'` rows, decisions |
+| `open` | descend into detail | `role: 'browse'` rows, tab strip |
+| `run` / `confirm` | execute an action / answer the decision | actions row |
+| `apply` | commit an open picker or field action | select picker |
+| `submit` / `next` | write the form / commit this field and move | text fields |
+| `toggle` | flip a checkbox-like value | toggle, multiple lists |
+| `<segment label>` | step the row's strip (lowercased label) | `←/→ thinking` |
+| `Esc` words | `collapse` `cancel` `done` `end search` `back` `close` `leave` | the current layer |
+
+Rules:
+
+- Never advertise a dead key: dispatch and hints read one binding list.
+- A hint never names a button that is not on screen; when a surface has no
+  actions row, the `Tab/Shift+Tab groups` fragment does not appear either.
+- Editor decorations do not get a hint row; they declare `hint?: string` and
+  may only bind modifier accelerators.
 
 ## 3. Visual language
 
 Surface chrome anatomy:
 
 ```
-╭ Approve bash? ─────────────────────────────────────────╮ ← chrome + title
+╭ Approve bash? ─────────────────────────────────────────╮
 │ optional subtitle (muted)                              │
 │ [badge] [badge]                                        │
 │                                                        │
-│ → focused row (inverted)                               │ ← content
+│ → focused row (inverted)                               │  ← content
 │   ordinary row                                         │
 │                                                        │
 │ optional custom footer node                            │
-│   Esc close · Enter run · Tab actions                  │ ← hint row (muted)
+│   Enter run · Tab/Shift+Tab groups · Esc close         │  ← hint row (muted)
 ╰────────────────────────────────────────────────────────╯
 ```
 
@@ -91,8 +213,8 @@ Surface chrome anatomy:
   (currently `┌ ┐`, target `╭ ╮` — see §7 A2), `lane` (`─` rules), `none`
   (bare title). A surface's `footer` node carries custom content above the
   generated hint row.
-- The hint row is indented two columns, fragments joined by ` · `
-  (`Esc close · Enter run · Tab actions`).
+- The hint row is indented two columns, fragments joined by ` · `, with `Esc`
+  last (§2.2).
 
 Marker legend:
 
@@ -109,10 +231,19 @@ Marker legend:
 | `label — reason` | disabled action or row, with its reason |
 | `1.` … `9.` | numbered rows |
 | `/ query` | active filter row of a filterable list |
-| `[badge]` | row badge (for example `current`) |
+| `[badge]` | row badge; the live row is always `[current]` (roadmap G4) |
+| `▾` / `▸` | open / closed tree branch |
+| `+N` | N tokens folded by a narrow width (actions, tabs, strips) |
+| `(Inherited)` / `(Override)` | field or strip token provenance |
 | `! message` | field validation error, indented under the field |
 | `⠋` | braille loader frame |
 | `█` / `░` | filled / empty progress-bar cells |
+
+Some glyphs appear in both tables by design and are told apart by position and
+tone: `!` prefixes a danger action (before its label), a field error (indented
+under the field), and a warning in the feedback lane; `●` marks a selected list
+row (control) or an assistant block / running tool (transcript). New surfaces
+must not add a third meaning to either.
 
 The marker legend covers control state. The transcript and status vocabulary
 uses a second, equally fixed set (§3.2); the brand cues in §3.1 and the motion
@@ -134,6 +265,24 @@ plugins (`core/theme-dark.ts`, `-light`, `-ocean`, `-paper`, `-custom`,
 | Waiting ripple | `·· ·≈ ≈≈ ≈·`, 120 ms | "waiting on an external action" |
 | Working rotation | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, 80 ms | the model or a tool is actively computing |
 | Logomark | eight-row braille mark + `logoGradient` | welcome banner only |
+
+Brand signatures — the three things that make a Mayfly screen recognizable, and
+the only decorative paint the components carry:
+
+1. **Scarce violet ink.** `primary` marks *the one place attention belongs*:
+   the focused row and, inside it, the active choice (the `‹ high ›` token, the
+   active tab, the primary action). Never body text, badges, headings, or a
+   second highlighted row. If two things on a surface are both violet, one is
+   wrong.
+2. **The inset title rule.** `╭ Title ─────╮` — a rounded frame whose title
+   sits inside the top rule. It is the only decorative line; no double rules,
+   heavy borders, or boxed sub-panels.
+3. **The ripple.** One waiting motion (`·· ·≈ ≈≈ ≈·`), a nod to the insect's
+   short life on water: calm, small, and used only when the wait is external.
+
+Everything else stays typographic: weight, dimness, inversion of the focused
+row, and words. There are no emoji and no filled color blocks except the
+focused row's inversion.
 
 Rules:
 
@@ -246,6 +395,13 @@ in the handler); use `confirm` for every Yes/No question instead of drawing a
 custom confirm page. Mark an action `busy` while its handler is in flight —
 the busy action keeps its focus highlight.
 
+Redundancy rule (principle 1): do not add an action whose only effect a bare
+key already has. Concretely — no `Cancel` on a dismissable surface (`Esc`), no
+primary action that repeats a list's `acceptActionId` when `Enter` on the row
+reaches it, no `Next`/`Back` beside a wizard tab strip (`Alt+←→`, `Esc` walks
+back) unless the page is the only way to show why a step is blocked. What
+remains in the row is the set of operations a user could not otherwise find.
+
 ### 4.2 Text fields
 
 `input`, `textarea`, `secret`, and `number` fields of a `form` node:
@@ -351,16 +507,31 @@ interface MayflyListNode {
 Browse list with filter, groups, badges, and details:
 
 ```
-╭ Select a model ────────────────────────────────────────────╮
-│ / deep▌                       filter row while searching   │
-│ DeepSeek                      group header (muted)         │
-│ → deepseek-v4-pro — 256k context [current]  ← focused (inverted)
-│   deepseek-v4 — 128k context                               │
-│   gpt-5 — retired 2026/01       disabled row shows reason  │
-│                                                             │
-│   Esc close · Enter open · Type filter · Tab actions       │
-╰─────────────────────────────────────────────────────────────╯
+╭ Skills ──────────────────────────────────────────────────────╮
+│ / re▌                                         2 matches      │
+│ Project                                                      │
+│ → review-pr — Review a pull request               [enabled]  │
+│   release-notes — Draft release notes                        │
+│   pdf-export — retired 2026/01                               │
+│                                                              │
+│   Enter open · Type filter · Esc close                       │
+╰──────────────────────────────────────────────────────────────╯
+     filter row while searching · group header (muted) ·
+     focused row inverted · disabled row shows its reason
 ```
+
+The `2 matches` counter and the scroll position (`↑2 / ↓7`) are roadmap item
+B2. `role` decides what `Enter` means and what the hint says:
+
+| `role` | `Enter` | Hint | Selection state | Use for |
+| --- | --- | --- | --- | --- |
+| `choose` | picks the row into the list's draft `selectedIds` | `choose` | draft; counts as unsaved until settled | decisions, option lists, questionnaires |
+| `browse` | reports the focused row (`selection-accept`) — no draft | `open` | none | inventories, detail views, commit-on-Enter pickers |
+
+A commit-on-Enter picker (`/model`, `/effort`) is a `browse` list on purpose:
+it has no draft to discard, so closing it never asks "Discard unsaved
+changes?". Its hint still says `open`, which is wrong for a picker; the fix is
+the additive `acceptVerb` field (roadmap G2).
 
 Numbered choose list (decisions with ≤ 9 options):
 
@@ -369,13 +540,15 @@ Numbered choose list (decisions with ≤ 9 options):
   2. Custom endpoint — any compatible URL
   3. OAuth provider — browser sign-in
 
-  Esc cancel · 1-3 choose · Enter choose
+  Enter choose · 1-3 choose · Esc cancel
 ```
 
 Digits pick a row directly (`numbered: 'focus'` only moves the cursor, so
 gated surfaces like plan review still require `Enter`). Numbers label the
 visible rows and stay stable while the window scrolls; the hint shows the
-real range and is omitted while searching.
+real range (and yields to the arrow hint when the row is full) and is omitted
+while searching. The digit fragment repeats `Enter`, so arrows outrank it when
+the row is full.
 
 Multiple mode:
 
@@ -387,13 +560,57 @@ Multiple mode:
 Tree mode: rows with a `parentId` indent under their parent; `←`/`→` (or
 `Space`) closes and opens branches.
 
-Segment strip — a horizontal option bar bound to the focused row; `←`/`→`
-steps it, and `selection-accept` reports it as `segmentId`:
+Segment strip — a horizontal option bar bound to a row (the thinking-effort
+control of a model row, a per-row scope, a per-row mode). `←`/`→` steps it,
+and `selection-accept` reports the active option as `segmentId`.
+
+```ts
+interface MayflyListSegment {
+  label?: string                    // hint word (lowercased) and footer prefix
+  options: { id: string, label: string, disabled?: boolean, disabledReason?: string }[]
+  selectedId?: string               // the pinned option; absent = unpinned
+  inheritedId?: string              // target (E1): option in force while unpinned
+}
+```
+
+Layout is renderer-owned and chosen by width, never by the plugin:
 
 ```
-→ deepseek-v4-pro — 256k context
-   Effort: low  ‹ medium ›  high  +2     ← active option stays visible; +N folds the rest
+inline (default — the strip shares the row, the row count never changes)
+→ DeepSeek/DeepSeek-V4-Pro — 977k context   min ‹ high (default) › max
+
+footer (fallback when the row plus its strip cannot fit: one reserved line
+under the list body, so no row ever moves)
+→ DeepSeek/DeepSeek-V4-Pro — 977k context
+  ⋮
+   Thinking: min ‹ high (default) › max
+
+folded (many options: nearest neighbours stay, the rest become +N)
+→ some-model — 128k context                 ‹ medium › high +2
 ```
+
+Rules:
+
+- The strip shows only on the row it belongs to *while that row is focused*;
+  other rows show at most a badge (`[current · high]`, §4.11).
+- The active token is `‹ label ›` in `primary`; other tokens are `textMuted`;
+  disabled tokens are `muted` and skipped by `←`/`→`. Inline tokens are joined
+  by one space, footer tokens by two.
+- `←`/`→` **clamp** at the ends (no wrap, matching `select`) and skip disabled
+  options. From an unpinned strip `→` pins the option after the inherited one
+  and `←` the one before it; with no `inheritedId`, `→` pins the first enabled
+  option and `←` the last.
+- **Unpinned is a real state** (target, E1). While `selectedId` is absent the
+  `inheritedId` token is active and carries `(default)`; stepping back onto it
+  unpins again, and `Delete` on a pinned row unpins directly (hint `use
+  default`, shown only while it would change something — the same rule as text
+  fields). Committing an unpinned strip reports no `segmentId`, which the owner
+  reads as "follow the provider".
+- Degrade in this order as width shrinks: drop `(default)`, drop the label,
+  fold far tokens into `+N`, move the strip to the footer line, and only then
+  drop it to the active token alone. The active token is never removed.
+- Unicode fallback (roadmap D2): `‹ ›` become `< >`, so the same strip reads
+  `min <high> max` on an ASCII terminal.
 
 Keys on any list: `↑`/`↓`, `PgUp`/`PgDn`, `Home`/`End` move; `Enter` chooses
 (or opens for `browse`); typing or `/` starts filtering on a filterable list,
@@ -408,7 +625,7 @@ the reason and invoking it reports the reason instead of running. An item's
 own `confirm` asks before its selection is accepted.
 
 **Read-only lists** are `role: 'browse'` (Enter opens a detail view rather
-than choosing). For purely static content with no interaction, use `fields`,
+than choosing; see the role table above for the commit-on-Enter exception). For purely static content with no interaction, use `fields`,
 `sections`, or `markdown` content nodes instead of a list.
 
 ### 4.5 Tabs
@@ -441,8 +658,10 @@ content.
 
 ### 4.6 Tabbed pages with labels on the left: sessions and settings
 
-> **Status: target.** Today `/sessions` and `/settings` ship as list-based
-> overlays; this section is the intended layout.
+> **Status: target.** Today `/sessions` is a two-step flow — a workspace
+> picker, then one workspace's session panel
+> (`interaction/session-workspace-panel.ts`) — and `/settings` is a list-based
+> overlay. This section is the intended single-panel layout.
 
 Sessions and settings are separate panels sharing one layout: a horizontal
 split whose **left column is the tab strip rendered vertically** — labels
@@ -453,27 +672,29 @@ The sessions panel — one label per workspace; the right side lists that
 workspace's sessions:
 
 ```
-╭ Sessions ────────────────────────────────────────────────────╮
-│  Workspaces    │  → fix login redirect           2h ago      │
-│  → mayfly    4 │    mayfly docs sync            1d ago       │
-│    dsh       1 │    release 0.9.0               3d ago       │
-│    website   2 │                                             │
-│   ↑ labels (choose list; ● marks the active group)           │
-│                  ↑ content: sessions of the active workspace │
-│   Esc close · Enter open · Type filter · Tab content         │
-╰──────────────────────────────────────────────────────────────╯
+╭ Sessions ─────────────────────────────────────────────────────────────╮
+│  Workspaces    │  → fix login redirect              2h ago            │
+│  → mayfly    4 │    mayfly docs sync                1d ago            │
+│    dsh       1 │    release 0.9.0                   3d ago            │
+│    website   2 │                                                      │
+│                                                                       │
+│  Enter open · Type filter · Tab/Shift+Tab groups · Esc close          │
+╰───────────────────────────────────────────────────────────────────────╯
+   labels: a choose list        content: the active workspace's sessions
 ```
 
 The settings panel — one label per namespace; the right side is the shared
 schema-driven form:
 
 ```
-╭ Settings ────────────────────────────────────────────────────╮
-│  → General    │  → Theme: ‹ dark ›                           │
-│    Providers  │    Notifications: [on]                       │
-│    MCP        │    …                                         │
-│    Appearance │                                              │
-╰──────────────────────────────────────────────────────────────╯
+╭ Settings ────────────────────────────────────────────────────────────────╮
+│  → General     │  → Theme: ‹ dark ›                                      │
+│    Providers   │    Notifications: [on]                                  │
+│    MCP         │    …                                                    │
+│    Appearance  │                                                         │
+│                                                                          │
+│  Enter open · Tab/Shift+Tab groups · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────╯
 ```
 
 Recipe — the label column is an ordinary list, the content is the second
@@ -503,93 +724,115 @@ Two honest notes:
   with the content beneath it — that is what approval (Decision / Reject with
   feedback) and `/mcp` (tools / config) use.
 
-These are target layouts for a future rework — today's `/sessions` and
-`/settings` ship as list-based overlays — composed from existing primitives.
+Preview-then-commit (principle 8) argues for the live-following variant: the
+cursor on a label repaints the right side read-only, `Enter` or `→` crosses
+into it. That needs one additive observation, `focus-change` (`controlId`,
+`itemId`), debounced by the renderer and never able to publish or navigate
+(roadmap F2). Until then, accept a label to switch the content.
 
 ### 4.7 Surfaces and the key-hint footer
 
-Every capturing surface gets its prompt footer from the key grammar, and the
-row updates with every state change. Representative hint rows for one surface
-(exact fragments are computed per state):
+Every capturing surface gets its prompt footer from the key grammar; §2.2 owns
+the ordering, priority, notation, and vocabulary. Per-state footers for one
+surface (exact fragments are computed; these follow the grammar):
 
 ```
-idle, choose list:     Esc close · Enter choose · 1-3 choose · Tab actions
-while filtering:       Esc end search · Ctrl+U clear · Enter choose
-field edited:          Esc done · Enter submit · Delete reset · Tab fields
-decision open:         Esc close · Enter confirm · ←→ actions
-busy action focused:   Esc close · ←→ actions              (action shows …)
+idle, choose list         Enter choose · 1-3 choose · Esc close
+searching                 Enter choose · Ctrl+U clear · Esc end search
+field focused             Enter submit · ↑/↓ fields · Esc close
+field editing             Enter next · Tab/Shift+Tab groups · Esc done
+picker open               ↑/↓ options · Enter apply · Esc cancel
+decision open             ←/→ actions · Enter confirm · Esc close
+busy action focused       ←/→ actions · Esc close              (action shows …)
 ```
 
-Rules (owned by `interaction-model.md`, restated for authors):
-
-- The hint row shows up to three fragments below 80 columns and four from 80.
-- Escape is always first when it does something, and always names the exact
-  step: `collapse`, `cancel`, `done`, `end search`, `back`, `close`, `leave`.
-- Then come the primary operation, declared accelerators, adjustment
-  (`adjust`/`tabs`), navigation, digit ranges, and secondary keys.
-- A hint can never advertise a dead key: dispatch and hints read the same
-  ordered binding list.
-- Editor decorations do not get a hint row; they declare `hint?: string` and
-  may only bind modifier accelerators.
+Authors do not write footers. They choose the right `role`, declare `key`
+accelerators sparingly, and name segments meaningfully (the segment `label`
+becomes the hint word, lowercased).
 
 ### 4.8 Decision panels: approval, plan review, permission
 
-> **Status: mixed.** Permission and plan review ship the vertical-list shape;
-> tool approval still ships a horizontal actions row. §7 B1 unifies all three
-> onto one skeleton.
+> **Status: mixed.** Shipped today, three different shapes:
+>
+> | Surface | Options | Extra input | Default focus |
+> | --- | --- | --- | --- |
+> | Tool approval (`approval-plugin.ts`) | horizontal actions row under a `Decision` / `Reject with feedback` tab strip | second tab: `Reason` textarea + `Back` | Reject |
+> | Plan review (`plan-review-panel.ts`) | vertical `numbered: 'focus'` list: Approve, Reject, Other | `Other` (or `o`) swaps the page for a `Feedback` textarea; `c` copies the plan | Reject (seeded) |
+> | Permission preset (`permission-panel.ts`) | vertical `numbered: true` list, row `confirm` on Full access | none | current preset |
+>
+> §7 B1 unifies all three onto the skeleton below.
 
-Every "the agent asks, the user decides" surface — tool approval, plan
-review, the permission preset ask — is the same composition of basic
-components: a **vertical choose list of options**, optional **same-line input
-fields** beneath it, and the shared confirm for destructive picks. There is
-no decision-specific widget.
-
-```
-╭ Approve bash? ───────────────────────────────────────────────╮
-│ Runs: rm -rf build && pnpm build        ← scrollable reason  │
-│ → 1. Allow once                                              │
-│   2. Allow bash for this session                             │
-│   3. Reject                                                  │
-│   Feedback: ▌                       ← same-line input: focus │
-│                                       it, Enter starts typing│
-│   Esc reject · 1-3 choose · Enter choose                     │
-╰──────────────────────────────────────────────────────────────╯
-```
-
-- Options are a numbered choose list (`role: 'choose'`, `numbered: true`):
-  digits decide instantly, `↑`/`↓` + `Enter` stays equivalent. Rows may carry
-  detail text, badges, disabled reasons, and a per-row `confirm` (a danger
-  row asks the shared `[No] [Yes]` before its selection is accepted).
-- Inputs are ordinary form fields, which render on one line as
-  `Label: value` — `Feedback: …`, `Revise: …`, `Others: …`. Focus the field
-  and press `Enter` (or just type) to edit in place on that same line;
-  `Enter` commits. The decision settles as one action collecting the list
-  selection (`selections:`) and the field (`submit:`) — exactly the
-  questionnaire page composition (§4.9).
+Every "the agent asks, the user decides" surface is the same composition of
+basic components: a **vertical choose list of options**, optional **same-line
+input fields** beneath it, and the shared confirm for destructive picks. There
+is no decision-specific widget.
 
 ```
-╭ Plan ready for review ───────────────────────────────────────╮
-│ → 1. Approve and start                                       │
-│   2. Reject                                                  │
-│   Revise: ▌                 ← type the revision in place     │
-╰──────────────────────────────────────────────────────────────╯
-
-╭ Permission preset ───────────────────────────────────────────╮
-│ → 1. Default — ask before writes                  [current]  │
-│   2. Accept edits — apply file edits freely                  │
-│   3. Full access — no prompts        ← row confirm asks first│
-╰──────────────────────────────────────────────────────────────╯
+╭ Approve bash? ─────────────────────────────────────────────────╮
+│ Runs: rm -rf build && pnpm build            ← scrollable reason│
+│                                                                │
+│ → 1. Reject                                 ← safe default     │
+│   2. Allow once                                                │
+│   3. Allow bash for this session                               │
+│   Feedback: ▌                               ← same-line input  │
+│                                                                │
+│   Enter choose · 1-3 focus · Esc reject                        │
+╰────────────────────────────────────────────────────────────────╯
 ```
 
-Shipped state: the permission picker and plan review already follow this
-shape (plan review uses `numbered: 'focus'` so `Enter` alone can never
-approve, plus declared accelerators); tool approval currently ships a
-horizontal actions row with `defaultFocus` on Reject
-(`src/interaction/approval-plugin.ts`) and is the candidate to adopt the
-vertical list. Either way the lifecycle invariants hold: requests are FIFO
-per Agent, allowances live until that exact Agent is disposed, dismissal and
-abort settle distinct outcomes, and feedback steers the Agent with the typed
-reason.
+- **Safe default by position of the cursor, not of the row.** The cursor starts
+  on the least destructive option (Reject). Digits only *move* the cursor
+  (`numbered: 'focus'`) on every surface that grants something, so a stray
+  `1` or `Enter` typed a moment before the prompt appeared cannot grant. A
+  grant therefore costs two keys (digit or `↓`, then `Enter`); a rejection
+  costs one (`Enter` on the default, or `Esc`). Surfaces that only *choose a
+  preference* (permission preset, questionnaire) keep instant digits.
+- **Row 1 is always the safest option** (Reject, Default, No), so the digit
+  that costs least to mistype is never the one that grants.
+- **Arm delay (target, E4).** A capturing surface that opens unprompted ignores
+  everything except `Esc` for its first ~300 ms (`armMs`, plain data on the
+  overlay registration). It removes the last stray-key path without slowing a
+  deliberate answer.
+- **Esc must say what it does.** Dismissing an approval *rejects* the call, so
+  the footer reads `Esc reject`, not `Esc close`; the grammar's Escape label is
+  overridable per surface for exactly this (roadmap G5).
+- Options are `role: 'choose'`; rows may carry detail text, badges, disabled
+  reasons, and a per-row `confirm` (a danger row asks the shared `[No] [Yes]`
+  before its selection is accepted).
+- Inputs are ordinary form fields rendering on one line as `Label: value` —
+  `Feedback: …`, `Revise: …`, `Others: …`. `↓` from the last option focuses the
+  field; typing or `Enter` edits in place; `Enter` commits. The decision
+  settles as one action collecting the list selection (`selections:`) and the
+  field (`submit:`) — exactly the questionnaire page composition (§4.9). No
+  second page and no `Back` button exist.
+- Lifecycle invariants hold on every shape: requests are FIFO per Agent,
+  allowances live until that exact Agent is disposed, dismissal and abort
+  settle distinct outcomes, and feedback steers the Agent with the typed
+  reason.
+
+Target renderings of the other two surfaces:
+
+```
+╭ Plan ready for review ────────────────────────────────────────╮
+│ → 1. Reject                                                   │
+│   2. Approve and start                                        │
+│   Revise: ▌                       ← type the revision in place│
+│                                                               │
+│   Enter choose · c copy plan · 1-2 focus · Esc close          │
+╰───────────────────────────────────────────────────────────────╯
+
+╭ Permission preset ────────────────────────────────────────────╮
+│ → 1. Default — ask before writes                    [current] │
+│   2. Accept edits — apply file edits freely                   │
+│   3. Full access — no prompts                                 │
+│                                                               │
+│   Enter choose · 1-3 choose · Esc close                       │
+╰───────────────────────────────────────────────────────────────╯
+```
+
+Plan review keeps its declared `c` accelerator (copy) and drops the `Other`
+row and `o` accelerator: the `Revise:` field replaces both, one key fewer.
+Full access asks its row `confirm` before it is accepted.
 
 ### 4.9 Question panel pattern
 
@@ -598,16 +841,22 @@ tab per question; a single question drops the strip entirely.
 
 ```
 ╭ Questions ───────────────────────────────────────────────────╮
-│ ‹ Auth ›  Region                    ← wizard tabs (Q1, Q2)   │
+│ ‹ Auth ›  Region                       ← wizard tabs (Q1, Q2)│
 │ Which auth method?                                           │
 │ → 1. OAuth — browser sign-in                                 │
 │   2. API key — paste a token                                 │
 │   3. No selection                                            │
-│   Other: ▌                    ← free-text fallback (textarea)│
-│   [ Next ]                                                   │
-│   Esc close · 1-3 choose · Enter next · Alt+←→ tabs          │
-╰───────────────────────────────────────────────────────────────╯
+│   Other: ▌                          ← free-text fallback     │
+│                                                              │
+│   Enter next · 1-3 choose · Alt+←→ tabs · Esc close          │
+╰──────────────────────────────────────────────────────────────╯
 ```
+
+> **Status: mixed.** The panel also ships `Back` / `Next` buttons per page and
+> `Submit answers` / `Cancel` under the tab strip. By the redundancy rule
+> (§4.1) every one of them duplicates a key — `Alt+←→` and `Esc` walk pages,
+> `Enter` accepts and advances, and on the last page `Enter` submits — so the
+> target renders none of them until the action group is focused (roadmap F1).
 
 - **Switching questions:** `Alt+←`/`Alt+→` from anywhere (a forward switch
   runs the same validation as Next, so invalid steps cannot be skipped), or
@@ -631,20 +880,25 @@ tab per question; a single question drops the strip entirely.
 
 ```
 ⠋ Discovering models from api.example.com 12s      variant braille (default)
-• Waiting for authorization                          variant tide: a calm pulse
-                                                   [ Cancel ]  ← cancelActionId
+• Waiting for authorization                        variant tide (see status)
+  Esc cancel                                        ← cancelActionId, as a hint
 ```
 
-Frames cycle `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` (braille, 80 ms) or `·•●•·` (tide — a
-breathing dot for waits on external action, visually distinct from the busy
-braille rotation). The renderer owns the clock — all loaders in one surface
-share it, and it stops when the surface hides or unloads; `elapsedMs` is
-plain data the owner publishes (painted as `45s`, then `2m 10s`). Loaders
-live in panes and overlays only: the status and editor-extension unions
-exclude them, and live turn status belongs to the activity pane.
+Frames cycle `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` (braille, 80 ms) or `·•●•·` (tide). The renderer owns
+the clock — all loaders in one surface share it, and it stops when the surface
+hides or unloads; `elapsedMs` is plain data the owner publishes (painted as
+`45s`, then `2m 10s`). Loaders live in panes and overlays only: the status and
+editor-extension unions exclude them, and live turn status belongs to the
+activity pane.
 
-> **Status: revision planned.** The wire `tide` frames (`·•●•·`) are not the
-> transcript's ripple yet; §7 A1 aligns them into one waiting animation.
+`cancelActionId` should paint as the `Esc cancel` hint, not as a `[ Cancel ]`
+button: cancelling a loader is exactly what `Esc` already does (redundancy
+rule, §4.1). `cancelLabel` remains for surfaces that show the button anyway.
+
+> **Status: revision planned.** The `tide` pulse peaks on `●`, which §3.2
+> reserves for "assistant block / tool running", and it is a second waiting
+> motion beside the transcript's ripple. §7 A1 replaces it with the ripple so
+> the variant changes once, not twice.
 
 **progress** — determinate work only:
 
@@ -662,6 +916,204 @@ Restore a checkpoint with /rewind        ← muted description; optional actions
 
 A list's `empty` node renders in place of the rows; standalone, `ui.empty`
 fills an empty page.
+
+### 4.11 Model picker: `/model` and `/effort`
+
+> **Status: target (roadmap E1–E3).** Today `/model` is a filterable `browse`
+> list (`openModelPicker` in `interaction/model-commands.ts`) with three
+> problems: the thinking strip is a detached row appended under the *whole list
+> body*, labelled `Thinking:` and starting with a `Provider default`
+> pseudo-option; a `Set as default` / `Cancel` actions row sits below it; and
+> the footer says `Enter open` although `Enter` commits. This section is the
+> intended design.
+
+Goals: the thinking level is part of the model's entry; no buttons; rows never
+jump; every hint tells the truth.
+
+Entry anatomy — the model, its context, and its thinking control on one line:
+
+```
+→ DeepSeek/DeepSeek-V4-Pro — 977k context   min ‹ high (default) › max
+  └────────── label ───────┘ └── detail ───┘ └──── inline segment ────┘
+```
+
+The label is `<provider label>/<model name>`; the detail is
+`<context> context`; a badge follows the label (`[current]`, or
+`[current · high]` on the live row so the running effort is visible before
+focusing it). Group headers stay (they aid scanning); the provider prefix stays
+too (it disambiguates filter results, where headers scroll away).
+
+Inline layout (shown at 80 columns), idle:
+
+```
+╭ Select a model ──────────────────────────────────────────────────────────────╮
+│ opencode-go                                                                  │
+│   opencode-go/DeepSeek V4 Pro (New) — 977k context                           │
+│   opencode-go/deepseek-v4.1-flash — 977k context                             │
+│   opencode-go/mimo-v2.6-flash-free — 195k context                            │
+│ DeepSeek                                                                     │
+│   DeepSeek/DeepSeek-V41-Flash [current · high] — 977k context                │
+│ → DeepSeek/DeepSeek-V4-Pro — 977k context   min ‹ high (default) › max       │
+│                                                                              │
+│   ←/→ thinking · Enter choose · Type filter · Esc close                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+The focused row is inverted; only it shows a strip, and inside it only the
+active token is violet (brand signature 1, §3.1). Moving focus never adds or
+removes a row.
+
+State variants of the focused row (footer beneath in parentheses):
+
+```
+unpinned          → DeepSeek/DeepSeek-V4-Pro — 977k context   min ‹ high (default) › max
+                    (←/→ thinking · Enter choose · Type filter · Esc close)
+pinned            → DeepSeek/DeepSeek-V4-Pro — 977k context   min high ‹ max ›
+                    (←/→ thinking · Enter choose · Delete use default · Esc close)
+no default known  → some-provider/some-model — 128k context   min medium high
+                    (no active token until the first ←/→; → pins the first, ← the last)
+no thinking       → opencode-go/space-bunny-alpha — 256k context
+                    (↑/↓ options · Enter choose · Type filter · Esc close)
+filtering         / deep▌                                              3 matches
+                    (↑/↓ options · ←/→ thinking · Enter choose · Esc end search)
+```
+
+Footer layout (shown at 60 columns): the strip no longer fits beside the row,
+so it moves to the one footer line reserved for it; the list above never
+shifts. The renderer picks the layout from the width, never the plugin:
+
+```
+╭ Select a model ──────────────────────────────────────────╮
+│ DeepSeek                                                 │
+│   DeepSeek/DeepSeek-V41-Flash [current · high]           │
+│ → DeepSeek/DeepSeek-V4-Pro — 977k context                │
+│                                                          │
+│   Thinking: min ‹ high (default) › max                   │
+│   ←/→ thinking · Enter choose · Esc close                │
+╰──────────────────────────────────────────────────────────╯
+```
+
+Keys:
+
+| Key | Effect |
+| --- | --- |
+| `↑` `↓` `PgUp` `PgDn` `Home` `End` | move; group headers and disabled rows are skipped |
+| `←` `→` | step the focused row's thinking level (clamped, no wrap); inert on rows without one |
+| `Enter` | use this model **and** this thinking level for the session, and save it as the default |
+| `Delete` | unpin thinking (shown only while pinned) |
+| type or `/` | filter (`Ctrl+U` clears, `Esc` ends the search, a second `Esc` closes) |
+| digits | none — the list is filterable, so printable keys are text |
+
+There is no `Set as default` or `Cancel` button: `Enter` and `Esc` already do
+both. The result is confirmed by the notice the commit already publishes
+(`Switched to deepseek-v4-pro (DeepSeek) · thinking high`, or `Thinking set to
+high` when only the level changed; with the severity glyph of roadmap B5).
+`Esc` and abort leave the session's model untouched; a failed default save
+never blocks the switch.
+
+Wire recipe (no actions node, no `acceptActionId` — `Enter` reports a
+`selection-accept` carrying the row's `segmentId`):
+
+```ts
+ui.list({
+  id: 'selection', role: 'browse', filterable: true, selectedIds: [],
+  acceptVerb: 'choose',                                  // target G2
+  items: models.map(m => ({
+    id: key(m), label: `${m.providerLabel}/${m.name}`, group: m.providerLabel,
+    detail: `${formatContextWindow(m.contextWindow)} context`,
+    ...m.live ? { badge: m.effort ? `current · ${m.effort}` : 'current' } : {},
+    ...m.efforts && { segment: {
+      label: 'Thinking',
+      options: m.efforts.map(id => ({ id, label: id })),   // real levels only
+      ...m.defaultEffort && { inheritedId: m.defaultEffort }, // target E1
+      ...m.live && m.pinned && { selectedId: m.pinned },
+    } },
+  })),
+  empty: ui.empty({ title: 'No models advertised' }),
+})
+// handler: event.kind === 'selection-accept'
+//   → commit(byId.get(event.selectedIds[0]), event.segmentId)   // absent = provider default
+```
+
+`/effort` is the same component reduced to one model: the overlay title is the
+current model, the rows are `Provider default (high)`, then each real level,
+numbered, with `[current]` on the live one, and no buttons. `/effort <level>`
+and `/model <id>` switch without opening anything; `Alt+M` keeps cycling.
+
+Verification when this lands: `ui-patterns.spec.ts` (inline strip at
+20/40/60/100 columns, pinned/unpinned/no-default), `ui-validator.spec.ts`
+(`inheritedId` must name an option; `acceptVerb` enum), `ui-compiler.spec.ts`
+(hint fragments and `Delete`), `model-commands.spec.ts` and
+`model-selection-ui.spec.ts` (drive `selection-accept` instead of
+`invoke('default')`), the owning `width-scan.spec.ts`, and a new `app-model`
+screenshot. `packages/ui` changes run the full gate.
+
+### 4.12 Component API reference
+
+Data flows down as immutable nodes and up as events; nothing else crosses the
+seam. Builders take an options object, add `kind`, and freeze a clone.
+
+| Builder | Required | Notable optional | Emits | Owns keys | Hint verbs |
+| --- | --- | --- | --- | --- | --- |
+| `ui.actions` | `id`, `items[]` | per item: `intent`, `confirm`, `key`, `submit`/`read`/`selections`, `navigate`, `dismiss`, `defaultFocus` | `activate`, `submit`, `dismiss` | `←→↑↓` between items, `Enter`/`Space` run, declared `key` | `run`, `confirm`, `actions` |
+| `ui.form` | `id`, `fields[]` | `enterSubmits`, `submitActionId`/`cancelActionId`, `submitLabel`/`cancelLabel` | `value-change`, `submit` | `Enter` edit/commit, `Tab` commit+move, `Delete` reset, `Alt+Enter` newline | `edit`, `next`, `submit`, `newline`, `reset`, `fields` |
+| form field `select` | `id`, `label`, `value`, `options[]` | `origin`, `resetValue`, `required` | `value-change` | `←→` cycle, `Enter` picker | `adjust`, `pick`, `apply`, `options` |
+| form field `toggle` | `id`, `label`, `value` | `origin`, `resetValue` | `value-change` | `Enter`/`Space` flip | `toggle` |
+| `ui.list` | `id`, `role`, `items[]`, `selectedIds` | `mode`, `filterable`, `tree`, `numbered`, `acceptActionId`, `minSelected`, `maxSelected`, `empty` | `selection-toggle`, `selection-accept` | `↑↓ PgUp PgDn Home End`, `Enter`, digits, `Space` (multiple), `/`+type | `choose`/`open`, `toggle`, `filter`, `options`, `<segment label>` |
+| `ui.tabs` | `id`, `activeId`, `items[]` | `mode: 'wizard'`, per item `backId`, `count`, `disabled` | `tab-change` | `←→` move, `Enter` descend, `Alt+←→` switch | `tabs`, `open` |
+| `ui.loader` | `message` | `variant`, `elapsedMs`, `cancelActionId` | — | none | (`Esc cancel`) |
+| `ui.progress` | `value`, `max` | `label` | — | none | — |
+| `ui.empty` | `title` | `description`, `actions` | as `actions` | none | — |
+| `ui.surface` | `child` | `title`, `subtitle`, `badges`, `chrome`, `padding`, `footer` | — | `Esc`, `Ctrl+C` close | `close` |
+| `ui.scroll` | `child` | `id`, `follow`, `scrollbar` | — | `↑↓ PgUp PgDn`, `Ctrl+E` expand | `scroll`, `expand` |
+| `ui.stack` / `ui.child` | children | `gap`, `align`; per child `basis`, `grow`, `tab` | — | none | — |
+
+Events (up) and replies (down):
+
+| Event | Class | Carries |
+| --- | --- | --- |
+| `value-change` | observation | `controlId`, `formId`, `value`, `draftRevision` |
+| `selection-toggle` | observation | `controlId`, `selectedIds`, `actionId?` |
+| `tab-change` | observation | `controlId`, `tabId` |
+| `activate` | action | `controlId`, `actionId`, `itemId?`, `inputs?` |
+| `selection-accept` | action | `controlId`, `selectedIds`, `actionId?`, `segmentId?` |
+| `submit` | action | `controlId`, `submission` |
+| `dismiss` | action | — |
+
+| Reply to an action | Paints | Modifiers |
+| --- | --- | --- |
+| `completed` | nothing; the action settles | `dismiss`, `navigate`, `feedback` |
+| `accepted` | the replacement `node` | same |
+| `invalid` | field errors in place | — |
+| `conflict` | the fresh `node` plus a resolve decision | — |
+| `failed` | `message` beside the action; `acceptedFields` stay | — |
+| `cancelled` | nothing | — |
+
+Observations may reply only `invalid`, `failed`, `completed`, or `cancelled`;
+they can never publish, navigate, or dismiss.
+
+Every field an author adds follows one spec template, so a proposal can be
+reviewed before code exists:
+
+| Slot | Question it answers |
+| --- | --- |
+| Type & default | What is it, and what does absence mean? |
+| Validator | Which invalid inputs are rejected, and with what path? |
+| Painted states | ASCII for unset / set / focused / disabled / narrow |
+| Keys & hints | Which grammar binding and which hint verb? |
+| Events & replies | What does it report, and what may the owner answer? |
+| Degradation | In what order does it shrink at narrow widths? |
+| Tests | Validator, painter, compiler/grammar, width-scan |
+
+Worked specs for the additive fields this catalog proposes:
+
+| Field | Type & default | Validator | Painted states | Keys & hints | Events | Degradation |
+| --- | --- | --- | --- | --- | --- | --- |
+| `MayflyListSegment.inheritedId` (E1) | `string`; absent = no inherited option | must equal an option `id`; not disabled | `‹ high (default) ›` unpinned, `‹ max ›` pinned | `Delete use default` only while pinned | `selection-accept` omits `segmentId` when unpinned | drop `(default)` first |
+| `MayflyListNode.acceptVerb` (G2) | `'open' \| 'choose'`; default from `role` | enum | footer `Enter choose` | replaces the `open`/`choose` hint word | none | none |
+| `MayflyActionsNode.reveal` (F1) | `'always' \| 'focus'`; `'always'` | enum; a `focus` group with a `key`-less, non-`dismiss` action must still be reachable by `Tab` | hidden until the group is focused; then the ordinary row | adds `Tab/Shift+Tab groups` while hidden | as `actions` | as `actions` |
+| overlay `armMs` (E4) | `number` ms; `0` | integer `0–2000` | none (input is swallowed) | none | none | none |
+| `focus-change` observation (F2) | `{ controlId, itemId }` | list ids only | right pane repaints read-only | none | new observation, cannot publish | debounced by the renderer |
 
 ## 5. Interface stability and extending the catalog
 
@@ -682,10 +1134,11 @@ fills an empty page.
   in `core/ui-patterns.ts` → a control arm in `core/ui-compiler.ts` /
   `core/ui-key-grammar.ts` → rows in the owning `width-scan.spec.ts` → this
   catalog. `packages/ui` changes run the full gate.
-- **Do not reimplement.** `core/scrollable-panel.ts` (session transcript) and
-  the editor's autocomplete list (`SelectListAdapter`,
-  `renderAutocompleteList`) are retained legacy integrations with their own
-  key handling — they are not models. New surfaces compose wire nodes and
+- **Do not reimplement.** The editor's autocomplete list (`SelectListAdapter`
+  in `core/components.ts`, `core/wrapping-select-list.ts`,
+  `renderAutocompleteList`) is a retained legacy integration with its own key
+  handling — it is not a model. (The old `core/scrollable-panel.ts` no longer
+  exists; the session transcript is an ordinary pane.) New surfaces compose wire nodes and
   inherit focus, hints, validation, and narrow-width behavior for free.
 
 ## 6. Author checklist
@@ -705,6 +1158,9 @@ Pick the component by need:
 | Parallel pages | `ui.tabs` + tab-pinned children |
 | Ordered steps | `mode: 'wizard'` + `backId`, `read` on Next |
 | Tabbed page, labels on the left | §4.6 split recipe (`stack.row` + label list) |
+| A per-row setting (thinking level, scope, mode) | list `segment` on that row (§4.4), never a separate row or page |
+| Commit-on-`Enter` picker | `role: 'browse'` list, `selection-accept`, no buttons (§4.11) |
+| An action a bare key already performs | none — omit it (redundancy rule, §4.1) |
 | In-flight work | `loader` (determinate: `progress`) |
 | Nothing to show | `empty` node |
 | Dangerous operation | `intent: 'danger'` + `confirm: { tone: 'danger' }` |
@@ -722,6 +1178,13 @@ Verification duties for any new or changed surface:
 4. `packages/ui` contract or builder changes run the root full gate.
 5. A roadmap item in §7 is not shipped behavior until its status flips to
    **shipped**; only the code and §1–§6 describe what runs today.
+6. Assert the footer string for every state the surface can be in (idle,
+   searching, editing, decision, busy). A hint is a contract, and §2.2 lists
+   the only verbs it may use.
+7. Run the redundancy test (§4.1) on every action, and the stray-key test
+   (§4.8) on every surface that opens without the user asking for it.
+8. Diagrams are exact renderings at a stated width: the top rule, every row,
+   and the bottom rule of a box share one width.
 
 ## 7. Refinement roadmap
 
@@ -748,7 +1211,9 @@ Low risk; no new node kinds.
 The wire `tide` loader frames (`· • ● • ·`, 80 ms) are unused by any surface,
 while the transcript's waiting animation is the moon ripple
 (`·· ·≈ ≈≈ ≈·`, 120 ms). Align them into one ripple, keeping braille for work
-that is actively computing:
+that is actively computing. (The pulse also peaks on `●`, which §3.2 gives to
+"assistant block / tool running". Land this item directly; do not ship the
+pulse first and replace it later.)
 
 ```
   ripple (waiting on external action)   ·· → ·≈ → ≈≈ → ≈·      120 ms  [primary]
@@ -871,22 +1336,49 @@ Encode §3.3 as a test-time audit so the rule cannot regress.
 
 Touch points: the loader clock and the pane/transcript timers; a guard spec.
 
+**E1 · Inline thinking strip on the model row — target.**
+Render a row's segment strip on the row itself (`min ‹ high (default) › max`),
+fold it before moving it to a reserved footer line, and add the unpinned state
+through `MayflyListSegment.inheritedId` (§4.4, §4.11). The strip stops being an
+appended row that changes the list's height as focus moves.
+
+Touch points: `packages/ui/src/contracts.ts` (`inheritedId`),
+`core/ui-validator.ts`, `core/ui-patterns.ts` (`renderListSegment` inline
+layout), `core/ui-compiler.ts` (list body and reserved footer line),
+`interaction/model-commands.ts` (drop the `default` pseudo-option); specs and an
+`app-model` screenshot. Full gate.
+
+**E2 · Button-free pickers — target.**
+`/model` and `/effort` lose the `Set as default` / `Cancel` actions row.
+`Enter` reports `selection-accept`; `Esc` closes; the commit notice confirms.
+
+Touch points: `interaction/model-commands.ts` (`openPickerOverlay`), the
+`Set as default` locale key, `model-commands.spec.ts`,
+`model-selection-ui.spec.ts`.
+
+**E3 · Effort visible without focus — target.**
+The live row carries `[current · <effort>]`; `/effort` reuses the model
+picker's row and hint vocabulary.
+
+Touch points: `interaction/model-commands.ts` (badge text, locale keys).
+
 ### 7.2 Wave 2 — decision and navigation consistency (P2)
 
 **B1 · One decision-card skeleton — target.**
 Tool approval, plan review, and the permission ask render three different
-shapes today. Use one skeleton: title, scrollable reason, numbered vertical
-options (safe default focused), an optional same-line input, and the grammar
-hint row.
+shapes today. Use one skeleton (§4.8): title, scrollable reason, numbered
+vertical options with the safest option as row 1 and the cursor on it, an
+optional same-line input, and the grammar hint row. Grants use
+`numbered: 'focus'`.
 
 ```
   ╭ Approve bash? ───────────────────────────╮
   │ rm -rf build && pnpm build               │
-  │ → 1. Allow once                          │
-  │   2. Allow bash for this session         │
-  │   3. Reject                              │
+  │ → 1. Reject                              │
+  │   2. Allow once                          │
+  │   3. Allow bash for this session         │
   │   Feedback: ▌                            │
-  │   Esc reject · 1-3 choose · Enter choose │
+  │   Enter choose · 1-3 focus · Esc reject  │
   ╰──────────────────────────────────────────╯
 ```
 
@@ -915,6 +1407,15 @@ entries when the row is full. The plan/yolo badge retires with B4, so the grid
 no longer reserves a slot for it.
 
 Touch points: `transcript/status-model.ts` and the status plugins.
+
+**E4 · Arm delay for unprompted decisions — target.**
+An overlay that opens without a user gesture swallows everything but `Esc` for
+its first ~300 ms (`armMs`). It closes the stray-key path that keeps grants at
+two keys today (§4.8).
+
+Touch points: `packages/ui` overlay registration, `core/ui-interaction-*.ts`,
+`interaction/request-overlay.ts`; a replay test that types into the editor
+while a request opens. Full gate.
 
 ### 7.3 Wave 3 — deeper presentation (P3)
 
@@ -962,3 +1463,38 @@ unavailable.
 
 Touch points: `core/chrome.ts`, `core/ui-patterns.ts`,
 `transcript/banner.ts`, `transcript/spinners.ts`.
+
+**F1 · Buttons on demand — backlog.**
+`ui.actions({ reveal: 'focus' })` paints the row only while its group is
+focused; otherwise the footer shows `Tab/Shift+Tab groups`. Questionnaire
+`Back` / `Next` / `Submit answers` / `Cancel`, form `Submit` / `Cancel`, and
+the loader `[ Cancel ]` all duplicate bare keys (§4.1) and are the first
+adopters.
+
+Touch points: `packages/ui` contract, `core/ui-patterns.ts`
+(`renderActions`), `core/ui-compiler.ts`, `core/ui-key-grammar.ts`
+(group hint), `interaction/questionnaire.ts`. Full gate.
+
+**F2 · Live-following label column — backlog.**
+A `focus-change` observation lets the labels-left pages of §4.6 repaint their
+content as the cursor moves.
+
+Touch points: `packages/ui/src/interaction.ts`,
+`core/ui-interaction-choice.ts`, the sessions and settings panels.
+
+### 7.4 Conformance register
+
+Known gaps between this catalog and the code, or defects the audit found while
+verifying it. IDs are stable; delete a row when its fix ships. Related
+findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
+
+| ID | Gap | Where | Fix |
+| --- | --- | --- | --- |
+| G2 | `Enter open` on pickers that commit: `browse` role forces the `open` verb (UX-23) | `core/ui-key-grammar.ts` `rowBindings`, `interaction/model-commands.ts` | additive `acceptVerb`, then set it on the model and effort pickers |
+| G3 | The segment strip is appended after the list body, not on its row, and a row without a strip changes the list height (§2 principle 6) | `core/ui-compiler.ts` `segmentRows` | E1 |
+| G4 | Two current markers: `CURRENT_MARK = '← current'` (renders `[← current]`) in theme and permission pickers, `[current]` in the model picker; `SELECT_POINTER = '❯'` is exported but unused while the painter draws `→` | `interaction/symbols.ts`, `theme-switch.ts`, `permission-panel.ts`, `model-commands.ts` | one localized `current` badge; delete `CURRENT_MARK` and `SELECT_POINTER`; drop `symbols.ts` from A4's touch points |
+| G5 | Approval `Esc` is labeled `close` but rejects; `Reject with feedback` is a tab plus a `Back` button | `interaction/approval-plugin.ts`, escape labels in `core/ui-key-grammar.ts` | overridable Escape label; B1 |
+| G6 | This PR changes the `tide` frames to `·•●•·`, and roadmap A1 replans the same variant to the ripple; the peak `●` also collides with the tool-running glyph | `core/ui-patterns.ts` `TIDE_FRAMES`, `loader-tide.svg` | drop the code and screenshot change from this docs PR, or land the ripple (A1) directly |
+| G7 | Redundant buttons: `Set as default` + `Cancel` (pickers); `Back`/`Next`/`Submit answers`/`Cancel` (questionnaire); loader `[ Cancel ]`; single-field form `Submit`/`Cancel` | see §4.1 redundancy rule | E2, F1 |
+| G8 | Three checkbox notations: `●`/`○` (multiple lists), `[x]`/`[ ]` (pickers), `[on]`/`[off]` (toggle); `●` is also the "selected" marker in single lists (UX-24) | `core/ui-patterns.ts` `renderList`, `renderFormField` | multiple lists adopt `[x]`/`[ ]`; `●` stays transcript-only |
+| G9 | Hint verbs overlap: `pick` (open a select), `choose`, `apply`, `open` (UX-23) | `core/ui-key-grammar.ts` | settle on the §2.2 vocabulary; rename `pick` |
