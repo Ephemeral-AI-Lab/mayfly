@@ -338,8 +338,8 @@ async function commitPickerRow(
 
 /**
  * The shared picker surface for `/model` and `/effort`: a browse list whose
- * Enter runs `acceptActionId` through the ordinary invoke pipeline (so the
- * row's segment state rides the selections projection).
+ * Enter emits `selection-accept` through the ordinary action pipeline,
+ * carrying the row's current segment state.
  * @param ctx - plugin context.
  * @param agent - the exact Agent the overlay is scoped to.
  * @param overlayId - the registration id (reopen focuses a live one).
@@ -354,26 +354,17 @@ async function openPickerOverlay(
   agent: Agent,
   overlayId: string,
   title: string,
-  options: { readonly items: readonly MayflyListItem[], readonly filterable?: boolean, readonly numbered?: boolean, readonly empty?: MayflyUiNode },
+  options: { readonly items: readonly MayflyListItem[], readonly filterable?: boolean, readonly empty?: MayflyUiNode },
   signal: AbortSignal,
   commit: (scope: Context, selectedId: string | undefined, segmentId: string | undefined, eventSignal: AbortSignal) => Promise<MayflyUiActionReply>,
 ): Promise<MayflyOverlayHandle | undefined> {
-  const t = interactionTranslator(ctx)
-  return openAgentOverlay(ctx, agent, { id: overlayId, title, presentation: 'editor', capturing: true }, ui.stack.column([
-    ui.list({
-      id: 'selection', role: 'browse', selectedIds: [], items: options.items, acceptActionId: 'default',
-      ...(options.filterable === undefined ? {} : { filterable: options.filterable }),
-      ...(options.numbered === undefined ? {} : { numbered: options.numbered }),
-      ...(options.empty === undefined ? {} : { empty: options.empty }),
-    }),
-    ui.actions({ id: `${overlayId}-actions`, items: [
-      { id: 'default', label: t('Set as default'), intent: 'primary', selections: [{ pagePath: [], controlId: 'selection' }] },
-      { id: 'cancel', label: t('Cancel'), dismiss: true },
-    ] }),
-  ]), scope => async (event, context) => {
-    if (event.kind !== 'activate' || event.actionId !== 'default') return { kind: 'completed' }
-    const selection = event.inputs?.selections?.find(entry => entry.controlId === 'selection')
-    return commit(scope, selection?.selectedIds[0], selection?.segmentId, context.signal)
+  return openAgentOverlay(ctx, agent, { id: overlayId, title, presentation: 'editor', capturing: true }, ui.list({
+    id: 'selection', role: 'browse', acceptVerb: 'choose', selectedIds: [], items: options.items,
+    ...(options.filterable === undefined ? {} : { filterable: options.filterable }),
+    ...(options.empty === undefined ? {} : { empty: options.empty }),
+  }), scope => async (event, context) => {
+    if (event.kind !== 'selection-accept') return { kind: 'completed' }
+    return commit(scope, event.selectedIds[0], event.segmentId, context.signal)
   }, { signal, reopen: 'focus' })
 }
 
@@ -405,11 +396,12 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
     const rows = catalog.items.map(item => ({
       id: JSON.stringify([item.provider, item.id]), label: `${item.providerLabel}/${item.name}`, group: item.providerLabel,
       ...(item.contextWindow === undefined ? {} : { detail: `${formatContextWindow(item.contextWindow)} context` }),
-      ...(item.provider === selection.read.provider && item.id === selection.read.model ? { badge: t('current') } : {}),
+      ...(item.provider === selection.read.provider && item.id === selection.read.model ? { badge: `${t('current')}${selection.read.reasoningEffort ?? item.defaultEffort ? ` · ${selection.read.reasoningEffort ?? item.defaultEffort}` : ''}` } : {}),
       ...(item.efforts === undefined ? {} : { segment: {
         label: t('Thinking'),
-        options: [{ id: 'default', label: t('Provider default') }, ...item.efforts.map(id => ({ id, label: id }))],
-        selectedId: item.provider === selection.read.provider && item.id === selection.read.model && selection.read.reasoningEffort !== undefined && item.efforts.includes(String(selection.read.reasoningEffort)) ? String(selection.read.reasoningEffort) : 'default',
+        options: item.efforts.map(id => ({ id, label: id })),
+        ...(item.defaultEffort !== undefined && item.efforts.includes(item.defaultEffort) ? { inheritedId: item.defaultEffort } : {}),
+        ...(item.provider === selection.read.provider && item.id === selection.read.model && selection.read.reasoningEffort !== undefined && item.efforts.includes(String(selection.read.reasoningEffort)) ? { selectedId: String(selection.read.reasoningEffort) } : {}),
       } }),
     }))
     await openPickerOverlay(ctx, agent, 'mayfly.models', t('Select a model'), {
@@ -443,12 +435,13 @@ export function registerModelCommands(ctx: Context): () => void {
    * @returns the command outcome.
    */
   async function switchModel(rawInput: string, signal: AbortSignal): Promise<CommandResult> {
+    const expectedAgent = ctx.get('mayflyCurrentAgent')?.current()
     const selection = readSelection(ctx)
     if ('error' in selection) return { kind: 'error', text: selection.error }
     const current = selection.read
     const catalog = await catalogRows(ctx, signal)
     if ('error' in catalog) return { kind: 'error', text: catalog.error }
-    if (unloaded) return { kind: 'success' }
+    if (unloaded || signal.aborted || ctx.get('mayflyCurrentAgent')?.current() !== expectedAgent) return { kind: 'success' }
     const argument = rawInput.trim()
     if (argument !== '') {
       const exact = catalog.items.filter(item => item.id === argument)
@@ -468,6 +461,7 @@ export function registerModelCommands(ctx: Context): () => void {
         ctx,
         { provider: chosen.provider, model: chosen.id },
         signal,
+        expectedAgent,
       )
       return { kind: result.ok ? 'success' : 'error', text: result.text }
     }
@@ -485,6 +479,7 @@ export function registerModelCommands(ctx: Context): () => void {
    */
   async function switchEffort(rawInput: string, signal: AbortSignal): Promise<CommandResult> {
     const t = interactionTranslator(ctx)
+    const expectedAgent = ctx.get('mayflyCurrentAgent')?.current()
     const selection = readSelection(ctx)
     if ('error' in selection) return { kind: 'error', text: selection.error }
     const current = selection.read
@@ -496,25 +491,30 @@ export function registerModelCommands(ctx: Context): () => void {
     } catch (error) {
       return { kind: 'error', text: `could not resolve the current model: ${describe(error)}` }
     }
-    if (unloaded) return { kind: 'success' }
+    if (unloaded || signal.aborted || ctx.get('mayflyCurrentAgent')?.current() !== expectedAgent) return { kind: 'success' }
     const efforts = info.reasoning?.efforts ?? []
     if (efforts.length === 0) {
       return { kind: 'error', text: 'the current model exposes no reasoning efforts' }
     }
     const argument = rawInput.trim()
     if (argument === '') {
-      const agent = ctx.get('mayflyCurrentAgent')?.current()
-      if (agent == null) return { kind: 'error', text: t('no session is live yet') }
-      const activeEffort = current.reasoningEffort === undefined ? 'default' : String(current.reasoningEffort)
-      const items: MayflyListItem[] = [
-        { id: 'default', label: t('Provider default'), ...(activeEffort === 'default' ? { badge: t('current') } : {}) },
-        ...efforts.map(effort => ({ id: String(effort.id), label: String(effort.id), ...(activeEffort === String(effort.id) ? { badge: t('current') } : {}) })),
-      ]
-      const opened = await openPickerOverlay(ctx, agent, 'mayfly.effort', `${providerDisplayName(llm, current.provider)}/${current.model}`, { items, numbered: true }, signal,
-        (scope, selectedId, _segmentId, eventSignal) => {
-          const effort = items.find(item => item.id === selectedId)
-          return commitPickerRow(scope, effort === undefined ? undefined : { provider: current.provider, providerLabel: providerDisplayName(llm, current.provider), id: current.model, name: current.model }, effort?.id, eventSignal, t)
-        })
+      // The catalog await above fenced this exact Agent reference.
+      const agent = expectedAgent!
+      const inherited = info.reasoning?.defaultEffort
+      const selectedId = current.reasoningEffort === undefined ? undefined : String(current.reasoningEffort)
+      const providerLabel = providerDisplayName(llm, current.provider)
+      const item: ModelPickerItem = { provider: current.provider, providerLabel, id: current.model, name: current.model }
+      const items: MayflyListItem[] = [{
+        id: current.model, label: `${providerLabel}/${current.model}`,
+        badge: `${t('current')}${selectedId ?? inherited ? ` · ${selectedId ?? inherited}` : ''}`,
+        segment: {
+          label: t('Thinking'), options: efforts.map(effort => ({ id: String(effort.id), label: effort.name })),
+          ...(selectedId !== undefined && efforts.some(effort => String(effort.id) === selectedId) ? { selectedId } : {}),
+          ...(inherited !== undefined && efforts.some(effort => effort.id === inherited) ? { inheritedId: String(inherited) } : {}),
+        },
+      }]
+      const opened = await openPickerOverlay(ctx, agent, 'mayfly.effort', `${providerLabel}/${current.model}`, { items }, signal,
+        (scope, selectedId, segmentId, eventSignal) => commitPickerRow(scope, selectedId === current.model ? item : undefined, segmentId, eventSignal, t))
       return opened !== undefined ? { kind: 'success' } : { kind: 'error', text: t('model picker is unavailable') }
     }
     if (argument === 'default') {
@@ -522,6 +522,7 @@ export function registerModelCommands(ctx: Context): () => void {
         ctx,
         { provider: current.provider, model: current.model },
         signal,
+        expectedAgent,
       )
       return { kind: result.ok ? 'success' : 'error', text: result.text }
     }

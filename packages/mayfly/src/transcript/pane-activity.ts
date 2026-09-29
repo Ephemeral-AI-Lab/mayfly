@@ -43,6 +43,8 @@ import { followPresentationSettings, TranscriptPresentationPolicy } from './pres
 import { preparingLabel, runningLabel, toolActivity } from './process-activity.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import { formatTokens } from './status-context.ts'
+import { displayKey } from '../core/key-actions.ts'
+import type { MayflyKeymap } from '../core/types.ts'
 import { buildTipRotation } from './status-tips.ts'
 import { toolDisplayName } from './tool-line.ts'
 import { STATUS_TIPS } from './tips-content.ts'
@@ -58,7 +60,7 @@ import {
   BRAILLE_SPINNER_INTERVAL_MS,
   MOON_SPINNER_FRAMES,
   MOON_SPINNER_INTERVAL_MS,
-} from './spinners.ts'
+} from '../core/glyphs.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-activity'
@@ -200,7 +202,7 @@ function fitCells(text: string, cells: number, width: (text: string) => number):
  * variants from the bare frame up to the full row, each wider than the last,
  * so the narrowest fitting one never wraps.
  */
-function activityNode(state: ActivityState, t: MayflyTranslate, components: MayflyComponents): MayflyUiNode {
+function activityNode(state: ActivityState, t: MayflyTranslate, components: MayflyComponents, keymap?: MayflyKeymap): MayflyUiNode {
   if (state.mode === 'idle') return { kind: 'spacer' }
   // The latched interrupt is static by design: no frame advances, so the row
   // cannot read as the spinner that ignored the keypress.
@@ -214,9 +216,9 @@ function activityNode(state: ActivityState, t: MayflyTranslate, components: Mayf
     }
   }
   const moon = state.mode === 'waiting' || state.mode === 'tool'
-  const frame = moon
-    ? MOON_SPINNER_FRAMES[state.frame % MOON_SPINNER_FRAMES.length]!
-    : BRAILLE_SPINNER_FRAMES[state.frame % BRAILLE_SPINNER_FRAMES.length]!
+  const frame = components.asciiGlyphs === true ? (components.reducedMotion === true ? '-' : ['-', '\\', '|', '/'][state.frame % 4]!) : moon
+    ? MOON_SPINNER_FRAMES[(components.reducedMotion === true ? 0 : state.frame) % MOON_SPINNER_FRAMES.length]!
+    : BRAILLE_SPINNER_FRAMES[(components.reducedMotion === true ? 0 : state.frame) % BRAILLE_SPINNER_FRAMES.length]!
   const now = activityNow()
   const rate = outputRate(state.outputProgress, now)
   const elapsed = state.turnStartedAt === undefined ? '' : compactElapsedMs(Math.max(0, now - state.turnStartedAt))
@@ -239,7 +241,9 @@ function activityNode(state: ActivityState, t: MayflyTranslate, components: Mayf
     }
     grow({ text: ` · ${state.detail}` })
   } else {
-    grow({ text: `${t(TIP_LEAD)}${t(state.tip)}`, tone: 'muted' })
+    const action = STATUS_TIPS.find(tip => tip.text === state.tip)?.keyAction
+    const key = action === undefined ? '' : keymap?.getKeys(action).map(displayKey).join('/') ?? ''
+    if (action === undefined || key !== '') grow({ text: `${t(TIP_LEAD)}${t(state.tip, { key })}`, tone: 'muted' })
   }
   const ladder: { readonly parts: MayflyInlineSpan[], readonly width: number }[] = []
   for (const parts of variants) {
@@ -341,11 +345,12 @@ export function apply(ctx: Context): void {
   let timerMs = 0
   let tipKind: TipKind | undefined
   let flowUp: number | undefined
-  const rotation = buildTipRotation(STATUS_TIPS)
+  const availableTips = () => STATUS_TIPS.filter(tip => tip.keyAction === undefined || (ctx.get('mayflyKeymap')?.getKeys(tip.keyAction).length ?? 0) > 0)
+  let rotation = buildTipRotation(availableTips())
   let tipIndex = 0
   const currentNode = (): MayflyUiNode | null => state.mode === 'hidden'
     ? null
-    : activityNode(state, t, ctx.mayflyComponents)
+    : activityNode(state, t, ctx.mayflyComponents, ctx.get('mayflyKeymap'))
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.activity',
     placement: 'bottom',
@@ -363,6 +368,7 @@ export function apply(ctx: Context): void {
   }
 
   const ensureTimer = (ms: number): void => {
+    if (ctx.mayflyComponents.reducedMotion === true) ms = 1000
     if (timer !== undefined && timerMs === ms) return
     stopTimer()
     timerMs = ms
@@ -418,6 +424,8 @@ export function apply(ctx: Context): void {
     state.outputProgress = progress
     if (changed) publish()
   }
+  ctx.on('settings/document-updated', () => { sync(); publish() })
+  ctx.on('mayfly/keymap-changed', () => { rotation = buildTipRotation(availableTips()); tipKind = undefined; sync(); publish() })
   // The work-details mode decides whether the row carries the live detail.
   followPresentationSettings(ctx, policy, sync)
 

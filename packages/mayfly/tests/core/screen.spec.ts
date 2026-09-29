@@ -308,3 +308,28 @@ describe('MayflyScreenService', () => {
     expect(slot.component.render(20)).toEqual([])
   })
 })
+
+it('exposes only navigable transcript content and delegates row reveal through the fixed slot', async () => {
+  const ctx = new Context()
+  const runtime = recordingRuntime()
+  const reveal = vi.fn()
+  runtime.revealContent = reveal
+  const screen = new MayflyScreenService(ctx, runtime)
+  expect(screen.contentFocusTarget()).toBeNull()
+  const transcript = { canFocus: false, focused: false, render: () => ['turn'], invalidate() {} }
+  const content = screen.mountContentSlot('transcript.conversation', transcript)
+  expect(screen.contentFocusTarget()).toBeNull()
+  transcript.canFocus = true
+  expect(screen.contentFocusTarget()).toBe(content.component)
+  screen.revealTranscriptRow(12)
+  expect(reveal).toHaveBeenCalledWith(content.component, 12)
+  delete runtime.revealContent
+  expect(() => screen.revealTranscriptRow(1)).not.toThrow()
+  const prompt = screen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+  screen.focusPrompt()
+  expect(runtime.focused.at(-1)).toBe(prompt.component)
+  content.dispose()
+  expect(screen.contentFocusTarget()).toBeNull()
+  prompt.dispose()
+  await ctx.fiber.dispose()
+})

@@ -152,3 +152,11 @@ retired `./pane-btw` or `./attach-view` aliases.
 The three shipped skills teach process-local Cordis prototyping, durable external
 plugins, and user-owned composition. They use native dsh services and the four
 Mayfly UI services, without special manifests, author CLIs, or private hosts.
+
+Contextual status keys and empty-editor teaching text follow `mayfly.keyHints`;
+changing that setting must apply without restarting. Hint availability follows
+actual dispatch and the live keymap. Transcript disclosure navigation belongs to
+frontend state per conversation generation; core alone routes its raw keys and
+focus. Unprompted requests retain their frontend-owned arm deadline across core
+reload and continue to require explicit Enter for grants. Narrow labels-left
+pages stack in core; browsing workspace previews must remain header-only.

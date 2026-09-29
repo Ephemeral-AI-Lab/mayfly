@@ -574,21 +574,23 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
         return focusTarget(entry) === null ? [] : [{ lane, entry }]
       }),
     )
-    if (entries.length === 0) return
+    const targets = entries.map(({ lane, entry }) => ({ id: entry.id, target: focusTarget(entry)!, activate: () => { runtime.surfaces.activate(lane.placement, entry.id) } }))
+    const transcript = ctx.mayflyScreen.contentFocusTarget?.()
+    if (transcript != null) targets.unshift({ id: 'transcript.conversation', target: transcript, activate: () => { if (runtime.surfaces.focusedId !== undefined) runtime.releaseSurfaceFocus(runtime.surfaces.focusedId) } })
+    if (targets.length === 0) return
     const currentId = runtime.surfaces.focusedId ?? navigationId
-    const current = entries.findIndex(item => item.entry.id === currentId)
-    const next = current < 0 ? (direction > 0 ? 0 : entries.length - 1) : current + direction
-    if (next < 0 || next >= entries.length) {
-      /* v8 ignore else -- reaching the boundary after a focused surface always has an id. */
+    const current = targets.findIndex(item => item.id === currentId && item.target.focused)
+    const next = current < 0 ? (direction > 0 ? 0 : targets.length - 1) : current + direction
+    if (next < 0 || next >= targets.length) {
       if (runtime.surfaces.focusedId !== undefined) runtime.releaseSurfaceFocus(runtime.surfaces.focusedId)
+      ctx.mayflyScreen.focusPrompt?.()
       navigationId = undefined
       return
     }
-    const selected = entries[next]!
-    const target = focusTarget(selected.entry)!
-    runtime.surfaces.activate(selected.lane.placement, selected.entry.id)
-    navigationId = selected.entry.id
-    runtime.setFocus(target)
+    const selected = targets[next]!
+    selected.activate()
+    navigationId = selected.id
+    runtime.setFocus(selected.target)
   }
   ctx.effect(() => ctx.mayflyKeymap.register([
     { id: 'mayfly.surface.next', keys: 'f6', description: 'Focus the next Mayfly surface', handler: () => navigate(1) },

@@ -14,7 +14,7 @@ All commands live in the [Slash commands reference](/en/reference/commands).
 
 ## `!` bash mode
 
-When the buffer is exactly `!`, bash mode engages (the `!` never enters the buffer) with a triple cue: the `!` prompt, the ` ! shell mode ` frame label, and the `shellMode` violet frame. Submitting returns to prompt mode automatically.
+When the buffer is exactly `!`, bash mode engages (the `!` never enters the buffer) with three cues: the `!` prompt, the `SHELL` status chip, and the `shellMode` violet frame. Submitting returns to prompt mode automatically.
 
 Commands run through Mayfly's own executor and echo as shell cards (sanitized, truncated per stream: 200 lines / 64KB each), failures keep an `exit code N` line — **deliberately outside the session transcript**, invisible to the model. Prompt and bash submissions share one history (Up recall is not mode-filtered).
 
@@ -28,7 +28,7 @@ Commands run through Mayfly's own executor and echo as shell cards (sanitized, t
 
 ## Large-paste folding
 
-Pasting more than 10 lines or 1000 characters folds into a `[paste #N +M lines]` marker (the full text lives in the editor and expands automatically before submit — the model receives everything); the transcript side folds the same message into a 3-line preview plus a hint row, with `Ctrl-O` expanding on equal terms. History recall (Up) brings back the expanded full text.
+Pasting more than 10 lines or 1000 characters folds into a `[paste #N +M lines]` marker (the full text lives in the editor and expands automatically before submit — the model receives everything); the transcript side folds the same message into a 3-line preview plus a hint row, with `Ctrl+O` expanding on equal terms. History recall (Up) brings back the expanded full text.
 
 ## Ctrl-G external editor
 
@@ -44,8 +44,10 @@ Copied files paste as one ordered batch on every platform: `text/uri-list` in Ub
 
 ## Editor-context keys
 
-With the editor focused, a contextual key chain applies (see [Key bindings](/en/reference/keys)): **while a session flow is in progress** (the selected Agent or one of its live descendants is running), Escape interrupts that flow — safe retraction of the just-submitted message first when the buffer is empty and the message is eligible, which restores it into the editor — and never touches the draft; Ctrl-C empties the box while a flow runs and interrupts with an empty buffer. When the selected subtree is idle both keys clear a draft, and Ctrl-C with an empty buffer enters the double-press-within-1-second exit path. The interrupt answers on the same frame: the activity row switches to a static `■ interrupting...` until the current step/tool drains and the turn truly ends (native drain semantics keep started tool calls running so replay stays valid). Descendant interruption stops only the current turn and retains the Activation and unclaimed inbox. Ctrl-S steers the non-empty draft into the current turn. ↑/↓ always belong to editor history (the queue pane only lists pending messages — it never takes those keys), while PageUp/PageDown scroll the current transcript. Every side conversation keeps this editor: a live BTW/subagent uses the whole chain; in a read-only conversation a submitted draft stays in the editor with a notice; in a resumable (cold continuable) one it opens the Queue / Steer reply form seeded with the draft. Slash commands always run. `F7` returns to the previous conversation and `F8` closes the displayed side conversation.
+With the editor focused, a contextual key chain applies (see [Key bindings](/en/reference/keys)): **while a session flow is in progress** (the selected Agent or one of its live descendants is running), Escape interrupts that flow — safe retraction of the just-submitted message first when the buffer is empty and the message is eligible, which restores it into the editor — and never touches the draft; Ctrl-C empties the box while a flow runs and interrupts with an empty buffer. When the selected subtree is idle both keys clear a draft, and Ctrl-C with an empty buffer enters the double-press-within-1-second exit path. The interrupt answers on the same frame: the activity row switches to a static `■ interrupting...` until the current step/tool drains and the turn truly ends (native drain semantics keep started tool calls running so replay stays valid). Descendant interruption stops only the current turn and retains the Activation and unclaimed inbox. Ctrl-S steers the non-empty draft into the current turn. ↑ recalls the newest queued message when the prompt is empty; otherwise ↑/↓ retain editor navigation and history, while PageUp/PageDown scroll the current transcript. Every side conversation keeps this editor: a live BTW/subagent uses the whole chain; in a read-only conversation a submitted draft stays in the editor with a notice; in a resumable (cold continuable) one it opens the Queue / Steer reply form seeded with the draft. Slash commands always run. `F7` returns to the previous conversation and `F8` closes the displayed side conversation.
 
 ## Draft survival
 
 The unsubmitted draft, input mode (bash triple cue included), and hint history are mirrored into a draft stash — a `/theme` hot-switch rebuilds the editor fiber and restores everything, so a just-submitted `/theme light` won't vanish from Up history either.
+
+An empty prompt teaches `/` commands, `@` files, `#` skills, and `!` shell. The text follows conversation access and input mode, disappears when typing starts, and keeps complete trigger fragments at narrow widths. Command argument hints take precedence. `/settings` → `mayfly` → **Status key hints** controls the teaching text and contextual footer. In the subagent reply form, Enter sends and Alt+Enter inserts a newline; Queue/Steer remains an explicit selection.

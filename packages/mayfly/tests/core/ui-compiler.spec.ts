@@ -1682,12 +1682,12 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })))
       .toBe('  Enter edit')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [{ id: 'dark', label: 'Dark' }] }] })))
-      .toBe('  Enter pick')
+      .toBe('  Enter open')
     expect(focusedHint(ui.form({ id: 'form', fields: [
       { kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [{ id: 'dark', label: 'Dark' }, { id: 'light', label: 'Light' }] },
       { kind: 'input', id: 'name', label: 'Name', value: '' },
     ] })))
-      .toBe('  ↑/↓ fields · ←/→ adjust · Enter pick')
+      .toBe('  ↑/↓ fields · ←/→ adjust · Enter open')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'toggle', id: 'enabled', label: 'Enabled', value: false }] })))
       .toBe('  Space/Enter toggle')
     expect(focusedHint(ui.form({ id: 'form', fields: [], submitActionId: 'Save' })))
@@ -1804,11 +1804,26 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const result = compiledSurface(list, f.options)
     result.focusTarget!.focused = true
     expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
+    expect(result.component.render(20).join('\n')).toContain('Low')
     result.focusTarget!.handleInput?.('\x1b[C')
     result.focusTarget!.handleInput?.('\x1b[D')
     expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
     expect(focusedHint(list)).toContain('←/→ segment')
     result.surfaceRuntime.dispose()
+  })
+
+  it('uses ASCII borders in both natural rendering and allocated surface layouts', () => {
+    const f = fixture({ components: { ...components, asciiGlyphs: true } })
+    const surface = compiledSurface(ui.surface({ chrome: 'overlay', title: 'ASCII', padding: 1, child: ui.text('content') }), f.options)
+    for (const width of SCAN_WIDTHS) {
+      const rows = surface.component.render(width)
+      expectLinesFit('ascii-surface', rows, width)
+      expect(rows.join('')).not.toMatch(/[╭╮╰╯│─]/u)
+      const frame = layout(surface.component, width, 8)
+      expectLinesFit('ascii-layout', frame.lines, width)
+      expect(frame.lines.join('')).not.toMatch(/[╭╮╰╯│─]/u)
+    }
+    surface.surfaceRuntime.dispose()
   })
 
   it('submits the named action on Enter when a form declares enterSubmits', async () => {
@@ -2410,12 +2425,12 @@ it('animates shared loader frames through the compiler memo without rebuilding t
   try {
     const node = ui.stack.column([ui.loader({ message: 'Loading' }), ui.loader({ message: 'Tide', variant: 'tide' })])
     let component = render(node)
-    expect(component.render(30)).toEqual(['⠋ Loading', '≈ Tide'])
-    expect(component.render(30)).toEqual(['⠋ Loading', '≈ Tide'])
+    expect(component.render(30)).toEqual(['⠋ Loading', '·· Tide'])
+    expect(component.render(30)).toEqual(['⠋ Loading', '·· Tide'])
     expect(vi.getTimerCount()).toBe(1)
     vi.advanceTimersByTime(80)
     expect(request).toHaveBeenCalledOnce()
-    expect(component.render(30)).toEqual(['⠙ Loading', '≋ Tide'])
+    expect(component.render(30)).toEqual(['⠙ Loading', '·· Tide'])
     // A progress snapshot rebuild does not reset the spinner to its first frame.
     component = render(ui.loader({ message: 'Loading 1/10' }))
     expect(component.render(30)).toEqual(['⠙ Loading 1/10'])

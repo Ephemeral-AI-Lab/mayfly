@@ -7,6 +7,7 @@
  * @module @ephemeral-ai/mayfly/transcript/transcript-model
  */
 
+import { transcriptFocus, transcriptNavigationHint, markTranscriptCursor, transcriptCursorRow, type TranscriptNavigation } from '../core/transcript-focus.ts'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
@@ -69,6 +70,8 @@ export const TRANSCRIPT_MODEL_WINDOW = 200
 
 /** Renderer-only dependencies for semantic transcript entries. */
 export interface TranscriptModelRenderer extends CanonicalNodeRenderer {
+  readonly onRendered?: () => void
+  readonly navigationHint?: (expanded: boolean) => string
   readonly colors: MayflySemanticColors
   readonly components: MayflyComponents
   readonly images: () => UserMessageImages
@@ -246,12 +249,17 @@ function lastItemSeq(items: readonly DisplayItem[], fallback: number | undefined
   return fallback
 }
 
+interface TranscriptNavigationState { generation?: number, selected?: number, readonly expanded: Map<number, boolean> }
+
 /** Bounded semantic transcript component with id-based reconciliation. */
 export class TranscriptModelComponent implements MayflyComponent {
   private readonly cached = new Map<string, CachedComponent>()
   private readonly rowComponents = new Map<string, RowComponent>()
   private readonly anchored = new Map<string, AnchoredContent>()
   private canonicalRows = new WeakMap<object, { readonly width: number, readonly rows: string[] }>()
+  private renderedModelValue: TranscriptModel | undefined
+  get displayedModel(): TranscriptModel | undefined { return this.renderedModelValue }
+  private focused = false
   private expanded = false
   private renderedRows: RenderedRowsCache | undefined
   private generation: number | undefined
@@ -263,11 +271,15 @@ export class TranscriptModelComponent implements MayflyComponent {
   constructor(
     private readonly source: () => TranscriptModel | null,
     private readonly renderer: TranscriptModelRenderer,
+    private readonly navigation: TranscriptNavigationState = { expanded: new Map() },
   ) {}
 
   render(width: number): string[] {
     const model = this.source()
+    const previousModel = this.renderedModelValue
+    this.renderedModelValue = model ?? undefined
     if (model === null) {
+      if (previousModel !== undefined) this.renderer.onRendered?.()
       this.renderedRows = undefined
       this.canonicalRows = new WeakMap()
       this.prune(new Set())
@@ -278,6 +290,11 @@ export class TranscriptModelComponent implements MayflyComponent {
       this.prefix = undefined
       this.liveIds.clear()
       return []
+    }
+    if (this.navigation.generation !== model.generation) {
+      this.navigation.generation = model.generation
+      delete this.navigation.selected
+      this.navigation.expanded.clear()
     }
     if (this.generation !== model.generation) {
       this.renderedRows = undefined
@@ -307,7 +324,9 @@ export class TranscriptModelComponent implements MayflyComponent {
       const bounded = model.live === undefined ? model.entries : model.entries.filter(entry => !((entry.kind === 'transcript-thinking' || entry.kind === 'transcript-assistant')
         && entry.turn === model.live!.turn && entry.step === model.live!.step))
       const turns = [...new Set([...bounded.filter(isSemantic).map(entry => entry.turn), ...(model.live === undefined ? [] : [model.live.turn])])]
-      const visibleTurns = new Set(turns.slice(-policy.windowTurns))
+      const selected = !this.focused || this.navigation.selected === undefined ? -1 : turns.indexOf(this.navigation.selected)
+      const end = selected < 0 ? turns.length : Math.min(turns.length, Math.max(policy.windowTurns, selected + 1))
+      const visibleTurns = new Set(turns.slice(Math.max(0, end - policy.windowTurns), end))
       const entries = bounded.filter(entry => !isSemantic(entry) || visibleTurns.has(entry.turn))
       const ids = new Set(entries.filter(isSemantic).map(entry => entry.id))
       const runningTurn = runningTurnOf(model, entries)
@@ -336,7 +355,7 @@ export class TranscriptModelComponent implements MayflyComponent {
     const tailFirst = tailEntries.find(isSemantic)?.seq
     const display = (entries: TranscriptModel['entries'], previousSeq?: number): DisplayItem[] => buildDisplay({
       entries, policy: policy.process, runningTurn: plan.runningTurn, turns: model.turns,
-      expanded: this.expanded, scope: plan.expandableTurns, flat, previousSeq,
+      expanded: this.expanded, overrides: this.navigation.expanded, scope: plan.expandableTurns, flat, previousSeq,
       runningHeader: this.renderer.liveTurnHeader === true,
     })
     let prefix = this.prefix
@@ -359,6 +378,7 @@ export class TranscriptModelComponent implements MayflyComponent {
       rows = [...prefix.rows, ...this.renderItems(tailItems, anchors, width, policy)]
     }
     this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
+    this.renderer.onRendered?.()
     return rows
   }
 
@@ -436,10 +456,23 @@ export class TranscriptModelComponent implements MayflyComponent {
   }
 
   private renderItem(item: DisplayItem, width: number, policy: TranscriptPresentationSnapshot): string[] {
-    if (item.kind !== 'entry') return this.renderRow(item, width)
-    return isSemantic(item.entry)
+    if (item.kind !== 'entry') {
+      const rows = this.renderRow(item, width)
+      return item.kind === 'turn-header' ? this.markNavigation(rows, item.turn, width) : rows
+    }
+    const rows = isSemantic(item.entry)
       ? this.renderSemantic(item.entry, width, item, policy)
       : this.renderCanonical(item.entry, width)
+    const entry = item.entry
+    const standaloneUser = entry.kind === 'transcript-user' && this.focused && entry.turn === this.navigation.selected
+      && !this.plan?.entries.some(other => isSemantic(other) && other.turn === entry.turn && (other.kind === 'transcript-tool' || other.kind === 'transcript-thinking'))
+    return standaloneUser ? this.markNavigation(rows, entry.turn, width) : rows
+  }
+
+  private markNavigation(rows: string[], turn: number, width: number): string[] {
+    if (!this.focused || turn !== this.navigation.selected) return rows
+    const expanded = this.navigation.expanded.get(turn) ?? (this.expanded && this.plan?.expandableTurns.has(turn) === true)
+    return markTranscriptCursor(rows, width, this.renderer.navigationHint?.(expanded), this.renderer.components, this.renderer.colors)
   }
 
   /** Render one turn header or group title through its reused row component. */
@@ -485,10 +518,31 @@ export class TranscriptModelComponent implements MayflyComponent {
     this.prefix = undefined
   }
 
+  /** Move a semantic turn cursor; older history is materialized through the existing source. */
+  navigate(intent: TranscriptNavigation | boolean, width: number): number | undefined {
+    const model = this.source()
+    if (model === null) return undefined
+    if (this.navigation.generation !== model.generation) { this.navigation.generation = model.generation; delete this.navigation.selected; this.navigation.expanded.clear() }
+    const turns = [...new Set(model.entries.filter(isSemantic).filter(entry => entry.kind === 'transcript-tool' || entry.kind === 'transcript-thinking' || entry.kind === 'transcript-user' && (entry.text.length > this.presentation().userFoldChars || entry.text.split('\n').length > this.presentation().userFoldLines)).map(entry => entry.turn))]
+    if (turns.length === 0) return undefined
+    const current = this.navigation.selected === undefined ? turns.length - 1 : Math.max(0, turns.indexOf(this.navigation.selected))
+    if (typeof intent === 'boolean') this.focused = intent
+    const index = intent === 'previous' ? Math.max(0, current - 1) : intent === 'next' ? Math.min(turns.length - 1, current + 1) : intent === 'first' ? 0 : intent === 'last' ? turns.length - 1 : current
+    const turn = turns[index]!
+    this.navigation.selected = turn
+    if (intent === 'toggle') this.navigation.expanded.set(turn, !(this.navigation.expanded.get(turn) ?? (this.expanded && turns.slice(-this.presentation().expandTurns).includes(turn))))
+    this.plan = undefined
+    this.invalidate()
+    const rows = this.render(width)
+    const row = transcriptCursorRow(rows)
+    return row < 0 ? undefined : row
+  }
+
   /** Apply the global recent-detail expansion state to mounted entries. */
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return
     this.expanded = expanded
+    for (const turn of this.plan?.expandableTurns ?? []) this.navigation.expanded.delete(turn)
     this.dropRows()
     for (const cached of this.cached.values()) {
       cached.rows = undefined
@@ -512,6 +566,7 @@ export class TranscriptModelComponent implements MayflyComponent {
 
   /** Dispose timers and async renderer resources held by cached components. */
   dispose(): void {
+    this.renderedModelValue = undefined
     this.dropRows()
     this.plan = undefined
     this.liveIds.clear()
@@ -675,7 +730,7 @@ export class TranscriptModelComponent implements MayflyComponent {
         const component = new CompactionRowComponent(entry, renderer.colors, renderer.components, () => {
           this.invalidateEntry(entry.id)
           renderer.requestRender?.()
-        }, t)
+        }, t, renderer.liveTurnHeader === true)
         target = component
         update = (next): boolean => {
           component.update(next as TranscriptCompactionModel)
@@ -773,7 +828,10 @@ export class TranscriptController {
   private mounted: MountedTranscript | undefined
   private screen: MayflyScreen | undefined
   private expanded = false
+  private disclosureCache: { entries: TranscriptModel['entries'], turns: TranscriptModel['turns'], policy: string, count: number, total: number } | undefined
   private localSerial = 0
+  private disclosureScheduled = false
+  private disclosureSignature = ''
   private followNotice: { readonly paused: boolean, readonly at: number } | undefined
 
   constructor(
@@ -850,8 +908,26 @@ export class TranscriptController {
     screen.requestRender()
   }
 
+  disclosure(): { readonly expanded: boolean, readonly count: number } {
+    const model = this.active === undefined ? undefined : this.views.get(this.active)?.component?.displayedModel
+    if (model === undefined) { this.disclosureCache = undefined; return { expanded: this.expanded, count: 0 } }
+    const policy = this.presentationPolicy()
+    const key = `${policy.expandTurns}:${policy.userFoldChars}:${policy.userFoldLines}`
+    if (this.disclosureCache?.entries !== model.entries || this.disclosureCache.turns !== model.turns || this.disclosureCache.policy !== key) {
+      const entries = model.entries.filter(isSemantic)
+      const turns = [...new Set([...entries.map(entry => entry.turn), ...(model.turns ?? []).map(turn => turn.turn)])].sort((a, b) => a - b)
+      const eligible = new Set(entries.filter(entry => entry.kind === 'transcript-tool' || entry.kind === 'transcript-thinking'
+        || entry.kind === 'transcript-user' && (entry.text.length > policy.userFoldChars || entry.text.split('\n').length > policy.userFoldLines)).map(entry => entry.turn))
+      this.disclosureCache = { entries: model.entries, turns: model.turns, policy: key, count: turns.slice(-policy.expandTurns).filter(turn => eligible.has(turn)).length, total: eligible.size }
+    }
+    return { expanded: this.expanded, count: this.disclosureCache.count }
+  }
+
+  canNavigate(): boolean { this.disclosure(); return (this.disclosureCache?.total ?? 0) > 0 }
+
   setExpanded(expanded: boolean): void {
     this.expanded = expanded
+    this.owner.emit('mayfly/transcript-disclosure-changed')
     for (const view of this.views.values()) view.component?.setExpanded(expanded)
   }
 
@@ -911,19 +987,45 @@ export class TranscriptController {
     this.screen = undefined
   }
 
+  private publishDisclosure(): void {
+    if (this.disclosureScheduled) return
+    this.disclosureScheduled = true
+    queueMicrotask(() => {
+      this.disclosureScheduled = false
+      if (this.screen === undefined) return
+      const signature = JSON.stringify(this.disclosure())
+      if (signature === this.disclosureSignature) return
+      this.disclosureSignature = signature
+      this.owner.emit('mayfly/transcript-disclosure-changed')
+    })
+  }
+
+  private navigationFor(key: string): TranscriptNavigationState {
+    const states = this.owner.get('mayflyUiInteraction')?.transcriptNavigation
+    const previous = states?.get(key)
+    if (previous !== undefined) return previous
+    const state = { expanded: new Map<number, boolean>() }
+    states?.set(key, state)
+    return state
+  }
+
   private mount(): void {
     const screen = this.screen
     const view = this.active === undefined ? undefined : this.views.get(this.active)
     const renderer = this.options.renderer
     if (screen === undefined || view === undefined || renderer === undefined) return
     const source = view.source
+    const keys = this.owner.get('mayflyKeymap')
+    const projectedRenderer = view.renderer === undefined ? renderer : { ...renderer, ...view.renderer }
     view.component ??= new TranscriptModelComponent(
       () => typeof source === 'function' ? source() : source,
-      view.renderer === undefined ? renderer : { ...renderer, ...view.renderer },
+      { ...projectedRenderer, onRendered: () => this.publishDisclosure(), ...(keys === undefined ? {} : { navigationHint: (expanded: boolean) => transcriptNavigationHint(keys, expanded, renderer.t ?? interpolateLocaleMessage) }) },
+      this.navigationFor(this.active!),
     )
     const component = view.component
     component.setExpanded(this.expanded)
-    const slot = screen.mountContentSlot('transcript.conversation', component)
+    const focused = keys === undefined ? component : transcriptFocus(component, keys, screen, intent => component.navigate(intent, screen.columns), () => this.canNavigate())
+    const slot = screen.mountContentSlot('transcript.conversation', focused)
     this.mounted = { component, unmount: () => slot.dispose() }
     screen.requestRender()
   }
@@ -943,6 +1045,7 @@ export class TranscriptController {
 
 declare module '@deepseek-ai/cordis' {
   interface Context { mayflyTranscriptLocals: TranscriptLocalsService }
+  interface Events { 'mayfly/transcript-disclosure-changed'(): void }
 }
 
 /**
@@ -956,6 +1059,8 @@ export class TranscriptLocalsService extends Service {
   constructor(ctx: Context, private readonly controller: TranscriptController) {
     super(ctx, 'mayflyTranscriptLocals')
   }
+
+  disclosure(): { readonly expanded: boolean, readonly count: number } { return this.controller.disclosure() }
 
   /** Append one ephemeral component at the current durable tail. */
   append(component: MayflyComponent): () => void {

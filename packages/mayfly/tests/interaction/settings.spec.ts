@@ -132,6 +132,7 @@ describe('mayfly-settings schema and registration', () => {
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual(settingsPlugin.DEFAULT_SETTINGS)
     expect(resolveConfig()).toEqual(settingsPlugin.DEFAULT_SETTINGS)
     expect(settingsPlugin.DEFAULT_SETTINGS).toEqual({
+      keyHints: 'full', reducedMotion: false, glyphs: 'auto',
       updateCheck: true,
       updateChannel: 'latest',
       theme: 'dark',
@@ -158,6 +159,7 @@ describe('mayfly-settings schema and registration', () => {
 
   it('describes the mayfly namespace exactly once and reflects user overrides', async () => {
     const { ctx, settings, ready } = await mount({ mayfly: {
+      keyHints: 'full', reducedMotion: false, glyphs: 'auto',
       updateCheck: false,
       updateChannel: 'beta',
       editorCommand: 'my-editor --wait',
@@ -168,6 +170,7 @@ describe('mayfly-settings schema and registration', () => {
     expect(() => registerMayfly(settings)).toThrow(/already registered/u)
     // The source resolves schema defaults layered with the user document.
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual({
+      keyHints: 'full', reducedMotion: false, glyphs: 'auto',
       updateCheck: false,
       updateChannel: 'beta',
       theme: 'dark',

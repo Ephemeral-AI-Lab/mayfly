@@ -18,6 +18,7 @@ import {
 import type {} from '../app/index.ts'
 import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
+import { withDisclosureKey } from './hints.ts'
 import { TranscriptController, TranscriptLocalsService } from './transcript-model.ts'
 import { OfficialConversationModelSource } from './official-model.ts'
 import type { LiveDraftSource } from './conversation-feed.ts'
@@ -66,7 +67,7 @@ export {
   BRAILLE_SPINNER_INTERVAL_MS,
   MOON_SPINNER_FRAMES,
   MOON_SPINNER_INTERVAL_MS,
-} from './spinners.ts'
+} from '../core/glyphs.ts'
 export { ThinkingComponent, THINKING_PREVIEW_LINES } from './thinking.ts'
 export type {
   TranscriptAssistantItem,
@@ -92,7 +93,7 @@ export { setProcessRowTimers, type ProcessRowTimers } from './process-rows.ts'
 export const name = 'mayfly-transcript'
 
 /** Services the plugin requires before it can mount. */
-export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyConversations', 'mayflyCurrentAgent', 'agents', 'sessionProjections', 'sessions', 'tools']
+export const inject = ['mayflyConversationReady', 'mayflyUiInteraction', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyConversations', 'mayflyCurrentAgent', 'agents', 'sessionProjections', 'sessions', 'tools']
 
 /** The global action toggling tool-output expansion (Ctrl-O). */
 export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
@@ -113,10 +114,10 @@ interface CollapseToggle { expanded: boolean }
  */
 export function apply(ctx: Context): void {
   mountTranscriptLocale(ctx, 'transcript', TRANSCRIPT_LOCALE)
-  const t = transcriptTranslator(ctx, 'transcript')
+  const t = withDisclosureKey(transcriptTranslator(ctx, 'transcript'), ctx.mayflyKeymap)
   const screen = ctx.mayflyScreen
   const colors = ctx.mayflyTheme.colors
-  const toggle: CollapseToggle = { expanded: false }
+  const toggle: CollapseToggle = { expanded: ctx.mayflyUiInteraction.transcriptExpanded }
   const presentation = new TranscriptPresentationPolicy()
   // Mayfly settings ride the host settings document: the resolved `mayfly`
   // namespace (schema owned by interaction) carries the work-details mode
@@ -161,6 +162,7 @@ export function apply(ctx: Context): void {
       t,
     },
   })
+  transcript.setExpanded(toggle.expanded)
   ctx.effect(() => () => transcript.dispose())
   // Ephemeral local entries (e.g. `!` shell echoes) anchor into the mounted
   // conversation flow through this seam and scroll up with later history;
@@ -188,7 +190,12 @@ export function apply(ctx: Context): void {
   })
   ctx.effect(() => () => slots.dispose())
   ctx.on('tools/change', () => slots.invalidateTools())
-  const sync = (): void => { slots.sync(ctx.mayflyConversations.snapshot()) }
+  const sync = (): void => {
+    const snapshot = ctx.mayflyConversations.snapshot()
+    const ids = new Set(snapshot.views.map(view => view.id))
+    for (const key of ctx.mayflyUiInteraction.transcriptNavigation.keys()) if (!ids.has(key)) ctx.mayflyUiInteraction.transcriptNavigation.delete(key)
+    slots.sync(snapshot)
+  }
   // A same-id Agent replacement changes the exact Agent without a registry change.
   const offView = ctx.mayflyConversations.subscribe(sync)
   const offAgent = ctx.mayflyCurrentAgent.subscribe(sync)
@@ -223,12 +230,14 @@ export function apply(ctx: Context): void {
       description: t('Toggle detail expansion (tool output, long messages)'),
       handler: () => {
         toggle.expanded = !toggle.expanded
+        ctx.mayflyUiInteraction.transcriptExpanded = toggle.expanded
         transcript.setExpanded(toggle.expanded)
         screen.requestRender(true)
       },
     }])
   }
   registerKeymap()
+  ctx.on('mayfly/keymap-changed', () => { transcript.refreshLocale() })
   ctx.effect(() => () => offKeymap())
 
   const offLocale = observeTranscriptLocale(ctx, () => {
@@ -236,5 +245,6 @@ export function apply(ctx: Context): void {
     registerKeymap()
   })
   ctx.effect(() => offLocale)
+  ctx.on('settings/document-updated', namespace => { if (String(namespace) === 'mayfly') transcript.refreshPresentationPolicy() })
 
 }

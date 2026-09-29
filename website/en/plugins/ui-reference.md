@@ -42,7 +42,8 @@ in a node.
   item ids must at least be unique within their node; ids used as controls
   cannot be empty.
 - `tone` is semantic, not a color value:
-  `default | muted | accent | success | warning | danger`.
+  `default | muted | primary | accent | user | success | warning | danger | shell`.
+  `shell` uses the shell-mode color for shell input status.
 - `emphasis` is `normal | strong`; omission means normal text.
 
 The defaults below describe the current Mayfly TUI in `0.1.2-rc.1`. The wire
@@ -82,9 +83,9 @@ theme's normal text color. The screenshot above renders exactly this node:
 ui.text('Connection lost', { tone: 'danger' })
 ```
 
-All six tones side by side:
+The general-purpose tones side by side:
 
-![every `text` tone](/shots/text-tones.svg)
+![general-purpose `text` tones](/shots/text-tones.svg)
 
 *`default`, `muted`, `accent`, `success`, `warning`, and `danger` (width 56).*
 
@@ -575,6 +576,7 @@ ui.tabs({
   id: string
   activeId: string
   mode?: 'tabs' | 'wizard'
+  orientation?: 'horizontal' | 'vertical'
   items: readonly {
     id: string
     label: string
@@ -587,6 +589,8 @@ ui.tabs({
 
 - `activeId` must name an item and supplies the initial or data-snapshot
   baseline. The Mayfly instance keeps the current active page.
+- `orientation: 'vertical'` makes a label column. Core stacks labels above the
+  page on narrow screens. Arrow movement activates pages locally.
 - A disabled item remains visible but cannot be activated.
 - `count` is a non-negative safe-integer hint that a renderer may hide at
   narrow widths.
@@ -648,6 +652,7 @@ ui.list({
   id: string
   mode?: 'single' | 'multiple'
   role: 'browse' | 'choose'
+  acceptVerb?: 'open' | 'choose'
   selectedIds: readonly string[]
   items: readonly MayflyListItem[]
   filter?: string
@@ -671,13 +676,24 @@ type MayflyListItem = {
   disabledReason?: string
   parentId?: string
   searchText?: string
-  segment?: MayflyListSegment
+  segment?: {
+    label?: string
+    options: readonly { id: string, label: string, disabled?: boolean }[]
+    selectedId?: string
+    inheritedId?: string
+  }
   unavailableActions?: Readonly<Record<string, string>>
   confirm?: string | MayflyConfirmation
 }
 ```
 
 `role: 'browse'` opens or inspects entries; `role: 'choose'` submits a choice.
+`acceptVerb` overrides the hint verb without changing these semantics. A row's
+`inheritedId` identifies its unpinned segment value; Delete restores inheritance
+and acceptance omits `segmentId`. The strip renders inline when it fits, with a
+reserved footer fallback.
+
+![Model picker with inherited effort](/shots/app-model.svg)
 `mode` defaults to `single`. Single mode permits at most one selected id, and
 every selected id must exist in `items`. `detailSpans` takes precedence over
 `detail`. `group` is a grouping heading and `badge` is a compact label. A
@@ -923,6 +939,7 @@ discard decision. Close actions never navigate back; Escape owns Back.
 ```ts
 ui.actions({
   id: string
+  reveal?: 'always' | 'focus'
   items: readonly {
     id: string
     label: string
@@ -949,6 +966,10 @@ type MayflyConfirmation = {
   tone?: 'danger'
 }
 ```
+
+`reveal: 'focus'` shows the action row only while its group owns focus; the
+group remains reachable through Tab/Shift+Tab. Pending actions show elapsed
+time and dirty forms show an unsaved marker in the action area.
 
 Activating an enabled item sends `activate` with `actionId`, `controlId`, and
 `pagePath` to `onEvent.action`.
@@ -1193,8 +1214,11 @@ onEvent: {
 
 | Channel | Events | Purpose |
 | --- | --- | --- |
-| `observe` | `value-change`, `selection-toggle`, `tab-change` | Editing facts and async validation; cannot publish, navigate, or dismiss |
+| `observe` | `value-change`, `selection-toggle`, `focus-change`, `tab-change` | Editing facts and async validation; cannot publish, navigate, or dismiss |
 | `action` | `activate`, `selection-accept`, `submit`, `dismiss` | Native effects and explicit settlement |
+
+`focus-change` reports `pagePath`, `controlId`, and `itemId` when the list cursor
+moves. It is a readonly observation, separate from accepting a row.
 
 `context` carries `surfaceId`, current source stamps, revision, a unique
 `operationId`, `AbortSignal`, and `report(feedback)`. Observations are

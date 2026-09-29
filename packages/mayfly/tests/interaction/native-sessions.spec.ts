@@ -86,7 +86,7 @@ async function setup(withQuery = true) {
     ctx.mayflyOverlays.close('mayfly.sessions.workspace')
     const id = sessionWorkspaceId(cwd)
     await vi.waitFor(() => { expect(JSON.stringify(rootModel().node)).toContain(JSON.stringify(id)) })
-    rootModel().emit({ kind: 'selection-accept', pagePath: [], controlId: 'workspaces', selectedIds: [id] })
+    rootModel().invoke('open-workspace', [{ controlId: 'workspaces', itemId: id }])
     workspace = cwd
     await flushRequests()
   }
@@ -601,8 +601,8 @@ it('starts with workspace counts and performs no title or projection reads until
   expect(text).toContain('/repo/current')
   expect(text).toContain('/repo/other')
   expect(text.indexOf('/repo/current')).toBeLessThan(text.indexOf('/repo/other'))
-  expect(text).toContain('2 sessions')
-  expect(text).toContain('1 session')
+  expect(text).toContain('"count":2')
+  expect(text).toContain('"count":1')
   expect(bench.snapshot).not.toHaveBeenCalled()
   expect(bench.query.observeSession).not.toHaveBeenCalled()
   expect(bench.persistence.list).toHaveBeenCalledOnce()
@@ -688,7 +688,7 @@ it('keeps name-read errors visible after progress completes', async () => {
 it('refreshes and validates workspace selections, and ignores unrelated events', async () => {
   const bench = await setup()
   await bench.openRoot()
-  expect(await nativeAction(bench.rootModel(), selection('workspaces', 'missing'))).toMatchObject({ kind: 'failed' })
+  expect(await nativeAction(bench.rootModel(), { kind: 'activate', pagePath: [{ controlId: 'workspaces', itemId: 'missing' }], controlId: 'workspace-open', actionId: 'open-workspace' })).toMatchObject({ kind: 'failed' })
   expect(await nativeAction(bench.rootModel(), selection('unrelated'))).toMatchObject({ kind: 'completed' })
   expect(await nativeAction(bench.rootModel(), activate('unknown'))).toMatchObject({ kind: 'completed' })
   expect(await nativeAction(bench.rootModel(), { kind: 'dismiss', pagePath: [] })).toMatchObject({ kind: 'completed' })

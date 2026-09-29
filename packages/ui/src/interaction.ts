@@ -68,6 +68,7 @@ export type MayflySnapshotChange =
 export type MayflyUiObservationEvent = (
   | { readonly kind: 'value-change', readonly controlId: string, readonly formId: string, readonly value: MayflyFieldValue, readonly draftRevision: number }
   | { readonly kind: 'selection-toggle', readonly controlId: string, readonly selectedIds: readonly string[], readonly actionId?: string }
+  | { readonly kind: 'focus-change', readonly controlId: string, readonly itemId: string }
   | { readonly kind: 'tab-change', readonly controlId: string, readonly tabId: string }
 ) & { readonly pagePath: MayflyPagePath }
 export type MayflyUiActionEvent = (

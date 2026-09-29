@@ -103,7 +103,7 @@ describe('mayfly-editor-plus input modes', () => {
     expect(editor.promptSymbol).toBe('>')
     type(editor, '!')
     expect(editor.promptSymbol).toBe('!')
-    expect(editor.borderLabel).toBe(' $! shell mode$ ')
+    expect(editor.borderLabel).toBeUndefined()
     expect(editor.borderColor('x')).toBe('$x$')
   })
 
@@ -484,7 +484,7 @@ describe('mayfly-editor-plus attach lifecycle', () => {
     // The draft text and the bash triple both survive the rebuild.
     expect(remounted.getText()).toBe('ls -la')
     expect(remounted.promptSymbol).toBe('!')
-    expect(remounted.borderLabel).toBe(' $! shell mode$ ')
+    expect(remounted.borderLabel).toBeUndefined()
     expect(remounted.borderColor('x')).toBe('$x$')
   })
 

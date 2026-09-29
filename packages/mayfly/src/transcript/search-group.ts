@@ -9,6 +9,7 @@
  * @module @ephemeral-ai/mayfly/transcript/search-group
  */
 
+import { treeBranch, treeContinuation } from '../core/glyphs.ts'
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate, type SearchCallModel, type TranscriptSearchGroupModel } from '../frontend/index.ts'
 import { moreRowsHint } from './hints.ts'
@@ -118,8 +119,8 @@ export class SearchGroupComponent implements MayflyComponent {
     const rows: string[] = []
     searches.forEach((call, index) => {
       const last = index === searches.length - 1
-      const branch = last ? '└─' : '├─'
-      const continuation = last ? '   ' : '│  '
+      const branch = treeBranch(last, this.components.asciiGlyphs === true)
+      const continuation = treeContinuation(last, this.components.asciiGlyphs === true)
       const label = call.pattern === undefined ? 'search'
         : call.shape === 'matches' ? `"${sanitizePluginText(call.pattern).replace(/[\r\n]+/gu, ' ')}"`
           : sanitizePluginText(call.pattern).replace(/[\r\n]+/gu, ' ')
@@ -154,8 +155,8 @@ export class SearchGroupComponent implements MayflyComponent {
       const files = call.files ?? []
       files.forEach((file, index) => {
         const last = index === files.length - 1
-        const branch = last ? '└─' : '├─'
-        const childContinuation = `${String(continuation)}${last ? '   ' : '│  '}`
+        const branch = treeBranch(last, this.components.asciiGlyphs === true)
+        const childContinuation = `${String(continuation)}${treeContinuation(last, this.components.asciiGlyphs === true)}`
         rows.push(cut(`  ${String(continuation)}${String(branch)} ${sanitizePluginText(file.path).replace(/[\r\n]+/gu, ' ')} · ${String(file.count)}`))
         for (const preview of file.previews) {
           rows.push(cut(`  ${String(childContinuation)}${String(preview.lineNumber)}: ${sanitizePluginText(preview.line).replace(/[\r\n]+/gu, ' ')}`))
@@ -167,7 +168,7 @@ export class SearchGroupComponent implements MayflyComponent {
       const paths = call.paths ?? []
       paths.forEach((path, index) => {
         const last = index === paths.length - 1
-        const branch = last ? '└─' : '├─'
+        const branch = treeBranch(last, this.components.asciiGlyphs === true)
         rows.push(cut(`  ${String(continuation)}${String(branch)} ${sanitizePluginText(path).replace(/[\r\n]+/gu, ' ')}`))
       })
       const total = call.pathsTotal ?? paths.length

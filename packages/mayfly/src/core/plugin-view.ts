@@ -8,6 +8,7 @@
  */
 
 import type { MayflyContentNode, MayflyInlineSpan, MayflyTone } from '@ephemeral-ai/mayfly-ui'
+import { highlightCodeLines } from './highlight.ts'
 import { alignDiffLines, paintDiffRows } from './diff-align.ts'
 import { clampRowsToWidth } from './chrome.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
@@ -35,6 +36,7 @@ export function paintPluginTone(colors: MayflySemanticColors, tone: MayflyTone |
     case 'user': return colors.roleUser
     case 'success': return colors.success
     case 'warning': return colors.warning
+    case 'shell': return colors.shellMode
     case 'danger': return colors.error
     default: return colors.text
   }
@@ -101,7 +103,8 @@ function renderView(
     case 'code': {
       const language = view.language === undefined ? '' : checkedText(view.language, 'code language')
       const heading = language.length === 0 ? [] : [colors.muted(language)]
-      const body = checkedText(view.code, 'code content').split('\n')
+      const code = checkedText(view.code, 'code content')
+      const body = highlightCodeLines(code, language, colors.mdCodeBlock)
         .flatMap(line => wrapped(colors.mdCodeBlock(line), width, components))
       return [...heading, ...body]
     }

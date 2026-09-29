@@ -138,3 +138,24 @@ describe('paintDiffRows', () => {
     expect(painted).toContain('+ y')
   })
 })
+
+
+it('numbers separated hunks correctly through insertions, removals, and omitted context', () => {
+  const before = Array.from({ length: 35 }, (_, index) => `line ${index + 1}`)
+  const after = [...before]
+  after.splice(8, 1, 'replacement', 'inserted')
+  after.splice(26, 1)
+  const ops = alignDiffLines(before.join('\n'), after.join('\n'))
+  const helpers = { wrapText: wrapTextWithAnsi, visibleWidth }
+  const rows = paintDiffRows(ops, 80, helpers)
+  expect(rows.filter(row => row.startsWith('@@'))).toEqual(['@@ -6,7 +6,8 @@', '@@ -23,7 +24,6 @@'])
+  expect(rows).toContain('+ inserted')
+  expect(rows).toContain('- line 26')
+  const paint = (value: string) => value
+  const colors = { text: paint, diffAdded: paint, diffRemoved: paint, diffAddedBg: paint, diffRemovedBg: paint, diffMeta: paint }
+  for (const width of [1, 4, 20, 80]) for (const row of paintDiffRows(ops, width, helpers, colors)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+  const start = [...before]
+  start[0] = 'new first line'
+  start[30] = 'new last hunk'
+  expect(paintDiffRows(alignDiffLines(before.join('\n'), start.join('\n')), 80, helpers)[0]).toBe('@@ -1,4 +1,4 @@')
+})

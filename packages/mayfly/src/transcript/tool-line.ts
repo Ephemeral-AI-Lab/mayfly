@@ -9,6 +9,7 @@
  * @module @ephemeral-ai/mayfly/transcript/tool-line
  */
 
+import { treeBranch } from '../core/glyphs.ts'
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate, type TranscriptToolModel } from '../frontend/index.ts'
 import { agentCallLabel } from './agent-presentation.ts'
@@ -160,7 +161,7 @@ export class ToolLineComponent implements MayflyComponent {
     const web = entry.web
     if (web?.kind === 'search') {
       web.sources.forEach((source, index) => {
-        const branch = index === web.sources.length - 1 ? '└─' : '├─'
+        const branch = treeBranch(index === web.sources.length - 1, this.components.asciiGlyphs === true)
         const title = source.title === undefined ? '' : `${clean(source.title)} — `
         rows.push(`  ${branch} ${title}${colors.muted(clean(source.url))}`)
       })

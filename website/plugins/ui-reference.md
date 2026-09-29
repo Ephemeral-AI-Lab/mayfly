@@ -36,7 +36,7 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
   submit/cancel id 在同一棵交互树中不能产生冲突。Tab/list item id 至少在所属
   节点内唯一；作为 control 的 id 不能为空。
 - `tone` 是语义颜色，不是色号：
-  `default | muted | accent | success | warning | danger`。
+  `default | muted | primary | accent | user | success | warning | danger | shell`（`shell` 用于 shell 输入状态）。
 - `emphasis` 是 `normal | strong`；省略时按普通文本处理。
 
 下面的“默认”描述 `0.1.2-rc.1` 当前 Mayfly TUI。wire contract 只承诺字段语义，
@@ -73,9 +73,9 @@ ui.text(content: string, options?: { tone?: MayflyTone, overflow?: 'wrap' | 'tru
 ui.text('Connection lost', { tone: 'danger' })
 ```
 
-六种 tone 的完整对照：
+通用 tone 的对照：
 
-![`text` 的全部 tone](/shots/text-tones.svg)
+![`text` 的通用 tone](/shots/text-tones.svg)
 
 *`default`、`muted`、`accent`、`success`、`warning`、`danger`（宽度 56）。*
 
@@ -539,6 +539,7 @@ ui.tabs({
   id: string
   activeId: string
   mode?: 'tabs' | 'wizard'
+  orientation?: 'horizontal' | 'vertical'
   items: readonly {
     id: string
     label: string
@@ -596,6 +597,9 @@ ui.stack.column([
 ])
 ```
 
+`orientation: 'vertical'` 使用左侧标签列；窄屏时 core 将标签放到页面上方。
+方向键在本地切换页面，不执行领域写入。
+
 ### `list`
 
 ![`list` 节点渲染效果](/shots/list.svg)
@@ -607,6 +611,7 @@ ui.list({
   id: string
   mode?: 'single' | 'multiple'
   role: 'browse' | 'choose'
+  acceptVerb?: 'open' | 'choose'
   selectedIds: readonly string[]
   items: readonly MayflyListItem[]
   filter?: string
@@ -630,11 +635,22 @@ type MayflyListItem = {
   disabledReason?: string
   parentId?: string
   searchText?: string
-  segment?: MayflyListSegment
+  segment?: {
+    label?: string
+    options: readonly { id: string, label: string, disabled?: boolean }[]
+    selectedId?: string
+    inheritedId?: string
+  }
   unavailableActions?: Readonly<Record<string, string>>
   confirm?: string | MayflyConfirmation
 }
 ```
+
+`acceptVerb` 仅覆盖提示用词，不改变选择语义。`inheritedId` 表示未固定的行内选项；
+Delete 恢复继承，提交时省略 `segmentId`。宽度足够时选项条放在该行，窄屏使用
+预留的底部行，焦点移动时保持高度稳定。
+
+![含继承力度的模型选择器](/shots/app-model.svg)
 
 `role: 'browse'` 用于打开或检查条目，`role: 'choose'` 用于提交选择。`mode` 默认为
 `single`。single mode 最多有一个 `selectedIds`；所有 selected id
@@ -852,6 +868,9 @@ ui.form({
 
 ### `actions`
 
+`reveal: 'focus'` 仅在操作组获得焦点时显示该行，仍可通过 Tab/Shift+Tab 到达。
+等待中的操作显示耗时，未提交表单在操作区显示未保存标记。
+
 ![`actions` 节点渲染效果](/shots/actions.svg)
 
 *primary、secondary 与带 confirm 的 danger 三种 intent（宽度 64）。*
@@ -859,6 +878,7 @@ ui.form({
 ```ts
 ui.actions({
   id: string
+  reveal?: 'always' | 'focus'
   items: readonly {
     id: string
     label: string
@@ -1109,8 +1129,11 @@ onEvent: {
 
 | 通道 | 事件 | 用途 |
 | --- | --- | --- |
-| `observe` | `value-change`、`selection-toggle`、`tab-change` | 编辑事实与异步校验；不能发布、导航或关闭 |
+| `observe` | `value-change`、`selection-toggle`、`focus-change`、`tab-change` | 编辑事实与异步校验；不能发布、导航或关闭 |
 | `action` | `activate`、`selection-accept`、`submit`、`dismiss` | 原生 effect 与明确结算 |
+
+`focus-change` 在列表光标移动时报告 `pagePath`、`controlId`、`itemId`，
+属于只读观察，与确认某行的 action 分离。
 
 `context` 包含 `surfaceId`、当前 `source`、`revision`、唯一 `operationId`、
 `AbortSignal` 与 `report(feedback)`。同字段观察 latest-wins；同 action boundary

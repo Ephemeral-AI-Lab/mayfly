@@ -8,7 +8,7 @@ import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '../app/index.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
-import { interactionTranslator } from './locale.ts'
+import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { sessionModeSnapshot } from './mode-commands.ts'
 
 export const name = 'mayfly-status-mode'
@@ -21,18 +21,19 @@ export function apply(ctx: Context): void {
     const agent = ctx.mayflyCurrentAgent.current()
     const state = agent === null ? undefined : sessionModeSnapshot(ctx, agent)
     const plan: MayflyStatusNode | null = state?.plan?.active === true || state?.plan?.pending === true
-      ? { kind: 'text', content: state.plan.pending ? t('plan…') : t('plan'), tone: 'accent' }
+      ? { kind: 'rich-text', spans: [{ text: state.plan.pending ? t('PLAN…') : t('PLAN'), tone: 'accent', styles: ['strong'] }] }
       : null
     const yolo: MayflyStatusNode | null = state?.yolo === true
-      ? { kind: 'text', content: t('yolo'), tone: 'warning' }
+      ? { kind: 'rich-text', spans: [{ text: t('YOLO'), tone: 'warning', styles: ['strong'] }] }
       : null
-    if (plan === null) return yolo
-    if (yolo === null) return plan
-    return { kind: 'stack', direction: 'row', gap: 1, children: [{ node: plan }, { node: yolo }] }
+    const shell: MayflyStatusNode | null = ctx.get('mayflyInteractionState')?.draft.getStashedInputMode() === 'bash'
+      ? { kind: 'rich-text', spans: [{ text: t('SHELL'), tone: 'shell', styles: ['strong'] }] } : null
+    const chips = [plan, yolo, shell].filter(value => value !== null)
+    return chips.length === 0 ? null : chips.length === 1 ? chips[0]! : { kind: 'stack', direction: 'row', gap: 1, children: chips.map(node => ({ node })) }
   }
   const initial = node()
   let signature = JSON.stringify(initial)
-  const registration = ctx.mayflyStatus.register({ id: 'mayfly.status.mode', priority: 2 }, initial)
+  const registration = ctx.mayflyStatus.register({ id: 'mayfly.status.mode', priority: 1 }, initial)
   // Every current-session event re-reads the modes; only a changed badge
   // republishes (and recompiles the footer).
   const refresh = (): void => {
@@ -42,6 +43,8 @@ export function apply(ctx: Context): void {
     signature = nextSignature
     registration.set(next)
   }
+  ctx.inject(['mayflyInteractionState'], owner => { owner.effect(() => owner.mayflyInteractionState.draft.subscribe(refresh)); refresh() })
+  ctx.effect(() => observeInteractionLocale(ctx, refresh))
   const offAgent = ctx.mayflyCurrentAgent.subscribe(refresh)
   const offSession = ctx.on('session/event', (session) => {
     if (session === ctx.mayflyCurrentAgent.current()?.session) refresh()

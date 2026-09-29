@@ -6,9 +6,10 @@
  * @module @ephemeral-ai/mayfly/core/ui-patterns
  */
 
-import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyListItem, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
+import { furniture, BRAILLE_SPINNER_FRAMES as BRAILLE_FRAMES, MOON_SPINNER_FRAMES as TIDE_FRAMES, ASCII_FRAMES } from './glyphs.ts'
 import { displayKey } from './key-actions.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
@@ -171,6 +172,7 @@ function paintTone(tone: MayflyTone | undefined, value: string, colors: MayflySe
     case 'user': return colors.roleUser(value)
     case 'success': return colors.success(value)
     case 'warning': return colors.warning(value)
+    case 'shell': return colors.shellMode(value)
     case 'danger': return colors.error(value)
     default: return colors.text(value)
   }
@@ -208,7 +210,7 @@ function compactTokens(tokens: readonly { readonly value: string, readonly focus
   return fit(`${kept.join(' ')}${hidden === 0 ? '' : ` +${String(hidden)}`}`, available)
 }
 
-export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
+export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors, ascii = false): string[] {
   const available = safeWidth(width)
   const chrome = node.chrome ?? 'none'
   const title = node.title === undefined ? '' : sanitizePluginText(node.title).replace(/[\r\n]+/gu, ' ')
@@ -216,15 +218,15 @@ export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors
   if (chrome === 'none') {
     if (title.length > 0) rows.push(fit(colors.textStrong(title), available))
   } else {
-    const pair = chrome === 'lane' ? ['─', '─'] : chrome === 'surface' ? ['┌', '┐'] : ['╭', '╮']
+    const pair = (chrome === 'lane' ? ['─', '─'] : ['╭', '╮']).map(value => furniture(value, ascii))
     const paint = chrome === 'overlay' ? colors.borderFocus : chrome === 'lane' ? colors.muted : colors.border
     if (available === 1) rows.push(paint(pair[0]!))
-    else if (title.length === 0 || available < 6) rows.push(paint(`${pair[0]}${'─'.repeat(available - 2)}${pair[1]}`))
+    else if (title.length === 0 || available < 6) rows.push(paint(`${pair[0]}${furniture('─', ascii).repeat(available - 2)}${pair[1]}`))
     else {
       const titleBudget = available - 5
       const fittedTitle = sliceByColumn(title, 0, titleBudget, true)
       const heading = `${pair[0]} ${fittedTitle} `
-      const fill = '─'.repeat(Math.max(1, available - visibleWidth(heading) - 1))
+      const fill = furniture('─', ascii).repeat(Math.max(1, available - visibleWidth(heading) - 1))
       rows.push(paint(`${heading}${fill}${pair[1]}`))
     }
   }
@@ -235,13 +237,13 @@ export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors
   return rows
 }
 
-export function renderSurfaceTail(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
+export function renderSurfaceTail(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors, ascii = false): string[] {
   const chrome = node.chrome ?? 'none'
   if (chrome === 'none' || chrome === 'lane') return []
   const available = safeWidth(width)
-  const pair = chrome === 'surface' ? ['└', '┘'] : ['╰', '╯']
+  const pair = ['╰', '╯'].map(value => furniture(value, ascii))
   const paint = chrome === 'surface' ? colors.border : colors.borderFocus
-  return [fit(paint(`${pair[0]}${'─'.repeat(Math.max(0, available - 2))}${available > 1 ? pair[1] : ''}`), available)]
+  return [fit(paint(`${pair[0]}${furniture('─', ascii).repeat(Math.max(0, available - 2))}${available > 1 ? pair[1] : ''}`), available)]
 }
 
 export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
@@ -253,11 +255,20 @@ export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, c
     const content = item.disabled === true ? colors.muted(label) : active ? colors.primary(label) : colors.text(label)
     return { value: `${focused ? focus.marker : ' '}${content}`, focused, active }
   })
-  return [compactTokens(tokens, width)]
+  return node.orientation === 'vertical' ? tokens.map(token => fit(token.value, width)) : [compactTokens(tokens, width)]
+}
+
+/** Inline strips retain the row label and active effort before optional detail. */
+export function inlineSegmentFits(item: MayflyListItem, selectedId: string | undefined, width: number): boolean {
+  const segment = item.segment
+  if (segment === undefined || width < 40) return false
+  const effective = selectedId ?? segment.inheritedId
+  const active = segment.options.find(option => option.id === effective)?.label ?? 'default'
+  return visibleWidth(item.label) + (item.badge === undefined ? 0 : visibleWidth(item.badge) + 3) + visibleWidth(active) + 10 <= width
 }
 
 /** Render list rows; `numberFrom` is the visible position of the first row so numbers stay stable while the window scrolls. */
-export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0): string[] {
+export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0, segmentIds?: ReadonlyMap<string, string | undefined>, ascii = false, translate: MayflyTranslate = key => key): string[] {
   const available = safeWidth(width)
   const rows: { readonly value: string, readonly itemId?: string }[] = []
   if (node.filter !== undefined) rows.push({ value: fit(colors.textMuted(`/ ${node.filter}`), available) })
@@ -272,7 +283,7 @@ export function renderList(node: ListNode, width: number, height: number, focus:
     const focused = focus.focused && focus.key === item.id
     const enabledFocus = focused && item.disabled !== true
     const marker = enabledFocus ? focus.marker : ' '
-    const pointerGlyph = enabledFocus ? '→' : selected ? '●' : node.mode === 'multiple' ? '○' : ' '
+    const pointerGlyph = furniture(node.mode === 'multiple' ? `${enabledFocus ? '→' : ' '} ${selected ? '[x]' : '[ ]'}` : enabledFocus ? '→' : selected ? '✓' : ' ', ascii)
     const position = numberFrom + ordinal
     const number = numbered && position < 9 ? `${String(position + 1)}. ` : ''
     const detail = available > 40 ? paintListDetail(item.disabled === true && item.detail === undefined && item.detailSpans === undefined && item.disabledReason !== undefined ? { ...item, detail: item.disabledReason } : item, colors) : ''
@@ -285,7 +296,15 @@ export function renderList(node: ListNode, width: number, height: number, focus:
       const focusedRow = item.detailSpans === undefined
         ? colors.primary(`${marker}${pointerGlyph} ${number}${item.label}${badge}${item.detail === undefined || available <= 40 ? '' : ` — ${item.detail}`}`)
         : `${colors.primary(`${marker}${pointerGlyph} ${number}${item.label}`)}${colors.text(badge)}${detail}`
-      rows.push({ value: colors.selectedBg(pad(focusedRow, available)), itemId: item.id })
+      const segment = item.segment
+      const selectedId = segmentIds?.has(item.id) === true ? segmentIds.get(item.id) : segment?.selectedId
+      const { label: _label, ...inlineSegment } = segment ?? { options: [] }
+      const labelWidth = visibleWidth(`${marker}${pointerGlyph} ${number}${item.label}${badge}`)
+      const strip = segment === undefined ? '' : renderListSegment(inlineSegment, selectedId, Math.max(1, available - labelWidth - 2), colors, ascii, translate).trim()
+      const stripWidth = visibleWidth(strip)
+      const inline = inlineSegmentFits(item, selectedId, available)
+      const value = inline ? `${pad(fit(focusedRow, available - stripWidth - 2), available - stripWidth - 2)}  ${strip}` : pad(focusedRow, available)
+      rows.push({ value: colors.selectedBg(value), itemId: item.id })
       continue
     }
     const pointer = selected ? colors.primary(pointerGlyph) : colors.textMuted(pointerGlyph)
@@ -299,16 +318,17 @@ export function renderList(node: ListNode, width: number, height: number, focus:
 }
 
 /** The focused row's horizontal option strip; the selected option stays visible when the rest truncate. */
-export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string {
+export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors, ascii = false, translate: MayflyTranslate = key => key): string {
   const available = safeWidth(width)
-  const tokens = segment.options.map(option => {
-    const active = option.id === selectedId
-    const text = active ? `‹ ${option.label} ›` : option.label
+  const effectiveId = selectedId ?? segment.inheritedId
+  const tokens = [...(effectiveId === undefined ? [{ id: undefined, value: colors.primary(`${furniture('‹', ascii)} ${translate('default')} ${furniture('›', ascii)}`) }] : []), ...segment.options.map(option => {
+    const active = option.id === effectiveId
+    const text = active ? `${furniture('‹', ascii)} ${option.label}${selectedId === undefined && available >= 36 ? ` (${translate('default')})` : ''} ${furniture('›', ascii)}` : option.label
     return { id: option.id, value: option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.textMuted(text) }
-  })
+  })]
   /** Options ahead of the active one keep their slots while they fit; the rest collapse into +N. */
   const narrow = (prefix: string): { readonly body: string, readonly hidden: number } => {
-    const activeIndex = tokens.findIndex(token => token.id === selectedId)
+    const activeIndex = tokens.findIndex(token => token.id === effectiveId)
     const active = activeIndex < 0 ? undefined : tokens[activeIndex]!.value
     const activeWidth = active === undefined ? 0 : visibleWidth(active)
     const kept: string[] = []
@@ -391,6 +411,7 @@ function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, co
 }
 
 export function renderActions(node: ActionsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors, vertical: boolean): string[] {
+  if (node.reveal === 'focus' && (!focus.focused || !node.items.some(item => item.id === focus.key))) return renderActions({ ...node, reveal: 'always' }, width, focus, colors, vertical).map(() => '')
   const tokens = node.items.map(item => actionToken(item, focus, colors))
   if (tokens.length === 0) return []
   return vertical ? tokens.map(token => fit(token.value, width)) : [compactTokens(tokens, width)]
@@ -415,11 +436,9 @@ function formatElapsedMs(ms: number): string {
   return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
 }
 
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
-const TIDE_FRAMES = ['≈', '≋', '∿', '≋'] as const
 
-export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0): string[] {
-  const frames = node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
+export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0, ascii = false): string[] {
+  const frames = ascii ? ASCII_FRAMES : node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
   const indicator = frames[frame % frames.length]!
   const elapsed = node.elapsedMs === undefined ? '' : ` ${formatElapsedMs(node.elapsedMs)}`
   return [fit(`${colors.primary(indicator)} ${colors.text(node.message)}${colors.textMuted(elapsed)}`, width)]
@@ -432,7 +451,7 @@ export function renderEmpty(node: EmptyNode, width: number, colors: MayflySemant
   return rows
 }
 
-export function renderProgress(node: ProgressNode, width: number, colors: MayflySemanticColors): string[] {
+export function renderProgress(node: ProgressNode, width: number, colors: MayflySemanticColors, ascii = false): string[] {
   const available = safeWidth(width)
   const counter = `${String(node.value)}/${String(node.max)}`
   const counterWidth = visibleWidth(counter)
@@ -444,7 +463,7 @@ export function renderProgress(node: ProgressNode, width: number, colors: Mayfly
   const eighths = Math.round((node.value / node.max) * cells * 8)
   const bar = Array.from({ length: cells }, (_, index) => {
     const remaining = eighths - index * 8
-    return remaining >= 8 ? '█' : remaining <= 0 ? '░' : PARTIAL_BLOCKS[remaining]!
+    return ascii ? remaining >= 4 ? '#' : '.' : remaining >= 8 ? '█' : remaining <= 0 ? '░' : PARTIAL_BLOCKS[remaining]!
   }).join('')
   return [fit(`${showLabel ? colors.text(label) : ''}${colors.primary(bar)}${showCounter ? ` ${colors.textMuted(counter)}` : ''}`, available)]
 }

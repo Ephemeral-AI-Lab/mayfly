@@ -18,6 +18,7 @@ const TONE_COLOR: Readonly<Record<MayflyTone, Color>> = {
   success: 'ansiGreen',
   warning: 'ansiYellow',
   danger: 'ansiRed',
+  shell: 'ansiMagenta',
 }
 const COLOR_CODE: Readonly<Record<Color, number>> = {
   ansiBlack: 30, ansiRed: 31, ansiGreen: 32, ansiYellow: 33,

@@ -8,6 +8,7 @@
  * @module @ephemeral-ai/mayfly/transcript/command-group
  */
 
+import { treeBranch, treeContinuation } from '../core/glyphs.ts'
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { interpolateLocaleMessage, type CommandCallModel, type MayflyTranslate, type TranscriptCommandGroupModel } from '../frontend/index.ts'
 import { moreRowsHint } from './hints.ts'
@@ -116,8 +117,8 @@ export class CommandGroupComponent implements MayflyComponent {
     const commands = this.model.commands
     commands.forEach((call, index) => {
       const last = index === commands.length - 1
-      const branch = last ? '└─' : '├─'
-      const continuation = last ? '   ' : '│  '
+      const branch = treeBranch(last, this.components.asciiGlyphs === true)
+      const continuation = treeContinuation(last, this.components.asciiGlyphs === true)
       rows.push(this.renderCommandRow(call, branch, deps, cut))
       if (this.expanded && call.previewLines !== undefined) {
         for (const line of call.previewLines) {

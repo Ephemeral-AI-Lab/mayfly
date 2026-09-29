@@ -1,17 +1,29 @@
 # Status bar
 
-The footer is a single row. Every built-in and third-party entry registers on
-the same `mayflyStatus` service with a renderer-neutral `MayflyStatusNode`;
-an entry may still declare `row: 2` to take a second row of its own.
+The footer has two rows: state above, contextual keys and conversation scope
+below. Entries use the same renderer-neutral `mayflyStatus` service.
 
-The session name is not a footer entry — it sits at the right end of the
-editor's top border. Bash mode keeps its left-edge `! shell mode` label.
+Open `/settings`, select `mayfly`, and change **Status key hints** (`keyHints`):
+
+The native Save action writes the active profile configuration and updates the
+hints immediately. With Harness 0.1.7 this is the profile's `cordis.patch.yml`;
+legacy `settings.yaml` is a startup migration input.
+
+| Value | Behavior |
+| --- | --- |
+| `full` (default) | Show contextual keys such as `Ctrl+O expand`, `Shift+Tab exit plan`, `Alt+M model`, and `/help keys` |
+| `minimal` | Keep interrupt/take-back, disclosure, and conversation switching cues |
+| `off` | Hide the built-in second row and empty-editor teaching text |
+
+Changes apply immediately. Capturing panels provide their own keyboard hints.
+The editor's border carries the session title; input and session modes appear
+as separate bold `PLAN`, `PLAN…`, `YOLO`, and `SHELL` chips on row 1.
 
 | Entry | Priority | Content |
 | --- | --- | --- |
-| conversation-view | 0 (center) | While a side conversation is open, show the displayed kind (MAIN, BTW, SUBAGENT) and label, its `F7` counterpart, access, how many more are open, and `F7 switch · F8 close` |
+| scope / switch | 0 / 1 (row 2) | Conversation identity on the left; `F7 switch` and `F8 close` for BTW or `F8 detach` for subagents on the right |
 | basic | 0 | current model; an explicitly selected thinking effort appends ` Effort` (e.g. `step-5-preview Max`), the provider default adds none |
-| mode | 2 | plan/yolo state |
+| mode | 1 | Independent plan, permission, and shell mode chips |
 | goal | 2 | current goal as `Goal <phase> · <rounds>/<max> · <activation>` (phase-colored; hidden with no goal) |
 | schedule | 2 | reminder count (hidden with no reminders) |
 | jobs | 3 | `⏵ N jobs` — live (running/stopping) background-job count; hidden when none |
@@ -20,7 +32,7 @@ editor's top border. Bash mode keeps its left-edge `! shell mode` label.
 | git | 10 | branch and change summary |
 
 Entries are admitted in priority/id order across the whole row when space is
-short: an entry takes its full width when it fits, an entry declared
+short. Core reserves space for the highest-priority mode and switching entries. An entry takes its full width when it fits, an entry declared
 `overflow: 'hide'` drops out instead of truncating, and once the row is full
 later entries are dropped. Admitted entries then lay out in their declared
 left/center/right band.
@@ -40,3 +52,5 @@ export function apply(ctx: Context): void {
 ```
 
 Registration follows the Fiber. See [plugin status entries](/en/plugins/status).
+
+![Status hint setting](/shots/app-settings.svg)

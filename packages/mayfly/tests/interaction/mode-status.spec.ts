@@ -55,19 +55,19 @@ async function mount(initial: PlanState = { active: false }, withPlan = true) {
 }
 
 describe('mayfly-status-mode', () => {
-  it('registers native normal, plan, pending, and yolo states at priority 2', async () => {
+  it('registers native normal, plan, pending, and yolo states at priority 1', async () => {
     const normal = await mount()
-    expect(normal.entry()).toMatchObject({ definition: { priority: 2 }, node: null })
+    expect(normal.entry()).toMatchObject({ definition: { priority: 1 }, node: null })
 
     const active = await mount({ active: true })
-    expect(active.entry()).toMatchObject({ node: { kind: 'text', content: 'plan', tone: 'accent' } })
+    expect(active.entry()).toMatchObject({ node: { kind: 'rich-text', spans: [{ text: 'PLAN', tone: 'accent', styles: ['strong'] }] } })
 
     const pending = await mount({ active: true, pending: true })
-    expect(pending.entry()?.node).toMatchObject({ content: 'plan…' })
+    expect(pending.entry()?.node).toMatchObject({ spans: [{ text: 'PLAN…' }] })
 
     normal.permissions.set(normal.agent, 'danger-full-access')
     normal.agent.session.append('permission/preset', { preset: 'danger-full-access' })
-    expect(normal.entry()).toMatchObject({ node: { content: 'yolo', tone: 'warning' } })
+    expect(normal.entry()).toMatchObject({ node: { spans: [{ text: 'YOLO', tone: 'warning' }] } })
   })
 
   it.each([false, true])('renders both badges with pending=%s and preserves yolo when planning ends', async pending => {
@@ -76,8 +76,8 @@ describe('mayfly-status-mode', () => {
     world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
     const node = world.entry()!.node!
     expect(node).toEqual({ kind: 'stack', direction: 'row', gap: 1, children: [
-      { node: { kind: 'text', content: pending ? 'plan…' : 'plan', tone: 'accent' } },
-      { node: { kind: 'text', content: 'yolo', tone: 'warning' } },
+      { node: { kind: 'rich-text', spans: [{ text: pending ? 'PLAN…' : 'PLAN', tone: 'accent', styles: ['strong'] }] } },
+      { node: { kind: 'rich-text', spans: [{ text: 'YOLO', tone: 'warning', styles: ['strong'] }] } },
     ] })
     const identity = (text: string) => text
     const compiled = compileMayflyStatusNode(node, {
@@ -88,15 +88,15 @@ describe('mayfly-status-mode', () => {
     })
     expect(compiled.ok).toBe(true)
     if (!compiled.ok) throw new Error('mode status compilation failed')
-    expect(stripVTControlCharacters(compiled.value.component.render(20).join('')).trim()).toBe(pending ? 'plan… yolo' : 'plan yolo')
+    expect(stripVTControlCharacters(compiled.value.component.render(20).join('')).trim()).toBe(pending ? 'PLAN… YOLO' : 'PLAN YOLO')
     for (const width of SCAN_WIDTHS) expectLinesFit('plan-yolo-status', compiled.value.component.render(width), width)
 
     world.states.set(world.agent, { active: false, pending: true })
     world.agent.session.append('plan/mode', { active: false })
-    expect(world.entry()?.node).toMatchObject({ children: [{ node: { content: 'plan…' } }, { node: { content: 'yolo' } }] })
+    expect(world.entry()?.node).toMatchObject({ children: [{ node: { spans: [{ text: 'PLAN…' }] } }, { node: { spans: [{ text: 'YOLO' }] } }] })
     world.states.set(world.agent, { active: false })
     world.agent.session.append('plan/mode', { active: false })
-    expect(world.entry()?.node).toEqual({ kind: 'text', content: 'yolo', tone: 'warning' })
+    expect(world.entry()?.node).toEqual({ kind: 'rich-text', spans: [{ text: 'YOLO', tone: 'warning', styles: ['strong'] }] })
   })
 
   it('refreshes from the current Session event stream', async () => {
@@ -107,7 +107,7 @@ describe('mayfly-status-mode', () => {
     expect(world.entry()?.node).toEqual(revision)
     world.states.set(world.agent, { active: true })
     world.agent.session.append('plan/mode', { active: true })
-    expect(world.entry()?.node).toMatchObject({ content: 'plan' })
+    expect(world.entry()?.node).toMatchObject({ spans: [{ text: 'PLAN' }] })
   })
 
   it('follows exact current-Agent changes', async () => {
@@ -120,7 +120,7 @@ describe('mayfly-status-mode', () => {
 
     world.states.set(next, { active: true })
     next.session.append('plan/mode', { active: true })
-    expect(world.entry()?.node).toMatchObject({ content: 'plan' })
+    expect(world.entry()?.node).toMatchObject({ spans: [{ text: 'PLAN' }] })
   })
 
   it('hides with no current Agent and unregisters on unload', async () => {
@@ -137,6 +137,19 @@ describe('mayfly-status-mode', () => {
     expect(world.entry()).toMatchObject({ node: null })
     world.permissions.set(world.agent, 'danger-full-access')
     world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
-    expect(world.entry()?.node).toEqual({ kind: 'text', content: 'yolo', tone: 'warning' })
+    expect(world.entry()?.node).toEqual({ kind: 'rich-text', spans: [{ text: 'YOLO', tone: 'warning', styles: ['strong'] }] })
   })
+})
+
+
+it('publishes independent shell and plan chips when input mode changes', async () => {
+  const world = await mount({ active: true })
+  world.ctx.mayflyInteractionState.draft.stashInputMode('bash')
+  expect(world.entry()?.node).toMatchObject({ children: [
+    { node: { spans: [{ text: 'PLAN', tone: 'accent' }] } },
+    { node: { spans: [{ text: 'SHELL', tone: 'shell' }] } },
+  ] })
+  world.ctx.mayflyInteractionState.draft.stashInputMode('prompt')
+  expect(JSON.stringify(world.entry()?.node)).not.toContain('SHELL')
+  await world.fiber.dispose()
 })

@@ -37,6 +37,8 @@ if (!existsSync(fileURLToPath(uiLibUrl))) {
 const { ui, defineMayflyComponent } = await import(uiLibUrl.href)
 
 const check = process.argv.includes('--check')
+delete process.env.NO_COLOR
+
 const outDir = new URL('../../website/public/shots/', import.meta.url)
 mkdirSync(outDir, { recursive: true })
 
@@ -78,8 +80,10 @@ const appResult = spawnSync(process.execPath, [fileURLToPath(vitestEntry), 'run'
   env: {
     ...process.env,
     MAYFLY_SHOTS: check ? 'check' : 'sync',
-    LANG: 'C',
-    LC_ALL: 'C',
+    TERM: 'xterm-256color',
+    LANG: 'C.UTF-8',
+    LC_ALL: 'C.UTF-8',
+    NO_COLOR: '',
     TZ: 'UTC',
   },
   stdio: 'inherit',

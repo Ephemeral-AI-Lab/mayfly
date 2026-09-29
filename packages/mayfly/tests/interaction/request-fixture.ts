@@ -58,6 +58,8 @@ export function renderRequest(
   viewport = { columns: 80, rows: 24 },
   runtime = new MayflyUiSurfaceRuntime(model),
 ) {
+  // Ordinary interaction tests begin after arming; guard tests present the model earlier explicitly.
+  model.present(Date.now() - (model.registration.definition.armMs ?? 0))
   const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, {
     surfaceRuntime: runtime, components, colors, screenMode: 'alternate', getViewport: () => viewport,
     emit: event => model.emit(event), onUnhandledEscape: () => model.requestClose(),

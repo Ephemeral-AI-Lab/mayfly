@@ -43,6 +43,24 @@ afterEach(() => {
 })
 
 describe('CompactionRowComponent', () => {
+  it.each([true, false])('refreshes a standalone transcript compaction with requestRender=%s', withCallback => {
+    const { timers, tick, cleared } = fakeTimers()
+    setCompactionTimers(timers)
+    let renders = 0
+    const view = createTranscriptModel('standalone', [model({ state: 'running', endedAt: undefined })], true)
+    const component = new TranscriptModelComponent(() => view, {
+      colors, components: fakeMayflyComponents(), viewportRows: () => 24,
+      images: () => ({}), liveTurnHeader: true,
+      ...(withCallback ? { requestRender: () => { renders += 1 } } : {}),
+    })
+    const before = component.render(80).join('\n')
+    tick()
+    expect(component.render(80).join('\n')).not.toBe(before)
+    expect(renders).toBe(withCallback ? 1 : 0)
+    component.dispose()
+    expect(cleared()).toBeGreaterThan(0)
+  })
+
   it('renders the running label, drives ticks through injected timers, and stands down on settle', () => {
     const { timers, tick, cleared } = fakeTimers()
     setCompactionTimers(timers)
@@ -164,9 +182,9 @@ describe('CompactionRowComponent', () => {
     })
     try {
       expect(component.render(80).map(strip).join('\n')).toContain('compacting context…')
-      // The mounted live row nudges a repaint on every tick.
+      // The main transcript leaves live animation to the activity pane.
       tick()
-      expect(repaints).toBe(1)
+      expect(repaints).toBe(0)
       expect(component.render(80).map(strip).join('\n')).toContain('compacting context…')
       // A new revision on the same entry id flows through the update hook.
       transcript = createTranscriptModel('cmp-flow', [entry({ state: 'ok', updatedSeq: 2, shadowedCount: 2, shadowedTokens: 2_048 })], false, 0)
@@ -200,4 +218,27 @@ describe('CompactionRowComponent', () => {
       flat.dispose()
     }
   })
+})
+
+
+it('live-applies reduced motion while retaining elapsed updates and never restarts after disposal', () => {
+  const intervals: number[] = []
+  let callback: (() => void) | undefined
+  setCompactionTimers({ setInterval: (tick, ms) => { callback = tick; intervals.push(ms); return tick as never }, clearInterval: () => {} })
+  const components = { ...fakeMayflyComponents(), reducedMotion: true }
+  let repaints = 0
+  const component = new CompactionRowComponent(model({ state: 'running', endedAt: undefined }), colors, components, () => { repaints++ })
+  expect(intervals).toEqual([1000])
+  const first = component.render(80)[0]!.slice(0, 1)
+  callback?.()
+  expect(component.render(80)[0]!.slice(0, 1)).toBe(first)
+  components.reducedMotion = false
+  component.render(80)
+  expect(intervals).toEqual([1000, 80])
+  component.dispose()
+  const count = repaints
+  callback?.()
+  component.render(80)
+  expect(repaints).toBe(count)
+  expect(intervals).toEqual([1000, 80])
 })

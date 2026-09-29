@@ -92,9 +92,9 @@ describe('ThinkingComponent', () => {
     const now = vi.spyOn(Date, 'now')
     const component = new ThinkingComponent(thinkingItem({ text: SIX_WORDS, streaming: true }), COLORS, fakeMayflyComponents())
     expect(component.render(5)).toEqual(['', '✻ \x1b[3ml4\x1b[23m', '  \x1b[3ml5\x1b[23m'])
-    // Marker and body are muted; the body is italic.
+    // The active marker uses primary; the body is italic.
     expect(new ThinkingComponent(thinkingItem({ text: 'x', streaming: true }), tagged(), fakeMayflyComponents()).render(40))
-      .toEqual(['', '[M]✻ [/M]\x1b[3m[M]x[/M]\x1b[23m'])
+      .toEqual(['', '[P]✻ [/P]\x1b[3m[M]x[/M]\x1b[23m'])
     // Nothing reads the clock: the activity row owns elapsed time.
     expect(now).not.toHaveBeenCalled()
     now.mockRestore()
@@ -107,7 +107,7 @@ describe('ThinkingComponent', () => {
 
   it('settles into one row with its duration, previewing the first line when the policy allows', () => {
     const component = new ThinkingComponent(thinkingItem({ text: SIX_WORDS, durationMs: 4_200 }), tagged(), fakeMayflyComponents())
-    expect(component.render(120)).toEqual(['', '[M]✻ [/M][M]Thought for 4s · [/M]\x1b[3m[M]l0 l1 l2 l3 l4 l5[/M]\x1b[23m[T] · ctrl+o to expand[/T]'])
+    expect(component.render(120)).toEqual(['', '✻ [M]Thought for 4s · [/M]\x1b[3m[M]l0 l1 l2 l3 l4 l5[/M]\x1b[23m[T] · ctrl+o to expand[/T]'])
     // Without a recorded span the duration reads as a while; sub-second spans round up.
     expect(new ThinkingComponent(thinkingItem({ text: 'x' }), COLORS, fakeMayflyComponents()).render(80)[1]).toBe('✻ Thought for a while · \x1b[3mx\x1b[23m · ctrl+o to expand')
     expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 200 }), COLORS, fakeMayflyComponents()).render(80)[1]).toContain('Thought for 1s')
@@ -120,12 +120,12 @@ describe('ThinkingComponent', () => {
     expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 2_000 }), COLORS, fakeMayflyComponents(), () => false).render(20)).toEqual(['', '✻ Thought for 2s'])
     // Ctrl-O opens the complete body under the title.
     component.setExpanded(true)
-    expect(component.render(40)).toEqual(['', '[M]✻ [/M][M]Thought for 4s[/M]', '  \x1b[3m[M]l0 l1 l2 l3 l4 l5[/M]\x1b[23m'])
+    expect(component.render(40)).toEqual(['', '✻ [M]Thought for 4s[/M]', '  \x1b[3m[M]l0 l1 l2 l3 l4 l5[/M]\x1b[23m'])
   })
 
   it('localizes the settled title', () => {
     const t = (key: string, values?: Record<string, string | number>) => interpolateLocaleMessage(TRANSCRIPT_LOCALE.zh[key] ?? key, values)
-    expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 3_000 }), COLORS, fakeMayflyComponents(), () => false, t).render(40)[1]).toBe('✻ 已思考 3s · 按 Ctrl-O 展开')
+    expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 3_000 }), COLORS, fakeMayflyComponents(), () => false, t).render(40)[1]).toBe('✻ 已思考 3s · Ctrl+O 展开')
   })
 
   it('renders zero rows for blank reasoning, live or finalized', () => {

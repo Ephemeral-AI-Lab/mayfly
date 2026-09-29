@@ -11,6 +11,7 @@
  * @module mayfly-core/chrome
  */
 
+import { furniture } from './glyphs.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
 import { OVERFLOW_ELLIPSIS } from './width.ts'
 
@@ -133,7 +134,7 @@ function truncateHint(hint: string, maxLen: number): string {
  */
 export function injectGhostHint(
   line: string,
-  hint: string,
+  hint: string | readonly string[],
   text: string,
   width: number,
   paint: (text: string) => string,
@@ -147,7 +148,9 @@ export function injectGhostHint(
   }
   const contentWidth = Math.max(1, width - EDITOR_LEFT_PADDING * 2)
   const available = contentWidth - visibleWidth(text) - (cursorPresent ? 1 : 0)
-  const trimmed = truncateHint(hint, available)
+  const variants = typeof hint === 'string' ? [hint] : hint
+  const selected = variants.find(value => visibleWidth(value) <= available) ?? variants.at(-1) ?? ''
+  const trimmed = truncateHint(selected, available)
   if (trimmed === '') return line
   const insertAt = cursorPresent
     ? cursorIdx + CURSOR_BLOCK.length
@@ -158,6 +161,7 @@ export function injectGhostHint(
 
 /** Options for {@link withSideBorders}. */
 export interface SideBordersOptions {
+  readonly ascii?: boolean
   /** Draw `├┤` top corners instead of `╭╮` (a panel is docked above). */
   readonly connectedAbove?: boolean
   /**
@@ -219,8 +223,8 @@ export function withSideBorders(
   return lines.map(line => {
     const plain = stripSgr(line)
     if (plain.length > 0 && plain[0] === '─') {
-      const leftCorner = seenTop ? '╰' : options.connectedAbove === true ? '├' : '╭'
-      const rightCorner = seenTop ? '╯' : options.connectedAbove === true ? '┤' : '╮'
+      const leftCorner = options.ascii ? '+' : seenTop ? '╰' : options.connectedAbove === true ? '├' : '╭'
+      const rightCorner = options.ascii ? '+' : seenTop ? '╯' : options.connectedAbove === true ? '┤' : '╮'
       const isTop = !seenTop
       seenTop = true
       if (plain.length === 1) return paint(leftCorner)
@@ -235,21 +239,21 @@ export function withSideBorders(
           return (
             paint(leftCorner)
             + (label ?? '')
-            + paint('─'.repeat(middle.length - labelWidth - titleWidth))
-            + (title === undefined ? '' : (options.titlePaint ?? paint)(` ${title} `) + paint('─'))
+            + paint((options.ascii ? '-' : '─').repeat(middle.length - labelWidth - titleWidth))
+            + (title === undefined ? '' : (options.titlePaint ?? paint)(` ${title} `) + paint((options.ascii ? '-' : '─')))
             + paint(rightCorner)
           )
         }
       }
-      return paint(leftCorner + middle + rightCorner)
+      return paint(leftCorner + furniture(middle, options.ascii === true) + rightCorner)
     }
     if (line.length === 0) return line
     // charAt (not indexing): a plain `string` return keeps the impossible
     // `undefined` arm of noUncheckedIndexedAccess out of the branch count.
     const firstCh = line.charAt(0)
     const lastCh = line.charAt(line.length - 1)
-    const head = firstCh === ' ' ? paint('│') : firstCh
-    const tail = line.length > 1 && lastCh === ' ' ? paint('│') : lastCh
+    const head = firstCh === ' ' ? paint(options.ascii ? '|' : '│') : firstCh
+    const tail = line.length > 1 && lastCh === ' ' ? paint(options.ascii ? '|' : '│') : lastCh
     if (line.length === 1) return head
     return head + line.slice(1, -1) + tail
   })

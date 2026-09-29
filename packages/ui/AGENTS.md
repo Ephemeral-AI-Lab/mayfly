@@ -54,3 +54,8 @@ component inference, explicit child boundaries, and rejection of custom kinds.
 Provider tests cover replay, set/replacement, duplicate IDs, cancellation, late
 results, Fiber cleanup, and action admission/publication. Built root/provider
 checks must prove trusted builder snapshots retain identity through publication.
+
+`focus-change` remains an observation and cannot publish or navigate. Overlay
+arm delays are admitted plain numbers; frontend state owns activation deadlines.
+Segment inheritance and action reveal preserve semantic draft ownership and
+keyboard reachability across renderer reload and narrow layouts.

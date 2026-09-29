@@ -7,21 +7,27 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
 
 const contexts: Context[] = []
-afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+afterEach(async () => { vi.restoreAllMocks(); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 async function setup() { const ctx = new Context(); contexts.push(ctx); return requestFixture(ctx) }
-const decision = [{ controlId: 'approval', itemId: 'decision' }]
-const feedback = [{ controlId: 'approval', itemId: 'feedback' }]
+const feedback = [] as const
 
 describe('native approval UI', () => {
-  it('defaults to rejection even with preceding scrollable context and ignores former digit shortcuts', async () => {
+  it('ignores stray grants before arming, preserves the deadline on renderer reload, and defaults to rejection', async () => {
     const bench = await setup()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1000)
     const pending = bench.approve({ reason: 'writes files' })
     const model = bench.model('mayfly.approval.')
+    model.present(1000)
     const renderer = renderRequest(model)
-    expect(renderer.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'reject' })
+    expect(renderer.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'decisions', itemId: 'reject' })
     renderer.input('1')
     renderer.input('2')
+    renderer.input('\r')
     expect(model.disposed).toBe(false)
+    const reload = renderRequest(model)
+    reload.input('2')
+    reload.runtime.dispose()
+    now.mockReturnValue(1300)
     renderer.input('\r')
     await expect(pending).resolves.toBe('rejected')
     expect(model.disposed).toBe(true)
@@ -37,7 +43,7 @@ describe('native approval UI', () => {
     expect(renderer.component.render(80).join('\n')).toContain('Shown reason')
     expect(renderer.component.render(80).join('\n')).not.toContain('raw reason')
     renderer.runtime.dispose()
-    model.invoke('reject', decision)
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['reject'] })
     await expect(pending).resolves.toBe('rejected')
   })
 
@@ -49,7 +55,7 @@ describe('native approval UI', () => {
     const renderer = renderRequest(model)
     expect(renderer.component.render(80).join('\n')).toContain('中文理由')
     renderer.runtime.dispose()
-    model.invoke('reject', decision)
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['reject'] })
     await expect(pending).resolves.toBe('rejected')
   })
 
@@ -61,7 +67,7 @@ describe('native approval UI', () => {
     const renderer = renderRequest(model)
     expect(renderer.component.render(80).join('\n')).toContain('Shown reason')
     renderer.runtime.dispose()
-    model.invoke('reject', decision)
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['reject'] })
     await expect(pending).resolves.toBe('rejected')
 
     // Clearing the implementation value reads back as an absent service.
@@ -72,17 +78,17 @@ describe('native approval UI', () => {
     const secondRenderer = renderRequest(secondModel)
     expect(secondRenderer.component.render(80).join('\n')).toContain('Shown again')
     secondRenderer.runtime.dispose()
-    secondModel.invoke('reject', decision)
+    secondModel.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['reject'] })
     await expect(second).resolves.toBe('rejected')
   })
 
   it('allows once without adding a session allowance and requires an explicit session grant', async () => {
     const bench = await setup()
     const first = bench.approve()
-    bench.model('mayfly.approval.').invoke('allow-once', decision)
+    bench.model('mayfly.approval.').emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['allow-once'] })
     await expect(first).resolves.toBe('allowed-once')
     const second = bench.approve()
-    bench.model('mayfly.approval.').invoke('allow-session', decision)
+    bench.model('mayfly.approval.').emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['allow-session'] })
     await expect(second).resolves.toBe('allowed-once')
     await expect(bench.approve()).resolves.toBe('allowed-once')
     expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
@@ -91,40 +97,26 @@ describe('native approval UI', () => {
     await expect(bench.approve({ signal: aborted.signal })).resolves.toBe('cancelled')
   })
 
-  it('keeps feedback on Back, rejects on the next Escape, and never steers unsubmitted text', async () => {
+  it('retains inline feedback across renderer reload and rejects without steering an unsubmitted draft', async () => {
     const bench = await setup()
     const pending = bench.approve()
     const model = bench.model('mayfly.approval.')
-    model.invoke('feedback', decision)
-    expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('feedback')
-    let renderer = renderRequest(model)
-    renderer.component.render(80)
-    renderer.input('too risky')
-    expect(model.form({ pagePath: feedback, formId: 'feedback-form' })!.fields.reason!.value).toBe('too risky')
-    renderer.input('\x1b')
-    expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('feedback')
-    expect(renderer.runtime.state.editingKey).toBeUndefined()
-    renderer.input('\x1b')
-    expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('decision')
-    expect(model.decisionNode).toBeUndefined()
-    renderer.runtime.dispose()
-    model.invoke('feedback', decision)
-    renderer = renderRequest(model)
-    expect(renderer.component.render(80).join('\n')).toContain('too risky')
-    renderer.input('\x1b')
-    renderer.runtime.dispose()
-    renderer = renderRequest(model)
-    renderer.input('\x1b')
+    model.edit({ pagePath: [], formId: 'feedback-form', fieldId: 'reason' }, 'too risky')
+    const first = renderRequest(model)
+    expect(first.component.render(80).join('\n')).toContain('too risky')
+    first.runtime.dispose()
+    const second = renderRequest(model)
+    expect(second.component.render(80).join('\n')).toContain('too risky')
+    second.input('\x1b')
     await expect(pending).resolves.toBe('rejected')
     expect(bench.steer).not.toHaveBeenCalled()
-    renderer.runtime.dispose()
+    second.runtime.dispose()
   })
 
   it.each(['', '  first line\nsecond line  '])('submits feedback exactly once and preserves text: %j', async reason => {
     const bench = await setup()
     const pending = bench.approve()
     const model = bench.model('mayfly.approval.')
-    model.invoke('feedback', decision)
     model.edit({ pagePath: feedback, formId: 'feedback-form', fieldId: 'reason' }, reason)
     model.invoke('send-feedback', feedback)
     model.invoke('send-feedback', feedback)
@@ -143,12 +135,12 @@ describe('native approval UI', () => {
     const controller = new AbortController()
     const pending = bench.approve({ signal: controller.signal })
     const model = bench.model('mayfly.approval.')
-    model.invoke('allow-session', decision)
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['allow-session'] })
     controller.abort()
     await expect(pending).resolves.toBe('cancelled')
-    model.invoke('allow-session', decision)
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['allow-session'] })
     const next = bench.approve()
-    bench.model('mayfly.approval.').invoke('reject', decision)
+    bench.model('mayfly.approval.').emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['reject'] })
     await expect(next).resolves.toBe('rejected')
   })
 
@@ -161,7 +153,7 @@ describe('native approval UI', () => {
     expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
     abort.abort()
     await expect(skipped).resolves.toBe('cancelled')
-    bench.model('mayfly.approval.').invoke('allow-once', decision)
+    bench.model('mayfly.approval.').emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['allow-once'] })
     await expect(first).resolves.toBe('allowed-once')
     expect(JSON.stringify(bench.model('mayfly.approval.').node)).toContain('Approve read?')
     bench.model('mayfly.approval.').requestClose()
@@ -172,7 +164,7 @@ describe('native approval UI', () => {
     const bench = await setup()
     const first = bench.approve()
     const second = bench.approve()
-    bench.model('mayfly.approval.').invoke('allow-session', decision)
+    bench.model('mayfly.approval.').emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['allow-session'] })
     await expect(first).resolves.toBe('allowed-once')
     await expect(second).resolves.toBe('allowed-once')
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
@@ -191,7 +183,7 @@ describe('native approval UI', () => {
     } else await (mode === 'app-unload' ? bench.app : bench.front).dispose()
     await expect(first).resolves.toBe('cancelled')
     await expect(second).resolves.toBe('cancelled')
-    old.invoke('allow-once', decision)
+    old.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['allow-once'] })
     expect(old.disposed).toBe(true)
   })
 
@@ -199,7 +191,7 @@ describe('native approval UI', () => {
     const bench = await setup()
     await expect(bench.approve({ agent: bench.other })).resolves.toBe('unavailable')
     const first = bench.approve()
-    bench.model('mayfly.approval.').invoke('allow-session', decision)
+    bench.model('mayfly.approval.').emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['allow-session'] })
     await first
     bench.ctx.mayflyConversations.selectPrimary(bench.other)
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
@@ -219,12 +211,11 @@ describe('native approval UI', () => {
     bench.ctx.mayflyLocale.setPreference('en')
     const pending = bench.approve()
     const model = bench.model('mayfly.approval.')
-    model.invoke('feedback', decision)
     model.edit({ pagePath: feedback, formId: 'feedback-form', fieldId: 'reason' }, '草稿')
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
     expect(model.form({ pagePath: feedback, formId: 'feedback-form' })!.fields.reason!.value).toBe('草稿')
-    expect(model.activeTab({ pagePath: [], controlId: 'approval' })).toBe('feedback')
+    expect(model.choice({ pagePath: [], controlId: 'decisions' })?.focusedId).toBe('reject')
     expect(JSON.stringify(model.node)).toContain('拒绝并反馈')
     model.invoke('send-feedback', feedback)
     await expect(pending).resolves.toBe('rejected')
@@ -237,7 +228,7 @@ describe('native approval UI', () => {
     const context = { surfaceId: entry.id, operationId: 'noop', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn() }
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context)).toEqual({ kind: 'completed' })
     expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'other', source: entry.source, forms: [] } }, context)).toEqual({ kind: 'completed' })
-    bench.model('mayfly.approval.').invoke('reject', decision)
+    bench.model('mayfly.approval.').emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['reject'] })
     await expect(pending).resolves.toBe('rejected')
   })
 
@@ -249,7 +240,7 @@ describe('native approval UI', () => {
     const first = bench.approve()
     const queued = bench.approve({ toolName: 'write' })
     changeAt = reads + 4
-    bench.model('mayfly.approval.').invoke('reject', decision)
+    bench.model('mayfly.approval.').emit({ kind: 'selection-accept', pagePath: [], controlId: 'decisions', selectedIds: ['reject'] })
     await expect(first).resolves.toBe('rejected')
     await expect(queued).resolves.toBe('cancelled')
   })
@@ -259,9 +250,24 @@ describe('native approval UI', () => {
     bench.agent.steer = vi.fn(() => { throw new Error('steer failed') }) as never
     const pending = bench.approve()
     const model = bench.model('mayfly.approval.')
-    model.invoke('feedback', decision)
     model.edit({ pagePath: feedback, formId: 'feedback-form', fieldId: 'reason' }, 'reason')
     model.invoke('send-feedback', feedback)
     await expect(pending).resolves.toBe('unavailable')
   })
+})
+
+
+it('does not grant malformed or unrelated submissions', async () => {
+  const bench = await setup()
+  const pending = bench.approve()
+  const model = bench.model('mayfly.approval.')
+  const entry = bench.ctx.mayflyOverlays.list().find(value => value.id === model.id)!
+  const context = { surfaceId: entry.id, source: entry.source, revision: entry.revision, operationId: 'invalid', signal: new AbortController().signal, report: vi.fn() }
+  for (const actionId of ['decide', 'unrelated']) {
+    const reply = await entry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'feedback-form', submission: { actionId, draftRevision: 0, source: [], forms: [], selections: [{ pagePath: [], controlId: 'decisions', selectedIds: ['missing'] }] } }, context)
+    expect(reply).toMatchObject({ kind: 'completed' })
+    expect(model.disposed).toBe(false)
+  }
+  model.requestClose()
+  await expect(pending).resolves.toBe('rejected')
 })

@@ -35,6 +35,7 @@ export interface TurnHeaderItem {
   readonly subagents: number
   /** Whether the turn's process and interim replies are hidden behind this row. */
   readonly folded: boolean
+  readonly disclosureExpanded?: boolean
   /** Whether Ctrl-O reaches this turn, so the row may name the key. */
   readonly hint: boolean
 }
@@ -74,6 +75,7 @@ export interface DisplayInput {
   readonly turns?: readonly TranscriptTurnModel[] | undefined
   /** The global Ctrl-O toggle. */
   readonly expanded: boolean
+  readonly overrides?: ReadonlyMap<number, boolean>
   /** Turns within Ctrl-O's reach. */
   readonly scope: ReadonlySet<number>
   /** Plain or hand-built models: entries only, no headers, groups, or folds. */
@@ -200,7 +202,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const info = turnInfo.get(turn)
     const closed = !input.flat && (info?.endedAt !== undefined || turn !== input.runningTurn)
     const inScope = input.scope.has(turn)
-    const expandedTurn = input.expanded && inScope
+    const expandedTurn = input.overrides?.get(turn) ?? (input.expanded && inScope)
     if (input.flat || !block.some(isMember)) {
       for (const entry of block) items.push(plainEntry(entry, closed, expandedTurn, inScope))
       continue
@@ -235,7 +237,8 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
         toolCalls: facts.length - subagents,
         subagents,
         folded,
-        hint: folded && inScope,
+        disclosureExpanded: input.expanded,
+        hint: inScope && turn === Math.max(...input.scope),
       })
       lastSeq = headerSeq
     }
@@ -279,5 +282,8 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     }
     flush()
   }
-  return items
+  const newest = Math.max(...input.scope)
+  const header = items.findLast(item => item.kind === 'turn-header' && item.turn === newest && item.hint)
+  const target = header ?? items.findLast(item => item.kind === 'entry' && isSemantic(item.entry) && item.entry.turn === newest && item.entry.kind !== 'transcript-assistant' && item.hint)
+  return items.map(item => 'hint' in item && item.hint && item !== target ? { ...item, hint: false } : item)
 }

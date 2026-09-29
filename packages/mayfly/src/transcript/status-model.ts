@@ -44,10 +44,17 @@ export class StatusFooterComponent implements MayflyComponent {
   private renderRow(entries: readonly MayflyStatusEntry[], width: number): string | undefined {
     const admitted = new Map<MayflyStatusEntry, string>()
     let used = 0
-    for (const entry of entries) {
+    const protectedWidths = entries.map(entry => (entry.definition.priority ?? 100) <= 1
+      ? this.components.visibleWidth(this.renderPart(entry, Math.max(160, width))) : 0)
+    for (const [index, entry] of entries.entries()) {
       const remaining = width - used - (admitted.size > 0 ? 2 : 0)
       if (remaining <= 0) break
-      const part = this.renderPart(entry, remaining)
+      const reserve = protectedWidths.slice(index + 1).reduce((sum, size, offset) => {
+        const later = entries[index + 1 + offset]!
+        return sum + (size === 0 ? 0 : (later.definition.overflow === 'hide' ? size : Math.min(size, 16)) + 2)
+      }, 0)
+      const budget = remaining >= reserve + 8 ? remaining - reserve : remaining
+      const part = this.renderPart(entry, budget)
       if (part === '') continue
       admitted.set(entry, part)
       used += (admitted.size > 1 ? 2 : 0) + this.components.visibleWidth(part)

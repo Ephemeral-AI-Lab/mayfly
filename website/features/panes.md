@@ -33,7 +33,7 @@ Standard 模式下，提示的位置改为显示当前动作：命令、路径�
 
 你在 agent 运行中提交的 follow-up 进入 harness inbox 排队——面板以 divider 起头、每条一行列出队列：等待下一 turn 的消息带 `Queued:` 前缀，转向当前 step 的消息带 `Steer:` 前缀（均只列用户消息）。队列空时零行。
 
-↑/↓ 始终归编辑器历史浏览——queue 面板只展示排队消息，不接管按键（见[输入编辑器](/features/editor)）。
+输入框为空时 ↑ 撤回最新排队消息；其他情况下 ↑/↓ 保留编辑器导航与历史浏览（见[输入编辑器](/features/editor)）。
 
 ## todo 面板（todo）
 
@@ -68,3 +68,5 @@ agent 派生的**子代理组**（subagent group）运行时，组卡片留在 d
 ## Workflow 面板
 
 原生 `workflow/*` lifecycle 归因到当前 Agent 后，面板显示 workflow 名称、当前 phase、运行/完成/失败的子 Agent 树与逐秒 elapsed。与 agents 卡片一样，超过六个子 Agent 的运行先列出运行中的子 Agent，其余在末行 `… +K more` 中计数。运行结束的摘要会保留到下一次相关状态替换；切换显示的会话时，面板与其他 session-scoped UI 一起切换。
+
+输入框为空时，↑ 将最新的排队消息撤回编辑器，队列标题显示此提示。F6 可聚焦对话记录：↑/↓ 选择轮次，Home/End 跳到首尾，Enter 展开或收起，Esc 返回编辑器。可访问 Ctrl+O 近期范围之外的旧轮次。

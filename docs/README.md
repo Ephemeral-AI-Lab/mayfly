@@ -15,6 +15,8 @@ See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.
 
 See [package-release.md](./package-release.md) for release maintenance.
+The [component library](./design/component-library.md) maps PR #84's UI
+refinements to the current implementation and public contracts.
 Historical investigation and acceptance records live in [audits/](./audits/),
 and interaction design documents live in [design/](./design/); dated audits
 only describe their point in time and do not define the current API.
@@ -22,7 +24,7 @@ only describe their point in time and do not define the current API.
 See [platform-acceptance.md](./platform-acceptance.md) for the cross-platform
 automation and desktop acceptance checklist.
 
-The documents in [design/](./design/) are historical records superseded by
+The older documents in [design/](./design/) are historical records superseded by
 [interaction-model.md](./interaction-model.md): the
 [UI/UX unified model design](./design/ui-ux-unification.md), the
 [PR #15 implementation plan](./design/pr15-interaction-refactor-plan.md), and

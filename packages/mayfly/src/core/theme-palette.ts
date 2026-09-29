@@ -21,7 +21,7 @@ export function foregroundColor(hex: string): MayflyColorFn {
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
-  return text => `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`
+  return text => process.env.NO_COLOR ? text : `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`
 }
 
 /**
@@ -33,7 +33,7 @@ export function backgroundColor(hex: string): MayflyColorFn {
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
-  return text => `\x1b[48;2;${r};${g};${b}m${text}\x1b[49m`
+  return text => process.env.NO_COLOR ? text : `\x1b[48;2;${r};${g};${b}m${text}\x1b[49m`
 }
 
 const BACKGROUND_TOKEN_NAMES = ['selectedBg', 'diffAddedBg', 'diffRemovedBg'] as const

@@ -249,8 +249,8 @@ describe('row segment drafts', () => {
 
   it('ignores rows without enough enabled options and unknown ids', () => {
     const state = createChoiceState(segmented)
-    expect(choiceSegment(state, 'b')).toBe('off')
-    expect(reduceChoice(state, { kind: 'segment', id: 'b', direction: 1 })).toBe(state)
+    expect(choiceSegment(state, 'b')).toBeUndefined()
+    expect(choiceSegment(reduceChoice(state, { kind: 'segment', id: 'b', direction: 1 }), 'b')).toBe('off')
     expect(reduceChoice(state, { kind: 'segment', id: 'c', direction: 1 })).toBe(state)
     expect(reduceChoice(state, { kind: 'segment', id: 'missing', direction: 1 })).toBe(state)
     expect(choiceSegment(state, 'c')).toBeUndefined()
@@ -274,7 +274,7 @@ describe('row segment drafts', () => {
     expect(reconcileChoice(state, state.definition)).toBe(state)
   })
 
-  it('falls back to the first enabled option when the seed is absent or unknown', () => {
+  it('keeps absent or invalid seeds unpinned and pins the first enabled option on Right', () => {
     const unseeded = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
       { id: 'a', label: 'A', segment: { options: [
         { id: 'off', label: 'Off', disabled: true },
@@ -286,10 +286,10 @@ describe('row segment drafts', () => {
       ] } },
     ] })
     const state = createChoiceState(unseeded)
-    expect(choiceSegment(state, 'a')).toBe('on')
-    expect(choiceSegment(state, 'b')).toBe('off')
+    expect(choiceSegment(state, 'a')).toBeUndefined()
+    expect(choiceSegment(state, 'b')).toBeUndefined()
     const staleDraft = reduceChoice({ ...state, segments: { b: 'gone' } }, { kind: 'segment', id: 'b', direction: 1 })
-    expect(choiceSegment(staleDraft, 'b')).toBe('on')
+    expect(choiceSegment(staleDraft, 'b')).toBe('off')
   })
 
   it('steps from a draft left on a disabled option', () => {
@@ -301,7 +301,7 @@ describe('row segment drafts', () => {
       ] } },
     ] })
     const seeded = { ...createChoiceState(list), segments: { a: 'y' } }
-    expect(choiceSegment(seeded, 'a')).toBe('y')
+    expect(choiceSegment(seeded, 'a')).toBeUndefined()
     expect(choiceSegment(reduceChoice(seeded, { kind: 'segment', id: 'a', direction: 1 }), 'a')).toBe('z')
     expect(choiceSegment(reduceChoice(seeded, { kind: 'segment', id: 'a', direction: -1 }), 'a')).toBe('x')
   })
@@ -314,4 +314,43 @@ describe('row segment drafts', () => {
     const stepped = reduceChoice(legacy, { kind: 'segment', id: 'a', direction: -1 })
     expect(choiceSegment(stepped, 'a')).toBe('default')
   })
+})
+
+it('previews inherited effort without pinning it, skips disabled options, and resets explicitly', () => {
+  let state = createChoiceState(ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [{ id: 'model', label: 'Model', segment: {
+    inheritedId: 'high', options: [{ id: 'low', label: 'Low' }, { id: 'middle', label: 'Middle', disabled: true }, { id: 'high', label: 'High' }, { id: 'max', label: 'Max' }],
+  } }] }))
+  expect(choiceSegment(state, 'model')).toBeUndefined()
+  state = reduceChoice(state, { kind: 'segment', id: 'model', direction: -1 })
+  expect(choiceSegment(state, 'model')).toBe('low')
+  expect(state.dirty).toBe(false)
+  state = reduceChoice(state, { kind: 'segment', id: 'model', direction: 1 })
+  expect(choiceSegment(state, 'model')).toBeUndefined()
+  state = reduceChoice(state, { kind: 'segment', id: 'model', direction: 1 })
+  expect(choiceSegment(state, 'model')).toBe('max')
+  expect(reduceChoice(state, { kind: 'segment', id: 'model', direction: 1 })).toBe(state)
+  state = reduceChoice(state, { kind: 'reset-segment', id: 'model' })
+  expect(choiceSegment(state, 'model')).toBeUndefined()
+  expect(reduceChoice(state, { kind: 'reset-segment', id: 'missing' })).toBe(state)
+})
+
+it('keeps an inherited endpoint unpinned before and after an explicit reset', () => {
+  const list = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [{ id: 'model', label: 'Model', segment: {
+    inheritedId: 'low', options: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }],
+  } }] })
+  let state = createChoiceState(list)
+  expect(reduceChoice(state, { kind: 'segment', id: 'model', direction: -1 })).toBe(state)
+  state = reduceChoice(state, { kind: 'segment', id: 'model', direction: 1 })
+  expect(choiceSegment(state, 'model')).toBe('high')
+  state = reduceChoice(state, { kind: 'reset-segment', id: 'model' })
+  expect(reduceChoice(state, { kind: 'segment', id: 'model', direction: -1 })).toBe(state)
+  expect(choiceSegment(state, 'model')).toBeUndefined()
+})
+
+it('leaves a row unchanged when every segment option is disabled after reconciliation', () => {
+  const state = createChoiceState(ui.list({ id: 'list', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A', segment: { selectedId: 'off', options: [{ id: 'off', label: 'Off', disabled: true }] } }] }))
+  expect(choiceSegment(state, 'a')).toBeUndefined()
+  expect(reduceChoice(state, { kind: 'segment', id: 'a', direction: 1 })).toBe(state)
+  const unpinned = createChoiceState(ui.list({ id: 'list', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A', segment: { options: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }] } }] }))
+  expect(choiceSegment(reduceChoice(unpinned, { kind: 'segment', id: 'a', direction: -1 }), 'a')).toBe('high')
 })

@@ -36,7 +36,7 @@ export function apply(ctx: Context): void {
     }
     if (!current()) return
     const node = (value: string, delivery: 'queue' | 'steer' = 'queue') => ui.surface({ title: t('Reply to {name}', { name: target.label }), chrome: 'overlay', child: ui.stack.column([
-      ui.form({ id: 'reply', fields: [
+      ui.form({ id: 'reply', enterSubmits: 'send', fields: [
         { kind: 'textarea', id: 'message', label: t('Message'), value },
         { kind: 'select', id: 'delivery', label: t('Delivery'), value: delivery, options: [
           { id: 'queue', label: t('Queue'), detail: t('Process after the current turn') },
@@ -44,7 +44,7 @@ export function apply(ctx: Context): void {
         ] },
       ] }),
       ...(initial?.access === 'resumable' ? [ui.text(t('Sending resumes this member. Browsing and drafting do not.'), { tone: 'muted' })] : []),
-      ui.actions({ id: 'reply-actions', items: [{ id: 'send', label: t('Send'), submit: [{ pagePath: [], formId: 'reply' }] }, { id: 'close', label: t('Cancel'), dismiss: true }] }),
+      ui.actions({ id: 'reply-actions', reveal: 'focus', items: [{ id: 'send', label: t('Send'), submit: [{ pagePath: [], formId: 'reply' }] }, { id: 'close', label: t('Cancel'), dismiss: true }] }),
     ]) })
     let offView: (() => void) | undefined
     let offAgent: (() => void) | undefined

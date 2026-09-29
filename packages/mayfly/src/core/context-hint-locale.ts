@@ -12,20 +12,21 @@ import { mountCommonLocale } from '../frontend/common-locale.ts'
 const zh = Object.freeze({
   // Contextual hint labels and key words specific to the core compiler.
   // Shared vocabulary (tabs/actions/choose/toggle/…, Yes/No) lives in `common`.
+  'use default': '使用默认值',
+  '{count} matches': '{count} 个匹配项',
+  reject: '拒绝',
+  '↑/↓ options · Tab complete · Enter run · Esc close': '↑/↓ 选项 · Tab 补全 · Enter 执行 · Esc 关闭',
+  default: '默认',
   Type: '输入',
-  focus: '定位',
+  unsaved: '未保存',
   open: '打开',
   'toggle / confirm': '切换 / 确认',
   branch: '展开/折叠',
-  pick: '选择',
   next: '下一项',
   cancel: '取消',
   done: '完成编辑',
   'end search': '结束搜索',
-  clear: '清除',
   filter: '筛选',
-  expand: '展开',
-  collapse: '收起',
   'use inherited': '改用继承值',
   reset: '重置',
   // Field provenance and conflict resolution.

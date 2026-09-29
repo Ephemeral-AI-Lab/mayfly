@@ -61,39 +61,33 @@ describe('shared plan review', () => {
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Start implementation'] }] })
   })
 
-  it('swaps in the feedback input on Other and submits the typed revision', async () => {
+  it('submits the inline typed revision without navigating away', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
-    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
     await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
     model.edit({ pagePath: [], formId: 'revision', fieldId: 'reason' }, '  revise\nthese steps  ')
     model.invoke('send-feedback', [])
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [], custom: '  revise\nthese steps  ' }] })
   })
 
-  it('restores the decision controls on back and on an empty submission', async () => {
+  it('keeps the decision and revision field open with an inline error on empty submission', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
-    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
-    model.invoke('back', [])
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeUndefined())
-    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
     model.invoke('send-feedback', [])
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeUndefined())
+    await vi.waitFor(() => expect(model.feedbackSnapshot().at(-1)?.message).toBe('Enter feedback to revise the plan'))
+    expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined()
+    expect(model.choice({ pagePath: [], controlId: 'decision' })).toBeDefined()
     expect(model.disposed).toBe(false)
     model.requestClose()
     await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
   })
 
-  it('swaps in the feedback input through the Other accelerator', async () => {
+  it('makes the revision field available immediately without an Other accelerator', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
-    model.emit({ kind: 'activate', pagePath: [], controlId: 'other-plan', actionId: 'other-plan' })
     await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
     expect(model.disposed).toBe(false)
     model.requestClose()
@@ -104,7 +98,6 @@ describe('shared plan review', () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
-    model.emit({ kind: 'activate', pagePath: [], controlId: 'other-plan', actionId: 'other-plan' })
     await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
     model.requestClose()
     await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
@@ -160,7 +153,7 @@ describe('shared plan review', () => {
     expect(JSON.stringify(planDocumentNode({ ...question, detail: undefined }, key => key))).toContain('"source":""')
     expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"numbered":"focus"')
     expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Start implementation"')
-    expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Other"')
+    expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Revise"')
     const described = planReviewChoices({ ...question, options: [{ label: 'Keep planning', description: 'stay' }, { label: 'Start implementation', description: 'go' }] })!
     expect(JSON.stringify(planReviewControls(question, described, key => key))).toContain('"detail":"go"')
     expect(planReviewAnswer(question, choices, { kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' })).toBeUndefined()

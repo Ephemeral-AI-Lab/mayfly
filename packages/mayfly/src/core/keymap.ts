@@ -14,6 +14,7 @@ import { type KeyId, matchesKey } from '@earendil-works/pi-tui'
 import type { MayflyKeyAction, MayflyKeymap } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
+  interface Events { 'mayfly/keymap-changed'(): void }
   interface Context {
     mayflyKeymap: MayflyKeymapService
   }
@@ -102,6 +103,7 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
       for (const key of entry.keys) this.keyOwner.set(key, id)
     }
 
+    this.ctx.emit('mayfly/keymap-changed')
     let disposed = false
     return () => {
       if (disposed) return
@@ -110,6 +112,7 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
         this.actions.delete(id)
         for (const key of entry.keys) this.keyOwner.delete(key)
       }
+      this.ctx.emit('mayfly/keymap-changed')
     }
   }
 

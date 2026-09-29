@@ -49,10 +49,9 @@ Keys still resolve **per request**, so adding or rotating one while Mayfly is ru
 
 ### Model and thinking effort
 
-- **`/model`** — no argument opens the model picker; with an id it switches directly. The panel's `Set as default` action persists the selection.
+- **`/model`** — opens a filterable model list. Arrow keys browse; `Enter` switches and persists the selection. With an id, it switches directly.
 - **`Alt+M`** — cycles models without opening the panel.
-- **`Use for this session`** (panel action) — switch the next step immediately without persisting a new default.
-- **`/effort`** (alias `/thinking`) — switch the current model's thinking effort; `default` restores the provider default.
+- **`/effort`** (alias `/thinking`) — choose the current model's thinking effort with `Enter`. In `/model`, `←`/`→` previews the row's effort and `Delete` restores inheritance; only `Enter` commits. `/effort default` restores the provider default.
 
 `/model` persistence lands in the `agent-default-model:` section of settings.yaml (shape [below](#the-three-core-settings-yaml-sections)).
 
@@ -163,7 +162,7 @@ mayfly:
   theme: dark              # persisted default theme: dark | light | ocean | paper | auto (applied at startup)
   transcriptView: standard # compact | standard | detailed | verbose
   windowTurns: 15          # transcript window: only the newest N completed turns stay mounted
-  expandTurns: 3           # ctrl+o expansion scope (turns counted from the end)
+  expandTurns: 3           # Ctrl+O expansion scope (turns counted from the end)
   userFoldLines: 10        # long user message fold threshold (lines)
   userFoldChars: 1000      # long user message fold threshold (chars)
   editorCommand: ''        # external editor command (empty = auto-detect via $VISUAL/$EDITOR)
@@ -172,7 +171,7 @@ mayfly:
 
 `transcriptView` keeps the Harness Chat work-details mode names (see [Streaming transcript](/en/features/streaming#work-details)). Live status belongs to the activity row; the transcript shows only what has happened. Compact shows the conversation alone while a turn runs. Standard adds file-change diff cards and past-tense group titles, and its activity row names the running command, path, query, or reasoning. Detailed shows every card while the turn runs. Compact, Standard, and Detailed fold a completed turn behind its `Took 38s` header, keeping the final answer (and, from Standard up, the file changes) visible; Verbose keeps every card open. Ctrl+O expands the most recent `expandTurns` turns. The old per-family `transcript` settings and `recentStepsRetention` are no longer interpreted.
 
-The panel is two-level: level one starts with `locale` and groups rows by namespace (host sections like `shell:`, `agent-loop:`, and `web-search-deepseek:` included), Enter steps into level two's per-key rows, and `Enter`/`Space` there steps the preset value with every change landing on disk; language and `mayfly.theme` changes both apply live (`/theme` stays the session-level switch — see [Theming](/en/guide/theme)), and `transcriptView` and number changes apply to the running session just as immediately (an active Ctrl-O expansion still dominates). Level one's last row opens the whole settings.yaml in `$EDITOR`.
+The panel is two-level: level one starts with `locale` and groups rows by namespace (host sections like `shell:`, `agent-loop:`, and `web-search-deepseek:` included), Enter steps into level two's per-key rows, and `Enter`/`Space` there steps the preset value with every change landing on disk; language and `mayfly.theme` changes both apply live (`/theme` stays the session-level switch — see [Theming](/en/guide/theme)), and `transcriptView` and number changes apply to the running session just as immediately (an active Ctrl+O expansion still dominates). Level one's last row opens the whole settings.yaml in `$EDITOR`.
 
 ### Verifying your edits
 
@@ -208,3 +207,5 @@ settings.yaml effects show up right in the UI: the `/model` panel lists each rou
 ::: warning What cannot live in .env
 `DEEPSEEK_API_KEY` resolves from all four layers (`.env` included), but `DEEPSEEK_BASE_URL` and **every `DSH_*`-prefixed variable** are bootstrap variables — a `.env` file entry is rejected outright (with an "export it instead" notice); set them in the launching environment. Credential environment variables always beat the file layers — to swap a key for one run: `DEEPSEEK_API_KEY=sk-… dsh --profile mayfly`.
 :::
+
+The `mayfly` settings namespace includes `keyHints: full | minimal | off` (default `full`), `reducedMotion: boolean` (default `false`), and `glyphs: auto | unicode | ascii` (default `auto`). Set these through `/settings`. Reduced motion freezes decorative frames while factual progress continues. `NO_COLOR` disables foreground/background coloring while retaining emphasis and keyboard focus.

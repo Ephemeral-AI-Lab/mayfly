@@ -1,17 +1,27 @@
 # 状态栏
 
-Footer 是单行。所有内置与第三方 entry 都注册在同一个 `mayflyStatus`
-service，并使用 renderer-neutral `MayflyStatusNode`；entry 仍可声明
-`row: 2` 独占第二行。
+状态栏分为两行：第一行显示当前状态，第二行显示可用按键和会话范围。
+所有条目都使用同一个 renderer-neutral `mayflyStatus` service。
 
-会话名称不在 footer 中——它显示在编辑器上边框的右端。Bash 模式保留左缘的
-`! shell mode` 标签。
+打开 `/settings`，选择 `mayfly`，修改**状态栏按键提示**（`keyHints`）：
+
+原生 Save 操作写入当前配置档并立即更新提示。Harness 0.1.7 使用配置档中的
+`cordis.patch.yml`；旧 `settings.yaml` 仅作为启动时的迁移输入。
+
+| 值 | 效果 |
+| --- | --- |
+| `full`（默认） | 显示 `Ctrl+O 展开`、`Shift+Tab 退出计划`、`Alt+M 模型`、`/help 按键` 等上下文提示 |
+| `minimal` | 仅保留中断/撤回、内容展开及会话切换提示 |
+| `off` | 隐藏内置第二行及空编辑器中的教学文字 |
+
+修改立即生效。捕获输入的面板仍显示自己的按键提示。编辑器边框显示会话标题；
+计划、权限与 Shell 模式在第一行以独立的加粗状态标签显示。
 
 | Entry | Priority | 内容 |
 | --- | --- | --- |
-| conversation-view | 0（center） | 有旁支会话时显示当前会话类型（MAIN、BTW、SUBAGENT）与标签、它的 `F7` 对端、访问方式、另有多少个打开，以及 `F7 switch · F8 close` |
+| scope / switch | 0 / 1（第二行） | 左侧显示会话身份；右侧显示 `F7` 切换、`F8` 关闭旁支提问或离开子代理视图 |
 | basic | 0 | 当前 model；显式选择 thinking effort 时追加 ` Effort`(如 `step-5-preview Max`),provider default 不加后缀 |
-| mode | 2 | plan/yolo 状态 |
+| mode | 1 | 独立的计划、权限和 Shell 状态标签 |
 | goal | 2 | 当前 goal 的 `Goal <phase> · <rounds>/<max> · <activation>`（按 phase 着色；无 goal 时隐藏） |
 | schedule | 2 | 提醒数（无提醒时隐藏） |
 | jobs | 3 | `⏵ N jobs`——live（running/stopping）后台任务数；没有时隐藏 |
@@ -19,7 +29,7 @@ service，并使用 renderer-neutral `MayflyStatusNode`；entry 仍可声明
 | cwd | 5 | 当前工作目录 |
 | git | 10 | branch 与变更摘要 |
 
-宽度不足时，整行按 priority/id 顺序容纳 entry：放得下的 entry 保留完整
+宽度不足时，core 为最高优先级的模式与切换条目预留空间，再按 priority/id 顺序容纳 entry：放得下的 entry 保留完整
 宽度，声明 `overflow: 'hide'` 的 entry 直接隐藏而不是截断，行满后低优先级
 entry 被丢弃。已容纳的 entry 再按声明的 left/center/right band 布局。
 
@@ -38,3 +48,5 @@ export function apply(ctx: Context): void {
 ```
 
 Registration 随 Fiber 清理。详情见[插件状态栏](/plugins/status)。
+
+![状态栏提示设置](/shots/app-settings.svg)

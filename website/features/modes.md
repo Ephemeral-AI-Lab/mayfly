@@ -4,7 +4,7 @@ Mayfly 的计划状态与权限设置相互独立。编辑器焦点下按 **`Shi
 
 **normal ↔ plan**
 
-YOLO 通过独立的 `/permission` 命令选择，可以与 plan 同时开启。状态栏第一行同时显示 `plan`（accent 色）与 `yolo`（warning 色）；计划状态切换待生效时显示 `plan...`。这些状态来自 dsh：plan 来自原生 `plan` projection，yolo 表示 `danger-full-access` + `never` 权限预设。
+YOLO 通过独立的 `/permission` 命令选择，可以与 plan 同时开启。状态栏第一行同时显示 `PLAN`（accent 色）与 `YOLO`（warning 色）；计划状态切换待生效时显示 `PLAN…`。这些状态来自 dsh：plan 来自原生 `PLAN` projection，yolo 表示 `danger-full-access` + `never` 权限预设。
 
 ## normal
 
@@ -14,7 +14,7 @@ YOLO 通过独立的 `/permission` 命令选择，可以与 plan 同时开启。
 
 plan 模式向 agent 提供先规划、后执行的协作指引，不改变工具权限或文件沙箱。它是软性指引，即使与 YOLO 叠加也不构成只读限制。计划定稿时，harness 的 `exit_plan_mode` 请求以**计划评审面板**呈现（编辑器槽位替换，同审批面板的挂载方式）：
 
-- 计划全文以 Markdown 渲染在带边框的 `plan` 盒内；
+- 计划全文以 Markdown 渲染在带边框的 `PLAN` 盒内；
 - 下方是编号决策列表，数字键直选或 ←→ + `Enter`；↑↓ / PageUp / PageDown 只滚动计划正文：
 
 | 选项 | 效果 |
@@ -29,8 +29,10 @@ plan 模式向 agent 提供先规划、后执行的协作指引，不改变工�
 
 YOLO 关闭文件沙箱并使用 `never` 审批策略：需要审批的请求直接拒绝，不弹审批面板；不需要审批的操作可以直接执行。**用户提问与计划评审仍然弹出**，因为权限策略不会替你回答问题或批准计划。
 
-`Shift+Tab` 只执行 `/plan` 或 `/plan off`，不会进入或退出 YOLO。`/permission` 也不会关闭计划状态。例如，进入 YOLO 后按 `Shift+Tab`，状态栏显示 `plan yolo`；再次按键只结束规划，保留 `yolo`。若 Agent 预设没有提供计划能力，快捷键会提示不可用。
+`Shift+Tab` 只执行 `/plan` 或 `/plan off`，不会进入或退出 YOLO。`/permission` 也不会关闭计划状态。例如，进入 YOLO 后按 `Shift+Tab`，状态栏显示 `plan yolo`；再次按键只结束规划，保留 `YOLO`。若 Agent 预设没有提供计划能力，快捷键会提示不可用。
 
 ::: tip 与 /preset 的关系
 plan 模式由 harness 的 plan-mode 插件提供，经 Agent 预设组合（`/preset`，见[斜杠命令参考](/reference/commands)）。Agent 预设决定能力集合；`/plan` 控制规划协作状态；`/permission` 控制沙箱与审批策略。
 :::
+
+各模式在状态行以独立标签与颜色显示；等待应用的计划切换显示省略号。Shell 输入框保留 `!` 符号与边框颜色，模式文字显示在状态栏中。

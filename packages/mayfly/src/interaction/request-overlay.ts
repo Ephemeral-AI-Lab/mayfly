@@ -9,6 +9,7 @@ import { observeInteractionLocale } from './locale.ts'
 export interface RequestOverlayOptions<Result> {
   readonly id: string
   readonly title: string | (() => string)
+  readonly escapeLabel?: 'close' | 'cancel' | 'reject'
   readonly agent?: Agent
   readonly signal?: AbortSignal
   readonly dismissal?: 'confirm-dirty' | 'discard'
@@ -47,7 +48,8 @@ export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOpti
     const frame = (child: MayflyUiNode): MayflyUiNode => ({ kind: 'surface', chrome: 'overlay', padding: 1, title: typeof options.title === 'string' ? options.title : options.title(), child })
     const snapshot = (): MayflyUiNode => frame(options.view())
     handle = ctx.mayflyOverlays.open({
-      id: options.id, presentation: 'editor', capturing: true,
+      id: options.id, presentation: 'editor', capturing: true, armMs: 300,
+      ...(options.escapeLabel === undefined ? {} : { escapeLabel: options.escapeLabel }),
       ...options.dismissal === undefined ? {} : { dismissal: options.dismissal },
       ...options.contentScroll === undefined ? {} : { contentScroll: options.contentScroll },
       scope: options.agent === undefined ? { kind: 'app', targetId: options.id } : { kind: 'session', sessionId: options.agent.id },

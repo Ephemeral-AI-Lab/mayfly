@@ -254,6 +254,7 @@ class BannerComponent implements MayflyComponent {
    * @returns the banner lines; none below {@link BANNER_MIN_WIDTH}.
    */
   render(width: number): string[] {
+    if (this.components.asciiGlyphs === true) return [this.components.truncateToWidth(`Mayfly ${this.content.version} | ${this.content.model} | ${this.content.cwd}`, width)]
     const cached = this.cache
     if (cached?.width === width && cached.content === this.content) return cached.lines
     const lines = composeBannerLines({

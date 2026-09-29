@@ -17,8 +17,8 @@ function message(text: string): UserMessage {
   return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
 }
 
-async function mount(attached = true, inbox = fakeInbox()) {
-  const { ctx } = fakeMayflyContext()
+async function mount(attached = true, inbox = fakeInbox(), display = true) {
+  const { ctx } = fakeMayflyContext({ display })
   await ctx.plugin(SessionStore)
   const session = ctx.sessions.create(SessionId('pane-queue-spec'))
   const agent = { id: session.id, session, inbox } as unknown as Agent
@@ -44,7 +44,7 @@ describe('mayfly-pane-queue', () => {
       kind: 'stack',
       direction: 'column',
       children: [
-        { node: { kind: 'divider' } },
+        { node: { kind: 'text', content: expect.stringMatching(/^Queued \(\d+\)$/u), tone: 'muted', overflow: 'truncate' } },
         { node: { kind: 'text', content: 'Queued: first turn', tone: 'muted', overflow: 'truncate' } },
         { node: { kind: 'text', content: 'Queued: second turn', tone: 'muted', overflow: 'truncate' } },
         { node: { kind: 'text', content: 'Steer: steer this', tone: 'muted', overflow: 'truncate' } },
@@ -61,7 +61,7 @@ describe('mayfly-pane-queue', () => {
       kind: 'stack',
       direction: 'column',
       children: [
-        { node: { kind: 'divider' } },
+        { node: { kind: 'text', content: expect.stringMatching(/^Queued \(\d+\)$/u), tone: 'muted', overflow: 'truncate' } },
         { node: { kind: 'text', content: `Queued: ${long}`, tone: 'muted', overflow: 'truncate' } },
       ],
     })
@@ -72,7 +72,7 @@ describe('mayfly-pane-queue', () => {
     const world = await mount(true, fakeInbox([image]))
     expect(world.entry()?.node).toMatchObject({
       children: [
-        { node: { kind: 'divider' } },
+        { node: { kind: 'text', content: expect.stringMatching(/^Queued \(\d+\)$/u), tone: 'muted', overflow: 'truncate' } },
         { node: { content: 'Queued: [1 image]' } },
       ],
     })
@@ -89,7 +89,7 @@ describe('mayfly-pane-queue', () => {
     expect(inbox.nextStep).toEqual([policy])
     inbox.nextTurn.push(message('User work'))
     world.ctx.emit('agent/inbox/inserted', { agent: world.agent } as never)
-    expect(world.entry()?.node).toMatchObject({ children: [{ node: { kind: 'divider' } }, { node: { content: 'Queued: User work' } }] })
+    expect(world.entry()?.node).toMatchObject({ children: [{ node: { kind: 'text', content: expect.stringMatching(/^Queued \(\d+\)$/u), tone: 'muted', overflow: 'truncate' } }, { node: { content: 'Queued: User work' } }] })
   })
 
   it('refreshes only for the exact current Agent inbox', async () => {
@@ -113,4 +113,28 @@ describe('mayfly-pane-queue', () => {
     await world.fiber.dispose()
     expect(world.entry()).toBeUndefined()
   })
+})
+
+
+it('advertises recall only while the editor can actually withdraw the newest message', async () => {
+  const world = await mount(true, fakeInbox([message('next')]))
+  let autocomplete = false
+  world.ctx.mayflyPromptEditor.setCurrent({ editor: { isShowingAutocomplete: () => autocomplete } as never, submitPrompt: () => {} })
+  world.ctx.emit('mayfly/input-editor-changed')
+  expect(JSON.stringify(world.entry()?.node)).toContain('recall newest')
+  world.ctx.mayflyInteractionState.draft.stashDraft('typing')
+  expect(JSON.stringify(world.entry()?.node)).not.toContain('recall newest')
+  world.ctx.mayflyInteractionState.draft.clearDraft()
+  world.ctx.mayflyInteractionState.draft.stashInputMode('bash')
+  expect(JSON.stringify(world.entry()?.node)).not.toContain('recall newest')
+  world.ctx.mayflyInteractionState.draft.stashInputMode('prompt')
+  autocomplete = true
+  world.ctx.emit('mayfly/input-editor-changed')
+  expect(JSON.stringify(world.entry()?.node)).not.toContain('recall newest')
+  await world.fiber.dispose()
+  const withoutKeymap = await mount(true, fakeInbox([message('next')]), false)
+  withoutKeymap.ctx.mayflyPromptEditor.setCurrent({ editor: { isShowingAutocomplete: () => false } as never, submitPrompt: () => {} })
+  withoutKeymap.ctx.emit('mayfly/input-editor-changed')
+  expect(JSON.stringify(withoutKeymap.entry()?.node)).not.toContain('recall newest')
+  await withoutKeymap.fiber.dispose()
 })

@@ -10,6 +10,7 @@
  * @module @ephemeral-ai/mayfly/transcript/read-group
  */
 
+import { treeBranch, treeContinuation } from '../core/glyphs.ts'
 import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
 import { interpolateLocaleMessage, type MayflyTranslate, type ReadCallModel, type TranscriptReadGroupModel } from '../frontend/index.ts'
 import { moreRowsHint } from './hints.ts'
@@ -162,8 +163,8 @@ export class ReadGroupComponent implements MayflyComponent {
     const groups = groupReadsByFile(this.model.reads)
     groups.forEach((group, index) => {
       const last = index === groups.length - 1
-      const branch = last ? '└─' : '├─'
-      const continuation = last ? '   ' : '│  '
+      const branch = treeBranch(last, this.components.asciiGlyphs === true)
+      const continuation = treeContinuation(last, this.components.asciiGlyphs === true)
       if (group.reads.length === 1) {
         const read = group.reads[0]!
         const inline = read.state === 'error'
@@ -182,10 +183,10 @@ export class ReadGroupComponent implements MayflyComponent {
       rows.push(cut(parent))
       group.reads.forEach((read, window) => {
         const windowLast = window === group.reads.length - 1
-        const windowBranch = windowLast ? '└─' : '├─'
+        const windowBranch = treeBranch(windowLast, this.components.asciiGlyphs === true)
         rows.push(cut(`  ${String(continuation)}${String(windowBranch)}${windowText(read).replace(/^ · /u, ' ') || ' read'} ${String(windowMark(read, deps))}`))
         if (open && read.state === 'ok') {
-          rows.push(...this.renderPreviewRows(read, `${String(continuation)}${windowLast ? '   ' : '│  '}`, cut))
+          rows.push(...this.renderPreviewRows(read, `${String(continuation)}${treeContinuation(windowLast, this.components.asciiGlyphs === true)}`, cut))
         }
       })
     })

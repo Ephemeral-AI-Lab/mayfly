@@ -460,6 +460,7 @@ export interface MayflyTerminalRuntime {
    * @param component - the component to focus, or `null`.
    */
   setFocus(component: MayflyComponent | null): void
+  revealContent?(component: MayflyComponent, row: number): void
   scrollContent(direction: 'up' | 'down', amount?: number): boolean
   contentChanged(): boolean
   followContent(): void
@@ -993,6 +994,22 @@ export async function startMayflyTerminal(
       stable.setFocus(component)
     },
     /* v8 ignore start -- exercised through the real PTY interaction path */
+    revealContent(component, row) {
+      let target = Math.max(0, row)
+      for (const child of contentChildren) {
+        if (child === component) break
+        target += child.render(current.terminal.columns).length
+      }
+      if (current instanceof TuiAltScreen) current.scrollBy(target - current.viewportTop)
+      else {
+        const lines = collectLines(current.terminal.columns)
+        const dockRows = orderedDock().reduce((sum, child) => sum + child.render(current.terminal.columns).length, 0)
+        const available = Math.max(1, terminal.rows - dockRows)
+        contentScrollOffset = Math.max(0, lines.length - dockRows - available - target)
+        contentScrollManual = true
+        stable.requestRender(true)
+      }
+    },
     scrollContent(direction, amount = 1) {
       if (current instanceof TuiAltScreen) {
         const before = current.viewportTop

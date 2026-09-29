@@ -21,7 +21,7 @@ import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type M
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 import type { TranscriptCompactionModel } from '../frontend/models.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
-import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from './spinners.ts'
+import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from '../core/glyphs.ts'
 import { formatTokens } from './status-context.ts'
 
 /** Upper bound on the expanded checkpoint-summary preview. */
@@ -69,6 +69,8 @@ export class CompactionRowComponent implements MayflyComponent {
   private expanded = false
   private frame = 0
   private timer: ReturnType<typeof setInterval> | undefined
+  private timerMs = 0
+  private disposed = false
 
   /**
    * @param model - the transcript compaction entry.
@@ -84,13 +86,14 @@ export class CompactionRowComponent implements MayflyComponent {
     components: MayflyComponents,
     requestRender?: (() => void) | undefined,
     t: MayflyTranslate = interpolateLocaleMessage,
+    private readonly liveStatus = true,
   ) {
     this.model = model
     this.colors = colors
     this.components = components
     this.requestRender = requestRender
     this.t = t
-    if (model.state === 'running') this.startTimer()
+    if (model.state === 'running' && liveStatus) this.startTimer()
   }
 
   /**
@@ -118,6 +121,7 @@ export class CompactionRowComponent implements MayflyComponent {
 
   /** Stop the refresh; the mounter calls this when the component retires. */
   dispose(): void {
+    this.disposed = true
     this.stopTimer()
   }
 
@@ -126,7 +130,8 @@ export class CompactionRowComponent implements MayflyComponent {
    * @returns the rendered rows: the marker plus the expanded summary.
    */
   render(width: number): string[] {
-    if (this.model.state !== 'running') this.stopTimer()
+    if (this.model.state === 'running' && this.liveStatus) this.startTimer()
+    else this.stopTimer()
     const rows = [this.mainLine()]
     if (this.expanded && this.model.state !== 'running' && this.model.summary !== undefined) {
       for (const line of sanitizePluginText(this.model.summary).split('\n').slice(0, COMPACTION_SUMMARY_LINES)) {
@@ -141,7 +146,8 @@ export class CompactionRowComponent implements MayflyComponent {
     const { model, colors } = this
     const auto = model.trigger === 'auto' ? this.t(' · auto') : ''
     if (model.state === 'running') {
-      const frame = colors.accent(BRAILLE_SPINNER_FRAMES[this.frame % BRAILLE_SPINNER_FRAMES.length]!)
+      if (!this.liveStatus) return colors.primary(`${this.t('compacting context…')}${auto}`)
+      const frame = colors.accent(BRAILLE_SPINNER_FRAMES[(this.components.reducedMotion === true ? 0 : this.frame) % BRAILLE_SPINNER_FRAMES.length]!)
       const elapsed = compactElapsedMs(Date.now() - model.startedAt)
       return `${frame} ${colors.muted(`${this.t('compacting context…')} · ${elapsed}${auto}`)}`
     }
@@ -159,22 +165,28 @@ export class CompactionRowComponent implements MayflyComponent {
   }
 
   private startTimer(): void {
+    if (this.disposed) return
+    const interval = this.components.reducedMotion === true ? 1000 : COMPACTION_REFRESH_MS
+    if (this.timer !== undefined && this.timerMs === interval) return
+    this.stopTimer()
+    this.timerMs = interval
     this.timer = compactionTimers.setInterval(() => {
       // Settlement lands through `update`; the first tick that observes it
       // stands down instead of refreshing a finished row.
-      if (this.model.state !== 'running') {
+      if (this.disposed || this.model.state !== 'running') {
         this.stopTimer()
         return
       }
       this.frame += 1
       this.requestRender?.()
-    }, COMPACTION_REFRESH_MS)
+    }, interval)
   }
 
   private stopTimer(): void {
     if (this.timer === undefined) return
     compactionTimers.clearInterval(this.timer)
     this.timer = undefined
+    this.timerMs = 0
   }
 }
 

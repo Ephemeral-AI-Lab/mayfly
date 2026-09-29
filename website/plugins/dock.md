@@ -61,3 +61,9 @@ Capturing overlay 取得 focus，默认可由 Escape 关闭；只有显式
 
 Pane/overlay id 在 registry 内唯一。Snapshot 与 event callback 产生的数据仍会
 经过 core admission。Fiber unload 会移除 pane，并关闭该 Fiber 打开的 overlay。
+
+非用户主动打开的决策可声明 `armMs: 300`（范围 0–2000，默认 0）。
+在 frontend 持有的截止时间之前仅接受 Escape；core 重载保留该保护，
+隐藏后重新显示则重新计时。授权列表使用 `numbered: 'focus'`，仍需 Enter 确认。
+`escapeLabel` 可为 `close`、`cancel`、`reject`，用于描述最外层关闭的实际含义，
+不会改变 Escape 的逐层退出规则。

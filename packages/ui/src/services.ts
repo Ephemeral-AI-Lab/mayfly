@@ -136,6 +136,9 @@ function validateOverlaySize(value: unknown, path: string): void {
 function validateOverlayDefinition(definition: unknown): void {
   validateSurfaceDefinition(definition, 'overlay')
   optionalString(definition.title, 'overlay title')
+  optionalNonNegativeInteger(definition.armMs, 'overlay arm delay')
+  if (typeof definition.armMs === 'number' && definition.armMs > 2000) throw new TypeError('overlay arm delay must not exceed 2000 ms')
+  if (definition.escapeLabel !== undefined && !['close', 'cancel', 'reject'].includes(String(definition.escapeLabel))) throw new TypeError('overlay escape label is invalid')
   optionalBoolean(definition.capturing, 'overlay capturing')
   optionalBoolean(definition.dismissible, 'overlay dismissible')
   if (definition.dismissal !== undefined && definition.dismissal !== 'confirm-dirty' && definition.dismissal !== 'discard') throw new TypeError('overlay dismissal is invalid')
