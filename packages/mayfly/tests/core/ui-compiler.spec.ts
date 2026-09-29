@@ -2436,12 +2436,12 @@ it('animates shared loader frames through the compiler memo without rebuilding t
   try {
     const node = ui.stack.column([ui.loader({ message: 'Loading' }), ui.loader({ message: 'Tide', variant: 'tide' })])
     let component = render(node)
-    expect(component.render(30)).toEqual(['⠋ Loading', '· Tide'])
-    expect(component.render(30)).toEqual(['⠋ Loading', '· Tide'])
+    expect(component.render(30)).toEqual(['⠋ Loading', '≈ Tide'])
+    expect(component.render(30)).toEqual(['⠋ Loading', '≈ Tide'])
     expect(vi.getTimerCount()).toBe(1)
     vi.advanceTimersByTime(80)
     expect(request).toHaveBeenCalledOnce()
-    expect(component.render(30)).toEqual(['⠙ Loading', '• Tide'])
+    expect(component.render(30)).toEqual(['⠙ Loading', '≋ Tide'])
     // A progress snapshot rebuild does not reset the spinner to its first frame.
     component = render(ui.loader({ message: 'Loading 1/10' }))
     expect(component.render(30)).toEqual(['⠙ Loading 1/10'])

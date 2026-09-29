@@ -14,8 +14,10 @@ documents: [interaction-model.md](../interaction-model.md) owns input routing,
 the key grammar, the Escape ladder, and focus rules;
 [mayfly-seams.md](../mayfly-seams.md) owns the four contribution services and
 the layout limits. The refinement roadmap in §7 carries explicit
-`shipped` / `target` / `backlog` labels; only `shipped` items describe running
-behavior, and §7.4 registers the known gaps between this catalog and the code.
+`shipped` / `target` / `backlog` labels; sections outside §7 that are not yet
+shipped carry their own `Status: target` banner. Only shipped items describe
+running behavior, and §7.4 registers the known gaps between this catalog and
+the code.
 Hint rows in every diagram use the strings the key grammar really produces
 (§2.2), not idealized ones.
 
@@ -130,7 +132,7 @@ names which (`end search`, `done`, `cancel`, `back`, `close`).
 | EDITING | `Enter` or typing on a text field | `next`, or `submit` with `enterSubmits` | `done` (draft kept) | `Tab` commits and moves, `Alt+Enter` newline |
 | PICKER | `Enter` on a select or multiselect | `apply` | `cancel` | `↑`/`↓` candidate, `Space` toggles (multi) |
 | DECIDING | an action or row that declares `confirm` | the focused of `[No] [Yes]` | answers No | `←`/`→` switch |
-| BUSY | an action whose handler is in flight | ignored on the busy action | `close` | the busy action keeps focus |
+| BUSY | an action whose handler is in flight | ignored on the busy action | `close` | the busy action shows `…` and is skipped by navigation |
 | EXPANDED | `Ctrl+E` on a scroll region | — | `collapse` | scroll keys |
 
 A reply settles BUSY: `completed` (optionally with `dismiss`) leaves the
@@ -173,6 +175,11 @@ text field, editing     Enter next · Tab/Shift+Tab groups · Esc done
 list, filtering         Enter choose · Ctrl+U clear · Esc end search
 list row with strip     ←/→ thinking · Enter choose · Type filter · Esc close
 ```
+
+> The authoritative row-by-row shared-key list is `SHARED_KEY_REFERENCE`
+> (checked against both Website key references by
+> `tests/core/key-grammar-docs.spec.ts`); the rows above are illustrative and
+> must match it.
 
 Vocabulary — the only verbs a fragment may use:
 
@@ -218,6 +225,10 @@ happens to own it.
 | `/` `@` `#` `!` triggers | rotating `Tip:` text on the activity row, only while a turn runs | the idle screen teaches nothing |
 | `Ctrl+C` twice to exit | a `press ctrl+c again to exit` notice after the first press | good pattern |
 
+> **Status: target (H1, H7, H8, B4).** The "Today" table above is shipped; the
+> placement rules, the two-line status bar, and the placeholder below are the
+> intended design.
+
 #### Placement: each key lives with its owner
 
 The editor box stays as it is — a rounded frame with the session title in the
@@ -241,6 +252,8 @@ to exit`, `interrupt requested`) stay notifications.
 
 #### The two-line status bar
 
+> **Status: target (H1).**
+
 Row 1 says **what is true**; row 2 says **where you are and what you can
 press**. Nothing about the rows needs a new contract: `MayflyStatusDefinition`
 already carries `row: 1 | 2`, `band`, `priority`, and `overflow`, and the footer
@@ -249,7 +262,7 @@ already renders both rows.
 | Entry | Row · band | Priority | Content |
 | --- | --- | --- | --- |
 | `basic` | 1 · left | 0 | model, plus an explicit thinking effort (`deepseek-chat High`) |
-| `mode` | 1 · left | 1 | mode chips: `PLAN` (accent, `PLAN…` while pending), `YOLO` (warning), `SHELL` in `!` mode |
+| `mode` | 1 · left | 1 | mode chips (target, B4): `PLAN` (accent, `PLAN…` while pending), `YOLO` (warning), `SHELL` in `!` mode |
 | `goal`, `schedule` | 1 · left | 2 | as today |
 | `jobs` | 1 · left | 3 | `⏵ N jobs` |
 | `cwd`, `git` | 1 · left | 5, 10 | as today |
@@ -374,6 +387,8 @@ right-aligned so it never moves:
 
 
 #### The placeholder: typed prefixes get their own area
+
+> **Status: target (H8).**
 
 The typed prefixes — `/` commands, `@` files, `#` skills, `!` shell — are not
 keys to press but syntax to type, and there are four of them plus their
@@ -667,8 +682,9 @@ Marker legend:
 Some glyphs appear in both tables by design and are told apart by position and
 tone: `!` prefixes a danger action (before its label), a field error (indented
 under the field), and a warning in the feedback lane; `●` marks a selected list
-row (control) or an assistant block / running tool (transcript). New surfaces
-must not add a third meaning to either.
+row (control) or an assistant block / running tool (transcript); `▸` folds a
+tree branch (control) or a turn/child block (transcript). New surfaces must not
+add a third meaning to either.
 
 The marker legend covers control state. The transcript and status vocabulary
 uses a second, equally fixed set (§3.2); the brand cues in §3.1 and the motion
@@ -736,7 +752,7 @@ the control markers above.
 | `⊘` | cancelled |
 | `■` | stopping / interrupted |
 | `⏵` | background jobs count |
-| `›` | collapsed child |
+| `▸` | folded turn or collapsed detail |
 
 ### 3.3 Motion policy
 
@@ -810,7 +826,7 @@ Escape answers No:
 
 ```
   Delete provider?
-  Removes the stored credentials.          ← optional detail (muted)
+  Removes the stored credentials.          ← optional detail (warning)
 → [No]   [Yes]
 ```
 
@@ -818,7 +834,7 @@ Rules: put `defaultFocus` on the least destructive action; express
 unavailability as `disabled` + `disabledReason` (never reject after the fact
 in the handler); use `confirm` for every Yes/No question instead of drawing a
 custom confirm page. Mark an action `busy` while its handler is in flight —
-the busy action keeps its focus highlight.
+the busy action shows `…` and is skipped by `←`/`→` navigation.
 
 Redundancy rule (principle 1): do not add an action whose only effect a bare
 key already has. Concretely — no `Cancel` on a dismissable surface (`Esc`), no
@@ -998,10 +1014,14 @@ interface MayflyListSegment {
 }
 ```
 
-Layout is renderer-owned and chosen by width, never by the plugin:
+> **Status: target (E1).**
+
+Layout is renderer-owned and chosen by width, never by the plugin. Today the
+strip is always the reserved footer row (§7.4 G3); the inline and folded
+layouts below are the target:
 
 ```
-inline (default — the strip shares the row, the row count never changes)
+inline (target, E1 — the strip shares the row, the row count never changes)
 → DeepSeek/DeepSeek-V4-Pro — 977k context   min ‹ high (default) › max
 
 footer (fallback when the row plus its strip cannot fit: one reserved line
@@ -1168,7 +1188,7 @@ field focused             Enter submit · ↑/↓ fields · Esc close
 field editing             Enter next · Tab/Shift+Tab groups · Esc done
 picker open               ↑/↓ options · Enter apply · Esc cancel
 decision open             ←/→ actions · Enter confirm · Esc close
-busy action focused       ←/→ actions · Esc close              (action shows …)
+one action busy           ←/→ actions · Esc close              (action shows …)
 ```
 
 Authors do not write footers. They choose the right `role`, declare `key`
@@ -1305,11 +1325,11 @@ tab per question; a single question drops the strip entirely.
 
 ```
 ⠋ Discovering models from api.example.com 12s      variant braille (default)
-• Waiting for authorization                        variant tide (see status)
+≈ Waiting for authorization                        variant tide (see status)
   Esc cancel                                        ← cancelActionId, as a hint
 ```
 
-Frames cycle `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` (braille, 80 ms) or `·•●•·` (tide). The renderer owns
+Frames cycle `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` (braille, 80 ms) or `≈≋∿≋` (tide). The renderer owns
 the clock — all loaders in one surface share it, and it stops when the surface
 hides or unloads; `elapsedMs` is plain data the owner publishes (painted as
 `45s`, then `2m 10s`). Loaders live in panes and overlays only: the status and
@@ -1320,10 +1340,9 @@ activity pane.
 button: cancelling a loader is exactly what `Esc` already does (redundancy
 rule, §4.1). `cancelLabel` remains for surfaces that show the button anyway.
 
-> **Status: revision planned.** The `tide` pulse peaks on `●`, which §3.2
-> reserves for "assistant block / tool running", and it is a second waiting
-> motion beside the transcript's ripple. §7 A1 replaces it with the ripple so
-> the variant changes once, not twice.
+> **Status: revision planned.** The `tide` wave is a second waiting motion
+> beside the transcript's ripple. §7 A1 replaces it with the ripple so the
+> variant changes once, not twice.
 
 **progress** — determinate work only:
 
@@ -1602,7 +1621,8 @@ Verification duties for any new or changed surface:
    (`tests/core/key-grammar-docs.spec.ts`).
 4. `packages/ui` contract or builder changes run the root full gate.
 5. A roadmap item in §7 is not shipped behavior until its status flips to
-   **shipped**; only the code and §1–§6 describe what runs today.
+   **shipped**; only the code, and the §1–§6 sections without a
+   `Status: target` banner, describe what runs today.
 6. Assert the footer string for every state the surface can be in (idle,
    searching, editing, decision, busy). A hint is a contract, and §2.2 lists
    the only verbs it may use.
@@ -1637,12 +1657,10 @@ cross-surface dependency. Every delivered item flips its status to
 Low risk; no new node kinds.
 
 **A1 · Unify the waiting ripple — target.**
-The wire `tide` loader frames (`· • ● • ·`, 80 ms) are unused by any surface,
-while the transcript's waiting animation is the moon ripple
+The wire `tide` loader frames (`≈ ≋ ∿ ≋`, 80 ms) are unused by any shipped
+product surface, while the transcript's waiting animation is the moon ripple
 (`·· ·≈ ≈≈ ≈·`, 120 ms). Align them into one ripple, keeping braille for work
-that is actively computing. (The pulse also peaks on `●`, which §3.2 gives to
-"assistant block / tool running". Land this item directly; do not ship the
-pulse first and replace it later.)
+that is actively computing.
 
 ```
   ripple (waiting on external action)   ·· → ·≈ → ≈≈ → ≈·      120 ms  [primary]
@@ -2007,14 +2025,13 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | G3 | The segment strip is appended after the list body, not on its row, and a row without a strip changes the list height (§2 principle 6) | `core/ui-compiler.ts` `segmentRows` | E1 |
 | G4 | Two current markers: `CURRENT_MARK = '← current'` (renders `[← current]`) in theme and permission pickers, `[current]` in the model picker; `SELECT_POINTER = '❯'` is exported but unused while the painter draws `→` | `interaction/symbols.ts`, `theme-switch.ts`, `permission-panel.ts`, `model-commands.ts` | one localized `current` badge; delete `CURRENT_MARK` and `SELECT_POINTER`; drop `symbols.ts` from A4's touch points |
 | G5 | Approval `Esc` is labeled `close` but rejects; `Reject with feedback` is a tab plus a `Back` button | `interaction/approval-plugin.ts`, escape labels in `core/ui-key-grammar.ts` | overridable Escape label; B1 |
-| G6 | This PR changes the `tide` frames to `·•●•·`, and roadmap A1 replans the same variant to the ripple; the peak `●` also collides with the tool-running glyph | `core/ui-patterns.ts` `TIDE_FRAMES`, `loader-tide.svg` | drop the code and screenshot change from this docs PR, or land the ripple (A1) directly |
 | G7 | Redundant buttons: `Set as default` + `Cancel` (pickers); `Back`/`Next`/`Submit answers`/`Cancel` (questionnaire); loader `[ Cancel ]`; single-field form `Submit`/`Cancel` | see §4.1 redundancy rule | E2, F1 |
 | G8 | Three checkbox notations: `●`/`○` (multiple lists), `[x]`/`[ ]` (pickers), `[on]`/`[off]` (toggle); `●` is also the "selected" marker in single lists (UX-24) | `core/ui-patterns.ts` `renderList`, `renderFormField` | multiple lists adopt `[x]`/`[ ]`; `●` stays transcript-only |
 | G9 | Hint verbs overlap: `pick` (open a select), `choose`, `apply`, `open` (UX-23) | `core/ui-key-grammar.ts` | settle on the §2.2 vocabulary; rename `pick` |
 | G10 | The main screen has no persistent key prompt; `Esc` interrupt, `Ctrl+S`, `Alt+Enter`, `Ctrl+G`, `Shift+Tab`, `Alt+M`, and `F6` are cued nowhere | `interaction/input-plugin.ts`, `interaction/keys.ts` | H1 |
 | G11 | The `Ctrl+O` cue is scope-limited (last `expandTurns` turns), one-directional (no `collapse` after expanding), silently dropped on narrow rows, and hard-coded as `ctrl+o` instead of read from the keymap (the todo pane does read it) | `transcript/hints.ts`, `process-rows.ts`, `thinking.ts`, `locale.ts` | H2 |
 | G12 | Three notations for one key: `ctrl+o` (inline), `Ctrl-O` (zh copy, Website), `Ctrl+O` (grammar, `/help`) | `transcript/hints.ts`, `website/**` | H3 |
-| G13 | Tips teach only slash commands and only while a turn runs; the idle screen teaches nothing, and the `#` skills and `!` shell prefixes are cued nowhere | `transcript/tips-content.ts`, `interaction/editor-plus.ts` | H5, H8 |
+| G13 | Tips rotate only while a turn runs; the idle screen teaches nothing, and the `#` skills prefix is cued nowhere (`!` and `@` appear in the rotation) | `transcript/tips-content.ts`, `interaction/editor-plus.ts` | H5, H8 |
 | G14 | No keyboard route to blocks older than `expandTurns` | `transcript/transcript-model.ts` | H6 |
 | G15 | The Website says the queue pane never takes `↑`, but `↑` on an empty prompt withdraws the newest queued message (`withdrawQueued`) | `website/**/features/panes.md`, `editor.md`; `interaction/input-plugin.ts` | H7 |
 | G16 | The status-bar page documents a single-row footer with plan/yolo as lowercase text; the footer already renders two rows and nothing uses row 2 | `website/**/features/status-bar.md`, `transcript/status-model.ts` | H1, B4 |

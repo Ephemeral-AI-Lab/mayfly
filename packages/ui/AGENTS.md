@@ -20,7 +20,8 @@ objects, or mutable product state.
 - `defineMayflyComponent` validates the id/render function and freezes output;
   core owns node schema admission, quotas, and compilation. Do not add a registry.
 - The [component catalog](../../docs/design/component-library.md) defines each
-  component's wire shape, rendered states, keys, and composition recipes.
+  component's wire shape, rendered states, keys, and composition recipes. Check
+  each section's `Status:` banner; target sections are not shipped behavior.
   Compose `ui.*` builders to match it; a genuinely new node kind lands as
   contract + builder + core validator/painter/grammar + width-scan coverage,
   never as an ad-hoc renderer.

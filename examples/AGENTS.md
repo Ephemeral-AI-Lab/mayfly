@@ -10,7 +10,8 @@ services; never import runtime internals or add a provider/host facade. Core
 owns layout, rendering, focus, width, and narrow-layout fallback. Plugins own
 Fiber registrations; the shared user kit is pure wire construction. Compose
 wire nodes with the `ui.*` builders per the
-[component catalog](../docs/design/component-library.md).
+[component catalog](../docs/design/component-library.md); check each section's
+`Status:` banner, since target sections are not shipped behavior.
 
 Preserve build, coverage, pack, and independent-install validation through
 `pnpm run check:examples`. The ecosystem test boots publish-shaped packages,

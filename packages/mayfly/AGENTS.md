@@ -107,10 +107,10 @@ not custom confirm pages or post-confirmation rejections.
 
 Build surfaces from the component patterns in
 [docs/design/component-library.md](../../docs/design/component-library.md)
-(actions row, text/choice fields, lists, tabs, tabbed page layouts, decision
-panels, questionnaire, model picker, loader/progress/empty). Never hand-roll pi-tui
-panels outside `core/`; the editor autocomplete list is a retained legacy
-exception, not a model.
+(actions row, text/choice fields, lists, tabs, decision panels, questionnaire,
+loader/progress/empty). Check each section's `Status:` banner; target sections
+are not shipped behavior. Never hand-roll pi-tui panels outside `core/`; the
+editor autocomplete list is a retained legacy exception, not a model.
 
 ## Native writes and sensitive data
 
