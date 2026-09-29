@@ -17,6 +17,7 @@ import { ui } from '../../../ui/src/index.ts'
 import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
+import { accountPanelNode } from '../../src/interaction/provider-account.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
@@ -300,10 +301,14 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
   const bench = await requestFixture()
   try {
     const reminders = [{ id: 'schedule', title: text, prompt: text, kind: 'every', everySeconds: 300, scheduledAt: '2099-01-01T00:00:00Z' }] as never
+    const links = { usageUrl: `https://example/${text}`, topUpUrl: `https://example/${text}` }
     const nodes = [
       ...(['en', 'zh'] as const).flatMap((locale: MayflyLocaleId) => {
         const t = (key: string, values?: Record<string, string | number>) => interpolateLocaleMessage(INTERACTION_LOCALE[locale][key] ?? INTERACTION_LOCALE.en[key] ?? key, values)
         return [
+          accountPanelNode({ status: 'signed-out', links, attempt: null }, t),
+          accountPanelNode({ status: 'credential-stored', links, attempt: null }, t),
+          accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: 1 } }, t),
           scheduleNode(reminders, Date.now(), t, locale),
           scheduleNode([], Date.now(), t, locale),
           scheduleNode(undefined, Date.now(), t, locale),

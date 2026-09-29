@@ -49,9 +49,12 @@ presentation and current-Agent selection.
   keep quoting only direct prompts.
 - Web search through a signed-in DeepSeek account: on the `deepseek-account`
   provider route, `web_search` authenticates with the account token and needs
-  no separate API key; a 401 surfaces sign-in guidance. Mayfly's provider
-  setup, sign-in overlay, and settings ride the unchanged native
-  authorization and credentials seams.
+  no separate API key; a 401 surfaces sign-in guidance. Selecting "DeepSeek
+  Account" in `/provider` opens an account panel (native `deepseekAccount`
+  service): it shows the sign-in state and, while signed out, explains the
+  honest path — the terminal host carries no local callback web server, so
+  browser sign-in happens in a Desktop or Web host on the same machine (the
+  stored grant is Host-shared) — and offers Sign out when a grant is stored.
 - `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,
   `standard` (default), `detailed`, and `verbose`, keeping the Harness Chat
   work-details mode names. Unlike Harness Chat, whose running turn header and
