@@ -35,6 +35,7 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
       'DeepSeek Account panel - /provider on the account route now signs in from the terminal: a loopback webserver hosts the OAuth callback, Sign in opens the authorize link in the browser while the panel follows the attempt to completion, and Sign out removes the shared grant.',
       'First-run guide - a fresh install with no key and no login now opens a connection guide offering account sign-in or pasting a DeepSeek API key; a stored account grant counts as connected and skips the guide.',
       'Remote sign-in guidance - while a browser sign-in waits, the panel shows the attempt expiry and accepts the callback URL pasted from the local browser address bar, replaying it against the loopback callback server — signing in from a headless SSH host needs no port forward.',
+      'Sign-in recovery - a cancelled, expired or failed attempt offers Sign in again and names its reason (expired link, network, storage); the guide is reachable from the account panel through Enter a DeepSeek API key and Back, so choosing sign-in never strands a first-run user.',
       'Rendering and performance - harden display fidelity and layout budgets, unify overflow signalling, and cut subagent, dock, and scroll cost.',
     ],
     knownIssues: [],

@@ -90,6 +90,23 @@ export function parseCallbackLocation(raw: string, port: number): URL | undefine
   return url
 }
 
+/** The one-line outcome of a finished attempt; the platform error code picks the reason. */
+function outcomeText(attempt: SignInAttemptView, t: (key: string) => string): string {
+  if (attempt.phase === 'cancelled') return t('Sign-in cancelled')
+  if (attempt.phase === 'expired' || attempt.errorCode === 'expired') return t('The sign-in link expired — try again')
+  if (attempt.errorCode === 'network') return t('Could not reach DeepSeek — check the connection and try again')
+  if (attempt.errorCode === 'storage') return t('The login could not be saved on this machine — try again')
+  return t('Sign-in failed — try again')
+}
+
+/** Presentation options for the account panel node. */
+export interface AccountPanelOptions {
+  /** Render inside the first-run guide: adds the API key and Back exits. */
+  readonly guide?: boolean
+  /** BCP 47 locale for the expiry time; the runtime default when omitted. */
+  readonly locale?: string | undefined
+}
+
 /**
  * The panel content for one account view.
  * @param callbackPort - the live loopback callback port while an attempt
@@ -100,34 +117,46 @@ export function accountPanelNode(
   t: (key: string, values?: Record<string, string | number>) => string,
   canSignIn: boolean,
   callbackPort?: number,
+  options: AccountPanelOptions = {},
 ): MayflyUiNode {
   const attempt = view.attempt
-  const failed = attempt !== null && (attempt.phase === 'failed' || attempt.phase === 'expired')
-  const waiting = attempt !== null && attempt.authorizeUrl !== undefined && !attemptTerminal(attempt)
-  const signInLabel = failed ? t('Try again') : t('Sign in')
+  const stored = view.status === 'credential-stored'
+  const live = attempt !== null && !attemptTerminal(attempt)
+  const waiting = live && attempt.authorizeUrl !== undefined
+  // A cancelled, expired or failed attempt is over: sign-in is offered again.
+  const retry = attempt !== null && !live && attempt.phase !== 'succeeded'
+  const justConnected = stored && attempt?.phase === 'succeeded'
   return ui.stack.column([
     ui.fields([
-      { label: t('Status'), value: [{ text: t(view.status === 'credential-stored' ? 'Signed in' : 'Not signed in') }] },
-      ...(attempt === null ? [] : [{ label: t('Sign-in'), value: [{ text: failed ? t('Sign-in failed — try again') : t('Signing in…') }] }]),
-      ...(waiting && attempt!.expiresAt !== undefined ? [{ label: t('Expires'), value: [{ text: new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(new Date(attempt!.expiresAt)) }] }] : []),
+      { label: t('Status'), value: [{ text: t(stored ? 'Signed in' : 'Not signed in') }] },
+      ...(live ? [{ label: t('Sign-in'), value: [{ text: t('Signing in…') }] }] : retry ? [{ label: t('Sign-in'), value: [{ text: outcomeText(attempt, t) }] }] : []),
+      ...(waiting && attempt.expiresAt !== undefined ? [{ label: t('Expires'), value: [{ text: new Intl.DateTimeFormat(options.locale, { timeStyle: 'medium' }).format(new Date(attempt.expiresAt)) }] }] : []),
     ]),
+    ...(justConnected ? [ui.text(t('Connected — account models need no API key.'), { tone: 'muted' })] : []),
     ...(waiting ? [
       ui.text(t('Open the link in a browser to finish signing in'), { tone: 'muted' }),
-      ui.fields([{ label: t('Sign-in link'), value: [{ text: attempt!.authorizeUrl! }] }]),
+      ui.fields([{ label: t('Sign-in link'), value: [{ text: attempt.authorizeUrl! }] }]),
       ...(callbackPort === undefined ? [] : [
         ui.text(t('If the browser cannot reach the page, copy the full address from its address bar and deliver it below.'), { tone: 'muted' }),
         ui.form({ id: 'callback-paste', fields: [{ kind: 'input', id: 'callback-url', label: t('Callback link'), value: '', placeholder: `http://localhost:${String(callbackPort)}/oauth/callback?…` }] }),
       ]),
     ] : []),
-    ...(view.status === 'credential-stored' || canSignIn ? [] : [ui.text(t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' })]),
+    ...(stored || canSignIn ? [] : [ui.text(t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' })]),
     ui.actions({ id: 'account-actions', items: [
-      ...(view.status === 'credential-stored' ? [] : canSignIn && (attempt === null || failed) ? [{ id: 'sign-in', label: signInLabel, intent: 'primary' as const }] : []),
+      ...(!stored && canSignIn && !live ? [{ id: 'sign-in', label: retry && attempt.phase !== 'cancelled' ? t('Try again') : t('Sign in'), intent: 'primary' as const }] : []),
       ...(waiting && callbackPort !== undefined ? [{ id: 'deliver-callback', label: t('Deliver callback'), submit: [{ pagePath: [], formId: 'callback-paste' }] }] : []),
       ...(waiting ? [{ id: 'restart-sign-in', label: t('Restart sign-in') }, { id: 'cancel-sign-in', label: t('Cancel sign-in') }] : []),
-      ...(view.status === 'credential-stored' ? [{ id: 'sign-out', label: t('Sign out'), intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') }] : []),
-      { id: 'close', label: t('Close'), dismiss: true },
+      ...(options.guide === true && !stored ? [{ id: 'use-key', label: t('Enter a DeepSeek API key'), ...(canSignIn ? {} : { intent: 'primary' as const }) }, { id: 'back', label: t('Back') }] : []),
+      ...(stored ? [{ id: 'sign-out', label: t('Sign out'), intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') }] : []),
+      { id: 'close', label: justConnected && options.guide === true ? t('Start chatting') : t('Close'), dismiss: true },
     ] }),
   ])
+}
+
+/** Exits the first-run guide hands the account panel so no path dead-ends. */
+export interface AccountGuideExits {
+  readonly onBack: () => void
+  readonly onUseKey: () => void
 }
 
 /**
@@ -135,11 +164,13 @@ export function accountPanelNode(
  * @param ctx - Host context with the overlays service.
  * @param route - The provider route the Providers list selected.
  * @param signal - Optional caller lifetime.
+ * @param guide - Set by the first-run guide: adds the API key and Back exits
+ * that reopen the guide on the matching view.
  * @returns true when the panel opened (the route is the account adapter and
  * the native account service is available); false when the route is not the
  * account adapter, so callers fall back to their own handling.
  */
-export async function openAccountPanel(ctx: Context, route: string, signal?: AbortSignal): Promise<boolean> {
+export async function openAccountPanel(ctx: Context, route: string, signal?: AbortSignal, guide?: AccountGuideExits): Promise<boolean> {
   const service = ctx.get('deepseekAccount')
   const overlays = ctx.get('mayflyOverlays')
   if (service === undefined || overlays === undefined) return false
@@ -156,7 +187,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   const paint = (view: AccountView): MayflyUiNode => {
     const server = ctx.get('webServer')
     const waiting = view.attempt !== null && view.attempt.authorizeUrl !== undefined && !attemptTerminal(view.attempt)
-    return accountPanelNode(view, t, server !== undefined, waiting && server !== undefined ? server.port : undefined)
+    return accountPanelNode(view, t, server !== undefined, waiting && server !== undefined ? server.port : undefined, { guide: guide !== undefined, locale: ctx.get('mayflyLocale')?.snapshot.locale })
   }
   let handle = openUiOverlay(ctx, {
     id, title: t('DeepSeek Account'), presentation: 'editor', capturing: true,
@@ -164,6 +195,16 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
     onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
       /* v8 ignore next -- activate and the paste submit are the only panel events */
       if (event.kind !== 'activate' && event.kind !== 'submit') return { kind: 'completed' }
+      if (event.kind === 'activate' && (event.actionId === 'use-key' || event.actionId === 'back')) {
+        /* v8 ignore next -- the exits only render inside the guide */
+        if (guide === undefined) return { kind: 'completed' }
+        // Retire a live attempt so a later guide visit starts clean.
+        const attempt = (await service.getState()).attempt
+        if (attempt !== null && !attemptTerminal(attempt)) await service.cancelSignIn(attempt.id).catch(() => undefined)
+        if (event.actionId === 'use-key') guide.onUseKey()
+        else guide.onBack()
+        return { kind: 'completed', dismiss: true }
+      }
       if (event.kind === 'activate' && event.actionId === 'sign-out') {
         try {
           await service.signOut(clientMetadata(ctx))
@@ -204,7 +245,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
       if (event.kind === 'activate' && ['sign-in', 'restart-sign-in'].includes(event.actionId)) {
         const origin = callbackOrigin(ctx)
         /* v8 ignore next -- both actions only render while a webserver is composed */
-        if (origin === undefined) return { kind: 'failed', message: t('Sign-in needs the local webserver — enable the webserver row') }
+        if (origin === undefined) return { kind: 'failed', message: t('Sign-in needs the local web server, which this setup does not run — use an API key instead') }
         try {
           if (event.actionId === 'restart-sign-in') {
             // The platform keeps one live attempt per host process and answers

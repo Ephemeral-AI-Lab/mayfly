@@ -296,6 +296,27 @@ describe('provider onboarding', () => {
     expect(bench.model()).toBeUndefined()
   })
 
+  it('returns to the guide from the account panel: to the key form or back to the choice', async () => {
+    const bench = await setup({}, false, accountLlm)
+    bench.ctx.provide('deepseekAccount', fakeAccount('signed-out') as never)
+    bench.ctx.provide('webServer', { port: 45678 } as never)
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    bench.model()!.invoke('sign-in')
+    await flush()
+    const panel = () => bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider-account.deepseek-account')!
+    panel().invoke('use-key')
+    await flush()
+    expect(JSON.stringify(bench.model()!.node)).toContain('DEEPSEEK_API_KEY')
+    bench.model()!.invoke('back')
+    await flush()
+    bench.model()!.invoke('sign-in')
+    await flush()
+    panel().invoke('back')
+    await flush()
+    expect(JSON.stringify(bench.model()!.node)).toContain('Sign in with a DeepSeek account')
+  })
+
   it('falls back to the key-only guide when no account service is composed', async () => {
     const bench = await setup({}, false, accountLlm)
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)

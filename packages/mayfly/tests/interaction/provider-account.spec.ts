@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/interaction/provider-account
  */
 import { Context } from '@deepseek-ai/cordis'
-import type { AccountClientMetadata, AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account'
+import type { AccountClientMetadata, AccountView, SignInAttemptId, SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
@@ -293,7 +293,7 @@ describe('DeepSeek account panel', () => {
     const { ctx } = await bench(failed, { port: 45678 })
     expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
     const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
-    expect(JSON.stringify(model.node)).toContain('Sign-in failed — try again')
+    expect(JSON.stringify(model.node)).toContain('Could not reach DeepSeek')
     expect(JSON.stringify(model.node)).toContain('"Try again"')
 
     const signedIn = await bench(stored, { port: 45678 })
@@ -304,6 +304,73 @@ describe('DeepSeek account panel', () => {
     await flush()
     expect(signedIn.account.signOuts).toHaveLength(1)
     expect(JSON.stringify(storedModel.node)).toContain('Not signed in')
+  })
+
+  it('offers sign-in again after a cancelled, expired or unsaved attempt and names the reason', async () => {
+    const cases: Array<[SignInAttemptView, string, string]> = [
+      [{ id: 'a' as never, phase: 'cancelled' }, 'Sign-in cancelled', '"Sign in"'],
+      [{ id: 'a' as never, phase: 'expired' }, 'The sign-in link expired', '"Try again"'],
+      [{ id: 'a' as never, phase: 'failed', errorCode: 'expired' }, 'The sign-in link expired', '"Try again"'],
+      [{ id: 'a' as never, phase: 'failed', errorCode: 'storage' }, 'could not be saved on this machine', '"Try again"'],
+      [{ id: 'a' as never, phase: 'failed', errorCode: 'protocol' }, 'Sign-in failed — try again', '"Try again"'],
+    ]
+    for (const [attempt, text, action] of cases) {
+      const { ctx } = await bench({ status: 'signed-out', links: LINKS, attempt }, { port: 45678 })
+      expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+      const json = JSON.stringify(ctx.mayflyUiInteraction.get('overlay', panelId)!.node)
+      expect(json).toContain(text)
+      expect(json).toContain(action)
+      expect(json).not.toContain('Signing in…')
+    }
+  })
+
+  it('confirms a finished sign-in instead of showing it as in progress', async () => {
+    const done: AccountView = { status: 'credential-stored', links: LINKS, attempt: { id: 'a' as never, phase: 'succeeded' } }
+    const plain = await bench(done, { port: 45678 })
+    await openAccountPanel(plain.ctx, 'deepseek-account')
+    const plainJson = JSON.stringify(plain.ctx.mayflyUiInteraction.get('overlay', panelId)!.node)
+    expect(plainJson).toContain('Connected — account models need no API key.')
+    expect(plainJson).not.toContain('Signing in…')
+    expect(plainJson).toContain('"Close"')
+    const inGuide = await bench(done, { port: 45678 })
+    await openAccountPanel(inGuide.ctx, 'deepseek-account', undefined, { onBack: () => {}, onUseKey: () => {} })
+    expect(JSON.stringify(inGuide.ctx.mayflyUiInteraction.get('overlay', panelId)!.node)).toContain('"Start chatting"')
+  })
+
+  it('gives the guide its API key and Back exits and retires a live attempt on the way out', async () => {
+    const exits: string[] = []
+    const guide = { onBack: () => { exits.push('back') }, onUseKey: () => { exits.push('key') } }
+    const { ctx, account } = await bench(signedOut, { port: 45678 })
+    expect(await openAccountPanel(ctx, 'deepseek-account', undefined, guide)).toBe(true)
+    const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+    expect(JSON.stringify(model.node)).toContain('"Enter a DeepSeek API key"')
+    model.invoke('sign-in')
+    await flush()
+    model.invoke('use-key')
+    await flush()
+    expect(account.cancels).toHaveLength(1)
+    expect(exits).toEqual(['key'])
+
+    const again = await bench(signedOut)
+    await openAccountPanel(again.ctx, 'deepseek-account', undefined, guide)
+    const noServer = again.ctx.mayflyUiInteraction.get('overlay', panelId)!
+    expect(JSON.stringify(noServer.node)).toContain('"intent":"primary"')
+    noServer.invoke('back')
+    await flush()
+    expect(exits).toEqual(['key', 'back'])
+  })
+
+  it('still leaves the guide when retiring the live attempt fails', async () => {
+    const exits: string[] = []
+    const { ctx, account } = await bench(signedOut, { port: 45678 })
+    await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => { exits.push('back') }, onUseKey: () => {} })
+    const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+    model.invoke('sign-in')
+    await flush()
+    account.failures.cancel = true
+    model.invoke('back')
+    await flush()
+    expect(exits).toEqual(['back'])
   })
 })
 

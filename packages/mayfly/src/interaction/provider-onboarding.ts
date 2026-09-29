@@ -93,39 +93,43 @@ export function apply(ctx: Context): void {
     const stamp = [{ resourceId: 'provider-onboarding', revision: 0 }]
     const choiceNode = () => onboardingChoiceNode(t, signInRoute !== undefined)
     const keyNode = () => onboardingKeyNode(t)
-    openUiOverlay(ctx, {
-      id: 'mayfly.provider.onboarding', title: t('Connect to DeepSeek'), presentation: 'editor', capturing: true,
-      scope: { kind: 'app', targetId: DEEPSEEK_KEY }, source: stamp,
-      onEvent: { action: async (event, context) => {
-        if (event.kind === 'activate' && event.actionId === 'sign-in' && signInRoute !== undefined) {
-          const opened = await openAccountPanel(ctx, signInRoute, lifetime.signal)
-          /* v8 ignore next -- the guide only offers sign-in after the same service and route check */
-          if (!opened) return { kind: 'failed', message: t('Account sign-in is unavailable') }
-          return { kind: 'completed', dismiss: true }
-        }
-        if (event.kind === 'activate' && event.actionId === 'use-key') {
-          return { kind: 'accepted', node: keyNode(), source: stamp }
-        }
-        if (event.kind === 'activate' && event.actionId === 'back') {
-          return { kind: 'accepted', node: choiceNode(), source: stamp }
-        }
-        if (event.kind !== 'submit') return { kind: 'completed' }
-        const value = event.submission.forms[0]?.fields.find(field => field.id === 'key')?.value
-        if (typeof value !== 'string' || value.length === 0) return { kind: 'invalid', errors: [{ pagePath: [], formId: 'onboarding', fieldId: 'key', message: t('A value is required') }] }
-        try {
-          const info = await credentials.describe(credentialRef(DEEPSEEK_KEY))
-          if (context.signal.aborted) return { kind: 'cancelled' }
-          if (!info.writable) return { kind: 'failed', message: t('The credential source is read-only') }
-          if (info.configured && !observedConfigured) {
-            observedConfigured = true
-            return { kind: 'conflict', node: keyNode(), source: [], message: t('A credential was configured elsewhere; review before replacing it') }
+    /** Open (or refocus) the guide on one view; account exits reopen it here. */
+    const open = (view: 'choice' | 'key'): void => {
+      openUiOverlay(ctx, {
+        id: 'mayfly.provider.onboarding', title: t('Connect to DeepSeek'), presentation: 'editor', capturing: true,
+        scope: { kind: 'app', targetId: DEEPSEEK_KEY }, source: stamp,
+        onEvent: { action: async (event, context) => {
+          if (event.kind === 'activate' && event.actionId === 'sign-in' && signInRoute !== undefined) {
+            const opened = await openAccountPanel(ctx, signInRoute, lifetime.signal, { onBack: () => open('choice'), onUseKey: () => open('key') })
+            /* v8 ignore next -- the guide only offers sign-in after the same service and route check */
+            if (!opened) return { kind: 'failed', message: t('Account sign-in is unavailable') }
+            return { kind: 'completed', dismiss: true }
           }
-          await credentials.set(credentialRef(DEEPSEEK_KEY), value)
-          if (context.signal.aborted) return { kind: 'cancelled' }
-          return { kind: 'accepted', node: keyNode(), source: [], dismiss: true, feedback: { severity: 'success', message: t('DeepSeek API key saved') } }
-        } catch { return { kind: 'failed', message: t('The API key could not be saved') } }
-      } },
-    }, choiceNode(), { signal: lifetime.signal, reopen: 'focus' })
+          if (event.kind === 'activate' && event.actionId === 'use-key') {
+            return { kind: 'accepted', node: keyNode(), source: stamp }
+          }
+          if (event.kind === 'activate' && event.actionId === 'back') {
+            return { kind: 'accepted', node: choiceNode(), source: stamp }
+          }
+          if (event.kind !== 'submit') return { kind: 'completed' }
+          const value = event.submission.forms[0]?.fields.find(field => field.id === 'key')?.value
+          if (typeof value !== 'string' || value.length === 0) return { kind: 'invalid', errors: [{ pagePath: [], formId: 'onboarding', fieldId: 'key', message: t('A value is required') }] }
+          try {
+            const info = await credentials.describe(credentialRef(DEEPSEEK_KEY))
+            if (context.signal.aborted) return { kind: 'cancelled' }
+            if (!info.writable) return { kind: 'failed', message: t('The credential source is read-only') }
+            if (info.configured && !observedConfigured) {
+              observedConfigured = true
+              return { kind: 'conflict', node: keyNode(), source: [], message: t('A credential was configured elsewhere; review before replacing it') }
+            }
+            await credentials.set(credentialRef(DEEPSEEK_KEY), value)
+            if (context.signal.aborted) return { kind: 'cancelled' }
+            return { kind: 'accepted', node: keyNode(), source: [], dismiss: true, feedback: { severity: 'success', message: t('DeepSeek API key saved') } }
+          } catch { return { kind: 'failed', message: t('The API key could not be saved') } }
+        } },
+      }, view === 'key' ? keyNode() : choiceNode(), { signal: lifetime.signal, reopen: 'focus' })
+    }
+    open('choice')
   }
   ctx.plugin({
     name: 'mayfly-onboarding-readiness', inject: ['mayflyCurrentAgent'],

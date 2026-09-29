@@ -2,7 +2,7 @@
 # demo-fresh-onboarding.sh — boot Mayfly in a fully isolated, zero-credential
 # DSH_HOME to demonstrate the first-run connection guide.
 #
-# Usage: script/demo-fresh-onboarding.sh [dsb-home-dir]
+# Usage: script/demo-fresh-onboarding.sh [dsh-home-dir]
 #   The directory defaults to a fresh mktemp dir; pass the same path back to
 #   reuse the installed profile instead of reinstalling.
 #
