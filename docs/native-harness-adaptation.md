@@ -1,6 +1,6 @@
 # Native Harness features in Mayfly
 
-Mayfly targets Harness 0.1.7-rc.2. Native services own session lifecycle,
+Mayfly targets Harness 0.2.0-rc.2. Native services own session lifecycle,
 scheduling, Team coordination, and tool execution. Mayfly provides terminal
 presentation and current-Agent selection.
 
@@ -19,17 +19,21 @@ presentation and current-Agent selection.
   controller.
 - `/schedule` displays the current Agent's Session reminders, overdue first,
   with local and relative times. Creation/cancellation stays in the
-  conversation. Harness 0.1.7-rc.2 turned Schedule into a durable Host-wide
-  service (`ctx.schedule`): the base composition mounts the
-  `@deepseek-ai/dsh-schedule` row disabled, and enabling it — `disabled:
-  false` on the `schedule` row in a profile `cordis.patch.yml` — attaches
-  `schedule_*` tools to every root Agent regardless of preset. `/schedule`
+  conversation. Schedule is a durable Host-wide service (`ctx.schedule`):
+  Mayfly's bundle inserts the `@deepseek-ai/dsh-schedule` row disabled, and
+  enabling it — `disabled: false` on the `schedule` row in a profile
+  `cordis.patch.yml` — attaches `schedule_*` tools to every root Agent
+  regardless of preset. (Harness 0.1.7 made Schedule Host-wide; 0.2.0 moved
+  its own Web composition's rows into the optional
+  `dsh-experimental-schedule-bundle`, which every install ships off —
+  Mayfly's row is unaffected.) `/schedule`
   reads the selected Agent's Session list through the native service,
   observes `schedule/changed`, and reports the capability as unavailable
   while the row stays disabled. `/sessions` reminder badges come from the
   Host catalog. Delivery is durable: a due reminder resolves its original
   Session through the session controller and wakes it even when no Agent is
-  running. The `standard` preset still mounts
+  running. Reminder framing changed in 0.2.0 to "This is a scheduled message
+  from the user". The `standard` preset still mounts
   `@deepseek-ai/dsh-time-context` with a five-minute durable-injection
   throttle; terminal sessions carry no browser timezone metadata, so
   timestamps fall back to the process zone.
@@ -37,6 +41,31 @@ presentation and current-Agent selection.
   binary and rich documents use an explicit external Open action where available.
 - `/mcp` server details expose Resources and Templates. Listing reads metadata;
   Read fetches a chosen URI through the exact Agent's native tool pipeline.
+- `ask_user_question` gained a Harness 0.2.0 timed mode (`mode: timed` with
+  `timeout`): the question releases the agent at the deadline without aborting
+  the Turn, and a late answer is persisted as a user message whose source kind
+  is `user-question-reply`. Mayfly renders that reply in the transcript like
+  any user message, while the prompt echo, queue/steer, rewind, and retraction
+  keep quoting only direct prompts.
+- Web search through a signed-in DeepSeek account: on the `deepseek-account`
+  provider route, `web_search` authenticates with the account token and needs
+  no separate API key; a 401 surfaces sign-in guidance. Selecting "DeepSeek
+  Account" in `/provider` opens an account panel (native `deepseekAccount`
+  service) that signs in from the terminal: the bundle mounts a loopback
+  webserver (OS-assigned port) that hosts the OAuth callback, Sign in starts
+  the PKCE attempt and opens the authorize link in the system browser (the
+  link stays visible as the fallback), the panel follows the attempt phases
+  to completion, and Sign out removes the stored grant. Hosts whose
+  composition has no webserver show the Desktop/Web sign-in hint instead —
+  the stored grant is shared across hosts of one machine. While the attempt
+  waits, the panel shows the attempt expiry and accepts the callback URL
+  pasted from the local browser's address bar: when the browsing machine
+  cannot reach the loopback callback (a headless SSH host, say), the address
+  bar still holds the full redirect URL with its code, and Deliver callback
+  replays it against the local callback server — no port forward needed.
+  The paste accepts only the live loopback endpoint. The first-run guide
+  (no configured credential and no stored grant) offers both paths: account
+  sign-in, which opens the account panel, or pasting a DeepSeek API key.
 - `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,
   `standard` (default), `detailed`, and `verbose`, keeping the Harness Chat
   work-details mode names. Unlike Harness Chat, whose running turn header and

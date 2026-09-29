@@ -129,6 +129,8 @@ export interface MayflyActionItem {
   readonly read?: readonly MayflyFormAddress[]
   readonly selections?: readonly MayflySelectionAddress[]
   readonly defaultFocus?: boolean
+  /** Not drawn as a button and not a focus stop; still runs from its `key` accelerator or as a form's `enterSubmits` target. */
+  readonly hidden?: boolean
   readonly dismiss?: boolean
   readonly navigate?: MayflyPagePath
   /** Surface accelerator key id. Semantic navigation keys are reserved; printable keys are rejected on surfaces with a filterable list. */

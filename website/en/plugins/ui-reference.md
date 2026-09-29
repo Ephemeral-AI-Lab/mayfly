@@ -935,6 +935,7 @@ ui.actions({
     read?: readonly MayflyFormAddress[]
     selections?: readonly MayflySelectionAddress[]
     defaultFocus?: boolean
+    hidden?: boolean          // no button, no focus stop; runs from `key` or as a form `enterSubmits` target
     dismiss?: boolean
     navigate?: MayflyPagePath
     key?: string

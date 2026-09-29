@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { openProviderEditor } from './provider-edit.ts'
+import { openAccountPanel } from './provider-account.ts'
 import { openModelPicker } from './model-commands.ts'
 import { deriveKeyRef, providerProfile } from './provider-profile.ts'
 import { scheduleProviderMigration } from './provider-store.ts'
@@ -41,7 +42,8 @@ export function apply(ctx: Context): void {
         return match === undefined ? { kind: 'error', text: t('Unknown provider') } : openModelPicker(ctx, signal, match.id)
       }
       if (argument.startsWith('edit ')) {
-        return await openProviderEditor(ctx, argument.slice('edit '.length).trim(), lifetime.signal)
+        const route = argument.slice('edit '.length).trim()
+        return await openProviderEditor(ctx, route, lifetime.signal) || await openAccountPanel(ctx, route, lifetime.signal)
           ? { kind: 'success' } : { kind: 'error', text: t('The provider has no editable configuration') }
       }
       if (argument !== '' && argument !== 'list') return { kind: 'error', text: 'usage: /provider [list | edit <provider> | switch <provider> | add]' }
@@ -67,8 +69,11 @@ export function apply(ctx: Context): void {
         id: 'mayfly.providers', title: t('Providers'), presentation: 'editor', capturing: true,
         scope: { kind: 'app', targetId: 'provider-configuration' },
         onEvent: { action: async (event, context) => {
-          if (event.kind === 'selection-accept') return await openProviderEditor(ctx, event.selectedIds[0]!, lifetime.signal)
-            ? { kind: 'completed' } : { kind: 'failed', message: t('The provider has no editable configuration') }
+          if (event.kind === 'selection-accept') {
+            const route = event.selectedIds[0]!
+            return await openProviderEditor(ctx, route, lifetime.signal) || await openAccountPanel(ctx, route, lifetime.signal)
+              ? { kind: 'completed' } : { kind: 'failed', message: t('The provider has no editable configuration') }
+          }
           if (event.kind === 'activate' && event.actionId === 'add') {
             await add(context.signal)
             return { kind: 'completed' }

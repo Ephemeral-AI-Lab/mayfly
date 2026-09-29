@@ -472,7 +472,11 @@ export function foldConversationProjection(
     }
     case 'user/message': {
       if (state.retractedTurns.includes(state.currentTurn)) return state
-      if (!isAppendSurfaceEvent(event) || event.data.source.kind !== 'user') return state
+      // `user-question-reply` is a persisted late answer the user authored
+      // through the question form (Harness 0.2.0): the transcript renders it
+      // like any user message. Other injected sources stay presentation-only.
+      const rendered = event.data.source.kind === 'user' || event.data.source.kind === 'user-question-reply'
+      if (!isAppendSurfaceEvent(event) || !rendered) return state
       const text = bodyText(event.data.content)
       const images = imagesOf(event.data.content)
       if (text.trim() === '' && images.length === 0) return state

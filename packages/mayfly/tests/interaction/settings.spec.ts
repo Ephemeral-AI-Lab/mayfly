@@ -13,6 +13,8 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
+import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 // Empty type import carries the `settings` Context merge and the
 // 'settings/document-updated' Events merge the emits below use.
@@ -336,5 +338,48 @@ describe('applyTheme', () => {
     expect(result.kind).toBe('error')
     expect(result.text).toContain('unknown theme "bogus"')
     expect(ctx.get('mayflyTheme')).toBeUndefined()
+  })
+})
+
+describe('mayfly-settings locale follow', () => {
+  it('follows the shared locale preference at attach and on commits, and falls back to the process locale', async () => {
+    const ctx = createContext()
+    new MayflyLocaleService(ctx, { systemLocale: 'en' })
+    await ctx.plugin(MemorySettings, { locale: { preference: 'zh' } })
+    const store = ctx.settings as unknown as MemorySettings
+    registerMayfly(store)
+    store.register('locale', z.object({ preference: z.string().volatile() }))
+    const session = { current: null as Agent | null }
+    ctx.provide('testSession', session)
+    provideSessionReader(ctx, session)
+    await ctx.plugin(settingsPlugin)
+    await settle()
+    expect(ctx.mayflyLocale.locale).toBe('en')
+    const agent = { id: 'settings-spec' } as unknown as Agent
+    session.current = agent
+    ctx.emit('test/session-changed', agent)
+    await settle()
+    expect(ctx.mayflyLocale.locale).toBe('zh')
+    await store.mutate('locale', [{ op: 'set', path: ['preference'], value: 'en' }])
+    expect(ctx.mayflyLocale.preference).toBe('en')
+    await store.mutate('locale', [{ op: 'set', path: ['preference'], value: 'fr' }])
+    expect(ctx.mayflyLocale.preference).toBeUndefined()
+    await store.mutate('locale', [{ op: 'unset', path: ['preference'] }])
+    expect(ctx.mayflyLocale.preference).toBeUndefined()
+  })
+
+  it('applies the stored language immediately when a session is already attached', async () => {
+    const ctx = createContext()
+    new MayflyLocaleService(ctx, { systemLocale: 'en' })
+    await ctx.plugin(MemorySettings, { locale: { preference: 'zh' } })
+    const store = ctx.settings as unknown as MemorySettings
+    registerMayfly(store)
+    store.register('locale', z.object({ preference: z.string().volatile() }))
+    const session = { current: { id: 'settings-spec' } as unknown as Agent }
+    ctx.provide('testSession', session)
+    provideSessionReader(ctx, session)
+    await ctx.plugin(settingsPlugin)
+    await settle()
+    expect(ctx.mayflyLocale.locale).toBe('zh')
   })
 })

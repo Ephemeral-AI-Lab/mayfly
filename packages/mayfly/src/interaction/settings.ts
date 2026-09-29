@@ -163,6 +163,17 @@ async function syncTheme(ctx: Context, isUnloaded: () => boolean): Promise<void>
 }
 
 /**
+ * Follow the Host-shared `locale.preference`: an explicit `zh`/`en` selects
+ * the live Mayfly locale, an absent value returns to the process locale.
+ * @param ctx - plugin context.
+ */
+function syncLocale(ctx: Context): void {
+  const value = ctx.get('settings')?.describe().find(entry => String(entry.ns) === 'locale')?.value
+  const stored = cell(value !== null && typeof value === 'object' ? (value as Record<string, unknown>).preference : undefined)
+  ctx.get('mayflyLocale')?.setPreference(stored === 'zh' || stored === 'en' ? stored : undefined)
+}
+
+/**
  * Mount the settings owner: publish the volatile-cell reader as the tree's
  * settings source, apply the persisted theme at session attach, and follow
  * later commits.
@@ -196,8 +207,9 @@ export function apply(ctx: Context): void {
   // no follow: the attach-time sync reads the current value.
   let attached = ctx.mayflyCurrentAgent.current() !== null
   ctx.on('settings/document-updated', (ns) => {
-    if (String(ns) !== 'mayfly' || !attached) return
-    sync()
+    if (!attached) return
+    if (String(ns) === 'locale') syncLocale(ctx)
+    if (String(ns) === 'mayfly') sync()
   })
   // Session attach is the post-boot signal (the terminal-title precedent):
   // the app publishes the first non-null reader snapshot only after boot()
@@ -206,8 +218,12 @@ export function apply(ctx: Context): void {
   const registration = ctx.mayflyCurrentAgent.subscribe((agent) => {
     if (attached || agent === null) return
     attached = true
+    syncLocale(ctx)
     sync()
   })
   ctx.effect(() => registration)
-  if (attached) sync()
+  if (attached) {
+    syncLocale(ctx)
+    sync()
+  }
 }

@@ -102,10 +102,11 @@ describe('Mayfly preset roster', () => {
 
   it('mounts Schedule as a disabled Host row and keeps time-context preset-scoped', () => {
     const mayflyRoot = new URL('../presets/', import.meta.url)
-    // Harness 0.1.7-rc.2 turned Schedule into a durable Host-wide service whose
+    // Harness 0.1.7 turned Schedule into a durable Host-wide service whose
     // tools attach to every root Agent, so the row lives in the host patch and
     // ships disabled — a preset-scoped mount would instantiate one service per
-    // scope racing on the same task store.
+    // scope racing on the same task store. (0.2.0 moved upstream's own Web
+    // rows into dsh-experimental-schedule-bundle; Mayfly's row is its own.)
     const host = preset(readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')) as readonly {
       readonly insert?: readonly { readonly id?: unknown; readonly name?: unknown; readonly disabled?: unknown }[]
     }[]

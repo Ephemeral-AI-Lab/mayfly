@@ -614,6 +614,7 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
     const disabledValue = own(object, 'disabled', path)
     const busyValue = own(object, 'busy', path)
     const defaultFocus = own(object, 'defaultFocus', path)
+    const hidden = own(object, 'hidden', path)
     const dismiss = own(object, 'dismiss', path)
     const confirmValue = own(object, 'confirm', path)
     const keyValue = optionalText(object, 'key', path, state)
@@ -647,6 +648,7 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
       ...optional(confirmValue === undefined ? undefined : confirmation(confirmValue, `${path}.confirm`, state), 'confirm'),
       ...optional(keyValue === undefined ? undefined : actionKey(keyValue, path, state), 'key'),
       ...optional(defaultFocus === undefined ? undefined : boolean(defaultFocus, `${path}.defaultFocus`), 'defaultFocus'),
+      ...optional(hidden === undefined ? undefined : boolean(hidden, `${path}.hidden`), 'hidden'),
       ...optional(dismiss === undefined ? undefined : boolean(dismiss, `${path}.dismiss`), 'dismiss'),
       ...optional(submit, 'submit'),
       ...optional(read, 'read'),
