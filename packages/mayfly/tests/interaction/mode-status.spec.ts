@@ -15,7 +15,7 @@ import { fakeMayflyContext } from './fakes.ts'
 
 type PlanState = { active: boolean, pending?: boolean }
 
-async function mount(initial: PlanState = { active: false }, withPlan = true) {
+async function mount(initial: PlanState = { active: false }, withPlan = true, ordered = false) {
   const { ctx } = fakeMayflyContext()
   await ctx.plugin(SessionStore)
   const session = ctx.sessions.create(SessionId('mode-status-spec'))
@@ -40,9 +40,27 @@ async function mount(initial: PlanState = { active: false }, withPlan = true) {
         : { plan: { active: state.active, pending: state.pending === true } },
     }
   })
+  // Mirrors dsh `derive()`: a recorded preset is effective only once the
+  // sandbox and approval knobs folded so far match its spec.
+  const knobs = { preset: null as string | null, sandbox: 'workspace-write', approval: 'ask' }
+  ctx.on('session/event', (_target, event) => {
+    const data = event.data as Record<string, string>
+    if (event.type === 'permission/preset') knobs.preset = data['preset']!
+    if (event.type === 'sandbox/mode') knobs.sandbox = data['mode']!
+    if (event.type === 'approval/policy') knobs.approval = data['policy']!
+  })
+  const derived = (): string => {
+    if (knobs.preset !== null) {
+      const spec = knobs.preset === 'danger-full-access'
+        ? { sandbox: 'danger-full-access', approval: 'never' }
+        : { sandbox: 'workspace-write', approval: 'ask' }
+      if (spec.sandbox === knobs.sandbox && spec.approval === knobs.approval) return knobs.preset
+    }
+    return knobs.sandbox === 'danger-full-access' && knobs.approval === 'never' ? 'danger-full-access' : 'workspace-write'
+  }
   ctx.provide('permissionPresets', {
     names: ['workspace-write', 'danger-full-access'],
-    current: target => permissions.get(agents.get(target as typeof session)!) ?? 'workspace-write',
+    current: target => ordered ? derived() : permissions.get(agents.get(target as typeof session)!) ?? 'workspace-write',
     resolve: name => name === 'danger-full-access'
       ? { sandbox: 'danger-full-access', approval: 'never' }
       : { sandbox: 'workspace-write', approval: 'ask' },
@@ -125,6 +143,48 @@ describe('mayfly-status-mode', () => {
     world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
     expect(reads()).toBe(baseline + 1)
     expect(world.entry()?.node).toMatchObject({ children: [{ node: { content: 'plan' } }, { node: { content: 'yolo' } }] })
+  })
+
+  describe('preset switches fold their knob facts after the preset fact', () => {
+    const yolo = { kind: 'text', content: 'yolo', tone: 'warning' }
+
+    it('shows yolo only once the final knob fact lands, and clears on leaving', async () => {
+      const world = await mount({ active: false }, true, true)
+      const session = world.agent.session
+      session.append('permission/preset', { preset: 'danger-full-access' })
+      expect(world.entry()?.node).toBeNull()
+      session.append('sandbox/mode', { mode: 'danger-full-access' })
+      expect(world.entry()?.node).toBeNull()
+      session.append('approval/policy', { policy: 'never' })
+      expect(world.entry()?.node).toEqual(yolo)
+
+      session.append('permission/preset', { preset: 'workspace-write' })
+      expect(world.entry()?.node).toEqual(yolo)
+      session.append('sandbox/mode', { mode: 'workspace-write' })
+      session.append('approval/policy', { policy: 'ask' })
+      expect(world.entry()?.node).toBeNull()
+    })
+
+    it('shows yolo when the last changed knob is the sandbox', async () => {
+      const world = await mount({ active: false }, true, true)
+      const session = world.agent.session
+      session.append('approval/policy', { policy: 'never' })
+      session.append('permission/preset', { preset: 'danger-full-access' })
+      expect(world.entry()?.node).toBeNull()
+      session.append('sandbox/mode', { mode: 'danger-full-access' })
+      expect(world.entry()?.node).toEqual(yolo)
+    })
+
+    it('follows a queued plan through its command lifecycle', async () => {
+      const world = await mount({ active: false }, true, true)
+      const session = world.agent.session
+      world.states.set(world.agent, { active: false, pending: true })
+      session.append('command/run', { commandId: 'c1', name: 'plan' })
+      expect(world.entry()?.node).toMatchObject({ content: 'plan…' })
+      world.states.set(world.agent, { active: false })
+      session.append('command/done', { commandId: 'c1', kind: 'success' })
+      expect(world.entry()?.node).toBeNull()
+    })
   })
 
   it('follows exact current-Agent changes', async () => {

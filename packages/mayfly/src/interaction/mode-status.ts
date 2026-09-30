@@ -14,6 +14,15 @@ import { sessionModeSnapshot } from './mode-commands.ts'
 export const name = 'mayfly-status-mode'
 export const inject = ['mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections']
 
+const MODE_EVENTS: ReadonlySet<string> = new Set([
+  'plan/mode',
+  'permission/preset',
+  'sandbox/mode',
+  'approval/policy',
+  'command/run',
+  'command/done',
+])
+
 /** Register the current Agent's independent plan and yolo badges. */
 export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
@@ -47,8 +56,10 @@ export function apply(ctx: Context): void {
     if (session !== ctx.mayflyCurrentAgent.current()?.session) return
     // Only plan and permission facts can change the badges; stream deltas
     // and the rest of the session log cannot, so they never re-read the
-    // projections.
-    if (event.type !== 'plan/mode' && event.type !== 'permission/preset') return
+    // projections. A preset switch appends `permission/preset` before its
+    // sandbox and approval knobs, so the preset only reads as effective after
+    // the last knob fact; a queued plan is derived from command lifecycle.
+    if (!MODE_EVENTS.has(event.type)) return
     refresh()
   })
   ctx.effect(() => () => {
