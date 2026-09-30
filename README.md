@@ -9,22 +9,34 @@
 </p>
 
 [![CI](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml/badge.svg)](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml)
-[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933)](#usage)
-[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#usage)
+[![npm](https://img.shields.io/npm/v/@ephemeral-ai/mayfly?label=npm)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
+[![downloads](https://img.shields.io/npm/dm/@ephemeral-ai/mayfly)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
+[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933)](#install)
+[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#install)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 English | [中文](README.zh.md)
 
 Mayfly is an interactive terminal UI for
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`).
-It is an out-of-tree Cordis bundle over `dsh-base`, built against Harness
-`0.2.0-rc.2`. Mayfly `0.1.3-rc.2` deliberately uses the same plugin
-model as dsh Web: plugins are ordinary Cordis siblings and consume native dsh
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) —
+an out-of-tree Cordis bundle over `dsh-base`, built against Harness
+`0.2.0-rc.2`. Mayfly `0.1.3-rc.2` deliberately uses the same plugin model
+as dsh Web: plugins are ordinary Cordis siblings and consume native dsh
 services directly.
 
-Mayfly renders Markdown tables, closed Mermaid fences in assistant messages,
-and renderer-neutral line, point, bar, sparkline, and heatmap nodes directly in
-the terminal, with width-safe source or text fallbacks.
+- **Terminal-native rendering**: Markdown tables, closed Mermaid fences in
+  assistant messages, and renderer-neutral line, point, bar, sparkline, and
+  heatmap nodes — with width-safe source or text fallbacks.
+- **One activity row for live status**: the spinner, current step, turn
+  elapsed time, estimated token count, and output rate live above the
+  editor; the transcript records only what has happened.
+- **Side conversations**: `/btw` and the `/agents` subagent tree share the
+  transcript pane; `F7` returns to the previous conversation and `F8`
+  closes the displayed one.
+- **An ordinary plugin model**: consume `ctx.commands`,
+  `ctx.sessionProjections`, `ctx.tools`, and other documented dsh services
+  directly; UI contributions go through `mayflyPanes`, `mayflyStatus`,
+  `mayflyOverlays`, and `mayflyEditorExtensions`.
 
 The activity row above the editor is the one place for live status: the
 spinner, the current step (`Thinking`, `Running commands`), the turn's elapsed
@@ -93,7 +105,11 @@ export function apply(ctx: Context): void {
 }
 ```
 
-## Usage
+Publish-shaped plugin packages live in [examples/](examples); the
+[developer manual](website/en/plugins/index.md) covers the full contribution
+lifecycle.
+
+## Install
 
 Prerequisites are Node `^22.19 || >=24` and pnpm 11.
 
@@ -110,10 +126,11 @@ npm -g install @ephemeral-ai/mayfly-cli
 mayfly
 ```
 
-Set `DEEPSEEK_API_KEY` before first run. `/help` lists the active commands
-and key bindings.
+Set `DEEPSEEK_API_KEY` before first run.
 
-`/agents` browses the current session's subagent tree; Enter opens a child and
+## Usage
+
+`/help` lists the active commands and key bindings. `/agents` browses the current session's subagent tree; Enter opens a child and
 `/agents stop <id>` stops a live continuable leaf child; a parent with live
 descendants is refused so teardown cannot silently remove a whole subtree.
 `/btw <question>` opens a

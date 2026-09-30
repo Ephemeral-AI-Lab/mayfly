@@ -6,6 +6,23 @@
 `dsh-base` 上增加普通 sibling：一组 dsh 支撑行和全部 Mayfly product
 行。
 
+## 安装
+
+```sh
+npm i -g @deepseek-ai/dsh
+dsh plugin --profile mayfly add @ephemeral-ai/mayfly
+dsh --profile mayfly
+```
+
+也可以使用包含已测试 dsh runtime 的独立启动器：
+
+```sh
+npm -g install @ephemeral-ai/mayfly-cli
+mayfly
+```
+
+首次运行前设置 `DEEPSEEK_API_KEY`。
+
 插件直接继承 dsh 原生 service，并通过 `mayflyPanes`、`mayflyStatus`、
 `mayflyOverlays` 与 `mayflyEditorExtensions` 贡献终端 UI。当前 Agent 由
 `mayflyCurrentAgent` 提供。Mayfly 官方功能使用完全相同的 service。

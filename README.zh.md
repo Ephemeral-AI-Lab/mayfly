@@ -9,21 +9,30 @@
 </p>
 
 [![CI](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml/badge.svg)](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml)
-[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933)](#用法)
-[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#用法)
+[![npm](https://img.shields.io/npm/v/@ephemeral-ai/mayfly?label=npm)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
+[![downloads](https://img.shields.io/npm/dm/@ephemeral-ai/mayfly)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
+[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933)](#安装)
+[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#安装)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 [English](README.md) | 中文
 
 Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-（`dsh`）的交互式终端界面。它是叠加在 `dsh-base` 上的树外 Cordis
+（`dsh`）的交互式终端界面——叠加在 `dsh-base` 上的树外 Cordis
 bundle，针对 Harness `0.2.0-rc.2` 构建。Mayfly `0.1.3-rc.2`
 刻意与 dsh Web 使用同一种插件模型：插件是普通 Cordis sibling，直接消费
 dsh 原生服务。
 
-Mayfly 可以直接在终端显示 Markdown 表格、assistant 消息中的闭合 Mermaid fence，
-以及 renderer-neutral 的 line、point、bar、sparkline 与 heatmap 节点；超宽或不支持
-的内容会安全回退为源码或文本。
+- **终端原生渲染**：Markdown 表格、assistant 消息中的闭合 Mermaid fence，
+  以及 renderer-neutral 的 line、point、bar、sparkline 与 heatmap 节点；
+  超宽或不支持的内容会安全回退为源码或文本。
+- **唯一的实时状态行**：spinner、当前步骤、回合耗时、估算 token 数与输出
+  速率都在编辑器上方的 activity 行；会话记录只记录已经发生的事。
+- **旁支会话**：`/btw` 与 `/agents` 的 subagent 树共用 transcript 面板；
+  `F7` 返回上一个会话，`F8` 关闭当前显示的会话。
+- **普通的插件模型**：直接消费 `ctx.commands`、`ctx.sessionProjections`、
+  `ctx.tools` 等有文档的 dsh 服务；UI 贡献通过 `mayflyPanes`、
+  `mayflyStatus`、`mayflyOverlays` 与 `mayflyEditorExtensions`。
 
 编辑器上方的 activity 行是唯一显示实时状态的位置：spinner、当前步骤（`思考中`、
 `正在运行命令`）、回合耗时，以及估算 token 数与输出速率。会话记录只记录已经发生的事：
@@ -84,7 +93,10 @@ export function apply(ctx: Context): void {
 }
 ```
 
-## 用法
+可安装的插件包形态见 [examples/](examples)；完整贡献生命周期见
+[开发手册](website/en/plugins/index.md)。
+
+## 安装
 
 前置条件为 Node `^22.19 || >=24` 与 pnpm 11。
 
@@ -101,9 +113,11 @@ npm -g install @ephemeral-ai/mayfly-cli
 mayfly
 ```
 
-首次运行前设置 `DEEPSEEK_API_KEY`。`/help` 会列出当前有效的命令和键位。
+首次运行前设置 `DEEPSEEK_API_KEY`。
 
-`/agents` 浏览当前会话的 subagent 树；Enter 打开 child，
+## 用法
+
+`/help` 会列出当前有效的命令和键位。`/agents` 浏览当前会话的 subagent 树；Enter 打开 child，
 `/agents stop <id>` 停止没有 live 后代的 live continuable child；仍有 live 后代的
 父节点会被拒绝，避免一次操作静默销毁整棵子树。`/btw <question>` 打开临时
 旁路 Agent。旁支会话（BTW 与 subagent，可同时打开多个）在同一个 transcript 面板中
