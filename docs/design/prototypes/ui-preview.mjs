@@ -1,0 +1,1117 @@
+#!/usr/bin/env node
+/**
+ * Terminal prototype of the Mayfly UI redesign round (docs/design/component-library.md, §8).
+ * A standalone script with no dependencies: it draws its own colors and does not use the
+ * Mayfly renderer, so it shows design intent (motion, layout, keys), not shipped rendering.
+ *
+ *   node docs/design/prototypes/ui-preview.mjs [scene-number]
+ *   ] or Tab next scene · [ or Shift+Tab previous · q or Ctrl+C quit
+ *   While a text field has focus the scene keeps every key; Esc stops typing.
+ *
+ * @module docs/design/prototypes/ui-preview
+ */
+
+const V = [154, 134, 230]
+const c = (col, s) => `\x1b[38;2;${col[0]};${col[1]};${col[2]}m${s}\x1b[0m`
+const acc = s => c(V, s)
+const grn = s => c([110, 200, 140], s)
+const red = s => c([230, 110, 110], s)
+const yel = s => c([230, 190, 90], s)
+const dim = s => `\x1b[2m${s}\x1b[0m`
+const bold = s => `\x1b[1m${s}\x1b[0m`
+const inv = s => `\x1b[7m${s}\x1b[0m`
+const ital = s => `\x1b[3m${s}\x1b[0m`
+const strikeDim = s => `\x1b[9m\x1b[2m${s}\x1b[0m`
+const mix = k => V.map(v => Math.round(60 + (v - 60) * k))
+const strip = s => s.replace(/\x1b\[[0-9;]*m/g, '')
+const vlen = s => [...strip(s)].length
+const pick = (arr, f, every = 1) => arr[Math.floor(f / every) % arr.length]
+const pad = (s, w) => s + ' '.repeat(Math.max(0, w - vlen(s)))
+const right = (l, r, w = 78) => l + ' '.repeat(Math.max(2, w - vlen(l) - vlen(r))) + r
+const flash = s => `\x1b[1;7m${strip(s)}\x1b[0m`
+const bar = (n, total, w = 10, tone = acc) => {
+  const k = Math.round(n / total * w)
+  return tone('▰'.repeat(k)) + dim('▱'.repeat(w - k))
+}
+const rule = (n, total, w = 40, tone = acc) => {
+  const k = Math.round(n / total * w)
+  return tone('━'.repeat(k)) + dim('─'.repeat(w - k))
+}
+const cut = (s, w) => vlen(s) <= w ? s : [...strip(s)].slice(0, w - 1).join('') + '…'
+const columns = (l, r, lw, gap = ' │ ', min = 8) => {
+  const n = Math.max(l.length, r.length, min)
+  return Array.from({ length: n }, (_, i) => pad(l[i] ?? '', lw) + dim(gap) + (r[i] ?? ''))
+}
+
+
+// ---- theme / pill / contrast helpers
+const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b) }
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05) }
+// Tabs and lists colour only the TEXT (never a filled background). The `ref` colour is the
+// assumed terminal background and is used only to compute contrast.
+const THEMES = {
+  dark: { ref: [30, 30, 46], active: [154, 134, 230], selected: [176, 160, 236], rule: [110, 98, 170],
+    idle: [150, 146, 175], attn: [230, 190, 90], disabled: [100, 97, 120] },
+  light: { ref: [251, 250, 255], active: [96, 74, 190], selected: [112, 90, 200], rule: [170, 160, 220],
+    idle: [104, 100, 130], attn: [150, 100, 0], disabled: [150, 146, 170] },
+}
+const tc = (T, key, s, b = false) => `${b ? '\x1b[1m' : ''}\x1b[38;2;${T[key].join(';')}m${s}\x1b[0m`
+
+// ---- path helpers
+const HOME = '/home/ubuntu'
+const tildify = p => p.startsWith(HOME) ? '~' + p.slice(HOME.length) : p
+function midCut(path, w) {
+  const p = tildify(path)
+  if ([...p].length <= w) return p
+  const segs = p.split('/')
+  const head = p.startsWith('~') ? '~' : '/' + segs[1]
+  const rest = segs.slice(p.startsWith('~') ? 1 : 2)
+  let tail = []
+  for (let i = rest.length - 1; i >= 0; i--) {
+    const cand = `${head}/…/${[rest[i], ...tail].join('/')}`
+    if ([...cand].length > w) break
+    tail = [rest[i], ...tail]
+  }
+  return tail.length ? `${head}/…/${tail.join('/')}` : '…' + [...rest.at(-1)].slice(-(w - 1)).join('')
+}
+
+const bloom = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢']
+const fillGlyph = ['⡀', '⣄', '⣤', '⣦', '⣶', '⣷', '⣿', '⣷', '⣶', '⣦', '⣤', '⣄']
+const orbit = ['⠁', '⠂', '⠄', '⡀', '⢀', '⠠', '⠐', '⠈']
+const classic = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+const gap = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷']
+const clock = ['◴', '◷', '◶', '◵']
+const breath = [0.25, 0.5, 0.8, 1, 0.8, 0.5]
+const TIPS = ['/ commands', '@ files', '# skills', '! shell', 'Shift+Tab plan mode', 'Alt+M switch model', 'Ctrl+O expand output']
+function shimmer(text, f) {
+  const pos = (f % (text.length + 6)) - 3
+  return [...text].map((ch, i) => Math.abs(i - pos) <= 1 ? bold(acc(ch)) : dim(ch)).join('')
+}
+function box(title, rightText, body, w = 74) {
+  const inner = w - 2
+  const head = rightText ? `╭ ${title} ${'─'.repeat(Math.max(1, inner - vlen(title) - vlen(rightText) - 4))} ${rightText} ╮` : `╭ ${title} ${'─'.repeat(Math.max(1, inner - vlen(title) - 2))}╮`
+  return [acc(head), ...body.map(l => acc('│') + ` ${pad(l, inner - 1)}` + acc('│')), acc(`╰${'─'.repeat(inner)}╯`)]
+}
+function diff(rows) {
+  const gw = Math.max(3, ...rows.map(r => String(Math.max(r.o ?? 0, r.n ?? 0)).length))
+  return rows.map(r => {
+    if (r.gap) return `  ${dim('⋯')}`
+    const o = r.o == null ? ' '.repeat(gw) : String(r.o).padStart(gw)
+    const n = r.n == null ? ' '.repeat(gw) : String(r.n).padStart(gw)
+    const sign = r.s === '-' ? red('−') : r.s === '+' ? grn('+') : ' '
+    return `  ${dim(o + ' ' + n + ' │')} ${sign} ${r.s === '-' ? red(r.t) : r.s === '+' ? grn(r.t) : r.t}`
+  })
+}
+const stat = (a, d, w = 8) => {
+  const k = Math.max(1, Math.round(a / (a + d || 1) * w))
+  return `${grn('+' + a)} ${red('−' + d)} ${grn('▮'.repeat(k))}${red('▮'.repeat(w - k))}`
+}
+const EDIT_ROWS = [
+  { o: 41, n: 41, t: "  const moon = state.mode === 'waiting'" },
+  { o: 42, s: '-', t: '  const frame = moon' },
+  { n: 42, s: '+', t: '  const frame = glyphFor(state)' },
+  { o: 43, n: 43, t: '  const now = activityNow()' },
+  { gap: true },
+  { o: 118, n: 118, t: "  return { kind: 'stack', direction: 'column'," },
+]
+
+const scenes = []
+const scene = s => scenes.push(s)
+const last = () => scenes.at(-1)
+const printable = k => k.length === 1 && k >= ' ' && k !== '\x7f'
+
+// ================================================================ 1 activity
+scene({ name: 'Activity', render: (f) => {
+  const esc = dim('Esc interrupt · Ctrl+O expand')
+  return [
+    dim('one motion channel per row: glyph OR label, never both'), '',
+    dim('thinking → bloom glyph, label still'),
+    right(`${acc(pick(bloom, f))} Thinking ${dim('· 8s · ↑30.2k ↓1.1k')}`, esc),
+    `  ${dim('⎿')} Checking whether facts.activity can carry more than the latest tool name,`,
+    `    since every tool/call overwrites the previous one…`, '',
+    dim('tool running → static ●, label shimmers'),
+    right(`${acc('●')} ${shimmer('Running commands', f)} ${dim('· 12s · ↑30.2k ↓4.1k · 38 tok/s')}`, esc),
+    `  ${dim('⎿')} pnpm run verify:changed -- --plan`, '',
+    dim('working on the model (was "Deep diving") → braille fill glyph, label still; the tip lives in the gap'),
+    right(`${acc(pick(fillGlyph, f))} Working ${dim('· 2s')}`, dim('Tip: ' + pick(TIPS, f, 30))), '',
+    dim('waiting on an external action → slow breath, label still'),
+    right(`${c(mix(pick(breath, f, 4)), '●')} Waiting for authorization ${dim('· 45s')}`, dim('Esc cancel')), '',
+    dim('waiting on YOU → nothing moves'),
+    `${yel('?')} ${bold('Waiting for your action')} ${dim('· 8s')}`, '',
+    dim('stopping → static'),
+    `${red(bold('■'))} ${dim('interrupting…')}`, '',
+    dim('idle → nothing is rendered (no tips here)'),
+  ]
+}})
+
+// ================================================================ 2 loader
+scene({ name: 'Loader', render: (f, t) => {
+  const MSG = 'Discovering models from api.example.com'
+  const n = Math.min(10, Math.floor(t / 600) % 12)
+  const g = acc(pick(gap, f))
+  return [
+    dim('indeterminate: the gap spinner ⣾⣽⣻⢿⡿⣟⣯⣷ (chosen)'), '',
+    `${g} ${MSG} ${dim('12s')}`, '',
+    dim('inside a dialog, with its cancel action'),
+    ...box('Add provider', '', [`${g} ${MSG} ${dim('12s')}`, '', dim('Esc cancel')], 64), '',
+    dim('as a pane head / inline status'),
+    `${g} ${dim('Loading sessions…')}`,
+    `${g} ${dim('Checking balance…')}`, '',
+    dim('determinate (total known)'),
+    `Building ${bar(n, 10)} ${n}/10`, '',
+    dim('waiting on an external action (kept)'),
+    `${c(mix(pick(breath, f, 4)), '●')} Waiting for authorization ${dim('· open the URL in your browser · 45s')}`,
+    `  ${dim('[ Cancel ]')}`, '',
+    dim('settled'),
+    `${grn('✓')} ${dim('Discovered 14 models · 2.1s')}`,
+    `${red('✗')} ${red('Discovery failed: 401 Unauthorized')}   ${dim('[ Retry ]')}`,
+    dim('⊘ Cancelled'),
+  ]
+}})
+
+// ================================================================ 3 tools
+scene({ name: 'Tools', render: (f, t) => {
+  const cats = [
+    ['Running commands', 'pnpm run verify:changed -- --plan', 'tool'],
+    ['Reading files', 'packages/mayfly/src/transcript/pane-activity.ts', 'tool'],
+    ['Searching code', '"liveProcessDetail" in packages/', 'tool'],
+    ['Visiting web pages', 'https://pi.dev/docs/latest/tui', 'tool'],
+    ['Updating the plan', '3 of 5 items done', 'tool'],
+    ['Waiting for your action', 'Which release channel should this go to?', 'user'],
+  ]
+  const [label, detail, kind] = cats[Math.floor(t / 1600) % cats.length]
+  return [
+    dim('running (category picks label + detail; cycles every 1.6s)'),
+    kind === 'user' ? `${yel('?')} ${bold(label)} ${dim('· 8s')}` : `${acc('●')} ${shimmer(label, f)} ${dim('· 12s')}`,
+    `  ${dim('⎿')} ${detail}`, '',
+    dim('settled: one static line per call'),
+    `${grn('✓')} Read ${acc('pane-activity.ts')} ${dim('· 481 lines')}`,
+    `${grn('✓')} Searched ${acc('"activity"')} ${dim('· 47 matches in 12 files')}`,
+    `${grn('✓')} Ran ${acc('pnpm run check:lib')} ${dim('· 4.2s')}`,
+    `${red('✗')} Ran ${acc('pnpm run lint')} ${red('· exit 1')} ${dim('· 3s')}`,
+    `${grn('✓')} Fetched ${acc('pi.dev/docs/latest/tui')} ${dim('· 200 · 18 KB')}`,
+    `${grn('✓')} Updated plan ${dim('· 3/5 done')}`,
+    `${dim('⊘ Cancelled')} Ran ${dim('pnpm run build')}`, '',
+    dim('folded turn summary (Ctrl+O expands)'),
+    dim('▸ Read 3 files · Searched code · Ran 2 commands · 6s'),
+  ]
+}})
+
+// ================================================================ 4 edit / write
+scene({ name: 'Edit/Write', render: (f, t) => {
+  const T = t % 9000
+  const path = 'packages/mayfly/src/transcript/pane-activity.ts'
+  const live = T < 2500
+    ? [dim('Edit · phase 1 · arguments streaming'), `${acc('●')} ${shimmer('Preparing to edit files', f)} ${dim('· 3s · ↓' + (0.4 + T / 900).toFixed(1) + 'k')}`, `  ${dim('⎿')} ${path}`]
+    : T < 5000
+      ? [dim('Edit · phase 2 · applying, diffstat ticks up'), `${acc('●')} ${shimmer('Editing files', f)} ${dim('· 5s')}`, `  ${dim('⎿')} ${path}  ${stat(Math.min(12, Math.floor((T - 2500) / 150)), Math.min(3, Math.floor((T - 2500) / 600)))}`]
+      : [dim(T < 5400 ? 'Edit · phase 3 · settle flash (400 ms)' : 'Edit · settled: numbered diff (old, new columns)'),
+        T < 5400 ? flash('✓ Edited pane-activity.ts  +12 −3') : `${grn('✓')} ${bold('Edited')} ${acc('pane-activity.ts')}  ${stat(12, 3)}`,
+        ...diff(EDIT_ROWS)]
+  return [
+    ...live, '',
+    dim('Edit · multi-file (apply_patch)'),
+    `${grn('✓')} ${bold('Edited 3 files')}  ${stat(58, 21)}`,
+    `  ├ ${yel('M')} pane-activity.ts    ${stat(34, 12, 6)}`,
+    `  ├ ${grn('A')} frame-table.ts      ${stat(18, 0, 6)}`,
+    `  └ ${red('D')} moon-frames.ts      ${stat(0, 9, 6)}`, '',
+    dim('Edit · failed'),
+    `${red('✗')} ${red('Edit failed')} pane-activity.ts`,
+    `  ${dim('⎿')} ${red('old text not found (expected at line 41)')}`, '',
+    dim('Write · never a diff: one line, plain preview only on Ctrl+O'),
+    `${grn('✓')} ${bold('Wrote')} ${acc('packages/mayfly/src/transcript/frame-table.ts')} ${dim('· 84 lines · 3.1 KB')}`,
+  ]
+}})
+
+// ================================================================ 5 tray
+const tray = {}
+scene({ name: 'Tray', keys: '↓ enter tray · ←/→ Agents/Jobs · ↑↓ select · Enter view · x stop · Esc back',
+  init: () => Object.assign(tray, {
+    tabs: ['Agents', 'Jobs'], tab: 0, sel: 0, mode: 'editor', note: '', confirm: false,
+    data: {
+      Agents: [
+        { g: acc('●'), name: 'review', task: 'Audit facts projection', meta: '41s · 6 tools · ↓6.4k' },
+        { g: yel('●'), name: 'plan', task: 'Draft migration plan', meta: 'waiting · reply needed' },
+        { g: grn('✓'), name: 'explore', task: 'Map transcript files', meta: '12s · 8 tools' },
+        { g: grn('✓'), name: 'lint', task: 'Sweep oxlint findings', meta: '9s · 3 tools' },
+        { g: grn('✓'), name: 'docs', task: 'Update README variants', meta: '20s · 5 tools' },
+      ],
+      Jobs: [
+        { g: acc('⏵'), name: 'dev', task: 'pnpm run dev', meta: 'running 4m 2s' },
+        { g: acc('⏵'), name: 'watch', task: 'pnpm run test -- --watch', meta: 'running 1m 9s' },
+        { g: grn('✓'), name: 'build', task: 'pnpm run build', meta: 'exited 0 · 22s' },
+      ],
+    } }),
+  render: (f) => {
+    const rows = tray.data[tray.tabs[tray.tab]]
+    const out = [
+      right(`${acc(pick(fillGlyph, f))} Working ${dim('· 2s')}`, dim('Tip: ' + pick(TIPS, f, 30)), 76),
+      dim('╭' + '─'.repeat(76) + '╮'),
+      dim('│') + pad(` > ${tray.mode === 'editor' ? '▌' : ''}`, 76) + dim('│'),
+      dim('╰' + '─'.repeat(76) + '╯'),
+      '  ' + right(dim('deepseek-chat High  ~/work/mayfly  main ±3'), dim('cache 34%  context: 18%'), 74),
+    ]
+    if (tray.mode === 'editor') {
+      out.push('  ' + right(`Agents ${tray.data.Agents.length} ${yel('● 1 waiting')} ${dim('·')} Jobs ${tray.data.Jobs.length} ${acc('⏵')} ${dim('2 running')}`, dim('↓ manage'), 74))
+    } else {
+      const tabsLine = tray.tabs.map((n, i) => i === tray.tab ? bold(acc(`‹ ${n} ${tray.data[n].length} ›`)) : dim(`  ${n} ${tray.data[n].length}  `)).join('')
+      out.push('  ' + right(tabsLine, tray.confirm ? yel(`Stop ${rows[tray.sel].name}? `) + inv(' No ') + ' Yes  ' + dim('y/n') : dim('←/→ tab · ↑↓ select · Enter view · x stop · Esc back'), 74))
+      const start = Math.min(Math.max(0, tray.sel - 3), Math.max(0, rows.length - 4))
+      rows.slice(start, start + 4).forEach((r, k) => {
+        const line = `${strip(r.g)} ${r.name.padEnd(8)} ${r.task.padEnd(26)} ${r.meta}`
+        out.push(start + k === tray.sel ? ` ${acc('▸')}${inv(' ' + line + ' ')}` : `   ${r.g} ${r.name.padEnd(8)} ${r.task.padEnd(26)} ${dim(r.meta)}`)
+      })
+      if (rows.length > 4) out.push('   ' + dim(`↑ ${start} more · ↓ ${rows.length - start - 4} more`))
+    }
+    out.push('  ' + (tray.note ? grn(tray.note) : ''))
+    return [dim('single-line status bar · tray row only while agents/jobs exist · at most 4 rows, rest counted'), '', ...out]
+  },
+  onKey: (k) => {
+    const rows = tray.data[tray.tabs[tray.tab]]
+    tray.note = ''
+    if (tray.confirm) { if (k === 'y') { tray.note = `stopped ${rows[tray.sel].name}`; rows[tray.sel].g = dim('⊘') } tray.confirm = false; return }
+    if (tray.mode === 'editor') { if (k === '\x1b[B') { tray.mode = 'tray'; tray.sel = 0 } return }
+    if (k === '\x1b[C' || k === '\x1b[D') { tray.tab = (tray.tab + 1) % 2; tray.sel = 0 }
+    else if (k === '\x1b[B') tray.sel = Math.min(rows.length - 1, tray.sel + 1)
+    else if (k === '\x1b[A') tray.sel = Math.max(0, tray.sel - 1)
+    else if (k === '\x1b') tray.mode = 'editor'
+    else if (k === '\r') tray.note = tray.tab === 0 ? `→ opened conversation "${rows[tray.sel].name}" (F7 returns)` : `→ opened job "${rows[tray.sel].name}" detail (Esc closes)`
+    else if (k === 'x') tray.confirm = true
+  } })
+
+// ================================================================ 6 todo / goal
+scene({ name: 'Todo/Goal', render: (f, t) => {
+  const T = t % 12000
+  const done = T < 3000 ? 2 : T < 6000 ? 3 : T < 9000 ? 4 : 5
+  const just = [3000, 6000, 9000].some(k => T >= k && T < k + 400)
+  const items = ['Audit current hero copy', 'Update landing page hero', 'Run the tests', 'Update screenshots', 'Bump changelog', 'Open the PR']
+  const start = Math.max(0, done - 2)
+  const row = i => i < done
+    ? (just && i === done - 1 ? `  ${inv(grn('✓'))} ${items[i]}` : `  ${grn('✓')} ${strikeDim(items[i])}`)
+    : i === done ? `  ${bold(acc('●'))} ${bold(items[i])}` : `  ${dim('○')} ${items[i]}`
+  return [
+    dim('full card: the heading rule is the progress bar (an item completes every 3s)'),
+    `${rule(2, 8, 56)}  ${bold(acc('Goal'))} ${acc('●')} active ${dim('· round 2 of 8')}`,
+    `  ${dim('Ship the hero refresh and keep all 214 tests green')}`,
+    `${rule(done, 6, 56)}  ${bold(acc('Todo'))} ${done} of 6`,
+    ...[0, 1, 2, 3].map(k => row(start + k)),
+    `  ${dim(`… +${Math.max(0, 6 - start - 4)} more · ctrl+t`)}`, '',
+    dim('collapsed one-liner'),
+    `${rule(done, 6, 24)}  ${bold(acc('Todo'))} ${done} of 6 ${dim('·')} ${acc('●')} ${items[done]}`, '',
+    dim('goal states'),
+    `${rule(4, 8, 24, x => c([150, 150, 150], x))}  ${bold(acc('Goal'))} ${dim('❚❚ paused · round 4 of 8')}`,
+    `${rule(8, 8, 24, red)}  ${bold(acc('Goal'))} ${red('✕ blocked')} ${dim('· round 8 of 8')}`,
+    `  ${red('blocked:')} ${dim('needs a decision on the release channel')}`,
+    T > 11000 ? `${grn('✓')} ${bold('Todo done 6/6')} ${dim('· 4m 12s — pane closes')}` : '',
+  ]
+}})
+
+// ================================================================ 7 decisions
+const dec = { v: 0, sel: 0, note: '', confirm: false }
+const DECISIONS = [
+  { title: 'Approve command', right: 'bash · 1 of 3 waiting',
+    preview: () => [`${dim('$')} rm -rf build && pnpm build`, dim('in ~/work/mayfly') + '        ' + yel('⚠ deletes files'), ''],
+    opts: ['Allow once', 'Allow bash for this session', 'Reject and tell the agent why…'], feedback: 'Feedback' },
+  { title: 'Approve edit', right: 'pane-activity.ts  +2 −1',
+    preview: () => [...diff(EDIT_ROWS).map(l => l.slice(2)), ''],
+    opts: ['Allow once', 'Allow edits this session', 'Reject and tell the agent why…'], feedback: 'Feedback' },
+  { title: 'Plan ready for review', right: '6 steps · ↑↓ scroll',
+    preview: () => ['1. Add activeCalls to the facts projection', '2. Wrap the detail into ⎿ lines in the activity row', '3. Replace the moon frames with the glyph table', '4. Move subagents into the tabbed tray', '5. Restyle approvals and questions', '6. Screenshots, width scans, docs', ''],
+    opts: ['Approve and start', 'Approve and auto-accept edits', 'Keep planning…', 'Reject'], feedback: 'Revise' },
+  { title: 'Permission preset', right: 'current: Default',
+    preview: () => [dim('Choose how much the agent may do without asking.'), ''],
+    opts: ['Default — ask before writes  [current]', 'Accept edits — apply file edits freely', 'Full access — no prompts   ⚠ asks first'], danger: 2 },
+]
+scene({ name: 'Approval', keys: 'v next variant · ↑↓ or 1-4 · Enter confirm · y/n on the danger row',
+  init: () => Object.assign(dec, { v: 0, sel: 0, note: '', confirm: false }),
+  render: () => {
+    const d = DECISIONS[dec.v]
+    const body = [...d.preview(), ...d.opts.map((o, i) => `${dec.sel === i ? acc('▸') : ' '} ${dim(String(i + 1))}  ${dec.sel === i ? bold(o) : o}`)]
+    if (d.feedback) body.push(`  ${dim(d.feedback + ':')} ${dim('type to explain…')}`)
+    body.push('')
+    body.push(dec.confirm ? `${yel('Really choose Full access?')}  ${inv(' No ')}  Yes   ${dim('y/n')}` : dim(`Esc ${d.title.startsWith('Approve') ? 'reject' : 'close'} · 1-${d.opts.length} choose · Enter confirm`))
+    return [dim(`variant ${dec.v + 1}/${DECISIONS.length}: ${DECISIONS.map((x, i) => i === dec.v ? bold(x.title) : x.title).join(' · ')}`), '', ...box(d.title, d.right, body), '  ' + (dec.note ? grn(dec.note) : '')]
+  },
+  onKey: (k) => {
+    const d = DECISIONS[dec.v]
+    dec.note = ''
+    if (dec.confirm) { if (k === 'y') dec.note = '→ Full access granted'; dec.confirm = false; return }
+    if (k === 'v') { dec.v = (dec.v + 1) % DECISIONS.length; dec.sel = 0 }
+    else if (k === '\x1b[A') dec.sel = Math.max(0, dec.sel - 1)
+    else if (k === '\x1b[B') dec.sel = Math.min(d.opts.length - 1, dec.sel + 1)
+    else if (/^[1-9]$/.test(k) && Number(k) <= d.opts.length) { dec.sel = Number(k) - 1; k = '\r' }
+    if (k === '\r') {
+      if (d.danger === dec.sel) dec.confirm = true
+      else dec.note = `→ ${d.opts[dec.sel].replace(/\s+\[.*$/, '')}`
+    }
+  } })
+
+// ================================================================ 8 questions
+const qs = {}
+const Q = [
+  { tab: 'Auth', text: 'Which auth method should the CLI use?', multi: false, opts: [['OAuth', 'browser sign-in, tokens refresh automatically'], ['API key', 'paste a token; you rotate it yourself']] },
+  { tab: 'Region', text: 'Which region should the service deploy to?', multi: false, opts: [['us-east-1', 'lowest latency to most users'], ['eu-west-1', 'GDPR data residency'], ['ap-south-1', 'closest to the pilot customers']] },
+  { tab: 'Scopes', text: 'Which scopes should the token carry?', multi: true, opts: [['read', 'list and fetch resources'], ['write', 'create and update resources'], ['admin', 'manage members and billing']] },
+]
+const answerText = i => {
+  const parts = [...qs.ans[i]].sort().map(k => k === 'other' ? 'Other' : Q[i].opts[k][0])
+  return parts.length ? parts.join(' · ') : null
+}
+const toggleAns = (i, key) => { qs.ans[i].has(key) ? qs.ans[i].delete(key) : qs.ans[i].add(key) }
+scene({ name: 'Questions', keys: '1-4 choose · ↑↓ move · Space toggle · Enter next · ←/→ switch question',
+  init: () => Object.assign(qs, { qi: 0, oi: 0, done: false, ans: Q.map(() => new Set()) }),
+  render: () => {
+    if (qs.done) return box('Questions', 'submitted', ['', grn('✓ Answers sent to the agent.'), '  (press ] for the next scene)', ''])
+    const strip3 = Q.map((q, i) => {
+      const a = answerText(i)
+      return `${a ? grn('✓') : i === qs.qi ? acc('●') : dim('○')} ${i === qs.qi ? bold(acc(q.tab)) : a ? q.tab : dim(q.tab)}`
+    }).join(dim('  │  ')) + dim('  │  ') + (qs.qi === Q.length ? `${acc('●')} ${bold(acc('Review'))}` : `${dim('○')} ${dim('Review')}`)
+    let body
+    if (qs.qi === Q.length) {
+      body = [strip3, '', bold('Review your answers'), '',
+        ...Q.map((q, i) => `${dim(String(i + 1))}  ${q.tab.padEnd(8)} ${answerText(i) ?? yel('— skipped')}`), '',
+        `${qs.oi === 0 ? acc('▸') : ' '} ${qs.oi === 0 ? bold('Submit answers') : 'Submit answers'}     ${qs.oi === 1 ? acc('▸ ') : ''}Back to edit`, '',
+        dim('1-3 jump to a question · ←/→ move · Enter confirm')]
+    } else {
+      const q = Q[qs.qi], a = qs.ans[qs.qi]
+      const mark = key => q.multi ? (a.has(key) ? '[x]' : '[ ]') : (a.has(key) ? '●' : ' ')
+      body = [strip3, '', bold(q.text), q.multi ? dim('select all that apply · Space toggles') : '',
+        ...q.opts.map(([n, d], i) => `${qs.oi === i ? acc('▸') : ' '} ${dim(String(i + 1))}  ${mark(i)} ${bold(n)}  ${dim(d)}`),
+        `${qs.oi === q.opts.length ? acc('▸') : ' '} ${dim(String(q.opts.length + 1))}  ${mark('other')} Other  ${dim('type your own answer')}${qs.oi === q.opts.length ? '▌' : ''}`, '',
+        dim(`←/→ question · ${q.multi ? 'Space toggle · ' : `1-${q.opts.length + 1} choose · `}Enter ${qs.qi === Q.length - 1 ? 'review' : 'next'}`)]
+    }
+    return box('Questions', `${Math.min(qs.qi + 1, Q.length)} of ${Q.length}`, body)
+  },
+  onKey: (k) => {
+    if (qs.done) return
+    const q = Q[qs.qi]
+    const max = qs.qi === Q.length ? 1 : q.opts.length
+    if (k === '\x1b[C') { qs.qi = Math.min(Q.length, qs.qi + 1); qs.oi = 0 }
+    else if (k === '\x1b[D') { qs.qi = Math.max(0, qs.qi - 1); qs.oi = 0 }
+    else if (qs.qi === Q.length) {
+      if (/^[1-3]$/.test(k)) { qs.qi = Number(k) - 1; qs.oi = 0 }
+      else if (k === '\x1b[A') qs.oi = 0
+      else if (k === '\x1b[B') qs.oi = 1
+      else if (k === '\r') { if (qs.oi === 0) qs.done = true; else { qs.qi = 0; qs.oi = 0 } }
+    } else if (k === '\x1b[A') qs.oi = Math.max(0, qs.oi - 1)
+    else if (k === '\x1b[B') qs.oi = Math.min(max, qs.oi + 1)
+    else if (/^[1-9]$/.test(k) && Number(k) <= max + 1) {
+      const i = Number(k) - 1
+      const key = i === q.opts.length ? 'other' : i
+      qs.oi = i
+      if (q.multi) toggleAns(qs.qi, key)
+      else { qs.ans[qs.qi] = new Set([key]); qs.qi++; qs.oi = 0 }
+    } else if (k === ' ' && q.multi) toggleAns(qs.qi, qs.oi === q.opts.length ? 'other' : qs.oi)
+    else if (k === '\r') {
+      if (!q.multi) qs.ans[qs.qi] = new Set([qs.oi === q.opts.length ? 'other' : qs.oi])
+      qs.qi++; qs.oi = 0
+    }
+  } })
+
+// ================================================================ 9 compaction
+scene({ name: 'Compaction', render: (f, t) => {
+  const T = t % 10000
+  const label = 'Compacting context'
+  const head = dim('the bar is the real context occupancy (contextTokens / contextWindow)')
+  if (T < 5000) {
+    const edge = mix(pick([0.35, 0.6, 1, 0.6], f, 3))
+    return [head, '', dim('stage 1/2 · summarizing (model call running; the edge cell breathes)'),
+      `${acc('●')} ${label} ${acc('▰'.repeat(8))}${c(edge, '▰')}${dim('▱')} ${dim('91%')}  ${dim(`1/2 summarizing · ${Math.floor(T / 1000) + 1}s · auto`)}`]
+  }
+  if (T < 5800) {
+    const k = (T - 5000) / 800
+    return [head, '', dim('stage 2/2 · summary landed: the bar drains (one-shot 800 ms, 148k → 12k)'),
+      `${acc('●')} ${label} ${bar(Math.max(1, Math.round(9 - k * 8)), 10)} ${dim(Math.round(91 - k * 82) + '%')}  ${dim('2/2 applying · auto')}`]
+  }
+  return [head, '', dim('settled (static)'),
+    `${grn('✓')} ${bold('Compacted 84 items')} ${bar(1, 10, 10, grn)} ${dim('91% → 9% · ~148k → ~12k tokens · auto')}`,
+    `  ${dim('⎿ Ctrl+O summary')}`, '',
+    dim('expanded (Ctrl+O)'),
+    `  ${dim('│')} ${dim(ital('Goal: unify the Activity pane with a multi-line detail layout.'))}`,
+    `  ${dim('│')} ${dim(ital('Decisions: bloom / fill / shimmer; ⎿ detail lines; tabbed tray.'))}`, '',
+    dim('narrow terminals drop the bar first, then the token pair'),
+    `${grn('✓')} ${bold('Compacted 84 items')} ${dim('· 91% → 9%')}`, '',
+    dim('failed'),
+    `${red('✗')} ${red('Compaction failed: context still over budget after summary')}`]
+}})
+
+// ================================================================ 10 tabs (pills)
+const tb = {}
+const HT = [['Overview'], ['Usage', 3], ['Connections', '!'], ['Skills', 12], ['About']]
+const VR = [
+  { group: 'Session' }, { id: 'General' }, { id: 'Model' }, { id: 'Permissions', n: 2 },
+  { group: 'Integrations' }, { id: 'Providers', n: '!' }, { id: 'MCP', n: 4 }, { id: 'Skills', n: 12 },
+  { group: 'Interface' }, { id: 'Appearance' }, { id: 'Keys' },
+]
+const VRI = VR.filter(r => r.id)
+const RAIL_BODY = {
+  General: ['Language: ‹ English ›', 'Notifications: [on]', 'Telemetry: [off]'],
+  Model: ['Model: ‹ deepseek-chat ›', 'Effort: ‹ medium ›', 'Context window: 128k'],
+  Permissions: ['Preset: ‹ Default ›', 'Allowed: bash, read', 'Denied: none'],
+  Providers: ['! 1 provider needs attention', 'DeepSeek ✓', 'Local ✗ unreachable'],
+  MCP: ['filesystem ✓ 4 tools', 'github ✓ 12 tools', 'postgres ✗', 'browser …'],
+  Skills: ['12 installed', 'plugin-author · preset-author · …'],
+  Appearance: ['Theme: ‹ dark ›', 'Density: ‹ comfortable ›'],
+  Keys: ['Editor mode: ‹ emacs ›', 'See all shortcuts: ?'],
+}
+function hStrip(T, active, focused) {
+  const labels = HT.map(t => t[0] + (t[1] !== undefined ? ' ' + t[1] : ''))
+  const words = HT.map((t, i) => {
+    const on = i === active
+    const name = on ? tc(T, focused ? 'active' : 'selected', t[0], focused) : tc(T, 'idle', t[0])
+    const badge = t[1] === undefined ? '' : t[1] === '!' ? ' ' + tc(T, 'attn', '!', true) : ' ' + tc(T, 'idle', String(t[1]))
+    return name + badge
+  })
+  let off = 0
+  for (let i = 0; i < active; i++) off += vlen(labels[i]) + 3
+  const rule = ' '.repeat(off) + (focused ? tc(T, 'active', '━'.repeat(vlen(labels[active])), true) : tc(T, 'rule', '━'.repeat(vlen(labels[active]))))
+  return [words.join('   '), rule]
+}
+function vRail(T, activeIdx, focused, w = 22) {
+  return VR.map(r => {
+    if (r.group) return tc(T, 'idle', ' ' + r.group.toUpperCase())
+    const on = VRI.indexOf(r) === activeIdx
+    const n = r.n === undefined ? '' : r.n === '!' ? tc(T, 'attn', '!', true) : tc(T, 'idle', String(r.n))
+    const cell = pad(n, 3)
+    if (on) return `${tc(T, focused ? 'active' : 'rule', '▌', true)} ${tc(T, focused ? 'active' : 'selected', pad(r.id, w - 7), focused)} ${cell}`
+    return `  ${tc(T, 'idle', pad(r.id, w - 7))} ${cell}`
+  })
+}
+const sampleRow = T => [tc(T, 'active', 'Active', true), tc(T, 'selected', 'Selected, focus elsewhere'), tc(T, 'idle', 'Idle'), tc(T, 'idle', '12'), tc(T, 'attn', '!', true), tc(T, 'disabled', 'Disabled')].join('   ')
+function contrastLine(name, T) {
+  const items = [['active', T.active], ['selected', T.selected], ['idle/count', T.idle], ['attn', T.attn]]
+  const cells = items.map(([n, col]) => { const r = contrast(col, T.ref); return `${n} ${r.toFixed(1)}${r >= 4.5 ? grn('✓') : red('✗')}` })
+  return `${pad(name, 6)} ${cells.join('  ')}  ${dim('disabled ' + contrast(T.disabled, T.ref).toFixed(1) + ' (exempt)')}`
+}
+scene({ name: 'Tabs', keys: 'h/v choose the focused demo · h: ←/→ · v: ↑↓ · t toggle the dark/light text palette',
+  init: () => Object.assign(tb, { focus: 'h', h: 1, v: 3, theme: 'dark' }),
+  render: () => {
+    const T = THEMES[tb.theme]
+    const [words, rule] = hStrip(T, tb.h, tb.focus === 'h')
+    const rail = vRail(T, tb.v, tb.focus === 'v')
+    const cur = VRI[tb.v]
+    const content = [bold(cur.id), '', ...(RAIL_BODY[cur.id] ?? []).map(l => '  ' + l)]
+    return [
+      dim(`text colour only, no filled backgrounds · palette ${tb.theme} (t; the light palette assumes a light terminal)`), '',
+      dim(`horizontal · focus ${tb.focus === 'h' ? '●' : '○'} (h): the focused tab is bold with a heavy rule; without focus it keeps its colour but loses weight and the rule dims`),
+      '  ' + words, '  ' + rule, '',
+      dim(`vertical rail · focus ${tb.focus === 'v' ? '●' : '○'} (v) · content follows the cursor live`),
+      ...columns(rail, content, 22, ' ', 11).map(r => ' ' + r), '',
+      dim('text states'), '  ' + sampleRow(THEMES.dark), '  ' + sampleRow(THEMES.light) + dim('   ← light palette, for light terminals'), '',
+      dim('WCAG contrast of each text colour against its assumed terminal background (need ≥ 4.5)'),
+      contrastLine('dark', THEMES.dark), contrastLine('light', THEMES.light), '',
+      dim('NO_COLOR fallback: weight and the rule carry the state'),
+      '  ' + bold('Overview') + '   Usage 3   Connections !   Skills 12   About', '  ' + '━'.repeat(8),
+    ]
+  },
+  onKey: (k) => {
+    if (k === 'h') tb.focus = 'h'
+    else if (k === 'v') tb.focus = 'v'
+    else if (k === 't') tb.theme = tb.theme === 'dark' ? 'light' : 'dark'
+    else if (tb.focus === 'h') {
+      if (k === '\x1b[C') tb.h = Math.min(HT.length - 1, tb.h + 1)
+      if (k === '\x1b[D') tb.h = Math.max(0, tb.h - 1)
+    } else {
+      if (k === '\x1b[B') tb.v = Math.min(VRI.length - 1, tb.v + 1)
+      if (k === '\x1b[A') tb.v = Math.max(0, tb.v - 1)
+    }
+  } })
+
+// ================================================================ 11 expandable lists
+const ex = {}
+const EXP = [
+  { group: 'MCP SERVERS', count: 4 },
+  { id: 'fs', kind: 'tree', label: 'filesystem', st: 'ok', stText: 'connected · 120ms', kids: [['read_file', 1, 'Read a file from disk'], ['write_file', 1, 'Create or overwrite a file'], ['delete_file', 0, 'Remove a file', 'dangerous'], ['list_dir', 1, 'List a directory']] },
+  { id: 'gh', kind: 'tree', label: 'github', st: 'ok', stText: 'connected · 340ms', kids: [['create_issue', 1, 'Open an issue'], ['list_prs', 1, 'List pull requests'], ['merge_pr', 0, 'Merge a pull request', 'dangerous'], ['comment', 1, 'Comment on an issue or PR'], ['+8 more', null]] },
+  { id: 'pg', kind: 'tree', label: 'postgres', st: 'fail', stText: 'auth failed', kids: [['query', 0, 'Run a read-only query'], ['schema', 0, 'Describe tables']] },
+  { id: 'br', kind: 'tree', label: 'browser', st: 'load', stText: 'connecting…', kids: [] },
+  { group: 'SKILLS', count: 2 },
+  { id: 'sk1', kind: 'acc', label: 'plugin-author', st: 'meta', stText: 'preset', text: ['Prototype a Cordis plugin in-process,', 'then promote it to a durable external plugin.'] },
+  { id: 'sk2', kind: 'acc', label: 'preset-author', st: 'meta', stText: 'preset', text: ['Compose user-owned presets on the native', 'dsh services and the four UI services.'] },
+]
+function exRows() {
+  const rows = []
+  EXP.forEach(n => {
+    if (n.group) { rows.push({ group: n }); return }
+    rows.push({ n, top: true })
+    if (ex.open.has(n.id)) {
+      if (n.kind === 'tree') n.kids.forEach((k, i) => rows.push({ n, k, last: i === n.kids.length - 1 }))
+      else n.text.forEach((t, i) => rows.push({ n, text: t, last: i === n.text.length - 1 }))
+    }
+  })
+  return rows
+}
+const sel = r => r.top || r.k
+const isOn = (n, k) => ex.on[n.id + k[0]] ?? k[1]
+const triState = n => { const real = n.kids.filter(k => k[1] !== null); const on = real.filter(k => isOn(n, k)).length; return on === 0 ? 'none' : on === real.length ? 'all' : 'some' }
+const NAME_W = 15, ST_W = 26, RIGHT_W = 9
+scene({ name: 'Expandable', keys: '↑↓ move · →/Space expand · ← collapse · Enter toggle · * expand all · - collapse all',
+  init: () => Object.assign(ex, { open: new Set(['fs']), cur: 0, on: {}, note: '' }),
+  render: (f) => {
+    const rows = exRows()
+    const selectable = rows.filter(sel)
+    const out = []
+    rows.forEach(r => {
+      if (r.group) { out.push(out.length ? '' : null, dim(` ${r.group.group}  ${r.group.count}`)); return }
+      const on = sel(r) && selectable.indexOf(r) === ex.cur
+      if (r.top) {
+        const n = r.n
+        const chev = ex.open.has(n.id) ? '▾' : '▸'
+        const tri = n.kind === 'tree' && n.kids.length ? { all: '[x]', some: '[-]', none: '[ ]' }[triState(n)] : '   '
+        const stG = n.st === 'ok' ? '✓' : n.st === 'fail' ? '✗' : n.st === 'load' ? pick(gap, f) : ' '
+        const st = `${stG} ${n.stText}`
+        const right2 = n.kind === 'tree' ? (n.kids.length ? `${n.kids.length} tools` : '') : ''
+        const summary = n.kind === 'acc' ? cut(n.text[0], 34) : ''
+        const plain = n.kind === 'acc' ? `${chev}     ${pad(n.label, NAME_W)} ${pad(n.stText, 10)} ${summary}` : `${chev} ${tri} ${pad(n.label, NAME_W)} ${pad(st, ST_W)} ${right2.padStart(RIGHT_W)}`
+        if (on) { out.push(acc('▌') + inv(' ' + plain + ' ')); return }
+        const stPaint = n.st === 'ok' ? grn(stG) + dim(' ' + n.stText) : n.st === 'fail' ? red(stG) + red(' ' + n.stText) : n.st === 'load' ? acc(stG) + dim(' ' + n.stText) : dim(st)
+        const triPaint = tri.trim() === '' ? tri : tri === '[x]' ? acc(tri) : tri === '[-]' ? yel(tri) : dim(tri)
+        if (n.kind === 'acc') { out.push(`  ${dim(chev)}     ${bold(pad(n.label, NAME_W))} ${dim(pad(n.stText, 10))} ${dim(summary)}`); return }
+        out.push(`  ${dim(chev)} ${triPaint} ${bold(pad(n.label, NAME_W))} ${pad(stPaint, ST_W)} ${dim(right2.padStart(RIGHT_W))}`)
+      } else if (r.k) {
+        const [name, def, desc, badge] = r.k
+        const enabled = isOn(r.n, r.k)
+        const guide = r.last ? '╰' : '│'
+        const box2 = enabled === null ? '   ' : enabled ? '[x]' : '[ ]'
+        const tail = enabled === null ? 'Enter loads the next page' : desc
+        const plain = `  ${guide} ${box2} ${pad(name, NAME_W)} ${cut(tail, ST_W + 2).padEnd(ST_W)}${badge ? ' ⚠ ' + badge : ''}`
+        if (on) { out.push(acc('▌') + inv(' ' + plain + ' ')); return }
+        out.push(`   ${dim(guide)} ${enabled ? acc(box2) : dim(box2)} ${enabled ? pad(name, NAME_W) : dim(pad(name, NAME_W))} ${dim(cut(tail, ST_W + 2).padEnd(ST_W))}${badge ? ' ' + yel('⚠ ' + badge) : ''}`)
+      } else out.push(`     ${dim((r.last ? '╰' : '│') + ' ' + r.text)}`)
+    })
+    return [
+      dim('tree with tri-state parents, aligned status and count columns, tool descriptions · accordion for skills'), '',
+      ...out.filter(l => l !== null), '',
+      ex.note ? grn(ex.note) : '',
+    ]
+  },
+  onKey: (k) => {
+    const rows = exRows()
+    const selectable = rows.filter(sel)
+    const r = selectable[ex.cur]
+    ex.note = ''
+    if (k === '\x1b[B') ex.cur = Math.min(selectable.length - 1, ex.cur + 1)
+    else if (k === '\x1b[A') ex.cur = Math.max(0, ex.cur - 1)
+    else if (k === '*') EXP.filter(n => n.id).forEach(n => ex.open.add(n.id))
+    else if (k === '-') { ex.open.clear(); ex.cur = 0 }
+    else if (r?.top && (k === '\x1b[C' || k === ' ')) ex.open.has(r.n.id) ? ex.open.delete(r.n.id) : ex.open.add(r.n.id)
+    else if (k === '\x1b[D') {
+      if (r?.top) ex.open.delete(r.n.id)
+      else if (r?.k) { ex.open.delete(r.n.id); ex.cur = selectable.findIndex(x => x.top && x.n === r.n) }
+    } else if (k === '\r' && r) {
+      if (r.top && r.n.kind === 'tree') {
+        const all = triState(r.n) !== 'all'
+        r.n.kids.forEach(kid => { if (kid[1] !== null) ex.on[r.n.id + kid[0]] = all ? 1 : 0 })
+        ex.note = `${all ? 'enabled' : 'disabled'} all tools of ${r.n.label}`
+      } else if (r.top) ex.open.has(r.n.id) ? ex.open.delete(r.n.id) : ex.open.add(r.n.id)
+      else if (r.k[1] !== null) { const key = r.n.id + r.k[0]; ex.on[key] = isOn(r.n, r.k) ? 0 : 1 }
+      else ex.note = '(loads the next page of tools)'
+    }
+  } })
+
+// ================================================================ form engine
+const DIRS = ['~/work/mayfly', '~/work/website', '~/work/dsh', '~/notes', '~/Downloads']
+function makeForm(fields) {
+  fields.forEach(f => { f.v = structuredClone(f.value); f.init = structuredClone(f.value) })
+  const F = { i: fields.findIndex(f => f.type !== 'section'), editing: false, picker: null, note: '', fields }
+  const focusable = () => fields.map((f, i) => f.type === 'section' ? -1 : i).filter(i => i >= 0)
+  const differs = f => JSON.stringify(f.v) !== JSON.stringify(f.init)
+  const isText = f => ['input', 'secret', 'textarea'].includes(f.type)
+  const err = f => {
+    if (f.required && (f.v === '' || f.v == null)) return 'Required'
+    if (f.id === 'url' && f.v && !/^https?:\/\/\S+$/.test(f.v)) return 'Must be an http(s) URL'
+    return null
+  }
+  const move = d => { const fs = focusable(); const at = fs.indexOf(F.i); F.i = fs[Math.max(0, Math.min(fs.length - 1, at + d))] }
+  const enabledOpts = f => f.options.filter(o => !o.disabled)
+  F.capture = () => F.editing || F.picker !== null
+  F.render = (focused = true) => {
+    const out = []
+    fields.forEach((f, i) => {
+      if (f.type === 'section') { out.push(dim(`── ${f.label} ${'─'.repeat(Math.max(2, 40 - f.label.length))}`)); return }
+      const foc = focused && i === F.i
+      const ed = foc && F.editing
+      const label = pad(f.label + ':', 13)
+      const mark = foc ? acc('▸') : differs(f) ? acc('•') : ' '
+      let val
+      if (f.type === 'input') val = ed ? f.v + '▌' : f.v ? f.v : dim(f.placeholder ?? '')
+      else if (f.type === 'secret') val = ed ? '•'.repeat(f.v.length) + '▌' : f.v ? '•'.repeat(Math.min(10, f.v.length)) + dim(' (saved)') : dim('not set')
+      else if (f.type === 'number') val = ed ? String(f.v) + '▌' : foc ? `‹ ${f.v} ›${f.unit ? ' ' + f.unit : ''}${dim(`  ${f.min}–${f.max}`)}` : `${f.v}${f.unit ? ' ' + f.unit : ''}`
+      else if (f.type === 'select') val = foc && !F.picker ? `‹ ${f.v} ›` : f.v
+      else if (f.type === 'toggle') val = f.v ? acc('[on]') : dim('[off]')
+      else if (f.type === 'multiselect') val = f.v.length ? f.v.join(', ') : dim('None selected')
+      else if (f.type === 'textarea') val = foc || ed ? '' : (f.v.split('\n')[0] || dim('empty')) + (f.v.includes('\n') ? dim(' …') : '')
+      else if (f.type === 'actions') { out.push(`${foc ? acc('▸') : ' '} ${foc ? inv(' Save ') : '[ Save ]'}  [ Cancel ]`); return }
+      const origin = f.inherited ? (differs(f) ? dim('  (override)') : dim('  (inherited)')) : ''
+      out.push(`${mark} ${foc ? bold(label) : label}${val}${origin}`)
+      if (f.type === 'textarea' && (foc || ed)) {
+        const lines = f.v.split('\n')
+        const w = 42
+        out.push(`    ${dim('┌' + '─'.repeat(w) + '┐')}`)
+        for (let n = 0; n < Math.max(3, lines.length); n++) {
+          const text = (lines[n] ?? '') + (ed && n === lines.length - 1 ? '▌' : '')
+          out.push(`    ${dim('│')} ${pad(text, w - 1)}${dim('│')}`)
+        }
+        out.push(`    ${dim('└' + '─'.repeat(w) + '┘')}`)
+      }
+      const e = err(f)
+      if (e && (differs(f) || ed)) out.push(`    ${red('! ' + e)}`)
+      if (foc && f.help && !F.picker) out.push(`    ${dim(f.help)}`)
+      if (ed && f.id === 'workdir') {
+        const hits = DIRS.filter(d => d.startsWith(f.v)).slice(0, 3)
+        hits.forEach((d, n) => out.push(`    ${dim(n === 0 ? '⇥ ' : '  ')}${dim(d)}`))
+      }
+      if (foc && F.picker) {
+        f.options.forEach((o, n) => {
+          const cur = n === F.picker.idx
+          const on = f.type === 'multiselect' ? F.picker.set.has(o.id) : o.id === f.v
+          out.push(`    ${cur ? acc('>') : ' '} ${o.disabled ? dim(`[ ] ${o.id} — ${o.disabled}`) : `${on ? '[x]' : '[ ]'} ${o.id}`}`)
+        })
+      }
+    })
+    return out
+  }
+  F.hint = () => {
+    const f = fields[F.i]
+    if (F.picker) return f.type === 'multiselect' ? '↑↓ move · Space toggle · Enter apply · Esc cancel' : '↑↓ move · Enter apply · Esc cancel'
+    if (F.editing) return `Enter commit · Esc done${f.type === 'textarea' ? ' · Alt+Enter newline' : ''}${f.id === 'workdir' ? ' · Tab complete' : ''}`
+    const parts = ['↑↓ field']
+    if (f.type === 'select') parts.push('←/→ cycle', 'Enter list')
+    else if (f.type === 'number') parts.push('←/→ step', 'Enter type')
+    else if (f.type === 'toggle') parts.push('Space flip')
+    else if (f.type === 'multiselect') parts.push('Enter open')
+    else if (f.type === 'actions') parts.push('Enter save')
+    else parts.push('Enter or type to edit')
+    if (f.type !== 'actions' && differs(f)) parts.push('Delete reset')
+    parts.push('Esc close')
+    return parts.join(' · ')
+  }
+  F.key = (k) => {
+    const f = fields[F.i]
+    F.note = ''
+    if (F.picker) {
+      const opts = f.options
+      const step = d => { let n = F.picker.idx; do { n += d } while (opts[n] && opts[n].disabled); if (opts[n]) F.picker.idx = n }
+      if (k === '\x1b[A') step(-1)
+      else if (k === '\x1b[B') step(1)
+      else if (k === ' ' && f.type === 'multiselect') { const id = opts[F.picker.idx].id; F.picker.set.has(id) ? F.picker.set.delete(id) : F.picker.set.add(id) }
+      else if (k === '\r') { f.v = f.type === 'multiselect' ? opts.filter(o => F.picker.set.has(o.id)).map(o => o.id) : opts[F.picker.idx].id; F.picker = null }
+      else if (k === '\x1b') F.picker = null
+      return
+    }
+    if (F.editing) {
+      if (k === '\r') { if (f.type === 'number') f.v = Math.max(f.min, Math.min(f.max, Number(f.v) || f.min)); F.editing = false; move(1) }
+      else if (k === '\x1b\r' && f.type === 'textarea') f.v += '\n'
+      else if (k === '\x1b') { if (f.type === 'number') f.v = Math.max(f.min, Math.min(f.max, Number(f.v) || f.min)); F.editing = false }
+      else if (k === '\x7f') f.v = f.type === 'number' ? Number(String(f.v).slice(0, -1)) || 0 : f.v.slice(0, -1)
+      else if (k === '\t' && f.id === 'workdir') { const hit = DIRS.find(d => d.startsWith(f.v)); if (hit) f.v = hit }
+      else if (printable(k)) { if (f.type === 'number') { if (/\d/.test(k)) f.v = Number(String(f.v) + k) } else f.v += k }
+      return
+    }
+    if (k === '\x1b[A') move(-1)
+    else if (k === '\x1b[B') move(1)
+    else if (k === '\x1b[3~' && differs(f) && f.type !== 'actions') f.v = structuredClone(f.init)
+    else if (f.type === 'select' && (k === '\x1b[C' || k === '\x1b[D')) {
+      const opts = enabledOpts(f).map(o => o.id); const at = opts.indexOf(f.v)
+      f.v = opts[Math.max(0, Math.min(opts.length - 1, (at < 0 ? (k === '\x1b[C' ? 0 : opts.length - 1) : at + (k === '\x1b[C' ? 1 : -1))))]
+    } else if (f.type === 'number' && (k === '\x1b[C' || k === '\x1b[D')) f.v = Math.max(f.min, Math.min(f.max, f.v + (k === '\x1b[C' ? f.step : -f.step)))
+    else if (f.type === 'toggle' && (k === ' ' || k === '\r')) f.v = !f.v
+    else if ((f.type === 'select' || f.type === 'multiselect') && (k === '\r' || (k === ' ' && f.type === 'multiselect'))) F.picker = { idx: Math.max(0, f.options.findIndex(o => o.id === (f.type === 'select' ? f.v : f.v[0]))), set: new Set(f.type === 'multiselect' ? f.v : []) }
+    else if (f.type === 'actions' && k === '\r') F.note = fields.some(x => err(x) && x.type !== 'actions') ? 'fix the errors first' : '→ saved'
+    else if (isText(f) || f.type === 'number') { if (k === '\r') F.editing = true; else if (printable(k)) { F.editing = true; if (f.type === 'number') { if (/\d/.test(k)) f.v = Number(k) } else f.v = (f.type === 'secret' ? '' : f.v) + k } }
+  }
+  return F
+}
+const mkFields = () => [
+  { type: 'section', label: 'Connection' },
+  { id: 'name', type: 'input', label: 'Name', value: 'production', placeholder: 'e.g. production', required: true },
+  { id: 'url', type: 'input', label: 'Endpoint', value: 'https://api.example.com/v1', help: 'Base URL, including the version path' },
+  { id: 'key', type: 'secret', label: 'API key', value: 'sk-live-0123456789', help: 'Never shown again after saving' },
+  { type: 'section', label: 'Behaviour' },
+  { id: 'model', type: 'select', label: 'Model', value: 'deepseek-chat', inherited: true, options: [{ id: 'deepseek-chat' }, { id: 'deepseek-reasoner' }, { id: 'custom-model', disabled: 'not in this plan' }] },
+  { id: 'effort', type: 'select', label: 'Effort', value: 'medium', inherited: true, options: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }] },
+  { id: 'timeout', type: 'number', label: 'Timeout', value: 30, min: 5, max: 120, step: 5, unit: 's', inherited: true },
+  { id: 'stream', type: 'toggle', label: 'Streaming', value: true },
+  { id: 'channels', type: 'multiselect', label: 'Channels', value: ['mentions', 'errors'], options: [{ id: 'mentions' }, { id: 'errors' }, { id: 'digest', disabled: 'enterprise only' }] },
+  { id: 'workdir', type: 'input', label: 'Directory', value: '~/work/may', placeholder: '~/…', help: 'Type a path; Tab completes' },
+  { id: 'notes', type: 'textarea', label: 'Notes', value: 'Prefer small diffs.\nAlways run the width scan.' },
+  { type: 'section', label: 'Finish' },
+  { type: 'actions', label: '' },
+]
+const form = { F: null }
+scene({ name: 'Forms', keys: 'see the hint row under the form (it follows the focused field)',
+  init: () => { form.F = makeForm(mkFields()) },
+  capture: () => form.F.capture(),
+  render: () => [
+    dim('every field kind · no per-field buttons · secondary ops live in the hint row · ‹ › marks what ←/→ changes'),
+    dim('• edited   ▸ focused   (inherited)/(override) is implicit state, not a button'), '',
+    ...box('Edit provider', 'unsaved changes', [...form.F.render(), '', form.F.note ? grn(form.F.note) : '', dim(form.F.hint())], 74),
+  ],
+  onKey: k => form.F.key(k) })
+
+// ================================================================ 13 panels
+const pn = { v: 0, focus: 'rail', rail: 1, row: 0, tab: 0, filter: '', typing: false, bal: 0 }
+const CWD = '/home/ubuntu/work/mayfly'
+const S1 = [
+  ['Update landing page hero', 'main', 12, '2m', true, 'Update the landing page hero copy and run the tests.', 'Done — the hero now reads "Ship agent UI in a keystroke".'],
+  ['Fix width scan for tool rows', 'fix/width', 4, '1h', false, 'The tool rows overflow at 60 columns.', 'Added a truncate variant; scan passes.'],
+  ['Release 0.1.3-rc.2', 'release', 9, '1d', false, 'Prepare the rc.2 release notes.', 'Tarballs verified.'],
+]
+const WS = [
+  { name: 'All', n: 25 },
+  { path: CWD, s: S1 },
+  { path: '/home/ubuntu/dev/clients/acme/monorepo/packages/mayfly', s: [['Port the tray to acme layout', 'feat/tray', 6, '3h', false, 'Port the tray design to the acme fork.', 'Rebased; specs pass.'], ['Bump harness pins', 'main', 3, '2d', false, 'Update the harness line pins.', 'Pins updated.']] },
+  { path: '/home/ubuntu/dev/experiments/very-long-project-name-here', s: [['Spike: session graph', 'spike', 2, '9d', false, 'Sketch a session graph view.', 'Parked.']] },
+  { path: '/home/ubuntu/work/website', s: [['Add pricing page', 'main', 7, '4h', false, 'Add a pricing page under docs.', 'Preview is up.'], ['Fix dark-mode logo', 'fix/logo', 2, '2d', false, 'The logo is illegible in dark mode.', 'Swapped the asset.']] },
+  { path: '/home/ubuntu/notes', s: [['Weekly review', '—', 6, '6d', false, 'Summarize the week.', 'Saved to notes.'], ['Reading list', '—', 3, '8d', false, 'Collect articles.', 'Done.']] },
+]
+WS.slice(1).forEach(w => { w.n = w.s.length + (w.path === CWD ? 5 : 3) })
+const RAIL_W = 26
+function wsLabel(w, all) {
+  const segs = w.path.split('/').filter(Boolean)
+  const base = segs.at(-1)
+  const dup = all.filter(x => x.path && x.path.split('/').filter(Boolean).at(-1) === base).length > 1
+  const label = dup ? segs.slice(-2).join('/') : base
+  return [...label].length > RAIL_W - 9 ? '…' + [...label].slice(-(RAIL_W - 10)).join('') : label
+}
+const settingsForms = {}
+const SETTINGS_GROUPS = ['General', 'Model', 'Permissions', 'Providers', 'MCP', 'Appearance', 'Keys']
+const mkSettings = g => makeForm(({
+  General: [{ id: 'lang', type: 'select', label: 'Language', value: 'English', options: [{ id: 'English' }, { id: '简体中文' }] }, { id: 'notif', type: 'toggle', label: 'Notifications', value: true }, { id: 'tele', type: 'toggle', label: 'Telemetry', value: false }],
+  Model: [{ id: 'model', type: 'select', label: 'Model', value: 'deepseek-chat', inherited: true, options: [{ id: 'deepseek-chat' }, { id: 'deepseek-reasoner' }] }, { id: 'effort', type: 'select', label: 'Effort', value: 'medium', inherited: true, options: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }] }, { id: 'ctx', type: 'number', label: 'Context', value: 128, min: 32, max: 256, step: 32, unit: 'k', inherited: true }],
+  Permissions: [{ id: 'preset', type: 'select', label: 'Preset', value: 'Default', options: [{ id: 'Default' }, { id: 'Accept edits' }, { id: 'Full access' }] }, { id: 'allow', type: 'multiselect', label: 'Auto-allow', value: ['read', 'grep'], options: [{ id: 'read' }, { id: 'grep' }, { id: 'bash' }, { id: 'write', disabled: 'needs Accept edits' }] }],
+  Providers: [{ id: 'p', type: 'select', label: 'Provider', value: 'DeepSeek', options: [{ id: 'DeepSeek' }, { id: 'Local' }] }, { id: 'k', type: 'secret', label: 'API key', value: 'sk-0123456789' }],
+  MCP: [{ id: 'auto', type: 'toggle', label: 'Auto-connect', value: true }, { id: 'to', type: 'number', label: 'Timeout', value: 20, min: 5, max: 60, step: 5, unit: 's' }],
+  Appearance: [{ id: 'theme', type: 'select', label: 'Theme', value: 'dark', options: [{ id: 'dark' }, { id: 'light' }, { id: 'ocean' }, { id: 'paper' }] }, { id: 'dens', type: 'select', label: 'Density', value: 'comfortable', options: [{ id: 'compact' }, { id: 'comfortable' }] }],
+  Keys: [{ id: 'mode', type: 'select', label: 'Editor mode', value: 'emacs', options: [{ id: 'emacs' }, { id: 'vim' }] }, { id: 'paste', type: 'select', label: 'Paste backend', value: 'auto', options: [{ id: 'auto' }, { id: 'osc52' }, { id: 'native' }] }],
+})[g])
+const sessionsOf = () => {
+  const w = WS[pn.rail]
+  const list = w.name === 'All' ? WS.slice(1).flatMap(x => x.s) : w.s
+  return list.filter(x => x[0].toLowerCase().includes(pn.filter.toLowerCase()))
+}
+const BAL = ['ok', 'low', 'loading', 'error', 'none']
+const balanceRow = (f) => {
+  const st = BAL[pn.bal]
+  if (st === 'ok') return [`${grn('✓')} ${bold('¥ 128.40')} ${dim('available')}`, `${dim('topped-up ¥ 100.00 · granted ¥ 28.40')}`]
+  if (st === 'low') return [`${yel('⚠')} ${bold(yel('¥ 6.20'))} ${yel('low balance')} ${dim('· below ¥ 10.00')}`, `${dim('topped-up ¥ 0.00 · granted ¥ 6.20')}`]
+  if (st === 'loading') return [`${acc(pick(gap, f))} ${dim('checking balance…')}`, '']
+  if (st === 'error') return [`${dim('—')} ${dim('unavailable (network)')}  ${dim('r retry')}`, '']
+  return [dim('not supported by this provider'), '']
+}
+scene({ name: 'Panels', keys: 'v switch panel · Sessions: ↑↓ ←/→ / filter · Settings: rail then form · Status: ←/→ tabs, b balance state, r refresh',
+  init: () => { Object.assign(pn, { v: 0, focus: 'rail', rail: 1, row: 0, tab: 0, filter: '', typing: false, bal: 0 }); SETTINGS_GROUPS.forEach(g => { settingsForms[g] = mkSettings(g) }) },
+  capture: () => pn.typing || (pn.v === 1 && pn.focus === 'content' && settingsForms[SETTINGS_GROUPS[pn.rail]]?.capture()),
+  render: (f) => {
+    const names = ['Sessions', 'Settings', 'Status']
+    const head = dim('panel ') + names.map((n, i) => i === pn.v ? bold(acc(n)) : dim(n)).join(dim(' · ')) + dim('   (v)')
+    if (pn.v === 0) {
+      const list = sessionsOf()
+      const row = Math.min(pn.row, Math.max(0, list.length - 1))
+      const w = WS[pn.rail]
+      const rail = ['', ...WS.map((x, i) => {
+        const name = x.name ?? wsLabel(x, WS)
+        const on = i === pn.rail
+        return `${on ? acc('▌') : ' '} ${on ? (pn.focus === 'rail' ? inv(bold(` ${pad(name, RAIL_W - 9)}`)) : bold(' ' + pad(name, RAIL_W - 9))) : ' ' + pad(name, RAIL_W - 9)} ${dim(String(x.n).padStart(2))}`
+      })]
+      const pathLine = w.path ? `${dim('⌂')} ${dim(midCut(w.path, 52))}` : dim('all workspaces')
+      const content = [pathLine, `${dim('/')} ${pn.typing ? pn.filter + '▌' : pn.filter || dim('filter…')}`, dim('Recent')]
+      list.forEach((x, i) => {
+        const on = pn.focus === 'content' && i === row
+        const line = `${cut(x[0], 30).padEnd(30)} ${dim(x[1].padEnd(10) + String(x[2]).padStart(2) + ' turns ' + x[3].padStart(3))}`
+        content.push(on ? acc('▸') + inv(strip(line)) : ' ' + line)
+        if (on) { content.push(dim('    │ ') + cut(x[5], 50)); content.push(dim('    │ ') + dim(cut(x[6], 50))) }
+      })
+      const foot = pn.typing ? 'Enter apply · Esc clear' : pn.focus === 'rail' ? '↑↓ workspace · → sessions · / filter · y copy path · Esc close' : '↑↓ move · ← workspaces · Enter resume · n new · d delete · Esc close'
+      return [head, '', ...box('Sessions', `${WS[0].n} total`, [...columns(rail, content, RAIL_W, ' │ ', 9), '', dim(foot)], 96),
+        '', dim('labels: basename, plus the shortest distinguishing parent when names collide, ellipsised at the start'),
+        dim(`full path of the selected workspace is the first line of the content (middle-ellipsised); y copies it`)]
+    }
+    if (pn.v === 1) {
+      const g = SETTINGS_GROUPS[Math.min(pn.rail, SETTINGS_GROUPS.length - 1)]
+      const F = settingsForms[g]
+      const rail = SETTINGS_GROUPS.map((n, i) => `${i === pn.rail ? acc('▌') : ' '} ${i === pn.rail ? (pn.focus === 'rail' ? inv(bold(` ${n} `)) : bold(n)) : n}`)
+      const content = [bold(acc(g)), '', ...F.render(pn.focus === 'content')]
+      return [head, '', ...box('Settings', 'saved', [...columns(rail, content, 16), '', dim(pn.focus === 'rail' ? '↑↓ group · → edit · Esc close' : F.hint() + ' · ← groups')], 80)]
+    }
+    const tabs = ['Overview', 'Usage', 'Account', 'Connections', 'About']
+    const label = i => tabs[i] === 'Connections' ? 'Connections ' + yel('!') : tabs[i] === 'Account' && BAL[pn.bal] === 'low' ? 'Account ' + yel('!') : tabs[i]
+    const off = tabs.slice(0, pn.tab).reduce((a2, n, i) => a2 + vlen(label(i)) + 3, 0)
+    const [balMain, balSub] = balanceRow(f)
+    const bodies = [
+      [['Model', 'deepseek-chat · High effort'], ['Provider', 'DeepSeek (api.deepseek.com)'], ['Directory', '~/work/mayfly  main ±3'], ['Mode', 'Default permissions · plan off'], ['Session', 'Update landing page hero · 12 turns · 18m'], ['Context', `${bar(2, 10)} 18%  22.9k / 128k · cache 34%`], ...(BAL[pn.bal] === 'none' ? [] : [['Balance', balMain]])],
+      [['Input', '148.2k tokens  ·  cache read 50.4k'], ['Output', '18.9k tokens'], ['Requests', '31  ·  0 failed'], ['Cost', '≈ ¥ 3.02 this session'], ['Today', '≈ ¥ 13.40  ·  4 sessions']],
+      [['Provider', 'DeepSeek'], ['Balance', balMain], ['', balSub], ['Checked', BAL[pn.bal] === 'loading' ? dim('now') : dim('2 min ago · r refresh')], ['Top up', dim('platform.deepseek.com  ·  o open in browser')]],
+      [[grn('✓') + ' filesystem', '4 tools · 120 ms'], [grn('✓') + ' github', '12 tools · 340 ms'], [red('✗') + ' postgres', 'auth failed — run /mcp to fix'], [acc(pick(gap, f)) + ' browser', 'connecting…']],
+      [['Mayfly', '0.1.3-rc.2'], ['Harness', 'line 0.x pinned'], ['Node', process.version], ['Install', '~/.local/share/mayfly'], ['Docs', 'docs/README.md']],
+    ]
+    return [head, '', ...box('Status', 'read-only', [
+      '  ' + tabs.map((n, i) => i === pn.tab ? bold(acc(label(i))) : dim(label(i))).join('   '),
+      '  ' + ' '.repeat(off) + acc('━'.repeat(vlen(label(pn.tab)))),
+      '',
+      ...bodies[pn.tab].map(([k, v]) => `  ${dim(pad(k, 12))} ${v}`),
+      '', dim(`←/→ tab · r refresh${pn.tab === 2 ? ' · o top up' : ''} · Esc close`),
+    ], 84),
+      dim(`[demo] b cycles the balance state: ${BAL[pn.bal]}`),
+      '', dim('balance = one read-only provider query, cached, shown only when the provider supports it; a failed check never affects chat. When low, the status bar can carry a small ⚠ ¥6.2 chip.')]
+  },
+  onKey: (k) => {
+    if (pn.typing) {
+      if (k === '\r') pn.typing = false
+      else if (k === '\x1b') { pn.typing = false; pn.filter = '' }
+      else if (k === '\x7f') pn.filter = pn.filter.slice(0, -1)
+      else if (printable(k)) { pn.filter += k; pn.row = 0 }
+      return
+    }
+    if (k === 'v' && !(pn.v === 1 && pn.focus === 'content')) { pn.v = (pn.v + 1) % 3; pn.focus = 'rail'; pn.rail = pn.v === 0 ? 1 : 0; pn.row = 0; return }
+    if (pn.v === 0) {
+      if (k === '/') pn.typing = true
+      else if (k === '\x1b[C') pn.focus = 'content'
+      else if (k === '\x1b[D') pn.focus = 'rail'
+      else if (k === '\x1b[B') { if (pn.focus === 'rail') { pn.rail = Math.min(WS.length - 1, pn.rail + 1); pn.row = 0 } else pn.row = Math.min(sessionsOf().length - 1, pn.row + 1) }
+      else if (k === '\x1b[A') { if (pn.focus === 'rail') { pn.rail = Math.max(0, pn.rail - 1); pn.row = 0 } else pn.row = Math.max(0, pn.row - 1) }
+    } else if (pn.v === 1) {
+      const F = settingsForms[SETTINGS_GROUPS[pn.rail]]
+      if (pn.focus === 'rail') {
+        if (k === '\x1b[B') pn.rail = Math.min(SETTINGS_GROUPS.length - 1, pn.rail + 1)
+        else if (k === '\x1b[A') pn.rail = Math.max(0, pn.rail - 1)
+        else if (k === '\x1b[C' || k === '\r') pn.focus = 'content'
+      } else if (k === '\x1b[D' && !F.editing && F.fields[F.i].type !== 'select' && F.fields[F.i].type !== 'number') pn.focus = 'rail'
+      else if (k === '\x1b' && !F.editing && !F.picker) pn.focus = 'rail'
+      else F.key(k)
+    } else {
+      if (k === '\x1b[C') pn.tab = Math.min(4, pn.tab + 1)
+      else if (k === '\x1b[D') pn.tab = Math.max(0, pn.tab - 1)
+      else if (k === 'b') pn.bal = (pn.bal + 1) % BAL.length
+    }
+  } })
+
+// ================================================================ 14 interaction gallery
+const gl = { v: 0, q: '', typing: false, sel: 0, note: '', yes: false }
+const CMDS = [['/model', 'Switch model', 'Alt+M'], ['/effort', 'Set thinking effort', ''], ['/compact', 'Compact the context', ''], ['/clear', 'Start a fresh conversation', ''], ['/rewind', 'Restore a checkpoint', 'Esc Esc'], ['/sessions', 'Browse and resume sessions', ''], ['/settings', 'Edit settings', ''], ['/jobs', 'Browse background jobs', ''], ['/agents', 'Browse subagents', 'F7'], ['/status', 'Show session status', ''], ['/schedule', 'Show scheduled reminders', ''], ['/btw', 'Ask a side question', '']]
+const FILES = [['pane-activity.ts', 'packages/mayfly/src/transcript/', 42], ['pane-agents.ts', 'packages/mayfly/src/transcript/', 1], ['activity-detail.ts', 'packages/mayfly/src/conversation/', 1]]
+const CHANGED = [['M', 'pane-activity.ts', 12, 3, 42], ['A', 'frame-table.ts', 18, 0, 1], ['D', 'moon-frames.ts', 0, 9, 1]]
+const moveSel = (k, n) => { if (k === '\x1b[B') gl.sel = Math.min(n - 1, gl.sel + 1); else if (k === '\x1b[A') gl.sel = Math.max(0, gl.sel - 1) }
+const G = [
+  { t: 'Command palette (press / then type)', r: () => {
+    const q = gl.q.replace(/^\//, '')
+    const hits = CMDS.filter(c2 => c2[0].slice(1).includes(q)).slice(0, 6)
+    const hl = s2 => q ? s2.replace(q, m => bold(acc(m))) : s2
+    return [...box('Commands', `${hits.length} match${hits.length === 1 ? '' : 'es'}`, hits.length ? hits.map((h, i) => `${i === 0 ? acc('▸') : ' '} ${pad(hl(h[0]), 11)} ${pad(dim(h[1]), 32)} ${dim(pad(h[2], 8))}`) : [dim('No command matches')], 64), `  ${dim('> ')}${gl.q}${gl.typing ? '▌' : dim('  press / to type · Tab complete · Enter run · Esc close')}`]
+  } },
+  { t: '@ file picker — Enter opens in the external editor', k: k => {
+    gl.note = ''
+    moveSel(k, FILES.length)
+    if (k === '\r') gl.note = `↗ opened ${FILES[gl.sel][0]}:${FILES[gl.sel][2]} in code`
+    else if (k === '\t') gl.note = `inserted @${FILES[gl.sel][1]}${FILES[gl.sel][0]} into the prompt`
+  }, r: () => [...box('Files', 'recent first', [...FILES.map((x, i) => `${i === gl.sel ? acc('▸') : ' '} ${i === gl.sel ? bold(pad(x[0], 20)) : pad(x[0], 20)} ${dim(pad(x[1], 34))}${i === gl.sel ? dim('↗ code') : ''}`), '', dim('↑↓ · Enter open in code · Tab insert @mention · Esc close')], 76), `  ${dim('>')} explain @pane-act▌`, '  ' + (gl.note ? grn(gl.note) : '')] },
+  { t: 'Changed files — same keys', k: k => {
+    gl.note = ''
+    moveSel(k, CHANGED.length)
+    if (k === '\r') gl.note = `↗ opened ${CHANGED[gl.sel][1]}:${CHANGED[gl.sel][4]} in code (first changed line)`
+    else if (k === 'd') gl.note = `(shows the diff of ${CHANGED[gl.sel][1]})`
+  }, r: () => [...box('Changed files', '3 this session', [...CHANGED.map((x, i) => `${i === gl.sel ? acc('▸') : ' '} ${x[0] === 'M' ? yel('M') : x[0] === 'A' ? grn('A') : red('D')} ${pad(x[1], 20)} ${grn('+' + x[2])} ${red('−' + x[3])}${i === gl.sel ? dim('   ↗ code :' + x[4]) : ''}`), '', dim('↑↓ · Enter open in code at the first change · d diff · Esc close')], 76), '  ' + (gl.note ? grn(gl.note) : ''), dim('  GUI editors open detached; terminal editors (vim, nvim, hx) suspend Mayfly and restore it after. No editor set → hint to /settings.')] },
+  { t: 'Notifications and undo', r: () => [
+    right(`${acc(pick(fillGlyph, 0))} Working ${dim('· 4s')}`, `${grn('✓')} build finished · 22s  ${dim('Ctrl+J view')}`, 76),
+    right('', `${yel('●')} plan is waiting for your reply  ${dim('F7')}`, 76), '',
+    dim('after a destructive action, an undo toast (8 s):'),
+    right(`${dim('⊘')} Deleted session "Docs sync"`, `${dim('u undo · 8s')}`, 76)] },
+  { t: 'Queued messages and attachments', r: () => [
+    `${dim('queued (2)')}  ${dim('⏎')} "also update the docs"   ${dim('⏎')} "then run lint"      ${dim('↑ edit · Esc clear')}`,
+    dim('╭' + '─'.repeat(76) + '╮'), dim('│') + pad(' > ▌', 76) + dim('│'), dim('╰' + '─'.repeat(76) + '╯'), '',
+    dim('attachments'), `  ${dim('[')}${acc('Image #1')} ${dim('84 KB')} ${dim('×]')}  ${dim('[')}${acc('notes.md')} ${dim('2 KB')} ${dim('×]')}     ${dim('Backspace removes the last chip')}`] },
+  { t: 'Rewind / checkpoints', r: () => box('Rewind', '5 checkpoints', [`${acc('▸')} ${bold('Before "Run the tests"')}      ${dim('12m ago · 2 files changed after')}`, `  Before "Update landing page hero"  ${dim('18m ago · 5 files')}`, `  Session start                      ${dim('24m ago')}`, '', `${dim('Restore:')} ${bold(acc('‹ conversation + code ›'))}  ${dim('conversation only · code only')}`, dim('↑↓ checkpoint · ←/→ scope · Enter restore · Esc close')], 74) },
+  { t: 'Diff hunk review (per-hunk accept)', r: () => [`${dim('hunk 1 of 3')}   ${yel('pane-activity.ts')}  ${stat(2, 1)}`, ...diff(EDIT_ROWS.slice(0, 4)), '', `${inv(' a accept ')}  r reject  ${dim('A accept all · R reject all · n/p next/prev hunk · Esc later')}`] },
+  { t: 'Errors and connection banners', r: () => [
+    `${yel('⚠')} ${bold('Rate limited')} ${dim('· retrying in')} ${bold(String(12 - (Math.floor(Date.now() / 1000) % 12)))}s ${dim('· attempt 2 of 5 · Esc cancel')}`,
+    `${red('✗')} ${bold('Offline')} ${dim('· cannot reach api.deepseek.com · r retry · /settings provider')}`,
+    `${yel('⚠')} ${bold('Context 92% full')} ${dim('· /compact now, or it will compact automatically at 95%')}`,
+    `${yel('⚠')} ${bold('Balance low')} ${dim('· ¥ 6.20 left · /status account')}`,
+    `${acc('ℹ')} ${dim('Resumed session · 24 turns · last active 2h ago')}`] },
+  { t: 'Key help (?) — contextual, grouped', r: () => box('Keys', 'while typing a prompt', [bold('Send') + '      Enter send · Alt+Enter newline', bold('Complete') + '  / commands · @ files · # skills · ! shell', bold('Model') + '     Alt+M cycle · /model pick · /effort', bold('Modes') + '     Shift+Tab plan · Ctrl+Y yolo', bold('View') + '      Ctrl+O expand · Ctrl+T todo · F6 panes · F7 switch · Ctrl+F search', '', dim('Esc close · / search keys')], 76) },
+  { t: 'Job output viewer with follow', r: () => box('Job · dev', 'running 4m 2s', [dim('12:01:02') + '  ready in 412 ms', dim('12:01:05') + '  GET /  200  8ms', dim('12:01:09') + '  GET /api/models  200  22ms', dim('12:01:14') + '  ' + yel('warn') + '  slow query 380ms', dim('12:01:20') + '  GET /  200  6ms', '', right(dim('f follow on · ↑ scroll (follow off)'), dim('x stop · Esc back'), 70)], 74) },
+  { t: 'Delete session — just Yes / No', k: k => {
+    gl.note = ''
+    if (k === '\x1b[C' || k === '\x1b[D') gl.yes = !gl.yes
+    else if (k === 'y') { gl.yes = true; gl.note = '⊘ Deleted "Docs sync" (undo with u for 8s)' }
+    else if (k === 'n' || k === '\x1b') { gl.yes = false; gl.note = 'cancelled' }
+    else if (k === '\r') gl.note = gl.yes ? '⊘ Deleted "Docs sync" (undo with u for 8s)' : 'cancelled'
+  }, r: () => [...box('Delete session', '', ['Delete "Docs sync" and its 3 turns?', dim('This cannot be undone.'), '', `${gl.yes ? '[ No ]' : inv(' No ')}  ${gl.yes ? inv(' Yes ') : '[ Yes ]'}`, dim('←/→ or n/y · Enter confirm · Esc cancel')], 60), '  ' + (gl.note ? grn(gl.note) : ''), dim('  No is focused first (the shared confirm). Optional: soft-delete with an 8 s undo toast makes even this prompt unnecessary.')] },
+]
+scene({ name: 'Scenarios', keys: 'v/V next/previous scenario · per scenario: ↑↓ Enter Tab d y n ←/→ · palette: / then type, Esc stops',
+  init: () => Object.assign(gl, { v: 0, q: '', typing: false, sel: 0, note: '', yes: false }),
+  capture: () => gl.typing,
+  render: () => [dim(`scenario ${gl.v + 1}/${G.length}: `) + bold(G[gl.v].t), dim(G.map((_, i) => i === gl.v ? '●' : '○').join(' ')), '', ...G[gl.v].r()],
+  onKey: (k) => {
+    if (gl.typing) {
+      if (k === '\x1b' || k === '\r') gl.typing = false
+      else if (k === '\x7f') gl.q = gl.q.slice(0, -1)
+      else if (printable(k)) gl.q += k
+      return
+    }
+    if (k === 'v') { gl.v = (gl.v + 1) % G.length; gl.sel = 0; gl.note = '' }
+    else if (k === 'V') { gl.v = (gl.v + G.length - 1) % G.length; gl.sel = 0; gl.note = '' }
+    else if (k === '/' && gl.v === 0) { gl.typing = true; gl.q = '/' }
+    else G[gl.v].k?.(k)
+  } })
+
+// ================================================================ 15 transcript scroll + search
+const TL = [
+  '» Update the landing page hero copy and run the width scan.',
+  '● I will start by reading the hero component.',
+  '  ✓ Read Hero.tsx · 96 lines',
+  '● The heading is set in two places; I will unify them.',
+  '  ✓ Edited Hero.tsx  +4 −2',
+  '● Now the tests. The width scan covers every row renderer.',
+  '  ✓ Ran pnpm run test · 12.1s',
+  '● 213 passed, 1 failed: the width scan overflows at 60 columns.',
+  '  ✗ Ran pnpm run test:width · exit 1',
+  '● The failing row is the tool-line renderer; I will truncate its detail.',
+  '  ✓ Edited tool-line.ts  +6 −1',
+  '» Also make sure the width scan runs for the new panels.',
+  '● Adding the panels to the width scan spec.',
+  '  ✓ Read width-scan.spec.ts · 210 lines',
+  '  ✓ Edited width-scan.spec.ts  +18 −0',
+  '● Running the width scan again to confirm.',
+  '  ✓ Ran pnpm run test:width · 3.4s',
+  '● All width scan cases pass, including 40 and 24 columns.',
+  '» Great. Now update the screenshots.',
+  '● Regenerating the screenshots with shots:sync.',
+  '  ✓ Ran pnpm run shots:sync · 8.0s',
+  '● Screenshots are fresh. Checking that shots:check agrees.',
+  '  ✓ Ran pnpm run shots:check · 1.2s',
+  '» Bump the changelog too.',
+  '● Adding a changelog entry under Unreleased.',
+  '  ✓ Edited CHANGELOG.md  +3 −0',
+  '● Running the full gate one more time, width scan included.',
+  '  ✓ Ran pnpm run verify:full · 4m 12s',
+  '● Everything is green. Summary:',
+  '  - hero copy updated in one place',
+  '  - width scan now covers the panels',
+  '  - screenshots and changelog updated',
+  '● Ready for review.',
+]
+const tv = {}
+const VH = 12
+const escRe = q => q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const allMatches = () => {
+  if (!tv.q) return []
+  const re = new RegExp(escRe(tv.q), 'gi'); const out = []
+  TL.forEach((line, li) => { let m; while ((m = re.exec(line))) out.push({ li, col: m.index, len: m[0].length }) })
+  return out
+}
+const clampTop = t => Math.max(0, Math.min(TL.length - VH, t))
+const jump = m => { tv.top = clampTop(m.li - Math.floor(VH / 2)) }
+scene({ name: 'Transcript', keys: '↑↓ PgUp PgDn Home End scroll · / or Ctrl+F search · n/N next/prev · Tab list · Esc back a layer',
+  init: () => Object.assign(tv, { top: TL.length - VH, q: '', typing: false, open: false, idx: 0, list: false, since: Date.now() }),
+  capture: () => tv.typing,
+  render: () => {
+    const ms = allMatches()
+    const cur = ms[Math.min(tv.idx, ms.length - 1)]
+    const bottom = TL.length - VH
+    const atBottom = tv.top >= bottom
+    if (atBottom) tv.since = Date.now()
+    const fresh = atBottom ? 0 : Math.min(9, Math.floor((Date.now() - tv.since) / 3000))
+    const thumb = Math.max(1, Math.round(VH * VH / TL.length))
+    const thumbAt = bottom === 0 ? 0 : Math.round(tv.top / bottom * (VH - thumb))
+    const tickRows = new Map()
+    ms.forEach(m => tickRows.set(Math.min(VH - 1, Math.floor(m.li / TL.length * VH)), m === cur ? 'cur' : 'tick'))
+    const paintLine = (li, text) => {
+      const line = text ?? TL[li] ?? ''
+      if (!tv.q) return line
+      const re = new RegExp(escRe(tv.q), 'gi'); let out = '', last = 0, m
+      while ((m = re.exec(line))) {
+        const isCur = cur && cur.li === li && cur.col === m.index
+        out += line.slice(last, m.index) + (isCur ? `\x1b[48;2;230;190;90m\x1b[38;2;20;15;0m${m[0]}\x1b[0m` : `\x1b[1;4m${yel(m[0])}`)
+        last = m.index + m[0].length
+      }
+      return out + line.slice(last)
+    }
+    const W = 70
+    const rows = []
+
+    if (tv.list && tv.open) {
+      const shown = ms.slice(0, VH)
+      for (let r = 0; r < VH; r++) {
+        const m = shown[r]
+        rows.push(m ? `${r === tv.idx ? acc('▸') : ' '} ${dim('L' + String(m.li + 1).padStart(2))}  ${cut(strip(paintLine(m.li)), W - 10).replace(new RegExp(escRe(tv.q), 'i'), x => bold(yel(x)))}` : '')
+      }
+    } else {
+      for (let r = 0; r < VH; r++) {
+        const li = tv.top + r
+        let line = pad(paintLine(li), W)
+        if (r === VH - 1 && !atBottom) {
+          const pill = `\x1b[48;2;154;134;230m\x1b[38;2;22;16;44m\x1b[1m ↓ ${fresh ? fresh + ' new · ' : ''}End \x1b[0m`
+          line = pad(paintLine(li, cut(TL[li] ?? '', W - vlen(pill) - 1)), W - vlen(pill)) + pill
+        }
+        const inThumb = r >= thumbAt && r < thumbAt + thumb
+        const tk = tickRows.get(r)
+        const bar2 = tk === 'cur' ? acc('◆') : tk ? yel('▪') : inThumb ? acc('█') : dim('░')
+        rows.push(`${line} ${bar2}`)
+      }
+    }
+    const pct = Math.round((tv.top + VH) / TL.length * 100)
+    const top = dim(`┌ Transcript ${'─'.repeat(W - 34)} L${tv.top + 1}–${tv.top + VH} of ${TL.length} · ${pct}% ┐`)
+    const out = [top, ...rows.map(r => dim('│') + ' ' + r), dim('└' + '─'.repeat(W + 2) + '┘')]
+    if (tv.open) {
+      const count = ms.length ? `${Math.min(tv.idx, ms.length - 1) + 1}/${ms.length}` : red('no matches')
+      out.push(`${acc('⌕')} ${tv.q}${tv.typing ? '▌' : ''}   ${bold(String(count))}   ${dim('Aa \\b')}   ${dim(tv.typing ? 'Enter next · Tab list · Esc keep matches' : 'n next · N prev · Tab list · Esc close')}`)
+    } else out.push(dim('/ search · PgUp/PgDn scroll'))
+    return [dim('scroll-away pill (bottom-right), scrollbar with match ticks (▪ ◆), incremental search, match list'), '', ...out]
+  },
+  onKey: (k) => {
+    const ms = allMatches()
+    if (tv.typing) {
+      if (k === '\x1b') tv.typing = false
+      else if (k === '\r') { if (ms.length) { tv.idx = (tv.idx + 1) % ms.length; jump(ms[tv.idx]) } }
+      else if (k === '\t') tv.list = !tv.list
+      else if (k === '\x7f') tv.q = tv.q.slice(0, -1)
+      else if (printable(k)) { tv.q += k; const m2 = allMatches(); tv.idx = Math.max(0, m2.findIndex(m => m.li >= tv.top)); if (m2.length) jump(m2[tv.idx]) }
+      return
+    }
+    if (k === '/' || k === '\x06') { tv.open = true; tv.typing = true; tv.q = ''; tv.idx = 0 }
+    else if (k === '\x1b') { if (tv.list) tv.list = false; else if (tv.open) { tv.open = false; tv.q = '' } }
+    else if (tv.open && k === 'n' && ms.length) { tv.idx = (tv.idx + 1) % ms.length; jump(ms[tv.idx]) }
+    else if (tv.open && k === 'N' && ms.length) { tv.idx = (tv.idx + ms.length - 1) % ms.length; jump(ms[tv.idx]) }
+    else if (tv.open && k === '\t') tv.list = !tv.list
+    else if (tv.list && k === '\r' && ms.length) { jump(ms[Math.min(tv.idx, ms.length - 1)]); tv.list = false }
+    else if (tv.list && (k === '\x1b[B' || k === '\x1b[A')) tv.idx = Math.max(0, Math.min(ms.length - 1, tv.idx + (k === '\x1b[B' ? 1 : -1)))
+    else if (k === '\x1b[A') tv.top = clampTop(tv.top - 1)
+    else if (k === '\x1b[B') tv.top = clampTop(tv.top + 1)
+    else if (k === '\x1b[5~') tv.top = clampTop(tv.top - VH + 1)
+    else if (k === '\x1b[6~') tv.top = clampTop(tv.top + VH - 1)
+    else if (k === '\x1b[H') tv.top = 0
+    else if (k === '\x1b[F') tv.top = TL.length - VH
+  } })
+
+// ================================================================ runtime
+let cur = Math.max(0, Math.min(scenes.length - 1, Number(process.argv[2] ?? 1) - 1))
+let f = 0, sceneStart = Date.now(), drawn = 0
+const enter = i => { cur = (i + scenes.length) % scenes.length; scenes[cur].init?.(); sceneStart = Date.now(); f = 0 }
+const quit = () => { process.stdout.write('\x1b[?25h\n'); process.exit(0) }
+process.on('SIGINT', quit)
+function draw() {
+  const nav = scenes.map((s, i) => i === cur ? inv(` ${i + 1} ${s.name} `) : dim(` ${i + 1} `)).join('')
+  const footer = dim(`] next · [ previous · q quit${scenes[cur].keys ? ' · ' + scenes[cur].keys : ''}`)
+  const lines = [nav, '', ...scenes[cur].render(f, Date.now() - sceneStart), '', footer]
+  if (drawn) process.stdout.write(`\x1b[${drawn}A`)
+  process.stdout.write(lines.map(l => `\x1b[2K${l}`).join('\n') + '\n\x1b[J')
+  drawn = lines.length
+}
+enter(cur)
+process.stdout.write('\x1b[?25l')
+if (process.stdin.isTTY) process.stdin.setRawMode(true)
+process.stdin.resume()
+process.stdin.on('data', d => {
+  const k = d.toString()
+  if (k === '\x03') return quit()
+  const capturing = scenes[cur].capture?.()
+  if (!capturing) {
+    if (k === 'q') return quit()
+    if (k === ']' || k === '\t') return enter(cur + 1)
+    if (k === '[' || k === '\x1b[Z') return enter(cur - 1)
+  }
+  scenes[cur].onKey?.(k)
+  draw()
+})
+setInterval(() => { f++; draw() }, 100)

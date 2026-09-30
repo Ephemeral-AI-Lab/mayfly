@@ -14,7 +14,8 @@ The current runtime is described by three architecture documents:
 The component design catalog is
 [design/component-library.md](./design/component-library.md): wire interfaces,
 ASCII state diagrams, key behavior, and composition recipes for every shared
-UI component.
+UI component. Its §8 redesign round ships a runnable terminal prototype,
+`node docs/design/prototypes/ui-preview.mjs`.
 
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.

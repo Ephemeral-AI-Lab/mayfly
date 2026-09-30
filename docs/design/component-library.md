@@ -21,6 +21,12 @@ the code.
 Hint rows in every diagram use the strings the key grammar really produces
 (§2.2), not idealized ones.
 
+§8 collects the redesign round (activity row, tool cards, loader, compaction,
+todo and goal, the agents and jobs tray, decisions, tabs, lists, forms,
+panels, and interaction scenarios). It is all `target`, it wins over earlier
+text where the two disagree (§8.1), and it ships with a runnable terminal
+prototype (§8.14).
+
 ## 1. How a component works
 
 ```
@@ -226,8 +232,10 @@ happens to own it.
 | `Ctrl+C` twice to exit | a `press ctrl+c again to exit` notice after the first press | good pattern |
 
 > **Status: target (H1, H7, H8, B4).** The "Today" table above is shipped; the
-> placement rules, the two-line status bar, and the placeholder below are the
-> intended design.
+> placement rules and the placeholder below are the intended design.
+> **The two-line status bar below is superseded by §8.1:** the status bar stays
+> one row, key hints and tips move into the activity row's gaps (§8.3), and row
+> 2 is used only by the agents and jobs tray (§8.8).
 
 #### Placement: each key lives with its owner
 
@@ -252,7 +260,8 @@ to exit`, `interrupt requested`) stay notifications.
 
 #### The two-line status bar
 
-> **Status: target (H1).**
+> **Status: superseded (§8.1).** Kept as a record of the audit; do not
+> implement. The status bar stays one row.
 
 Row 1 says **what is true**; row 2 says **where you are and what you can
 press**. Nothing about the rows needs a new contract: `MayflyStatusDefinition`
@@ -703,7 +712,7 @@ plugins (`core/theme-dark.ts`, `-light`, `-ocean`, `-paper`, `-custom`,
 | Brand violet | `primary` (`#9A86E6` in the dark palette) | focus, active tab, primary action, loader indicator |
 | Focus frame | `borderFocus` | overlay chrome, focused editor border |
 | Quiet frame | `border` | inline `surface` chrome, panels |
-| Waiting ripple | `·· ·≈ ≈≈ ≈·`, 120 ms | "waiting on an external action" |
+| Waiting ripple | `·· ·≈ ≈≈ ≈·`, 120 ms | "waiting on an external action" (superseded by the breathing dot, §8.2) |
 | Working rotation | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, 80 ms | the model or a tool is actively computing |
 | Logomark | eight-row braille mark + `logoGradient` | welcome banner only |
 
@@ -754,9 +763,13 @@ the control markers above.
 | `⏵` | background jobs count |
 | `▸` | folded turn or collapsed detail |
 
+> **Status: target.** §8.2 adds `⎿`, `?`, `▌`, `↗`, `⚠`, `▰▱`, and `━─` to this
+> table and replaces the moon and braille frame tables with the glyph system.
+
 ### 3.3 Motion policy
 
-- **At most one animated indicator per surface.** The wire loader already
+- **At most one animated indicator per surface** (refined by §8.2 to *one
+  motion channel per row*, plus the one-shot transitions). The wire loader already
   shares one clock per surface (`core/ui-loader-animation.ts`); the transcript
   and panes must match that rule rather than running competing spinners.
 - **The renderer owns every clock.** Wire data carries only `variant` and
@@ -1075,6 +1088,9 @@ than choosing; see the role table above for the commit-on-Enter exception). For 
 
 ### 4.5 Tabs
 
+> **Status: target.** §8.10 redesigns the horizontal strip (text color only,
+> heavy underline, no filled background) and the vertical rail (§4.6).
+
 ```ts
 interface MayflyTabsNode {
   kind: 'tabs', id: string, activeId: string
@@ -1102,6 +1118,9 @@ switch emits a `tab-change` observation and the owner re-projects the page
 content.
 
 ### 4.6 Tabbed pages with labels on the left: sessions and settings
+
+> **Status: target.** §8.10 and §8.11 specify the vertical rail that follows the
+> cursor live (§7 F2), the long-path rules for sessions, and the status panel.
 
 > **Status: target.** Today `/sessions` is a two-step flow — a workspace
 > picker, then one workspace's session panel
@@ -1340,9 +1359,10 @@ activity pane.
 button: cancelling a loader is exactly what `Esc` already does (redundancy
 rule, §4.1). `cancelLabel` remains for surfaces that show the button anyway.
 
-> **Status: revision planned.** The `tide` wave is a second waiting motion
-> beside the transcript's ripple. §7 A1 replaces it with the ripple so the
-> variant changes once, not twice.
+> **Status: superseded (§8.1, §8.5).** The ripple retires, so §7 A1 no longer
+> applies. The loader gains `gap` (indeterminate default) and `breath` (waiting
+> on an external action); `braille` and `tide` stay accepted for compatibility.
+> Determinate work uses the `▰▱` bar with `n/N`.
 
 **progress** — determinate work only:
 
@@ -1656,7 +1676,9 @@ cross-surface dependency. Every delivered item flips its status to
 
 Low risk; no new node kinds.
 
-**A1 · Unify the waiting ripple — target.**
+**A1 · Unify the waiting ripple — superseded by §8.1 (R1).**
+> The ripple retires; this item is kept for history only.
+
 The wire `tide` loader frames (`≈ ≋ ∿ ≋`, 80 ms) are unused by any shipped
 product surface, while the transcript's waiting animation is the moon ripple
 (`·· ·≈ ≈≈ ≈·`, 120 ms). Align them into one ripple, keeping braille for work
@@ -1803,7 +1825,9 @@ picker's row and hint vocabulary.
 
 Touch points: `interaction/model-commands.ts` (badge text, locale keys).
 
-**H1 · Two-line status bar with a key row — target.**
+**H1 · Two-line status bar with a key row — superseded by §8.1 (R2, R7).**
+> The status bar stays one row; keys and tips live in the activity row's gaps.
+
 Add the state-driven `keys` entry of §2.3 on status row 2, and split the
 centered `conversation-view` entry into `scope` (row 2, left) and `switch` (row
 2, right). It covers running-state keys (`Esc` interrupt / take back, `Enter`
@@ -2031,10 +2055,590 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | G10 | The main screen has no persistent key prompt; `Esc` interrupt, `Ctrl+S`, `Alt+Enter`, `Ctrl+G`, `Shift+Tab`, `Alt+M`, and `F6` are cued nowhere | `interaction/input-plugin.ts`, `interaction/keys.ts` | H1 |
 | G11 | The `Ctrl+O` cue is scope-limited (last `expandTurns` turns), one-directional (no `collapse` after expanding), silently dropped on narrow rows, and hard-coded as `ctrl+o` instead of read from the keymap (the todo pane does read it) | `transcript/hints.ts`, `process-rows.ts`, `thinking.ts`, `locale.ts` | H2 |
 | G12 | Three notations for one key: `ctrl+o` (inline), `Ctrl-O` (zh copy, Website), `Ctrl+O` (grammar, `/help`) | `transcript/hints.ts`, `website/**` | H3 |
-| G13 | Tips rotate only while a turn runs; the idle screen teaches nothing, and the `#` skills prefix is cued nowhere (`!` and `@` appear in the rotation) | `transcript/tips-content.ts`, `interaction/editor-plus.ts` | H5, H8 |
+| G13 | (§8.1: the idle screen stays empty by decision; tips live in the `Working` row's gap.) Tips rotate only while a turn runs; the idle screen teaches nothing, and the `#` skills prefix is cued nowhere (`!` and `@` appear in the rotation) | `transcript/tips-content.ts`, `interaction/editor-plus.ts` | H5, H8 |
 | G14 | No keyboard route to blocks older than `expandTurns` | `transcript/transcript-model.ts` | H6 |
 | G15 | The Website says the queue pane never takes `↑`, but `↑` on an empty prompt withdraws the newest queued message (`withdrawQueued`) | `website/**/features/panes.md`, `editor.md`; `interaction/input-plugin.ts` | H7 |
 | G16 | The status-bar page documents a single-row footer with plan/yolo as lowercase text; the footer already renders two rows and nothing uses row 2 | `website/**/features/status-bar.md`, `transcript/status-model.ts` | H1, B4 |
 | G17 | Side-conversation identity and `F7`/`F8` share one centered entry on the crowded state row; `F8` says `close` for a subagent although it only detaches | `interaction/conversation-view-status.ts` | H1 |
 | G18 | The subagent reply form draws `Send` and `Cancel` buttons, and `Enter` in its textarea does not send | `interaction/subagent-reply.ts` | H1 |
 | G19 | Bash mode writes `! shell mode` into the editor's left border, the only text besides the session title | `interaction/editor-plus.ts` | B4 |
+| G20 | The activity row truncates the running action to one line (`DETAIL_BUDGETS`); a long command or reasoning paragraph is cut | `transcript/pane-activity.ts` | R2 |
+| G21 | Frame tables mix a two-cell moon slot, braille, and an unused `tide`; the waiting ripple and the working rotation are separate motions | `transcript/spinners.ts`, `core/ui-patterns.ts` | R1 |
+| G22 | Diff rows have only a two-column sign gutter (`GUTTER_COLUMNS = 2`); there are no old or new line numbers | `core/diff-align.ts`, `core/plugin-view.ts` | R3 |
+| G23 | Subagents live in a pane above the editor and jobs only as a footer count; neither can be selected from the keyboard | `transcript/pane-agents.ts`, `transcript/status-jobs.ts` | R7 |
+| G24 | Tabs cannot render a vertical rail that follows the cursor; the label column switches only on `Enter` (§7 F2) | `core/ui-compiler.ts` | R9 |
+
+## 8. Redesign round: activity, tools, panels, and interaction scenarios
+
+> **Status: target.** Everything in this section is an agreed design, not
+> shipped behavior. Every item carries an ID (R1–R14) in §8.13 and flips to
+> **shipped** in the change that implements it. Diagrams are drawn by the
+> runnable prototype in §8.14; run it to see the motion the ASCII cannot show.
+
+This round redesigns the parts of the interface a user watches most: the live
+activity row, tool results, loaders, compaction, todo and goal, the subagent
+and job tray, decisions and questions, and the panels built from tabs, lists,
+and forms. It also adds the interaction scenarios the earlier sections did not
+cover. Where it disagrees with earlier text, §8.1 lists the winner.
+
+### 8.1 Decisions that supersede earlier text
+
+| Earlier text | Now |
+| --- | --- |
+| §2.3 two-line status bar, §7 H1, G16 (row 2 carries keys, scope, switch) | **The status bar stays one row.** Key hints and tips live in the activity row's gaps (§8.3); the tray (§8.8) is the only row-2 entry, and only while agents or jobs exist |
+| §7 G13, §2.3 (tips on the idle screen) | **No tips while idle.** The idle activity row renders nothing. Tips rotate in the gap of the `Working` row only |
+| §3.1 ripple rows, §7 A1, §4.10 `tide` | **The ripple `·· ·≈ ≈≈ ≈·` retires.** The waiting motion is the breathing dot (§8.2); the indeterminate loader is the gap spinner |
+| §3.3 "at most one animated indicator per surface" | Refined: **one motion channel per row** (glyph *or* label, never both), plus the one-shot transitions of §8.2 |
+| §3.2 `Deep diving` (the waiting-on-model label) | Renamed **`Working`**, with a braille fill glyph |
+
+Unchanged and still authoritative: the §2.3 placement rules for pane, panel,
+and block keys, the editor placeholder (H8), and the mode chips (B4).
+
+### 8.2 Motion and glyph system
+
+One glyph, one meaning, one motion channel per row. A row animates its glyph
+or its label, and the other stays still. Motion is a fact about the machine:
+when the row is waiting on the user, or settled, nothing moves.
+
+| State | Moves | Frames | Step |
+| --- | --- | --- | --- |
+| Thinking | glyph (bloom) | `· ✢ ✳ ✶ ✻ ✽ ✻ ✶ ✳ ✢` | 100 ms |
+| Working on the model, writing | glyph (fill) | `⡀ ⣄ ⣤ ⣦ ⣶ ⣷ ⣿ ⣷ ⣶ ⣦ ⣤ ⣄` | 100 ms |
+| Tool running | label (shimmer); `●` static | a three-letter window sweeps the label | 100 ms per letter |
+| Waiting on an external action | glyph (breath); label static | `●` steps `muted → accent → accent strong → accent` | 400 ms |
+| Indeterminate loader | glyph (gap) | `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷` | 100 ms |
+| Waiting on the user | nothing | `?` (warning) | — |
+| Stopping | nothing | `■` (danger) | — |
+
+```
+✻ Thinking · 8s · ↑30.2k ↓1.1k                       Esc interrupt · Ctrl+O expand
+⣤ Working · 2s                                        Tip: @ files
+● Running commands · 12s · ↑30.2k ↓4.1k · 38 tok/s    ← the label shimmers, ● is still
+● Waiting for authorization · 45s                     ← ● breathes, label is still
+? Waiting for your action · 8s                        ← static: nothing is computing
+```
+
+Rules:
+
+- **The wire carries no color values.** The breath is a cycle of tone tokens
+  and the shimmer is `accent`+`strong` spans over `muted` ones, so both survive
+  `NO_COLOR` as weight (§7 D1). Width never changes between frames; only tone
+  and weight do.
+- **One-shot transitions are allowed and end by themselves:** the 400 ms
+  inverse flash when an item settles (tool, todo item), the 300 ms stagger of a
+  subagent fan-out, and the 800 ms drain of the compaction bar. They never loop
+  and never overlap a running channel on the same row.
+- **The renderer owns every clock** (§3.3). Frame tables live in
+  `transcript/spinners.ts`; `≈≋∿≋` and `·· ·≈ ≈≈ ≈·` are removed.
+- **Width.** `✳` and `✽` may render two cells wide in some fonts. Width math
+  goes through `mayflyComponents.visibleWidth`; the fallback for a wide result
+  is `*`. Every frame is one cell wide, so the two-cell moon slot disappears.
+- **Reduced motion** freezes each channel on its first frame (§7 D1).
+
+New glyph vocabulary (extends §3.2):
+
+| Glyph | Meaning |
+| --- | --- |
+| `⎿` | detail connector under an activity header or a failed row |
+| `?` | waiting on the user |
+| `▌` | focus bar on a rail or list row |
+| `↗` | opens in the external editor |
+| `⚠` | warning (deletes files, low balance, dangerous tool) |
+| `▰` `▱` | determinate progress cells |
+| `━` `─` | heavy and light rule: tab underline, todo and goal progress |
+
+### 8.3 Activity pane: one action, several lines
+
+The header carries the phase, elapsed time, throughput, and a right-aligned
+gap. Under it, one to three wrapped `⎿` lines describe **the single action
+running now**: the running command, path, or query, or the latest reasoning
+paragraph. It is never a list of tools.
+
+```
+✻ Thinking · 8s · ↑30.2k ↓1.1k                       Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether facts.activity can carry more than the latest tool name,
+    since every tool/call overwrites the previous one…
+
+● Running commands · 12s · ↑30.2k ↓4.1k · 38 tok/s   Esc interrupt · Ctrl+O expand
+  ⎿ pnpm run verify:changed -- --plan
+
+⣤ Working · 2s                                        Tip: / commands
+```
+
+- **The gap.** Running rows with a detail line carry `Esc interrupt · Ctrl+O
+  expand` there (this cues the interrupt key that is unadvertised today, G10).
+  The `Working` row, which has no detail, rotates the tip there instead. Idle
+  renders nothing.
+- **Height.** One header plus at most three detail lines. The row never
+  collapses while active, so the editor does not shift between phases; a phase
+  with fewer lines pads to the turn's high-water mark.
+- **Narrow widths** shed, in order: detail lines beyond the first, the `⎿`
+  connector, the header tail (rate, counters, elapsed), then the gap.
+- **Data.** No new projection is required: `ConversationFacts.activity` already
+  carries the single current action. Detail wrapping widens today's one-line
+  budgets (`DETAIL_BUDGETS`) to three lines; `LIVE_DETAIL_MAX_CHARS` (160) and
+  the reasoning scan window are unchanged.
+- **Ownership** is unchanged: the activity pane is the sole owner of live
+  status, and transcript rows speak only in the past tense (§3.2 stays).
+
+### 8.4 Tool rows and cards
+
+Running calls use the tool row of §8.3, with the category choosing label and
+detail:
+
+```
+● Running commands    ⎿ pnpm run verify:changed -- --plan
+● Reading files       ⎿ packages/mayfly/src/transcript/pane-activity.ts
+● Searching code      ⎿ "liveProcessDetail" in packages/
+● Visiting web pages  ⎿ https://pi.dev/docs/latest/tui
+● Updating the plan   ⎿ 3 of 5 items done
+? Waiting for your action ⎿ Which release channel should this go to?
+```
+
+Settled calls are one static line: glyph, past-tense verb, target, outcome.
+
+```
+✓ Read pane-activity.ts · 481 lines
+✓ Searched "activity" · 47 matches in 12 files
+✓ Ran pnpm run check:lib · 4.2s
+✗ Ran pnpm run lint · exit 1 · 3s
+✓ Fetched pi.dev/docs/latest/tui · 200 · 18 KB
+▸ Read 3 files · Searched code · Ran 2 commands · 6s        ← folded turn, Ctrl+O
+```
+
+**Edit is a diff; Write is not.**
+
+```
+● Preparing to edit files · 3s · ↓0.8k           phase 1: arguments streaming
+● Editing files · 5s                              phase 2: applying
+  ⎿ pane-activity.ts  +12 −3 ▮▮▮▮▮▮▮▯                the counts tick up as the patch parses
+✓ Edited pane-activity.ts  +12 −3 ▮▮▮▮▮▮▮▯        phase 3: 400 ms flash, then static
+    41   41 │   const moon = state.mode === 'waiting'
+    42      │ − const frame = moon
+         42 │ + const frame = glyphFor(state)
+    43   43 │   const now = activityNow()
+    ⋯
+   118  118 │   return { kind: 'stack', direction: 'column',
+```
+
+- Two gutters (old, new), sized by the largest line number. Every changed line
+  carries `−` or `+` as well as color. One to three context lines per hunk,
+  `⋯` between hunks, `… +N lines · Ctrl+O` beyond 12 rows, long lines end in
+  `…`. Row painting stays with the diff tokens (§7 C1).
+- Multi-file patches list `A`/`M`/`D` with a per-file stat; a failed edit puts
+  the reason on the `⎿` line.
+- **Write** is one line, `✓ Wrote path · 84 lines · 3.1 KB`. A plain preview
+  (no `+` markers, no line numbers) shows only when expanded with `Ctrl+O`.
+
+### 8.5 Loader and progress
+
+```
+⣾ Discovering models from api.example.com  12s       indeterminate: the gap spinner
+● Waiting for authorization · 45s                     waiting on an external action: breath
+Building ▰▰▰▰▰▰▱▱▱▱ 6/10                              determinate: the total is known
+```
+
+- The wire loader gains the variants `gap` (new default) and `breath`; `braille`
+  and `tide` stay accepted for compatibility (additions only, §5).
+  `cancelActionId` still paints as the `Esc cancel` hint (§4.1).
+- **progress** is `▰▱` cells plus `n/N`. It replaces the `█░` bar wherever the
+  total is known. A bar never appears for unknown durations: an eased bar that
+  never completes is a fabricated estimate and is not used.
+- Settled forms are static: `✓ Discovered 14 models · 2.1s`,
+  `✗ … [ Retry ]`, `⊘ Cancelled`.
+
+### 8.6 Compaction
+
+Compaction reports real stages, so its bar is real. The bar is **context
+occupancy** (`contextTokens / contextWindow`, both already in the facts), and
+the two stages are the `compaction/start` → `compaction/summary` → `compaction/end`
+lifecycle.
+
+```
+● Compacting context ▰▰▰▰▰▰▰▰▰▱ 91%  1/2 summarizing · 4s · auto      the edge cell breathes
+● Compacting context ▰▱▱▱▱▱▱▱▱▱  9%  2/2 applying · auto              800 ms drain when the summary lands
+✓ Compacted 84 items ▰▱▱▱▱▱▱▱▱▱ 91% → 9% · ~148k → ~12k tokens · auto
+  ⎿ Ctrl+O summary
+✓ Compacted 84 items · 91% → 9%                                       narrow: the bar goes first
+✗ Compaction failed: context still over budget after summary
+```
+
+The drop comes from the existing `compaction/summary` metering event, so it
+matches the status bar's context meter. Without a known context window the bar
+falls back to the two stages (`1/2`, `2/2`).
+
+### 8.7 Todo and goal
+
+The heading rule is the progress bar: heavy `━` for done, light `─` for what is
+left. There are no block bars and no per-item marker trail.
+
+```
+━━━━━━━━━━━━━━━━━━━━━──────────────────────────────  Goal ● active · round 2 of 8
+  Ship the hero refresh and keep all 214 tests green
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────────────────  Todo 2 of 6
+  ✓ Audit current hero copy               ← muted, struck through
+  ✓ Update landing page hero
+  ● Run the tests                         ← bold: the only emphasised row
+  ○ Update screenshots
+  … +2 more · ctrl+t
+
+━━━━━━━━────────────────  Todo 2 of 6 · ● Run the tests               collapsed
+━━━━━━━━━━━━────────────  Goal ❚❚ paused · round 4 of 8
+━━━━━━━━━━━━━━━━━━━━━━━━  Goal ✕ blocked · round 8 of 8
+  blocked: needs a decision on the release channel
+```
+
+The window follows the active item and keeps two finished rows above it. The
+only motion is the 400 ms flash when an item completes and a closing line,
+`✓ Todo done 6/6 · 4m 12s`, before the pane closes.
+
+### 8.8 Subagent and job tray
+
+The subagent pane above the editor is replaced by a **tray**: one status entry
+on row 2 under the single-row status bar, present only while agents or jobs
+exist. It reuses the existing `row: 1 | 2` contract, so no status-contract
+change is needed. Agents and jobs are separate tabs.
+
+```
+  Agents 5 ● 1 waiting  ·  Jobs 3 ⏵ 2 running                       ↓ manage
+```
+
+Focused, it shows at most four rows and counts the rest:
+
+```
+  ‹ Agents 5 ›   Jobs 3      ←/→ tab · ↑↓ select · Enter view · x stop · Esc back
+ ▸ ● review   Audit facts projection     41s · 6 tools · ↓6.4k
+   ● plan     Draft migration plan       waiting · reply needed
+   ✓ explore  Map transcript files       12s · 8 tools
+   ✓ lint     Sweep oxlint findings      9s · 3 tools
+   ↑ 0 more · ↓ 1 more
+```
+
+- **Limits:** three names idle, four rows focused; live entries first.
+- **Keys:** `↓` on an empty prompt (or `F6`) enters the tray; `←`/`→` switch
+  tabs; `↑`/`↓` select; `Enter` on an agent opens its conversation (`F7`
+  returns) and on a job its detail overlay; `x` stops behind the shared Yes/No
+  with No focused first; `Esc` leaves one layer. `F7`/`F8` hints sit in the
+  tray row's right cluster only when two or more conversations exist.
+- **Motion:** the tray has no clock (the activity row above it already
+  animates). Its fan-out staggers 300 ms per row once, and a row flashes once
+  when its own numbers change.
+- **Seam:** focus and selection come from an overlay list (§4.4), so plugins
+  still never see keys. Agent-scoped actions bind to the exact Agent, as in
+  `mayflyCurrentAgent`.
+
+### 8.9 Decisions and questions
+
+Approval, plan review, permission, and questions share one skeleton (§7 B1): an
+overlay card with a header (title, subject, queue position), a preview, a
+numbered choice list with descriptions, and the hint row. The safe option is
+focused first and digits act instantly.
+
+```
+╭ Approve command ───────────────────────── bash · 1 of 3 waiting ╮
+│   $ rm -rf build && pnpm build                                  │
+│   in ~/work/mayfly                            ⚠ deletes files   │
+│                                                                 │
+│ ▸ 1  Allow once                                                 │
+│   2  Allow bash for this session                                │
+│   3  Reject and tell the agent why…                             │
+│   Feedback: type to explain…                                    │
+│   Esc reject · 1-3 choose · Enter confirm                       │
+╰─────────────────────────────────────────────────────────────────╯
+```
+
+- **Edit approval** swaps the preview for the numbered diff of §8.4.
+- **Plan review** shows a scrollable plan preview above the options
+  (`Approve and start`, `Approve and auto-accept edits`, `Keep planning…` with
+  `Revise:`, `Reject`), and keeps `numbered: 'focus'` so `Enter` alone can
+  never approve.
+- **Permission preset** keeps `[current]` on the row and a per-row `confirm`
+  (`Full access — ⚠ asks first`).
+- **Queue.** Queued approvals are FIFO per Agent; the header chip reads
+  `1 of 3 waiting`.
+
+Multiple questions get a step strip with per-step state and a Review page:
+
+```
+╭ Questions ──────────────────────────────────────────────── 2 of 3 ╮
+│ ✓ Auth  │  ● Region  │  ○ Scopes  │  ○ Review                      │
+│                                                                    │
+│ Which region should the service deploy to?                         │
+│ ▸ 1  ● us-east-1     lowest latency to most users                  │
+│   2    eu-west-1     GDPR data residency                           │
+│   3    ap-south-1    closest to the pilot customers                │
+│   4    Other  type your own answer                                 │
+│ ←/→ question · 1-4 choose · Enter next · Esc cancel                │
+╰────────────────────────────────────────────────────────────────────╯
+```
+
+Multi-select uses `[x]`/`[ ]` and `Space`. The Review page lists every answer
+(`— skipped` in warning), `1`–`3` jump to a question, and `Submit answers`
+sends every page as one action. Below 60 columns the strip collapses to
+`Region · 2/3 ›`.
+
+### 8.10 Tabs, lists, and forms
+
+**Tabs color the text, never a filled background.** The focused tab is bold
+`primary` with a heavy `━` rule beneath it; without focus it keeps its color
+but loses weight and the rule dims (`border`); idle tabs and counts are
+`muted`; `!` is `warning` strong.
+
+```
+  Overview   Usage 3   Connections !   Skills 12   About        H1 underline (target)
+             ━━━━━━━
+  ✓ Kind  ›  ✓ Connection  ›  ● Models  ›  ○ Review             wizard steps
+  ‹ Usage 3  Connections !  +3 ›                                 narrow: the active tab stays visible
+
+  SESSION                  vertical rail: ▌ focus bar, counts right-aligned
+   General                 the content follows the cursor live (F2 ships here)
+   Model
+  ▌ Permissions     2
+  INTEGRATIONS
+   Providers        !
+```
+
+- **Contrast is a spec, not an opinion.** A guard spec asserts every tab text
+  color against its theme's background at ≥ 4.5:1 (disabled text is exempt).
+  The prototype's values are `dark` active 5.4 / selected 7.1 / idle 5.5 /
+  attention 9.3 and `light` 6.3 / 5.1 / 5.4 / 4.9.
+- **`NO_COLOR`:** weight and the rule carry the state; glyphs are unchanged.
+- **Rail.** Group headings, the `▌` bar, a right-aligned count or `!`. The
+  active row is `primary` strong when the rail has focus and `primary` regular
+  when focus is in the content. `↑`/`↓` move and the content follows; `→` or
+  `Enter` enters the content, `←` returns.
+
+**Expandable lists.** One list model covers a tree (parents with tri-state
+children) and an accordion (a row that expands to text).
+
+```
+ MCP SERVERS  4
+  ▾ [-] filesystem      ✓ connected · 120ms          4 tools
+   │ [x] read_file       Read a file from disk
+   │ [x] write_file      Create or overwrite a file
+   │ [ ] delete_file     Remove a file               ⚠ dangerous
+   ╰ [x] list_dir        List a directory
+  ▸ [-] github          ✓ connected · 340ms         12 tools
+
+ SKILLS  2
+  ▸     plugin-author   preset     Prototype a Cordis plugin in-process,
+  ▾     preset-author   preset     Compose user-owned presets on the native
+    │ Compose user-owned presets on the native
+    ╰ dsh services and the four UI services.
+```
+
+The selected row keeps the inverted bar with a `▌` focus mark. Columns align
+(name, status, right-aligned count); checked children read normally and
+unchecked ones dim; parents show `[x]`, `[-]`, or `[ ]`. `→`/`Space` expands,
+`←` collapses, `Enter` toggles (a parent toggles all its children), `*` and
+`-` expand and collapse everything, and a "loads more" row pages large groups.
+
+**Forms** are the shared field kinds (§4.2, §4.3) with the rules of the form
+audit made explicit:
+
+```
+╭ Edit provider ────────────────────────────────── unsaved changes ╮
+│ ── Connection ──────────────────────────────                     │
+│   Name:        production                                        │
+│ ▸ Endpoint:    https://api.example.com/v1                        │
+│     Base URL, including the version path                         │
+│ • API key:     ••••••••••  (saved)                               │
+│ ── Behaviour ───────────────────────────────                     │
+│   Model:       ‹ deepseek-chat ›  (inherited)                    │
+│ • Timeout:     ‹ 45 › s  5–120                                   │
+│   Streaming:   [on]                                              │
+│   Channels:    mentions, errors                                  │
+│   Directory:   ~/work/may▌                                       │
+│     ⇥ ~/work/mayfly                                              │
+│   Notes:       Prefer small diffs. …      (expands when focused) │
+│ ── Finish ──                                                     │
+│   [ Save ]  [ Cancel ]                                           │
+│ ↑↓ field · ←/→ cycle · Enter list · Delete reset · Esc close     │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+- **No per-field buttons.** Field state is implicit: `•` marks an edited field,
+  `(inherited)`/`(override)` is text, and secondary operations appear as keys
+  in the hint row only while they apply (`Delete reset` only when a reset would
+  change the value). The focused select wraps its value: `‹ auto ›`.
+- **Field kinds:** text, secret (never echoed, `(saved)` when set), number
+  (unit, range, `←`/`→` step or type), select (`←`/`→` cycles without wrapping,
+  `Enter` opens the list), toggle (`Space`), multiselect (`Enter`/`Space`
+  opens, `Space` toggles, `Enter` applies, disabled options show their reason),
+  textarea (expands when focused, `Alt+Enter` newline), and a path field that
+  completes with `Tab`.
+- **Errors** repaint under the field as `! message` once the value is edited.
+  The finish row is the form's own `Submit`/`Cancel`, not a field button.
+
+### 8.11 Panels: sessions, settings, status
+
+Panels are compositions of the components above, not new widgets: a vertical
+rail plus a content column (sessions, settings) or a tab strip plus a
+key/value body (status).
+
+**Sessions.** The rail lists workspaces; the content lists that workspace's
+sessions with a filter row, and the focused session expands in place to show
+its first prompt and last outcome.
+
+```
+╭ Sessions ─────────────────────────────────────────────────── 25 total ╮
+│                          │ ⌂ ~/dev/clients/acme/monorepo/packages/mayfly │
+│    All             25    │ / filter…                                      │
+│    work/mayfly      8    │ Recent                                         │
+│ ▌  packages/mayfly  5    │▸ Port the tray to acme layout  feat/tray 6 turns 3h │
+│    …roject-name-here 4   │    │ Port the tray design to the acme fork.    │
+│    website          5    │    │ Rebased; specs pass.                      │
+│ ↑↓ workspace · → sessions · / filter · y copy path · Esc close             │
+╰────────────────────────────────────────────────────────────────────────────╯
+```
+
+- **Long paths never enter the rail.** A label is the basename; when two
+  workspaces share it, the shortest distinguishing parent is added
+  (`work/mayfly`, `packages/mayfly`); a label that still overflows is
+  ellipsised at its *start* (`…roject-name-here`) so the distinguishing end
+  stays visible.
+- **The full path** is the first line of the content, home-collapsed to `~` and
+  ellipsised in the *middle* (`~/dev/clients/acme/…/packages/mayfly`); `y`
+  copies it in full.
+- **No markers for the current directory or the current session.** Recency
+  groups and the resume action are enough.
+- Sessions stay lazy and bounded per the `/sessions` ownership rules: headers
+  first, projections only for the opened workspace.
+
+**Settings.** The rail holds the setting groups; the content is the shared
+form of §8.10. Each group keeps its own draft; `←` on a non-cycling field
+returns to the rail.
+
+**Status** is read-only: tabs `Overview`, `Usage`, `Account`, `Connections`,
+`About`, with a right-hand `!` on a tab that needs attention.
+
+```
+  Overview   Usage   Account !   Connections !   About
+                     ━━━━━━━━━
+  Provider     DeepSeek
+  Balance      ⚠ ¥ 6.20 low balance · below ¥ 10.00
+               topped-up ¥ 0.00 · granted ¥ 6.20
+  Checked      2 min ago · r refresh
+  Top up       platform.deepseek.com  ·  o open in browser
+```
+
+- **Account balance** is one optional read-only provider query, cached, with a
+  refresh key. States: available, low (warning, threshold configurable),
+  loading (`⣾ checking balance…`), unavailable (`— unavailable (network)  r
+  retry`), and unsupported (the row is hidden). A failed check never affects
+  the conversation, and the key never appears in the panel. When low, the
+  status bar may carry a small `⚠ ¥6.2` chip.
+- Overview also carries a one-line `Balance` row so the answer is visible
+  without opening the tab.
+
+### 8.12 Interaction scenarios
+
+| Scenario | Design | Keys |
+| --- | --- | --- |
+| Command palette | filtered list with the match bolded, description, and the command's own key | `/` then type · `Tab` complete · `Enter` run · `Esc` close |
+| `@` file picker | recent first, fuzzy on name and path; the focused row shows `↗ code` | `Enter` **open in the external editor** · `Tab` insert the mention · `Esc` close |
+| Changed files | `M`/`A`/`D` with stat; `Enter` opens at the first changed line | `Enter` open · `d` diff |
+| Notifications and undo | right-aligned toast in the activity row's gap (`✓ build finished · 22s`); a destructive action offers `u undo · 8s` | `Ctrl+J` view · `u` undo |
+| Queued messages, attachments | `queued (2)` chips above the editor; attachment chips `[Image #1 84 KB ×]` | `↑` edit · `Esc` clear · `Backspace` removes a chip |
+| Rewind | checkpoint list with a restore scope `‹ conversation + code ›` | `↑↓` · `←/→` scope · `Enter` restore |
+| Diff hunk review | per-hunk accept or reject on the numbered diff | `a`/`r` · `A`/`R` all · `n`/`p` hunk |
+| Banners | rate limit with countdown, offline, context nearly full, low balance, resumed session | `Esc` cancel · `r` retry |
+| Key help | contextual, grouped by task | `?` |
+| Job output | timestamped tail with follow | `f` follow · `↑` scroll · `x` stop |
+| Delete session | **plain `[ No ]  Yes`**, No focused first; no typed phrase | `←/→` or `n`/`y` · `Enter` |
+| Transcript scroll and search | see below | `/` or `Ctrl+F` |
+
+- **Opening a file** reuses the existing editor resolution
+  (`mayfly.editorCommand`, then `$VISUAL`, then `$EDITOR`, `interaction/external-editor.ts`).
+  GUI editors open detached with a goto argument (`file:line`); terminal editors
+  suspend the screen and restore it, as raw settings edit does. The command runs
+  from a fixed argument array, never a shell string, and the path must resolve
+  inside the workspace. With no editor configured the row says so and points to
+  `/settings`.
+- **Delete session** may become a soft delete with an eight-second `u undo`
+  toast, which removes even the Yes/No prompt.
+
+**Transcript scroll and search** (scene 15). The passive transcript keeps its
+single outer viewport (see the transcript ownership rules); search reads the
+rendered rows in `core/`, the only owner of width and ANSI truth.
+
+```
+┌ Transcript ─────────────────────────────── L11–22 of 33 · 67% ┐
+│ ● Adding the panels to the width scan spec.                   ░
+│ ● Running the width scan again to confirm.                    ▪
+│ » Bump the changelog too.                              ↓ 2 new · End
+└────────────────────────────────────────────────────────────────┘
+⌕ width▌   12/13   Aa \b   Enter next · Tab list · Esc keep matches
+```
+
+- **Scroll-away pill** at the bottom-right of the viewport: `↓ N new · End`
+  while output arrives, `↓ End` otherwise. `End` jumps to the latest.
+- **Scrollbar** with a thumb and one tick per match (`▪`, `◆` for the current
+  one), plus the visible line range and percentage in the frame.
+- **Incremental search** jumps as you type; the current match is highlighted
+  distinctly from the others; `Enter` and `n`/`N` step; `Tab` toggles a match
+  list to jump from; `Esc` leaves one layer at a time (typing, then list, then
+  search). Folded blocks expand when a match inside them is opened.
+
+### 8.13 Roadmap and touch points
+
+| ID | Item | Touch points |
+| --- | --- | --- |
+| R1 | Motion and glyph system (§8.2); retire the ripple and `tide` | `transcript/spinners.ts`, `core/ui-loader-animation.ts`, `core/ui-patterns.ts` |
+| R2 | Activity pane detail lines, gap, `Working` label (§8.3) | `transcript/pane-activity.ts`, `conversation/activity-detail.ts`, `transcript/process-activity.ts`, `transcript/locale.ts` |
+| R3 | Edit diff with line numbers; Write as one line (§8.4) | `core/diff-align.ts`, `core/plugin-view.ts`, `transcript/tool-line.ts`, `transcript/process-rows.ts` |
+| R4 | Loader variants and determinate bar (§8.5) | `core/ui-patterns.ts`, `packages/ui/src/contracts.ts` |
+| R5 | Compaction bar and settled rule (§8.6) | `transcript/compaction.ts`, `conversation/facts.ts` |
+| R6 | Todo and goal rule progress (§8.7) | `transcript/pane-todo.ts`, `transcript/status-goal.ts` |
+| R7 | Agents and jobs tray (§8.8) | `transcript/pane-agents.ts`, `transcript/status-jobs.ts`, `interaction/agents-command.ts`, `interaction/jobs.ts` |
+| R8 | Decision skeleton and question wizard (§8.9) | `interaction/approval-plugin.ts`, `interaction/questionnaire.ts`, `core/ui-key-grammar.ts` |
+| R9 | Text-color tabs, live-following rail, expandable lists, form refinements (§8.10) | `core/ui-patterns.ts`, `core/ui-compiler.ts`, `core/theme-palette.ts` |
+| R10 | Sessions, settings, and status panels; account balance (§8.11) | `interaction/session-list-model.ts`, `interaction/session-workspace-panel.ts`, `interaction/settings.ts`, `interaction/usage.ts` |
+| R11 | Interaction scenarios (§8.12) | `interaction/external-editor.ts`, `core/ui-key-grammar.ts` |
+| R12 | Transcript scroll pill, scrollbar, and search (§8.12) | `core/` (transcript viewport), `transcript/transcript-model.ts` |
+| R13 | Contrast and one-motion-channel guard specs (§7 D1, D3) | `packages/mayfly/tests/core/` |
+| R14 | Website key and status-bar pages follow §8.1 | `website/**` (needs the Website acceptance path) |
+
+Verification for any of these follows the root gate: width scans for every new
+row renderer, the owning suite for lifecycle changes, `pnpm run verify:full`,
+and a dedicated-profile install with PTY smoke and human acceptance.
+
+**Open questions.** (1) Whether the balance query is reachable through the
+native provider services or needs a new read-only service. (2) Whether
+`↓`-on-an-empty-prompt conflicts with prompt-history navigation in the editor
+key handling. (3) The keys `Ctrl+F` (search) and `Ctrl+J` (view notification)
+are proposals until checked against the keymap. (4) Where search matches are
+computed for folded blocks.
+
+### 8.14 Prototype
+
+[`prototypes/ui-preview.mjs`](./prototypes/ui-preview.mjs) draws every design in
+this section in a terminal. It is a standalone Node script with no
+dependencies; it draws its own colors and does not use the Mayfly renderer, so
+it shows intent, not shipped rendering.
+
+```
+node docs/design/prototypes/ui-preview.mjs [scene-number]
+```
+
+`]` / `[` (or `Tab`) move between scenes and `q` quits; each scene lists its own
+keys in its footer. While a text field has focus the scene keeps every key and
+`Esc` stops typing.
+
+| # | Scene | Section |
+| --- | --- | --- |
+| 1 | Activity states | §8.2, §8.3 |
+| 2 | Loader | §8.5 |
+| 3 | Tools | §8.4 |
+| 4 | Edit and Write | §8.4 |
+| 5 | Tray | §8.8 |
+| 6 | Todo and goal | §8.7 |
+| 7 | Approval and plan | §8.9 |
+| 8 | Questions | §8.9 |
+| 9 | Compaction | §8.6 |
+| 10 | Tabs | §8.10 |
+| 11 | Expandable lists | §8.10 |
+| 12 | Forms | §8.10 |
+| 13 | Panels (sessions, settings, status) | §8.11 |
+| 14 | Scenarios | §8.12 |
+| 15 | Transcript scroll and search | §8.12 |
