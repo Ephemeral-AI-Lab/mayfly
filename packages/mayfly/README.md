@@ -6,6 +6,23 @@ The installable Mayfly terminal UI bundle for dsh. Its flat
 `cordis.patch.yml` composition adds ordinary sibling rows over `dsh-base`:
 a set of dsh support rows and the Mayfly product rows.
 
+## Install
+
+```sh
+npm i -g @deepseek-ai/dsh
+dsh plugin --profile mayfly add @ephemeral-ai/mayfly
+dsh --profile mayfly
+```
+
+Or use the standalone launcher, which bundles a tested dsh runtime:
+
+```sh
+npm -g install @ephemeral-ai/mayfly-cli
+mayfly
+```
+
+Set `DEEPSEEK_API_KEY` before first run.
+
 Plugins inherit native dsh services directly and opt into terminal UI with
 `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and
 `mayflyEditorExtensions`. The current Agent is available through
