@@ -11,11 +11,14 @@ The current runtime is described by three architecture documents:
   confirmation and availability contract for panes, overlays, and editor
   extensions.
 
-The component design catalog is
-[design/component-library.md](./design/component-library.md): wire interfaces,
-ASCII state diagrams, key behavior, and composition recipes for every shared
-UI component. Its §8 redesign round ships a runnable terminal prototype,
-`node docs/design/prototypes/ui-preview.mjs`.
+The UI design is [design/component-library.md](./design/component-library.md): the
+target visual language, key grammar, basic components (the UI API), and the Mayfly
+components built from them, reviewed before the implementation. It is a design, not
+shipped behavior, and ships a runnable terminal prototype
+(`node docs/design/prototypes/ui-preview.mjs`) whose `--audit` mode proves that every
+Mayfly component uses only the basic components a plugin also has. The implementation material
+for the follow-up change (wire mechanics, builder tables, backlog) is in
+[design/component-library-reference.md](./design/component-library-reference.md).
 
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.
