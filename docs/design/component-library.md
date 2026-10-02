@@ -24,9 +24,9 @@ Hint rows in every diagram use the strings the key grammar really produces
 §8 collects the redesign round (activity row, tool cards, loader, compaction,
 todo and goal, the agents and jobs tray, decisions, tabs, lists, forms,
 panels, the plugin marketplace, onboarding, the account panel, interaction
-scenarios, and the system rules that tie them together). It is all `target`, it wins over earlier
+scenarios, the four transcript levels, and the system rules that tie them together). It is all `target`, it wins over earlier
 text where the two disagree (§8.1), and it ships with a runnable terminal
-prototype (§8.18).
+prototype (§8.19).
 
 ## 1. How a component works
 
@@ -2072,9 +2072,9 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 ## 8. Redesign round: activity, tools, panels, and interaction scenarios
 
 > **Status: target.** Everything in this section is an agreed design, not
-> shipped behavior. Every item carries an ID (R1–R18) in §8.17 and flips to
+> shipped behavior. Every item carries an ID (R1–R19) in §8.18 and flips to
 > **shipped** in the change that implements it. Diagrams are drawn by the
-> runnable prototype in §8.18; run it to see the motion the ASCII cannot show.
+> runnable prototype in §8.19; run it to see the motion the ASCII cannot show.
 
 This round redesigns the parts of the interface a user watches most: the live
 activity row, tool results, loaders, compaction, todo and goal, the subagent
@@ -2737,7 +2737,7 @@ The redesign is button-free and covers every state the code distinguishes:
 ### 8.16 System refinements
 
 Rules that make the panels above, and every future one, read as one system. The
-prototype's last scene (§8.18) draws each of them.
+prototype's scene 19 (§8.19) draws each of them.
 
 **Selection and focus vocabulary.** One persistent-selection mark, one
 transient cursor, one focus effect:
@@ -2805,7 +2805,107 @@ job) use the shared Yes/No. Typed confirmation phrases are never used.
 decimals (`¥ 128.40`); paths home-collapsed to `~` and middle-ellipsised;
 counts `12 turns`, `+3 more`.
 
-### 8.17 Roadmap and touch points
+### 8.17 Transcript levels
+
+**Today.** `mayfly.transcriptView` already has four work-details modes,
+`compact`, `standard` (default), `detailed`, and `verbose` (see the Website
+streaming page). The transcript speaks in the past tense and the activity row
+in the present, and `Ctrl+O` opens the fold of the most recent `expandTurns`
+(3) turns. In practice `standard` and `detailed` look identical once a turn
+settles, and a failed or compact turn tells you little about what happened.
+
+The design keeps the four names and the setting, and makes each level a
+distinct, predictable amount of detail. The same three turns (a successful
+edit-and-test turn, a failed turn, and a running turn) at each level, from the
+prototype (§8.19, scene 20):
+
+```
+1 Compact  (8 rows)                       2 Standard  (21 rows, −49% vs Verbose)
+» Update the landing page hero …          » Update the landing page hero copy and run the tests.
+▸ Took 38s · 6 tool calls · +10 −3        ▸ Took 38s · 6 tool calls · +10 −3 · Ctrl+O expand
+● Done — the hero now reads …             ✓ Edited Hero.tsx  +4 −2 ▮▮▮▮▮▮▮▮
+                                              12  12 │     return (
+» Now bump the changelog …                    13     │ −     <h1>Build agents faster</h1>
+✗ Failed · verify:full timed out · 4m 12s         13 │ +     <h1>Ship agent UI in a keystroke</h1>
+  ⎿ last step: Ran verify:full ✗ exit 124     ✓ Edited tool-line.ts  +6 −1 …
+                                          ● Done — the hero now reads …
+» Regenerate the screenshots …            » Now bump the changelog …
+                                          ✗ Failed · verify:full timed out · 4m 12s
+                                          ✓ Edited CHANGELOG.md  +3 −0 …
+                                          » Regenerate the screenshots …
+                                            ⎿ Ran commands
+```
+
+```
+3 Detailed  (29 rows, −29%)               4 Verbose  (41 rows)
+» Update the landing page hero …          » Update the landing page hero …
+▾ Took 38s · 6 tool calls · +10 −3        ▾ Took 38s · 6 tool calls · +10 −3
+  ✻ I will read the hero component, …       ✻ Thinking
+  ⎿ Read files and searched code               I will read the hero component, unify the heading, …
+✓ Edited Hero.tsx  +4 −2 …                ✓ Read Hero.tsx · 96 lines
+  ⎿ Ran commands · 1 failed               ✓ Searched "heading" · 7 matches in 3 files
+✓ Edited tool-line.ts  +6 −1 …            ✓ Edited Hero.tsx  +4 −2 …
+  ⎿ Ran commands                          ✗ Ran pnpm run test · 12.1s · exit 1
+● Done — the hero now reads …                ⎿ FAIL width-scan.spec.ts
+                                             ⎿ 1 failed · 213 passed
+» Regenerate the screenshots …            ✓ Edited tool-line.ts  +6 −1 …
+✻ Run shots:sync first, …                 ✓ Ran pnpm run test · 11.8s
+✓ Ran pnpm run shots:sync · 8.0s          ● Done — the hero now reads …
+● Running pnpm run shots:check · 8s       » Regenerate the screenshots …
+                                          ● Running pnpm run shots:check · 8s
+                                             ⎿ checking 14 files…
+```
+
+| Level | Settled turn | Running turn | Activity row |
+| --- | --- | --- | --- |
+| 1 Compact | prompt (one row), header with diffstat, final answer; a failure keeps its reason line | the prompt only | header and one `⎿` detail line |
+| 2 Standard | header, file-change cards (numbered diff, capped at 6 rows), final answer | settled groups as `⎿` titles and file-change cards as they land | header and `⎿` detail |
+| 3 Detailed | the header is open: reasoning preview, past-tense group titles between the file-change cards, final answer | every card live, one row each | header only |
+| 4 Verbose | everything open: reasoning, every call with its output tail, full diffs | every card live, with the running card's output tail | header only |
+
+- **Detail lives in exactly one place.** Compact and Standard have no running
+  cards, so the activity row carries the `⎿` detail. Detailed and Verbose show
+  the running card in the transcript, so the activity row drops it (this is
+  today's `liveProcessDetail` split, extended to Compact).
+- **The header says what changed.** A settled turn's header carries its
+  diffstat (`+10 −3`) so a folded turn still tells you whether files changed.
+- **Never folded away at any level:** failures and their reason, interruptions,
+  cancelled calls (`⊘`), the final answer, compaction boundaries, and
+  notices. Approvals, questions, and plan review are overlays and are not part
+  of this setting. From Standard up, file changes stay visible as cards.
+- **Rows are the metric.** The strip shows the row count of the current level
+  and its saving against Verbose, so the cost of a level is visible when you
+  choose it. The prototype's sample conversation gives 8 / 21 / 29 / 41.
+
+**Switching.**
+
+- The setting (`/settings`) sets the default level.
+- `Ctrl+O` keeps its meaning: the most recent three turns open at Verbose. It
+  is the quick "show me what happened" key at every level.
+- `Enter` on a turn's header opens or closes that one turn at Verbose, in place;
+  the cursor is the `▌` selection mark on the turn.
+- A transient `view: Detailed · 29 rows` line confirms a level change in the
+  activity row's gap, and the scroll position stays anchored on the visible
+  prompt instead of jumping.
+- Proposed, not yet checked against the keymap: `/view <level>` and a cycle key
+  such as `Alt+V`.
+- Search (§8.12) opens the turn holding a match at Verbose, so a hit inside a
+  fold is never invisible.
+
+**What changes from today.**
+
+| Level | Today | Design |
+| --- | --- | --- |
+| Compact | header and final answer; file changes inside the fold; no activity detail | adds the diffstat, a failure reason line, and activity detail (`liveProcessDetail: true`) |
+| Standard | header, file-change cards, answer | cards use the numbered diff of §8.4; header gains the diffstat |
+| Detailed | identical to Standard once settled (the fold hides the titles) | the settled turn opens to titles and a reasoning preview: `foldCompletedTurns: false` with `settledProcess: 'titles'`, a combination the capability types allow, to be verified in the renderers |
+| Verbose | every card open | unchanged apart from the shared visuals |
+
+Every row is one line that ladders to width; the user prompt at Compact ends in
+`…`, diff rows end in `…`, and `NO_COLOR` keeps `▸ ▾ ✓ ✗ ●` and the `⎿` tree as
+the carriers of state. Touch points are in §8.18 (R19).
+
+### 8.18 Roadmap and touch points
 
 | ID | Item | Touch points |
 | --- | --- | --- |
@@ -2827,6 +2927,7 @@ counts `12 turns`, `+3 more`.
 | R16 | Onboarding: step strip, button-free steps, optional permissions step (§8.14) | `interaction/welcome.ts`, `interaction/provider-onboarding.ts` |
 | R17 | Account panel: button-free states, balance row (§8.15) | `interaction/provider-account.ts` |
 | R18 | System rules: selection vocabulary, state patterns, breakpoints, key parity, `x` for delete (§8.16) | `core/ui-key-grammar.ts`, `core/ui-patterns.ts`, `interaction/session-workspace-panel.ts`, width scans |
+| R19 | Four transcript levels: distinct settled views, diffstat header, failure reason, one-place detail (§8.17) | `transcript/presentation-policy.ts`, `transcript/process-groups.ts`, `transcript/process-rows.ts`, `transcript/transcript-model.ts`, `interaction/settings-model.ts`, `website/**/features/streaming.md` |
 
 Verification for any of these follows the root gate: width scans for every new
 row renderer, the owning suite for lifecycle changes, `pnpm run verify:full`,
@@ -2841,10 +2942,10 @@ computed for folded blocks. (5) Whether the optional onboarding permissions step
 wanted, since it adds a step to every first run. (6) Whether the account view
 should ever expose an identity beyond `status`.
 
-### 8.18 Prototype
+### 8.19 Prototype
 
 [`prototypes/ui-preview.mjs`](./prototypes/ui-preview.mjs) draws every design in
-this section in a terminal (19 scenes). It is a standalone Node script with no
+this section in a terminal (20 scenes). It is a standalone Node script with no
 dependencies; it draws its own colors and does not use the Mayfly renderer, so
 it shows intent, not shipped rendering.
 
@@ -2877,3 +2978,4 @@ keys in its footer. While a text field has focus the scene keeps every key and
 | 17 | Onboarding | §8.14 |
 | 18 | Account panel | §8.15 |
 | 19 | System reference (selection, states, feedback, breakpoints, keys, policies) | §8.16 |
+| 20 | Transcript levels (four levels of one conversation) | §8.17 |

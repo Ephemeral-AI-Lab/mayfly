@@ -1357,6 +1357,169 @@ scene({ name: 'System', keys: 'v/V next/previous reference page',
   render: () => [dim(`reference ${ds.v + 1}/${DSP.length}: `) + bold(DSP[ds.v][0]), dim(DSP.map((_, i) => i === ds.v ? '●' : '○').join(' ')), '', ...DSP[ds.v][1]()],
   onKey: (k) => { if (k === 'v') ds.v = (ds.v + 1) % DSP.length; else if (k === 'V') ds.v = (ds.v + DSP.length - 1) % DSP.length } })
 
+// ================================================================ 20 transcript levels
+const LVN = ['Compact', 'Standard', 'Detailed', 'Verbose']
+const lv = {}
+const HERO_ROWS = [
+  { o: 12, n: 12, t: '  return (' },
+  { o: 13, s: '-', t: '    <h1>Build agents faster</h1>' },
+  { n: 13, s: '+', t: '    <h1>Ship agent UI in a keystroke</h1>' },
+  { o: 14, n: 14, t: '    <p>{sub}</p>' },
+]
+const TL_ROWS = [
+  { o: 87, n: 87, t: '  const full = toolDetail(call)' },
+  { o: 88, s: '-', t: '  const detail = full' },
+  { n: 88, s: '+', t: '  const detail = truncate(full, width - 4)' },
+]
+const CL_ROWS = [
+  { n: 6, s: '+', t: '## Unreleased' },
+  { n: 7, s: '+', t: '- Hero copy now reads "Ship agent UI in a keystroke".' },
+  { n: 8, s: '+', t: '- Width scan covers the new panels.' },
+]
+const TURNS = [
+  { id: 1, user: 'Update the landing page hero copy and run the tests.', secs: '38s', steps: [
+    { t: 'think', text: 'I will read the hero component, unify the heading, then run the tests.' },
+    { t: 'read', label: 'Hero.tsx', out: '96 lines' },
+    { t: 'search', label: '"heading"', out: '7 matches in 3 files' },
+    { t: 'edit', file: 'Hero.tsx', a: 4, d: 2, rows: HERO_ROWS },
+    { t: 'bash', cmd: 'pnpm run test', ok: false, secs: '12.1s', tail: ['FAIL width-scan.spec.ts', '  tool-line row is 62 cells, expected ≤ 60', '1 failed · 213 passed'] },
+    { t: 'edit', file: 'tool-line.ts', a: 6, d: 1, rows: TL_ROWS },
+    { t: 'bash', cmd: 'pnpm run test', ok: true, secs: '11.8s', tail: ['214 passed'] },
+  ], answer: ['Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.', 'The one failure was a truncation bug in the tool-line row, fixed in the same change.'] },
+  { id: 2, user: 'Now bump the changelog and run the full gate.', secs: '4m 12s', fail: 'verify:full timed out after 4m', steps: [
+    { t: 'read', label: 'CHANGELOG.md', out: '210 lines' },
+    { t: 'edit', file: 'CHANGELOG.md', a: 3, d: 0, rows: CL_ROWS },
+    { t: 'bash', cmd: 'pnpm run verify:full', ok: false, secs: '4m 0s', tail: ['…', 'coverage: 100% (214 files)', 'timed out'] },
+  ], answer: [] },
+  { id: 3, user: 'Regenerate the screenshots and check that they are fresh.', secs: '21s', live: true, steps: [
+    { t: 'think', text: 'Run shots:sync first, then shots:check to confirm.' },
+    { t: 'bash', cmd: 'pnpm run shots:sync', ok: true, secs: '8.0s', tail: ['wrote 14 screenshots'] },
+    { t: 'bash', cmd: 'pnpm run shots:check', ok: true, secs: '1.2s', tail: ['14 files up to date'], running: true, live: ['checking 14 files…', 'framed.svg  ok'] },
+  ], answer: ['Screenshots are fresh: shots:sync wrote 14 files and shots:check agrees.'] },
+]
+const lvStat = t => t.steps.filter(s => s.t === 'edit').reduce(([a, d], s) => [a + s.a, d + s.d], [0, 0])
+const lvCalls = t => t.steps.filter(s => s.t !== 'think').length
+function groupsOf(steps) {
+  const out = []; let cur = null
+  const flush = () => { if (cur) { out.push(cur); cur = null } }
+  for (const s of steps) {
+    if (s.t === 'edit') { flush(); out.push({ edit: s }) } else { cur ??= { steps: [] }; cur.steps.push(s) }
+  }
+  flush()
+  return out
+}
+function groupTitle(g) {
+  const reads = g.steps.filter(s => s.t === 'read').length, searches = g.steps.filter(s => s.t === 'search').length
+  const bashes = g.steps.filter(s => s.t === 'bash'), failed = bashes.filter(s => s.ok === false).length
+  const parts = []
+  if (reads && searches) parts.push('Read files and searched code'); else if (reads) parts.push('Read files'); else if (searches) parts.push('Searched code')
+  if (bashes.length) parts.push('Ran commands' + (failed ? ` · ${failed} failed` : ''))
+  return { text: parts.join(' · ') || 'Thought', failed }
+}
+const diffCard = (rows, max) => { const d = diff(rows); return d.length > max ? [...d.slice(0, max), dim(`  … +${d.length - max} rows · Ctrl+O`)] : d }
+function renderTurn(t, L, sel, runState) {
+  const out = []
+  const running = t.live && runState === 'running'
+  const EL = lv.open.has(t.id) ? 3 : L
+  const g = sel ? acc('▌') : ' '
+  const [a, d] = lvStat(t)
+  const stat2 = (a || d) ? ` · ${grn('+' + a)} ${red('−' + d)}` : ''
+  out.push(`${g}${dim('»')} ${bold(EL === 0 ? cut(t.user, 62) : t.user)}`)
+  const steps = running ? t.steps : t.steps
+  if (running) {
+    const done = t.steps.filter(s => !s.running)
+    if (EL === 0) return out
+    if (EL === 1) {
+      groupsOf(done).forEach(gr => { if (gr.edit) { out.push(`  ${grn('✓')} ${bold('Edited')} ${gr.edit.file}  ${stat(gr.edit.a, gr.edit.d)}`, ...diffCard(gr.edit.rows, 6)) } else out.push(`  ${dim('⎿')} ${dim(groupTitle(gr).text)}`) })
+      return out
+    }
+    t.steps.forEach(s => {
+      if (s.t === 'think') out.push(`  ${dim('✻')} ${dim(ital(EL === 3 ? s.text : cut(s.text, 56)))}`)
+      else if (s.t === 'bash') {
+        out.push(`  ${s.running ? acc('●') : s.ok ? grn('✓') : red('✗')} ${s.running ? 'Running' : 'Ran'} ${acc(s.cmd)} ${dim(s.running ? '· 8s' : '· ' + s.secs)}`)
+        if (EL === 3) (s.running ? s.live : s.tail.slice(-2)).forEach(l => out.push(`    ${dim('⎿ ' + l)}`))
+      } else if (s.t === 'edit') out.push(`  ${grn('✓')} ${bold('Edited')} ${s.file}  ${stat(s.a, s.d)}`, ...diffCard(s.rows, EL === 3 ? 12 : 6))
+      else out.push(`  ${grn('✓')} ${s.t === 'read' ? 'Read' : 'Searched'} ${acc(s.label)} ${dim('· ' + s.out)}`)
+    })
+    return out
+  }
+  // settled header
+  if (t.fail) out.push(`${g === ' ' ? ' ' : ' '} ${red('✗')} ${bold(red('Failed'))} ${dim('·')} ${t.fail} ${dim('· ' + t.secs + ' · ' + lvCalls(t) + ' tool calls')}`)
+  else out.push(`  ${dim(EL >= 2 ? '▾' : '▸')} ${dim('Took ' + t.secs + ' · ' + lvCalls(t) + ' tool calls')}${stat2}${EL <= 1 ? dim(' · Ctrl+O expand') : ''}`)
+  if (EL === 0) {
+    if (t.fail) out.push(`    ${dim('⎿')} ${dim('last step: Ran pnpm run verify:full ✗ exit 124')}`)
+  } else if (EL === 1) {
+    t.steps.filter(s => s.t === 'edit').forEach(s => out.push(`  ${grn('✓')} ${bold('Edited')} ${s.file}  ${stat(s.a, s.d)}`, ...diffCard(s.rows, 6)))
+  } else if (EL === 2) {
+    const first = t.steps.find(s => s.t === 'think')
+    groupsOf(t.steps).forEach((gr, i) => {
+      if (gr.edit) out.push(`  ${grn('✓')} ${bold('Edited')} ${gr.edit.file}  ${stat(gr.edit.a, gr.edit.d)}`, ...diffCard(gr.edit.rows, 6))
+      else {
+        const gt = groupTitle(gr)
+        if (i === 0 && first) out.push(`    ${dim('✻')} ${dim(ital(cut(first.text, 58)))}`)
+        out.push(`    ${dim('⎿')} ${gt.failed ? yel(gt.text) : dim(gt.text)}`)
+      }
+    })
+  } else {
+    t.steps.forEach(s => {
+      if (s.t === 'think') out.push(`    ${dim('✻ Thinking')}`, `      ${dim(ital(s.text))}`)
+      else if (s.t === 'bash') out.push(`  ${s.ok ? grn('✓') : red('✗')} Ran ${acc(s.cmd)} ${dim('· ' + s.secs)}${s.ok ? '' : red(' · exit 1')}`, ...s.tail.map(l => `    ${dim('⎿ ' + l)}`))
+      else if (s.t === 'edit') out.push(`  ${grn('✓')} ${bold('Edited')} ${s.file}  ${stat(s.a, s.d)}`, ...diffCard(s.rows, 12))
+      else out.push(`  ${grn('✓')} ${s.t === 'read' ? 'Read' : 'Searched'} ${acc(s.label)} ${dim('· ' + s.out)}`)
+    })
+  }
+  t.answer.forEach((l, i) => out.push(`  ${i === 0 ? '●' : ' '} ${l}`))
+  return out
+}
+function lvAll(L, runState, sel = -1) {
+  const rows = []; const starts = []
+  TURNS.forEach((t, i) => { starts.push(rows.length); rows.push(...renderTurn(t, L, i === sel, runState)); rows.push('') })
+  return { rows, starts }
+}
+scene({ name: 'Levels', keys: '←/→ or 1-4 level · ↑↓ turn · Enter open/close that turn (Verbose) · o Ctrl+O recent 3 turns · s running/settled',
+  init: () => Object.assign(lv, { L: 1, cur: 2, open: new Set(), runState: 'running', ctrlO: false }),
+  render: (f) => {
+    const counts = [0, 1, 2, 3].map(L => lvAll(L, lv.runState).rows.filter(r => r !== '').length)
+    const saved = Math.round((1 - counts[lv.L] / counts[3]) * 100)
+    const T = THEMES.dark
+    const labels = LVN.map((n, i) => `${i + 1} ${n}`)
+    const words = labels.map((l, i) => i === lv.L ? tc(T, 'active', l, true) : tc(T, 'idle', l)).join('   ')
+    let off = 0; for (let i = 0; i < lv.L; i++) off += labels[i].length + 3
+    const rule = ' '.repeat(off) + tc(T, 'active', '━'.repeat(labels[lv.L].length), true)
+    const { rows, starts } = lvAll(lv.L, lv.runState, lv.cur)
+    const H = 30
+    const total = rows.length
+    const start = Math.max(0, Math.min(total - H, starts[lv.cur] - 1))
+    const view = rows.slice(start, start + H)
+    const above = start, below = Math.max(0, total - start - H)
+    const body = [above ? dim(`  ↑ ${above} more rows`) : '', ...view, below ? dim(`  ↓ ${below} more rows`) : ''].filter((l, i, arr) => !(l === '' && (i === 0 || i === arr.length - 1)))
+    const activity = []
+    if (lv.runState === 'running') {
+      const e = lv.L
+      activity.push(`${acc('●')} ${shimmer('Running commands', f)} ${dim('· 8s · ↑30.2k ↓4.1k')}${' '.repeat(6)}${dim('Esc interrupt · Ctrl+O expand')}`)
+      if (e <= 1) activity.push(`  ${dim('⎿')} pnpm run shots:check`)
+    }
+    return [
+      dim('four levels of the same conversation · setting mayfly.transcriptView · red ✗ and failures are never folded away'), '',
+      '  ' + words + dim(`        rows ${counts[lv.L]}${lv.L < 3 ? ` · ${saved}% fewer than Verbose` : ' · everything open'}`), '  ' + rule,
+      dim('  rows by level: ' + counts.map((n, i) => `${LVN[i]} ${n}`).join(' · ')), '',
+      ...body.map(l => '  ' + l), '',
+      ...(activity.length ? activity.map(l => '  ' + l) : [dim('  (activity row: idle, nothing rendered)')]),
+      dim('  ╭' + '─'.repeat(70) + '╮'), dim('  │') + pad(' > ▌', 70) + dim('│'), dim('  ╰' + '─'.repeat(70) + '╯'),
+      lv.L >= 2 && lv.runState === 'running' ? dim('  Detailed/Verbose: the running card shows the detail, so the activity row drops its ⎿ line (one place only).') : dim('  Compact/Standard: the activity row carries the ⎿ detail.'),
+    ]
+  },
+  onKey: (k) => {
+    if (k === '\x1b[C') lv.L = Math.min(3, lv.L + 1)
+    else if (k === '\x1b[D') lv.L = Math.max(0, lv.L - 1)
+    else if (/^[1-4]$/.test(k)) lv.L = Number(k) - 1
+    else if (k === '\x1b[B') lv.cur = Math.min(TURNS.length - 1, lv.cur + 1)
+    else if (k === '\x1b[A') lv.cur = Math.max(0, lv.cur - 1)
+    else if (k === '\r') { const id = TURNS[lv.cur].id; lv.open.has(id) ? lv.open.delete(id) : lv.open.add(id) }
+    else if (k === 'o') { lv.ctrlO = !lv.ctrlO; if (lv.ctrlO) TURNS.slice(-3).forEach(t => lv.open.add(t.id)); else lv.open.clear() }
+    else if (k === 's') { lv.runState = lv.runState === 'running' ? 'settled' : 'running'; TURNS[2].live = true }
+  } })
+
 // ================================================================ runtime
 let cur = Math.max(0, Math.min(scenes.length - 1, Number(process.argv[2] ?? 1) - 1))
 let f = 0, sceneStart = Date.now(), drawn = 0
