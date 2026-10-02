@@ -497,6 +497,8 @@ scene({ name: 'Tabs', keys: 'h/v choose the focused demo · h: ←/→ · v: ↑
       '  ' + words, '  ' + rule, '',
       dim(`vertical rail · focus ${tb.focus === 'v' ? '●' : '○'} (v) · content follows the cursor live`),
       ...columns(rail, content, 22, ' ', 11).map(r => ' ' + r), '',
+      dim('wizard steps'), '  ' + ['Kind', 'Connection', 'Models', 'Review'].map((n, i) => i < 2 ? `${grn('✓')} ${n}` : i === 2 ? `${tc(T, 'active', '●', true)} ${tc(T, 'active', n, true)}` : `${tc(T, 'idle', '○ ' + n)}`).join(dim('  ›  ')), '',
+      dim('narrow (40 columns): the active tab always stays visible, the rest folds to +N'), `  ${tc(T, 'idle', '‹')} ${tc(T, 'active', HT[tb.h][0] + (HT[tb.h][1] !== undefined ? ' ' + HT[tb.h][1] : ''), true)}  ${tc(T, 'idle', HT[(tb.h + 1) % HT.length][0])}  ${tc(T, 'idle', '+' + (HT.length - 2))} ${tc(T, 'idle', '›')}`, '',
       dim('text states'), '  ' + sampleRow(THEMES.dark), '  ' + sampleRow(THEMES.light) + dim('   ← light palette, for light terminals'), '',
       dim('WCAG contrast of each text colour against its assumed terminal background (need ≥ 4.5)'),
       contrastLine('dark', THEMES.dark), contrastLine('light', THEMES.light), '',
@@ -562,11 +564,11 @@ scene({ name: 'Expandable', keys: '↑↓ move · →/Space expand · ← collap
         const st = `${stG} ${n.stText}`
         const right2 = n.kind === 'tree' ? (n.kids.length ? `${n.kids.length} tools` : '') : ''
         const summary = n.kind === 'acc' ? cut(n.text[0], 34) : ''
-        const plain = n.kind === 'acc' ? `${chev}     ${pad(n.label, NAME_W)} ${pad(n.stText, 10)} ${summary}` : `${chev} ${tri} ${pad(n.label, NAME_W)} ${pad(st, ST_W)} ${right2.padStart(RIGHT_W)}`
+        const plain = n.kind === 'acc' ? `${chev}     ${pad(n.label, NAME_W)} ${pad(n.stText, 10)} ${ex.open.has(n.id) ? '' : summary}` : `${chev} ${tri} ${pad(n.label, NAME_W)} ${pad(st, ST_W)} ${right2.padStart(RIGHT_W)}`
         if (on) { out.push(acc('▌') + inv(' ' + plain + ' ')); return }
         const stPaint = n.st === 'ok' ? grn(stG) + dim(' ' + n.stText) : n.st === 'fail' ? red(stG) + red(' ' + n.stText) : n.st === 'load' ? acc(stG) + dim(' ' + n.stText) : dim(st)
         const triPaint = tri.trim() === '' ? tri : tri === '[x]' ? acc(tri) : tri === '[-]' ? yel(tri) : dim(tri)
-        if (n.kind === 'acc') { out.push(`  ${dim(chev)}     ${bold(pad(n.label, NAME_W))} ${dim(pad(n.stText, 10))} ${dim(summary)}`); return }
+        if (n.kind === 'acc') { out.push(`  ${dim(chev)}     ${bold(pad(n.label, NAME_W))} ${dim(pad(n.stText, 10))} ${ex.open.has(n.id) ? '' : dim(summary)}`); return }
         out.push(`  ${dim(chev)} ${triPaint} ${bold(pad(n.label, NAME_W))} ${pad(stPaint, ST_W)} ${dim(right2.padStart(RIGHT_W))}`)
       } else if (r.k) {
         const [name, def, desc, badge] = r.k
@@ -820,7 +822,7 @@ scene({ name: 'Panels', keys: 'v switch panel · Sessions: ↑↓ ←/→ / filt
       list.forEach((x, i) => {
         const on = pn.focus === 'content' && i === row
         const line = `${cut(x[0], 30).padEnd(30)} ${dim(x[1].padEnd(10) + String(x[2]).padStart(2) + ' turns ' + x[3].padStart(3))}`
-        content.push(on ? acc('▸') + inv(strip(line)) : ' ' + line)
+        content.push(on ? acc('▌') + inv(strip(line)) : ' ' + line)
         if (on) { content.push(dim('    │ ') + cut(x[5], 50)); content.push(dim('    │ ') + dim(cut(x[6], 50))) }
       })
       const foot = pn.typing ? 'Enter apply · Esc clear' : pn.focus === 'rail' ? '↑↓ workspace · → sessions · / filter · y copy path · Esc close' : '↑↓ move · ← workspaces · Enter resume · n new · x delete · Esc close'
@@ -1137,7 +1139,7 @@ function pmDetail(e, w) {
   return lines
 }
 scene({ name: 'Plugins', keys: '←/→ tab · ↑↓ · / filter · Enter details · i install · u update · x remove · s source · r refresh · w width · o offline (demo)',
-  init: () => Object.assign(pm, { tab: 0, sel: 0, filter: '', typing: false, wide: true, detail: false, offline: false, op: null, pending: new Set(), toast: '', confirm: false, source: 'npm', refresh: 0 }),
+  init: () => Object.assign(pm, { tab: 0, sel: 0, filter: '', typing: false, wide: true, detail: false, offline: false, op: null, pending: new Set(), toast: '', warn: '', confirm: false, source: 'npm', refresh: 0 }),
   capture: () => pm.typing,
   render: (f) => {
     pmTick()
@@ -1161,6 +1163,7 @@ scene({ name: 'Plugins', keys: '←/→ tab · ↑↓ · / filter · Enter detai
     body.push('')
     if (pm.confirm) body.push(`${yel(`Remove ${e.name}?`)} ${dim('Removal applies after restarting Mayfly.')}  ${inv(' No ')}  Yes   ${dim('n/y')}`)
     else if (pm.op) body.push(`${acc(pick(gap, f))} ${pm.op.kind === 'install' ? 'Installing' : pm.op.kind === 'update' ? 'Updating' : 'Removing'} ${bold(MARKET.find(x => x.id === pm.op.id).name)} via ${pm.source}… ${dim(Math.floor((Date.now() - pm.op.t0) / 1000) + 's · Esc cancel')}`)
+    else if (pm.warn) body.push(yel('⚠ ' + pm.warn))
     else if (pm.toast) body.push(grn('✓ ' + pm.toast))
     else body.push(dim(pm.typing ? 'Enter apply · Esc clear' : `↑↓ move · ←/→ tab · ${pm.wide ? '' : 'Enter details · '}${!e ? '' : !e.installed ? (e.status === 'removed' ? '' : 'i install · ') : e.update ? 'u update · x remove · ' : 'x remove · '}/ filter · r refresh · Esc close`))
     if (pm.pending.size) body.push(`${yel('↻')} ${pm.pending.size} change${pm.pending.size > 1 ? 's apply' : ' applies'} after you restart Mayfly and start a new session`)
@@ -1175,7 +1178,7 @@ scene({ name: 'Plugins', keys: '←/→ tab · ↑↓ · / filter · Enter detai
       return
     }
     const list = pmList(); const e = list[Math.min(pm.sel, Math.max(0, list.length - 1))]
-    pm.toast = ''
+    pm.toast = ''; pm.warn = ''
     if (pm.confirm) { if (k === 'y') { pm.op = { kind: 'remove', id: e.id, t0: Date.now() } } pm.confirm = false; return }
     if (pm.op) { if (k === '\x1b') pm.op = null; return }
     if (k === '/') pm.typing = true
@@ -1188,10 +1191,11 @@ scene({ name: 'Plugins', keys: '←/→ tab · ↑↓ · / filter · Enter detai
     else if (k === 'o') pm.offline = !pm.offline
     else if (k === 's') pm.source = pm.source === 'npm' ? 'github' : 'npm'
     else if (k === 'r') pm.refresh = Date.now()
-    else if (e && k === 'i' && !e.installed && e.status !== 'removed') { pm.op = { kind: 'install', id: e.id, t0: Date.now() } }
+    else if (e && k === 'i' && !e.installed && e.status === 'removed') pm.warn = `${e.name}: ${e.note ?? 'removed from the market'}`
+    else if (e && k === 'i' && !e.installed && !e.tui) pm.warn = 'web-only plugin: it contributes nothing in this terminal frontend'
+    else if (e && k === 'i' && !e.installed) { pm.op = { kind: 'install', id: e.id, t0: Date.now() } }
     else if (e && k === 'u' && e.update) pm.op = { kind: 'update', id: e.id, t0: Date.now() }
     else if (e && k === 'x' && e.installed) pm.confirm = true
-    else if (e && k === 'i' && e.status === 'removed') pm.toast = ''
   } })
 
 // ================================================================ 17 onboarding
@@ -1234,7 +1238,7 @@ scene({ name: 'Onboarding', keys: 'Enter continue · Esc back · step 1: 1-3 cho
       hint = ob.connected ? 'Enter start chatting' : 'Ctrl+Y copy link · Ctrl+R new link · p other machine · Esc cancel'
     } else if (ob.step === 1 && ob.sub === 'key') {
       title = 'Enter your API key'
-      body = ['Your key is stored in the system credential store, never in settings.', '', ...ob.key.render(), '', ob.note ? grn(ob.note) : '']
+      body = ['Your key is saved as a credential, not as a setting.', '', ...ob.key.render(), '', ob.note ? grn(ob.note) : '']
       hint = 'Enter save · Esc back'
     } else if (ob.step === 2) {
       title = 'Permissions'
@@ -1494,11 +1498,13 @@ scene({ name: 'Levels', keys: '←/→ or 1-4 level · ↑↓ turn · Enter open
     const above = start, below = Math.max(0, total - start - H)
     const body = [above ? dim(`  ↑ ${above} more rows`) : '', ...view, below ? dim(`  ↓ ${below} more rows`) : ''].filter((l, i, arr) => !(l === '' && (i === 0 || i === arr.length - 1)))
     const activity = []
+    const flashed = lv.flash && Date.now() - lv.flash < 2200 ? dim(`view: ${LVN[lv.L]} · ${counts[lv.L]} rows`) : ''
     if (lv.runState === 'running') {
       const e = lv.L
-      activity.push(`${acc('●')} ${shimmer('Running commands', f)} ${dim('· 8s · ↑30.2k ↓4.1k')}${' '.repeat(6)}${dim('Esc interrupt · Ctrl+O expand')}`)
+      activity.push(right(`${acc('●')} ${shimmer('Running commands', f)} ${dim('· 8s · ↑30.2k ↓4.1k')}`, flashed || dim('Esc interrupt · Ctrl+O expand'), 74))
       if (e <= 1) activity.push(`  ${dim('⎿')} pnpm run shots:check`)
     }
+    if (!activity.length && flashed) activity.push(right(dim(''), flashed, 74))
     return [
       dim('four levels of the same conversation · setting mayfly.transcriptView · red ✗ and failures are never folded away'), '',
       '  ' + words + dim(`        rows ${counts[lv.L]}${lv.L < 3 ? ` · ${saved}% fewer than Verbose` : ' · everything open'}`), '  ' + rule,
@@ -1510,6 +1516,7 @@ scene({ name: 'Levels', keys: '←/→ or 1-4 level · ↑↓ turn · Enter open
     ]
   },
   onKey: (k) => {
+    const before = lv.L
     if (k === '\x1b[C') lv.L = Math.min(3, lv.L + 1)
     else if (k === '\x1b[D') lv.L = Math.max(0, lv.L - 1)
     else if (/^[1-4]$/.test(k)) lv.L = Number(k) - 1
@@ -1518,6 +1525,7 @@ scene({ name: 'Levels', keys: '←/→ or 1-4 level · ↑↓ turn · Enter open
     else if (k === '\r') { const id = TURNS[lv.cur].id; lv.open.has(id) ? lv.open.delete(id) : lv.open.add(id) }
     else if (k === 'o') { lv.ctrlO = !lv.ctrlO; if (lv.ctrlO) TURNS.slice(-3).forEach(t => lv.open.add(t.id)); else lv.open.clear() }
     else if (k === 's') { lv.runState = lv.runState === 'running' ? 'settled' : 'running'; TURNS[2].live = true }
+    if (lv.L !== before) lv.flash = Date.now()
   } })
 
 // ================================================================ runtime

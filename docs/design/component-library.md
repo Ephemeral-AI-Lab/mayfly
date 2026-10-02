@@ -2106,7 +2106,7 @@ when the row is waiting on the user, or settled, nothing moves.
 | Thinking | glyph (bloom) | `· ✢ ✳ ✶ ✻ ✽ ✻ ✶ ✳ ✢` | 100 ms |
 | Working on the model, writing | glyph (fill) | `⡀ ⣄ ⣤ ⣦ ⣶ ⣷ ⣿ ⣷ ⣶ ⣦ ⣤ ⣄` | 100 ms |
 | Tool running | label (shimmer); `●` static | a three-letter window sweeps the label | 100 ms per letter |
-| Waiting on an external action | glyph (breath); label static | `●` steps `muted → accent → accent strong → accent` | 400 ms |
+| Waiting on an external action | glyph (breath); label static | `●` steps through six tone shades, dim → bright → dim (the wire carries tone tokens, so the prototype's shades map to `muted`, `accent`, and `accent`+`strong`) | 400 ms per step |
 | Indeterminate loader | glyph (gap) | `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷` | 100 ms |
 | Waiting on the user | nothing | `?` (warning) | — |
 | Stopping | nothing | `■` (danger) | — |
@@ -2224,7 +2224,8 @@ Settled calls are one static line: glyph, past-tense verb, target, outcome.
 
 - Two gutters (old, new), sized by the largest line number. Every changed line
   carries `−` or `+` as well as color. One to three context lines per hunk,
-  `⋯` between hunks, `… +N lines · Ctrl+O` beyond 12 rows, long lines end in
+  `⋯` between hunks, `… +N rows · Ctrl+O` beyond the cap (6 rows in a
+  collapsed Standard card, 12 once expanded), long lines end in
   `…`. Row painting stays with the diff tokens (§7 C1).
 - Multi-file patches list `A`/`M`/`D` with a per-file stat; a failed edit puts
   the reason on the `⎿` line.
@@ -2315,7 +2316,7 @@ Focused, it shows at most four rows and counts the rest:
    ↑ 0 more · ↓ 1 more
 ```
 
-- **Limits:** three names idle, four rows focused; live entries first.
+- **Limits:** the idle row shows counts per tab, never names; focused it shows four rows and counts the rest (`↑ n more · ↓ n more`); live entries first.
 - **Keys:** `↓` on an empty prompt (or `F6`) enters the tray; `←`/`→` switch
   tabs; `↑`/`↓` select; `Enter` on an agent opens its conversation (`F7`
   returns) and on a job its detail overlay; `x` stops behind the shared Yes/No
@@ -2423,7 +2424,7 @@ children) and an accordion (a row that expands to text).
 
  SKILLS  2
   ▸     plugin-author   preset     Prototype a Cordis plugin in-process,
-  ▾     preset-author   preset     Compose user-owned presets on the native
+  ▾     preset-author   preset
     │ Compose user-owned presets on the native
     ╰ dsh services and the four UI services.
 ```
@@ -2486,7 +2487,7 @@ its first prompt and last outcome.
 │                          │ ⌂ ~/dev/clients/acme/monorepo/packages/mayfly │
 │    All             25    │ / filter…                                      │
 │    work/mayfly      8    │ Recent                                         │
-│ ▌  packages/mayfly  5    │▸ Port the tray to acme layout  feat/tray 6 turns 3h │
+│ ▌  packages/mayfly  5    │▌ Port the tray to acme layout  feat/tray 6 turns 3h │
 │    …roject-name-here 4   │    │ Port the tray design to the acme fork.    │
 │    website          5    │    │ Rebased; specs pass.                      │
 │ ↑↓ workspace · → sessions · / filter · y copy path · Esc close             │
@@ -2679,7 +2680,7 @@ text-color step strip, and a summary:
 | 1 Language | the existing form (language, theme), no `Continue` button, plus a one-line preview of the chosen theme's text colors | `←/→` change · `Enter` continue |
 | 2 Connect | the numbered choice above; account sign-in is hidden when no web server is composed | `1`–`3` · `Enter` · `Esc` |
 | 2a Browser | the account panel (§8.15) inside the guide: a breathing `●`, the expiry countdown, the link, and a collapsed `▸ Browser on another machine?` row that opens the paste-back field on `p` | `Ctrl+Y` copy · `Ctrl+R` new link · `Esc` cancel |
-| 2b API key | one secret field with `Enter` to save; `Your key is stored in the system credential store, never in settings.` | `Enter` save · `Esc` back |
+| 2b API key | one secret field with `Enter` to save; `Your key is saved as a credential, not as a setting.` | `Enter` save · `Esc` back |
 | 3 Permissions | **new, proposed:** the permission preset as a numbered choice (`Default` recommended); `Full access` asks the shared Yes/No | `1`–`3` · `Enter` |
 | 4 Ready | a checklist of what was set (`○ DeepSeek not connected · /account to sign in` when skipped) and three things to try (`/`, `@`, `Shift+Tab`) | `Enter` start chatting |
 
@@ -2944,8 +2945,9 @@ should ever expose an identity beyond `status`.
 
 ### 8.19 Prototype
 
-[`prototypes/ui-preview.mjs`](./prototypes/ui-preview.mjs) draws every design in
-this section in a terminal (20 scenes). It is a standalone Node script with no
+[`prototypes/ui-preview.mjs`](./prototypes/ui-preview.mjs) draws the designs in
+this section in a terminal (20 scenes; the limits are listed below the scene
+table). It is a standalone Node script with no
 dependencies; it draws its own colors and does not use the Mayfly renderer, so
 it shows intent, not shipped rendering.
 
@@ -2979,3 +2981,23 @@ keys in its footer. While a text field has focus the scene keeps every key and
 | 18 | Account panel | §8.15 |
 | 19 | System reference (selection, states, feedback, breakpoints, keys, policies) | §8.16 |
 | 20 | Transcript levels (four levels of one conversation) | §8.17 |
+
+**What the prototype does not draw.** Keep this list honest when changing
+either side:
+
+- **Width ladders.** Scenes use fixed widths (74 to 108 columns); the narrow
+  forms of §8.3, §8.9, §8.13, and §8.16 are described in text, with two
+  exceptions drawn on purpose: the 40-column tab strip (scene 10) and the
+  three breakpoints (scene 19). The marketplace's `w` key only switches
+  between its split and single-column layouts.
+- **Hint-only keys.** Some keys appear in hint rows without a handler: `y`
+  copy path and `x` delete in sessions, `Ctrl+Y`/`Ctrl+R` in the account and
+  onboarding scenes, `o` top up, `Ctrl+J`, and the transcript's folded-block
+  expansion on a search hit.
+- **Mock data.** Plugins, sessions, balances, and the conversation in scene 20
+  are invented; nothing is read from the repository or the network.
+- **Colors.** Truecolor only, drawn by the script itself. The renderer maps
+  the same states to palette tokens (§3.1) and `NO_COLOR` (§7 D1).
+- **Timing.** Frames advance every 100 ms from one `setInterval`; the real
+  renderer owns its clocks (§8.2). Install and refresh durations are simulated.
+
