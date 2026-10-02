@@ -816,13 +816,14 @@ scene({ name: 'Panels', keys: 'v switch panel · Sessions: ↑↓ ←/→ / filt
       })]
       const pathLine = w.path ? `${dim('⌂')} ${dim(midCut(w.path, 52))}` : dim('all workspaces')
       const content = [pathLine, `${dim('/')} ${pn.typing ? pn.filter + '▌' : pn.filter || dim('filter…')}`, dim('Recent')]
+      if (!list.length) content.push(dim(pn.filter ? `  No sessions match "${pn.filter}" — Esc clears the filter` : '  No sessions here yet — start one with n'))
       list.forEach((x, i) => {
         const on = pn.focus === 'content' && i === row
         const line = `${cut(x[0], 30).padEnd(30)} ${dim(x[1].padEnd(10) + String(x[2]).padStart(2) + ' turns ' + x[3].padStart(3))}`
         content.push(on ? acc('▸') + inv(strip(line)) : ' ' + line)
         if (on) { content.push(dim('    │ ') + cut(x[5], 50)); content.push(dim('    │ ') + dim(cut(x[6], 50))) }
       })
-      const foot = pn.typing ? 'Enter apply · Esc clear' : pn.focus === 'rail' ? '↑↓ workspace · → sessions · / filter · y copy path · Esc close' : '↑↓ move · ← workspaces · Enter resume · n new · d delete · Esc close'
+      const foot = pn.typing ? 'Enter apply · Esc clear' : pn.focus === 'rail' ? '↑↓ workspace · → sessions · / filter · y copy path · Esc close' : '↑↓ move · ← workspaces · Enter resume · n new · x delete · Esc close'
       return [head, '', ...box('Sessions', `${WS[0].n} total`, [...columns(rail, content, RAIL_W, ' │ ', 9), '', dim(foot)], 96),
         '', dim('labels: basename, plus the shortest distinguishing parent when names collide, ellipsised at the start'),
         dim(`full path of the selected workspace is the first line of the content (middle-ellipsised); y copies it`)]
@@ -1083,6 +1084,278 @@ scene({ name: 'Transcript', keys: '↑↓ PgUp PgDn Home End scroll · / or Ctrl
     else if (k === '\x1b[H') tv.top = 0
     else if (k === '\x1b[F') tv.top = TL.length - VH
   } })
+
+// ================================================================ 16 plugin marketplace
+const pm = {}
+const MARKET = [
+  { id: 'loop', name: 'Loop', src: 'official', status: 'stable', cat: 'Automation', desc: 'Repeat a prompt on an interval.', ver: '1.4.0', tui: true, web: true, tools: ['loop_start', 'loop_stop'], cmds: ['/loop'], eng: 'dsh ^0.2 · mayfly ^0.1', caps: ['schedule'], verified: '2026-09-20', installed: true, srcs: ['npm', 'github'] },
+  { id: 'git-helper', name: 'Git Helper', src: 'community', status: 'stable', cat: 'Dev', desc: 'Branch, commit and PR helpers.', ver: '1.2.1', tui: true, web: true, tools: ['git_status', 'git_commit'], cmds: ['/git'], eng: 'dsh ^0.2', caps: ['shell'], verified: '2026-09-02', installed: true, update: '1.3.0', srcs: ['npm', 'github'] },
+  { id: 'legacy-search', name: 'Legacy Search', src: 'community', status: 'deprecated', cat: 'Search', desc: 'Superseded by built-in web search.', ver: '0.9.4', tui: true, web: false, tools: ['lsearch'], cmds: [], eng: 'dsh ^0.1', caps: [], verified: '2026-03-11', installed: true, srcs: ['npm'], note: 'Use the built-in web_search tool.' },
+  { id: 'agent-team', name: 'Agent Team', src: 'official', status: 'beta', cat: 'Collaboration', desc: 'A team of cooperating agents.', ver: '0.6.0', tui: true, web: true, tools: ['team_spawn', 'team_message'], cmds: ['/team'], eng: 'dsh ^0.2 · mayfly ^0.1', caps: ['agents'], verified: '2026-09-25', installed: false, srcs: ['npm', 'github'] },
+  { id: 'notify', name: 'Desktop Notify', src: 'dsh', status: 'stable', cat: 'Utilities', desc: 'Desktop notification when a turn ends.', ver: '1.0.2', tui: true, web: false, tools: [], cmds: [], eng: 'dsh ^0.2', caps: ['notify'], verified: '2026-08-30', installed: false, srcs: ['npm'] },
+  { id: 'mermaid', name: 'Mermaid Preview', src: 'dsh', status: 'stable', cat: 'Docs', desc: 'Render Mermaid diagrams in the web UI.', ver: '2.1.0', tui: false, web: true, tools: ['mermaid_render'], cmds: [], eng: 'dsh ^0.2', caps: [], verified: '2026-09-11', installed: false, srcs: ['npm'] },
+  { id: 'jobs-board', name: 'Jobs Board', src: 'community', status: 'unstable', cat: 'Dev', desc: 'A live board of background jobs.', ver: '0.3.0', tui: true, web: true, tools: [], cmds: ['/board'], eng: 'dsh ^0.2', caps: ['jobs'], verified: '2026-09-18', installed: false, srcs: ['github'] },
+  { id: 'old-theme', name: 'Neon Theme', src: 'community', status: 'removed', cat: 'Themes', desc: 'Removed from the market.', ver: '—', tui: true, web: false, tools: [], cmds: [], eng: '', caps: [], verified: '', installed: false, srcs: [], note: 'Removed by the author.' },
+]
+const STATUS_STYLE = { stable: s => '', beta: s => acc('beta'), unstable: s => yel('unstable'), deprecated: s => yel('deprecated'), removed: s => red('removed') }
+const pmList = () => MARKET.filter(e => (pm.tab === 0 ? e.installed : !e.installed) && (e.name + e.desc + e.cat).toLowerCase().includes(pm.filter.toLowerCase()))
+function pmTick() {
+  if (pm.op && Date.now() - pm.op.t0 > 3200) {
+    const e = MARKET.find(x => x.id === pm.op.id)
+    if (pm.op.kind === 'install') { e.installed = true; pm.pending.add(e.id) }
+    if (pm.op.kind === 'update') { e.ver = e.update; delete e.update; pm.pending.add(e.id) }
+    if (pm.op.kind === 'remove') { e.installed = false; pm.pending.add(e.id) }
+    pm.toast = `${pm.op.kind === 'remove' ? 'Removed' : pm.op.kind === 'update' ? 'Updated' : 'Installed'} ${e.name} · restart Mayfly to apply`
+    pm.op = null
+  }
+  if (pm.refresh && Date.now() - pm.refresh > 1400) { pm.refresh = 0; pm.toast = `refreshed ${MARKET.length} entries` }
+}
+function pmRow(e, on, w) {
+  const chip = e.update ? yel(`update ${e.update}`) : STATUS_STYLE[e.status](e.status)
+  const surf = `${e.tui ? bold('T') : dim('·')} ${e.web ? bold('W') : dim('·')}`
+  const plain = `${pad(e.name, 16)} ${pad(strip(chip), 13)} ${pad(e.src, 9)} ${surf}  ${(e.ver).padStart(6)}`
+  if (on) return acc('▌') + inv(' ' + plain + ' ')
+  return `  ${e.installed && pm.tab === 1 ? '' : ''}${e.status === 'removed' || e.status === 'deprecated' ? dim(pad(e.name, 16)) : bold(pad(e.name, 16))} ${pad(chip, 13)} ${dim(pad(e.src, 9))} ${surf}  ${dim(e.ver.padStart(6))}`
+}
+function pmDetail(e, w) {
+  if (!e) return [dim('Nothing selected')]
+  const lines = []
+  lines.push(`${bold(e.name)}  ${dim(e.src + ' · ' + e.cat)}`)
+  lines.push(dim(e.desc))
+  if (e.note) lines.push(`${yel('⚠')} ${e.note}`)
+  lines.push('')
+  const state = e.installed ? (e.update ? yel(`installed ${e.ver} · update ${e.update}`) : grn(`✓ installed ${e.ver}`)) : e.status === 'removed' ? red('removed from the market') : dim(`not installed · ${e.ver}`)
+  lines.push(`${dim(pad('Status', 10))} ${state}`)
+  lines.push(`${dim(pad('Surfaces', 10))} TUI ${e.tui ? grn('✓ works here') : red('✗ no contribution in this terminal')}`)
+  lines.push(`${dim(pad('', 10))} Web ${e.web ? grn('✓ works on dsh Web') : dim('— none')}`)
+  if (e.tools.length || e.cmds.length) lines.push(`${dim(pad('Provides', 10))} ${[...e.cmds, ...e.tools].join(' · ')}`)
+  if (e.eng) lines.push(`${dim(pad('Engines', 10))} ${e.eng}`)
+  if (e.caps.length) lines.push(`${dim(pad('Needs', 10))} ${e.caps.join(', ')}`)
+  if (e.verified) lines.push(`${dim(pad('Verified', 10))} ${e.verified}`)
+  if (e.srcs.length > 1 && !e.installed) lines.push(`${dim(pad('Source', 10))} ‹ ${pm.source} › ${dim('s cycles')}`)
+  else if (e.srcs.length) lines.push(`${dim(pad('Source', 10))} ${e.srcs[0]}`)
+  return lines
+}
+scene({ name: 'Plugins', keys: '←/→ tab · ↑↓ · / filter · Enter details · i install · u update · x remove · s source · r refresh · w width · o offline (demo)',
+  init: () => Object.assign(pm, { tab: 0, sel: 0, filter: '', typing: false, wide: true, detail: false, offline: false, op: null, pending: new Set(), toast: '', confirm: false, source: 'npm', refresh: 0 }),
+  capture: () => pm.typing,
+  render: (f) => {
+    pmTick()
+    const list = pmList()
+    const sel = Math.min(pm.sel, Math.max(0, list.length - 1))
+    const e = list[sel]
+    const inst = MARKET.filter(x => x.installed).length, brow = MARKET.length - inst
+    const tabs = ['Installed ' + dim(String(inst)), 'Browse ' + dim(String(brow))].map((t, i) => i === pm.tab ? bold(acc(strip(t))) : dim(strip(t)))
+    const underline = ' '.repeat(pm.tab === 0 ? 0 : strip(tabs[0]).length + 3) + acc('━'.repeat(strip(tabs[pm.tab]).length))
+    const meta = pm.offline ? yel('⚠ offline · showing cached data from 2d ago') : pm.refresh ? `${acc(pick(gap, f))} ${dim('refreshing catalog…')}` : dim(`index updated 2h ago · ${MARKET.length} entries`)
+    const body = []
+    body.push('  ' + tabs.join('   ') + '    ' + meta, '  ' + underline)
+    body.push(`  ${dim('/')} ${pm.typing ? pm.filter + '▌' : pm.filter || dim('filter plugins…')}`)
+    const LW = 58
+    const rows = list.length ? list.map((x, i) => pmRow(x, i === sel, LW)) : [dim(pm.tab === 0 ? '  No plugins installed — press → to browse' : '  Nothing matches')]
+    if (pm.wide) {
+      const detail = pmDetail(e, 40)
+      body.push(...columns(rows, detail, LW, ' │ ', 9))
+    } else if (pm.detail && e) body.push('', ...pmDetail(e, 70).map(l => '  ' + l))
+    else body.push(...rows)
+    body.push('')
+    if (pm.confirm) body.push(`${yel(`Remove ${e.name}?`)} ${dim('Removal applies after restarting Mayfly.')}  ${inv(' No ')}  Yes   ${dim('n/y')}`)
+    else if (pm.op) body.push(`${acc(pick(gap, f))} ${pm.op.kind === 'install' ? 'Installing' : pm.op.kind === 'update' ? 'Updating' : 'Removing'} ${bold(MARKET.find(x => x.id === pm.op.id).name)} via ${pm.source}… ${dim(Math.floor((Date.now() - pm.op.t0) / 1000) + 's · Esc cancel')}`)
+    else if (pm.toast) body.push(grn('✓ ' + pm.toast))
+    else body.push(dim(pm.typing ? 'Enter apply · Esc clear' : `↑↓ move · ←/→ tab · ${pm.wide ? '' : 'Enter details · '}${!e ? '' : !e.installed ? (e.status === 'removed' ? '' : 'i install · ') : e.update ? 'u update · x remove · ' : 'x remove · '}/ filter · r refresh · Esc close`))
+    if (pm.pending.size) body.push(`${yel('↻')} ${pm.pending.size} change${pm.pending.size > 1 ? 's apply' : ' applies'} after you restart Mayfly and start a new session`)
+    return [dim(`${pm.wide ? 'split view (≥100 cols): list + live detail' : 'single column (<100 cols): Enter opens the detail'} · mock catalog data`), '', ...box('Plugin marketplace', pm.wide ? '' : 'narrow', body, pm.wide ? 108 : 86)]
+  },
+  onKey: (k) => {
+    if (pm.typing) {
+      if (k === '\r') pm.typing = false
+      else if (k === '\x1b') { pm.typing = false; pm.filter = '' }
+      else if (k === '\x7f') pm.filter = pm.filter.slice(0, -1)
+      else if (printable(k)) { pm.filter += k; pm.sel = 0 }
+      return
+    }
+    const list = pmList(); const e = list[Math.min(pm.sel, Math.max(0, list.length - 1))]
+    pm.toast = ''
+    if (pm.confirm) { if (k === 'y') { pm.op = { kind: 'remove', id: e.id, t0: Date.now() } } pm.confirm = false; return }
+    if (pm.op) { if (k === '\x1b') pm.op = null; return }
+    if (k === '/') pm.typing = true
+    else if (k === '\x1b[C') { pm.tab = 1; pm.sel = 0 }
+    else if (k === '\x1b[D') { pm.tab = 0; pm.sel = 0 }
+    else if (k === '\x1b[B') pm.sel = Math.min(list.length - 1, pm.sel + 1)
+    else if (k === '\x1b[A') pm.sel = Math.max(0, pm.sel - 1)
+    else if (k === '\r') pm.detail = !pm.detail
+    else if (k === 'w') pm.wide = !pm.wide
+    else if (k === 'o') pm.offline = !pm.offline
+    else if (k === 's') pm.source = pm.source === 'npm' ? 'github' : 'npm'
+    else if (k === 'r') pm.refresh = Date.now()
+    else if (e && k === 'i' && !e.installed && e.status !== 'removed') { pm.op = { kind: 'install', id: e.id, t0: Date.now() } }
+    else if (e && k === 'u' && e.update) pm.op = { kind: 'update', id: e.id, t0: Date.now() }
+    else if (e && k === 'x' && e.installed) pm.confirm = true
+    else if (e && k === 'i' && e.status === 'removed') pm.toast = ''
+  } })
+
+// ================================================================ 17 onboarding
+const ob = {}
+const OB_STEPS = ['Language', 'Connect', 'Permissions', 'Ready']
+const OB_PERMS = [['Default', 'ask before writes and commands'], ['Accept edits', 'apply file edits freely, still ask for commands'], ['Full access', '⚠ no prompts at all — only in a sandbox']]
+const THEME_SAMPLE = { dark: THEMES.dark, light: THEMES.light }
+function obStrip(step) {
+  const words = OB_STEPS.map((n, i) => i < step ? `${grn('✓')} ${n}` : i === step ? `${acc('●')} ${bold(acc(n))}` : `${dim('○')} ${dim(n)}`)
+  const off = words.slice(0, step).reduce((a, w) => a + vlen(w) + 5, 0)
+  return ['  ' + words.join(dim('  ›  ')), '  ' + ' '.repeat(off) + acc('━'.repeat(vlen(words[step])))]
+}
+scene({ name: 'Onboarding', keys: 'Enter continue · Esc back · step 1: 1-3 choose · step 1b: c copy link, r new link, p paste-back · step 2: ↑↓ or 1-3',
+  init: () => { Object.assign(ob, { step: 0, sub: 'choose', sel: 0, t0: 0, perm: 0, connected: null, expand: false, confirm: false, note: '' }); ob.welcome = makeForm([{ id: 'lang', type: 'select', label: 'Language', value: 'English', options: [{ id: 'English' }, { id: '简体中文' }] }, { id: 'theme', type: 'select', label: 'Theme', value: 'dark', options: [{ id: 'dark' }, { id: 'light' }, { id: 'ocean' }, { id: 'paper' }, { id: 'auto' }] }]); ob.key = makeForm([{ id: 'key', type: 'secret', label: 'API key', value: '', required: true, help: 'Paste a key from platform.deepseek.com' }]) },
+  capture: () => (ob.step === 0 && ob.welcome.capture()) || (ob.step === 1 && ob.sub === 'key' && ob.key.capture()),
+  render: (f) => {
+    const [words, rule] = obStrip(ob.step)
+    let body = []
+    let title = 'Welcome to Mayfly', hint = ''
+    if (ob.step === 0) {
+      const th = ob.welcome.fields[1].v
+      const T = THEMES[th === 'light' ? 'light' : 'dark']
+      body = [bold(acc('✻')) + ' ' + bold('Mayfly') + dim('  a quiet terminal UI for DeepSeek Harness'), '', 'Pick a language and a color theme. You can change both later in /settings.', '', ...ob.welcome.render(), '',
+        dim('preview  ') + tc(T, 'active', 'Overview', true) + '   ' + tc(T, 'idle', 'Usage 3') + '   ' + tc(T, 'attn', '!', true) + '   ' + grn('✓') + ' ' + dim('done')]
+      hint = '↑↓ field · ←/→ change · Enter continue'
+    } else if (ob.step === 1 && ob.sub === 'choose') {
+      title = 'Connect to DeepSeek'
+      body = ['Mayfly needs a DeepSeek connection to start.', '',
+        `${ob.sel === 0 ? acc('▸') : ' '} ${dim('1')}  ${bold('Sign in with a DeepSeek account')}  ${grn('recommended')}`, `       ${dim('browser sign-in, no API key to manage')}`,
+        `${ob.sel === 1 ? acc('▸') : ' '} ${dim('2')}  ${bold('Enter a DeepSeek API key')}`, `       ${dim('paste a key from platform.deepseek.com')}`,
+        `${ob.sel === 2 ? acc('▸') : ' '} ${dim('3')}  ${bold('Skip for now')}`, `       ${dim('connect later with /account or /provider')}`]
+      hint = '↑↓ or 1-3 choose · Enter continue · Esc back'
+    } else if (ob.step === 1 && ob.sub === 'account') {
+      title = 'DeepSeek Account'
+      const left = Math.max(0, 300 - Math.floor((Date.now() - ob.t0) / 1000))
+      if (ob.connected === 'account') body = [`${grn('✓')} ${bold('Connected')} ${dim('— account models need no API key.')}`, '', `${dim(pad('Status', 12))} Signed in`, `${dim(pad('Balance', 12))} ${bold('¥ 128.40')} ${dim('available')}`]
+      else body = [`${c(mix(pick(breath, f, 4)), '●')} ${bold('Waiting for you in the browser')} ${dim('· finishes by itself on this machine')}`, '',
+        `${dim(pad('Expires', 12))} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`, `${dim(pad('Sign-in link', 12))} ${dim('https://platform.deepseek.com/oauth/authorize?…')}`, '',
+        `${ob.expand ? acc('▾') : dim('▸')} ${dim('Browser on another machine?')}`, ...(ob.expand ? [`    ${dim('Paste the address it ends on (the page may fail to load):')}`, `    ${dim('Callback link:')} ${dim('http://localhost:4710/oauth/callback?code=…')}▌`] : [])]
+      hint = ob.connected ? 'Enter start chatting' : 'Ctrl+Y copy link · Ctrl+R new link · p other machine · Esc cancel'
+    } else if (ob.step === 1 && ob.sub === 'key') {
+      title = 'Enter your API key'
+      body = ['Your key is stored in the system credential store, never in settings.', '', ...ob.key.render(), '', ob.note ? grn(ob.note) : '']
+      hint = 'Enter save · Esc back'
+    } else if (ob.step === 2) {
+      title = 'Permissions'
+      body = ['How much may the agent do without asking?', ...OB_PERMS.flatMap(([n, d], i) => [`${ob.perm === i ? acc('▸') : ' '} ${dim(String(i + 1))}  ${bold(n)}${i === 0 ? '  ' + dim('[recommended]') : ''}`, `       ${i === 2 ? yel(d) : dim(d)}`]), '',
+        ob.confirm ? `${yel('Really allow everything without prompts?')}  ${inv(' No ')}  Yes   ${dim('n/y')}` : '']
+      hint = '↑↓ or 1-3 choose · Enter continue · Esc back'
+    } else {
+      title = 'Ready'
+      body = [`${grn('✓')} Language   ${ob.welcome.fields[0].v}`, `${grn('✓')} Theme      ${ob.welcome.fields[1].v}`, ob.connected ? `${grn('✓')} DeepSeek   ${ob.connected === 'account' ? 'account' : 'API key'}` : `${yel('○')} DeepSeek   not connected ${dim('· /account to sign in')}`, `${grn('✓')} Permissions ${OB_PERMS[ob.perm][0]}`, '',
+        bold('Three things to try'), `  ${acc('/')}  commands          ${acc('@')}  attach a file          ${acc('Shift+Tab')}  plan mode first`]
+      hint = 'Enter start chatting'
+    }
+    return [dim('first run: Language → Connect → Permissions (new) → Ready · each step reversible with Esc · skip never blocks'), '', words, rule, '', ...box(title, `step ${Math.min(ob.step + 1, 4)} of 4`, [...body, '', dim(hint)], 78)]
+  },
+  onKey: (k) => {
+    ob.note = ''
+    if (ob.step === 0) {
+      if (k === '\r' && !ob.welcome.capture()) { ob.step = 1; ob.sub = 'choose'; ob.sel = 0 }
+      else ob.welcome.key(k)
+    } else if (ob.step === 1) {
+      if (ob.sub === 'choose') {
+        if (k === '\x1b[B') ob.sel = Math.min(2, ob.sel + 1)
+        else if (k === '\x1b[A') ob.sel = Math.max(0, ob.sel - 1)
+        else if (/^[1-3]$/.test(k)) { ob.sel = Number(k) - 1; k = '\r' }
+        if (k === '\r') { if (ob.sel === 0) { ob.sub = 'account'; ob.t0 = Date.now(); ob.connected = null; setTimeout(() => { if (ob.sub === 'account') ob.connected = 'account' }, 4500) } else if (ob.sel === 1) ob.sub = 'key'; else { ob.step = 2; ob.connected = null } }
+        else if (k === '\x1b') ob.step = 0
+      } else if (ob.sub === 'account') {
+        if (k === '\x1b') { ob.sub = 'choose'; ob.connected = null }
+        else if (k === 'p') ob.expand = !ob.expand
+        else if (k === '\r' && ob.connected) ob.step = 2
+      } else {
+        if (k === '\x1b' && !ob.key.capture()) ob.sub = 'choose'
+        else if (k === '\r' && !ob.key.capture() && ob.key.fields[0].v) { ob.connected = 'key'; ob.step = 2 }
+        else ob.key.key(k)
+      }
+    } else if (ob.step === 2) {
+      if (ob.confirm) { if (k === 'y') { ob.confirm = false; ob.step = 3 } else ob.confirm = false; return }
+      if (k === '\x1b[B') ob.perm = Math.min(2, ob.perm + 1)
+      else if (k === '\x1b[A') ob.perm = Math.max(0, ob.perm - 1)
+      else if (/^[1-3]$/.test(k)) { ob.perm = Number(k) - 1; k = '\r' }
+      if (k === '\r') { if (ob.perm === 2) ob.confirm = true; else ob.step = 3 }
+      else if (k === '\x1b') ob.step = 1
+    } else if (k === '\x1b') ob.step = 2
+    else if (k === '\r') ob.note = '(starts chatting)'
+  } })
+
+// ================================================================ 18 account panel
+const ac = { s: 0 }
+const AC_STATES = ['signed-out', 'waiting', 'expired', 'network', 'no-server', 'signed-in', 'low', 'sign-out?']
+scene({ name: 'Account', keys: 's cycle the demo state · b balance state (signed in) · see the hint row for the state keys',
+  init: () => Object.assign(ac, { s: 0, bal: 0 }),
+  render: (f) => {
+    const st = AC_STATES[ac.s]
+    const fld = (k, v) => `${dim(pad(k, 13))} ${v}`
+    let body = [], hint = '', right2 = ''
+    if (st === 'signed-out') { body = [fld('Status', 'Not signed in'), '', dim('Sign in with your DeepSeek account — models are billed to it and need no API key.'), '', `${acc('▸')} ${bold('Sign in')}`, `  ${dim('Use an API key instead')}`]; hint = 'Enter sign in · k use an API key · Esc close' }
+    else if (st === 'waiting') { body = [fld('Status', 'Not signed in'), fld('Sign-in', `${c(mix(pick(breath, f, 4)), '●')} Waiting for you in the browser`), fld('Expires', '4:41'), '', dim('Approve in the browser — on this machine sign-in finishes by itself.'), fld('Sign-in link', dim('https://platform.deepseek.com/oauth/authorize?…')), `${dim('▸')} ${dim('Browser on another machine?')}`]; hint = 'Ctrl+Y copy link · Ctrl+R new link · p other machine · Esc cancel' }
+    else if (st === 'expired') { body = [fld('Status', 'Not signed in'), fld('Sign-in', yel('⚠ The sign-in link expired — try again')), '', `${acc('▸')} ${bold('Try again')}`]; hint = 'Enter try again · Esc close' }
+    else if (st === 'network') { body = [fld('Status', 'Not signed in'), fld('Sign-in', red('✗ Could not reach DeepSeek — check the connection and try again')), '', `${acc('▸')} ${bold('Try again')}`]; hint = 'Enter try again · Esc close' }
+    else if (st === 'no-server') { body = [fld('Status', 'Not signed in'), '', dim('Browser sign-in needs the local web server, which this setup does not run.'), dim('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts.'), '', `${acc('▸')} ${bold('Use an API key instead')}`]; hint = 'Enter use an API key · Esc close' }
+    else if (st === 'signed-in' || st === 'low') {
+      const low = st === 'low'
+      const balSt = ['ok', 'loading', 'error'][ac.bal % 3]
+      const bal = low ? `${yel('⚠')} ${bold(yel('¥ 6.20'))} ${yel('low balance')} ${dim('· below ¥ 10.00')}` : balSt === 'ok' ? `${bold('¥ 128.40')} ${dim('available')}` : balSt === 'loading' ? `${acc(pick(gap, f))} ${dim('checking balance…')}` : `${dim('— unavailable (network)')}  ${dim('r retry')}`
+      body = [fld('Status', `${grn('✓')} Signed in`), fld('Balance', bal), ...(low ? [fld('', dim('topped-up ¥ 0.00 · granted ¥ 6.20'))] : balSt === 'ok' ? [fld('', dim('topped-up ¥ 100.00 · granted ¥ 28.40'))] : []), fld('Models', dim('account models need no API key')), fld('Checked', dim('2 min ago')), '']
+      hint = 'r refresh · o top up in browser · x sign out · Esc close'
+    } else { body = [fld('Status', `${grn('✓')} Signed in`), '', `${yel('Sign out of the DeepSeek account?')} ${dim('Account models stop working until you sign in again.')}`, '', `${inv(' No ')}  Yes`]; hint = '←/→ or n/y · Enter confirm · Esc cancel' }
+    return [dim(`state ${ac.s + 1}/${AC_STATES.length}: ${AC_STATES.map((x, i) => i === ac.s ? bold(x) : x).join(' · ')}`), '', ...box('DeepSeek Account', st.startsWith('signed') || st === 'low' ? '' : 'not connected', [...body, '', dim(hint)], 82),
+      '', dim('button-free: the primary action is the focused row, secondary operations are keys in the hint row; the sign-out confirm is the shared Yes/No (No first).')]
+  },
+  onKey: (k) => { if (k === 's') ac.s = (ac.s + 1) % AC_STATES.length; else if (k === 'S') ac.s = (ac.s + AC_STATES.length - 1) % AC_STATES.length; else if (k === 'b') ac.bal = (ac.bal + 1) % 3 } })
+
+// ================================================================ 19 design system reference
+const ds = { v: 0 }
+const DSP = [
+  ['Selection and focus vocabulary', () => [
+    `${acc('▌')} ${bold('Permissions')}     ${dim('persistent selection in a rail or browse list: bar + bold (inverse only while the control has focus)')}`,
+    `${acc('▸')} ${dim('1')}  ${bold('Allow once')}    ${dim('cursor in a choose / decision list: the row that Enter will pick')}`,
+    `  ${acc('[x]')} read_file      ${dim('checked')}      ${dim('[ ] unchecked · [-] some children')}`,
+    `  ${bold('‹ medium ›')}          ${dim('a value ←/→ changes (select, number, tab strip)')}`,
+    `  ${acc('•')} Timeout          ${dim('edited field (implicit override)')}`,
+    `  ${dim('Local — unreachable')}  ${dim('disabled: dimmed, with its reason after a dash')}`,
+    `  Default ${dim('[current]')}      ${dim('current marker is always the muted [current] badge')}`,
+    '', dim('rule: one persistent-selection mark (▌), one transient cursor (▸), one focus effect (inverse). Never two of them on a row at once except ▌ + inverse.')] ],
+  ['State matrix: every panel answers the same five states', () => [
+    `${dim(pad('state', 14))} ${dim(pad('pattern', 40))} ${dim('example')}`,
+    `${pad('loading', 14)} ${pad('gap spinner + what + (elapsed)', 40)} ${acc('⣾')} Loading sessions…`,
+    `${pad('empty', 14)} ${pad('what is missing + the next action', 40)} No plugins installed — press → to browse`,
+    `${pad('error', 14)} ${pad('✗ reason + the retry key', 40)} ${red('✗')} Could not reach the market  ${dim('r retry')}`,
+    `${pad('stale/offline', 14)} ${pad('⚠ + age of the data, content stays usable', 40)} ${yel('⚠')} offline · showing cached data from 2d ago`,
+    `${pad('unavailable', 14)} ${pad('— + reason, no retry offered', 40)} ${dim('—')} not supported by this provider`,
+    '', dim('a failed or slow secondary read (balance, catalog refresh) never blocks or alters the primary content')] ],
+  ['Feedback severities', () => [
+    `${grn('✓')} success   ${dim('3 s, auto-dismiss')}        Installed Git Helper · restart Mayfly to apply`,
+    `${acc('ℹ')} info      ${dim('5 s, auto-dismiss')}        Resumed session · 24 turns`,
+    `${yel('⚠')} warning   ${dim('stays until acted on')}     Balance low · ¥ 6.20 left`,
+    `${red('✗')} error     ${dim('stays, offers retry')}      Sign-in failed — try again  ${dim('Enter')}`,
+    '', dim('inline (in the surface footer) when a surface is open; a toast in the activity row gap when none is. Glyph + word, never colour alone.')] ],
+  ['Breakpoints: one panel at three widths', () => {
+    const rows = ['Loop', 'Git Helper', 'Legacy Search']
+    return [dim('≥ 100 cols  split view'), `  ${rows.map(r => pad(r, 14)).join('')}${dim('│')} ${bold('Loop')} ${dim('official · Automation')}`, `  ${' '.repeat(42)}${dim('│')} ${grn('✓ installed 1.4.0')} · TUI ✓ Web ✓`, '',
+      dim('60–99 cols  single column, Enter opens the detail'), `  ${acc('▌')} ${bold('Loop')}            stable   official   T W   1.4.0`, `    Git Helper      update 1.3.0 community T W   1.2.1`, '',
+      dim('< 60 cols  compact: name + one status, detail on Enter'), `  ${acc('▌')} ${bold('Loop')}          ${grn('✓')}`, `    Git Helper    ${yel('↑')}`, `    Legacy Search ${yel('⚠')}`] }],
+  ['Keyboard parity: the same key means the same thing everywhere', () => {
+    const cols = ['↑↓', '←/→', 'Enter', 'Space', '/', 'r', 'x', 'Esc']
+    const rows = [['Sessions', 'move', 'rail ⇄ list', 'resume', '—', 'filter', '—', 'delete', 'close'], ['Plugins', 'move', 'tab', 'details', '—', 'filter', 'refresh', 'remove', 'close'], ['Settings', 'field', 'cycle', 'edit', 'toggle', '—', '—', '—', 'back'], ['Tray', 'move', 'tab', 'view', '—', '—', '—', 'stop', 'back'], ['Account', 'row', '—', 'primary', '—', '—', 'refresh', 'sign out', 'close']]
+    return [`${dim(pad('', 10))}${cols.map(x => dim(pad(x, 12))).join('')}`, ...rows.map(r => `${pad(r[0], 10)}${r.slice(1).map(x => pad(x, 12)).join('')}`), '', dim('destructive keys always open the shared Yes/No (No first); undo toasts replace the prompt only when the action is reversible')] }],
+  ['Policies: confirm vs undo, time and number formats', () => [
+    bold('confirm or undo'),
+    `  reversible, local       ${dim('→ do it, offer')} ${bold('u undo · 8s')}   ${dim('(delete a session, remove a queued message)')}`,
+    `  irreversible or outside ${dim('→ shared Yes/No, No first')}        ${dim('(sign out, remove a plugin, full access, stop a job)')}`,
+    `  never                   ${dim('→ typed confirmation phrases')}`, '',
+    bold('formats'),
+    `  ${dim(pad('durations', 12))} 4s · 2m 10s · 4m 12s · 1h 5m        ${dim(pad('ages', 8))} 2m ago · 1h ago · 3d ago`,
+    `  ${dim(pad('tokens', 12))} 148k · ~12k · 22.9k / 128k           ${dim(pad('money', 8))} ¥ 128.40 (provider currency, two decimals)`,
+    `  ${dim(pad('paths', 12))} ~ for home, middle-ellipsis (~/dev/…/mayfly) ${dim(pad('counts', 8))} 12 turns · 4 tools · +3 more`] ],
+]
+scene({ name: 'System', keys: 'v/V next/previous reference page',
+  init: () => Object.assign(ds, { v: 0 }),
+  render: () => [dim(`reference ${ds.v + 1}/${DSP.length}: `) + bold(DSP[ds.v][0]), dim(DSP.map((_, i) => i === ds.v ? '●' : '○').join(' ')), '', ...DSP[ds.v][1]()],
+  onKey: (k) => { if (k === 'v') ds.v = (ds.v + 1) % DSP.length; else if (k === 'V') ds.v = (ds.v + DSP.length - 1) % DSP.length } })
 
 // ================================================================ runtime
 let cur = Math.max(0, Math.min(scenes.length - 1, Number(process.argv[2] ?? 1) - 1))

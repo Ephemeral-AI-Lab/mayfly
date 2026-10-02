@@ -23,9 +23,10 @@ Hint rows in every diagram use the strings the key grammar really produces
 
 §8 collects the redesign round (activity row, tool cards, loader, compaction,
 todo and goal, the agents and jobs tray, decisions, tabs, lists, forms,
-panels, and interaction scenarios). It is all `target`, it wins over earlier
+panels, the plugin marketplace, onboarding, the account panel, interaction
+scenarios, and the system rules that tie them together). It is all `target`, it wins over earlier
 text where the two disagree (§8.1), and it ships with a runnable terminal
-prototype (§8.14).
+prototype (§8.18).
 
 ## 1. How a component works
 
@@ -2071,9 +2072,9 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 ## 8. Redesign round: activity, tools, panels, and interaction scenarios
 
 > **Status: target.** Everything in this section is an agreed design, not
-> shipped behavior. Every item carries an ID (R1–R14) in §8.13 and flips to
+> shipped behavior. Every item carries an ID (R1–R18) in §8.17 and flips to
 > **shipped** in the change that implements it. Diagrams are drawn by the
-> runnable prototype in §8.14; run it to see the motion the ASCII cannot show.
+> runnable prototype in §8.18; run it to see the motion the ASCII cannot show.
 
 This round redesigns the parts of the interface a user watches most: the live
 activity row, tool results, loaders, compaction, todo and goal, the subagent
@@ -2580,7 +2581,231 @@ rendered rows in `core/`, the only owner of width and ANSI truth.
   list to jump from; `Esc` leaves one layer at a time (typing, then list, then
   search). Folded blocks expand when a match inside them is opened.
 
-### 8.13 Roadmap and touch points
+### 8.13 Plugin marketplace
+
+**Today.** `/plugin` opens a marketplace overlay over the index published by
+`Ephemeral-AI-Lab/dsh-plugins`: installed and not-installed tabs, a
+type-to-filter catalog, and a detail panel (Overview, Surfaces, Provides,
+Details) whose buttons install, update, and remove. Operations shell out to
+`dsh plugin --profile <name> add|remove`, report progress in the surface, and
+apply after a restart; the catalog loads cache-first and serves stale data
+offline. The design below keeps all of that and changes the layout, the
+actions, and the states.
+
+```
+╭ Plugin marketplace ──────────────────────────────────────────────────────────────────────────────────╮
+│   Installed 3   Browse 5    index updated 2h ago · 8 entries                                         │
+│   ━━━━━━━━━━━                                                                                        │
+│   / filter plugins…                                                                                  │
+│ ▌ Loop             official   T W   1.4.0               │ Loop  official · Automation                │
+│   Git Helper       community  T W   1.2.1  update 1.3.0 │ Repeat a prompt on an interval.            │
+│   Legacy Search    community  T ·   0.9.4  deprecated   │                                            │
+│                                                         │ Status     ✓ installed 1.4.0               │
+│                                                         │ Surfaces   TUI ✓ works here                │
+│                                                         │            Web ✓ works on dsh Web          │
+│                                                         │ Provides   /loop · loop_start · loop_stop  │
+│                                                         │ Engines    dsh ^0.2 · mayfly ^0.1          │
+│                                                         │ Needs      schedule                        │
+│                                                         │ Verified   2026-09-20                      │
+│                                                         │ Source     npm                             │
+│                                                                                                      │
+│ ↑↓ move · ←/→ tab · x remove · / filter · r refresh · Esc close                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+- **Layout follows width** (§8.16): at 100 columns or more the list and a live
+  detail share the surface; below that the list is one column and `Enter` opens
+  the detail, `Esc` returns. The header tab strip is the §8.10 text-color
+  strip, with the catalog's age (or the offline notice) at its right.
+- **List columns:** name, a status word (`stable` shows nothing; `beta` is
+  accent, `unstable` and `deprecated` warning, `removed` danger), the source
+  (`official`, `dsh`, `community`), the surfaces `T W` (bold when the plugin
+  contributes there, a dim `·` when it does not), and the version, or
+  `update x.y.z` when one is available. Deprecated and removed rows dim and
+  their note leads the detail.
+- **Actions are keys, not buttons** (§4.1 redundancy rule, G7): `i` install,
+  `u` update, `x` remove behind the shared Yes/No with No first
+  (`Removal applies after restarting Mayfly.`), `s` cycle the install source
+  (`npm`, `github`) when an entry offers both and is not installed, `r`
+  refresh, `/` filter. The hint row lists only the keys that apply to the
+  focused entry.
+- **Progress** is the gap spinner (§8.5) with what and where, `Installing Git
+  Helper via npm… 4s · Esc cancel`, then a success line. Installs and removals
+  are single-flight, as today (`a plugin operation is already running`).
+- **Restart is a persistent banner, not a toast.** Bundle membership is a
+  startup boundary, so every completed change adds to `↻ N changes apply after
+  you restart Mayfly and start a new session`, which stays until the restart.
+- **Web-only plugins** show `TUI ✗ no contribution in this terminal`; `i` on
+  one reports the existing warning instead of installing.
+- **States follow §8.16:** loading (`⣾ loading catalog…`), empty
+  (`No plugins installed — press → to browse`), offline with cached data
+  (`⚠ offline · showing cached data from 2d ago`, content stays usable), and
+  refresh in progress.
+- **Seam:** the index is discovery metadata only; nothing here participates in
+  runtime loading. Detail rows are derived from `MarketEntry`
+  (`status`, `source`, `surfaces`, `provides`, `engines`, `capabilities`,
+  `verified`), so no new index fields are required.
+
+### 8.14 Onboarding
+
+**Today.** A first run opens the welcome (language and theme, once, while the
+shared locale preference is unset), then the connection guide when no
+credential or account grant exists: step 1 chooses between signing in with a
+DeepSeek account and pasting an API key, step 2 finishes in the browser or
+takes the key.
+
+The redesign keeps the order and the guarantees (every step reversible with
+`Esc`, `Skip for now` never blocks) and gives the flow one visible spine, a
+text-color step strip, and a summary:
+
+```
+  ✓ Language  ›  ● Connect  ›  ○ Permissions  ›  ○ Ready
+                 ━━━━━━━━━
+╭ Connect to DeepSeek ────────────────────────────────────────── step 2 of 4 ╮
+│ Mayfly needs a DeepSeek connection to start.                               │
+│                                                                            │
+│ ▸ 1  Sign in with a DeepSeek account  recommended                          │
+│        browser sign-in, no API key to manage                               │
+│   2  Enter a DeepSeek API key                                              │
+│        paste a key from platform.deepseek.com                              │
+│   3  Skip for now                                                          │
+│        connect later with /account or /provider                            │
+│ ↑↓ or 1-3 choose · Enter continue · Esc back                               │
+╰────────────────────────────────────────────────────────────────────────────╯
+```
+
+| Step | Content | Keys |
+| --- | --- | --- |
+| 1 Language | the existing form (language, theme), no `Continue` button, plus a one-line preview of the chosen theme's text colors | `←/→` change · `Enter` continue |
+| 2 Connect | the numbered choice above; account sign-in is hidden when no web server is composed | `1`–`3` · `Enter` · `Esc` |
+| 2a Browser | the account panel (§8.15) inside the guide: a breathing `●`, the expiry countdown, the link, and a collapsed `▸ Browser on another machine?` row that opens the paste-back field on `p` | `Ctrl+Y` copy · `Ctrl+R` new link · `Esc` cancel |
+| 2b API key | one secret field with `Enter` to save; `Your key is stored in the system credential store, never in settings.` | `Enter` save · `Esc` back |
+| 3 Permissions | **new, proposed:** the permission preset as a numbered choice (`Default` recommended); `Full access` asks the shared Yes/No | `1`–`3` · `Enter` |
+| 4 Ready | a checklist of what was set (`○ DeepSeek not connected · /account to sign in` when skipped) and three things to try (`/`, `@`, `Shift+Tab`) | `Enter` start chatting |
+
+- **No buttons in the guide.** `Continue`, `Save`, and `Back` are `Enter` and
+  `Esc` (G7); the primary choice is the focused row.
+- **Progressive disclosure:** the other-machine paste-back is collapsed by
+  default because the common case finishes by itself on this machine.
+- **The permissions step is optional to ship.** Without it the strip is three
+  steps and the preset stays `Default`.
+- **Resumability:** quitting mid-guide leaves the unfinished step to reappear
+  on the next start, as today; finished choices persist immediately.
+
+### 8.15 Account panel
+
+**Today.** `DeepSeek Account` shows `Status`, the sign-in phase or outcome,
+the expiry, the sign-in link, and a paste-back field; `Sign in`, `Try again`,
+`Sign out` (behind a confirm), and `Close` are buttons, and a setup without the
+loopback web server explains where browser sign-in can happen.
+
+The redesign is button-free and covers every state the code distinguishes:
+
+```
+╭ DeepSeek Account ─────────────────────────────────────────── not connected ╮
+│ Status        Not signed in                                                │
+│ Sign-in       ● Waiting for you in the browser                             │
+│ Expires       4:41                                                         │
+│                                                                            │
+│ Approve in the browser — on this machine sign-in finishes by itself.       │
+│ Sign-in link  https://platform.deepseek.com/oauth/authorize?…              │
+│ ▸ Browser on another machine?                                              │
+│                                                                            │
+│ Ctrl+Y copy link · Ctrl+R new link · p other machine · Esc cancel          │
+╰────────────────────────────────────────────────────────────────────────────╯
+```
+
+| State | Body | Primary / keys |
+| --- | --- | --- |
+| signed out | `Not signed in`, one sentence on what an account gives | focused `Sign in` · `k` use an API key |
+| waiting | breathing `●`, expiry, link, collapsed paste-back | `Ctrl+Y` · `Ctrl+R` · `p` · `Esc` cancel |
+| expired | `⚠ The sign-in link expired — try again` | focused `Try again` |
+| network error | `✗ Could not reach DeepSeek — check the connection and try again` | focused `Try again` |
+| no web server | the existing explanation (stored login is shared across hosts) | focused `Use an API key instead` |
+| signed in | `✓ Signed in`, `Balance`, `Models`, `Checked` | `r` refresh · `o` top up · `x` sign out |
+| low balance | `⚠ ¥ 6.20 low balance · below ¥ 10.00` with the breakdown | same keys; the Status panel's Account tab shows the `!` |
+| sign out | the shared Yes/No, No first: `Account models stop working until you sign in again.` | `←/→` or `n`/`y` |
+
+- **The balance row** is the one in §8.11: loading (`⣾ checking balance…`),
+  unavailable (`— unavailable (network)  r retry`), unsupported (row hidden). A
+  failed check never changes the sign-in state.
+- **Outcome wording** stays the existing strings, one reason per error code
+  (`expired`, `network`, `storage`, generic).
+- **Identity** (name or email) is not shown: the account view exposes
+  `status` and the attempt, not a profile, and this design does not assume more.
+
+### 8.16 System refinements
+
+Rules that make the panels above, and every future one, read as one system. The
+prototype's last scene (§8.18) draws each of them.
+
+**Selection and focus vocabulary.** One persistent-selection mark, one
+transient cursor, one focus effect:
+
+| Mark | Meaning | Where |
+| --- | --- | --- |
+| `▌` + bold | persistent selection | rails, browse lists, tab rails |
+| `▸` | the row `Enter` will pick | choose and decision lists, form focus, the tray |
+| inverse | the control has focus | only on the selected or cursor row |
+| `[x]` `[ ]` `[-]` | checked, unchecked, some children | multi lists, trees |
+| `‹ v ›` | `←`/`→` changes this value | select, number, tab strip |
+| `•` | edited field (implicit override) | forms |
+| `[current]` | the current choice, always the muted badge | pickers (G4) |
+| `— reason` | disabled, with its reason after a dash | actions, rows, options |
+
+**One answer for five states.** Every panel, and every secondary read inside
+it, renders the same patterns, so users learn them once:
+
+| State | Pattern | Example |
+| --- | --- | --- |
+| loading | gap spinner, what, elapsed | `⣾ Loading sessions…` |
+| empty | what is missing and the next action | `No plugins installed — press → to browse` |
+| error | `✗` reason and the retry key | `✗ Could not reach the market  r retry` |
+| stale or offline | `⚠` and the data's age; content stays usable | `⚠ offline · showing cached data from 2d ago` |
+| unavailable | `—` and the reason, no retry | `— not supported by this provider` |
+
+A slow or failed secondary read (balance, catalog refresh) never blocks or
+alters the primary content.
+
+**Feedback severities.** `✓` success (3 s, auto-dismiss), `ℹ` info (5 s,
+auto-dismiss), `⚠` warning (stays until acted on), `✗` error (stays and offers
+the retry key). Feedback is inline in the footer of an open surface and a toast
+in the activity row's gap otherwise. Glyph plus word, never color alone (§3.1).
+
+**Breakpoints.** At 100 columns or more a list-and-detail surface is a split
+view; from 60 to 99 it is one column and `Enter` opens the detail; below 60 it
+shows the name and one status glyph and the detail opens on `Enter`. Every
+renderer ladders with `when: { minWidth, maxWidth }` and appears in the owning
+width scan.
+
+**Keyboard parity.** The same key means the same thing in every panel:
+
+| Key | Meaning |
+| --- | --- |
+| `↑` `↓` | move (rows, fields) |
+| `←` `→` | switch tab or column, cycle a select, step a number |
+| `Enter` | the primary action of the focused row |
+| `Space` | toggle |
+| `/` | filter |
+| `r` | refresh or retry |
+| `x` | the destructive action: remove, stop, delete, sign out |
+| `Esc` | back one layer |
+
+`x` replaces `d` for deleting a session, so remove, stop, delete, and sign out
+all share one key. A destructive key always opens the shared Yes/No with No
+focused first.
+
+**Confirm or undo.** Reversible local actions (delete a session, withdraw a
+queued message) happen at once and offer `u undo · 8s`. Irreversible actions or
+ones that reach outside the app (sign out, remove a plugin, full access, stop a
+job) use the shared Yes/No. Typed confirmation phrases are never used.
+
+**Formats.** Durations `4s`, `2m 10s`, `1h 5m`; ages `2m ago`, `3d ago`; tokens
+`148k`, `~12k`, `22.9k / 128k`; money in the provider's currency with two
+decimals (`¥ 128.40`); paths home-collapsed to `~` and middle-ellipsised;
+counts `12 turns`, `+3 more`.
+
+### 8.17 Roadmap and touch points
 
 | ID | Item | Touch points |
 | --- | --- | --- |
@@ -2598,6 +2823,10 @@ rendered rows in `core/`, the only owner of width and ANSI truth.
 | R12 | Transcript scroll pill, scrollbar, and search (§8.12) | `core/` (transcript viewport), `transcript/transcript-model.ts` |
 | R13 | Contrast and one-motion-channel guard specs (§7 D1, D3) | `packages/mayfly/tests/core/` |
 | R14 | Website key and status-bar pages follow §8.1 | `website/**` (needs the Website acceptance path) |
+| R15 | Plugin marketplace: split view, key-driven actions, restart banner (§8.13) | `interaction/plugin-commands.ts`, `interaction/plugin-market/` |
+| R16 | Onboarding: step strip, button-free steps, optional permissions step (§8.14) | `interaction/welcome.ts`, `interaction/provider-onboarding.ts` |
+| R17 | Account panel: button-free states, balance row (§8.15) | `interaction/provider-account.ts` |
+| R18 | System rules: selection vocabulary, state patterns, breakpoints, key parity, `x` for delete (§8.16) | `core/ui-key-grammar.ts`, `core/ui-patterns.ts`, `interaction/session-workspace-panel.ts`, width scans |
 
 Verification for any of these follows the root gate: width scans for every new
 row renderer, the owning suite for lifecycle changes, `pnpm run verify:full`,
@@ -2608,12 +2837,14 @@ native provider services or needs a new read-only service. (2) Whether
 `↓`-on-an-empty-prompt conflicts with prompt-history navigation in the editor
 key handling. (3) The keys `Ctrl+F` (search) and `Ctrl+J` (view notification)
 are proposals until checked against the keymap. (4) Where search matches are
-computed for folded blocks.
+computed for folded blocks. (5) Whether the optional onboarding permissions step is
+wanted, since it adds a step to every first run. (6) Whether the account view
+should ever expose an identity beyond `status`.
 
-### 8.14 Prototype
+### 8.18 Prototype
 
 [`prototypes/ui-preview.mjs`](./prototypes/ui-preview.mjs) draws every design in
-this section in a terminal. It is a standalone Node script with no
+this section in a terminal (19 scenes). It is a standalone Node script with no
 dependencies; it draws its own colors and does not use the Mayfly renderer, so
 it shows intent, not shipped rendering.
 
@@ -2642,3 +2873,7 @@ keys in its footer. While a text field has focus the scene keeps every key and
 | 13 | Panels (sessions, settings, status) | §8.11 |
 | 14 | Scenarios | §8.12 |
 | 15 | Transcript scroll and search | §8.12 |
+| 16 | Plugin marketplace | §8.13 |
+| 17 | Onboarding | §8.14 |
+| 18 | Account panel | §8.15 |
+| 19 | System reference (selection, states, feedback, breakpoints, keys, policies) | §8.16 |
