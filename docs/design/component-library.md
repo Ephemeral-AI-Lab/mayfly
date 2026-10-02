@@ -23,7 +23,8 @@ node docs/design/prototypes/ui-preview.mjs --audit  # which basic components eac
 
 After review and merge, a follow-up change implements the design in `packages/`. The material that change needs
 (wire mechanics, builder tables, touch points, the backlog) is kept apart in
-[component-library-reference.md](./component-library-reference.md) so it does not dilute this document.
+[component-library-reference.md](./component-library-reference.md) so it does not dilute this document. The order of
+that work, and the decisions taken after review, are in [implementation-roadmap.md](./implementation-roadmap.md).
 
 ## 1. Purpose and principles
 
@@ -2162,7 +2163,9 @@ baseline verified against `main` when this was written; *new* means nothing like
 
 ## 8. Open questions for review
 
-Decisions only you can make, each with a recommendation:
+Decisions only you can make, each with a recommendation. The answers given after review, and where the
+implementation therefore differs from the prototype, are in
+[implementation-roadmap.md §2](./implementation-roadmap.md#2-decisions-and-differences).
 
 1. **Decision panels (§5.7).** Safe-first (A) or grant-first (B)? Recommendation: **A**.
    The Approval scene shows both and runs a stray keystroke through the real key engine.

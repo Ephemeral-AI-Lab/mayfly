@@ -5,7 +5,8 @@ the design review**: wire mechanics, builder and event tables, content-node and
 surface definitions, interface-stability rules, the author checklist, and the
 implementation backlog. It is written for the follow-up change that modifies
 `packages/`, after the design in [component-library.md](./component-library.md)
-is reviewed and merged.
+is reviewed and merged. The order in which the backlog of §6 ships is in
+[implementation-roadmap.md](./implementation-roadmap.md) §9.
 
 The executable form of the UI API is the prototype's kit, [prototypes/ui-kit.mjs](./prototypes/ui-kit.mjs):
 its builders, renderer, and key engine are the reference for what each prop paints and which events it emits, and the

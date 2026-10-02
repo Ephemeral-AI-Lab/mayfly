@@ -18,7 +18,9 @@ shipped behavior, and ships a runnable terminal prototype
 (`node docs/design/prototypes/ui-preview.mjs`) whose `--audit` mode proves that every
 Mayfly component uses only the basic components a plugin also has. The implementation material
 for the follow-up change (wire mechanics, builder tables, backlog) is in
-[design/component-library-reference.md](./design/component-library-reference.md).
+[design/component-library-reference.md](./design/component-library-reference.md), and the
+order of that work, with the decisions taken after review, is
+[design/implementation-roadmap.md](./design/implementation-roadmap.md).
 
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.
