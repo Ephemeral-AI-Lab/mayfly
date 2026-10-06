@@ -921,16 +921,24 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
     )
   }
   const safeWidth = Math.max(1, Math.floor(width))
+  // The painted row is a pure function of the translated candidates, the width, and the palette, so an unchanged hint
+  // answers from the surface's memo while the parts themselves are still read fresh on every paint.
+  const key = `${String(safeWidth)}\0${candidates.map(candidate => candidate.join('\x01')).join('\x02')}`
+  const memo = options.listRuntime.hintMemo
+  if (memo !== undefined && memo.colors === options.colors && memo.key === key) return memo.rows
+  let rows: string[] = []
   for (const candidate of candidates) {
     const row = hintRow(candidate, options.colors.textMuted)
     countWork(options.counters, 'stringsMeasured')
-    if (visibleWidth(row) <= safeWidth) return [row]
+    if (visibleWidth(row) <= safeWidth) { rows = [row]; break }
   }
-  return []
+  countWork(options.counters, 'rowsPainted', rows.length)
+  options.listRuntime.hintMemo = { colors: options.colors, key, rows }
+  return rows
 }
 
 function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): Component {
-  return staticComponent(width => contextKeyHintRows(state, options, width, mode, escapeLabel), options)
+  return staticComponent(width => contextKeyHintRows(state, options, width, mode, escapeLabel), options, false)
 }
 
 /** Printable text or the opening of a bracketed paste. */
@@ -1517,6 +1525,8 @@ export class MayflyUiSurfaceRuntime {
   readonly reuse = new MayflyCompileCache()
   /** The item rows this surface's lists have painted, kept by item and state. */
   readonly rows = new UiRowCache()
+  /** The last key-hint row this surface painted, with what it was painted from. */
+  hintMemo: { readonly colors: object, readonly key: string, readonly rows: string[] } | undefined
   private node: CompilableNode | undefined
   private options: RuntimeCompilerOptions | undefined
   private layoutViewport: ((viewport: MayflyUiViewport) => void) | undefined

@@ -14,7 +14,8 @@ import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const makeColors = (): MayflySemanticColors => new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = makeColors()
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn } as unknown as MayflyComponents
 
 const paint = (extra: Partial<PaintOptions> = {}): PaintOptions => ({ components, colors, reportRuntimeFailure: () => {}, ...extra })
@@ -129,5 +130,44 @@ describe('leaf reuse in the compiler', () => {
     expect(counters.unitsCompiled, 'the stack and the new tail, not the heading').toBe(2)
     runtime.dispose()
     model.dispose()
+  })
+})
+
+describe('key hint memo', () => {
+  const viewport = { getViewport: () => ({ columns: 80, rows: 24 }), screenMode: 'alternate' as const }
+  const events = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }
+
+  function hinted() {
+    const counters = createWorkCounters()
+    const node = ui.form({ id: 'f', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })
+    const model = new UiSurfaceModel('hint', { id: 'hint', node, revision: 1, source: [], scope: { kind: 'app', targetId: 'hint' }, update: { reason: 'data' }, events, definition: { onEvent: {} } } as unknown as UiSurfaceSnapshot, { counters })
+    const runtime = new MayflyUiSurfaceRuntime(model, () => {})
+    const compile = (palette: MayflySemanticColors) => {
+      const result = compileMayflyUiSurfaceNode(model.node!, { components, colors: palette, ...viewport, emit: () => {}, counters, contextHints: { enabled: true }, surfaceRuntime: runtime })
+      if (!result.ok) throw new Error(result.message)
+      result.value.focusTarget!.focused = true
+      return result.value
+    }
+    return { counters, compile, dispose: () => { runtime.dispose(); model.dispose() } }
+  }
+
+  it('paints an unchanged hint once, again when the hint changes, and again for a new palette', () => {
+    const { counters, compile, dispose } = hinted()
+    const compiled = compile(colors)
+    const first = compiled.component.render(80)
+    const painted = counters.rowsPainted
+    expect(first.at(-1)).toContain('Enter')
+    compiled.component.invalidate?.()
+    compiled.component.render(80)
+    expect(counters.rowsPainted, 'the same hint is not painted again').toBe(painted)
+    compiled.focusTarget!.handleInput!('\r')
+    const editing = compiled.component.render(80)
+    expect(editing.at(-1)).not.toBe(first.at(-1))
+    expect(counters.rowsPainted, 'a changed hint is painted').toBeGreaterThan(painted)
+    const before = counters.rowsPainted
+    const recoloured = compile(makeColors())
+    recoloured.component.render(80)
+    expect(counters.rowsPainted, 'a new palette never serves the old row').toBeGreaterThan(before)
+    dispose()
   })
 })
