@@ -36,6 +36,7 @@ const zh: Readonly<Record<string, string>> = {
   'Type or /': '输入或 /',
   'Alt+←/→ or F2/F3': 'Alt+←/→ 或 F2/F3',
   'Alt+Enter or Ctrl+J': 'Alt+Enter 或 Ctrl+J',
+  'Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning': '在面板提供相应含义时保存、复制、删除、刷新、在 $EDITOR 中打开或搜索',
   'Move between rows and fields; scroll documents': '在行和字段之间移动；滚动文档',
   'Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip': '切换下拉选项、调整行内设置、展开或折叠树节点，或在标签栏中移动',
   'Switch tabs from anywhere on the surface; wizards validate the step being left': '在面板任意位置切换标签；向导会校验离开的步骤',

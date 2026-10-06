@@ -511,7 +511,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.0 | merged (#99) | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
 | 1.1 | merged (#100) | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
 | 1.2 | not started | `feat/ui-foundation-1-2` | Needs: none |
-| 1.7 | not started | `feat/ui-foundation-1-7` | Needs: none |
+| 1.7 | in review | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage; scene 2's walks pending on 1.2 (`tests/design/pending.ts`) |
 | 1.10a | not started | `feat/ui-foundation-1-10a` | Node slot. Needs: none |
 | 1.9a | not started | `feat/ui-foundation-1-9a` | `ui.image`. Needs: none |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
@@ -764,24 +764,56 @@ Files: `core/ui-interaction-form.ts`, `core/ui-compiler.ts`, `core/ui-patterns.t
 
 **Backlog:** R21 (API), the D6 scopes.
 
-- **Actions.** `semantic`, `action`, `hintLabel`, and `scope`. The validator requires `<owner>.<action>` ids, reserves
-  `ui.*`, rejects `semantic` together with `key`, and checks that `scope` names a control on the page.
-- **Named actions.** The navigation and common-meaning ids of the kit's `DEFAULT_KEYMAP` (`ui.up` … `ui.search`)
-  replace the `mayfly.interaction.*` navigation ids in `core/key-actions.ts` and `interaction/keys.ts`; product actions
-  (interrupt, steer, cycle model, `F7`, `F8`) keep their ids and gain a scope.
-- **Keymap service** (`core/keymap.ts`): scopes, `bind`, `reset`, `resetAll`, `list`, `preferPlain`. A rebound-away key
-  is dead, not an alias. `Esc` and `Enter` cannot be unbound. The first `F2`-`F5` press sets `preferPlain` for the
-  session; a setting sets it for good.
-- **Persistence.** `keybindings` in the `mayfly` settings namespace (`interaction/settings.ts`), applied live through the
-  volatile schema and written through `settings.mutate`. `/keys` lists the actions the runtime has seen in admitted
-  nodes plus every action with a saved override (its label is saved beside it); there is no declaration API, so the
-  four contribution services stay the only plugin surface.
-- **Decoder.** Check pi-tui's parser against the encodings of spec §3.5 (xterm `CSI 1;3A` with or without a kitty event
-  type, an `ESC` prefix, SS3, kitty `CSI u`, modifyOtherKeys) and normalize any gap beside the existing input
-  normalization in `core/terminal.ts`.
+Every key the runtime dispatches now belongs to a named action, and the key is that action's current binding. The
+slice landed in six parts, each green on its own:
 
-Hint rows read effective keys (`keyActionKeys`); `SHARED_KEY_REFERENCE`, both Website `reference/keys.md` pages, and
-`tests/core/key-grammar-docs.spec.ts` move together. Scenes 2 and 32 (with slice 2f).
+1. **Named actions and scopes.** The navigation and common-meaning ids of the kit's `DEFAULT_KEYMAP` (`ui.up` …
+   `ui.search`) replaced the `mayfly.interaction.*` navigation ids in `core/key-actions.ts` and `interaction/keys.ts`,
+   with their defaults in `DEFAULT_ACTION_KEYS`; `ui.filter`, `ui.focus-prev/next`, and the common meanings joined the
+   batch. The constant names (`ACTION_MOVE_UP` …) stayed, so the grammar did not change; their values are the named
+   actions. Every Alt default gained a plain second key (`F2`/`F3` tabs, `F4`/`F5` focus, `Ctrl+J` newline). A key action
+   carries a `scope` (`global`, `editor`, `surface`, `stream`) and a conflict is refused only within overlapping
+   scopes, naming the owner, so `Ctrl+S` steers in the editor and saves in a surface (D6). Product actions kept their
+   ids and gained a scope; plan-mode toggling became its own editor action, `mayfly.interaction.cycle-mode`, instead of
+   riding the surface's `Shift+Tab`. The slash filter dispatches through `ui.filter`.
+2. **The actions contract.** `MayflyActionItem` gained `semantic` (a `MayflyCommonMeaning`), `action`, and `hintLabel`;
+   `MayflyActionsNode` gained `scope`. The validator (rules in `core/ui-actions.ts`) requires `<owner>.<action>` ids,
+   reserves `ui.*`, refuses `semantic` beside `key` or `action`, checks that `scope` names a control on the page or an
+   enclosing one (a responsive branch may hold it), and claims a meaning's default key for the page rules, so a
+   printable meaning is refused beside a type-to-filter list; two groups share a key only when their scopes are
+   disjoint. A scope matches the focused control, the list, form, tabs, or actions group that holds it, or a scroll's
+   own id. The compiler resolves each keyed item's effective keys through the keymap on every key and paint; an action
+   with several keys is hinted once. `examples/ui-gallery` has a named-actions group, and the UI reference an
+   `actions-named` shot.
+3. **The keymap service** (`core/keymap.ts`): `bind`, `reset`, `resetAll`, `applyOverrides`, `list`, `see`, `resolve`,
+   `subscribe`, and `preferPlain`. A rebound-away key is dead, not an alias; a binding that collides in an overlapping
+   scope is refused with the owner's name; `Esc` and `Enter` cannot be unbound or taken; a printable key cannot be bound
+   in the editor or global scope. `list()` returns the registered actions, the component actions the compiler has seen
+   in admitted nodes, and the actions that only have an override, each with its label, scope, owner, defaults,
+   effective keys, and `overridden`. The frame memo is keyed on the keymap revision and core repaints on every change.
+   The first `F2`-`F5` press sets `preferPlain` for the session; `setPreferPlain` sets it for good.
+4. **Persistence.** `keybindings` (action id to keys and label) and `preferPlainKeys` in the `mayfly` settings namespace
+   (`interaction/settings.ts`), applied live by the keys plugin on load and on every commit; a refused line is skipped
+   with a warning. `saveKeybinding`, `resetKeybinding`, and `resetAllKeybindings` in `interaction/keys.ts` bind now and
+   write through `settings.mutate`; they are the write half of `/keys` (slice 2f). There is no declaration API: the four
+   contribution services stay the only plugin surface.
+5. **Decoder.** The check against spec §3.5 found three gaps, closed beside the input normalization in
+   `core/terminal.ts`: pi-tui's input buffer cuts a bare `ESC` prefix before an arrow and an SS3 modifier (`ESC O 3 A`)
+   in two, so the renderer reads its terminal through `joinSplitModifiers`; kitty's unmodified `CSI P/Q/S` and the
+   repeat forms of F1-F12 were not decoded, so `normalizeFunctionKeyInput` maps them to legacy sequences; pi-tui matched
+   no modified function key (`Shift+F6` never worked), so `matchesKeyId` decodes them. xterm `CSI 1;3A` with or without
+   a kitty event type, kitty `CSI u`, and modifyOtherKeys were already decoded; `tests/core/key-decoder.spec.ts` feeds
+   every encoding through the real input path.
+6. **Hints and docs.** Hint rows read each action's first effective key (plain first under `preferPlain`).
+   `SHARED_KEY_REFERENCE`, both Website `reference/keys.md` pages (with a *Named actions and custom bindings* section),
+   and `key-grammar-docs.spec.ts` moved together. The key audit checks collisions per scope, checks the shipped `ui.*`
+   actions against the kit's `DEFAULT_KEYMAP`, and its Alt-gap list shrank to `cycle-model`, which has no agreed plain
+   key yet; the audit fails when a listed entry already has one.
+
+Scene 2: `tests/design/scene-02-actions.spec.ts` replays every golden walk cell by cell and checks the walks' key
+behavior (the accelerator and the hidden key run from anywhere, arrows run nothing, the hint row names the effective
+keys). All five walks wait for the visual language of slice 1.2 (chrome, action tokens, the feedback row, the kit's
+hint words and the lowercase `c` notation) and are listed in `tests/design/pending.ts`. Scene 32 follows with slice 2f.
 
 #### 1.8 Patterns and the arm delay
 

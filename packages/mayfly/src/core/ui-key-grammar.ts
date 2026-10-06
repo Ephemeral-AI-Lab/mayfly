@@ -373,4 +373,5 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: 'Ctrl+E', action: 'Expand focused scrollable content to full screen' },
   { keys: 'Delete', action: 'Return a changed field to its inherited or default value' },
   { keys: 'Alt+Enter or Ctrl+J', action: 'Insert a newline in a multi-line field' },
+  { keys: 'Ctrl+S, c, x, r, Ctrl+G, Ctrl+F', action: 'Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning' },
 ])

@@ -1,6 +1,6 @@
 # 键位参考
 
-键位经 `mayflyKeymap` 服务注册，重复绑定会被拒绝；`/help` 浮层实时列出当前注册的全部键位，并在其后列出下方的共享面板键位（这就是本页的权威来源——若与本文有出入，以 `/help` 为准）。
+键位以命名动作经 `mayflyKeymap` 服务注册，同一作用域内冲突的绑定会被拒绝；`/help` 浮层实时列出当前注册的全部键位，并在其后列出下方的共享面板键位（这就是本页的权威来源——若与本文有出入，以 `/help` 为准）。
 
 ## 全局动作
 
@@ -35,6 +35,7 @@
 | `Ctrl+E` | 将聚焦的可滚动内容展开为全屏 |
 | `Delete` | 将已修改的字段恢复为继承值或默认值 |
 | `Alt+Enter 或 Ctrl+J` | 在多行字段中插入换行 |
+| `Ctrl+S, c, x, r, Ctrl+G, Ctrl+F` | 在面板提供相应含义时保存、复制、删除、刷新、在 $EDITOR 中打开或搜索 |
 <!-- END shared-keys -->
 
 由这套语法得出的细节：
@@ -71,16 +72,32 @@
 | `/help` 浮层 | ↑↓ / PageUp / PageDown / Home / End 滚动；`Ctrl+E` 展开；`Tab` 到 Close；`Escape` 关闭 |
 | `/sessions` 选择器 | 输入筛选工作区或对话；↑↓ 移动；`Enter` 打开工作区，再打开会话详情；`←` / `→` 折叠会话分支；`Esc` 先结束编辑/筛选，再返回上一层面板 |
 | 审批面板 | 默认聚焦 **Reject**；用 `←` / `→` 或 `Tab` 到 Allow once、本会话允许与 Reject with feedback；`Enter` 执行；`Escape` 拒绝。在反馈页 `Enter` 发送、`Alt+Enter` 换行，`Esc` 先结束编辑再返回决策页。没有数字快捷键 |
-| 问卷面板 | `1`–`9` 或 ↑↓ + `Enter` 选择并前进；多选用 `Space` 勾选、`Enter` 确认；在 Other 中输入即开始作答，`Enter` 提交、`Alt+Enter` 换行；问题 tabs 在标签栏上用 `←` / `→`，任意位置用 `Alt+←` / `Alt+→` 切换，向前切换会校验当前问题 |
+| 问卷面板 | `1`–`9` 或 ↑↓ + `Enter` 选择并前进；多选用 `Space` 勾选、`Enter` 确认；在 Other 中输入即开始作答，`Enter` 提交、`Alt+Enter` 换行；问题 tabs 在标签栏上用 `←` / `→`，任意位置用 `Alt+←` / `Alt+→`（`F2` / `F3`）切换，向前切换会校验当前问题 |
 | 表单面板 | ↑↓ 在字段间移动；直接输入或 `Enter` 开始编辑文本，`Enter` 确认并前进，textarea 用 `Alt+Enter` 换行；下拉字段用 `←` / `→` 切换或 `Enter` 打开；多选字段用 `Enter` 或 `Space` 打开；`Delete` 把显式覆盖的字段恢复为继承值；`Tab` 提交并切到下一组；`Escape` 先结束编辑，再关闭（有未保存修改时先确认） |
 | 计划评审 | ↑↓ 或 `1`–`3` 在决策间移动，`Enter` 确认聚焦的决策；`c` 复制计划，`o` 打开反馈；`PageUp` / `PageDown` / `Shift+↑↓` 滚动计划 |
 | `/model` 面板 | 一个按 provider 分组的列表：输入即筛选，↑↓ 选模型，`←` / `→` 调思考等级；`Enter` 设为默认并切换 |
 | `/effort` 面板 | `1`–`9` 或 ↑↓ + `Enter` 设置默认思考等级 |
 | `/permission` 选择器 | `1`–`9` 或 ↑↓ + `Enter` 切换预设；完全访问会先弹出默认聚焦“否”的确认 |
 | `/agents` 浏览器 | 输入即筛选；↑↓ 选择，`Space` 或 `←` / `→` 展开/折叠，`Enter` 查看；`Tab` 到 **Stop selected**，停止前先确认，对 one-shot、未运行或仍有运行中下级的行会直接说明原因 |
-| `/plugin` 市场 | Installed / Not installed 标签（标签栏上 `←` / `→` 或 `Alt+←` / `Alt+→`）；输入即筛选；`Tab` 到 Details、Install 或 Update/repair 与 Remove，可用性按行判断；`Ctrl+R` 刷新 |
+| `/plugin` 市场 | Installed / Not installed 标签（标签栏上 `←` / `→` 或 `Alt+←` / `Alt+→`，也可用 `F2` / `F3`）；输入即筛选；`Tab` 到 Details、Install 或 Update/repair 与 Remove，可用性按行判断；`Ctrl+R` 刷新 |
 | 旁支会话 | 使用完整主编辑器与同一套 panel 键位；`PageUp` / `PageDown` 滚动其 transcript；可恢复会话中 `Enter` 打开回复表单；`F7` 切回、`F8` 关闭 |
 
-## 自定义键位
+## 命名动作与自定义键位
 
-暂缓（属后续阶段）。当前没有面向用户的键位配置；键位冲突由 keymap 注册时直接拒绝来保证。插件声明的面板快捷键必须是合法的 key id，不能占用共享导航键，不能在同一页重复，且在带可筛选列表的面板上不能是纯字符键。
+每个键都属于一个命名动作，键只是该动作当前的绑定。上面的面板键位是 `ui.*` 动作（`ui.up`、`ui.accept`、`ui.cancel`、`ui.tab-next`、`ui.focus-prev` 等）；通用含义是 `ui.save`、`ui.copy`、`ui.delete`、`ui.refresh`、`ui.external` 和 `ui.search`；Mayfly 自身的键保留 `mayfly.*` id，插件的行操作键命名为 `<owner>.<action>`。绑定只在一个作用域内生效：编辑器、面板、对话流，或全局。因此 `Ctrl+S` 在编辑器中是引导、在面板中是保存，`Shift+Tab` 在编辑器中切换计划模式、在面板中回到上一组。
+
+覆盖保存在 `mayfly` 设置命名空间的 `keybindings` 字段中，以动作 id 为键，每项记录替换默认值的键以及列出时使用的标签：
+
+```yaml
+mayfly:
+  keybindings:
+    ui.delete: { keys: [d], label: delete }
+    acme-providers.test: { keys: [ctrl+t], label: Test connection }
+  preferPlainKeys: true
+```
+
+修改立即生效，所有提示随之更新。动作放弃的键随即失效，不会作为别名保留。与同一作用域内其他动作冲突的绑定会被跳过，并给出指明该动作所有者的警告；`Esc` 和 `Enter` 不能解绑，也不能分给其他动作；在编辑器或全局作用域中不能绑定纯字符键，否则会输入文字。用于捕获和恢复键位的面板（`/keys`）在后续阶段提供。
+
+每个使用 Alt 的默认键都有一个不含 Alt 的备选，因为终端和复用器常会吞掉 Alt：`F2`/`F3` 切换标签，`Ctrl+J` 插入换行。第一次按下 `F2`-`F5` 时，Mayfly 会认为 Alt 可能无法送达，此后提示行优先显示不含 Alt 的键；`preferPlainKeys: true` 则始终如此。Alt 键的各种常见编码都能识别：xterm 的 `ESC [ 1 ; 3 A`（带或不带 kitty 事件类型）、单独的 `ESC` 前缀、SS3、kitty 的 `CSI u` 以及 modifyOtherKeys。
+
+插件声明的面板快捷键必须是合法的 key id，不能占用共享导航键，同一页内除非 scope 指向不同控件否则不能重复，且在输入即筛选的列表所在面板上不能是纯字符键。
