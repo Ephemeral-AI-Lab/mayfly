@@ -1,0 +1,89 @@
+--- after start ---
+page 1/7 (Ctrl+N): choose lists: numbered instant vs focus-only digits
+
+╭ Numbered choose lists ───────────────────────────────────────────────────────────╮
+│ numbered: true — a digit chooses at once (preferences, questions)                │
+│ → 1  Preset endpoint — known provider                                            │
+│   2  Custom endpoint — any compatible URL                                        │
+│   3  OAuth provider — browser sign-in                                            │
+│                                                                                  │
+│ numbered: 'focus' — a digit only moves the cursor (anything that grants)         │
+│   1  Reject                                                                      │
+│   2  Allow once                                                                  │
+│   3  Allow for this session                                                      │
+│   ↑/↓ options · 1-3 choose · Enter choose · Esc close                            │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 2/7 (Ctrl+N): browse list: type to filter, groups, badges, details, an empty state
+
+╭ Skills ──────────────────────────────────────────────────────────────────────────╮
+│ Project                                                                          │
+│ → review-pr [enabled] — Review a pull request                                    │
+│   release-notes — Draft release notes                                            │
+│   pdf-export — PDF export — retired                                              │
+│ Preset                                                                           │
+│   plugin-author — Prototype a plugin in-process                                  │
+│   preset-author — Compose your own presets                                       │
+│   ↑/↓ options · Enter open · Type filter · Esc close                             │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 3/7 (Ctrl+N): multiple: Space toggles, Enter commits
+
+╭ Channels ────────────────────────────────────────────────────────────────────────╮
+│ → ● mentions                                                                     │
+│   ○ errors                                                                       │
+│   ○ digest — enterprise only                                                     │
+│   ↑/↓ options · Space toggle · Enter choose · Esc close                          │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 4/7 (Ctrl+N): slash filter: `/` starts it, so bare letters are free accelerators: i is this
+panel's own key, x and r are the common meanings delete and refresh (rebindable)
+the kit rejects the other combination: action "i": printable key "i" on a surface with a
+type-to-filter list; use filterMode: 'slash' or a modifier key
+
+╭ Plugins ─────────────────────────────────────────────────────────────────────────╮
+│ → Loop — official                                                          1.4.0 │
+│   Git Helper — community                                            update 1.3.0 │
+│   Enter open · i install · / filter · Esc close                                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 5/7 (Ctrl+N): per-row availability and confirm reuse the key: x deletes the focused row,
+the built-in row says why it cannot, and a destructive key asks first (there is no Delete
+button)
+
+╭ Providers ───────────────────────────────────────────────────────────────────────╮
+│ → DeepSeek — built-in                                                            │
+│   Local — custom                                                                 │
+│   Staging — asks before it is chosen                                             │
+│   ↑/↓ options · Enter edit · Esc close                                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 6/7 (Ctrl+N): a segment strip on the focused row (the model picker): ←/→ steps, Delete
+unpins, it never moves a row
+
+╭ Select a model ──────────────────────────────────────────────────────────────────╮
+│ opencode-go                                                                      │
+│ → opencode-go/DeepSeek V4 Pro — 977k context          min ‹ high (default) › max │
+│   opencode-go/space-bunny-alpha — 256k context                                   │
+│ DeepSeek                                                                         │
+│   DeepSeek/DeepSeek-V41-Flash [current · high] — 977k context                    │
+│ custom                                                                           │
+│   custom/some-model — 128k context                                               │
+│   ←/→ thinking · Enter choose · Type filter · Esc close                          │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 7/7 (Ctrl+N): tree with tri-state checks (Space toggles, → expands) and an accordion (Enter
+or → expands)
+
+╭ Tree and accordion ──────────────────────────────────────────────────────────────╮
+│ → ▾ ◐ filesystem                                    ✓ connected · 120ms  4 tools │
+│   │ ● read_file — Read a file from disk                                          │
+│   │ ● write_file — Create or overwrite a file                                    │
+│   │ ○ delete_file — Remove a file                                    ⚠ dangerous │
+│   ╰ ● list_dir — List a directory                                                │
+│   ▸ ○ github                                       ✓ connected · 340ms  12 tools │
+│                                                                                  │
+│   ▸ plugin-author — preset                                                       │
+│   ▸ preset-author — preset                                                       │
+│   ←/→ branch · Space toggle · Enter branch · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯

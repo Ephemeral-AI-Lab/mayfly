@@ -1,0 +1,12 @@
+--- after start ---
+[2mthe owner answers each save in turn: required (checked in the surface) → failed next (attempt 1)[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mAdd provider[0m[38;2;154;134;230m [0m[38;2;154;134;230m────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [38;2;154;134;230m→[0m [1mName:   [0m[2me.g. production[0m                                                [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   Region: us-east                                                        [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m  [38;2;154;134;230m[ Save ][0m                                                                [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2mfields[0m[2m · [0mEnter [2msubmit[0m[2m · [0mEsc [2mclose[0m                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────╯[0m
+
+[2minvalid repaints beside the field · failed shows a message and keeps the input · completed
+settles · a cancel returns silently[0m

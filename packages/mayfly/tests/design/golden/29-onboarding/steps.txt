@@ -1,0 +1,73 @@
+--- after start ---
+● Language  ›  ○ Connect  ›  ○ Permissions  ›  ○ Ready
+━━━━━━━━━━
+
+╭ Welcome to Mayfly ────────────────────────────────────────────────── step 1 of 4 ╮
+│ ✻ Mayfly  a quiet terminal UI for DeepSeek Harness                               │
+│                                                                                  │
+│ Pick a language and a color theme. You can change both later in /settings.       │
+│                                                                                  │
+│ → Language: ‹ English ›                                                          │
+│   Theme:    dark                                                                 │
+│                                                                                  │
+│ preview  Overview   Usage 3   !   ✓ done                                         │
+│   ↑/↓ fields · ←/→ adjust · Enter continue · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\r" ---
+✓ Language  ›  ● Connect  ›  ○ Permissions  ›  ○ Ready
+               ━━━━━━━━━
+
+╭ Connect to DeepSeek ──────────────────────────────────────────────── step 2 of 4 ╮
+│ Mayfly needs a DeepSeek connection to start.                                     │
+│                                                                                  │
+│ → 1  Sign in with a DeepSeek account [recommended]                               │
+│        browser sign-in, no API key to manage                                     │
+│   2  Enter a DeepSeek API key                                                    │
+│        paste a key from platform.deepseek.com                                    │
+│   3  Skip for now                                                                │
+│        connect later with /account or /provider                                  │
+│   ↑/↓ options · ←/→ tabs · Enter choose · Esc close                              │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\r" ---
+✓ Language  ›  ● Connect  ›  ○ Permissions  ›  ○ Ready
+               ━━━━━━━━━
+
+╭ DeepSeek Account ─────────────────────────────────────────────────── step 2 of 4 ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│   ▸ Browser on another machine?                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+  Enter open · Ctrl+Y copy link · Ctrl+R new link · Esc back
+--- after "\r" ---
+✓ Language  ›  ● Connect  ›  ○ Permissions  ›  ○ Ready
+               ━━━━━━━━━
+
+╭ DeepSeek Account ─────────────────────────────────────────────────── step 2 of 4 ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│ → ▸ Browser on another machine?                                                  │
+│   Enter branch · Ctrl+Y copy link · Ctrl+R new link · Esc back                   │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\r" ---
+✓ Language  ›  ● Connect  ›  ○ Permissions  ›  ○ Ready
+               ━━━━━━━━━
+
+╭ DeepSeek Account ─────────────────────────────────────────────────── step 2 of 4 ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│ → ▾ Browser on another machine?                                                  │
+│     ╰ Callback link: http://localhost:4710/oauth/callback?code=…                 │
+│   Enter branch · Ctrl+Y copy link · Ctrl+R new link · Esc back                   │
+╰──────────────────────────────────────────────────────────────────────────────────╯

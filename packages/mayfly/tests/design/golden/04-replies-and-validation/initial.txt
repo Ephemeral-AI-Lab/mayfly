@@ -1,0 +1,12 @@
+--- after start ---
+the owner answers each save in turn: required (checked in the surface) → failed next (attempt 1)
+
+╭ Add provider ────────────────────────────────────────────────────────────╮
+│ → Name:   e.g. production                                                │
+│   Region: us-east                                                        │
+│  [ Save ]                                                                │
+│   ↑/↓ fields · Enter submit · Esc close                                  │
+╰──────────────────────────────────────────────────────────────────────────╯
+
+invalid repaints beside the field · failed shows a message and keeps the input · completed
+settles · a cancel returns silently

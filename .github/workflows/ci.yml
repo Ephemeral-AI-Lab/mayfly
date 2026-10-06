@@ -87,6 +87,9 @@ jobs:
       # website/public/shots/*.svg; the committed files must match byte for
       # byte. Runs after the build because the painter needs lib/index.js.
       - run: pnpm shots:check
+      # Design goldens: the prototype's frames under a pinned clock are the oracle
+      # the real renderer is compared with; they change only with the prototype.
+      - run: pnpm design:golden:check
       # W5-C ecosystem contract: static package boundaries plus a one-project
       # packed install on this release's sole supported Harness line.
       - run: pnpm check:examples

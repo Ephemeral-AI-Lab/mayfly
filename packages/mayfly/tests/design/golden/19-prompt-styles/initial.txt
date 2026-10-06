@@ -1,0 +1,24 @@
+--- after start ---
+2 rule  compact · 96 columns
+A (chosen) — a blank row and a muted rule with the time before every turn after the first
++2 rows per turn; monochrome-safe; the turn boundary is explicit and the prompt keeps its own
+row
+
+→   » Update the landing page hero copy and run the tests.
+    ▸ Took 38s · 6 tool calls · +10 −3 · Ctrl+O expand
+    ● Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.
+      The one failure was a truncation bug in the tool-line row, fixed in the same change.
+
+  ──────────────────────────────────────────────────────────────────────────────────────── 10:03
+    » Before the release, audit every place that still prints "Working" instead of "Deep
+      diving": the activity row, the tips, the website pages, and the screenshots. List each file
+      you changed, keep the diff small, and do not touch the locale files for other languages. Run
+      the width scan when you are done and tell me which cases cover narrow terminals.
+    ▸ Took 17s · 4 tool calls · +2 −2 · Ctrl+O expand
+    ● Done — 5 files updated; the width scan has 6 narrow cases (24 to 60 columns) and all pass.
+
+  ──────────────────────────────────────────────────────────────────────────────────────── 10:04
+    » Now bump the changelog and run the full gate.
+    ✗ Failed · verify:full timed out after 4m · 4m 12s · 3 tool calls
+      ⎿ last step: Ran pnpm run verify:full ✗ exit 124
+  Enter expand · c copy · Ctrl+G open in editor · Esc close

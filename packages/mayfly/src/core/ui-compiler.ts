@@ -67,6 +67,7 @@ import {
 } from './ui-surface-state.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
+import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation } from './ui-loader-animation.ts'
@@ -132,6 +133,8 @@ export interface MayflyUiCompilerOptions {
   readonly emit: (event: MayflyUiEvent) => void
   /** Called only when Escape did not first cancel compiler-local state. */
   readonly onUnhandledEscape?: () => void
+  /** Measurement sink for validation, compilation, and painting; production passes none. */
+  readonly counters?: MayflyWorkCounters
 }
 
 /** Canonical shell dependencies, including the one host-owned editing engine. */
@@ -154,6 +157,8 @@ export interface MayflyStatusCompilerOptions {
   readonly screenMode: 'main' | 'alternate'
   /** Status output is always bounded to one through three rows; defaults to one. */
   readonly maxRows?: 1 | 2 | 3
+  /** Measurement sink for validation, compilation, and painting; production passes none. */
+  readonly counters?: MayflyWorkCounters
 }
 
 /** Successful canonical compilation result. */
@@ -413,11 +418,13 @@ function renderFailure(error: unknown, fallback = 'unknown render failure'): str
   return ownDataErrorMessage(error) ?? fallback
 }
 
-function staticComponent(render: (width: number) => string[], options: RuntimeCompilerOptions): MayflyComponent {
+function staticComponent(render: (width: number) => string[], options: RuntimeCompilerOptions, counted = true): MayflyComponent {
   return {
     render: width => {
       try {
-        return render(width)
+        const rows = render(width)
+        if (counted) countWork(options.counters, 'rowsPainted', rows.length)
+        return rows
       } catch (error) {
         const message = renderFailure(error)
         options.reportRuntimeFailure(message)
@@ -438,9 +445,10 @@ function pureStaticComponent(render: (width: number) => string[], options: Runti
   const component = staticComponent(width => {
     if (memo?.width === width) return memo.rows
     const rows = render(width)
+    countWork(options.counters, 'rowsPainted', rows.length)
     memo = { width, rows }
     return rows
-  }, options)
+  }, options, false)
   return { render: component.render, invalidate: () => { memo = undefined } }
 }
 
@@ -633,7 +641,7 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
     [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
     render(width: number): string[] {
       const available = Math.max(1, Math.floor(width))
-      if (available < 3) return body.render(available).map(row => options.components.truncateToWidth(row, available, ''))
+      if (available < 3) return body.render(available).map(row => { countWork(options.counters, 'stringsMeasured'); return options.components.truncateToWidth(row, available, '') })
       const requestedPadding = node.padding ?? 0
       const horizontalPadding = Math.min(requestedPadding, Math.max(0, Math.floor((available - 3) / 2)))
       const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
@@ -642,6 +650,7 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
       const tail = renderSurfaceTail(node, available, options.colors)
       const border = options.colors.borderFocus('│')
       const framed = bodyRows.map(row => {
+        countWork(options.counters, 'stringsMeasured', 2)
         const clipped = options.components.truncateToWidth(row, contentWidth, '')
         const fill = ' '.repeat(Math.max(0, contentWidth - options.components.visibleWidth(clipped)))
         const inset = ' '.repeat(horizontalPadding)
@@ -893,6 +902,7 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   const safeWidth = Math.max(1, Math.floor(width))
   for (const candidate of candidates) {
     const row = hintRow(candidate, options.colors.textMuted)
+    countWork(options.counters, 'stringsMeasured')
     if (visibleWidth(row) <= safeWidth) return [row]
   }
   return []
@@ -1094,6 +1104,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
   const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
   const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
   if (node.kind !== 'editor-control' && isDeferredUiNode(node as MayflyUiNode)) return deferredComponent(node as MayflyUiNode, state, options, path, mode)
+  countWork(options.counters, 'unitsCompiled')
   switch (node.kind) {
     case 'editor-control': {
       const editor = options.editor
@@ -1130,9 +1141,12 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       options.components,
       options.colors,
     ), options)
-    case 'rich-text': return pureStaticComponent(width => node.overflow === 'truncate'
-      ? [truncatedRow(joinSpans(node, options.colors), width, options.components)]
-      : options.components.wrapText(joinSpans(node, options.colors), Math.max(1, width)), options)
+    case 'rich-text': return pureStaticComponent(width => {
+      countWork(options.counters, 'stringsMeasured')
+      return node.overflow === 'truncate'
+        ? [truncatedRow(joinSpans(node, options.colors), width, options.components)]
+        : options.components.wrapText(joinSpans(node, options.colors), Math.max(1, width))
+    }, options)
     case 'stack': {
       const stackOptions = {
         ...(node.gap === undefined ? {} : { gap: node.gap }),
@@ -2052,6 +2066,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         limited = [...rows.slice(this.viewportOffset, this.viewportOffset + contentLimit), ...feedbackRows]
       }
       let overflowed = rowLimit !== undefined && rows.length > rowLimit
+      countWork(this.runtimeOptions.counters, 'stringsMeasured', limited.length)
       const rendered = limited.map(row => {
         if (visibleWidth(row) <= safeWidth) return row
         overflowed = true
@@ -2574,7 +2589,7 @@ function statusRowLimit(value: MayflyStatusCompilerOptions['maxRows']): number {
 
 /** Validate first, then compile one canonical UI tree without a bypass path. */
 export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOptions): MayflyUiCompileResult {
-  const admitted = validateMayflyUiNode(value)
+  const admitted = validateMayflyUiNode(value, options.counters)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2594,7 +2609,7 @@ export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOpt
 /** Compile one validated projection into a bridge-owned persistent runtime. */
 export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurfaceCompilerOptions): MayflyUiCompileResult {
   const admitted = value !== null && value === options.surfaceRuntime.interaction?.node
-    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value)
+    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value, options.counters)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2602,7 +2617,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
     const contextEscapeHint = options.onUnhandledEscape === undefined ? undefined : options.escapeHint ?? 'close'
     let node = admitted.value
     if (options.title !== undefined) {
-      const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } })
+      const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)
       if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
       node = admitted.value.kind === 'surface' && admitted.value.chrome === 'overlay'
         ? { ...admitted.value, title: options.title }
@@ -2620,7 +2635,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
 
 /** Validate an editor shell, then compile it around the exact injected engine. */
 export function compileMayflyEditorShellNode(value: unknown, options: MayflyEditorShellCompilerOptions): MayflyEditorShellCompileResult {
-  const admitted = validateMayflyEditorShellNode(value)
+  const admitted = validateMayflyEditorShellNode(value, options.counters)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2636,7 +2651,7 @@ export function compileMayflyEditorShellNode(value: unknown, options: MayflyEdit
 /** Validate the non-interactive status subset, then compile it through the canonical painter. */
 export function compileMayflyStatusNode(value: unknown, options: MayflyStatusCompilerOptions): MayflyStatusCompileResult {
   const maxRows = statusRowLimit(options.maxRows)
-  const admitted = validateMayflyStatusNode(value)
+  const admitted = validateMayflyStatusNode(value, options.counters)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new StatusErrorComponent(admitted.message, options.colors, maxRows) }
   }
@@ -2647,6 +2662,7 @@ export function compileMayflyStatusNode(value: unknown, options: MayflyStatusCom
       getViewport: options.getViewport,
       screenMode: options.screenMode,
       emit: PASSIVE_EVENT_SINK,
+      ...(options.counters === undefined ? {} : { counters: options.counters }),
     }
     const surface = admittedSurface(admitted.value, runtimeOptions, 'status')
     return { ok: true, value: { node: admitted.value, component: new CompiledStatusComponent(surface, maxRows) } }

@@ -1,0 +1,9 @@
+--- after start ---
+╭ Settings ────────────────────────────────────────────────────────────────────────╮
+│ → General             General                                                    │
+│   Model                                                                          │
+│   Permissions           Language:      English                                   │
+│   Providers             Notifications: [on]                                      │
+│   Appearance            Telemetry:     [off]                                     │
+│   ↑/↓ labels · → open · Esc close                                                │
+╰──────────────────────────────────────────────────────────────────────────────────╯

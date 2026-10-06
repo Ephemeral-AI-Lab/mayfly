@@ -1,0 +1,11 @@
+--- after start ---
+╭ Questions ───────────────────────────────────────────────────────── 1 of 3 ╮
+│ ● Auth  ›  ○ Region  ›  ○ Scopes  ›  ○ Review                              │
+│ ━━━━━━                                                                     │
+│                                                                            │
+│ Which auth method should the CLI use?                                      │
+│ → 1  ○ OAuth — browser sign-in, tokens refresh automatically               │
+│   2  ○ API key — paste a token; you rotate it yourself                     │
+│   Other: type your own answer                                              │
+│   ←/→ question · Enter choose · Esc close                                  │
+╰────────────────────────────────────────────────────────────────────────────╯

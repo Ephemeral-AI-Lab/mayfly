@@ -1,0 +1,13 @@
+--- after start ---
+page 1/2 (Ctrl+N): banners: one row, a glyph and a word, severity by tone
+
+⚠ Rate limited · retrying in 12s · attempt 2 of 5 · Esc cancel
+✗ Offline · cannot reach api.deepseek.com · r retry
+⚠ Context 92% full · /compact now, or it will compact automatically at 95%
+ℹ Resumed session · 24 turns · last active 2h ago
+--- after "\u000e" ---
+page 2/2 (Ctrl+N): toasts live in the activity gap; an undo toast carries its key and its deadline
+
+⊘ Deleted session "Docs sync"                                                            u undo · 8s
+
+⡀ Deep diving · 4s                                               ✓ build finished · 22s  Ctrl+J view

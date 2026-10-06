@@ -1,0 +1,9 @@
+--- after start ---
+[2mpage 1/5 (Ctrl+N): running calls: the category picks the label and the detail (cycles every 1.6
+s); a question waits on you[0m
+
+[38;2;154;134;230m●[0m [2mR[0m[2mu[0m[2mn[0m[2mn[0m[2mi[0m[2mn[0m[2mg[0m[2m [0m[2mc[0m[2mo[0m[2mm[0m[2mm[0m[2ma[0m[2mn[0m[2md[0m[2ms[0m [2m· 12s[0m
+[2m  ⎿ [0mpnpm run verify:changed -- --plan
+
+[1m[38;2;230;190;90m?[0m [1mWaiting for your action[0m [2m· 8s[0m
+[2m  ⎿ [0mWhich release channel should this go to?

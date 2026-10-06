@@ -1,0 +1,20 @@
+--- after start ---
+two composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.
+
+╭──────────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+deepseek-chat High  ~/work/mayfly  main ±3                      cache 34%  context: 18% (22.9k/128k)
+Agents 5 ● 1 waiting   Jobs 3 ⏵ 2 running   Goal ● 2/8   Todo 4/6 ● Bump changelog           ↓ views
+--- after "\u0002" ---
+two composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.
+
+╭──────────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+deepseek-chat High  ~/work/mayfly  main ±3              cache 34%  context: 18% (22.9k/128k)  ⚠ ¥6.2
+Agents 5 ● 1 waiting   Jobs 3 ⏵ 2 running   Goal ● 2/8   Todo 4/6 ● Bump changelog           ↓ views

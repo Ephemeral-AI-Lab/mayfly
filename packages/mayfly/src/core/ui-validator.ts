@@ -33,6 +33,7 @@ import type {
 } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult } from './ui-contracts.ts'
 import { printableKey } from './key-actions.ts'
+import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** Maximum aggregate UTF-16 source units accepted in one tree. */
 export const MAYFLY_UI_MAX_TEXT = 20_000
@@ -77,6 +78,8 @@ interface ValidationBudget {
   /** The first printable accelerator, rejected once a filterable list is admitted. */
   printableKey?: string
   filterable: boolean
+  /** Optional measurement sink; admission work is counted here, never retained. */
+  readonly counters?: MayflyWorkCounters
 }
 
 function invalid(message: string): never {
@@ -292,10 +295,11 @@ function unavailableActions(value: unknown, path: string, state: ValidationState
   })))
 }
 
-function listItem(value: unknown, path: string): MayflyListItem {
+function listItem(value: unknown, path: string, counters?: MayflyWorkCounters): MayflyListItem {
   // Item collections are unbounded data rows: each admits under its own
   // quota — the same isolation lazy list admission already applies — so the
   // aggregate row text of a large picker cannot exhaust the tree budget.
+  countWork(counters, 'nodesValidated')
   const state = validationState()
   return enter(value, path, state, object => {
     const disabledValue = own(object, 'disabled', path)
@@ -361,16 +365,11 @@ interface LazyListAdmission {
 
 const lazyLists = new WeakMap<readonly MayflyListItem[], LazyListAdmission>()
 
-function validationState(budget: ValidationBudget = {
-  nodes: 0,
-  text: 0,
-  chartCells: 0,
-  controlIds: new Set(),
-  tabs: new Map(),
-  pages: [],
-  actionKeys: new Set(),
-  filterable: false,
-}): ValidationState {
+function emptyBudget(): ValidationBudget {
+  return { nodes: 0, text: 0, chartCells: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), filterable: false }
+}
+
+function validationState(budget: ValidationBudget = emptyBudget()): ValidationState {
   return {
     active: new WeakSet(),
     pagePath: [],
@@ -471,7 +470,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
   return deferred.result
 }
 
-function lazyListItems(value: unknown, path: string): readonly MayflyListItem[] {
+function lazyListItems(value: unknown, path: string, counters?: MayflyWorkCounters): readonly MayflyListItem[] {
   const prototype = Object.getPrototypeOf(value)
   if (prototype === null || !hasRealmConstructor(prototype, 'Array')) invalid(`${path} must be a plain array`)
   const length = Object.getOwnPropertyDescriptor(value, 'length')!.value as number
@@ -510,7 +509,7 @@ function lazyListItems(value: unknown, path: string): readonly MayflyListItem[] 
       }
       let admitted: MayflyListItem
       try {
-        admitted = listItem(raw(index), `${path}[${String(index)}]`)
+        admitted = listItem(raw(index), `${path}[${String(index)}]`, counters)
         const owner = owners.get(admitted.id)
         if (owner !== undefined && owner !== index) invalid(`${path} contains duplicate ids`)
         owners.set(admitted.id, index)
@@ -851,7 +850,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
     }
     if (kind === 'select' || kind === 'multiselect') {
       const raw = required(object, 'value', path)
-      const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`))
+      const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`, state.budget.counters))
       uniqueIds(options, `${path}.options`)
       if (kind === 'multiselect') return { kind, ...common, value: parseValue(raw, `${path}.value`) as readonly string[], options, ...selectionBounds(object, path) }
       if (raw !== null && typeof raw !== 'string') invalid(`${path}.value must be a string or null`)
@@ -887,6 +886,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly = false, editorSlotAllowed = false): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
   if (depth > MAYFLY_UI_MAX_DEPTH) limit(`Mayfly UI depth exceeds ${String(MAYFLY_UI_MAX_DEPTH)}`)
   state.budget.nodes += 1
+  countWork(state.budget.counters, 'nodesValidated')
   if (state.budget.nodes > MAYFLY_UI_MAX_NODES) limit(`Mayfly UI tree exceeds ${String(MAYFLY_UI_MAX_NODES)} nodes`)
   return enter(value, path, state, object => {
     const kind = own(object, 'kind', path)
@@ -1009,8 +1009,8 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           ? Object.getOwnPropertyDescriptor(itemsValue, 'length')!.value as number
           : 0
         const items = itemCount > MAYFLY_UI_MAX_COLLECTION
-          ? lazyListItems(itemsValue, `${path}.items`)
-          : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`))
+          ? lazyListItems(itemsValue, `${path}.items`, state.budget.counters)
+          : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`, state.budget.counters))
         if (itemCount <= MAYFLY_UI_MAX_COLLECTION) uniqueIds(items, `${path}.items`)
         const selectedIds = collection(required(object, 'selectedIds', path), `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
@@ -1201,8 +1201,8 @@ function assertEditorControlVisible(node: MayflyEditorShellNode, path = '$'): vo
   }
 }
 
-function validate<Value>(value: unknown, mode: ValidationMode): MayflyValidationResult<Value> {
-  const state = validationState()
+function validate<Value>(value: unknown, mode: ValidationMode, counters?: MayflyWorkCounters): MayflyValidationResult<Value> {
+  const state = validationState(counters === undefined ? undefined : { ...emptyBudget(), counters })
   try {
     const result = mode === 'ui'
       ? node(value, '$', state, 0, 'ui')
@@ -1223,16 +1223,16 @@ function validate<Value>(value: unknown, mode: ValidationMode): MayflyValidation
 }
 
 /** Validate, sanitize, canonicalize, and freeze an ordinary public UI tree. */
-export function validateMayflyUiNode(value: unknown): MayflyValidationResult<MayflyUiNode> {
-  return validate(value, 'ui')
+export function validateMayflyUiNode(value: unknown, counters?: MayflyWorkCounters): MayflyValidationResult<MayflyUiNode> {
+  return validate(value, 'ui', counters)
 }
 
 /** Validate the recursively narrowed, non-interactive status tree. */
-export function validateMayflyStatusNode(value: unknown): MayflyValidationResult<MayflyStatusNode> {
-  return validate(value, 'status')
+export function validateMayflyStatusNode(value: unknown, counters?: MayflyWorkCounters): MayflyValidationResult<MayflyStatusNode> {
+  return validate(value, 'status', counters)
 }
 
 /** Validate an editor shell and require exactly one host-owned control slot. */
-export function validateMayflyEditorShellNode(value: unknown): MayflyValidationResult<MayflyEditorShellNode> {
-  return validate(value, 'editor')
+export function validateMayflyEditorShellNode(value: unknown, counters?: MayflyWorkCounters): MayflyValidationResult<MayflyEditorShellNode> {
+  return validate(value, 'editor', counters)
 }

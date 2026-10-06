@@ -1,0 +1,67 @@
+--- after start ---
+variant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 1/4
+
+  ▾ ? Approve command  bash · 1 of 3 waiting
+  $ rm -rf build && pnpm build
+  in ~/work/mayfly   ⚠ deletes files
+── Decide ────────────────────────────────────────────────────────────────────
+→ 1  Reject
+  2  Allow once
+  3  Allow bash for this session
+  Feedback: type to explain…
+  ↑/↓ options · Enter choose · Esc reject
+
+press Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened
+--- after "\u000e" ---
+variant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 2/4
+
+  ▾ ? Approve edit  pane-activity.ts  +2 −1
+     41  41 │     const moon = state.mode === 'waiting'
+     42     │ −   const frame = moon                                          
+         42 │ +   const frame = glyphFor(state)  // moon retired              
+     43  43 │     const now = activityNow()
+    ⋯
+── Decide ────────────────────────────────────────────────────────────────────
+→ 1  Reject
+  2  Allow once
+  3  Allow edits this session
+  Feedback: type to explain…
+  Enter choose · Ctrl+G open diff · Esc reject
+
+press Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened
+--- after "\u000e" ---
+variant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 3/4
+
+  ▾ ? Plan ready for review  6 steps
+  Plan
+  1. Add activeCalls to the facts projection
+  2. Wrap the detail into ⎿ lines in the activity row
+  3. Replace the moon frames with the glyph table
+  4. Move subagents into the tabbed views row
+  5. Restyle approvals and questions
+  6. Screenshots, width scans, docs
+── Decide ────────────────────────────────────────────────────────────────────
+→ 1  Reject
+  2  Approve and start
+  3  Approve and auto-accept edits
+  4  Keep planning…
+  Revise: type the revision in place
+  Enter choose · c copy plan · Esc reject
+
+press Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened
+--- after "\u000e" ---
+variant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 4/4
+
+╭ Permission preset ─────────────────────────────────────── current: Default ╮
+│ Choose how much the agent may do without asking.                           │
+│ → 1  Default [current] — ask before writes                                 │
+│   2  Accept edits — apply file edits freely                                │
+│   3  Full access — no prompts   ⚠ asks first                               │
+│   ↑/↓ options · Enter choose · Esc close                                   │
+╰────────────────────────────────────────────────────────────────────────────╯
+
+press Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened

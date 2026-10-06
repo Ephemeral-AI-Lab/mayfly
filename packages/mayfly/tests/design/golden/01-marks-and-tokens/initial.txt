@@ -1,0 +1,27 @@
+--- after start ---
+page 1/6 (Ctrl+N): selection and focus: → the cursor, ▌ the persistent selection, ▸ ▾ disclosure, ●
+○ ◐ checks, [current], — reason
+
+→ a cursor in a choose list (the row Enter acts on)
+→ Default [current]
+  Accept edits
+  Full access — managed by policy
+
+▌ the persistent selection in a rail; inverse only while the rail has focus
+  General
+→ Model
+  Permissions                                                                                      2
+  General
+→ Model
+
+▸ ▾ disclosure and ● ○ ◐ checks (single: ●/○, multiple: ●/○, a partly selected parent ◐)
+  ▾ ◐ filesystem
+  │ ● read_file
+  ╰ ○ write_file
+  ○ github
+
+‹ v › a value ←/→ changes · • an edited field · (inherited) · ! an error
+→ Model:   ‹ deepseek-chat ›  (inherited)
+• Timeout: 45 s
+  Name:    
+    ! Required

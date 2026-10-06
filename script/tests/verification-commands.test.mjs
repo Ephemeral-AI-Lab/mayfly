@@ -34,13 +34,25 @@ test('a shipped skill runs full validation, agent docs, and packaging', () => {
 test('a full gate retains Website selection and follows the CI deterministic checks', () => {
   const plan = promoteToFull(classifyChanges(['website/index.md']), 'requested')
   const full = scripts(commandsForPlan(plan, { smoke: true }))
-  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'test:coverage', 'smoke:happy']) {
+  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'design:golden:check', 'check:agent-docs', 'check:examples', 'website:build', 'test:coverage', 'smoke:happy']) {
     assert.ok(full.includes(name), name)
   }
   assert.ok(!full.includes('check:pack'))
   const ci = readFileSync(`${ROOT}/.github/workflows/ci.yml`, 'utf8')
-  for (const script of ['typecheck', 'lint', 'test:repo-workflow', 'check:agent-docs', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:examples', 'test:coverage', 'smoke:happy']) {
+  for (const script of ['typecheck', 'lint', 'test:repo-workflow', 'check:agent-docs', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'design:golden:check', 'check:examples', 'test:coverage', 'smoke:happy']) {
     assert.ok(ci.includes(`- run: pnpm ${script}`), `CI must execute ${script}`)
     assert.ok(full.includes(script), `local full gate must execute ${script}`)
   }
+})
+
+test('a prototype change executes the golden check without widening the gate', () => {
+  const plan = classifyChanges(['docs/design/prototypes/ui-kit.mjs'])
+  assert.equal(plan.mode, 'changed')
+  assert.deepEqual(scripts(commandsForPlan(plan)), ['design:golden:check'])
+})
+
+test('the golden scripts are classified repository scripts', () => {
+  const plan = classifyChanges(['script/design-golden.mjs', 'script/design-golden-clock.mjs', 'script/design-golden-walks.mjs'])
+  assert.equal(plan.mode, 'changed')
+  assert.ok(plan.checks.designGolden && plan.checks.repoWorkflowTests)
 })

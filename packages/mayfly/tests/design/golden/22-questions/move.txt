@@ -1,0 +1,36 @@
+--- after start ---
+╭ Questions ───────────────────────────────────────────────────────── 1 of 3 ╮
+│ ● Auth  ›  ○ Region  ›  ○ Scopes  ›  ○ Review                              │
+│ ━━━━━━                                                                     │
+│                                                                            │
+│ Which auth method should the CLI use?                                      │
+│ → 1  ○ OAuth — browser sign-in, tokens refresh automatically               │
+│   2  ○ API key — paste a token; you rotate it yourself                     │
+│   Other: type your own answer                                              │
+│   ←/→ question · Enter choose · Esc close                                  │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[C" ---
+╭ Questions ───────────────────────────────────────────────────────── 2 of 3 ╮
+│ ✓ Auth  ›  ● Region  ›  ○ Scopes  ›  ○ Review                              │
+│            ━━━━━━━━                                                        │
+│                                                                            │
+│ Which region should the service deploy to?                                 │
+│ → 1  ○ us-east-1 — lowest latency to most users                            │
+│   2  ○ eu-west-1 — GDPR data residency                                     │
+│   3  ○ ap-south-1 — closest to the pilot customers                         │
+│   Other: type your own answer                                              │
+│   ←/→ question · Enter choose · Esc close                                  │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[C" ---
+╭ Questions ───────────────────────────────────────────────────────── 3 of 3 ╮
+│ ✓ Auth  ›  ✓ Region  ›  ● Scopes  ›  ○ Review                              │
+│                         ━━━━━━━━                                           │
+│                                                                            │
+│ Which scopes should the token carry?                                       │
+│ select all that apply · Space toggles                                      │
+│ → ○ read — list and fetch resources                                        │
+│   ○ write — create and update resources                                    │
+│   ○ admin — manage members and billing                                     │
+│   Other: type your own answer                                              │
+│   ←/→ question · Enter choose · Esc close                                  │
+╰────────────────────────────────────────────────────────────────────────────╯

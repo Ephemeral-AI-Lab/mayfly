@@ -1,0 +1,133 @@
+--- after start ---
+page 1/7 (Ctrl+N): text, rich text, spacer, divider: eight tones, wrap or truncate, strong italic
+strike
+
+default   sample in this tone
+muted     sample in this tone
+primary   sample in this tone
+accent    sample in this tone
+user      sample in this tone
+success   sample in this tone
+warning   sample in this tone
+danger    sample in this tone
+
+Prefer small diffs and always     Prefer small diffs and always…
+run the width scan before
+pushing.
+wrap (default)                    truncate
+
+deepseek-chat High  PLAN  YOLO  italic  struck  ⏵ 2 jobs
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+── Connection ──────────────────────────────────────────────────────────────────────────────────────
+--- after "\u000e" ---
+page 2/7 (Ctrl+N): fields (key/value) and sections (bold title, body; collapsed shows the title
+only)
+
+Provider: DeepSeek
+Balance:  ¥ 128.40 available
+Status:   ✓ signed in
+
+Connection
+  Name:     production
+  Endpoint: https://api.example.com/v1
+Behaviour
+  …
+...
+--- after "\u000e" ---
+page 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)
+
+ui.code — highlighted by language (h toggles)
+typescript
+const frame = glyphFor(state)
+if (state.mode === 'waiting') {
+return { kind: 'loader', variant: 'gap' }
+}
+
+ui.markdown
+Release notes
+• Hero copy now reads Ship agent UI in a keystroke
+• Width scan covers the new panels
+│ a quote reads muted
+ts
+const a = 1
+--- after "\u000e" ---
+page 4/7 (Ctrl+N): diff: two strings in, aligned rows out — numbered gutters, −/+ and color, ⋯
+between hunks
+
+numbered on (d toggles); an @@ header names the hunk
+@@ -41,8 +41,8 @@
+   41  41 │     const moon = state.mode === 'waiting'
+   42     │ −   const frame = moon                                                                  
+       42 │ +   const frame = glyphFor(state)                                                       
+   43  43 │     const now = activityNow()
+  ⋯
+--- after "\u000e" ---
+page 5/7 (Ctrl+N): charts: sparkline, bars (grouped, stacked, normalized), heatmap with a legend
+
+tokens ▃▄▄▇▅█▆▄▄▅▇█
+
+grouped
+mon ████████████████████████ 62  ███████████████░░░░░░░░░ 40
+tue ████████████░░░░░░░░░░░░ 31  █████████████████████░░░ 55
+
+stacked
+mon ██████████████████████
+tue ████████████████████████
+normalized
+mon ████████████████████████
+tue ████████████████████████
+
+activity
+     Mon Tue Wed Thu 
+AM   ░░  ▒▒  ██  ██  
+PM   ░░  ▒▒  ██  ▒▒  
+legend: ░░ low  ▒▒ mid  ██ high
+--- after "\u000e" ---
+page 6/7 (Ctrl+N): charts: line, point, vertical bars
+
+latency (ms)
+ 244 │          ─ ── ──                           
+ 223 │       ─ ─        ──                        
+ 203 │      ─              ──                    ─
+ 182 │    ─                   ─                 ─ 
+ 161 │   ─                     ─ ─            ─   
+ 141 │ ─                          ─ ─      ─ ─    
+ 120 │─                              ─ ── ─       
+     └────────────────────────────────────────────
+      turn →
+
+point
+  10 │       ●      ●                 ●     ●     
+   8 │  ●                 ●      ●                
+   5 │         ●      ●      ●          ●      ●  
+   3 │     ●     ●                 ●      ●       
+   0 │●                 ●      ●                 ●
+     └────────────────────────────────────────────
+
+vertical
+    ██        
+    ██      ██
+██  ██      ██
+██  ██  ██  ██
+██  ██  ██  ██
+mo  tu  we  th
+--- after "\u000e" ---
+page 7/7 (Ctrl+N): diagram: a flowchart as ASCII within a budget, falling back to its source
+
+budget: 8 KiB, 100 lines, 25 nodes · within budget (b toggles)
+┌───────┐     ┌───────┐     ┌───────┐
+│ queue │────►│ agent │────►│ tools │
+└───────┘     └───────┘     └───────┘
+--- after "b" ---
+page 7/7 (Ctrl+N): diagram: a flowchart as ASCII within a budget, falling back to its source
+
+budget: 8 KiB, 100 lines, 25 nodes · over budget: the original source is shown (b toggles)
+```mermaid
+n0 --> n1
+n1 --> n2
+n2 --> n3
+n3 --> n4
+n4 --> n5
+… 25 more lines
+```

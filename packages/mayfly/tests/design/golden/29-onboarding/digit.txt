@@ -1,0 +1,30 @@
+--- after start ---
+● Language  ›  ○ Connect  ›  ○ Permissions  ›  ○ Ready
+━━━━━━━━━━
+
+╭ Welcome to Mayfly ────────────────────────────────────────────────── step 1 of 4 ╮
+│ ✻ Mayfly  a quiet terminal UI for DeepSeek Harness                               │
+│                                                                                  │
+│ Pick a language and a color theme. You can change both later in /settings.       │
+│                                                                                  │
+│ → Language: ‹ English ›                                                          │
+│   Theme:    dark                                                                 │
+│                                                                                  │
+│ preview  Overview   Usage 3   !   ✓ done                                         │
+│   ↑/↓ fields · ←/→ adjust · Enter continue · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "2" ---
+● Language  ›  ○ Connect  ›  ○ Permissions  ›  ○ Ready
+━━━━━━━━━━
+
+╭ Welcome to Mayfly ────────────────────────────────────────────────── step 1 of 4 ╮
+│ ✻ Mayfly  a quiet terminal UI for DeepSeek Harness                               │
+│                                                                                  │
+│ Pick a language and a color theme. You can change both later in /settings.       │
+│                                                                                  │
+│ → Language: ‹ English ›                                                          │
+│   Theme:    dark                                                                 │
+│                                                                                  │
+│ preview  Overview   Usage 3   !   ✓ done                                         │
+│   ↑/↓ fields · ←/→ adjust · Enter continue · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯

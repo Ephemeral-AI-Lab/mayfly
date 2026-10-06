@@ -1,0 +1,13 @@
+--- after start ---
+page 1/4 (Ctrl+N): decisionPanel: header, preview, numbered choices, same-line input, hidden
+accelerators
+
+╭ Delete branch? ────────────────────────────────────────────── 1 of 2 waiting ╮
+│ feature/old-hero · 3 unmerged commits                                        │
+│ ⚠ the commits are not on any other branch                                    │
+│ → 1  Keep the branch                                                         │
+│   2  Delete it — cannot be undone                                            │
+│   3  Archive it as a tag                                                     │
+│   Note: optional                                                             │
+│   ↑/↓ options · Enter choose · c copy name · Esc reject                      │
+╰──────────────────────────────────────────────────────────────────────────────╯

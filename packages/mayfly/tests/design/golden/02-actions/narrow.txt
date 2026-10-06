@@ -1,0 +1,21 @@
+--- after start ---
+primary [ Save ] · accelerator (c) · danger ! asks first · busy keeps its verb · disabled shows
+its reason · narrow folds into +N
+
+╭ Edit provider ─────────────────────────────────────────────────────────────╮
+│ Name: production · Endpoint: https://api.example.com/v1                    │
+│                                                                            │
+│   [ Save ]    Copy (c)   ! Delete provider   Archive — archive it first    │
+│   Enter run · c copy · Esc close                                           │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "w" ---
+primary [ Save ] · accelerator (c) · danger ! asks first · busy keeps its verb · disabled shows
+its reason · narrow folds into +N
+
+╭ Edit provider ─────────────────────────────╮
+│ Name: production · Endpoint:               │
+│ https://api.example.com/v1                 │
+│                                            │
+│   [ Save ]    Copy (c)   +2                │
+│   Enter run · c copy · Esc close           │
+╰────────────────────────────────────────────╯

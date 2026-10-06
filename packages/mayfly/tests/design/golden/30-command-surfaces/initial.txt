@@ -1,0 +1,18 @@
+--- after start ---
+surface 1/6 (Ctrl+N): command palette: / then type · Enter run
+
+╭ Commands ────────────────────────────────────────────────────────────────────────╮
+│ → /model — Switch model                                                    Alt+M │
+│   /effort — Set thinking effort                                                  │
+│   /compact — Compact the context                                                 │
+│   /clear — Start a fresh conversation                                            │
+│   /rewind — Restore a checkpoint                                         Esc Esc │
+│   /sessions — Browse and resume sessions                                         │
+│   /settings — Edit settings                                                      │
+│   /jobs — Browse background jobs                                                 │
+│   /agents — Browse subagents                                                  F7 │
+│   /status — Show session status                                                  │
+│   /schedule — Show scheduled reminders                                           │
+│   /btw — Ask a side question                                                     │
+│   ↑/↓ options · Enter choose · Type filter · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯

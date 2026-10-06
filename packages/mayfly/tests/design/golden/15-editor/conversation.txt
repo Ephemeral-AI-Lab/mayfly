@@ -1,0 +1,14 @@
+--- after start ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000f" ---
+side question · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭───────────────────────────────────────────────────────────────────── why does the cache miss ╮
+│ > ▌Continue the side question · @ files · # skills                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

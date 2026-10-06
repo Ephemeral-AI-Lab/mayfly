@@ -1,0 +1,89 @@
+--- after start ---
+state 1/7: [signed-out] · waiting · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status: Not signed in                                                            │
+│                                                                                  │
+│ Sign in with your DeepSeek account — models are billed to it and need no API     │
+│ key.                                                                             │
+│                                                                                  │
+│ → Sign in                                                                        │
+│   Use an API key instead                                                         │
+│   ↑/↓ options · Enter choose · Esc close                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\r" ---
+state 2/7: signed-out · [waiting] · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│ → ▸ Browser on another machine?                                                  │
+│   Enter branch · Ctrl+Y copy link · Ctrl+R new link · Esc close                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after +1000ms ---
+state 2/7: signed-out · [waiting] · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│ → ▸ Browser on another machine?                                                  │
+│   Enter branch · Ctrl+Y copy link · Ctrl+R new link · Esc close                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after +1000ms ---
+state 2/7: signed-out · [waiting] · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│ → ▸ Browser on another machine?                                                  │
+│   Enter branch · Ctrl+Y copy link · Ctrl+R new link · Esc close                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after +1000ms ---
+state 2/7: signed-out · [waiting] · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│ → ▸ Browser on another machine?                                                  │
+│   Enter branch · Ctrl+Y copy link · Ctrl+R new link · Esc close                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after +1000ms ---
+state 2/7: signed-out · [waiting] · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│ → ▸ Browser on another machine?                                                  │
+│   Enter branch · Ctrl+Y copy link · Ctrl+R new link · Esc close                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after +1000ms ---
+state 2/7: signed-out · [waiting] · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ────────────────────────────────────────────────────────────────╮
+│ Status:  ✓ Signed in                                                             │
+│ Balance: ¥ 128.40 available                                                      │
+│          topped-up ¥ 100.00 · granted ¥ 28.40                                    │
+│ Models:  account models need no API key                                          │
+│ Checked: 2 min ago                                                               │
+│   Esc close                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────╯

@@ -1,0 +1,33 @@
+--- after start ---
+variant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 1/4
+
+  ▾ ? Approve command  bash · 1 of 3 waiting
+  $ rm -rf build && pnpm build
+  in ~/work/mayfly   ⚠ deletes files
+── Decide ────────────────────────────────────────────────────────────────────
+→ 1  Reject
+  2  Allow once
+  3  Allow bash for this session
+  Feedback: type to explain…
+  ↑/↓ options · Enter choose · Esc reject
+
+press Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened
+--- after "\u000e" ---
+variant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 2/4
+
+  ▾ ? Approve edit  pane-activity.ts  +2 −1
+     41  41 │     const moon = state.mode === 'waiting'
+     42     │ −   const frame = moon                                          
+         42 │ +   const frame = glyphFor(state)  // moon retired              
+     43  43 │     const now = activityNow()
+    ⋯
+── Decide ────────────────────────────────────────────────────────────────────
+→ 1  Reject
+  2  Allow once
+  3  Allow edits this session
+  Feedback: type to explain…
+  Enter choose · Ctrl+G open diff · Esc reject
+
+press Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened

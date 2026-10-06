@@ -1,0 +1,17 @@
+--- after start ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "#" ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > #▌                                                                                         │
+│ → #frontend-design — build distinctive interfaces                                            │
+│   #review — review a diff for defects                                                        │
+│   ↑/↓ options · Tab complete · Enter insert · Esc close                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

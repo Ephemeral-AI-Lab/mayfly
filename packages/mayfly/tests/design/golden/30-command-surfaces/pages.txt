@@ -1,0 +1,82 @@
+--- after start ---
+surface 1/6 (Ctrl+N): command palette: / then type · Enter run
+
+╭ Commands ────────────────────────────────────────────────────────────────────────╮
+│ → /model — Switch model                                                    Alt+M │
+│   /effort — Set thinking effort                                                  │
+│   /compact — Compact the context                                                 │
+│   /clear — Start a fresh conversation                                            │
+│   /rewind — Restore a checkpoint                                         Esc Esc │
+│   /sessions — Browse and resume sessions                                         │
+│   /settings — Edit settings                                                      │
+│   /jobs — Browse background jobs                                                 │
+│   /agents — Browse subagents                                                  F7 │
+│   /status — Show session status                                                  │
+│   /schedule — Show scheduled reminders                                           │
+│   /btw — Ask a side question                                                     │
+│   ↑/↓ options · Enter choose · Type filter · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+surface 2/6 (Ctrl+N): @ file picker: Enter opens in the external editor (↗) · Tab inserts the
+mention
+
+╭ Files ───────────────────────────────────────────────────────────── recent first ╮
+│ → pane-activity.ts — packages/mayfly/src/transcript/                      ↗ code │
+│   pane-agents.ts — packages/mayfly/src/transcript/                               │
+│   activity-detail.ts — packages/mayfly/src/conversation/                         │
+│   ↑/↓ options · Enter choose · Type filter · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+surface 3/6 (Ctrl+N): changed files: Enter opens at the first change · d diff
+
+╭ Changed files ─────────────────────────────────────────────────── 3 this session ╮
+│ → M  pane-activity.ts                                        +12 −3   ↗ code :42 │
+│   A  frame-table.ts                                                       +18 −0 │
+│   D  moon-frames.ts                                                        +0 −9 │
+│   ↑/↓ options · Enter open · d diff · Esc close                                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+surface 4/6 (Ctrl+N): rewind: a checkpoint list with a restore scope on each row (←/→)
+
+╭ Rewind ─────────────────────────────────────────────────────────── 3 checkpoints ╮
+│ → Before "Run the tests" — 12m ago · 2 files changed after                       │
+│   Before "Update landing page hero" — 18m ago · 5 files                          │
+│   Session start — 24m ago                                                        │
+│                                                                                  │
+│   Restore: ‹ conversation + code › conversation only code only                   │
+│   ←/→ restore · Enter restore · Esc close                                        │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+surface 5/6 (Ctrl+N): key help (?, on an empty prompt): contextual, grouped by task
+
+╭ Keys ───────────────────────────────────────────────────── while typing a prompt ╮
+│ ── Send ──────────────────────────────────────────────────────────────────────── │
+│ Enter:     send                                                                  │
+│ Alt+Enter: newline                                                               │
+│ ── Complete ──────────────────────────────────────────────────────────────────── │
+│ / @ # !: commands · files · skills · shell                                       │
+│ ── Model ─────────────────────────────────────────────────────────────────────── │
+│ Alt+M:   cycle                                                                   │
+│ /model:  pick                                                                    │
+│ /effort: thinking                                                                │
+│ ── View ──────────────────────────────────────────────────────────────────────── │
+│ Ctrl+O:  expand                                                                  │
+│ Ctrl+T:  todo                                                                    │
+│ F6 / F7: panes / switch                                                          │
+│ Ctrl+F:  search                                                                  │
+│   Esc close                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+surface 6/6 (Ctrl+N): job output: a followed tail · f follow · x stop
+
+╭ Job · dev ──────────────────────────────────────────────────────── running 4m 2s ╮
+│ 12:01:05  GET /  200  8ms                                                      ░ │
+│ 12:01:09  GET /api/models  200  22ms                                           █ │
+│ 12:01:14  warn  slow query 380ms                                               █ │
+│ 12:01:20  GET /  200  6ms                                                      █ │
+│ 12:01:27  GET /api/sessions  200  31ms                                         █ │
+│ 12:01:33  GET /  200  7ms                                                      █ │
+│ 12:01:41  GET /api/plugins  200  44ms                                          █ │
+│ 12:01:48  GET /  200  5ms                                                      █ │
+│   ↑/↓ scroll · Ctrl+E expand · Esc close                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯

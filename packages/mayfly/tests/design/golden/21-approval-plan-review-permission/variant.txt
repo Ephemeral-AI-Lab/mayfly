@@ -1,0 +1,29 @@
+--- after start ---
+variant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 1/4
+
+  ▾ ? Approve command  bash · 1 of 3 waiting
+  $ rm -rf build && pnpm build
+  in ~/work/mayfly   ⚠ deletes files
+── Decide ────────────────────────────────────────────────────────────────────
+→ 1  Reject
+  2  Allow once
+  3  Allow bash for this session
+  Feedback: type to explain…
+  ↑/↓ options · Enter choose · Esc reject
+
+press Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened
+--- after "\u0014" ---
+variant B: grant-first — the common grant is row 1, a digit chooses at once  ·  card 1/4
+
+  ▾ ? Approve command  bash · 1 of 3 waiting
+  $ rm -rf build && pnpm build
+  in ~/work/mayfly   ⚠ deletes files
+── Decide ────────────────────────────────────────────────────────────────────
+→ 1  Allow once
+  2  Allow bash for this session
+  3  Reject and tell the agent why…
+  Feedback: type to explain…
+  ↑/↓ options · Enter choose · Esc reject
+
+press Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened

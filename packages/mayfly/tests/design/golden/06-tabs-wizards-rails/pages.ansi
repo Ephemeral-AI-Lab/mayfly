@@ -1,0 +1,49 @@
+--- after start ---
+[2mpage 1/4 (Ctrl+N): a tab strip: text color only; ←/→ move when focused, Alt+←/→ from anywhere;
+counts and ! attention[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mStatus[0m[38;2;154;134;230m [0m[38;2;154;134;230m────────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mOverview[0m   [1m[38;2;154;134;230mUsage[0m [38;2;154;134;230m3[0m   [2mConnections[0m [1m[38;2;230;190;90m![0m   [2mSkills[0m [2m12[0m   [2mAbout[0m                     [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m            [1m[38;2;154;134;230m━━━━━━━[0m                                                         [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m                                                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2mUsage page content[0m                                                         [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m←/→ [2mtabs[0m[2m · [0mEnter [2mopen[0m[2m · [0mEsc [2mclose[0m                                        [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 2/4 (Ctrl+N): a wizard: step marks come from position; a forward switch validates (try
+Alt+→ with Name empty)[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mAdd provider[0m[38;2;154;134;230m [0m[38;2;154;134;230m─────────────────────────────────────────────────[0m[38;2;154;134;230m [0m[2mstep 1 of 4[0m[38;2;154;134;230m [0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [38;2;154;134;230m●[0m [1m[38;2;154;134;230mKind[0m[2m  ›  [0m[2m○ Connection[0m[2m  ›  [0m[2m○ Models[0m[2m  ›  [0m[2m○ Review[0m                          [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [38;2;154;134;230m━━━━━━[0m                                                                     [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m                                                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2mKind: nothing to validate on this step[0m                                     [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m←/→ [2mtabs[0m[2m · [0mEnter [2mopen[0m[2m · [0mEsc [2mback[0m                                         [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 3/4 (Ctrl+N): a vertical rail: the content follows the cursor live; ↑/↓ move, → or Enter
+enters the content. ← leaves one level at a time, innermost first (see below)[0m
+[2mfocus levels, outer to inner: rail → content control → a field inside it (a select, a picker)[0m
+[2m← moves out exactly one level. A control that uses ← itself (a select adjusts, a tree row
+collapses, a text field moves its caret) keeps it;[0m
+[2mthe first ← it does not use goes to the rail, wherever the rail sits. Shift+Tab and Esc always
+step out one level too, and the hint row shows ← labels whenever ← goes to the rail.[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mSettings[0m[38;2;154;134;230m [0m[38;2;154;134;230m──────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2m SESSION[0m                  [1m[38;2;154;134;230mModel[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   General                                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [1m[38;2;154;134;230mModel[0m                     Model:  deepseek-chat[2m  (inherited)[0m             [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   Permissions          [2m2[0m    Effort: medium[2m  (inherited)[0m                    [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m INTEGRATIONS[0m                                                              [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   Providers            [1m[38;2;230;190;90m![0m                                                   [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   MCP                  [2m4[0m                                                   [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2mlabels[0m[2m · [0m→ [2mopen[0m[2m · [0mEsc [2mclose[0m                                          [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 4/4 (Ctrl+N): narrow: the active tab stays visible and the rest folds into +N[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mNarrow strip[0m[38;2;154;134;230m [0m[38;2;154;134;230m────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mOverview[0m   [1m[38;2;154;134;230mUsage[0m [38;2;154;134;230m3[0m   [2mConnections[0m [1m[38;2;230;190;90m![0m   [2mSkills[0m [2m12[0m   [2mAbout[0m                   [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m            [1m[38;2;154;134;230m━━━━━━━[0m                                                       [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m←/→ [2mtabs[0m[2m · [0mEnter [2mopen[0m[2m · [0mEsc [2mclose[0m                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────╯[0m

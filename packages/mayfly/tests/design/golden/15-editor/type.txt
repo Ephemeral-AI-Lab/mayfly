@@ -1,0 +1,21 @@
+--- after start ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "h" ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > h▌                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "i" ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > hi▌                                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

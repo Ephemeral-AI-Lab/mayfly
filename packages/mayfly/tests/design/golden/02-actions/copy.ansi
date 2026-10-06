@@ -1,0 +1,21 @@
+--- after start ---
+[2mprimary [ Save ] · accelerator (c) · danger ! asks first · busy keeps its verb · disabled shows
+its reason · narrow folds into +N[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mEdit provider[0m[38;2;154;134;230m [0m[38;2;154;134;230m─────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mName: production · Endpoint: https://api.example.com/v1[0m                    [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m                                                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m  [7m [ Save ] [0m   Copy (c)   [38;2;230;110;110m! Delete provider[0m   [2mArchive — archive it first[0m    [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0mEnter [2mrun[0m[2m · [0mc [2mcopy[0m[2m · [0mEsc [2mclose[0m                                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "c" ---
+[2mprimary [ Save ] · accelerator (c) · danger ! asks first · busy keeps its verb · disabled shows
+its reason · narrow folds into +N[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mEdit provider[0m[38;2;154;134;230m [0m[38;2;154;134;230m─────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mName: production · Endpoint: https://api.example.com/v1[0m                    [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m                                                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m  [7m [ Save ] [0m   Copy (c)   [38;2;230;110;110m! Delete provider[0m   [2mArchive — archive it first[0m    [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [38;2;110;200;140m✓ [0mCopied                                                                   [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0mEnter [2mrun[0m[2m · [0mc [2mcopy[0m[2m · [0mEsc [2mclose[0m                                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰────────────────────────────────────────────────────────────────────────────╯[0m

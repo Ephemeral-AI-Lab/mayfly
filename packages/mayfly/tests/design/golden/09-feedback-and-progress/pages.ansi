@@ -1,0 +1,33 @@
+--- after start ---
+[2mpage 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint[0m
+
+[38;2;154;134;230m·[0m Thinking
+[38;2;154;134;230m⡀[0m Working
+[38;2;154;134;230m⣾[0m Discovering models from api.example.com [2m12s[0m
+  [2mEsc cancel[0m
+[38;2;84;79;103m●[0m Waiting for authorization [2m45s[0m
+--- after "\u000e" ---
+[2mpage 2/4 (Ctrl+N): progress: determinate cells with n/N, and the heading rule (heavy for done,
+light for what is left)[0m
+
+Building [2m▱▱▱▱▱▱▱▱▱▱[0m 0/10
+[38;2;154;134;230m▰▰▰▰▰▰▰▰▰[0m[2m▱[0m 90%
+
+[38;2;154;134;230m━━━━━━━━━━[0m[2m──────────────────────────────[0m  [1m[38;2;154;134;230mGoal[0m[2m round 2 of 8[0m
+[38;2;230;110;110m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m  [1m[38;2;154;134;230mGoal[0m[38;2;230;110;110m ✕ blocked[0m
+[2ma bar never appears for an unknown duration: an eased bar that never completes is a fabricated
+estimate[0m
+--- after "\u000e" ---
+[2mpage 3/4 (Ctrl+N): settled forms are static; the retry is a key[0m
+
+[38;2;110;200;140m✓ [0mDiscovered 14 models[2m · 2.1s[0m
+[38;2;230;110;110m✗ [0mDiscovery failed: 401 Unauthorized[2m  r retry[0m
+[2m⊘ Cancelled[0m
+--- after "\u000e" ---
+[2mpage 4/4 (Ctrl+N): empty: what is missing and the next action[0m
+
+[2mNo sessions found[0m
+[2mRestore a checkpoint with /rewind[0m
+
+[2mNo plugins installed[0m
+[2mpress → to browse[0m

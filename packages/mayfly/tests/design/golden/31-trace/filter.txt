@@ -1,0 +1,57 @@
+--- after start ---
+one tree: a turn is a node, its events are children with a duration meter; the right pane shows
+the selected event as highlighted JSON
+
+╭ Trace · session 4f2a9 ───────────────────────────────────────────────────────────────────────────── 8 events ╮
+│ → ▾ Turn 1  10:02:11  38s  ↑18.4k ↓0.6k                      ✓  Type:    tool-result                         │
+│   │ 10:02:11 #1  » user message [main] ▱▱▱▱▱▱ Update the land…  Surface: tool                                │
+│   │ 10:02:12 #2  ● model request [main] ▰▰▱▱▱▱ deepseek-chat …  Took:    12.1s                               │
+│   │ 10:02:17 #3  ⏵ bash [tool] ▱▱▱▱▱▱ pnpm run test             json                                       █ │
+│   │ 10:02:29 #4  ✗ bash result [tool] ▰▰▰▰▰▰ exit 1 · 12.1s ·…   1 │ {                                     █ │
+│   ╰ 10:02:30 #5  ● subagent review [subagent] ▰▰▰▱▱▱ Audit fa…   2 │   "seq": 4,                           █ │
+│   ▾ Turn 2  10:04:02  4m 12s  ↑31.0k ↓2.1k            ✗ failed   3 │   "type": "tool-result",              █ │
+│   │ 10:04:02 #6  » user message [main] ▱▱▱▱▱▱ Now bump the ch…   4 │   "surface": "tool",                  █ │
+│   │ 10:04:09 #7  ⏵ bash [tool] ▱▱▱▱▱▱ pnpm run verify:full       5 │   "turn": 1,                          ░ │
+│   ╰ 10:08:09 #8  ✗ error [system] ▰▰▰▰▰▰ verify:full timed ou…   6 │   "name": "bash",                     ░ │
+│                                                                  7 │   "ok": false,                        ░ │
+│                                                                  8 │   "exitCode": 1,                      ░ │
+│   Enter branch · c copy item · / filter · Esc close                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "/" ---
+one tree: a turn is a node, its events are children with a duration meter; the right pane shows
+the selected event as highlighted JSON
+
+╭ Trace · session 4f2a9 ───────────────────────────────────────────────────────────────────────────── 8 events ╮
+│ / ▌                                                 10 matches  Type:    tool-result                         │
+│ → ▾ Turn 1  10:02:11  38s  ↑18.4k ↓0.6k                      ✓  Surface: tool                                │
+│   │ 10:02:11 #1  » user message [main] ▱▱▱▱▱▱ Update the land…  Took:    12.1s                               │
+│   │ 10:02:12 #2  ● model request [main] ▰▰▱▱▱▱ deepseek-chat …  json                                       █ │
+│   │ 10:02:17 #3  ⏵ bash [tool] ▱▱▱▱▱▱ pnpm run test              1 │ {                                     █ │
+│   │ 10:02:29 #4  ✗ bash result [tool] ▰▰▰▰▰▰ exit 1 · 12.1s ·…   2 │   "seq": 4,                           █ │
+│   ╰ 10:02:30 #5  ● subagent review [subagent] ▰▰▰▱▱▱ Audit fa…   3 │   "type": "tool-result",              █ │
+│   ▾ Turn 2  10:04:02  4m 12s  ↑31.0k ↓2.1k            ✗ failed   4 │   "surface": "tool",                  █ │
+│   │ 10:04:02 #6  » user message [main] ▱▱▱▱▱▱ Now bump the ch…   5 │   "turn": 1,                          ░ │
+│   │ 10:04:09 #7  ⏵ bash [tool] ▱▱▱▱▱▱ pnpm run verify:full       6 │   "name": "bash",                     ░ │
+│   ╰ 10:08:09 #8  ✗ error [system] ▰▰▰▰▰▰ verify:full timed ou…   7 │   "ok": false,                        ░ │
+│                                                                  8 │   "exitCode": 1,                      ░ │
+│   Enter open · Ctrl+U clear · Esc end search                                                                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "e" ---
+one tree: a turn is a node, its events are children with a duration meter; the right pane shows
+the selected event as highlighted JSON
+
+╭ Trace · session 4f2a9 ───────────────────────────────────────────────────────────────────────────── 8 events ╮
+│ / e▌                                                 8 matches  Type:    tool-result                         │
+│ → 10:02:11 #1  » user message [main] ▱▱▱▱▱▱ Update the landin…  Surface: tool                                │
+│   10:02:12 #2  ● model request [main] ▰▰▱▱▱▱ deepseek-chat · …  Took:    12.1s                               │
+│   10:02:17 #3  ⏵ bash [tool] ▱▱▱▱▱▱ pnpm run test               json                                       █ │
+│   10:02:29 #4  ✗ bash result [tool] ▰▰▰▰▰▰ exit 1 · 12.1s · w…   1 │ {                                     █ │
+│   10:02:30 #5  ● subagent review [subagent] ▰▰▰▱▱▱ Audit fact…   2 │   "seq": 4,                           █ │
+│   10:04:02 #6  » user message [main] ▱▱▱▱▱▱ Now bump the chan…   3 │   "type": "tool-result",              █ │
+│   10:04:09 #7  ⏵ bash [tool] ▱▱▱▱▱▱ pnpm run verify:full         4 │   "surface": "tool",                  █ │
+│   10:08:09 #8  ✗ error [system] ▰▰▰▰▰▰ verify:full timed out …   5 │   "turn": 1,                          ░ │
+│                                                                  6 │   "name": "bash",                     ░ │
+│                                                                  7 │   "ok": false,                        ░ │
+│                                                                  8 │   "exitCode": 1,                      ░ │
+│   Enter open · Ctrl+U clear · Esc end search                                                                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

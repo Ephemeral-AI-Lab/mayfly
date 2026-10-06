@@ -1,0 +1,54 @@
+--- after start ---
+╭ Plugin marketplace ──────────────────────────────────────────────────────────────────────────────────────────╮
+│ Installed 3   Browse 5    index updated 2h ago · 8 entries                                                   │
+│ ━━━━━━━━━━━                                                                                                  │
+│                                                                                                              │
+│ → Loop             official  T W                     1.4.0  Loop  official · Automation                      │
+│   Git Helper       community T W              update 1.3.0  Repeat a prompt on an interval.                  │
+│   Legacy Search    deprecated community T ·          0.9.4                                                   │
+│                                                             Status:   ✓ installed 1.4.0                      │
+│                                                             Surfaces: TUI ✓ works here                       │
+│                                                                       Web ✓ works on dsh Web                 │
+│                                                             Provides: /loop · loop_start · loop_stop         │
+│                                                             Engines:  dsh ^0.2 · mayfly ^0.1                 │
+│                                                             Needs:    schedule                               │
+│                                                             Verified: 2026-09-20                             │
+│                                                             Source:   npm                                    │
+│   Enter open · i install · / filter · Esc close                                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "/" ---
+╭ Plugin marketplace ──────────────────────────────────────────────────────────────────────────────────────────╮
+│ Installed 3   Browse 5    index updated 2h ago · 8 entries                                                   │
+│ ━━━━━━━━━━━                                                                                                  │
+│                                                                                                              │
+│ / ▌                                              3 matches  Loop  official · Automation                      │
+│ → Loop             official  T W                     1.4.0  Repeat a prompt on an interval.                  │
+│   Git Helper       community T W              update 1.3.0                                                   │
+│   Legacy Search    deprecated community T ·          0.9.4  Status:   ✓ installed 1.4.0                      │
+│                                                             Surfaces: TUI ✓ works here                       │
+│                                                                       Web ✓ works on dsh Web                 │
+│                                                             Provides: /loop · loop_start · loop_stop         │
+│                                                             Engines:  dsh ^0.2 · mayfly ^0.1                 │
+│                                                             Needs:    schedule                               │
+│                                                             Verified: 2026-09-20                             │
+│                                                             Source:   npm                                    │
+│   Enter open · Ctrl+U clear · Esc end search                                                                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "a" ---
+╭ Plugin marketplace ──────────────────────────────────────────────────────────────────────────────────────────╮
+│ Installed 3   Browse 5    index updated 2h ago · 8 entries                                                   │
+│ ━━━━━━━━━━━                                                                                                  │
+│                                                                                                              │
+│ / a▌                                               1 match  Loop  official · Automation                      │
+│ → Legacy Search    deprecated community T ·          0.9.4  Repeat a prompt on an interval.                  │
+│                                                                                                              │
+│                                                             Status:   ✓ installed 1.4.0                      │
+│                                                             Surfaces: TUI ✓ works here                       │
+│                                                                       Web ✓ works on dsh Web                 │
+│                                                             Provides: /loop · loop_start · loop_stop         │
+│                                                             Engines:  dsh ^0.2 · mayfly ^0.1                 │
+│                                                             Needs:    schedule                               │
+│                                                             Verified: 2026-09-20                             │
+│                                                             Source:   npm                                    │
+│   Enter open · Ctrl+U clear · Esc end search                                                                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

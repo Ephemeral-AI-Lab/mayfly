@@ -1,0 +1,28 @@
+--- after start ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[A" ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > also update the footer▌                                                       ↑ queued 1/4 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[A" ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > run the width scan again▌                                                    ↑ history 2/4 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > also update the footer▌                                                       ↑ queued 1/4 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

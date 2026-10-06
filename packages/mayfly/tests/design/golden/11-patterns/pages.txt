@@ -1,0 +1,42 @@
+--- after start ---
+page 1/4 (Ctrl+N): decisionPanel: header, preview, numbered choices, same-line input, hidden
+accelerators
+
+╭ Delete branch? ────────────────────────────────────────────── 1 of 2 waiting ╮
+│ feature/old-hero · 3 unmerged commits                                        │
+│ ⚠ the commits are not on any other branch                                    │
+│ → 1  Keep the branch                                                         │
+│   2  Delete it — cannot be undone                                            │
+│   3  Archive it as a tag                                                     │
+│   Note: optional                                                             │
+│   ↑/↓ options · Enter choose · c copy name · Esc reject                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 2/4 (Ctrl+N): railPanel: labels on the left, live content on the right
+
+╭ Workspaces ──────────────────────────────────────────────────────────────────╮
+│ → work/mayfly            8  → Fix login redirect                          2h │
+│   website                5    Docs sync                                   1d │
+│   notes                  2                                                   │
+│   ↑/↓ labels · → open · Esc close                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 3/4 (Ctrl+N): splitView: list and detail side by side from 100 columns, the list alone
+below
+
+→ Loop — official                                    1.4.0  Name:   Loop
+  Git Helper — community                      update 1.3.0  Source: official
+                                                            Status: ✓ installed 1.4.0
+  ↑/↓ options · Enter open · Esc close
+--- after "\u000e" ---
+page 4/4 (Ctrl+N): statusPage: a read-only key/value page under tabs
+
+╭ Status ──────────────────────────────────────────────────────────────────────╮
+│ Overview   Usage   Account !                                                 │
+│ ━━━━━━━━                                                                     │
+│                                                                              │
+│ Provider: DeepSeek                                                           │
+│ Balance:  ⚠ ¥ 6.20 low balance                                               │
+│ Checked:  2 min ago · r refresh                                              │
+│   ←/→ tabs · Enter open · Esc close                                          │
+╰──────────────────────────────────────────────────────────────────────────────╯

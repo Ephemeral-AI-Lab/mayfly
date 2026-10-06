@@ -1,0 +1,18 @@
+--- after start ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "/" ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > /▌                                                                                         │
+│ → /model — switch model and thinking                                                         │
+│   /sessions — browse and resume sessions                                                     │
+│   /trace — inspect the execution trace                                                       │
+│   ↑/↓ options · Tab complete · Enter insert · Esc close                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

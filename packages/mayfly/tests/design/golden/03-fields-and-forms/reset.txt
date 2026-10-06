@@ -1,0 +1,34 @@
+--- after start ---
+╭ Edit provider ───────────────────────────────────────────────────────────╮
+│ ── Connection ──────────────────────────────                             │
+│ → Name:      production                                                  │
+│   Endpoint:  https://api.example.com/v1                                  │
+│   API key:   •••••••••• (saved)                                          │
+│ ── Behaviour ───────────────────────────────                             │
+│   Model:     deepseek-chat  (inherited)                                  │
+│   Timeout:   30 s  (inherited)                                           │
+│   Streaming: [on]                                                        │
+│   Channels:  mentions, errors                                            │
+│   Directory: ~/work/may                                                  │
+│   Notes:     Prefer small diffs. …                                       │
+│ ── Finish ────────────────────────────────────────────────────────────── │
+│  [ Save ]                                                                │
+│   ↑/↓ fields · Enter edit · Esc close                                    │
+╰──────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[3~" ---
+╭ Edit provider ───────────────────────────────────────────────────────────╮
+│ ── Connection ──────────────────────────────                             │
+│ → Name:      production                                                  │
+│   Endpoint:  https://api.example.com/v1                                  │
+│   API key:   •••••••••• (saved)                                          │
+│ ── Behaviour ───────────────────────────────                             │
+│   Model:     deepseek-chat  (inherited)                                  │
+│   Timeout:   30 s  (inherited)                                           │
+│   Streaming: [on]                                                        │
+│   Channels:  mentions, errors                                            │
+│   Directory: ~/work/may                                                  │
+│   Notes:     Prefer small diffs. …                                       │
+│ ── Finish ────────────────────────────────────────────────────────────── │
+│  [ Save ]                                                                │
+│   ↑/↓ fields · Enter edit · Esc close                                    │
+╰──────────────────────────────────────────────────────────────────────────╯

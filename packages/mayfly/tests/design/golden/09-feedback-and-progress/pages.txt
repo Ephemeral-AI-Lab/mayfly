@@ -1,0 +1,33 @@
+--- after start ---
+page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
+
+· Thinking
+⡀ Working
+⣾ Discovering models from api.example.com 12s
+  Esc cancel
+● Waiting for authorization 45s
+--- after "\u000e" ---
+page 2/4 (Ctrl+N): progress: determinate cells with n/N, and the heading rule (heavy for done,
+light for what is left)
+
+Building ▱▱▱▱▱▱▱▱▱▱ 0/10
+▰▰▰▰▰▰▰▰▰▱ 90%
+
+━━━━━━━━━━──────────────────────────────  Goal round 2 of 8
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  Goal ✕ blocked
+a bar never appears for an unknown duration: an eased bar that never completes is a fabricated
+estimate
+--- after "\u000e" ---
+page 3/4 (Ctrl+N): settled forms are static; the retry is a key
+
+✓ Discovered 14 models · 2.1s
+✗ Discovery failed: 401 Unauthorized  r retry
+⊘ Cancelled
+--- after "\u000e" ---
+page 4/4 (Ctrl+N): empty: what is missing and the next action
+
+No sessions found
+Restore a checkpoint with /rewind
+
+No plugins installed
+press → to browse

@@ -1,0 +1,8 @@
+--- after start ---
+page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
+
+· Thinking
+⡀ Working
+⣾ Discovering models from api.example.com 12s
+  Esc cancel
+● Waiting for authorization 45s

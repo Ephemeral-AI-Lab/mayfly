@@ -1,0 +1,40 @@
+--- after start ---
+chrome kinds: overlay, surface, lane, none · page 1/3
+
+overlay: rounded, focus border color
+╭ Approve bash? ─────────────────────────────────────────── 1 of 3 waiting ╮
+│ optional subtitle (muted)                                                │
+│ Runs: pnpm build                                                         │
+│ optional custom footer                                                   │
+╰──────────────────────────────────────────────────────────────────────────╯
+surface: rounded, quiet border color
+╭ Select a model ──────────────────────────────────────────────────────────╮
+│ → DeepSeek/DeepSeek-V4-Pro                                               │
+╰──────────────────────────────────────────────────────────────────────────╯
+lane: rules only (the queue pane head)
+── Queued (2) · ↑ recall newest ────────────────────────────────────────────
+Queued: also update the footer
+none: a bare bold title (the todo pane)
+Todo
+✓ read the config
+--- after "\u000e" ---
+a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+collapses · page 2/3
+
+╭ Output ─────────────────────────────────────────────────────── following ╮
+│ log line 7                                                             ░ │
+│ log line 8                                                             ░ │
+│ log line 9                                                             ░ │
+│ log line 10                                                            █ │
+│ log line 11                                                            █ │
+│ log line 12                                                            █ │
+│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+╰──────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+header badges · page 3/3
+
+╭ Edit provider ────────────────────────────────────────── unsaved changes ╮
+│ A badge on the right of the title rule carries a short state.            │
+│ Narrow widths drop the subtitle and badges before the title.             │
+│   Esc close                                                              │
+╰──────────────────────────────────────────────────────────────────────────╯
