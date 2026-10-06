@@ -135,6 +135,30 @@ function settingsPanel(): MayflyUiNode {
   return ui.stack.column([ui.child(fieldBlock('settings', 10)), ui.child(listNode('namespaces', Array.from({ length: 8 }, (_, index) => item(index))))])
 }
 
+/** W6 with `changed` of the 32 panes republished in one burst; the spec checks that the work grows with `changed`, not with 32. */
+export function swarmWorkload(changed: number): Workload {
+  return {
+    id: 'W6', title: `swarm: 32 panes of a field block and an 8-item list, a burst changes ${String(changed)} of them`,
+    setup(counters) {
+      const paneNode = (index: number, revision = 0): MayflyUiNode => ui.stack.column([ui.child(fieldBlock(`pane-${String(index)}`, 4, revision)), ui.child(listNode(`list-${String(index)}`, Array.from({ length: 8 }, (__, row) => item(row))))])
+      const panes = Array.from({ length: 32 }, (_, index) => new Surface(`w6-${String(index)}`, paneNode(index), counters))
+      for (const pane of panes) pane.render()
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          for (let step = 0; step < changed; step += 1) {
+            const index = 3 + step * 8
+            panes[index]!.publish(paneNode(index, revision))
+          }
+        },
+        dispose: () => { for (const pane of panes) pane.dispose() },
+      }
+    },
+  }
+}
+
 export const WORKLOADS: readonly Workload[] = [
   {
     id: 'W1', title: 'status tick: a row of 12 entries, one entry changes',
@@ -199,24 +223,7 @@ export const WORKLOADS: readonly Workload[] = [
       return { step: () => { surface.press('a') }, dispose: () => surface.dispose() }
     },
   },
-  {
-    id: 'W6', title: 'swarm: 32 panes of a field block and an 8-item list, a burst changes 4 of them',
-    setup(counters) {
-      const panes = Array.from({ length: 32 }, (_, index) => new Surface(`w6-${String(index)}`, ui.stack.column([ui.child(fieldBlock(`pane-${String(index)}`, 4)), ui.child(listNode(`list-${String(index)}`, Array.from({ length: 8 }, (__, row) => item(row))))]), counters))
-      for (const pane of panes) pane.render()
-      let revision = 0
-      reset(counters)
-      return {
-        step: () => {
-          revision += 1
-          for (const index of [3, 11, 19, 27]) {
-            panes[index]!.publish(ui.stack.column([ui.child(fieldBlock(`pane-${String(index)}`, 4, revision)), ui.child(listNode(`list-${String(index)}`, Array.from({ length: 8 }, (__, row) => item(row))))]))
-          }
-        },
-        dispose: () => { for (const pane of panes) pane.dispose() },
-      }
-    },
-  },
+  swarmWorkload(4),
   {
     id: 'W7', title: 'resize: a settings-sized panel painted at a new width',
     setup(counters) {

@@ -1,0 +1,10 @@
+{
+  "W1": { "nodesValidated": 13, "unitsCompiled": 13, "rowsPainted": 34, "stringsMeasured": 25 },
+  "W2": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 121, "stringsMeasured": 40 },
+  "W3": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 81, "stringsMeasured": 42 },
+  "W4": { "nodesValidated": 45, "unitsCompiled": 1, "rowsPainted": 81, "stringsMeasured": 42 },
+  "W5": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 1, "stringsMeasured": 22 },
+  "W6": { "nodesValidated": 44, "unitsCompiled": 12, "rowsPainted": 36, "stringsMeasured": 56 },
+  "W7": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 9, "stringsMeasured": 20 },
+  "W8": { "nodesValidated": 11, "unitsCompiled": 3, "rowsPainted": 9, "stringsMeasured": 20 }
+}
