@@ -1,12 +1,18 @@
 /**
- * The work-budget workloads W1 to W8 (docs/design/implementation-roadmap.md section 7.1). Each one builds a surface of
+ * The work-budget workloads W1 to W8 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
+ * node slot (slice 1.10a), the path the footer and the conversation take from Phases 3 and 6. Each one builds a surface of
  * a stated shape, then runs one steady-state step that publishes, presses a key, or ticks the clock, and reports the
  * counters of that step alone. The counts are deterministic, so a spec gates them; `script/audit-performance.mjs`
  * runs the same workloads beside its wall-clock timings.
  */
 
+import { Context } from '@deepseek-ai/cordis'
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { freezeWire, ui } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
+import { MayflyScreenService } from '../../src/core/screen.ts'
+import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import {
   MayflyUiSurfaceRuntime,
   compileMayflyStatusNode,
@@ -18,7 +24,7 @@ import { MayflyCompileCache } from '../../src/core/ui-compile-cache.ts'
 import { createAdmissionCache } from '../../src/core/ui-validator.ts'
 import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
 
@@ -114,6 +120,45 @@ class Surface {
   dispose(): void {
     this.runtime.dispose()
     this.model.dispose()
+  }
+}
+
+/**
+ * A screen whose node slots are bound the way the surface renderer binds them, over a runtime that only holds the hosts
+ * and moves focus: the mounting path of the footer, the editor, and the conversation (roadmap slice 1.10a).
+ */
+class SlotScreen {
+  private readonly added: MayflyComponent[] = []
+  private readonly bottom: MayflyComponent[] = []
+  private readonly unbind: () => void
+  private readonly slots: MayflyNodeSlot[] = []
+  private readonly screen: MayflyScreenService
+
+  constructor(counters: MayflyWorkCounters) {
+    const root = new Context()
+    const runtime = {
+      mode: 'alternate', columns: WIDTH, rows: ROWS, surfaceLaneRows: () => 0, hasCapturingOverlay: () => false,
+      addChild: (component: MayflyComponent) => { this.added.push(component) },
+      addBottomChild: (component: MayflyComponent) => { this.bottom.push(component) },
+      setFocus: (component: MayflyComponent | null) => { if (component !== null) (component as MayflyFocusable).focused = true },
+      requestRender: () => {},
+    } as unknown as MayflyTerminalRuntime
+    this.screen = new MayflyScreenService(root, runtime)
+    this.unbind = this.screen.bindNodeSlots({
+      interaction: new UiInteractionService(root), components, colors, keymap: {} as MayflyKeymap, mode: 'alternate', requestRender: () => {}, counters,
+    })
+  }
+
+  /** Leases the footer or the conversation and returns the lease with the host that paints it. */
+  mount(region: 'footer' | 'content'): { readonly slot: MayflyNodeSlot, readonly host: MayflyComponent } {
+    const slot = region === 'footer' ? this.screen.mountNodeSlot('status.footer', { region }) : this.screen.mountNodeSlot('transcript.conversation', { region })
+    this.slots.push(slot)
+    return { slot, host: region === 'footer' ? this.bottom[1]! : this.added[1]! }
+  }
+
+  dispose(): void {
+    for (const slot of this.slots) slot.dispose()
+    this.unbind()
   }
 }
 
@@ -249,6 +294,44 @@ export const WORKLOADS: readonly Workload[] = [
           surface.render()
         },
         dispose: () => surface?.dispose(),
+      }
+    },
+  },
+  {
+    id: 'W1-slot', title: 'status tick through the node slot: a footer row of 12 entries, one entry changes',
+    setup(counters) {
+      const entries = Array.from({ length: 11 }, (_, index) => ui.child(ui.richText([{ text: `entry ${String(index)} ` }, { text: '0', tone: 'muted' }])))
+      const screen = new SlotScreen(counters)
+      const { slot, host } = screen.mount('footer')
+      let revision = 0
+      const publish = (): void => {
+        revision += 1
+        slot.set(ui.stack.row([...entries, ui.child(ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]))]))
+        host.render(WIDTH)
+      }
+      publish()
+      reset(counters)
+      return { step: publish, dispose: () => { screen.dispose() } }
+    },
+  },
+  {
+    id: 'W4-slot', title: 'stream through the node slot: a focused conversation list of 2,000 items, the last item changes',
+    setup(counters) {
+      const items = Array.from({ length: 2000 }, (_, index) => freezeWire(item(index)))
+      const screen = new SlotScreen(counters)
+      const { slot, host } = screen.mount('content')
+      slot.set(listNode('stream', items))
+      slot.focus()
+      host.render(WIDTH)
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          slot.set(listNode('stream', [...items.slice(0, -1), item(1999, { detail: `streaming ${String(revision)}` })]))
+          host.render(WIDTH)
+        },
+        dispose: () => { screen.dispose() },
       }
     },
   },

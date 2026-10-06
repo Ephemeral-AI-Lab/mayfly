@@ -2,7 +2,8 @@
  * The work-budget gate. Each workload of docs/design/implementation-roadmap.md section 7.1 runs headless and its
  * counters must not exceed `budgets.json`. The budgets start at `baseline.json`, the work the pipeline did in slice 1.0,
  * and each engine part of slice 1.1 lowers its workloads' rows to the section 7.1 figure; a budget may never rise above the
- * baseline. `UPDATE_WORK_BASELINE=1` rewrites the baseline file after a deliberate change to the workloads.
+ * baseline. W1-slot and W4-slot, the node-slot workloads of slice 1.10a, take their baseline rows from their first
+ * measurement. `UPDATE_WORK_BASELINE=1` rewrites the baseline file after a deliberate change to the workloads.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

@@ -513,7 +513,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.1 | merged (#100) | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
 | 1.2 | built (#102) | `feat/ui-foundation-1-2` | Six parts; full gate green; scenes 1 p1-p5, 7 p1, 8 p3-p4, 9 p3 pinned and scene 2 matched; Δ20 approved |
 | 1.7 | merged (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage |
-| 1.10a | not started | `feat/ui-foundation-1-10a` | Node slot. Needs: none |
+| 1.10a | merged (#103) | `feat/ui-foundation-1-10a` | Node slot. Full gate green with 100% coverage; no visible change; `W1-slot` and `W4-slot` budgets |
 | 1.9a | not started | `feat/ui-foundation-1-9a` | `ui.image`. Needs: none |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
 | 1.3 | not started | `feat/ui-foundation-1-3` | Needs: 1.2 |
@@ -909,11 +909,45 @@ the Harness; `alt` shows until the bytes arrive and on a terminal without an ima
 
 **Backlog:** R7 and R20 (the lane and the slot only; their consumers are Phase 3).
 
-- **Node slot.** `mayflyScreen.mountNodeSlot(id, { region })` (§3.4) joins `mountContentSlot` and `mountDockSlot` in
-  `core/screen.ts`. It compiles its node through the same surface path as a pane, with its interaction state in
-  `mayflyUiInteraction`, so the engine's caches, the key grammar, and the hint row apply unchanged. It is core-private
-  and has no product consumer in this phase: a test host mounts a status-shaped row, an editor-shaped surface, and a
-  stream-shaped list, which puts W1 and W4 on the real mounting path.
+- **Node slot** (slice 1.10a, built). `mayflyScreen.mountNodeSlot(id, { region })` leases a core-private slot beside
+  `mountContentSlot` and `mountDockSlot`. The logic is `core/node-slot.ts`; `core/screen.ts` gained the method,
+  `bindNodeSlots`, and a teardown effect. A region claims one of the screen's existing hosts: `content` any content id
+  (a fixed host such as `transcript.conversation`, or a local one), `dock` the prompt host `editor.prompt`, and
+  `footer` the footer host `status.footer`; an unknown or taken host throws and leaves nothing behind. The lease is
+  `{ id, disposed, set(node), focus(), dispose() }`: `focus()` was added to the pair of §3.4, because an editor-shaped
+  slot has to take keys. `set` freezes the node as a pane's `set` does, and `set(null)` clears the slot and its state.
+  - *The surface path.* The surface renderer lends the slots its compiler dependencies and its one animation clock
+    (`bindNodeSlots`, one effect in `core/surface-renderer.ts`). Each slot publishes into a `slot` model in
+    `mayflyUiInteraction` (`UiSurfaceKind` gained `'slot'`) and compiles with `compileMayflyUiSurfaceNode` over its own
+    `MayflyUiSurfaceRuntime`, so the admission memo, compile reuse, the row cache, the hint memo, the key grammar, and
+    the hint row are a pane's. A slot recompiles on the first paint after its model moved (a pane recompiles on the
+    same signal, a microtask later), so a burst of publishes compiles once. The content and footer regions compile
+    against the terminal's size, the dock against `editorViewport`.
+  - *Lifetime.* A renderer gap (a theme switch) drops the compile state and keeps the model. The screen's teardown (a
+    core reload) revokes every lease and keeps every model, and the next lease of the same id adopts it, so a list
+    cursor and a form draft survive the reload; a lease from before the reload is fenced (`set`, `focus`, and
+    `dispose` do nothing). An explicit `dispose()` drops the model, or, when no renderer has held it yet, has the next
+    bind drop it.
+  - *Staleness.* A slot repaints when the keymap or the locale changes without a publish: the renderer passes a paint
+    epoch (`nodeSlotEpoch`, the keymap revision plus the locale revision), and a slot whose model did not move drops
+    its frame when the epoch moves. Panes have no such epoch and keep their frame until their model moves; that is
+    left as it is.
+  - *Events.* Slots route no events yet: an action settles as succeeded without a handler, as on a disposed endpoint.
+    The first consumer that needs a reply (Phase 5's prompt submit) adds the event option.
+  - *Consumer (D20).* The slot is core-private, so it changes no public package, Website page, or gallery page. Its
+    consumer in this phase is the test host `tests/core/node-slot-host.ts`, which leases a status-shaped row in the
+    footer, an editor-shaped form in the dock, and a stream-shaped list in the content region from an ordinary Fiber,
+    beside a core that binds them through the real surface renderer.
+  - *Budgets.* `W1-slot` and `W4-slot` run W1's status row and W4's focused stream through the slot
+    (`tests/perf/workloads.ts`, reported by `script/audit-performance.mjs`); their rows were appended to `budgets.json`
+    and to `baseline.json`, where the baseline is their first measurement: 2 / 2 / 2 and 1 / 1 / 0 (validated /
+    compiled / rows), the work of the direct path, with one more string measured for the footer row. Slice 1.11 moves
+    W1 and W4 themselves onto the slot.
+  - *Tests.* `tests/core/screen.spec.ts`: each region, the refused hosts, publish, replacement, clearing, disposal, the
+    renderer gap, the teardown and adoption, a disposal without a renderer, the regions' viewports, a pending decision,
+    an animation tick, and the paint epoch. `tests/core/node-slot.spec.ts`: the three shapes with keys and hint rows, a
+    core reload that keeps a list cursor and a form draft, stale leases, the host's unload, and a warm slot repainted
+    for a new theme, a rebound key, a new locale, and a new width.
 - **Views lane.** `placement: 'views'`, `summary`, and `setSummary` (§3.4); the validator requires a motion-free status
   node as the summary. `core/surface-manager.ts` and `core/surface-renderer.ts` gain the lane: it has no rows of its
   own, its summaries join status row 2, its panel is shown in place of row 2 when entered, and events are routed to
@@ -924,8 +958,7 @@ the Harness; `alt` shows until the bytes arrive and on a terminal without an ima
   todo views register in Phase 3, so the product's own row 2 does not change in this phase.
 
 Scene 13 (the lane only, with the gallery view). Tests: the lane in the surface specs; `tests/e2e.spec.ts` with a plugin
-view registered through the public service and cleaned up with its Fiber; the slot's lease, replacement, and disposal
-in `tests/core/screen.spec.ts`; a core reload that keeps the slot's interaction state.
+view registered through the public service and cleaned up with its Fiber.
 
 #### 1.11 Freeze
 

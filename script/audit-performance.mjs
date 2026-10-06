@@ -176,7 +176,8 @@ try {
     })
     for (const pane of swarm) pane.dispose()
   }
-  /* The work-budget workloads W1-W8 (roadmap section 7.1): the counters are the gate in
+  /* The work-budget workloads W1-W8 (roadmap section 7.1), and W1-slot and W4-slot, the same status
+     row and stream published through the node slot (slice 1.10a): the counters are the gate in
      tests/perf/work-budget.spec.ts; the timing is reported beside them and gates nothing. */
   mock.timers.enable({ apis: ['setTimeout'] })
   const environment = { advance: milliseconds => mock.timers.tick(milliseconds) }
