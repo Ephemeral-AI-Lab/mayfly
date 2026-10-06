@@ -509,6 +509,13 @@ export const SCENARIOS = [
     build: ui => ui.divider(),
   },
   {
+    id: 'image',
+    // Doc example, verbatim. The screenshot host supplies no loader, so the node shows its alt.
+    title: 'image — the alt until the bytes arrive',
+    width: 48,
+    build: ui => ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 }),
+  },
+  {
     id: 'uikit-builder',
     // ui-kit.md "Builder" section example, verbatim.
     title: 'ui-kit — builder surface example',

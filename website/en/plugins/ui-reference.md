@@ -35,6 +35,8 @@ in a node.
 - Builders recursively copy and freeze inputs and reject cycles. Host admission
   accepts only plain objects and dense arrays and strips ANSI, C1, and unsafe
   control characters.
+- A tree may contain at most 8 `image` nodes. An `image` node's `attachmentId`
+  is 1 to 128 characters and its `maxRows` is an integer from 1 to 40.
 - Numeric layout fields are non-negative safe integers. `minSize` cannot exceed
   `maxSize`, and viewport minimums cannot exceed their matching maximums.
 - Tabs/list/form control ids, form field ids, action item ids, and form/loader
@@ -1216,6 +1218,32 @@ the assigned width. The screenshot above renders exactly this node:
 
 ```ts
 ui.divider()
+```
+
+### `image`
+
+![`image` node rendering](/shots/image.svg)
+
+*An image whose bytes have not arrived, shown as its `alt` (width 48).*
+
+```ts
+ui.image(options: { attachmentId: string, alt: string, maxRows?: number })
+```
+
+Keeps an image inline. The wire carries a reference, never bytes: the host tree
+supplies a loader that resolves `attachmentId` to the encoded bytes and their
+media type, and the renderer draws the image through the terminal's image
+protocol, at most `maxRows` rows tall. `alt` is the text fallback, for example
+`[Image #1 84 KB]`; it shows until the bytes arrive, when no loader knows the
+id, and on a terminal without an image protocol. It is one muted row, truncated
+to the assigned width.
+
+`image` is available in ordinary panes and overlays. It is not a status,
+editor-extension, or `sections.body` node. The screenshot above renders exactly
+this node, with no loader in the screenshot host:
+
+```ts
+ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
 ```
 
 ## Events and snapshot updates
