@@ -37,6 +37,6 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
     id: 'Δ20',
     scenes: Array.from({ length: 32 }, (_, index) => index + 1),
     summary: "The kit's word wrap drops a line's leading spaces and does not reopen the style on a wrapped continuation; the renderer keeps both",
-    reason: 'prototype wrap artifact; proposed by slice 1.2, pending the reviewer\'s approval',
+    reason: 'prototype wrap artifact; approved by the reviewer',
   },
 ]
