@@ -9,7 +9,8 @@
  * and a binding that collides with another action in an overlapping scope
  * is refused with that action's owner. Component actions that only appear in
  * admitted nodes are recorded as seen, so `list` can offer them for
- * rebinding too. Key matching delegates to pi-tui's `matchesKey`; `dispatch`
+ * rebinding too. Key matching delegates to pi-tui's `matchesKey` (plus the
+ * modified function keys it does not decode); `dispatch`
  * runs the global half of the registry: handler-carrying actions fire in
  * registration order ahead of focus routing.
  *
@@ -17,8 +18,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import { type KeyId, matchesKey } from '@earendil-works/pi-tui'
-import { ACTION_CANCEL, ACTION_SUBMIT, isKeyId, printableKey } from './key-actions.ts'
+import { ACTION_CANCEL, ACTION_SUBMIT, isKeyId, matchesKeyId, printableKey } from './key-actions.ts'
 import type { MayflyKeyAction, MayflyKeyBinding, MayflyKeymap, MayflyKeyScope, MayflySeenAction } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -72,7 +72,7 @@ const ACTION_ID = /^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/u
 const FIXED_KEYS: Readonly<Record<string, string>> = { [ACTION_CANCEL]: 'escape', [ACTION_SUBMIT]: 'enter' }
 
 /** The plain second defaults of the Alt keys; the first press of one tells the keymap the host may not deliver Alt. */
-const PLAIN_ALT_ALTERNATIVES: readonly KeyId[] = ['f2', 'f3', 'f4', 'f5']
+const PLAIN_ALT_ALTERNATIVES: readonly string[] = ['f2', 'f3', 'f4', 'f5']
 
 /** Two scopes overlap when they are equal or either is global. */
 function overlaps(left: MayflyKeyScope, right: MayflyKeyScope): boolean {
@@ -191,9 +191,7 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
    * @returns whether the input triggers the action.
    */
   matches(data: string, action: string): boolean {
-    // KeyId is a compile-time union over key-id strings; L1 accepts plain
-    // strings per its own contract and pi-tui matches them at runtime.
-    return this.getKeys(action).some(key => matchesKey(data, key as KeyId))
+    return this.getKeys(action).some(key => matchesKeyId(data, key))
   }
 
   /**
@@ -313,7 +311,7 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
    * @param data - one decoded input sequence.
    */
   notePlainKey(data: string): void {
-    if (this.plainForSession || !PLAIN_ALT_ALTERNATIVES.some(key => matchesKey(data, key))) return
+    if (this.plainForSession || !PLAIN_ALT_ALTERNATIVES.some(key => matchesKeyId(data, key))) return
     const before = this.preferPlain
     this.plainForSession = true
     if (this.preferPlain !== before) this.changed()

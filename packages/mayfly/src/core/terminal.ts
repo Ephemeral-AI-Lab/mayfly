@@ -400,6 +400,79 @@ export function normalizeNavigationInput(data: string): string | undefined {
   return key === undefined ? undefined : NORMALIZED_NAVIGATION_INPUT.get(key)
 }
 
+/** F1, F2, and F4 as kitty sends them unmodified (`CSI P`): pi-tui decodes only the SS3 forms. F3 is `CSI 13 ~`. */
+const FUNCTION_KEY_LETTERS: Readonly<Record<string, string>> = { P: '\x1bOP', Q: '\x1bOQ', S: '\x1bOS' }
+/** The xterm numbers of F1-F12 in the `CSI <n> ~` form. */
+const FUNCTION_KEY_NUMBERS = new Set(['11', '12', '13', '14', '15', '17', '18', '19', '20', '21', '23', '24'])
+
+/**
+ * Normalize kitty's unmodified function-key forms to the legacy sequences pi-tui decodes (spec §3.5): `CSI P`, `CSI Q`,
+ * and `CSI S`, and the explicit-state and repeat forms (`CSI 1;1:2 Q`, `CSI 15;1:2 ~`). Releases and modified keys keep
+ * their encoding; `CSI R` stays a cursor report.
+ * @param data - one decoded terminal input sequence.
+ * @returns the legacy sequence, or `undefined` when the input passes through unchanged.
+ */
+export function normalizeFunctionKeyInput(data: string): string | undefined {
+  const lettered = /^\x1b\[(?:1;1(?::[12])?)?([PQS])$/u.exec(data)
+  if (lettered !== null) return FUNCTION_KEY_LETTERS[lettered[1]!]
+  const numbered = /^\x1b\[(\d+);1(?::[12])?~$/u.exec(data)
+  return numbered !== null && FUNCTION_KEY_NUMBERS.has(numbered[1]!) ? `\x1b[${numbered[1]!}~` : undefined
+}
+
+/** Alt+arrow in the "meta sends escape" encoding: the arrow, in CSI or SS3 form, after a bare ESC. */
+const ESC_PREFIXED_ARROW = /^\x1b[[O]([ABCD])$/u
+/** An SS3 prefix that carries an xterm modifier (`ESC O 3`), which pi-tui's input buffer cuts off its final byte. */
+const SS3_MODIFIER = /^\x1bO([2-8])$/u
+
+/**
+ * Rejoin the two encodings of a modified key that pi-tui's input buffer delivers in two parts (spec §3.5): a bare
+ * `ESC` before an arrow (`ESC ESC [ A`) and an SS3 modifier before its final byte (`ESC O 3`, `A`), each as the xterm
+ * form `CSI 1;<mods> A` pi-tui decodes. Both parts arrive in one synchronous burst, so a held prefix that nothing
+ * completes is delivered unchanged on the next microtask; a lone Escape keeps its meaning.
+ * @param onInput - the receiver of decoded input sequences.
+ * @returns the receiver to hand the terminal.
+ */
+export function joinSplitModifiers(onInput: (data: string) => void): (data: string) => void {
+  let held: string | undefined
+  const release = (): void => {
+    if (held === undefined) return
+    const prefix = held
+    held = undefined
+    onInput(prefix)
+  }
+  return (data) => {
+    const prefix = held
+    held = undefined
+    if (prefix === '\x1b') {
+      const arrow = ESC_PREFIXED_ARROW.exec(data)
+      if (arrow !== null) return onInput(`\x1b[1;3${arrow[1]!}`)
+    } else if (prefix !== undefined && /^[ABCDPQRS]$/u.test(data)) {
+      return onInput(`\x1b[1;${prefix.slice(2)}${data}`)
+    }
+    if (prefix !== undefined) onInput(prefix)
+    if (data === '\x1b' || SS3_MODIFIER.test(data)) {
+      held = data
+      queueMicrotask(release)
+      return
+    }
+    onInput(data)
+  }
+}
+
+/**
+ * A terminal whose input passes through {@link joinSplitModifiers}; everything else is the terminal itself.
+ * @param terminal - the terminal to wrap.
+ * @returns the wrapped terminal.
+ */
+export function withJoinedModifiers(terminal: Terminal): Terminal {
+  return new Proxy(terminal, {
+    get(target, property, receiver) {
+      if (property === 'start') return (onInput: (data: string) => void, onResize: () => void) => target.start(joinSplitModifiers(onInput), onResize)
+      return Reflect.get(target, property, receiver)
+    },
+  })
+}
+
 /**
  * The Mayfly-typed face of the running terminal stack. L1 services consume
  * this; pi-tui types stay inside this module.
@@ -594,12 +667,14 @@ export async function startMayflyTerminal(
   ambientOutput?: AmbientOutput,
 ): Promise<MayflyTerminalRuntime> {
   const alternate = screenMode === 'alternate'
+  // The renderer reads input through the joiner, so a modified key split in two arrives as one sequence.
+  const input = withJoinedModifiers(terminal)
   const current: TUI = alternate
-    ? new TuiAltScreen(terminal, undefined, undefined, {
+    ? new TuiAltScreen(input, undefined, undefined, {
         wheelScrollLines: 3,
         copySelection: text => copySelectionText(text, terminal),
       })
-    : new TuiMainScreen(terminal)
+    : new TuiMainScreen(input)
   const requestRender = current.requestRender.bind(current)
   let renderColumns = terminal.columns
   let renderRows = terminal.rows
@@ -625,7 +700,7 @@ export async function startMayflyTerminal(
   // legacy CSI forms. Canonicalize both before any Mayfly or viewport listener
   // sees them so every raw-key path receives the same navigation vocabulary.
   const removeNavigationNormalizer = current.addInputListener(data => {
-    const normalized = normalizeNavigationInput(data)
+    const normalized = normalizeNavigationInput(data) ?? normalizeFunctionKeyInput(data)
     return normalized === undefined ? undefined : { data: normalized }
   })
   // Track dock membership for contextual wheel routing. The editor's handler

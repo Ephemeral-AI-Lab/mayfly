@@ -24,7 +24,7 @@ import type {
   MayflyFieldValue,
   MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
-import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component, type KeyId, matchesKey } from '@earendil-works/pi-tui'
+import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { hintRow } from './chrome.ts'
@@ -83,6 +83,7 @@ import {
   displayKey,
   keyActionKeys,
   matchesKeyAction,
+  matchesKeyId,
 } from './key-actions.ts'
 
 const FOCUS_SENTINEL = '\uf8ff'
@@ -874,7 +875,7 @@ function keyedBindings(control: number, keyed: KeyedAction, active: ControlDescr
 function matchesBinding(match: GrammarMatch, data: string, keymap: MayflyKeymap | undefined): boolean {
   switch (match.kind) {
     case 'action': return matchesKeyAction(keymap, data, match.action)
-    case 'key': return matchesKey(data, match.key as KeyId)
+    case 'key': return matchesKeyId(data, match.key)
     case 'digit': return data.length === 1 && data >= '1' && data <= '9'
     case 'text': return (match.space || data !== ' ') && startsText(data)
     case 'backspace': return data === '\x7f' || data === '\b'
