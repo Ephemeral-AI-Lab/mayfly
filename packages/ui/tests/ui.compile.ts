@@ -69,3 +69,10 @@ ui.actions({ id: 'bad', items: [{ id: 'x', label: 'X', confirm: { title: 'X?', t
 ui.list({ id: 'bad', role: 'choose', numbered: 'accept', selectedIds: [], items: [] })
 // @ts-expect-error a confirmation needs a title
 ui.actions({ id: 'bad', items: [{ id: 'x', label: 'X', confirm: { detail: 'Why?' } }] })
+export const namedActions = ui.actions({ id: 'row-keys', scope: ['sessions', 'workspaces'], items: [
+  { id: 'remove', label: 'Remove', semantic: 'delete', hidden: true, confirm: 'Remove the session?' },
+  { id: 'install', label: 'Install', action: 'demo-plugin.install', key: 'i', hintLabel: 'install' },
+] })
+export const scopedToOne = ui.actions({ id: 'stream-keys', scope: 'stream', items: [{ id: 'copy', label: 'Copy', semantic: 'copy', hidden: true }] })
+// @ts-expect-error common meanings are a closed set
+ui.actions({ id: 'bad', items: [{ id: 'x', label: 'X', semantic: 'undo' }] })

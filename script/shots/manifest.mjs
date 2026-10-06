@@ -428,6 +428,23 @@ export const SCENARIOS = [
     }),
   },
   {
+    id: 'actions-named',
+    // Doc example, verbatim: a hidden common meaning and a component action,
+    // scoped to the list they act on; the hint row reads their effective keys.
+    title: 'actions — named row keys scoped to a list',
+    width: 64,
+    build: ui => ui.stack.column([
+      ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: [
+        { id: 'production', label: 'production', detail: 'api.example.com' },
+        { id: 'staging', label: 'staging', detail: 'staging.example.com' },
+      ] }),
+      ui.actions({ id: 'provider-keys', scope: 'providers', items: [
+        { id: 'remove', label: 'Remove', semantic: 'delete', hidden: true, hintLabel: 'remove', confirm: 'Remove the provider?' },
+        { id: 'test', label: 'Test connection', action: 'acme-providers.test', key: 't', hidden: true, hintLabel: 'test' },
+      ] }),
+    ]),
+  },
+  {
     id: 'loader',
     // Doc example, verbatim: the default braille variant with the documented
     // elapsed hint and cancel control.

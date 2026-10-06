@@ -923,6 +923,7 @@ discard decision. Close actions never navigate back; Escape owns Back.
 ```ts
 ui.actions({
   id: string
+  scope?: string | readonly string[]   // controls whose focus puts the group's keys in effect
   items: readonly {
     id: string
     label: string
@@ -938,7 +939,10 @@ ui.actions({
     hidden?: boolean          // no button, no focus stop; runs from `key` or as a form `enterSubmits` target
     dismiss?: boolean
     navigate?: MayflyPagePath
-    key?: string
+    key?: string              // with `action`, that action's default key
+    semantic?: 'save' | 'copy' | 'delete' | 'refresh' | 'external' | 'search'
+    action?: string           // `<owner>.<action>`; `ui.*` is reserved
+    hintLabel?: string
   }[]
 })
 
@@ -1008,6 +1012,40 @@ ui.actions({
     { id: 'cancel', label: 'Cancel' },
   ],
 })
+```
+
+A row operation can name what it means instead of which key it uses. `semantic`
+declares a common meaning, and the item runs from that meaning's current
+binding: `delete` is `x` until a user rebinds `ui.delete`, and then every
+panel's delete moves at once. A meaning carries neither `key` nor `action`, and
+its default key counts for the page rules above, so `copy` (`c`), `delete`
+(`x`), and `refresh` (`r`) are refused beside a type-to-filter list. `action`
+names a component action, `<owner>.<action>` (the `ui.*` namespace belongs to
+core), with `key` as its default; Mayfly lists the actions it has seen so a
+user can rebind them, and the hint row and the button follow the effective key.
+`hintLabel` is the word the hint row shows after the key (the label otherwise).
+
+`scope` names one or more controls on the same page or an enclosing one: the
+group's keys act, and show their hints, only while one of them, or a row,
+field, or tab inside it, has focus. Two groups may bind the same key on a page
+only when their scopes name different controls. The list below answers `x`
+and `t` only while it has focus:
+
+![`actions` with named row keys](/shots/actions-named.svg)
+
+*A hidden common meaning and a component action, scoped to the list they act on (width 64).*
+
+```ts
+ui.stack.column([
+  ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: [
+    { id: 'production', label: 'production', detail: 'api.example.com' },
+    { id: 'staging', label: 'staging', detail: 'staging.example.com' },
+  ] }),
+  ui.actions({ id: 'provider-keys', scope: 'providers', items: [
+    { id: 'remove', label: 'Remove', semantic: 'delete', hidden: true, hintLabel: 'remove', confirm: 'Remove the provider?' },
+    { id: 'test', label: 'Test connection', action: 'acme-providers.test', key: 't', hidden: true, hintLabel: 'test' },
+  ] }),
+])
 ```
 
 ## Focus and contextual hints

@@ -7,6 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 // Pull in the direct Mayfly pane service Context merge.
 import type {} from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
+import { namedActionsGroup } from './groups/1-7.ts'
 
 export const name = '@mayfly-example/ui-gallery'
 export const inject = ['mayflyPanes']
@@ -172,6 +173,7 @@ function renderGallery() {
         ...richContentGroup(),
         ...layoutGroup(),
         ...patternsGroup(),
+        ...namedActionsGroup(),
       ], { gap: 1 }), { scrollbar: true }),
     ], { gap: 1 }),
   })

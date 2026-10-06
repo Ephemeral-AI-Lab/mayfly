@@ -33,6 +33,7 @@ import type {
 } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult } from './ui-contracts.ts'
 import { printableKey } from './key-actions.ts'
+import { COMMON_MEANINGS, actionNamingProblem, defaultItemKey } from './ui-actions.ts'
 import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
@@ -65,6 +66,8 @@ interface ValidationState {
   scrollDepth: number
   editorControls: number
   readonly budget: ValidationBudget
+  /** The scope of the actions node whose items are being admitted. */
+  actionScope?: readonly string[] | undefined
 }
 
 interface ValidationBudget {
@@ -74,8 +77,10 @@ interface ValidationBudget {
   readonly controlIds: Set<string>
   readonly tabs: Map<string, ReadonlySet<string>>
   readonly pages: { readonly path: MayflyPagePath, readonly tab: MayflyPageSegment }[]
-  /** Accelerator keys already bound per page. */
+  /** Accelerator keys already bound per page, each with the scope it was bound in. */
   readonly actionKeys: Set<string>
+  /** Action scopes to resolve once every control of the tree is known. */
+  readonly scopes: { readonly pagePath: MayflyPagePath, readonly ids: readonly string[], readonly path: string }[]
   /** The first printable accelerator, rejected once a filterable list is admitted. */
   printableKey?: string
   filterable: boolean
@@ -247,6 +252,11 @@ function validatePages(budget: ValidationBudget): void {
   for (const page of budget.pages) {
     if (!budget.tabs.get(pageControl(page.path, page.tab.controlId))?.has(page.tab.itemId)) invalid('page association references an unknown tab')
   }
+  // A scope names a control on its own page or an enclosing one; a responsive branch may still hold it.
+  for (const scope of budget.scopes) for (const id of scope.ids) {
+    const known = scope.pagePath.some((_, index) => budget.controlIds.has(pageControl(scope.pagePath.slice(0, index), id))) || budget.controlIds.has(pageControl(scope.pagePath, id))
+    if (!known && budget.deferred === 0) invalid(`${scope.path} "${id}" names no control on this page`)
+  }
 }
 
 function enumeration<Value extends string | number>(value: unknown, values: readonly Value[], path: string): Value {
@@ -405,7 +415,7 @@ interface LazyListAdmission {
 const lazyLists = new WeakMap<readonly MayflyListItem[], LazyListAdmission>()
 
 function emptyBudget(): ValidationBudget {
-  return { nodes: 0, text: 0, chartCells: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), filterable: false, deferred: 0 }
+  return { nodes: 0, text: 0, chartCells: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), scopes: [], filterable: false, deferred: 0 }
 }
 
 function validationState(budget: ValidationBudget = emptyBudget()): ValidationState {
@@ -487,6 +497,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     controlIds: new Set(deferred.budget.controlIds),
     tabs: new Map(deferred.budget.tabs),
     pages: deferred.budget.pages.length,
+    scopes: deferred.budget.scopes.length,
   }
   const state = validationState(deferred.budget)
   state.scrollDepth = deferred.scrollDepth
@@ -503,6 +514,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     deferred.budget.tabs.clear()
     for (const [id, items] of checkpoint.tabs) deferred.budget.tabs.set(id, items)
     deferred.budget.pages.splice(checkpoint.pages)
+    deferred.budget.scopes.splice(checkpoint.scopes)
     deferred.result = error instanceof ValidationFault
       ? { ok: false, code: error.code, message: error.message }
       : { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly UI validation failed safely' }
@@ -626,11 +638,29 @@ function actionKey(value: string, path: string, state: ValidationState): string 
   }
   const normalized = [...modifiers, named ? base.toLowerCase() : base].join('+').toLowerCase()
   if (RESERVED_KEYS.has(normalized)) invalid(`${path}.key "${value}" is reserved for shared navigation`)
-  const slot = pageControl(state.pagePath, normalized)
-  if (state.budget.actionKeys.has(slot)) invalid(`${path}.key "${value}" is already bound on this page`)
-  state.budget.actionKeys.add(slot)
-  if (printableKey(value)) state.budget.printableKey ??= `${path}.key "${value}"`
+  claimKey(normalized, `${path}.key "${value}"`, state)
   return value
+}
+
+/** Bind a key on the page. Two groups may share one only when their scopes name disjoint controls. */
+function claimKey(normalized: string, label: string, state: ValidationState): void {
+  const slot = pageControl(state.pagePath, normalized)
+  const scope = state.actionScope ?? null
+  for (const claimed of state.budget.actionKeys) {
+    const [claimedSlot, claimedScope] = JSON.parse(claimed) as [string, readonly string[] | null]
+    if (claimedSlot === slot && (scope === null || claimedScope === null || scope.some(id => claimedScope.includes(id)))) invalid(`${label} is already bound on this page`)
+  }
+  state.budget.actionKeys.add(JSON.stringify([slot, scope]))
+  if (printableKey(normalized)) state.budget.printableKey ??= label
+}
+
+/** An actions node's scope: one control id or a list of distinct ones. */
+function actionScope(value: unknown, path: string, state: ValidationState): string | readonly string[] | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'string') return identifier(value, path, state)
+  const ids = collection(value, path).map((entry, index) => identifier(entry, `${path}[${String(index)}]`, state))
+  if (ids.length === 0 || new Set(ids).size !== ids.length) invalid(`${path} must name one or more distinct controls`)
+  return ids
 }
 
 function confirmation(value: unknown, path: string, state: ValidationState): string | MayflyConfirmation {
@@ -657,6 +687,12 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
     const dismiss = own(object, 'dismiss', path)
     const confirmValue = own(object, 'confirm', path)
     const keyValue = optionalText(object, 'key', path, state)
+    const semanticValue = own(object, 'semantic', path)
+    const semantic = semanticValue === undefined ? undefined : enumeration(semanticValue, COMMON_MEANINGS, `${path}.semantic`)
+    const actionValue = optionalText(object, 'action', path, state)
+    const naming = actionNamingProblem({ key: keyValue, semantic, action: actionValue })
+    if (naming !== undefined) invalid(`${path}${naming}`)
+    if (semantic !== undefined) claimKey(defaultItemKey({ semantic })!, `${path}.semantic "${semantic}"`, state)
     const submitValue = own(object, 'submit', path)
     const submit = submitValue === undefined ? undefined : collection(submitValue, `${path}.submit`).map((entry, index) => enter(entry, `${path}.submit[${index}]`, state, target => ({
       formId: identifier(required(target, 'formId', path), `${path}.submit[${index}].formId`, state),
@@ -686,6 +722,9 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
       ...optional(busyValue === undefined ? undefined : boolean(busyValue, `${path}.busy`), 'busy'),
       ...optional(confirmValue === undefined ? undefined : confirmation(confirmValue, `${path}.confirm`, state), 'confirm'),
       ...optional(keyValue === undefined ? undefined : actionKey(keyValue, path, state), 'key'),
+      ...optional(semantic, 'semantic'),
+      ...optional(actionValue, 'action'),
+      ...optional(optionalText(object, 'hintLabel', path, state), 'hintLabel'),
       ...optional(defaultFocus === undefined ? undefined : boolean(defaultFocus, `${path}.defaultFocus`), 'defaultFocus'),
       ...optional(hidden === undefined ? undefined : boolean(hidden, `${path}.hidden`), 'hidden'),
       ...optional(dismiss === undefined ? undefined : boolean(dismiss, `${path}.dismiss`), 'dismiss'),
@@ -1121,14 +1160,20 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         return { kind, id, fields, ...optional(submitActionId, 'submitActionId'), ...optional(optionalText(object, 'submitLabel', path, state), 'submitLabel'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel'), ...optional(enterSubmits, 'enterSubmits') }
       }
       case 'actions': {
-        const items = collection(required(object, 'items', path), `${path}.items`).map((item, index) => actionItem(item, `${path}.items[${String(index)}]`, state))
+        const scope = actionScope(own(object, 'scope', path), `${path}.scope`, state)
+        state.actionScope = scope === undefined ? undefined : [scope].flat()
+        let items: MayflyActionItem[]
+        try {
+          items = collection(required(object, 'items', path), `${path}.items`).map((item, index) => actionItem(item, `${path}.items[${String(index)}]`, state))
+        } finally { state.actionScope = undefined }
+        if (scope !== undefined) state.budget.scopes.push({ pagePath: state.pagePath, ids: [scope].flat(), path: `${path}.scope` })
         uniqueIds(items, `${path}.items`)
         for (const item of items) {
           if (item.id.trim().length === 0) invalid(`${path}.items id must not be empty`)
           if (mode === 'editor' && (item.key === undefined || printableKey(item.key))) invalid(`${path}.items key is required: the editor owns unmodified keys, so a shell action needs a modifier accelerator`)
           reserveControl(item.id, state)
         }
-        return { kind, id: text(required(object, 'id', path), `${path}.id`, state), items }
+        return { kind, id: text(required(object, 'id', path), `${path}.id`, state), items, ...optional(scope, 'scope') }
       }
       case 'loader': {
         const variantValue = own(object, 'variant', path)

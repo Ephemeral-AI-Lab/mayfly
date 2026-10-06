@@ -859,6 +859,7 @@ ui.form({
 ```ts
 ui.actions({
   id: string
+  scope?: string | readonly string[]   // controls whose focus puts the group's keys in effect
   items: readonly {
     id: string
     label: string
@@ -874,7 +875,10 @@ ui.actions({
     hidden?: boolean          // no button, no focus stop; runs from `key` or as a form `enterSubmits` target
     dismiss?: boolean
     navigate?: MayflyPagePath
-    key?: string
+    key?: string              // with `action`, that action's default key
+    semantic?: 'save' | 'copy' | 'delete' | 'refresh' | 'external' | 'search'
+    action?: string           // `<owner>.<action>`; `ui.*` is reserved
+    hintLabel?: string
   }[]
 })
 
@@ -938,6 +942,35 @@ ui.actions({
     { id: 'cancel', label: 'Cancel' },
   ],
 })
+```
+
+行操作可以声明它的含义，而不是固定某个键。`semantic` 声明一个通用含义，item 随该含义的
+当前绑定触发：`delete` 默认是 `x`，用户重绑 `ui.delete` 后，所有面板的删除键一起改变。
+声明含义的 item 不能再带 `key` 或 `action`，其默认键同样受上面的页面规则约束，因此
+`copy`（`c`）、`delete`（`x`）和 `refresh`（`r`）不能与输入即筛选的列表同页。`action`
+命名一个组件动作 `<owner>.<action>`（`ui.*` 命名空间归 core 所有），`key` 是它的默认键；
+Mayfly 会列出见过的动作供用户重绑，提示行和按钮都跟随生效的键。`hintLabel` 是提示行中
+键后显示的词（缺省时用标签）。
+
+`scope` 指定同一页或外层页上的一个或多个控件：只有当其中之一（或其中的行、字段、标签）
+获得焦点时，这组键才生效并显示提示。同一页上的两组 action 只有在 scope 指向不同控件时
+才能绑定同一个键。下面的列表只在自身获得焦点时响应 `x` 和 `t`：
+
+![带命名行操作键的 `actions`](/shots/actions-named.svg)
+
+*隐藏的通用含义与组件动作，作用域限定在它们操作的列表上（宽度 64）。*
+
+```ts
+ui.stack.column([
+  ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: [
+    { id: 'production', label: 'production', detail: 'api.example.com' },
+    { id: 'staging', label: 'staging', detail: 'staging.example.com' },
+  ] }),
+  ui.actions({ id: 'provider-keys', scope: 'providers', items: [
+    { id: 'remove', label: 'Remove', semantic: 'delete', hidden: true, hintLabel: 'remove', confirm: 'Remove the provider?' },
+    { id: 'test', label: 'Test connection', action: 'acme-providers.test', key: 't', hidden: true, hintLabel: 'test' },
+  ] }),
+])
 ```
 
 ## 焦点与上下文提示

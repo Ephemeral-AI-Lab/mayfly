@@ -69,6 +69,7 @@ import {
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
+import { actionHintLabel, actionScopeActive, effectiveItemKeys } from './ui-actions.ts'
 import { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
@@ -280,12 +281,20 @@ interface ControlBase {
   readonly preferred: boolean
   readonly group: string
   readonly navigation: 'horizontal' | 'vertical' | 'none'
+  /** An id an action scope may name that neither the identity nor the group carries (a scroll's own id). */
+  readonly scopeId?: string
+}
+
+/** An action item that answers keys: its effective keys are resolved through the keymap on every key and paint. */
+interface KeyedAction {
+  readonly item: MayflyActionItem
+  readonly label: string
+  /** The controls whose focus puts the item's keys in scope; the whole surface when absent. */
+  readonly scope?: readonly string[]
 }
 
 /** A hidden action's accelerator: fires its activate event without a button or focus stop. */
-interface HiddenAccelerator {
-  readonly key: string
-  readonly label: string
+interface HiddenAccelerator extends KeyedAction {
   readonly event: MayflyUiEvent
 }
 
@@ -303,7 +312,7 @@ type ControlDescriptor =
       readonly commitEvent?: MayflyUiEvent
       readonly listEntry?: { readonly node: MayflyListNode, readonly index: number }
       /** Declared surface-local accelerator; fires the same activate event while the surface holds focus. */
-      readonly keyed?: { readonly key: string, readonly label: string }
+      readonly keyed?: KeyedAction
     })
   | (ControlBase & { readonly kind: 'text', readonly field: TextField, readonly form: FormNode })
   | (ControlBase & { readonly kind: 'select', readonly field: SelectField })
@@ -827,9 +836,9 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       ...(numbered === undefined || numbered === false ? {} : { numbered: { accept: numbered === true, count: Math.min(9, choice === undefined ? node.items.length : choiceVisibleCount(choice)) } }),
     } }),
     keyed: [
-      ...controls.flatMap((candidate, index) => candidate.kind === 'event' && candidate.keyed !== undefined ? [{ control: index, key: candidate.keyed.key, label: candidate.keyed.label }] : []),
+      ...controls.flatMap((candidate, index) => candidate.kind === 'event' && candidate.keyed !== undefined ? keyedBindings(index, candidate.keyed, active, options) : []),
       // Hidden accelerators follow the focusable controls in the index space.
-      ...state.accelerators().map((accelerator, index) => ({ control: controls.length + index, key: accelerator.key, label: accelerator.label })),
+      ...state.accelerators().flatMap((accelerator, index) => keyedBindings(controls.length + index, accelerator, active, options)),
     ],
     tabs: groups.some(group => group.kind === 'tabs'),
     groups: groups.length,
@@ -838,6 +847,19 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     closable: escapeLabel === 'close',
     ...(reset === undefined ? {} : { reset }),
   }
+}
+
+/** The ids an action scope can name for the focused control: itself, the list, form, tabs, or actions group holding it, and a scroll's own id. */
+function focusScopeIds(active: ControlDescriptor | undefined): readonly string[] {
+  if (active === undefined) return []
+  const group = JSON.parse(active.group) as readonly unknown[]
+  return [active.identity.controlId, String(group[2]), ...(active.scopeId === undefined ? [] : [active.scopeId])]
+}
+
+/** One grammar entry per effective key of an in-scope keyed action; an action rebound to no key answers nothing. */
+function keyedBindings(control: number, keyed: KeyedAction, active: ControlDescriptor | undefined, options: RuntimeCompilerOptions): GrammarState['keyed'] {
+  if (keyed.scope !== undefined && !actionScopeActive(keyed.scope, focusScopeIds(active))) return []
+  return effectiveItemKeys(keyed.item, options.keymap).map(key => ({ control, key, label: keyed.label }))
 }
 
 function matchesBinding(match: GrammarMatch, data: string, keymap: MayflyKeymap | undefined): boolean {
@@ -1027,7 +1049,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         visit(current.child, `${currentPath}.scroll`, isHidden)
         if (controls.length === before && (options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined)) {
           const key = scopedControlKey('scroll', currentPath)
-          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none' })
+          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none', ...(current.id === undefined ? {} : { scopeId: current.id }) })
         }
         break
       }
@@ -1075,17 +1097,20 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         if (current.submitActionId !== undefined) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('form-cancel', current.id), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
-      case 'actions':
+      case 'actions': {
+        const scope = current.scope === undefined ? {} : { scope: [current.scope].flat() }
         for (const item of current.items.map(entry => effectiveActionItem(entry, options))) {
+          const keyed = item.key === undefined && item.semantic === undefined && item.action === undefined ? undefined : { item, label: actionHintLabel(item), ...scope }
           if (item.hidden === true) {
             // Hidden branches contribute no accelerators, matching the old
             // visible-only accelerators walk.
-            if (isHidden !== true && item.disabled !== true && item.busy !== true && item.key !== undefined) accelerators.push({ key: item.key, label: item.label, event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id } })
+            if (isHidden !== true && item.disabled !== true && item.busy !== true && keyed !== undefined) accelerators.push({ ...keyed, event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id } })
             continue
           }
-          if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
+          if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(keyed === undefined ? {} : { keyed }) })
         }
         break
+      }
       case 'loader':
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break

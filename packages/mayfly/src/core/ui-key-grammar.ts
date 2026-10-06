@@ -136,7 +136,7 @@ function push(bindings: GrammarBinding[], match: GrammarMatch, intent: GrammarIn
 function accelerators(bindings: GrammarBinding[], state: GrammarState, printable: boolean): void {
   for (const keyed of state.keyed) {
     if (!printable && printableKey(keyed.key)) continue
-    push(bindings, { kind: 'key', key: keyed.key }, { kind: 'keyed', control: keyed.control }, { id: `keyed:${keyed.key}`, keys: displayKey(keyed.key), label: keyed.label, priority: PRIORITY.accelerator })
+    push(bindings, { kind: 'key', key: keyed.key }, { kind: 'keyed', control: keyed.control }, { id: `keyed:${String(keyed.control)}`, keys: displayKey(keyed.key), label: keyed.label, priority: PRIORITY.accelerator })
   }
 }
 
