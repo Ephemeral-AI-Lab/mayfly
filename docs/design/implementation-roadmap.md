@@ -511,7 +511,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.0 | merged (#99) | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
 | 1.1 | merged (#100) | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
 | 1.2 | not started | `feat/ui-foundation-1-2` | Needs: none |
-| 1.7 | in review | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage; scene 2's walks pending on 1.2 (`tests/design/pending.ts`) |
+| 1.7 | in review (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage; scene 2's walks pending on 1.2 (`tests/design/pending.ts`) |
 | 1.10a | not started | `feat/ui-foundation-1-10a` | Node slot. Needs: none |
 | 1.9a | not started | `feat/ui-foundation-1-9a` | `ui.image`. Needs: none |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
