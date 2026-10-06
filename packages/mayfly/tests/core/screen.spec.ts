@@ -5,9 +5,13 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { ui } from '@ephemeral-ai/mayfly-ui'
+import { nodeSlotEpoch, type MayflyNodeSlotCompiler } from '../../src/core/node-slot.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
-import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle } from '../../src/core/types.ts'
+import type { MayflyComponent, MayflyDockOptions, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle } from '../../src/core/types.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { COMPONENTS, DIM_COLORS, PLAIN_COLORS, statusRow, streamItems, streamList } from './node-slot-host.ts'
 
 interface Recorded {
   added: MayflyComponent[]
@@ -306,5 +310,218 @@ describe('MayflyScreenService', () => {
     slot.component.focused = true
     expect(slot.component.focused).toBe(false)
     expect(slot.component.render(20)).toEqual([])
+  })
+})
+
+/** A compiler the way the surface renderer lends one, over fixture keys and a counted render request. */
+function slotCompiler(ctx: Context, extra: Partial<MayflyNodeSlotCompiler> = {}): MayflyNodeSlotCompiler & { readonly requests: () => number } {
+  let requests = 0
+  const interaction = (ctx.get('mayflyUiInteraction') as UiInteractionService | undefined) ?? new UiInteractionService(ctx)
+  return {
+    interaction, components: COMPONENTS, colors: PLAIN_COLORS, keymap: {} as MayflyKeymap, mode: 'alternate',
+    requestRender: () => { requests += 1 }, requests: () => requests, ...extra,
+  }
+}
+
+const STREAM = { pagePath: [], controlId: 'stream' }
+
+describe('MayflyScreenService node slots', () => {
+  it('leases a node slot in each region, and an unknown or taken host throws and leaves nothing behind', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    expect(() => screen.mountNodeSlot('dock', { region: 'dock' })).toThrow('unknown dock slot')
+    expect(() => screen.mountNodeSlot('status.footer', { region: 'dock' })).toThrow('fixed position')
+    expect(() => screen.mountNodeSlot('editor.prompt', { region: 'footer' })).toThrow('fixed position')
+    const local = screen.mountNodeSlot('local.node', { region: 'content' })
+    expect(() => screen.mountNodeSlot('local.node', { region: 'content' })).toThrow('already mounted')
+    const content = screen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    const dock = screen.mountNodeSlot('editor.prompt', { region: 'dock' })
+    const footer = screen.mountNodeSlot('status.footer', { region: 'footer' })
+    expect(() => screen.mountContentSlot('transcript.conversation', component)).toThrow('already mounted')
+    for (const slot of [local, content, dock, footer]) slot.set(ui.text(`${slot.id} body`))
+    // Without a renderer nothing compiles, and nothing paints.
+    const [conversation, region] = [runtime.added[1]!, runtime.added[2]!]
+    const [prompt, status] = runtime.bottomAdded as [MayflyComponent, MayflyComponent]
+    expect([conversation, region, prompt, status].map(host => host.render(80))).toEqual([[], [], [], []])
+    const compiler = slotCompiler(ctx)
+    ctx.mayflyScreen.bindNodeSlots(compiler)
+    expect(conversation.render(80).join('')).toContain('transcript.conversation body')
+    expect(region.render(80).join('')).toContain('local.node body')
+    expect(prompt.render(80).join('')).toContain('editor.prompt body')
+    expect(status.render(80).join('')).toContain('status.footer body')
+    expect(compiler.interaction.list('slot').map(model => model.id)).toEqual(['local.node', 'transcript.conversation', 'editor.prompt', 'status.footer'])
+    await ctx.fiber.dispose()
+  })
+
+  it('publishes, replaces, and clears its node like a pane, and its dispose drops the interaction state', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const compiler = slotCompiler(ctx)
+    ctx.mayflyScreen.bindNodeSlots(compiler)
+    const slot = ctx.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    const host = runtime.added[1]!
+    // Bound but never published: the lease adopts nothing and paints nothing.
+    expect(compiler.interaction.get('slot', slot.id)).toBeUndefined()
+    expect(host.render(80)).toEqual([])
+    host.invalidate()
+    slot.set(ui.text('first'))
+    const model = compiler.interaction.get('slot', slot.id)!
+    expect(host.render(80).join('')).toContain('first')
+    // A caller-owned node is frozen into a snapshot as a pane's set() freezes it.
+    slot.set({ kind: 'text', content: 'second' })
+    expect(host.render(80).join('')).toContain('second')
+    expect(compiler.interaction.get('slot', slot.id)).toBe(model)
+    expect(Object.isFrozen(model.node)).toBe(true)
+    host.invalidate()
+    // A node admission refuses keeps the last admitted one and reports why, as a pane does.
+    slot.set(ui.text('not admitted', { tone: 'nope' as never }))
+    expect(host.render(80).join('')).toBe('second$.tone is invalid')
+    slot.set(null)
+    expect(model.node).toBeNull()
+    expect(host.render(80)).toEqual([])
+    host.invalidate()
+    expect(compiler.requests()).toBeGreaterThan(0)
+
+    slot.dispose()
+    slot.dispose()
+    expect(slot.disposed).toBe(true)
+    expect(model.disposed).toBe(true)
+    expect(compiler.interaction.get('slot', slot.id)).toBeUndefined()
+    slot.set(ui.text('late'))
+    slot.focus()
+    expect(host.render(80)).toEqual([])
+    expect(compiler.interaction.get('slot', slot.id)).toBeUndefined()
+    const again = ctx.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    again.set(ui.text('again'))
+    expect(compiler.interaction.get('slot', slot.id)).not.toBe(model)
+    await ctx.fiber.dispose()
+    expect(again.disposed).toBe(true)
+  })
+
+  it('keeps its state across a renderer gap and a screen teardown, and an explicit dispose drops it without a renderer', async () => {
+    const runtime = recordingRuntime()
+    const root = new Context()
+    const interaction = new UiInteractionService(root)
+    const first = await root.plugin(MayflyScreenService, runtime)
+    const slot = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    const kept = root.mayflyScreen.mountNodeSlot('local.kept', { region: 'content' })
+    const dropped = root.mayflyScreen.mountNodeSlot('local.dropped', { region: 'content' })
+    const items = streamItems(40)
+    slot.set(streamList(items))
+    kept.set(ui.text('kept'))
+    dropped.set(ui.text('dropped'))
+    const unbind = root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
+    const host = runtime.added[1]! as MayflyFocusable
+    slot.focus()
+    expect(runtime.focused).toEqual([host])
+    host.focused = true
+    expect(host.focused).toBe(true)
+    host.handleInput!('\x1b[B')
+    host.handleInput!('\x1b[B')
+    const model = interaction.get('slot', slot.id)!
+    expect(model.choice(STREAM)?.focusedId).toBe('item-2')
+    expect(host.render(80)[0]).toContain('(3/40)')
+
+    // A renderer gap: the compile state goes, the model stays, and a stale unbind leaves the newer renderer alone.
+    unbind()
+    unbind()
+    expect(host.render(80)).toEqual([])
+    host.handleInput!('\x1b[B')
+    host.focused = false
+    host.focused = true
+    const unbindStale = root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
+    expect(host.render(80).join('')).not.toContain('\x1b[2m')
+    root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction, colors: DIM_COLORS }))
+    unbindStale()
+    const rebound = host.render(80)
+    expect(rebound[0]).toContain('(3/40)')
+    expect(rebound.join('')).toContain('\x1b[2m')
+    expect(interaction.get('slot', slot.id)).toBe(model)
+
+    // An explicit dispose during a gap still drops the state it adopted.
+    root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))()
+    dropped.dispose()
+    expect(interaction.get('slot', 'local.dropped')).toBeUndefined()
+
+    // The screen's teardown revokes the leases and keeps every model for the next lease of its id.
+    await first.dispose()
+    expect(slot.disposed).toBe(true)
+    expect(interaction.get('slot', slot.id)).toBe(model)
+    expect(interaction.get('slot', 'local.kept')).toBeDefined()
+    const next = recordingRuntime()
+    await root.plugin(MayflyScreenService, next)
+    const adopted = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    adopted.set(streamList(items))
+    // A lease that ends before any renderer holds its model drops that model at the next bind.
+    root.mayflyScreen.mountNodeSlot('local.kept', { region: 'content' }).dispose()
+    expect(interaction.get('slot', 'local.kept')).toBeDefined()
+    root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
+    expect(interaction.get('slot', 'local.kept')).toBeUndefined()
+    expect(interaction.get('slot', adopted.id)).toBe(model)
+    expect(next.added[1]!.render(80)[0]).toContain('(3/40)')
+    await root.fiber.dispose()
+  })
+
+  it('compiles each region against its own viewport, a pending decision, an animation tick, and a paint epoch', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = recordingRuntime()
+      const ctx = new Context()
+      await ctx.plugin(MayflyScreenService, runtime)
+      let epoch = 0
+      const compiler = slotCompiler(ctx, { epoch: () => epoch })
+      ctx.mayflyScreen.bindNodeSlots(compiler)
+      const content = ctx.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
+      const dock = ctx.mayflyScreen.mountNodeSlot('editor.prompt', { region: 'dock' })
+      const footer = ctx.mayflyScreen.mountNodeSlot('status.footer', { region: 'footer' })
+      footer.set(statusRow())
+      const items = streamItems(60)
+      content.set(streamList(items))
+      dock.set(streamList(items))
+      const [prompt, status] = runtime.bottomAdded as [MayflyFocusable, MayflyComponent]
+      // The content region gets the terminal's rows; the dock gets the editor viewport, below the footer.
+      const footerRows = status.render(120).length
+      expect(runtime.added[1]!.render(120)).toHaveLength(24)
+      expect(prompt.render(120)).toHaveLength(ctx.mayflyScreen.editorViewport.rows)
+      expect(ctx.mayflyScreen.editorViewport.rows).toBe(24 - footerRows - 1)
+
+      // A confirmed action shows the shared decision in place of the node, then the node again.
+      dock.set(ui.actions({ id: 'acts', items: [{ id: 'go', label: 'Go', confirm: 'Run it?' }] }))
+      dock.focus()
+      prompt.focused = true
+      prompt.render(120)
+      prompt.handleInput!('\r')
+      expect(prompt.render(120).join('\n')).toContain('Run it?')
+      prompt.handleInput!('\r')
+      expect(prompt.render(120).join('\n')).toContain('Go')
+
+      // The paint epoch repaints a slot whose model did not move; an unmoved epoch serves the same frame.
+      const before = prompt.render(120)
+      expect(prompt.render(120)).toBe(before)
+      epoch += 1
+      expect(prompt.render(120)).not.toBe(before)
+      dock.set(null)
+      prompt.render(120)
+      epoch += 1
+      expect(prompt.render(120)).toEqual([])
+
+      // A loader's tick asks the renderer for a frame through the slot.
+      dock.set(ui.loader({ message: 'Working' }))
+      prompt.render(120)
+      const requests = compiler.requests()
+      vi.advanceTimersByTime(200)
+      expect(compiler.requests()).toBeGreaterThan(requests)
+      await ctx.fiber.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sums the keymap and locale revisions into the paint epoch', () => {
+    expect(nodeSlotEpoch({} as MayflyKeymap, undefined)).toBe(0)
+    expect(nodeSlotEpoch({ revision: 2 } as unknown as MayflyKeymap, { snapshot: { revision: 3 } })).toBe(5)
   })
 })

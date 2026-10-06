@@ -8,7 +8,7 @@ import { UiNotificationOwner, UiNotificationStore } from './ui-interaction-notif
 import { contextHintTranslator } from './context-hint-locale.ts'
 import type { UiTranslate } from './ui-interaction-locale.ts'
 
-export type UiSurfaceKind = 'pane' | 'overlay' | 'editor-panel'
+export type UiSurfaceKind = 'pane' | 'overlay' | 'editor-panel' | 'slot'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { mayflyUiInteraction: UiInteractionService }

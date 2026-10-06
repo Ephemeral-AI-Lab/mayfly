@@ -16,6 +16,7 @@ import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/loca
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
 import { UiAnimationClock } from './ui-loader-animation.ts'
+import { nodeSlotEpoch } from './node-slot.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
@@ -606,6 +607,12 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   })
   const offInteraction = ctx.mayflyUiInteraction.subscribe(publish)
   publish()
+  // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
+  ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
+    interaction: ctx.mayflyUiInteraction, components: ctx.mayflyComponents, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
+    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, ...(translateHint === undefined ? {} : { translateHint }),
+    epoch: () => nodeSlotEpoch(ctx.mayflyKeymap, ctx.get('mayflyLocale')),
+  }))
   ctx.effect(() => () => {
     disposed = true
     clock.dispose()

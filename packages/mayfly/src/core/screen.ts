@@ -6,6 +6,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotRegion } from './node-slot.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflyScreenSlot } from './types.ts'
 
@@ -156,6 +157,11 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   private readonly fixed = new Map<string, StableSlotHost>()
   private readonly claimed = new Set<string>()
   private readonly local = new LocalActivityRegion()
+  /** Node-backed slots claim the same fixed hosts: content as a content slot, dock as the prompt, footer as the footer. */
+  private readonly nodeSlots = new NodeSlotHost(
+    (id, region, component) => region === 'content' ? this.mountContentSlot(id, component) : this.mountDockSlot(id, component, region === 'footer' ? 'bottom' : undefined),
+    region => region === 'dock' ? this.editorViewport : { columns: this.runtime.columns, rows: this.runtime.rows },
+  )
 
   /**
    * Create and register the service.
@@ -177,6 +183,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     this.fixed.set('status.footer', footer)
     runtime.addBottomChild(editor)
     runtime.addBottomChild(footer, 'bottom')
+    ctx.effect(() => () => { this.nodeSlots.dispose() })
     runtime.requestRender()
   }
 
@@ -226,6 +233,21 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     }
     if ((id === 'status.footer') !== (position === 'bottom')) throw new Error(`dock slot "${id}" has a fixed position`)
     return this.claim(id, host, component)
+  }
+
+  /**
+   * Lease a core-private slot whose node compiles like a pane, with its interaction state in `mayflyUiInteraction`.
+   * @param id - the host id the region accepts (any content id, `editor.prompt` for the dock, `status.footer`).
+   * @param options - the region the slot sits in.
+   * @returns the lease; the screen's teardown revokes it and keeps its interaction state.
+   */
+  mountNodeSlot(id: string, options: { readonly region: MayflyNodeSlotRegion }): MayflyNodeSlot {
+    return this.nodeSlots.mount(id, options.region)
+  }
+
+  /** The surface renderer lends its compiler dependencies and clock to the node slots; the disposer takes them back. */
+  bindNodeSlots(compiler: MayflyNodeSlotCompiler): () => void {
+    return this.nodeSlots.bind(compiler)
   }
 
   private claim(id: string, host: StableSlotHost, component: MayflyComponent | null): MayflyScreenSlot {
