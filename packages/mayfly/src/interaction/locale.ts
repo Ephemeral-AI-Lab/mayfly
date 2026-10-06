@@ -679,6 +679,8 @@ const zh: Readonly<Record<string, string>> = {
   'Remove the provider configuration and its stored API key.': '删除提供商配置及其已存储的 API 密钥。',
   'Work details': '工作详情',
   'Plugin market index': '插件市场索引',
+  'Key bindings': '键位绑定',
+  'Prefer keys without Alt': '优先显示不含 Alt 的键',
 }
 
 const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))
