@@ -11,6 +11,8 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
 import { displayKey } from './key-actions.ts'
 import { sanitizePluginText } from './plugin-view.ts'
+import type { UiRowCache } from './ui-row-cache.ts'
+import type { MayflyWorkCounters } from './ui-work-counters.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 type SurfaceNode = Extract<MayflyUiNode, { readonly kind: 'surface' }>
@@ -256,8 +258,14 @@ export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, c
   return [compactTokens(tokens, width)]
 }
 
+/** Where `renderList` keeps the item rows it has painted, and the sink that counts the ones it had to paint. */
+export interface ListRowMemo {
+  readonly cache: UiRowCache
+  readonly counters?: MayflyWorkCounters | undefined
+}
+
 /** Render list rows; `numberFrom` is the visible position of the first row so numbers stay stable while the window scrolls. */
-export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0): string[] {
+export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0, memo?: ListRowMemo): string[] {
   const available = safeWidth(width)
   const rows: { readonly value: string, readonly itemId?: string }[] = []
   if (node.filter !== undefined) rows.push({ value: fit(colors.textMuted(`/ ${node.filter}`), available) })
@@ -275,21 +283,23 @@ export function renderList(node: ListNode, width: number, height: number, focus:
     const pointerGlyph = enabledFocus ? '→' : selected ? '●' : node.mode === 'multiple' ? '○' : ' '
     const position = numberFrom + ordinal
     const number = numbered && position < 9 ? `${String(position + 1)}. ` : ''
-    const detail = available > 40 ? paintListDetail(item.disabled === true && item.detail === undefined && item.detailSpans === undefined && item.disabledReason !== undefined ? { ...item, detail: item.disabledReason } : item, colors) : ''
-    const badge = item.badge === undefined ? '' : ` [${item.badge}]`
-    if (item.disabled === true) {
-      rows.push({ value: fit(colors.muted(`${marker}${pointerGlyph} ${number}${item.label}${badge}${detail}`), available), itemId: item.id })
-      continue
+    const paintRow = (): string => {
+      const detail = available > 40 ? paintListDetail(item.disabled === true && item.detail === undefined && item.detailSpans === undefined && item.disabledReason !== undefined ? { ...item, detail: item.disabledReason } : item, colors) : ''
+      const badge = item.badge === undefined ? '' : ` [${item.badge}]`
+      if (item.disabled === true) return fit(colors.muted(`${marker}${pointerGlyph} ${number}${item.label}${badge}${detail}`), available)
+      if (enabledFocus) {
+        const focusedRow = item.detailSpans === undefined
+          ? colors.primary(`${marker}${pointerGlyph} ${number}${item.label}${badge}${item.detail === undefined || available <= 40 ? '' : ` — ${item.detail}`}`)
+          : `${colors.primary(`${marker}${pointerGlyph} ${number}${item.label}`)}${colors.text(badge)}${detail}`
+        return colors.selectedBg(pad(focusedRow, available))
+      }
+      const pointer = selected ? colors.primary(pointerGlyph) : colors.textMuted(pointerGlyph)
+      return fit(`${marker}${pointer} ${colors.text(number)}${colors.text(item.label)}${colors.text(badge)}${detail}`, available)
     }
-    if (enabledFocus) {
-      const focusedRow = item.detailSpans === undefined
-        ? colors.primary(`${marker}${pointerGlyph} ${number}${item.label}${badge}${item.detail === undefined || available <= 40 ? '' : ` — ${item.detail}`}`)
-        : `${colors.primary(`${marker}${pointerGlyph} ${number}${item.label}`)}${colors.text(badge)}${detail}`
-      rows.push({ value: colors.selectedBg(pad(focusedRow, available)), itemId: item.id })
-      continue
-    }
-    const pointer = selected ? colors.primary(pointerGlyph) : colors.textMuted(pointerGlyph)
-    rows.push({ value: fit(`${marker}${pointer} ${colors.text(number)}${colors.text(item.label)}${colors.text(badge)}${detail}`, available), itemId: item.id })
+    const value = memo === undefined
+      ? paintRow()
+      : memo.cache.read(colors, item, `${String(available)}\0${marker}\0${pointerGlyph}\0${number}\0${selected ? 1 : 0}${enabledFocus ? 1 : 0}`, paintRow, memo.counters)
+    rows.push({ value, itemId: item.id })
   }
   const limit = Math.max(1, Number.isFinite(height) ? Math.floor(height) : 1)
   if (rows.length <= limit) return rows.map(row => row.value)

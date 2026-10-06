@@ -69,6 +69,7 @@ import {
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
+import { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
@@ -1262,12 +1263,13 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
           focus,
           options.colors,
           entries[0]!.position,
+          { cache: options.listRuntime.rows, counters: options.counters },
         )
         const focusedItem = focus.focused && focus.key !== '' ? entries.find(entry => entry.item.id === focus.key)?.item : undefined
         const segment = focusedItem?.segment
         const segmentRows = segment === undefined ? [] : [renderListSegment(segment, choice === undefined ? segment.selectedId : choiceSegment(choice, focusedItem!.id), width, options.colors)]
         return [...(queryRows.length > 0 ? queryRows : query.length > 0 ? [sliceByColumn(`/ ${query}`, 0, width, true)] : []), ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body, ...segmentRows]
-      }, options)
+      }, options, false)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
       if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
       state.bindControls(initial.filter(entry => entry.item.disabled !== true).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
@@ -1511,6 +1513,8 @@ function nearestDirectionalControl(
 export class MayflyUiSurfaceRuntime {
   /** The static leaves this surface compiled before; each publish of an unchanged subtree reuses them. */
   readonly reuse = new MayflyCompileCache()
+  /** The item rows this surface's lists have painted, kept by item and state. */
+  readonly rows = new UiRowCache()
   private node: CompilableNode | undefined
   private options: RuntimeCompilerOptions | undefined
   private layoutViewport: ((viewport: MayflyUiViewport) => void) | undefined
