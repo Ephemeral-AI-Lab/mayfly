@@ -4,6 +4,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { MayflyLocaleService } from './locale.ts'
+import { MayflyUiImagesService } from '../core/ui-images.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../core/ui-interaction-state.ts'
 import * as providerCommands from '../interaction/provider-commands.ts'
 import * as providerOnboarding from '../interaction/provider-onboarding.ts'
@@ -45,6 +46,9 @@ export function apply(ctx: Context, config: Config = {}): void {
   const locale = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase().startsWith('zh') ? 'zh' : 'en'
   const service = new MayflyLocaleService(ctx, { systemLocale: locale })
   ctx.effect(() => () => service.dispose())
+  // Image bytes are provided before the interaction owner, whose arrival is what mounts the renderers that read them.
+  const images = new MayflyUiImagesService(ctx)
+  ctx.effect(() => () => images.dispose())
   const interaction = new UiInteractionService(ctx)
   ctx.effect(() => () => interaction.dispose())
   mountUiRegistryObservers(ctx)

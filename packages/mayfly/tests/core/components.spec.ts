@@ -1119,6 +1119,21 @@ describe('createImage', () => {
   })
 })
 
+describe('imageProtocol', () => {
+  it('follows the detected terminal capabilities', () => {
+    const { tui, stop } = bootTui()
+    const components = createService(tui)
+    expect(components.imageProtocol()).toBe(false)
+    setCapabilities({ images: 'kitty', trueColor: true, hyperlinks: false })
+    expect(components.imageProtocol()).toBe(true)
+    setCapabilities({ images: 'iterm2', trueColor: true, hyperlinks: false })
+    expect(components.imageProtocol()).toBe(true)
+    setCapabilities({ images: null, trueColor: false, hyperlinks: false })
+    expect(components.imageProtocol()).toBe(false)
+    stop()
+  })
+})
+
 describe('imageDimensions', () => {
   it('decodes PNG and GIF literals and rejects garbage', () => {
     const { tui, stop } = bootTui()

@@ -57,6 +57,7 @@ function sourceText(node: MayflyUiNode): string | undefined {
     case 'empty': return `${node.title}\n${node.description ?? ''}`
     case 'progress': return node.label ?? ''
     case 'divider': return node.label ?? ''
+    case 'image': return node.alt
     default: return ''
   }
 }

@@ -10,6 +10,7 @@ import type {
   MayflyActionItem,
   MayflyChartNode,
   MayflyDiagramNode,
+  MayflyImageNode,
   MayflyFormField,
   MayflyInlineSpan,
   MayflyListNode,
@@ -75,6 +76,8 @@ import { admittedListItem } from './ui-validator.ts'
 import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
 import { actionHintLabel, actionScopeActive, effectiveItemKeys } from './ui-actions.ts'
 import { UiRowCache } from './ui-row-cache.ts'
+import { UiImagePainter } from './ui-image.ts'
+import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
@@ -556,6 +559,12 @@ function diagramComponent(node: MayflyDiagramNode, options: RuntimeCompilerOptio
     render: width => glyphRows(markdown.render(Math.max(1, width)), options.components.presentation?.glyphs),
     invalidate: () => markdown.invalidate(),
   }
+}
+
+function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions): MayflyComponent {
+  const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint)
+  const component = staticComponent(width => painter.render(width), options)
+  return { render: component.render, invalidate: () => { painter.invalidate() } }
 }
 
 function chartComponent(node: MayflyChartNode, options: RuntimeCompilerOptions): MayflyComponent {
@@ -1418,6 +1427,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors), paint))
     case 'diagram': return diagramComponent(node, options)
     case 'chart': return chartComponent(node, options)
+    case 'image': return imageComponent(node, options)
   }
 }
 
@@ -1614,7 +1624,7 @@ export class MayflyUiSurfaceRuntime {
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
 
-  constructor(readonly interaction?: UiSurfaceModel, requestRender?: () => void, clock?: UiAnimationClock) {
+  constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource) {
     this.loaderAnimation = requestRender === undefined ? undefined : new UiLoaderAnimation(requestRender, clock)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
       const address = this.fieldAddresses.get(key)
@@ -1711,6 +1721,8 @@ export class MayflyUiSurfaceRuntime {
   /** Renderer clocks do not change shared model revisions or form state. */
   get animationFrame(): number { return this.loaderAnimation?.frame ?? 0 }
   loaderFrame(): number { return this.loaderAnimation?.render() ?? 0 }
+  /** Asks the renderer to paint this surface again: an image's bytes arrived. */
+  readonly repaint = (): void => { if (this.live) this.requestRender?.() }
   beginAnimationFrame(): void { this.loaderAnimation?.beginFrame() }
   pauseAnimation(): void { this.loaderAnimation?.stop() }
 

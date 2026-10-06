@@ -170,7 +170,7 @@ async function fixture(runtime = createRuntime(), compilerComponents: MayflyComp
       mayflyTheme: { colors },
       mayflyKeymap: keymap,
     })
-    mountMayflySurfaceRenderer(owner as never, runtime.runtime, translateHint)
+    mountMayflySurfaceRenderer(owner as never, runtime.runtime, translateHint, root.get('mayflyUiImages'))
     owners.push(owner)
     return owner
   }
@@ -249,6 +249,29 @@ describe('direct pane surface renderer', () => {
       })
       await flush()
       expect(entry(f.runtime.surfaces, 'invalid-deferred').component.render(80).join(' ')).toContain('unknown Mayfly UI kind')
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('paints a pane\'s image node as its alt until the host tree\'s loader has the bytes, and repaints when they arrive', async () => {
+    const drawn = { ...components, imageProtocol: () => true, createImage: () => ({ render: () => ['<image>'], invalidate: () => {} }) } as MayflyComponents
+    const f = await fixture(createRuntime(), drawn)
+    try {
+      const bytes = deferred<{ data: Uint8Array, mediaType: string } | undefined>()
+      const loader = vi.fn(() => bytes.promise)
+      const release = f.root.mayflyUiImages.provide(loader)
+      f.register({ id: 'photo', render: () => ui.stack.column([ui.text('caption'), ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]' })]) })
+      await flush()
+      const pane = entry(f.runtime.surfaces, 'photo').component
+      expect(pane.render(40).join('\n')).toContain('[Image #1 84 KB]')
+      expect(loader).toHaveBeenCalledOnce()
+      bytes.resolve({ data: new Uint8Array([1]), mediaType: 'image/png' })
+      await flush()
+      const rows = pane.render(40).join('\n')
+      expect(rows).toContain('<image>')
+      expect(rows).not.toContain('[Image #1 84 KB]')
+      release()
     } finally {
       await f.dispose()
     }

@@ -854,6 +854,12 @@ export interface MayflyComponents {
    */
   createImage(options: MayflyImageOptions): MayflyImage
   /**
+   * Whether the terminal draws images. Without a protocol, {@link MayflyComponents.createImage} paints a one-row text
+   * fallback, so a caller that has its own text for the image shows that instead.
+   * @returns true when a Kitty or iTerm2 image protocol is in use.
+   */
+  imageProtocol(): boolean
+  /**
    * Probe the pixel dimensions of encoded image data, in the same pure-helper
    * family as {@link MayflyComponents.visibleWidth}.
    * @param data - the encoded image bytes (PNG, JPEG, GIF, or WebP).
