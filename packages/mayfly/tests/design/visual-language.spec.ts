@@ -4,6 +4,8 @@ import { ui } from '../../../ui/src/index.ts'
 import { caption, diffReport, frameDiffs, goldenRows, paint } from './scene.ts'
 import { createRealSurface, parityComponents, PROBE_PALETTE } from './parity.ts'
 import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
+import { PENDING_PARITY, pendingFor } from './pending.ts'
+import { walks } from '../../../../script/design-golden-walks.mjs'
 
 const S = (text: string, tone?: 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger', styles?: readonly ('strong' | 'italic' | 'strike')[]) => ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
 
@@ -76,5 +78,83 @@ describe('scene 8 Content', () => {
     // The kit's wrap does not reopen the caption's dim on its second row.
     expect(diffReport(await frameDiffs(goldenRows('08-content', 'pages', 3), page(true), 100, [{ delta: 'Δ20', rows: [1, 1] }]))).toBe('')
     expect(diffReport(await frameDiffs(goldenRows('08-content', 'diff', 4), page(false), 100, [{ delta: 'Δ20', rows: [1, 1] }]))).toBe('')
+  })
+})
+
+type Tone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
+const mu = (text: string) => S(text, 'muted')
+const T = (text: string, tone: Tone, styles?: readonly ('strong' | 'italic' | 'strike')[]) => ({ text, ...(tone === 'default' ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
+const col = (...children: Parameters<typeof ui.stack.column>[0]) => ui.stack.column(children)
+
+/** A pages-scene frame: the caption, a blank row, then the page body, all at the scene's width. */
+async function pageDiffs(directory: string, frame: number, title: string, body: ReturnType<typeof ui.stack.column>, width: number, wrapped: readonly number[] = []): Promise<string> {
+  const rows = [...paint(caption(title), width), '', ...paint(body, width)]
+  // A wrapped caption's continuation row is plain in the kit (Δ20).
+  const waivers = wrapped.map(row => ({ delta: 'Δ20', rows: [row, row] as const }))
+  return diffReport(await frameDiffs(goldenRows(directory, 'pages', frame), rows, width, waivers, pendingFor(directory, 'pages', frame)))
+}
+
+describe('scene 1 Marks and tokens, pages 2 to 5', () => {
+  it('page 2: state and progress glyphs, one glyph per meaning', async () => {
+    const glyphs: readonly (readonly [string, Tone, string])[] = [
+      ['●', 'primary', 'assistant block; a tool or step running'], ['»', 'user', 'user block'], ['✻', 'primary', 'thinking'], ['✓', 'success', 'done'], ['✗', 'danger', 'failed'], ['⊘', 'muted', 'cancelled'], ['◐', 'muted', 'declined (plan)'], ['■', 'danger', 'stopping or interrupted'], ['?', 'warning', 'waiting on the user'], ['⚠', 'warning', 'warning'], ['ℹ', 'primary', 'information'], ['✕', 'danger', 'goal blocked'], ['❚❚', 'muted', 'goal paused'], ['⎿', 'muted', 'detail connector'], ['⏵', 'primary', 'background jobs'], ['↻', 'warning', 'applies after a restart'], ['↗', 'accent', 'opens in the external editor'],
+    ]
+    const body = col(...glyphs.map(([glyph, tone, what]) => ui.richText([T(glyph.padEnd(3), tone, ['strong']), T(what, 'default')])), ui.spacer(), ui.richText([T('▰▰▰▰▱▱ ', 'primary'), mu('determinate progress cells   '), T('━━━━───', 'primary'), mu('  heavy and light rule')]))
+    expect(await pageDiffs('01-marks-and-tokens', 1, 'page 2/6 (Ctrl+N): state and progress glyphs (one glyph, one meaning)', body, 100)).toBe('')
+  })
+
+  it('page 3: tones and styles', async () => {
+    const tones: readonly Tone[] = ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger']
+    const sample = (tone: Tone): string => tone === 'danger' ? '✗ Plan copy failed' : tone === 'success' ? '✓ Saved to clipboard' : tone === 'warning' ? '⚠ permission picker is unavailable' : 'Sample text in this tone'
+    const body = col(...tones.map(tone => ui.richText([T(tone.padEnd(9), tone), T(sample(tone), tone)])), ui.spacer(), ui.richText([T('strong', 'default', ['strong']), T('  ', 'default'), T('italic', 'default', ['italic']), T('  ', 'default'), T('struck', 'muted', ['strike'])]))
+    expect(await pageDiffs('01-marks-and-tokens', 2, 'page 3/6 (Ctrl+N): tones and styles (the whole palette; a monochrome terminal keeps weight and glyphs)', body, 100, [1])).toBe('')
+  })
+
+  it('page 4: one answer for five states', async () => {
+    const body = col(
+      ui.loader({ message: 'Loading sessions…' }),
+      ui.richText([mu('empty      '), T('No plugins installed — press → to browse', 'default')]),
+      ui.richText([T('✗ ', 'danger'), T('Could not reach the market', 'default'), mu('  r retry')]),
+      ui.richText([T('⚠ ', 'warning'), T('offline · showing cached data from 2d ago', 'default')]),
+      ui.richText([mu('— not supported by this provider')]),
+      ui.spacer(),
+      caption('a slow or failed secondary read (a balance, a catalog refresh) never blocks or alters the primary content'),
+    )
+    expect(await pageDiffs('01-marks-and-tokens', 3, 'page 4/6 (Ctrl+N): one answer for five states: every panel and every secondary read looks the same', body, 100, [9])).toBe('')
+  })
+
+  it('page 5: feedback severities, glyph plus word', async () => {
+    const body = col(
+      ui.richText([T('✓ ', 'success'), T('Installed Git Helper · restart Mayfly to apply', 'default'), mu('   5 s visible, then it goes')]),
+      ui.richText([T('ℹ ', 'primary'), T('Resumed session · 24 turns', 'default'), mu('   5 s visible')]),
+      ui.richText([T('⚠ ', 'warning'), T('Balance low · ¥ 6.20 left', 'default'), mu('   stays until acted on')]),
+      ui.richText([T('✗ ', 'danger'), T('Sign-in failed — try again', 'default'), mu('   stays, offers its retry key')]),
+      ui.spacer(),
+      caption('inline in the footer of an open surface; a toast in the activity row gap otherwise'),
+    )
+    expect(await pageDiffs('01-marks-and-tokens', 4, 'page 5/6 (Ctrl+N): feedback severities: glyph plus word, never color alone', body, 100)).toBe('')
+  })
+})
+
+describe('scene 9 Feedback and progress, page 3: settled forms', () => {
+  it('draws settled results statically with the retry as a key', async () => {
+    const body = col(
+      ui.richText([T('✓ ', 'success'), T('Discovered 14 models', 'default'), mu(' · 2.1s')]),
+      ui.richText([T('✗ ', 'danger'), T('Discovery failed: 401 Unauthorized', 'default'), mu('  r retry')]),
+      ui.richText([mu('⊘ Cancelled')]),
+    )
+    expect(await pageDiffs('09-feedback-and-progress', 2, 'page 3/4 (Ctrl+N): settled forms are static; the retry is a key', body, 96)).toBe('')
+  })
+})
+
+describe('pending-parity ledger', () => {
+  it('names real golden frames and a later slice for every entry', () => {
+    const known = walks()
+    for (const entry of PENDING_PARITY) {
+      const walk = known.find(candidate => candidate.dir === entry.directory && candidate.name === entry.walk)
+      expect(walk, `${entry.directory}/${entry.walk}`).toBeDefined()
+      for (const frame of entry.frames) expect(frame).toBeLessThan(walk!.steps.length)
+      expect(entry.slice).toMatch(/^1\.(?:[3-9]|1[01])[ab]?$/u)
+    }
   })
 })

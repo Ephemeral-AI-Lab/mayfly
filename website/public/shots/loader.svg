@@ -10,10 +10,10 @@
 <text x="129.6" y="52" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#ededf2">model</text>
 <text x="180" y="52" textLength="16.8" lengthAdjust="spacingAndGlyphs" fill="#5c6476">1s</text>
 <text x="20.4" y="71" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">Stop</text>
-<text x="28.8" y="90" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#5c6476">Enter</text>
+<text x="28.8" y="90" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Enter</text>
 <text x="79.2" y="90" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">cancel</text>
 <text x="138" y="90" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">·</text>
-<text x="154.8" y="90" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#5c6476">Esc</text>
+<text x="154.8" y="90" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Esc</text>
 <text x="188.4" y="90" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#5c6476">close</text>
 </g>
 </svg>

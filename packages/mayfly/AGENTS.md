@@ -115,6 +115,11 @@ admitted whole each time. Reused leaves are static painters that read only their
 node, width, colors, and components; a new palette recompiles them. The work
 budgets in `tests/perf/budgets.json` only ratchet down.
 
+The presentation (`core/presentation.ts`: glyph mode, monochrome, reduced
+motion, from the `mayfly` settings and `NO_COLOR`) is read when a theme provider
+and the components service are built, never per paint. A change restarts the
+live theme provider (`reloadTheme`), so every consumer and cached row rebuilds.
+
 Build surfaces from the shared components (actions row, text/choice fields,
 lists, tabs, decision panels, questionnaire, loader/progress/empty). The
 [UI design](../../docs/design/component-library.md) is the target for a planned

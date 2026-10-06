@@ -79,8 +79,8 @@ describe('mayfly-theme-paper plugin', () => {
     const { colors } = ctx.mayflyTheme
     // text #3b322a → rgb(59, 50, 42)
     expect(colors.text('hi')).toBe('\x1b[38;2;59;50;42mhi\x1b[39m')
-    // primary #b4541e → rgb(180, 84, 30)
-    expect(colors.primary('hi')).toBe('\x1b[38;2;180;84;30mhi\x1b[39m')
+    // primary #a84d1a → rgb(168, 77, 26)
+    expect(colors.primary('hi')).toBe('\x1b[38;2;168;77;26mhi\x1b[39m')
     // accent #0e7a70 → rgb(14, 122, 112)
     expect(colors.accent('hi')).toBe('\x1b[38;2;14;122;112mhi\x1b[39m')
     // roleUser #35509e → rgb(53, 80, 158)

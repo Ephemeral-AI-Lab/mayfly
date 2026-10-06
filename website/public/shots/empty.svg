@@ -17,10 +17,10 @@
 <text x="37.2" y="90" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">New</text>
 <text x="70.8" y="90" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">session</text>
 <text x="138" y="90" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">]</text>
-<text x="28.8" y="109" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#5c6476">Enter</text>
+<text x="28.8" y="109" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Enter</text>
 <text x="79.2" y="109" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#5c6476">run</text>
 <text x="112.8" y="109" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">·</text>
-<text x="129.6" y="109" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#5c6476">Esc</text>
+<text x="129.6" y="109" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Esc</text>
 <text x="163.2" y="109" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#5c6476">close</text>
 </g>
 </svg>

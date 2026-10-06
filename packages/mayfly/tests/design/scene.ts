@@ -6,6 +6,7 @@
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import { compareCells, parseCells, PROBE_PALETTE, parityComponents, readGoldenFrames, type ParityDiff, type ParityWaiver } from './parity.ts'
+import type { PendingParity } from './pending.ts'
 
 /** The muted caption every prototype scene prints above its body. */
 export const caption = (text: string): MayflyUiNode => ui.text(text, { tone: 'muted' })
@@ -34,11 +35,14 @@ export function goldenRows(directory: string, walk: string, frame: number): read
  * Compares real rows with a golden frame at `columns` and returns the differences, each with the plain text of both
  * rows so a failure reads like a diff.
  */
-export async function frameDiffs(expectedRows: readonly string[], actualRows: readonly string[], columns: number, waivers: readonly ParityWaiver[] = []): Promise<readonly (ParityDiff & { readonly rowText: string })[]> {
+export async function frameDiffs(expectedRows: readonly string[], actualRows: readonly string[], columns: number, waivers: readonly ParityWaiver[] = [], pending: readonly PendingParity[] = []): Promise<readonly (ParityDiff & { readonly rowText: string })[]> {
   const expected = await parseCells(expectedRows, columns, 'prototype')
   const actual = await parseCells(actualRows, columns, 'real')
   const text = (cells: readonly { readonly ch: string }[] | undefined): string => (cells ?? []).map(cell => cell.ch).join('').trimEnd()
-  return compareCells(expected, actual, waivers).map(diff => ({ ...diff, rowText: `${text(expected[diff.row])}\n${text(actual[diff.row])}` }))
+  // A pending entry skips its cells; the slice it names will match them.
+  const owed = (diff: ParityDiff): boolean => pending.some(entry => (entry.rows === undefined || (diff.row >= entry.rows[0] && diff.row <= entry.rows[1]))
+    && (entry.cols === undefined || (diff.col >= entry.cols[0] && diff.col <= entry.cols[1])))
+  return compareCells(expected, actual, waivers).filter(diff => !owed(diff)).map(diff => ({ ...diff, rowText: `${text(expected[diff.row])}\n${text(actual[diff.row])}` }))
 }
 
 /** One line per differing row: the first differing cell, then both rows' text, so a failure reads like a diff. */
