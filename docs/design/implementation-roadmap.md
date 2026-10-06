@@ -443,17 +443,24 @@ gate.
 flowchart LR
   subgraph F[Phase 1 Foundation]
     direction LR
-    s0[1.0] --> s1[1.1] --> s2[1.2] --> s3[1.3]
-    s3 --> s4[1.4] & s5[1.5] & s6[1.6] & s7[1.7]
-    s4 & s5 & s6 & s7 --> s8[1.8]
-    s3 --> s9[1.9]
-    s4 & s5 & s7 --> s10[1.10]
-    s8 & s9 & s10 --> s11[1.11]
+    s0[1.0] --> s1[1.1]
+    s1 --> s2[1.2] & s7[1.7] & s10a[1.10a] & s9a[1.9a] & s8a[1.8a]
+    s2 --> s3[1.3]
+    s2 & s7 --> s4[1.4] & s5[1.5] & s6[1.6]
+    s10a & s7 --> s10b[1.10b]
+    s3 & s7 & s9a --> s9b[1.9b]
+    s3 & s4 & s5 & s6 & s8a --> s8b[1.8b]
+    s8b & s9b & s10b --> s11[1.11]
   end
   F --> n2[2 Panels] & n3[3 Status] & n4[4 Activity]
   n3 --> n5[5 Editor]
   n2 & n4 & n5 --> n6[6 Transcript] --> n7[7 Finish]
 ```
+
+Phase 1's slices run in parallel (the *Working in parallel* section below): 1.8, 1.9, and 1.10 each split into an
+early half that depends on nothing (`armMs`, `ui.image`, the node slot: 1.8a, 1.9a, 1.10a) and a late half (the
+patterns, the prompt, the views lane: 1.8b, 1.9b, 1.10b); 1.7 moves ahead of 1.4-1.6 because it renames the action ids
+they bind; 1.4-1.6 depend on 1.2 and 1.7, not on 1.3, which needs only 1.2.
 
 The first version of this roadmap named its phases P0 to P8. They map onto the current ones as follows:
 
@@ -501,10 +508,38 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 
 | Slice | State | Branch | Notes |
 | --- | --- | --- | --- |
-| 1.0 | built, in review | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
-| 1.1 | built, in review | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
-| 1.2 to 1.11 | not started | | |
-| Checkpoint A / B / C | pending | | |
+| 1.0 | merged (#99) | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
+| 1.1 | merged (#100) | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
+| 1.2 | not started | `feat/ui-foundation-1-2` | Needs: none |
+| 1.7 | not started | `feat/ui-foundation-1-7` | Needs: none |
+| 1.10a | not started | `feat/ui-foundation-1-10a` | Node slot. Needs: none |
+| 1.9a | not started | `feat/ui-foundation-1-9a` | `ui.image`. Needs: none |
+| 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
+| 1.3 | not started | `feat/ui-foundation-1-3` | Needs: 1.2 |
+| 1.4 | not started | `feat/ui-foundation-1-4` | Needs: 1.2, 1.7 |
+| 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
+| 1.6 | not started | `feat/ui-foundation-1-6` | Needs: 1.2, 1.7 |
+| 1.10b | not started | `feat/ui-foundation-1-10b` | Views lane. Needs: 1.10a, 1.7 |
+| 1.9b | not started | `feat/ui-foundation-1-9b` | Prompt. Needs: 1.3, 1.7, 1.9a |
+| 1.8b | not started | `feat/ui-foundation-1-8b` | Patterns. Needs: 1.3 to 1.6, 1.8a |
+| 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
+| Checkpoint A / B / C | pending | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11 |
+
+**Working in parallel.** Up to three slices are in flight, each in its own worktree and agent.
+
+- *Ownership.* A slice edits the functions its text names (`renderList` is 1.4's, `renderTabs` 1.5's,
+  `renderFormField` 1.6's, `keyGrammar` and the keymap 1.7's, `renderSurfaceHead/Tail` 1.2's then 1.3's). New logic goes
+  in a new module with an arm or call site in `ui-compiler.ts` or `ui-validator.ts`; no drive-by refactors, moves, or
+  reformatting. A slice that needs a contract field another slice owns stops and says so.
+- *Shared files.* Generated files (`pnpm run shots:sync`, `design:golden`) are regenerated, never hand-merged;
+  `tests/perf/budgets.json` and `script/design-golden-walks.mjs` take append-only rows for a slice's own scenes;
+  each slice's gallery page is a new file `examples/ui-gallery/src/groups/<slice>.ts` wired by one import line; each
+  slice edits only its own Status row and its own slice text.
+- *Scenes that span slices* (1: 1.2 and 1.4; 7: 1.2 and 1.3; 11: 1.5 and 1.8b; 12: 1.6 and 1.8b; 2: 1.7) list the
+  walks they cannot match yet in `tests/design/pending.ts`; slice 1.11 asserts the list is empty.
+- *Gates.* Narrow checks run freely; `pnpm run verify:full` runs under one lock, so at most one runs at a time.
+  Before a PR opens, and after each sibling merges, the branch rebases on `feat/ui-foundation` and reruns its checks.
+- *Review.* One PR per slot is in flight; a PR is a series of commits that are each green, as 1.1 was.
 
 
 Slices 1.3 to 1.10 change `packages/ui`. Each updates `website/plugins/ui-reference.md` and its English twin together
