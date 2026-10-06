@@ -82,6 +82,9 @@ describe('private UI pattern painters', () => {
     expect(primary).toHaveBeenCalledWith('Alpha')
     expect(muted).toHaveBeenCalledWith('Gamma')
 
+    // Two tabs that do not fit fold with nothing hidden; a strip without tabs paints an empty rule.
+    expect(plain(renderTabs(ui.tabs({ id: 'pair', activeId: 'x', items: [{ id: 'x', label: 'Extended' }, { id: 'y', label: 'Yonder' }] }), 12, idle, colors))).toEqual(['‹ Extended  ›'.slice(0, 12)])
+    expect(plain(renderTabs({ ...node, items: [] }, 20, idle, colors))).toEqual(['', ''])
     const wizard = ui.tabs({ id: 'steps', mode: 'wizard', activeId: 'two', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'three', label: 'Three' }] })
     expect(plain(renderTabs(wizard, 80, idle, colors, ['one', 'two']))).toEqual(['✓ One  ›  ● Two  ›  ○ Three', '          ━━━━━'])
     expect(plain(renderTabs(wizard, 80, idle, colors))[0]).toBe('○ One  ›  ● Two  ›  ○ Three')

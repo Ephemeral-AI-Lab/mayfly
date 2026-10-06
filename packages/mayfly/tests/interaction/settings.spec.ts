@@ -390,7 +390,19 @@ describe('mayfly-settings presentation follow', () => {
   it('reloads nothing when no theme provider is live', async () => {
     const ctx = createContext()
     await reloadTheme(ctx)
+    ctx.mayflyInteractionState.currentThemeKey = 'custom'
+    await reloadTheme(ctx)
+    ctx.mayflyInteractionState.currentThemeKey = 'unknown'
+    await reloadTheme(ctx)
     expect(ctx.get('mayflyTheme')).toBeUndefined()
+  })
+
+  it('restarts the live provider of the current theme key', async () => {
+    const ctx = createContext()
+    await ctx.plugin(themeOcean)
+    ctx.mayflyInteractionState.currentThemeKey = 'ocean'
+    await reloadTheme(ctx)
+    await vi.waitFor(() => { expect(ctx.get('mayflyTheme')?.colors).toBe(themeOcean.OCEAN_COLORS) })
   })
 })
 

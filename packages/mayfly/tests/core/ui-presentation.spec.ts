@@ -71,3 +71,31 @@ describe('loader motion', () => {
     }
   })
 })
+
+describe('focus window', () => {
+  it('scrolls an unframed surface back up to a focused row above the window', () => {
+    const node = ui.stack.column([
+      ui.list({ id: 'top', role: 'choose', selectedIds: [], items: [{ id: 'a', label: 'Top' }] }),
+      ...Array.from({ length: 8 }, (_, index) => ui.text(`filler ${String(index)}`)),
+      ui.list({ id: 'bottom', role: 'choose', selectedIds: [], items: [{ id: 'b', label: 'Bottom' }] }),
+    ])
+    const model = new UiSurfaceModel('window', {
+      scope: { kind: 'app', targetId: 'window' }, source: [], revision: 1, update: { reason: 'data' },
+      node: node as never,
+      events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) },
+      definition: { onEvent: {} },
+    } as never)
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    const result = compileMayflyUiSurfaceNode(model.node!, { components: components({}), colors, getViewport: () => ({ columns: 30, rows: 4 }), screenMode: 'alternate', surfaceRuntime: runtime })
+    if (!result.ok) throw new Error(result.message)
+    const surface = result.value
+    surface.focusTarget!.focused = true
+    expect(surface.component.render(30).join('\n')).toContain('Top')
+    surface.focusTarget!.handleInput?.('\t')
+    expect(surface.component.render(30).join('\n')).toContain('Bottom')
+    surface.focusTarget!.handleInput?.('\x1b[Z')
+    expect(surface.component.render(30).join('\n')).toContain('Top')
+    runtime.dispose()
+    model.dispose()
+  })
+})
