@@ -1,0 +1,11 @@
+--- after start ---
+page 1/4 (Ctrl+N): a tab strip: text color only; ←/→ move when focused, Alt+←/→ from anywhere;
+counts and ! attention
+
+╭ Status ────────────────────────────────────────────────────────────────────╮
+│ Overview   Usage 3   Connections !   Skills 12   About                     │
+│            ━━━━━━━                                                         │
+│                                                                            │
+│ Usage page content                                                         │
+│   ←/→ tabs · Enter open · Esc close                                        │
+╰────────────────────────────────────────────────────────────────────────────╯

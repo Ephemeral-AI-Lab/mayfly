@@ -1,0 +1,22 @@
+--- after start ---
+[2mpage 1/7 (Ctrl+N): text, rich text, spacer, divider: eight tones, wrap or truncate, strong italic
+strike[0m
+
+default   sample in this tone
+[2mmuted     sample in this tone[0m
+[38;2;154;134;230mprimary   sample in this tone[0m
+[38;2;120;190;230maccent    sample in this tone[0m
+[38;2;130;160;240muser      sample in this tone[0m
+[38;2;110;200;140msuccess   sample in this tone[0m
+[38;2;230;190;90mwarning   sample in this tone[0m
+[38;2;230;110;110mdanger    sample in this tone[0m
+
+Prefer small diffs and always     Prefer small diffs and always…[0m
+run the width scan before
+pushing.
+[2mwrap (default)                    truncate[0m
+
+deepseek-chat High  [1m[38;2;154;134;230mPLAN[0m  [1m[38;2;230;190;90mYOLO[0m  [3mitalic[0m  [9m[2mstruck[0m  [2m⏵ 2 jobs[0m
+
+[2m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[2m── Connection ──────────────────────────────────────────────────────────────────────────────────────[0m

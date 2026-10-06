@@ -1,0 +1,89 @@
+--- after start ---
+[2mpage 1/7 (Ctrl+N): choose lists: numbered instant vs focus-only digits[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mNumbered choose lists[0m[38;2;154;134;230m [0m[38;2;154;134;230m───────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mnumbered: true — a digit chooses at once (preferences, questions)[0m                [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [2m1[0m  [1mPreset endpoint[0m [2m— known provider[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m2[0m  Custom endpoint [2m— any compatible URL[0m                                        [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m3[0m  OAuth provider [2m— browser sign-in[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m                                                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2mnumbered: 'focus' — a digit only moves the cursor (anything that grants)[0m         [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m1[0m  [1mReject[0m                                                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m2[0m  Allow once                                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m3[0m  Allow for this session                                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0m1-3 [2mchoose[0m[2m · [0mEnter [2mchoose[0m[2m · [0mEsc [2mclose[0m                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 2/7 (Ctrl+N): browse list: type to filter, groups, badges, details, an empty state[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mSkills[0m[38;2;154;134;230m [0m[38;2;154;134;230m──────────────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mProject[0m                                                                          [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [1mreview-pr[0m [2m[enabled][0m [2m— Review a pull request[0m                                    [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   release-notes [2m— Draft release notes[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2mpdf-export[0m [2m— PDF export[0m [2m— retired[0m                                              [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2mPreset[0m                                                                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   plugin-author [2m— Prototype a plugin in-process[0m                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   preset-author [2m— Compose your own presets[0m                                       [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0mEnter [2mopen[0m[2m · [0mType [2mfilter[0m[2m · [0mEsc [2mclose[0m                             [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 3/7 (Ctrl+N): multiple: Space toggles, Enter commits[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mChannels[0m[38;2;154;134;230m [0m[38;2;154;134;230m────────────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [38;2;154;134;230m●[0m [1mmentions[0m                                                                     [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m○[0m errors                                                                       [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m○[0m [2mdigest[0m [2m— enterprise only[0m                                                     [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0mSpace [2mtoggle[0m[2m · [0mEnter [2mchoose[0m[2m · [0mEsc [2mclose[0m                          [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 4/7 (Ctrl+N): slash filter: `/` starts it, so bare letters are free accelerators: i is this
+panel's own key, x and r are the common meanings delete and refresh (rebindable)[0m
+[2mthe kit rejects the other combination: action "i": printable key "i" on a surface with a
+type-to-filter list; use filterMode: 'slash' or a modifier key[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mPlugins[0m[38;2;154;134;230m [0m[38;2;154;134;230m─────────────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [1mLoop[0m [2m— official[0m                                                          [2m1.4.0[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   Git Helper [2m— community[0m                                            [2mupdate 1.3.0[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0mEnter [2mopen[0m[2m · [0mi [2minstall[0m[2m · [0m/ [2mfilter[0m[2m · [0mEsc [2mclose[0m                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 5/7 (Ctrl+N): per-row availability and confirm reuse the key: x deletes the focused row,
+the built-in row says why it cannot, and a destructive key asks first (there is no Delete
+button)[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mProviders[0m[38;2;154;134;230m [0m[38;2;154;134;230m───────────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [1mDeepSeek[0m [2m— built-in[0m                                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   Local [2m— custom[0m                                                                 [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   Staging [2m— asks before it is chosen[0m                                             [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0mEnter [2medit[0m[2m · [0mEsc [2mclose[0m                                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 6/7 (Ctrl+N): a segment strip on the focused row (the model picker): ←/→ steps, Delete
+unpins, it never moves a row[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mSelect a model[0m[38;2;154;134;230m [0m[38;2;154;134;230m──────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mopencode-go[0m                                                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [1mopencode-go/DeepSeek V4 Pro[0m [2m— 977k context[0m          [2mmin[0m [1m[38;2;154;134;230m‹ high (default) ›[0m [2mmax[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   opencode-go/space-bunny-alpha [2m— 256k context[0m                                   [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2mDeepSeek[0m                                                                         [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   DeepSeek/DeepSeek-V41-Flash [2m[current · high][0m [2m— 977k context[0m                    [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2mcustom[0m                                                                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   custom/some-model [2m— 128k context[0m                                               [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m←/→ [2mthinking[0m[2m · [0mEnter [2mchoose[0m[2m · [0mType [2mfilter[0m[2m · [0mEsc [2mclose[0m                          [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u000e" ---
+[2mpage 7/7 (Ctrl+N): tree with tri-state checks (Space toggles, → expands) and an accordion (Enter
+or → expands)[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mTree and accordion[0m[38;2;154;134;230m [0m[38;2;154;134;230m──────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [38;2;154;134;230m▾[0m [38;2;154;134;230m◐[0m [1mfilesystem[0m                                    [38;2;110;200;140m✓ connected · 120ms  [0m[2m4 tools[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m│ [0m[38;2;154;134;230m●[0m read_file [2m— Read a file from disk[0m                                          [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m│ [0m[38;2;154;134;230m●[0m write_file [2m— Create or overwrite a file[0m                                    [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m│ [0m[2m○[0m delete_file [2m— Remove a file[0m                                    [38;2;230;190;90m⚠ dangerous[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m╰ [0m[38;2;154;134;230m●[0m list_dir [2m— List a directory[0m                                                [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m▸[0m [2m○[0m [1mgithub[0m                                       [38;2;110;200;140m✓ connected · 340ms  [0m[2m12 tools[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m                                                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [38;2;154;134;230m▸[0m [1mplugin-author[0m [2m— preset[0m                                                       [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m▸[0m preset-author [2m— preset[0m                                                       [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m←/→ [2mbranch[0m[2m · [0mSpace [2mtoggle[0m[2m · [0mEnter [2mbranch[0m[2m · [0mEsc [2mclose[0m                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m

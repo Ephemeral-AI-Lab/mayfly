@@ -1,0 +1,74 @@
+--- after start ---
+╭ Keys ─────────────────────────────────────────── Enter rebinds · Delete restores the default ╮
+│ Common meanings (every panel)                                                                │
+│ → save              ui.save                                                           Ctrl+S │
+│   Copy              ui.copy                                                                c │
+│   delete            ui.delete                                                              x │
+│   refresh           ui.refresh                                                             r │
+│   external          ui.external                                                       Ctrl+G │
+│   search            ui.search                                                         Ctrl+F │
+│ Demo plugin                                                                                  │
+│   Install           demo-plugin.install                                                    i │
+│ Moving between controls                                                                      │
+│   tab-prev          ui.tab-prev                                                   Alt+← / F2 │
+│   tab-next          ui.tab-next                                                   Alt+→ / F3 │
+│    ↑ 0 more · ↓ 23 more                                                                      │
+│   Enter open · i install · / filter · Esc close                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+
+A downstream plugin panel declares its own action; the same list rebinds it, and its hint row
+follows:
+╭ Demo plugin ─────────────────────────────────────────────────────────────────────────────────╮
+│ installs so far: 0                                                                           │
+│  Install (i)   Copy                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "\r" ---
+╭ Keys ─────────────────────────────────────────────────────── press the new key · Esc cancels ╮
+│ Common meanings (every panel)                                                                │
+│ → save              ui.save                                                           Ctrl+S │
+│   Copy              ui.copy                                                                c │
+│   delete            ui.delete                                                              x │
+│   refresh           ui.refresh                                                             r │
+│   external          ui.external                                                       Ctrl+G │
+│   search            ui.search                                                         Ctrl+F │
+│ Demo plugin                                                                                  │
+│   Install           demo-plugin.install                                                    i │
+│ Moving between controls                                                                      │
+│   tab-prev          ui.tab-prev                                                   Alt+← / F2 │
+│   tab-next          ui.tab-next                                                   Alt+→ / F3 │
+│    ↑ 0 more · ↓ 23 more                                                                      │
+│ ℹ Press the new key for "ui.save" — Esc cancels                                              │
+│   Enter open · i install · / filter · Esc close                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+
+A downstream plugin panel declares its own action; the same list rebinds it, and its hint row
+follows:
+╭ Demo plugin ─────────────────────────────────────────────────────────────────────────────────╮
+│ installs so far: 0                                                                           │
+│  Install (i)   Copy                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "x" ---
+╭ Keys ─────────────────────────────────────────────────────── press the new key · Esc cancels ╮
+│ Common meanings (every panel)                                                                │
+│ → save              ui.save                                                           Ctrl+S │
+│   Copy              ui.copy                                                                c │
+│   delete            ui.delete                                                              x │
+│   refresh           ui.refresh                                                             r │
+│   external          ui.external                                                       Ctrl+G │
+│   search            ui.search                                                         Ctrl+F │
+│ Demo plugin                                                                                  │
+│   Install           demo-plugin.install                                                    i │
+│ Moving between controls                                                                      │
+│   tab-prev          ui.tab-prev                                                   Alt+← / F2 │
+│   tab-next          ui.tab-next                                                   Alt+→ / F3 │
+│    ↑ 0 more · ↓ 23 more                                                                      │
+│ ⚠ x is already "delete" — pick another key, or rebind that action first                      │
+│   Enter open · i install · / filter · Esc close                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+
+A downstream plugin panel declares its own action; the same list rebinds it, and its hint row
+follows:
+╭ Demo plugin ─────────────────────────────────────────────────────────────────────────────────╮
+│ installs so far: 0                                                                           │
+│  Install (i)   Copy                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

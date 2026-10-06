@@ -1,0 +1,14 @@
+--- after start ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "!" ---
+main conversation · idle · shell mode: the border is accent-colored, nothing else changes
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ ! ▌Run a shell command · Esc leaves shell mode                                               │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

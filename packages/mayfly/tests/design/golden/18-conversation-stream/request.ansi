@@ -1,0 +1,75 @@
+--- after start ---
+[2mlevel standard · 25 rows (Ctrl+O cycles 12 · 25 · 33 · 44)[0m
+    [38;2;130;160;240m» [0m[1mUpdate the landing page hero copy and run the tests.[0m
+    [2m▸ Took 38s · 6 tool calls[0m[2m · [0m[38;2;110;200;140m+10[0m [38;2;230;110;110m−3[0m[2m · Ctrl+O expand[0m
+  [2m▾ [0m[38;2;110;200;140m✓ [0m[1mEdited [0m[38;2;120;190;230mHero.tsx[0m[38;2;110;200;140m  +4[0m[38;2;230;110;110m −2  [0m[38;2;110;200;140m▮▮▮▮▮[0m[38;2;230;110;110m▮▮▮[0m
+    [2m 12  12 │[0m     return (
+    [2m 13     │[0m [48;2;66;30;36m[38;2;230;110;110m−[0m[48;2;66;30;36m [38;2;230;110;110m    <h1>Build agents faster</h1>[0m[48;2;66;30;36m                                                [0m
+    [2m     13 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m    <h1>Ship agent UI in a keystroke</h1>[0m[48;2;28;58;40m                                       [0m
+    [2m 14  14 │[0m       <p>{sub}</p>
+  [2m▾ [0m[38;2;110;200;140m✓ [0m[1mEdited [0m[38;2;120;190;230mtool-line.ts[0m[38;2;110;200;140m  +6[0m[38;2;230;110;110m −1  [0m[38;2;110;200;140m▮▮▮▮▮▮▮[0m[38;2;230;110;110m▮[0m
+    [2m 87  87 │[0m     const full = toolDetail(call)
+    [2m 88     │[0m [48;2;66;30;36m[38;2;230;110;110m−[0m[48;2;66;30;36m [38;2;230;110;110m  const detail = full[0m[48;2;66;30;36m                                                           [0m
+    [2m     88 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m  const detail = truncate(full, width - 4)[0m[48;2;28;58;40m                                      [0m
+    ● Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.
+      The one failure was a truncation bug in the tool-line row, fixed in the same change.
+
+[2m  ──────────────────────────────────────────────────────────────────────────────────────── 10:04[0m
+    [38;2;130;160;240m» [0m[1mNow bump the changelog and run the full gate.[0m
+    [38;2;230;110;110m✗ [0m[1m[38;2;230;110;110mFailed[0m[2m · verify:full timed out after 4m · 4m 12s · 3 tool calls[0m
+  [2m▾ [0m[38;2;110;200;140m✓ [0m[1mEdited [0m[38;2;120;190;230mCHANGELOG.md[0m[38;2;110;200;140m  +3[0m[38;2;230;110;110m −0  [0m[38;2;110;200;140m▮▮▮▮▮▮▮▮[0m
+    [2m      6 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m## Unreleased[0m[48;2;28;58;40m                                                                   [0m
+    [2m      7 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m- Hero copy now reads "Ship agent UI in a keystroke".[0m[48;2;28;58;40m                           [0m
+    [2m      8 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m- Width scan covers the new panels.[0m[48;2;28;58;40m                                             [0m
+
+[2m  ──────────────────────────────────────────────────────────────────────────────────────── 10:09[0m
+    [38;2;130;160;240m» [0m[1mRegenerate the screenshots and check that they are fresh.[0m
+    [2m  ⎿ [0m[2mRan commands[0m
+[38;2;154;134;230m●[0m [2mR[0m[2mu[0m[2mn[0m[2mn[0m[2mi[0m[2mn[0m[2mg[0m[2m [0m[2mc[0m[2mo[0m[2mm[0m[2mm[0m[2ma[0m[2mn[0m[2md[0m[2ms[0m [2m· 8s · ↑30.2k ↓4.1k[0m
+[2m  ⎿ [0mpnpm run shots:check
+[2m╭[0m[2m────────────────────────────────────────────────────────────────[0m[2m [0m[1mUpdate the landing page hero[0m[2m [0m[2m╮[0m
+[2m│[0m > ▌[2mType a follow-up to queue it · @ files · # skills[0m                                         [2m│[0m
+[2m╰──────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+deepseek-chat High  [2m~/work/mayfly[0m  [2mmain ±3[0m                  [2mcache 34%  context: 18% (22.9k/128k)[0m
+Agents 5[38;2;230;190;90m ● [0m1 waiting   Jobs 3[38;2;154;134;230m ⏵ [0m2 running   Goal [38;2;154;134;230m●[0m 2/8   Todo 4/6[38;2;154;134;230m ● [0mBump changelog       [2m↓ views[0m
+
+[2mAlt+↑ from the prompt selects a stream row; recall, search, and the views row work from here[0m
+--- after "\u0004" ---
+[2mlevel standard · 25 rows (Ctrl+O cycles 12 · 25 · 33 · 44)[0m
+    [38;2;130;160;240m» [0m[1mUpdate the landing page hero copy and run the tests.[0m
+    [2m▸ Took 38s · 6 tool calls[0m[2m · [0m[38;2;110;200;140m+10[0m [38;2;230;110;110m−3[0m[2m · Ctrl+O expand[0m
+  [2m▾ [0m[38;2;110;200;140m✓ [0m[1mEdited [0m[38;2;120;190;230mHero.tsx[0m[38;2;110;200;140m  +4[0m[38;2;230;110;110m −2  [0m[38;2;110;200;140m▮▮▮▮▮[0m[38;2;230;110;110m▮▮▮[0m
+    [2m 12  12 │[0m     return (
+    [2m 13     │[0m [48;2;66;30;36m[38;2;230;110;110m−[0m[48;2;66;30;36m [38;2;230;110;110m    <h1>Build agents faster</h1>[0m[48;2;66;30;36m                                                [0m
+    [2m     13 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m    <h1>Ship agent UI in a keystroke</h1>[0m[48;2;28;58;40m                                       [0m
+    [2m 14  14 │[0m       <p>{sub}</p>
+  [2m▾ [0m[38;2;110;200;140m✓ [0m[1mEdited [0m[38;2;120;190;230mtool-line.ts[0m[38;2;110;200;140m  +6[0m[38;2;230;110;110m −1  [0m[38;2;110;200;140m▮▮▮▮▮▮▮[0m[38;2;230;110;110m▮[0m
+    [2m 87  87 │[0m     const full = toolDetail(call)
+    [2m 88     │[0m [48;2;66;30;36m[38;2;230;110;110m−[0m[48;2;66;30;36m [38;2;230;110;110m  const detail = full[0m[48;2;66;30;36m                                                           [0m
+    [2m     88 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m  const detail = truncate(full, width - 4)[0m[48;2;28;58;40m                                      [0m
+    ● Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.
+      The one failure was a truncation bug in the tool-line row, fixed in the same change.
+
+[2m  ──────────────────────────────────────────────────────────────────────────────────────── 10:04[0m
+    [38;2;130;160;240m» [0m[1mNow bump the changelog and run the full gate.[0m
+    [38;2;230;110;110m✗ [0m[1m[38;2;230;110;110mFailed[0m[2m · verify:full timed out after 4m · 4m 12s · 3 tool calls[0m
+  [2m▾ [0m[38;2;110;200;140m✓ [0m[1mEdited [0m[38;2;120;190;230mCHANGELOG.md[0m[38;2;110;200;140m  +3[0m[38;2;230;110;110m −0  [0m[38;2;110;200;140m▮▮▮▮▮▮▮▮[0m
+    [2m      6 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m## Unreleased[0m[48;2;28;58;40m                                                                   [0m
+    [2m      7 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m- Hero copy now reads "Ship agent UI in a keystroke".[0m[48;2;28;58;40m                           [0m
+    [2m      8 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m- Width scan covers the new panels.[0m[48;2;28;58;40m                                             [0m
+
+[2m  ──────────────────────────────────────────────────────────────────────────────────────── 10:09[0m
+    [38;2;130;160;240m» [0m[1mRegenerate the screenshots and check that they are fresh.[0m
+    [2m  ⎿ [0m[2mRan commands[0m
+  [2m▾ [0m[1m[38;2;230;190;90m? [0m[1mApprove command[0m[2m  bash · 1 of 3 waiting[0m
+  [2m$ [0mrm -rf build && pnpm build
+  [2min ~/work/mayfly   [0m[38;2;230;190;90m⚠ deletes files[0m
+[2m── Decide ──────────────────────────────────────────────────────────────────────────────────────[0m
+[1m[38;2;154;134;230m→[0m [2m1[0m  [1mReject[0m
+  [2m2[0m  Allow once
+  [2m3[0m  Allow bash for this session
+  Feedback: [2mtype to explain…[0m
+[2m  [0m↑/↓ [2moptions[0m[2m · [0m1-3 [2mfocus[0m[2m · [0mEnter [2mchoose[0m[2m · [0mEsc [2mreject[0m
+
+[2mthe agent's request is the newest stream row, with today's content; the card below it is the
+decision (Ctrl+G opens an edit or a plan in $EDITOR)[0m

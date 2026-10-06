@@ -1,0 +1,65 @@
+--- after start ---
+page 1/5 (Ctrl+N): running calls: the category picks the label and the detail (cycles every 1.6
+s); a question waits on you
+
+● Running commands · 12s
+  ⎿ pnpm run verify:changed -- --plan
+
+? Waiting for your action · 8s
+  ⎿ Which release channel should this go to?
+--- after "\u000e" ---
+page 2/5 (Ctrl+N): settled calls: one static past-tense line each; a folded turn is one summary
+
+✓ Read pane-activity.ts · 481 lines
+✓ Searched "activity" · 47 matches in 12 files
+✓ Ran pnpm run check:lib · 4.2s
+✗ Ran pnpm run lint · exit 1 · 3s
+✓ Fetched pi.dev/docs/latest/tui · 200 · 18 KB
+⊘ Ran pnpm run build
+▸ Read 3 files · Searched code · Ran 2 commands · 6s
+--- after "\u000e" ---
+page 3/5 (Ctrl+N): edit: three phases — arguments streaming, applying (the counts tick up), then
+settled with a flash and a numbered diff
+
+● Preparing to edit files · 3s · ↑0.4 ↓0.8k
+--- after "\u000e" ---
+page 4/5 (Ctrl+N): multi-file patch and a failed edit
+
+✓ Edited 3 files  +52 −21  ▮▮▮▮▮▮▮▮
+  ├ M pane-activity.ts   +34 −12
+  ├ A frame-table.ts   +18 −0
+  └ D moon-frames.ts   +0 −9
+
+✗ Edited pane-activity.ts  +0 −0  ▮▮▮▮▮▮▮▮
+  ⎿ old text not found (expected at line 41)
+--- after "\u000e" ---
+page 5/5 (Ctrl+N): write is not a diff: collapsed it is one line, Ctrl+O shows the file with
+syntax highlighting and line numbers; an edit keeps the red/green diff
+
+Write, collapsed
+✓ Wrote packages/mayfly/src/transcript/frame-table.ts · 12 lines · 0.6 KB · Ctrl+O expand
+
+Write, expanded (Ctrl+O)
+✓ Wrote packages/mayfly/src/transcript/frame-table.ts · 12 lines · 0.6 KB
+ts
+ 1 │ import type { Frame } from './types.ts'
+ 2 │ 
+ 3 │ /** Glyph frames for each activity phase; one frame per 100 ms tick. */
+ 4 │ export const FRAMES: Record<string, string[]> = {
+ 5 │   thinking: ['✻', '✺', '✹', '✸'],
+ 6 │   tool: ['●', '◉', '○', '◉'],
+ 7 │ }
+ 8 │ 
+ 9 │ export function frameFor(phase: string, tick: number): Frame {
+10 │   const frames = FRAMES[phase] ?? FRAMES.tool
+11 │   return { glyph: frames[tick % frames.length], phase }
+12 │ }
+
+Edit, expanded: removed rows on a red band, added rows on a green band, the old and new line
+numbers in the gutter
+✓ Edited pane-activity.ts  +2 −1  ▮▮▮▮▮▮▮▮
+   41  41 │     const moon = state.mode === 'waiting'
+   42     │ −   const frame = moon                                                              
+       42 │ +   const frame = glyphFor(state)                                                   
+   43  43 │     const now = activityNow()
+  ⋯

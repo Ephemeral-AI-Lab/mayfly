@@ -1,0 +1,33 @@
+--- after start ---
+page 1/4 (Ctrl+N): a tab strip: text color only; ←/→ move when focused, Alt+←/→ from anywhere;
+counts and ! attention
+
+╭ Status ────────────────────────────────────────────────────────────────────╮
+│ Overview   Usage 3   Connections !   Skills 12   About                     │
+│            ━━━━━━━                                                         │
+│                                                                            │
+│ Usage page content                                                         │
+│   ←/→ tabs · Enter open · Esc close                                        │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[1;3C" ---
+page 1/4 (Ctrl+N): a tab strip: text color only; ←/→ move when focused, Alt+←/→ from anywhere;
+counts and ! attention
+
+╭ Status ────────────────────────────────────────────────────────────────────╮
+│ Overview   Usage 3   Connections !   Skills 12   About                     │
+│                      ━━━━━━━━━━━━━                                         │
+│                                                                            │
+│ Connections page content                                                   │
+│   ←/→ tabs · Enter open · Esc close                                        │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[1;3C" ---
+page 1/4 (Ctrl+N): a tab strip: text color only; ←/→ move when focused, Alt+←/→ from anywhere;
+counts and ! attention
+
+╭ Status ────────────────────────────────────────────────────────────────────╮
+│ Overview   Usage 3   Connections !   Skills 12   About                     │
+│                                      ━━━━━━━━━                             │
+│                                                                            │
+│ Skills page content                                                        │
+│   ←/→ tabs · Enter open · Esc close                                        │
+╰────────────────────────────────────────────────────────────────────────────╯

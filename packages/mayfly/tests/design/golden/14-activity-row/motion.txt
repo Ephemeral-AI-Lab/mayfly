@@ -1,0 +1,221 @@
+--- after start ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+· Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+· Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+· Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+· Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✢ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✢ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✢ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✢ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✳ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✳ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✳ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✳ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✶ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✶ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✶ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✶ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✻ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✻ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✻ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✻ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✽ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✽ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✽ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✽ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✻ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✻ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✻ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✻ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✶ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✶ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✶ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✶ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✳ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✳ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✳ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✳ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✢ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✢ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✢ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✢ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+· Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+· Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+· Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+· Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✢ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✢ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✢ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✢ Thinking
+  ⎿ Checking whether the ac…
+--- after +100ms ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+✳ Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+✳ Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+✳ Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+✳ Thinking
+  ⎿ Checking whether the ac…

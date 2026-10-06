@@ -1,0 +1,97 @@
+--- after start ---
+[2mpage 1/6 (Ctrl+N): selection and focus: → the cursor, ▌ the persistent selection, ▸ ▾ disclosure, ●
+○ ◐ checks, [current], — reason[0m
+
+[2m→ a cursor in a choose list (the row Enter acts on)[0m
+[1m[38;2;154;134;230m→[0m [1mDefault[0m [2m[current][0m
+  Accept edits
+  [2mFull access[0m [2m— managed by policy[0m
+
+[2m▌ the persistent selection in a rail; inverse only while the rail has focus[0m
+  General
+[1m[38;2;154;134;230m→[0m [1mModel[0m
+  Permissions                                                                                      [2m2[0m
+  General
+[1m[2m→[0m [1mModel[0m
+
+[2m▸ ▾ disclosure and ● ○ ◐ checks (single: ●/○, multiple: ●/○, a partly selected parent ◐)[0m
+  [38;2;154;134;230m▾[0m [38;2;154;134;230m◐[0m [1mfilesystem[0m
+  [2m│ [0m[38;2;154;134;230m●[0m read_file
+  [2m╰ [0m[2m○[0m write_file
+  [2m○[0m github
+
+[2m‹ v › a value ←/→ changes · • an edited field · (inherited) · ! an error[0m
+[38;2;154;134;230m→[0m [1mModel:   [0m[38;2;154;134;230m‹ deepseek-chat ›[0m[2m  (inherited)[0m
+[38;2;154;134;230m•[0m Timeout: 45 s
+  Name:    
+    [38;2;230;110;110m! Required[0m
+--- after "\u000e" ---
+[2mpage 2/6 (Ctrl+N): state and progress glyphs (one glyph, one meaning)[0m
+
+[1m[38;2;154;134;230m●  [0massistant block; a tool or step running
+[1m[38;2;130;160;240m»  [0muser block
+[1m[38;2;154;134;230m✻  [0mthinking
+[1m[38;2;110;200;140m✓  [0mdone
+[1m[38;2;230;110;110m✗  [0mfailed
+[1m[2m⊘  [0mcancelled
+[1m[2m◐  [0mdeclined (plan)
+[1m[38;2;230;110;110m■  [0mstopping or interrupted
+[1m[38;2;230;190;90m?  [0mwaiting on the user
+[1m[38;2;230;190;90m⚠  [0mwarning
+[1m[38;2;154;134;230mℹ  [0minformation
+[1m[38;2;230;110;110m✕  [0mgoal blocked
+[1m[2m❚❚ [0mgoal paused
+[1m[2m⎿  [0mdetail connector
+[1m[38;2;154;134;230m⏵  [0mbackground jobs
+[1m[38;2;230;190;90m↻  [0mapplies after a restart
+[1m[38;2;120;190;230m↗  [0mopens in the external editor
+
+[38;2;154;134;230m▰▰▰▰▱▱ [0m[2mdeterminate progress cells   [0m[38;2;154;134;230m━━━━───[0m[2m  heavy and light rule[0m
+--- after "\u000e" ---
+[2mpage 3/6 (Ctrl+N): tones and styles (the whole palette; a monochrome terminal keeps weight and
+glyphs)[0m
+
+default  Sample text in this tone
+[2mmuted    [0m[2mSample text in this tone[0m
+[38;2;154;134;230mprimary  [0m[38;2;154;134;230mSample text in this tone[0m
+[38;2;120;190;230maccent   [0m[38;2;120;190;230mSample text in this tone[0m
+[38;2;130;160;240muser     [0m[38;2;130;160;240mSample text in this tone[0m
+[38;2;110;200;140msuccess  [0m[38;2;110;200;140m✓ Saved to clipboard[0m
+[38;2;230;190;90mwarning  [0m[38;2;230;190;90m⚠ permission picker is unavailable[0m
+[38;2;230;110;110mdanger   [0m[38;2;230;110;110m✗ Plan copy failed[0m
+
+[1mstrong[0m  [3mitalic[0m  [9m[2mstruck[0m
+--- after "\u000e" ---
+[2mpage 4/6 (Ctrl+N): one answer for five states: every panel and every secondary read looks the same[0m
+
+[38;2;154;134;230m⣾[0m Loading sessions…
+[2mempty      [0mNo plugins installed — press → to browse
+[38;2;230;110;110m✗ [0mCould not reach the market[2m  r retry[0m
+[38;2;230;190;90m⚠ [0moffline · showing cached data from 2d ago
+[2m— not supported by this provider[0m
+
+[2ma slow or failed secondary read (a balance, a catalog refresh) never blocks or alters the primary
+content[0m
+--- after "\u000e" ---
+[2mpage 5/6 (Ctrl+N): feedback severities: glyph plus word, never color alone[0m
+
+[38;2;110;200;140m✓ [0mInstalled Git Helper · restart Mayfly to apply[2m   5 s visible, then it goes[0m
+[38;2;154;134;230mℹ [0mResumed session · 24 turns[2m   5 s visible[0m
+[38;2;230;190;90m⚠ [0mBalance low · ¥ 6.20 left[2m   stays until acted on[0m
+[38;2;230;110;110m✗ [0mSign-in failed — try again[2m   stays, offers its retry key[0m
+
+[2minline in the footer of an open surface; a toast in the activity row gap otherwise[0m
+--- after "\u000e" ---
+[2mpage 6/6 (Ctrl+N): breakpoints: one list-and-detail panel at three widths[0m
+
+[2m≥ 100 columns: split view[0m
+[1m[2m→[0m [1mLoop[0m [2m— official · T W[0m                      [2m1.4.0[0m  [2mLoop:  [0m official · Automation
+  Git Helper [2m— community · T W[0m        [2mupdate 1.3.0[0m  [2mStatus:[0m [38;2;110;200;140m✓ installed 1.4.0[0m
+
+[2m60–99 columns: one column, Enter opens the detail[0m
+[1m[2m→[0m [1mLoop[0m [2m— official · T W[0m                                          [2m1.4.0[0m
+  Git Helper [2m— community · T W[0m                            [2mupdate 1.3.0[0m
+
+[2mbelow 60: the name and one glyph (the list degrades; the detail opens on Enter)[0m
+[1m[2m→[0m [1mLoop[0m                                 [38;2;110;200;140m✓[0m
+  Git Helper                           [38;2;230;190;90m↑[0m

@@ -1,0 +1,27 @@
+--- after start ---
+[2mtwo composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.[0m
+
+[2m╭[0m[2m────────────────────────────────────────────────────────────────────[0m[2m [0m[1mUpdate the landing page hero[0m[2m [0m[2m╮[0m
+[2m│[0m > ▌[2mAsk anything · / commands · @ files · # skills · ! shell[0m                                      [2m│[0m
+[2m╰──────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+deepseek-chat High  [2m~/work/mayfly[0m  [2mmain ±3[0m                      [2mcache 34%  context: 18% (22.9k/128k)[0m
+Agents 5[38;2;230;190;90m ● [0m1 waiting   Jobs 3[38;2;154;134;230m ⏵ [0m2 running   Goal [38;2;154;134;230m●[0m 2/8   Todo 4/6[38;2;154;134;230m ● [0mBump changelog           [2m↓ views[0m
+--- after "\u001b[1;3B" ---
+[2mtwo composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.[0m
+
+[2m╭[0m[2m────────────────────────────────────────────────────────────────────[0m[2m [0m[1mUpdate the landing page hero[0m[2m [0m[2m╮[0m
+[2m│[0m > [2mAsk anything · / commands · @ files · # skills · ! shell[0m                                       [2m│[0m
+[2m╰──────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+deepseek-chat High  [2m~/work/mayfly[0m  [2mmain ±3[0m                      [2mcache 34%  context: 18% (22.9k/128k)[0m
+[38;2;154;134;230mAgents[0m [38;2;154;134;230m5[0m   [2mJobs[0m [2m3[0m   [2mGoal[0m   [2mTodo[0m [2m4/6[0m
+[2m━━━━━━━━[0m
+[1m[38;2;154;134;230m→[0m [38;2;154;134;230m● [0mreview   Audit facts projection                                            [2m41s · 6 tools · ↓6.4k[0m
+  [38;2;230;190;90m● [0mplan     Draft migration plan                                             [38;2;230;190;90mwaiting · reply needed[0m
+  [38;2;110;200;140m✓ [0mexplore  Map transcript files                                                      [2m12s · 8 tools[0m
+  [38;2;110;200;140m✓ [0mlint     Sweep oxlint findings                                                      [2m9s · 3 tools[0m
+   [2m↑ 0 more · ↓ 1 more[0m
+[2m  [0m←/→ [2mtabs[0m[2m · [0mEnter [2mopen[0m[2m · [0mx [2mstop[0m[2m · [0mEsc [2mclose[0m

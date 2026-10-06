@@ -1,0 +1,14 @@
+--- after start ---
+[2mmain conversation · idle[0m
+
+[2mqueued (1)  [0m[2m⏎ [0m"also update the footer"  [2m ↑ recall[0m
+[2m╭[0m[2m────────────────────────────────────────────────────────────────[0m[2m [0m[1mUpdate the landing page hero[0m[2m [0m[2m╮[0m
+[2m│[0m > ▌[2mAsk anything · / commands · @ files · # skills · ! shell[0m                                  [2m│[0m
+[2m╰──────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "!" ---
+[2mmain conversation · idle · shell mode: the border is accent-colored, nothing else changes[0m
+
+[2mqueued (1)  [0m[2m⏎ [0m"also update the footer"  [2m ↑ recall[0m
+[38;2;120;190;230m╭[0m[38;2;120;190;230m────────────────────────────────────────────────────────────────[0m[38;2;120;190;230m [0m[1mUpdate the landing page hero[0m[38;2;120;190;230m [0m[38;2;120;190;230m╮[0m
+[38;2;120;190;230m│[0m [1m[38;2;120;190;230m! [0m▌[2mRun a shell command · Esc leaves shell mode[0m                                               [38;2;120;190;230m│[0m
+[38;2;120;190;230m╰──────────────────────────────────────────────────────────────────────────────────────────────╯[0m

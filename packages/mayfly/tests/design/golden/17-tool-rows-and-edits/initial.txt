@@ -1,0 +1,9 @@
+--- after start ---
+page 1/5 (Ctrl+N): running calls: the category picks the label and the detail (cycles every 1.6
+s); a question waits on you
+
+● Running commands · 12s
+  ⎿ pnpm run verify:changed -- --plan
+
+? Waiting for your action · 8s
+  ⎿ Which release channel should this go to?

@@ -1,0 +1,16 @@
+--- after start ---
+╭ Status ─────────────────────────────────────────────────────────────── read-only ╮
+│ Overview   Usage   Account   Connections !   About                               │
+│ ━━━━━━━━                                                                         │
+│                                                                                  │
+│ Model:     deepseek-chat · High effort                                           │
+│ Provider:  DeepSeek (api.deepseek.com)                                           │
+│ Directory: ~/work/mayfly  main ±3                                                │
+│ Mode:      Default permissions · plan off                                        │
+│ Session:   Update landing page hero · 12 turns · 18m                             │
+│ Balance:   ✓ ¥ 128.40 available                                                  │
+│   Enter open · r refresh · o top up in browser · Esc close                       │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+balance state: available — one optional read-only query; a failed check never affects the
+conversation

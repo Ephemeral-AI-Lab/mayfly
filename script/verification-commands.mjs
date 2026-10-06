@@ -10,7 +10,7 @@ export function commandsForPlan(plan, { smoke = false } = {}) {
   if (plan.mode === 'full') {
     const scripts = [
       'test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib',
-      'shots:check', 'check:agent-docs', 'check:examples',
+      'shots:check', 'design:golden:check', 'check:agent-docs', 'check:examples',
       ...(plan.checks.pack ? ['check:pack'] : []),
       ...(plan.checks.website ? ['website:build'] : []),
       'test:coverage',
@@ -30,6 +30,7 @@ export function commandsForPlan(plan, { smoke = false } = {}) {
   if (plan.checks.build) commands.push(pnpm('run', 'build:changed', '--', '--files-json', JSON.stringify(plan.files)))
   if (plan.checks.checkLib) commands.push(pnpm('run', 'check:lib'))
   if (plan.checks.shots) commands.push(pnpm('run', 'shots:check'))
+  if (plan.checks.designGolden) commands.push(pnpm('run', 'design:golden:check'))
   if (plan.checks.examples) commands.push(pnpm('run', 'check:examples'))
   if (plan.checks.pack) commands.push(pnpm('run', 'check:pack'))
   if (plan.checks.website) commands.push(pnpm('run', 'website:build'))

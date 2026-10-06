@@ -1,0 +1,37 @@
+--- after start ---
+╭ Sessions ────────────────────────────────────────────────────────────────────────── 22 total ╮
+│   All                   22  ~/work/mayfly                                                    │
+│ → work/mayfly            8    ▾ Update landing page hero                  main  12 turns  2m │
+│   packages/mayfly        5      │ Update the landing page hero copy and run the tests.       │
+│   …ng-project-name-here  4      ╰ Done — the hero now reads "Ship agent UI in a keystroke".  │
+│   website                5    ▸ Fix width scan for tool rows          fix/width  4 turns  1h │
+│                               ▸ Release 0.1.3-rc.2                      release  9 turns  1d │
+│   → open · c copy path · n new · Esc close                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+╭ Sessions ────────────────────────────────────────────────────────────────────────── 22 total ╮
+│   All                   22  ~/dev/clients/acme/monorepo/packages/mayfly                      │
+│   work/mayfly            8    ▾ Port the tray to acme layout          feat/tray  6 turns  3h │
+│ → packages/mayfly        5      │ Port the tray design to the acme fork.                     │
+│   …ng-project-name-here  4      ╰ Rebased; specs pass.                                       │
+│   website                5    ▸ Bump harness pins                          main  3 turns  2d │
+│   → open · c copy path · n new · Esc close                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+╭ Sessions ────────────────────────────────────────────────────────────────────────── 22 total ╮
+│   All                   22  ~/dev/experiments/very-long-project-name-here                    │
+│   work/mayfly            8    ▾ Spike: session graph                      spike  2 turns  9d │
+│   packages/mayfly        5      │ Sketch a session graph view.                               │
+│ → …ng-project-name-here  4      ╰ Parked.                                                    │
+│   website                5                                                                   │
+│   → open · c copy path · n new · Esc close                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+╭ Sessions ────────────────────────────────────────────────────────────────────────── 22 total ╮
+│   All                   22  ~/work/website                                                   │
+│   work/mayfly            8    ▾ Add pricing page                           main  7 turns  4h │
+│   packages/mayfly        5      │ Add a pricing page under docs.                             │
+│   …ng-project-name-here  4      ╰ Preview is up.                                             │
+│ → website                5    ▸ Fix dark-mode logo                     fix/logo  2 turns  2d │
+│   → open · c copy path · n new · Esc close                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

@@ -1,0 +1,103 @@
+--- after start ---
+[2mphase 1/6 (v): Thinking: the glyph moves, the label is still[0m
+
+[38;2;154;134;230m·[0m Thinking [2m· 8s · ↑30.2k ↓1.1k[0m                                     [2mEsc interrupt · Ctrl+O expand[0m
+[2m  ⎿ [0mChecking whether the activity row can show more than the latest tool name, since every tool…[0m
+
+[2midle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:[0m
+
+[38;2;154;134;230m·[0m Thinking [2m· 8s · ↑30.2k ↓1.1k[0m [2mEsc interrupt · Ctrl+O expand[0m
+[2m  ⎿ [0mChecking whether the activity row can show more than th…[0m
+
+[38;2;154;134;230m·[0m Thinking [2mEsc interrupt · Ctrl+O expand[0m
+[2m  ⎿ [0mChecking whether the activity row c…[0m
+
+[38;2;154;134;230m·[0m Thinking
+[2m  ⎿ [0mChecking whether the ac…[0m
+--- after "V" ---
+[2mphase 6/6 (v): Stopping: nothing moves[0m
+
+[1m[38;2;230;110;110m■[0m interrupting…
+
+[2midle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:[0m
+
+[1m[38;2;230;110;110m■[0m interrupting…
+
+[1m[38;2;230;110;110m■[0m interrupting…
+
+[1m[38;2;230;110;110m■[0m interrupting…
+--- after "V" ---
+[2mphase 5/6 (v): Waiting on you: nothing moves[0m
+
+[1m[38;2;230;190;90m?[0m [1mWaiting for your action[0m [2m· 8s[0m
+
+[2midle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:[0m
+
+[1m[38;2;230;190;90m?[0m [1mWaiting for your action[0m [2m· 8s[0m
+
+[1m[38;2;230;190;90m?[0m [1mWaiting for your action[0m [2m· 8s[0m
+
+[1m[38;2;230;190;90m?[0m [1mWaiting for your action[0m
+--- after "V" ---
+[2mphase 4/6 (v): Waiting on an external action: ● breathes, the label is still[0m
+
+[38;2;84;79;103m●[0m Waiting for authorization [2m· 45s[0m                                                     [2mEsc cancel[0m
+
+[2midle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:[0m
+
+[38;2;84;79;103m●[0m Waiting for authorization [2m· 45s[0m                 [2mEsc cancel[0m
+
+[38;2;84;79;103m●[0m Waiting for authorization   [2mEsc cancel[0m
+
+[38;2;84;79;103m●[0m Waiting for authorization
+--- after "V" ---
+[2mphase 3/6 (v): Deep diving on the model: the glyph fills; the tip lives in the gap[0m
+
+[38;2;154;134;230m⡀[0m Deep diving [2m· 2s[0m                                                                  [2mTip: @ files[0m
+
+[2midle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:[0m
+
+[38;2;154;134;230m⡀[0m Deep diving [2m· 2s[0m                              [2mTip: @ files[0m
+
+[38;2;154;134;230m⡀[0m Deep diving [2m· 2s[0m          [2mTip: @ files[0m
+
+[38;2;154;134;230m⡀[0m Deep diving   [2mTip: @ files[0m
+--- after "V" ---
+[2mphase 2/6 (v): Tool running: the label shimmers, ● is still[0m
+
+[38;2;154;134;230m●[0m [2mR[0m[2mu[0m[2mn[0m[2mn[0m[2mi[0m[2mn[0m[2mg[0m[2m [0m[2mc[0m[2mo[0m[2mm[0m[2mm[0m[2ma[0m[2mn[0m[2md[0m[2ms[0m [2m· 12s · ↑30.2k ↓4.1k · 38 tok/s[0m                 [2mEsc interrupt · Ctrl+O expand[0m
+[2m  ⎿ [0mpnpm run verify:changed -- --plan
+
+[2midle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:[0m
+
+[38;2;154;134;230m●[0m [2mR[0m[2mu[0m[2mn[0m[2mn[0m[2mi[0m[2mn[0m[2mg[0m[2m [0m[2mc[0m[2mo[0m[2mm[0m[2mm[0m[2ma[0m[2mn[0m[2md[0m[2ms[0m             [2mEsc interrupt · Ctrl+O expand[0m
+[2m  ⎿ [0mpnpm run verify:changed -- --plan
+
+[38;2;154;134;230m●[0m [2mR[0m[2mu[0m[2mn[0m[2mn[0m[2mi[0m[2mn[0m[2mg[0m[2m [0m[2mc[0m[2mo[0m[2mm[0m[2mm[0m[2ma[0m[2mn[0m[2md[0m[2ms[0m
+[2m  ⎿ [0mpnpm run verify:changed -- --plan
+
+[38;2;154;134;230m●[0m [2mR[0m[2mu[0m[2mn[0m[2mn[0m[2mi[0m[2mn[0m[2mg[0m[2m [0m[2mc[0m[2mo[0m[2mm[0m[2mm[0m[2ma[0m[2mn[0m[2md[0m[2ms[0m
+[2m  ⎿ [0mpnpm run verify:changed…[0m
+--- after "V" ---
+[2mphase 1/6 (v): Thinking: the glyph moves, the label is still[0m
+
+[38;2;154;134;230m·[0m Thinking [2m· 8s · ↑30.2k ↓1.1k[0m                                     [2mEsc interrupt · Ctrl+O expand[0m
+[2m  ⎿ [0mChecking whether the activity row can show more than the latest tool name, since every tool…[0m
+
+[2midle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:[0m
+
+[38;2;154;134;230m·[0m Thinking [2m· 8s · ↑30.2k ↓1.1k[0m [2mEsc interrupt · Ctrl+O expand[0m
+[2m  ⎿ [0mChecking whether the activity row can show more than th…[0m
+
+[38;2;154;134;230m·[0m Thinking [2mEsc interrupt · Ctrl+O expand[0m
+[2m  ⎿ [0mChecking whether the activity row c…[0m
+
+[38;2;154;134;230m·[0m Thinking
+[2m  ⎿ [0mChecking whether the ac…[0m

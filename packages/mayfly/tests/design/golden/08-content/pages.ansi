@@ -1,0 +1,121 @@
+--- after start ---
+[2mpage 1/7 (Ctrl+N): text, rich text, spacer, divider: eight tones, wrap or truncate, strong italic
+strike[0m
+
+default   sample in this tone
+[2mmuted     sample in this tone[0m
+[38;2;154;134;230mprimary   sample in this tone[0m
+[38;2;120;190;230maccent    sample in this tone[0m
+[38;2;130;160;240muser      sample in this tone[0m
+[38;2;110;200;140msuccess   sample in this tone[0m
+[38;2;230;190;90mwarning   sample in this tone[0m
+[38;2;230;110;110mdanger    sample in this tone[0m
+
+Prefer small diffs and always     Prefer small diffs and always…[0m
+run the width scan before
+pushing.
+[2mwrap (default)                    truncate[0m
+
+deepseek-chat High  [1m[38;2;154;134;230mPLAN[0m  [1m[38;2;230;190;90mYOLO[0m  [3mitalic[0m  [9m[2mstruck[0m  [2m⏵ 2 jobs[0m
+
+[2m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[2m── Connection ──────────────────────────────────────────────────────────────────────────────────────[0m
+--- after "\u000e" ---
+[2mpage 2/7 (Ctrl+N): fields (key/value) and sections (bold title, body; collapsed shows the title
+only)[0m
+
+[2mProvider:[0m DeepSeek
+[2mBalance: [0m [1m¥ 128.40[0m[2m available[0m
+[2mStatus:  [0m [38;2;110;200;140m✓ [0msigned in
+
+[1m[38;2;154;134;230mConnection[0m
+  [2mName:    [0m production
+  [2mEndpoint:[0m https://api.example.com/v1
+[1m[38;2;154;134;230mBehaviour[0m
+[2m  …[0m
+[2m...[0m
+--- after "\u000e" ---
+[2mpage 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)[0m
+
+[2mui.code — highlighted by language (h toggles)[0m
+[2mtypescript[0m
+[38;2;154;134;230mconst[0m frame = glyphFor(state)
+[38;2;154;134;230mif[0m (state.mode === [38;2;110;200;140m'waiting'[0m) {
+[38;2;154;134;230mreturn[0m { kind: [38;2;110;200;140m'loader'[0m, variant: [38;2;110;200;140m'gap'[0m }
+}
+
+[2mui.markdown[0m
+[1m[38;2;154;134;230mRelease notes[0m
+[2m•[0m Hero copy now reads [3mShip agent UI in a keystroke[0m
+[2m•[0m Width scan covers the [1mnew panels[0m
+[2m│[0m [3m[2ma quote reads muted[0m
+[2mts[0m
+[38;2;154;134;230mconst[0m a = 1
+--- after "\u000e" ---
+[2mpage 4/7 (Ctrl+N): diff: two strings in, aligned rows out — numbered gutters, −/+ and color, ⋯
+between hunks[0m
+
+[2mnumbered on (d toggles); an @@ header names the hunk[0m
+[2m@@ -41,8 +41,8 @@[0m
+  [2m 41  41 │[0m     const moon = state.mode === 'waiting'
+  [2m 42     │[0m [48;2;66;30;36m[38;2;230;110;110m−[0m[48;2;66;30;36m [38;2;230;110;110m  const frame = moon[0m[48;2;66;30;36m                                                                  [0m
+  [2m     42 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m  const frame = glyphFor(state)[0m[48;2;28;58;40m                                                       [0m
+  [2m 43  43 │[0m     const now = activityNow()
+  [2m⋯[0m
+--- after "\u000e" ---
+[2mpage 5/7 (Ctrl+N): charts: sparkline, bars (grouped, stacked, normalized), heatmap with a legend[0m
+
+[2mtokens [0m[38;2;120;190;230m▃▄▄▇▅█▆▄▄▅▇█[0m
+
+[2mgrouped[0m
+mon [38;2;120;190;230m████████████████████████[0m 62  [38;2;110;200;140m███████████████[0m[2m░░░░░░░░░[0m 40
+tue [38;2;120;190;230m████████████[0m[2m░░░░░░░░░░░░[0m 31  [38;2;110;200;140m█████████████████████[0m[2m░░░[0m 55
+
+[2mstacked[0m
+mon [38;2;120;190;230m█████████████[0m[38;2;110;200;140m█████████[0m
+tue [38;2;120;190;230m█████████[0m[38;2;110;200;140m███████████████[0m
+[2mnormalized[0m
+mon [38;2;120;190;230m██████████████[0m[38;2;110;200;140m██████████[0m
+tue [38;2;120;190;230m█████████[0m[38;2;110;200;140m███████████████[0m
+
+[2mactivity[0m
+     Mon Tue Wed Thu 
+AM   [2m░░[0m  [38;2;230;190;90m▒▒[0m  [38;2;110;200;140m██[0m  [38;2;110;200;140m██[0m  
+PM   [2m░░[0m  [38;2;230;190;90m▒▒[0m  [38;2;110;200;140m██[0m  [38;2;230;190;90m▒▒[0m  
+[2mlegend:[0m [2m░░[0m low  [38;2;230;190;90m▒▒[0m mid  [38;2;110;200;140m██[0m high
+--- after "\u000e" ---
+[2mpage 6/7 (Ctrl+N): charts: line, point, vertical bars[0m
+
+[2mlatency (ms)[0m
+[2m 244 │[0m[38;2;120;190;230m          ─ ── ──                           [0m
+[2m 223 │[0m[38;2;120;190;230m       ─ ─        ──                        [0m
+[2m 203 │[0m[38;2;120;190;230m      ─              ──                    ─[0m
+[2m 182 │[0m[38;2;120;190;230m    ─                   ─                 ─ [0m
+[2m 161 │[0m[38;2;120;190;230m   ─                     ─ ─            ─   [0m
+[2m 141 │[0m[38;2;120;190;230m ─                          ─ ─      ─ ─    [0m
+[2m 120 │[0m[38;2;120;190;230m─                              ─ ── ─       [0m
+[2m     └────────────────────────────────────────────[0m
+[2m      turn →[0m
+
+[2mpoint[0m
+[2m  10 │[0m[38;2;110;200;140m       ●      ●                 ●     ●     [0m
+[2m   8 │[0m[38;2;110;200;140m  ●                 ●      ●                [0m
+[2m   5 │[0m[38;2;110;200;140m         ●      ●      ●          ●      ●  [0m
+[2m   3 │[0m[38;2;110;200;140m     ●     ●                 ●      ●       [0m
+[2m   0 │[0m[38;2;110;200;140m●                 ●      ●                 ●[0m
+[2m     └────────────────────────────────────────────[0m
+
+[2mvertical[0m
+    [38;2;230;190;90m██[0m        
+    [38;2;230;190;90m██[0m      [38;2;230;190;90m██[0m
+[38;2;230;190;90m██[0m  [38;2;230;190;90m██[0m      [38;2;230;190;90m██[0m
+[38;2;230;190;90m██[0m  [38;2;230;190;90m██[0m  [38;2;230;190;90m██[0m  [38;2;230;190;90m██[0m
+[38;2;230;190;90m██[0m  [38;2;230;190;90m██[0m  [38;2;230;190;90m██[0m  [38;2;230;190;90m██[0m
+mo  tu  we  th
+--- after "\u000e" ---
+[2mpage 7/7 (Ctrl+N): diagram: a flowchart as ASCII within a budget, falling back to its source[0m
+
+[2mbudget: 8 KiB, 100 lines, 25 nodes · within budget (b toggles)[0m
+┌───────┐     ┌───────┐     ┌───────┐
+│ queue │────►│ agent │────►│ tools │
+└───────┘     └───────┘     └───────┘

@@ -21,6 +21,8 @@ for the follow-up change (wire mechanics, builder tables, backlog) is in
 [design/component-library-reference.md](./design/component-library-reference.md), and the
 order of that work, with the decisions taken after review, is
 [design/implementation-roadmap.md](./design/implementation-roadmap.md).
+The prototype's frames are committed as goldens (`pnpm run design:golden`, checked by
+`pnpm run design:golden:check`); they are what the real renderer is compared with.
 
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.

@@ -1,0 +1,39 @@
+--- after start ---
+one tree: a turn is a node, its events are children with a duration meter; the right pane shows
+the selected event as highlighted JSON
+
+╭ Trace · session 4f2a9 ───────────────────────────────────────────────────────────────────────────── 8 events ╮
+│ → ▾ Turn 1  10:02:11  38s  ↑18.4k ↓0.6k                      ✓  Type:    tool-result                         │
+│   │ 10:02:11 #1  » user message [main] ▱▱▱▱▱▱ Update the land…  Surface: tool                                │
+│   │ 10:02:12 #2  ● model request [main] ▰▰▱▱▱▱ deepseek-chat …  Took:    12.1s                               │
+│   │ 10:02:17 #3  ⏵ bash [tool] ▱▱▱▱▱▱ pnpm run test             json                                       █ │
+│   │ 10:02:29 #4  ✗ bash result [tool] ▰▰▰▰▰▰ exit 1 · 12.1s ·…   1 │ {                                     █ │
+│   ╰ 10:02:30 #5  ● subagent review [subagent] ▰▰▰▱▱▱ Audit fa…   2 │   "seq": 4,                           █ │
+│   ▾ Turn 2  10:04:02  4m 12s  ↑31.0k ↓2.1k            ✗ failed   3 │   "type": "tool-result",              █ │
+│   │ 10:04:02 #6  » user message [main] ▱▱▱▱▱▱ Now bump the ch…   4 │   "surface": "tool",                  █ │
+│   │ 10:04:09 #7  ⏵ bash [tool] ▱▱▱▱▱▱ pnpm run verify:full       5 │   "turn": 1,                          ░ │
+│   ╰ 10:08:09 #8  ✗ error [system] ▰▰▰▰▰▰ verify:full timed ou…   6 │   "name": "bash",                     ░ │
+│                                                                  7 │   "ok": false,                        ░ │
+│                                                                  8 │   "exitCode": 1,                      ░ │
+│   Enter branch · c copy item · / filter · Esc close                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "f" ---
+one tree: a turn is a node, its events are children with a duration meter; the right pane shows
+the selected event as highlighted JSON
+
+╭ Trace · session 4f2a9 ───────────────────────────────────────────────────────────────────────────── 8 events ╮
+│ → ▾ Turn 1  10:02:11  38s  ↑18.4k ↓0.6k                      ✓  Type:    tool-result                         │
+│   ╰ 10:02:29 #4  ✗ bash result [tool] ▰▰▰▰▰▰ exit 1 · 12.1s ·…  Surface: tool                                │
+│   ▾ Turn 2  10:04:02  4m 12s  ↑31.0k ↓2.1k            ✗ failed  Took:    12.1s                               │
+│   ╰ 10:08:09 #8  ✗ error [system] ▰▰▰▰▰▰ verify:full timed ou…  json                                       █ │
+│                                                                  1 │ {                                     █ │
+│                                                                  2 │   "seq": 4,                           █ │
+│                                                                  3 │   "type": "tool-result",              █ │
+│                                                                  4 │   "surface": "tool",                  █ │
+│                                                                  5 │   "turn": 1,                          ░ │
+│                                                                  6 │   "name": "bash",                     ░ │
+│                                                                  7 │   "ok": false,                        ░ │
+│                                                                  8 │   "exitCode": 1,                      ░ │
+│ ℹ Showing the 2 failed events                                                                                │
+│   Enter branch · c copy item · / filter · Esc close                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

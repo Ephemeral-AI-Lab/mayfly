@@ -20,6 +20,24 @@ import {
 import { classifyChanges, isStructuralBuildPath, owningPackage, promoteToFull } from '../test-impact.mjs'
 
 describe('change impact planning', () => {
+  test('core UI painters select the design parity and work-budget specs', () => {
+    const plan = classifyChanges(['packages/mayfly/src/core/ui-patterns.ts'])
+    assert.equal(plan.mode, 'changed')
+    assert.ok(plan.tests.direct.includes('packages/mayfly/tests/design/parity.spec.ts'))
+    assert.ok(plan.tests.direct.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))
+    assert.ok(!plan.tests.direct.includes('packages/mayfly/tests/core/key-audit.spec.ts'))
+  })
+
+  test('key tables select the key audit', () => {
+    for (const file of ['packages/mayfly/src/interaction/keys.ts', 'packages/mayfly/src/core/key-actions.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/core/ui-key-grammar.ts']) {
+      assert.ok(classifyChanges([file]).tests.direct.includes('packages/mayfly/tests/core/key-audit.spec.ts'), file)
+    }
+  })
+
+  test('public UI sources keep the full gate', () => {
+    assert.equal(classifyChanges(['packages/ui/src/builders.ts']).mode, 'full')
+  })
+
   test('promotes alpha and stable releases to latest while retaining the RC tag', () => {
     assert.deepEqual(releaseDistTags('0.1.0-alpha.1'), ['latest'])
     assert.deepEqual(releaseDistTags('0.1.0-rc.1'), ['rc', 'latest'])

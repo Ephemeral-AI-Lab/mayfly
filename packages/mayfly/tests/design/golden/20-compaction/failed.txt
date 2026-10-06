@@ -1,0 +1,36 @@
+--- after start ---
+stage: summarizing: the model call runs, the edge cell breathes
+
+⣾ Compacting context ▰▰▰▰▰▰▰▰▰▱ 91%  1/2 summarizing · auto
+
+narrow terminals drop the bar first, then the token pair; a failure keeps its reason
+✗ Compaction failed: context still over budget after summary
+--- after "f" ---
+stage: summarizing: the model call runs, the edge cell breathes
+
+⣾ Compacting context ▰▰▰▰▰▰▰▰▰▱ 91%  1/2 summarizing · auto
+
+narrow terminals drop the bar first, then the token pair; a failure keeps its reason
+✗ Compaction failed: context still over budget after summary
+--- after +2000ms ---
+stage: summarizing: the model call runs, the edge cell breathes
+
+⣽ Compacting context ▰▰▰▰▰▰▰▰▰▱ 91%  1/2 summarizing · auto
+
+narrow terminals drop the bar first, then the token pair; a failure keeps its reason
+✗ Compaction failed: context still over budget after summary
+--- after +2000ms ---
+stage: summarizing: the model call runs, the edge cell breathes
+
+⣻ Compacting context ▰▰▰▰▰▰▰▰▰▱ 91%  1/2 summarizing · auto
+
+narrow terminals drop the bar first, then the token pair; a failure keeps its reason
+✗ Compaction failed: context still over budget after summary
+--- after +2000ms ---
+stage: settled (static)
+
+✓ Compacted 84 items ▰▱▱▱▱▱▱▱▱▱ 91% → 9% · ~148k → ~12k tokens · auto
+  ⎿ Ctrl+O summary
+
+narrow terminals drop the bar first, then the token pair; a failure keeps its reason
+✗ Compaction failed: context still over budget after summary

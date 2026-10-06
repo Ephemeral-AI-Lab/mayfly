@@ -1,0 +1,47 @@
+--- after start ---
+two composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.
+
+╭──────────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+deepseek-chat High  ~/work/mayfly  main ±3                      cache 34%  context: 18% (22.9k/128k)
+Agents 5 ● 1 waiting   Jobs 3 ⏵ 2 running   Goal ● 2/8   Todo 4/6 ● Bump changelog           ↓ views
+--- after "\u001b[1;3B" ---
+two composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.
+
+╭──────────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > Ask anything · / commands · @ files · # skills · ! shell                                       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+deepseek-chat High  ~/work/mayfly  main ±3                      cache 34%  context: 18% (22.9k/128k)
+Agents 5   Jobs 3   Goal   Todo 4/6
+━━━━━━━━
+→ ● review   Audit facts projection                                            41s · 6 tools · ↓6.4k
+  ● plan     Draft migration plan                                             waiting · reply needed
+  ✓ explore  Map transcript files                                                      12s · 8 tools
+  ✓ lint     Sweep oxlint findings                                                      9s · 3 tools
+   ↑ 0 more · ↓ 1 more
+  ←/→ tabs · Enter open · x stop · Esc close
+--- after "x" ---
+two composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.
+
+╭──────────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > Ask anything · / commands · @ files · # skills · ! shell                                       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+deepseek-chat High  ~/work/mayfly  main ±3                      cache 34%  context: 18% (22.9k/128k)
+Agents 5   Jobs 3   Goal   Todo 4/6
+━━━━━━━━
+→ ● review   Audit facts projection                                            41s · 6 tools · ↓6.4k
+  ● plan     Draft migration plan                                             waiting · reply needed
+  ✓ explore  Map transcript files                                                      12s · 8 tools
+  ✓ lint     Sweep oxlint findings                                                      9s · 3 tools
+   ↑ 0 more · ↓ 1 more
+Stop this?
+The agent or job ends now.
+→  No    [Yes]
+  ←/→ No/Yes · Enter confirm · Esc answers No

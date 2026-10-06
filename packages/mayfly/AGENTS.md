@@ -150,6 +150,15 @@ owner, and test that frontend state survives core reload. New public seams need
 real consumers, replay/abort/late-result tests, width and whole-tree composition
 coverage, and dedicated-profile acceptance.
 
+The canonical UI pipeline takes an optional core-private work-counter sink
+(`core/ui-work-counters.ts`) through the validator and compiler options; production
+passes none and no module holds one. `tests/perf/work-budget.spec.ts` gates the
+counts of the workloads in `tests/perf/workloads.ts`, so a change under
+`src/core/ui-*.ts` keeps them within `tests/perf/baseline.json` or updates it on
+purpose. `docs/design/prototypes/**` feeds the committed goldens under
+`tests/design/golden/`; `pnpm run design:golden:check` fails when the prototype
+changes, and `pnpm run design:golden` rewrites them after review.
+
 Patch, preset, skill, dependency, or composition edits require bundle/preset
 tests, `pnpm run check:agent-docs`, `pnpm run verify:full`,
 `pnpm run check:pack`, dedicated-profile install, PTY smoke, and human acceptance.

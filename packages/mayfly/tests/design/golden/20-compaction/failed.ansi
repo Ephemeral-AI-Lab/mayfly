@@ -1,0 +1,36 @@
+--- after start ---
+[2mstage: summarizing: the model call runs, the edge cell breathes[0m
+
+[38;2;154;134;230m⣾[0m Compacting context [38;2;154;134;230m▰▰▰▰▰▰▰▰▰[0m[2m▱[0m [2m91%  1/2 summarizing · auto[0m
+
+[2mnarrow terminals drop the bar first, then the token pair; a failure keeps its reason[0m
+[38;2;230;110;110m✗ [0m[38;2;230;110;110mCompaction failed: context still over budget after summary[0m
+--- after "f" ---
+[2mstage: summarizing: the model call runs, the edge cell breathes[0m
+
+[38;2;154;134;230m⣾[0m Compacting context [38;2;154;134;230m▰▰▰▰▰▰▰▰▰[0m[2m▱[0m [2m91%  1/2 summarizing · auto[0m
+
+[2mnarrow terminals drop the bar first, then the token pair; a failure keeps its reason[0m
+[38;2;230;110;110m✗ [0m[38;2;230;110;110mCompaction failed: context still over budget after summary[0m
+--- after +2000ms ---
+[2mstage: summarizing: the model call runs, the edge cell breathes[0m
+
+[38;2;154;134;230m⣽[0m Compacting context [38;2;154;134;230m▰▰▰▰▰▰▰▰▰[0m[2m▱[0m [2m91%  1/2 summarizing · auto[0m
+
+[2mnarrow terminals drop the bar first, then the token pair; a failure keeps its reason[0m
+[38;2;230;110;110m✗ [0m[38;2;230;110;110mCompaction failed: context still over budget after summary[0m
+--- after +2000ms ---
+[2mstage: summarizing: the model call runs, the edge cell breathes[0m
+
+[38;2;154;134;230m⣻[0m Compacting context [38;2;154;134;230m▰▰▰▰▰▰▰▰▰[0m[2m▱[0m [2m91%  1/2 summarizing · auto[0m
+
+[2mnarrow terminals drop the bar first, then the token pair; a failure keeps its reason[0m
+[38;2;230;110;110m✗ [0m[38;2;230;110;110mCompaction failed: context still over budget after summary[0m
+--- after +2000ms ---
+[2mstage: settled (static)[0m
+
+[38;2;110;200;140m✓ [0m[1mCompacted 84 items[0m [38;2;110;200;140m▰[0m[2m▱▱▱▱▱▱▱▱▱[0m [2m91% → 9% · ~148k → ~12k tokens · auto[0m
+[2m  ⎿ Ctrl+O summary[0m
+
+[2mnarrow terminals drop the bar first, then the token pair; a failure keeps its reason[0m
+[38;2;230;110;110m✗ [0m[38;2;230;110;110mCompaction failed: context still over budget after summary[0m

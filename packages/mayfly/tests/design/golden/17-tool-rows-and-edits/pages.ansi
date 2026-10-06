@@ -1,0 +1,65 @@
+--- after start ---
+[2mpage 1/5 (Ctrl+N): running calls: the category picks the label and the detail (cycles every 1.6
+s); a question waits on you[0m
+
+[38;2;154;134;230m●[0m [2mR[0m[2mu[0m[2mn[0m[2mn[0m[2mi[0m[2mn[0m[2mg[0m[2m [0m[2mc[0m[2mo[0m[2mm[0m[2mm[0m[2ma[0m[2mn[0m[2md[0m[2ms[0m [2m· 12s[0m
+[2m  ⎿ [0mpnpm run verify:changed -- --plan
+
+[1m[38;2;230;190;90m?[0m [1mWaiting for your action[0m [2m· 8s[0m
+[2m  ⎿ [0mWhich release channel should this go to?
+--- after "\u000e" ---
+[2mpage 2/5 (Ctrl+N): settled calls: one static past-tense line each; a folded turn is one summary[0m
+
+[38;2;110;200;140m✓[0m Read[38;2;120;190;230m pane-activity.ts[0m[2m · 481 lines[0m
+[38;2;110;200;140m✓[0m Searched[38;2;120;190;230m "activity"[0m[2m · 47 matches in 12 files[0m
+[38;2;110;200;140m✓[0m Ran[38;2;120;190;230m pnpm run check:lib[0m[2m · 4.2s[0m
+[38;2;230;110;110m✗[0m Ran[38;2;120;190;230m pnpm run lint[0m[2m · exit 1 · 3s[0m
+[38;2;110;200;140m✓[0m Fetched[38;2;120;190;230m pi.dev/docs/latest/tui[0m[2m · 200 · 18 KB[0m
+[2m⊘[0m [2mRan[0m[38;2;120;190;230m pnpm run build[0m
+[2m▸ [0mRead 3 files · Searched code · Ran 2 commands · 6s
+--- after "\u000e" ---
+[2mpage 3/5 (Ctrl+N): edit: three phases — arguments streaming, applying (the counts tick up), then
+settled with a flash and a numbered diff[0m
+
+[38;2;154;134;230m●[0m [2mP[0m[2mr[0m[2me[0m[2mp[0m[2ma[0m[2mr[0m[2mi[0m[2mn[0m[2mg[0m[2m [0m[2mt[0m[2mo[0m[2m [0m[2me[0m[2md[0m[2mi[0m[2mt[0m[2m [0m[2mf[0m[2mi[0m[2ml[0m[2me[0m[2ms[0m [2m· 3s · ↑0.4 ↓0.8k[0m
+--- after "\u000e" ---
+[2mpage 4/5 (Ctrl+N): multi-file patch and a failed edit[0m
+
+[38;2;110;200;140m✓[0m [1mEdited 3 files[0m  [38;2;110;200;140m+52[0m [38;2;230;110;110m−21[0m  [38;2;110;200;140m▮▮▮▮▮▮[0m[38;2;230;110;110m▮▮[0m
+[2m  ├ [0m[38;2;230;190;90mM[0m pane-activity.ts   [38;2;110;200;140m+34[0m [38;2;230;110;110m−12[0m
+[2m  ├ [0m[38;2;110;200;140mA[0m frame-table.ts   [38;2;110;200;140m+18[0m [38;2;230;110;110m−0[0m
+[2m  └ [0m[38;2;230;110;110mD[0m moon-frames.ts   [38;2;110;200;140m+0[0m [38;2;230;110;110m−9[0m
+
+[38;2;230;110;110m✗[0m [1mEdited[0m[38;2;120;190;230m pane-activity.ts[0m  [38;2;110;200;140m+0[0m [38;2;230;110;110m−0[0m  [38;2;110;200;140m▮[0m[38;2;230;110;110m▮▮▮▮▮▮▮[0m
+[2m  ⎿ [0m[38;2;230;110;110mold text not found (expected at line 41)[0m
+--- after "\u000e" ---
+[2mpage 5/5 (Ctrl+N): write is not a diff: collapsed it is one line, Ctrl+O shows the file with
+syntax highlighting and line numbers; an edit keeps the red/green diff[0m
+
+[2mWrite, collapsed[0m
+[38;2;110;200;140m✓[0m [1mWrote[0m[38;2;120;190;230m packages/mayfly/src/transcript/frame-table.ts[0m[2m · 12 lines · 0.6 KB[0m[2m · Ctrl+O expand[0m
+
+[2mWrite, expanded (Ctrl+O)[0m
+[38;2;110;200;140m✓[0m [1mWrote[0m[38;2;120;190;230m packages/mayfly/src/transcript/frame-table.ts[0m[2m · 12 lines · 0.6 KB[0m
+[2mts[0m
+[2m 1 │ [0m[38;2;154;134;230mimport[0m [38;2;154;134;230mtype[0m { Frame } [38;2;154;134;230mfrom[0m [38;2;110;200;140m'./types.ts'[0m
+[2m 2 │ [0m
+[2m 3 │ [0m/** Glyph frames for each activity phase; one frame per 100 ms tick. */
+[2m 4 │ [0m[38;2;154;134;230mexport[0m [38;2;154;134;230mconst[0m FRAMES: Record<string, string[]> = {
+[2m 5 │ [0m  thinking: [[38;2;110;200;140m'✻'[0m, [38;2;110;200;140m'✺'[0m, [38;2;110;200;140m'✹'[0m, [38;2;110;200;140m'✸'[0m],
+[2m 6 │ [0m  tool: [[38;2;110;200;140m'●'[0m, [38;2;110;200;140m'◉'[0m, [38;2;110;200;140m'○'[0m, [38;2;110;200;140m'◉'[0m],
+[2m 7 │ [0m}
+[2m 8 │ [0m
+[2m 9 │ [0m[38;2;154;134;230mexport[0m [38;2;154;134;230mfunction[0m frameFor(phase: string, tick: number): Frame {
+[2m10 │ [0m  [38;2;154;134;230mconst[0m frames = FRAMES[phase] ?? FRAMES.tool
+[2m11 │ [0m  [38;2;154;134;230mreturn[0m { glyph: frames[tick % frames.length], phase }
+[2m12 │ [0m}
+
+[2mEdit, expanded: removed rows on a red band, added rows on a green band, the old and new line
+numbers in the gutter[0m
+[38;2;110;200;140m✓[0m [1mEdited[0m[38;2;120;190;230m pane-activity.ts[0m  [38;2;110;200;140m+2[0m [38;2;230;110;110m−1[0m  [38;2;110;200;140m▮▮▮▮▮[0m[38;2;230;110;110m▮▮▮[0m
+  [2m 41  41 │[0m     const moon = state.mode === 'waiting'
+  [2m 42     │[0m [48;2;66;30;36m[38;2;230;110;110m−[0m[48;2;66;30;36m [38;2;230;110;110m  const frame = moon[0m[48;2;66;30;36m                                                              [0m
+  [2m     42 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m  const frame = glyphFor(state)[0m[48;2;28;58;40m                                                   [0m
+  [2m 43  43 │[0m     const now = activityNow()
+  [2m⋯[0m
