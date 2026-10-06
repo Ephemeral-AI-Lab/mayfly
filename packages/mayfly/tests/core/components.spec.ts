@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
   CURSOR_MARKER,
+  stripTerminalSequences,
   TuiMainScreen,
   setCapabilities,
   truncateToWidth as piTruncateToWidth,
@@ -146,6 +147,20 @@ describe('MayflyComponentsService registration', () => {
     expect(ctx.get('mayflyComponents')).toBeInstanceOf(MayflyComponentsService)
     await fiber.dispose()
     expect(ctx.get('mayflyComponents')).toBeUndefined()
+    stop()
+  })
+
+  it('records the presentation it was built for and frames the editor in its glyphs', () => {
+    const { tui, stop } = bootTui()
+    const ctx = new Context()
+    ctx.provide('mayflyInteractionState', { settingsSource: () => ({ glyphs: 'ascii', reducedMotion: true }) } as never)
+    const components = new MayflyComponentsService(ctx, { theme: sgrTheme(), tui })
+    expect(components.presentation).toMatchObject({ glyphs: 'ascii', reducedMotion: true })
+    const editor = components.createEditor()
+    editor.setText('a → b')
+    const rows = editor.render(20).map(row => stripTerminalSequences(row))
+    expect(rows[0]).toMatch(/^\+-+\+$/u)
+    expect(rows[1]).toContain('a → b')
     stop()
   })
 

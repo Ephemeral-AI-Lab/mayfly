@@ -682,6 +682,9 @@ const zh: Readonly<Record<string, string>> = {
   'Plugin market index': '插件市场索引',
   'Key bindings': '键位绑定',
   'Prefer keys without Alt': '优先显示不含 Alt 的键',
+  'Glyphs': '字形',
+  'Monochrome': '单色',
+  'Reduced motion': '减少动效',
 }
 
 const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))

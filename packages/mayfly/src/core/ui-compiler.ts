@@ -28,6 +28,7 @@ import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component } from '@eare
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { hintRow } from './chrome.ts'
+import { glyphRows } from './glyphs.ts'
 import { renderChartRows } from './chart-renderer.ts'
 import { ownDataErrorMessage } from './error-message.ts'
 import { paintPluginTone, renderCanonicalView, sanitizePluginText, truncatedRow } from './plugin-view.ts'
@@ -441,11 +442,16 @@ function renderFailure(error: unknown, fallback = 'unknown render failure'): str
   return ownDataErrorMessage(error) ?? fallback
 }
 
-function staticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'counters' | 'reportRuntimeFailure'>, counted = true): MayflyComponent {
+/**
+ * A component painted by a pattern painter. Its rows are shown in the presentation's glyph mode: every replacement is
+ * one cell, so the conversion runs after the painter laid the row out. Editors are not static components, so the text
+ * being typed is never converted.
+ */
+function staticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'counters' | 'reportRuntimeFailure'> & { readonly components?: Pick<MayflyComponents, 'presentation'> }, counted = true): MayflyComponent {
   return {
     render: width => {
       try {
-        const rows = render(width)
+        const rows = glyphRows(render(width), options.components?.presentation?.glyphs)
         if (counted) countWork(options.counters, 'rowsPainted', rows.length)
         return rows
       } catch (error) {
@@ -463,7 +469,7 @@ function staticComponent(render: (width: number) => string[], options: Pick<Pain
  * Layout frames re-render every row on each paint (spinner ticks, scroll
  * steps); these rows answer from a per-width memo until invalidated.
  */
-function pureStaticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'counters' | 'reportRuntimeFailure'>): MayflyComponent {
+function pureStaticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'components' | 'counters' | 'reportRuntimeFailure'>): MayflyComponent {
   // A row layout measures a leaf at several widths before it paints, so one remembered width would thrash.
   const memo = new Map<number, string[]>()
   const component = staticComponent(width => {
@@ -525,7 +531,7 @@ function markdownLeafComponent(node: Extract<MayflyUiNode, { readonly kind: 'mar
   const markdown = options.components.createMarkdown({ text: node.source })
   return {
     render: width => {
-      try { return markdown.render(Math.max(1, width)) }
+      try { return glyphRows(markdown.render(Math.max(1, width)), options.components.presentation?.glyphs) }
       catch (error) {
         const message = renderFailure(error)
         options.reportRuntimeFailure(message)
@@ -545,7 +551,7 @@ function diagramSource(node: MayflyDiagramNode): string {
 function diagramComponent(node: MayflyDiagramNode, options: RuntimeCompilerOptions): MayflyComponent {
   const markdown = options.components.createMarkdown({ text: diagramSource(node) })
   return {
-    render: width => markdown.render(Math.max(1, width)),
+    render: width => glyphRows(markdown.render(Math.max(1, width)), options.components.presentation?.glyphs),
     invalidate: () => markdown.invalidate(),
   }
 }
@@ -1381,7 +1387,9 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     }
     case 'loader': {
       const stack = new VStack()
-      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors, options.listRuntime.loaderFrame()), options))
+      // Reduced motion freezes the channel on its first frame and never joins the clock.
+      const presentation = options.components.presentation
+      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors, presentation?.reducedMotion === true ? 0 : options.listRuntime.loaderFrame(), presentation?.glyphs), options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
         const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)

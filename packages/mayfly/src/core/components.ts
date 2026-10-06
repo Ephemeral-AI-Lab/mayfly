@@ -29,7 +29,9 @@ import {
   type SelectListTheme,
   type TUI,
 } from '@earendil-works/pi-tui'
+import type { MayflyGlyphMode } from './glyphs.ts'
 import { highlightCodeLines } from './highlight.ts'
+import { readPresentation, type MayflyPresentation } from './presentation.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
 import { extractMentionToken, mentionPath } from '../internal/mention.ts'
 import { displayPath } from '../internal/paths.ts'
@@ -147,6 +149,8 @@ export interface EditorChromePaints {
   readonly ghostHintPaint: (text: string) => string
   /** Styling for the top-border title (`textMuted`). */
   readonly borderTitlePaint: (text: string) => string
+  /** The glyph mode the frame is drawn in; the typed text is never converted. */
+  readonly glyphs?: MayflyGlyphMode
 }
 
 function withoutFakeEditorCursor(row: string): string {
@@ -445,6 +449,7 @@ class EditorAdapter implements MayflyEditor {
       label: this.borderLabel,
       title: this.borderTitle,
       titlePaint: this.chrome.borderTitlePaint,
+      glyphs: this.chrome.glyphs,
     })
     return this.connectedAbove ? padColumns(framed, 1) : framed
   }
@@ -688,6 +693,7 @@ export interface MayflyComponentsDeps {
 export class MayflyComponentsService extends Service implements MayflyComponents {
   private readonly theme: MayflyTheme
   private readonly tui: TUI
+  readonly presentation: MayflyPresentation
 
   /**
    * Create and register the service.
@@ -698,6 +704,7 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     super(ctx, 'mayflyComponents')
     this.theme = deps.theme
     this.tui = deps.tui
+    this.presentation = readPresentation(ctx)
   }
 
   strong(text: string): string { return `\x1b[1m${text}\x1b[22m` }
@@ -735,6 +742,7 @@ export class MayflyComponentsService extends Service implements MayflyComponents
       slashTokenPaint: (text) => `\x1b[1m${colors.primary(text)}\x1b[22m`,
       ghostHintPaint: colors.textMuted,
       borderTitlePaint: colors.textMuted,
+      glyphs: this.presentation.glyphs,
     })
   }
 

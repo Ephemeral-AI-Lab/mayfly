@@ -129,6 +129,20 @@ async function switchTheme(ctx: Context, next: ThemeTarget, config?: themeCustom
   return { kind: 'success', text: t('switched to theme "{key}"', { key: next.key }) }
 }
 
+/**
+ * Restart the live theme provider with its current config. Every consumer rebuilds through Cordis reload semantics,
+ * exactly as for a `/theme` switch, which is how a presentation change (glyphs, monochrome, reduced motion) reaches
+ * every painter and retires every cached row.
+ * @param ctx - plugin context.
+ */
+export async function reloadTheme(ctx: Context): Promise<void> {
+  const key = ctx.mayflyInteractionState.currentThemeKey
+  const target = key === CUSTOM.key ? CUSTOM : BUILTIN.get(key) ?? DARK
+  const runtime = ctx.registry.get(target.module)
+  if (runtime === undefined) return
+  await Promise.all([...runtime.fibers].map(fiber => fiber.restart()))
+}
+
 /** Apply a built-in theme by key for the persisted settings default. */
 export async function applyTheme(ctx: Context, key: string): Promise<CommandResult> {
   const t = interactionTranslator(ctx)

@@ -11,6 +11,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { MayflyColorFn, MayflySemanticColors, MayflyTheme } from './types.ts'
 import type { ThemeModel } from '../frontend/index.ts'
+import { presentedColors, readPresentation } from './presentation.ts'
 
 /**
  * Wrap text in a truecolor foreground.
@@ -83,14 +84,16 @@ export type MayflyThemeServiceClass = new (ctx: Context) => Service & MayflyThem
  */
 export function defineThemeService(colors: MayflySemanticColors, model?: Omit<ThemeModel, 'colors'> & { readonly colors: Readonly<Record<string, string>> }): MayflyThemeServiceClass {
   return class extends Service implements MayflyTheme {
-    readonly colors = colors
+    readonly colors: MayflySemanticColors
 
     /**
-     * Create and register the service.
+     * Create and register the service. The palette is the theme's, or its weight-only form when the presentation is
+     * monochrome (`NO_COLOR`, or the `mayfly.monochrome` setting); a change of that setting reloads this provider.
      * @param ctx - the owning Cordis context.
      */
     constructor(ctx: Context) {
       super(ctx, 'mayflyTheme')
+      this.colors = presentedColors(colors, readPresentation(ctx))
       const models = ctx.get('mayflyThemeModels')
       if (models !== undefined && model !== undefined) ctx.effect(() => models.register(model))
     }

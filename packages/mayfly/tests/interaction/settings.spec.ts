@@ -27,7 +27,8 @@ import * as themeDark from '../../src/core/theme-dark.ts'
 import * as themeOcean from '../../src/core/theme-ocean.ts'
 import * as themePaper from '../../src/core/theme-paper.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
-import { applyTheme } from '../../src/interaction/theme-switch.ts'
+import { applyTheme, reloadTheme } from '../../src/interaction/theme-switch.ts'
+import { monochromeColors, readPresentation } from '../../src/core/presentation.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 
@@ -147,6 +148,9 @@ describe('mayfly-settings schema and registration', () => {
       marketIndexUrl: '',
       keybindings: {},
       preferPlainKeys: false,
+      glyphs: 'auto',
+      monochrome: false,
+      reducedMotion: false,
     })
     expect(resolveConfig({ transcriptView: 'verbose' }).transcriptView).toBe('verbose')
     expect(resolveConfig({ keybindings: { 'ui.delete': { keys: ['d'], label: 'delete' } } }).keybindings).toEqual({ 'ui.delete': { keys: ['d'], label: 'delete' } })
@@ -186,6 +190,9 @@ describe('mayfly-settings schema and registration', () => {
       marketIndexUrl: '',
       keybindings: {},
       preferPlainKeys: false,
+      glyphs: 'auto',
+      monochrome: false,
+      reducedMotion: false,
     })
     expect(ready.at(-1)).toMatchObject({ editorCommand: 'my-editor --wait' })
 
@@ -332,6 +339,57 @@ describe('mayfly-settings theme applier', () => {
     session.current = agent
     ctx.emit('test/session-changed', agent)
     await settle()
+    expect(ctx.get('mayflyTheme')).toBeUndefined()
+  })
+})
+
+describe('mayfly-settings presentation follow', () => {
+  /** A stand-in for the components service: it records the presentation it was built under and rebuilds with the theme. */
+  function mountPresentationProbe(ctx: Context): { builds: number } {
+    const counter = { builds: 0 }
+    ctx.plugin({
+      name: 'presentation-probe',
+      inject: ['mayflyTheme'],
+      apply(probe: Context) {
+        counter.builds += 1
+        probe.provide('mayflyComponents', { presentation: readPresentation(probe) } as never)
+      },
+    })
+    return counter
+  }
+
+  it('reloads the live theme provider when glyphs, monochrome, or reduced motion change', async () => {
+    vi.stubEnv('NO_COLOR', '')
+    try {
+      const { ctx, settings, attach } = await mount({ mayfly: { updateCheck: false } })
+      await ctx.plugin(themeDark)
+      const probe = mountPresentationProbe(ctx)
+      attach()
+      await settle()
+      expect(ctx.get('mayflyTheme')?.colors).toBe(themeDark.DARK_COLORS)
+      expect(probe.builds).toBe(1)
+      // An unrelated commit keeps the provider.
+      await settings.update('mayfly', { updateCheck: true })
+      await settle()
+      expect(probe.builds).toBe(1)
+      await settings.update('mayfly', { monochrome: true })
+      await vi.waitFor(() => {
+        expect(ctx.get('mayflyTheme')?.colors).toBe(monochromeColors(themeDark.DARK_COLORS))
+      })
+      expect(ctx.get('mayflyComponents')?.presentation?.monochrome).toBe(true)
+      await settings.update('mayfly', { monochrome: false, glyphs: 'ascii', reducedMotion: true })
+      await vi.waitFor(() => {
+        expect(ctx.get('mayflyComponents')?.presentation).toEqual({ glyphs: 'ascii', monochrome: false, reducedMotion: true })
+      })
+      expect(ctx.get('mayflyTheme')?.colors).toBe(themeDark.DARK_COLORS)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('reloads nothing when no theme provider is live', async () => {
+    const ctx = createContext()
+    await reloadTheme(ctx)
     expect(ctx.get('mayflyTheme')).toBeUndefined()
   })
 })

@@ -9,6 +9,7 @@
 import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
+import { ASCII_SPINNER_FRAMES, type MayflyGlyphMode } from './glyphs.ts'
 import { displayKey } from './key-actions.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
@@ -428,8 +429,8 @@ function formatElapsedMs(ms: number): string {
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
 const TIDE_FRAMES = ['≈', '≋', '∿', '≋'] as const
 
-export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0): string[] {
-  const frames = node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
+export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0, glyphs: MayflyGlyphMode = 'unicode'): string[] {
+  const frames = glyphs === 'ascii' ? ASCII_SPINNER_FRAMES : node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
   const indicator = frames[frame % frames.length]!
   const elapsed = node.elapsedMs === undefined ? '' : ` ${formatElapsedMs(node.elapsedMs)}`
   return [fit(`${colors.primary(indicator)} ${colors.text(node.message)}${colors.textMuted(elapsed)}`, width)]
