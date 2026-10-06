@@ -12,6 +12,8 @@ export const summaryMetric = defineMayflyComponent<{
   readonly detail: string
 }>({
   id: '@mayfly-example/summary-metric',
+  // A pane re-renders on every data tick; equal props keep the node, so core reuses what it already admitted and compiled.
+  memo: true,
   render: props => ui.surface({
     chrome: 'lane',
     padding: 1,

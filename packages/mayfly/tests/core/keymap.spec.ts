@@ -18,6 +18,21 @@ describe('MayflyKeymapService', () => {
     expect(ctx.get('mayflyKeymap')).toBeUndefined()
   })
 
+  it('counts every committed registration and disposal in its revision', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MayflyKeymapService)
+    const keymap = ctx.mayflyKeymap
+    const start = keymap.revision
+    const dispose = keymap.register([{ id: 'mayfly.test.revision', keys: 'ctrl+r' }])
+    expect(keymap.revision).toBe(start + 1)
+    expect(() => keymap.register([{ id: 'mayfly.test.revision', keys: 'ctrl+t' }])).toThrow('already registered')
+    expect(keymap.revision).toBe(start + 1)
+    dispose()
+    expect(keymap.revision).toBe(start + 2)
+    dispose()
+    expect(keymap.revision).toBe(start + 2)
+  })
+
   it('matches input sequences against registered keys', async () => {
     const ctx = new Context()
     await ctx.plugin(MayflyKeymapService)

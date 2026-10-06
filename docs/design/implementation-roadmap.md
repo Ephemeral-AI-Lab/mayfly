@@ -502,7 +502,8 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | Slice | State | Branch | Notes |
 | --- | --- | --- | --- |
 | 1.0 | built, in review | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
-| 1.1 to 1.11 | not started | | |
+| 1.1 | built, in review | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
+| 1.2 to 1.11 | not started | | |
 | Checkpoint A / B / C | pending | | |
 
 
@@ -562,16 +563,48 @@ No runtime behavior changes. The goldens and the baseline report are reviewed at
 **Goal.** An unchanged subtree costs nothing on publish, and a tick or a cursor move repaints only what changed (§4.1,
 D17). **Backlog:** D3 (the shared clock), R1 (clocks).
 
-This slice is a refactor with no visible change: every existing spec, golden, and screenshot stays byte-identical. Its
-parts land in the order of §4.1's table, each with the budget rows it satisfies: the admission memo and compile reuse
-(W1, W4, W6, W8), the row cache (W3, W5), animation patches and the one clock (W2), then measured cells, the hint memo,
-and `memo` on `defineMayflyComponent`. Lazy item bodies wait for the `body` field in slice 1.4. `core/ui-compiler.ts`
-hands its caches to the new modules and stays the only compiler entry.
+This slice is a refactor with no visible change: every existing spec, golden, and screenshot stays byte-identical. It
+landed in eight parts, each green on its own:
 
-Tests: the work-budget spec becomes a gate. A staleness spec republishes a changed copy of every node kind and asserts
-the repaint, then changes the theme, the keymap, the locale, and the width under a warm cache. `ui-compiler.spec.ts`,
-`ui-validator.spec.ts`, and the surface-bridge specs run unchanged. `ui-loader-animation.spec.ts` covers the one
-clock: two surfaces on one timer, a hidden surface leaving it, and the timer stopping when nothing moves.
+1. **Gate.** `tests/perf/budgets.json` holds a ceiling per workload and counter. It starts at the slice 1.0 baseline,
+   may never exceed it, and each part below lowered its rows; `work-budget.spec.ts` also checks that W6 grows with the
+   panes that changed (`swarmWorkload(k)`), not with all 32.
+2. **Epochs.** `isWireSnapshot` (beside `freezeWire` in `@ephemeral-ai/mayfly-ui`, additive) and
+   `MayflyKeymapService.revision`.
+3. **Admission memo** (`core/ui-validator.ts`, `createAdmissionCache()`). A surface model keeps one; a status or editor
+   compile takes it from the compiler options. A frozen snapshot subtree that added only counts to the tree budget, and
+   every list item (which admits under its own quota), is returned as admitted, with the node, text, and chart quotas
+   replayed (a replay that would exceed one takes the full path, so the error is the original). A subtree that carries a
+   control, tab, page, action key, filter, editor slot, or responsive branch is admitted whole each time.
+4. **Compile reuse** (`core/ui-compile-cache.ts`). A surface runtime keeps a memo from an admitted node to its
+   component for the static leaves (text, fields, code, diff, sections, rich text, divider), re-pointed at the newest
+   surface for failure reporting and counters, lent at most once per compile pass. Control-bearing units are not reused:
+   no budget needs it, and a stale binding is the costlier failure. Pure static leaves remember four widths.
+5. **Row cache** (`core/ui-row-cache.ts`). List item rows are kept per admitted item and the state bits the painter
+   folds in, and per palette; `rowsPainted` counts the rows a painter actually painted. Tabs, actions, and form fields
+   keep their painters: they are single rows and no budget needs them.
+6. **One clock** (`UiAnimationClock` in `core/ui-loader-animation.ts`), owned by the surface renderer; the step stays
+   80 ms. A pure static leaf's rows survive `invalidate()`, so a tick repaints the loader row and not the surface.
+7. **Hint memo.** The hint parts are read fresh on every paint, because the grammar reads focus, editing, search, and
+   form state. The painted and fitted row is memoized, keyed by the translated candidates, the width, and the palette.
+8. **`memo: true`** on `defineMayflyComponent`, with `examples/mayfly-user-kit`'s `summaryMetric` as its consumer.
+
+The budgets now are (validated / compiled / rows, one step): W1 2 / 2 / 2 (the changed entry and the row that holds it;
+the row's entry is painted at the two widths a layout measures); W2 0 / 0 / 1; W3 0 / 0 / 2; W4 2 / 1 / 1 (the list node
+and at most one item); W5 0 / 0 / 1; W6 proportional to the changed panes; W7 and W8 as at the baseline. The first
+part's reading of W3's baseline is that its 81 rows were two real list paints, because the frame renders again whenever
+the rows exceed the viewport, plus the hint row twice.
+
+Not done in this slice, and why: *measured cells* (`ui-measure.ts`) and the strings-measured budget, because they change
+every painter's contract and no §7.1 row gates them; they belong with the painters slices 1.2 and 1.3 rewrite anyway.
+*Animation slots* as a registry: the same effect holds without one, because static leaves are memoized and the loader
+is the only row that repaints on a tick. *Lazy item bodies* wait for the `body` field of slice 1.4, as planned.
+
+Tests: the work-budget spec is a gate; `ui-admission-cache.spec.ts` (every replayed quota, the contexts, the
+non-memoizable subtrees), `ui-compile-cache.spec.ts` (take and keep, the passes, the palettes, the hint memo),
+`ui-row-cache.spec.ts` (equality with the unmemoized painter, the repaint of two rows, the palette epoch), and
+`ui-loader-animation.spec.ts` (two surfaces on one timer, a hidden surface leaving, the timer stopping) are new;
+`ui-compiler.spec.ts`, `ui-validator.spec.ts`, and the surface-bridge specs ran unchanged.
 
 #### 1.2 Visual language in the painters
 

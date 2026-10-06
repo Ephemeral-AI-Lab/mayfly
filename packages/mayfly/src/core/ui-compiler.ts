@@ -53,6 +53,7 @@ import {
   isDeferredUiNode,
   materializeDeferredUiNode,
   materializedDeferredUiNode,
+  type MayflyAdmissionCache,
   validateMayflyEditorShellNode,
   validateMayflyStatusNode,
   validateMayflyUiNode,
@@ -67,10 +68,12 @@ import {
 } from './ui-surface-state.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
+import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
+import { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
-import { UiLoaderAnimation } from './ui-loader-animation.ts'
+import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
@@ -135,6 +138,10 @@ export interface MayflyUiCompilerOptions {
   readonly onUnhandledEscape?: () => void
   /** Measurement sink for validation, compilation, and painting; production passes none. */
   readonly counters?: MayflyWorkCounters
+  /** The caller's admission memo; a publish that shares subtrees with the previous one validates only what changed. */
+  readonly admission?: MayflyAdmissionCache
+  /** The caller's compile memo; static leaves of an unchanged subtree keep their components. A surface runtime brings its own. */
+  readonly reuse?: MayflyCompileCache
 }
 
 /** Canonical shell dependencies, including the one host-owned editing engine. */
@@ -159,6 +166,10 @@ export interface MayflyStatusCompilerOptions {
   readonly maxRows?: 1 | 2 | 3
   /** Measurement sink for validation, compilation, and painting; production passes none. */
   readonly counters?: MayflyWorkCounters
+  /** The caller's admission memo; a publish that shares subtrees with the previous one validates only what changed. */
+  readonly admission?: MayflyAdmissionCache
+  /** The caller's compile memo; static leaves of an unchanged subtree keep their components. */
+  readonly reuse?: MayflyCompileCache
 }
 
 /** Successful canonical compilation result. */
@@ -258,6 +269,8 @@ interface RuntimeCompilerOptions extends MayflyUiCompilerOptions {
   readonly editor?: MayflyEditor
   readonly listRuntime: MayflyUiSurfaceRuntime
   readonly reportRuntimeFailure: (message: string) => void
+  /** Always present while compiling: the caller's memo, else the surface runtime's own. */
+  readonly reuse: MayflyCompileCache
 }
 
 interface ControlBase {
@@ -418,7 +431,7 @@ function renderFailure(error: unknown, fallback = 'unknown render failure'): str
   return ownDataErrorMessage(error) ?? fallback
 }
 
-function staticComponent(render: (width: number) => string[], options: RuntimeCompilerOptions, counted = true): MayflyComponent {
+function staticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'counters' | 'reportRuntimeFailure'>, counted = true): MayflyComponent {
   return {
     render: width => {
       try {
@@ -440,17 +453,25 @@ function staticComponent(render: (width: number) => string[], options: RuntimeCo
  * Layout frames re-render every row on each paint (spinner ticks, scroll
  * steps); these rows answer from a per-width memo until invalidated.
  */
-function pureStaticComponent(render: (width: number) => string[], options: RuntimeCompilerOptions): MayflyComponent {
-  let memo: { readonly width: number, readonly rows: string[] } | undefined
+function pureStaticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'counters' | 'reportRuntimeFailure'>): MayflyComponent {
+  // A row layout measures a leaf at several widths before it paints, so one remembered width would thrash.
+  const memo = new Map<number, string[]>()
   const component = staticComponent(width => {
-    if (memo?.width === width) return memo.rows
+    const known = memo.get(width)
+    if (known !== undefined) return known
     const rows = render(width)
     countWork(options.counters, 'rowsPainted', rows.length)
-    memo = { width, rows }
+    if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
+    memo.set(width, rows)
     return rows
   }, options, false)
-  return { render: component.render, invalidate: () => { memo = undefined } }
+  // The rows are a pure function of the node, the width, and the palette this leaf was compiled with, and a new palette
+  // recompiles the leaf, so an invalidation (a loader tick, a scroll step) leaves them in place.
+  return { render: component.render, invalidate: () => {} }
 }
+
+/** How many widths a pure static leaf remembers rows for. */
+const PURE_STATIC_WIDTHS = 4
 
 class SemanticScrollView extends ScrollView {
   private width = 1
@@ -900,16 +921,24 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
     )
   }
   const safeWidth = Math.max(1, Math.floor(width))
+  // The painted row is a pure function of the translated candidates, the width, and the palette, so an unchanged hint
+  // answers from the surface's memo while the parts themselves are still read fresh on every paint.
+  const key = `${String(safeWidth)}\0${candidates.map(candidate => candidate.join('\x01')).join('\x02')}`
+  const memo = options.listRuntime.hintMemo
+  if (memo !== undefined && memo.colors === options.colors && memo.key === key) return memo.rows
+  let rows: string[] = []
   for (const candidate of candidates) {
     const row = hintRow(candidate, options.colors.textMuted)
     countWork(options.counters, 'stringsMeasured')
-    if (visibleWidth(row) <= safeWidth) return [row]
+    if (visibleWidth(row) <= safeWidth) { rows = [row]; break }
   }
-  return []
+  countWork(options.counters, 'rowsPainted', rows.length)
+  options.listRuntime.hintMemo = { colors: options.colors, key, rows }
+  return rows
 }
 
 function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): Component {
-  return staticComponent(width => contextKeyHintRows(state, options, width, mode, escapeLabel), options)
+  return staticComponent(width => contextKeyHintRows(state, options, width, mode, escapeLabel), options, false)
 }
 
 /** Printable text or the opening of a bracketed paste. */
@@ -1099,11 +1128,23 @@ function deferredComponent(node: MayflyUiNode, state: FocusState, options: Runti
   }
 }
 
+/** Node kinds that paint only from their admitted node, the width, the colors, and the components. */
+const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider'])
+
+/** Compiles a reusable leaf and remembers it for the next publish. */
+function leaf(node: CompilableNode, options: RuntimeCompilerOptions, build: (paint: PaintOptions) => MayflyComponent): MayflyComponent {
+  return options.reuse.keep(node, options, build)
+}
+
 function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCompilerOptions, path = '$', mode: CompilerMode = 'ui', contextHint?: Component): Component {
   const pagePath = options.listRuntime.pagePath(node)
   const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
   const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
   if (node.kind !== 'editor-control' && isDeferredUiNode(node as MayflyUiNode)) return deferredComponent(node as MayflyUiNode, state, options, path, mode)
+  if (REUSABLE_KINDS.has(node.kind)) {
+    const reused = options.reuse.take(node, options)
+    if (reused !== undefined) return reused
+  }
   countWork(options.counters, 'unitsCompiled')
   switch (node.kind) {
     case 'editor-control': {
@@ -1125,28 +1166,28 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       state.bindControls([scopedControlKey('editor', 'editor-control')], { component, axis: 'none' })
       return component
     }
-    case 'text': return pureStaticComponent(width => renderCanonicalView(
+    case 'text': return leaf(node, options, paint => pureStaticComponent(width => renderCanonicalView(
         node,
         width,
-        options.components,
-        options.colors,
-      ), options)
+        paint.components,
+        paint.colors,
+      ), paint))
     case 'markdown': return markdownLeafComponent(node, options)
     case 'fields':
     case 'code':
     case 'diff':
-    case 'sections': return pureStaticComponent(width => renderCanonicalView(
+    case 'sections': return leaf(node, options, paint => pureStaticComponent(width => renderCanonicalView(
       node as MayflySectionContentNode,
       width,
-      options.components,
-      options.colors,
-    ), options)
-    case 'rich-text': return pureStaticComponent(width => {
-      countWork(options.counters, 'stringsMeasured')
+      paint.components,
+      paint.colors,
+    ), paint))
+    case 'rich-text': return leaf(node, options, paint => pureStaticComponent(width => {
+      countWork(paint.counters, 'stringsMeasured')
       return node.overflow === 'truncate'
-        ? [truncatedRow(joinSpans(node, options.colors), width, options.components)]
-        : options.components.wrapText(joinSpans(node, options.colors), Math.max(1, width))
-    }, options)
+        ? [truncatedRow(joinSpans(node, paint.colors), width, paint.components)]
+        : paint.components.wrapText(joinSpans(node, paint.colors), Math.max(1, width))
+    }, paint))
     case 'stack': {
       const stackOptions = {
         ...(node.gap === undefined ? {} : { gap: node.gap }),
@@ -1232,12 +1273,13 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
           focus,
           options.colors,
           entries[0]!.position,
+          { cache: options.listRuntime.rows, counters: options.counters },
         )
         const focusedItem = focus.focused && focus.key !== '' ? entries.find(entry => entry.item.id === focus.key)?.item : undefined
         const segment = focusedItem?.segment
         const segmentRows = segment === undefined ? [] : [renderListSegment(segment, choice === undefined ? segment.selectedId : choiceSegment(choice, focusedItem!.id), width, options.colors)]
         return [...(queryRows.length > 0 ? queryRows : query.length > 0 ? [sliceByColumn(`/ ${query}`, 0, width, true)] : []), ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body, ...segmentRows]
-      }, options)
+      }, options, false)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
       if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
       state.bindControls(initial.filter(entry => entry.item.disabled !== true).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
@@ -1320,7 +1362,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     }
     case 'progress': return staticComponent(width => renderProgress(node, width, options.colors), options)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
-    case 'divider': return pureStaticComponent(width => renderDivider(node.label, width, options.colors), options)
+    case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors), paint))
     case 'diagram': return diagramComponent(node, options)
     case 'chart': return chartComponent(node, options)
   }
@@ -1479,6 +1521,12 @@ function nearestDirectionalControl(
  * focus, geometry, and admission caches for the current renderer lifetime.
  */
 export class MayflyUiSurfaceRuntime {
+  /** The static leaves this surface compiled before; each publish of an unchanged subtree reuses them. */
+  readonly reuse = new MayflyCompileCache()
+  /** The item rows this surface's lists have painted, kept by item and state. */
+  readonly rows = new UiRowCache()
+  /** The last key-hint row this surface painted, with what it was painted from. */
+  hintMemo: { readonly colors: object, readonly key: string, readonly rows: string[] } | undefined
   private node: CompilableNode | undefined
   private options: RuntimeCompilerOptions | undefined
   private layoutViewport: ((viewport: MayflyUiViewport) => void) | undefined
@@ -1513,8 +1561,8 @@ export class MayflyUiSurfaceRuntime {
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
 
-  constructor(readonly interaction?: UiSurfaceModel, requestRender?: () => void) {
-    this.loaderAnimation = requestRender === undefined ? undefined : new UiLoaderAnimation(requestRender)
+  constructor(readonly interaction?: UiSurfaceModel, requestRender?: () => void, clock?: UiAnimationClock) {
+    this.loaderAnimation = requestRender === undefined ? undefined : new UiLoaderAnimation(requestRender, clock)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
       const address = this.fieldAddresses.get(key)
       const draft = address === undefined ? undefined : this.interaction?.form(address)?.fields[address.fieldId]
@@ -1889,6 +1937,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.surfaceRuntime = surfaceRuntime ?? new MayflyUiSurfaceRuntime(options.interaction)
     const runtimeOptions: RuntimeCompilerOptions = {
       ...options,
+      reuse: options.reuse ?? this.surfaceRuntime.reuse,
       ...(editor === undefined ? {} : { editor }),
       getViewport: () => this.viewport,
       listRuntime: this.surfaceRuntime,
@@ -1898,6 +1947,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.generation = this.surfaceRuntime.bind(node, runtimeOptions, viewport => { this.viewport = viewport })
     this.state = this.surfaceRuntime.state
     this.surfaceRuntime.admit(node)
+    runtimeOptions.reuse.beginPass()
     const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, mode, escapeLabel) : undefined
     this.hintRowsFor = contextKeyHints ? width => contextKeyHintRows(this.state, runtimeOptions, width, mode, escapeLabel) : undefined
     const compiledRoot = compileNode(node, this.state, runtimeOptions, '$', mode, node.kind === 'surface' ? contextHint : undefined)
@@ -2589,7 +2639,7 @@ function statusRowLimit(value: MayflyStatusCompilerOptions['maxRows']): number {
 
 /** Validate first, then compile one canonical UI tree without a bypass path. */
 export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOptions): MayflyUiCompileResult {
-  const admitted = validateMayflyUiNode(value, options.counters)
+  const admitted = validateMayflyUiNode(value, options.counters, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2609,7 +2659,7 @@ export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOpt
 /** Compile one validated projection into a bridge-owned persistent runtime. */
 export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurfaceCompilerOptions): MayflyUiCompileResult {
   const admitted = value !== null && value === options.surfaceRuntime.interaction?.node
-    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value, options.counters)
+    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value, options.counters, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2635,7 +2685,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
 
 /** Validate an editor shell, then compile it around the exact injected engine. */
 export function compileMayflyEditorShellNode(value: unknown, options: MayflyEditorShellCompilerOptions): MayflyEditorShellCompileResult {
-  const admitted = validateMayflyEditorShellNode(value, options.counters)
+  const admitted = validateMayflyEditorShellNode(value, options.counters, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2651,7 +2701,7 @@ export function compileMayflyEditorShellNode(value: unknown, options: MayflyEdit
 /** Validate the non-interactive status subset, then compile it through the canonical painter. */
 export function compileMayflyStatusNode(value: unknown, options: MayflyStatusCompilerOptions): MayflyStatusCompileResult {
   const maxRows = statusRowLimit(options.maxRows)
-  const admitted = validateMayflyStatusNode(value, options.counters)
+  const admitted = validateMayflyStatusNode(value, options.counters, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new StatusErrorComponent(admitted.message, options.colors, maxRows) }
   }
@@ -2663,6 +2713,7 @@ export function compileMayflyStatusNode(value: unknown, options: MayflyStatusCom
       screenMode: options.screenMode,
       emit: PASSIVE_EVENT_SINK,
       ...(options.counters === undefined ? {} : { counters: options.counters }),
+      ...(options.reuse === undefined ? {} : { reuse: options.reuse }),
     }
     const surface = admittedSurface(admitted.value, runtimeOptions, 'status')
     return { ok: true, value: { node: admitted.value, component: new CompiledStatusComponent(surface, maxRows) } }
