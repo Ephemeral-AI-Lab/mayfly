@@ -84,6 +84,14 @@ export function freezeWire<Value>(value: Value): Value {
   return clone(value) as Value
 }
 
+/**
+ * Whether `value` is a snapshot made by {@link freezeWire} in this module copy. Every object a snapshot contains is one
+ * too, so a true answer means the whole subtree is deeply immutable and its identity can key a cache.
+ */
+export function isWireSnapshot(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && wireSnapshots.has(value)
+}
+
 const frozen = freezeWire
 
 function text(content: string, options: TextOptions = {}): MayflyTextNode {

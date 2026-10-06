@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { deepFreeze, defineMayflyComponent, freezeWire, ui } from '../src/index.ts'
+import { deepFreeze, defineMayflyComponent, freezeWire, isWireSnapshot, ui } from '../src/index.ts'
 
 function expectDeepFrozen(value: unknown, seen = new WeakSet<object>()): void {
   if (value === null || typeof value !== 'object' || seen.has(value)) return
@@ -166,6 +166,17 @@ describe('deepFreeze', () => {
 })
 
 describe('freezeWire snapshot trust', () => {
+  it('reports exactly the objects its own snapshots contain', () => {
+    const list = ui.list({ id: 'trust', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }] })
+    expect(isWireSnapshot(list)).toBe(true)
+    expect(isWireSnapshot(list.items)).toBe(true)
+    expect(isWireSnapshot(list.items[0])).toBe(true)
+    expect(isWireSnapshot({ ...list })).toBe(false)
+    expect(isWireSnapshot(deepFreeze({ kind: 'text', content: 'caller' }))).toBe(false)
+    expect(isWireSnapshot(null)).toBe(false)
+    expect(isWireSnapshot('text')).toBe(false)
+  })
+
   it('reuses only its own deeply immutable snapshots and nested branches', () => {
     const list = ui.list({ id: 'large', role: 'browse', mode: 'single', selectedIds: [], items: Array.from({ length: 100_000 }, (_, index) => ({ id: String(index), label: String(index) })) })
     expect(freezeWire(list)).toBe(list)

@@ -54,6 +54,10 @@ function normalizeKeys(keys: string | string[]): string[] {
 export class MayflyKeymapService extends Service implements MayflyKeymap {
   private readonly actions = new Map<string, RegisteredAction>()
   private readonly keyOwner = new Map<string, string>()
+  private registrations = 0
+
+  /** Counts every committed change to the registered actions, so a cache of anything derived from them can tell it is stale. */
+  get revision(): number { return this.registrations }
 
   /**
    * Create and register the service.
@@ -101,11 +105,13 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
       this.actions.set(id, entry)
       for (const key of entry.keys) this.keyOwner.set(key, id)
     }
+    this.registrations += 1
 
     let disposed = false
     return () => {
       if (disposed) return
       disposed = true
+      this.registrations += 1
       for (const [id, entry] of batch) {
         this.actions.delete(id)
         for (const key of entry.keys) this.keyOwner.delete(key)

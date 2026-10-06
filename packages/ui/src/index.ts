@@ -8,6 +8,7 @@ export type * from './contracts.ts'
 export {
   deepFreeze,
   freezeWire,
+  isWireSnapshot,
   defineMayflyComponent,
   ui,
   type MayflyComponentDefinition,
