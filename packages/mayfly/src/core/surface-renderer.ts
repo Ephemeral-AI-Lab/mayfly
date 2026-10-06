@@ -15,6 +15,7 @@ import { matchesKey, type KeyId } from '@earendil-works/pi-tui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
+import { UiAnimationClock } from './ui-loader-animation.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
@@ -284,6 +285,8 @@ function focusTarget(entry: SurfaceLaneEntry): MayflyFocusable | null {
 export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, translateHint?: (key: string) => string): void {
   const panes = new Map<string, PaneRecord>()
   const overlays = new Map<string, OverlayRecord>()
+  /** One timer for every animated pane and overlay of this renderer. */
+  const clock = new UiAnimationClock()
   let disposed = false
   let pending: SurfaceSnapshot | undefined
   let scheduled = false
@@ -367,7 +370,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
     schedulePane(record)
   }
@@ -380,7 +383,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addOverlay = (entry: MayflyOverlayEntry): void => {
     let record!: OverlayRecord
     const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)!
-    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() })
+    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock)
     const compiled = compile(interaction.decisionNode ?? interaction.node, 'overlay', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
@@ -605,6 +608,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   publish()
   ctx.effect(() => () => {
     disposed = true
+    clock.dispose()
     offInteraction()
     for (const record of [...overlays.values()].reverse()) {
       record.runtime.dispose()

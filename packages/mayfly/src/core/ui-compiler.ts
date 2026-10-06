@@ -73,7 +73,7 @@ import { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
-import { UiLoaderAnimation } from './ui-loader-animation.ts'
+import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
@@ -465,7 +465,9 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
     memo.set(width, rows)
     return rows
   }, options, false)
-  return { render: component.render, invalidate: () => { memo.clear() } }
+  // The rows are a pure function of the node, the width, and the palette this leaf was compiled with, and a new palette
+  // recompiles the leaf, so an invalidation (a loader tick, a scroll step) leaves them in place.
+  return { render: component.render, invalidate: () => {} }
 }
 
 /** How many widths a pure static leaf remembers rows for. */
@@ -1549,8 +1551,8 @@ export class MayflyUiSurfaceRuntime {
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
 
-  constructor(readonly interaction?: UiSurfaceModel, requestRender?: () => void) {
-    this.loaderAnimation = requestRender === undefined ? undefined : new UiLoaderAnimation(requestRender)
+  constructor(readonly interaction?: UiSurfaceModel, requestRender?: () => void, clock?: UiAnimationClock) {
+    this.loaderAnimation = requestRender === undefined ? undefined : new UiLoaderAnimation(requestRender, clock)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
       const address = this.fieldAddresses.get(key)
       const draft = address === undefined ? undefined : this.interaction?.form(address)?.fields[address.fieldId]
