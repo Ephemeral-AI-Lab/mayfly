@@ -58,6 +58,7 @@ import type {
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { normalizeWheelInput } from '../core/terminal.ts'
+import { feedbackSpans } from '../core/ui-interaction-notifications.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -247,7 +248,7 @@ export function apply(ctx: Context): void {
   }
   const feedbackNode = (): MayflyUiNode | undefined => {
     const record = visibleNotification()
-    if (record !== undefined) return ui.text(record.message, { tone: record.severity === 'error' ? 'danger' : record.severity === 'info' ? 'muted' : record.severity })
+    if (record !== undefined) return ui.richText(feedbackSpans(record.severity, record.message))
     const hint = slashHint()
     return hint === undefined ? undefined : ui.text(hint, { tone: 'muted' })
   }
@@ -740,7 +741,7 @@ export function apply(ctx: Context): void {
         return true
       }
       lastInterruptAt = now
-      showFeedback('exit', t('press ctrl+c again to exit'), 'warning')
+      showFeedback('exit', t('press Ctrl+C again to exit'), 'warning')
       return true
     }
     // Ctrl-S: steer the current turn with the draft — an idle agent starts

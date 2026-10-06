@@ -310,7 +310,7 @@ describe('TranscriptController', () => {
     const component = new TranscriptModelComponent(() => current, renderer(() => {}, policy))
     const folded = component.render(80).join('\n')
     expect(folded).toContain('▸ Took 5s · 1 tool call')
-    expect(folded).toContain('▸ Took 3s · 1 tool call · ctrl+o to expand')
+    expect(folded).toContain('▸ Took 3s · 1 tool call · Ctrl+O to expand')
     expect(folded).toContain('answer 1')
     expect(folded).not.toContain('deep thought')
     // Ctrl-O opens only the in-scope turn; the older one stays folded without a key hint.
@@ -372,7 +372,7 @@ describe('TranscriptController', () => {
       const message = locale === 'zh'
         ? {
             '■ interrupted': '■ 已中断',
-            '... ({remaining} more lines, {total} total, ctrl+o to expand)': '...（还有 {remaining} 行，共 {total} 行，按 Ctrl-O 展开）',
+            '... ({remaining} more lines, {total} total, Ctrl+O to expand)': '...（还有 {remaining} 行，共 {total} 行，按 Ctrl+O 展开）',
           }[key] ?? key
         : key
       return message.replace(/\{(remaining|total)\}/gu, (placeholder, name) => String(values?.[name] ?? placeholder))

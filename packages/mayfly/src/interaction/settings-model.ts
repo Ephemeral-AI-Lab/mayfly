@@ -12,7 +12,7 @@ const LABELS: Readonly<Record<string, string>> = {
   'mayfly.theme': 'Theme',
   'mayfly.transcriptView': 'Work details',
   'mayfly.windowTurns': 'Transcript window (turns)',
-  'mayfly.expandTurns': 'Ctrl-O range (turns)', 'mayfly.userFoldLines': 'User fold lines', 'mayfly.userFoldChars': 'User fold chars',
+  'mayfly.expandTurns': 'Ctrl+O range (turns)', 'mayfly.userFoldLines': 'User fold lines', 'mayfly.userFoldChars': 'User fold chars',
   'mayfly.editorCommand': 'External editor', 'mayfly.pasteImageBackend': 'Paste backend', 'mayfly.marketIndexUrl': 'Plugin market index',
   'mayfly.glyphs': 'Glyphs', 'mayfly.monochrome': 'Monochrome', 'mayfly.reducedMotion': 'Reduced motion',
   'shell.timeoutMs': 'Shell timeout (ms)', 'shell.maxTimeoutMs': 'Shell max timeout (ms)', 'shell.maxOutputBytes': 'Shell max output (bytes)',

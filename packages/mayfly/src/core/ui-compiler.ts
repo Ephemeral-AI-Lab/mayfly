@@ -27,7 +27,6 @@ import type {
 import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
-import { hintRow } from './chrome.ts'
 import { glyphRows } from './glyphs.ts'
 import { renderChartRows } from './chart-renderer.ts'
 import { ownDataErrorMessage } from './error-message.ts'
@@ -42,9 +41,11 @@ import {
   renderListSegment,
   renderLoader,
   renderProgress,
+  renderHintRow,
   renderSurfaceHead,
   renderSurfaceTail,
   surfaceBorderPaint,
+  type HintPart,
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
@@ -69,6 +70,7 @@ import {
   type UiVirtualListEntry,
 } from './ui-surface-state.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
+import { feedbackSpans } from './ui-interaction-notifications.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
 import { actionHintLabel, actionScopeActive, effectiveItemKeys } from './ui-actions.ts'
@@ -78,11 +80,10 @@ import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, cho
 import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
-import { grammarHints, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
+import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
 import {
-  displayKey,
   keyActionKeys,
   matchesKeyAction,
   matchesKeyId,
@@ -903,7 +904,7 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
   if (options.contextHints?.suppressAuto !== true && !withoutControls) {
     for (const hint of grammarHints(keyGrammar(grammarStateFor(state, options, controls, active, mode, escapeLabel)))) {
       // Literal key words (the "Type" of type-to-filter) are prose; key names are not translated.
-      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId).slice(0, 1)).map(displayKey).join('/')
+      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hintNotation(hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId).slice(0, 1)))
       merged.set(hint.id, { id: hint.id, keys, label: hint.label, compact: hint.compact ?? keys, priority: hint.priority })
     }
   }
@@ -924,19 +925,19 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
     .toSorted((left, right) => right.hint.priority - left.hint.priority || left.index - right.index)
     .slice(0, limit)
     .map(entry => entry.hint.id))
-  const displayOrder = (id: string): number => {
-    if (id === 'navigate') return 10
-    if (id === 'adjust') return 15
-    if (id === 'activate') return 20
-    if (id === 'confirm') return 30
-    if (id === 'group') return 40
-    if (id === 'escape' || id === 'dismiss') return 50
-    return 25
-  }
+  // The kit's order (spec §3.2): navigation, adjustment, the digit range, the primary operation, accelerators, the
+  // filter and clear, tabs, group moves, and Esc last, so the row reads "what I can do … how I leave".
+  const displayOrder = (id: string): number => HINT_ORDER[id] ?? (id.startsWith('keyed:') ? HINT_ORDER.keyed! : HINT_ORDER.other!)
   return indexed
     .filter(entry => admitted.has(entry.hint.id))
     .toSorted((left, right) => displayOrder(left.hint.id) - displayOrder(right.hint.id) || left.index - right.index)
     .map(entry => entry.hint)
+}
+
+/** Where each hint fragment sits in the row, by hint id (the kit's `order`). */
+const HINT_ORDER: Readonly<Record<string, number>> = {
+  navigate: 10, adjust: 20, branch: 20, toggle: 20, numbered: 30, activate: 40, confirm: 45, keyed: 50, reset: 50,
+  expand: 50, other: 55, search: 60, clear: 60, newline: 60, tabs: 70, group: 80, escape: 90, dismiss: 90,
 }
 
 /** Hint fragments admitted at a width: three on narrow terminals, four from 80 columns. */
@@ -952,7 +953,7 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   const translate = (key: string): string => {
     try { return options.contextHints?.translate?.(key) ?? key } catch { return key }
   }
-  const candidates: string[][] = []
+  const candidates: HintPart[][] = []
   for (let count = parts.length; count > 0; count -= 1) {
     const retained = new Set(parts
       .map((part, index) => ({ part, index }))
@@ -961,19 +962,19 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
       .map(entry => entry.part.id))
     const candidate = parts.filter(part => retained.has(part.id))
     candidates.push(
-      candidate.map(part => part.label === undefined ? part.keys : `${part.keys} ${translate(part.label)}`),
-      candidate.map(part => part.compact),
+      candidate.map(part => part.label === undefined ? { keys: part.keys } : { keys: part.keys, label: translate(part.label) }),
+      candidate.map(part => ({ keys: part.compact })),
     )
   }
   const safeWidth = Math.max(1, Math.floor(width))
   // The painted row is a pure function of the translated candidates, the width, and the palette, so an unchanged hint
   // answers from the surface's memo while the parts themselves are still read fresh on every paint.
-  const key = `${String(safeWidth)}\0${candidates.map(candidate => candidate.join('\x01')).join('\x02')}`
+  const key = `${String(safeWidth)}\0${candidates.map(candidate => candidate.map(part => `${part.keys}\x03${part.label ?? ''}`).join('\x01')).join('\x02')}`
   const memo = options.listRuntime.hintMemo
   if (memo !== undefined && memo.colors === options.colors && memo.key === key) return memo.rows
   let rows: string[] = []
   for (const candidate of candidates) {
-    const row = hintRow(candidate, options.colors.textMuted)
+    const row = renderHintRow(candidate, options.colors)
     countWork(options.counters, 'stringsMeasured')
     if (visibleWidth(row) <= safeWidth) { rows = [row]; break }
   }
@@ -2108,7 +2109,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         const viewport = this.viewport
         beginLayoutPass(this.state)
         try {
-          const hint = this.hintRowsFor?.(safeWidth) ?? []
+          const hint = glyphRows(this.hintRowsFor?.(safeWidth) ?? [], this.options.components.presentation?.glyphs)
           const expandedComponent = expandedScroll as unknown as Component
           /* Semantic scrolls learn the content width from render(); refresh it
              so anchors written while expanded match the expanded width. */
@@ -2143,10 +2144,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const rowLimit = maxRows ?? (this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
       const severity = { info: 0, success: 1, warning: 2, error: 3 }
       const notice = this.surfaceRuntime.interaction?.feedbackSnapshot().toSorted((left, right) => severity[left.severity] - severity[right.severity]).at(-1)
-      const feedbackRows = notice === undefined || rowLimit === 1 ? [] : [sliceByColumn(
-        (notice.severity === 'error' ? this.options.colors.error : notice.severity === 'warning' ? this.options.colors.warning : this.options.colors.textMuted)(sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')),
+      const feedbackRows = notice === undefined || rowLimit === 1 ? [] : glyphRows([sliceByColumn(
+        joinSpans({ spans: feedbackSpans(notice.severity, sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')) }, this.options.colors),
         0, safeWidth, true,
-      )]
+      )], this.options.components.presentation?.glyphs)
       const contentLimit = rowLimit === undefined ? rows.length : Math.max(1, rowLimit - feedbackRows.length)
       const caretRow = rows.findIndex(row => row.includes(CURSOR_MARKER))
       const focusRow = caretRow < 0 ? rows.findIndex(row => row.includes(FOCUS_SENTINEL)) : caretRow

@@ -107,13 +107,13 @@ describe('ThinkingComponent', () => {
 
   it('settles into one row with its duration, previewing the first line when the policy allows', () => {
     const component = new ThinkingComponent(thinkingItem({ text: SIX_WORDS, durationMs: 4_200 }), tagged(), fakeMayflyComponents())
-    expect(component.render(120)).toEqual(['', '[M]✻ [/M][M]Thought for 4s · [/M]\x1b[3m[M]l0 l1 l2 l3 l4 l5[/M]\x1b[23m[T] · ctrl+o to expand[/T]'])
+    expect(component.render(120)).toEqual(['', '[M]✻ [/M][M]Thought for 4s · [/M]\x1b[3m[M]l0 l1 l2 l3 l4 l5[/M]\x1b[23m[T] · Ctrl+O to expand[/T]'])
     // Without a recorded span the duration reads as a while; sub-second spans round up.
-    expect(new ThinkingComponent(thinkingItem({ text: 'x' }), COLORS, fakeMayflyComponents()).render(80)[1]).toBe('✻ Thought for a while · \x1b[3mx\x1b[23m · ctrl+o to expand')
+    expect(new ThinkingComponent(thinkingItem({ text: 'x' }), COLORS, fakeMayflyComponents()).render(80)[1]).toBe('✻ Thought for a while · \x1b[3mx\x1b[23m · Ctrl+O to expand')
     expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 200 }), COLORS, fakeMayflyComponents()).render(80)[1]).toContain('Thought for 1s')
     // Compact drops the preview; out of Ctrl-O's reach the hint goes.
     const bare = new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 2_000 }), COLORS, fakeMayflyComponents(), () => false)
-    expect(bare.render(80)).toEqual(['', '✻ Thought for 2s · ctrl+o to expand'])
+    expect(bare.render(80)).toEqual(['', '✻ Thought for 2s · Ctrl+O to expand'])
     bare.setScope({ hint: false })
     expect(bare.render(80)).toEqual(['', '✻ Thought for 2s'])
     // A hint that would not fit whole is dropped rather than cut.
@@ -125,7 +125,7 @@ describe('ThinkingComponent', () => {
 
   it('localizes the settled title', () => {
     const t = (key: string, values?: Record<string, string | number>) => interpolateLocaleMessage(TRANSCRIPT_LOCALE.zh[key] ?? key, values)
-    expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 3_000 }), COLORS, fakeMayflyComponents(), () => false, t).render(40)[1]).toBe('✻ 已思考 3s · 按 Ctrl-O 展开')
+    expect(new ThinkingComponent(thinkingItem({ text: 'x', durationMs: 3_000 }), COLORS, fakeMayflyComponents(), () => false, t).render(40)[1]).toBe('✻ 已思考 3s · 按 Ctrl+O 展开')
   })
 
   it('renders zero rows for blank reasoning, live or finalized', () => {

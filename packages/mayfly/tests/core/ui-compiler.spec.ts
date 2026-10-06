@@ -1695,7 +1695,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     ] })))
       .toBe('  ↑/↓ fields · ←/→ adjust · Enter pick')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'toggle', id: 'enabled', label: 'Enabled', value: false }] })))
-      .toBe('  Space/Enter toggle')
+      .toBe('  Enter toggle')
     expect(focusedHint(ui.form({ id: 'form', fields: [], submitActionId: 'Save' })))
       .toBe('  Enter submit')
     expect(focusedHint(ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }] })))
@@ -1705,18 +1705,18 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }, { id: 'stop', label: 'Stop' }] }),
       ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }] }),
     ])
-    expect(focusedHint(groups)).toBe('  ↑/↓/←/→ actions · Enter run · Alt+←/Alt+→ tabs · Tab/Shift+Tab groups')
+    expect(focusedHint(groups)).toBe('  ←/→ actions · Enter run · Alt+←/→ tabs · Tab/Shift+Tab groups')
 
     const scrollGroups = ui.stack.column([
       ui.scroll(ui.text('abcdefgh')),
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }] }),
     ])
     expect(focusedHint(scrollGroups, [], { onUnhandledEscape: () => {} }))
-      .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E expand · Tab/Shift+Tab groups · Esc close')
+      .toBe('  ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups · Esc close')
     expect(focusedHint(scrollGroups, []))
-      .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E expand · Tab/Shift+Tab groups')
+      .toBe('  ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups')
     expect(focusedHint(scrollGroups, ['\x05'], { onUnhandledEscape: () => {} }))
-      .toBe('  ↑/↓/PgUp/PgDn scroll · Ctrl+E/Esc collapse')
+      .toBe('  ↑/↓ scroll · Ctrl+E/Esc collapse')
   })
 
   it('derives empty-list, passive, field, and explicit dismissal hints', () => {
@@ -1750,7 +1750,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     focus.handleInput?.('\r')
     expect(f.events).toEqual([])
 
-    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space/Enter toggle / confirm · Alt+←/Alt+→ tabs · Tab/Shift+Tab groups')
+    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space toggle · Enter choose · Alt+←/→ tabs')
     focus.handleInput?.('\r')
     expect(f.events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'list', selectedIds: [] }])
     focus.handleInput?.(' ')
@@ -1960,7 +1960,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     focus.focused = true
     const rows = focus.render(120)
     expect(rows.join('\n')).toContain('(Q)')
-    expect(rows.at(-1)).toContain('Q Stop')
+    expect(rows.at(-1)).toContain('q stop')
     focus.handleInput?.('q')
     expect(f.events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'stop', actionId: 'stop' }])
     focus.handleInput?.('x')
@@ -1981,7 +1981,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     focus.focused = true
     const rows = focus.render(80)
     expect(rows.join('\n')).toContain('Go')
-    expect(rows.at(-1)).toContain('Ctrl+Y Copy link')
+    expect(rows.at(-1)).toContain('Ctrl+Y copy link')
     expect(rows.join('\n')).not.toContain('Turned off')
     expect(rows.join('\n')).not.toContain('Bare')
     focus.handleInput?.('\x19')
@@ -2001,7 +2001,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     ]), f.options)
     const focus = result.focusTarget!
     focus.focused = true
-    expect(focus.render(60).at(-1)).toContain('Ctrl+R Reload')
+    expect(focus.render(60).at(-1)).toContain('Ctrl+R reload')
     expect(focus.render(60).at(-1)).not.toContain('Q Stop')
     focus.handleInput?.('\x12')
     expect(f.events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'reload', actionId: 'reload' }])
@@ -2040,7 +2040,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     result.focusTarget!.focused = true
     expect(result.component.render(80).at(-1)).toBe('  Enter run · Esc close')
     f.viewport.columns = 120
-    expect(result.component.render(120).at(-1)).toBe('  ↑/↓/←/→ actions · Enter run · Tab/Shift+Tab groups · Esc close')
+    expect(result.component.render(120).at(-1)).toBe('  ←/→ actions · Enter run · Tab/Shift+Tab groups · Esc close')
 
     const wideTree = ui.stack.column([
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }, { id: 'stop', label: 'Stop' }] }),
@@ -2048,8 +2048,8 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     ])
     const widths = compiledSurface(wideTree, fixture({ onUnhandledEscape: () => {} }).options)
     widths.focusTarget!.focused = true
-    expect(widths.component.render(80).at(-1)).toBe('  ↑/↓/←/→ actions · Enter run · Alt+←/Alt+→ tabs · Esc close')
-    expect(widths.component.render(40).at(-1)).toBe('  ↑/↓/←/→ · Enter · Esc')
+    expect(widths.component.render(80).at(-1)).toBe('  ←/→ actions · Enter run · Alt+←/→ tabs · Esc close')
+    expect(widths.component.render(40).at(-1)).toBe('  ←/→ actions · Enter run · Esc close')
     expect(widths.component.render(18).at(-1)).toBe('  Enter · Esc')
     expect(widths.component.render(8).at(-1)).toBe('  Esc')
     expect(widths.component.render(6).join('\n')).not.toContain('Ent')
@@ -2097,7 +2097,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
           { id: 'second', keys: 'S', priority: 80 },
         ],
       },
-    })).toBe('  F · S · C confirm')
+    })).toBe('  C confirm · F · S')
   })
 
   it('supports automatic-hint suppression and focusable controller-only surfaces', () => {

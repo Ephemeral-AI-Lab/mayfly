@@ -15,7 +15,7 @@ const zh = Object.freeze({
   Type: '输入',
   focus: '定位',
   open: '打开',
-  'toggle / confirm': '切换 / 确认',
+  'No/Yes': '否/是',
   branch: '展开/折叠',
   pick: '选择',
   next: '下一项',

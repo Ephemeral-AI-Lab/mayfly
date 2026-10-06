@@ -463,6 +463,21 @@ export function renderActions(node: ActionsNode, width: number, focus: PatternFo
   return vertical ? tokens.map(token => fit(token.value, width)) : [compactTokens(tokens, width)]
 }
 
+/** One fragment of the hint row: the keys, and the word for what they do. */
+export interface HintPart {
+  readonly keys: string
+  readonly label?: string
+}
+
+/**
+ * The hint row (spec §3.2): indented two columns, each fragment `Keys label` with the key in text color and its label
+ * muted, joined by a muted ` · `, so the eye lands on the key.
+ */
+export function renderHintRow(parts: readonly HintPart[], colors: MayflySemanticColors): string {
+  const fragments = parts.map(part => `${colors.text(part.keys)}${part.label === undefined ? '' : ` ${colors.textMuted(part.label)}`}`)
+  return `${colors.textMuted('  ')}${fragments.join(colors.textMuted(' · '))}`
+}
+
 /**
  * The muted row a bottom lane paints in place of the `hidden` rows it cut.
  * @param hidden - number of rows the lane could not show.
