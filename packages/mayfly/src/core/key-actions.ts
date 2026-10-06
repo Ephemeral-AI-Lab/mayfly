@@ -109,6 +109,21 @@ export function displayKey(key: string): string {
   }).join('+')
 }
 
+/** The named keys of pi-tui's key-id notation; any other base is one printable character. */
+const NAMED_KEYS = new Set([
+  'enter', 'escape', 'tab', 'space', 'backspace', 'delete', 'insert', 'up', 'down', 'left', 'right',
+  'pageUp', 'pageDown', 'home', 'end', ...Array.from({ length: 12 }, (_, index) => `f${String(index + 1)}`),
+])
+
+/** Whether a string is a pi-tui key id: distinct modifiers, then a named key or one printable character. */
+export function isKeyId(key: string): boolean {
+  const parts = key.split('+')
+  const base = parts.at(-1)!
+  const modifiers = parts.slice(0, -1)
+  if (new Set(modifiers).size !== modifiers.length || modifiers.some(modifier => !['ctrl', 'alt', 'shift', 'meta'].includes(modifier))) return false
+  return NAMED_KEYS.has(base) || (base.length === 1 && !/[\x00-\x20\x7f]/u.test(base))
+}
+
 /** A key id that inserts text rather than chording a modifier or naming a function key. */
 export function printableKey(key: string): boolean {
   const normalized = key.toLowerCase()

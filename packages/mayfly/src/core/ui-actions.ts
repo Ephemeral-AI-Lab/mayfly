@@ -56,15 +56,16 @@ export function defaultItemKey(item: ActionNaming): string | undefined {
 }
 
 /**
- * The keys an item answers now. A meaning follows its `ui.*` action; a component action and a plain accelerator
- * answer their declared key.
+ * The keys an item answers now. A meaning follows its `ui.*` action; a component action follows the keymap's
+ * override and otherwise its declared default; a plain accelerator keeps its key.
  * @param item - an admitted action item.
  * @param keymap - the live keymap, absent in fixtures.
  * @returns the effective key ids, first key first.
  */
 export function effectiveItemKeys(item: ActionNaming, keymap: MayflyKeymap | undefined): readonly string[] {
   if (item.semantic !== undefined) return keyActionKeys(keymap, `ui.${item.semantic}`)
-  return item.key === undefined ? [] : [item.key]
+  const declared = item.key === undefined ? [] : [item.key]
+  return item.action === undefined || typeof keymap?.resolve !== 'function' ? declared : keymap.resolve(item.action, declared)
 }
 
 /**

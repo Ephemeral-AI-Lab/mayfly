@@ -234,10 +234,11 @@ describe('MayflyKeymapService', () => {
       { id: 'mayfly.c', keys: 'f3' },
     ])
 
+    const entry = (id: string, keys: string[], label: string) => ({ id, keys, scope: 'global', label, owner: 'mayfly', defaults: keys, overridden: false })
     expect(keymap.list()).toEqual([
-      { id: 'mayfly.a', keys: ['ctrl+x'], scope: 'global', description: 'A' },
-      { id: 'mayfly.b', keys: ['ctrl+o', 'f2'], scope: 'global', handler },
-      { id: 'mayfly.c', keys: ['f3'], scope: 'global' },
+      { ...entry('mayfly.a', ['ctrl+x'], 'A'), description: 'A' },
+      entry('mayfly.b', ['ctrl+o', 'f2'], 'mayfly.b'),
+      entry('mayfly.c', ['f3'], 'mayfly.c'),
     ])
   })
 
@@ -269,5 +270,150 @@ describe('MayflyKeymapService', () => {
     expect(keymap.list().map(action => action.id)).toEqual(['mayfly.stay', 'mayfly.temp', 'mayfly.tail'])
     dispose()
     expect(keymap.list().map(action => action.id)).toEqual(['mayfly.stay', 'mayfly.tail'])
+  })
+
+  describe('rebinding', () => {
+    async function keymapWithDefaults() {
+      const ctx = new Context()
+      await ctx.plugin(MayflyKeymapService)
+      const keymap = ctx.mayflyKeymap
+      keymap.register([
+        { id: 'ui.accept', keys: 'enter', scope: 'surface' },
+        { id: 'ui.cancel', keys: 'escape' },
+        { id: 'ui.copy', keys: 'c', scope: 'surface', description: 'Copy' },
+        { id: 'ui.delete', keys: 'x', scope: 'surface', description: 'Delete' },
+        { id: 'ui.tab-next', keys: ['alt+right', 'f3'], scope: 'surface' },
+        { id: 'mayfly.interaction.steer', keys: 'ctrl+s', scope: 'editor', description: 'Steer' },
+        { id: 'mayfly.app.toggle', keys: 'ctrl+o', handler: vi.fn() },
+      ])
+      return keymap
+    }
+
+    it('replaces an action\'s keys: the old key is dead, not an alias', async () => {
+      const keymap = await keymapWithDefaults()
+      const changes = vi.fn()
+      const stop = keymap.subscribe(changes)
+      const revision = keymap.revision
+      keymap.bind('ui.delete', 'd')
+      expect(keymap.getKeys('ui.delete')).toEqual(['d'])
+      expect(keymap.matches('d', 'ui.delete')).toBe(true)
+      expect(keymap.matches('x', 'ui.delete')).toBe(false)
+      expect(keymap.revision).toBe(revision + 1)
+      expect(changes).toHaveBeenCalledOnce()
+      expect(keymap.list().find(action => action.id === 'ui.delete')).toMatchObject({ keys: ['d'], defaults: ['x'], overridden: true, owner: 'ui', label: 'Delete' })
+      keymap.reset('ui.delete')
+      keymap.reset('ui.delete')
+      expect(keymap.getKeys('ui.delete')).toEqual(['x'])
+      expect(changes).toHaveBeenCalledTimes(2)
+      stop()
+      stop()
+      keymap.bind('ui.delete', [])
+      expect(keymap.getKeys('ui.delete')).toEqual([])
+      expect(changes).toHaveBeenCalledTimes(2)
+    })
+
+    it('dispatches a global handler from its rebound key', async () => {
+      const keymap = await keymapWithDefaults()
+      keymap.bind('mayfly.app.toggle', 'f9')
+      expect(keymap.dispatch('\x0f')).toBe(false)
+      expect(keymap.dispatch('\x1b[20~')).toBe(true)
+    })
+
+    it.each([
+      ['Delete', ['d'], 'is not an <owner>.<action> id'],
+      ['ui.delete', ['hyper+d'], '"hyper+d" is not a key id'],
+      ['ui.delete', ['ctrl+ctrl+d'], 'is not a key id'],
+      ['ui.delete', [' '], 'is not a key id'],
+      ['ui.delete', ['pagedown'], 'is not a key id'],
+      ['ui.cancel', ['ctrl+q'], 'must keep escape: Esc and Enter cannot be unbound'],
+      ['ui.accept', ['space'], 'must keep enter'],
+      ['ui.copy', ['enter'], 'enter belongs to "ui.accept"'],
+      ['mayfly.app.toggle', ['q'], '"q" would type text in the global scope'],
+      ['mayfly.interaction.steer', ['shift+s'], 'would type text in the editor scope'],
+      ['ui.copy', ['x'], 'key "x" already means "Delete" (ui.delete, owned by ui); rebind that action first'],
+      ['ui.copy', ['ctrl+o'], 'already means "mayfly.app.toggle"'],
+    ])('refuses binding %s to %j', async (action, keys, message) => {
+      const keymap = await keymapWithDefaults()
+      expect(() => keymap.bind(action, keys)).toThrow(message)
+      expect(keymap.list().some(entry => entry.overridden)).toBe(false)
+    })
+
+    it('lets one key mean different actions in different scopes, and keeps Esc and Enter with more keys', async () => {
+      const keymap = await keymapWithDefaults()
+      keymap.bind('ui.copy', 'ctrl+s')
+      keymap.bind('ui.accept', ['enter', 'ctrl+m'])
+      keymap.bind('ui.cancel', ['escape', 'ctrl+q'])
+      expect(keymap.getKeys('ui.copy')).toEqual(['ctrl+s'])
+      expect(keymap.getKeys('mayfly.interaction.steer')).toEqual(['ctrl+s'])
+      expect(() => keymap.bind('mayfly.interaction.steer', 'ctrl+q')).toThrow('already means "ui.cancel"')
+    })
+
+    it('offers component actions seen in admitted nodes, and saved overrides for actions not loaded', async () => {
+      const keymap = await keymapWithDefaults()
+      keymap.see([{ id: 'demo-plugin.install', label: 'Install', keys: ['i'] }, { id: 'ui.copy', label: 'Copy row', keys: ['c'] }])
+      keymap.see([{ id: 'demo-plugin.install', label: 'Install plugin', keys: ['i'] }])
+      expect(keymap.getKeys('demo-plugin.install')).toEqual(['i'])
+      expect(keymap.resolve('demo-plugin.install', ['j'])).toEqual(['j'])
+      expect(() => keymap.bind('demo-plugin.remove', 'i')).toThrow('already means "Install plugin" (demo-plugin.install, owned by demo-plugin)')
+      keymap.bind('demo-plugin.install', 'p')
+      expect(keymap.resolve('demo-plugin.install', ['j'])).toEqual(['p'])
+      keymap.bind('other-plugin.sync', 'ctrl+y', 'Sync now')
+      keymap.bind('third-plugin.go', 'ctrl+g')
+      expect(keymap.list().slice(-3)).toEqual([
+        { id: 'demo-plugin.install', keys: ['p'], scope: 'surface', label: 'Install plugin', owner: 'demo-plugin', defaults: ['i'], overridden: true },
+        { id: 'other-plugin.sync', keys: ['ctrl+y'], scope: 'surface', label: 'Sync now', owner: 'other-plugin', defaults: [], overridden: true },
+        { id: 'third-plugin.go', keys: ['ctrl+g'], scope: 'surface', label: 'third-plugin.go', owner: 'third-plugin', defaults: [], overridden: true },
+      ])
+      keymap.resetAll()
+      keymap.resetAll()
+      expect(keymap.list().map(action => action.id).slice(-1)).toEqual(['demo-plugin.install'])
+    })
+
+    it('applies a saved document at once, skipping the entries it must refuse', async () => {
+      const keymap = await keymapWithDefaults()
+      const changes = vi.fn()
+      keymap.subscribe(changes)
+      const refused = keymap.applyOverrides({
+        'ui.delete': { keys: ['d'] },
+        'ui.copy': { keys: ['d'] },
+        'demo-plugin.pin': { keys: ['p'], label: 'Pin' },
+      })
+      expect(refused.map(error => [error.code, error.message])).toEqual([['KEY_CONFLICT', expect.stringContaining('key "d" already means "Delete"')]])
+      expect(keymap.getKeys('ui.delete')).toEqual(['d'])
+      expect(keymap.list().find(action => action.id === 'demo-plugin.pin')).toMatchObject({ label: 'Pin', keys: ['p'] })
+      expect(changes).toHaveBeenCalledOnce()
+      keymap.applyOverrides({ 'ui.delete': { keys: ['d'] }, 'demo-plugin.pin': { keys: ['p'], label: 'Pin' } })
+      expect(changes).toHaveBeenCalledOnce()
+      keymap.applyOverrides({})
+      expect(keymap.getKeys('ui.delete')).toEqual(['x'])
+      expect(changes).toHaveBeenCalledTimes(2)
+    })
+
+    it('leads with the plain key once a setting or the first F2-F5 press asks for it', async () => {
+      const keymap = await keymapWithDefaults()
+      const changes = vi.fn()
+      keymap.subscribe(changes)
+      expect(keymap.getKeys('ui.tab-next')).toEqual(['alt+right', 'f3'])
+      keymap.notePlainKey('\x1b[1;3C')
+      expect(keymap.preferPlain).toBe(false)
+      keymap.setPreferPlain(false)
+      keymap.setPreferPlain(true)
+      expect(keymap.getKeys('ui.tab-next')).toEqual(['f3', 'alt+right'])
+      keymap.notePlainKey('\x1bOQ')
+      keymap.setPreferPlain(false)
+      expect(keymap.preferPlain).toBe(true)
+      expect(changes).toHaveBeenCalledOnce()
+      keymap.notePlainKey('\x1b[15~')
+      expect(changes).toHaveBeenCalledOnce()
+      keymap.setPreferPlain(true)
+      expect(changes).toHaveBeenCalledOnce()
+    })
+
+    it('learns plain keys for the session from F2 alone', async () => {
+      const keymap = await keymapWithDefaults()
+      keymap.notePlainKey('\x1bOQ')
+      expect(keymap.preferPlain).toBe(true)
+      expect(keymap.getKeys('ui.tab-next')).toEqual(['f3', 'alt+right'])
+    })
   })
 })

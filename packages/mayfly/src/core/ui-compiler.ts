@@ -777,6 +777,15 @@ function effectiveActionItem(item: MayflyActionItem, options: RuntimeCompilerOpt
   return reason === undefined ? item : { ...item, disabled: true, disabledReason: reason }
 }
 
+/** A named component action's button shows the key that answers it now; an action rebound to no key shows none. */
+function withEffectiveKey(item: MayflyActionItem, options: RuntimeCompilerOptions): MayflyActionItem {
+  if (item.action === undefined) return item
+  const [key] = effectiveItemKeys(item, options.keymap)
+  if (key === item.key) return item
+  const { key: _declared, ...rest } = item
+  return key === undefined ? rest : { ...rest, key }
+}
+
 /** Summarize the focused control and its surroundings for the shared key grammar. */
 function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): GrammarState {
   const runtime = options.listRuntime
@@ -1352,8 +1361,10 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       /* An action with a handled invoke in flight renders as busy until the
          reply lands, matching the disabled-side effect at control level. */
       /* Busy and row-unavailable states follow the live model, so they are read per frame. */
+      // The runtime has now seen these component actions, so the keymap can offer them for rebinding.
+      options.keymap?.see?.(node.items.flatMap(item => item.action === undefined ? [] : [{ id: item.action, label: item.label, keys: item.key === undefined ? [] : [item.key] }]))
       const items = () => node.items.map(entry => {
-        const item = effectiveActionItem(entry, options)
+        const item = withEffectiveKey(effectiveActionItem(entry, options), options)
         return item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item
       }).filter(item => item.hidden !== true)
       const bind = (current: readonly MayflyActionItem[]): void => {
@@ -2164,7 +2175,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
      pass, so identical renderFrame calls reuse the previous result. The
      key covers every input the frame reads from outside itself: runtime
      liveness (a rebind retires this surface), the caller-owned viewport
-     object, the interaction revision, and the renderer animation frame.
+     object, the interaction revision, the keymap revision (a key rebind
+     moves buttons and hints), and the renderer animation frame.
      Internal state changes — focus, input, scroll — all flow
      through the entry points below, which clear the memo eagerly. */
   private frameResult: {
@@ -2174,6 +2186,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     readonly columns: number
     readonly rows: number
     readonly revision: number | undefined
+    readonly keymapRevision: number | undefined
     readonly animationFrame: number
     readonly result: MayflyStatusRenderResult
   } | undefined
@@ -2182,15 +2195,17 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const current = this.surfaceRuntime.current(this.generation)
     const viewport = safeViewport(this.options.getViewport)
     const revision = this.surfaceRuntime.interaction?.revision
+    const keymapRevision = this.options.keymap?.revision
     const animationFrame = this.surfaceRuntime.animationFrame
     const cached = this.frameResult
     if (cached !== undefined
       && cached.current === current && cached.width === width && cached.maxRows === maxRows
-      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision && cached.animationFrame === animationFrame) {
+      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision
+      && cached.keymapRevision === keymapRevision && cached.animationFrame === animationFrame) {
       return cached.result
     }
     const result = this.renderFrame(width, maxRows)
-    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, animationFrame, result }
+    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, animationFrame, result }
     return result
   }
 

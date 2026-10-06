@@ -2,6 +2,7 @@
  * Action items as named actions (roadmap slice 1.7): the naming rules the validator enforces, the static key claims
  * of a common meaning, action scopes, and the compiler resolving an item's effective keys on every key and paint.
  */
+import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyUiEvent } from '../../../ui/src/index.ts'
 import {
@@ -11,6 +12,15 @@ import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompil
 import { validateMayflyEditorShellNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import type { MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
 import { parityComponents } from '../design/parity.ts'
+import { MayflyKeymapService } from '../../src/core/keymap.ts'
+import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
+
+/** The real keymap with the shipped defaults registered. */
+function realKeymap(): MayflyKeymapService {
+  const keymap = new MayflyKeymapService(new Context())
+  keymap.register([...INTERACTION_KEY_ACTIONS])
+  return keymap
+}
 
 const identity = (value: string): string => value
 const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
@@ -39,6 +49,7 @@ function surface(node: unknown, overrides: Partial<MayflyUiCompilerOptions> = {}
     events,
     press: (data: string) => { focus.handleInput?.(data) },
     hint: () => focus.render(100).at(-1) ?? '',
+    rows: () => focus.render(100),
     activated: () => events.flatMap(event => event.kind === 'activate' ? [event.actionId] : []),
   }
 }
@@ -197,4 +208,47 @@ describe('effective keys', () => {
     view.press('\x19')
     expect(view.activated()).toEqual(['link'])
   })
+
+  it('records component actions it compiles and follows their rebinding on the button, in dispatch, and in the hint', () => {
+    const keymap = realKeymap()
+    const node = ui.actions({ id: 'bar', items: [
+      { id: 'install', label: 'Install', action: 'demo-plugin.install', key: 'i', hintLabel: 'install' },
+      { id: 'later', label: 'Later', action: 'demo-plugin.later' },
+    ] })
+    const view = surface(node, { keymap })
+    expect(keymap.list().filter(action => action.owner === 'demo-plugin')).toEqual([
+      { id: 'demo-plugin.install', keys: ['i'], scope: 'surface', label: 'Install', owner: 'demo-plugin', defaults: ['i'], overridden: false },
+      { id: 'demo-plugin.later', keys: [], scope: 'surface', label: 'Later', owner: 'demo-plugin', defaults: [], overridden: false },
+    ])
+    expect(view.rows().join('\n')).toContain('Install (I)')
+    keymap.bind('demo-plugin.install', 'ctrl+i')
+    keymap.bind('demo-plugin.later', 'ctrl+l')
+    expect(view.rows().join('\n')).toContain('Install (Ctrl+I)')
+    expect(view.rows().join('\n')).toContain('Later (Ctrl+L)')
+    view.press('i')
+    expect(view.activated()).toEqual([])
+    view.press('\x0c')
+    expect(view.activated()).toEqual(['later'])
+    keymap.bind('demo-plugin.install', [])
+    expect(view.rows().join('\n')).toContain('Install ')
+    expect(view.rows().join('\n')).not.toContain('Install (')
+    expect(effectiveItemKeys({ action: 'demo-plugin.install', key: 'i' }, keymap)).toEqual([])
+    expect(effectiveItemKeys({ action: 'demo-plugin.other', key: 'o' }, keymap)).toEqual(['o'])
+  })
+
+  it('moves every panel\'s meaning at once and leads with the plain key when Alt may not arrive', () => {
+    const keymap = realKeymap()
+    const node = ui.stack.column([ui.text('rows'), ui.actions({ id: 'bar', items: [{ id: 'save', label: 'Save' }, { id: 'remove', label: 'Remove', semantic: 'delete', hidden: true, hintLabel: 'remove' }] })])
+    const first = surface(node, { keymap })
+    const second = surface(node, { keymap })
+    keymap.bind('ui.delete', 'd')
+    expect(first.hint()).toContain('D remove')
+    expect(second.hint()).toContain('D remove')
+    const tabs = surface(ui.stack.column([ui.tabs({ id: 'pages', activeId: 'a', items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }), ui.actions({ id: 'acts', items: [{ id: 'go', label: 'Go' }] })]), { keymap })
+    tabs.press('\t')
+    expect(tabs.hint()).toContain('Alt+←/Alt+→ tabs')
+    keymap.setPreferPlain(true)
+    expect(tabs.hint()).toContain('F2/F3 tabs')
+  })
 })
+
