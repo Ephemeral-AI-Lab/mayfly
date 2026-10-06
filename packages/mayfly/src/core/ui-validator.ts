@@ -33,6 +33,7 @@ import type {
 } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult } from './ui-contracts.ts'
 import { printableKey } from './key-actions.ts'
+import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** Maximum aggregate UTF-16 source units accepted in one tree. */
@@ -80,6 +81,34 @@ interface ValidationBudget {
   filterable: boolean
   /** Optional measurement sink; admission work is counted here, never retained. */
   readonly counters?: MayflyWorkCounters
+  /** The caller's admission memo, when it keeps one across publishes. */
+  readonly cache?: MayflyAdmissionCache
+  /** Responsive placeholders created so far; a subtree that made one is never memoized. */
+  deferred: number
+}
+
+/** What admitting one subtree added to the tree-wide budget, replayed when the same subtree is admitted again. */
+interface AdmittedSubtree {
+  readonly admitted: MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode
+  readonly nodes: number
+  readonly text: number
+  readonly chartCells: number
+}
+
+/**
+ * A caller-owned memo of admission results, keyed by the identity of a frozen wire snapshot. Admission is a pure
+ * function of the snapshot and its context, so a subtree or list item that was admitted once is returned as it was
+ * and its budget share is replayed instead of re-validating it. A caller keeps one cache per surface; a value that is
+ * not a snapshot never enters it.
+ */
+export interface MayflyAdmissionCache {
+  readonly subtrees: WeakMap<object, Map<string, AdmittedSubtree>>
+  readonly items: WeakMap<object, MayflyListItem>
+}
+
+/** Create an empty admission memo. */
+export function createAdmissionCache(): MayflyAdmissionCache {
+  return { subtrees: new WeakMap(), items: new WeakMap() }
 }
 
 function invalid(message: string): never {
@@ -295,7 +324,17 @@ function unavailableActions(value: unknown, path: string, state: ValidationState
   })))
 }
 
-function listItem(value: unknown, path: string, counters?: MayflyWorkCounters): MayflyListItem {
+function listItem(value: unknown, path: string, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyListItem {
+  // An item admits under its own quota and reads nothing from its tree, so its admitted form is a pure function of the
+  // snapshot: a memoized item is returned as it was.
+  const memoized = cache !== undefined && isWireSnapshot(value) ? cache.items.get(value as object) : undefined
+  if (memoized !== undefined) return memoized
+  const admitted = admitListItem(value, path, counters)
+  if (cache !== undefined && isWireSnapshot(value)) cache.items.set(value as object, freeze(admitted))
+  return admitted
+}
+
+function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounters): MayflyListItem {
   // Item collections are unbounded data rows: each admits under its own
   // quota — the same isolation lazy list admission already applies — so the
   // aggregate row text of a large picker cannot exhaust the tree budget.
@@ -366,7 +405,7 @@ interface LazyListAdmission {
 const lazyLists = new WeakMap<readonly MayflyListItem[], LazyListAdmission>()
 
 function emptyBudget(): ValidationBudget {
-  return { nodes: 0, text: 0, chartCells: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), filterable: false }
+  return { nodes: 0, text: 0, chartCells: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), filterable: false, deferred: 0 }
 }
 
 function validationState(budget: ValidationBudget = emptyBudget()): ValidationState {
@@ -411,6 +450,7 @@ function deferredMayHaveControls(source: unknown): boolean {
 
 function deferredUiNode(source: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget, pagePath: MayflyPagePath): MayflyUiNode {
   const placeholder = Object.freeze({ kind: 'spacer' as const, size: 1 as const })
+  budget.deferred += 1
   deferredUiNodes.set(placeholder, { source, path, depth, scrollDepth, budget, pagePath, mayHaveControls: deferredMayHaveControls(source) })
   return placeholder
 }
@@ -470,7 +510,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
   return deferred.result
 }
 
-function lazyListItems(value: unknown, path: string, counters?: MayflyWorkCounters): readonly MayflyListItem[] {
+function lazyListItems(value: unknown, path: string, counters?: MayflyWorkCounters, memo?: MayflyAdmissionCache): readonly MayflyListItem[] {
   const prototype = Object.getPrototypeOf(value)
   if (prototype === null || !hasRealmConstructor(prototype, 'Array')) invalid(`${path} must be a plain array`)
   const length = Object.getOwnPropertyDescriptor(value, 'length')!.value as number
@@ -509,7 +549,7 @@ function lazyListItems(value: unknown, path: string, counters?: MayflyWorkCounte
       }
       let admitted: MayflyListItem
       try {
-        admitted = listItem(raw(index), `${path}[${String(index)}]`, counters)
+        admitted = listItem(raw(index), `${path}[${String(index)}]`, counters, memo)
         const owner = owners.get(admitted.id)
         if (owner !== undefined && owner !== index) invalid(`${path} contains duplicate ids`)
         owners.set(admitted.id, index)
@@ -681,9 +721,11 @@ function chartTone(object: Record<string, unknown>, path: string): MayflyInlineS
   return value === undefined ? undefined : enumeration(value, CHART_TONES, `${path}.tone`)
 }
 
+const MAX_CHART_CELLS = 4_000
+
 function addChartCells(state: ValidationState, count: number): void {
   state.budget.chartCells += count
-  if (state.budget.chartCells > 4_000) limit('Mayfly chart data exceeds 4000 cells')
+  if (state.budget.chartCells > MAX_CHART_CELLS) limit('Mayfly chart data exceeds 4000 cells')
 }
 
 function chartPoint(value: unknown, path: string, state: ValidationState): MayflyChartPoint {
@@ -850,7 +892,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
     }
     if (kind === 'select' || kind === 'multiselect') {
       const raw = required(object, 'value', path)
-      const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`, state.budget.counters))
+      const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`, state.budget.counters, state.budget.cache))
       uniqueIds(options, `${path}.options`)
       if (kind === 'multiselect') return { kind, ...common, value: parseValue(raw, `${path}.value`) as readonly string[], options, ...selectionBounds(object, path) }
       if (raw !== null && typeof raw !== 'string') invalid(`${path}.value must be a string or null`)
@@ -884,6 +926,32 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'status', viewOnly?: false): MayflyStatusNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'editor', viewOnly?: false, editorSlotAllowed?: boolean): MayflyEditorShellNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly = false, editorSlotAllowed = false): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
+  const cache = state.budget.cache
+  if (cache === undefined || !isWireSnapshot(value)) return admitNode(value, path, state, depth, mode, viewOnly, editorSlotAllowed)
+  const context = `${mode}:${viewOnly ? 1 : 0}:${editorSlotAllowed ? 1 : 0}:${String(depth)}:${String(state.scrollDepth)}`
+  const known = cache.subtrees.get(value as object)?.get(context)
+  const budget = state.budget
+  if (known !== undefined
+    && budget.nodes + known.nodes <= MAYFLY_UI_MAX_NODES && budget.text + known.text <= MAYFLY_UI_MAX_TEXT && budget.chartCells + known.chartCells <= MAX_CHART_CELLS) {
+    budget.nodes += known.nodes
+    budget.text += known.text
+    budget.chartCells += known.chartCells
+    return known.admitted
+  }
+  // Only a subtree that added nothing but counts is memoized: a control, tab, page, action key, filter, editor slot, or
+  // responsive placeholder ties the result to the rest of the tree, so those take the full path every time.
+  const before = [budget.nodes, budget.text, budget.chartCells, budget.controlIds.size, budget.tabs.size, budget.pages.length, budget.actionKeys.size, budget.printableKey, budget.filterable, state.editorControls, budget.deferred] as const
+  const admitted = admitNode(value, path, state, depth, mode, viewOnly, editorSlotAllowed)
+  if (before[3] === budget.controlIds.size && before[4] === budget.tabs.size && before[5] === budget.pages.length && before[6] === budget.actionKeys.size
+    && before[7] === budget.printableKey && before[8] === budget.filterable && before[9] === state.editorControls && before[10] === budget.deferred) {
+    const memos = cache.subtrees.get(value as object) ?? new Map<string, AdmittedSubtree>()
+    memos.set(context, { admitted: freeze(admitted), nodes: budget.nodes - before[0], text: budget.text - before[1], chartCells: budget.chartCells - before[2] })
+    cache.subtrees.set(value as object, memos)
+  }
+  return admitted
+}
+
+function admitNode(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly: boolean, editorSlotAllowed: boolean): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
   if (depth > MAYFLY_UI_MAX_DEPTH) limit(`Mayfly UI depth exceeds ${String(MAYFLY_UI_MAX_DEPTH)}`)
   state.budget.nodes += 1
   countWork(state.budget.counters, 'nodesValidated')
@@ -1009,8 +1077,8 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           ? Object.getOwnPropertyDescriptor(itemsValue, 'length')!.value as number
           : 0
         const items = itemCount > MAYFLY_UI_MAX_COLLECTION
-          ? lazyListItems(itemsValue, `${path}.items`, state.budget.counters)
-          : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`, state.budget.counters))
+          ? lazyListItems(itemsValue, `${path}.items`, state.budget.counters, state.budget.cache)
+          : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`, state.budget.counters, state.budget.cache))
         if (itemCount <= MAYFLY_UI_MAX_COLLECTION) uniqueIds(items, `${path}.items`)
         const selectedIds = collection(required(object, 'selectedIds', path), `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
@@ -1201,8 +1269,8 @@ function assertEditorControlVisible(node: MayflyEditorShellNode, path = '$'): vo
   }
 }
 
-function validate<Value>(value: unknown, mode: ValidationMode, counters?: MayflyWorkCounters): MayflyValidationResult<Value> {
-  const state = validationState(counters === undefined ? undefined : { ...emptyBudget(), counters })
+function validate<Value>(value: unknown, mode: ValidationMode, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyValidationResult<Value> {
+  const state = validationState(counters === undefined && cache === undefined ? undefined : { ...emptyBudget(), ...(counters === undefined ? {} : { counters }), ...(cache === undefined ? {} : { cache }) })
   try {
     const result = mode === 'ui'
       ? node(value, '$', state, 0, 'ui')
@@ -1223,16 +1291,16 @@ function validate<Value>(value: unknown, mode: ValidationMode, counters?: Mayfly
 }
 
 /** Validate, sanitize, canonicalize, and freeze an ordinary public UI tree. */
-export function validateMayflyUiNode(value: unknown, counters?: MayflyWorkCounters): MayflyValidationResult<MayflyUiNode> {
-  return validate(value, 'ui', counters)
+export function validateMayflyUiNode(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyValidationResult<MayflyUiNode> {
+  return validate(value, 'ui', counters, cache)
 }
 
 /** Validate the recursively narrowed, non-interactive status tree. */
-export function validateMayflyStatusNode(value: unknown, counters?: MayflyWorkCounters): MayflyValidationResult<MayflyStatusNode> {
-  return validate(value, 'status', counters)
+export function validateMayflyStatusNode(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyValidationResult<MayflyStatusNode> {
+  return validate(value, 'status', counters, cache)
 }
 
 /** Validate an editor shell and require exactly one host-owned control slot. */
-export function validateMayflyEditorShellNode(value: unknown, counters?: MayflyWorkCounters): MayflyValidationResult<MayflyEditorShellNode> {
-  return validate(value, 'editor', counters)
+export function validateMayflyEditorShellNode(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyValidationResult<MayflyEditorShellNode> {
+  return validate(value, 'editor', counters, cache)
 }

@@ -5,8 +5,8 @@
  * runs the same workloads beside its wall-clock timings.
  */
 
-import type { MayflyUiEvent, MayflyUiNode } from '../../../ui/src/index.ts'
-import { ui } from '../../../ui/src/index.ts'
+import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { freezeWire, ui } from '@ephemeral-ai/mayfly-ui'
 import {
   MayflyUiSurfaceRuntime,
   compileMayflyStatusNode,
@@ -14,6 +14,7 @@ import {
   type MayflyCompiledUi,
   type MayflyUiCompilerOptions,
 } from '../../src/core/ui-compiler.ts'
+import { createAdmissionCache } from '../../src/core/ui-validator.ts'
 import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
@@ -165,10 +166,11 @@ export const WORKLOADS: readonly Workload[] = [
     setup(counters) {
       const entries = Array.from({ length: 12 }, (_, index) => ui.richText([{ text: `entry ${String(index)} ` }, { text: '0', tone: 'muted' }]))
       let revision = 0
+      const admission = createAdmissionCache()
       const publish = (): void => {
         revision += 1
         const children = entries.map((entry, index) => ui.child(index === 11 ? ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]) : entry))
-        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters })
+        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters, admission })
         if (!result.ok) throw new Error(result.message)
         result.value.component.render(WIDTH)
       }
@@ -199,7 +201,8 @@ export const WORKLOADS: readonly Workload[] = [
   {
     id: 'W4', title: 'stream: a list of 2,000 items, the last item changes',
     setup(counters) {
-      const items = Array.from({ length: 2000 }, (_, index) => item(index))
+      // A stream keeps its settled items as frozen snapshots, so a republish shares them by identity.
+      const items = Array.from({ length: 2000 }, (_, index) => freezeWire(item(index)))
       const surface = new Surface('w4', listNode('stream', items), counters)
       surface.render()
       let revision = 0

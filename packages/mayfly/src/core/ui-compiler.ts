@@ -53,6 +53,7 @@ import {
   isDeferredUiNode,
   materializeDeferredUiNode,
   materializedDeferredUiNode,
+  type MayflyAdmissionCache,
   validateMayflyEditorShellNode,
   validateMayflyStatusNode,
   validateMayflyUiNode,
@@ -135,6 +136,8 @@ export interface MayflyUiCompilerOptions {
   readonly onUnhandledEscape?: () => void
   /** Measurement sink for validation, compilation, and painting; production passes none. */
   readonly counters?: MayflyWorkCounters
+  /** The caller's admission memo; a publish that shares subtrees with the previous one validates only what changed. */
+  readonly admission?: MayflyAdmissionCache
 }
 
 /** Canonical shell dependencies, including the one host-owned editing engine. */
@@ -159,6 +162,8 @@ export interface MayflyStatusCompilerOptions {
   readonly maxRows?: 1 | 2 | 3
   /** Measurement sink for validation, compilation, and painting; production passes none. */
   readonly counters?: MayflyWorkCounters
+  /** The caller's admission memo; a publish that shares subtrees with the previous one validates only what changed. */
+  readonly admission?: MayflyAdmissionCache
 }
 
 /** Successful canonical compilation result. */
@@ -2589,7 +2594,7 @@ function statusRowLimit(value: MayflyStatusCompilerOptions['maxRows']): number {
 
 /** Validate first, then compile one canonical UI tree without a bypass path. */
 export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOptions): MayflyUiCompileResult {
-  const admitted = validateMayflyUiNode(value, options.counters)
+  const admitted = validateMayflyUiNode(value, options.counters, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2609,7 +2614,7 @@ export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOpt
 /** Compile one validated projection into a bridge-owned persistent runtime. */
 export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurfaceCompilerOptions): MayflyUiCompileResult {
   const admitted = value !== null && value === options.surfaceRuntime.interaction?.node
-    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value, options.counters)
+    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value, options.counters, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2635,7 +2640,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
 
 /** Validate an editor shell, then compile it around the exact injected engine. */
 export function compileMayflyEditorShellNode(value: unknown, options: MayflyEditorShellCompilerOptions): MayflyEditorShellCompileResult {
-  const admitted = validateMayflyEditorShellNode(value, options.counters)
+  const admitted = validateMayflyEditorShellNode(value, options.counters, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -2651,7 +2656,7 @@ export function compileMayflyEditorShellNode(value: unknown, options: MayflyEdit
 /** Validate the non-interactive status subset, then compile it through the canonical painter. */
 export function compileMayflyStatusNode(value: unknown, options: MayflyStatusCompilerOptions): MayflyStatusCompileResult {
   const maxRows = statusRowLimit(options.maxRows)
-  const admitted = validateMayflyStatusNode(value, options.counters)
+  const admitted = validateMayflyStatusNode(value, options.counters, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new StatusErrorComponent(admitted.message, options.colors, maxRows) }
   }
