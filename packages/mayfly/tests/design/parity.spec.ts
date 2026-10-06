@@ -22,9 +22,9 @@ describe('cell classes', () => {
   })
 
   it('maps real probe colors to tones and flags tokens that have no prototype tone', async () => {
-    const rows = [`${PROBE_PALETTE.primary('p')}${PROBE_PALETTE.error('e')}${PROBE_PALETTE.border('b')}${PROBE_PALETTE.diffAddedBg('g')}`]
+    const rows = [`${PROBE_PALETTE.primary('p')}${PROBE_PALETTE.error('e')}${PROBE_PALETTE.mdLink('b')}${PROBE_PALETTE.diffAddedBg('g')}${PROBE_PALETTE.borderFocus('f')}${PROBE_PALETTE.textMuted('m')}`]
     const cells = (await parseCells(rows, 8, 'real'))[0]!
-    expect(cells.slice(0, 4).map(cell => cell.tone)).toEqual(['primary', 'danger', 'token:border', 'default'])
+    expect(cells.slice(0, 6).map(cell => cell.tone)).toEqual(['primary', 'danger', 'token:mdLink', 'default', 'primary', 'muted'])
     expect(cells[3]!.bg).toBe('diffAddedBg')
   })
 
@@ -59,7 +59,7 @@ describe('compareCells', () => {
     expect(compareCells(expected, actual, [{ delta: 'Δ17', rows: [0, 0], cols: [2, 3] }])).toEqual([])
     expect(compareCells(expected, actual, [{ delta: 'Δ17', cols: [0, 1] }])).toHaveLength(1)
     expect(() => compareCells(expected, actual, [{ delta: 'Δ99' }])).toThrow('unknown accepted difference Δ99')
-    expect(new Set(DESIGN_DELTAS.map(delta => delta.id)).size).toBe(19)
+    expect(new Set(DESIGN_DELTAS.map(delta => delta.id)).size).toBe(20)
   })
 })
 

@@ -73,12 +73,6 @@ function fit(value: string, width: number): string {
   return visibleWidth(value) <= available ? value : sliceByColumn(value, 0, available, true)
 }
 
-function pad(value: string, width: number): string {
-  const available = safeWidth(width)
-  const fitted = fit(value, available)
-  return `${fitted}${' '.repeat(Math.max(0, available - visibleWidth(fitted)))}`
-}
-
 function truncatePlainToWidth(text: string, maxWidth: number): string {
   return truncateToWidth(text, maxWidth, '').replace(TRAILING_ANSI_RESET, '')
 }
@@ -188,9 +182,18 @@ function paintSpan(span: MayflyInlineSpan, colors: MayflySemanticColors): string
   }, painted)
 }
 
+/** A row's detail after its label: `— detail` in muted, or the detail spans after a muted dash. */
 function paintListDetail(item: ListNode['items'][number], colors: MayflySemanticColors): string {
-  if (item.detailSpans !== undefined) return item.detailSpans.length === 0 ? '' : ` ${colors.text('—')} ${item.detailSpans.map(span => paintSpan(span, colors)).join('')}`
-  return item.detail === undefined ? '' : colors.text(` — ${item.detail}`)
+  if (item.detailSpans !== undefined) return item.detailSpans.length === 0 ? '' : ` ${colors.muted('—')} ${item.detailSpans.map(span => paintSpan(span, colors)).join('')}`
+  return item.detail === undefined ? '' : ` ${colors.muted(`— ${item.detail}`)}`
+}
+
+/** The choose mark of a multiple list row: `●` chosen, `○` not, `◐` for a parent with some of its children chosen. */
+function choiceMark(node: ListNode, item: ListNode['items'][number], selected: boolean): string {
+  const children = node.items.filter(child => child.parentId === item.id)
+  if (children.length === 0) return selected ? '●' : '○'
+  const chosen = children.filter(child => node.selectedIds.includes(child.id)).length
+  return chosen === 0 ? (selected ? '●' : '○') : chosen === children.length ? '●' : '◐'
 }
 
 function compactTokens(tokens: readonly { readonly value: string, readonly focused: boolean, readonly active: boolean }[], width: number): string {
@@ -211,52 +214,107 @@ function compactTokens(tokens: readonly { readonly value: string, readonly focus
   return fit(`${kept.join(' ')}${hidden === 0 ? '' : ` +${String(hidden)}`}`, available)
 }
 
+/** The border paint of a framed chrome: the focus color for an overlay, the quiet color for an inline surface (spec §2.1). */
+export function surfaceBorderPaint(chrome: 'surface' | 'overlay', colors: MayflySemanticColors): (text: string) => string {
+  return chrome === 'overlay' ? colors.borderFocus : colors.border
+}
+
+function strongTitle(title: string, colors: MayflySemanticColors): string {
+  return `\x1b[1m${colors.textStrong(title)}\x1b[22m`
+}
+
+/**
+ * The inset title rule of a framed surface, `╭ Title ─── badge ╮`: the title bold in text color, the badges at the
+ * right of the rule, everything else in the border paint. A narrow width drops the badges first, then ellipsises the
+ * title, then drops it; the corners and at least one dash always stay.
+ */
+function framedTopRule(title: string, badges: string, width: number, paint: (text: string) => string, colors: MayflySemanticColors): string {
+  if (width < 2) return paint('╭')
+  const inner = width - 2
+  const titleWidth = title.length === 0 ? 0 : visibleWidth(title) + 2
+  const badgeWidth = badges.length === 0 ? 0 : visibleWidth(badges) + 2
+  const showBadges = badgeWidth > 0 && inner - titleWidth - badgeWidth >= 1
+  const titleRoom = inner - (showBadges ? badgeWidth : 0) - 3
+  const fitted = title.length === 0 || titleRoom < 2 ? '' : visibleWidth(title) <= titleRoom ? title : `${sliceByColumn(title, 0, titleRoom - ELLIPSIS_WIDTH, true)}${ELLIPSIS}`
+  const titleSegment = fitted.length === 0 ? '' : `${paint(' ')}${strongTitle(fitted, colors)}${paint(' ')}`
+  const badgeSegment = showBadges ? `${paint(' ')}${badges}${paint(' ')}` : ''
+  const fill = inner - (fitted.length === 0 ? 0 : visibleWidth(fitted) + 2) - (showBadges ? badgeWidth : 0)
+  return `${paint('╭')}${titleSegment}${paint('─'.repeat(Math.max(0, fill)))}${badgeSegment}${paint('╮')}`
+}
+
+/**
+ * The rows a surface paints above its child. A framed chrome (`overlay`, `surface`) returns its top rule first and then
+ * the rows that sit inside the frame (the muted subtitle); `lane` is a muted rule carrying the title (`── Title ───`);
+ * `none` is the bold title alone.
+ */
 export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
   const chrome = node.chrome ?? 'none'
   const title = node.title === undefined ? '' : sanitizePluginText(node.title).replace(/[\r\n]+/gu, ' ')
+  const badges = node.badges === undefined ? '' : node.badges.map(span => paintSpan(span, colors)).join(' ')
   const rows: string[] = []
   if (chrome === 'none') {
-    if (title.length > 0) rows.push(fit(colors.textStrong(title), available))
+    const heading = [title.length === 0 ? '' : strongTitle(title, colors), badges].filter(part => part.length > 0).join('  ')
+    if (heading.length > 0) rows.push(fit(heading, available))
+  } else if (chrome === 'lane') {
+    const head = title.length === 0 ? '' : `── ${title} `
+    const tail = badges.length === 0 ? '' : ` ${badges}`
+    const fill = available - visibleWidth(head) - visibleWidth(tail)
+    rows.push(fill >= 2 ? `${colors.muted(`${head}${'─'.repeat(fill)}`)}${tail}` : fit(colors.muted(`${head}${'─'.repeat(available)}`), available))
   } else {
-    const pair = chrome === 'lane' ? ['─', '─'] : chrome === 'surface' ? ['┌', '┐'] : ['╭', '╮']
-    const paint = chrome === 'overlay' ? colors.borderFocus : chrome === 'lane' ? colors.muted : colors.border
-    if (available === 1) rows.push(paint(pair[0]!))
-    else if (title.length === 0 || available < 6) rows.push(paint(`${pair[0]}${'─'.repeat(available - 2)}${pair[1]}`))
-    else {
-      const titleBudget = available - 5
-      const fittedTitle = sliceByColumn(title, 0, titleBudget, true)
-      const heading = `${pair[0]} ${fittedTitle} `
-      const fill = '─'.repeat(Math.max(1, available - visibleWidth(heading) - 1))
-      rows.push(paint(`${heading}${fill}${pair[1]}`))
-    }
+    rows.push(framedTopRule(title, badges, available, surfaceBorderPaint(chrome, colors), colors))
   }
   if (node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
-  if (node.badges !== undefined && node.badges.length > 0) {
-    rows.push(fit(node.badges.map(span => paintSpan(span, colors)).join(' '), available))
-  }
   return rows
 }
 
+/** The bottom rule of a framed surface; `lane` and `none` have none. */
 export function renderSurfaceTail(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
   const chrome = node.chrome ?? 'none'
   if (chrome === 'none' || chrome === 'lane') return []
   const available = safeWidth(width)
-  const pair = chrome === 'surface' ? ['└', '┘'] : ['╰', '╯']
-  const paint = chrome === 'surface' ? colors.border : colors.borderFocus
-  return [fit(paint(`${pair[0]}${'─'.repeat(Math.max(0, available - 2))}${available > 1 ? pair[1] : ''}`), available)]
+  return [surfaceBorderPaint(chrome, colors)(available < 2 ? '╰' : `╰${'─'.repeat(available - 2)}╯`)]
 }
 
-export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
-  const showCounts = safeWidth(width) > 40
-  const tokens = node.items.map(item => {
-    const active = item.id === node.activeId
-    const focused = focus.focused && focus.key === item.id && item.disabled !== true
-    const label = `${active ? `‹ ${item.label} ›` : item.label}${showCounts && item.count !== undefined ? ` ${String(item.count)}` : ''}`
-    const content = item.disabled === true ? colors.muted(label) : active ? colors.primary(label) : colors.text(label)
-    return { value: `${focused ? focus.marker : ' '}${content}`, focused, active }
+/** Gap between two tabs of a strip. */
+const TAB_GAP = 3
+
+/**
+ * A tab strip: the active tab in `primary` (bold while the strip has focus) with a heavy `━` underline on the row below
+ * it (`primary` while focused, muted otherwise), the other tabs muted, counts after their labels. A wizard marks its
+ * steps `✓` completed, `●` current, `○` the rest, joined by a muted `›`. A strip wider than the width
+ * folds to `‹ active next +N ›`. The focus marker rides at the end of the underline row.
+ */
+export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors, completed: readonly string[] = []): string[] {
+  const available = safeWidth(width)
+  const focused = focus.focused && focus.key !== ''
+  const strong = (text: string): string => `\x1b[1m${text}\x1b[22m`
+  const activeIndex = Math.max(0, node.items.findIndex(item => item.id === node.activeId))
+  const tokens = node.items.map((item, index) => {
+    const active = index === activeIndex
+    const count = item.count === undefined ? '' : ` ${String(item.count)}`
+    if (node.mode === 'wizard') {
+      const done = !active && completed.includes(item.id)
+      const plain = `${done ? '✓' : active ? '●' : '○'} ${item.label}`
+      const text = done ? `${colors.success('✓')} ${colors.text(item.label)}`
+        : active ? `${colors.primary('●')} ${strong(colors.primary(item.label))}` : colors.muted(plain)
+      return { plain, text }
+    }
+    const label = active ? colors.primary(item.label) : colors.muted(item.label)
+    return { plain: `${item.label}${count}`, text: `${active && focused ? strong(label) : label}${count === '' ? '' : ` ${(active ? colors.primary : colors.muted)(String(item.count))}`}` }
   })
-  return [compactTokens(tokens, width)]
+  const separator = node.mode === 'wizard' ? colors.muted('  ›  ') : ' '.repeat(TAB_GAP)
+  const separatorWidth = node.mode === 'wizard' ? 5 : TAB_GAP
+  const total = tokens.reduce((sum, token) => sum + visibleWidth(token.plain), 0) + separatorWidth * Math.max(0, tokens.length - 1)
+  if (total > available) {
+    const shown = [tokens[activeIndex]!, ...(tokens[activeIndex + 1] === undefined ? [] : [tokens[activeIndex + 1]!])]
+    const rest = tokens.length - shown.length
+    return [fit(`${colors.muted('‹ ')}${shown.map(token => token.text).join('  ')}${colors.muted(rest > 0 ? `  +${String(rest)} ›` : ' ›')}`, available)]
+  }
+  const offset = tokens.slice(0, activeIndex).reduce((sum, token) => sum + visibleWidth(token.plain) + separatorWidth, 0)
+  const rule = '━'.repeat(visibleWidth(tokens[activeIndex]?.plain ?? ''))
+  const underline = `${' '.repeat(offset)}${focused ? strong(colors.primary(rule)) : colors.muted(rule)}${focused ? focus.marker : ''}`
+  return [tokens.map(token => token.text).join(separator), fit(underline, available)]
 }
 
 /** Where `renderList` keeps the item rows it has painted, and the sink that counts the ones it had to paint. */
@@ -278,28 +336,26 @@ export function renderList(node: ListNode, width: number, height: number, focus:
       rows.push({ value: fit(colors.muted(item.group), available) })
     }
     const selected = node.selectedIds.includes(item.id)
-    const focused = focus.focused && focus.key === item.id
-    const enabledFocus = focused && item.disabled !== true
+    const cursor = focus.key === item.id && item.disabled !== true
+    // The cursor `→` shows only while its list has focus; the space after it carries the focus marker.
+    const enabledFocus = cursor && focus.focused
     const marker = enabledFocus ? focus.marker : ' '
-    const pointerGlyph = enabledFocus ? '→' : selected ? '●' : node.mode === 'multiple' ? '○' : ' '
     const position = numberFrom + ordinal
-    const number = numbered && position < 9 ? `${String(position + 1)}. ` : ''
+    const number = numbered && position < 9 ? String(position + 1) : ''
+    const check = node.mode === 'multiple' ? choiceMark(node, item, selected) : ''
     const paintRow = (): string => {
       const detail = available > 40 ? paintListDetail(item.disabled === true && item.detail === undefined && item.detailSpans === undefined && item.disabledReason !== undefined ? { ...item, detail: item.disabledReason } : item, colors) : ''
-      const badge = item.badge === undefined ? '' : ` [${item.badge}]`
-      if (item.disabled === true) return fit(colors.muted(`${marker}${pointerGlyph} ${number}${item.label}${badge}${detail}`), available)
-      if (enabledFocus) {
-        const focusedRow = item.detailSpans === undefined
-          ? colors.primary(`${marker}${pointerGlyph} ${number}${item.label}${badge}${item.detail === undefined || available <= 40 ? '' : ` — ${item.detail}`}`)
-          : `${colors.primary(`${marker}${pointerGlyph} ${number}${item.label}`)}${colors.text(badge)}${detail}`
-        return colors.selectedBg(pad(focusedRow, available))
-      }
-      const pointer = selected ? colors.primary(pointerGlyph) : colors.textMuted(pointerGlyph)
-      return fit(`${marker}${pointer} ${colors.text(number)}${colors.text(item.label)}${colors.text(badge)}${detail}`, available)
+      const badge = item.badge === undefined ? '' : ` ${colors.muted(`[${item.badge}]`)}`
+      const numberCell = number === '' ? '' : `${colors.muted(number)}  `
+      const checkCell = check === '' ? '' : `${check === '○' ? colors.muted(check) : colors.primary(check)} `
+      if (item.disabled === true) return fit(`  ${numberCell}${check === '' ? '' : `${colors.muted(check)} `}${colors.muted(item.label)}${badge}${detail}`, available)
+      const pointer = enabledFocus ? `\x1b[1m${colors.primary('→')}\x1b[22m` : ' '
+      const label = cursor ? `\x1b[1m${colors.text(item.label)}\x1b[22m` : colors.text(item.label)
+      return fit(`${pointer}${marker}${numberCell}${checkCell}${label}${badge}${detail}`, available)
     }
     const value = memo === undefined
       ? paintRow()
-      : memo.cache.read(colors, item, `${String(available)}\0${marker}\0${pointerGlyph}\0${number}\0${selected ? 1 : 0}${enabledFocus ? 1 : 0}`, paintRow, memo.counters)
+      : memo.cache.read(colors, item, `${String(available)}\0${marker}\0${check}\0${number}\0${selected ? 1 : 0}${cursor ? 1 : 0}${enabledFocus ? 1 : 0}`, paintRow, memo.counters)
     rows.push({ value, itemId: item.id })
   }
   const limit = Math.max(1, Number.isFinite(height) ? Math.floor(height) : 1)
@@ -382,7 +438,7 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
     for (const option of field.options) {
       const selected = field.kind === 'select' ? field.value === option.id : field.value.includes(option.id)
       const active = focused && (focus.optionId ?? (field.kind === 'select' ? field.value : field.value[0]) ?? field.options[0]?.id) === option.id
-      const text = `${active ? ' >' : '  '} ${selected ? '[x]' : '[ ]'} ${option.label}${option.disabledReason === undefined ? '' : `: ${option.disabledReason}`}`
+      const text = `${active ? ' →' : '  '} ${selected ? '●' : '○'} ${option.label}${option.disabledReason === undefined ? '' : ` — ${option.disabledReason}`}`
       rows.push(fit(option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.text(text), available))
     }
   }

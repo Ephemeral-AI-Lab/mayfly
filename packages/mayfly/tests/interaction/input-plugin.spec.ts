@@ -915,7 +915,7 @@ describe('mayfly-input plugin', () => {
     const rendered = renderRequest(panel)
     const frame = rendered.component.render(80).join('\n')
     expect(frame).toContain('Permissions')
-    expect(frame).toContain('← current')
+    expect(frame).toContain('[current]')
     expect(handler).not.toHaveBeenCalled()
     expect(hint.render(80)).toEqual([])
     panel.requestClose()

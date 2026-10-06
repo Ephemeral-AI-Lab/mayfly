@@ -330,15 +330,21 @@ describe('compileMayflyUiNode', () => {
       padding: 1,
       child: ui.text('body'),
     }), fixture().options)
-    expect(overlay.component.render(20)).toEqual([
+    expect(overlay.component.render(20).map(stripTerminalSequences)).toEqual([
       '╭ Details ─────────╮',
       '│ body             │',
       '╰──────────────────╯',
     ])
-    expect(overlay.component.render(8)).toEqual([
-      '╭ Det ─╮',
+    expect(overlay.component.render(8).map(stripTerminalSequences)).toEqual([
+      '╭ De… ─╮',
       '│ body │',
       '╰──────╯',
+    ])
+    // A frame without padding keeps one column of gutter, like padding 1.
+    expect(compiled(ui.surface({ chrome: 'surface', title: 'Inline', child: ui.text('body') }), fixture().options).component.render(12).map(stripTerminalSequences)).toEqual([
+      '╭ Inline ──╮',
+      '│ body     │',
+      '╰──────────╯',
     ])
     expect(() => overlay.component.invalidate()).not.toThrow()
 
@@ -358,7 +364,7 @@ describe('compileMayflyUiNode', () => {
     }), fixture({ getViewport: () => ({ columns: 20, rows: 5 }) }).options)
     const frame = layout(overlay.component as Component, 20, 5)
 
-    expect(frame.lines[0]).toMatch(/^╭ Scrollable ─+╮$/u)
+    expect(stripTerminalSequences(frame.lines[0]!)).toMatch(/^╭ Scrollable ─+╮$/u)
     expect(frame.lines.at(-1)).toBe('╰──────────────────╯')
     expect(frame.lines.map(stripTerminalSequences).slice(1, -1).every(row => /^│.*│$/u.test(row))).toBe(true)
     expect(scrollViews(frame.root)).toHaveLength(1)
@@ -597,9 +603,9 @@ describe('compileMayflyUiNode', () => {
     const focus = result.focusTarget!
     focus.focused = true
     const frame = focus.render(60).join('\n')
-    expect(frame).toContain('1. One')
-    expect(frame).toContain('2. Two')
-    expect(frame).toContain('3. Three')
+    expect(stripTerminalSequences(frame)).toContain('1  One')
+    expect(frame).toContain('2  Two')
+    expect(frame).toContain('3  Three')
     focus.handleInput?.('2')
     expect(events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'pick', selectedIds: ['two'] }])
     focus.handleInput?.('9')
@@ -885,7 +891,7 @@ describe('compileMayflyUiNode', () => {
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'effort' })
     focus.handleInput?.('\r')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'effort', editing: true })
-    expect(result.value.component.render(80).join('\n')).toContain('[x] Low')
+    expect(result.value.component.render(80).join('\n')).toContain('● Low')
     focus.handleInput?.('\x1b[1;3C')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
     focus.handleInput?.('\x1b')

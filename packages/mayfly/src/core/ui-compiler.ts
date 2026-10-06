@@ -44,6 +44,7 @@ import {
   renderProgress,
   renderSurfaceHead,
   renderSurfaceTail,
+  surfaceBorderPaint,
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
@@ -643,13 +644,21 @@ function pad(component: Component, amount: number, options: RuntimeCompilerOptio
   return padded
 }
 
-function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
+/**
+ * A framed surface (`overlay` or `surface` chrome): the inset title rule, side bars, and bottom rule in the chrome's
+ * border paint, with at least one column of gutter inside each bar (`padding` 2 adds a second).
+ */
+function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, chrome: 'surface' | 'overlay', child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
   const body = new VStack()
   body.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors).slice(1), options))
   body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) body.addChild(footer)
   if (contextHint !== undefined) body.addChild(contextHint)
 
+  const paint = surfaceBorderPaint(chrome, options.colors)
+  const glyphs = options.components.presentation?.glyphs
+  const bar = glyphRows(['│'], glyphs)[0]!
+  const gutter = Math.max(1, node.padding ?? 0)
   let layoutRows = 1
   const captureLayoutRows = (viewport: LayoutViewport): boolean => {
     layoutRows = Math.min(LAYOUT_VALUE_MAX, Math.max(1, Math.floor(viewport.height)))
@@ -657,14 +666,14 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
   }
   const frameVisible = (viewport: LayoutViewport): boolean => viewport.width >= 3
   const paddingVisible = (index: number) => (viewport: LayoutViewport): boolean => viewport.width >= 5 + index * 2
-  const borderRows = (): string[] => Array.from({ length: layoutRows }, () => options.colors.borderFocus('│'))
+  const borderRows = (): string[] => Array.from({ length: layoutRows }, () => paint(bar))
   const middle = new HStack()
   middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
-  for (let index = 0; index < (node.padding ?? 0); index += 1) {
+  for (let index = 0; index < gutter; index += 1) {
     middle.addChild(staticComponent(() => [''], options), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
   }
   middle.addChild(body, { basis: 1, grow: 1, shrink: 1, minSize: 0 })
-  for (let index = 0; index < (node.padding ?? 0); index += 1) {
+  for (let index = 0; index < gutter; index += 1) {
     middle.addChild(staticComponent(() => [''], options), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
   }
   middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
@@ -679,13 +688,13 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
     render(width: number): string[] {
       const available = Math.max(1, Math.floor(width))
       if (available < 3) return body.render(available).map(row => { countWork(options.counters, 'stringsMeasured'); return options.components.truncateToWidth(row, available, '') })
-      const requestedPadding = node.padding ?? 0
-      const horizontalPadding = Math.min(requestedPadding, Math.max(0, Math.floor((available - 3) / 2)))
+      const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
       const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
-      const head = renderSurfaceHead(node, available, options.colors)
+      // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
+      const head = glyphRows(renderSurfaceHead(node, available, options.colors).slice(0, 1), glyphs)
       const bodyRows = body.render(contentWidth)
-      const tail = renderSurfaceTail(node, available, options.colors)
-      const border = options.colors.borderFocus('│')
+      const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
+      const border = paint(bar)
       const framed = bodyRows.map(row => {
         countWork(options.counters, 'stringsMeasured', 2)
         const clipped = options.components.truncateToWidth(row, contentWidth, '')
@@ -693,20 +702,19 @@ function overlaySurfaceComponent(node: Extract<CompilableNode, { readonly kind: 
         const inset = ' '.repeat(horizontalPadding)
         return `${border}${inset}${clipped}${fill}${inset}${border}`
       })
-      return [...head.slice(0, 1), ...framed, ...tail]
+      return [...head, ...framed, ...tail]
     },
     invalidate(): void { layout.invalidate() },
   }
 }
 
 function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent {
-  if (node.chrome === 'overlay') return overlaySurfaceComponent(node, child, footer, contextHint, options)
+  if (node.chrome === 'overlay' || node.chrome === 'surface') return framedSurfaceComponent(node, node.chrome, child, footer, contextHint, options)
   const component = new VStack()
   component.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors), options))
   component.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) component.addChild(footer)
   if (contextHint !== undefined) component.addChild(contextHint)
-  component.addChild(staticComponent(width => renderSurfaceTail(node, width, options.colors), options))
   return pad(component, node.padding ?? 0, options)
 }
 
@@ -1286,7 +1294,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'tabs': {
       const component = staticComponent(width => {
         const completed = options.listRuntime.interaction?.completedSteps({ pagePath, controlId: node.id }) ?? []
-        return renderTabs({ ...node, activeId: options.listRuntime.activeTab({ pagePath, controlId: node.id }) ?? node.activeId, items: node.items.map(item => completed.includes(item.id) ? { ...item, label: `✓ ${item.label}` } : item) }, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors)
+        return renderTabs({ ...node, activeId: options.listRuntime.activeTab({ pagePath, controlId: node.id }) ?? node.activeId }, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors, completed)
       }, options)
       state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: 'horizontal' })
       return component

@@ -6,6 +6,7 @@
  * semantic color is a distinct color, so two tones never compare equal by accident.
  */
 
+import { CURSOR_MARKER } from '@earendil-works/pi-tui'
 import { Terminal } from '@xterm/headless'
 import { readFileSync } from 'node:fs'
 import type { MayflyUiEvent } from '../../../ui/src/index.ts'
@@ -63,10 +64,18 @@ const PROTOTYPE_BACKGROUNDS = new Map<number, string>([
   [rgbKey(34, 36, 60), 'selectedBg'],
 ])
 
-/** How the real compiler paints each tone (`paintTone` in core/ui-patterns.ts). */
+/**
+ * How the real compiler paints each tone (`paintTone` in core/ui-patterns.ts), plus the palette tokens the prototype
+ * draws with one of its tones: strong text is its default tone (the weight is compared separately), the deepest gray is
+ * its dim muted, and a frame is drawn in the focus color (`primary`) on an overlay and in the quiet color (dim) inline.
+ */
 const REAL_TONE_TOKENS: Readonly<Record<string, string>> = {
   text: 'default',
+  textStrong: 'default',
   muted: 'muted',
+  textMuted: 'muted',
+  border: 'muted',
+  borderFocus: 'primary',
   primary: 'primary',
   accent: 'accent',
   roleUser: 'user',
@@ -114,7 +123,9 @@ function backgroundOf(side: Side, background: number | undefined): string {
 /** Writes rows into a headless terminal of the given width and reads every cell back as its character and class. */
 export async function parseCells(rows: readonly string[], columns: number, side: Side): Promise<ParityCell[][]> {
   const terminal = new Terminal({ cols: columns, rows: Math.max(1, rows.length), scrollback: 0, allowProposedApi: true })
-  await new Promise<void>(resolve => { terminal.write(rows.map(row => `${row}\x1b[0m`).join('\r\n'), resolve) })
+  // pi-tui takes the hardware cursor marker out of a row before writing it, so the real side does too.
+  const written = side === 'real' ? rows.map(row => row.replaceAll(CURSOR_MARKER, '')) : rows
+  await new Promise<void>(resolve => { terminal.write(written.map(row => `${row}\x1b[0m`).join('\r\n'), resolve) })
   const buffer = terminal.buffer.active
   const result: ParityCell[][] = []
   for (let y = 0; y < rows.length; y += 1) {

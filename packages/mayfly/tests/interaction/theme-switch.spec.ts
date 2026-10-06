@@ -27,7 +27,6 @@ import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
 import { SkillsCatalogService } from '../../src/interaction/skills-catalog.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
-import { CURRENT_MARK } from '../../src/interaction/symbols.ts'
 import { fakeConversations } from './fakes.ts'
 
 const USAGE = 'usage: /theme [dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]'
@@ -88,8 +87,8 @@ describe('/theme command', () => {
     expect(result).toEqual({ kind: 'success' })
     const rows = pickerRows(ctx)
     expect(rows.map(row => row.id)).toEqual(['dark', 'light', 'ocean', 'paper', 'auto', 'custom'])
-    expect(rows.find(row => row.id === 'dark')?.badge).toBe(CURRENT_MARK)
-    expect(rows.filter(row => row.badge === CURRENT_MARK)).toHaveLength(1)
+    expect(rows.find(row => row.id === 'dark')?.badge).toBe('current')
+    expect(rows.filter(row => row.badge === 'current')).toHaveLength(1)
   })
 
   it('settles picker selections: current, custom hint, unknown, swap, and mount failure', async () => {
@@ -155,7 +154,7 @@ describe('/theme command', () => {
     expect(colors?.accent('x')).toBe('\x1b[38;2;255;0;0mx\x1b[39m')
     expect(colors?.text).toBe(themeDark.DARK_COLORS.text)
     expect(await execute(ctx, agent, '/theme')).toEqual({ kind: 'success' })
-    expect(pickerRows(ctx).find(row => row.id === 'custom')?.badge).toBe(CURRENT_MARK)
+    expect(pickerRows(ctx).find(row => row.id === 'custom')?.badge).toBe('current')
     expect(await execute(ctx, agent, '/theme dark')).toEqual({ kind: 'success', text: 'switched to theme "dark"' })
   })
 
@@ -187,7 +186,7 @@ describe('/theme command', () => {
     expect(await execute(ctx, agent, `/theme custom ${join(dir, 'x.json')} light extra`))
       .toEqual({ kind: 'error', text: USAGE })
     expect(await execute(ctx, agent, '/theme')).toEqual({ kind: 'success' })
-    expect(pickerRows(ctx).find(row => row.id === 'dark')?.badge).toBe(CURRENT_MARK)
+    expect(pickerRows(ctx).find(row => row.id === 'dark')?.badge).toBe('current')
   })
 
   it('restores the dark palette when the custom mount fails validation', async () => {
@@ -199,7 +198,7 @@ describe('/theme command', () => {
     if (result?.kind === 'error') expect(result.text).toContain('failed to apply theme "custom"')
     expect(ctx.get('mayflyTheme')?.colors).toBe(themeDark.DARK_COLORS)
     expect(await execute(ctx, agent, '/theme')).toEqual({ kind: 'success' })
-    expect(pickerRows(ctx).find(row => row.id === 'dark')?.badge).toBe(CURRENT_MARK)
+    expect(pickerRows(ctx).find(row => row.id === 'dark')?.badge).toBe('current')
   })
 
   it('unregisters the command when the fiber disposes', async () => {
