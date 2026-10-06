@@ -104,6 +104,7 @@ export type {
   MayflyImageOptions,
   MayflyKeyAction,
   MayflyKeymap,
+  MayflyKeyScope,
   MayflyMarkdown,
   MayflyMarkdownOptions,
   MayflyOverlayAnchor,

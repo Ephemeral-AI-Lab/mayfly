@@ -318,15 +318,26 @@ export interface MayflyTheme {
 }
 
 /**
- * One named keybinding action. Ids are dotted and plugin-owned
- * (e.g. `mayfly.app.quit`); keys use pi-tui key-id notation (`enter`,
- * `ctrl+c`, `shift+enter`).
+ * Where a key action's binding is live (roadmap D6). `global` holds in every
+ * scope; the editor (the prompt), a surface (an overlay or pane), and the
+ * conversation stream are the focus scopes. Two actions conflict only when
+ * they share a key in overlapping scopes.
+ */
+export type MayflyKeyScope = 'global' | 'editor' | 'surface' | 'stream'
+
+/**
+ * One named keybinding action. Ids are dotted `<owner>.<action>` names
+ * (`ui.save`, `mayfly.interaction.steer`); the `ui.*` navigation and
+ * common-meaning actions belong to core. Keys use pi-tui key-id notation
+ * (`enter`, `ctrl+c`, `shift+enter`).
  */
 export interface MayflyKeyAction {
   /** Stable, unique action id. */
   id: string
   /** One or more key ids that trigger the action. */
   keys: string | string[]
+  /** The scope the binding is live in; `global` when omitted. */
+  scope?: MayflyKeyScope
   /** Human-readable description for future keybinding UIs. */
   description?: string
   /**

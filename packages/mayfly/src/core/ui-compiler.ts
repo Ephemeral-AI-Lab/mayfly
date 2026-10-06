@@ -844,7 +844,6 @@ function matchesBinding(match: GrammarMatch, data: string, keymap: MayflyKeymap 
   switch (match.kind) {
     case 'action': return matchesKeyAction(keymap, data, match.action)
     case 'key': return matchesKey(data, match.key as KeyId)
-    case 'char': return data === match.char
     case 'digit': return data.length === 1 && data >= '1' && data <= '9'
     case 'text': return (match.space || data !== ' ') && startsText(data)
     case 'backspace': return data === '\x7f' || data === '\b'
@@ -858,7 +857,7 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
   if (options.contextHints?.suppressAuto !== true && !withoutControls) {
     for (const hint of grammarHints(keyGrammar(grammarStateFor(state, options, controls, active, mode, escapeLabel)))) {
       // Literal key words (the "Type" of type-to-filter) are prose; key names are not translated.
-      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId)).map(displayKey).join('/')
+      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId).slice(0, 1)).map(displayKey).join('/')
       merged.set(hint.id, { id: hint.id, keys, label: hint.label, compact: hint.compact ?? keys, priority: hint.priority })
     }
   }

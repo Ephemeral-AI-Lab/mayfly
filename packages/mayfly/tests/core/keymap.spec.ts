@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { MayflyKeymapError, MayflyKeymapService } from '../../src/core/keymap.ts'
+import { MayflyKeymapError, MayflyKeymapService, actionOwner } from '../../src/core/keymap.ts'
 import type { MayflyKeyAction } from '../../src/core/types.ts'
 
 describe('MayflyKeymapService', () => {
@@ -76,6 +76,36 @@ describe('MayflyKeymapService', () => {
       .toThrow(/"ctrl\+c" is claimed by both "mayfly\.app\.quit" and "mayfly\.app\.interrupt"/)
     // The rejected registration committed nothing.
     expect(keymap.matches('\x03', 'mayfly.app.interrupt')).toBe(false)
+  })
+
+  it('lets two scopes share a key, while a global action claims it everywhere', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MayflyKeymapService)
+    const keymap = ctx.mayflyKeymap
+    keymap.register([
+      { id: 'mayfly.interaction.steer', keys: 'ctrl+s', scope: 'editor' },
+      { id: 'ui.save', keys: 'ctrl+s', scope: 'surface' },
+    ])
+    expect(keymap.matches('\x13', 'mayfly.interaction.steer')).toBe(true)
+    expect(keymap.matches('\x13', 'ui.save')).toBe(true)
+    expect(() => keymap.register([{ id: 'demo-plugin.save', keys: 'ctrl+s', scope: 'surface' }]))
+      .toThrow('key "ctrl+s" is claimed by both "ui.save" and "demo-plugin.save" (ui owns it in the surface scope)')
+    expect(() => keymap.register([{ id: 'demo-plugin.everywhere', keys: 'ctrl+s' }])).toThrow(/claimed by both "mayfly\.interaction\.steer"/)
+    keymap.register([{ id: 'mayfly.app.quit', keys: 'ctrl+q' }])
+    expect(() => keymap.register([{ id: 'demo-plugin.quit', keys: 'ctrl+q', scope: 'stream' }]))
+      .toThrow('(mayfly owns it in the global scope)')
+    expect(actionOwner('demo-plugin.install')).toBe('demo-plugin')
+  })
+
+  it('frees a shared key per scope when one claimant unregisters', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MayflyKeymapService)
+    const keymap = ctx.mayflyKeymap
+    keymap.register([{ id: 'mayfly.interaction.steer', keys: 'ctrl+s', scope: 'editor' }])
+    const dispose = keymap.register([{ id: 'ui.save', keys: 'ctrl+s', scope: 'surface' }])
+    dispose()
+    expect(() => keymap.register([{ id: 'demo-plugin.save', keys: 'ctrl+s', scope: 'surface' }])).not.toThrow()
+    expect(() => keymap.register([{ id: 'demo-plugin.steer', keys: 'ctrl+s', scope: 'editor' }])).toThrow(/claimed by both "mayfly\.interaction\.steer"/)
   })
 
   it('rejects conflicting claims inside one batch without committing any', async () => {
@@ -205,9 +235,9 @@ describe('MayflyKeymapService', () => {
     ])
 
     expect(keymap.list()).toEqual([
-      { id: 'mayfly.a', keys: ['ctrl+x'], description: 'A' },
-      { id: 'mayfly.b', keys: ['ctrl+o', 'f2'], handler },
-      { id: 'mayfly.c', keys: ['f3'] },
+      { id: 'mayfly.a', keys: ['ctrl+x'], scope: 'global', description: 'A' },
+      { id: 'mayfly.b', keys: ['ctrl+o', 'f2'], scope: 'global', handler },
+      { id: 'mayfly.c', keys: ['f3'], scope: 'global' },
     ])
   })
 

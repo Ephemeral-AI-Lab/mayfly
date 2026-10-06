@@ -153,7 +153,7 @@ function lookupAgent(): Agent {
 describe('mayfly-interaction through the real Loader', () => {
   it('registers the key batch, the built-in commands, and the questions answerer', async () => {
     const { ctx } = await bootInteraction()
-    expect(ctx.get('mayflyKeymap')?.getKeys('mayfly.interaction.submit')).toEqual(['enter'])
+    expect(ctx.get('mayflyKeymap')?.getKeys('ui.accept')).toEqual(['enter'])
     expect(ctx.get('mayflyKeymap')?.getKeys('mayfly.interaction.interrupt')).toEqual(['ctrl+c'])
     expect(ctx.get('mayflyKeymap')?.getKeys('mayfly.interaction.steer')).toEqual(['ctrl+s'])
     expect(ctx.commands.find(lookupAgent(), 'quit')).toBeDefined()
@@ -170,7 +170,7 @@ describe('mayfly-interaction through the real Loader', () => {
   it('removes every contribution when the tree unloads', async () => {
     const { ctx, output } = await bootInteraction()
     await ctx.fiber.dispose()
-    expect(ctx.get('mayflyKeymap')?.getKeys('mayfly.interaction.submit') ?? []).toEqual([])
+    expect(ctx.get('mayflyKeymap')?.getKeys('ui.accept') ?? []).toEqual([])
     expect(ctx.get('mayflyKeymap')?.getKeys('mayfly.interaction.interrupt') ?? []).toEqual([])
     expect(ctx.get('commands')).toBeUndefined()
     expect(ctx.get('userQuestions')).toBeUndefined()

@@ -1,8 +1,9 @@
 /**
  * `ctx.mayflyKeymap` service: the Mayfly keybinding registry. Key matching
  * delegates to pi-tui's `matchesKey`; conflict detection runs at
- * registration and fails loud, so a key is claimed by at most one
- * registered action at a time. `dispatch` runs the global half of the
+ * registration and fails loud, so within one scope a key is claimed by at
+ * most one registered action at a time (a `global` action claims its key
+ * in every scope). `dispatch` runs the global half of the
  * registry: handler-carrying actions fire in registration order ahead of
  * focus routing.
  *
@@ -11,7 +12,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { type KeyId, matchesKey } from '@earendil-works/pi-tui'
-import type { MayflyKeyAction, MayflyKeymap } from './types.ts'
+import type { MayflyKeyAction, MayflyKeymap, MayflyKeyScope } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -37,8 +38,25 @@ export class MayflyKeymapError extends Error {
 
 interface RegisteredAction {
   keys: string[]
+  scope: MayflyKeyScope
   description?: string
   handler?: () => void
+}
+
+/** One key claimed by an action in a scope. */
+interface KeyClaim {
+  readonly id: string
+  readonly scope: MayflyKeyScope
+}
+
+/** Two scopes overlap when they are equal or either is global. */
+function overlaps(left: MayflyKeyScope, right: MayflyKeyScope): boolean {
+  return left === right || left === 'global' || right === 'global'
+}
+
+/** The owner of a dotted `<owner>.<action>` id. */
+export function actionOwner(id: string): string {
+  return id.split('.', 1)[0]!
 }
 
 /** Dedupe one action's key list, preserving order. */
@@ -53,7 +71,7 @@ function normalizeKeys(keys: string | string[]): string[] {
  */
 export class MayflyKeymapService extends Service implements MayflyKeymap {
   private readonly actions = new Map<string, RegisteredAction>()
-  private readonly keyOwner = new Map<string, string>()
+  private readonly keyClaims = new Map<string, KeyClaim[]>()
   private registrations = 0
 
   /** Counts every committed change to the registered actions, so a cache of anything derived from them can tell it is stale. */
@@ -76,24 +94,26 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
     // Validate the whole batch against existing registrations and itself
     // before committing anything, so a failure leaves the registry untouched.
     const batch = new Map<string, RegisteredAction>()
-    const batchClaims = new Map<string, string>()
+    const batchClaims = new Map<string, KeyClaim[]>()
     for (const action of actions) {
       if (this.actions.has(action.id) || batch.has(action.id)) {
         throw new MayflyKeymapError(`key action "${action.id}" is already registered`, 'DUPLICATE_ACTION')
       }
       const keys = normalizeKeys(action.keys)
+      const scope = action.scope ?? 'global'
       for (const key of keys) {
-        const owner = this.keyOwner.get(key) ?? batchClaims.get(key)
+        const owner = [...this.keyClaims.get(key) ?? [], ...batchClaims.get(key) ?? []].find(claim => overlaps(claim.scope, scope))
         if (owner !== undefined) {
           throw new MayflyKeymapError(
-            `key "${key}" is claimed by both "${owner}" and "${action.id}"`,
+            `key "${key}" is claimed by both "${owner.id}" and "${action.id}" (${actionOwner(owner.id)} owns it in the ${owner.scope} scope)`,
             'KEY_CONFLICT',
           )
         }
-        batchClaims.set(key, action.id)
+        batchClaims.set(key, [...batchClaims.get(key) ?? [], { id: action.id, scope }])
       }
       const entry: RegisteredAction = {
         keys,
+        scope,
         // exactOptionalPropertyTypes forbids assigning undefined to the
         // optional slots, so each is spread in only when present.
         ...(action.description === undefined ? {} : { description: action.description }),
@@ -103,7 +123,7 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
     }
     for (const [id, entry] of batch) {
       this.actions.set(id, entry)
-      for (const key of entry.keys) this.keyOwner.set(key, id)
+      for (const key of entry.keys) this.keyClaims.set(key, [...this.keyClaims.get(key) ?? [], { id, scope: entry.scope }])
     }
     this.registrations += 1
 
@@ -114,7 +134,11 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
       this.registrations += 1
       for (const [id, entry] of batch) {
         this.actions.delete(id)
-        for (const key of entry.keys) this.keyOwner.delete(key)
+        for (const key of entry.keys) {
+          const remaining = this.keyClaims.get(key)!.filter(claim => claim.id !== id)
+          if (remaining.length === 0) this.keyClaims.delete(key)
+          else this.keyClaims.set(key, remaining)
+        }
       }
     }
   }
@@ -169,6 +193,7 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
     return [...this.actions].map(([id, entry]) => ({
       id,
       keys: [...entry.keys],
+      scope: entry.scope,
       // exactOptionalPropertyTypes forbids assigning undefined to the
       // optional slots, so each is spread in only when present.
       ...(entry.description === undefined ? {} : { description: entry.description }),

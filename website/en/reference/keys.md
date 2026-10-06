@@ -23,7 +23,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | --- | --- |
 | `↑/↓` | Move between rows and fields; scroll documents |
 | `←/→` | Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip |
-| `Alt+←/→` | Switch tabs from anywhere on the surface; wizards validate the step being left |
+| `Alt+←/→ or F2/F3` | Switch tabs from anywhere on the surface; wizards validate the step being left |
 | `PgUp/PgDn, Home/End` | Page or jump in lists and documents |
 | `Enter` | Choose, run, open a picker, apply it, or start editing a field |
 | `Space` | Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch |
@@ -34,7 +34,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `1-9` | Pick a numbered row |
 | `Ctrl+E` | Expand focused scrollable content to full screen |
 | `Delete` | Return a changed field to its inherited or default value |
-| `Alt+Enter` | Insert a newline in a multi-line field |
+| `Alt+Enter or Ctrl+J` | Insert a newline in a multi-line field |
 <!-- END shared-keys -->
 
 Details that follow from the grammar:
