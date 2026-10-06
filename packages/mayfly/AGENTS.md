@@ -105,6 +105,14 @@ the editor. Choice reducers never focus disabled rows. Consumers express
 per-row availability with `unavailableActions` and questions with `confirm`,
 not custom confirm pages or post-confirmation rejections.
 
+Build surfaces from the shared components (actions row, text/choice fields,
+lists, tabs, decision panels, questionnaire, loader/progress/empty). The
+[UI design](../../docs/design/component-library.md) is the target for a planned
+refresh, not shipped behavior, and its
+[implementation reference](../../docs/design/component-library-reference.md) holds
+the wire mechanics. Never hand-roll pi-tui panels outside `core/`; the editor
+autocomplete list is a retained legacy exception, not a model.
+
 ## Native writes and sensitive data
 
 - `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation,

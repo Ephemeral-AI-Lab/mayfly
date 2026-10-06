@@ -11,23 +11,27 @@ The current runtime is described by three architecture documents:
   confirmation and availability contract for panes, overlays, and editor
   extensions.
 
+The UI design is [design/component-library.md](./design/component-library.md): the
+target visual language, key grammar, basic components (the UI API), and the Mayfly
+components built from them, reviewed before the implementation. It is a design, not
+shipped behavior, and ships a runnable terminal prototype
+(`node docs/design/prototypes/ui-preview.mjs`) whose `--audit` mode proves that every
+Mayfly component uses only the basic components a plugin also has. The implementation material
+for the follow-up change (wire mechanics, builder tables, backlog) is in
+[design/component-library-reference.md](./design/component-library-reference.md), and the
+order of that work, with the decisions taken after review, is
+[design/implementation-roadmap.md](./design/implementation-roadmap.md).
+
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.
 
 See [package-release.md](./package-release.md) for release maintenance.
-Historical investigation and acceptance records live in [audits/](./audits/),
-and interaction design documents live in [design/](./design/); dated audits
-only describe their point in time and do not define the current API.
+Historical investigation and acceptance records live in [audits/](./audits/);
+dated audits only describe their point in time and do not define the current
+API.
 
 See [platform-acceptance.md](./platform-acceptance.md) for the cross-platform
 automation and desktop acceptance checklist.
-
-The documents in [design/](./design/) are historical records superseded by
-[interaction-model.md](./interaction-model.md): the
-[UI/UX unified model design](./design/ui-ux-unification.md), the
-[PR #15 implementation plan](./design/pr15-interaction-refactor-plan.md), and
-the [terminal UX optimization design](./design/ui-ux-optimization.md). They
-explain how the model came to be; they do not define current behavior.
 
 Plugin authors should start from the Website
 [developer manual](../website/plugins/index.md) and use the
