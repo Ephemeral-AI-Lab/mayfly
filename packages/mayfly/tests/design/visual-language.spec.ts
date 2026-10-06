@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { caption, diffReport, frameDiffs, goldenRows, paint } from './scene.ts'
-import { createRealSurface, parityComponents } from './parity.ts'
+import { createRealSurface, parityComponents, PROBE_PALETTE } from './parity.ts'
+import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
 
 const S = (text: string, tone?: 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger', styles?: readonly ('strong' | 'italic' | 'strike')[]) => ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
 
@@ -45,5 +46,35 @@ describe('scene 1 Marks and tokens, page 1: selection and focus', () => {
     } finally {
       list.dispose()
     }
+  })
+})
+
+const EDIT_BEFORE = ["  const moon = state.mode === 'waiting'", '  const frame = moon', '  const now = activityNow()', '  const a = 1', '  const b = 2', '  const c = 3', '  const d = 4', "  return { kind: 'stack', direction: 'column',"].join('\n')
+const EDIT_AFTER = ["  const moon = state.mode === 'waiting'", '  const frame = glyphFor(state)', '  const now = activityNow()', '  const a = 1', '  const b = 2', '  const c = 3', '  const d = 4', "  return { kind: 'stack', direction: 'column',"].join('\n')
+
+describe('scene 8 Content', () => {
+  it('page 3: highlights code by language, with its muted language name', async () => {
+    const rows = [
+      ...paint(caption('page 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)'), 100),
+      '',
+      ...paint(caption('ui.code — highlighted by language (h toggles)'), 100),
+      ...paint(ui.code(["const frame = glyphFor(state)", "if (state.mode === 'waiting') {", "  return { kind: 'loader', variant: 'gap' }", '}'].join('\n'), { language: 'typescript' }), 100),
+    ]
+    // The kit's wrap drops the indent of the third code line.
+    const diffs = await frameDiffs(goldenRows('08-content', 'pages', 2).slice(0, rows.length), rows, 100, [{ delta: 'Δ20', rows: [6, 6] }])
+    expect(diffReport(diffs)).toBe('')
+  })
+
+  it('page 4: a numbered diff with −/+, bands behind the code only, and ⋯ between hunks', async () => {
+    const diff = (numbered: boolean): string[] => paintDiffRows(alignDiffLines(EDIT_BEFORE, EDIT_AFTER), 100, parityComponents(), PROBE_PALETTE, { start: 41, numbered, hunkHeader: true, context: 1 })
+    const page = (numbered: boolean): string[] => [
+      ...paint(caption('page 4/7 (Ctrl+N): diff: two strings in, aligned rows out — numbered gutters, −/+ and color, ⋯ between hunks'), 100),
+      '',
+      ...paint(caption(`numbered ${numbered ? 'on' : 'off'} (d toggles); an @@ header names the hunk`), 100),
+      ...diff(numbered),
+    ]
+    // The kit's wrap does not reopen the caption's dim on its second row.
+    expect(diffReport(await frameDiffs(goldenRows('08-content', 'pages', 3), page(true), 100, [{ delta: 'Δ20', rows: [1, 1] }]))).toBe('')
+    expect(diffReport(await frameDiffs(goldenRows('08-content', 'diff', 4), page(false), 100, [{ delta: 'Δ20', rows: [1, 1] }]))).toBe('')
   })
 })

@@ -215,7 +215,7 @@ describe('core width-scan', () => {
       // Real SGR bands: padding must land exactly on the width, never past it.
       const ops = alignDiffLines(`keep\n${text}\nkeep`, `keep\nadded ${text}\nkeep`)
       for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`DiffBands/${name}`, paintDiffRows(ops, width, { visibleWidth, wrapText: wrapTextWithAnsi }, DARK_COLORS), width)
+        expectLinesFit(`DiffBands/${name}`, paintDiffRows(ops, width, { visibleWidth, truncateToWidth }, DARK_COLORS), width)
       }
     })
 

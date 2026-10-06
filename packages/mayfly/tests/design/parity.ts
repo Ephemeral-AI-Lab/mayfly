@@ -67,7 +67,8 @@ const PROTOTYPE_BACKGROUNDS = new Map<number, string>([
 /**
  * How the real compiler paints each tone (`paintTone` in core/ui-patterns.ts), plus the palette tokens the prototype
  * draws with one of its tones: strong text is its default tone (the weight is compared separately), the deepest gray is
- * its dim muted, and a frame is drawn in the focus color (`primary`) on an overlay and in the quiet color (dim) inline.
+ * its dim muted, a frame is drawn in the focus color (`primary`) on an overlay and in the quiet color (dim) inline, and
+ * a diff's gutter and markers are muted and its removed and added code is in the danger and success tones.
  */
 const REAL_TONE_TOKENS: Readonly<Record<string, string>> = {
   text: 'default',
@@ -76,6 +77,10 @@ const REAL_TONE_TOKENS: Readonly<Record<string, string>> = {
   textMuted: 'muted',
   border: 'muted',
   borderFocus: 'primary',
+  diffGutter: 'muted',
+  diffMeta: 'muted',
+  diffRemoved: 'danger',
+  diffAdded: 'success',
   primary: 'primary',
   accent: 'accent',
   roleUser: 'user',

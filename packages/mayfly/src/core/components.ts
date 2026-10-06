@@ -119,7 +119,7 @@ function markdownTheme(colors: MayflySemanticColors): MarkdownTheme {
     italic: colors.text,
     strikethrough: colors.muted,
     underline: colors.text,
-    highlightCode: (code, lang) => highlightCodeLines(code, lang, colors.mdCodeBlock),
+    highlightCode: (code, lang) => highlightCodeLines(code, lang, { base: colors.mdCodeBlock, keyword: colors.primary, string: colors.success, comment: colors.muted }),
   }
 }
 
