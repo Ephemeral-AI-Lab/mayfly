@@ -4,7 +4,9 @@ This roadmap turns the reviewed UI design into an ordered series of changes to `
 ships no behavior. It was written on 2026-10-02 against `main` at `94de488`, DeepSeek Harness `0.2.0-rc.2`, and pi-tui
 `0.84.2`; where it names a file, a type, or a service, that name exists in that tree unless the text says *new*. It
 was revised on 2026-10-05, against the same tree, to put the whole basic layer and its performance work into one
-foundation phase (D16-D20); §5 maps the earlier phase names onto the current ones.
+foundation phase (D16-D20); §5 maps the earlier phase names onto the current ones. Implementation began on
+2026-10-05; the status table in Phase 1 records what has landed, and the slice texts describe what was built once a
+slice is marked done.
 
 | Input | Role in the implementation |
 | --- | --- |
@@ -495,6 +497,15 @@ shared painters.
 
 After checkpoint C the branch merges to `main` once, followed by `pnpm run check:pack` and the main rebuild.
 
+**Status** (updated by each slice's PR; the slice text below describes the built behavior once a slice is done):
+
+| Slice | State | Branch | Notes |
+| --- | --- | --- | --- |
+| 1.0 | built, in review | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
+| 1.1 to 1.11 | not started | | |
+| Checkpoint A / B / C | pending | | |
+
+
 Slices 1.3 to 1.10 change `packages/ui`. Each updates `website/plugins/ui-reference.md` and its English twin together
 with `script/shots/manifest.mjs` (their fidelity contract), adds `examples/ui-gallery` coverage for its new props, and
 keeps `pnpm run check:examples` green.
@@ -504,14 +515,17 @@ keeps `pnpm run check:examples` green.
 **Goal.** Make "draws like the preview" and "does no more work than it must" checkable, before anything visible
 changes. The prototype is not modified.
 
-- **Golden frames.** `script/design-golden.mjs` (*new*) runs
-  `node --import script/design-golden-clock.mjs docs/design/prototypes/ui-preview.mjs <scene>` (the preload is *new*
-  too) with piped stdio, so the runner takes its non-TTY path. The preload pins `Date.now` and turns `setInterval`
-  into a no-op, so every frame is frame 0 at a fixed time. The script sends each scene's key walks (one walk per page
-  and state named in the scene's footer), writes a NUL byte to force a repaint where no key does, strips the runner's
-  cursor-control prefix, and keeps the scene body. It writes `packages/mayfly/tests/design/golden/<nn>-<scene>/<walk>.txt` (visible text) and `.ansi`
-  (raw). `--check` fails when the prototype's output changes. (This capture was tried on scene 13 while writing this
-  roadmap and is deterministic.)
+- **Golden frames.** `script/design-golden.mjs` runs
+  `node --import script/design-golden-clock.mjs docs/design/prototypes/ui-preview.mjs <scene>` with piped stdio, so
+  the runner takes its non-TTY path. The preload pins `Date.now`, turns `setInterval` into a no-op, and replays the
+  walk itself from `GOLDEN_SCRIPT` (a key is one stdin chunk, a number advances the fake clock by that many
+  milliseconds and runs one repaint tick), so no output depends on write timing; a marker after each step lets the
+  runner cut one frame per step. A walk starts with a NUL key to paint frame 0, and the runner strips the cursor-control
+  prefix and keeps the scene body. The walk table is `script/design-golden-walks.mjs` (one walk per page and per state
+  named in the scene's footer, a first version that later slices extend). It writes
+  `packages/mayfly/tests/design/golden/<nn>-<scene>/<walk>.txt` (visible text) and `.ansi` (raw); `--check` fails when
+  the prototype's output changes, and `pnpm run design:golden` and `design:golden:check` run it. The capture is
+  deterministic: two runs of all 172 walks are byte-identical.
 - **Parity helper.** `packages/mayfly/tests/design/parity.ts` (*new*) compiles a node with `compileMayflyUiNode` at the
   golden's width, the way `script/shots/render.mjs` does, drives keys through the compiler's focus target, parses both
   outputs into cells, and compares each cell's character and style class, with trailing blank cells trimmed (D19). A
@@ -520,16 +534,26 @@ changes. The prototype is not modified.
   color is a distinct sequence, so two tones never compare equal by accident. Motion is compared frame by frame under
   a fake clock. `tests/design/deltas.ts` (*new*) lists the accepted differences, each citing its §2.3 row.
 - **Key audit.** `packages/mayfly/tests/core/key-audit.spec.ts` (*new*): within one scope no two actions share a key;
-  every default that uses Alt has a plain alternative; no printable key binds in the editor scope.
+  every default that uses Alt has a plain alternative; no printable key binds in the editor scope. Scopes do not exist
+  before slice 1.7, so the grammar's focus states stand in for them. The Alt defaults that have no plain alternative
+  today (`prev-tab`, `next-tab`, `newline`, `cycle-model`) are a recorded list that slice 1.7 must shrink: the spec
+  fails when an entry already has a plain key. The inline registrations of the surface renderer, paste, transcript, and
+  todo plugins are checked against their owners' source text. The only grammar overlap is `←`/`→` on an adjustable
+  select, which is recorded.
 - **Work counters.** An optional, core-private `counters` sink in the compiler options, which the validator, the
   compiler, and the painters increment: nodes validated, units compiled, rows painted, strings measured. Production
-  passes none.
+  passes none. Strings measured is partial until slice 1.1's `ui-measure.ts`: it counts the injected components seam
+  and the compiler's frame and hint paths, not the painters in `ui-patterns.ts`; per-item list rows wait for the row
+  cache of slice 1.1.
 - **Workloads and baseline.** `script/audit-performance.mjs` gains the workloads W1 to W8 of §7.1 and prints the
   counters beside its wall-clock timings. `packages/mayfly/tests/perf/work-budget.spec.ts` (*new*) runs the same
-  workloads headless and records today's counts, the baseline that slice 1.1 turns into a gate. The wall-clock targets
-  of §7.1 are fixed from this baseline.
-- **Impact rules.** `script/test-impact.mjs` selects the parity specs and the work-budget spec for `src/core/ui-*.ts`
-  and `packages/ui/src/**`, and the golden `--check` for `docs/design/prototypes/**`.
+  workloads headless and compares today's counts with `tests/perf/baseline.json` (`UPDATE_WORK_BASELINE=1` rewrites it),
+  the baseline that slice 1.1 turns into a gate. The workloads live in `tests/perf/workloads.ts`, shared by the spec and
+  the script; a fixture of the script that predated the projection schema was repaired. The wall-clock targets of §7.1
+  are fixed from this baseline.
+- **Impact rules.** `script/test-impact.mjs` selects the parity specs and the work-budget spec for `src/core/ui-*.ts`,
+  the key audit for the key tables, and the golden `--check` for `docs/design/prototypes/**` and the goldens;
+  `packages/ui/src/**` keeps the full gate, which already includes them. The golden check is also a CI step.
 
 No runtime behavior changes. The goldens and the baseline report are reviewed at checkpoint A.
 
@@ -997,7 +1021,7 @@ adds its row.
 | Workload | Shape | One step | Budget for the step |
 | --- | --- | --- | --- |
 | W1 status tick | a row of 12 admitted entries | one entry changes | at most 1 subtree validated and compiled; 1 entry painted |
-| W2 spinner tick | 200 static rows and one loader | one clock tick | nothing validated or compiled; 1 row painted |
+| W2 spinner tick | 120 static rows (a tree is capped at 256 nodes) and one loader | one clock tick | nothing validated or compiled; 1 row painted |
 | W3 list cursor | a list of 10,000 items | `↓` | nothing validated; at most 2 item rows painted, and the hint row if it changes |
 | W4 stream | a list of 2,000 items (with bodies from slice 1.4) | the last item changes, at 10 Hz | at most 1 item admitted and compiled; no more rows painted than that item has |
 | W5 form key | a form of 20 fields | one keystroke | at most 1 field painted |
@@ -1008,7 +1032,10 @@ adds its row.
 Wall-clock time and heap growth come from `script/audit-performance.mjs` on the same workloads. They are reported in
 every Phase 1 PR against the baseline of slice 1.0 and gate nothing. The targets, proposed here and fixed when the
 baseline exists, are a steady-state publish-to-rows time of 2 ms at the 95th percentile and a key-to-rows time of
-4 ms, at the sizes of W3 and W4.
+4 ms, at the sizes of W3 and W4. Slice 1.0 measured today's pipeline (median of seven samples, one machine): the W4
+stream publish at 3.6 ms and the W3 cursor move at 0.6 ms, and recorded these counts for one step: W2 repaints 121
+rows, W3 81 rows, W4 admits 45 nodes and paints 81 rows. The targets stay proposals until they are confirmed against
+these numbers.
 
 ## 8. Risks
 
