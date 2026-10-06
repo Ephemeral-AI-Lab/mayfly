@@ -14,6 +14,7 @@ import {
   type MayflyCompiledUi,
   type MayflyUiCompilerOptions,
 } from '../../src/core/ui-compiler.ts'
+import { MayflyCompileCache } from '../../src/core/ui-compile-cache.ts'
 import { createAdmissionCache } from '../../src/core/ui-validator.ts'
 import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
@@ -167,10 +168,11 @@ export const WORKLOADS: readonly Workload[] = [
       const entries = Array.from({ length: 12 }, (_, index) => ui.richText([{ text: `entry ${String(index)} ` }, { text: '0', tone: 'muted' }]))
       let revision = 0
       const admission = createAdmissionCache()
+      const reuse = new MayflyCompileCache()
       const publish = (): void => {
         revision += 1
         const children = entries.map((entry, index) => ui.child(index === 11 ? ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]) : entry))
-        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters, admission })
+        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters, admission, reuse })
         if (!result.ok) throw new Error(result.message)
         result.value.component.render(WIDTH)
       }
