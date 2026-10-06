@@ -9,8 +9,9 @@ objects, or mutable product state.
 
 - Clone caller-owned wire data before freezing; reject cycles and enumerable
   accessors without invoking getters, including before spreading options.
-  Only this module's `freezeWire` snapshots may retain object identity. Keep
-  trust weakly held and private; arbitrary frozen data must still be cloned.
+  Only this module's `freezeWire` snapshots may retain object identity, and
+  `isWireSnapshot` is the only way to ask. Keep trust weakly held and private;
+  arbitrary frozen data must still be cloned.
 - Preserve handwritten wire shapes. Stacks normalize nodes to `{ node }`;
   sizing/viewport options require `ui.child`. `tab` gives a child stable page
   identity under a `tabs` control and is unavailable in status/editor
@@ -19,6 +20,8 @@ objects, or mutable product state.
   and stay outside the narrower status/editor-extension/section unions.
 - `defineMayflyComponent` validates the id/render function and freezes output;
   core owns node schema admission, quotas, and compilation. Do not add a registry.
+  `memo: true` returns the previous node for shallowly equal props, so render
+  must stay pure.
 - The [UI design](../../docs/design/component-library.md) is the target for a planned
   refresh, not shipped behavior; its
   [implementation reference](../../docs/design/component-library-reference.md) holds the

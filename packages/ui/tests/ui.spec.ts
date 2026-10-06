@@ -242,6 +242,39 @@ describe('defineMayflyComponent', () => {
     expectDeepFrozen(result)
   })
 
+  it('returns the same node for shallowly equal props when it is a memo component, and renders again otherwise', () => {
+    const render = vi.fn((props: { readonly label: string, readonly tags: readonly string[] }) => ui.text(`${props.label} ${props.tags.join(',')}`))
+    const component = defineMayflyComponent({ id: '@acme/memo', render, memo: true })
+    const tags = ['a']
+    const first = component.render({ label: 'x', tags })
+    expect(component.render({ label: 'x', tags })).toBe(first)
+    expect(render).toHaveBeenCalledOnce()
+    expect(component.render({ label: 'y', tags })).not.toBe(first)
+    expect(component.render({ label: 'y', tags: ['a'] }), 'a new nested value is a new prop').not.toBe(first)
+    expect(render).toHaveBeenCalledTimes(3)
+    const loose = defineMayflyComponent({ id: '@acme/loose', render: () => ui.text('same') })
+    expect(loose.render(undefined)).not.toBe(loose.render(undefined))
+  })
+
+  it('compares props one level deep and never trusts a mutated props object', () => {
+    const component = defineMayflyComponent<Record<string, unknown> | readonly unknown[] | string | null>({ id: '@acme/shapes', render: props => ui.text(JSON.stringify(props)), memo: true })
+    const node = component.render({ a: 1, b: 2 })
+    expect(component.render({ a: 1, b: 2 })).toBe(node)
+    expect(component.render({ a: 1 }), 'fewer keys').not.toBe(node)
+    expect(component.render({ a: 1, c: 2 }), 'another key').not.toBe(component.render({ a: 1, b: 2 }))
+    const array = component.render(['x'])
+    expect(component.render(['x'])).toBe(array)
+    expect(component.render({ 0: 'x' }), 'an object is not an array').not.toBe(array)
+    const mutable: Record<string, unknown> = { count: 1 }
+    const before = component.render(mutable)
+    mutable.count = 2
+    const after = component.render(mutable)
+    expect(after).not.toBe(before)
+    expect(JSON.parse((after as { content: string }).content)).toEqual({ count: 2 })
+    expect(component.render('text')).toBe(component.render('text'))
+    expect(component.render(null)).not.toBe(component.render('text'))
+  })
+
   it('validates only definition metadata and leaves schema admission to core', () => {
     const output = { kind: 'future-node', payload: { acceptedByBuilder: true } }
     const component = defineMayflyComponent({

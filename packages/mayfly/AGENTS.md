@@ -105,6 +105,16 @@ the editor. Choice reducers never focus disabled rows. Consumers express
 per-row availability with `unavailableActions` and questions with `confirm`,
 not custom confirm pages or post-confirmation rejections.
 
+Core reuses work by identity, never by value. A surface keeps one admission memo
+(`ui-validator.ts`), one compile memo and one list-row memo (on its
+`MayflyUiSurfaceRuntime`), and the renderer keeps one `UiAnimationClock`; none is
+a module singleton. Only a frozen `isWireSnapshot` value is a cache key, a memo
+hit must replay every quota and duplicate check, and a subtree that carries a
+control, tab, page, action key, filter, editor slot, or responsive branch is
+admitted whole each time. Reused leaves are static painters that read only their
+node, width, colors, and components; a new palette recompiles them. The work
+budgets in `tests/perf/budgets.json` only ratchet down.
+
 Build surfaces from the shared components (actions row, text/choice fields,
 lists, tabs, decision panels, questionnaire, loader/progress/empty). The
 [UI design](../../docs/design/component-library.md) is the target for a planned

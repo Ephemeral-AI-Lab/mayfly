@@ -38,6 +38,13 @@ async function directContext(): Promise<Context> {
 }
 
 describe('shared user kit', () => {
+  it('keeps the node of an unchanged metric and renders a changed one anew', () => {
+    const props = { label: 'Context', value: '42%', detail: '12k / 28k' }
+    const node = summaryMetric.render(props)
+    expect(summaryMetric.render({ ...props })).toBe(node)
+    expect(summaryMetric.render({ ...props, value: '43%' })).not.toBe(node)
+  })
+
   it('builds deeply frozen standard nodes without plugin metadata', () => {
     const node = summaryMetric.render({ label: 'Context', value: '42%', detail: '12k / 28k' })
     expect(node).toMatchObject({ kind: 'surface', child: { kind: 'stack', direction: 'row' } })
