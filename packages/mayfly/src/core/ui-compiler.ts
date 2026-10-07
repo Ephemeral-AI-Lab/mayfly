@@ -2314,6 +2314,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     readonly rows: number
     readonly revision: number | undefined
     readonly keymapRevision: number | undefined
+    readonly completions: boolean
     readonly animationFrame: number
     readonly result: MayflyStatusRenderResult
   } | undefined
@@ -2323,16 +2324,17 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const viewport = safeViewport(this.options.getViewport)
     const revision = this.surfaceRuntime.interaction?.revision
     const keymapRevision = this.options.keymap?.revision
+    const completions = this.options.completionsOpen?.() === true
     const animationFrame = this.surfaceRuntime.animationFrame
     const cached = this.frameResult
     if (cached !== undefined
       && cached.current === current && cached.width === width && cached.maxRows === maxRows
       && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision
-      && cached.keymapRevision === keymapRevision && cached.animationFrame === animationFrame) {
+      && cached.keymapRevision === keymapRevision && cached.completions === completions && cached.animationFrame === animationFrame) {
       return cached.result
     }
     const result = this.renderFrame(width, maxRows)
-    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, animationFrame, result }
+    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, completions, animationFrame, result }
     return result
   }
 
