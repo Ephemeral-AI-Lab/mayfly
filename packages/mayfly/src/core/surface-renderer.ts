@@ -405,7 +405,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
         id: entry.id,
         ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
         ...(entry.definition.priority === undefined ? {} : { priority: entry.definition.priority }),
-        summary: entry.summary ?? null,
+        summary: entry.summary!, // the service publishes null for a view without one
       })
     }
     schedulePane(record)
