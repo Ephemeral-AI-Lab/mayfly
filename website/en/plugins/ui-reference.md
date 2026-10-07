@@ -211,8 +211,10 @@ ui.code(value: string, options?: { language?: string })
 ```
 
 Represents code or preformatted text such as patch fragments, command output,
-or configuration content. `language` is a renderer hint and does not guarantee
-syntax highlighting. The screenshot above renders exactly this node:
+or configuration content. A recognized `language` is highlighted by default:
+keywords in `primary`, strings in `success`, comments muted, and everything else
+in the text color; highlighting covers the first 12 rows of a block of at most
+32 KB, and the rest is plain text. The screenshot above renders exactly this node:
 
 ```ts
 ui.code([
@@ -227,7 +229,7 @@ ui.code([
 
 ![`diff` node rendering](/shots/diff.svg)
 
-*Multi-line before/after: context lines pass through, changed lines are marked `-`/`+` on red/green background bands (width 64).*
+*Multi-line before/after: old and new line numbers, changed lines marked `−`/`+` with red/green bands behind the code only (width 64).*
 
 ```ts
 ui.diff(before: string, after: string)
@@ -235,9 +237,11 @@ ui.diff(before: string, after: string)
 
 Represents the semantic before/after states of the same content, such as a
 pending edit. Supply plain text rather than manually adding diff colors: Mayfly
-shades removed and added lines with the theme's `diffRemovedBg`/`diffAddedBg`
-bands, padded to the assigned width. The screenshot above renders exactly this
-node:
+draws muted old and new line-number gutters (ending in `│`), marks removed and
+added lines with `−`/`+`, and shades their code (never the gutter) with the
+theme's `diffRemovedBg`/`diffAddedBg` bands. One unchanged line stays around
+each change, a skipped run reads as one muted `⋯`, and a long line ends in `…`.
+The screenshot above renders exactly this node:
 
 ```ts
 ui.diff(
@@ -481,9 +485,9 @@ ui.surface({
 | --- | --- |
 | `title` | Primary heading |
 | `subtitle` | Muted supporting line after the heading |
-| `badges` | Badge line built from semantic spans |
-| `chrome` | Border intent; defaults to `none` |
-| `padding` | Content inset level; defaults to `0` |
+| `badges` | Semantic spans at the right of the title rule (dropped first when narrow) |
+| `chrome` | Border intent; defaults to `none`. `overlay` and `surface` are one rounded frame with the title inset in its top rule (`╭ Title ─── badge ╮`), the overlay in the focus border color and the surface in the quiet border color; `lane` is rules only; `none` is a bold title |
+| `padding` | Content inset level; defaults to `0`. A framed chrome keeps at least one column inside its border |
 | `child` | Required body |
 | `footer` | Optional node between the body and bottom border |
 
@@ -843,7 +847,7 @@ one Right step moves the highlight to Light:
 
 ![`form` select option list](/shots/form-select.svg)
 
-*Open option list: `>` marks the highlighted option and `[x]` the current value; Enter writes the highlight into the field draft (width 64).*
+*Open option list: `→` marks the highlighted option, `●` the current value, and `○` the others; Enter writes the highlight into the field draft (width 64).*
 
 ```ts
 ui.form({

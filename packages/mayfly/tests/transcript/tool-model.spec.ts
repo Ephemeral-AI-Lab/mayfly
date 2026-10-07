@@ -18,7 +18,7 @@ describe('ToolModelComponent', () => {
     const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'bounded', name: 'bounded', call: { kind: 'code', code: rows }, result: { kind: 'code', code: rows } }), renderer)
     const collapsed = component.render(60)
     expect(collapsed).toHaveLength(12)
-    expect(collapsed.at(-1)).toBe('... (209 more lines, 220 total, ctrl+o to expand)')
+    expect(collapsed.at(-1)).toBe('... (209 more lines, 220 total, Ctrl+O to expand)')
     // Out of Ctrl-O's reach the hint states the fold without naming the key.
     component.setScope({ hint: false })
     expect(component.render(60).at(-1)).toBe('... (209 more lines, 220 total)')
@@ -31,7 +31,7 @@ describe('ToolModelComponent', () => {
   it('keeps a plain-text result to three rows and skips a settled structured call when expanded', () => {
     const text = Array.from({ length: 5 }, (_, index) => `line ${String(index)}`).join('\n')
     const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'text', name: 'text', call: { kind: 'text', content: 'args' }, result: { kind: 'text', content: text } }), renderer)
-    expect(component.render(60)).toEqual(['line 0', 'line 1', '... (3 more lines, 5 total, ctrl+o to expand)'])
+    expect(component.render(60)).toEqual(['line 0', 'line 1', '... (3 more lines, 5 total, Ctrl+O to expand)'])
     component.setExpanded(true)
     expect(component.render(60)).toEqual(['args', ...text.split('\n')])
     const diff = { kind: 'sections' as const, sections: [{ title: 'a.ts', body: { kind: 'text' as const, content: 'hunk' } }] }

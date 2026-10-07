@@ -198,8 +198,9 @@ ui.fields([
 ui.code(value: string, options?: { language?: string })
 ```
 
-表达代码或预格式化文本，例如补丁片段、命令输出或配置内容。`language` 是
-renderer hint，不保证语法高亮。上面的截图渲染的就是这个节点：
+表达代码或预格式化文本，例如补丁片段、命令输出或配置内容。带可识别的
+`language` 时默认语法高亮：关键字用 `primary`，字符串用 `success`，注释弱化，
+其余为正文色；高亮只覆盖前 12 行且代码不超过 32 KB，超出部分为纯文本。上面的截图渲染的就是这个节点：
 
 ```ts
 ui.code([
@@ -214,15 +215,17 @@ ui.code([
 
 ![`diff` 节点渲染效果](/shots/diff.svg)
 
-*多行 before/after：上下文行原样保留，改动行以 `-`/`+` 标出并铺红/绿背景色带（宽度 64）。*
+*多行 before/after：新旧两列行号，改动行以 `−`/`+` 标出，红/绿色带只铺在代码上（宽度 64）。*
 
 ```ts
 ui.diff(before: string, after: string)
 ```
 
 表达同一内容修改前后的语义对比，例如待确认的编辑。插件提供原始文本，不手工
-添加 diff 颜色：Mayfly 用主题的 `diffRemovedBg`/`diffAddedBg` 色带铺满分配宽度，
-标出删除行与新增行。上面的截图渲染的就是这个节点：
+添加 diff 颜色：Mayfly 画出新旧两列弱化行号（以 `│` 结尾），删除行与新增行以
+`−`/`+` 标出，并用主题的 `diffRemovedBg`/`diffAddedBg` 色带铺在代码上（从不铺在行号上）；
+每处改动保留一行上下文，跳过的未改动行显示为一个弱化的 `⋯`，过长的行以 `…` 结尾。
+上面的截图渲染的就是这个节点：
 
 ```ts
 ui.diff(
@@ -451,9 +454,9 @@ ui.surface({
 | --- | --- |
 | `title` | 主标题 |
 | `subtitle` | 标题后的弱化说明行 |
-| `badges` | 使用 span tone/emphasis 的徽标行 |
-| `chrome` | 边框意图；默认 `none` |
-| `padding` | 内容侧留白级别；默认 `0` |
+| `badges` | 使用 span tone/emphasis 的徽标，位于标题规则线右侧（窄时先省略） |
+| `chrome` | 边框意图；默认 `none`。`overlay` 与 `surface` 都是圆角框，标题嵌在顶部规则线里（`╭ 标题 ─── 徽标 ╮`），`overlay` 用焦点边框色，`surface` 用安静边框色；`lane` 只有规则线；`none` 是粗体标题 |
+| `padding` | 内容侧留白级别；默认 `0`。带框的 chrome 在边框内至少保留一列 |
 | `child` | 必填正文 |
 | `footer` | 可选尾部节点，位于正文与底边之间 |
 
@@ -783,7 +786,7 @@ Escape 放弃打开的列表并停在当前字段；Tab 应用高亮选项（或
 
 ![`form` 的 select 选项列表](/shots/form-select.svg)
 
-*打开的选项列表：`>` 标记高亮项，`[x]` 标记当前值；Enter 把高亮项写入 field draft（宽度 64）。*
+*打开的选项列表：`→` 标记高亮项，`●` 标记当前值、`○` 标记其余选项；Enter 把高亮项写入 field draft（宽度 64）。*
 
 ```ts
 ui.form({

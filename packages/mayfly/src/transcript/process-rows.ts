@@ -105,7 +105,7 @@ export class TurnHeaderComponent implements MayflyComponent {
       ...(item.toolCalls === 0 ? [] : [t(item.toolCalls === 1 ? '{count} tool call' : '{count} tool calls', { count: item.toolCalls })]),
       ...(item.subagents === 0 ? [] : [t(item.subagents === 1 ? '{count} subagent' : '{count} subagents', { count: item.subagents })]),
     ]
-    const tail = `${counts.map(count => ` · ${count}`).join('')}${item.hint ? ` · ${t('ctrl+o to expand')}` : ''}`
+    const tail = `${counts.map(count => ` · ${count}`).join('')}${item.hint ? ` · ${t('Ctrl+O to expand')}` : ''}`
     const key = `${String(width)}:${String(item.folded)}:${label}:${tail}`
     if (this.cache?.key === key) return this.cache.rows
     const row = `${colors.muted(marker(item.folded))}${paint(label)}${colors.textMuted(tail)}`

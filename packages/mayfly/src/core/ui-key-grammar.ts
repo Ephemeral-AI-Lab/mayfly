@@ -136,7 +136,7 @@ function push(bindings: GrammarBinding[], match: GrammarMatch, intent: GrammarIn
 function accelerators(bindings: GrammarBinding[], state: GrammarState, printable: boolean): void {
   for (const keyed of state.keyed) {
     if (!printable && printableKey(keyed.key)) continue
-    push(bindings, { kind: 'key', key: keyed.key }, { kind: 'keyed', control: keyed.control }, { id: `keyed:${String(keyed.control)}`, keys: displayKey(keyed.key), label: keyed.label, priority: PRIORITY.accelerator })
+    push(bindings, { kind: 'key', key: keyed.key }, { kind: 'keyed', control: keyed.control }, { id: `keyed:${String(keyed.control)}`, keys: hintNotation([keyed.key]), label: keyed.label.toLowerCase(), priority: PRIORITY.accelerator })
   }
 }
 
@@ -155,12 +155,13 @@ function tabSwitches(bindings: GrammarBinding[], state: GrammarState, hinted: bo
   push(bindings, action(ACTION_NEXT_TAB), { kind: 'tab-switch', delta: 1 })
 }
 
-function navigation(bindings: GrammarBinding[], state: GrammarState, directions: readonly Direction[], label: string): void {
+/** Binds the directions; the hint names only `shown` (the kit's pair), since the other arrows move too. */
+function navigation(bindings: GrammarBinding[], state: GrammarState, directions: readonly Direction[], label: string, shown: readonly Direction[] = directions): void {
   const ids: Readonly<Record<Direction, string>> = { up: ACTION_MOVE_UP, down: ACTION_MOVE_DOWN, left: ACTION_SEGMENT_LEFT, right: ACTION_SEGMENT_RIGHT }
   const hinted = state.siblings > 1 || state.groups > 1
   for (const [index, direction] of directions.entries()) {
     push(bindings, action(ids[direction]), { kind: 'navigate', direction },
-      index === 0 && hinted ? { id: 'navigate', label, priority: PRIORITY.navigate, actions: directions.map(entry => ids[entry]) } : undefined)
+      index === 0 && hinted ? { id: 'navigate', label, priority: PRIORITY.navigate, actions: shown.map(entry => ids[entry]) } : undefined)
   }
 }
 
@@ -177,7 +178,7 @@ const MOVEMENTS: readonly (readonly [string, ListMovement])[] = [
 ]
 
 function scrollKeys(bindings: GrammarBinding[]): void {
-  const hint = { id: 'navigate', label: 'scroll', priority: PRIORITY.primary, actions: [ACTION_MOVE_UP, ACTION_MOVE_DOWN, ACTION_PAGE_UP, ACTION_PAGE_DOWN], compact: 'PgUp/PgDn' }
+  const hint = { id: 'navigate', label: 'scroll', priority: PRIORITY.navigate, actions: [ACTION_MOVE_UP, ACTION_MOVE_DOWN] }
   for (const [index, [id, movement]] of MOVEMENTS.entries()) push(bindings, action(id), { kind: 'scroll', movement }, index === 0 ? hint : undefined)
 }
 
@@ -207,8 +208,8 @@ function picker(bindings: GrammarBinding[], state: GrammarState, control: Extrac
 function rowBindings(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
   const searching = state.list?.searching === true
   if (control.multiple) {
-    push(bindings, action(ACTION_TOGGLE), { kind: 'toggle-row' }, { id: 'activate', label: 'toggle / confirm', priority: PRIORITY.primary, actions: [ACTION_TOGGLE, ACTION_SUBMIT], compact: 'Space/Enter' })
-    push(bindings, action(ACTION_SUBMIT), { kind: 'commit' })
+    push(bindings, action(ACTION_TOGGLE), { kind: 'toggle-row' }, { id: 'toggle', label: 'toggle', priority: PRIORITY.adjust, actions: [ACTION_TOGGLE] })
+    push(bindings, action(ACTION_SUBMIT), { kind: 'commit' }, { id: 'activate', label: control.role === 'browse' ? 'open' : 'choose', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
   } else {
     push(bindings, action(ACTION_SUBMIT), { kind: 'accept' }, { id: 'activate', label: control.role === 'browse' ? 'open' : 'choose', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
     if (control.tree && !searching) push(bindings, action(ACTION_TOGGLE), { kind: 'branch' }, { id: 'branch', label: 'branch', priority: PRIORITY.adjust, actions: [ACTION_TOGGLE] })
@@ -271,7 +272,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     if (list.query || list.searching) push(bindings, action(ACTION_CLEAR_SEARCH), { kind: 'search-clear' }, { id: 'clear', label: 'clear', priority: PRIORITY.secondary, actions: [ACTION_CLEAR_SEARCH] })
     if (!list.searching) push(bindings, action(ACTION_FILTER), { kind: 'search-start' })
   }
-  if (control.kind === 'scroll') push(bindings, action(ACTION_EXPAND), { kind: 'expand' }, { id: 'expand', label: 'expand', priority: PRIORITY.adjust + 10, actions: [ACTION_EXPAND] })
+  if (control.kind === 'scroll') push(bindings, action(ACTION_EXPAND), { kind: 'expand' }, { id: 'expand', label: 'expand', priority: PRIORITY.adjust, actions: [ACTION_EXPAND] })
   // Printable accelerators never pre-empt a control that consumes typed text.
   accelerators(bindings, state, control.kind !== 'text' && list?.filterable !== true)
   if (list?.numbered !== undefined && !list.searching && list.numbered.count > 0) {
@@ -306,15 +307,15 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       push(bindings, action(ACTION_SUBMIT), control.enterSubmits ? { kind: 'enter-submits' } : { kind: 'text-begin' },
         { id: 'activate', label: control.enterSubmits ? 'submit' : 'edit', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       push(bindings, { kind: 'text', space: true }, { kind: 'text-begin' })
-      navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields')
+      navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'])
       break
     case 'select':
       navigation(bindings, state, ['up', 'down'], 'fields')
       if (!control.multiple && control.adjustable) {
-        push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'select-cycle', delta: -1 }, { id: 'adjust', label: 'adjust', priority: PRIORITY.primary, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
+        push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'select-cycle', delta: -1 }, { id: 'adjust', label: 'adjust', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
         push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'select-cycle', delta: 1 })
       }
-      push(bindings, action(ACTION_SUBMIT), { kind: 'picker-open' }, { id: 'activate', label: 'pick', priority: control.multiple ? PRIORITY.primary : PRIORITY.adjust, actions: control.multiple ? [ACTION_SUBMIT, ACTION_TOGGLE] : [ACTION_SUBMIT] })
+      push(bindings, action(ACTION_SUBMIT), { kind: 'picker-open' }, { id: 'activate', label: 'pick', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       if (control.multiple) push(bindings, action(ACTION_TOGGLE), { kind: 'picker-open' })
       navigation(bindings, state, ['left', 'right'], 'fields')
       break
@@ -331,14 +332,29 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     case 'cancel': {
       const label = control.kind === 'toggle' ? 'toggle' : control.kind === 'submit' ? 'submit' : control.kind === 'field-action' ? 'apply'
         : control.kind === 'cancel' ? 'cancel' : control.decision ? 'confirm' : 'run'
-      push(bindings, action(ACTION_SUBMIT), { kind: 'activate' }, { id: 'activate', label, priority: PRIORITY.primary, actions: control.kind === 'toggle' ? [ACTION_TOGGLE, ACTION_SUBMIT] : [ACTION_SUBMIT], ...(control.kind === 'toggle' ? { compact: 'Enter' } : {}) })
+      push(bindings, action(ACTION_SUBMIT), { kind: 'activate' }, { id: 'activate', label, priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       push(bindings, action(ACTION_TOGGLE), { kind: 'activate' })
-      navigation(bindings, state, ['up', 'down', 'left', 'right'], control.kind === 'action' || control.kind === 'cancel' ? 'actions' : 'fields')
+      // The kit names the pair that moves along the row: `←/→ actions` (`No/Yes` on a decision), `↑/↓ fields`.
+      if (control.kind === 'action' || control.kind === 'cancel') navigation(bindings, state, ['up', 'down', 'left', 'right'], control.kind === 'action' && control.decision ? 'No/Yes' : 'actions', ['left', 'right'])
+      else navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'])
       break
     }
   }
   push(bindings, { kind: 'any' }, { kind: 'swallow' })
   return bindings
+}
+
+/**
+ * The notation of a hint's keys (spec §3.2): a printable key reads as itself (`c copy`), others as their display names,
+ * and a pair that shares a modifier names it once (`Alt+←/→`).
+ * @param keys - the bound key ids, in order.
+ * @returns the keys as the hint row writes them.
+ */
+export function hintNotation(keys: readonly string[]): string {
+  const shown = keys.map(key => key.length === 1 && printableKey(key) ? key : displayKey(key))
+  const modifier = /^(?:Alt|Ctrl)\+/u.exec(shown[0] ?? '')?.[0]
+  if (shown.length === 2 && modifier !== undefined && shown[1]!.startsWith(modifier)) return `${shown[0]!}/${shown[1]!.slice(modifier.length)}`
+  return shown.join('/')
 }
 
 /** The first hint for each id, in binding order. */

@@ -10,10 +10,17 @@
 import type { MayflyContentNode, MayflyInlineSpan, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import { alignDiffLines, paintDiffRows } from './diff-align.ts'
 import { clampRowsToWidth } from './chrome.ts'
+import { highlightable, highlightCodeLines } from './highlight.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** Maximum source characters accepted from one dynamic view render. */
 export const PLUGIN_VIEW_MAX_CHARS = 20_000
+
+/** A code block highlights at most this many rows; the rest are plain text. */
+export const CODE_HIGHLIGHT_MAX_ROWS = 12
+
+/** A code block larger than this many UTF-8 bytes is plain text. */
+export const CODE_HIGHLIGHT_MAX_BYTES = 32 * 1024
 
 /** Maximum recursive `sections` nesting accepted from a dynamic view. */
 export const PLUGIN_VIEW_MAX_DEPTH = 8
@@ -101,13 +108,16 @@ function renderView(
     case 'code': {
       const language = view.language === undefined ? '' : checkedText(view.language, 'code language')
       const heading = language.length === 0 ? [] : [colors.muted(language)]
-      const body = checkedText(view.code, 'code content').split('\n')
-        .flatMap(line => wrapped(colors.mdCodeBlock(line), width, components))
+      const source = checkedText(view.code, 'code content')
+      const lines = source.split('\n')
+      // Highlighting is on by default and capped (roadmap §2.2 row 14): the first rows of a block up to 32 KB.
+      const highlighted = Buffer.byteLength(source, 'utf8') > CODE_HIGHLIGHT_MAX_BYTES || !highlightable(language) ? [] : highlightCodeLines(lines.slice(0, CODE_HIGHLIGHT_MAX_ROWS).join('\n'), language, { base: colors.text, keyword: colors.primary, string: colors.success, comment: colors.muted })
+      const body = lines.flatMap((line, index) => wrapped(highlighted[index] ?? colors.text(line), width, components))
       return [...heading, ...body]
     }
     case 'diff': {
-      // The painter wraps under its sign gutter and pads each change band to
-      // the full width, so it takes the components service's width truth.
+      // The painter clips each line and pads each change band to the full
+      // width, so it takes the components service's width truth.
       const before = checkedText(view.before, 'diff before')
       const after = checkedText(view.after, 'diff after')
       return paintDiffRows(alignDiffLines(before, after), width, components, colors)

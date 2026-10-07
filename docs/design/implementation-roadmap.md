@@ -126,6 +126,7 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ17 | 1 | Captions mention `▌` as the selection mark | The muted bold `→` (spec §2.2) | Stale caption |
 | Δ18 | all | The hint words of the kit's `hintFragments` | The same words, including `pick` on a focused select | The kit is the oracle; spec §3.2's table gains `pick` when it is next edited |
 | Δ19 | 24 | `n new` on every workspace | `n` acts on the current workspace; other rows carry `unavailableActions.new` with a reason, unless the Harness can start a session in another directory (verify in slice 2b) | Process cwd |
+| Δ20 | all | The kit's word wrap drops a line's leading spaces and does not reopen the style on a wrapped continuation | The renderer keeps both (scene 7's todo row, scene 8's indented code line, wrapped captions) | Prototype wrap artifact; approved by the reviewer |
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and
@@ -510,8 +511,8 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | --- | --- | --- | --- |
 | 1.0 | merged (#99) | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
 | 1.1 | merged (#100) | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
-| 1.2 | not started | `feat/ui-foundation-1-2` | Needs: none |
-| 1.7 | in review (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage; scene 2's walks pending on 1.2 (`tests/design/pending.ts`) |
+| 1.2 | built (#102) | `feat/ui-foundation-1-2` | Six parts; full gate green; scenes 1 p1-p5, 7 p1, 8 p3-p4, 9 p3 pinned and scene 2 matched; Δ20 approved |
+| 1.7 | merged (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage |
 | 1.10a | not started | `feat/ui-foundation-1-10a` | Node slot. Needs: none |
 | 1.9a | not started | `feat/ui-foundation-1-9a` | `ui.image`. Needs: none |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
@@ -646,34 +647,91 @@ non-memoizable subtrees), `ui-compile-cache.spec.ts` (take and keep, the passes,
 **Goal.** Everything already on screen adopts the vocabulary of spec §2, with no contract change.
 **Backlog:** A2, A4 (core), B5, C1, C2 (defaults), D1, D2, G4, G8, G9, G12, G22, H3, R13 (contrast).
 
-| Area | Change | Files |
-| --- | --- | --- |
-| Chrome | `chrome: 'surface'` draws rounded corners; overlay borders use the focus color, surfaces the quiet border; `lane` is rules only; `none` is a bold title | `core/ui-patterns.ts` (`renderSurfaceHead`, `renderSurfaceTail`), `core/chrome.ts` |
-| Marks | Choose lists and pickers draw `●`/`○` (`◐` for a partial parent), never `[x] [ ]`; toggles keep `[on]`/`[off]`; one muted `[current]`; the cursor `→` shows only while its list has focus; a selection list keeps a muted bold `→` | `core/ui-patterns.ts`; delete `CURRENT_MARK` and `SELECT_POINTER` in `interaction/symbols.ts`; `theme-switch.ts`, `permission-panel.ts`, `model-commands.ts` |
-| Tabs | The active tab is text color with a heavy `━` underline (dim without focus), never wrapped in `‹ ›` | `core/ui-patterns.ts` |
-| Feedback | A glyph and a word (`✓ ℹ ⚠ ✗`); `✓`/`ℹ` leave after 5 s of visible time, `⚠`/`✗` stay | `core/ui-compiler.ts` (feedback row), `core/ui-interaction-notifications.ts` |
-| Hints | The kit's words and order, `Ctrl+O` notation, ranges `1-3` | `core/ui-key-grammar.ts`, `core/context-hint-locale.ts`, `transcript/hints.ts`, `transcript/locale.ts` |
-| Diff | Old and new numbered gutters; `−`/`+`; `diffRemovedBg`/`diffAddedBg` behind the code only, never the gutter; `⋯` between hunks; long lines end in `…` | `core/diff-align.ts`, `core/plugin-view.ts` |
-| Code | Highlighting on by default, capped at 12 rows and 32 KB | `core/highlight.ts`, `core/plugin-view.ts` |
-| Monochrome | `NO_COLOR` (or a setting) keeps weight only: `primary`, `warning`, `danger` bold, `muted` dim | `core/theme-palette.ts`, the theme modules |
-| Motion | A reduced-motion setting freezes each channel on its first frame | `core/ui-loader-animation.ts` (the one clock of slice 1.1), `interaction/settings.ts` |
-| Glyphs | A `glyphs: 'unicode' \| 'ascii'` setting, defaulting from the locale's charset, applies the table below | `core/chrome.ts`, `core/ui-patterns.ts` |
-| Contrast | A guard spec: every tone token at least 4.5:1 against the background in all five themes | `tests/core/theme-*.spec.ts` |
+It landed in five parts, each green on its own, and a sixth after slice 1.7 merged:
 
-Unicode fallback (a proposal; every replacement is one cell; confirm it at checkpoint A):
+1. **Presentation.** The `mayfly` settings namespace gained a self-contained block: `glyphs` (`auto` \| `unicode` \|
+   `ascii`; `auto` follows the locale's charset, so `LANG=C` is ASCII and an unset locale is Unicode), `monochrome`, and
+   `reducedMotion`; `NO_COLOR` forces monochrome. `core/presentation.ts` resolves them. A theme provider paints with a
+   weight-only palette under monochrome (`primary`, `warning`, `danger`, and strong text bold; `muted`, `textMuted`, and
+   borders dim; no color and no background), and the components service records the presentation it was built for. A
+   settings commit that changes it restarts the live theme provider (`reloadTheme` in `interaction/theme-switch.ts`), so
+   every consumer and every cached row is rebuilt, the way `/theme` works; nothing reads the presentation per paint.
+   `core/glyphs.ts` holds the fallback table. Every static component of a compiled surface converts its painted rows
+   (every replacement is one cell, so the conversion runs after layout), markdown and diagram leaves too; the editor
+   converts its frame but never the text being typed. The loader swaps its spinner for `- \ | /`, and under reduced
+   motion it stays on its first frame without joining the clock.
+2. **Chrome, marks, tabs.** `overlay` and `surface` are one rounded frame with the inset title rule
+   (`╭ Title ─── badge ╮`): the title bold in text color, badges at the right of the rule (dropped first when narrow,
+   then the title ellipsises), the subtitle inside the frame, the overlay in `borderFocus` and the inline surface in
+   `border`, with at least one column of gutter whatever `padding` says. `lane` is a muted `── Title ───` rule and
+   `none` the bold title. A list row is `→ label`: the cursor arrow, bold primary, only while its list has focus, the
+   cursor row's label bold, no selection band. Multiple lists draw `●`/`○` in their own column (`◐` for a partly chosen
+   parent), pickers `●`/`○` for `[x]`/`[ ]`, numbers read `1  label`, badges and details are muted. `CURRENT_MARK`,
+   `SELECT_POINTER`, and `interaction/symbols.ts` are gone: `/theme` and `/permission` show the one muted `[current]` the
+   model picker used. The active tab is `primary` with a heavy `━` underline (bold primary while the strip has focus,
+   muted otherwise), the rest muted; wizard steps read `✓ ● ○` joined by a muted `›`; a strip that does not fit folds to
+   `‹ active next +N ›` (slice 1.5 refines it).
+3. **Feedback and hints.** Feedback is a glyph and words (`feedbackSpans` in `core/ui-interaction-notifications.ts`):
+   `✓`/`ℹ` before a message in text color, `⚠`/`✗` in their own tone, in a surface footer and in the prompt's
+   feedback lane; the 5 s lifetime of `✓` and `ℹ` was already in place. The hint row paints keys in text and labels
+   muted, in the kit's order (navigation, adjustment, digits, the primary operation, accelerators, filter and clear,
+   tabs, groups, `Esc`) and words (`Space toggle · Enter choose`, `←/→ adjust · Enter pick`, `Enter toggle`,
+   `←/→ actions`, `No/Yes` on a decision, `↑/↓ fields`, `↑/↓ scroll · Ctrl+E expand`). `hintNotation` in
+   `core/ui-key-grammar.ts` writes a printable accelerator as itself (`c copy`, labels lowercased) and names a shared
+   modifier once (`Alt+←/→`); the transcript's fold hints and the exit notice write `Ctrl+O` and `Ctrl+C`.
+4. **Diff and code.** `paintDiffRows` draws old and new line-number gutters (muted, ending in `│`), `−`/`+`, and the
+   removed or added band behind the code only; one context line around each change, `⋯` for a skipped run, `…` at the
+   end of a long line, an `@@` header when there is more than one hunk. It takes `start`, `numbered`, `hunkHeader`,
+   `context`, and `maxRows` as painter options for slice 1.3 to put on the node; `CTX_EDGE_ROWS` became
+   `DIFF_CONTEXT_ROWS`. A code node with a known language is highlighted by default (keywords `primary`, strings
+   `success`, as the kit does; comments muted; every other token class in text color, so no color outside the palette
+   reaches the terminal), for the first 12 rows of a block of at most 32 KB; markdown fences use the same theme.
+5. **Guards and parity.** `tests/core/theme-contrast.spec.ts` checks every tone at 4.5:1 or more against each theme's
+   canvas (dark against the shots canvas `#0A0A0C`, light against white, ocean against `#0E1A2B`, paper against
+   `#F6F0E4`; `auto` is dark or light); light's `accent` and paper's `primary` and `warning` were darkened to pass.
+
+6. **The actions row** (after slice 1.7 landed, scene 2). `renderActions` writes the kit's `actionTokens`: `[ Label ]`
+   primary, `! Label` danger, a declared key as `(c)` (`(Ctrl+Y)` with a modifier), a busy token as `… Label` and a
+   disabled one as `Label — reason`, both muted and without their key. Tokens sit three spaces apart after a one-column
+   indent; the focused token is inverted with a space either side and the cursor marker takes the column before it.
+   A row that does not fit keeps the tokens that do (at least one) and ends with a muted `+N`. Scene 2's five walks
+   match the prototype cell by cell (the copy walks through the host's reply as feedback under the actions), with the
+   narrow walk's wrapped caption under Δ20.
+
+Unicode fallback, as built (every replacement is one cell; the right half extends the roadmap's proposal with the
+arrows and marks the painters also draw; confirm it at checkpoint A):
 
 | Unicode | ASCII | Unicode | ASCII |
 | --- | --- | --- | --- |
-| `→` | `>` | `■` `?` `⚠` `ℹ` | `#` `?` `!` `i` |
+| `→` `←` `↑` `↓` | `>` `<` `^` `v` | `■` `?` `⚠` `ℹ` | `#` `?` `!` `i` |
 | `▸` `▾` | `+` `-` | `⎿` `│` | `L` `:` |
 | `●` `○` `◐` | `*` `o` `~` | `━` `─` | `=` `-` |
 | `‹` `›` | `<` `>` | `▰` `▱` | `#` `.` |
-| `✓` `✗` `⊘` | `v` `x` `/` | `╭` `╮` `╰` `╯` | `+` `+` `+` `+` |
+| `✓` `✗` `✕` `⊘` | `v` `x` `x` `/` | `╭╮╰╯┌┐└┘├┤` | `+` |
 | `░` `▒` `▓` `█` | `.` `:` `*` `#` | spinner frames | `-` `\` `\|` `/` |
+| `−` `⋯` `•` | `-` `:` `*` | `✻` `»` `⏵` `⇥` | `*` `>` `>` `>` |
 
-Scenes: 1 (pages 1-5), 7 p1, 8 p3-p4, 9 p3. At checkpoint A: open `/model`, `/settings`, `/permission`, `/theme`,
-`/status`, and an edit approval at 120 and 60 columns; `NO_COLOR=1 dsh --profile mayfly-ui-foundation`; every shot
-refreshed.
+Parity. `tests/design/visual-language.spec.ts` pins scene 1 pages 1 (its first list) to 5, scene 7 page 1, scene 8
+pages 3 (the code) and 4 (numbered on and off, through the painter options), and scene 9 page 3, with the helpers of
+`tests/design/scene.ts`. The parity mapping reads a frame's `border`/`borderFocus`, `textMuted`, `textStrong`, and the
+diff tokens as the prototype tones they draw, and strips pi-tui's cursor marker as the terminal does.
+`tests/design/pending.ts` is the pending-parity ledger: scene 1 page 1 below its first list (1.4, 1.6), the default
+loader glyph (1.3), scene 1 page 6 (1.8b), scene 8's markdown and its demo `h` toggle (1.3). **Δ20 is approved** (§2.3):
+the kit's word wrap drops a line's leading spaces and does not reopen a style on a wrapped continuation,
+while the renderer keeps both (scene 7's todo row, scene 8's indented code line, wrapped captions).
+
+Choices this slice made where the text left room: `glyphs` has an `auto` value, because a schema default cannot follow
+the locale; ASCII mode converts the content of compiled surfaces too (a terminal that cannot draw a glyph cannot draw
+it in content), but never typed text; the shot runner keeps the C locale with a UTF-8 charset so the shots show the
+design's glyphs. Not done here: the Website's prose and key reference still write `Ctrl-O` (the key reference moves with
+slice 1.7); a `detailSpans` detail keeps its muted dash; select and number fields keep their field painter (1.6).
+
+Work report against the slice 1.0 baseline (one step; validated / compiled / rows; median wall clock): W1 2 / 2 / 2,
+1.0 ms; W2 0 / 0 / 1, 0.16 ms; W3 0 / 0 / 2, 0.69 ms (baseline 0.6 ms); W4 1 / 1 / 0, 1.3 ms (baseline 3.6 ms); W5 0 /
+0 / 0; W6 44 / 12 / 32; W7 0 / 0 / 9; W8 11 / 3 / 9; every count within its budget.
+
+At checkpoint A: open `/model`, `/settings`, `/permission`, `/theme`, `/status`, and an edit approval at 120 and 60
+columns; `NO_COLOR=1 dsh --profile mayfly-ui-foundation`; `glyphs: ascii` and `reducedMotion: true` in `/settings`.
 
 #### 1.3 Content, layout, and motion
 
@@ -812,8 +870,8 @@ slice landed in six parts, each green on its own:
 
 Scene 2: `tests/design/scene-02-actions.spec.ts` replays every golden walk cell by cell and checks the walks' key
 behavior (the accelerator and the hidden key run from anywhere, arrows run nothing, the hint row names the effective
-keys). All five walks wait for the visual language of slice 1.2 (chrome, action tokens, the feedback row, the kit's
-hint words and the lowercase `c` notation) and are listed in `tests/design/pending.ts`. Scene 32 follows with slice 2f.
+keys). With the visual language of slice 1.2 (chrome, action tokens, the feedback row, the kit's hint words and the
+lowercase `c` notation) merged, all five walks match and no scene 2 walk is pending. Scene 32 follows with slice 2f.
 
 #### 1.8 Patterns and the arm delay
 

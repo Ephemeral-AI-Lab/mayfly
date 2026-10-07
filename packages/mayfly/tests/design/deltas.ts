@@ -33,4 +33,10 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
   { id: 'Δ17', scenes: [1], summary: 'The caption mentions ▌ as the selection mark; the mark is the muted bold →', reason: 'stale caption, spec 2.2' },
   { id: 'Δ18', scenes: Array.from({ length: 32 }, (_, index) => index + 1), summary: 'The kit hint words, including pick on a focused select', reason: 'the kit is the oracle' },
   { id: 'Δ19', scenes: [24], summary: 'n acts on the current workspace; other rows carry unavailableActions.new', reason: 'process cwd' },
+  {
+    id: 'Δ20',
+    scenes: Array.from({ length: 32 }, (_, index) => index + 1),
+    summary: "The kit's word wrap drops a line's leading spaces and does not reopen the style on a wrapped continuation; the renderer keeps both",
+    reason: 'prototype wrap artifact; approved by the reviewer',
+  },
 ]

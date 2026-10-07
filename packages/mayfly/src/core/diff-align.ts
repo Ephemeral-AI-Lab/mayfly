@@ -6,8 +6,8 @@
  * prefix/suffix trim that absorbs the presenter's duplicated context, an LCS
  * core for the small middle, and a size guard that degrades oversized inputs
  * to whole-block removal plus addition instead of an unbounded DP table.
- * Painting wraps each line under a two-column sign gutter and shades removed
- * and added lines with full-width background bands.
+ * Painting numbers both sides in a muted gutter and shades only the code of
+ * removed and added lines (spec §4.1).
  *
  * @module @ephemeral-ai/mayfly/core/diff-align
  */
@@ -23,20 +23,17 @@ export type DiffOp =
 /** Either middle side above this many lines skips the LCS and renders as whole blocks. */
 export const DIFF_ALIGN_MAX_ROWS = 1200
 
-/** Context rows kept at each edge of a long unchanged run before eliding the middle. */
-export const CTX_EDGE_ROWS = 3
+// oxlint-disable-next-line no-control-regex -- ESC (\x1b) matches the truncator's closing SGR resets
+const TRAILING_RESET = /(?:\x1b\[0m)+$/u
 
-/** Columns of the `- `/`+ `/`  ` gutter ahead of each line's text. */
-const GUTTER_COLUMNS = 2
-
-/** Narrowest text column the gutter may leave: one wide (CJK, emoji) glyph. */
-const MIN_TEXT_COLUMNS = 2
+/** Unchanged lines a diff keeps around each change unless told otherwise (spec §3.2: default 1, at most 3). */
+export const DIFF_CONTEXT_ROWS = 1
 
 /** The palette slice a diff panel paints with. */
-export type DiffPaintColors = Pick<MayflySemanticColors, 'text' | 'diffAdded' | 'diffRemoved' | 'diffAddedBg' | 'diffRemovedBg' | 'diffMeta'>
+export type DiffPaintColors = Pick<MayflySemanticColors, 'text' | 'diffAdded' | 'diffRemoved' | 'diffAddedBg' | 'diffRemovedBg' | 'diffMeta' | 'diffGutter'>
 
-/** The width truth a diff panel wraps and pads with. */
-export type DiffWidthHelpers = Pick<MayflyComponents, 'wrapText' | 'visibleWidth'>
+/** The width truth a diff panel clips and pads with. */
+export type DiffWidthHelpers = Pick<MayflyComponents, 'truncateToWidth' | 'visibleWidth'>
 
 /** Split whole-file text into lines; a trailing terminator adds no empty line. */
 function splitLines(text: string): string[] {
@@ -131,63 +128,99 @@ export function diffChangeCounts(before: string, after: string): { readonly adde
   return { added, removed }
 }
 
+/** How a diff paints beyond its alignment; every field is optional. */
+export interface DiffPaintOptions {
+  /** The first line number of both sides (default 1). */
+  readonly start?: number
+  /** Old and new line-number gutters (default true). */
+  readonly numbered?: boolean
+  /** An `@@` header over the rows (default: only when the diff has more than one hunk). */
+  readonly hunkHeader?: boolean
+  /** Unchanged lines kept around each change (default {@link DIFF_CONTEXT_ROWS}). */
+  readonly context?: number
+  /** Rows painted before `… +N rows · Ctrl+O` (default: all). */
+  readonly maxRows?: number
+}
+
+interface NumberedRow {
+  readonly old?: number
+  readonly new?: number
+  readonly sign: '' | '-' | '+'
+  readonly text: string
+}
+
+function numberedRows(ops: readonly DiffOp[], start: number): NumberedRow[] {
+  let old = start
+  let next = start
+  return ops.map(op => op.type === 'ctx' ? { old: old++, new: next++, sign: '' as const, text: op.text }
+    : op.type === 'del' ? { old: old++, sign: '-' as const, text: op.text } : { new: next++, sign: '+' as const, text: op.text })
+}
+
 /**
- * Paint aligned ops as terminal rows no wider than `width`: `  context`,
- * `- removed`, `+ added`, each wrapped under its sign gutter, with a long
- * unchanged run elided to its edges around a `⋯ N unchanged lines` marker.
- * Colored removals and additions sit on a background band padded to the full
- * width, with the sign in the diff color and the text in the body color.
- * Tabs expand to the three columns the width truth measures, so a band has
- * no terminal tab-stop gaps. The gutter is dropped when it would leave the
- * text less than one wide glyph.
+ * Paint aligned ops as terminal rows no wider than `width` (spec §4.1): an old and a new line-number gutter (muted,
+ * ending in `│`), then `−` or `+` and the code. A removed or added line keeps its band behind the code only, never the
+ * gutter, in the removed or added tone; an unchanged line is plain. Only {@link DiffPaintOptions.context} unchanged
+ * lines stay around each change, a run of skipped lines is one muted `⋯`, a long line ends in `…`, and tabs expand to
+ * three columns so a band has no tab-stop gaps.
  * @param ops - the alignment to paint.
  * @param width - the assigned column width.
- * @param helpers - the width truth used to wrap and pad.
- * @param colors - the diff palette; omitted yields uncolored, unpadded rows.
- * @returns the visual rows, coloring only the removed/added/marker rows.
+ * @param helpers - the width truth used to clip and pad.
+ * @param colors - the diff palette; omitted yields uncolored rows.
+ * @param options - numbering, context, header, and row budget.
+ * @returns the visual rows.
  */
-export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: DiffWidthHelpers, colors?: DiffPaintColors): string[] {
+export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: DiffWidthHelpers, colors?: DiffPaintColors, options: DiffPaintOptions = {}): string[] {
   const columns = Math.max(1, width)
-  const gutter = columns >= GUTTER_COLUMNS + MIN_TEXT_COLUMNS ? GUTTER_COLUMNS : 0
-  const segments = (text: string, available: number): string[] => helpers.wrapText(text.replace(/\t/gu, '   '), available)
-  const rows: string[] = []
-  const pushCtx = (text: string): void => {
-    for (const segment of segments(text, columns - gutter)) rows.push(`${' '.repeat(gutter)}${segment}`)
+  const paint = (tone: ((text: string) => string) | undefined, text: string): string => tone === undefined ? text : tone(text)
+  const start = options.start ?? 1
+  const rows = numberedRows(ops, start)
+  const context = Math.max(0, options.context ?? DIFF_CONTEXT_ROWS)
+  const keep = new Set<number>()
+  rows.forEach((row, index) => { if (row.sign !== '') for (let offset = -context; offset <= context; offset += 1) keep.add(index + offset) })
+  const hunks = rows.filter((_, index) => keep.has(index) && !keep.has(index - 1)).length
+  const digits = Math.max(3, ...rows.map(row => String(Math.max(row.old ?? 0, row.new ?? 0)).length))
+  // A clipped painted line keeps its band open: the truncator's closing reset becomes a foreground reset after the `…`.
+  const clip = (text: string, room: number): string => {
+    if (room <= 0) return ''
+    if (helpers.visibleWidth(text) <= room) return text
+    const cut = helpers.truncateToWidth(text, room - 1, '').replace(TRAILING_RESET, '')
+    return text.includes('\x1b') ? `${cut}…\x1b[39m` : `${cut}…`
   }
-  const pushChange = (op: Exclude<DiffOp, { readonly type: 'ctx' }>): void => {
-    const sign = op.type === 'del' ? '-' : '+'
-    for (const [index, segment] of segments(op.text, columns - gutter).entries()) {
-      const mark = gutter === 0 ? '' : index === 0 ? `${sign} ` : '  '
-      if (colors === undefined) {
-        rows.push(`${mark}${segment}`)
-        continue
-      }
-      const band = op.type === 'del' ? colors.diffRemovedBg : colors.diffAddedBg
-      const signColor = op.type === 'del' ? colors.diffRemoved : colors.diffAdded
-      const fill = ' '.repeat(Math.max(0, columns - gutter - helpers.visibleWidth(segment)))
-      rows.push(band(`${index === 0 && gutter > 0 ? signColor(mark) : mark}${colors.text(segment)}${fill}`))
-    }
+  const out: string[] = []
+  if (options.hunkHeader ?? hunks > 1) {
+    const oldCount = rows.filter(row => row.old !== undefined).length
+    const newCount = rows.filter(row => row.new !== undefined).length
+    out.push(clip(paint(colors?.diffMeta, `@@ -${String(start)},${String(oldCount)} +${String(start)},${String(newCount)} @@`), columns))
   }
-  let ctxRun: string[] = []
-  const flushCtx = (): void => {
-    if (ctxRun.length <= CTX_EDGE_ROWS * 2) {
-      for (const text of ctxRun) pushCtx(text)
-    } else {
-      for (const text of ctxRun.slice(0, CTX_EDGE_ROWS)) pushCtx(text)
-      const marker = `⋯ ${String(ctxRun.length - CTX_EDGE_ROWS * 2)} unchanged lines`
-      for (const segment of segments(marker, columns)) rows.push(colors === undefined ? segment : colors.diffMeta(segment))
-      for (const text of ctxRun.slice(-CTX_EDGE_ROWS)) pushCtx(text)
-    }
-    ctxRun = []
-  }
-  for (const op of ops) {
-    if (op.type === 'ctx') {
-      ctxRun.push(op.text)
+  let skipped = false
+  let shown = 0
+  for (const [index, row] of rows.entries()) {
+    if (!keep.has(index)) {
+      if (!skipped) out.push(clip(`  ${paint(colors?.diffMeta, '⋯')}`, columns))
+      skipped = true
       continue
     }
-    flushCtx()
-    pushChange(op)
+    skipped = false
+    if (options.maxRows !== undefined && shown >= options.maxRows) {
+      const remaining = rows.filter((_, later) => later >= index && keep.has(later)).length
+      out.push(clip(`  ${paint(colors?.diffMeta, `… +${String(remaining)} rows · Ctrl+O`)}`, columns))
+      break
+    }
+    shown += 1
+    const number = (value: number | undefined): string => value === undefined ? ' '.repeat(digits) : String(value).padStart(digits)
+    const gutter = options.numbered === false ? '' : `${paint(colors?.diffGutter, `${number(row.old)} ${number(row.new)} │`)} `
+    const head = `  ${gutter}`
+    const room = Math.max(0, columns - helpers.visibleWidth(head))
+    const text = row.text.replace(/\t/gu, '   ')
+    if (row.sign === '') {
+      out.push(clip(`${head}  ${paint(colors?.text, text)}`, columns))
+      continue
+    }
+    const tone = row.sign === '-' ? colors?.diffRemoved : colors?.diffAdded
+    const code = clip(`${paint(tone, row.sign === '-' ? '−' : '+')} ${paint(tone, text)}`, room)
+    const band = row.sign === '-' ? colors?.diffRemovedBg : colors?.diffAddedBg
+    const fill = band === undefined ? '' : ' '.repeat(Math.max(0, room - helpers.visibleWidth(code)))
+    out.push(room === 0 ? clip(head, columns) : `${head}${paint(band, `${code}${fill}`)}`)
   }
-  flushCtx()
-  return rows
+  return out
 }

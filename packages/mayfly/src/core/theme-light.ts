@@ -18,7 +18,7 @@ export const LIGHT_FOREGROUNDS = {
   textStrong: '#0a0c10',
   muted: '#6a737d',
   textMuted: '#8c959f',
-  accent: '#0a9db0',
+  accent: '#087f90',
   primary: '#0969da',
   border: '#6e7781',
   borderFocus: '#9a6700',

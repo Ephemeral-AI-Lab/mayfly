@@ -3,12 +3,21 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { admitNotificationMessage, UiNotificationOwner, UiNotificationStore } from '../../src/core/ui-interaction-notifications.ts'
+import { admitNotificationMessage, feedbackSpans, UiNotificationOwner, UiNotificationStore } from '../../src/core/ui-interaction-notifications.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { createInteractionNotificationOwner, currentNotificationScope } from '../../src/interaction/notifications.ts'
 
 const app = { kind: 'app' as const, targetId: 'test' }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
+describe('feedback spans', () => {
+  it('pairs every severity with its glyph, and keeps quiet messages in text color', () => {
+    expect(feedbackSpans('success', 'Saved')).toEqual([{ text: '✓ ', tone: 'success' }, { text: 'Saved' }])
+    expect(feedbackSpans('info', 'Resumed')).toEqual([{ text: 'ℹ ', tone: 'primary' }, { text: 'Resumed' }])
+    expect(feedbackSpans('warning', 'Low')).toEqual([{ text: '⚠ ', tone: 'warning' }, { text: 'Low', tone: 'warning' }])
+    expect(feedbackSpans('error', 'Failed')).toEqual([{ text: '✗ ', tone: 'danger' }, { text: 'Failed', tone: 'danger' }])
+  })
+})
 
 describe('notification records', () => {
   it('admits bounded text and degrades invalid messages and details', () => {

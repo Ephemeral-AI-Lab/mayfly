@@ -23,7 +23,7 @@ describe('key grammar', () => {
       { control: 2, key: 'ctrl+r', label: 'Run' },
     ] }))
     expect(bindings.map(binding => binding.intent.kind)).toEqual(['keyed', 'editor'])
-    expect(grammarHints(bindings)).toEqual([{ id: 'keyed:2', keys: 'Ctrl+R', label: 'Run', priority: 96 }])
+    expect(grammarHints(bindings)).toEqual([{ id: 'keyed:2', keys: 'Ctrl+R', label: 'run', priority: 96 }])
   })
 
   it('hints an action with several keys once, at its first key that may fire', () => {

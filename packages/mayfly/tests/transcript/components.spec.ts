@@ -189,7 +189,7 @@ describe('UserMessageComponent', () => {
       '\x1b[1m» \x1b[22m\x1b[1mline 0\x1b[22m',
       '  \x1b[1mline 1\x1b[22m',
       '  \x1b[1mline 2\x1b[22m',
-      '  ... (8 more lines, 11 total, ctrl+o to expand)',
+      '  ... (8 more lines, 11 total, Ctrl+O to expand)',
     ])
     expect(USER_PREVIEW_LINES).toBe(3)
     for (const line of lines) expect(components.visibleWidth(line)).toBeLessThanOrEqual(80)
@@ -218,7 +218,7 @@ describe('UserMessageComponent', () => {
       userItem('x'.repeat(400)), COLORS, setup(), presentation({ userFoldChars: 300 }),
     ).render(80)
     expect(lines).toHaveLength(1 + USER_PREVIEW_LINES + 1)
-    expect(lines.at(-1)).toContain('more lines, 6 total, ctrl+o to expand')
+    expect(lines.at(-1)).toContain('more lines, 6 total, Ctrl+O to expand')
   })
 
   it('never refolds an expanded message on resize', () => {
@@ -264,7 +264,7 @@ describe('UserMessageComponent', () => {
       { loadImage: () => new Promise(() => {}) },
     )
     const lines = component.render(80)
-    expect(lines.some(line => line.includes('ctrl+o to expand'))).toBe(true)
+    expect(lines.some(line => line.includes('Ctrl+O to expand'))).toBe(true)
     expect(lines.at(-1)).toBe('  [M][image][/M]')
     await new Promise(resolve => setTimeout(resolve, 0))
   })
@@ -495,7 +495,7 @@ describe('ToolCallComponent', () => {
       '  [M]line 1[/M]',
       '  [M]line 2[/M]',
       '  [M]line 3[/M]',
-      '  [T]... (7 more lines, 10 total, ctrl+o to expand)[/T]',
+      '  [T]... (7 more lines, 10 total, Ctrl+O to expand)[/T]',
     ])
     // Out of Ctrl-O's reach the hint states the fold without the key.
     component.setScope({ hint: false, turnClosed: false })
@@ -519,7 +519,7 @@ describe('ToolCallComponent', () => {
     const component = new ToolCallComponent(item, tagged(), setup())
     const collapsed = component.render(80)
     expect(collapsed[2]).toBe('  [M]src/a.ts · lines 1-2 of 342[/M]')
-    expect(collapsed.at(-1)).toContain('7 more lines, 8 total, ctrl+o to expand')
+    expect(collapsed.at(-1)).toContain('7 more lines, 8 total, Ctrl+O to expand')
 
     component.setExpanded(true)
     const expanded = component.render(80)
@@ -700,7 +700,7 @@ describe('ToolCallComponent', () => {
       '',
       '[E]✗ [/E]$ \x1b[1m[P]pnpm test[/P]\x1b[22m[E] · exit 1[/E][M] · 3s[/M]',
       '  [M]Run tests[/M]',
-      '  [T]... (3 more lines, 6 total, ctrl+o to expand)[/T]',
+      '  [T]... (3 more lines, 6 total, Ctrl+O to expand)[/T]',
       '  [M]out 3[/M]',
       '  [M]out 4[/M]',
       '  [M]out 5[/M]',
@@ -726,7 +726,7 @@ describe('ToolCallComponent', () => {
       name: 'bash', startedAt: 0, terminal: { command: 'cat', output: 'x'.repeat(40_000), exitCode: 0 },
       result: { text: 'x', isError: false, endedAt: 1 },
     }), COLORS, setup())
-    expect(huge.render(80)[2]).toBe('  ... (more output, ctrl+o to expand)')
+    expect(huge.render(80)[2]).toBe('  ... (more output, Ctrl+O to expand)')
     huge.setExpanded(true)
     expect(huge.render(80).at(-1)).toContain('more')
   })

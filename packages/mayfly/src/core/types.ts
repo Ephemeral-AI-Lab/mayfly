@@ -11,6 +11,7 @@
 // replaceable by the theme plugin family outside this package.
 import type {} from '@deepseek-ai/cordis'
 import type { MayflyPagePath } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyPresentation } from './presentation.ts'
 
 /**
  * A renderable Mayfly component. Structurally compatible with pi-tui's
@@ -821,6 +822,11 @@ export interface MayflyTopRuleOptions {
  * re-exported under Mayfly signatures so no consumer imports pi-tui.
  */
 export interface MayflyComponents {
+  /**
+   * The glyph mode, monochrome, and reduced motion this factory was built for; absent means Unicode glyphs, color,
+   * and motion. Read once when the service is built; a change reloads the theme provider and with it this service.
+   */
+  readonly presentation?: MayflyPresentation
   /** Apply renderer-owned strong emphasis without exposing ANSI. */
   strong(text: string): string
   /** Apply renderer-owned italic emphasis without exposing ANSI. */

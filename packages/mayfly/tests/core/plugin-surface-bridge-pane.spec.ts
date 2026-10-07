@@ -764,7 +764,7 @@ describe('direct pane surface renderer', () => {
       calls[1]!.result.resolve()
       await flush()
       const replacementRows = entry(f.runtime.surfaces, 'replace').component.render(30)
-      expect(replacementRows[0]).toContain('╭ Replacement')
+      expect(replacementRows[0]!.replace(/\x1b\[[0-9;]*m/gu, '')).toContain('╭ Replacement')
       expect(replacementRows[1]).toContain('new pane')
       expect(replacementRows.at(-1)).toContain('╰')
       expect((oldComponent as MayflyFocusable).focused).toBe(false)

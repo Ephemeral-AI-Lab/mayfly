@@ -41,7 +41,7 @@ export {
   type MayflyProbeProcess,
 } from './terminal-info.ts'
 export { createTerminalRelease } from './terminal.ts'
-export { alignDiffLines, diffChangeCounts, paintDiffRows, DIFF_ALIGN_MAX_ROWS, CTX_EDGE_ROWS, type DiffOp, type DiffPaintColors, type DiffWidthHelpers } from './diff-align.ts'
+export { alignDiffLines, diffChangeCounts, paintDiffRows, DIFF_ALIGN_MAX_ROWS, DIFF_CONTEXT_ROWS, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffWidthHelpers } from './diff-align.ts'
 export { WindowController, type MayflyWindow } from './window-controller.ts'
 export { visibleWidth } from './width.ts'
 export {
