@@ -5,7 +5,7 @@
  */
 
 import type { MayflyChartNode, MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import { heatmap, plot, renderChart, sparkline, type Color } from 'simple-ascii-chart'
+import { plot, renderChart, type Color } from 'simple-ascii-chart'
 import { paintPluginTone } from './plugin-view.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
@@ -76,7 +76,7 @@ export function formatChartNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(4)))
 }
 
-function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
+function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' | 'heatmap' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
   const result: string[] = []
   if ('title' in node && node.title !== undefined) result.push(colors.textStrong(components.truncateToWidth(node.title, width)))
   switch (node.chart) {
@@ -95,10 +95,6 @@ function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' }>
         result.push(paintPluginTone(colors, toneAt(series.tone, index))(components.truncateToWidth(`${series.label ?? series.id}: ${detail}`, width)))
       }
       break
-    case 'heatmap':
-      for (const [index, row] of node.values.entries()) {
-        result.push(components.truncateToWidth(`${node.rows[index] ?? ''}: ${row.map(value => value ?? '-').join(' ')}`, width))
-      }
   }
   return result
 }
@@ -207,37 +203,61 @@ function sampleValues(values: readonly (number | null)[], size: number): readonl
   return Array.from({ length: size }, (_, index) => values[Math.round(index * (values.length - 1) / Math.max(1, size - 1))]!)
 }
 
+/** The eight heights of a sparkline cell. */
+const SPARK_STEPS = '▁▂▃▄▅▆▇█'
+
+/**
+ * One row: the muted label, a space, and the values as eight-step cells scaled to the tallest value (a missing value is
+ * the lowest cell), in the node's tone (`accent` by default). A series longer than the room is sampled down to it.
+ */
 function renderSparkline(node: Extract<MayflyChartNode, { readonly chart: 'sparkline' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
-  const tone = toneAt(node.tone, 0)
-  const label = node.label === undefined ? [] : [colors.textStrong(components.truncateToWidth(node.label, width))]
-  if (node.values.length === 0) return label
-  const output = applyTheme(sparkline(sampleValues(node.values, width), { color: vendorColor(tone) }), [tone], colors)
-  return [...label, components.truncateToWidth(output, width)]
+  // The label keeps at least one cell for the values, so a row never exceeds its width.
+  const label = node.label === undefined || width < 3 ? '' : `${components.truncateToWidth(node.label, width - 2, '')} `
+  const room = Math.max(1, width - components.visibleWidth(label))
+  const values = sampleValues(node.values, room).map(value => value ?? 0)
+  const top = Math.max(...values, 1)
+  const cells = values.map(value => SPARK_STEPS[Math.min(7, Math.floor((value / top) * 8 - 0.0001))] ?? '▁').join('')
+  if (values.length === 0) return label === '' ? [] : [colors.muted(label.trimEnd())]
+  return [`${label === '' ? '' : colors.muted(label)}${paintPluginTone(colors, toneAt(node.tone, 0))(cells)}`]
 }
 
-function renderHeatmap(node: Extract<MayflyChartNode, { readonly chart: 'heatmap' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
-  const tones = node.levels.map((level, index) => toneAt(level.tone, index))
-  const symbols = ['●', '◆', '■', '▲', '○', '◇'] as const
-  for (const compact of [false, true]) {
-    try {
-      const output = heatmap({
-        columns: node.columns.map(label => compact ? components.truncateToWidth(label, 6) : label),
-        rows: node.rows.map(label => compact ? components.truncateToWidth(label, 8) : label),
-        data: node.values,
-        levels: node.levels.map((level, index) => ({
-          value: level.value,
-          label: level.label,
-          symbol: symbols[index % symbols.length]!,
-          color: vendorColor(tones[index]!),
-        })),
-        ...(compact || node.title === undefined ? {} : { title: components.truncateToWidth(node.title, width) }),
-        legend: !compact,
-      })
-      const themed = rows(applyTheme(output, tones, colors))
-      if (themed.every(row => components.visibleWidth(row) <= width)) return themed
-    } catch { /* the bounded summary below is the defined fallback */ }
-  }
-  return undefined
+/** The glyphs a heatmap level draws with: two cells wide by default (`░░ ▒▒ ▓▓ ██`, `░░ ▒▒ ██` for three levels), one cell in `· ░ ▒ ▓ █`. */
+function heatmapGlyph(index: number, levels: number, oneCell: boolean): string {
+  if (oneCell) return ['·', '░', '▒', '▓', '█'][Math.min(index, 4)]!
+  return levels === 3 ? ['░░', '▒▒', '██'][index]! : ['░░', '▒▒', '▓▓', '██'][Math.min(index, 3)]!
+}
+
+/**
+ * The kit's heatmap: a title, a header of column names (or `columnLabels`, each written where its column starts in
+ * one-cell mode), one row of cells per row label, and the legend row `legend: ░░ low  ▒▒ mid  ██ high`. A value with
+ * no level is blank; rows wider than the room are clipped, not summarized.
+ */
+function renderHeatmap(node: Extract<MayflyChartNode, { readonly chart: 'heatmap' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
+  const oneCell = node.cell === 1
+  const glyph = (index: number): string => heatmapGlyph(index, node.levels.length, oneCell)
+  const painted = (index: number): string => paintPluginTone(colors, node.levels[index]!.tone)(glyph(index))
+  const label = Math.max(4, ...node.rows.map(row => components.visibleWidth(row)))
+  const pad = (text: string, size: number): string => text + ' '.repeat(Math.max(0, size - components.visibleWidth(text)))
+  const labels = node.columnLabels
+  const header = oneCell && labels !== undefined
+    ? (() => {
+        const cells = Array.from({ length: labels.length }, () => ' ')
+        labels.forEach((text, index) => { [...text].forEach((letter, offset) => { if (index + offset < cells.length) cells[index + offset] = letter }) })
+        return cells.join('')
+      })()
+    : (labels ?? node.columns).map(text => pad(text, 4)).join('')
+  const gap = oneCell ? '' : '  '
+  const body = node.rows.map((row, rowIndex) => `${pad(row, label)} ${node.values[rowIndex]!.map(value => {
+    const index = node.levels.findIndex(level => level.value === value)
+    return `${index < 0 ? ' '.repeat(oneCell ? 1 : 2) : painted(index)}${gap}`
+  }).join('')}`.trimEnd())
+  const legend = `${colors.muted('legend:')} ${node.levels.map((level, index) => `${painted(index)} ${level.label}`).join('  ')}`
+  return [
+    ...node.title === undefined ? [] : [colors.muted(node.title)],
+    `${' '.repeat(label + 1)}${header.trimEnd()}`,
+    ...body,
+    legend,
+  ].map(row => components.truncateToWidth(row, width, ''))
 }
 
 /** Render one canonical chart, falling back to a bounded textual summary. */
@@ -248,6 +268,6 @@ export function renderChartRows(node: MayflyChartNode, width: number, components
     case 'line':
     case 'point': return renderNumeric(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
     case 'bar': return (node.orientation === 'horizontal' ? renderHorizontalBars(node, safeWidth, components, colors) : renderBars(node, safeWidth, components, colors)) ?? summary(node, safeWidth, components, colors)
-    case 'heatmap': return renderHeatmap(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
+    case 'heatmap': return renderHeatmap(node, safeWidth, components, colors)
   }
 }

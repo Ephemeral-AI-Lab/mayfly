@@ -676,7 +676,7 @@ describe('shared interaction compiler', () => {
     expect(rows).toContain('zh:Cancel')
     expect(rows).toContain('zh:Choose…')
     expect(rows).toContain('zh:None selected')
-    expect(rows).toContain('Stop now')
+    expect(rows).toContain('Esc stop now')
     renderer.runtime.dispose()
   })
 

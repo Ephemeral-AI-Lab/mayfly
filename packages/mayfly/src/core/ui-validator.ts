@@ -36,6 +36,7 @@ import { printableKey } from './key-actions.ts'
 import { COMMON_MEANINGS, actionNamingProblem, defaultItemKey } from './ui-actions.ts'
 import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
+import { admitChildAdmission, admitCodeFields, admitDiffFields, admitHeatmapFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
 
 /** Maximum aggregate UTF-16 source units accepted in one tree. */
 export const MAYFLY_UI_MAX_TEXT = 20_000
@@ -279,10 +280,15 @@ function enumeration<Value extends string | number>(value: unknown, values: read
 }
 
 /** A text node's optional overflow mode. */
-function textOverflow(object: Record<string, unknown>, path: string): 'wrap' | 'truncate' | undefined {
+function textOverflow(object: Record<string, unknown>, path: string): 'wrap' | 'truncate' | undefined
+function textOverflow(object: Record<string, unknown>, path: string, elided: true): 'wrap' | 'truncate' | 'middle' | 'start' | undefined
+function textOverflow(object: Record<string, unknown>, path: string, elided?: true): 'wrap' | 'truncate' | 'middle' | 'start' | undefined {
   const value = own(object, 'overflow', path)
-  return value === undefined ? undefined : enumeration(value, ['wrap', 'truncate'] as const, `${path}.overflow`)
+  return value === undefined ? undefined : elided === true ? enumeration(value, ['wrap', 'truncate', 'middle', 'start'] as const, `${path}.overflow`) : enumeration(value, ['wrap', 'truncate'] as const, `${path}.overflow`)
 }
+
+/** The primitives the content admission module (`ui-validator-content.ts`) builds its field rules from. */
+const ADMISSION_HELPERS: AdmissionHelpers<ValidationState> = { own, invalid, enumeration, finiteInteger, boolean, text, collection }
 
 function collection(value: unknown, path: string): readonly unknown[] {
   if (!Array.isArray(value)) invalid(`${path} must be an array`)
@@ -317,7 +323,7 @@ function enter<Value>(value: unknown, path: string, state: ValidationState, visi
   }
 }
 
-function span(value: unknown, path: string, state: ValidationState): MayflyInlineSpan {
+function span(value: unknown, path: string, state: ValidationState, motion = false): MayflyInlineSpan {
   return enter(value, path, state, object => {
     const toneValue = own(object, 'tone', path)
     const stylesValue = own(object, 'styles', path)
@@ -326,12 +332,23 @@ function span(value: unknown, path: string, state: ValidationState): MayflyInlin
       ? undefined
       : collection(stylesValue, `${path}.styles`).map((style, index) => enumeration(style, ['strong', 'italic', 'strike'], `${path}.styles[${String(index)}]`))
     if (styles !== undefined && new Set(styles).size !== styles.length) invalid(`${path}.styles contains duplicates`)
-    return { text: text(required(object, 'text', path), `${path}.text`, state), ...optional(tone, 'tone'), ...optional(styles, 'styles') }
+    const motionValue = own(object, 'motion', path)
+    const variantValue = own(object, 'variant', path)
+    const content = text(required(object, 'text', path), `${path}.text`, state)
+    if (motionValue === undefined && variantValue !== undefined) invalid(`${path}.variant needs a loader motion`)
+    if (motionValue !== undefined) {
+      if (!motion) invalid(`${path}.motion is only supported in rich text outside status nodes`)
+      const channel = enumeration(motionValue, ['shimmer', 'loader'] as const, `${path}.motion`)
+      if (channel === 'loader' && content !== '') invalid(`${path}.text must be empty for a loader span`)
+      if (channel === 'shimmer' && (content === '' || variantValue !== undefined)) invalid(`${path} shimmer needs text and takes no variant`)
+      return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles'), motion: channel, ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath'] as const, `${path}.variant`), 'variant') }
+    }
+    return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles') }
   })
 }
 
-function spans(value: unknown, path: string, state: ValidationState): readonly MayflyInlineSpan[] {
-  return collection(value, path).map((entry, index) => span(entry, `${path}[${String(index)}]`, state))
+function spans(value: unknown, path: string, state: ValidationState, motion = false): readonly MayflyInlineSpan[] {
+  return collection(value, path).map((entry, index) => span(entry, `${path}[${String(index)}]`, state, motion))
 }
 
 function field(value: unknown, path: string, state: ValidationState): MayflyField {
@@ -885,6 +902,7 @@ function uiChild<Node>(
       ...optional(minSize, 'minSize'),
       ...optional(maxSize, 'maxSize'),
       ...optional(when, 'when'),
+      ...admitChildAdmission(ADMISSION_HELPERS, object, path),
     }
   })
 }
@@ -1032,15 +1050,20 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           kind,
           content: text(required(object, 'content', path), `${path}.content`, state),
           ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone'),
-          ...optional(textOverflow(object, path), 'overflow'),
+          ...optional(textOverflow(object, path, true), 'overflow'),
+          ...admitTextStyles(ADMISSION_HELPERS, object, path),
         }
       }
       case 'markdown': return { kind, source: text(required(object, 'source', path), `${path}.source`, state) }
       case 'fields': return { kind, rows: collection(required(object, 'rows', path), `${path}.rows`).map((item, index) => field(item, `${path}.rows[${String(index)}]`, state)) }
-      case 'code': return { kind, code: text(required(object, 'code', path), `${path}.code`, state), ...optional(optionalText(object, 'language', path, state), 'language') }
-      case 'diff': return { kind, before: text(required(object, 'before', path), `${path}.before`, state), after: text(required(object, 'after', path), `${path}.after`, state) }
+      case 'code': return { kind, code: text(required(object, 'code', path), `${path}.code`, state), ...optional(optionalText(object, 'language', path, state), 'language'), ...admitCodeFields(ADMISSION_HELPERS, object, path) }
+      case 'diff': return { kind, before: text(required(object, 'before', path), `${path}.before`, state), after: text(required(object, 'after', path), `${path}.after`, state), ...admitDiffFields(ADMISSION_HELPERS, object, path) }
       case 'sections': return { kind, sections: collection(required(object, 'sections', path), `${path}.sections`).map((item, index) => section(item, `${path}.sections[${String(index)}]`, state, depth + 1)) }
-      case 'rich-text': return { kind, spans: spans(required(object, 'spans', path), `${path}.spans`, state), ...optional(textOverflow(object, path), 'overflow') }
+      case 'rich-text': {
+        const content = spans(required(object, 'spans', path), `${path}.spans`, state, mode !== 'status')
+        countMotion(ADMISSION_HELPERS, content, path)
+        return { kind, spans: content, ...optional(textOverflow(object, path), 'overflow') }
+      }
       case 'stack': {
         const gapValue = own(object, 'gap', path)
         const alignValue = own(object, 'align', path)
@@ -1076,7 +1099,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const paddingValue = own(object, 'padding', path)
         const badgesValue = own(object, 'badges', path)
         const footerValue = own(object, 'footer', path)
-        const surface = { kind, ...optional(optionalText(object, 'title', path, state), 'title'), ...optional(optionalText(object, 'subtitle', path, state), 'subtitle'), ...optional(badgesValue === undefined ? undefined : spans(badgesValue, `${path}.badges`, state), 'badges'), ...optional(chromeValue === undefined ? undefined : enumeration(chromeValue, ['none', 'lane', 'surface', 'overlay'], `${path}.chrome`), 'chrome'), ...optional(paddingValue === undefined ? undefined : enumeration(paddingValue, [0, 1, 2] as const, `${path}.padding`), 'padding') } as const
+        const surface = { kind, ...optional(optionalText(object, 'title', path, state), 'title'), ...optional(optionalText(object, 'subtitle', path, state), 'subtitle'), ...optional(badgesValue === undefined ? undefined : spans(badgesValue, `${path}.badges`, state), 'badges'), ...optional(chromeValue === undefined ? undefined : enumeration(chromeValue, ['none', 'lane', 'surface', 'overlay'], `${path}.chrome`), 'chrome'), ...optional(paddingValue === undefined ? undefined : enumeration(paddingValue, [0, 1, 2] as const, `${path}.padding`), 'padding'), ...admitSurfaceFields(ADMISSION_HELPERS, object, path) } as const
         if (mode === 'editor') {
           const child = node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'editor', false, true)
           const footer = footerValue === undefined ? undefined : node(footerValue, `${path}.footer`, state, depth + 1, 'editor', false, true)
@@ -1095,7 +1118,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const scrollbarValue = own(object, 'scrollbar', path)
         state.scrollDepth += 1
         try {
-          return { kind, ...optional(id, 'id'), child: node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui'), ...optional(followValue === undefined ? undefined : enumeration(followValue, ['none', 'start', 'end'], `${path}.follow`), 'follow'), ...optional(scrollbarValue === undefined ? undefined : boolean(scrollbarValue, `${path}.scrollbar`), 'scrollbar') }
+          return { kind, ...optional(id, 'id'), child: node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui'), ...optional(followValue === undefined ? undefined : enumeration(followValue, ['none', 'start', 'end'], `${path}.follow`), 'follow'), ...optional(scrollbarValue === undefined ? undefined : boolean(scrollbarValue, `${path}.scrollbar`), 'scrollbar'), ...admitScrollFields(ADMISSION_HELPERS, object, path) }
         } finally {
           state.scrollDepth -= 1
         }
@@ -1201,7 +1224,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           if (cancelActionId.trim().length === 0) invalid(`${path}.cancelActionId must not be empty`)
           reserveControl(cancelActionId, state)
         }
-        return { kind, message: text(required(object, 'message', path), `${path}.message`, state), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['braille', 'tide'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel') }
+        return { kind, ...optional(optionalText(object, 'message', path, state), 'message'), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath', 'braille', 'tide'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel') }
       }
       case 'empty': {
         const actionsValue = own(object, 'actions', path)
@@ -1212,7 +1235,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
       case 'progress': {
         const maximum = finiteInteger(required(object, 'max', path), `${path}.max`, 1)
         const current = finiteInteger(required(object, 'value', path), `${path}.value`)
-        return { kind, ...optional(optionalText(object, 'label', path, state), 'label'), value: Math.min(current, maximum), max: maximum }
+        return { kind, ...optional(optionalText(object, 'label', path, state), 'label'), value: Math.min(current, maximum), max: maximum, ...admitProgressFields(ADMISSION_HELPERS, object, path, maximum, mode === 'status') }
       }
       case 'spacer': {
         const sizeValue = own(object, 'size', path)
@@ -1303,7 +1326,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         if (new Set(levelKeys).size !== levelKeys.length) invalid(`${path}.levels contains duplicate values`)
         const known = new Set(levelKeys)
         if (values.some(row => row.some(value => value !== null && !known.has(`${typeof value}:${String(value)}`)))) invalid(`${path}.values contains a value without a level`)
-        return { kind, chart, columns, rows, values, levels, ...optional(optionalText(object, 'title', path, state), 'title') }
+        return { kind, chart, columns, rows, values, levels, ...optional(optionalText(object, 'title', path, state), 'title'), ...admitHeatmapFields(ADMISSION_HELPERS, object, path, columns.length, state) }
       }
       default: invalid(`unknown Mayfly UI kind "${kind}"`)
     }

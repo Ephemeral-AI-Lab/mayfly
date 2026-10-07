@@ -88,3 +88,41 @@ export const namedActions = ui.actions({ id: 'row-keys', scope: ['sessions', 'wo
 export const scopedToOne = ui.actions({ id: 'stream-keys', scope: 'stream', items: [{ id: 'copy', label: 'Copy', semantic: 'copy', hidden: true }] })
 // @ts-expect-error common meanings are a closed set
 ui.actions({ id: 'bad', items: [{ id: 'x', label: 'X', semantic: 'undo' }] })
+
+// Content, layout, and motion (slice 1.3): every field is optional and additive.
+export const motionRow = ui.richText([
+  { text: '', motion: 'loader', variant: 'breath' },
+  { text: 'Waiting for authorization', tone: 'muted' },
+])
+export const shimmerRow = ui.richText([{ text: 'Running commands', motion: 'shimmer' }])
+// @ts-expect-error a loader span names one of the four variants
+ui.richText([{ text: '', motion: 'loader', variant: 'braille' }])
+// @ts-expect-error motion is shimmer or loader
+ui.richText([{ text: 'x', motion: 'pulse' }])
+// @ts-expect-error rich text never elides the middle
+ui.richText([{ text: 'x' }], { overflow: 'middle' })
+export const elided = ui.text('~/work/mayfly/packages/mayfly', { overflow: 'middle', styles: ['strong'] })
+export const pathTail = ui.text('~/work/mayfly/packages/mayfly', { overflow: 'start', tone: 'muted' })
+export const numberedCode = ui.code('const a = 1', { language: 'ts', numbered: true })
+export const options = ui.diff('a', 'b', { start: 41, numbered: true, hunkHeader: true, context: 3, maxRows: 12 })
+export const plainDiff = ui.diff('a', 'b')
+export const yearHeatmap = ui.chart({ chart: 'heatmap', cell: 1, columns: ['w1'], columnLabels: ['Jan'], rows: ['Mon'], values: [[1]], levels: [{ value: 1, label: 'some' }] })
+export const bareLoader = ui.loader({ variant: 'bloom' })
+export const oldLoader = ui.loader({ message: 'Working', variant: 'braille' })
+// @ts-expect-error a loader variant is one of the four, or an old braille or tide
+ui.loader({ variant: 'spin' })
+export const meter = ui.progress({ label: 'Building', value: 6, max: 10, style: 'cells', width: 10, tone: 'success', showCount: true, showPercent: true, transition: { from: 91, ms: 800, rev: 1 } })
+export const headRule = ui.progress({ style: 'rule', value: 2, max: 8, width: 40 })
+// @ts-expect-error a progress style is cells or rule
+ui.progress({ style: 'ring', value: 1, max: 2 })
+export const admittingRow = ui.stack.row([
+  ui.child(ui.richText([{ text: 'deepseek-chat' }]), { priority: 0 }),
+  ui.child(ui.richText([{ text: 'cache 34%' }]), { priority: 4, band: 'right', overflow: 'hide' }),
+  ui.child(ui.richText([{ text: '~/work' }]), { priority: 5, band: 'center', overflow: 'truncate' }),
+], { gap: 2 })
+// @ts-expect-error admission fields belong to ui.child, not to the node
+ui.stack.row([{ kind: 'text', content: 'bad', priority: 1 }])
+export const chrome = ui.surface({ title: '~/work/mayfly', titleAlign: 'right', border: 'warning', escapeLabel: 'reject', hint: 'completions', child: ui.text('x') })
+// @ts-expect-error the title aligns left or right
+ui.surface({ titleAlign: 'center', child: ui.text('x') })
+export const region = ui.scroll(ui.text('log'), { id: 'log', height: 6, expandedHeight: 14, fit: true, pill: true, follow: 'end' })

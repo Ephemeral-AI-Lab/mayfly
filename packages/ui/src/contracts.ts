@@ -25,17 +25,44 @@ export type MayflySnapshotProvider<Node> = (request: MayflySnapshotRequest) => M
 
 export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
 export type MayflyTextStyle = 'strong' | 'italic' | 'strike'
-export interface MayflyInlineSpan { readonly text: string, readonly tone?: MayflyTone, readonly styles?: readonly MayflyTextStyle[] }
+/** The glyph animations of a loader and of a loader span; `braille` and `tide` of the first loaders are `gap`. */
+export type MayflyLoaderVariant = 'bloom' | 'fill' | 'gap' | 'breath'
+export interface MayflyInlineSpan {
+  readonly text: string
+  readonly tone?: MayflyTone
+  readonly styles?: readonly MayflyTextStyle[]
+  /** One motion channel, in rich text only: the letters shimmer, or the span is one animated loader cell (its `text` is `''`). */
+  readonly motion?: 'shimmer' | 'loader'
+  /** The animation of a `loader` span; `gap` by default. */
+  readonly variant?: MayflyLoaderVariant
+}
 export interface MayflyField { readonly label: string, readonly value: readonly MayflyInlineSpan[] }
 
-/** How text wider than its row behaves: wrap onto more rows, or stay one ellipsized row. */
-export type MayflyTextOverflow = 'wrap' | 'truncate'
-export interface MayflyTextNode { readonly kind: 'text', readonly content: string, readonly tone?: MayflyTone, readonly overflow?: MayflyTextOverflow }
+/**
+ * How text wider than its row behaves: wrap onto more rows, stay one row ellipsized at the end, or stay one row with
+ * the middle or the start elided so the distinguishing end shows (paths, titles). Rich text takes `wrap` and `truncate`.
+ */
+export type MayflyTextOverflow = 'wrap' | 'truncate' | 'middle' | 'start'
+export interface MayflyTextNode { readonly kind: 'text', readonly content: string, readonly tone?: MayflyTone, readonly overflow?: MayflyTextOverflow, readonly styles?: readonly MayflyTextStyle[] }
 export interface MayflyMarkdownNode { readonly kind: 'markdown', readonly source: string }
 export interface MayflyFieldsNode { readonly kind: 'fields', readonly rows: readonly MayflyField[] }
-export interface MayflyCodeNode { readonly kind: 'code', readonly code: string, readonly language?: string }
-export interface MayflyDiffNode { readonly kind: 'diff', readonly before: string, readonly after: string }
-export interface MayflyRichTextNode { readonly kind: 'rich-text', readonly spans: readonly MayflyInlineSpan[], readonly overflow?: MayflyTextOverflow }
+export interface MayflyCodeNode { readonly kind: 'code', readonly code: string, readonly language?: string, readonly numbered?: boolean }
+export interface MayflyDiffNode {
+  readonly kind: 'diff'
+  readonly before: string
+  readonly after: string
+  /** The number of the first line (default 1). */
+  readonly start?: number
+  /** Old and new line-number gutters (default true). */
+  readonly numbered?: boolean
+  /** Draw an `@@` header even for one hunk (default: only when there is more than one). */
+  readonly hunkHeader?: boolean
+  /** Context lines around each change, 0 to 3 (default 1). */
+  readonly context?: number
+  /** At most this many rows, then `… +N rows · Ctrl+O`. */
+  readonly maxRows?: number
+}
+export interface MayflyRichTextNode { readonly kind: 'rich-text', readonly spans: readonly MayflyInlineSpan[], readonly overflow?: Extract<MayflyTextOverflow, 'wrap' | 'truncate'> }
 export interface MayflyDiagramNode { readonly kind: 'diagram', readonly diagram: 'mermaid', readonly source: string }
 export type MayflySectionContentNode = MayflyTextNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode
 export interface MayflySection { readonly title?: string, readonly body: MayflySectionContentNode, readonly collapsed?: boolean }
@@ -52,10 +79,47 @@ export interface MayflyUiChild {
   readonly minSize?: number
   readonly maxSize?: number
   readonly when?: MayflyViewportCondition
+  /** Admission order in a row: children that carry one are admitted while they fit, lower first. */
+  readonly priority?: number
+  /** Where an admitted child sits in its row (default `left`). */
+  readonly band?: 'left' | 'center' | 'right'
+  /** What a child that does not fit does: `truncate` takes the room that is left (at least 8 cells) and fills the row, `hide` drops out while later children may still fit; without one it and every later child drop. */
+  readonly overflow?: 'truncate' | 'hide'
 }
 export interface MayflyStackNode { readonly kind: 'stack', readonly direction: 'row' | 'column', readonly gap?: 0 | 1 | 2, readonly align?: 'stretch' | 'start' | 'center' | 'end', readonly children: readonly MayflyUiChild[] }
-export interface MayflySurfaceNode { readonly kind: 'surface', readonly title?: string, readonly subtitle?: string, readonly badges?: readonly MayflyInlineSpan[], readonly chrome?: 'none' | 'lane' | 'surface' | 'overlay', readonly padding?: 0 | 1 | 2, readonly child: MayflyUiNode, readonly footer?: MayflyUiNode }
-export interface MayflyScrollNode { readonly kind: 'scroll', readonly id?: string, readonly child: MayflyUiNode, readonly follow?: 'none' | 'start' | 'end', readonly scrollbar?: boolean }
+export interface MayflySurfaceNode {
+  readonly kind: 'surface'
+  readonly title?: string
+  readonly subtitle?: string
+  readonly badges?: readonly MayflyInlineSpan[]
+  readonly chrome?: 'none' | 'lane' | 'surface' | 'overlay'
+  readonly padding?: 0 | 1 | 2
+  readonly child: MayflyUiNode
+  readonly footer?: MayflyUiNode
+  /** `right` puts the title in the top-right corner (a long one is elided at its start); badges take the left. */
+  readonly titleAlign?: 'left' | 'right'
+  /** The border tone; the chrome's own (focus color for an overlay, quiet for a surface) otherwise. */
+  readonly border?: MayflyTone
+  /** What `Esc` does, as the hint row names it; `reject` dismisses as a rejection. */
+  readonly escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
+  /** `none` draws no key-hint row, `completions` draws one only while the editor's completion list is open. */
+  readonly hint?: 'auto' | 'none' | 'completions'
+}
+export interface MayflyScrollNode {
+  readonly kind: 'scroll'
+  readonly id?: string
+  readonly child: MayflyUiNode
+  readonly follow?: 'none' | 'start' | 'end'
+  readonly scrollbar?: boolean
+  /** A viewport of exactly this many rows (default 6 once any of `height`, `expandedHeight`, `fit`, `pill` is set). */
+  readonly height?: number
+  /** The viewport's rows while the scroll is expanded with `Ctrl+E` (default 14). */
+  readonly expandedHeight?: number
+  /** Shrink the viewport to short content, and draw the scrollbar only when the content overflows. */
+  readonly fit?: boolean
+  /** `↓ N new · End` over the last row while the view is scrolled away from a followed tail. */
+  readonly pill?: boolean
+}
 export interface MayflyTabItem { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly count?: number, readonly backId?: string }
 export interface MayflyTabsNode { readonly kind: 'tabs', readonly id: string, readonly activeId: string, readonly items: readonly MayflyTabItem[], readonly mode?: 'tabs' | 'wizard' }
 export interface MayflyListSegmentOption { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly disabledReason?: string }
@@ -149,9 +213,35 @@ export interface MayflyActionItem {
 }
 /** `scope` names controls on the same page: the group's keys act, and show their hints, only while one of them has focus. */
 export interface MayflyActionsNode { readonly kind: 'actions', readonly id: string, readonly items: readonly MayflyActionItem[], readonly scope?: string | readonly string[] }
-export interface MayflyLoaderNode { readonly kind: 'loader', readonly message: string, readonly variant?: 'braille' | 'tide', readonly elapsedMs?: number, readonly cancelActionId?: string, readonly cancelLabel?: string }
+export interface MayflyLoaderNode {
+  readonly kind: 'loader'
+  /** What is loading; without one the loader is a bare glyph. */
+  readonly message?: string
+  /** The glyph animation (`gap` by default); the first loaders' `braille` and `tide` stay accepted and draw `gap`. */
+  readonly variant?: MayflyLoaderVariant | 'braille' | 'tide'
+  readonly elapsedMs?: number
+  readonly cancelActionId?: string
+  readonly cancelLabel?: string
+}
 export interface MayflyEmptyNode { readonly kind: 'empty', readonly title: string, readonly description?: string, readonly actions?: MayflyActionsNode }
-export interface MayflyProgressNode { readonly kind: 'progress', readonly label?: string, readonly value: number, readonly max: number }
+export interface MayflyProgressNode {
+  readonly kind: 'progress'
+  readonly label?: string
+  readonly value: number
+  readonly max: number
+  /** `cells` draws `▰▱`, `rule` the heavy and light rule `━─`; a bar with neither `style` nor `width` fills its row with partial blocks. */
+  readonly style?: 'cells' | 'rule'
+  /** The bar's cells (10 for `cells`, 24 for `rule`). */
+  readonly width?: number
+  /** The filled part's tone (`primary` by default). */
+  readonly tone?: MayflyTone
+  /** `n/N` after the bar (default true). */
+  readonly showCount?: boolean
+  /** The percentage after the bar. */
+  readonly showPercent?: boolean
+  /** A renderer-owned one-shot: when `rev` first arrives the bar drains linearly from `from` to `value` over `ms`. */
+  readonly transition?: { readonly from: number, readonly ms: number, readonly rev: number }
+}
 export interface MayflySpacerNode { readonly kind: 'spacer', readonly size?: 1 | 2 }
 export interface MayflyDividerNode { readonly kind: 'divider', readonly label?: string }
 /**
@@ -174,7 +264,19 @@ export interface MayflyChartLevel { readonly value: number | string, readonly la
 export interface MayflyLineChartNode { readonly kind: 'chart', readonly chart: 'line' | 'point', readonly series: readonly MayflyChartSeries[], readonly title?: string, readonly xLabel?: string, readonly yLabel?: string, readonly height?: number }
 export interface MayflyBarChartNode { readonly kind: 'chart', readonly chart: 'bar', readonly layout?: 'grouped' | 'stacked' | 'normalized', readonly orientation?: 'vertical' | 'horizontal', readonly categories: readonly string[], readonly series: readonly MayflyBarChartSeries[], readonly title?: string, readonly yLabel?: string, readonly height?: number }
 export interface MayflySparklineChartNode { readonly kind: 'chart', readonly chart: 'sparkline', readonly values: readonly (number | null)[], readonly label?: string, readonly tone?: MayflyTone }
-export interface MayflyHeatmapChartNode { readonly kind: 'chart', readonly chart: 'heatmap', readonly columns: readonly string[], readonly rows: readonly string[], readonly values: readonly (readonly (number | string | null)[])[], readonly levels: readonly MayflyChartLevel[], readonly title?: string }
+export interface MayflyHeatmapChartNode {
+  readonly kind: 'chart'
+  readonly chart: 'heatmap'
+  readonly columns: readonly string[]
+  readonly rows: readonly string[]
+  readonly values: readonly (readonly (number | string | null)[])[]
+  readonly levels: readonly MayflyChartLevel[]
+  readonly title?: string
+  /** `1` draws one cell per value in `· ░ ▒ ▓ █` with no gap (a year of days); `2` the two-cell default. */
+  readonly cell?: 1 | 2
+  /** The header's labels, one per column (one-cell mode writes each where its column starts); the column names otherwise. */
+  readonly columnLabels?: readonly string[]
+}
 export type MayflyChartNode = MayflyLineChartNode | MayflyBarChartNode | MayflySparklineChartNode | MayflyHeatmapChartNode
 
 export type MayflyContentNode = MayflyTextNode | MayflyMarkdownNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode | MayflyRichTextNode | MayflyDiagramNode | MayflyChartNode

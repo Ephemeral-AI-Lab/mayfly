@@ -39,4 +39,34 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
     summary: "The kit's word wrap drops a line's leading spaces and does not reopen the style on a wrapped continuation; the renderer keeps both",
     reason: 'prototype wrap artifact; approved by the reviewer',
   },
+  {
+    id: 'Δ21',
+    scenes: [8],
+    summary: "Markdown is drawn by the shipped markdown component (blank rows between blocks, fenced code kept with its fences, the md* palette tokens), not by the kit's five-rule drawing",
+    reason: 'the transcript keeps the streamed markdown component (roadmap Phase 6); proposed in slice 1.3',
+  },
+  {
+    id: 'Δ22',
+    scenes: [8],
+    summary: "The `h` key swaps the code block's highlighting for one flat user tone; the code node has no such switch and always highlights",
+    reason: 'demo key; proposed in slice 1.3',
+  },
+  {
+    id: 'Δ23',
+    scenes: [8],
+    summary: "Line, point, vertical bar, sparkline, and stacked or grouped horizontal bar charts and the diagram are drawn by their libraries (simple-ascii-chart, beautiful-mermaid), not by the kit's hand-written glyph rows; the heatmap is the kit's",
+    reason: 'the kit stands in for a chart library it does not specify; proposed in slice 1.3',
+  },
+  {
+    id: 'Δ24',
+    scenes: [7],
+    summary: 'Up from a followed tail scrolls one row from the tail; the kit scrolls from a stale offset and jumps to the top',
+    reason: 'prototype scroll artifact; proposed in slice 1.3',
+  },
+  {
+    id: 'Δ25',
+    scenes: [10],
+    summary: "A flex row that is narrower than its fixed child clips the later boxes with `…` columns in the kit; the layout engine gives them what is left",
+    reason: 'prototype clip artifact below 60 columns; proposed in slice 1.3',
+  },
 ]

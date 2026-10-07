@@ -63,7 +63,7 @@ describe('canonical basic-content leaf renderer', () => {
         { text: ' retired', styles: ['strike'] },
         { text: ' now' },
       ] }],
-    }, 80)[0]).toContain('<muted>state: </muted>')
+    }, 80)[0]).toContain('<muted>state:</muted> ')
     // Code is highlighted by language: keywords primary, strings success, everything else the text color.
     expect(renderView({ kind: 'code', language: 'ts', code: "const x = 'y'\nnext" }, 80)).toEqual([
       '<muted>ts</muted>',
@@ -94,8 +94,9 @@ describe('canonical basic-content leaf renderer', () => {
       ],
     }, 80)).toEqual([
       '\x1b[1m<primary>open</primary>\x1b[22m',
-      '<text>body</text>',
+      '  <text>body</text>',
       '\x1b[1m<primary>closed</primary>\x1b[22m',
+      '<muted>  …</muted>',
       '<muted>...</muted>',
     ])
   })

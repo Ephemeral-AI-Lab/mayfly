@@ -82,6 +82,10 @@ import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
+import { AdmissionRow } from './ui-admission.ts'
+import { ScrollRegion, SCROLL_DEFAULT_EXPANDED_HEIGHT, SCROLL_DEFAULT_HEIGHT } from './ui-scroll-region.ts'
+import { hasMotion, paintMotionSpans } from './ui-motion-text.ts'
+import { UiProgressTransitions } from './ui-progress-transition.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
@@ -144,6 +148,8 @@ export interface MayflyUiCompilerOptions {
   readonly emit: (event: MayflyUiEvent) => void
   /** Called only when Escape did not first cancel compiler-local state. */
   readonly onUnhandledEscape?: () => void
+  /** Whether the editor's completion list is open; a surface with `hint: 'completions'` draws its key-hint row only then. */
+  readonly completionsOpen?: () => boolean
   /** Measurement sink for validation, compilation, and painting; production passes none. */
   readonly counters?: MayflyWorkCounters
   /** The caller's admission memo; a publish that shares subtrees with the previous one validates only what changed. */
@@ -320,6 +326,8 @@ type ControlDescriptor =
       readonly listEntry?: { readonly node: MayflyListNode, readonly index: number }
       /** Declared surface-local accelerator; fires the same activate event while the surface holds focus. */
       readonly keyed?: KeyedAction
+      /** A loader's cancel: Escape fires it before it leaves the surface. */
+      readonly work?: true
     })
   | (ControlBase & { readonly kind: 'text', readonly field: TextField, readonly form: FormNode })
   | (ControlBase & { readonly kind: 'select', readonly field: SelectField })
@@ -633,6 +641,11 @@ function patternFocus(state: FocusState, prefix: string): PatternFocus {
   }
 }
 
+/** The clock frame a moving cell paints at: reduced motion stays on the first frame and never joins the clock. */
+function motionFrame(options: RuntimeCompilerOptions): number {
+  return options.components.presentation?.reducedMotion === true ? 0 : options.listRuntime.loaderFrame()
+}
+
 function joinSpans(node: { readonly spans: readonly MayflyInlineSpan[] }, colors: MayflySemanticColors): string {
   return node.spans.map(span => {
     const painted = safePaint(colors, span.tone, span.text)
@@ -665,7 +678,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
   if (footer !== undefined) body.addChild(footer)
   if (contextHint !== undefined) body.addChild(contextHint)
 
-  const paint = surfaceBorderPaint(chrome, options.colors)
+  const paint = surfaceBorderPaint(chrome, options.colors, node.border)
   const glyphs = options.components.presentation?.glyphs
   const bar = glyphRows(['│'], glyphs)[0]!
   const gutter = Math.max(1, node.padding ?? 0)
@@ -789,7 +802,17 @@ interface ContextKeyHint {
   readonly priority: number
 }
 
-type EscapeLabel = 'close' | 'leave'
+type EscapeLabel = 'close' | 'leave' | 'reject' | 'surface-back' | 'surface-cancel'
+
+/** The escape step a surface's `escapeLabel` names; every one hands Escape to the host's `onUnhandledEscape`. */
+const SURFACE_ESCAPE: Readonly<Record<NonNullable<Extract<MayflyUiNode, { readonly kind: 'surface' }>['escapeLabel']>, EscapeLabel>> = {
+  close: 'close', leave: 'leave', reject: 'reject', back: 'surface-back', cancel: 'surface-cancel',
+}
+
+/** The label of the outermost Escape: a surface's own `escapeLabel` replaces the host's, once the host handles Escape at all. */
+function surfaceEscape(node: CompilableNode, host: EscapeLabel | undefined): EscapeLabel | undefined {
+  return host === undefined || node.kind !== 'surface' || node.escapeLabel === undefined ? host : SURFACE_ESCAPE[node.escapeLabel]
+}
 
 /** Translate a core-owned string through the host catalog, falling back to English interpolation. */
 function coreText(options: Pick<MayflyUiCompilerOptions, 'contextHints'> | undefined, key: string, values?: UiTranslateValues): string {
@@ -853,7 +876,8 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       : control.kind === 'text' && control.editing ? 'done'
         : searching ? 'end-search'
           : interaction?.backTarget() !== undefined ? 'back'
-            : escapeLabel
+            : controls.some(candidate => candidate.kind === 'event' && candidate.work === true) ? 'cancel-work'
+              : escapeLabel
   const numbered = node?.numbered
   const fieldAddress = active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' ? runtime.fieldAddress(active.key) : undefined
   const reset = fieldAddress === undefined ? undefined : fieldReset(interaction?.form(fieldAddress), fieldAddress.fieldId)
@@ -878,7 +902,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     groups: groups.length,
     siblings: active === undefined ? 0 : controls.filter(candidate => candidate.group === active.group).length,
     escape,
-    closable: escapeLabel === 'close',
+    closable: escapeLabel !== undefined && escapeLabel !== 'leave',
     ...(reset === undefined ? {} : { reset }),
   }
 }
@@ -992,8 +1016,8 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   return rows
 }
 
-function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): Component {
-  return staticComponent(width => contextKeyHintRows(state, options, width, mode, escapeLabel), options, false)
+function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, open?: () => boolean): Component {
+  return staticComponent(width => open?.() === false ? [] : contextKeyHintRows(state, options, width, mode, escapeLabel), options, false)
 }
 
 /** Printable text or the opening of a bracketed paste. */
@@ -1146,7 +1170,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         break
       }
       case 'loader':
-        if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
+        if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', work: true, event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
       case 'empty': if (current.actions !== undefined) visit(current.actions, `${currentPath}.actions`, isHidden); break
       default: break
@@ -1240,13 +1264,30 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       paint.components,
       paint.colors,
     ), paint))
-    case 'rich-text': return leaf(node, options, paint => pureStaticComponent(width => {
+    case 'rich-text': return hasMotion(node.spans) ? staticComponent(width => {
+      // An animated row is the one row a clock tick repaints: it is not memoized, and it joins the clock while painted.
+      countWork(options.counters, 'stringsMeasured')
+      const presentation = options.components.presentation
+      const line = paintMotionSpans(node.spans, options.colors, motionFrame(options), { glyphs: presentation?.glyphs, reducedMotion: presentation?.reducedMotion })
+      return node.overflow === 'truncate' ? [truncatedRow(line, width, options.components)] : options.components.wrapText(line, Math.max(1, width))
+    }, options) : leaf(node, options, paint => pureStaticComponent(width => {
       countWork(paint.counters, 'stringsMeasured')
       return node.overflow === 'truncate'
         ? [truncatedRow(joinSpans(node, paint.colors), width, paint.components)]
         : paint.components.wrapText(joinSpans(node, paint.colors), Math.max(1, width))
     }, paint))
     case 'stack': {
+      // A row whose children carry a priority admits them while they fit, one row of the children's first rows.
+      if (node.direction === 'row' && node.children.some(child => child.priority !== undefined)) {
+        const compiled = node.children.map((child, index) => compileNode(child.node, state, options, `${path}.${String(index)}`, mode))
+        return new AdmissionRow({
+          components: options.components,
+          ...(node.gap === undefined ? {} : { gap: node.gap }),
+          children: () => node.children.flatMap((child, index) => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
+            ? [{ component: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }) }]
+            : []),
+        })
+      }
       const stackOptions = {
         ...(node.gap === undefined ? {} : { gap: node.gap }),
         ...(node.align === undefined ? {} : { align: node.align }),
@@ -1290,6 +1331,34 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         return compileNode(node.child, state, options, childPath, mode)
       }
       const child = compileNode(node.child, state, options, childPath, mode)
+      if (node.height !== undefined || node.expandedHeight !== undefined || node.fit === true || node.pill === true) {
+        // A declared viewport: the region paints its own rows, with its scrollbar, `fit`, and pill.
+        const key = scopedControlKey('scroll', path)
+        const model = options.listRuntime.interaction
+        const address = node.id === undefined || model === undefined ? undefined : { pagePath, controlId: node.id }
+        const region = new ScrollRegion({
+          child: child as Component,
+          height: node.height ?? SCROLL_DEFAULT_HEIGHT,
+          expandedHeight: node.expandedHeight ?? SCROLL_DEFAULT_EXPANDED_HEIGHT,
+          fit: node.fit === true,
+          pill: node.pill === true,
+          follow: node.follow === 'end',
+          scrollbar: node.scrollbar !== false,
+          expanded: () => state.expandedKey === key,
+          colors: options.colors,
+          components: options.components,
+          pillText: count => coreText(options, '↓ {count} new · End', { count }),
+          anchors: address === undefined || model!.document(address) === undefined ? undefined : {
+            state: () => model!.document(address),
+            rowOf: documentAnchorRow,
+            anchorAt: documentAnchorAtRow,
+            move: anchor => { model!.moveDocument(address, anchor) },
+          },
+        })
+        state.bindControls([key], { component: region, axis: 'none' })
+        state.bindScroll(key, region)
+        return region
+      }
       const scrollOptions = { follow: node.follow === 'end' ? 'end' as const : 'none' as const, primary: false, overscroll: 'contain' as const, scrollbar: node.scrollbar === true ? 'auto' as const : 'hidden' as const }
       const address = node.id === undefined ? undefined : { pagePath, controlId: node.id }
       const model = options.listRuntime.interaction
@@ -1407,10 +1476,11 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       const stack = new VStack()
       // Reduced motion freezes the channel on its first frame and never joins the clock.
       const presentation = options.components.presentation
-      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors, presentation?.reducedMotion === true ? 0 : options.listRuntime.loaderFrame(), presentation?.glyphs), options))
+      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors, motionFrame(options), presentation?.glyphs, presentation?.reducedMotion === true), options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: cancelActionId, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('loader', cancelActionId)), options.colors, true), options)
+        // The cancel is a hint, not a button: Escape fires it (`cancel-work`), and the row only says so.
+        const component = staticComponent(width => [sliceByColumn(`  ${options.colors.muted(`Esc ${(node.cancelLabel ?? coreText(options, 'Cancel')).toLowerCase()}`)}`, 0, width, true)], options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
       }
@@ -1422,7 +1492,9 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       if (node.actions !== undefined) stack.addChild(compileNode(node.actions, state, options, `${path}.actions`, mode))
       return stack
     }
-    case 'progress': return staticComponent(width => renderProgress(node, width, options.colors), options)
+    case 'progress': return node.transition === undefined
+      ? staticComponent(width => renderProgress(node, width, options.colors), options)
+      : staticComponent(width => renderProgress(node, width, options.colors, options.listRuntime.progressValue(`${JSON.stringify(pagePath)}${path}`, node as typeof node & { readonly transition: NonNullable<typeof node.transition> }, options.components.presentation?.reducedMotion === true)), options)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
     case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors), paint))
     case 'diagram': return diagramComponent(node, options)
@@ -1588,6 +1660,8 @@ export class MayflyUiSurfaceRuntime {
   readonly reuse = new MayflyCompileCache()
   /** The item rows this surface's lists have painted, kept by item and state. */
   readonly rows = new UiRowCache()
+  /** The one-shot drains of this surface's progress bars. */
+  private readonly transitions = new UiProgressTransitions()
   /** The last key-hint row this surface painted, with what it was painted from. */
   hintMemo: { readonly colors: object, readonly key: string, readonly rows: string[] } | undefined
   private node: CompilableNode | undefined
@@ -1723,6 +1797,16 @@ export class MayflyUiSurfaceRuntime {
   loaderFrame(): number { return this.loaderAnimation?.render() ?? 0 }
   /** Asks the renderer to paint this surface again: an image's bytes arrived. */
   readonly repaint = (): void => { if (this.live) this.requestRender?.() }
+  /**
+   * The value a bar with a `transition` draws now. Without a clock, or under reduced motion, the bar is already settled;
+   * otherwise it drains with the clock and holds it only while it moves.
+   */
+  progressValue(key: string, node: Parameters<UiProgressTransitions['step']>[1], reducedMotion: boolean): number {
+    if (this.loaderAnimation === undefined || reducedMotion) return node.value
+    const step = this.transitions.step(key, node, this.loaderAnimation.frame)
+    if (step.animating) this.loaderAnimation.render()
+    return step.value
+  }
   beginAnimationFrame(): void { this.loaderAnimation?.beginFrame() }
   pauseAnimation(): void { this.loaderAnimation?.stop() }
 
@@ -2013,8 +2097,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.state = this.surfaceRuntime.state
     this.surfaceRuntime.admit(node)
     runtimeOptions.reuse.beginPass()
-    const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, mode, escapeLabel) : undefined
-    this.hintRowsFor = contextKeyHints ? width => contextKeyHintRows(this.state, runtimeOptions, width, mode, escapeLabel) : undefined
+    // A surface with `hint: 'completions'` draws its hint row only while the editor's completion list is open.
+    const hintOpen = node.kind === 'surface' && node.hint === 'completions' ? () => runtimeOptions.completionsOpen?.() === true : undefined
+    const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, mode, escapeLabel, hintOpen) : undefined
+    this.hintRowsFor = contextKeyHints ? width => hintOpen?.() === false ? [] : contextKeyHintRows(this.state, runtimeOptions, width, mode, escapeLabel) : undefined
     const compiledRoot = compileNode(node, this.state, runtimeOptions, '$', mode, node.kind === 'surface' ? contextHint : undefined)
     if (contextHint === undefined || node.kind === 'surface') this.root = compiledRoot
     else {
@@ -2117,7 +2203,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
          layout pass slices the same scroll state the embedded view uses. */
       const expandedScroll = this.state.expandedKey === undefined ? undefined : this.state.scrollViews.get(this.state.expandedKey)
       if (this.state.expandedKey !== undefined && expandedScroll === undefined) this.state.expandedKey = undefined
-      if (expandedScroll !== undefined) {
+      if (expandedScroll !== undefined && expandedScroll.inline !== true) {
         const viewport = this.viewport
         beginLayoutPass(this.state)
         try {
@@ -2139,7 +2225,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         finally { this.state.layoutPass = false; this.viewport = viewport }
       }
       rows = this.root.render(safeWidth)
-      if (this.surfaceRuntime.interaction !== undefined && this.state.scrollViews.size > 0) rows = constrainedLayout()
+      if (this.surfaceRuntime.interaction !== undefined && [...this.state.scrollViews.values()].some(view => view.inline !== true)) rows = constrainedLayout()
       else {
         const hasList = this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
         if (this.surfaceRuntime.interaction !== undefined && hasList) {
@@ -2475,8 +2561,16 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'back': this.surfaceRuntime.interaction!.back(); return
       /* v8 ignore next -- an expanded view resolves Escape through its own collapse binding. */
       case 'collapse': this.state.expandedKey = undefined; return
+      case 'cancel-work': {
+        const work = this.state.controls().find(candidate => candidate.kind === 'event' && candidate.work === true) as Extract<ControlDescriptor, { readonly kind: 'event' }> | undefined
+        if (work !== undefined) this.state.emit(work.event)
+        return
+      }
       case 'close':
-      case 'leave': this.options.onUnhandledEscape?.(); return
+      case 'leave':
+      case 'reject':
+      case 'surface-back':
+      case 'surface-cancel': this.options.onUnhandledEscape?.(); return
     }
   }
 
@@ -2698,7 +2792,7 @@ class StatusErrorComponent implements MayflyStatusComponent {
 
 function admittedSurface(node: CompilableNode, options: MayflyUiCompilerOptions, mode: CompilerMode, editor?: MayflyEditor, surfaceRuntime?: MayflyUiSurfaceRuntime, contextKeyHints = false, contextEscapeHint?: EscapeLabel): CompiledSurface {
   const rollback = surfaceRuntime?.checkpoint()
-  try { return new CompiledSurface(node, options, mode, editor, surfaceRuntime, contextKeyHints, contextEscapeHint) }
+  try { return new CompiledSurface(node, options, mode, editor, surfaceRuntime, contextKeyHints && !(node.kind === 'surface' && node.hint === 'none'), surfaceEscape(node, contextEscapeHint)) }
   catch (error) { rollback?.(); throw error }
 }
 

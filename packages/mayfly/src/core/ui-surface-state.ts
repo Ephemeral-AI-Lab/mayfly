@@ -15,6 +15,8 @@ export interface UiScrollControl {
   scrollToStart(): void
   scrollToEnd(): void
   setScrollbarActive(active: boolean): void
+  /** The control paints its own viewport rows, so the surface keeps its natural height around it. */
+  readonly inline?: boolean
 }
 
 /** Compiled control and scroll handles for the current generation. */

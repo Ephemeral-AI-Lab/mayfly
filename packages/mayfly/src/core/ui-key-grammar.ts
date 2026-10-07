@@ -14,6 +14,8 @@ import {
 
 /** The layer one Escape press leaves, innermost first. */
 export type EscapeStep = 'collapse' | 'cancel' | 'done' | 'end-search' | 'back' | 'close' | 'leave'
+  /** Escape cancels the work a loader shows; the surface's own `escapeLabel` words the rest, and the host closes it. */
+  | 'cancel-work' | 'reject' | 'surface-back' | 'surface-cancel'
 
 export type ListMovement = 'up' | 'down' | 'page-up' | 'page-down' | 'home' | 'end'
 export type Direction = 'up' | 'down' | 'left' | 'right'
@@ -122,6 +124,7 @@ export interface GrammarBinding {
 
 const ESCAPE_LABEL: Readonly<Record<EscapeStep, string>> = {
   collapse: 'collapse', cancel: 'cancel', done: 'done', 'end-search': 'end search', back: 'back', close: 'close', leave: 'leave',
+  'cancel-work': 'cancel', reject: 'reject', 'surface-back': 'back', 'surface-cancel': 'cancel',
 }
 
 /** Hint priorities: Escape is reserved, then the primary operation, then navigation; digits repeat Enter, so they yield to arrows. */

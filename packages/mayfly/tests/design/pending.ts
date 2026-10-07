@@ -42,10 +42,7 @@ export interface PendingParity {
 
 export const PENDING_PARITY: readonly PendingParity[] = [
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [0], rows: [7, 26], slice: '1.4', reason: 'page 1 below the first list: marker: selection rails, right-aligned counts, tree guides and disclosure (1.4) and the form marks, units, and (inherited) (1.6)' },
-  { directory: '01-marks-and-tokens', walk: 'pages', frames: [3], rows: [2, 2], cols: [0, 0], slice: '1.3', reason: 'the loader draws the gap variant (⣾) by default' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [5], slice: '1.8b', reason: 'page 6 is patterns.splitView over lists with right-aligned spans (1.4)' },
-  { directory: '08-content', walk: 'pages', frames: [2], rows: [8, 16], slice: '1.3', reason: 'page 3 markdown: the kit\'s heading, bullet, quote, and fence look through the real markdown renderer' },
-  { directory: '08-content', walk: 'highlight', frames: [3], slice: '1.3', reason: 'the h key is a demo toggle (one flat user tone); the real code node has no such switch, so the frame needs a Δ or a numbered/flat option' },
 ]
 
 /** The entries that cover a frame of a walk. */
