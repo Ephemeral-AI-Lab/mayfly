@@ -46,5 +46,17 @@
     "unitsCompiled": 3,
     "rowsPainted": 9,
     "stringsMeasured": 20
+  },
+  "W1-slot": {
+    "nodesValidated": 2,
+    "unitsCompiled": 2,
+    "rowsPainted": 2,
+    "stringsMeasured": 4
+  },
+  "W4-slot": {
+    "nodesValidated": 1,
+    "unitsCompiled": 1,
+    "rowsPainted": 0,
+    "stringsMeasured": 40
   }
 }

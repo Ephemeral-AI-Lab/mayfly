@@ -6,5 +6,7 @@
   "W5": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 1, "stringsMeasured": 21 },
   "W6": { "nodesValidated": 44, "unitsCompiled": 12, "rowsPainted": 32, "stringsMeasured": 52 },
   "W7": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 9, "stringsMeasured": 20 },
-  "W8": { "nodesValidated": 11, "unitsCompiled": 3, "rowsPainted": 9, "stringsMeasured": 20 }
+  "W8": { "nodesValidated": 11, "unitsCompiled": 3, "rowsPainted": 9, "stringsMeasured": 20 },
+  "W1-slot": { "nodesValidated": 2, "unitsCompiled": 2, "rowsPainted": 2, "stringsMeasured": 4 },
+  "W4-slot": { "nodesValidated": 1, "unitsCompiled": 1, "rowsPainted": 0, "stringsMeasured": 40 }
 }
