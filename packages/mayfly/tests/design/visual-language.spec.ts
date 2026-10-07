@@ -154,7 +154,7 @@ describe('pending-parity ledger', () => {
       const walk = known.find(candidate => candidate.dir === entry.directory && candidate.name === entry.walk)
       expect(walk, `${entry.directory}/${entry.walk}`).toBeDefined()
       for (const frame of entry.frames) expect(frame).toBeLessThan(walk!.steps.length)
-      expect(entry.slice).toMatch(/^1\.(?:[3-9]|1[01])[ab]?$/u)
+      expect(entry.slice).toMatch(/^(?:1\.(?:[3-9]|1[01])[ab]?|Phase [2-6])$/u)
     }
   })
 })
