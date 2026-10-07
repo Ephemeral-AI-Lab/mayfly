@@ -27,7 +27,7 @@ export function listsGroup() {
     ] }),
     ui.actions({ id: 'gallery-slash-keys', items: [{ id: 'install', label: 'Install', key: 'i', hidden: true }] }),
     ui.text('a segment strip on the focused row: ←/→ steps, Delete unpins, it never moves a row', { tone: 'muted' }),
-    ui.list({ id: 'gallery-models', role: 'browse', filterable: true, acceptVerb: 'choose', selectedIds: [], items: [
+    ui.list({ id: 'gallery-models', role: 'browse', filterable: true, filterMode: 'slash', acceptVerb: 'choose', selectedIds: [], items: [
       { id: 'pro', label: 'opencode-go/DeepSeek V4 Pro', detail: '977k context', group: 'opencode-go', segment: effort('high') },
       { id: 'bunny', label: 'opencode-go/space-bunny-alpha', detail: '256k context', group: 'opencode-go' },
       { id: 'flash', label: 'DeepSeek/DeepSeek-V41-Flash', badge: 'current · high', detail: '977k context', group: 'DeepSeek', segment: effort('high') },
