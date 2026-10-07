@@ -458,7 +458,8 @@ describe('model-family commands', () => {
     overlay(screen).handleInput(KEY.up)
     const rows = overlay(screen).render(80).join('\n')
     expect(rows).toContain('‹ low ›')
-    expect(rows).toContain('Thinking:')
+    // The strip rides the focused row while it fits; the caption only appears in the footer line a narrow list reserves.
+    expect(rows).toMatch(/Mock.*‹ low ›/u)
   })
 
   it('/model Enter commits the focused row segment without a second dialog', async () => {

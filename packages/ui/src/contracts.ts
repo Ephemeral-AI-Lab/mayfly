@@ -124,10 +124,43 @@ export interface MayflyTabItem { readonly id: string, readonly label: string, re
 export interface MayflyTabsNode { readonly kind: 'tabs', readonly id: string, readonly activeId: string, readonly items: readonly MayflyTabItem[], readonly mode?: 'tabs' | 'wizard' }
 export interface MayflyListSegmentOption { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly disabledReason?: string }
 /** A horizontal option strip bound to one list row; left/right steps it while the row is focused and `selection-accept` reports it as `segmentId`. */
-export interface MayflyListSegment { readonly label?: string, readonly options: readonly MayflyListSegmentOption[], readonly selectedId?: string }
+export interface MayflyListSegment {
+  readonly label?: string
+  readonly options: readonly MayflyListSegmentOption[]
+  readonly selectedId?: string
+  /** The option the row uses while it is unpinned: drawn `(default)`, and stepping onto it (or `Delete`) unpins the row. */
+  readonly inheritedId?: string
+}
+/** Content a list row may open under itself. It is never a control, so a body never takes focus or holds a key. */
+export type MayflyListBodyNode = MayflyContentNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyListBodyStackNode
+export interface MayflyListBodyChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyListBodyNode }
+export interface MayflyListBodyStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyListBodyChild[] }
 export interface MayflyListItem {
   readonly id: string
+  /** Plain text: what a filter and the accessible name read. `labelSpans` paints it instead when present. */
   readonly label: string
+  readonly labelSpans?: readonly MayflyInlineSpan[]
+  /** Spans aligned to the right edge of the row; they carry their own spacing. */
+  readonly right?: readonly MayflyInlineSpan[]
+  /** The right spans while this row holds the cursor. */
+  readonly rightFocus?: readonly MayflyInlineSpan[]
+  /** Lines of text (`│ ╰` guide) or content that opens under the row; a body makes the row expandable. */
+  readonly body?: string | MayflyListBodyNode
+  /** The body is always open and the row is not a disclosure. */
+  readonly bodyAlways?: boolean
+  /** The row starts open. */
+  readonly expanded?: boolean
+  /** Wrap the row's text onto more rows instead of truncating it. */
+  readonly wrap?: boolean
+  /** With `wrap`, the most lines shown before `▸ N more lines · Enter`. */
+  readonly wrapMax?: number
+  readonly meter?: { readonly value: number, readonly max: number, readonly width?: number, readonly tone?: MayflyTone }
+  /** Columns of indent before the row's own glyphs. */
+  readonly indent?: number
+  /** A non-selectable muted rule row; the text is right-aligned. */
+  readonly rule?: string
+  /** A non-selectable blank row. */
+  readonly gap?: boolean
   readonly detail?: string
   readonly detailSpans?: readonly MayflyInlineSpan[]
   readonly badge?: string
@@ -142,7 +175,40 @@ export interface MayflyListItem {
   /** Shared decision shown before accepting this single row. */
   readonly confirm?: string | MayflyConfirmation
 }
-export interface MayflyListNode { readonly kind: 'list', readonly id: string, readonly role: 'browse' | 'choose', readonly mode?: 'single' | 'multiple', readonly selectedIds: readonly string[], readonly items: readonly MayflyListItem[], readonly filter?: string, readonly filterable?: boolean, readonly tree?: boolean, readonly numbered?: boolean | 'focus', readonly minSelected?: number, readonly maxSelected?: number, readonly acceptActionId?: string, readonly empty?: MayflyUiNode }
+export interface MayflyListNode {
+  readonly kind: 'list'
+  readonly id: string
+  readonly role: 'browse' | 'choose'
+  readonly mode?: 'single' | 'multiple'
+  readonly selectedIds: readonly string[]
+  readonly items: readonly MayflyListItem[]
+  readonly filter?: string
+  readonly filterable?: boolean
+  /** `'type'` (default): printable keys start a search. `'slash'`: only `/` does, so bare letters stay free for accelerators. */
+  readonly filterMode?: 'type' | 'slash'
+  readonly tree?: boolean
+  readonly numbered?: boolean | 'focus'
+  readonly minSelected?: number
+  readonly maxSelected?: number
+  readonly acceptActionId?: string
+  readonly empty?: MayflyUiNode
+  /** `'selection'` keeps a muted arrow on the cursor row after focus leaves the list (a list whose detail follows it). */
+  readonly marker?: 'cursor' | 'selection'
+  /** Draw `●` `○` on a single choose list. */
+  readonly marks?: boolean
+  /** Show at most this many rows, windowed around the cursor, with an `↑ n more · ↓ n more` row. */
+  readonly maxRows?: number
+  /** The cursor row opens its body or branch while it holds the cursor. */
+  readonly expandFocused?: boolean
+  /** The word the hint row gives `Enter`. */
+  readonly acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore'
+  /** The list takes focus first when its surface opens. */
+  readonly autofocus?: boolean
+  /** Moves the cursor to `id` (and opens its parents) whenever `rev` changes. */
+  readonly focusItem?: { readonly id: string, readonly rev: number }
+  /** The word the hint row gives the list's `↑/↓`. */
+  readonly hintLabel?: string
+}
 export interface MayflyFormFieldBase {
   readonly id: string
   readonly label: string

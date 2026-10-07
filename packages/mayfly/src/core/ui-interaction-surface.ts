@@ -8,7 +8,7 @@ import type {
   MayflyScrollNode, MayflyTabsNode, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventEndpoint, MayflyUiNode, MayflyUiScope,
 } from '@ephemeral-ai/mayfly-ui'
 import { createFormState, formAddressKey, formDirty, inspectForm, reconcileForm, reduceForm, submitForm, validateForm, type UiFormIntent, type UiFormState } from './ui-interaction-form.ts'
-import { acknowledgeChoice, choiceError, choiceSegment, createChoiceState, reconcileChoice, reduceChoice, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
+import { acknowledgeChoice, choiceError, choiceReportedSegment, createChoiceState, reconcileChoice, reduceChoice, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
 import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls, type UiControlAddress } from './ui-interaction-tree.ts'
 import { admittedListIndex, admittedListItem, createAdmissionCache, validateMayflyUiNode } from './ui-validator.ts'
 import type { MayflyWorkCounters } from './ui-work-counters.ts'
@@ -551,7 +551,7 @@ export class UiSurfaceModel {
     }
     const inputs = targets === undefined && selections.length === 0 ? undefined : freezeWire({ actionId, draftRevision: this.revision, source: this.source, forms: forms.map(form => submitForm(form!)), selections: selections.map(selection => {
       const selected = selection.state!
-      const segmentId = selected.selectedIds.length === 1 && selected.definition.mode !== 'multiple' ? choiceSegment(selected, selected.selectedIds[0]!) : undefined
+      const segmentId = selected.selectedIds.length === 1 && selected.definition.mode !== 'multiple' ? choiceReportedSegment(selected, selected.selectedIds[0]!) : undefined
       return segmentId === undefined ? { ...selection.address, selectedIds: selected.selectedIds } : { ...selection.address, selectedIds: selected.selectedIds, segmentId }
     }) })
     const submission = action.item.submit === undefined ? undefined : inputs
@@ -612,7 +612,7 @@ export class UiSurfaceModel {
        reporting the event, so Enter shares validation, confirmation, and
        navigation with its action item. */
     if (state.definition.acceptActionId !== undefined) { this.invoke(state.definition.acceptActionId, event.pagePath); return }
-    const segmentId = event.selectedIds.length === 1 && state.definition.mode !== 'multiple' ? choiceSegment(this.choices.get(key)!, event.selectedIds[0]!) : undefined
+    const segmentId = event.selectedIds.length === 1 && state.definition.mode !== 'multiple' ? choiceReportedSegment(this.choices.get(key)!, event.selectedIds[0]!) : undefined
     if (!this.activeKeys.has(key)) this.start(key, { ...event, selectedIds: state.definition.role === 'browse' ? event.selectedIds : this.choices.get(key)!.selectedIds, ...(segmentId === undefined ? {} : { segmentId }) })
   }
 

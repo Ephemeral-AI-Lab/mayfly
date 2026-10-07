@@ -15,7 +15,9 @@ import type {
   MayflyField,
   MayflyFormField,
   MayflyInlineSpan,
+  MayflyListBodyNode,
   MayflyListItem,
+  MayflyListNode,
   MayflyListSegment,
   MayflyListSegmentOption,
   MayflySection,
@@ -98,6 +100,8 @@ interface ValidationBudget {
   readonly cache?: MayflyAdmissionCache
   /** Responsive placeholders created so far; a subtree that made one is never memoized. */
   deferred: number
+  /** A tighter node ceiling while a list item's body is admitted. */
+  nodeLimit?: number | undefined
 }
 
 /** What admitting one subtree added to the tree-wide budget, replayed when the same subtree is admitted again. */
@@ -380,7 +384,7 @@ function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounte
   // quota — the same isolation lazy list admission already applies — so the
   // aggregate row text of a large picker cannot exhaust the tree budget.
   countWork(counters, 'nodesValidated')
-  const state = validationState()
+  const state = validationState(counters === undefined ? undefined : { ...emptyBudget(), counters })
   return enter(value, path, state, object => {
     const disabledValue = own(object, 'disabled', path)
     const detailSpansValue = own(object, 'detailSpans', path)
@@ -401,8 +405,112 @@ function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounte
       ...optional(segmentValue === undefined ? undefined : listSegment(segmentValue, `${path}.segment`, state), 'segment'),
       ...optional(unavailableValue === undefined ? undefined : unavailableActions(unavailableValue, `${path}.unavailableActions`, state), 'unavailableActions'),
       ...optional(confirmValue === undefined ? undefined : confirmation(confirmValue, `${path}.confirm`, state), 'confirm'),
+      ...listItemRowFields(object, path, state),
     }
   })
+}
+
+/** The most nodes one list item's body may hold; each item admits under its own quota, so a long list of rich rows stays legal. */
+export const MAYFLY_UI_MAX_ITEM_BODY_NODES = 32
+/** The most lines one wrapped row may be asked to show, and the widest meter and indent a row may ask for. */
+const LIST_ROW_LIMITS = { wrapMax: 100, meterWidth: 40, indent: 8 } as const
+const LIST_BODY_KINDS: ReadonlySet<string> = new Set([
+  'text', 'markdown', 'fields', 'code', 'diff', 'sections', 'rich-text', 'diagram', 'chart', 'progress', 'spacer', 'divider', 'stack',
+])
+
+/** A body is content only: a stack of content, never a control, a tab page, or a node that holds focus. */
+function assertListBody(admitted: MayflyUiNode, path: string): void {
+  if (!LIST_BODY_KINDS.has(admitted.kind)) invalid(`${path} must be content: a ${admitted.kind} node would take focus inside a row`)
+  if (admitted.kind !== 'stack') return
+  for (const [index, child] of admitted.children.entries()) {
+    if (child.tab !== undefined) invalid(`${path}.children[${String(index)}].tab is not allowed in a list body`)
+    assertListBody(child.node, `${path}.children[${String(index)}].node`)
+  }
+}
+
+/** The row fields of one list item beyond its text: spans, bodies, wrapping, meters, indent, rules, and gaps. */
+function listItemRowFields(object: Record<string, unknown>, path: string, state: ValidationState): Partial<MayflyListItem> {
+  const labelSpans = own(object, 'labelSpans', path)
+  const right = own(object, 'right', path)
+  const rightFocus = own(object, 'rightFocus', path)
+  const bodyValue = own(object, 'body', path)
+  const bodyAlways = own(object, 'bodyAlways', path)
+  const expanded = own(object, 'expanded', path)
+  const wrap = own(object, 'wrap', path)
+  const wrapMax = own(object, 'wrapMax', path)
+  const meterValue = own(object, 'meter', path)
+  const indent = own(object, 'indent', path)
+  const gap = own(object, 'gap', path)
+  const body = bodyValue === undefined ? undefined
+    : typeof bodyValue === 'string' ? text(bodyValue, `${path}.body`, state) : listBody(bodyValue, `${path}.body`, state)
+  if (bodyAlways !== undefined && boolean(bodyAlways, `${path}.bodyAlways`) && body === undefined) invalid(`${path}.bodyAlways needs a body`)
+  const ruleValue = optionalText(object, 'rule', path, state)
+  if (gap === true && ruleValue !== undefined) invalid(`${path} cannot be both a rule and a gap`)
+  return {
+    ...optional(labelSpans === undefined ? undefined : spans(labelSpans, `${path}.labelSpans`, state), 'labelSpans'),
+    ...optional(right === undefined ? undefined : spans(right, `${path}.right`, state), 'right'),
+    ...optional(rightFocus === undefined ? undefined : spans(rightFocus, `${path}.rightFocus`, state), 'rightFocus'),
+    ...optional(body, 'body'),
+    ...optional(bodyAlways === undefined ? undefined : boolean(bodyAlways, `${path}.bodyAlways`), 'bodyAlways'),
+    ...optional(expanded === undefined ? undefined : boolean(expanded, `${path}.expanded`), 'expanded'),
+    ...optional(wrap === undefined ? undefined : boolean(wrap, `${path}.wrap`), 'wrap'),
+    ...optional(wrapMax === undefined ? undefined : Math.min(finiteInteger(wrapMax, `${path}.wrapMax`, 1), LIST_ROW_LIMITS.wrapMax), 'wrapMax'),
+    ...optional(meterValue === undefined ? undefined : listMeter(meterValue, `${path}.meter`, state), 'meter'),
+    ...optional(indent === undefined ? undefined : Math.min(finiteInteger(indent, `${path}.indent`), LIST_ROW_LIMITS.indent), 'indent'),
+    ...optional(ruleValue, 'rule'),
+    ...optional(gap === undefined ? undefined : boolean(gap, `${path}.gap`), 'gap'),
+  }
+}
+
+function listMeter(value: unknown, path: string, state: ValidationState): NonNullable<MayflyListItem['meter']> {
+  return enter(value, path, state, object => {
+    const width = own(object, 'width', path)
+    const tone = own(object, 'tone', path)
+    const max = finiteInteger(required(object, 'max', path), `${path}.max`, 1)
+    return {
+      value: Math.min(finiteInteger(required(object, 'value', path), `${path}.value`), max),
+      max,
+      ...optional(width === undefined ? undefined : Math.min(finiteInteger(width, `${path}.width`, 1), LIST_ROW_LIMITS.meterWidth), 'width'),
+      ...optional(tone === undefined ? undefined : enumeration(tone, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone'),
+    }
+  })
+}
+
+/**
+ * A node body admits with its item, under that item's own quota (`MAYFLY_UI_MAX_ITEM_BODY_NODES` nodes, the item's own
+ * text budget), so a list of thousands of rich rows needs no more of the tree's quotas than a list of plain ones.
+ */
+function listBody(value: unknown, path: string, state: ValidationState): MayflyListBodyNode {
+  state.budget.nodeLimit = state.budget.nodes + MAYFLY_UI_MAX_ITEM_BODY_NODES
+  try {
+    const admitted = node(value, path, state, 0, 'ui')
+    assertListBody(admitted, path)
+    return admitted as MayflyListBodyNode
+  } finally { state.budget.nodeLimit = undefined }
+}
+
+/** The list node's presentation fields: markers, windowing, the Enter verb, and where the cursor starts. */
+function listNodeFields(object: Record<string, unknown>, path: string, state: ValidationState): Partial<MayflyListNode> {
+  const marker = own(object, 'marker', path)
+  const marks = own(object, 'marks', path)
+  const maxRows = own(object, 'maxRows', path)
+  const expandFocused = own(object, 'expandFocused', path)
+  const acceptVerb = own(object, 'acceptVerb', path)
+  const autofocus = own(object, 'autofocus', path)
+  const focusItem = own(object, 'focusItem', path)
+  return {
+    ...optional(marker === undefined ? undefined : enumeration(marker, ['cursor', 'selection'], `${path}.marker`), 'marker'),
+    ...optional(marks === undefined ? undefined : boolean(marks, `${path}.marks`), 'marks'),
+    ...optional(maxRows === undefined ? undefined : finiteInteger(maxRows, `${path}.maxRows`, 1), 'maxRows'),
+    ...optional(expandFocused === undefined ? undefined : boolean(expandFocused, `${path}.expandFocused`), 'expandFocused'),
+    ...optional(acceptVerb === undefined ? undefined : enumeration(acceptVerb, ['open', 'choose', 'expand', 'edit', 'restore'], `${path}.acceptVerb`), 'acceptVerb'),
+    ...optional(autofocus === undefined ? undefined : boolean(autofocus, `${path}.autofocus`), 'autofocus'),
+    ...optional(focusItem === undefined ? undefined : enter(focusItem, `${path}.focusItem`, state, target => ({
+      id: identifier(required(target, 'id', path), `${path}.focusItem.id`, state),
+      rev: finiteInteger(required(target, 'rev', path), `${path}.focusItem.rev`),
+    })), 'focusItem'),
+    ...optional(optionalText(object, 'hintLabel', path, state), 'hintLabel'),
+  }
 }
 
 function segmentOption(value: unknown, path: string, state: ValidationState): MayflyListSegmentOption {
@@ -425,10 +533,13 @@ function listSegment(value: unknown, path: string, state: ValidationState): Mayf
     const selectedIdValue = own(object, 'selectedId', path)
     const selectedId = selectedIdValue === undefined ? undefined : text(selectedIdValue, `${path}.selectedId`, state)
     if (selectedId !== undefined && !options.some(option => option.id === selectedId)) invalid(`${path}.selectedId is not an option`)
+    const inheritedId = optionalText(object, 'inheritedId', path, state)
+    if (inheritedId !== undefined && !options.some(option => option.id === inheritedId)) invalid(`${path}.inheritedId is not an option`)
     return {
       options,
       ...optional(optionalText(object, 'label', path, state), 'label'),
       ...optional(selectedId, 'selectedId'),
+      ...optional(inheritedId, 'inheritedId'),
     }
   })
 }
@@ -441,6 +552,8 @@ interface LazyListAdmission {
   readonly length: number
   item(index: number): MayflyListItem
   indexOf(id: string): number
+  /** Ids of the items that start open, read from the raw items so a long list admits nothing to answer. */
+  expanded(): readonly string[]
 }
 
 const lazyLists = new WeakMap<readonly MayflyListItem[], LazyListAdmission>()
@@ -616,6 +729,19 @@ function lazyListItems(value: unknown, path: string, counters?: MayflyWorkCounte
       for (let index = 0; index < length; index += 1) if (peekId(index) === id) return index
       return -1
     },
+    expanded() {
+      const open: string[] = []
+      for (let index = 0; index < length; index += 1) {
+        try {
+          const entry = raw(index)
+          if (typeof entry === 'object' && entry !== null && Object.getOwnPropertyDescriptor(entry, 'expanded')?.value === true) {
+            const id = peekId(index)
+            if (id !== undefined) open.push(id)
+          }
+        } catch { /* an invalid row is reported when it is drawn */ }
+      }
+      return open
+    },
   }
   const target: MayflyListItem[] = []
   target.length = length
@@ -639,10 +765,30 @@ function lazyListItems(value: unknown, path: string, counters?: MayflyWorkCounte
   return proxy
 }
 
+/** A list longer than this admits its items lazily when any of them carries a node body. */
+const LAZY_BODY_ITEMS = 16
+
+/** Whether any item of a raw list carries a node body, read without admitting anything. */
+function hasNodeBodies(value: unknown): boolean {
+  const length = Object.getOwnPropertyDescriptor(value, 'length')?.value as number
+  for (let index = 0; index < length; index += 1) {
+    const item = Object.getOwnPropertyDescriptor(value, String(index))?.value as unknown
+    if (typeof item !== 'object' || item === null) continue
+    const body = Object.getOwnPropertyDescriptor(item, 'body')?.value as unknown
+    if (typeof body === 'object' && body !== null) return true
+  }
+  return false
+}
+
 /** Core-private indexed access for an admitted list without forcing the full collection. */
 export function admittedListItem(items: readonly MayflyListItem[], index: number): MayflyListItem | undefined {
   if (!Number.isSafeInteger(index) || index < 0 || index >= items.length) return undefined
   return lazyLists.get(items)?.item(index) ?? items[index]
+}
+
+/** Core-private: the ids of the items that start open (`expanded`), without admitting a lazy list. */
+export function admittedListExpanded(items: readonly MayflyListItem[]): readonly string[] {
+  return lazyLists.get(items)?.expanded() ?? items.filter(item => item.expanded === true).map(item => item.id)
 }
 
 /** Core-private ID lookup that reads only IDs for a lazy admitted list. */
@@ -1029,7 +1175,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
   if (depth > MAYFLY_UI_MAX_DEPTH) limit(`Mayfly UI depth exceeds ${String(MAYFLY_UI_MAX_DEPTH)}`)
   state.budget.nodes += 1
   countWork(state.budget.counters, 'nodesValidated')
-  if (state.budget.nodes > MAYFLY_UI_MAX_NODES) limit(`Mayfly UI tree exceeds ${String(MAYFLY_UI_MAX_NODES)} nodes`)
+  if (state.budget.nodes > (state.budget.nodeLimit ?? MAYFLY_UI_MAX_NODES)) limit(state.budget.nodeLimit === undefined ? `Mayfly UI tree exceeds ${String(MAYFLY_UI_MAX_NODES)} nodes` : `a list body exceeds ${String(MAYFLY_UI_MAX_ITEM_BODY_NODES)} nodes`)
   return enter(value, path, state, object => {
     const kind = own(object, 'kind', path)
     if (typeof kind !== 'string') invalid(`${path}.kind must be a string`)
@@ -1155,18 +1301,22 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const itemCount = Array.isArray(itemsValue)
           ? Object.getOwnPropertyDescriptor(itemsValue, 'length')!.value as number
           : 0
-        const items = itemCount > MAYFLY_UI_MAX_COLLECTION
+        const items = itemCount > MAYFLY_UI_MAX_COLLECTION || (itemCount > LAZY_BODY_ITEMS && hasNodeBodies(itemsValue))
           ? lazyListItems(itemsValue, `${path}.items`, state.budget.counters, state.budget.cache)
           : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`, state.budget.counters, state.budget.cache))
-        if (itemCount <= MAYFLY_UI_MAX_COLLECTION) uniqueIds(items, `${path}.items`)
+        const lazy = itemCount > MAYFLY_UI_MAX_COLLECTION || (itemCount > LAZY_BODY_ITEMS && hasNodeBodies(itemsValue))
+        if (!lazy) uniqueIds(items, `${path}.items`)
         const selectedIds = collection(required(object, 'selectedIds', path), `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
         if ((modeValue ?? 'single') === 'single' && selectedIds.length > 1) invalid(`${path}.selectedIds has more than one id in single mode`)
         const filterable = own(object, 'filterable', path)
-        if (filterable === true) state.budget.filterable = true
+        const filterModeValue = own(object, 'filterMode', path)
+        const filterMode = filterModeValue === undefined ? undefined : enumeration(filterModeValue, ['type', 'slash'], `${path}.filterMode`)
+        // Only a list that takes printable keys as search text conflicts with a printable accelerator.
+        if (filterable === true && filterMode !== 'slash') state.budget.filterable = true
         const numbered = own(object, 'numbered', path)
         const tree = own(object, 'tree', path)
-        if (tree === true && itemCount <= MAYFLY_UI_MAX_COLLECTION) {
+        if (tree === true && !lazy) {
           const byId = new Map(items.map(item => [item.id, item]))
           for (const item of items) {
             if (item.parentId === item.id) invalid(`${path}.items tree cannot parent an item to itself`)
@@ -1179,7 +1329,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
             }
           }
         }
-        return { kind, role, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(numbered === undefined ? undefined : numbered === 'focus' ? 'focus' as const : boolean(numbered, `${path}.numbered`), 'numbered'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
+        return { kind, role, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(filterMode, 'filterMode'), ...listNodeFields(object, path, state), ...optional(numbered === undefined ? undefined : numbered === 'focus' ? 'focus' as const : boolean(numbered, `${path}.numbered`), 'numbered'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
       }
       case 'form': {
         const fields = collection(required(object, 'fields', path), `${path}.fields`).map((item, index) => formField(item, `${path}.fields[${String(index)}]`, state))
@@ -1380,7 +1530,7 @@ function validate<Value>(value: unknown, mode: ValidationMode, counters?: Mayfly
       assertEditorControlVisible(result as MayflyEditorShellNode)
     }
     validatePages(state.budget)
-    if (state.budget.filterable && state.budget.printableKey !== undefined) invalid(`${state.budget.printableKey} would swallow typed filter text; use a modifier key`)
+    if (state.budget.filterable && state.budget.printableKey !== undefined) invalid(`${state.budget.printableKey} would swallow typed filter text; use a modifier key, or filterMode: 'slash' on every filterable list`)
     return { ok: true, value: freeze(result) as Value }
   } catch (error) {
     if (error instanceof ValidationFault) return { ok: false, code: error.code, message: error.message }

@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { acknowledgeChoice, choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, decorateChoiceItem, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
+import { acknowledgeChoice, choiceError, choicePinned, choiceReportedSegment, choiceRow, choiceSegment, focusableListItem, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, decorateChoiceItem, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
 
 const tree = ui.list({ id: 'tree', role: 'choose', tree: true, selectedIds: [], filterable: true, items: [
   { id: 'root', label: 'Root' },
@@ -25,7 +25,10 @@ describe('shared tree choice', () => {
     state = reduceChoice(state, { kind: 'expand', id: 'child' })
     state = reduceChoice(state, { kind: 'focus', id: 'leaf' })
     expect(visibleChoiceIndices(state)).toEqual([0, 1, 2, 3])
-    expect(decorateChoiceItem(state, 2)).toMatchObject({ id: 'leaf', label: '      Deep target' })
+    // The label is never decorated: the painter draws the guides, so the label stays what a filter reads.
+    expect(decorateChoiceItem(state, 2)).toMatchObject({ id: 'leaf', label: 'Deep target' })
+    expect(choiceRow(state, 2)).toMatchObject({ depth: 2, last: true, expandable: false, open: false })
+    expect(choiceRow(state, 1)).toMatchObject({ depth: 1, last: true, expandable: true, open: true })
     state = reduceChoice(state, { kind: 'expand', id: 'root' })
     expect(state.focusedId).toBe('root')
     expect(visibleChoiceIndices(state)).toEqual([0, 3])
@@ -66,12 +69,12 @@ describe('shared tree choice', () => {
     expect(createChoiceState({ ...malformed, selectedIds: ['orphan'] }).expandedIds).toEqual(['missing'])
   })
 
-  it('decorates parent disclosure and tolerates an absent derived tree index', () => {
+  it('reports parent disclosure and tolerates an absent derived tree index', () => {
     let state = createChoiceState(tree)
-    expect(decorateChoiceItem(state, 0).label).toContain('▸ Root')
+    expect(choiceRow(state, 0)).toMatchObject({ expandable: true, open: false })
     state = reduceChoice(state, { kind: 'expand', id: 'root' })
-    expect(decorateChoiceItem(state, 0).label).toContain('▾ Root')
-    expect(decorateChoiceItem({ ...state, treeIndex: undefined }, 0).label).toContain('Root')
+    expect(choiceRow(state, 0)).toMatchObject({ expandable: true, open: true })
+    expect(choiceRow({ ...state, treeIndex: undefined }, 0)).toMatchObject({ depth: 0, last: false, expandable: false })
     state = reduceChoice(state, { kind: 'focus', id: 'other' })
     state = reduceChoice(state, { kind: 'expand', id: 'root' })
     expect(state.focusedId).toBe('other')
@@ -302,8 +305,9 @@ describe('row segment drafts', () => {
     ] })
     const seeded = { ...createChoiceState(list), segments: { a: 'y' } }
     expect(choiceSegment(seeded, 'a')).toBe('y')
-    expect(choiceSegment(reduceChoice(seeded, { kind: 'segment', id: 'a', direction: 1 }), 'a')).toBe('z')
-    expect(choiceSegment(reduceChoice(seeded, { kind: 'segment', id: 'a', direction: -1 }), 'a')).toBe('x')
+    // With nothing enabled under the cursor the arrow starts from the edge it points into.
+    expect(choiceSegment(reduceChoice(seeded, { kind: 'segment', id: 'a', direction: 1 }), 'a')).toBe('x')
+    expect(choiceSegment(reduceChoice(seeded, { kind: 'segment', id: 'a', direction: -1 }), 'a')).toBe('z')
   })
 
   it('tolerates choice state predating the segment map', () => {
@@ -313,5 +317,105 @@ describe('row segment drafts', () => {
     expect(choiceSegment(reconcileChoice(legacy, { ...segmented }), 'a')).toBe('low')
     const stepped = reduceChoice(legacy, { kind: 'segment', id: 'a', direction: -1 })
     expect(choiceSegment(stepped, 'a')).toBe('default')
+  })
+})
+
+describe('list rows beyond the label', () => {
+  const inheriting = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
+    { id: 'a', label: 'A', segment: { options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }], inheritedId: 'high' } },
+    { id: 'b', label: 'B' },
+  ] })
+
+  it('resolves an unpinned segment to the option it inherits and reports nothing until a row is pinned', () => {
+    let state = createChoiceState(inheriting)
+    expect(choicePinned(state, 'a')).toBeNull()
+    expect(choiceSegment(state, 'a')).toBe('high')
+    expect(choiceReportedSegment(state, 'a')).toBeUndefined()
+    state = reduceChoice(state, { kind: 'segment', id: 'a', direction: 1 })
+    expect(choicePinned(state, 'a')).toBe('max')
+    expect(choiceReportedSegment(state, 'a')).toBe('max')
+    // The ends clamp: a pinned segment at its last option stays.
+    expect(reduceChoice(state, { kind: 'segment', id: 'a', direction: 1 })).toBe(state)
+  })
+
+  it('unpins by stepping onto the inherited option and by an explicit unpin', () => {
+    let state = reduceChoice(createChoiceState(inheriting), { kind: 'segment', id: 'a', direction: -1 })
+    expect(choicePinned(state, 'a')).toBe('min')
+    state = reduceChoice(state, { kind: 'segment', id: 'a', direction: 1 })
+    expect(choicePinned(state, 'a')).toBeNull()
+    expect(choiceSegment(state, 'a')).toBe('high')
+    const pinned = reduceChoice(state, { kind: 'segment', id: 'a', direction: 1 })
+    const unpinned = reduceChoice(pinned, { kind: 'unpin', id: 'a' })
+    expect(choicePinned(unpinned, 'a')).toBeNull()
+    // There is nothing to drop while unpinned, no fallback without an inherited option, and no such row.
+    expect(reduceChoice(state, { kind: 'unpin', id: 'a' })).toBe(state)
+    expect(reduceChoice(state, { kind: 'unpin', id: 'b' })).toBe(state)
+    expect(reduceChoice(state, { kind: 'unpin', id: 'missing' })).toBe(state)
+    const plain = createChoiceState(ui.list({ id: 'plain', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A', segment: { selectedId: 'x', options: [{ id: 'x', label: 'x' }, { id: 'y', label: 'y' }] } }] }))
+    expect(reduceChoice(plain, { kind: 'unpin', id: 'a' })).toBe(plain)
+  })
+
+  it('opens the rows that start expanded and follows focusItem once per rev', () => {
+    const list = ui.list({ id: 'stream', role: 'browse', selectedIds: [], focusItem: { id: 'late', rev: 1 }, items: [
+      { id: 'first', label: 'First', body: 'text', expanded: true },
+      { id: 'late', label: 'Late' },
+    ] })
+    let state = createChoiceState(list)
+    expect(state.expandedIds).toEqual(['first'])
+    expect(state.focusedId).toBe('late')
+    state = reduceChoice(state, { kind: 'focus', id: 'first' })
+    // The same rev leaves a cursor the reader moved alone; a new rev follows again.
+    expect(reconcileChoice(state, { ...list }).focusedId).toBe('first')
+    expect(reconcileChoice(state, { ...list, focusItem: { id: 'late', rev: 2 } }).focusedId).toBe('late')
+    expect(reconcileChoice(state, { ...list, focusItem: { id: 'missing', rev: 3 } }).focusedId).toBe('first')
+  })
+
+  it('opens the parents of a followed row and yields to a filter that hides it', () => {
+    const deep = { ...tree, focusItem: { id: 'leaf', rev: 1 } }
+    const state = createChoiceState(deep)
+    expect(state.focusedId).toBe('leaf')
+    expect(state.expandedIds).toEqual(['child', 'root'])
+  })
+
+  it('never rests the cursor on a rule or a blank row', () => {
+    const list = ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [
+      { id: 'rule', label: '', rule: 'Today' },
+      { id: 'a', label: 'A' },
+      { id: 'gap', label: '', gap: true },
+      { id: 'b', label: 'B' },
+    ] })
+    let state = createChoiceState(list)
+    expect(state.focusedId).toBe('a')
+    state = reduceChoice(state, { kind: 'move', direction: 1, count: 1 })
+    expect(state.focusedId).toBe('b')
+    expect(reduceChoice(state, { kind: 'focus', id: 'gap' })).toBe(state)
+    expect(focusableListItem(list.items[0]!)).toBe(false)
+    expect(focusableListItem(list.items[1]!)).toBe(true)
+  })
+
+  it('opens a body, a search opens every body, and expandFocused opens the cursor row', () => {
+    const list = ui.list({ id: 'accordion', role: 'browse', selectedIds: [], expandFocused: true, items: [
+      { id: 'a', label: 'A', body: 'one' },
+      { id: 'b', label: 'B', body: 'two' },
+      { id: 'c', label: 'C', body: 'always', bodyAlways: true },
+      { id: 'd', label: 'D' },
+    ] })
+    let state = createChoiceState(list)
+    expect(choiceRow(state, 0)).toMatchObject({ expandable: true, open: true })
+    expect(choiceRow(state, 1)).toMatchObject({ expandable: true, open: false })
+    expect(choiceRow(state, 2)).toMatchObject({ expandable: false, open: true })
+    expect(choiceRow(state, 3)).toMatchObject({ expandable: false, open: false })
+    state = reduceChoice(state, { kind: 'query', query: 'B' })
+    expect(choiceRow(state, 1)).toMatchObject({ open: true })
+  })
+
+  it('expands and collapses every branch, keeping the cursor on a row that is still drawn', () => {
+    let state = reduceChoice(createChoiceState(tree), { kind: 'expand-all' })
+    expect(visibleChoiceIndices(state)).toEqual([0, 1, 2, 3])
+    state = reduceChoice(state, { kind: 'focus', id: 'leaf' })
+    state = reduceChoice(state, { kind: 'collapse-all' })
+    expect(visibleChoiceIndices(state)).toEqual([0, 3])
+    expect(state.focusedId).toBe('root')
+    expect(state.expandedIds).toEqual([])
   })
 })

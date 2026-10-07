@@ -10,7 +10,7 @@ import type { MayflyGlyphMode } from './glyphs.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import type { MayflySemanticColors } from './types.ts'
 import { loaderCell, shimmerText } from './ui-loader-animation.ts'
-import { paintSpan } from './ui-patterns.ts'
+import { paintSpan } from './ui-paint.ts'
 
 /** Whether any span of a rich-text node moves. */
 export function hasMotion(spans: readonly MayflyInlineSpan[]): boolean {

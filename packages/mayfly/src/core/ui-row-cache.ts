@@ -4,7 +4,7 @@
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** How many painted variants of one item are kept: its focused, resting, and selected looks at the widths in use. */
-const ROW_VARIANTS = 6
+const ROW_VARIANTS = 8
 
 /**
  * A surface's memo of painted list rows. An admitted item is immutable, so its row is a function of the item and of the
@@ -14,10 +14,15 @@ const ROW_VARIANTS = 6
  */
 export class UiRowCache {
   private colors: object | undefined
-  private rows = new WeakMap<object, Map<string, string>>()
+  private rows = new WeakMap<object, Map<string, readonly string[]>>()
 
   /** The painted row for `item` in the state named by `key`; `paint` runs, and is counted, only on a miss. */
   read(colors: object, item: object, key: string, paint: () => string, counters?: MayflyWorkCounters): string {
+    return this.readLines(colors, item, key, () => [paint()], counters)[0]!
+  }
+
+  /** The painted lines of `item` (a row with a wrapped label or a body is several) in the state named by `key`. */
+  readLines(colors: object, item: object, key: string, paint: () => readonly string[], counters?: MayflyWorkCounters): readonly string[] {
     if (this.colors !== colors) {
       this.colors = colors
       this.rows = new WeakMap()
@@ -29,10 +34,10 @@ export class UiRowCache {
     }
     const known = variants.get(key)
     if (known !== undefined) return known
-    const row = paint()
-    countWork(counters, 'rowsPainted')
+    const rows = paint()
+    countWork(counters, 'rowsPainted', rows.length)
     if (variants.size >= ROW_VARIANTS) variants.delete(variants.keys().next().value!)
-    variants.set(key, row)
-    return row
+    variants.set(key, rows)
+    return rows
   }
 }

@@ -61,11 +61,22 @@ describe('renderList with a row memo', () => {
     const counters = createWorkCounters()
     const item = {}
     const read = (key: string): string => cache.read(colors, item, key, () => key, counters)
-    for (const key of ['1', '2', '3', '4', '5', '6', '7']) read(key)
-    expect(counters.rowsPainted).toBe(7)
-    read('7')
-    expect(counters.rowsPainted, 'the newest look is kept').toBe(7)
+    for (const key of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) read(key)
+    expect(counters.rowsPainted).toBe(9)
+    read('9')
+    expect(counters.rowsPainted, 'the newest look is kept').toBe(9)
     read('1')
-    expect(counters.rowsPainted, 'the oldest look was dropped').toBe(8)
+    expect(counters.rowsPainted, 'the oldest look was dropped').toBe(10)
+  })
+
+  it('counts every line of a multi-line item and serves it again from the memo', () => {
+    const cache = new UiRowCache()
+    const colors = palette('a')
+    const counters = createWorkCounters()
+    const item = {}
+    const read = (): readonly string[] => cache.readLines(colors, item, 'k', () => ['a', 'b', 'c'], counters)
+    expect(read()).toEqual(['a', 'b', 'c'])
+    expect(read()).toEqual(['a', 'b', 'c'])
+    expect(counters.rowsPainted).toBe(3)
   })
 })
