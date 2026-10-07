@@ -3,7 +3,7 @@
  */
 
 import { Context } from '@deepseek-ai/cordis'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { apply as applyApi } from '../../../ui/src/provider.ts'
 import type {
   MayflyPaneDefinition,

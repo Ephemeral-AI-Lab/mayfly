@@ -35,6 +35,8 @@ const zh: Readonly<Record<string, string>> = {
   'Panels and pickers': '面板与选择器',
   'Type or /': '输入或 /',
   'Alt+←/→ or F2/F3': 'Alt+←/→ 或 F2/F3',
+  'Alt+↓ or F5, F6': 'Alt+↓ 或 F5, F6',
+  'From an empty prompt, enter the views of the status bar (F6 enters them first, then the interactive panes); ←/→ switch views and Esc returns to the prompt': '在空提示符处进入状态栏的视图（F6 先进入视图，再进入可交互的面板）；←/→ 切换视图，Esc 返回提示符',
   'Alt+Enter or Ctrl+J': 'Alt+Enter 或 Ctrl+J',
   'Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning': '在面板提供相应含义时保存、复制、删除、刷新、在 $EDITOR 中打开或搜索',
   'Move between rows and fields; scroll documents': '在行和字段之间移动；滚动文档',

@@ -5,7 +5,9 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
-import { symbols } from '@deepseek-ai/cordis'
+import { symbols, type Context } from '@deepseek-ai/cordis'
+import { ui } from '../../ui/src/index.ts'
+import { INTERACTION_KEY_ACTIONS } from '../src/interaction/keys.ts'
 import { waitForRender } from './core/fake-terminal.ts'
 import {
   bootDirectMayfly,
@@ -167,6 +169,64 @@ describe('Mayfly direct-service whole tree', () => {
     await waitForRender()
     expect(stream.get(agent)).toBeUndefined()
     expect(tree.terminal.output).toContain('authoritative final')
+  })
+
+  it('shows a plugin view in status row 2, enters it with F6, and cleans it up with its Fiber', async () => {
+    const tree = await bootDirectMayfly()
+    await currentAgent(tree)
+    const seen: string[] = []
+    // The shared interaction keys come from the interaction plugin, which this tree does not load.
+    tree.ctx.effect(() => tree.ctx.mayflyKeymap.register([...INTERACTION_KEY_ACTIONS]))
+    const fiber = await tree.ctx.plugin({
+      name: 'e2e-view',
+      inject: ['mayflyPanes'],
+      apply(plugin: Context) {
+        plugin.mayflyPanes.register({
+          id: 'e2e.view',
+          title: 'Builds',
+          placement: 'views',
+          summary: { node: { kind: 'text', content: 'Builds 3' }, count: 3 },
+          onEvent: { action: event => { seen.push(event.kind); return { kind: 'completed' } } },
+        }, ui.list({ id: 'builds', role: 'choose', selectedIds: [], items: [{ id: 'one', label: 'build one' }, { id: 'two', label: 'build two' }] }))
+      },
+    } as never)
+    const since = (): number => tree.terminal.written.length
+    tree.ctx.mayflyScreen.requestRender(true)
+    await waitForRender()
+    expect(tree.terminal.output).toContain('Builds 3')
+    // The view is the lane's, not a lane of the pane layout.
+    expect(tree.ctx.mayflyScreen.views.statusEntries().map(entry => entry.id)).toEqual(['views/e2e.view'])
+
+    let mark = since()
+    tree.terminal.sendInput('\x1b[17~')
+    await waitForRender()
+    expect(tree.terminal.written.slice(mark).join('')).toContain('build one')
+    mark = since()
+    tree.terminal.sendInput('\x1b[B')
+    await waitForRender()
+    tree.terminal.sendInput('\x1b')
+    await waitForRender()
+    expect(tree.ctx.mayflyScreen.views.panel(80)).toBeUndefined()
+
+    // A core reload replays the view from the registry; the panel keeps its cursor.
+    const core = [...tree.ctx.loader.entries()].find(candidate => candidate.options.id === 'mayfly-core')!
+    await tree.ctx.loader.update(core.id, { disabled: true })
+    await tree.ctx.loader.await()
+    await tree.ctx.loader.update(core.id, { disabled: false })
+    await tree.ctx.loader.await()
+    mark = since()
+    tree.ctx.mayflyScreen.requestRender(true)
+    await waitForRender()
+    expect(tree.terminal.written.slice(mark).join('')).toContain('Builds 3')
+    expect(tree.ctx.mayflyScreen.enterViews()).toBe(true)
+    const rows = (tree.ctx.mayflyScreen.views.panel(80) ?? []).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')
+    expect(rows).toMatch(/→\S* build two/u)
+
+    await fiber.dispose()
+    await waitForRender()
+    expect(tree.ctx.mayflyPanes.list().map(pane => pane.id)).not.toContain('e2e.view')
+    expect(tree.ctx.mayflyScreen.views.statusEntries()).toEqual([])
+    expect(tree.ctx.mayflyScreen.views.panel(80)).toBeUndefined()
   })
 
   it('passes every newly selected exact Agent to native scoped services', async () => {

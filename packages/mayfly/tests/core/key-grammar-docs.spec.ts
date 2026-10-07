@@ -28,4 +28,15 @@ describe('shared panel key reference', () => {
     for (const row of SHARED_KEY_REFERENCE) expect(zh[row.action], row.action).toBeDefined()
     expect(await sharedKeyRows('reference/keys.md')).toEqual(SHARED_KEY_REFERENCE.map(row => `| \`${zh[row.keys] ?? row.keys}\` | ${zh[row.action]!} |`))
   })
+
+  it('documents the F6 order, views first and then the interactive panes, in both languages and in the shared table', async () => {
+    const row = SHARED_KEY_REFERENCE.find(candidate => candidate.keys.includes('F6'))!
+    expect(row.action).toContain('F6 enters them first, then the interactive panes')
+    expect(row.keys).toContain('Alt+↓')
+    for (const [path, views, panes] of [['en/reference/keys.md', 'the views of the status bar', 'then the interactive panes'], ['reference/keys.md', '状态栏视图', '再按布局顺序进入可交互的 pane']] as const) {
+      const f6 = (await readFile(resolve(website, path), 'utf8')).split('\n').find(line => line.startsWith('| `F6`'))!
+      expect(f6, path).toContain(views)
+      expect(f6, path).toContain(panes)
+    }
+  })
 })

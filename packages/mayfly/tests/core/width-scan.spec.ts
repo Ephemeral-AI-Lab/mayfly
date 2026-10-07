@@ -22,6 +22,7 @@ import { ui } from '../../../ui/src/index.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
 import { WrappingSelectList } from '../../src/core/wrapping-select-list.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { ViewsLane } from '../../src/core/views-lane.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
 
 /** Identity paints: the scan measures true columns, not bracket markers. */
@@ -318,6 +319,21 @@ describe('core width-scan', () => {
       for (const key of [undefined, '\x1b[B', '\x1b[B', '\x1b[B', '\x1b[B']) {
         if (key !== undefined) surface.value.focusTarget!.handleInput?.(key)
         for (const width of SCAN_WIDTHS) expectLinesFit(`rich-list/${name}`, surface.value.component.render(width), width)
+      }
+    })
+  }
+
+  for (const { name, text } of ADVERSARIAL) {
+    it(`views lane strip, rule, and panel survive ${name}`, () => {
+      const lane = new ViewsLane()
+      lane.bind({ colors: statusColors as MayflySemanticColors, focus: () => {}, release: () => {}, requestRender: () => {}, viewport: () => ({ columns: 120, rows: 30 }) })
+      for (const [index, id] of ['agents', 'jobs', 'goal'].entries()) {
+        const panel = { render: () => [text.slice(0, 90), text], invalidate: () => {}, focused: false, handleInput: () => {} }
+        lane.register({ id, title: index === 0 ? text.slice(0, 50) : id, priority: index, summary: { node: { kind: 'text', content: text }, count: text.slice(0, 20) } }).setPanel(panel, panel)
+      }
+      for (const id of ['agents', 'jobs', 'goal']) {
+        lane.enter(id)
+        for (const width of SCAN_WIDTHS) expectLinesFit(`ViewsLane/${name}/${id}`, [...lane.panel(width)!], width)
       }
     })
   }

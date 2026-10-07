@@ -40,10 +40,23 @@ export interface PendingParity {
   readonly reason: string
 }
 
+/** Scene 13's views walks: the frames before the lane is entered (`idle`) and while it is (`entered`). */
+const SCENE_13_VIEWS = [
+  { walk: 'views', idle: [0], entered: [1] },
+  { walk: 'views-next', idle: [0], entered: [1, 2, 3] },
+  { walk: 'views-stop', idle: [0], entered: [1, 2] },
+  { walk: 'views-back', idle: [0, 2], entered: [1] },
+] as const
+
 export const PENDING_PARITY: readonly PendingParity[] = [
   { directory: '05-lists', walk: 'move', frames: [3, 4], rows: [10, 10], slice: '1.5', reason: 'the hint row names `Esc back` while focus is on a control other than the surface\'s first (rows are those of the surface): Esc returns to the home control first (focus levels)' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [0], rows: [21, 26], slice: '1.6', reason: 'page 1 form block: the form marks, units, and (inherited) (1.6)' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [5], slice: '1.8b', reason: 'page 6 is patterns.splitView over lists with right-aligned spans (1.4)' },
+  ...SCENE_13_VIEWS.flatMap(({ walk, entered, idle }) => [
+    { directory: '13-status-area', walk, frames: [...idle, ...entered], rows: [0, 7] as const, slice: '3', reason: 'row 1 of the status area (Phase 3) and the editor frame (Phase 5); the lane starts at row 8' },
+    { directory: '13-status-area', walk, frames: idle, rows: [8, 8] as const, slice: '3', reason: 'row 2 idle: the footer joins summaries with two spaces and has no right cue yet; Phase 3 replaces it with StatusRows' },
+    { directory: '13-status-area', walk, frames: entered, rows: [10, 99] as const, slice: '3', reason: 'the panel body and its hint row are Mayfly\'s agents and jobs views (Phase 3) over the list painter (1.4)' },
+  ]),
 ]
 
 /** The entries that cover a frame of a walk. */
