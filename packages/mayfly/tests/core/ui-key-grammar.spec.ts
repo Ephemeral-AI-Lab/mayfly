@@ -23,7 +23,17 @@ describe('key grammar', () => {
       { control: 2, key: 'ctrl+r', label: 'Run' },
     ] }))
     expect(bindings.map(binding => binding.intent.kind)).toEqual(['keyed', 'editor'])
-    expect(grammarHints(bindings)).toEqual([{ id: 'keyed:ctrl+r', keys: 'Ctrl+R', label: 'Run', priority: 96 }])
+    expect(grammarHints(bindings)).toEqual([{ id: 'keyed:2', keys: 'Ctrl+R', label: 'Run', priority: 96 }])
+  })
+
+  it('hints an action with several keys once, at its first key that may fire', () => {
+    const bindings = keyGrammar(state({ control: { kind: 'empty-list' }, list: { filterable: true, searching: false, query: false, pasting: false }, keyed: [
+      { control: 3, key: 'd', label: 'delete' },
+      { control: 3, key: 'ctrl+d', label: 'delete' },
+      { control: 3, key: 'f9', label: 'delete' },
+    ] }))
+    expect(bindings.filter(binding => binding.intent.kind === 'keyed').map(binding => binding.match)).toEqual([{ kind: 'key', key: 'ctrl+d' }, { kind: 'key', key: 'f9' }])
+    expect(grammarHints(bindings).filter(hint => hint.id === 'keyed:3')).toEqual([{ id: 'keyed:3', keys: 'Ctrl+D', label: 'delete', priority: 96 }])
   })
 
   it('discloses multi-select tree branches with left and right', () => {

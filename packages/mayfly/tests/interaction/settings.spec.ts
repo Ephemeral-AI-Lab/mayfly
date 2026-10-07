@@ -145,8 +145,11 @@ describe('mayfly-settings schema and registration', () => {
       editorCommand: '',
       pasteImageBackend: 'auto',
       marketIndexUrl: '',
+      keybindings: {},
+      preferPlainKeys: false,
     })
     expect(resolveConfig({ transcriptView: 'verbose' }).transcriptView).toBe('verbose')
+    expect(resolveConfig({ keybindings: { 'ui.delete': { keys: ['d'], label: 'delete' } } }).keybindings).toEqual({ 'ui.delete': { keys: ['d'], label: 'delete' } })
   })
 
   it('reads only declared fields out of a partially populated plugin config', async () => {
@@ -181,6 +184,8 @@ describe('mayfly-settings schema and registration', () => {
       editorCommand: 'my-editor --wait',
       pasteImageBackend: 'auto',
       marketIndexUrl: '',
+      keybindings: {},
+      preferPlainKeys: false,
     })
     expect(ready.at(-1)).toMatchObject({ editorCommand: 'my-editor --wait' })
 

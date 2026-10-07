@@ -127,7 +127,7 @@ export function apply(ctx: Context): void {
         labelTone: 'warning',
         rows: keymap.list().map(action => ({
           label: [action.keys].flat().map(displayKey).join('/'),
-          description: t(action.description ?? action.id),
+          description: t(action.description ?? action.label ?? action.id),
         })),
       },
       {

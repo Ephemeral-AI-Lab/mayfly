@@ -1,6 +1,6 @@
 # Key bindings
 
-Keys register through the `mayflyKeymap` service; duplicate bindings are rejected. The `/help` overlay lists every registered binding live, followed by the shared panel keys below — it is the authoritative source for this page (if anything differs, trust `/help`).
+Keys register through the `mayflyKeymap` service as named actions; a binding that collides within its scope is rejected. The `/help` overlay lists every registered binding live, followed by the shared panel keys below — it is the authoritative source for this page (if anything differs, trust `/help`).
 
 ## Global actions
 
@@ -23,7 +23,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | --- | --- |
 | `↑/↓` | Move between rows and fields; scroll documents |
 | `←/→` | Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip |
-| `Alt+←/→` | Switch tabs from anywhere on the surface; wizards validate the step being left |
+| `Alt+←/→ or F2/F3` | Switch tabs from anywhere on the surface; wizards validate the step being left |
 | `PgUp/PgDn, Home/End` | Page or jump in lists and documents |
 | `Enter` | Choose, run, open a picker, apply it, or start editing a field |
 | `Space` | Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch |
@@ -34,7 +34,8 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `1-9` | Pick a numbered row |
 | `Ctrl+E` | Expand focused scrollable content to full screen |
 | `Delete` | Return a changed field to its inherited or default value |
-| `Alt+Enter` | Insert a newline in a multi-line field |
+| `Alt+Enter or Ctrl+J` | Insert a newline in a multi-line field |
+| `Ctrl+S, c, x, r, Ctrl+G, Ctrl+F` | Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning |
 <!-- END shared-keys -->
 
 Details that follow from the grammar:
@@ -71,16 +72,32 @@ These keys reach the editor even while a notice is shown under the prompt. Edito
 | `/help` overlay | ↑↓ / PageUp / PageDown / Home / End scroll; `Ctrl+E` expands; `Tab` reaches Close; `Escape` closes |
 | `/sessions` picker | Type to filter workspaces or conversations; ↑↓ moves; `Enter` opens a workspace, then session details; `←` / `→` folds session branches; `Esc` ends editing/filtering, then returns one panel level |
 | Approval panel | The focused default is **Reject**; `←` / `→` or `Tab` reach Allow once, Allow for this session, and Reject with feedback; `Enter` runs; `Escape` rejects. On the feedback page, `Enter` sends, `Alt+Enter` adds a line, `Esc` ends editing and then returns to the decisions. There are no digit shortcuts |
-| Questionnaire | `1`–`9` or ↑↓ + `Enter` choose and advance; multi-choice toggles with `Space` and confirms with `Enter`; typing in Other starts an answer, `Enter` submits it, `Alt+Enter` adds a line; the question tabs switch with `←` / `→` on the strip or `Alt+←` / `Alt+→` anywhere, and moving forward validates the current question |
+| Questionnaire | `1`–`9` or ↑↓ + `Enter` choose and advance; multi-choice toggles with `Space` and confirms with `Enter`; typing in Other starts an answer, `Enter` submits it, `Alt+Enter` adds a line; the question tabs switch with `←` / `→` on the strip or `Alt+←` / `Alt+→` (`F2` / `F3`) anywhere, and moving forward validates the current question |
 | Form panel | ↑↓ move between fields; typing or `Enter` starts editing text, `Enter` confirms and moves on, `Alt+Enter` inserts a textarea newline; a select changes with `←` / `→` or opens with `Enter`; a multiselect opens with `Enter` or `Space`; `Delete` returns an overriding field to its inherited value; `Tab` commits and moves to the next group; `Escape` ends editing, then closes (asking first when there are unsaved changes) |
 | Plan review | ↑↓ or `1`–`3` move between decisions and `Enter` confirms the focused one; `c` copies the plan, `o` opens feedback; `PageUp` / `PageDown` / `Shift+↑↓` scroll the plan |
 | `/model` panel | One list grouped by provider: type to filter, ↑↓ selects a model, `←` / `→` adjusts its thinking level; `Enter` sets the default and switches |
 | `/effort` panel | `1`–`9` or ↑↓ + `Enter` set the default thinking level |
 | `/permission` picker | `1`–`9` or ↑↓ + `Enter` switch presets; full access first asks a Yes/No decision with No focused |
 | `/agents` browser | Type to filter; ↑↓ selects, `Space` or `←` / `→` expands/collapses, `Enter` views; `Tab` reaches **Stop selected**, which asks first and names why it cannot run for a one-shot, cold, or parent-of-live row |
-| `/plugin` marketplace | Installed / Not installed tabs (`←` / `→` on the strip or `Alt+←` / `Alt+→`); type to filter; `Tab` reaches Details, Install or Update/repair, and Remove, each available per row; `Ctrl+R` refreshes |
+| `/plugin` marketplace | Installed / Not installed tabs (`←` / `→` on the strip or `Alt+←` / `Alt+→`, also `F2` / `F3`); type to filter; `Tab` reaches Details, Install or Update/repair, and Remove, each available per row; `Ctrl+R` refreshes |
 | Side conversation | Uses the complete main editor and the same panel keys; `PageUp` / `PageDown` scroll its transcript; in a resumable one `Enter` opens the reply form; `F7` switches back and `F8` closes it |
 
-## Custom bindings
+## Named actions and custom bindings
 
-Deferred to a later phase. There is no user-facing key configuration today; conflicts are prevented by rejecting duplicate registrations at keymap registration time. Panel accelerators declared by plugins must be valid key ids, cannot take shared navigation keys, cannot repeat on one page, and cannot be plain characters on a panel with a filterable list.
+Every key belongs to a named action, and the key is only that action's current binding. The panel keys above are the `ui.*` actions (`ui.up`, `ui.accept`, `ui.cancel`, `ui.tab-next`, `ui.focus-prev`, …); the common meanings are `ui.save`, `ui.copy`, `ui.delete`, `ui.refresh`, `ui.external`, and `ui.search`; Mayfly's own keys keep their `mayfly.*` ids, and a plugin names its row keys `<owner>.<action>`. A binding is live in one scope: the editor, a panel, the conversation stream, or everywhere. That is why `Ctrl+S` steers in the editor and saves in a panel, and `Shift+Tab` toggles plan mode in the editor and moves back a group in a panel.
+
+Overrides live in the `keybindings` field of the `mayfly` settings namespace, keyed by action id, each with the keys that replace the defaults and the label to list it under:
+
+```yaml
+mayfly:
+  keybindings:
+    ui.delete: { keys: [d], label: delete }
+    acme-providers.test: { keys: [ctrl+t], label: Test connection }
+  preferPlainKeys: true
+```
+
+A change applies at once, and every hint follows it. A key an action gives up stops working: it is not kept as an alias. A binding that collides with another action in the same scope is skipped with a warning naming that action's owner; `Esc` and `Enter` cannot be unbound or given to another action; and a plain character cannot be bound in the editor or everywhere, where it would type text. A panel to capture and restore keys (`/keys`) comes in a later phase.
+
+Every default that uses Alt has a second one without it, because terminals and multiplexers often swallow Alt: `F2`/`F3` switch tabs and `Ctrl+J` inserts a newline. The first `F2`-`F5` you press tells Mayfly that Alt may not arrive, and from then on the hint rows show the plain key first; `preferPlainKeys: true` does that for good. Alt keys are read in every common encoding: xterm's `ESC [ 1 ; 3 A` with or without a kitty event type, a bare `ESC` prefix, SS3, kitty's `CSI u`, and modifyOtherKeys.
+
+Panel accelerators declared by plugins must be valid key ids, cannot take shared navigation keys, cannot repeat on one page unless their scopes name different controls, and cannot be plain characters on a panel with a type-to-filter list.

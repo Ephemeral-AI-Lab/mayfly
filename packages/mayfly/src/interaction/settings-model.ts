@@ -20,6 +20,7 @@ const LABELS: Readonly<Record<string, string>> = {
   'llm-deepseek.thinking': 'DeepSeek thinking', 'web-search-deepseek.maxUses': 'Web search max uses',
   'web-search-deepseek.maxTokens': 'Web search max tokens', 'permission.defaultPreset': 'Default permission preset',
   'agent-preset-registry.default': 'Default agent preset', 'agent-preset-registry.selectedDefault': 'Default agent preset',
+  'mayfly.keybindings': 'Key bindings', 'mayfly.preferPlainKeys': 'Prefer keys without Alt',
 }
 
 interface SettingBinding { readonly path: readonly string[], readonly field: MayflyFormField, readonly encoded: boolean }

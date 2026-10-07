@@ -24,7 +24,7 @@ import type {
   MayflyFieldValue,
   MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
-import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component, type KeyId, matchesKey } from '@earendil-works/pi-tui'
+import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { hintRow } from './chrome.ts'
@@ -69,6 +69,7 @@ import {
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
+import { actionHintLabel, actionScopeActive, effectiveItemKeys } from './ui-actions.ts'
 import { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
@@ -82,6 +83,7 @@ import {
   displayKey,
   keyActionKeys,
   matchesKeyAction,
+  matchesKeyId,
 } from './key-actions.ts'
 
 const FOCUS_SENTINEL = '\uf8ff'
@@ -280,12 +282,20 @@ interface ControlBase {
   readonly preferred: boolean
   readonly group: string
   readonly navigation: 'horizontal' | 'vertical' | 'none'
+  /** An id an action scope may name that neither the identity nor the group carries (a scroll's own id). */
+  readonly scopeId?: string
+}
+
+/** An action item that answers keys: its effective keys are resolved through the keymap on every key and paint. */
+interface KeyedAction {
+  readonly item: MayflyActionItem
+  readonly label: string
+  /** The controls whose focus puts the item's keys in scope; the whole surface when absent. */
+  readonly scope?: readonly string[]
 }
 
 /** A hidden action's accelerator: fires its activate event without a button or focus stop. */
-interface HiddenAccelerator {
-  readonly key: string
-  readonly label: string
+interface HiddenAccelerator extends KeyedAction {
   readonly event: MayflyUiEvent
 }
 
@@ -303,7 +313,7 @@ type ControlDescriptor =
       readonly commitEvent?: MayflyUiEvent
       readonly listEntry?: { readonly node: MayflyListNode, readonly index: number }
       /** Declared surface-local accelerator; fires the same activate event while the surface holds focus. */
-      readonly keyed?: { readonly key: string, readonly label: string }
+      readonly keyed?: KeyedAction
     })
   | (ControlBase & { readonly kind: 'text', readonly field: TextField, readonly form: FormNode })
   | (ControlBase & { readonly kind: 'select', readonly field: SelectField })
@@ -768,6 +778,15 @@ function effectiveActionItem(item: MayflyActionItem, options: RuntimeCompilerOpt
   return reason === undefined ? item : { ...item, disabled: true, disabledReason: reason }
 }
 
+/** A named component action's button shows the key that answers it now; an action rebound to no key shows none. */
+function withEffectiveKey(item: MayflyActionItem, options: RuntimeCompilerOptions): MayflyActionItem {
+  if (item.action === undefined) return item
+  const [key] = effectiveItemKeys(item, options.keymap)
+  if (key === item.key) return item
+  const { key: _declared, ...rest } = item
+  return key === undefined ? rest : { ...rest, key }
+}
+
 /** Summarize the focused control and its surroundings for the shared key grammar. */
 function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): GrammarState {
   const runtime = options.listRuntime
@@ -827,9 +846,9 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       ...(numbered === undefined || numbered === false ? {} : { numbered: { accept: numbered === true, count: Math.min(9, choice === undefined ? node.items.length : choiceVisibleCount(choice)) } }),
     } }),
     keyed: [
-      ...controls.flatMap((candidate, index) => candidate.kind === 'event' && candidate.keyed !== undefined ? [{ control: index, key: candidate.keyed.key, label: candidate.keyed.label }] : []),
+      ...controls.flatMap((candidate, index) => candidate.kind === 'event' && candidate.keyed !== undefined ? keyedBindings(index, candidate.keyed, active, options) : []),
       // Hidden accelerators follow the focusable controls in the index space.
-      ...state.accelerators().map((accelerator, index) => ({ control: controls.length + index, key: accelerator.key, label: accelerator.label })),
+      ...state.accelerators().flatMap((accelerator, index) => keyedBindings(controls.length + index, accelerator, active, options)),
     ],
     tabs: groups.some(group => group.kind === 'tabs'),
     groups: groups.length,
@@ -840,11 +859,23 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
   }
 }
 
+/** The ids an action scope can name for the focused control: itself, the list, form, tabs, or actions group holding it, and a scroll's own id. */
+function focusScopeIds(active: ControlDescriptor | undefined): readonly string[] {
+  if (active === undefined) return []
+  const group = JSON.parse(active.group) as readonly unknown[]
+  return [active.identity.controlId, String(group[2]), ...(active.scopeId === undefined ? [] : [active.scopeId])]
+}
+
+/** One grammar entry per effective key of an in-scope keyed action; an action rebound to no key answers nothing. */
+function keyedBindings(control: number, keyed: KeyedAction, active: ControlDescriptor | undefined, options: RuntimeCompilerOptions): GrammarState['keyed'] {
+  if (keyed.scope !== undefined && !actionScopeActive(keyed.scope, focusScopeIds(active))) return []
+  return effectiveItemKeys(keyed.item, options.keymap).map(key => ({ control, key, label: keyed.label }))
+}
+
 function matchesBinding(match: GrammarMatch, data: string, keymap: MayflyKeymap | undefined): boolean {
   switch (match.kind) {
     case 'action': return matchesKeyAction(keymap, data, match.action)
-    case 'key': return matchesKey(data, match.key as KeyId)
-    case 'char': return data === match.char
+    case 'key': return matchesKeyId(data, match.key)
     case 'digit': return data.length === 1 && data >= '1' && data <= '9'
     case 'text': return (match.space || data !== ' ') && startsText(data)
     case 'backspace': return data === '\x7f' || data === '\b'
@@ -858,7 +889,7 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
   if (options.contextHints?.suppressAuto !== true && !withoutControls) {
     for (const hint of grammarHints(keyGrammar(grammarStateFor(state, options, controls, active, mode, escapeLabel)))) {
       // Literal key words (the "Type" of type-to-filter) are prose; key names are not translated.
-      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId)).map(displayKey).join('/')
+      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId).slice(0, 1)).map(displayKey).join('/')
       merged.set(hint.id, { id: hint.id, keys, label: hint.label, compact: hint.compact ?? keys, priority: hint.priority })
     }
   }
@@ -1028,7 +1059,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         visit(current.child, `${currentPath}.scroll`, isHidden)
         if (controls.length === before && (options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined)) {
           const key = scopedControlKey('scroll', currentPath)
-          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none' })
+          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none', ...(current.id === undefined ? {} : { scopeId: current.id }) })
         }
         break
       }
@@ -1076,17 +1107,20 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         if (current.submitActionId !== undefined) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('form-cancel', current.id), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
-      case 'actions':
+      case 'actions': {
+        const scope = current.scope === undefined ? {} : { scope: [current.scope].flat() }
         for (const item of current.items.map(entry => effectiveActionItem(entry, options))) {
+          const keyed = item.key === undefined && item.semantic === undefined && item.action === undefined ? undefined : { item, label: actionHintLabel(item), ...scope }
           if (item.hidden === true) {
             // Hidden branches contribute no accelerators, matching the old
             // visible-only accelerators walk.
-            if (isHidden !== true && item.disabled !== true && item.busy !== true && item.key !== undefined) accelerators.push({ key: item.key, label: item.label, event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id } })
+            if (isHidden !== true && item.disabled !== true && item.busy !== true && keyed !== undefined) accelerators.push({ ...keyed, event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id } })
             continue
           }
-          if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(item.key === undefined ? {} : { keyed: { key: item.key, label: item.label } }) })
+          if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(keyed === undefined ? {} : { keyed }) })
         }
         break
+      }
       case 'loader':
         if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
         break
@@ -1328,8 +1362,10 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       /* An action with a handled invoke in flight renders as busy until the
          reply lands, matching the disabled-side effect at control level. */
       /* Busy and row-unavailable states follow the live model, so they are read per frame. */
+      // The runtime has now seen these component actions, so the keymap can offer them for rebinding.
+      options.keymap?.see?.(node.items.flatMap(item => item.action === undefined ? [] : [{ id: item.action, label: item.label, keys: item.key === undefined ? [] : [item.key] }]))
       const items = () => node.items.map(entry => {
-        const item = effectiveActionItem(entry, options)
+        const item = withEffectiveKey(effectiveActionItem(entry, options), options)
         return item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item
       }).filter(item => item.hidden !== true)
       const bind = (current: readonly MayflyActionItem[]): void => {
@@ -2140,7 +2176,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
      pass, so identical renderFrame calls reuse the previous result. The
      key covers every input the frame reads from outside itself: runtime
      liveness (a rebind retires this surface), the caller-owned viewport
-     object, the interaction revision, and the renderer animation frame.
+     object, the interaction revision, the keymap revision (a key rebind
+     moves buttons and hints), and the renderer animation frame.
      Internal state changes — focus, input, scroll — all flow
      through the entry points below, which clear the memo eagerly. */
   private frameResult: {
@@ -2150,6 +2187,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     readonly columns: number
     readonly rows: number
     readonly revision: number | undefined
+    readonly keymapRevision: number | undefined
     readonly animationFrame: number
     readonly result: MayflyStatusRenderResult
   } | undefined
@@ -2158,15 +2196,17 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const current = this.surfaceRuntime.current(this.generation)
     const viewport = safeViewport(this.options.getViewport)
     const revision = this.surfaceRuntime.interaction?.revision
+    const keymapRevision = this.options.keymap?.revision
     const animationFrame = this.surfaceRuntime.animationFrame
     const cached = this.frameResult
     if (cached !== undefined
       && cached.current === current && cached.width === width && cached.maxRows === maxRows
-      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision && cached.animationFrame === animationFrame) {
+      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision
+      && cached.keymapRevision === keymapRevision && cached.animationFrame === animationFrame) {
       return cached.result
     }
     const result = this.renderFrame(width, maxRows)
-    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, animationFrame, result }
+    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, animationFrame, result }
     return result
   }
 

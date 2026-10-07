@@ -117,6 +117,11 @@ export interface MayflyConfirmation {
   readonly cancelLabel?: string
   readonly tone?: 'danger'
 }
+/**
+ * A meaning shared by every panel (spec §3.5). An action that declares one runs from the `ui.<meaning>` action's
+ * binding (`delete` is `x` until a user rebinds `ui.delete`), so one rebind moves the key in every panel at once.
+ */
+export type MayflyCommonMeaning = 'save' | 'copy' | 'delete' | 'refresh' | 'external' | 'search'
 export interface MayflyActionItem {
   readonly id: string
   readonly label: string
@@ -133,10 +138,17 @@ export interface MayflyActionItem {
   readonly hidden?: boolean
   readonly dismiss?: boolean
   readonly navigate?: MayflyPagePath
-  /** Surface accelerator key id. Semantic navigation keys are reserved; printable keys are rejected on surfaces with a filterable list. */
+  /** Surface accelerator key id, and with `action` that action's default. Semantic navigation keys are reserved; printable keys are rejected on surfaces with a filterable list. Exclusive with `semantic`. */
   readonly key?: string
+  /** A common meaning: the item runs from that meaning's current binding. Exclusive with `key` and `action`. */
+  readonly semantic?: MayflyCommonMeaning
+  /** A named component action, `<owner>.<action>` (`ui.*` is reserved); `key` is its default and a user may rebind it. */
+  readonly action?: string
+  /** The word the hint row shows after the key; the label otherwise. */
+  readonly hintLabel?: string
 }
-export interface MayflyActionsNode { readonly kind: 'actions', readonly id: string, readonly items: readonly MayflyActionItem[] }
+/** `scope` names controls on the same page: the group's keys act, and show their hints, only while one of them has focus. */
+export interface MayflyActionsNode { readonly kind: 'actions', readonly id: string, readonly items: readonly MayflyActionItem[], readonly scope?: string | readonly string[] }
 export interface MayflyLoaderNode { readonly kind: 'loader', readonly message: string, readonly variant?: 'braille' | 'tide', readonly elapsedMs?: number, readonly cancelActionId?: string, readonly cancelLabel?: string }
 export interface MayflyEmptyNode { readonly kind: 'empty', readonly title: string, readonly description?: string, readonly actions?: MayflyActionsNode }
 export interface MayflyProgressNode { readonly kind: 'progress', readonly label?: string, readonly value: number, readonly max: number }

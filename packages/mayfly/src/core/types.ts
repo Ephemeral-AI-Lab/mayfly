@@ -318,15 +318,26 @@ export interface MayflyTheme {
 }
 
 /**
- * One named keybinding action. Ids are dotted and plugin-owned
- * (e.g. `mayfly.app.quit`); keys use pi-tui key-id notation (`enter`,
- * `ctrl+c`, `shift+enter`).
+ * Where a key action's binding is live (roadmap D6). `global` holds in every
+ * scope; the editor (the prompt), a surface (an overlay or pane), and the
+ * conversation stream are the focus scopes. Two actions conflict only when
+ * they share a key in overlapping scopes.
+ */
+export type MayflyKeyScope = 'global' | 'editor' | 'surface' | 'stream'
+
+/**
+ * One named keybinding action. Ids are dotted `<owner>.<action>` names
+ * (`ui.save`, `mayfly.interaction.steer`); the `ui.*` navigation and
+ * common-meaning actions belong to core. Keys use pi-tui key-id notation
+ * (`enter`, `ctrl+c`, `shift+enter`).
  */
 export interface MayflyKeyAction {
   /** Stable, unique action id. */
   id: string
   /** One or more key ids that trigger the action. */
   keys: string | string[]
+  /** The scope the binding is live in; `global` when omitted. */
+  scope?: MayflyKeyScope
   /** Human-readable description for future keybinding UIs. */
   description?: string
   /**
@@ -339,11 +350,34 @@ export interface MayflyKeyAction {
   handler?: () => void
 }
 
+/** A component action seen in an admitted node: its label and the default keys the node declares. */
+export interface MayflySeenAction {
+  readonly id: string
+  readonly label: string
+  readonly keys: readonly string[]
+}
+
+/** One action as a keybinding UI lists it (`/keys`): what it is, where it is live, and what answers it now. */
+export interface MayflyKeyBinding extends Omit<MayflyKeyAction, 'keys' | 'handler'> {
+  /** The effective keys: the override, else the defaults. */
+  keys: string[]
+  scope: MayflyKeyScope
+  /** The registered description, the label of the node that declared it, or the label saved with an override. */
+  readonly label: string
+  /** The `<owner>` of the `<owner>.<action>` id. */
+  readonly owner: string
+  readonly defaults: readonly string[]
+  /** Whether a user binding replaces the defaults. */
+  readonly overridden: boolean
+}
+
 /**
  * `ctx.mayflyKeymap` — the keybinding registry. All Mayfly key handling goes
  * through registered actions; conflict detection runs at registration.
  */
 export interface MayflyKeymap {
+  /** Counts every change to what a key means, so anything painted from the keymap can tell it is stale. */
+  readonly revision?: number
   /**
    * Register a batch of actions. The batch is validated as a unit: a key
    * already claimed by a different registered action, or a duplicate action
@@ -380,6 +414,20 @@ export interface MayflyKeymap {
    *   touch the registry.
    */
   list(): readonly MayflyKeyAction[]
+  /**
+   * Resolve a component action's keys from the node that declares it: the
+   * user's override, else a registered default, else `fallback`.
+   * @param action - the `<owner>.<action>` id.
+   * @param fallback - the default key the declaring node gives.
+   * @returns the effective key ids.
+   */
+  resolve?(action: string, fallback: readonly string[]): string[]
+  /**
+   * Record component actions that appeared in an admitted node, so a
+   * keybinding UI can offer them for rebinding.
+   * @param actions - the actions with their labels and default keys.
+   */
+  see?(actions: readonly MayflySeenAction[]): void
 }
 
 /** An RGB color sampled from the terminal (pi-tui's `RgbColor` shape, re-owned). */

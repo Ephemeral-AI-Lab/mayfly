@@ -83,6 +83,7 @@ import { resolveExternalEditorCommand, runExternalEditor } from './external-edit
 import { currentMayflySettings } from './settings.ts'
 import {
   ACTION_CANCEL,
+  ACTION_CYCLE_MODE,
   ACTION_CYCLE_MODEL,
   ACTION_EXTERNAL_EDITOR,
   ACTION_END,
@@ -91,7 +92,6 @@ import {
   ACTION_MOVE_UP,
   ACTION_PAGE_DOWN,
   ACTION_PAGE_UP,
-  ACTION_SHIFT_TAB,
   ACTION_STEER,
   interactionKeyHint,
 } from './keys.ts'
@@ -789,7 +789,7 @@ export function apply(ctx: Context): void {
     }
     // Shift+Tab toggles native plan state, including in bash input mode.
     // Permission presets are independent and require an explicit command.
-    if (keymap.matches(data, ACTION_SHIFT_TAB)) {
+    if (keymap.matches(data, ACTION_CYCLE_MODE)) {
       void cycleMode(ctx, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }

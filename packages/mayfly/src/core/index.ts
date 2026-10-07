@@ -24,7 +24,7 @@ import { ThemeModelService } from '../frontend/index.ts'
 
 export { MayflyComponentsService, type MayflyComponentsDeps } from './components.ts'
 export { GutterComponent } from './gutter.ts'
-export { MayflyKeymapError, MayflyKeymapService } from './keymap.ts'
+export { MayflyKeymapError, MayflyKeymapService, type MayflyKeymapErrorCode } from './keymap.ts'
 export { MayflyScreenService } from './screen.ts'
 export {
   PLUGIN_VIEW_MAX_CHARS,
@@ -103,7 +103,10 @@ export type {
   MayflyImage,
   MayflyImageOptions,
   MayflyKeyAction,
+  MayflyKeyBinding,
   MayflyKeymap,
+  MayflyKeyScope,
+  MayflySeenAction,
   MayflyMarkdown,
   MayflyMarkdownOptions,
   MayflyOverlayAnchor,
@@ -149,15 +152,19 @@ export async function apply(ctx: Context): Promise<void> {
   // declaration — which a self-provided service cannot carry. Registration
   // is still effect-bound, so unloading reverts it.
   const keymap = new MayflyKeymapService(ctx)
+  // A rebind or the plain-key preference changes hints on screen: repaint them at once.
+  ctx.effect(() => keymap.subscribe(() => runtime.requestRender()))
   ctx.plugin(MayflyTerminalInfoService, { background: runtime.background, kittyKeyboard: runtime.kittyKeyboard })
   ctx.plugin(MayflyScreenService, runtime)
   ctx.plugin({
     name: 'mayfly-global-key-dispatcher',
     inject: ['mayflyScreen'],
     apply(owner: Context) {
-      owner.effect(() => runtime.tui.addInputListener(data =>
-        owner.mayflyScreen.capturesInput === true || !keymap.dispatch(data) ? undefined : { consume: true }),
-      )
+      owner.effect(() => runtime.tui.addInputListener((data) => {
+        // The first F2-F5 press, wherever focus is, tells the keymap the host may not deliver Alt.
+        keymap.notePlainKey(data)
+        return owner.mayflyScreen.capturesInput === true || !keymap.dispatch(data) ? undefined : { consume: true }
+      }))
     },
   })
   ctx.plugin({

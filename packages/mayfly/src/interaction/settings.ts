@@ -70,7 +70,21 @@ export interface MayflySettings {
   readonly pasteImageBackend: 'auto' | 'wayland' | 'x11'
   /** Plugin marketplace index URL; empty uses the official dsh-plugins chain. */
   readonly marketIndexUrl: string
+  // Key bindings (slice 1.7): applied live by `./keys.ts`, written by the keybinding panel.
+  /** User key overrides by action id, each with the label the action was listed under. */
+  readonly keybindings: Readonly<Record<string, MayflyKeybindingOverride>>
+  /** Hint rows lead with the key that has no Alt, for hosts that do not deliver Alt. */
+  readonly preferPlainKeys: boolean
 }
+
+/** One saved key override: the keys that replace an action's defaults, and its label for when it is not loaded. */
+export interface MayflyKeybindingOverride {
+  readonly keys: readonly string[]
+  readonly label?: string
+}
+
+/** Saved key overrides by action id (a dict, typed by hand so the declaration stays portable). */
+const KEYBINDINGS: z<Record<string, { keys: string[], label?: string }>> = z.dict(z.object({ keys: z.array(z.string()).default([]), label: z.string() }))
 
 /** The settings schema; defaults double as the composition base. */
 export const Config = z.object({
@@ -85,6 +99,8 @@ export const Config = z.object({
   editorCommand: z.string().default('').volatile(),
   pasteImageBackend: z.union([z.const('auto'), z.const('wayland'), z.const('x11')]).default('auto').volatile(),
   marketIndexUrl: z.string().default('').volatile(),
+  keybindings: KEYBINDINGS.default({}).volatile(),
+  preferPlainKeys: z.boolean().default(false).volatile(),
 })
 
 /** The resolved defaults, used until a settings service layers overrides. */
@@ -100,6 +116,8 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   editorCommand: '',
   pasteImageBackend: 'auto',
   marketIndexUrl: '',
+  keybindings: {},
+  preferPlainKeys: false,
 }
 
 /** Stable Cordis plugin name. */

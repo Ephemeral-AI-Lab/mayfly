@@ -7,7 +7,7 @@
  */
 
 import {
-  ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_EXPAND, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
+  ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_EXPAND, ACTION_FILTER, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
   ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
   ACTION_PREV_TAB, ACTION_RESET_FIELD, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey, printableKey,
 } from './key-actions.ts'
@@ -99,7 +99,6 @@ export type GrammarIntent =
 export type GrammarMatch =
   | { readonly kind: 'action', readonly action: string }
   | { readonly kind: 'key', readonly key: string }
-  | { readonly kind: 'char', readonly char: string }
   | { readonly kind: 'digit' }
   | { readonly kind: 'text', readonly space: boolean }
   | { readonly kind: 'backspace' }
@@ -137,7 +136,7 @@ function push(bindings: GrammarBinding[], match: GrammarMatch, intent: GrammarIn
 function accelerators(bindings: GrammarBinding[], state: GrammarState, printable: boolean): void {
   for (const keyed of state.keyed) {
     if (!printable && printableKey(keyed.key)) continue
-    push(bindings, { kind: 'key', key: keyed.key }, { kind: 'keyed', control: keyed.control }, { id: `keyed:${keyed.key}`, keys: displayKey(keyed.key), label: keyed.label, priority: PRIORITY.accelerator })
+    push(bindings, { kind: 'key', key: keyed.key }, { kind: 'keyed', control: keyed.control }, { id: `keyed:${String(keyed.control)}`, keys: displayKey(keyed.key), label: keyed.label, priority: PRIORITY.accelerator })
   }
 }
 
@@ -270,7 +269,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   if (list?.pasting === true) push(bindings, { kind: 'any' }, { kind: 'search-type' })
   if (list?.filterable === true) {
     if (list.query || list.searching) push(bindings, action(ACTION_CLEAR_SEARCH), { kind: 'search-clear' }, { id: 'clear', label: 'clear', priority: PRIORITY.secondary, actions: [ACTION_CLEAR_SEARCH] })
-    if (!list.searching) push(bindings, { kind: 'char', char: '/' }, { kind: 'search-start' })
+    if (!list.searching) push(bindings, action(ACTION_FILTER), { kind: 'search-start' })
   }
   if (control.kind === 'scroll') push(bindings, action(ACTION_EXPAND), { kind: 'expand' }, { id: 'expand', label: 'expand', priority: PRIORITY.adjust + 10, actions: [ACTION_EXPAND] })
   // Printable accelerators never pre-empt a control that consumes typed text.
@@ -362,7 +361,7 @@ export function grammarHints(bindings: readonly GrammarBinding[]): readonly Gram
 export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly action: string }[] = Object.freeze([
   { keys: '↑/↓', action: 'Move between rows and fields; scroll documents' },
   { keys: '←/→', action: 'Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip' },
-  { keys: 'Alt+←/→', action: 'Switch tabs from anywhere on the surface; wizards validate the step being left' },
+  { keys: 'Alt+←/→ or F2/F3', action: 'Switch tabs from anywhere on the surface; wizards validate the step being left' },
   { keys: 'PgUp/PgDn, Home/End', action: 'Page or jump in lists and documents' },
   { keys: 'Enter', action: 'Choose, run, open a picker, apply it, or start editing a field' },
   { keys: 'Space', action: 'Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch' },
@@ -373,5 +372,6 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: '1-9', action: 'Pick a numbered row' },
   { keys: 'Ctrl+E', action: 'Expand focused scrollable content to full screen' },
   { keys: 'Delete', action: 'Return a changed field to its inherited or default value' },
-  { keys: 'Alt+Enter', action: 'Insert a newline in a multi-line field' },
+  { keys: 'Alt+Enter or Ctrl+J', action: 'Insert a newline in a multi-line field' },
+  { keys: 'Ctrl+S, c, x, r, Ctrl+G, Ctrl+F', action: 'Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning' },
 ])
