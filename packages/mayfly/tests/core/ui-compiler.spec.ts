@@ -1716,7 +1716,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(focusedHint(scrollGroups, []))
       .toBe('  ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups')
     expect(focusedHint(scrollGroups, ['\x05'], { onUnhandledEscape: () => {} }))
-      .toBe('  ↑/↓ scroll · Ctrl+E/Esc collapse')
+      .toBe('  ↑/↓ scroll · Ctrl+E collapse · Esc collapse')
   })
 
   it('derives empty-list, passive, field, and explicit dismissal hints', () => {

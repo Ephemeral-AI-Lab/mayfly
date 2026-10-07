@@ -66,7 +66,13 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
   {
     id: 'Δ25',
     scenes: [10],
-    summary: "A flex row that is narrower than its fixed child clips the later boxes with `…` columns in the kit; the layout engine gives them what is left",
-    reason: 'prototype clip artifact below 60 columns; proposed in slice 1.3',
+    summary: "A flex row of framed surfaces: the kit measures a surface structurally and gives the grow remainder to the last growing child, and clips later boxes with `…` columns below 60; the layout engine measures a surface by painting it and shares the remainder by its own rule",
+    reason: 'the row layout is pi-tui\'s stack layout (existing behavior); proposed in slice 1.3',
+  },
+  {
+    id: 'Δ26',
+    scenes: [10],
+    summary: "The `h` key changes only the caption in the kit: the `minHeight: 20` child of the ladder stays drawn; the renderer hides it below 20 rows",
+    reason: 'prototype artifact (its viewport height is not read); proposed in slice 1.3',
   },
 ]

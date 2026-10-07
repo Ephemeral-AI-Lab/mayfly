@@ -83,7 +83,7 @@ import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, cho
 import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
 import { AdmissionRow } from './ui-admission.ts'
-import { ScrollRegion, SCROLL_DEFAULT_EXPANDED_HEIGHT, SCROLL_DEFAULT_HEIGHT } from './ui-scroll-region.ts'
+import { ScrollRegion, SCROLL_DEFAULT_EXPANDED_HEIGHT, SCROLL_DEFAULT_HEIGHT, type ScrollMemory } from './ui-scroll-region.ts'
 import { hasMotion, paintMotionSpans } from './ui-motion-text.ts'
 import { UiProgressTransitions } from './ui-progress-transition.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
@@ -1338,6 +1338,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const address = node.id === undefined || model === undefined ? undefined : { pagePath, controlId: node.id }
         const region = new ScrollRegion({
           child: child as Component,
+          memory: options.listRuntime.scrollMemory(key),
           height: node.height ?? SCROLL_DEFAULT_HEIGHT,
           expandedHeight: node.expandedHeight ?? SCROLL_DEFAULT_EXPANDED_HEIGHT,
           fit: node.fit === true,
@@ -1660,6 +1661,8 @@ export class MayflyUiSurfaceRuntime {
   readonly reuse = new MayflyCompileCache()
   /** The item rows this surface's lists have painted, kept by item and state. */
   readonly rows = new UiRowCache()
+  /** Where this surface's scroll regions are scrolled, by control key. */
+  private readonly scrolled = new Map<string, ScrollMemory>()
   /** The one-shot drains of this surface's progress bars. */
   private readonly transitions = new UiProgressTransitions()
   /** The last key-hint row this surface painted, with what it was painted from. */
@@ -1797,6 +1800,12 @@ export class MayflyUiSurfaceRuntime {
   loaderFrame(): number { return this.loaderAnimation?.render() ?? 0 }
   /** Asks the renderer to paint this surface again: an image's bytes arrived. */
   readonly repaint = (): void => { if (this.live) this.requestRender?.() }
+  /** The scroll position a region keeps across publishes. */
+  scrollMemory(key: string): ScrollMemory {
+    let memory = this.scrolled.get(key)
+    if (memory === undefined) { memory = { offset: 0, following: undefined, away: 0 }; this.scrolled.set(key, memory) }
+    return memory
+  }
   /**
    * The value a bar with a `transition` draws now. Without a clock, or under reduced motion, the bar is already settled;
    * otherwise it drains with the clock and holds it only while it moves.

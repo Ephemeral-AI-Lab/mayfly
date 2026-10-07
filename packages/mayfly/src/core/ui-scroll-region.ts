@@ -29,8 +29,21 @@ export interface ScrollRegionAnchors {
   move(anchor: UiDocumentAnchor): void
 }
 
+/**
+ * Where a region is scrolled, kept by the surface runtime so a republish of the surface (the compiler builds a new
+ * region each time) leaves the view where the user put it.
+ */
+export interface ScrollMemory {
+  offset: number
+  /** Whether the view follows the tail; `undefined` until the region first paints. */
+  following: boolean | undefined
+  /** The row count when the view last left the tail, for the pill's count of new rows. */
+  away: number
+}
+
 export interface ScrollRegionOptions {
   readonly child: Component
+  readonly memory: ScrollMemory
   readonly height: number
   readonly expandedHeight: number
   readonly fit: boolean
@@ -50,18 +63,24 @@ export interface ScrollRegionOptions {
 export class ScrollRegion implements Component, UiScrollControl {
   /** The compiler lays this region out itself, so it never takes the layout-driven frame. */
   readonly inline = true
-  private offset = 0
-  private following: boolean
+  private readonly memory: ScrollMemory
   private rows = 0
   private viewport: number
   private width = 1
-  private away = 0
   private bar = false
 
   constructor(private readonly options: ScrollRegionOptions) {
-    this.following = options.follow
+    this.memory = options.memory
+    this.memory.following ??= options.follow
     this.viewport = options.height
   }
+
+  private get offset(): number { return this.memory.offset }
+  private set offset(value: number) { this.memory.offset = value }
+  private get following(): boolean { return this.memory.following! }
+  private set following(value: boolean) { this.memory.following = value }
+  private get away(): number { return this.memory.away }
+  private set away(value: number) { this.memory.away = value }
 
   get viewportHeight(): number { return this.viewport }
 

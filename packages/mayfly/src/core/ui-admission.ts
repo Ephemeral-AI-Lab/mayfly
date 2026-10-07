@@ -119,7 +119,8 @@ export class AdmissionRow implements Component {
         if (room === undefined || child.band !== band) return []
         const fits = room >= child.natural
         const row = (fits ? child.rows : child.component.render(Math.max(1, room)))[0] ?? ''
-        return [components.truncateToWidth(row, fits ? child.natural : room, '')]
+        // A wrapped first row can end inside its style; the reset keeps it out of the gap and the next child.
+        return [`${components.truncateToWidth(row, fits ? child.natural : room, '')}\x1b[0m`]
       })
       .join(' '.repeat(gap))
     const line = layoutBands({ left: painted('left'), center: painted('center'), right: painted('right') }, columns, gap, components)

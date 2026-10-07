@@ -256,8 +256,8 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     return bindings
   }
   if (state.expanded) {
-    push(bindings, action(ACTION_EXPAND), { kind: 'collapse' }, { id: 'escape', label: ESCAPE_LABEL.collapse, priority: PRIORITY.escape, actions: [ACTION_EXPAND, ACTION_CANCEL] })
-    push(bindings, action(ACTION_CANCEL), { kind: 'collapse' })
+    push(bindings, action(ACTION_EXPAND), { kind: 'collapse' }, { id: 'expand', label: ESCAPE_LABEL.collapse, priority: PRIORITY.escape - 1, actions: [ACTION_EXPAND] })
+    push(bindings, action(ACTION_CANCEL), { kind: 'collapse' }, { id: 'escape', label: ESCAPE_LABEL.collapse, priority: PRIORITY.escape, actions: [ACTION_CANCEL] })
     scrollKeys(bindings)
     push(bindings, { kind: 'any' }, { kind: 'swallow' })
     return bindings

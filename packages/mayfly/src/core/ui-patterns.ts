@@ -529,7 +529,7 @@ export function renderLoader(node: LoaderNode, width: number, colors: MayflySema
 
 export function renderEmpty(node: EmptyNode, width: number, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
-  const rows = wrapTextWithAnsi(colors.textStrong(node.title), available)
+  const rows = wrapTextWithAnsi(colors.muted(node.title), available)
   if (node.description !== undefined) rows.push(...wrapTextWithAnsi(colors.muted(node.description), available))
   return rows
 }
