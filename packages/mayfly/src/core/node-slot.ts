@@ -8,6 +8,7 @@
  */
 import { freezeWire, type MayflyUiEventEndpoint, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
+import type { MayflyUiImageSource } from './ui-images.ts'
 import type { UiAnimationClock } from './ui-loader-animation.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
 import type { UiSurfaceModel, UiSurfaceSnapshot } from './ui-interaction-surface.ts'
@@ -40,6 +41,8 @@ export interface MayflyNodeSlotCompiler {
   /** The renderer's one animation clock. */
   readonly clock?: UiAnimationClock
   readonly translateHint?: (key: string) => string
+  /** The host tree's byte source behind `image` nodes, as a pane's runtime receives it. */
+  readonly images?: MayflyUiImageSource
   /**
    * Changes whenever a painted string can change without a publish (a key rebound, a new locale): a slot whose model
    * did not move then repaints its frame. Static leaves keep their rows and the hint row its text-keyed memo.
@@ -87,7 +90,7 @@ class SlotAttachment {
     private readonly viewport: () => MayflyUiViewport,
     invalidate: () => void,
   ) {
-    this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock)
+    this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock, compiler.images)
     this.off = model.subscribe(() => { compiler.requestRender() })
   }
 

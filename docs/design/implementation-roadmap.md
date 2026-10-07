@@ -924,12 +924,13 @@ without a publish.
   the owner aborts every load.
 - *Terminal capability.* `MayflyComponents.imageProtocol()` (pi-tui's `getCapabilities().images`) is the only new
   method on the component factory; the painter shows its own `alt` instead of pi-tui's `[Image: ...]` fallback.
-- *Not yet.* Node slots (slice 1.10a) compile with their own runtime; wiring `mayflyUiImages` into it is a one-argument
-  change for whichever merges second. List bodies (`MayflyListBodyNode`) are slice 1.4.
+- *Node slots.* A node slot (slice 1.10a) receives the same byte source: the surface renderer lends it as
+  `MayflyNodeSlotCompiler.images`, and the slot's `MayflyUiSurfaceRuntime` takes it as a pane's does. List bodies
+  (`MayflyListBodyNode`) are slice 1.4.
 - *Proof (D20).* `examples/ui-gallery/src/groups/image.ts` (the gallery supplies no loader, so it shows the alt rows);
   `website/plugins/ui-reference.md` and its English twin; the `image` shot. Tests: `tests/core/ui-image.spec.ts`
   (admission and quotas, the service, the painter, the compiled node), a pane repainting when the bytes arrive in
-  `tests/core/plugin-surface-bridge-pane.spec.ts`, the width scan, type fixtures in `packages/ui/tests/`.
+  `tests/core/plugin-surface-bridge-pane.spec.ts`, a slot reading the same source in `tests/core/node-slot.spec.ts`, the width scan, type fixtures in `packages/ui/tests/`.
 
 #### 1.10 Host seams: the node slot and the views lane
 

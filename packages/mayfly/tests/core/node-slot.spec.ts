@@ -4,11 +4,13 @@
  * row, a core reload that keeps the slots' interaction state, stale leases, and staleness under a warm cache.
  */
 import { Context } from '@deepseek-ai/cordis'
-import { afterEach, describe, expect, it } from 'vitest'
+import { ui } from '@ephemeral-ai/mayfly-ui'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as frontend from '../../src/frontend/index.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import {
   DIM_COLORS,
   EDITOR_SURFACE,
@@ -36,13 +38,13 @@ function hosts(terminal: NodeSlotRuntime): { readonly content: MayflyComponent, 
   return { content: terminal.added[1]!, editor: terminal.bottomAdded[0]!, footer: terminal.bottomAdded[1]! }
 }
 
-async function boot() {
+async function boot(images?: MayflyUiImageSource) {
   const terminal = nodeSlotRuntime()
   const root = new Context()
   cleanups.push(() => root.fiber.dispose())
   await root.plugin(frontend)
   const theme = await root.plugin(nodeSlotTheme(PLAIN_COLORS))
-  const core = await root.plugin(nodeSlotCore(terminal.runtime))
+  const core = await root.plugin(nodeSlotCore(terminal.runtime, images))
   const state: NodeSlotHostState = { mounts: 0 }
   const host = await root.plugin(nodeSlotHost(state, () => ({ footer: statusRow(), editor: EDITOR_SURFACE, stream: streamList(streamItems(200)) })))
   await flush()
@@ -167,5 +169,14 @@ describe('node slot test host', () => {
     const dimmed = content.render(100)
     expect(dimmed.join('')).toContain('\x1b[2m')
     expect(dimmed[0]).toContain('(2/200)')
+  })
+
+  it('hands the host tree\'s image source to a slot, as it does to a pane', async () => {
+    const read = vi.fn<MayflyUiImageSource['read']>(() => ({ state: 'missing' }))
+    const tree = await boot({ read })
+    tree.state.stream!.set(ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]' }))
+    const rows = hosts(tree.terminal).content.render(100).join('\n')
+    expect(read).toHaveBeenCalledWith('att-1', expect.any(Function))
+    expect(rows).toContain('[Image #1 84 KB]')
   })
 })

@@ -611,7 +611,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
   ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
     interaction: ctx.mayflyUiInteraction, components: ctx.mayflyComponents, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
-    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, ...(translateHint === undefined ? {} : { translateHint }),
+    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, ...(translateHint === undefined ? {} : { translateHint }), ...(images === undefined ? {} : { images }),
     epoch: () => nodeSlotEpoch(ctx.mayflyKeymap, ctx.get('mayflyLocale')),
   }))
   ctx.effect(() => () => {
