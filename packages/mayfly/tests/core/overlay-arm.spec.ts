@@ -89,6 +89,11 @@ describe('overlay arm delay', () => {
       const handle = b.open(300)
       await flush()
       expect(b.rows()).toContain('… ready in a moment')
+      /* A republish repaints through the same arm, so the hint survives it. */
+      handle.set(ui.list({ id: 'decision', role: 'choose', numbered: true, selectedIds: [], items: [{ id: 'once', label: 'Allow once' }, { id: 'reject', label: 'Reject now' }] }))
+      await flush()
+      expect(b.rows()).toContain('Reject now')
+      expect(b.rows()).toContain('… ready in a moment')
       b.slot.component.handleInput?.('1')
       b.slot.component.handleInput?.('\r')
       vi.advanceTimersByTime(299)
