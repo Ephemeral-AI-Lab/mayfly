@@ -824,7 +824,7 @@ function listQueryRow(node: MayflyListNode, query: string, searching: boolean, c
   const slash = options.colors.muted('/')
   const input = searching ? options.listRuntime.search(node).render(Math.max(1, width - 2), focused) : [query]
   const right = options.colors.muted(coreText(options, count === 1 ? '{count} match' : '{count} matches', { count }))
-  const left = `${slash} ${input[0] ?? ''}`
+  const left = `${slash} ${input[0]!}`
   const room = width - visibleWidth(left) - visibleWidth(right)
   return room >= 2 ? `${left}${' '.repeat(room)}${right}` : sliceByColumn(left, 0, width, true)
 }
@@ -1411,7 +1411,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       // A node body compiles once, when its row first opens; the rows it paints are kept by the row cache.
       const bodies = new WeakMap<object, Component>()
       const paintBody = (item: MayflyListItem, width: number): readonly string[] => {
-        if (item.body === undefined || typeof item.body === 'string') return []
+        // The painter asks only for the node bodies of open rows; text bodies it draws itself.
         let body = bodies.get(item)
         if (body === undefined) {
           body = compileNode(item.body as MayflyUiNode, state, options, `${path}.body.${item.id}`, mode)
@@ -1440,13 +1440,13 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
           Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1) - queryRows.length),
           focus,
           options.colors,
-          entries[0]?.position ?? 0,
+          entries[0]!.position,
           { cache: options.listRuntime.rows, counters: options.counters },
           {
             rows: entries,
             cursorId: choice?.focusedId,
-            before: entries[0]?.position ?? 0,
-            after: visibleCount - (entries.at(-1)?.position ?? -1) - 1,
+            before: entries[0]!.position,
+            after: visibleCount - entries.at(-1)!.position - 1,
             total: visibleCount,
             translate,
             body: paintBody,

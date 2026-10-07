@@ -210,6 +210,11 @@ describe('list keys', () => {
     surface.press(KEY.up)
     expect(cursor(rows())).toContain('Cherry')
     surface.press(KEY.home)
+    // Home and PgUp at the first row stay put; only the arrows hand focus on.
+    surface.press(KEY.home)
+    expect(cursor(rows())).toContain('Apple')
+    surface.press('\x1b[5~')
+    expect(cursor(rows())).toContain('Apple')
     surface.press(KEY.up)
     expect(cursor(rows())).toContain('Apple')
   })
