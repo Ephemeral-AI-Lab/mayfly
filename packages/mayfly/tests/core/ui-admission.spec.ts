@@ -103,6 +103,8 @@ describe('AdmissionRow', () => {
     expect(counters.rowsPainted).toBeGreaterThanOrEqual(1)
     const direct = new AdmissionRow({ components, children: () => [] })
     expect(direct.render(5)).toEqual([''])
+    const silent = new AdmissionRow({ components, children: () => [{ component: { render: () => [], invalidate: () => {} }, band: 'left' }] })
+    expect(silent.render(5).map(painted => painted.replaceAll('\x1b[0m', ''))).toEqual([''])
     direct.invalidate()
   })
 
