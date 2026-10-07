@@ -415,7 +415,7 @@ export const MAYFLY_UI_MAX_ITEM_BODY_NODES = 32
 /** The most lines one wrapped row may be asked to show, and the widest meter and indent a row may ask for. */
 const LIST_ROW_LIMITS = { wrapMax: 100, meterWidth: 40, indent: 8 } as const
 const LIST_BODY_KINDS: ReadonlySet<string> = new Set([
-  'text', 'markdown', 'fields', 'code', 'diff', 'sections', 'rich-text', 'diagram', 'chart', 'progress', 'spacer', 'divider', 'stack',
+  'text', 'markdown', 'fields', 'code', 'diff', 'sections', 'rich-text', 'diagram', 'chart', 'image', 'progress', 'spacer', 'divider', 'stack',
 ])
 
 /** A body is content only: a stack of content, never a control, a tab page, or a node that holds focus. */

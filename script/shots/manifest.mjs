@@ -299,6 +299,46 @@ export const SCENARIOS = [
     }),
   },
   {
+    id: 'list-rows',
+    // Doc example, verbatim: a slash filter beside a free accelerator, a selection marker, right-aligned spans, a meter,
+    // and a body that opens under its row.
+    title: 'list — slash filter, selection rail, spans, meter, and a body',
+    width: 64,
+    build: ui => ui.stack.column([
+      ui.list({
+        id: 'plugins',
+        role: 'browse',
+        filterable: true,
+        filterMode: 'slash',
+        marker: 'selection',
+        selectedIds: [],
+        items: [
+          { id: 'loop', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }], meter: { value: 3, max: 4 } },
+          { id: 'git', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }], body: 'Commits, branches, and pull requests\nfrom the prompt.' },
+        ],
+      }),
+      ui.actions({ id: 'plugin-keys', items: [{ id: 'install', label: 'Install', key: 'i', hidden: true }] }),
+    ]),
+    drive: focus => { focus.handleInput?.('\x1b[B'); focus.handleInput?.('\r') },
+  },
+  {
+    id: 'list-segment',
+    // Doc example, verbatim: a segment strip on the focused row with an inherited option.
+    title: 'list — a segment strip on the focused row',
+    width: 64,
+    build: ui => ui.list({
+      id: 'models',
+      role: 'browse',
+      acceptVerb: 'choose',
+      selectedIds: [],
+      items: [
+        { id: 'pro', label: 'DeepSeek V4 Pro', detail: '977k context', segment: { label: 'Thinking', inheritedId: 'high', options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }] } },
+        { id: 'flash', label: 'DeepSeek V4 Flash', detail: '256k context' },
+      ],
+    }),
+    drive: focus => { focus.handleInput?.('\x1b[C') },
+  },
+  {
     id: 'form',
     // Doc example, verbatim: all five documented field kinds plus submit and
     // cancel controls, in the default state. The secret value renders masked.

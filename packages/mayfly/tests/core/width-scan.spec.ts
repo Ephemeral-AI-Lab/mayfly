@@ -21,7 +21,7 @@ import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { ui } from '../../../ui/src/index.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
 import { WrappingSelectList } from '../../src/core/wrapping-select-list.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
 
 /** Identity paints: the scan measures true columns, not bracket markers. */
@@ -294,6 +294,30 @@ describe('core width-scan', () => {
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`ListSegment/${name}`, [renderListSegment(segment, 'b', width, statusColors as MayflySemanticColors)], width)
         expectLinesFit(`ListSegment-none/${name}`, [renderListSegment(segment, undefined, width, statusColors as MayflySemanticColors)], width)
+      }
+    })
+
+    it(`list rows with spans, bodies, wrapping, tree guides, rules, and a segment strip survive ${name}`, () => {
+      const long = text.slice(0, 120)
+      const node = ui.stack.column([
+        ui.list({ id: 'rich', role: 'choose', mode: 'multiple', tree: true, maxRows: 6, selectedIds: ['c1'], items: [
+          { id: 'p', label: long, labelSpans: [{ text: long, styles: ['strong'] }], right: [{ text: long.slice(0, 30), tone: 'muted' }], rightFocus: [{ text: long.slice(0, 30) }], expanded: true, body: long },
+          { id: 'c1', label: long, parentId: 'p', detail: long, badge: long.slice(0, 20), meter: { value: 2, max: 4, width: 40 }, indent: 8 },
+          { id: 'c2', label: long, parentId: 'p', wrap: true, wrapMax: 2, body: ui.stack.column([ui.text(long), ui.divider({ label: long })]), expanded: true },
+          { id: 'rule', label: '', rule: long },
+          { id: 'seg', label: long, segment: { label: long.slice(0, 40), inheritedId: 'b', options: [{ id: 'a', label: long.slice(0, 30) }, { id: 'b', label: 'default' }, { id: 'c', label: long.slice(0, 30) }] } },
+          { id: 'gap', label: '', gap: true },
+        ] }),
+        ui.list({ id: 'filtered', role: 'browse', filterable: true, filterMode: 'slash', filter: long, selectedIds: [], items: [{ id: 'x', label: long, wrap: true }] }),
+      ])
+      const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn, createEditor: () => scanEditor('') } as never
+      const options = { components: scanComponents, colors: statusColors as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), screenMode: 'alternate' as const, emit: () => {} }
+      const surface = compileMayflyUiNode(node, options)
+      if (!surface.ok) throw new Error(surface.message)
+      surface.value.focusTarget!.focused = true
+      for (const key of [undefined, '\x1b[B', '\x1b[B', '\x1b[B', '\x1b[B']) {
+        if (key !== undefined) surface.value.focusTarget!.handleInput?.(key)
+        for (const width of SCAN_WIDTHS) expectLinesFit(`rich-list/${name}`, surface.value.component.render(width), width)
       }
     })
   }

@@ -2,6 +2,8 @@
  * @module @ephemeral-ai/mayfly-ui/builders
  */
 import type {
+  MayflyListBodyNode,
+  MayflyListBodyStackNode,
   MayflyActionsNode,
   MayflyChartNode,
   MayflyDividerNode,
@@ -146,6 +148,11 @@ function stack(direction: MayflyStackNode['direction'], children: readonly Mayfl
   return frozen({ ...frozen(options), kind: 'stack', direction, children: normalized })
 }
 
+/** A list row's body: a column of content nodes, which a row can open under itself and which never takes focus. */
+function listBody(children: readonly MayflyListBodyNode[], options: StackOptions = {}): MayflyListBodyStackNode {
+  return frozen({ ...frozen(options), kind: 'stack', direction: 'column', children: frozen(children).map(node => ({ node })) })
+}
+
 function surface(options: Omit<MayflySurfaceNode, 'kind'>): MayflySurfaceNode {
   return frozen({ ...frozen(options), kind: 'surface' })
 }
@@ -212,6 +219,7 @@ export const ui = Object.freeze({
   sections,
   richText,
   child,
+  listBody,
   stack: Object.freeze({
     row: (children: readonly MayflyStackItem[], options?: StackOptions) => stack('row', children, options),
     column: (children: readonly MayflyStackItem[], options?: StackOptions) => stack('column', children, options),

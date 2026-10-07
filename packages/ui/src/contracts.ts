@@ -132,7 +132,7 @@ export interface MayflyListSegment {
   readonly inheritedId?: string
 }
 /** Content a list row may open under itself. It is never a control, so a body never takes focus or holds a key. */
-export type MayflyListBodyNode = MayflyContentNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyListBodyStackNode
+export type MayflyListBodyNode = MayflyContentNode | MayflyImageNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyListBodyStackNode
 export interface MayflyListBodyChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyListBodyNode }
 export interface MayflyListBodyStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyListBodyChild[] }
 export interface MayflyListItem {

@@ -126,3 +126,17 @@ export const chrome = ui.surface({ title: '~/work/mayfly', titleAlign: 'right', 
 // @ts-expect-error the title aligns left or right
 ui.surface({ titleAlign: 'center', child: ui.text('x') })
 export const region = ui.scroll(ui.text('log'), { id: 'log', height: 6, expandedHeight: 14, fit: true, pill: true, follow: 'end' })
+
+export const richRows = ui.list({ id: 'stream', role: 'browse', filterable: true, filterMode: 'slash', marker: 'selection', marks: false, maxRows: 12, expandFocused: true, acceptVerb: 'expand', autofocus: true, focusItem: { id: 'a', rev: 1 }, hintLabel: 'stream', selectedIds: [], items: [
+  { id: 'a', label: 'A', labelSpans: [{ text: 'A', styles: ['strong'] }], right: [{ text: '1.0', tone: 'muted' }], rightFocus: [{ text: 'Enter' }], body: ui.listBody([ui.text('one'), ui.image({ attachmentId: 'att', alt: '[Image]' })]), expanded: true, wrap: true, wrapMax: 3, meter: { value: 1, max: 2, width: 8, tone: 'success' }, indent: 2,
+    segment: { options: [{ id: 'x', label: 'x' }], inheritedId: 'x' } },
+  { id: 'b', label: 'B', body: 'text', bodyAlways: true },
+  { id: 'c', label: '', rule: 'Earlier' },
+  { id: 'd', label: '', gap: true },
+] })
+// @ts-expect-error a body is content: a list inside a row would take focus
+ui.listBody([ui.list({ id: 'inner', role: 'browse', selectedIds: [], items: [] })])
+// @ts-expect-error filterMode is type or slash
+ui.list({ id: 'bad', role: 'browse', filterMode: 'fuzzy', selectedIds: [], items: [] })
+// @ts-expect-error acceptVerb is a closed set
+ui.list({ id: 'bad', role: 'browse', acceptVerb: 'delete', selectedIds: [], items: [] })

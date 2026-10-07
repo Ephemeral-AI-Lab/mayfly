@@ -717,6 +717,7 @@ describe('list rows and bodies', () => {
     const content = ui.stack.column([ui.text('one'), ui.divider(), ui.progress({ value: 1, max: 2 }), ui.child(ui.fields([{ label: 'k', value: [{ text: 'v' }] }]))])
     expect(itemOf({ id: 'a', label: 'A', body: content })).toMatchObject({ body: { kind: 'stack' } })
     expect(itemOf({ id: 'a', label: 'A', body: ui.markdown('# x') })).toMatchObject({ body: { kind: 'markdown' } })
+    expect(itemOf({ id: 'a', label: 'A', body: ui.image({ attachmentId: 'img-1', alt: '[Image #1]' }) })).toMatchObject({ body: { kind: 'image' } })
     for (const body of [
       ui.list({ id: 'inner', role: 'browse', selectedIds: [], items: [] }),
       ui.actions({ id: 'inner', items: [{ id: 'go', label: 'Go' }] }),

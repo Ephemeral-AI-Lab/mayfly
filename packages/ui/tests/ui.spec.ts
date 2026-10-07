@@ -88,6 +88,13 @@ describe('ui builders', () => {
     for (const node of nodes) expectDeepFrozen(node)
   })
 
+  it('builds a list body as a frozen column of content', () => {
+    const body = ui.listBody([ui.text('one'), ui.divider()], { gap: 1 })
+    expect(body).toEqual({ kind: 'stack', direction: 'column', gap: 1, children: [{ node: { kind: 'text', content: 'one' } }, { node: { kind: 'divider' } }] })
+    expectDeepFrozen(body)
+    expect(ui.listBody([]).children).toEqual([])
+  })
+
   it('keeps optional builder defaults equivalent to minimal handwritten nodes', () => {
     expect(ui.text('x')).toEqual({ kind: 'text', content: 'x' })
     expect(ui.code('x')).toEqual({ kind: 'code', code: 'x' })
