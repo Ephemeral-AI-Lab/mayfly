@@ -16,9 +16,6 @@ const S = (text: string, tone?: Tone) => ({ text, ...(tone === undefined ? {} : 
 const mu = (text: string) => S(text, 'muted')
 
 const WIDTH = 76
-const UP = '\x1b[A'
-const END = '\x1b[F'
-const CTRL_E = '\x05'
 const NEXT = '\x0e'
 
 const runtimes: MayflyUiSurfaceRuntime[] = []
