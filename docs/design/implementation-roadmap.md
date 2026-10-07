@@ -514,7 +514,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.2 | built (#102) | `feat/ui-foundation-1-2` | Six parts; full gate green; scenes 1 p1-p5, 7 p1, 8 p3-p4, 9 p3 pinned and scene 2 matched; Δ20 approved |
 | 1.7 | merged (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage |
 | 1.10a | merged (#103) | `feat/ui-foundation-1-10a` | Node slot. Full gate green with 100% coverage; no visible change; `W1-slot` and `W4-slot` budgets |
-| 1.9a | not started | `feat/ui-foundation-1-9a` | `ui.image`. Needs: none |
+| 1.9a | merged (#104) | `feat/ui-foundation-1-9a` | `ui.image`. Full gate green with 100% coverage; one new shot (`image`), no other visible change |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
 | 1.3 | not started | `feat/ui-foundation-1-3` | Needs: 1.2 |
 | 1.4 | not started | `feat/ui-foundation-1-4` | Needs: 1.2, 1.7 |
@@ -901,9 +901,36 @@ messages first (`recall-change`), and `↓` past the newest returns the draft; `
 insert a newline. The draft lives in `UiPromptModel`. Scene 15 in an overlay harness at 96, 60, and 40 columns; paste and
 IME go through `docs/platform-acceptance.md`.
 
-**Image.** `ui.image` paints through the existing `createImage` adapter. The bytes come from a loader the host tree
-supplies from the native attachment store (the transcript's `UserImageLoader` today), so core stays independent of
-the Harness; `alt` shows until the bytes arrive and on a terminal without an image protocol.
+**Image** (slice 1.9a, built). `MayflyImageNode { kind: 'image', attachmentId, alt, maxRows? }` joins `MayflyUiNode`
+(§3.2; status nodes and editor decorations admit neither new kind) with the builder `ui.image({ attachmentId, alt,
+maxRows? })`. The validator admits it with quotas: an `attachmentId` of 1 to 128 characters, a `maxRows` of 1 to 40,
+and 8 images per tree (`MAYFLY_UI_MAX_IMAGES`, replayed from the admission memo like chart cells); it is passive, so a
+non-capturing overlay takes it. The painter is `core/ui-image.ts` (`UiImagePainter`, one `image` arm in
+`core/ui-compiler.ts`): one muted `alt` row (line breaks collapsed, truncated to the width) until the bytes arrive,
+when no loader knows the id, and on a terminal without an image protocol, then the existing `createImage` adapter,
+made once per bytes with `maxRows` as `maxHeightCells`. The leaf is not a reusable static kind, because its rows move
+without a publish.
+
+- *The loader.* Core stays independent of the Harness: bytes come from `ctx.mayflyUiImages`
+  (`core/ui-images.ts`, owned by `frontend/index.ts` beside `mayflyUiInteraction`). The host tree calls
+  `provide(loader)` from a Fiber (`ctx.effect`) with a `(attachmentId, signal) => Promise<{ data, mediaType, name? } |
+  undefined>`; the newest loader is asked first and the next when it answers `undefined` or fails. The loader
+  receives the node's id alone, so it resolves the media type itself; the transcript's `UserImageLoader` keys by an
+  `ImageAttachmentRef`, which Phase 6's transcript wraps (it owns the id-to-ref map). No product consumer provides
+  one in this phase.
+- *Loads.* One load per id, shared by every surface, answered from a 16-image LRU; a settled image tells the surface
+  that asked (`MayflyUiSurfaceRuntime.repaint`, the pane's own invalidate-and-render), once. A loader that comes or
+  goes restarts the loads that have no bytes, and a load that finishes for an older loader set is dropped; unloading
+  the owner aborts every load.
+- *Terminal capability.* `MayflyComponents.imageProtocol()` (pi-tui's `getCapabilities().images`) is the only new
+  method on the component factory; the painter shows its own `alt` instead of pi-tui's `[Image: ...]` fallback.
+- *Node slots.* A node slot (slice 1.10a) receives the same byte source: the surface renderer lends it as
+  `MayflyNodeSlotCompiler.images`, and the slot's `MayflyUiSurfaceRuntime` takes it as a pane's does. List bodies
+  (`MayflyListBodyNode`) are slice 1.4.
+- *Proof (D20).* `examples/ui-gallery/src/groups/image.ts` (the gallery supplies no loader, so it shows the alt rows);
+  `website/plugins/ui-reference.md` and its English twin; the `image` shot. Tests: `tests/core/ui-image.spec.ts`
+  (admission and quotas, the service, the painter, the compiled node), a pane repainting when the bytes arrive in
+  `tests/core/plugin-surface-bridge-pane.spec.ts`, a slot reading the same source in `tests/core/node-slot.spec.ts`, the width scan, type fixtures in `packages/ui/tests/`.
 
 #### 1.10 Host seams: the node slot and the views lane
 

@@ -9,6 +9,7 @@ import type {} from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import { namedActionsGroup } from './groups/1-7.ts'
 import { visualLanguageGroup } from './groups/1-2.ts'
+import { imageGroup } from './groups/image.ts'
 
 export const name = '@mayfly-example/ui-gallery'
 export const inject = ['mayflyPanes']
@@ -176,6 +177,7 @@ function renderGallery() {
         ...patternsGroup(),
         ...namedActionsGroup(),
         ...visualLanguageGroup(),
+        ...imageGroup(),
       ], { gap: 1 }), { scrollbar: true }),
     ], { gap: 1 }),
   })

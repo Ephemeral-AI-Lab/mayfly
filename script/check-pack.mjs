@@ -242,10 +242,10 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // (the terminal DeepSeek account sign-in panel and its remote-callback
 // guidance added about 6 KB, and the single control walk with memoized
 // visible/all/accelerator sets added about 13 KB, and the named actions,
-// runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB); retain headroom
+// runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB, and the image node and its byte source of slice 1.9a about 30 KB); retain headroom
 // while still catching accidental entry/chunk growth.
 if (libraryFiles > 222) fail(`library lib output has ${libraryFiles} files; budget is 222`)
-if (libraryBytes > 2_210_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2210000`)
+if (libraryBytes > 2_250_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2250000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

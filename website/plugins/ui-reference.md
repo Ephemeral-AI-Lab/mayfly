@@ -30,6 +30,8 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
   全树字符串合计最多 20,000 个 UTF-16 code unit。
 - builder 会递归复制并冻结输入，循环对象会被拒绝。Host admission 只接受普通
   object 和 dense array，并移除 ANSI、C1 与不安全控制字符。
+- 一棵树最多 8 个 `image` 节点。`image` 的 `attachmentId` 为 1 到 128 个字符，
+  `maxRows` 为 1 到 40 的整数。
 - 所有数值布局字段都是非负 safe integer。`minSize` 不能大于 `maxSize`，viewport
   的最小值不能大于对应最大值。
 - tabs/list/form 的 control id、form field id、action item id，以及 form/loader 的
@@ -1127,6 +1129,29 @@ ui.divider(options?: { label?: string })
 
 ```ts
 ui.divider()
+```
+
+### `image`
+
+![`image` 节点渲染效果](/shots/image.svg)
+
+*字节尚未到达的图片，显示为它的 `alt`（宽度 48）。*
+
+```ts
+ui.image(options: { attachmentId: string, alt: string, maxRows?: number })
+```
+
+在内容中内联一张图片。wire 只携带引用，不携带字节：宿主树提供一个 loader，把
+`attachmentId` 解析为编码后的字节及其媒体类型，renderer 再通过终端的图像协议绘制，
+高度最多 `maxRows` 行。`alt` 是文本回退，例如 `[Image #1 84 KB]`；字节到达之前、
+没有 loader 认识该 id 时，以及终端没有图像协议时都显示它。它是一行弱化文本，
+按分配宽度截断。
+
+`image` 可用于普通 pane 和 overlay，不是 status、editor extension 或
+`sections.body` 节点。上面的截图渲染的就是这个节点，截图宿主没有 loader：
+
+```ts
+ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
 ```
 
 ## 事件与 snapshot 更新

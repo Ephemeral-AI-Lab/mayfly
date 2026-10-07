@@ -40,6 +40,14 @@ export {
   probeTerminalBackground,
   type MayflyProbeProcess,
 } from './terminal-info.ts'
+export {
+  MAYFLY_UI_IMAGE_CACHE,
+  MayflyUiImagesService,
+  type MayflyUiImageBytes,
+  type MayflyUiImageLoader,
+  type MayflyUiImageSource,
+  type MayflyUiImageState,
+} from './ui-images.ts'
 export { createTerminalRelease } from './terminal.ts'
 export { alignDiffLines, diffChangeCounts, paintDiffRows, DIFF_ALIGN_MAX_ROWS, DIFF_CONTEXT_ROWS, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffWidthHelpers } from './diff-align.ts'
 export { WindowController, type MayflyWindow } from './window-controller.ts'
@@ -67,7 +75,10 @@ export {
   type MayflyUiViewport,
 } from './ui-compiler.ts'
 export {
+  MAYFLY_UI_MAX_ATTACHMENT_ID,
   MAYFLY_UI_MAX_COLLECTION,
+  MAYFLY_UI_MAX_IMAGES,
+  MAYFLY_UI_MAX_IMAGE_ROWS,
   MAYFLY_UI_MAX_DEPTH,
   MAYFLY_UI_MAX_NODES,
   MAYFLY_UI_MAX_TEXT,
@@ -178,7 +189,7 @@ export async function apply(ctx: Context): Promise<void> {
     name: 'mayfly-surface-renderer',
     inject: ['mayflyUiInteraction', 'mayflyScreen', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
     apply(subCtx: Context) {
-      mountMayflySurfaceRenderer(subCtx as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime, contextHintTranslator(ctx))
+      mountMayflySurfaceRenderer(subCtx as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime, contextHintTranslator(ctx), subCtx.get('mayflyUiImages'))
     },
   })
   ctx.effect(() => () => runtime.stop())

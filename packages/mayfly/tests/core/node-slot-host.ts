@@ -15,6 +15,7 @@ import { MayflyScreenService } from '../../src/core/screen.ts'
 import { SurfaceManager } from '../../src/core/surface-manager.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflySemanticColors } from '../../src/core/types.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
@@ -113,7 +114,7 @@ export function nodeSlotTheme(colors: MayflySemanticColors) {
 }
 
 /** The core rows a node slot needs: the hint locale, the keymap, the screen, and the surface renderer that binds slots. */
-export function nodeSlotCore(runtime: MayflyTerminalRuntime) {
+export function nodeSlotCore(runtime: MayflyTerminalRuntime, images?: MayflyUiImageSource) {
   return {
     name: 'test-node-slot-core',
     apply(ctx: Context) {
@@ -124,7 +125,7 @@ export function nodeSlotCore(runtime: MayflyTerminalRuntime) {
         name: 'test-node-slot-renderer',
         inject: ['mayflyUiInteraction', 'mayflyScreen', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
         apply(renderer: Context) {
-          mountMayflySurfaceRenderer(renderer as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime, contextHintTranslator(ctx))
+          mountMayflySurfaceRenderer(renderer as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime, contextHintTranslator(ctx), images)
         },
       })
     },

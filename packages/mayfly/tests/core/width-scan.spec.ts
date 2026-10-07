@@ -15,7 +15,8 @@ import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { renderListSegment } from '../../src/core/ui-patterns.ts'
 import { GutterComponent } from '../../src/core/gutter.ts'
 import { renderMermaidRows } from '../../src/core/rich-document.ts'
-import { compileMayflyEditorShellNode, compileMayflyStatusNode, compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyEditorShellNode, compileMayflyStatusNode, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { ui } from '../../../ui/src/index.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
@@ -96,6 +97,35 @@ describe('core width-scan', () => {
         const rows = result.value.component.render(width)
         expect(rows).toHaveLength(2)
         expectLinesFit(`truncate/${name}`, rows, width)
+      }
+    })
+
+    it(`image nodes stay fitting rows, as alt text and as an image, over ${name}`, () => {
+      const ready: MayflyUiImageSource = { read: () => ({ state: 'ready', image: { data: new Uint8Array([1]), mediaType: 'image/png' } }) }
+      const node = ui.stack.column([ui.image({ attachmentId: 'photo', alt: text, maxRows: 4 }), ui.image({ attachmentId: 'other', alt: `${text}\n${text}` })])
+      const compile = (protocol: boolean, images: MayflyUiImageSource | undefined) => compileMayflyUiSurfaceNode(node, {
+        components: {
+          visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, imageProtocol: () => protocol,
+          // Image protocol sequences have no visible width; the second row is the blank row an image reserves.
+          createImage: () => ({ render: () => ['\x1b_Gf=100,a=T;AAAA\x1b\\', ''], invalidate: () => {} }),
+        } as never,
+        colors: DARK_COLORS,
+        getViewport: () => ({ columns: 80, rows: 20 }),
+        screenMode: 'alternate',
+        emit: () => {},
+        surfaceRuntime: new MayflyUiSurfaceRuntime(undefined, undefined, undefined, images),
+      })
+      const alt = compile(true, undefined)
+      const drawn = compile(true, ready)
+      expect(alt.ok && drawn.ok).toBe(true)
+      if (!alt.ok || !drawn.ok) return
+      for (const width of SCAN_WIDTHS) {
+        const altRows = alt.value.component.render(width)
+        expect(altRows).toHaveLength(2)
+        expectLinesFit(`image-alt/${name}`, altRows, width)
+        const imageRows = drawn.value.component.render(width)
+        expect(imageRows).toHaveLength(4)
+        expectLinesFit(`image/${name}`, imageRows, width)
       }
     })
 

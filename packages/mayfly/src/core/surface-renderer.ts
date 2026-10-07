@@ -23,6 +23,7 @@ import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-action
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
+import type { MayflyUiImageSource } from './ui-images.ts'
 const OVERLAY_DEFAULT_WIDTH = '70%'
 const OVERLAY_DEFAULT_MAX_HEIGHT = '33.333333333333336%'
 /** Editor-slot pickers default to half the terminal, never fewer than ten rows when the slot allows it. */
@@ -283,7 +284,7 @@ function focusTarget(entry: SurfaceLaneEntry): MayflyFocusable | null {
 }
 
 /** Mount the direct registry renderer after theme/components become available. */
-export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, translateHint?: (key: string) => string): void {
+export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, translateHint?: (key: string) => string, images?: MayflyUiImageSource): void {
   const panes = new Map<string, PaneRecord>()
   const overlays = new Map<string, OverlayRecord>()
   /** One timer for every animated pane and overlay of this renderer. */
@@ -371,7 +372,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
     schedulePane(record)
   }
@@ -384,7 +385,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addOverlay = (entry: MayflyOverlayEntry): void => {
     let record!: OverlayRecord
     const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)!
-    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock)
+    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images)
     const compiled = compile(interaction.decisionNode ?? interaction.node, 'overlay', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
@@ -610,7 +611,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
   ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
     interaction: ctx.mayflyUiInteraction, components: ctx.mayflyComponents, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
-    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, ...(translateHint === undefined ? {} : { translateHint }),
+    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, ...(translateHint === undefined ? {} : { translateHint }), ...(images === undefined ? {} : { images }),
     epoch: () => nodeSlotEpoch(ctx.mayflyKeymap, ctx.get('mayflyLocale')),
   }))
   ctx.effect(() => () => {

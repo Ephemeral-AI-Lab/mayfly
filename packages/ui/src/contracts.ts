@@ -154,6 +154,18 @@ export interface MayflyEmptyNode { readonly kind: 'empty', readonly title: strin
 export interface MayflyProgressNode { readonly kind: 'progress', readonly label?: string, readonly value: number, readonly max: number }
 export interface MayflySpacerNode { readonly kind: 'spacer', readonly size?: 1 | 2 }
 export interface MayflyDividerNode { readonly kind: 'divider', readonly label?: string }
+/**
+ * An inline image. The wire carries a reference, never bytes: the host tree supplies a loader that resolves
+ * `attachmentId`, and `alt` shows until the bytes arrive and on a terminal without an image protocol.
+ */
+export interface MayflyImageNode {
+  readonly kind: 'image'
+  readonly attachmentId: string
+  /** The text fallback, e.g. `[Image #1 84 KB]`. */
+  readonly alt: string
+  /** The tallest the image may paint, in terminal rows. */
+  readonly maxRows?: number
+}
 
 export interface MayflyChartPoint { readonly x: number, readonly y: number | null }
 export interface MayflyChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly points: readonly MayflyChartPoint[] }
@@ -166,7 +178,7 @@ export interface MayflyHeatmapChartNode { readonly kind: 'chart', readonly chart
 export type MayflyChartNode = MayflyLineChartNode | MayflyBarChartNode | MayflySparklineChartNode | MayflyHeatmapChartNode
 
 export type MayflyContentNode = MayflyTextNode | MayflyMarkdownNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode | MayflyRichTextNode | MayflyDiagramNode | MayflyChartNode
-export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode
+export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode
 
 export interface MayflyRegistryUpsert<Entry> { readonly kind: 'upsert', readonly entry: Entry }
 export interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: string, readonly revision: number }

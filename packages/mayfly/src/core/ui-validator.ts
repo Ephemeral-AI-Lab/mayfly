@@ -45,6 +45,12 @@ export const MAYFLY_UI_MAX_DEPTH = 8
 export const MAYFLY_UI_MAX_NODES = 256
 /** Maximum entries in any wire collection. */
 export const MAYFLY_UI_MAX_COLLECTION = 200
+/** Maximum `image` nodes in one tree. */
+export const MAYFLY_UI_MAX_IMAGES = 8
+/** Maximum characters in an `image` node's attachment id. */
+export const MAYFLY_UI_MAX_ATTACHMENT_ID = 128
+/** Maximum `maxRows` an `image` node may ask for. */
+export const MAYFLY_UI_MAX_IMAGE_ROWS = 40
 
 const TERMINAL_SEQUENCE = /(?:(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b[PX^_]|[\x90\x98\x9e\x9f])[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b.)/gu
 const UNSAFE_CONTROLS = /[\x00-\x08\x0b-\x1f\x7f-\x9f\uf8ff\ufdd0-\ufdef]/gu
@@ -74,6 +80,7 @@ interface ValidationBudget {
   nodes: number
   text: number
   chartCells: number
+  images: number
   readonly controlIds: Set<string>
   readonly tabs: Map<string, ReadonlySet<string>>
   readonly pages: { readonly path: MayflyPagePath, readonly tab: MayflyPageSegment }[]
@@ -98,6 +105,7 @@ interface AdmittedSubtree {
   readonly nodes: number
   readonly text: number
   readonly chartCells: number
+  readonly images: number
 }
 
 /**
@@ -211,6 +219,12 @@ function finiteInteger(value: unknown, path: string, minimum = 0): number {
     invalid(`${path} must be a finite integer within the safe range and >= ${String(minimum)}`)
   }
   return value
+}
+
+function imageRows(value: unknown, path: string): number {
+  const rows = finiteInteger(value, path, 1)
+  if (rows > MAYFLY_UI_MAX_IMAGE_ROWS) limit(`${path} exceeds ${String(MAYFLY_UI_MAX_IMAGE_ROWS)} rows`)
+  return rows
 }
 
 function finiteNumber(value: unknown, path: string): number {
@@ -415,7 +429,7 @@ interface LazyListAdmission {
 const lazyLists = new WeakMap<readonly MayflyListItem[], LazyListAdmission>()
 
 function emptyBudget(): ValidationBudget {
-  return { nodes: 0, text: 0, chartCells: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), scopes: [], filterable: false, deferred: 0 }
+  return { nodes: 0, text: 0, chartCells: 0, images: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), scopes: [], filterable: false, deferred: 0 }
 }
 
 function validationState(budget: ValidationBudget = emptyBudget()): ValidationState {
@@ -442,7 +456,7 @@ interface DeferredUiAdmission {
 const deferredUiNodes = new WeakMap<MayflyUiNode, DeferredUiAdmission>()
 const PASSIVE_UI_KINDS = new Set([
   'text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'progress',
-  'spacer', 'divider', 'document', 'chart',
+  'spacer', 'divider', 'document', 'chart', 'image',
 ])
 
 function deferredMayHaveControls(source: unknown): boolean {
@@ -494,6 +508,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     nodes: deferred.budget.nodes,
     text: deferred.budget.text,
     chartCells: deferred.budget.chartCells,
+    images: deferred.budget.images,
     controlIds: new Set(deferred.budget.controlIds),
     tabs: new Map(deferred.budget.tabs),
     pages: deferred.budget.pages.length,
@@ -509,6 +524,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     deferred.budget.nodes = checkpoint.nodes
     deferred.budget.text = checkpoint.text
     deferred.budget.chartCells = checkpoint.chartCells
+    deferred.budget.images = checkpoint.images
     deferred.budget.controlIds.clear()
     for (const id of checkpoint.controlIds) deferred.budget.controlIds.add(id)
     deferred.budget.tabs.clear()
@@ -971,20 +987,21 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
   const known = cache.subtrees.get(value as object)?.get(context)
   const budget = state.budget
   if (known !== undefined
-    && budget.nodes + known.nodes <= MAYFLY_UI_MAX_NODES && budget.text + known.text <= MAYFLY_UI_MAX_TEXT && budget.chartCells + known.chartCells <= MAX_CHART_CELLS) {
+    && budget.nodes + known.nodes <= MAYFLY_UI_MAX_NODES && budget.text + known.text <= MAYFLY_UI_MAX_TEXT && budget.chartCells + known.chartCells <= MAX_CHART_CELLS && budget.images + known.images <= MAYFLY_UI_MAX_IMAGES) {
     budget.nodes += known.nodes
     budget.text += known.text
     budget.chartCells += known.chartCells
+    budget.images += known.images
     return known.admitted
   }
   // Only a subtree that added nothing but counts is memoized: a control, tab, page, action key, filter, editor slot, or
   // responsive placeholder ties the result to the rest of the tree, so those take the full path every time.
-  const before = [budget.nodes, budget.text, budget.chartCells, budget.controlIds.size, budget.tabs.size, budget.pages.length, budget.actionKeys.size, budget.printableKey, budget.filterable, state.editorControls, budget.deferred] as const
+  const before = [budget.nodes, budget.text, budget.chartCells, budget.images, budget.controlIds.size, budget.tabs.size, budget.pages.length, budget.actionKeys.size, budget.printableKey, budget.filterable, state.editorControls, budget.deferred] as const
   const admitted = admitNode(value, path, state, depth, mode, viewOnly, editorSlotAllowed)
-  if (before[3] === budget.controlIds.size && before[4] === budget.tabs.size && before[5] === budget.pages.length && before[6] === budget.actionKeys.size
-    && before[7] === budget.printableKey && before[8] === budget.filterable && before[9] === state.editorControls && before[10] === budget.deferred) {
+  if (before[4] === budget.controlIds.size && before[5] === budget.tabs.size && before[6] === budget.pages.length && before[7] === budget.actionKeys.size
+    && before[8] === budget.printableKey && before[9] === budget.filterable && before[10] === state.editorControls && before[11] === budget.deferred) {
     const memos = cache.subtrees.get(value as object) ?? new Map<string, AdmittedSubtree>()
-    memos.set(context, { admitted: freeze(admitted), nodes: budget.nodes - before[0], text: budget.text - before[1], chartCells: budget.chartCells - before[2] })
+    memos.set(context, { admitted: freeze(admitted), nodes: budget.nodes - before[0], text: budget.text - before[1], chartCells: budget.chartCells - before[2], images: budget.images - before[3] })
     cache.subtrees.set(value as object, memos)
   }
   return admitted
@@ -1004,7 +1021,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
       return { kind }
     }
     if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
-    if (mode === 'editor' && (kind === 'diagram' || kind === 'chart')) invalid(`editor node kind "${kind}" is unsupported`)
+    if (mode === 'editor' && (kind === 'diagram' || kind === 'chart' || kind === 'image')) invalid(`editor node kind "${kind}" is unsupported`)
     /* The host editor owns every key in its shell, so focusable controls other than accelerator actions are unreachable there. */
     if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs')) invalid(`editor node kind "${kind}" would take focus from the editor`)
     if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
@@ -1202,6 +1219,19 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         return { kind, ...optional(sizeValue === undefined ? undefined : enumeration(sizeValue, [1, 2] as const, `${path}.size`), 'size') }
       }
       case 'divider': return { kind, ...optional(optionalText(object, 'label', path, state), 'label') }
+      case 'image': {
+        const attachmentId = text(required(object, 'attachmentId', path), `${path}.attachmentId`, state)
+        if (attachmentId.length === 0 || attachmentId.length > MAYFLY_UI_MAX_ATTACHMENT_ID) invalid(`${path}.attachmentId must be 1 to ${String(MAYFLY_UI_MAX_ATTACHMENT_ID)} characters`)
+        const rowsValue = own(object, 'maxRows', path)
+        state.budget.images += 1
+        if (state.budget.images > MAYFLY_UI_MAX_IMAGES) limit(`Mayfly UI tree exceeds ${String(MAYFLY_UI_MAX_IMAGES)} images`)
+        return {
+          kind,
+          attachmentId,
+          alt: text(required(object, 'alt', path), `${path}.alt`, state),
+          ...optional(rowsValue === undefined ? undefined : imageRows(rowsValue, `${path}.maxRows`), 'maxRows'),
+        }
+      }
       case 'diagram': return { kind, diagram: enumeration(required(object, 'diagram', path), ['mermaid'], `${path}.diagram`), source: text(required(object, 'source', path), `${path}.source`, state) }
       case 'chart': {
         const chart = enumeration(required(object, 'chart', path), ['line', 'point', 'bar', 'sparkline', 'heatmap'], `${path}.chart`)

@@ -5,6 +5,7 @@ import type {
   MayflyActionsNode,
   MayflyChartNode,
   MayflyDividerNode,
+  MayflyImageNode,
   MayflyDiagramNode,
   MayflyEmptyNode,
   MayflyFormNode,
@@ -186,6 +187,10 @@ function divider(options: Omit<MayflyDividerNode, 'kind'> = {}): MayflyDividerNo
   return frozen({ ...frozen(options), kind: 'divider' })
 }
 
+function image(options: Omit<MayflyImageNode, 'kind'>): MayflyImageNode {
+  return frozen({ ...frozen(options), kind: 'image' })
+}
+
 function diagram(source: string): MayflyDiagramNode {
   return frozen({ kind: 'diagram', diagram: 'mermaid', source })
 }
@@ -219,6 +224,7 @@ export const ui = Object.freeze({
   progress,
   spacer,
   divider,
+  image,
   diagram,
   chart,
 })

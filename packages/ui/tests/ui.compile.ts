@@ -28,6 +28,8 @@ export const child: MayflyUiChild = ui.child(node, { shrink: 1 })
 export const document = ui.diagram('graph TD\nA --> B')
 export const chart = ui.chart({ chart: 'line', series: [{ id: 'load', points: [{ x: 0, y: 1 }] }] })
 export const horizontalBar = ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: ['ctx'], series: [{ id: 'load', values: [1] }, { id: 'free', values: [9], empty: true }] })
+export const photo = ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
+export const photoNode: MayflyUiNode = photo
 export const handlers: MayflyUiEventHandlers = {
   observe: event => event.kind === 'value-change' ? { kind: 'completed' } : undefined,
   action: event => event.kind === 'submit' ? { kind: 'cancelled' } : { kind: 'completed' },
@@ -42,6 +44,16 @@ export const actionHandlesValueChange: MayflyUiActionHandler = event => event.ki
 export const statusDocument: MayflyStatusNode = document
 // @ts-expect-error charts are not editor-extension nodes
 export const editorChart: MayflyEditorExtensionNode = chart
+// @ts-expect-error images are not status nodes
+export const statusImage: MayflyStatusNode = photo
+// @ts-expect-error images are not editor-extension nodes
+export const editorImage: MayflyEditorExtensionNode = photo
+// @ts-expect-error an image names its attachment and carries its fallback text
+ui.image({ alt: 'missing id' })
+// @ts-expect-error an image carries its fallback text
+ui.image({ attachmentId: 'att-1' })
+// @ts-expect-error the wire carries a reference, never bytes
+ui.image({ attachmentId: 'att-1', alt: 'x', data: new Uint8Array() })
 // @ts-expect-error bar charts require category-aligned values
 ui.chart({ chart: 'bar', series: [{ id: 'load', values: [1] }] })
 

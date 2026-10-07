@@ -17,6 +17,7 @@ import {
   SelectList,
   fuzzyFilter,
   fuzzyMatch,
+  getCapabilities,
   getImageDimensions,
   truncateToWidth,
   visibleWidth,
@@ -776,6 +777,14 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     return new ImageAdapter(
       new Image(Buffer.from(options.data).toString('base64'), options.mediaType, imageTheme(this.theme.colors), imageOptions),
     )
+  }
+
+  /**
+   * Whether the terminal draws images.
+   * @returns true when the detected terminal has an image protocol.
+   */
+  imageProtocol(): boolean {
+    return getCapabilities().images !== null
   }
 
   /**

@@ -645,6 +645,11 @@ export class FakeMayflyComponents implements MayflyComponents {
   /** Every image created through this factory, in creation order. */
   readonly images: MayflyImageOptions[] = []
 
+  /** Whether this factory pretends the terminal draws images; the default is a text-only terminal. */
+  imageProtocolActive = false
+
+  imageProtocol(): boolean { return this.imageProtocolActive }
+
   createImage(options: MayflyImageOptions): MayflyImage {
     this.images.push(options)
     return {

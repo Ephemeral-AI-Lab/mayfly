@@ -21,6 +21,9 @@ slots, never arbitrary root components.
 - `frontend/index.ts` owns `mayflyUiInteraction` and independent consumer Fibers.
   Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
   reload. Renderer teardown releases editors/handles, not drafts or choice state.
+  It also owns `mayflyUiImages`, the byte source of `image` nodes: the host tree
+  provides a loader (Fiber-owned, newest first) and core never imports the
+  Harness; the wire carries only the attachment id and the alt fallback.
   Registry observers dispose only models from registrations they own.
   Locale namespaces are refcounted shared catalogs: any surface plugin may
   register the same namespace when its catalog is equivalent, and the catalog
