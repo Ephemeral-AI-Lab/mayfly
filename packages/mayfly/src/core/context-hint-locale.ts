@@ -35,6 +35,7 @@ const zh = Object.freeze({
   '↑ {above} more · ↓ {below} more': '↑ 还有 {above} 项 · ↓ 还有 {below} 项',
   '▸ {count} more lines · Enter': '▸ 还有 {count} 行 · Enter',
   reset: '重置',
+  'ready in a moment': '稍候即可操作',
   // Field provenance and conflict resolution.
   Inherited: '继承',
   Override: '显式覆盖',

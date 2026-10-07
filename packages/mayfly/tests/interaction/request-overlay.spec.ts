@@ -32,6 +32,18 @@ describe('request overlay lifecycle', () => {
     expect(cancelled).toHaveBeenCalledTimes(2)
   })
 
+  it('passes the arm delay of an unprompted request to its overlay', async () => {
+    const bench = await setup()
+    const armed = requestOverlay(bench.ctx, { id: 'armed', title: 'Request', armMs: 300, view: () => node, answer: () => 'yes', cancelled: reason => reason })
+    const plain = requestOverlay(bench.ctx, { id: 'plain', title: 'Request', view: () => node, answer: () => 'yes', cancelled: reason => reason })
+    const definitions = Object.fromEntries(bench.ctx.mayflyOverlays.list().map(entry => [entry.id, entry.definition]))
+    expect(definitions.armed!.armMs).toBe(300)
+    expect(definitions.plain).not.toHaveProperty('armMs')
+    armed.cancel()
+    plain.cancel()
+    await Promise.all([armed.result, plain.result])
+  })
+
   it('admits one result among competing decisions and fences late callback references', async () => {
     const bench = await setup()
     const accepted = vi.fn()
