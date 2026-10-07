@@ -844,7 +844,8 @@ describe('shared interaction compiler', () => {
     model.edit({ pagePath: [], formId: 'form', fieldId: 'name' }, 'B')
     handle.set(form('C'), { reason: 'data' })
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Use current value  Keep my changes')
+    // Tokens are three spaces apart.
+    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Use current value   Keep my changes')
     expect(renderer.compiled.focusTarget!.restoreFocusIdentity?.({ pagePath: [], controlId: 'name', itemId: 'draft' })).toBe(true)
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Keep my changes')
     renderer.input('\r')

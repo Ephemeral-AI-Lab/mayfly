@@ -511,7 +511,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | --- | --- | --- | --- |
 | 1.0 | merged (#99) | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
 | 1.1 | merged (#100) | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
-| 1.2 | built (#102) | `feat/ui-foundation-1-2` | Five parts; full gate green; scenes 1 p1-p5, 7 p1, 8 p3-p4, 9 p3 pinned and scene 2 matched; Δ20 approved |
+| 1.2 | built (#102) | `feat/ui-foundation-1-2` | Six parts; full gate green; scenes 1 p1-p5, 7 p1, 8 p3-p4, 9 p3 pinned and scene 2 matched; Δ20 approved |
 | 1.7 | merged (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage |
 | 1.10a | not started | `feat/ui-foundation-1-10a` | Node slot. Needs: none |
 | 1.9a | not started | `feat/ui-foundation-1-9a` | `ui.image`. Needs: none |
@@ -647,7 +647,7 @@ non-memoizable subtrees), `ui-compile-cache.spec.ts` (take and keep, the passes,
 **Goal.** Everything already on screen adopts the vocabulary of spec §2, with no contract change.
 **Backlog:** A2, A4 (core), B5, C1, C2 (defaults), D1, D2, G4, G8, G9, G12, G22, H3, R13 (contrast).
 
-It landed in five parts, each green on its own:
+It landed in five parts, each green on its own, and a sixth after slice 1.7 merged:
 
 1. **Presentation.** The `mayfly` settings namespace gained a self-contained block: `glyphs` (`auto` \| `unicode` \|
    `ascii`; `auto` follows the locale's charset, so `LANG=C` is ASCII and an unset locale is Unicode), `monochrome`, and
@@ -689,6 +689,14 @@ It landed in five parts, each green on its own:
 5. **Guards and parity.** `tests/core/theme-contrast.spec.ts` checks every tone at 4.5:1 or more against each theme's
    canvas (dark against the shots canvas `#0A0A0C`, light against white, ocean against `#0E1A2B`, paper against
    `#F6F0E4`; `auto` is dark or light); light's `accent` and paper's `primary` and `warning` were darkened to pass.
+
+6. **The actions row** (after slice 1.7 landed, scene 2). `renderActions` writes the kit's `actionTokens`: `[ Label ]`
+   primary, `! Label` danger, a declared key as `(c)` (`(Ctrl+Y)` with a modifier), a busy token as `… Label` and a
+   disabled one as `Label — reason`, both muted and without their key. Tokens sit three spaces apart after a one-column
+   indent; the focused token is inverted with a space either side and the cursor marker takes the column before it.
+   A row that does not fit keeps the tokens that do (at least one) and ends with a muted `+N`. Scene 2's five walks
+   match the prototype cell by cell (the copy walks through the host's reply as feedback under the actions), with the
+   narrow walk's wrapped caption under Δ20.
 
 Unicode fallback, as built (every replacement is one cell; the right half extends the roadmap's proposal with the
 arrows and marks the painters also draw; confirm it at checkpoint A):

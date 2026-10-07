@@ -1,8 +1,8 @@
 /**
- * Scene 2, Actions (roadmap slice 1.7): the actions row with a declared accelerator (`c`) and a hidden key with no
- * button (`Ctrl+Y copy link`). Every golden walk is compared cell by cell; the walks that wait for the visual language
- * of slice 1.2 are listed in `pending.ts` and must still differ. The key behavior of the walks is checked here now:
- * which key runs which action, and that the hint row names the effective keys.
+ * Scene 2, Actions (roadmap slices 1.7 and 1.2): the actions row with a declared accelerator (`c`) and a hidden key with
+ * no button (`Ctrl+Y copy link`). Every golden walk is compared cell by cell; a walk that cannot match yet is listed in
+ * `pending.ts` and must still differ. The key behavior of the walks is checked too: which key runs which action, and
+ * that the hint row names the effective keys.
  */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -14,9 +14,10 @@ import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { walks } from '../../../../script/design-golden-walks.mjs'
 import { PROBE_PALETTE, compareCells, parityComponents, parseCells, readGoldenFrames } from './parity.ts'
 import { PENDING_WALKS, pendingWalk } from './pending.ts'
+import { feedbackSpans } from '../../src/core/ui-interaction-notifications.ts'
 
 /** The scene's node, as `ui-preview.mjs` builds it, with the real builders. */
-function sceneNode() {
+function sceneNode(reply?: string) {
   return ui.surface({
     title: 'Edit provider', chrome: 'overlay', child: ui.stack.column([
       ui.text('Name: production · Endpoint: https://api.example.com/v1', { tone: 'muted' }),
@@ -30,6 +31,8 @@ function sceneNode() {
           { id: 'copy-link', label: 'Copy link', key: 'ctrl+y', hidden: true, hintLabel: 'copy link' },
         ],
       }),
+      // The host's reply to a copy, as the prototype's `rt.say`: a success glyph and words under the actions.
+      ...reply === undefined ? [] : [ui.richText([...feedbackSpans('success', reply)])],
     ]),
   })
 }
@@ -38,11 +41,11 @@ const runtimes: MayflyUiSurfaceRuntime[] = []
 afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose() })
 
 /** The scene compiled as a capturing overlay (Esc closes it) under the probe palette. */
-function overlay(keymap?: MayflyKeymap) {
+function overlay(keymap?: MayflyKeymap, reply?: string) {
   const events: MayflyUiEvent[] = []
   const surfaceRuntime = new MayflyUiSurfaceRuntime()
   runtimes.push(surfaceRuntime)
-  const result = compileMayflyUiSurfaceNode(sceneNode(), {
+  const result = compileMayflyUiSurfaceNode(sceneNode(reply), {
     components: parityComponents(),
     colors: PROBE_PALETTE,
     getViewport: () => ({ columns: 120, rows: 40 }),
@@ -61,10 +64,13 @@ function overlay(keymap?: MayflyKeymap) {
     render: (width: number) => result.value.component.render(width),
     press: (key: string) => { focus.handleInput?.(key) },
     activated: () => events.flatMap(event => event.kind === 'activate' ? [event.actionId] : []),
-    hint: (width: number) => result.value.component.render(width).at(-2) ?? '',
+    // The plain text of the hint row: keys in text color and labels muted are separate runs.
+    hint: (width: number) => (result.value.component.render(width).at(-2) ?? '').replace(/\x1b\[[0-9;]*m/gu, ''),
   }
 }
 
+/** The actions whose host reply is a copy. */
+const REPLIES = new Set(['copy', 'copy-link'])
 const SCENE_WALKS = walks().filter(walk => walk.scene === 2)
 
 describe('scene 2, Actions', () => {
@@ -74,16 +80,21 @@ describe('scene 2, Actions', () => {
 
   it.each(SCENE_WALKS.map(walk => [walk.name, walk] as const))('walk %s matches the prototype cell by cell, or is pending', async (_name, walk) => {
     const frames = readGoldenFrames(walk.dir, walk.name)
-    const surface = overlay()
+    let surface = overlay()
     let width = 78
     let differs = false
     for (const [index, step] of walk.steps.entries()) {
       // The scene's own keys change the demo, not the UI: `w` narrows the frame.
       if (step === 'w') width = 46
-      else if (typeof step === 'string' && step !== '\0') surface.press(step)
+      else if (typeof step === 'string' && step !== '\0') {
+        surface.press(step)
+        // Copying is the host's job; it answers with feedback, which the prototype draws under the actions.
+        if (surface.activated().some(id => REPLIES.has(id))) surface = overlay(undefined, 'Copied')
+      }
       const expected = await parseCells(frames[index]!.rows.slice(3), 96, 'prototype')
       const actual = await parseCells(surface.render(width), 96, 'real')
-      if (compareCells(expected, actual).length > 0) differs = true
+      // The kit's word wrap leaves the wrapped caption's style open on its first row and closed on the next (Δ20).
+      if (compareCells(expected, actual, walk.name === 'narrow' && index === 1 ? [{ delta: 'Δ20', rows: [1, 2] }] : []).length > 0) differs = true
     }
     expect(differs, pendingWalk(2, walk.name)?.reason ?? 'a matched walk').toBe(pendingWalk(2, walk.name) !== undefined)
   })

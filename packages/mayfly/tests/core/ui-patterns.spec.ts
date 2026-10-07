@@ -266,29 +266,38 @@ describe('private UI pattern painters', () => {
     const vertical = renderActions(node, 40, { key: 'secondary', focused: true, marker: '|', pendingKey: 'secondary' }, colors, true)
     expect(vertical).toHaveLength(5)
     expect(vertical.join('\n')).toContain('[ Run ]')
-    expect(vertical.join('\n')).toContain('|Later')
+    expect(vertical.join('\n')).toContain('|\x1b[7m Later \x1b[27m')
     expect(vertical.join('\n')).toContain('! Delete')
-    expect(renderActions(node, 40, { key: 'danger', focused: true, marker: '|' }, colors, true).join('\n')).toContain('|! Delete')
+    expect(renderActions(node, 40, { key: 'danger', focused: true, marker: '|' }, colors, true).join('\n')).toContain('|\x1b[7m ! Delete \x1b[27m')
     expect(vertical.join('\n')).toContain('… Wait')
     // A pending action keeps its cursor so focus does not vanish while it runs; disabled ones never hold it.
-    expect(renderActions(node, 80, { key: 'busy', focused: true, marker: '|', pendingKey: 'busy' }, colors, true).join('')).toContain('|… Wait')
+    expect(renderActions(node, 80, { key: 'busy', focused: true, marker: '|', pendingKey: 'busy' }, colors, true).join('')).toContain('|\x1b[7m … Wait \x1b[27m')
     expect(renderActions(node, 80, { key: 'disabled', focused: true, marker: '|', pendingKey: 'disabled' }, colors, true).join('')).not.toContain('|')
     const reasoned = ui.actions({ id: 'reasoned', items: [{ id: 'install', label: 'Install', disabled: true, disabledReason: 'Already installed' }] })
     expect(renderActions(reasoned, 80, { key: '', focused: false, marker: '|' }, colors, false).join('')).toContain('Install — Already installed')
-    const selectedBg = vi.fn((value: string) => `<selected>${value}</selected>`)
     const actionPalette = new Proxy(colors, { get: (target, key, receiver) => {
       if (key === 'primary') return (value: string) => `<primary>${value}</primary>`
       if (key === 'error') return (value: string) => `<error>${value}</error>`
-      if (key === 'selectedBg') return selectedBg
+      if (key === 'muted') return (value: string) => `<muted>${value}</muted>`
       return Reflect.get(target, key, receiver)
     } })
-    expect(renderActions(node, 80, { key: 'secondary', focused: true, marker: '|' }, actionPalette, true).join('\n'))
-      .toContain('|<selected><primary>Later</primary></selected>')
-    expect(selectedBg).toHaveBeenCalledWith('<primary>Later</primary>')
-    expect(renderActions(node, 80, { key: 'danger', focused: true, marker: '|' }, actionPalette, true).join('\n'))
-      .toContain('|<selected><error>! Delete</error></selected>')
+    // Tokens keep their tones until focused; the focused one is inverted with a space either side and no tone.
+    const focusedLater = renderActions(node, 80, { key: 'secondary', focused: true, marker: '|' }, actionPalette, true).join('\n')
+    expect(focusedLater).toContain('|\x1b[7m Later \x1b[27m')
+    expect(focusedLater).toContain('<error>! Delete</error>')
     expect(renderActions(node, 80, { key: 'primary', focused: true, marker: '|' }, actionPalette, true).join('\n'))
-      .toContain('|<selected><primary>[ Run ]</primary></selected>')
+      .toContain('|\x1b[7m [ Run ] \x1b[27m')
+    expect(renderActions(node, 120, { key: 'primary', focused: false, marker: '|' }, actionPalette, false)[0])
+      .toBe(' <primary>[ Run ]</primary>   Later   <error>! Delete</error>   <muted>… Wait</muted>   <muted>No</muted>')
+    // The marker takes the column before the focused token, in the gap.
+    expect(renderActions(node, 120, { key: 'danger', focused: true, marker: '|' }, colors, false)[0]).toContain('Later  |\x1b[7m ! Delete \x1b[27m')
+    // A declared key reads `(c)`, a modifier key `(Ctrl+Y)`; a busy token drops it.
+    const keyed = ui.actions({ id: 'keyed', items: [{ id: 'copy', label: 'Copy', key: 'c' }, { id: 'link', label: 'Link', key: 'ctrl+y' }, { id: 'wait', label: 'Wait', key: 'w', busy: true }] })
+    expect(renderActions(keyed, 120, idle, colors, false)[0]).toContain('Copy (c)   Link (Ctrl+Y)   … Wait')
+    // A row that does not fit keeps the tokens that do, at least one, and a muted `+N`.
+    const bare = (row: string | undefined): string => (row ?? '').replace(/\x1b\[[0-9;]*m/gu, '')
+    expect(bare(renderActions(node, 24, idle, colors, false)[0])).toBe(' [ Run ]   Later   +3')
+    expect(bare(renderActions(node, 14, idle, colors, false)[0])).toBe(' [ Run ]   +4')
     expect(visibleWidth(renderActions(node, 10, { key: 'danger', focused: true, marker: '|' }, colors, false)[0]!)).toBeLessThanOrEqual(10)
     expect(renderActions(ui.actions({ id: 'empty', items: [] }), 10, idle, colors, false)).toEqual([])
     expect(renderLoader(ui.loader({ message: 'Load' }), 20, colors)).toEqual(['⠋ Load'])

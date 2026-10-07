@@ -10,7 +10,7 @@ import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyTone, 
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
 import { ASCII_SPINNER_FRAMES, type MayflyGlyphMode } from './glyphs.ts'
-import { displayKey } from './key-actions.ts'
+import { hintNotation } from './ui-key-grammar.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
 import type { MayflyWorkCounters } from './ui-work-counters.ts'
@@ -194,24 +194,6 @@ function choiceMark(node: ListNode, item: ListNode['items'][number], selected: b
   if (children.length === 0) return selected ? '●' : '○'
   const chosen = children.filter(child => node.selectedIds.includes(child.id)).length
   return chosen === 0 ? (selected ? '●' : '○') : chosen === children.length ? '●' : '◐'
-}
-
-function compactTokens(tokens: readonly { readonly value: string, readonly focused: boolean, readonly active: boolean }[], width: number): string {
-  const available = safeWidth(width)
-  const complete = tokens.map(token => token.value).join(' ')
-  if (visibleWidth(complete) <= available) return complete
-  const priority = tokens.filter(token => token.focused)
-  for (const token of tokens) if (!token.focused && token.active) priority.push(token)
-  for (const token of tokens) if (!token.focused && !token.active) priority.push(token)
-  const kept: string[] = []
-  for (const token of priority) {
-    const hiddenAfter = tokens.length - kept.length - 1
-    const overflow = hiddenAfter > 0 ? ` +${String(hiddenAfter)}` : ''
-    const candidate = `${kept.join(' ')}${kept.length === 0 ? '' : ' '}${token.value}${overflow}`
-    if (visibleWidth(candidate) <= available || kept.length === 0) kept.push(token.value)
-  }
-  const hidden = Math.max(0, tokens.length - kept.length)
-  return fit(`${kept.join(' ')}${hidden === 0 ? '' : ` +${String(hidden)}`}`, available)
 }
 
 /** The border paint of a framed chrome: the focus color for an overlay, the quiet color for an inline surface (spec §2.1). */
@@ -446,21 +428,47 @@ export function renderFormField(field: MayflyFormField, width: number, focus: Pa
   return rows
 }
 
-function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly value: string, readonly focused: boolean, readonly active: boolean } {
+/** One action as the kit's `actionTokens` writes it: `[ Label ]` primary, `! Label` danger, a declared key as `(c)`. */
+function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly plain: string, readonly value: string, readonly focused: boolean } {
   const busy = item.busy === true
-  const focused = focus.focused && focus.key === item.id && item.disabled !== true
-  const reason = item.disabled === true && item.disabledReason !== undefined ? ` — ${item.disabledReason}` : ''
-  const label = `${busy ? '… ' : ''}${item.label}${item.key === undefined ? '' : ` (${displayKey(item.key)})`}${reason}`
-  const framed = item.intent === 'primary' ? `[ ${label} ]` : item.intent === 'danger' ? `! ${label}` : label
-  const content = item.disabled === true || busy ? colors.muted(framed) : item.intent === 'danger' ? colors.error(framed) : focused || item.intent === 'primary' ? colors.primary(framed) : colors.text(framed)
-  const selection = focused ? colors.selectedBg(content) : content
-  return { value: `${focused ? focus.marker : ' '}${selection}`, focused, active: item.intent === 'primary' }
+  const disabled = item.disabled === true
+  const focused = focus.focused && focus.key === item.id && !disabled
+  const reason = disabled && item.disabledReason !== undefined ? ` — ${item.disabledReason}` : ''
+  const label = `${item.label}${item.key === undefined || busy || disabled ? '' : ` (${hintNotation([item.key])})`}`
+  const plain = busy ? `… ${label}` : disabled ? `${label}${reason}` : item.intent === 'primary' ? `[ ${label} ]` : item.intent === 'danger' ? `! ${label}` : label
+  // The focused token is inverted with a space either side; the cursor marker takes the column before it.
+  if (focused) return { plain, value: `\x1b[7m ${plain} \x1b[27m`, focused }
+  const paint = disabled || busy ? colors.muted : item.intent === 'danger' ? colors.error : item.intent === 'primary' ? colors.primary : colors.text
+  return { plain, value: paint(plain), focused }
 }
 
+/** The columns before a token: the row's indent or the gap, whose last column the cursor marker takes on the focused one. */
+function tokenLead(lead: string, focused: boolean, focus: PatternFocus): string {
+  return focused ? `${lead.slice(0, -1)}${focus.marker}` : lead
+}
+
+/**
+ * The actions row (spec 4.2): tokens joined by three spaces after a one-column indent. A row that does not fit keeps
+ * the tokens that do, at least one, and ends with a muted `+N` for the rest.
+ */
 export function renderActions(node: ActionsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors, vertical: boolean): string[] {
   const tokens = node.items.map(item => actionToken(item, focus, colors))
   if (tokens.length === 0) return []
-  return vertical ? tokens.map(token => fit(token.value, width)) : [compactTokens(tokens, width)]
+  if (vertical) return tokens.map(token => fit(`${tokenLead(' ', token.focused, focus)}${token.value}`, width))
+  const widths = tokens.map(token => visibleWidth(token.plain))
+  let shown = tokens.length
+  if (widths.reduce((sum, each) => sum + each, 0) + 3 * (tokens.length - 1) > width - 4) {
+    let used = 0
+    shown = 0
+    for (const each of widths) {
+      if (used + each + 3 > width - 6) break
+      used += each + 3
+      shown++
+    }
+    shown = Math.max(1, shown)
+  }
+  const folded = shown < tokens.length ? `   ${colors.muted(`+${String(tokens.length - shown)}`)}` : ''
+  return [fit(`${tokens.slice(0, shown).map((token, index) => `${tokenLead(index === 0 ? ' ' : '   ', token.focused, focus)}${token.value}`).join('')}${folded}`, width)]
 }
 
 /** One fragment of the hint row: the keys, and the word for what they do. */

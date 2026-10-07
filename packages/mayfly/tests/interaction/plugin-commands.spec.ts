@@ -721,7 +721,8 @@ describe('/plugin browse panel', () => {
       { id: 'not-installed', count: 1 },
     ] })
     expect(JSON.stringify(node)).toContain('Install')
-    expect(controller.render(80).join('\n')).toContain('Details  [ Install ]  ! Remove')
+    // A disabled action is a muted token with its reason, not a framed one.
+    expect(controller.render(80).join('\n')).toMatch(/Details.{0,12}\[ Install \]   Remove — Not installed in this profile/u)
     expect(controller.render(36).join('\n')).toContain('Details')
     world.dispose()
   })

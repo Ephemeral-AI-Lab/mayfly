@@ -1959,7 +1959,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const focus = result.focusTarget!
     focus.focused = true
     const rows = focus.render(120)
-    expect(rows.join('\n')).toContain('(Q)')
+    expect(rows.join('\n')).toContain('(q)')
     expect(rows.at(-1)).toContain('q stop')
     focus.handleInput?.('q')
     expect(f.events).toEqual([{ kind: 'activate', pagePath: [], controlId: 'stop', actionId: 'stop' }])
