@@ -1595,6 +1595,28 @@ describe('mayfly-input plugin', () => {
     })
   })
 
+  describe('entering the views', () => {
+    it.each([['Alt+Down', KEY.altDown], ['F5', KEY.f5]])('enters the views on %s with an empty prompt', async (_name, key) => {
+      const { editor, screen } = await mount()
+      screen.enterViewsResult = true
+      expect(editor.onKey?.(key)).toBe(true)
+      expect(screen.enterViewsCalls).toBe(1)
+    })
+
+    it('leaves the key to the editor when no view can be entered, the buffer has text, or a completion list is open', async () => {
+      const { editor, screen } = await mount()
+      expect(editor.onKey?.(KEY.altDown)).toBe(false)
+      expect(screen.enterViewsCalls).toBe(1)
+      screen.enterViewsResult = true
+      editor.setText('draft')
+      expect(editor.onKey?.(KEY.altDown)).toBe(false)
+      editor.setText('')
+      editor.showingAutocomplete = true
+      expect(editor.onKey?.(KEY.altDown)).toBe(false)
+      expect(screen.enterViewsCalls).toBe(1)
+    })
+  })
+
   describe('queued-message withdrawal', () => {
     /** Route follow-up submissions into the fake inbox's queued lane. */
     function enqueueFollowups(inbox: ReturnType<typeof fakeInbox>, followup: ReturnType<typeof vi.fn>): void {

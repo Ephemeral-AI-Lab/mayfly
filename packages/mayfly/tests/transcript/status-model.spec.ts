@@ -116,4 +116,40 @@ describe('StatusFooterComponent', () => {
     expect(footer.render(20)).toEqual(['first  second       '])
   })
 
+  describe('views lane', () => {
+    /** A lane source with two summaries on row 2 and a switchable panel. */
+    function source(panel: readonly string[] | undefined = undefined) {
+      const current: { panel: readonly string[] | undefined } = { panel }
+      const entries = [
+        { id: 'views/agents', definition: { id: 'views/agents', priority: 1, band: 'left' as const, row: 2 as const }, node: { kind: 'text' as const, content: 'Agents 5' }, revision: 1 },
+        { id: 'views/jobs', definition: { id: 'views/jobs', priority: 2, band: 'left' as const, row: 2 as const }, node: { kind: 'text' as const, content: 'Jobs 3' }, revision: 2 },
+      ]
+      return { current, views: { statusEntries: () => entries, panel: () => current.panel } }
+    }
+
+    it('admits the summaries of the lane beside the registry entries of row 2', () => {
+      const { views } = source()
+      const footer = new StatusFooterComponent(registry(entry('model', 'model'), entry('chip', 'chip', { row: 2, priority: 0 })), fakeMayflyComponents(), COLORS, undefined, views)
+      expect(footer.render(40)).toEqual(['model'.padEnd(40), 'chip  Agents 5  Jobs 3'.padEnd(40)])
+    })
+
+    it('shows an entered view\'s panel in place of row 2, under row 1', () => {
+      const { views, current } = source()
+      const footer = new StatusFooterComponent(registry(entry('model', 'model')), fakeMayflyComponents(), COLORS, undefined, views)
+      const idle = footer.render(30)
+      expect(footer.render(30)).toBe(idle)
+      current.panel = ['Agents 5   Jobs 3', '━━━━━━━━', 'body']
+      expect(footer.render(30)).toEqual(['model'.padEnd(30), 'Agents 5   Jobs 3', '━━━━━━━━', 'body'])
+      current.panel = undefined
+      expect(footer.render(30)).toBe(idle)
+    })
+
+    it('shows the panel alone when row 1 is empty', () => {
+      const { views, current } = source(['Agents', '━━━━━━'])
+      const footer = new StatusFooterComponent(registry(), fakeMayflyComponents(), COLORS, undefined, views)
+      expect(footer.render(20)).toEqual(['Agents', '━━━━━━'])
+      current.panel = undefined
+      expect(footer.render(20)).toEqual(['Agents 5  Jobs 3'.padEnd(20)])
+    })
+  })
 })

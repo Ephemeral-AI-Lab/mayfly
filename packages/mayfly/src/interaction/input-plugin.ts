@@ -93,6 +93,7 @@ import {
   ACTION_MOVE_UP,
   ACTION_PAGE_DOWN,
   ACTION_PAGE_UP,
+  ACTION_FOCUS_NEXT,
   ACTION_STEER,
   interactionKeyHint,
 } from './keys.ts'
@@ -812,6 +813,11 @@ export function apply(ctx: Context): void {
       void cycleSessionModel(ctx, modelListCache, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }
+    // Alt+Down (F5) on an empty prompt enters the views of status row 2; without a view the key stays the editor's.
+    if (keymap.matches(data, ACTION_FOCUS_NEXT)
+      && editor.getText().length === 0
+      && !editor.isShowingAutocomplete()
+      && ctx.mayflyScreen.enterViews()) return true
     // Up on an empty prompt withdraws the newest still-pending queued
     // message back into the draft — the folded queue pane's recall gesture.
     // A non-empty buffer, an open autocomplete dropdown, and bash mode all

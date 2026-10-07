@@ -8,6 +8,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotRegion } from './node-slot.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
+import type { MayflyViewsSource } from './views-lane.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflyScreenSlot } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -212,6 +213,20 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     const columns = this.runtime.columns
     const footerRows = this.fixed.get('status.footer')!.render(columns).length
     return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1 - this.runtime.surfaceLaneRows()) }
+  }
+
+  /** The views of status row 2, for the footer that paints their summaries and, while one is entered, its panel. */
+  get views(): MayflyViewsSource {
+    return this.runtime.surfaces.views
+  }
+
+  /**
+   * Enter the first view of status row 2 (the active one when it is still enterable): its panel replaces the row and
+   * takes focus. The prompt calls this on `Alt+↓`/`F5` with an empty buffer.
+   * @returns whether a view was entered; `false` leaves the key to the editor.
+   */
+  enterViews(): boolean {
+    return this.runtime.surfaces.views.enter()
   }
 
   /** A registered editor-presentation overlay takes the prompt's place. */

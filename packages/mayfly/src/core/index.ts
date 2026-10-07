@@ -52,6 +52,7 @@ export { createTerminalRelease } from './terminal.ts'
 export { alignDiffLines, diffChangeCounts, paintDiffRows, DIFF_ALIGN_MAX_ROWS, DIFF_CONTEXT_ROWS, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffWidthHelpers } from './diff-align.ts'
 export { WindowController, type MayflyWindow } from './window-controller.ts'
 export { visibleWidth } from './width.ts'
+export type { MayflyViewsSource } from './views-lane.ts'
 export {
   compileMayflyEditorShellNode,
   compileMayflyStatusNode,
