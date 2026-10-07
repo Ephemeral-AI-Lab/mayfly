@@ -8,6 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import { namedActionsGroup } from './groups/1-7.ts'
+import { contentLayoutGroup } from './groups/content-layout.ts'
 import { visualLanguageGroup } from './groups/1-2.ts'
 import { imageGroup } from './groups/image.ts'
 
@@ -177,6 +178,7 @@ function renderGallery() {
         ...patternsGroup(),
         ...namedActionsGroup(),
         ...visualLanguageGroup(),
+        ...contentLayoutGroup(),
         ...imageGroup(),
       ], { gap: 1 }), { scrollbar: true }),
     ], { gap: 1 }),

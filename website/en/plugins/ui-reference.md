@@ -73,7 +73,11 @@ key bindings.
 *A single-line hint in the danger tone (width 48).*
 
 ```ts
-ui.text(content: string, options?: { tone?: MayflyTone, overflow?: 'wrap' | 'truncate' })
+ui.text(content: string, options?: {
+  tone?: MayflyTone
+  overflow?: 'wrap' | 'truncate' | 'middle' | 'start'
+  styles?: readonly ('strong' | 'italic' | 'strike')[]
+})
 ```
 
 A semantic text block that the renderer may wrap — use it for status hints,
@@ -119,6 +123,21 @@ bottom pane, where a wrapped row would cost the dock a line:
 ui.text(`${label} · ${activity}`, { tone: 'muted', overflow: 'truncate' })
 ```
 
+`overflow: 'middle'` and `'start'` also keep one row, but elide the middle or the
+start instead of the end, so the distinguishing end of a path or a title stays
+visible. `styles` takes `'strong'`, `'italic'`, and `'strike'`, as a span does:
+
+![`text` ellipsis](/shots/text-ellipsis.svg)
+
+*A path elided in the middle, and the same path elided at its start in bold (width 32).*
+
+```ts
+ui.stack.column([
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'middle' }),
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
+])
+```
+
 ### `richText`
 
 ![`richText` node rendering](/shots/richText.svg)
@@ -132,6 +151,8 @@ type MayflyInlineSpan = {
   text: string
   tone?: MayflyTone
   emphasis?: 'normal' | 'strong'
+  motion?: 'shimmer' | 'loader'                        // one channel per rich-text row
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath'        // with motion: 'loader'; default 'gap'
 }
 ```
 
@@ -160,6 +181,25 @@ ui.richText([
   { text: ' failed after ', tone: 'muted' },
   { text: '42s', emphasis: 'strong' },
   { text: ' with 2 errors', tone: 'danger' },
+])
+```
+
+A span may move. `motion: 'shimmer'` sweeps a three-letter window over the
+letters of its text (`primary` and bold over muted letters); `motion: 'loader'`
+is one animated loader cell (its `text` must be `''`) in the given `variant`. A
+row carries at most one motion channel, and a status node carries none. The
+renderer owns the clock (a 100 ms step, the breath moving every fourth step), a
+tick repaints only the row that holds the span, and reduced motion freezes the
+channel on its first frame, which is also what a screenshot shows:
+
+![`richText` motion](/shots/richText-motion.svg)
+
+*A shimmering label and a breathing cell, both at their first frame (width 48).*
+
+```ts
+ui.stack.column([
+  ui.richText([{ text: 'Running commands', motion: 'shimmer' }, { text: ' · 12s', tone: 'muted' }]),
+  ui.richText([{ text: '', motion: 'loader', variant: 'breath' }, { text: ' Waiting for authorization', tone: 'muted' }]),
 ])
 ```
 
@@ -209,7 +249,7 @@ ui.fields([
 *A multi-line code block with the `ts` language hint (width 64).*
 
 ```ts
-ui.code(value: string, options?: { language?: string })
+ui.code(value: string, options?: { language?: string, numbered?: boolean })
 ```
 
 Represents code or preformatted text such as patch fragments, command output,
@@ -227,6 +267,17 @@ ui.code([
 ].join('\n'), { language: 'ts' })
 ```
 
+`numbered: true` draws a muted `n │ ` gutter; a wrapped line's continuation rows
+stay under its code:
+
+![`code` numbered](/shots/code-numbered.svg)
+
+*Two numbered lines (width 48).*
+
+```ts
+ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbered: true })
+```
+
 ### `diff`
 
 ![`diff` node rendering](/shots/diff.svg)
@@ -234,7 +285,13 @@ ui.code([
 *Multi-line before/after: old and new line numbers, changed lines marked `−`/`+` with red/green bands behind the code only (width 64).*
 
 ```ts
-ui.diff(before: string, after: string)
+ui.diff(before: string, after: string, options?: {
+  start?: number      // the number of the first line (default 1)
+  numbered?: boolean  // old and new gutters (default true)
+  hunkHeader?: boolean // an `@@` header even for one hunk (default: more than one)
+  context?: number    // unchanged lines around a change, 0 to 3 (default 1)
+  maxRows?: number    // then `… +N rows · Ctrl+O`
+})
 ```
 
 Represents the semantic before/after states of the same content, such as a
@@ -249,6 +306,21 @@ The screenshot above renders exactly this node:
 ui.diff(
   ['export function connect() {', '  const retries = 3', '  return open(retries)', '}'].join('\n'),
   ['export function connect() {', '  const retries = 5', '  return open(retries)', '}'].join('\n'),
+)
+```
+
+The options number the lines from `start`, name the hunk with an `@@` header,
+widen or drop the context, and cap the rows:
+
+![`diff` options](/shots/diff-options.svg)
+
+*Numbering from line 41 with a hunk header (width 48).*
+
+```ts
+ui.diff(
+  ['const a = 1', 'const b = 2', 'const c = 3'].join('\n'),
+  ['const a = 1', 'const b = 4', 'const c = 3'].join('\n'),
+  { start: 41, hunkHeader: true, context: 1 },
 )
 ```
 
@@ -363,6 +435,38 @@ ui.chart({
 })
 ```
 
+A heatmap is drawn by Mayfly itself: a title, a header of column names, one row
+of cells per row label, and the legend row. `cell: 2` (the default) paints each
+value as two cells (`░░ ▒▒ ▓▓ ██`, `░░ ▒▒ ██` for three levels) under names
+padded to four columns; `cell: 1` paints one cell with no gap (`· ░ ▒ ▓ █`), so
+a year of days fits a row, and `columnLabels` (one per column) are written where
+their column starts, as month names are. A value with no level is blank, and a
+row wider than the room is clipped. A sparkline is one row: the muted label, then
+eight-step cells scaled to the tallest value, in the node's tone (`accent` by
+default).
+
+![`chart` heatmap](/shots/chart-heatmap.svg)
+
+*One-cell mode with month labels (width 40).*
+
+```ts
+ui.chart({
+  chart: 'heatmap',
+  cell: 1,
+  title: 'Commits',
+  columns: ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'],
+  columnLabels: ['Jan', '', '', 'Feb', '', ''],
+  rows: ['Mon', 'Fri'],
+  values: [[0, 1, 2, 3, 2, 1], [1, 0, 0, 2, 3, 3]],
+  levels: [
+    { value: 0, label: 'none', tone: 'muted' },
+    { value: 1, label: 'some', tone: 'success' },
+    { value: 2, label: 'more', tone: 'success' },
+    { value: 3, label: 'most', tone: 'success' },
+  ],
+})
+```
+
 Values must be finite; `null` marks missing data. Series ids and heatmap level
 values are unique, bar values match the category count, and heatmap dimensions
 match their row/column labels. Each chart accepts at most 20 series, and one
@@ -392,6 +496,9 @@ ui.child(node: MayflyUiNode, options?: {
     minHeight?: number
     maxHeight?: number
   }
+  priority?: number                      // admission order in a row; lower is kept first
+  band?: 'left' | 'center' | 'right'     // where an admitted child sits (default left)
+  overflow?: 'truncate' | 'hide'         // what a child that does not fit does
 })
 ```
 
@@ -463,6 +570,36 @@ ui.stack.row([
 ], { gap: 1 })
 ```
 
+A `row` whose children carry a `priority` admits them instead of laying them out
+by size. The children are admitted in priority order (ties keep their position)
+while they fit, a gap of `gap` (2 by default) between them. A child that does not
+fit takes the room that is left when it says `overflow: 'truncate'` (at least 8
+cells, and the row is then full), drops out when it says `overflow: 'hide'`
+while later children may still fit, and otherwise ends admission: it and every
+later child drop. Admitted children sit in their `band`; the right band is flush
+with the edge and the center band is centered between its neighbours. Only the
+first row of a child is drawn. Mayfly's status rows use the same rule, so a plugin
+entry and a Mayfly entry are admitted alike:
+
+![`stack` admission](/shots/stack-admission.svg)
+
+*Width 64: the right-hand `cache 34%` is kept, and the path truncates into the room that is left.*
+
+```ts
+ui.stack.row([
+  ui.child(ui.richText([{ text: 'deepseek-chat High' }]), { priority: 0 }),
+  ui.child(ui.richText([{ text: 'PLAN', tone: 'primary', styles: ['strong'] }]), { priority: 1 }),
+  ui.child(ui.richText([{ text: 'cache 34%', tone: 'muted' }]), { priority: 4, band: 'right', overflow: 'hide' }),
+  ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly', tone: 'muted' }]), { priority: 5, overflow: 'truncate' }),
+], { gap: 2 })
+```
+
+The same node at width 30: `cache 34%` no longer fits and hides, and the path is left fewer than eight cells, so the row ends at `PLAN`.
+
+![`stack` admission, narrow](/shots/stack-admission-narrow.svg)
+
+*Width 30.*
+
 ### `surface`
 
 ![`surface` node rendering](/shots/surface.svg)
@@ -478,6 +615,10 @@ ui.surface({
   padding?: 0 | 1 | 2
   child: MayflyUiNode
   footer?: MayflyUiNode
+  titleAlign?: 'left' | 'right'
+  border?: MayflyTone
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
+  hint?: 'auto' | 'none' | 'completions'
 })
 ```
 
@@ -492,6 +633,10 @@ ui.surface({
 | `padding` | Content inset level; defaults to `0`. A framed chrome keeps at least one column inside its border |
 | `child` | Required body |
 | `footer` | Optional node between the body and bottom border |
+| `titleAlign` | `right` puts the title in the top-right corner with the badges at the left; a title too long for the rule loses its start, so the end of a path stays |
+| `border` | The border tone; the chrome's own color otherwise |
+| `escapeLabel` | The word the `Esc` hint shows, and what `Esc` does once nothing inside has taken it: it asks the host to close the surface (`reject` dismisses it as a rejection) |
+| `hint` | `none` draws no key-hint row; `completions` draws one only while the editor's completion list is open |
 
 `chrome: 'overlay'` is only a visual intent. It does not create an overlay;
 use `api.overlays.open()` for the actual surface. When that surface is the
@@ -531,6 +676,21 @@ ui.surface({
 })
 ```
 
+![`surface` right-aligned title](/shots/surface-title-right.svg)
+
+*A right-aligned title with a border tone (width 40).*
+
+```ts
+ui.surface({
+  title: '~/work/mayfly/packages/mayfly',
+  titleAlign: 'right',
+  chrome: 'surface',
+  border: 'warning',
+  badges: [{ text: 'dirty', tone: 'warning' }],
+  child: ui.text('The end of the path stays visible.'),
+})
+```
+
 ### `scroll`
 
 ![`scroll` node rendering](/shots/scroll.svg)
@@ -542,6 +702,10 @@ ui.scroll(node: MayflyUiNode, options?: {
   id?: string
   follow?: 'none' | 'start' | 'end'
   scrollbar?: boolean
+  height?: number
+  expandedHeight?: number
+  fit?: boolean
+  pill?: boolean
 })
 ```
 
@@ -559,6 +723,27 @@ The screenshot above renders exactly this node:
 ui.scroll(
   ui.stack.column(Array.from({ length: 16 }, (_, index) => ui.text(`log line ${index + 1}`))),
   { scrollbar: true },
+)
+```
+
+Naming `height`, `expandedHeight`, `fit`, or `pill` gives the scroll its own
+viewport: exactly `height` rows (6 by default), `expandedHeight` rows (14) while
+`Ctrl+E` has expanded it, and a scrollbar column beside the content (a `█` thumb
+on a `░` track, unless `scrollbar: false`). The surface around it keeps its
+natural height instead of stretching to fill the terminal. `fit` shrinks the
+viewport to short content and draws no scrollbar until the content overflows.
+`pill` draws `↓ N new · End` over the last row while the view is scrolled away
+from a followed tail and N rows have arrived since; `End` jumps back. The place a
+user scrolled to survives a republish. With an `id`, the same anchors as above keep it.
+
+![`scroll` region](/shots/scroll-region.svg)
+
+*Twelve lines in a four-row viewport that follows the tail (width 40).*
+
+```ts
+ui.scroll(
+  ui.stack.column(Array.from({ length: 12 }, (_, index) => ui.text(`log line ${index + 1}`))),
+  { height: 4, follow: 'end', pill: true },
 )
 ```
 
@@ -1093,23 +1278,30 @@ progress, risk, and business status still belong in the footer.
 
 ![`loader` node rendering](/shots/loader.svg)
 
-*The default braille variant with the elapsed hint and a cancel control (width 64).*
+*The default gap variant with the elapsed hint and the `Esc cancel` hint (width 64).*
 
 ```ts
 ui.loader({
-  message: string
-  variant?: 'braille' | 'tide'
+  message?: string
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath'
   elapsedMs?: number
   cancelActionId?: string
   cancelLabel?: string
 })
 ```
 
-`variant` defaults to `braille`. `elapsedMs` is a non-negative millisecond
-hint. The owning lifecycle manages animation timers; never start one in
-`render()`. A `cancelActionId` adds a control that emits `activate`, labelled
-`cancelLabel` (a localized "Cancel" when omitted). The
-screenshot above renders exactly this node:
+`variant` defaults to `gap`; the first loaders' `braille` and `tide` stay accepted
+and draw `gap`. Without a `message` the node is a bare glyph. `elapsedMs` is a
+non-negative millisecond hint, shown as `45s`, `2m 10s`, or `1h 5m`. The renderer
+owns the animation, one clock for every surface at a 100 ms step: `bloom` (`· ✢ ✳
+✶ ✻ ✽`), `fill` (a braille bar that fills and drains), and `gap` (a braille
+spinner) step each tick, and `breath` is a `●` that moves through six shades of
+the `primary` tone, dim to bright to dim, a shade every 400 ms. Never start a timer
+in `render()`. Reduced motion freezes every variant on its first frame, and ASCII
+glyphs draw `- \ | /`. A `cancelActionId` is a hint, not a button: the row
+`Esc cancel` (or `Esc` and the lower-cased `cancelLabel`) sits under the loader,
+`Esc` emits `activate` for that action before it leaves the surface, and
+`Enter` on the focused row does too. The screenshot above renders exactly this node:
 
 ```ts
 ui.loader({
@@ -1120,18 +1312,19 @@ ui.loader({
 })
 ```
 
-The `tide` variant replaces the braille dots with a wave glyph:
+All four variants, each at its first frame:
 
-![`loader` tide variant](/shots/loader-tide.svg)
+![`loader` variants](/shots/loader-variants.svg)
 
-*The tide variant (width 64).*
+*`bloom`, `fill`, `gap`, and `breath` (width 64).*
 
 ```ts
-ui.loader({
-  message: 'Syncing dependencies',
-  variant: 'tide',
-  elapsedMs: 4200,
-})
+ui.stack.column([
+  ui.loader({ variant: 'bloom', message: 'Thinking' }),
+  ui.loader({ variant: 'fill', message: 'Working' }),
+  ui.loader({ variant: 'gap', message: 'Discovering models', elapsedMs: 12_000, cancelActionId: 'stop' }),
+  ui.loader({ variant: 'breath', message: 'Waiting for authorization', elapsedMs: 45_000 }),
+])
 ```
 
 ### `empty`
@@ -1169,7 +1362,17 @@ ui.empty({
 *A determinate bar with label and count (width 64).*
 
 ```ts
-ui.progress({ label?: string, value: number, max: number })
+ui.progress({
+  label?: string
+  value: number
+  max: number
+  style?: 'cells' | 'rule'
+  width?: number
+  tone?: MayflyTone
+  showCount?: boolean
+  showPercent?: boolean
+  transition?: { from: number, ms: number, rev: number }
+})
 ```
 
 `value` is a non-negative integer and `max` is an integer of at least 1. Host
@@ -1179,6 +1382,29 @@ renders exactly this node:
 
 ```ts
 ui.progress({ label: 'Tokens', value: 12_000, max: 28_000 })
+```
+
+A bar that names neither `style` nor `width` fills its row with partial blocks, as
+above. Naming either chooses the kit look: `style: 'cells'` (the default then)
+draws `▰` for done and `▱` for what is left in `width` cells (10), with a label,
+`n/N` (turn it off with `showCount: false`), and `showPercent`. `style: 'rule'`
+draws the heading rule, `━` for done and `─` for what is left in `width` cells
+(24), with nothing after it. `tone` colors the done part (`primary` by default).
+`transition` is a renderer-owned one-shot: when its `rev` first arrives, the bar
+drains linearly from `from` to `value` over `ms` on the animation clock, then
+stays still; reduced motion, or no clock, shows `value` at once. A status node
+takes no transition:
+
+![`progress` styles](/shots/progress-styles.svg)
+
+*Cells with a count, cells with a percentage, and the heading rule (width 64).*
+
+```ts
+ui.stack.column([
+  ui.progress({ label: 'Building', value: 6, max: 10, style: 'cells', width: 10 }),
+  ui.progress({ value: 9, max: 10, width: 10, showCount: false, showPercent: true }),
+  ui.progress({ style: 'rule', value: 2, max: 8, width: 24 }),
+])
 ```
 
 ### `spacer`

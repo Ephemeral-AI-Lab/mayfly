@@ -1684,7 +1684,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(focusedHint(ui.list({ id: 'pick', role: 'choose', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })))
       .toBe('  ↑/↓ options · Enter choose')
     expect(focusedHint(ui.loader({ message: 'Working', cancelActionId: 'cancel' })))
-      .toBe('  Enter cancel · Esc cancel')
+      .toBe('  Esc cancel')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })))
       .toBe('  Enter edit')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [{ id: 'dark', label: 'Dark' }] }] })))

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import { ScrollRegion } from '../../src/core/ui-scroll-region.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
@@ -298,5 +299,42 @@ describe('content nodes in a plain compile', () => {
     if (!main.ok) throw new Error(main.message)
     expect(main.value.component.render(20)).toEqual(['log line 1', 'log line 2', 'log line 3'])
     expect(paint(ui.scroll(lines(3), { height: 2, scrollbar: false }), 20).map(row => row.trimEnd())).toEqual(['log line 1', 'log line 2'])
+  })
+})
+
+describe('smaller seams', () => {
+  it('admits a child without a priority beside prioritized ones, and draws a child that paints no row', () => {
+    const surface = mount(ui.stack.row([
+      ui.child(ui.richText([{ text: 'fixed' }])),
+      ui.child(ui.text(''), { priority: 1 }),
+      ui.child(ui.richText([{ text: 'late' }]), { priority: 2 }),
+    ]))
+    expect(surface.render()[0]!.replaceAll('\x1b[0m', '').trimEnd()).toBe('fixed    late')
+  })
+
+  it('gives a scroll that only asks for a pill the default viewport of six rows', () => {
+    expect(mount(ui.scroll(lines(20), { pill: true, follow: 'none', scrollbar: false })).render().filter(row => row.startsWith('log line'))).toHaveLength(6)
+  })
+
+  it('draws the hint row of hint completions around an expanded layout scroll only while the list is open', () => {
+    let open = false
+    const surface = mount(ui.surface({ chrome: 'overlay', hint: 'completions', child: ui.scroll(lines(40)) }), { escape: () => {}, completionsOpen: () => open, rows: 12 })
+    surface.render()
+    surface.press(KEYS.ctrlE)
+    expect(surface.render().join('\n')).not.toContain('collapse')
+    open = true
+    expect(surface.render().join('\n')).toContain('collapse')
+  })
+
+  it('invalidates the child of a scroll region', () => {
+    const invalidate = vi.fn()
+    const region = new ScrollRegion({
+      child: { render: () => ['x'], invalidate }, memory: { offset: 0, following: undefined, away: 0 }, height: 2, expandedHeight: 4, fit: false, pill: false, follow: false,
+      scrollbar: true, expanded: () => false, colors, components: parityComponents(), pillText: String,
+    })
+    region.invalidate()
+    region.setScrollbarActive()
+    expect(invalidate).toHaveBeenCalledOnce()
+    expect(region.render(10)).toHaveLength(2)
   })
 })

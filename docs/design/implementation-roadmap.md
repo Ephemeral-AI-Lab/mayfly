@@ -127,6 +127,12 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ18 | all | The hint words of the kit's `hintFragments` | The same words, including `pick` on a focused select | The kit is the oracle; spec §3.2's table gains `pick` when it is next edited |
 | Δ19 | 24 | `n new` on every workspace | `n` acts on the current workspace; other rows carry `unavailableActions.new` with a reason, unless the Harness can start a session in another directory (verify in slice 2b) | Process cwd |
 | Δ20 | all | The kit's word wrap drops a line's leading spaces and does not reopen the style on a wrapped continuation | The renderer keeps both (scene 7's todo row, scene 8's indented code line, wrapped captions) | Prototype wrap artifact; approved by the reviewer |
+| Δ21 | 8 p3 | Markdown drawn by the kit's five rules (bare heading, `•`, `│` quote, a language label over the code) | The shipped markdown component: blank rows between blocks, fences kept, the `md*` tokens | The transcript keeps the streamed markdown component (Phase 6); proposed in slice 1.3 |
+| Δ22 | 8 `h` | `h` swaps highlighted code for one flat user tone | The code node always highlights; no switch | Demo key; proposed in slice 1.3 |
+| Δ23 | 8 p5-p7 | Line, point, vertical-bar, and stacked or grouped horizontal-bar charts, and the diagram, from hand-written glyph rows | `simple-ascii-chart` and `beautiful-mermaid` draw them (a horizontal bar is normalized only); the sparkline and the heatmap are the kit's | The kit stands in for libraries it does not specify; proposed in slice 1.3 |
+| Δ24 | 7 scroll | `↑` from a followed tail jumps to the top (a stale offset) | `↑` scrolls one row from the tail | Prototype artifact; proposed in slice 1.3 |
+| Δ25 | 10 | A flex row of framed surfaces: surfaces measured structurally, the grow remainder to the last child, `…` columns below 60 | The layout engine measures a surface by painting it and shares the remainder by its own rule | The row layout is pi-tui's stack layout; proposed in slice 1.3 |
+| Δ26 | 10 `h` | `h` changes only the caption: the `minHeight: 20` child stays | The renderer hides it below 20 rows | Prototype artifact (its viewport height is not read); proposed in slice 1.3 |
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and
@@ -516,7 +522,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.10a | merged (#103) | `feat/ui-foundation-1-10a` | Node slot. Full gate green with 100% coverage; no visible change; `W1-slot` and `W4-slot` budgets |
 | 1.9a | merged (#104) | `feat/ui-foundation-1-9a` | `ui.image`. Full gate green with 100% coverage; one new shot (`image`), no other visible change |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
-| 1.3 | not started | `feat/ui-foundation-1-3` | Needs: 1.2 |
+| 1.3 | built | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 stays in the ledger for 1.4 |
 | 1.4 | not started | `feat/ui-foundation-1-4` | Needs: 1.2, 1.7 |
 | 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
 | 1.6 | not started | `feat/ui-foundation-1-6` | Needs: 1.2, 1.7 |
@@ -737,26 +743,83 @@ columns; `NO_COLOR=1 dsh --profile mayfly-ui-foundation`; `glyphs: ascii` and `r
 
 **Backlog:** C1, C2, C3, C4, D3, R4, R25 (chart).
 
-- **Admission.** A `stack.row` whose children carry `priority` admits them in order while they fit; `hide` drops a child
-  instead of truncating; a `truncate` child takes the remaining room (at least 8 cells); once the row is full later
-  children drop; admitted children lay out by band. This is the kit's `renderAdmit`, moved into `core/ui-compiler.ts`
-  from `StatusFooterComponent.renderRow` in `transcript/status-model.ts`, which Phase 3 deletes.
-- **Surfaces.** A right-aligned title (start-ellipsised when long), a `border` tone, `escapeLabel` driving the `Esc`
-  hint and close semantics (`reject` dismisses as a rejection), and `hint: 'none' | 'completions'`.
-- **Scroll.** `height`, `expandedHeight`, `fit`, and `pill`.
-- **Content.** Text `middle`/`start` ellipsis (`core/width.ts`) and `styles`; diff `start`, `context`, `maxRows`, and
-  hunk headers; code `numbered`; heatmap one-cell mode with `· ░ ▒ ▓ █`, month labels, and the legend row
-  (`core/chart-renderer.ts`); progress `rule` (`━`/`─`), cells (`▰▱`), `n/N`, percent, and `transition`.
-- **Motion.** `core/ui-loader-animation.ts` gets per-variant tables and cadence: bloom, fill, and gap at 100 ms; breath
-  through six tone shades at 400 ms a step; shimmer as a three-letter `accent`+`strong` window over `muted` (weight
-  only in monochrome). The one clock of slice 1.1 moves from 80 ms to a 100 ms step, and breath advances on every
-  fourth; a surface leaves the clock while hidden, and reduced motion freezes every channel. Each animated span is an
-  animation slot (§4.1), so a tick repaints its row only. The validator rejects two motion channels in one rich-text
-  row and any motion in a status node.
+It landed in seven parts, each green on its own: the contract, validator, and painters; the parity specs of scenes 7, 9,
+and 10; the work-budget rows; the unit specs; then the Website, the shots, the gallery, and this text.
 
-Scenes 7, 8, 9, 10. Tests: validator and compiler specs for every field, `ui-loader-animation.spec.ts` (variants,
-cadence, freeze), `chart-renderer.spec.ts`, `diff-align.spec.ts`, and width scans of admission ladders from 24 to 140
-columns.
+- **Admission** (`core/ui-admission.ts`, new; `StatusFooterComponent` is untouched, Phase 3 deletes it). A `stack.row`
+  whose children carry `priority` compiles to an `AdmissionRow`: children are admitted in priority order (ties keep their
+  position) while they fit, a `gap` (2 by default) between them; a `truncate` child takes the room that is left (at least
+  8 cells) and fills the row; a `hide` child drops while later ones may still fit; a child with neither ends admission, as in
+  the kit. Admitted children sit in `left`, `center` (centered between its neighbours, as the footer does), and `right`
+  bands, one row each. Each child is painted once at the probe width (120, or the row's if wider) to learn its natural
+  width, and again only when it is truncated; the row counts its one row in `rowsPainted`. Status stacks admit the same way.
+- **Surfaces.** `titleAlign: 'right'` puts the title at the top-right corner with the badges at the left, a long title
+  losing its start (`truncateMiddle(.., 'start')` in `core/width.ts`); `border` is a tone for the head, tail, and bars;
+  `escapeLabel` replaces the host's label (`close`, `leave`, and the new `reject`, `back`, `cancel`, which are grammar
+  steps `reject`, `surface-back`, `surface-cancel`) and hands `Esc` to the host's `onUnhandledEscape`, so a rejecting host
+  reads the `dismiss` as its rejection; `hint: 'none'` draws no hint row and `'completions'` draws it only while the new
+  compile option `completionsOpen` says the editor's list is open (the frame memo keys on it).
+- **Scroll** (`core/ui-scroll-region.ts`, new). Naming `height`, `expandedHeight`, `fit`, or `pill` compiles a `ScrollRegion`
+  instead of the layout-driven scroll: it paints exactly `height` rows (6 by default; `expandedHeight`, 14, while `Ctrl+E`
+  has expanded it), a scrollbar column (`█` thumb on a `░` track, default on), pads a short view, and keeps the surface at
+  its natural height because it is `inline` to the compiler (no layout frame, no full-frame expansion). `fit` shrinks to
+  short content and drops the bar until it overflows; `pill` draws the inverse `↓ N new · End` over the last row when the
+  view has left a followed tail and N rows have arrived since. The position lives in a per-runtime `ScrollMemory`, so a
+  republish keeps it, and document anchors (an `id` with content blocks) keep working through the same hooks as the
+  layout-driven scroll. The expanded hint reads `Ctrl+E collapse · Esc collapse`, as the kit's.
+- **Content.** Text `middle`/`start` ellipsis and `styles`; fields align their labels in one column; a titled section
+  indents its body two columns and a collapsed one shows `  …`; code `numbered` (a muted `n │ ` gutter, wrapped rows under
+  their code); diff `start`, `numbered`, `hunkHeader`, `context`, `maxRows` straight onto the 1.2 painter; the divider is
+  `── Label ───`; an empty state is muted. The heatmap is the kit's, written in `chart-renderer.ts` without the library:
+  title, header (names padded to four columns, or `columnLabels` written at their columns in `cell: 1` mode), a row of
+  `░░ ▒▒ ▓▓ ██` (or `· ░ ▒ ▓ █`) per label, and the `legend:` row; the sparkline is one row, the muted label then eight-step
+  cells in `accent`. Line, point, vertical-bar, and horizontal-normalized charts and the diagram stay the libraries' (Δ23).
+- **Feedback.** `renderProgress` draws `style: 'cells'` (`▰▱`, label, `n/N`, `%`), `'rule'` (`━`/`─`), or, with neither
+  `style` nor `width`, the old full-row block bar (now honoring `tone`, `showCount`, `showPercent`); `transition` drains
+  linearly on the one clock (`core/ui-progress-transition.ts`, new; a runtime with no clock or reduced motion shows the
+  settled value, and a new `rev` starts it again). `renderLoader` draws the variant's cell, an optional message, and the
+  elapsed time up to hours; the cancel is the muted row `Esc cancel`: the loader's control is now fired by `Esc` (grammar
+  step `cancel-work`, ahead of the surface's own `Esc`), `Enter` still works, and the hint row names only `Esc`.
+- **Motion** (`core/ui-loader-animation.ts`, `core/ui-motion-text.ts`, new). The tables of bloom, fill, and gap, the
+  breath (six levels, 0.25 to 1, one every fourth step, blended from the palette's `primary` toward its `textMuted`, so
+  the brightest shade is `primary` and a palette without truecolor paints the tone), and the shimmer (a three-letter
+  window; the prototype's `primary` bold over muted, not the spec's `accent`) live there. The one clock moved from 80 to
+  100 ms. A rich-text row with a `motion` span is an uncached row: it joins the clock while painted and a tick repaints
+  that row only; reduced motion paints frame 0 and never joins; ASCII glyphs draw the `- \ | /` spinner. The validator
+  rejects two motion channels in one row, a `loader` span with text, a `shimmer` span without, a `variant` without a
+  loader, motion outside rich text, and anything animated in a status node (`motion` and `transition`).
+- **Contract.** Everything is optional: text `overflow` gains `middle`/`start` (rich text keeps `wrap`/`truncate`) and
+  `styles`; span `motion` and `variant`; code `numbered`; the diff fields and the builder's third parameter; heatmap
+  `cell` and `columnLabels`; loader `message` (optional) and the four variants beside `braille`/`tide`; the progress
+  fields; child `priority`, `band`, `overflow`; surface `titleAlign`, `border`, `escapeLabel`, `hint`; scroll `height`,
+  `expandedHeight`, `fit`, `pill`. A scroll's `scrollbar` defaults to on once it names a viewport.
+
+Choices this slice made where the text left room: a child with no `overflow` ends admission rather than truncating (the
+kit's rule, not the footer's); `pill` shows only once a row has arrived since the view left the tail; the shimmer uses
+`primary`; the loader's `Esc` is a new escape step, which changes the old `Enter cancel` hint to `Esc cancel`.
+
+Parity. `tests/design/scene-07-surfaces.spec.ts` (every frame of the pages, end, and expand walks, and the scroll walk's
+arriving-line frames, through a republishing overlay), `scene-08-content.spec.ts` (pages 1 to 4 and the diff, highlight
+walks; the sparkline and the heatmap of page 5; the other charts and the diagram assert their titles), `scene-09-feedback.spec.ts`
+(pages 1, 2, 4, and the 13-frame motion walk under a fake clock) and `scene-10-layout.spec.ts` (the ladder and the
+admission row at every width, height, and overflow step). The parity helper maps the breath's shades to one class
+(`breath:<level>`) on both sides. `pending.ts` lost its three entries tagged 1.3 (the loader's default glyph, scene 8's
+markdown, and its `h` frame, the last two as Δ21 and Δ22) and gained scene 10's list window (slice 1.4). **Δ21 to Δ26 are
+proposals for the reviewer.**
+
+Work report against the slice 1.0 baseline (one step; validated / compiled / rows): W1 2 / 2 / 2, W2 0 / 0 / 1, W3 0 / 0 / 2,
+W4 2 / 1 / 1, W5 0 / 0 / 1, W6 44 / 12 / 32, W7 0 / 0 / 9, W8 11 / 3 / 9 as before; new rows W9 (a shimmering label, a
+breath cell, and a draining bar among 120 rows, one tick) 0 / 0 / 3, W10 (a 100-line log in a 6-row region, one line
+arrives) 3 / 3 / 7, W11 (a status row of 12 prioritized entries, one changes) 2 / 2 / 2.
+
+Tests: `ui-validator-content.spec.ts` (every field), `ui-compiler-content.spec.ts` (surface fields, the loader's `Esc`,
+the scroll region's keys, pill, fit, expand, and memory, motion rows, the draining bar), `ui-admission.spec.ts` (the
+ladder, the bands, and a 24 to 140 column scan over every adversarial fixture), `ui-content-painters.spec.ts` (ellipsis,
+the motion tables and the breath, progress, loader, divider, chrome, content views, sparkline, heatmap),
+`width-scan-content.spec.ts`, and the work-budget rows.
+
+At checkpoint B: the gallery's last block (`examples/ui-gallery` group `content-layout`) beside scenes 7 to 10 of the
+prototype; the Website reference's new shots on a LAN preview.
 
 #### 1.4 Lists
 

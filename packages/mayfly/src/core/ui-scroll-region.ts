@@ -70,7 +70,6 @@ export class ScrollRegion implements Component, UiScrollControl {
   private rows = 0
   private viewport: number
   private width = 1
-  private bar = false
 
   constructor(private readonly options: ScrollRegionOptions) {
     this.memory = options.memory
@@ -86,12 +85,6 @@ export class ScrollRegion implements Component, UiScrollControl {
   private set away(value: number) { this.memory.away = value }
 
   get viewportHeight(): number { return this.viewport }
-
-  /** Whether the scrollbar column is drawn at the last paint. */
-  get scrollbarVisible(): boolean { return this.bar }
-
-  /** Whether the view follows the tail. */
-  get isFollowingEnd(): boolean { return this.following }
 
   private get max(): number { return Math.max(0, this.rows - this.viewport) }
 
@@ -144,7 +137,6 @@ export class ScrollRegion implements Component, UiScrollControl {
     this.width = inner
     this.rows = lines.length
     this.viewport = fit ? Math.min(target, Math.max(1, lines.length)) : target
-    this.bar = barred
     const anchors = this.options.anchors
     const state = anchors?.state()
     if (anchors !== undefined && state !== undefined) {

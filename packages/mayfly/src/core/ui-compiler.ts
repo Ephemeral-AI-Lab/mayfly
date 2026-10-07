@@ -862,7 +862,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       case 'event': {
         if (active.role === 'tab') return { kind: 'tab' }
         if (active.role === 'action') return { kind: 'action', decision: active.event.kind === 'activate' && active.event.actionId.startsWith('mayfly.decision.') }
-        if (active.role === 'cancel') return { kind: 'cancel' }
+        if (active.role === 'cancel') return { kind: 'cancel', work: active.work === true }
         const list = active.listEntry!.node
         const segment = admittedListItem(list.items, active.listEntry!.index)?.segment
         const adjustable = segment !== undefined && segment.options.filter(option => option.disabled !== true).length > 1
@@ -2575,8 +2575,9 @@ class CompiledSurface implements MayflyEditorShellComponent {
       /* v8 ignore next -- an expanded view resolves Escape through its own collapse binding. */
       case 'collapse': this.state.expandedKey = undefined; return
       case 'cancel-work': {
-        const work = this.state.controls().find(candidate => candidate.kind === 'event' && candidate.work === true) as Extract<ControlDescriptor, { readonly kind: 'event' }> | undefined
-        if (work !== undefined) this.state.emit(work.event)
+        // The grammar offers this step only while a loader's cancel is among the controls.
+        const work = this.state.controls().find(candidate => candidate.kind === 'event' && candidate.work === true) as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        this.state.emit(work.event)
         return
       }
       case 'close':

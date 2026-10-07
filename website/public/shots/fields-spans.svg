@@ -5,13 +5,13 @@
 <text x="12" y="52" textLength="67.2" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">Session:</text>
 <text x="87.6" y="52" textLength="117.6" lengthAdjust="spacingAndGlyphs" fill="#c9c0f0" font-weight="bold">fix-width-scan</text>
 <text x="12" y="71" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">Branch:</text>
-<text x="79.2" y="71" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">p2/</text>
-<text x="104.4" y="71" textLength="84" lengthAdjust="spacingAndGlyphs" fill="#c9c0f0">ui-gallery</text>
+<text x="87.6" y="71" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">p2/</text>
+<text x="112.8" y="71" textLength="84" lengthAdjust="spacingAndGlyphs" fill="#c9c0f0">ui-gallery</text>
 <text x="12" y="90" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">Status:</text>
-<text x="79.2" y="90" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#4ec87e">Running</text>
-<text x="146.4" y="90" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">·</text>
-<text x="163.2" y="90" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">2</text>
-<text x="180" y="90" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">panes</text>
+<text x="87.6" y="90" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#4ec87e">Running</text>
+<text x="154.8" y="90" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">·</text>
+<text x="171.6" y="90" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">2</text>
+<text x="188.4" y="90" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">panes</text>
 <text x="12" y="109" textLength="67.2" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">Elapsed:</text>
 <text x="87.6" y="109" textLength="16.8" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">4m</text>
 <text x="112.8" y="109" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">12s</text>

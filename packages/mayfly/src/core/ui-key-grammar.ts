@@ -34,7 +34,8 @@ export type GrammarControl =
   | { readonly kind: 'row', readonly role: 'browse' | 'choose', readonly multiple: boolean, readonly tree: boolean, readonly segment?: string }
   | { readonly kind: 'empty-list' }
   | { readonly kind: 'action', readonly decision: boolean }
-  | { readonly kind: 'cancel' }
+  /** `work` is a loader's cancel, which Escape fires; its Enter binding stays but is not hinted. */
+  | { readonly kind: 'cancel', readonly work?: boolean }
 
 /** Everything the grammar needs to know about one focused surface. */
 export interface GrammarState {
@@ -335,7 +336,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     case 'cancel': {
       const label = control.kind === 'toggle' ? 'toggle' : control.kind === 'submit' ? 'submit' : control.kind === 'field-action' ? 'apply'
         : control.kind === 'cancel' ? 'cancel' : control.decision ? 'confirm' : 'run'
-      push(bindings, action(ACTION_SUBMIT), { kind: 'activate' }, { id: 'activate', label, priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+      push(bindings, action(ACTION_SUBMIT), { kind: 'activate' }, control.kind === 'cancel' && control.work === true ? undefined : { id: 'activate', label, priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       push(bindings, action(ACTION_TOGGLE), { kind: 'activate' })
       // The kit names the pair that moves along the row: `←/→ actions` (`No/Yes` on a decision), `↑/↓ fields`.
       if (control.kind === 'action' || control.kind === 'cancel') navigation(bindings, state, ['up', 'down', 'left', 'right'], control.kind === 'action' && control.decision ? 'No/Yes' : 'actions', ['left', 'right'])
