@@ -378,7 +378,7 @@ describe('MayflyScreenService node slots', () => {
     host.invalidate()
     // A node admission refuses keeps the last admitted one and reports why, as a pane does.
     slot.set(ui.text('not admitted', { tone: 'nope' as never }))
-    expect(host.render(80).join('')).toBe('second$.tone is invalid')
+    expect(host.render(80).join('')).toBe('second✗ $.tone is invalid')
     slot.set(null)
     expect(model.node).toBeNull()
     expect(host.render(80)).toEqual([])

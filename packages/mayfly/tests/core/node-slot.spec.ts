@@ -153,8 +153,8 @@ describe('node slot test host', () => {
     expect(content.render(100).at(-1)).toBe('  ↑/↓ options · Enter open')
 
     // The width: a narrower paint fits, and the wider one comes back.
-    const narrow = content.render(30)
-    expect(narrow.every(row => visibleWidth(row) <= 30)).toBe(true)
+    const narrow = content.render(20)
+    expect(narrow.every(row => visibleWidth(row) <= 20)).toBe(true)
     expect(narrow).not.toEqual(cursor)
     expect(content.render(100)).toEqual(cursor)
 
