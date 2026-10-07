@@ -523,7 +523,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.9a | merged (#104) | `feat/ui-foundation-1-9a` | `ui.image`. Full gate green with 100% coverage; one new shot (`image`), no other visible change |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
 | 1.3 | merged (#106) | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 stays in the ledger for 1.4 |
-| 1.4 | built | `feat/ui-foundation-1-4` | Four parts; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
+| 1.4 | built (PR open) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
 | 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
 | 1.6 | not started | `feat/ui-foundation-1-6` | Needs: 1.2, 1.7 |
 | 1.10b | not started | `feat/ui-foundation-1-10b` | Views lane. Needs: 1.10a, 1.7 |
@@ -825,9 +825,9 @@ prototype; the Website reference's new shots on a LAN preview.
 
 **Backlog:** E1, E5, G2, G3, G25, B2, R9 (lists).
 
-It landed in four parts, each green on its own: the contract, validator, choice model, painter, and grammar with scene 5
+It landed in six parts, each green on its own: the contract, validator, choice model, painter, and grammar with scene 5
 pinned (1); the painter, strip, key, hint, and validator specs with the `W4b` budget (2); the public `ui.listBody`
-builder, the Website reference in both languages with two shots, and the gallery group (3); the roadmap and the gate (4).
+builder, the Website reference in both languages with two shots, and the gallery group (3); the roadmap and the gate (4); the last coverage gaps and scene 10's list (5, 6).
 
 - **Slash filter.** `filterMode: 'slash'`: printable keys never start a search; `/` starts it or resumes the kept
   query; `Esc` ends it and keeps the query; `Ctrl+U` clears; the hint reads `/ filter` (a type list reads
