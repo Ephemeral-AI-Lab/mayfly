@@ -1594,6 +1594,59 @@ this node, with no loader in the screenshot host:
 ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
 ```
 
+## Views of status row 2
+
+A pane with `placement: 'views'` is a **view**: a short summary in status row 2 that opens its own panel. The lane has
+no rows of its own. Each summary joins row 2 beside the status entries, and while a view is entered its panel takes the
+place of row 2 under a tab strip of every view.
+
+```ts
+export const inject = ['mayflyPanes']
+
+export function apply(ctx: Context): void {
+  const view = ctx.mayflyPanes.register({
+    id: 'acme.builds',
+    title: 'Builds',          // the tab
+    placement: 'views',
+    priority: 50,             // lower comes first in the row and the tab strip
+    summary: { node: ui.richText([{ text: 'Builds ', tone: 'muted' }, { text: '2 running', tone: 'accent' }]), count: 2 },
+    onEvent: { action: () => ({ kind: 'completed' }) },
+  }, ui.list({ id: 'builds', role: 'browse', selectedIds: [], items: [{ id: 'main', label: 'main' }] }))
+
+  // The row updates without republishing the panel; null takes the view out of row 2.
+  view.setSummary({ node: ui.richText([{ text: 'Builds 1 running' }]), count: 1 })
+  view.setSummary(null)
+}
+```
+
+![The `summary` node of a view in status row 2](/shots/views-summary.svg)
+
+*The summary of the example view, as it sits in status row 2 (width 48).*
+
+| Field | Rule |
+| --- | --- |
+| `summary.node` | A passive status node (`text`, `richText`, `fields`, `progress`, or a stack of them), admitted like any status entry; one row, no motion |
+| `summary.count` | A number or a string of up to 32 characters; the tab shows it after the title (`Agents 5`) |
+| `title` | The tab label; the id when absent |
+| `size`, `narrow` | Do not apply; a views pane that sets either is refused |
+| `summary` on another placement | Refused; only a views pane has a summary or `setSummary` |
+
+`set(node)` publishes the panel; `onEvent`, `load`, `refresh`, and `loadMore` work as for any pane, and an action in the
+panel reaches the `onEvent` of the view it was taken in. A view with no summary is absent from row 2; a view with a
+summary but no panel yet shows in the row and cannot be entered. The entered lane takes at most a third of the
+terminal's rows, and the panel's own hint row names `←/→ tabs` when there is more than one view.
+
+| Key | Effect |
+| --- | --- |
+| `Alt+↓` or `F5` on an empty prompt | Enter the first view |
+| `F6` / `Shift+F6` | Enter the views first, then walk the interactive panes; crossing an end returns to the prompt |
+| `←` / `→` | Switch views (a field being edited keeps its arrows) |
+| `Esc` | Return to the prompt after the panel has left its own layers |
+
+These are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cancel`, so a rebinding moves them and their
+hints. See the [`ui-gallery`](https://github.com/Ephemeral-AI-Lab/mayfly/tree/main/examples/ui-gallery) example for a
+working view.
+
 ## Events and snapshot updates
 
 Panes, overlays, and editor extensions place the handler on the definition,
@@ -1639,6 +1692,7 @@ the corresponding editor-extension `set()`. A new instance or scope uses
 | Surface | Allowed nodes | Interaction rule |
 | --- | --- | --- |
 | `panes` | Full `MayflyUiNode` | Controls work and events go to pane `onEvent` |
+| `panes` with `placement: 'views'` | Full `MayflyUiNode` for the panel; a status node for the summary | The panel replaces status row 2 while entered; the summary is passive |
 | Capturing overlay | Full `MayflyUiNode` | Receives focus and handles Escape dismissal |
 | Non-capturing overlay | Passive content/layout only | Tabs/list/form/actions controls replace the whole render tree with an error message |
 | Additive `status` | text, rich-text, fields, progress, recursive stack | Always passive; no surface, scroll, or controls |

@@ -1460,6 +1460,56 @@ ui.image(options: { attachmentId: string, alt: string, maxRows?: number })
 ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
 ```
 
+## 状态栏第 2 行的视图
+
+`placement: 'views'` 的 pane 是一个**视图**：状态栏第 2 行里的一小段摘要，可以打开自己的面板。视图 lane 没有自己的行：
+每个摘要与状态条目一起进入第 2 行；进入某个视图后，它的面板在所有视图的标签条下取代第 2 行。
+
+```ts
+export const inject = ['mayflyPanes']
+
+export function apply(ctx: Context): void {
+  const view = ctx.mayflyPanes.register({
+    id: 'acme.builds',
+    title: 'Builds',          // 标签
+    placement: 'views',
+    priority: 50,             // 越小在行和标签条中越靠前
+    summary: { node: ui.richText([{ text: 'Builds ', tone: 'muted' }, { text: '2 running', tone: 'accent' }]), count: 2 },
+    onEvent: { action: () => ({ kind: 'completed' }) },
+  }, ui.list({ id: 'builds', role: 'browse', selectedIds: [], items: [{ id: 'main', label: 'main' }] }))
+
+  // 更新第 2 行无需重发面板；null 让该视图离开第 2 行。
+  view.setSummary({ node: ui.richText([{ text: 'Builds 1 running' }]), count: 1 })
+  view.setSummary(null)
+}
+```
+
+![视图在状态栏第 2 行中的 `summary` 节点](/shots/views-summary.svg)
+
+*示例视图的摘要在状态栏第 2 行中的样子（宽度 48）。*
+
+| 字段 | 规则 |
+| --- | --- |
+| `summary.node` | 非交互 status 节点（`text`、`richText`、`fields`、`progress` 或它们的 stack），与其他 status 条目同样准入；一行，无动效 |
+| `summary.count` | 数字或不超过 32 个字符的字符串；标签在标题后显示（`Agents 5`） |
+| `title` | 标签文字；缺省为 id |
+| `size`、`narrow` | 不适用；views pane 设置任一项都会被拒绝 |
+| 其他 placement 上的 `summary` | 被拒绝；只有 views pane 有 summary 和 `setSummary` |
+
+`set(node)` 发布面板；`onEvent`、`load`、`refresh`、`loadMore` 与其他 pane 相同，面板里的动作只会到达它所在视图的
+`onEvent`。没有 summary 的视图不出现在第 2 行；有 summary 但尚无面板的视图显示在行中，但不能进入。进入后的 lane
+最多占终端行数的三分之一；视图多于一个时，面板自己的提示行会写出 `←/→ tabs`。
+
+| 键 | 效果 |
+| --- | --- |
+| 空提示符处 `Alt+↓` 或 `F5` | 进入第一个视图 |
+| `F6` / `Shift+F6` | 先进入视图，再依次进入可交互的 pane；越过两端回到提示符 |
+| `←` / `→` | 切换视图（正在编辑的字段保留方向键） |
+| `Esc` | 面板退出自己的各层后回到提示符 |
+
+它们是命名动作 `ui.focus-next`、`ui.left`/`ui.right` 与 `ui.cancel`，重绑定会同时移动这些键及其提示。可运行的视图见
+[`ui-gallery`](https://github.com/Ephemeral-AI-Lab/mayfly/tree/main/examples/ui-gallery) 示例。
+
 ## 事件与 snapshot 更新
 
 Pane、overlay 和 editor extension 把 handler 放在 definition 上，而不是放进节点：
@@ -1500,6 +1550,7 @@ handle 的 `set(node, { reason: 'data', source })` 或 editor-extension registra
 | Surface | 可用节点 | 交互规则 |
 | --- | --- | --- |
 | `panes` | 完整 `MayflyUiNode` | controls 可用，事件交给 pane `onEvent` |
+| `placement: 'views'` 的 `panes` | 面板为完整 `MayflyUiNode`，摘要为 status 节点 | 进入后面板取代状态栏第 2 行；摘要始终非交互 |
 | capturing overlay | 完整 `MayflyUiNode` | 获取焦点并处理 Escape 关闭 |
 | non-capturing overlay | 只使用 passive 内容/layout | tabs/list/form/actions 等 controls 会使整棵渲染树降级为错误提示 |
 | additive `status` | text、rich-text、fields、progress、递归 stack | 始终非交互，不接受 surface/scroll/control |

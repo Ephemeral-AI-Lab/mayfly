@@ -77,6 +77,16 @@ slots, never arbitrary root components.
 - `conversation/` owns phase-local output measurements from session timestamps.
   Renderer timers animate or expire labels; they do not measure domain progress.
 
+## Views lane
+
+A `mayflyPanes` pane with `placement: 'views'` is a view of status row 2, kept
+by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
+rows of its own, its summary joins row 2 through the footer, and an entered
+panel replaces row 2. A view's slot lives with its `PaneComponent`. Entry keys
+are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cancel`;
+`F6` walks the views before the interactive panes. Mayfly's own views register
+through the public pane service, never through core.
+
 ## Interaction contracts
 
 Use shared Form/Choice/Tree/Tab/ScrollView state for drafts, validation, locks,

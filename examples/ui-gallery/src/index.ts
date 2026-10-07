@@ -13,6 +13,7 @@ import { visualLanguageGroup } from './groups/1-2.ts'
 import { imageGroup } from './groups/image.ts'
 import { listsGroup } from './groups/lists.ts'
 import { armDelayGroup } from './groups/arm-delay.ts'
+import { registerGalleryView } from './groups/views.ts'
 
 export const name = '@mayfly-example/ui-gallery'
 export const inject = ['mayflyPanes']
@@ -191,6 +192,7 @@ function renderGallery() {
 
 /** Register the gallery pane; a right lane that degrades to bottom when narrow. */
 export function apply(ctx: Context): void {
+  registerGalleryView(ctx)
   ctx.mayflyPanes.register({
     id: 'example.ui-gallery.showcase',
     title: 'UI Gallery',
