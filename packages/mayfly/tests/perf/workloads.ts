@@ -264,6 +264,27 @@ export const WORKLOADS: readonly Workload[] = [
     },
   },
   {
+    id: 'W4b', title: 'stream with bodies: a list of 2,000 items that each carry a node body, the last item (always open) changes',
+    setup(counters) {
+      const body = freezeWire(ui.stack.column([ui.text('first line of the body'), ui.text('second line of the body')]))
+      const items = Array.from({ length: 2000 }, (_, index) => freezeWire(item(index, { body })))
+      const last = (revision: number) => item(1999, { detail: `streaming ${String(revision)}`, body: ui.stack.column([ui.text(`streamed ${String(revision)}`), ui.text('a second line')]), bodyAlways: true })
+      const surface = new Surface('w4b', listNode('stream', [...items.slice(0, -1), last(0)]), counters)
+      surface.render()
+      // The reader follows the tail, where the changing row is.
+      surface.press('\x1b[F')
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          surface.publish(listNode('stream', [...items.slice(0, -1), last(revision)]))
+        },
+        dispose: () => surface.dispose(),
+      }
+    },
+  },
+  {
     id: 'W5', title: 'form key: a form of 20 fields, one keystroke into the focused field',
     setup(counters) {
       const surface = new Surface('w5', fieldBlock('typing', 20), counters)

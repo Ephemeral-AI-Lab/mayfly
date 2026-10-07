@@ -1616,7 +1616,9 @@ function reconcile(state: FocusState): readonly ControlDescriptor[] {
   }
   const groupIds = groups.map(group => group.id)
   const requestedGroup = desiredHidden ? state.desiredGroup : state.activeGroup
-  const declaredDefault = controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
+  // A list that declares `autofocus` takes focus first; then an action that declares itself the default.
+  const declaredDefault = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' ? control.node : undefined)?.autofocus === true)
+    ?? controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
   const fallbackGroup = requestedGroup !== undefined && groupIds.includes(requestedGroup)
     ? requestedGroup
     : declaredDefault?.group ?? groupIds[0]!
