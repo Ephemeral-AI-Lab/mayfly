@@ -106,3 +106,14 @@ describe('scene 1 Marks and tokens, page 1: the lists', () => {
     expect(diffReport(diffs)).toBe('')
   })
 })
+
+describe('scene 10 Layout, the windowed list', () => {
+  it('draws a maxRows list with the rows it shows and a count of what is hidden', async () => {
+    const node = ui.list({ id: 'win', role: 'browse', maxRows: 4, selectedIds: [], items: Array.from({ length: 9 }, (_, index) => ({ id: `r${String(index)}`, label: `row ${String(index + 1)}` })) })
+    // The prototype draws it with no focus, so no row carries the arrow.
+    const surface = createRealSurface(node, 40, { components: parityComponents(), focused: false })
+    surfaces.push(surface)
+    const golden = goldenRows('10-layout', 'initial', 0).slice(-5)
+    expect(diffReport(await frameDiffs(golden, surface.render(), 96))).toBe('')
+  })
+})

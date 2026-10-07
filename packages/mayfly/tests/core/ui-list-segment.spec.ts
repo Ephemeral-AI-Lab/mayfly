@@ -48,6 +48,9 @@ describe('segment strip painters', () => {
     // The active token alone, cut to the width when even it does not fit.
     for (const width of [24, 16, 10, 4, 1]) expect(visibleWidth(segmentFooter(wide, width, colors, 'Level'))).toBeLessThanOrEqual(width)
     expect(plain(segmentFooter({ segment, pinned: null, active: undefined }, 10, colors, 'Level'))).toBe('  min +2')
+    // A strip of one option that is wider than the line has nothing to fold: it is cut.
+    const single: SegmentView = { segment: { options: [{ id: 'a', label: 'a'.repeat(30) }] }, pinned: 'a', active: 'a' }
+    expect(visibleWidth(segmentFooter(single, 20, colors, 'Level'))).toBe(20)
   })
 })
 

@@ -155,6 +155,16 @@ describe('list rows', () => {
   })
 })
 
+describe('legacy rows without a model', () => {
+  it('draws a row with a body as closed unless it is always open, and a strip view with nothing active', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'A', body: 'text' }, { id: 'b', label: 'B', body: 'always', bodyAlways: true }]
+    expect(plain(renderList(ui.list({ id: 'l', role: 'browse', selectedIds: [], items }), 30, 10, idle, colors))).toEqual(['  ▸ A', '  B', '       always'])
+    const stripped: MayflyListItem[] = [{ id: 's', label: 'S', segment: { options: [{ id: 'x', label: 'x' }, { id: 'y', label: 'y' }] } }]
+    const rows = plain(renderList(ui.list({ id: 's', role: 'browse', selectedIds: [], items: stripped }), 30, 10, on('s'), colors, 0, undefined, { rows: specs(stripped), cursorId: 's', segment: row => ({ segment: row.segment!, pinned: null, active: undefined }) }))
+    expect(rows[0]).toContain('x y')
+  })
+})
+
 describe('list windows', () => {
   const many = Array.from({ length: 12 }, (_, index): MayflyListItem => ({ id: `r${String(index)}`, label: `row ${String(index + 1)}` }))
   const node = (extra = {}) => ui.list({ id: 'win', role: 'browse', selectedIds: [], items: many, ...extra })

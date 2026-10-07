@@ -419,3 +419,30 @@ describe('list rows beyond the label', () => {
     expect(state.expandedIds).toEqual([])
   })
 })
+
+describe('list rows: edges of the model', () => {
+  it('does not open a parent twice and tolerates a followed row whose parent is missing', () => {
+    const open = ui.list({ id: 'tree', role: 'choose', tree: true, selectedIds: ['leaf'], items: [
+      { id: 'root', label: 'Root', expanded: true }, { id: 'child', label: 'Child', parentId: 'root', expanded: true }, { id: 'leaf', label: 'Leaf', parentId: 'child' },
+    ] })
+    expect(createChoiceState(open).expandedIds).toEqual(['root', 'child'])
+    expect(createChoiceState({ ...open, focusItem: { id: 'leaf', rev: 1 } }).expandedIds).toEqual(['root', 'child'])
+    const orphan = ui.list({ id: 'tree', role: 'browse', tree: true, selectedIds: [], focusItem: { id: 'lost', rev: 1 }, items: [{ id: 'lost', label: 'Lost', parentId: 'missing' }, { id: 'other', label: 'Other' }] })
+    // An orphan is never drawn, so the cursor settles on the nearest row that is.
+    expect(createChoiceState(orphan).focusedId).toBe('other')
+    expect(createChoiceState(orphan).expandedIds).toEqual(['missing'])
+  })
+
+  it('answers for rows that are not in the list', () => {
+    const state = createChoiceState(tree)
+    expect(choicePinned(state, 'missing')).toBeNull()
+    expect(choiceSegment(state, 'missing')).toBeUndefined()
+    expect(choiceReportedSegment(state, 'missing')).toBeUndefined()
+    expect(choicePinned(state, 'root')).toBeNull()
+    // A seeded pin that is no option is no pin.
+    const seeded = createChoiceState(ui.list({ id: 'm', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A', segment: { selectedId: 'x', options: [{ id: 'x', label: 'x' }, { id: 'y', label: 'y' }] } }] }))
+    expect(choicePinned(seeded, 'a')).toBe('x')
+    expect(choicePinned({ ...seeded, segments: { a: null } }, 'a')).toBeNull()
+    expect(choicePinned({ ...seeded, segments: { a: 'gone' } }, 'a')).toBeNull()
+  })
+})

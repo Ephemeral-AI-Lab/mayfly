@@ -746,7 +746,7 @@ describe('list rows and bodies', () => {
     // An eager list reads the same field from its admitted items.
     expect(admittedListExpanded((accepted(rows([{ id: 'a', label: 'A', expanded: true }, { id: 'b', label: 'B' }])) as { items: never }).items)).toEqual(['a'])
     // The raw scan skips holes that are not data and rows that are not objects.
-    const odd = Array.from({ length: 40 }, (_, index) => index === 1 ? 'not an item' : { id: `r${String(index)}`, label: 'x', body })
+    const odd = Array.from({ length: 40 }, (_, index) => index === 1 ? 'not an item' : index === 2 ? null : index === 3 ? { id: 7, label: 'x', expanded: true } : { id: `r${String(index)}`, label: 'x', ...(index === 39 ? { body } : {}) })
     expect(validateMayflyUiNode(rows(odd))).toMatchObject({ ok: true })
     const lazyOdd = (validateMayflyUiNode(rows(odd)) as { value: { items: never } }).value.items
     expect(admittedListExpanded(lazyOdd)).toEqual([])

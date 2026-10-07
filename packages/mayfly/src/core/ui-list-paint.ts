@@ -67,10 +67,6 @@ const DEFAULT_METER_WIDTH = 8
 const DETAIL_MIN_WIDTH = 40
 const ELLIPSIS = '…'
 
-function safeWidth(width: number): number {
-  return Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-}
-
 /** Pad a painted line to `width` columns, or return it unchanged when it is already as wide. */
 function padTo(line: string, width: number): string {
   const missing = width - visibleWidth(line)
@@ -201,12 +197,13 @@ function headLines(state: RowState, colors: MayflySemanticColors, translate: Lis
 
 /** The lines of an open body: guides for text, content for a node. */
 function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColors, paintBody: ListPaintOptions['body']): readonly string[] {
+  // Only an open row with a body asks for its body lines.
   const item = spec.item
-  if (item.body === undefined) return []
+  const body = item.body!
   const indent = ' '.repeat(item.indent ?? 0)
   const always = item.bodyAlways === true
-  if (typeof item.body === 'string') {
-    const lines = item.body.split('\n')
+  if (typeof body === 'string') {
+    const lines = body.split('\n')
     if (always) return lines.map(line => clipRow(`${indent}       ${colors.muted(line)}`, width))
     return lines.map((line, index) => clipRow(`${indent}    ${colors.muted(index === lines.length - 1 ? '╰ ' : '│ ')}${colors.muted(line)}`, width))
   }
@@ -225,7 +222,8 @@ function headWidth(state: RowState, colors: MayflySemanticColors): number {
  * materialized visible rows in order. The painted rows come from the memo when an item's state bits are unchanged.
  */
 export function paintList(node: ListNodeView, width: number, height: number, colors: MayflySemanticColors, options: ListPaintOptions): string[] {
-  const available = safeWidth(width)
+  // The wrapper hands over a finite width; the floor of one column keeps every ladder total.
+  const available = Math.max(1, Math.floor(width))
   const numbered = node.numbered !== undefined && node.numbered !== false
   const entries: Entry[] = []
   let group: string | undefined
@@ -258,7 +256,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     const key = [
       available, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker === 'selection' ? 1 : 0, state.check, state.number,
       spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
-      view === undefined ? '' : `${view.active ?? ''}\0${view.pinned ?? ''}`,
+      `${String(view?.active)}\0${String(view?.pinned)}`,
     ].join('\x01')
     const painted = options.memo === undefined
       ? headLines(state, colors, options.translate)
@@ -267,7 +265,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     if (spec.open && item.body !== undefined) {
       const body = options.memo === undefined
         ? bodyLines(spec, available, colors, options.body)
-        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${spec.open ? 1 : 0}`, () => bodyLines(spec, available, colors, options.body), options.memo.counters)
+        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}`, () => bodyLines(spec, available, colors, options.body), options.memo.counters)
       if (body.length > 0) entries.push({ kind: 'body', lines: body })
     }
   }

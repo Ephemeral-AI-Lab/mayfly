@@ -7,8 +7,8 @@
  */
 import { ui, type MayflyInlineSpan, type MayflyTone } from '@ephemeral-ai/mayfly-ui'
 
-const span = (text: string, tone?: MayflyTone, strong = false): MayflyInlineSpan => ({ text, ...(tone === undefined ? {} : { tone }), ...(strong ? { styles: ['strong'] as const } : {}) })
-const effort = (inheritedId?: string) => ({ label: 'Thinking', options: ['min', 'high', 'max'].map(id => ({ id, label: id })), ...(inheritedId === undefined ? {} : { inheritedId }) })
+const span = (text: string, tone: MayflyTone): MayflyInlineSpan => ({ text, tone })
+const effort = (inheritedId: string) => ({ label: 'Thinking', inheritedId, options: ['min', 'high', 'max'].map(id => ({ id, label: id })) })
 
 /** The gallery rows of the lists. */
 export function listsGroup() {
@@ -34,7 +34,7 @@ export function listsGroup() {
     ] }),
     ui.text('a tree with tri-state checks and an accordion; * opens every branch, - closes them', { tone: 'muted' }),
     ui.list({ id: 'gallery-tree', role: 'choose', mode: 'multiple', tree: true, selectedIds: ['read'], items: [
-      { id: 'fs', label: 'filesystem', labelSpans: [span('filesystem', 'default', true)], expanded: true, right: [span('✓ connected  ', 'success'), span('2 tools', 'muted')] },
+      { id: 'fs', label: 'filesystem', labelSpans: [{ text: 'filesystem', styles: ['strong' as const] }], expanded: true, right: [span('✓ connected  ', 'success'), span('2 tools', 'muted')] },
       { id: 'read', label: 'read_file', parentId: 'fs', detail: 'Read a file from disk' },
       { id: 'write', label: 'write_file', parentId: 'fs', detail: 'Create or overwrite a file' },
     ] }),
