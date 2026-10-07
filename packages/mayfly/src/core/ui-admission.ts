@@ -10,6 +10,7 @@
 import type { Component } from '@earendil-works/pi-tui'
 import type { MayflyUiChild } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponents } from './types.ts'
+import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** The narrowest room a truncated child takes; a smaller remainder drops it. */
 export const ADMISSION_MIN_TRUNCATED = 8
@@ -92,6 +93,8 @@ export function layoutBands(bands: { readonly left: string, readonly center: str
 export interface AdmissionRowOptions {
   readonly components: Pick<MayflyComponents, 'visibleWidth' | 'truncateToWidth'>
   readonly gap?: number | undefined
+  /** The work sink; the row counts the one row it paints. */
+  readonly counters?: MayflyWorkCounters | undefined
   /** The children that are visible at this paint, in order. */
   readonly children: () => readonly Omit<AdmissionChild, 'natural'>[]
 }
@@ -123,6 +126,7 @@ export class AdmissionRow implements Component {
         return [`${components.truncateToWidth(row, fits ? child.natural : room, '')}\x1b[0m`]
       })
       .join(' '.repeat(gap))
+    countWork(this.options.counters, 'rowsPainted')
     const line = layoutBands({ left: painted('left'), center: painted('center'), right: painted('right') }, columns, gap, components)
     return [components.truncateToWidth(line, columns, '')]
   }

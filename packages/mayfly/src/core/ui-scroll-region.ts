@@ -11,6 +11,7 @@ import type { Component } from '@earendil-works/pi-tui'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 import type { UiDocumentAnchor, UiDocumentState } from './ui-interaction-document.ts'
 import type { UiScrollControl } from './ui-surface-state.ts'
+import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** The viewport rows of a scroll that declares none of its sizes. */
 export const SCROLL_DEFAULT_HEIGHT = 6
@@ -58,6 +59,8 @@ export interface ScrollRegionOptions {
   /** The pill's words for `count` rows that arrived while the view was away from the tail. */
   readonly pillText: (count: number) => string
   readonly anchors?: ScrollRegionAnchors | undefined
+  /** The work sink; the region counts the viewport rows it paints. */
+  readonly counters?: MayflyWorkCounters | undefined
 }
 
 export class ScrollRegion implements Component, UiScrollControl {
@@ -157,6 +160,7 @@ export class ScrollRegion implements Component, UiScrollControl {
     const pillWidth = components.visibleWidth(pill)
     const thumb = Math.max(1, Math.round((this.viewport * this.viewport) / Math.max(this.viewport, lines.length)))
     const thumbAt = max === 0 ? 0 : Math.round((this.offset / max) * (this.viewport - thumb))
+    countWork(this.options.counters, 'rowsPainted', view.length)
     return view.map((row, index) => {
       const last = pill !== '' && index === this.viewport - 1
       const room = last ? Math.max(0, inner - pillWidth) : inner

@@ -58,5 +58,23 @@
     "unitsCompiled": 1,
     "rowsPainted": 0,
     "stringsMeasured": 40
+  },
+  "W9": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 3,
+    "stringsMeasured": 42
+  },
+  "W10": {
+    "nodesValidated": 3,
+    "unitsCompiled": 3,
+    "rowsPainted": 7,
+    "stringsMeasured": 7
+  },
+  "W11": {
+    "nodesValidated": 2,
+    "unitsCompiled": 2,
+    "rowsPainted": 2,
+    "stringsMeasured": 2
   }
 }

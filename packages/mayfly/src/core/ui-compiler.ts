@@ -1282,6 +1282,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const compiled = node.children.map((child, index) => compileNode(child.node, state, options, `${path}.${String(index)}`, mode))
         return new AdmissionRow({
           components: options.components,
+          counters: options.counters,
           ...(node.gap === undefined ? {} : { gap: node.gap }),
           children: () => node.children.flatMap((child, index) => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
             ? [{ component: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }) }]
@@ -1348,6 +1349,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
           expanded: () => state.expandedKey === key,
           colors: options.colors,
           components: options.components,
+          counters: options.counters,
           pillText: count => coreText(options, '↓ {count} new · End', { count }),
           anchors: address === undefined || model!.document(address) === undefined ? undefined : {
             state: () => model!.document(address),
