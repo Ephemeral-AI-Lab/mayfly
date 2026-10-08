@@ -33,7 +33,7 @@ function open(node: MayflyUiNode, observer = true) {
   const type = (...keys: string[]): void => { for (const key of keys) surface.focusTarget!.handleInput?.(key) }
   const reports = (): MayflyUiEvent[] => events.filter(event => event.kind === 'focus-change')
   const settle = async (): Promise<void> => { await Promise.resolve(); await Promise.resolve() }
-  return { events, frame, type, reports, settle, dispose: () => { runtime.dispose(); model.dispose() }, disposeModel: () => { model.dispose() } }
+  return { events, frame, type, reports, settle, dispose: () => { runtime.dispose(); model.dispose() }, disposeModel: () => { model.dispose() }, model }
 }
 
 const list = (): MayflyUiNode => ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: ['a', 'b', 'c', 'd'].map(id => ({ id, label: id.toUpperCase() })) })
@@ -99,12 +99,14 @@ describe('focus-change', () => {
     expect(view.reports()).toEqual([{ kind: 'focus-change', pagePath: [], controlId: 'two' }])
   })
 
-  it('reports nothing once the model is gone, even if its runtime is still current', async () => {
+  it('reports nothing once the model is gone, even when asked directly', async () => {
     const view = open(list())
     view.frame()
     view.type(KEY.down)
     view.frame()
     view.disposeModel()
+    await view.settle()
+    view.model.observeFocus({ pagePath: [], controlId: 'rows', itemId: 'a' })
     await view.settle()
     expect(view.reports()).toEqual([])
   })
