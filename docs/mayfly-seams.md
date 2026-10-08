@@ -55,7 +55,7 @@ boundary and is the only update allowed to change `scope`. The old
 acks.
 
 `onEvent` for panes, overlays, and editor extensions splits into `observe` and
-`action`. `observe` only receives value, selection-toggle, and tab-change
+`action`. `observe` only receives value, selection-toggle, tab-change, and focus-change
 facts, and cannot publish a snapshot, navigate, or close a surface; `action`
 handles activate, selection accept, submit, and dismiss, and every handled
 action must return a structured receipt of `accepted`, `invalid`, `conflict`,

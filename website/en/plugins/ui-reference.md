@@ -766,11 +766,16 @@ ui.tabs({
   id: string
   activeId: string
   mode?: 'tabs' | 'wizard'
+  orientation?: 'horizontal' | 'vertical'
+  hintLabel?: string
   items: readonly {
     id: string
     label: string
     disabled?: boolean
-    count?: number
+    count?: number | string
+    attention?: boolean
+    group?: string
+    clip?: 'end' | 'start'
     backId?: string
   }[]
 })
@@ -779,10 +784,15 @@ ui.tabs({
 - `activeId` must name an item and supplies the initial or data-snapshot
   baseline. The Mayfly instance keeps the current active page.
 - A disabled item remains visible but cannot be activated.
-- `count` is a non-negative safe-integer hint that a renderer may hide at
-  narrow widths.
+- `count` is a muted number or short text after the label (`3`, `2/6`);
+  `attention: true` draws a strong `warning` `!` in its place.
+- A strip that does not fit folds around the active tab as `‹ active next +N ›`,
+  then `‹ active +N ›`, then is cut to the width.
+- `orientation: 'vertical'` draws a rail (see below). `hintLabel` is the word the
+  hint row uses for the `Alt+←/→` tab switch (default `tabs`).
 - `mode: 'wizard'` records completed steps against validated form revisions;
-  edits or conflicts invalidate completion.
+  edits or conflicts invalidate completion. A wizard is a horizontal strip, and
+  its strip hint words `Esc` as `back`.
 - `backId` declares a return target in the same group. Admission rejects missing
   targets and cycles.
 - Tabs render only the tab strip. Associate bodies with
@@ -826,6 +836,49 @@ ui.stack.column([
   }),
   ui.text('Advanced content'),
 ])
+```
+
+### Vertical rail
+
+![`tabs` as a vertical rail](/shots/tabs-rail.svg)
+
+*`orientation: 'vertical'` with groups, counts, and an attention mark, beside the page of the active label (width 64).*
+
+A rail is for many labels (sessions by workspace, settings by group). Put it in a
+row with `basis` and `shrink: 0`, and the pages beside it with `ui.child(node, { tab })`.
+
+- `group` puts consecutive items under one muted, upper-cased heading. The active
+  label carries a bold `→`, `primary` while the rail has focus and muted once focus
+  is in the content. Counts and `!` are right-aligned. `clip: 'start'` keeps the
+  distinguishing end of a long label (`…ackages/mayfly`); the default clips the end.
+- `↑`/`↓` move and send `tab-change` at once, so the page follows the cursor live.
+  `→` or `Enter` enter the content; `←` on the rail does nothing.
+- Below 60 columns of viewport the rail is drawn, and navigated, as the horizontal strip.
+- The `←` ladder: the focused control gets `←` first and keeps it only when it
+  changes something (a select that is not on its first option, a row segment that can
+  step down, an open tree branch, a later action in an actions row). The first `←` it
+  does not use moves focus to the surface's rail, wherever the rail sits, and the hint
+  row shows `← labels` exactly then.
+- `Alt+↑`/`Alt+↓` (`F4`/`F5`) move between controls, and `Alt+←`/`Alt+→` (`F2`/`F3`)
+  switch tabs, from anywhere outside text editing and open pickers. `Esc` returns focus
+  to the first control (`Esc back`) before it closes.
+
+```ts
+ui.stack.row([
+  ui.child(ui.tabs({
+    id: 'settings-rail',
+    orientation: 'vertical',
+    activeId: 'model',
+    items: [
+      { id: 'general', label: 'General', group: 'Session' },
+      { id: 'model', label: 'Model', group: 'Session' },
+      { id: 'permissions', label: 'Permissions', count: 2, group: 'Session' },
+      { id: 'providers', label: 'Providers', attention: true, group: 'Integrations' },
+      { id: 'mcp', label: 'MCP', count: '4/9', group: 'Integrations' },
+    ],
+  }), { basis: 24, shrink: 0 }),
+  ui.child(ui.text('Model page'), { grow: 1, tab: { controlId: 'settings-rail', itemId: 'model' } }),
+], { gap: 2 })
 ```
 
 ### `list`
@@ -1410,8 +1463,8 @@ not repeat generic keyboard teaching in a surface footer:
   actions accept Enter or Space.
 - Escape leaves one layer per press, identically on every surface: an open
   picker is cancelled, text editing ends (the draft stays), an active search
-  ends (the query stays), a page with a `backId` goes back, and then the
-  surface closes. Tab strips are not a stop. Ctrl+C requests the same close.
+  ends (the query stays), a page with a `backId` goes back, focus returns to the
+  surface's first control (`Esc back`), and then the surface closes. Tab strips are not a stop. Ctrl+C requests the same close.
 - A pending confirmation changes the hint to `Enter confirm · Esc cancel`.
   Read-only scroll regions are focusable, support arrows, Page, Home, and End,
   and Ctrl+E expands them to the full frame.
@@ -1712,7 +1765,7 @@ onEvent: {
 
 | Channel | Events | Purpose |
 | --- | --- | --- |
-| `observe` | `value-change`, `selection-toggle`, `tab-change` | Editing facts and async validation; cannot publish, navigate, or dismiss |
+| `observe` | `value-change`, `selection-toggle`, `tab-change`, `focus-change` | Editing facts, async validation, and focus moves (`focus-change` carries `controlId` and `itemId?`, at most once per frame); cannot publish, navigate, or dismiss |
 | `action` | `activate`, `selection-accept`, `submit`, `dismiss` | Native effects and explicit settlement |
 
 `context` carries `surfaceId`, current source stamps, revision, a unique

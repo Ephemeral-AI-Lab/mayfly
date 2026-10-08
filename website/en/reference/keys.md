@@ -24,12 +24,15 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `↑/↓` | Move between rows and fields; scroll documents |
 | `←/→` | Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip |
 | `Alt+←/→ or F2/F3` | Switch tabs from anywhere on the surface; wizards validate the step being left |
+| `Alt+↑/↓ or F4/F5` | Move between controls from anywhere outside text editing and open pickers |
+| `←` | Used by the focused control when it changes something; otherwise it moves focus to the surface's rail of labels, where it does nothing |
+| `→ or Enter on a rail` | Enter the page beside the rail; ↑/↓ on the rail change the page at once |
 | `Alt+↓ or F5, F6` | From an empty prompt, enter the views of the status bar (F6 enters them first, then the interactive panes); ←/→ switch views and Esc returns to the prompt |
 | `PgUp/PgDn, Home/End` | Page or jump in lists and documents |
 | `Enter` | Choose, run, open a picker, apply it, or start editing a field |
 | `Space` | Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch |
 | `Tab/Shift+Tab` | Move to the next or previous control group, committing text and pickers |
-| `Esc` | Leave the innermost layer: picker, editing, search, back, then close |
+| `Esc` | Leave the innermost layer: picker, editing, search, back, return to the first control, then close |
 | `Ctrl+C` | Close the surface, asking first when there are unsaved changes |
 | `Type or /` | Filter a filterable list; Ctrl+U clears the filter |
 | `1-9` | Pick a numbered row |
@@ -41,7 +44,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 
 Details that follow from the grammar:
 
-- **Esc** leaves one layer per press, the same way everywhere: an open picker is cancelled, then text editing ends (the draft stays), then an active search ends (the filter stays), then a page with a Back target goes back, and only then does the panel close. Tab strips are not a stop on the way out.
+- **Esc** leaves one layer per press, the same way everywhere: an open picker is cancelled, then text editing ends (the draft stays), then an active search ends (the filter stays), then a page with a Back target goes back, then focus returns to the panel's first control from anywhere else (the hint reads `Esc back`), and only then does the panel close. Tab strips are not a stop on the way out.
 - **Disabled rows and options** never take the cursor; movement steps over them. A row or action that is unavailable says why next to its label.
 - **Select fields** change with `←`/`→` and never with `↑`/`↓`, which always move to the next field; a focused select shows its value as `‹ value ›` while it can cycle. `Enter` opens the option list; `Tab` applies the highlighted option and moves on.
 - **Inherited settings** carry `(inherited)` or `(override)` after the value. Changing the value overrides it; `Delete` on an overriding field returns it to the inherited value. There are no separate override buttons.

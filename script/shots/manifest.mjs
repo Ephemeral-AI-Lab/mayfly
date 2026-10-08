@@ -266,6 +266,27 @@ export const SCENARIOS = [
     drive: focus => { focus.handleInput?.('\x1b[C') },
   },
   {
+    id: 'tabs-rail',
+    // Doc example, verbatim: a vertical rail with group headings, counts, an attention mark, and the page beside it.
+    title: 'tabs — vertical rail',
+    width: 64,
+    build: ui => ui.stack.row([
+      ui.child(ui.tabs({
+        id: 'settings-rail',
+        orientation: 'vertical',
+        activeId: 'model',
+        items: [
+          { id: 'general', label: 'General', group: 'Session' },
+          { id: 'model', label: 'Model', group: 'Session' },
+          { id: 'permissions', label: 'Permissions', count: 2, group: 'Session' },
+          { id: 'providers', label: 'Providers', attention: true, group: 'Integrations' },
+          { id: 'mcp', label: 'MCP', count: '4/9', group: 'Integrations' },
+        ],
+      }), { basis: 24, shrink: 0 }),
+      ui.child(ui.text('Model page'), { grow: 1, tab: { controlId: 'settings-rail', itemId: 'model' } }),
+    ], { gap: 2 }),
+  },
+  {
     id: 'list',
     // Doc example, verbatim: single mode with the documented `selectedIds`.
     title: 'list — single-mode selection',

@@ -13,6 +13,7 @@ import { visualLanguageGroup } from './groups/1-2.ts'
 import { imageGroup } from './groups/image.ts'
 import { listsGroup } from './groups/lists.ts'
 import { armDelayGroup } from './groups/arm-delay.ts'
+import { tabsGroup } from './groups/tabs.ts'
 import { registerGalleryView } from './groups/views.ts'
 import { formsGroup } from './groups/forms.ts'
 
@@ -187,6 +188,7 @@ function renderGallery() {
         ...listsGroup(),
         ...armDelayGroup(),
         ...formsGroup(),
+        ...tabsGroup(),
       ], { gap: 1 }), { scrollbar: true }),
     ], { gap: 1 }),
   })
