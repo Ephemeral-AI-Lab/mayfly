@@ -14,6 +14,7 @@ import { imageGroup } from './groups/image.ts'
 import { listsGroup } from './groups/lists.ts'
 import { armDelayGroup } from './groups/arm-delay.ts'
 import { tabsGroup } from './groups/tabs.ts'
+import { registerGalleryPrompt } from './groups/prompt.ts'
 import { registerGalleryView } from './groups/views.ts'
 import { formsGroup } from './groups/forms.ts'
 
@@ -197,6 +198,7 @@ function renderGallery() {
 /** Register the gallery pane; a right lane that degrades to bottom when narrow. */
 export function apply(ctx: Context): void {
   registerGalleryView(ctx)
+  registerGalleryPrompt(ctx)
   ctx.mayflyPanes.register({
     id: 'example.ui-gallery.showcase',
     title: 'UI Gallery',
