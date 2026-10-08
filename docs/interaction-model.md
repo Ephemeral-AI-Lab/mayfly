@@ -67,13 +67,16 @@ block of both Website key references against it.
   `role: 'browse'`); in multi-select lists `Space` toggles and `Enter` commits.
 - **Text fields.** Typing or `Enter` starts editing; while editing, `Enter`
   confirms and moves on (or submits when the form declares `enterSubmits`),
-  and `Alt+Enter` inserts a textarea newline.
+  and `Alt+Enter` inserts a textarea newline. `Tab` takes the first completion
+  the typed text starts, while the field has `suggestions` and one matches. A
+  number field steps with `←`/`→` within `min` and `max`. `Ctrl+S` submits the
+  surface's form from any field.
 - **Select fields.** `↑`/`↓` always move between fields. `←`/`→` cycle the value
   without wrapping and skip disabled options; from an unset value `→` picks the
   first enabled option and `←` the last. `Enter` opens the option list. A
   multiselect opens with `Enter` or `Space` and never implicitly. A focused
   select that can cycle renders its value as `‹ value ›`.
-- **Field reset.** Fields with an `origin` show `(Inherited)` or `(Override)`;
+- **Field reset.** Fields with an `origin` show `(inherited)` or `(override)` after the value;
   editing an inherited value overrides it. `Delete` on a focused, non-editing
   field whose value is changed or overriding returns it to `resetValue` (the
   inherited value when the field has an origin). The binding and its hint exist

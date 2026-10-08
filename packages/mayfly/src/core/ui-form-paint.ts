@@ -52,12 +52,18 @@ const HELP_MIN_WIDTH = 40
 const SUGGESTION_ROWS = 3
 /** The most bullets a saved secret draws. */
 const SECRET_BULLETS = 10
+/** A row is cut with an ellipsis only from this width up; narrower rows keep their first cells. */
+const ELLIPSIS_MIN_WIDTH = 8
 /** A value narrower than this many cells moves under its label. */
 const MIN_VALUE_CELLS = 12
 
-const clip = (row: string, width: number): string => visibleWidth(row) <= width ? row : sliceByColumn(row, 0, width, true)
 const safe = (width: number): number => Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-const squeeze = (value: string, width: number): string => visibleWidth(value) <= width ? value : truncateToWidth(value, Math.max(1, width), '…').replace(/(?:\x1b\[0m)+$/u, '')
+/** Fits a row, painted or not, to a width: cut with `…` where there is room for one, and cut short below that (the mark column survives). */
+const clip = (value: string, width: number): string => {
+  if (visibleWidth(value) <= width) return value
+  if (width < ELLIPSIS_MIN_WIDTH) return sliceByColumn(value, 0, Math.max(1, width), true)
+  return truncateToWidth(value, width, '…').replace(/(?:\x1b\[0m)+$/u, '')
+}
 
 /** The cells the editor of a text field gets: the value column, or the whole row under a stacked label, or the textarea box. */
 export function editorWidth(field: MayflyFormField, width: number, labelWidth: number): number {
@@ -93,7 +99,9 @@ function numberRange(field: Extract<MayflyFormField, { readonly kind: 'number' }
 
 /** The field's value as the row reads it: the painted text, and whether it is a placeholder-like muted reading. */
 function valueText(paint: FormFieldPaint, focused: boolean): string {
-  const { field, colors, text, decor } = paint
+  const { field, text, decor } = paint
+  // A disabled field is muted whole.
+  const colors = field.disabled === true ? { text: paint.colors.muted, primary: paint.colors.muted, muted: paint.colors.muted } : paint.colors
   switch (field.kind) {
     case 'toggle': return field.value ? colors.primary('[on]') : colors.muted('[off]')
     case 'select': {
@@ -119,7 +127,7 @@ function valueText(paint: FormFieldPaint, focused: boolean): string {
       return decor.saved === true ? `${bullets}${colors.muted(` (${text('saved')})`)}` : bullets
     }
     case 'textarea': {
-      const first = field.value.split('\n')[0] ?? ''
+      const first = field.value.split('\n', 1)[0]!
       return `${first === '' ? colors.muted(text('empty')) : colors.text(first)}${field.value.includes('\n') ? colors.muted(' …') : ''}`
     }
     default: return field.value.length === 0 ? colors.muted(field.placeholder ?? '') : colors.text(field.value)
@@ -127,15 +135,14 @@ function valueText(paint: FormFieldPaint, focused: boolean): string {
 }
 
 /** The box a focused textarea opens: its lines in a muted frame, at least three rows tall. */
-function textareaBox(paint: FormFieldPaint, width: number): string[] {
-  const { field, colors } = paint
+function textareaBox(paint: FormFieldPaint, width: number, value: string): string[] {
+  const { colors } = paint
   const inner = Math.max(2, Math.min(BOX_WIDTH, width - 6))
-  const lines = paint.editing !== undefined ? [...paint.editing]
-    : field.kind === 'textarea' ? field.value.split('\n') : []
+  const lines = paint.editing !== undefined ? [...paint.editing] : value.split('\n')
   const shown = paint.editing === undefined && lines.length > BOX_PREVIEW_ROWS ? [...lines.slice(0, BOX_PREVIEW_ROWS - 1), '…'] : lines
   const bar = colors.muted('│')
   const body = Array.from({ length: Math.max(BOX_ROWS, shown.length) }, (_, index) => {
-    const line = squeeze(shown[index] ?? '', inner - 1)
+    const line = clip(shown[index] ?? '', inner - 1)
     return `    ${bar} ${line}${' '.repeat(Math.max(0, inner - 1 - visibleWidth(line)))}${bar}`
   })
   return [`    ${colors.muted(`┌${'─'.repeat(inner)}┐`)}`, ...body, `    ${colors.muted(`└${'─'.repeat(inner)}┘`)}`]
@@ -169,21 +176,23 @@ export function paintFormField(paint: FormFieldPaint): string[] {
   if (field.kind === 'textarea' && (focused || editingText)) {
     // The box carries the value, so the label stands alone above it.
     rows.push(clip(`${lead}${labelText(true)}${origin}`, width))
-    rows.push(...textareaBox(paint, width).map(row => clip(row, width)))
+    rows.push(...textareaBox(paint, width, field.value).map(row => clip(row, width)))
   } else if (picking) {
-    // An open picker shows the label as a group header; the option rows carry the value.
-    rows.push(clip(`${lead}\x1b[1m${colors.text(label)}\x1b[22m`, width))
+    // An open picker shows the label alone; the option rows carry the value, the arrow standing under the help's indent.
+    rows.push(clip(`${lead}\x1b[1m${colors.text(field.label)}\x1b[22m`, width))
     const options = choice!.options
     for (const option of options) {
       const selected = choice!.kind === 'select' ? choice!.value === option.id : choice!.value.includes(option.id)
       const current = choice!.kind === 'select' ? choice!.value : choice!.value[0]
       const active = (focus.optionId ?? current ?? options[0]?.id) === option.id
+      const arrow = active ? colors.primary('→') : ' '
       const reason = option.disabledReason === undefined ? '' : ` — ${option.disabledReason}`
-      const line = `${active ? ' →' : '  '} ${selected ? '●' : '○'} ${option.label}${reason}`
-      rows.push(clip(option.disabled === true ? colors.muted(line) : active ? colors.primary(line) : colors.text(line), width))
+      const body = option.disabled === true ? colors.muted(`○ ${option.label}${reason}`)
+        : `${selected ? colors.primary('●') : colors.muted('○')} ${colors.text(option.label)}`
+      rows.push(clip(`    ${arrow} ${body}`, width))
     }
   } else {
-    const value = editingText ? (paint.editing![0] ?? '') : valueText(paint, focused)
+    const value = editingText ? paint.editing![0]! : valueText(paint, focused)
     const extra = editingText ? paint.editing!.slice(1) : []
     if (stacked) {
       rows.push(clip(`${lead}${labelText(false)}${origin}`, width))
@@ -197,7 +206,7 @@ export function paintFormField(paint: FormFieldPaint): string[] {
   }
 
   if (field.error !== undefined) rows.push(clip(`    ${colors.error(`! ${field.error}`)}`, width))
-  if (focused && field.help !== undefined && !picking && width >= HELP_MIN_WIDTH) rows.push(clip(`    ${colors.muted(squeeze(field.help, Math.max(1, width - 4)))}`, width))
+  if (focused && field.help !== undefined && !picking && width >= HELP_MIN_WIDTH) rows.push(clip(`    ${colors.muted(clip(field.help, Math.max(1, width - 4)))}`, width))
   if (editingText && paint.suggestions !== undefined) {
     paint.suggestions.slice(0, SUGGESTION_ROWS).forEach((suggestion, index) => rows.push(clip(`    ${colors.muted(`${index === 0 ? '⇥' : ' '} ${suggestion}`)}`, width)))
   }

@@ -14,6 +14,7 @@ import { imageGroup } from './groups/image.ts'
 import { listsGroup } from './groups/lists.ts'
 import { armDelayGroup } from './groups/arm-delay.ts'
 import { registerGalleryView } from './groups/views.ts'
+import { formsGroup } from './groups/forms.ts'
 
 export const name = '@mayfly-example/ui-gallery'
 export const inject = ['mayflyPanes']
@@ -185,6 +186,7 @@ function renderGallery() {
         ...imageGroup(),
         ...listsGroup(),
         ...armDelayGroup(),
+        ...formsGroup(),
       ], { gap: 1 }), { scrollbar: true }),
     ], { gap: 1 }),
   })

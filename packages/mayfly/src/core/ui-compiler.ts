@@ -615,8 +615,8 @@ function paintField(field: MayflyFormField, key: string, width: number, state: F
 /** The option the open picker of a select stands on. */
 function pickerOption(field: MayflyFormField, key: string, options: RuntimeCompilerOptions): { readonly optionId?: string } {
   if (field.kind !== 'select' && field.kind !== 'multiselect') return {}
-  const address = options.listRuntime.fieldAddress(key)
-  const focusedId = address === undefined ? undefined : options.listRuntime.interaction?.form(address)?.fields[field.id]?.picker?.focusedId
+  const address = options.listRuntime.fieldAddress(key)!
+  const focusedId = options.listRuntime.interaction?.form(address)?.fields[field.id]?.picker?.focusedId
   return focusedId === undefined ? {} : { optionId: focusedId }
 }
 
@@ -939,7 +939,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
   const numbered = node?.numbered
   const fieldAddress = active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' ? runtime.fieldAddress(active.key) : undefined
   const reset = fieldAddress === undefined ? undefined : fieldReset(interaction?.form(fieldAddress), fieldAddress.fieldId)
-  const save = (active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' || active?.kind === 'submit') && formSaveTarget(active.form, active.identity.pagePath ?? [], interaction) !== undefined
+  const save = (active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' || active?.kind === 'submit') && formSaveTarget(active.form, active.identity.pagePath!, interaction) !== undefined
   return {
     mode: mode === 'editor' ? 'editor' : 'ui',
     expanded,
@@ -1851,8 +1851,8 @@ export class MayflyUiSurfaceRuntime {
         } as MayflyFormField
       },
       decor: (field, key) => {
-        const address = this.fieldAddresses.get(key)
-        return fieldDecor(field, address === undefined ? undefined : this.interaction?.form(address)?.fields[address.fieldId])
+        const address = this.fieldAddresses.get(key)!
+        return fieldDecor(field, this.interaction?.form(address)?.fields[address.fieldId])
       },
       fieldValue,
       setValue: (key, value) => {
@@ -2793,8 +2793,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'complete': {
         const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
         const editor = this.state.textEditor(text.field, text.key)
-        const hit = matchingSuggestions(text.field.kind === 'number' ? undefined : text.field.suggestions, editor.getExpandedText())[0]
-        if (hit === undefined) return
+        // The grammar binds `Tab` to this only while a suggestion matches.
+        const hit = matchingSuggestions((text.field as Exclude<TextField, { readonly kind: 'number' }>).suggestions, editor.getExpandedText())[0]!
         editor.setText(hit)
         this.state.setValue(text.key, hit)
         return
@@ -2807,11 +2807,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
         return
       }
       case 'form-save': {
+        // The grammar binds `ui.save` only where the form has a target to run.
         const form = (active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' | 'submit' }>).form
-        const target = formSaveTarget(form, active.identity.pagePath ?? [], model)
-        if (target === undefined) return
+        const pagePath = active.identity.pagePath!
         if (this.state.editingKey === active.key) this.commitEditing(active)
-        model?.invoke(target, active.identity.pagePath ?? [])
+        model?.invoke(formSaveTarget(form, pagePath, model)!, pagePath)
         return
       }
       case 'text-type': {

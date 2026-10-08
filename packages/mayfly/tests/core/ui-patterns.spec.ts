@@ -245,7 +245,7 @@ describe('private UI pattern painters', () => {
     expect(plain(unfocusedEditing)).toEqual(['  Select: Alpha'])
     expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'missing', options: [] }, 40, idle, colors)[0]).toContain('missing')
     expect(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: true }, 40, idle, colors)[0]).toContain('[on]')
-    expect(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: false, disabled: true }, 5, idle, colors)[0]).toHaveLength(5)
+    expect(visibleWidth(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: false, disabled: true }, 5, idle, colors)[0]!)).toBe(5)
     const mutedOnly = new Proxy(colors, { get: (target, key, receiver) => key === 'muted'
       ? (value: string) => `<muted>${value}</muted>`
       : key === 'text' || key === 'textStrong' ? (value: string) => `<foreground>${value}</foreground>` : Reflect.get(target, key, receiver) })

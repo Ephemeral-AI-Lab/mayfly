@@ -960,7 +960,7 @@ ui.list({
 
 ![`form` 节点渲染效果](/shots/form.svg)
 
-*常用 field 的默认状态：secret 值被遮蔽，select 显示当前值，toggle 显示开关（宽度 64）。*
+*常用 field 的默认状态：secret 值被遮蔽，select 显示当前值，toggle 显示开关。多字段表单画一个主要的 Save；单字段表单不画按钮（宽度 64）。*
 
 ```ts
 ui.form({
@@ -978,13 +978,19 @@ Form field 是以下判别联合：
 
 | `kind` | 必填字段 | 可选字段 | `value-change` value |
 | --- | --- | --- | --- |
-| `input` | `id`、`label`、`value: string` | `placeholder`、`error`、`disabled` | `string` |
+| `input` | `id`、`label`、`value: string` | `placeholder`、`pattern`、`patternMessage`、`suggestions`、`error`、`disabled` | `string` |
 | `textarea` | 同 input | 同 input | `string` |
 | `secret` | 同 input | 同 input；renderer 遮蔽 value | `string` |
 | `number` | `id`、`label`、`value: number \| null` | `min`、`max`、`step`、`unit` | 编辑时为 `string` draft |
 | `select` | `id`、`label`、`value: string \| null`、`options: MayflyListItem[]` | `error`、`disabled` | `string \| null` |
 | `multiselect` | `id`、`label`、`value: string[]`、`options` | `minSelected`、`maxSelected` | `string[]` |
 | `toggle` | `id`、`label`、`value: boolean` | `error`、`disabled` | `boolean` |
+
+所有 `kind` 还接受 `help`（字段聚焦时在其下方显示的一行弱化文字，窄表单最先丢弃它）和 `group`
+（同一 `group` 的字段归在一个 `── Group ──` 标题下；值一变就开始下一个标题）。`pattern` 是不超过 256 个
+字符的正则表达式，以 `u` 标志编译，仅对非空值检查；`patternMessage` 给出错误文字（省略时为本地化的
+“值无效”）。`suggestions`（最多 64 条单行文本）在编辑字段时提供补全：已键入文本是其开头的第一条以 `⇥`
+标记，按 Tab 采用。
 
 上面的截图渲染的就是这个节点：
 
@@ -1003,18 +1009,19 @@ ui.form({
   ],
   submitActionId: 'create-profile',
   submitLabel: 'Create profile',
-  cancelActionId: 'cancel',
-  cancelLabel: 'Cancel',
 })
 ```
 
 Mayfly frontend instance 保留文本 draft，并向 `onEvent.observe` 发出带 field
 revision 的 `value-change`，用于可选的异步校验；插件不应把每次输入回声为 snapshot。
 权威 data snapshot 改变时，model 协调未修改值、草稿和冲突。文本字段聚焦后保持
-导航态，直接输入或 Enter 才进入编辑；input 编辑态的 Enter 进入下一组，textarea
-的 Enter 或 Alt+Enter 插入换行。设置 `enterSubmits: actionId` 后，表单任一字段中的
-Enter 都会执行该 action（textarea 仍用 Alt+Enter 换行）。Escape 结束编辑并保留草稿，
-再按一次 Escape 才离开 surface。number 字段会在值后显示 `unit`。
+导航态，直接输入或 Enter 才进入编辑；编辑态的 Enter 提交该字段并移到下一个字段，
+textarea 用 Alt+Enter（或 Ctrl+J）插入换行。设置 `enterSubmits: actionId` 后，表单任一字段中的
+Enter 都会执行该 action，包括 select、multiselect 与 toggle（此时 Space 打开选项列表或切换开关）；
+只有一个字段且设置了 `submitActionId` 的表单同样以 Enter 提交。Escape 结束编辑并保留草稿，
+再按一次 Escape 才离开 surface。聚焦的 textarea 会展开成一个框来显示各行。
+number 字段会在值后显示 `unit`；聚焦时读作 `‹ 45 › s  5–120`，Left/Right 按 `step` 步进并限制在
+`min` 与 `max` 之间（到达上下限时该键交给旁边的 control）。
 
 下面的 form 聚焦 Name 字段并键入 `Ada Lovelace`——截图中
 的草稿文本和光标就是这个交互序列留下的状态：
@@ -1064,8 +1071,10 @@ ui.form({
 ```
 
 `error` 在字段下方显示校验信息；`disabled` 字段不进入焦点导航，但仍保留在
-提交表单中。`required`、长度、数值与选择约束在 action 开始前统一校验；
-下面的 form 同时展示这两种状态：
+提交表单中。`required`、长度、数值、`pattern` 与选择约束在 action 开始前统一校验。值被修改且
+编辑结束（Enter、Tab 或 Escape）之后，违反的约束会以 `! message` 显示在该字段下方；正在键入的字段不会
+被提前指责。被拒绝的保存会标出每个无效字段并提示“请修正标出的字段”，焦点留在原处（其他页面上的错误会把该页面
+带到前台）。下面的 form 同时展示这两种状态：
 
 ![`form` 的 error 与 disabled 状态](/shots/form-validation.svg)
 
@@ -1083,14 +1092,44 @@ ui.form({
 })
 ```
 
-`origin: 'inherited' | 'explicit'` 在标签后标注 `(继承)` 或 `(显式覆盖)`；修改继承值即成为
-显式覆盖。`resetValue` 让已修改或显式覆盖的字段可以重置：在该字段上按 Delete 恢复为
-`resetValue`（字段带 `origin` 时即继承值），提交时该字段报告 `change: 'reset'`。只有重置会
-产生变化时提示行才显示 Delete；表单不再渲染单独的覆盖或重置按钮。草稿期间权威值发生变化的
-字段，需先选择 **使用当前值** 或 **保留我的修改** 才能保存。
+`origin: 'inherited' | 'explicit'` 在值后标注 `(继承)` 或 `(覆盖)`（英文界面为 `(inherited)`、`(override)`）；
+修改继承值即成为显式覆盖。与默认值不同或被修改过的字段，在箭头列显示 `•`。`resetValue` 让已修改或显式覆盖
+的字段可以重置：在该字段上按 Delete 恢复为 `resetValue`（字段带 `origin` 时即继承值），提交时该字段
+报告 `change: 'reset'`；没有 `resetValue` 时，Delete 让已修改的字段回到打开时的值。只有重置会
+产生变化时提示行才显示 Delete；表单不再渲染单独的覆盖或重置按钮。尚未改动的已保存 secret 读作
+`•••• (saved)`。草稿期间权威值发生变化的字段，需先选择 **使用当前值** 或 **保留我的修改** 才能保存。
 
-`submitActionId` 增加提交 control，按钮文字为 `submitLabel`（省略时为本地化的
-“提交”），id 不会显示。提交使用声明 action 的 `submit` 地址聚合一个或
+下面的 form 中 Endpoint 字段聚焦，所以显示它的 help：
+
+![`form` 的分组、help 与标记](/shots/form-groups.svg)
+
+*两个 `── Group ──` 标题下的分组。聚焦的字段显示 `help`；secret 读作 `(saved)`，Model 读作 `(inherited)`，Timeout 与 `resetValue` 不同，因此带 `•`（宽度 64）。*
+
+```ts
+ui.form({
+  id: 'provider-form',
+  fields: [
+    { kind: 'input', id: 'name', label: 'Name', value: 'production', group: 'Connection' },
+    { kind: 'input', id: 'endpoint', label: 'Endpoint', value: 'https://api.example.com/v1', help: 'Base URL, including the version path',
+      pattern: '^https?://\\S+$', patternMessage: 'Must be an http(s) URL' },
+    { kind: 'secret', id: 'key', label: 'API key', value: 'sk-live-0123456789' },
+    { kind: 'select', id: 'model', label: 'Model', value: 'deepseek-chat', origin: 'inherited', group: 'Behaviour', options: [
+      { id: 'deepseek-chat', label: 'deepseek-chat' },
+      { id: 'deepseek-reasoner', label: 'deepseek-reasoner' },
+    ] },
+    { kind: 'number', id: 'timeout', label: 'Timeout', value: 45, resetValue: 30, min: 5, max: 120, step: 5, unit: 's' },
+    { kind: 'toggle', id: 'stream', label: 'Streaming', value: true },
+  ],
+  submitActionId: 'save',
+})
+```
+
+surface 上任何 form 存在未保存的修改时，surface 头部会在作者给出的徽章之后显示 `unsaved changes` 徽章。
+Ctrl+S（`ui.save`）可在任一字段上提交该 form：依次使用它的 `submitActionId`、`enterSubmits` 指定的
+action，或提交该 form 的 action（优先 primary）。
+
+`submitActionId` 为多于一个字段的 form 增加一个主要的提交 control，按钮文字为 `submitLabel`（省略时为本地化的
+“保存”），id 不会显示。只有一个字段的 form 不画按钮，用 Enter 提交。提交使用声明 action 的 `submit` 地址聚合一个或
 多个页面中的表单，并锁定这次 boundary：
 
 ```ts
@@ -1109,8 +1148,8 @@ ui.form({
 }
 ```
 
-`cancelActionId` 增加共享关闭 control，按钮文字为 `cancelLabel`（省略时为本地化的
-“取消”）；dirty form 会先进入默认 No 的丢弃确认。关闭类 action 从不返回上一页，
+`cancelActionId` 从不画成按钮：最外层的 Escape 会执行它，并关闭 surface；dirty form 会先进入默认 No 的丢弃确认。
+宿主没有提供 `onUnhandledEscape` 时，提示行把 Escape 写作 `cancel`。关闭类 action 从不返回上一页，
 返回由 Escape 负责。
 
 ### `actions`

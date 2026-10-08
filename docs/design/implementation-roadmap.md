@@ -133,6 +133,8 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ24 | 7 scroll | `↑` from a followed tail jumps to the top (a stale offset) | `↑` scrolls one row from the tail | Prototype artifact; proposed in slice 1.3 |
 | Δ25 | 10 | A flex row of framed surfaces: surfaces measured structurally, the grow remainder to the last child, `…` columns below 60 | The layout engine measures a surface by painting it and shares the remainder by its own rule | The row layout is pi-tui's stack layout; proposed in slice 1.3 |
 | Δ26 | 10 `h` | `h` changes only the caption: the `minHeight: 20` child stays | The renderer hides it below 20 rows | Prototype artifact (its viewport height is not read); proposed in slice 1.3 |
+| Δ27 | 3, 4, 12 | `▌` marks the cursor in an edited field | The terminal cursor sits there; no glyph is drawn | Spec §4.3 calls it the terminal cursor; proposed in slice 1.6 |
+| Δ28 | 4, 12 | The `unsaved changes` badge in scene 3 only | Core adds it to every surface whose form is dirty | Roadmap slice 1.6; proposed in slice 1.6 |
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and
@@ -525,7 +527,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.3 | merged (#106) | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 was left in the ledger for 1.4, which closed it |
 | 1.4 | merged (#107) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
 | 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
-| 1.6 | not started | `feat/ui-foundation-1-6` | Needs: 1.2, 1.7 |
+| 1.6 | built | `feat/ui-foundation-1-6` | Two parts; full gate green; scenes 3, 4, 12 and scene 1 page 1's form block pinned (Δ27, Δ28 proposed); one `Esc back` hint left pending for 1.5; no budget change |
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | not started | `feat/ui-foundation-1-9b` | Prompt. Needs: 1.3, 1.7, 1.9a |
 | 1.8b | not started | `feat/ui-foundation-1-8b` | Patterns. Needs: 1.3 to 1.6, 1.8a |
@@ -721,7 +723,7 @@ Parity. `tests/design/visual-language.spec.ts` pins scene 1 pages 1 (its first l
 pages 3 (the code) and 4 (numbered on and off, through the painter options), and scene 9 page 3, with the helpers of
 `tests/design/scene.ts`. The parity mapping reads a frame's `border`/`borderFocus`, `textMuted`, `textStrong`, and the
 diff tokens as the prototype tones they draw, and strips pi-tui's cursor marker as the terminal does.
-`tests/design/pending.ts` is the pending-parity ledger: scene 1 page 1 below its first list (1.4, 1.6), the default
+`tests/design/pending.ts` is the pending-parity ledger: scene 1 page 1 below its first list (1.4, 1.6; both closed), the default
 loader glyph (1.3), scene 1 page 6 (1.8b), scene 8's markdown and its demo `h` toggle (1.3). **Δ20 is approved** (§2.3):
 the kit's word wrap drops a line's leading spaces and does not reopen a style on a wrapped continuation,
 while the renderer keeps both (scene 7's todo row, scene 8's indented code line, wrapped captions).
@@ -904,16 +906,66 @@ Files: `core/ui-compiler.ts`, `core/ui-patterns.ts`, `core/ui-key-grammar.ts`, `
 
 **Backlog:** B3, G7, R9 (forms).
 
-Group headings `── Group ──`; the focused field's help line (dropped first when narrow); `! message` under a field once
-edited; `•` for an edited field; `(inherited)`/`(override)`; a secret reads `•••• (saved)`; a number reads
-`‹ 45 › s  5–120`; a focused textarea opens its box; `pattern` validates on commit (sources capped at 256 characters);
-`suggestions` show `⇥` and `Tab` completes. `enterSubmits` on a form whose focused field is a select or toggle submits on
-`Enter` (`Space` opens the picker). Buttons: a single-field form draws none; a multi-field form draws one primary
-submit (`submitLabel` or *Save*); `cancelActionId` is never drawn and runs as the close step. Core adds the
-`unsaved changes` header badge while a form is dirty. `ui.save` submits the surface's form from any field.
+A form reads as the kit draws it, and its keys follow the kit's hint words. The slice landed in two parts, each green on
+its own; every field kind is drawn by one painter and one grammar arm.
 
-Files: `core/ui-interaction-form.ts`, `core/ui-compiler.ts`, `core/ui-patterns.ts` (`renderFormField`),
-`core/ui-key-grammar.ts`; re-check every consumer of `cancelActionId`. Scenes 3, 4, 12.
+- **Fields** (`core/ui-form-paint.ts`, new; `renderFormField` in `core/ui-patterns.ts` is a wrapper over it). Every
+  field gained `help` and `group`; the text fields (`input`, `textarea`, `secret`) gained `pattern`, `patternMessage`,
+  and `suggestions` (`core/ui-validator-form.ts`, new: `pattern` at most 256 characters, compiled with the `u` flag at
+  admission, `suggestions` at most 64 single lines). A row is a mark column (`→` focused, `•` edited or different from
+  its `resetValue`), the label aligned to the form's widest label, the value in its kind's reading, and a muted
+  `(inherited)` or `(override)` on an origin field. A group heading is `── Group ───` at most 44 cells wide; the
+  focused field's help sits under it and is the first thing a form under 40 columns drops; `! message` sits under a field
+  with an error; a label wider than the row stacks its value under it. A secret reads `•••• (saved)` while its stored
+  value is untouched and as bullets only once edited; a number reads `45 s`, and `‹ 45 › s  5–120` (or `≥ 5`, `≤ 120`)
+  while focused; a focused or edited textarea opens a box (42 cells, at least three rows, the editor's rows while it is
+  edited); an open picker shows the label alone and the option rows with the arrow under the help's indent. A disabled
+  field is muted whole. Only a field being typed into asks its editor for rows; every other reading is drawn from the
+  value, so an untouched text field builds no editor until it holds focus.
+- **Rules.** `pattern` checks a non-empty value (an empty one is `required`'s business); a broken rule shows under its
+  field once the value was edited and the edit is over, and never while it is typed into (`fieldDisplayError`); a save
+  runs every rule. The messages are `Required` and `Invalid value` (or `patternMessage`). A refused save marks every
+  invalid field, says `Fix the highlighted fields`, and keeps the focus where it was; an error on another page of the
+  surface brings that page forward.
+- **Keys** (`core/ui-key-grammar.ts`, `core/ui-compiler.ts`, `core/ui-interaction-form.ts`). `Tab` takes the first
+  suggestion the typed text starts (`⇥` marks it; the hint reads `Tab complete` only while one matches, else the group
+  move). `←`/`→` step a number by `step` within `min`/`max` and give the key to the control beside it at a limit (hint
+  `←/→ step`). With `enterSubmits` (or a single field and a `submitActionId`) `Enter` submits from a select, a
+  multiselect, and a toggle too, worded `continue`, and `Space` opens the picker or flips the switch. `Enter` in a text
+  field commits it and moves to the next field, in a textarea as in the rest; `Alt+Enter` and `Ctrl+J` insert a newline
+  (the hint reads `Enter next · Alt+Enter newline`). `Delete` returns an edited field with no `resetValue` to the value it
+  opened with. `ui.save` (`Ctrl+S`) submits the surface's form from any field, picker, or button: through the form's
+  `submitActionId`, the action `enterSubmits` names, or the primary action that submits the form
+  (`UiSurfaceModel.saveActionFor`).
+- **Buttons.** A form with several fields (or none) draws one primary submit, `submitLabel` or *Save*; a single-field
+  form draws none. `cancelActionId` is never drawn: the outermost `Escape` runs it (and closes the surface through the
+  usual discard confirmation), and a surface whose host gave `Escape` no handler words it `Esc cancel`. The one other
+  consumer, the loader's `cancelActionId`, was already a hint and is unchanged.
+- **Head.** Core adds the muted-warning `unsaved changes` badge to the surface head while any form holds an edit
+  (`UiSurfaceModel.formsDirty`), after the badges the author gave; the head drops badges before the title when narrow.
+
+Parity. `tests/design/scene-03-forms.spec.ts` replays every golden walk of scenes 3 (`initial`, `move`, `edit`, `reset`,
+`discard`), 4 (`initial`, `fill`, `focus`), and 12 (`initial`, `move`, `enter`) cell by cell, from the surface's top rule
+to its bottom rule (the caption above, scene 12's status row below, and the host's reply, which the renderer draws under
+the surface and the spec compares as text, are not part of it), and scene 1 page 1's form block joins
+`scene-05-lists.spec.ts`. Two differences are proposed: **Δ27** (the prototype's `▌` is the terminal cursor; the
+renderer parks the hardware cursor there and draws no glyph) and **Δ28** (the dirty badge is core's on every surface;
+the prototype adds it in scene 3 only). Scene 12 `move` frame 3's `Esc back` hint waits for slice 1.5's focus levels
+(a ledger entry). Choices this slice made where the prototype left room: the wording of an open picker follows the
+prototype's rows and the spec's label-alone head; a refused save keeps the focus on the same page (the prototype never
+moves it); `A value is required` stays in the catalog for the onboarding panel while forms say `Required`.
+
+Cost. W5 (a keystroke in a 20-field form) is unchanged at 0 validated, 0 compiled, 0 rows counted: a text field is not
+a counted painter, so the budget row stays at its slice 1.1 figure. The text fields no longer render through their editor
+when they are not being typed into.
+
+Files: `core/ui-form-paint.ts`, `core/ui-validator-form.ts`, `core/ui-interaction-form.ts`
+(`fieldDisplayError`, `fieldDecor`, `stepNumber`, the `reset` arm), `core/ui-interaction-field-actions.ts`
+(`fieldReset`), `core/ui-interaction-surface.ts` (`formsDirty`, `formCancel`, `saveActionFor`, `showValidationErrors`),
+`core/ui-key-grammar.ts` (`textEditing`, `picker`, the text, select, and toggle arms), `core/ui-compiler.ts` (the `form`
+arm, `paintField`, `editorFieldComponent`, `withDirtyBadge`, `closeSurface`), `packages/ui/src/contracts.ts`
+(`MayflyTextFieldRules`). The UI reference (both languages) has the new field properties and a `form-groups` shot; the
+gallery's `forms` group shows each of them.
 
 #### 1.7 Actions, named actions, and the keymap
 
