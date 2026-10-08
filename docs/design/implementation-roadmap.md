@@ -523,7 +523,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.9a | merged (#104) | `feat/ui-foundation-1-9a` | `ui.image`. Full gate green with 100% coverage; one new shot (`image`), no other visible change |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
 | 1.3 | merged (#106) | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 was left in the ledger for 1.4, which closed it |
-| 1.4 | built (PR open) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
+| 1.4 | merged (#107) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
 | 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
 | 1.6 | not started | `feat/ui-foundation-1-6` | Needs: 1.2, 1.7 |
 | 1.10b | not started | `feat/ui-foundation-1-10b` | Views lane. Needs: 1.10a, 1.7 |
