@@ -82,5 +82,11 @@
     "unitsCompiled": 2,
     "rowsPainted": 2,
     "stringsMeasured": 2
+  },
+  "W12-rail": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 8,
+    "stringsMeasured": 40
   }
 }

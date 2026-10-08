@@ -104,7 +104,8 @@ function paintRailItem(item: MayflyTabItem, heading: boolean, state: { readonly 
   const badge = badgeOf(item)
   const right = badge === '' ? '' : item.attention === true ? strong(colors.warning(badge)) : colors.muted(badge)
   const rightWidth = visibleWidth(right)
-  const room = Math.max(1, width - rightWidth - 4)
+  // The arrow and its space, the column before the count (the cursor's), and one more of air when a count follows.
+  const room = Math.max(1, width - rightWidth - (rightWidth === 0 ? 3 : 4))
   const label = item.clip === 'start' ? truncateMiddle(item.label, room, 'start')
     : visibleWidth(item.label) <= room ? item.label : `${sliceByColumn(item.label, 0, room - 1, true)}${OVERFLOW_ELLIPSIS}`
   const arrow = state.active ? strong(state.focused ? colors.primary('→') : colors.muted('→')) : ' '

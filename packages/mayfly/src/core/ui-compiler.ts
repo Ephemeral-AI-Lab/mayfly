@@ -2311,12 +2311,12 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const interaction = this.surfaceRuntime.interaction
     const active = this.state.controls()[this.state.lastIndex]
     if (interaction === undefined || active === undefined) return
-    const key = JSON.stringify([active.identity.pagePath ?? [], active.identity.controlId, active.identity.itemId])
+    const key = JSON.stringify([active.identity.pagePath, active.identity.controlId, active.identity.itemId])
     const previous = this.paintedFocus
     this.paintedFocus = key
     if (previous === undefined || previous === key) return
     const generation = this.generation
-    queueMicrotask(() => { if (this.paintedFocus === key && this.surfaceRuntime.current(generation)) interaction.observeFocus({ pagePath: active.identity.pagePath ?? [], controlId: active.identity.controlId, ...(active.identity.itemId === undefined ? {} : { itemId: active.identity.itemId }) }) })
+    queueMicrotask(() => { if (this.paintedFocus === key && this.surfaceRuntime.current(generation)) interaction.observeFocus(active.identity as UiControlAddress) })
   }
 
   captureFocusIdentity(): MayflyFocusIdentity | undefined {

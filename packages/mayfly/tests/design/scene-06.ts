@@ -3,7 +3,7 @@
  * way `ui-preview.mjs` builds them. The page content follows the active tab through `tab` pages, which is what the
  * prototype's `tab-change` handler does by rebuilding the node.
  */
-import { ui, type MayflyFormField, type MayflyListItem, type MayflyTabItem, type MayflyUiNode } from '../../../ui/src/index.ts'
+import { ui, type MayflyFormField, type MayflyInlineSpan, type MayflyListItem, type MayflyTabItem, type MayflyUiNode } from '../../../ui/src/index.ts'
 
 export const TAB_ITEMS: readonly MayflyTabItem[] = [
   { id: 'overview', label: 'Overview' }, { id: 'usage', label: 'Usage', count: 3 }, { id: 'conn', label: 'Connections', attention: true },
@@ -38,7 +38,7 @@ export function railSettings(items: readonly MayflyTabItem[] = RAIL_ITEMS, activ
   return ui.surface({
     title: 'Settings', chrome: 'overlay',
     child: ui.stack.row([
-      ui.child(ui.tabs({ id: 'rail', orientation: 'vertical', items, activeId }), { basis: 24 }),
+      ui.child(ui.tabs({ id: 'rail', orientation: 'vertical', items, activeId }), { basis: 24, shrink: 0 }),
       ...items.map(item => ui.child(
         ui.stack.column([ui.text(item.label, { styles: ['strong'], tone: 'primary' }), ui.spacer(), ui.form({ id: `settings.${item.id}`, fields: RAIL_FIELDS[item.id] ?? [] })]),
         { grow: 1, tab: { controlId: 'rail', itemId: item.id } },
@@ -66,4 +66,22 @@ export function pageNode(index: number, tab = 'usage'): MayflyUiNode {
     case 2: return railSettings()
     default: return ui.surface({ title: 'Narrow strip', chrome: 'overlay', child: ui.tabs({ id: 'narrow', items: TAB_ITEMS, activeId: tab }) })
   }
+}
+
+const mu = (text: string): MayflyInlineSpan => ({ text, tone: 'muted' })
+
+const WORKSPACES: readonly MayflyTabItem[] = [{ id: 'work', label: 'work/mayfly', count: 8 }, { id: 'site', label: 'website', count: 5 }, { id: 'notes', label: 'notes', count: 2 }]
+
+/** The railPanel of the prototype's page 2: the rail at 26 columns, two columns of gap, the live list beside it. */
+export function railPanelNode(rail = 'work'): MayflyUiNode {
+  return ui.surface({
+    title: 'Workspaces', chrome: 'overlay',
+    child: ui.stack.row([
+      ui.child(ui.tabs({ id: 'rail', orientation: 'vertical', items: WORKSPACES, activeId: rail }), { basis: 26, shrink: 0 }),
+      ...WORKSPACES.map(item => ui.child(
+        ui.list({ id: `ws.${item.id}`, role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Fix login redirect', right: [mu('2h')] }, { id: 'b', label: 'Docs sync', right: [mu('1d')] }] }),
+        { grow: 1, tab: { controlId: 'rail', itemId: item.id } },
+      )),
+    ], { gap: 2 }),
+  })
 }

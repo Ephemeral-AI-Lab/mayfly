@@ -433,7 +433,8 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
         push(bindings, action(ACTION_SUBMIT), { kind: 'picker-open' }, { id: 'activate', label: 'pick', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
         if (control.multiple) push(bindings, action(ACTION_TOGGLE), { kind: 'picker-open' })
       }
-      navigation(bindings, state, ['left', 'right'], 'fields', ['left', 'right'], true)
+      // `←` is the rail's unless this select steps with it.
+      navigation(bindings, state, ['left', 'right'], 'fields', ['left', 'right'], control.multiple || !control.adjustable || control.stuckLeft === true)
       break
     case 'tab':
       // A rail moves with `↑/↓`, enters its content with `→`, and has no level to leave with `←`.

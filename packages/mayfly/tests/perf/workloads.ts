@@ -285,6 +285,20 @@ export const WORKLOADS: readonly Workload[] = [
     },
   },
   {
+    id: 'W12-rail', title: 'rail cursor: a rail of 60 labels in six groups beside its content, Down (the content follows live)',
+    setup(counters) {
+      const items = Array.from({ length: 60 }, (_, index) => ({ id: `label-${String(index)}`, label: `Label number ${String(index)}`, group: `Group ${String(Math.floor(index / 10))}`, ...(index % 7 === 0 ? { count: index } : {}) }))
+      const panel = ui.stack.row([
+        ui.child(ui.tabs({ id: 'rail', orientation: 'vertical', items, activeId: 'label-0' }), { basis: 28, shrink: 0 }),
+        ...items.slice(0, 2).map(entry => ui.child(ui.text(`the page of ${entry.label}`), { grow: 1, tab: { controlId: 'rail', itemId: entry.id } })),
+      ], { gap: 2 })
+      const surface = new Surface('w12-rail', panel, counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[B') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
     id: 'W5', title: 'form key: a form of 20 fields, one keystroke into the focused field',
     setup(counters) {
       const surface = new Surface('w5', fieldBlock('typing', 20), counters)
