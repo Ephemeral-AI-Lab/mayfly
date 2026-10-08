@@ -725,6 +725,88 @@ export const SCENARIOS = [
     build: ui => ui.richText([{ text: 'Builds ', tone: 'muted' }, { text: '2 running', tone: 'accent' }]),
   },
   {
+    id: 'prompt',
+    // Doc example, verbatim: the editor's composition, a right-titled surface around a prompt with two tokens and a
+    // typed draft. The key line stays hidden until a completion list is open.
+    title: 'prompt — symbol, tokens, and the buffer',
+    width: 64,
+    build: ui => ui.surface({
+      title: 'Update the landing page hero',
+      titleAlign: 'right',
+      chrome: 'surface',
+      hint: 'completions',
+      child: ui.prompt({
+        id: 'composer',
+        autofocus: true,
+        tokens: [{ id: 'image', label: 'Image #1', size: '84 KB' }, { id: 'notes', label: 'notes.md', size: '2 KB' }],
+        placeholder: ['Ask anything · / commands · @ files', 'Ask anything'],
+      }),
+    }),
+    drive: focus => { focus.handleInput?.('explain ') },
+  },
+  {
+    id: 'prompt-placeholder',
+    // The placeholder ladder: the longest whole-trigger variant that fits shows, never cut inside a trigger.
+    title: 'prompt — placeholder ladder at 40 columns',
+    width: 40,
+    build: ui => ui.surface({
+      title: 'Prompt',
+      titleAlign: 'right',
+      chrome: 'surface',
+      hint: 'completions',
+      child: ui.prompt({
+        id: 'composer',
+        autofocus: true,
+        placeholder: ['Ask anything · / commands · @ files · # skills · ! shell', 'Ask anything · / commands · @ files', 'Ask anything'],
+      }),
+    }),
+  },
+  {
+    id: 'prompt-completions',
+    // Doc example, verbatim: an open completion list and its key line.
+    title: 'prompt — completion list',
+    width: 64,
+    build: ui => ui.surface({
+      title: 'Prompt',
+      titleAlign: 'right',
+      chrome: 'surface',
+      hint: 'completions',
+      child: ui.prompt({
+        id: 'composer',
+        autofocus: true,
+        value: '/',
+        completions: { items: [
+          { id: 'model', label: '/model', detail: 'switch model and thinking' },
+          { id: 'sessions', label: '/sessions', detail: 'browse and resume sessions' },
+          { id: 'trace', label: '/trace', detail: 'inspect the execution trace' },
+        ] },
+      }),
+    }),
+  },
+  {
+    id: 'prompt-recall',
+    // Up on an empty prompt recalls queued messages first; the corner reads the position.
+    title: 'prompt — recall',
+    width: 64,
+    build: ui => ui.surface({
+      title: 'Prompt',
+      titleAlign: 'right',
+      chrome: 'surface',
+      hint: 'completions',
+      child: ui.prompt({
+        id: 'composer',
+        autofocus: true,
+        recallLabel: 'history',
+        recall: [
+          { kind: 'queued', text: 'also update the footer' },
+          { kind: 'history', text: 'run the width scan again' },
+          { kind: 'history', text: 'bump the changelog too' },
+        ],
+      }),
+    }),
+    drive: focus => { focus.handleInput?.('\x1b[A'); focus.handleInput?.('\x1b[A') },
+  },
+  {
     id: 'uikit-builder',
     // ui-kit.md "Builder" section example, verbatim.
     title: 'ui-kit — builder surface example',

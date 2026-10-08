@@ -24,6 +24,10 @@ slots, never arbitrary root components.
   It also owns `mayflyUiImages`, the byte source of `image` nodes: the host tree
   provides a loader (Fiber-owned, newest first) and core never imports the
   Harness; the wire carries only the attachment id and the alt fallback.
+  A `prompt` node's draft, selected token, recall walk, and completion cursor live in
+  the surface model (`core/ui-interaction-prompt.ts`) and survive a renderer reload;
+  the runtime only leases the terminal editor that mirrors the draft
+  (`core/ui-prompt.ts`), and the prompt's keys are one `keyGrammar` arm.
   Registry observers dispose only models from registrations they own.
   Locale namespaces are refcounted shared catalogs: any surface plugin may
   register the same namespace when its catalog is equivalent, and the catalog

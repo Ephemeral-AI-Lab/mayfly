@@ -530,7 +530,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.5 | merged (#110) | `feat/ui-foundation-1-5` | Five parts; full gate green with 100% coverage; scene 6 (all four pages and the rail's walks) and scene 11 page 2 pinned; the `Esc back` entry of scene 5 closed; `W12-rail` budget; Δ29 approved |
 | 1.6 | merged (#109) | `feat/ui-foundation-1-6` | Two parts; full gate green; scenes 3, 4, 12 and scene 1 page 1's form block pinned (Δ27, Δ28 approved); one `Esc back` hint left pending for 1.5; no budget change |
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
-| 1.9b | not started | `feat/ui-foundation-1-9b` | Prompt. Needs: 1.3, 1.7, 1.9a |
+| 1.9b | built | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
 | 1.8b | not started | `feat/ui-foundation-1-8b` | Patterns. Needs: 1.3 to 1.6, 1.8a |
 | 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
 | Checkpoint A / B / C | pending | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11 |
@@ -1102,16 +1102,59 @@ adopts one pattern as the plugin-side proof. Scenes 11, 12.
 These are the two new node kinds. The main editor and the transcript do not use them until Phases 5 and 6; here a
 gallery page mounts each (D20).
 
-**Prompt.** Core compiles `prompt` on top of the existing editor adapter (`createEditor` in `core/components.ts`), so
-kill-ring, undo, paste folding, and IME stay pi-tui's. The first row paints the symbol, the tokens (`[label size ×]`,
-inverse when selected), and the buffer; the right corner reads `↑ history 2/4` while recalling; the placeholder is the
-longest
-variant that fits, never cut inside a trigger, and hidden for a multi-line buffer or an IME composition; the completion
-list shows up to five rows and, with `hint: 'completions'`, its key line. Keys: the first `Backspace` on an empty buffer
-selects the last token and the second removes it (`token-remove`); `↑/↓` on an empty buffer walk `recall`, queued
-messages first (`recall-change`), and `↓` past the newest returns the draft; `Enter` submits; `Alt+Enter` and `Ctrl+J`
-insert a newline. The draft lives in `UiPromptModel`. Scene 15 in an overlay harness at 96, 60, and 40 columns; paste and
-IME go through `docs/platform-acceptance.md`.
+**Prompt** (slice 1.9b, built). `MayflyPromptNode` is as §3.2, with `ui.prompt({ id, … })`, and joins `MayflyUiNode`; status
+nodes and editor decorations admit neither new kind (the editor-mode validator refuses it as a focus-taker). It landed in six
+parts: the contract, validator, model, and painter (1); the surface model, editor, grammar, and keys (2); scene 15 and
+`W12` (3); the gallery pane (4); the reference and shots (5); this text and the gate (6).
+
+- *Admission* (`core/ui-validator-prompt.ts`, new). A draft, a recalled message, and a `reset` value share a prompt-text budget
+  of 100,000 characters per tree (`MAYFLY_UI_MAX_PROMPT_TEXT`), apart from the tree's 20,000; at most 50 tokens (`id`, `label`,
+  `size` up to 64 characters, ids unique), 8 placeholder variants of up to 200, a `symbol` of up to 8, 24 for `recallLabel` and
+  `submitLabel`, completion ids unique. The prompt is a control (its id is reserved), so no memoized subtree ever carries it.
+- *The draft* (`core/ui-interaction-prompt.ts`, `UiPromptModel`). An immutable value held by the surface model beside the
+  form, choice, and tab models: the text (paste markers expanded), the selected token, the recall walk, the completion cursor, a
+  revision. `reducePrompt` returns the next model and the effects to tell the host; a republish keeps the draft, a new
+  `reset.rev` replaces it once, and the recall walk follows its entry through a republished list (a withdrawn queued message
+  leaves the walk standing before the next entry). Events: `value-change` (`controlId` `text`, `formId` the prompt id) and
+  `recall-change` are observations; `submit` (a `MayflySubmission` with one form addressed by the prompt id and the fields
+  `text` and `tokens`), `token-remove`, `completion-accept`, and `completion-dismiss` are actions. A `submit` clears the draft
+  at once and, like a form's, expects an `accepted` reply with the host's new node; tokens-only submits are single-flight.
+- *The painter* (`core/ui-prompt.ts`). Row 1 is the symbol (strong in `symbolTone`), the token strip (`[label size ×]`, inverse
+  when selected, folded behind `+N` newest-first when the row is short), and the buffer; the recall position (`↑ history 2/4`,
+  `queued` for a queued entry, `recallLabel` for history) sits at the right edge while the row has room for it. The placeholder
+  is the longest ladder variant with `width - symbol - 2` cells to spare (a plain string degrades by dropping its last ` · `
+  segment), after the cursor cell, and shows only for an empty buffer without tokens. The completion list is up to five rows
+  that follow the cursor, with an optional right-aligned key. Every row is cut to the width last, and the editor is never
+  laid out narrower than three cells: pi-tui 0.84.2 recurses without end on a grapheme wider than its line.
+- *The editor* (`UiPromptEditor`, one per prompt, leased from the surface runtime by control key and released with the
+  prompt or the runtime). It wraps `createEditor`, so kill ring, undo, paste folding, and input methods stay pi-tui's: the
+  model's draft is mirrored in before every paint and key, edits report back through `onChange`, `disableSubmit` is on, and a
+  bracketed paste is tracked from its first marker to its last so a lone `Enter` chunk inside it is text.
+- *Keys* (`promptBindings` in `core/ui-key-grammar.ts`, one `prompt` intent with an operation). `Alt+Enter` and `Ctrl+J`
+  (`ui.newline`, asked before `Enter`, because Ctrl+J is a line feed) insert a newline; `Enter` submits; on an empty buffer
+  with tokens the first `Backspace` selects the last token and the second sends `token-remove`, and any other key deselects;
+  `↑`/`↓` walk the recall only while the buffer is empty or already a recalled entry; with a list open, `↑`/`↓` move it, `Tab`
+  and `Enter` accept, and `Esc` hides it until the rows or the text change. Printable accelerators never fire while a prompt
+  has focus. The hint row reads `↑/↓ history · Enter send · Alt+Enter newline · Esc close`, and with a list open
+  `↑/↓ options · Tab complete · Enter insert · Esc close`; a surface with `hint: 'completions'` draws it only then
+  (`promptCompletionsOpen` joins the host's `completionsOpen`). The recall pair is hinted only while it applies, which the
+  prototype does not do.
+- *Proof (D20).* `examples/ui-gallery/src/groups/prompt.ts` registers a bottom pane whose host keeps the tokens, the queue,
+  and the history and answers every event; the node-slot test host leases a prompt in the dock and keeps its draft through a
+  core reload. The main editor and the transcript do not use the prompt until Phases 5 and 6.
+- *Parity.* `tests/design/scene-15-editor.spec.ts` replays every golden walk of scene 15 through the real compiler against a
+  demo host (`scene-15.ts`, which answers the prompt's events as the prototype's scene does) and compares the frame cell by
+  cell at 96, 60, and 40 columns, with the editor's cursor cell drawn as the prototype's `▌`. The caption and the queue line
+  above the frame are the Editor component of Phase 5 and are listed in `pending.ts` against that phase (slice 1.11 leaves
+  those entries alone). Δ11 covers the demo tokens.
+- *Choices.* Composition (an IME preedit) is the terminal's, and pi-tui reports none, so the placeholder hides when text
+  commits; the manual checks are in `docs/platform-acceptance.md`. `recallLabel` words the history entries and `submitLabel`
+  words `Enter` in the hint row; both are this slice's reading of the two fields. A wide-token row folds the oldest tokens first.
+  The `W12` budget (a prompt among 120 static rows, one key) is 0 / 0 / 6 (validated / compiled / rows): the prompt's own rows.
+- *Tests.* `ui-validator-prompt.spec.ts`, `ui-interaction-prompt.spec.ts`, `ui-prompt.spec.ts`, `ui-prompt-keys.spec.ts`
+  (hint rows in every state, every key and event, republish, focus), `ui-prompt-editor.spec.ts` (the real editor, the
+  adversarial width scan), the width scan, the node-slot test, the gallery's `prompt.spec.ts`, and the type fixtures in
+  `packages/ui/tests/`.
 
 **Image** (slice 1.9a, built). `MayflyImageNode { kind: 'image', attachmentId, alt, maxRows? }` joins `MayflyUiNode`
 (§3.2; status nodes and editor decorations admit neither new kind) with the builder `ui.image({ attachmentId, alt,

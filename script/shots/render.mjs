@@ -188,7 +188,9 @@ export async function renderScenario(scenario, ui, defineMayflyComponent) {
     // cannot parse; paint it as a reverse-video block over the cell it sits on.
     const paintCursor = (row, pattern, replacement) =>
       row.replace(pattern, (...args) => replacement(args[1] || ' '))
-    const painted = rows.map(row => {
+    const painted = rows.map(raw => {
+      // A prompt draws its own inverse cursor cell after the marker; the marker alone is then dropped.
+      const row = raw.replace(/\x1b_pi:c\x07(?=\x1b\[7m)/gu, '')
       if (!row.includes(CURSOR_MARKER)) return row
       const follow = paintCursor(row, /\x1b_pi:c\x07(.?)/su, ch => `\x1b[7m${ch}\x1b[27m`)
       if (visibleWidth(follow) <= width) return follow

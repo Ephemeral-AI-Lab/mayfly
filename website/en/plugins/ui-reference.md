@@ -39,7 +39,7 @@ in a node.
   is 1 to 128 characters and its `maxRows` is an integer from 1 to 40.
 - Numeric layout fields are non-negative safe integers. `minSize` cannot exceed
   `maxSize`, and viewport minimums cannot exceed their matching maximums.
-- Tabs/list/form control ids, form field ids, action item ids, and form/loader
+- Tabs/list/form/prompt control ids, form field ids, action item ids, and form/loader
   submit or cancel ids must not collide in one interactive tree. Tab and list
   item ids must at least be unique within their node; ids used as controls
   cannot be empty.
@@ -1444,6 +1444,105 @@ ui.stack.column([
 ])
 ```
 
+### `prompt`
+
+![`prompt` node rendering](/shots/prompt.svg)
+
+*A prompt with two tokens and a typed draft, in the right-titled surface the editor uses (width 64).*
+
+```ts
+ui.prompt(options: {
+  id: string
+  symbol?: string                      // default '> '
+  symbolTone?: MayflyTone
+  value?: string                       // the draft the control starts with
+  tokens?: { id: string, label: string, size?: string }[]
+  recall?: { kind: 'queued' | 'history', text: string }[]
+  recallLabel?: string                 // default 'history'
+  placeholder?: string | string[]      // a ladder, longest first
+  completions?: { items: { id: string, label: string, detail?: string, right?: string }[] }
+  reset?: { rev: number, value: string }
+  submitLabel?: string                 // default 'send'
+  autofocus?: boolean
+})
+```
+
+The prompt is the one text control that is not a field. The first row holds the
+symbol, the tokens, and the buffer; the buffer is the terminal editor, so the
+kill ring, undo, paste folding, and input methods behave as they do in the main
+editor. A token reads `[label size ×]` and is inverse while selected. Later lines
+of a multi-line buffer sit under the symbol. Core keeps the draft in the surface
+model, so a republish, a theme switch, or a core reload never loses what was
+typed; the node's `value` is only where the draft starts.
+
+![`prompt` placeholder ladder](/shots/prompt-placeholder.svg)
+
+*The longest placeholder variant that fits shows (width 40).*
+
+While the buffer and the tokens are empty, the placeholder shows after the
+cursor in the muted text tone. An array is a ladder, longest first; the longest
+variant that fits shows, so write whole triggers in each variant. A plain string
+degrades by dropping its last ` · ` segment. The placeholder is hidden for any
+text, token, or multi-line buffer, and a very narrow row cuts only the shortest
+variant.
+
+![`prompt` completion list](/shots/prompt-completions.svg)
+
+*An open completion list and its key line (width 64).*
+
+`completions` shows up to five rows under the buffer, `→ label — detail`, the
+focused row bold and `right` (such as a command's key) at the edge when it
+fits. `↑`/`↓` move the cursor, `Tab` or `Enter` send `completion-accept` with
+the row's `itemId`, and `Esc` hides the list (`completion-dismiss`) until the
+rows or the text change. The host inserts the result by publishing a new node,
+usually with a `reset`. Put the prompt in a `surface` with `hint: 'completions'`
+to show the key line only while a list is open.
+
+![`prompt` recall](/shots/prompt-recall.svg)
+
+*`↑` twice on an empty prompt (width 64).*
+
+`recall` is walked with `↑`/`↓` while the buffer is empty or already a recalled
+entry, queued messages first, newest first; the right corner reads
+`↑ history 2/3` and the recalled text becomes the draft. `↓` past the newest
+returns the draft that was there before. Each step sends the observation
+`recall-change` (`source` `queued`, `history`, or `draft`, and the `index` into
+`recall`, `-1` for the draft). A host that withdraws a recalled queued message
+republishes `recall` without it; the walk keeps its place.
+
+Keys while the prompt has focus:
+
+| Key | Does |
+| --- | --- |
+| typing, `←`/`→`, `Home`/`End`, `Ctrl+K`, `Ctrl+Y`, … | The terminal editor's own editing |
+| `Enter` | Sends: the `submit` action |
+| `Alt+Enter`, `Ctrl+J` | Inserts a line break |
+| `Backspace` on an empty buffer | The first press selects the last token, the second removes it (`token-remove`); any other key deselects |
+| `↑` / `↓` on an empty buffer | Walk `recall` |
+| `Tab` / `Enter` / `Esc` / `↑` / `↓` with a completion list open | Accept, accept, hide, move |
+| `Esc`, `Ctrl+C` | Leave the surface, as for any control |
+
+Printable keys always go to the buffer, so a letter accelerator elsewhere on the
+surface never fires while the prompt has focus; modifier accelerators still do.
+The hint row names `Enter` with `submitLabel`, `Alt+Enter newline`, and the
+recall pair while it applies.
+
+Events: `value-change` (observation; `formId` is the prompt `id` and `controlId`
+is `text`), `recall-change` (observation), and the actions `token-remove`
+(`tokenId`), `completion-accept` (`itemId`), `completion-dismiss`, and `submit`.
+A `submit` carries a submission with one form addressed by the prompt `id` and
+the fields `text` and `tokens` (the token ids); the draft is cleared at once, and
+the host replies as for a form, normally `accepted` with the new node (cleared
+tokens, an updated `recall`). `reset` replaces the draft once for each new `rev`;
+it is how the host inserts a completion or restores a draft.
+
+Limits: a draft, a recalled message, and a reset share 100,000 characters per
+tree, apart from the tree's 20,000-character text budget; at most 50 tokens
+(`id`, `label`, and `size` up to 64 characters), 8 placeholder variants of up to
+200 characters, a `symbol` of up to 8 characters, and 24 for `recallLabel` and
+`submitLabel`. `prompt` is available in panes and overlays. It is not a status or
+editor-extension node.
+
 ## Focus and contextual hints
 
 The TUI derives operations directly from canonical control roles through one
@@ -1765,8 +1864,8 @@ onEvent: {
 
 | Channel | Events | Purpose |
 | --- | --- | --- |
-| `observe` | `value-change`, `selection-toggle`, `tab-change`, `focus-change` | Editing facts, async validation, and focus moves (`focus-change` carries `controlId` and `itemId?`, at most once per frame); cannot publish, navigate, or dismiss |
-| `action` | `activate`, `selection-accept`, `submit`, `dismiss` | Native effects and explicit settlement |
+| `observe` | `value-change`, `selection-toggle`, `tab-change`, `focus-change`, `recall-change` | Editing facts, async validation, and focus moves (`focus-change` carries `controlId` and `itemId?`, at most once per frame); cannot publish, navigate, or dismiss |
+| `action` | `activate`, `selection-accept`, `submit`, `token-remove`, `completion-accept`, `completion-dismiss`, `dismiss` | Native effects and explicit settlement |
 
 `context` carries `surfaceId`, current source stamps, revision, a unique
 `operationId`, `AbortSignal`, and `report(feedback)`. Observations are
@@ -1794,7 +1893,7 @@ the corresponding editor-extension `set()`. A new instance or scope uses
 | `panes` | Full `MayflyUiNode` | Controls work and events go to pane `onEvent` |
 | `panes` with `placement: 'views'` | Full `MayflyUiNode` for the panel; a status node for the summary | The panel replaces status row 2 while entered; the summary is passive |
 | Capturing overlay | Full `MayflyUiNode` | Receives focus and handles Escape dismissal |
-| Non-capturing overlay | Passive content/layout only | Tabs/list/form/actions controls replace the whole render tree with an error message |
+| Non-capturing overlay | Passive content/layout only | Tabs/list/form/actions/prompt controls replace the whole render tree with an error message |
 | Additive `status` | text, rich-text, fields, progress, recursive stack | Always passive; no surface, scroll, or controls |
 | Editor extension | Passive content/rich-text/progress/spacer/divider plus stack/surface | Interactive actions use the extension decoration's `actions` field |
 
