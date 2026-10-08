@@ -79,12 +79,12 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
     id: 'Δ27',
     scenes: [3, 4, 12],
     summary: "`▌` in an edited field marks the terminal cursor (spec 4.3); the renderer draws no glyph, it parks the hardware cursor there",
-    reason: 'the spec calls the glyph the terminal cursor; proposed in slice 1.6',
+    reason: 'the spec calls the glyph the terminal cursor; approved by the reviewer',
   },
   {
     id: 'Δ28',
     scenes: [4, 12],
     summary: "Core adds the `unsaved changes` badge to the head of every surface whose form is dirty; the prototype adds it in scene 3 only",
-    reason: 'roadmap slice 1.6; proposed in slice 1.6',
+    reason: 'roadmap slice 1.6; approved by the reviewer',
   },
 ]
