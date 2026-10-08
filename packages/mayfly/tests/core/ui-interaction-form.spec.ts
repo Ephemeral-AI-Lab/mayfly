@@ -177,7 +177,7 @@ describe('shared form editing', () => {
       { kind: 'select', id: 'protocol', label: 'Protocol', options: [{ id: 'http', label: 'HTTP' }], value: null },
       { kind: 'toggle', id: 'fixed', label: 'Fixed', value: false, disabled: true, required: true },
     ]))
-    expect(validateForm(state)[0]!.message).toContain('required')
+    expect(validateForm(state)[0]!.message).toContain('Required')
     expect(reduceForm(state, { kind: 'edit', fieldId: 'fixed', value: true })).toBe(state)
     state = reduceForm(state, { kind: 'edit', fieldId: 'name', value: 'a' })
     expect(validateForm(state)[0]!.message).toContain('Minimum length')
@@ -189,7 +189,10 @@ describe('shared form editing', () => {
     expect(validateForm(state)).toEqual([])
     expect(reduceForm(state, { kind: 'edit', fieldId: 'protocol', value: 'http' })).toBe(state)
     expect(() => reduceForm(state, { kind: 'edit', fieldId: 'name', value: false })).toThrow('field kind')
-    expect(reduceForm(state, { kind: 'reset', fieldId: 'name' })).toBe(state)
+    // With no declared default, a reset returns an edited field to the value it opened with, and an untouched field has nothing to reset.
+    const restored = reduceForm(state, { kind: 'reset', fieldId: 'name' })
+    expect(restored.fields.name).toMatchObject({ value: '', change: 'unchanged' })
+    expect(reduceForm(restored, { kind: 'reset', fieldId: 'name' })).toBe(restored)
     expect(reduceForm(state, { kind: 'resolve-conflict', fieldId: 'name', choice: 'latest' })).toBe(state)
     expect(reduceForm(state, { kind: 'edit', fieldId: 'constructor', value: 'bad' })).toBe(state)
   })
@@ -215,13 +218,13 @@ describe('shared form editing', () => {
     state = reduceForm(state, { kind: 'edit', fieldId: 'flag', value: true })
     state = reduceForm(state, { kind: 'reset', fieldId: 'count' })
     expect(state.fields.count!.value).toBe('1')
-    expect(validateForm(state)[0]).toMatchObject({ fieldId: 'one', message: 'A value is required' })
+    expect(validateForm(state)[0]).toMatchObject({ fieldId: 'one', message: 'Required' })
     state = reduceForm(state, { kind: 'edit', fieldId: 'set', value: ['b', 'a'] })
     expect(state.fields.set!.change).toBe('unchanged')
     state = reduceForm(state, { kind: 'edit', fieldId: 'set', value: ['a', 'other'] })
     expect(validateForm(state)[0]!.message).toContain('unavailable')
     state = reduceForm(state, { kind: 'edit', fieldId: 'set', value: [] })
-    expect(validateForm(state)[0]).toMatchObject({ fieldId: 'set', message: 'A value is required' })
+    expect(validateForm(state)[0]).toMatchObject({ fieldId: 'set', message: 'Required' })
     expect(() => reduceForm(state, { kind: 'edit', fieldId: 'set', value: ['a', 'a'] })).toThrow('field kind')
     expect(() => reduceForm(state, { kind: 'edit', fieldId: 'set', value: false })).toThrow('field kind')
     state = reconcileForm(state, form([

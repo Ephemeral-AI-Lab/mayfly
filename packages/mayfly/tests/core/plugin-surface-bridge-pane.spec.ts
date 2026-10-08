@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/core/tests/surface-renderer-pane
  */
 
+import { stripTerminalSequences } from '@earendil-works/pi-tui'
 import { Context } from '@deepseek-ai/cordis'
 import { getLayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -283,7 +284,10 @@ describe('direct pane surface renderer', () => {
     try {
       f.register({ id: 'broken-editor', render: () => ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }) })
       await flush()
-      expect(entry(f.runtime.surfaces, 'broken-editor').component.render(80).join(' ')).toContain('Mayfly UI rejected')
+      // The editor is built when the field is first focused or typed into.
+      const surface = entry(f.runtime.surfaces, 'broken-editor')
+      f.runtime.runtime.setFocus(surface.focusTarget!)
+      expect(surface.component.render(80).join(' ')).toContain('Mayfly UI rejected')
     } finally {
       await f.dispose()
     }
@@ -425,20 +429,20 @@ describe('direct pane surface renderer', () => {
       await flush()
       expect(renders).toBe(1)
       expect(entry(f.runtime.surfaces, 'profile').component).toBe(surface.component)
-      expect(surface.component.render(80).join('\n')).toContain('Name: AB')
+      expect(stripTerminalSequences(surface.component.render(80).join('\n'))).toContain('Name: AB')
 
       surface.focusTarget!.handleInput?.('C')
       handle.refresh()
       await flush()
-      expect(surface.component.render(80).join('\n')).toContain('Name: ABC')
+      expect(stripTerminalSequences(surface.component.render(80).join('\n'))).toContain('Name: ABC')
       expect(entry(f.runtime.surfaces, 'profile').focusTarget).toBe(surface.focusTarget)
 
       handle.set(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'A' }] }), { reason: 'replace' })
       await flush()
       const replacement = entry(f.runtime.surfaces, 'profile')
       expect(replacement.component).not.toBe(surface.component)
-      expect(replacement.component.render(80).join('\n')).toContain('Name: A')
-      expect(replacement.component.render(80).join('\n')).not.toContain('Name: ABC')
+      expect(stripTerminalSequences(replacement.component.render(80).join('\n'))).toContain('Name: A')
+      expect(stripTerminalSequences(replacement.component.render(80).join('\n'))).not.toContain('Name: ABC')
     } finally {
       await f.dispose()
     }

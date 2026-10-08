@@ -14,6 +14,7 @@ import { loaderCell, loaderVariant } from './ui-loader-animation.ts'
 import { hintNotation } from './ui-key-grammar.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
+import { paintFormField, type FieldDecor } from './ui-form-paint.ts'
 import { segmentFooter } from './ui-list-segment.ts'
 import { paintList, type ListPaintOptions, type ListRowMemo, type ListRowSpec } from './ui-list-paint.ts'
 import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
@@ -159,10 +160,6 @@ export function renderAutocompleteList(
   // Only the fixed two-column pointer can out-wide a viewport mid-resize.
   // Normal rows remain untouched so theme paint composes outside this seam.
   return available < 3 ? rows.map(row => sliceByColumn(row, 0, available, true)) : rows
-}
-
-function interactivePrefix(focus: PatternFocus): string {
-  return focus.focused ? `${focus.marker}→ ` : '   '
 }
 
 /**
@@ -311,41 +308,8 @@ export function renderListSegment(segment: MayflyListSegment, selectedId: string
   return segmentFooter({ segment, pinned, active: selectedId }, safeWidth(width), colors, segment.label ?? 'Options')
 }
 
-export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key): string[] {
-  const available = safeWidth(width)
-  const focused = focus.focused && focus.key === field.id && field.disabled !== true
-  const expandable = field.kind === 'select' || field.kind === 'multiselect'
-  const expanded = expandable && field.disabled !== true && field.options.length > 0 && focus.editing === true
-  let value: string
-  let placeholder = false
-  if (field.kind === 'toggle') value = field.value ? '[on]' : '[off]'
-  else if (field.kind === 'select') value = field.value === null ? text('Choose…') : field.options.find(option => option.id === field.value)?.label ?? field.value
-  else if (field.kind === 'multiselect') value = field.options.filter(option => field.value.includes(option.id)).map(option => option.label).join(', ') || text('None selected')
-  else if (field.kind === 'number') value = `${field.value ?? ''}${field.unit === undefined ? '' : ` ${field.unit}`}`
-  else if (field.kind === 'secret') value = field.value.length === 0 ? field.placeholder ?? '' : '•'.repeat(field.value.length)
-  else value = field.value.length === 0 ? field.placeholder ?? '' : field.value
-  if (field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret') placeholder = field.value.length === 0 && field.placeholder !== undefined
-  const prefix = interactivePrefix({ key: field.id, focused, marker: focus.marker })
-  // Expanded selects show the label as a group header; the option rows carry the value.
-  // A focused single select wraps its value in ‹ › while ←→ can cycle it.
-  const cycles = focused && field.kind === 'select' && field.options.filter(option => option.disabled !== true).length > (field.value === null ? 0 : 1)
-  const body = expanded ? field.label : `${field.label}: ${cycles ? `‹ ${value} ›` : value}`
-  const row = field.disabled === true
-    ? colors.muted(`${prefix}${body}`)
-    : focused ? colors.primary(`${prefix}${body}`)
-      : expanded ? `${prefix}${colors.textStrong(field.label)}`
-        : `${prefix}${colors.textStrong(`${field.label}:`)} ${placeholder ? colors.textMuted(value) : colors.text(value)}`
-  const rows = [fit(row, available)]
-  if (expanded) {
-    for (const option of field.options) {
-      const selected = field.kind === 'select' ? field.value === option.id : field.value.includes(option.id)
-      const active = focused && (focus.optionId ?? (field.kind === 'select' ? field.value : field.value[0]) ?? field.options[0]?.id) === option.id
-      const text = `${active ? ' →' : '  '} ${selected ? '●' : '○'} ${option.label}${option.disabledReason === undefined ? '' : ` — ${option.disabledReason}`}`
-      rows.push(fit(option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.text(text), available))
-    }
-  }
-  if (field.error !== undefined) rows.push(fit(colors.error(`   ! ${field.error}`), available))
-  return rows
+export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key, decor: FieldDecor = {}, labelWidth = visibleWidth(field.label)): string[] {
+  return paintFormField({ field, decor, width, focus, colors, text, labelWidth })
 }
 
 /** One action as the kit's `actionTokens` writes it: `[ Label ]` primary, `! Label` danger, a declared key as `(c)`. */

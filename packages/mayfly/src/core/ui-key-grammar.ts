@@ -9,7 +9,7 @@
 import {
   ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_EXPAND, ACTION_FILTER, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
   ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
-  ACTION_PREV_TAB, ACTION_RESET_FIELD, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey, printableKey,
+  ACTION_PREV_TAB, ACTION_RESET_FIELD, ACTION_SAVE, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey, printableKey,
 } from './key-actions.ts'
 
 /** The layer one Escape press leaves, innermost first. */
@@ -25,9 +25,10 @@ export type GrammarControl =
   | { readonly kind: 'none' }
   | { readonly kind: 'editor' }
   | { readonly kind: 'scroll' }
-  | { readonly kind: 'text', readonly field: 'input' | 'textarea' | 'secret' | 'number', readonly editing: boolean, readonly enterSubmits: boolean }
-  | { readonly kind: 'select', readonly multiple: boolean, readonly picker: boolean, readonly adjustable: boolean }
-  | { readonly kind: 'toggle' }
+  /** `completes`: the field is being edited and one of its suggestions starts with what is typed, so `Tab` takes it. */
+  | { readonly kind: 'text', readonly field: 'input' | 'textarea' | 'secret' | 'number', readonly editing: boolean, readonly enterSubmits: boolean, readonly completes?: boolean }
+  | { readonly kind: 'select', readonly multiple: boolean, readonly picker: boolean, readonly adjustable: boolean, readonly enterSubmits?: boolean }
+  | { readonly kind: 'toggle', readonly enterSubmits?: boolean }
   | { readonly kind: 'submit' }
   | { readonly kind: 'field-action' }
   | { readonly kind: 'tab' }
@@ -79,6 +80,8 @@ export interface GrammarState {
   readonly closable: boolean
   /** What resetting the focused field does, when it has a changed or overriding value. */
   readonly reset?: 'inherit' | 'reset'
+  /** The focused control belongs to a form that has something to save: `ui.save` submits it from any of its fields. */
+  readonly save?: boolean
 }
 
 export type GrammarIntent =
@@ -119,6 +122,9 @@ export type GrammarIntent =
   | { readonly kind: 'navigate', readonly direction: Direction }
   | { readonly kind: 'activate' }
   | { readonly kind: 'field-reset' }
+  | { readonly kind: 'form-save' }
+  | { readonly kind: 'complete' }
+  | { readonly kind: 'number-step', readonly delta: -1 | 1 }
 
 export type GrammarMatch =
   | { readonly kind: 'action', readonly action: string }
@@ -207,18 +213,24 @@ function scrollKeys(bindings: GrammarBinding[]): void {
   for (const [index, [id, movement]] of MOVEMENTS.entries()) push(bindings, action(id), { kind: 'scroll', movement }, index === 0 ? hint : undefined)
 }
 
+function formSave(bindings: GrammarBinding[], state: GrammarState): void {
+  if (state.save === true) push(bindings, action(ACTION_SAVE), { kind: 'form-save' })
+}
+
 function textEditing(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'text' }>): void {
-  groupMoves(bindings, state, true)
+  formSave(bindings, state)
+  // A suggestion that matches takes Tab; the group move is hinted only when Tab has nothing to complete.
+  if (control.completes === true) push(bindings, action(ACTION_NEXT_CONTROL), { kind: 'complete' }, { id: 'complete', label: 'complete', priority: PRIORITY.adjust, actions: [ACTION_NEXT_CONTROL] })
+  groupMoves(bindings, state, control.completes !== true)
   const textarea = control.field === 'textarea'
   push(bindings, action(ACTION_NEWLINE), textarea ? { kind: 'text-newline' } : { kind: 'swallow' },
-    textarea && control.enterSubmits ? { id: 'newline', label: 'newline', priority: PRIORITY.adjust, actions: [ACTION_NEWLINE] } : undefined)
-  push(bindings, action(ACTION_SUBMIT), { kind: 'text-enter' }, textarea && !control.enterSubmits
-    ? { id: 'activate', label: 'newline', priority: PRIORITY.adjust, actions: [ACTION_SUBMIT, ACTION_NEWLINE] }
-    : { id: 'activate', label: control.enterSubmits ? 'submit' : 'next', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+    textarea ? { id: 'newline', label: 'newline', priority: PRIORITY.adjust, actions: [ACTION_NEWLINE] } : undefined)
+  push(bindings, action(ACTION_SUBMIT), { kind: 'text-enter' }, { id: 'activate', label: control.enterSubmits ? 'submit' : 'next', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
   push(bindings, { kind: 'any' }, { kind: 'text-type' })
 }
 
 function picker(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'select' }>): void {
+  formSave(bindings, state)
   groupMoves(bindings, state, true)
   const moves: readonly (readonly [string, -1 | 1])[] = [[ACTION_MOVE_UP, -1], [ACTION_MOVE_DOWN, 1], [ACTION_SEGMENT_LEFT, -1], [ACTION_SEGMENT_RIGHT, 1]]
   for (const [index, [id, delta]] of moves.entries()) {
@@ -352,19 +364,32 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       listText(bindings, state)
       break
     case 'text':
+      formSave(bindings, state)
       push(bindings, action(ACTION_SUBMIT), control.enterSubmits ? { kind: 'enter-submits' } : { kind: 'text-begin' },
         { id: 'activate', label: control.enterSubmits ? 'submit' : 'edit', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       push(bindings, { kind: 'text', space: true }, { kind: 'text-begin' })
-      navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'])
+      if (control.field === 'number') {
+        // A number steps with ←/→ and gives the key back to the row beside it at its limits.
+        navigation(bindings, state, ['up', 'down'], 'fields')
+        push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'number-step', delta: -1 }, { id: 'adjust', label: 'step', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
+        push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'number-step', delta: 1 })
+      } else navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'])
       break
     case 'select':
+      formSave(bindings, state)
       navigation(bindings, state, ['up', 'down'], 'fields')
       if (!control.multiple && control.adjustable) {
         push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'select-cycle', delta: -1 }, { id: 'adjust', label: 'adjust', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
         push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'select-cycle', delta: 1 })
       }
-      push(bindings, action(ACTION_SUBMIT), { kind: 'picker-open' }, { id: 'activate', label: 'pick', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
-      if (control.multiple) push(bindings, action(ACTION_TOGGLE), { kind: 'picker-open' })
+      // A form that Enter submits keeps Enter for that, and Space opens the picker.
+      if (control.enterSubmits === true) {
+        push(bindings, action(ACTION_SUBMIT), { kind: 'enter-submits' }, { id: 'activate', label: 'continue', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+        push(bindings, action(ACTION_TOGGLE), { kind: 'picker-open' })
+      } else {
+        push(bindings, action(ACTION_SUBMIT), { kind: 'picker-open' }, { id: 'activate', label: 'pick', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+        if (control.multiple) push(bindings, action(ACTION_TOGGLE), { kind: 'picker-open' })
+      }
       navigation(bindings, state, ['left', 'right'], 'fields')
       break
     case 'tab':
@@ -378,6 +403,13 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     case 'field-action':
     case 'action':
     case 'cancel': {
+      if (control.kind === 'toggle' || control.kind === 'submit') formSave(bindings, state)
+      if (control.kind === 'toggle' && control.enterSubmits === true) {
+        push(bindings, action(ACTION_SUBMIT), { kind: 'enter-submits' }, { id: 'activate', label: 'continue', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+        push(bindings, action(ACTION_TOGGLE), { kind: 'activate' })
+        navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'])
+        break
+      }
       const label = control.kind === 'toggle' ? 'toggle' : control.kind === 'submit' ? 'submit' : control.kind === 'field-action' ? 'apply'
         : control.kind === 'cancel' ? 'cancel' : control.decision ? 'confirm' : 'run'
       push(bindings, action(ACTION_SUBMIT), { kind: 'activate' }, control.kind === 'cancel' && control.work === true ? undefined : { id: 'activate', label, priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })

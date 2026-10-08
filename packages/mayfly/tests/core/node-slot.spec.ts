@@ -59,7 +59,7 @@ describe('node slot test host', () => {
     const { content, editor, footer } = hosts(tree.terminal)
     expect(tree.root.mayflyUiInteraction.list('slot').map(model => model.id)).toEqual(['status.footer', 'editor.prompt', 'transcript.conversation'])
     expect(footer.render(100).join('\n')).toContain('entry 11 0')
-    expect(editor.render(100)).toEqual(['   Prompt: '])
+    expect(editor.render(100)).toEqual(['  Prompt: '])
     expect(content.render(100)[0]).toContain('(1/200)')
 
     tree.state.stream!.focus()
@@ -79,7 +79,7 @@ describe('node slot test host', () => {
     tree.state.editor!.focus()
     expect(editor.render(100).at(-1)).toBe('  Enter edit')
     for (const key of ['\r', 'h', 'i']) editor.handleInput!(key)
-    expect(editor.render(100)).toEqual(['\x1b_pi:c\x07 → Prompt: hi', '  Enter next · Esc done'])
+    expect(editor.render(100)).toEqual(['→\x1b_pi:c\x07 \x1b[1mPrompt: \x1b[22mhi', '  Enter next · Esc done'])
     expect(tree.root.mayflyUiInteraction.get('slot', 'editor.prompt')!.form(PROMPT)?.fields.draft?.value).toBe('hi')
 
     // A footer publish republishes only the changed entry; the row is the status-shaped one.

@@ -219,41 +219,41 @@ describe('private UI pattern painters', () => {
   })
 
   it('renders every form field state with validation on its own row', () => {
+    const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
     const focus = { key: 'input', focused: true, marker: '|' }
-    expect(renderFormField({ kind: 'input', id: 'input', label: 'Input', value: '', placeholder: 'hint', error: 'required' }, 40, focus, colors)).toEqual([
-      '|→ Input: hint',
-      '   ! required',
+    expect(plain(renderFormField({ kind: 'input', id: 'input', label: 'Input', value: '', placeholder: 'hint', error: 'required' }, 40, focus, colors))).toEqual([
+      '→|Input: hint',
+      '    ! required',
     ])
-    expect(renderFormField({ kind: 'textarea', id: 'text', label: 'Text', value: '' }, 20, idle, colors)[0]).toBe('   Text: ')
-    expect(renderFormField({ kind: 'textarea', id: 'text', label: 'Text', value: 'body' }, 20, idle, colors)[0]).toContain('body')
-    expect(renderFormField({ kind: 'secret', id: 'secret', label: 'Secret', value: '', placeholder: 'secret' }, 20, idle, colors)[0]).toContain('secret')
-    expect(renderFormField({ kind: 'secret', id: 'secret', label: 'Secret', value: '' }, 20, idle, colors)[0]).toBe('   Secret: ')
-    expect(renderFormField({ kind: 'secret', id: 'secret', label: 'Secret', value: 'abc' }, 20, idle, colors)[0]).toContain('•••')
-    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: null, options: [] }, 20, idle, colors)[0]).toContain('Choose…')
-    const unfocusedSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, idle, colors)
-    expect(unfocusedSelect).toEqual(['   Select: Alpha'])
+    expect(plain(renderFormField({ kind: 'textarea', id: 'text', label: 'Text', value: '' }, 20, idle, colors))[0]).toBe('  Text: empty')
+    expect(renderFormField({ kind: 'textarea', id: 'text', label: 'Text', value: 'body' }, 40, idle, colors)[0]).toContain('body')
+    expect(renderFormField({ kind: 'secret', id: 'secret', label: 'Secret', value: '', placeholder: 'secret' }, 40, idle, colors)[0]).toContain('secret')
+    expect(plain(renderFormField({ kind: 'secret', id: 'secret', label: 'Secret', value: '' }, 40, idle, colors))[0]).toBe('  Secret: not set')
+    expect(renderFormField({ kind: 'secret', id: 'secret', label: 'Secret', value: 'abc' }, 40, idle, colors)[0]).toContain('•••')
+    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: null, options: [] }, 40, idle, colors)[0]).toContain('Choose…')
+    const unfocusedSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 40, idle, colors)
+    expect(plain(unfocusedSelect)).toEqual(['  Select: Alpha'])
     const focusedSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors)
-    expect(focusedSelect).toEqual(['|→ Select: ‹ Alpha ›'])
+    expect(plain(focusedSelect)).toEqual(['→|Select: ‹ Alpha ›'])
     // Nothing to cycle to: a lone chosen option, a disabled alternative, or a multiselect.
-    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta', disabled: true }] }, 24, { key: 'select', focused: true, marker: '|' }, colors)).toEqual(['|→ Select: Alpha'])
-    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: null, options: [{ id: 'a', label: 'Alpha' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors)).toEqual(['|→ Select: ‹ Choose… ›'])
-    expect(renderFormField({ kind: 'multiselect', id: 'select', label: 'Tags', value: ['a'], options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors)).toEqual(['|→ Tags: Alpha'])
+    expect(plain(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta', disabled: true }] }, 24, { key: 'select', focused: true, marker: '|' }, colors))).toEqual(['→|Select: Alpha'])
+    expect(plain(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: null, options: [{ id: 'a', label: 'Alpha' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors))).toEqual(['→|Select: ‹ Choose… ›'])
+    expect(plain(renderFormField({ kind: 'multiselect', id: 'select', label: 'Tags', value: ['a'], options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors))).toEqual(['→|Tags: Alpha'])
     const editingSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, { key: 'select', focused: true, marker: '|', editing: true }, colors)
     expect(editingSelect.join('\n')).toContain('→ ● Alpha')
-    const unfocusedEditing = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, { key: 'select', marker: '|', editing: true }, colors)
-    expect(unfocusedEditing).toEqual(['   Select', '   ● Alpha'])
-    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'missing', options: [] }, 20, idle, colors)[0]).toContain('missing')
-    expect(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: true }, 20, idle, colors)[0]).toContain('[on]')
+    const unfocusedEditing = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 40, { key: 'select', marker: '|', editing: true }, colors)
+    expect(plain(unfocusedEditing)).toEqual(['  Select: Alpha'])
+    expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'missing', options: [] }, 40, idle, colors)[0]).toContain('missing')
+    expect(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: true }, 40, idle, colors)[0]).toContain('[on]')
     expect(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: false, disabled: true }, 5, idle, colors)[0]).toHaveLength(5)
     const mutedOnly = new Proxy(colors, { get: (target, key, receiver) => key === 'muted'
       ? (value: string) => `<muted>${value}</muted>`
       : key === 'text' || key === 'textStrong' ? (value: string) => `<foreground>${value}</foreground>` : Reflect.get(target, key, receiver) })
     const disabled = renderFormField({ kind: 'input', id: 'disabled', label: 'Disabled', value: 'value', disabled: true }, 80, idle, mutedOnly)[0]!
     expect(disabled).toContain('<muted>')
-    expect(disabled).not.toContain('<foreground>')
     expect(renderFormField({ kind: 'input', id: 'disabled', label: 'Disabled', value: '', disabled: true }, 80, { key: 'disabled', focused: true, marker: '|' }, colors)[0]).not.toContain('|')
     const focusPalette = new Proxy(colors, { get: (target, key, receiver) => key === 'primary' ? (value: string) => `<primary>${value}</primary>` : Reflect.get(target, key, receiver) })
-    expect(renderFormField({ kind: 'input', id: 'focused', label: 'Focused', value: 'value' }, 80, { key: 'focused', focused: true, marker: '|' }, focusPalette)[0]).toContain('<primary>|→ Focused: value</primary>')
+    expect(renderFormField({ kind: 'input', id: 'focused', label: 'Focused', value: 'value' }, 80, { key: 'focused', focused: true, marker: '|' }, focusPalette)[0]).toContain('<primary>→</primary>|')
   })
 
   it('renders action intents, busy/confirm states, deterministic loaders, and empty groups', () => {

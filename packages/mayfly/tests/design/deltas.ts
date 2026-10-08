@@ -75,4 +75,16 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
     summary: "The `h` key changes only the caption in the kit: the `minHeight: 20` child of the ladder stays drawn; the renderer hides it below 20 rows",
     reason: 'prototype artifact (its viewport height is not read); proposed in slice 1.3',
   },
+  {
+    id: 'Δ27',
+    scenes: [3, 4, 12],
+    summary: "`▌` in an edited field marks the terminal cursor (spec 4.3); the renderer draws no glyph, it parks the hardware cursor there",
+    reason: 'the spec calls the glyph the terminal cursor; proposed in slice 1.6',
+  },
+  {
+    id: 'Δ28',
+    scenes: [4, 12],
+    summary: "Core adds the `unsaved changes` badge to the head of every surface whose form is dirty; the prototype adds it in scene 3 only",
+    reason: 'roadmap slice 1.6; proposed in slice 1.6',
+  },
 ]
