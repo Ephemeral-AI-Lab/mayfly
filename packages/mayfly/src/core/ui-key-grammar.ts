@@ -514,7 +514,7 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: 'Alt+←/→ or F2/F3', action: 'Switch tabs from anywhere on the surface; wizards validate the step being left' },
   { keys: 'Alt+↑/↓ or F4/F5', action: 'Move between controls from anywhere outside text editing and open pickers' },
   { keys: '←', action: 'Used by the focused control when it changes something; otherwise it moves focus to the surface\'s rail of labels, where it does nothing' },
-  { keys: '→ or Enter on a rail', action: 'Enter the page beside the rail; ↑/↓ on the rail change the page at once' },
+  { keys: 'Enter or → on a rail', action: 'Enter the page beside the rail; ↑/↓ on the rail change the page at once' },
   { keys: 'Alt+↓ or F5, F6', action: 'From an empty prompt, enter the views of the status bar (F6 enters them first, then the interactive panes); ←/→ switch views and Esc returns to the prompt' },
   { keys: 'PgUp/PgDn, Home/End', action: 'Page or jump in lists and documents' },
   { keys: 'Enter', action: 'Choose, run, open a picker, apply it, or start editing a field' },

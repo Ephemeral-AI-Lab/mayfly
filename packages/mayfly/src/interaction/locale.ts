@@ -45,7 +45,7 @@ const zh: Readonly<Record<string, string>> = {
   'Alt+↑/↓ or F4/F5': 'Alt+↑/↓ 或 F4/F5',
   'Move between controls from anywhere outside text editing and open pickers': '在文本编辑和选择器打开之外的任意位置，在控件之间移动',
   'Used by the focused control when it changes something; otherwise it moves focus to the surface\'s rail of labels, where it does nothing': '聚焦的控件在 ← 能改变内容时自己使用它；否则焦点移到面板的侧栏，在侧栏上 ← 不起作用',
-  '→ or Enter on a rail': '侧栏上的 → 或 Enter',
+  'Enter or → on a rail': '侧栏上的 Enter 或 →',
   'Enter the page beside the rail; ↑/↓ on the rail change the page at once': '进入侧栏旁的页面；在侧栏上 ↑/↓ 立即切换页面',
   'Page or jump in lists and documents': '在列表和文档中翻页或跳转',
   'Choose, run, open a picker, apply it, or start editing a field': '选择、执行、打开或应用选择器，或开始编辑字段',

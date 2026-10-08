@@ -26,7 +26,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `Alt+←/→ or F2/F3` | Switch tabs from anywhere on the surface; wizards validate the step being left |
 | `Alt+↑/↓ or F4/F5` | Move between controls from anywhere outside text editing and open pickers |
 | `←` | Used by the focused control when it changes something; otherwise it moves focus to the surface's rail of labels, where it does nothing |
-| `→ or Enter on a rail` | Enter the page beside the rail; ↑/↓ on the rail change the page at once |
+| `Enter or → on a rail` | Enter the page beside the rail; ↑/↓ on the rail change the page at once |
 | `Alt+↓ or F5, F6` | From an empty prompt, enter the views of the status bar (F6 enters them first, then the interactive panes); ←/→ switch views and Esc returns to the prompt |
 | `PgUp/PgDn, Home/End` | Page or jump in lists and documents |
 | `Enter` | Choose, run, open a picker, apply it, or start editing a field |
