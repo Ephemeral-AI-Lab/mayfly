@@ -32,9 +32,31 @@ export const chart = ui.chart({ chart: 'line', series: [{ id: 'load', points: [{
 export const horizontalBar = ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: ['ctx'], series: [{ id: 'load', values: [1] }, { id: 'free', values: [9], empty: true }] })
 export const photo = ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
 export const photoNode: MayflyUiNode = photo
+export const composer = ui.prompt({
+  id: 'composer',
+  symbol: '! ',
+  symbolTone: 'accent',
+  value: 'draft',
+  tokens: [{ id: 't1', label: 'Image #1', size: '84 KB' }, { id: 't2', label: 'notes.md' }],
+  recall: [{ kind: 'queued', text: 'also update the footer' }, { kind: 'history', text: 'run the width scan again' }],
+  recallLabel: 'history',
+  placeholder: ['Ask anything · / commands', 'Ask anything'],
+  completions: { items: [{ id: 'c1', label: '/model', detail: 'switch model', right: 'Ctrl+M' }, { id: 'c2', label: '/trace' }] },
+  reset: { rev: 1, value: '' },
+  submitLabel: 'send',
+  autofocus: true,
+})
+export const composerNode: MayflyUiNode = composer
+export const bareComposer = ui.prompt({ id: 'bare', placeholder: 'Ask anything' })
 export const handlers: MayflyUiEventHandlers = {
-  observe: event => event.kind === 'value-change' ? { kind: 'completed' } : undefined,
+  observe: event => event.kind === 'value-change' || event.kind === 'recall-change' ? { kind: 'completed' } : undefined,
   action: event => event.kind === 'submit' ? { kind: 'cancelled' } : { kind: 'completed' },
+}
+export const promptHandlers: MayflyUiEventHandlers = {
+  observe: event => event.kind === 'recall-change' && event.source === 'draft' ? { kind: 'completed' } : undefined,
+  action: event => event.kind === 'token-remove' ? { kind: 'completed', feedback: { message: event.tokenId, severity: 'info' } }
+    : event.kind === 'completion-accept' ? { kind: 'completed', feedback: { message: event.itemId, severity: 'info' } }
+      : event.kind === 'completion-dismiss' ? { kind: 'completed' } : { kind: 'cancelled' },
 }
 
 // @ts-expect-error actions must settle with a structured reply
@@ -62,6 +84,20 @@ export const editorChart: MayflyEditorExtensionNode = chart
 export const statusImage: MayflyStatusNode = photo
 // @ts-expect-error images are not editor-extension nodes
 export const editorImage: MayflyEditorExtensionNode = photo
+// @ts-expect-error prompts are not status nodes
+export const statusPrompt: MayflyStatusNode = composer
+// @ts-expect-error prompts are not editor-extension nodes
+export const editorPrompt: MayflyEditorExtensionNode = composer
+// @ts-expect-error a prompt names its control
+ui.prompt({ placeholder: 'missing id' })
+// @ts-expect-error a recalled message is queued or history
+ui.prompt({ id: 'p', recall: [{ kind: 'pinned', text: 'x' }] })
+// @ts-expect-error a token carries a label
+ui.prompt({ id: 'p', tokens: [{ id: 't' }] })
+// @ts-expect-error the wire carries no callbacks
+ui.prompt({ id: 'p', onSubmit: () => {} })
+// @ts-expect-error observations cannot publish, so the draft returning is not an action
+export const recallIsAction: MayflyUiActionHandler = event => event.kind === 'recall-change' ? { kind: 'completed' } : { kind: 'cancelled' }
 // @ts-expect-error an image names its attachment and carries its fallback text
 ui.image({ alt: 'missing id' })
 // @ts-expect-error an image carries its fallback text

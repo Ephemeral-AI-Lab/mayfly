@@ -11,6 +11,7 @@ import type {
   MayflyChartNode,
   MayflyDiagramNode,
   MayflyImageNode,
+  MayflyPromptNode,
   MayflyFormField,
   MayflyInlineSpan,
   MayflyListItem,
@@ -80,6 +81,7 @@ import { UiRowCache } from './ui-row-cache.ts'
 import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
 import { isRail, tabsShape } from './ui-tabs-paint.ts'
 import { UiImagePainter } from './ui-image.ts'
+import { paintPrompt } from './ui-prompt.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choicePinned, choiceRow, focusableListItem, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition } from './ui-interaction-choice.ts'
@@ -579,6 +581,13 @@ function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions):
   const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint)
   const component = staticComponent(width => painter.render(width), options)
   return { render: component.render, invalidate: () => { painter.invalidate() } }
+}
+
+function promptComponent(node: MayflyPromptNode, options: RuntimeCompilerOptions): MayflyComponent {
+  return staticComponent(width => paintPrompt({
+    node, model: undefined, width, focused: false, colors: options.colors, components: options.components,
+    glyphs: options.components.presentation?.glyphs, translate: key => coreText(options, key), buffer: () => [],
+  }), options)
 }
 
 function chartComponent(node: MayflyChartNode, options: RuntimeCompilerOptions): MayflyComponent {
@@ -1650,6 +1659,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'diagram': return diagramComponent(node, options)
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)
+    case 'prompt': return promptComponent(node, options)
   }
 }
 

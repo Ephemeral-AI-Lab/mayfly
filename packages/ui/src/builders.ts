@@ -15,6 +15,7 @@ import type {
   MayflyListNode,
   MayflyLoaderNode,
   MayflyProgressNode,
+  MayflyPromptNode,
   MayflyRichTextNode,
   MayflyScrollNode,
   MayflySection,
@@ -201,6 +202,10 @@ function image(options: Omit<MayflyImageNode, 'kind'>): MayflyImageNode {
   return frozen({ ...frozen(options), kind: 'image' })
 }
 
+function prompt(options: Omit<MayflyPromptNode, 'kind'>): MayflyPromptNode {
+  return frozen({ ...frozen(options), kind: 'prompt' })
+}
+
 function diagram(source: string): MayflyDiagramNode {
   return frozen({ kind: 'diagram', diagram: 'mermaid', source })
 }
@@ -236,6 +241,7 @@ export const ui = Object.freeze({
   spacer,
   divider,
   image,
+  prompt,
   diagram,
   chart,
 })
