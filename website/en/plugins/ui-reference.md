@@ -1045,7 +1045,7 @@ inputs contain the current selection with submitted forms.
 
 ![`form` node rendering](/shots/form.svg)
 
-*Common field kinds in their default state: the secret value is masked, the select shows its current value, and the toggle shows its switch (width 64).*
+*Common field kinds in their default state: the secret value is masked, the select shows its current value, and the toggle shows its switch. A form with several fields draws one primary Save; a form with a single field draws no button (width 64).*
 
 ```ts
 ui.form({
@@ -1063,13 +1063,19 @@ A form field is this discriminated union:
 
 | `kind` | Required fields | Optional fields | `value-change` value |
 | --- | --- | --- | --- |
-| `input` | `id`, `label`, `value: string` | `placeholder`, `error`, `disabled` | `string` |
+| `input` | `id`, `label`, `value: string` | `placeholder`, `pattern`, `patternMessage`, `suggestions`, `error`, `disabled` | `string` |
 | `textarea` | Same as input | Same as input | `string` |
 | `secret` | Same as input | Same as input; renderer masks value | `string` |
 | `number` | `id`, `label`, `value: number \| null` | `min`, `max`, `step`, `unit` | a `string` draft while editing |
 | `select` | `id`, `label`, `value: string \| null`, `options: MayflyListItem[]` | `error`, `disabled` | `string \| null` |
 | `multiselect` | `id`, `label`, `value: string[]`, `options` | `minSelected`, `maxSelected` | `string[]` |
 | `toggle` | `id`, `label`, `value: boolean` | `error`, `disabled` | `boolean` |
+
+Every kind also takes `help` (one muted line under the field while it holds focus; the first thing a narrow form drops)
+and `group` (fields that share a group sit under one `── Group ──` heading; a new value starts the next heading).
+`pattern` is a regular expression of at most 256 characters, compiled with the `u` flag and checked against a non-empty
+value; `patternMessage` words the error (a localized "Invalid value" otherwise). `suggestions` (at most 64 single lines)
+are offered while the field is edited: the first one the typed text is the start of is marked `⇥`, and Tab takes it.
 
 The screenshot above renders exactly this node:
 
@@ -1088,8 +1094,6 @@ ui.form({
   ],
   submitActionId: 'create-profile',
   submitLabel: 'Create profile',
-  cancelActionId: 'cancel',
-  cancelLabel: 'Cancel',
 })
 ```
 
@@ -1098,11 +1102,15 @@ field revision to `onEvent.observe` for optional asynchronous validation. The
 plugin does not echo each keystroke as a snapshot. When an authoritative data
 snapshot changes, the model reconciles untouched values, drafts, and conflicts.
 Focused text fields remain in navigation until typing or Enter starts editing.
-Enter advances from a single-line input; Enter or Alt+Enter inserts a textarea
-newline. With `enterSubmits: actionId`, Enter in any field of the form runs that
-action (Alt+Enter still inserts a textarea newline). Escape ends editing and
-keeps the draft; a second Escape leaves the surface. A number field renders its
-`unit` after the value.
+Enter commits the field and moves to the next one; Alt+Enter (or Ctrl+J) inserts
+a textarea newline. With `enterSubmits: actionId`, Enter in any field of the form
+runs that action, including a select, a multiselect, or a toggle (Space then opens
+the picker or flips the switch); a form with a single field and a `submitActionId`
+submits on Enter the same way. Escape ends editing and keeps the draft; a second
+Escape leaves the surface. A focused textarea opens a box for its lines.
+A number field renders its `unit` after the value; while it holds focus it reads
+`‹ 45 › s  5–120`, and Left and Right step it by `step` within `min` and `max`
+(at a limit the key goes to the control beside it).
 
 In the form below, focusing the Name field and typing `Ada Lovelace` leaves a
 draft. The shot shows the draft text and the
@@ -1158,7 +1166,11 @@ ui.form({
 
 `error` shows a validation message under the field; disabled fields do not
 enter focus navigation but remain in the submitted form. Required, length,
-numeric, and selection constraints run before an action starts. The form below
+numeric, pattern, and selection constraints run before an action starts. Once a
+value was edited and the edit is over (Enter, Tab, or Escape), a broken constraint
+shows as `! message` under its field; a field never scolds while it is being typed
+into. A refused save marks every invalid field, says "Fix the highlighted fields",
+and leaves the focus where it is (an error on another page of the surface brings that page forward). The form below
 shows both states:
 
 ![`form` error and disabled states](/shots/form-validation.svg)
@@ -1177,17 +1189,51 @@ ui.form({
 })
 ```
 
-`origin: 'inherited' | 'explicit'` adds `(Inherited)` or `(Override)` after
-the label; editing an inherited value overrides it. `resetValue` makes a changed
-or overriding field resettable: Delete on that field returns it to `resetValue`
-(the inherited value when the field has an `origin`), and the submitted field
-reports `change: 'reset'`. The hint row shows Delete only while a reset would
-change something; forms render no separate override or reset buttons. A field
-whose authoritative value changed under a draft asks for **Use current value**
-or **Keep my changes** before the form can be saved.
+`origin: 'inherited' | 'explicit'` adds `(inherited)` or `(override)` after
+the value; editing an inherited value overrides it. A field that differs from its
+default, or has been edited, carries a `•` in place of the arrow column. `resetValue`
+makes a changed or overriding field resettable: Delete on that field returns it to
+`resetValue` (the inherited value when the field has an `origin`), and the submitted
+field reports `change: 'reset'`. Without a `resetValue`, Delete returns an edited
+field to the value it opened with. The hint row shows Delete only while a reset
+would change something; forms render no separate override or reset buttons. A
+secret whose stored value is untouched reads `•••• (saved)`. A field whose
+authoritative value changed under a draft asks for **Use current value** or
+**Keep my changes** before the form can be saved.
 
-`submitActionId` adds a submit control labelled `submitLabel` (a localized
-"Submit" when omitted); the id is never shown. An action's declared `submit` addresses
+In the form below, the Endpoint field holds focus, so its help line shows:
+
+![`form` groups, help, and marks](/shots/form-groups.svg)
+
+*Two groups under `── Group ──` headings. The focused field shows its `help`; the secret reads `(saved)`, Model reads `(inherited)`, and Timeout differs from its `resetValue`, so it carries `•` (width 64).*
+
+```ts
+ui.form({
+  id: 'provider-form',
+  fields: [
+    { kind: 'input', id: 'name', label: 'Name', value: 'production', group: 'Connection' },
+    { kind: 'input', id: 'endpoint', label: 'Endpoint', value: 'https://api.example.com/v1', help: 'Base URL, including the version path',
+      pattern: '^https?://\\S+$', patternMessage: 'Must be an http(s) URL' },
+    { kind: 'secret', id: 'key', label: 'API key', value: 'sk-live-0123456789' },
+    { kind: 'select', id: 'model', label: 'Model', value: 'deepseek-chat', origin: 'inherited', group: 'Behaviour', options: [
+      { id: 'deepseek-chat', label: 'deepseek-chat' },
+      { id: 'deepseek-reasoner', label: 'deepseek-reasoner' },
+    ] },
+    { kind: 'number', id: 'timeout', label: 'Timeout', value: 45, resetValue: 30, min: 5, max: 120, step: 5, unit: 's' },
+    { kind: 'toggle', id: 'stream', label: 'Streaming', value: true },
+  ],
+  submitActionId: 'save',
+})
+```
+
+While any form on a surface holds an unsaved edit, the surface head carries an
+`unsaved changes` badge after the badges the author gave it. Ctrl+S (`ui.save`)
+submits the form from any of its fields: through its `submitActionId`, the action
+`enterSubmits` names, or else the action that submits the form (a primary one first).
+
+`submitActionId` adds one primary submit control labelled `submitLabel` (a localized
+"Save" when omitted) to a form with more than one field; the id is never shown.
+A form with a single field draws no button: Enter submits it. An action's declared `submit` addresses
 collect one or more forms across pages and lock that action boundary:
 
 ```ts
@@ -1206,9 +1252,10 @@ collect one or more forms across pages and lock that action boundary:
 }
 ```
 
-`cancelActionId` adds a shared close control labelled `cancelLabel` (a
-localized "Cancel" when omitted). A dirty form first opens the default-No
-discard decision. Close actions never navigate back; Escape owns Back.
+`cancelActionId` is never drawn as a button: the outermost Escape runs it, and it
+closes the surface. A dirty form first opens the default-No discard decision. With
+no `onUnhandledEscape` from the host, the hint row words Escape as `cancel`. Close
+actions never navigate back; Escape owns Back.
 
 ### `actions`
 

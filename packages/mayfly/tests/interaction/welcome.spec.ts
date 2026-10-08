@@ -134,7 +134,7 @@ describe('welcome', () => {
     model.edit({ pagePath: [], formId: 'welcome', fieldId: 'language' }, 'xx')
     model.invoke('continue')
     await flush(8)
-    expect(model.feedbackSnapshot().at(-1)?.severity).toBe('error')
+    expect(model.feedbackSnapshot().at(-1)?.severity).toBe('warning')
     await openWelcome(ctx, new AbortController().signal)
     model.invoke('continue')
     lifetimeClose(ctx)

@@ -138,6 +138,8 @@ export class UiSurfaceModel {
   get registration(): UiSurfaceSnapshot { return this.input }
   get node(): MayflyUiNode | null { return this.admittedNode ?? this.admissionError ?? null }
   get focus(): UiControlAddress | undefined { return this.decision === undefined ? this.selectedControl : this.decision.focus }
+  /** A form holds an edit nobody has saved: the surface head says so. */
+  get formsDirty(): boolean { return [...this.forms.values()].some(formDirty) }
   get dirty(): boolean { return [...this.forms.values()].some(formDirty) || [...this.choices.values()].some(choice => choice.dirty) }
   get decisionNode(): MayflyUiNode | undefined {
     if (this.decision === undefined) return undefined
@@ -478,6 +480,19 @@ export class UiSurfaceModel {
     }
   }
 
+  /** The cancel action a form declared (`cancelActionId`): Escape's last step runs it, and it closes the surface. */
+  formCancel(): { readonly actionId: string, readonly pagePath: MayflyPagePath } | undefined {
+    const action = [...this.actions.values()].find(candidate => candidate.close === true)
+    return action === undefined ? undefined : { actionId: action.item.id, pagePath: action.pagePath }
+  }
+
+  /** The action that submits a form, for `ui.save` to run: a primary one first, then the first declared. */
+  saveActionFor(address: MayflyFormAddress): string | undefined {
+    const key = formAddressKey(address)
+    const submitting = [...this.actions.values()].filter(action => action.item.submit?.some(target => formAddressKey(target) === key) === true && action.item.disabled !== true)
+    return (submitting.find(action => action.item.intent === 'primary') ?? submitting[0])?.item.id
+  }
+
   invoke(actionId: string, requestedPath: MayflyPagePath = [], confirmed = false, supplied?: Extract<MayflyUiEvent, { readonly kind: 'activate' }>): void {
     if (!this.live || this.decision !== undefined) return
     /* A nested page's accept or Enter binding may name an action declared on an enclosing page. */
@@ -565,12 +580,15 @@ export class UiSurfaceModel {
       this.updateForm(error, { kind: 'validated', fieldId: error.fieldId, revision: field.revision, error: error.message })
     }
     const first = errors[0]!
-    this.selectedControl = { pagePath: first.pagePath, controlId: first.fieldId }
-    for (const segment of first.pagePath) {
-      const parent = first.pagePath.slice(0, first.pagePath.indexOf(segment))
-      this.activateTab({ pagePath: parent, controlId: segment.controlId }, segment.itemId)
+    // An error on the page the reader is on shows beside its field and the focus stays; one on another page is brought forward.
+    if (JSON.stringify(this.focus?.pagePath ?? []) !== JSON.stringify(first.pagePath)) {
+      this.selectedControl = { pagePath: first.pagePath, controlId: first.fieldId }
+      for (const segment of first.pagePath) {
+        const parent = first.pagePath.slice(0, first.pagePath.indexOf(segment))
+        this.activateTab({ pagePath: parent, controlId: segment.controlId }, segment.itemId)
+      }
     }
-    this.report(key, { message: first.message, severity: 'error' })
+    this.report(key, { message: this.t('Fix the highlighted fields'), severity: 'warning' })
   }
 
   /** Moving forward through a wizard strip validates the step being left, like its Next read boundary. */

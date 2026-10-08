@@ -50,7 +50,7 @@ const SCENE_13_VIEWS = [
 
 export const PENDING_PARITY: readonly PendingParity[] = [
   { directory: '05-lists', walk: 'move', frames: [3, 4], rows: [10, 10], slice: '1.5', reason: 'the hint row names `Esc back` while focus is on a control other than the surface\'s first (rows are those of the surface): Esc returns to the home control first (focus levels)' },
-  { directory: '01-marks-and-tokens', walk: 'pages', frames: [0], rows: [21, 26], slice: '1.6', reason: 'page 1 form block: the form marks, units, and (inherited) (1.6)' },
+  { directory: '12-a-downstream-plugin', walk: 'move', frames: [3], rows: [5, 5], slice: '1.5', reason: 'the hint row names `Esc back` while focus is on a control other than the surface\'s first (rows are those of the surface): Esc returns to the home control first (focus levels)' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [5], slice: '1.8b', reason: 'page 6 is patterns.splitView over lists with right-aligned spans (1.4)' },
   ...SCENE_13_VIEWS.flatMap(({ walk, entered, idle }) => [
     { directory: '13-status-area', walk, frames: [...idle, ...entered], rows: [0, 7] as const, slice: 'Phase 3', reason: 'row 1 of the status area (Phase 3) and the editor frame (Phase 5); the lane starts at row 8' },

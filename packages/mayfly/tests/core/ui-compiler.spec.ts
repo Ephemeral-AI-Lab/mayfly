@@ -924,7 +924,7 @@ describe('compileMayflyUiNode', () => {
     focus.render(40)
     focus.handleInput?.('\r')
     const frame = result.value.component.render(40).join('\n')
-    expect(frame).toContain('Pick: Choose…')
+    expect(stripTerminalSequences(frame)).toContain('Pick: Choose…')
     model.dispose()
   })
 
@@ -984,9 +984,12 @@ describe('compileMayflyUiNode', () => {
 
     f.viewport.columns = 100
     result.component.render(100)
-    expect(editors).toHaveLength(1)
+    // A field builds its editor when it holds focus.
+    expect(editors).toHaveLength(0)
     runtime.admit(result.node)
     result.focusTarget!.focused = true
+    result.component.render(100)
+    expect(editors).toHaveLength(1)
     result.focusTarget!.handleInput?.('\r')
     result.component.render(100)
     expect(editors[0]!.focused).toBe(true)
@@ -1189,6 +1192,9 @@ describe('compileMayflyUiNode', () => {
     const result = compiled(ui.form({ id: 'form', fields: [{ kind: 'textarea', id: 'notes', label: 'Notes', value: '' }] }), fixture({
       components: { ...components, createEditor: () => editor } as MayflyComponents,
     }).options)
+    // The editor's rows show while the field is edited.
+    result.focusTarget!.focused = true
+    result.focusTarget!.handleInput?.('\r')
     const root = (result.component as unknown as { root: Component }).root
     expect(root.render(Number.NaN)).not.toEqual([])
     expect(root.render(40).join('\n')).toContain('second')
@@ -1327,6 +1333,7 @@ describe('compileMayflyUiNode', () => {
       const result = compileMayflyUiSurfaceNode(field(index), { ...f.options, surfaceRuntime: runtime })
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error(result.message)
+      result.value.focusTarget!.focused = true
       result.value.component.render(40)
     }
 
@@ -1918,7 +1925,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'save', label: 'Save' }] }),
     ])
     expect(focusedHint(textareaGroups, ['\r']))
-      .toBe('  Enter/Alt+Enter newline · Tab/Shift+Tab groups · Esc done')
+      .toBe('  Enter next · Alt+Enter newline · Tab/Shift+Tab groups · Esc done')
 
     const submittingTextarea = ui.form({ id: 'form', enterSubmits: 'send', fields: [{ kind: 'textarea', id: 'notes', label: 'Notes', value: '' }] })
     expect(focusedHint(submittingTextarea, ['a'])).toBe('  Enter submit · Alt+Enter newline · Esc done')

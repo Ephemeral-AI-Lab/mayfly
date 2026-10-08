@@ -218,9 +218,22 @@ export interface MayflyFormFieldBase {
   readonly required?: boolean
   readonly origin?: 'inherited' | 'explicit'
   readonly resetValue?: MayflyFieldValue
+  /** One muted line under the field while it holds focus; the first thing a narrow form drops. */
+  readonly help?: string
+  /** Fields that share a `group` sit under one `── Group ──` heading; a new value starts the next heading. */
+  readonly group?: string
+}
+/** The text-entry constraints beyond length: `pattern` is checked when the field commits, and `suggestions` complete on `Tab`. */
+export interface MayflyTextFieldRules {
+  /** A regular expression (at most 256 characters) the committed value must match. */
+  readonly pattern?: string
+  /** The error shown when `pattern` fails; a localized "Invalid value" otherwise. */
+  readonly patternMessage?: string
+  /** Completions offered while the field is edited: the first one matching what is typed is marked `⇥`, and `Tab` takes it. */
+  readonly suggestions?: readonly string[]
 }
 export type MayflyFormField = MayflyFormFieldBase & (
-  | { readonly kind: 'input' | 'textarea' | 'secret', readonly value: string, readonly placeholder?: string, readonly minLength?: number, readonly maxLength?: number }
+  | ({ readonly kind: 'input' | 'textarea' | 'secret', readonly value: string, readonly placeholder?: string, readonly minLength?: number, readonly maxLength?: number } & MayflyTextFieldRules)
   | { readonly kind: 'number', readonly value: number | null, readonly min?: number, readonly max?: number, readonly step?: number, readonly unit?: string }
   | { readonly kind: 'select', readonly value: string | null, readonly options: readonly MayflyListItem[] }
   | { readonly kind: 'multiselect', readonly value: readonly string[], readonly options: readonly MayflyListItem[], readonly minSelected?: number, readonly maxSelected?: number }

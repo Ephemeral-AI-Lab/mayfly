@@ -38,7 +38,6 @@ import {
   renderActions,
   renderDivider,
   renderEmpty,
-  renderFormField,
   renderList,
   renderLoader,
   renderProgress,
@@ -52,6 +51,8 @@ import {
 } from './ui-patterns.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
+import { fieldDecor, fieldDisplayError, stepNumber } from './ui-interaction-form.ts'
+import { editorWidth, formHeading, formLabelWidth, matchingSuggestions, paintFormField, type FieldDecor } from './ui-form-paint.ts'
 import {
   deferredUiNodeMayHaveControls,
   isDeferredUiNode,
@@ -330,8 +331,8 @@ type ControlDescriptor =
       readonly work?: true
     })
   | (ControlBase & { readonly kind: 'text', readonly field: TextField, readonly form: FormNode })
-  | (ControlBase & { readonly kind: 'select', readonly field: SelectField })
-  | (ControlBase & { readonly kind: 'toggle', readonly field: ToggleField })
+  | (ControlBase & { readonly kind: 'select', readonly field: SelectField, readonly form: FormNode })
+  | (ControlBase & { readonly kind: 'toggle', readonly field: ToggleField, readonly form: FormNode })
   | (ControlBase & { readonly kind: 'submit', readonly form: FormNode })
   | (ControlBase & { readonly kind: 'field-action', readonly address: MayflyFieldAddress, readonly action: UiFieldAction })
   | (ControlBase & { readonly kind: 'editor' })
@@ -370,6 +371,7 @@ interface FocusState {
   accelerators(): readonly HiddenAccelerator[]
   emit(event: MayflyUiEvent): void
   field(field: MayflyFormField, key: string): MayflyFormField
+  decor(field: MayflyFormField, key: string): FieldDecor
   fieldValue(field: MayflyFormField, key: string): MayflyFieldValue
   setValue(key: string, value: MayflyFieldValue): void
   textEditor(field: TextField, key: string): MayflyEditor
@@ -579,35 +581,65 @@ function chartComponent(node: MayflyChartNode, options: RuntimeCompilerOptions):
   return staticComponent(width => renderChartRows(node, Math.max(1, width), options.components, options.colors), options)
 }
 
-function editorFieldComponent(field: TextField, key: string, state: FocusState, options: RuntimeCompilerOptions): MayflyComponent {
+/** A surface whose forms hold an unsaved edit says so in its head, after the badges its author gave it. */
+function withDirtyBadge<Node extends { readonly badges?: readonly MayflyInlineSpan[] }>(node: Node, options: RuntimeCompilerOptions): Node {
+  if (options.listRuntime.interaction?.formsDirty !== true) return node
+  return { ...node, badges: [...node.badges ?? [], { text: coreText(options, 'unsaved changes'), tone: 'warning' }] }
+}
+
+/** What a field needs from its form to be painted: the shared label column, and the group heading it opens. */
+interface FormFieldLayout {
+  readonly labelWidth: number
+  readonly heading?: string
+}
+
+/** The rows of one field in the form's reading, with the heading of the group it opens above them. */
+function paintField(field: MayflyFormField, key: string, width: number, state: FocusState, options: RuntimeCompilerOptions, layout: FormFieldLayout, marker: string, editing?: readonly string[]): string[] {
+  const presented = state.field(field, key)
+  const focused = state.focused && state.activeKey === key && presented.disabled !== true
+  const picker = focused && state.editingKey === key
+  const typed = editing === undefined ? undefined : editing.join('\n')
+  const completions = typed === undefined || presented.kind === 'select' || presented.kind === 'multiselect' || presented.kind === 'toggle' || presented.kind === 'number'
+    ? undefined
+    : matchingSuggestions(presented.suggestions, String(state.fieldValue(field, key)))
+  const rows = paintFormField({
+    field: presented, decor: state.decor(field, key), width, labelWidth: layout.labelWidth, colors: options.colors,
+    text: key => coreText(options, key),
+    focus: { key: presented.id, focused, marker, ...(picker ? { editing: true as const } : {}), ...pickerOption(field, key, options) },
+    ...(editing === undefined ? {} : { editing }),
+    ...(completions === undefined ? {} : { suggestions: completions }),
+  })
+  return layout.heading === undefined ? rows : [formHeading(layout.heading, width, options.colors), ...rows]
+}
+
+/** The option the open picker of a select stands on. */
+function pickerOption(field: MayflyFormField, key: string, options: RuntimeCompilerOptions): { readonly optionId?: string } {
+  if (field.kind !== 'select' && field.kind !== 'multiselect') return {}
+  const address = options.listRuntime.fieldAddress(key)!
+  const focusedId = options.listRuntime.interaction?.form(address)?.fields[field.id]?.picker?.focusedId
+  return focusedId === undefined ? {} : { optionId: focusedId }
+}
+
+function editorFieldComponent(field: TextField, key: string, state: FocusState, options: RuntimeCompilerOptions, layout: FormFieldLayout): MayflyComponent {
   let editor: MayflyEditor | undefined
   const currentEditor = (): MayflyEditor => editor ??= state.textEditor(field, key)
   return {
     render: width => {
       try {
-        const editor = currentEditor()
-        const presented = state.field(field, key)
         const available = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+        const presented = state.field(field, key)
         const focused = state.focused && state.activeKey === key && presented.disabled !== true
-        editor.focused = focused && state.editingKey === key
-        const prefix = focused ? `${FOCUS_SENTINEL}→ ` : '   '
-        const labelText = `${prefix}${presented.label}: `
-        const label = presented.disabled === true ? options.colors.muted(labelText) : focused ? options.colors.primary(labelText) : options.colors.textStrong(labelText)
-        const labelWidth = visibleWidth(label)
-        const stacked = available - labelWidth < Math.min(12, available)
-        const contentWidth = stacked ? available : available - labelWidth
-        const placeholder = 'placeholder' in field ? field.placeholder : undefined
-        const emptyPlaceholder = editor.getExpandedText().length === 0 && placeholder !== undefined
-        const content = emptyPlaceholder && !editor.focused
-          ? [options.colors.textMuted(placeholder!)]
-          : editor.renderContent(contentWidth, field.kind === 'secret')
-        const unit = field.kind === 'number' && field.unit !== undefined ? options.colors.textMuted(` ${field.unit}`) : ''
-        const body = content.map((row, index) => index === 0 ? `${row}${unit}` : row)
-        const indent = ' '.repeat(Math.min(available, labelWidth))
-        let rows = stacked
-          ? [sliceByColumn(label, 0, available, true), ...body.map(row => sliceByColumn(row, 0, available, true))]
-          : body.map((row, index) => sliceByColumn(`${index === 0 ? label : indent}${row}`, 0, available, true))
-        if (presented.error !== undefined) rows.push(sliceByColumn(options.colors.error(`   ! ${presented.error}`), 0, available, true))
+        const editing = focused && state.editingKey === key
+        // Only a field being typed into asks its editor for rows; every other reading is drawn from the value.
+        let content: string[] | undefined
+        // The focused field owns its editor before it is typed into, so a construction failure shows on the first paint.
+        if (focused) currentEditor()
+        if (editing) {
+          const active = currentEditor()
+          active.focused = true
+          content = active.renderContent(editorWidth(field, available, layout.labelWidth), field.kind === 'secret')
+        } else if (editor !== undefined) editor.focused = false
+        let rows = paintField(field, key, available, state, options, layout, FOCUS_SENTINEL, content)
         if (state.layoutPass && focused) {
           let inserted = rows.some(row => row.includes(CURSOR_MARKER))
           rows = rows.map(row => {
@@ -673,7 +705,7 @@ function pad(component: Component, amount: number, options: RuntimeCompilerOptio
  */
 function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, chrome: 'surface' | 'overlay', child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
   const body = new VStack()
-  body.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors).slice(1), options))
+  body.addChild(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(1), options))
   body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) body.addChild(footer)
   if (contextHint !== undefined) body.addChild(contextHint)
@@ -702,7 +734,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
   middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
 
   const layout = new VStack()
-  layout.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors).slice(0, 1), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+  layout.addChild(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(0, 1), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
   layout.addChild(middle, { basis: 0, grow: 1, shrink: 1, minSize: 0 })
   layout.addChild(staticComponent(width => renderSurfaceTail(node, width, options.colors), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
 
@@ -714,7 +746,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
       const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
       const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
       // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
-      const head = glyphRows(renderSurfaceHead(node, available, options.colors).slice(0, 1), glyphs)
+      const head = glyphRows(renderSurfaceHead(withDirtyBadge(node, options), available, options.colors).slice(0, 1), glyphs)
       const bodyRows = body.render(contentWidth)
       const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
       const border = paint(bar)
@@ -734,7 +766,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
 function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent {
   if (node.chrome === 'overlay' || node.chrome === 'surface') return framedSurfaceComponent(node, node.chrome, child, footer, contextHint, options)
   const component = new VStack()
-  component.addChild(staticComponent(width => renderSurfaceHead(node, width, options.colors), options))
+  component.addChild(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors), options))
   component.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) component.addChild(footer)
   if (contextHint !== undefined) component.addChild(contextHint)
@@ -860,14 +892,17 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       case 'editor': return { kind: 'editor' }
       case 'scroll': return { kind: 'scroll' }
       case 'list': return { kind: 'empty-list' }
-      case 'toggle': return { kind: 'toggle' }
+      case 'toggle': return { kind: 'toggle', ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
       case 'submit': return { kind: 'submit' }
       case 'field-action': return { kind: 'field-action' }
-      case 'text': return { kind: 'text', field: active.field.kind, editing, enterSubmits: active.form.enterSubmits !== undefined }
+      case 'text': {
+        const completes = editing && active.field.kind !== 'number' && matchingSuggestions(active.field.suggestions, String(state.fieldValue(active.field, active.key))).length > 0
+        return { kind: 'text', field: active.field.kind, editing, enterSubmits: formEnterAction(active.form) !== undefined, ...(completes ? { completes: true } : {}) }
+      }
       case 'select': {
         const field = state.field(active.field, active.key) as SelectField
         const enabled = field.options.filter(option => option.disabled !== true).length
-        return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable: enabled > 1 || (enabled === 1 && field.value === null) }
+        return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable: enabled > 1 || (enabled === 1 && field.value === null), ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
       }
       case 'event': {
         if (active.role === 'tab') return { kind: 'tab' }
@@ -900,10 +935,11 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
         : searching ? 'end-search'
           : interaction?.backTarget() !== undefined ? 'back'
             : controls.some(candidate => candidate.kind === 'event' && candidate.work === true) ? 'cancel-work'
-              : escapeLabel
+              : escapeLabel ?? (interaction?.formCancel() === undefined ? undefined : 'surface-cancel')
   const numbered = node?.numbered
   const fieldAddress = active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' ? runtime.fieldAddress(active.key) : undefined
   const reset = fieldAddress === undefined ? undefined : fieldReset(interaction?.form(fieldAddress), fieldAddress.fieldId)
+  const save = (active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' || active?.kind === 'submit') && formSaveTarget(active.form, active.identity.pagePath!, interaction) !== undefined
   return {
     mode: mode === 'editor' ? 'editor' : 'ui',
     expanded,
@@ -928,7 +964,23 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     escape,
     closable: escapeLabel !== undefined && escapeLabel !== 'leave',
     ...(reset === undefined ? {} : { reset }),
+    ...(save ? { save } : {}),
   }
+}
+
+/** The action `Enter` submits a form through: the one it names, or the submit action of a form with a single field (which draws no button). */
+function formEnterAction(form: FormNode): string | undefined {
+  return form.enterSubmits ?? (form.fields.length === 1 ? form.submitActionId : undefined)
+}
+
+/** A form draws its submit button when it has one: a single field submits with `Enter`, and `Ctrl+S` saves from any field. */
+function formDrawsSubmit(form: FormNode): boolean {
+  return form.submitActionId !== undefined && form.fields.length !== 1
+}
+
+/** The action `ui.save` runs for a form: its own submit action, the action Enter submits through, or the action that submits it. */
+function formSaveTarget(form: FormNode, pagePath: MayflyPagePath, interaction: UiSurfaceModel | undefined): string | undefined {
+  return form.submitActionId ?? form.enterSubmits ?? interaction?.saveActionFor({ pagePath, formId: form.id })
 }
 
 /** The ids an action scope can name for the focused control: itself, the list, form, tabs, or actions group holding it, and a scroll's own id. */
@@ -994,7 +1046,7 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
 /** Where each hint fragment sits in the row, by hint id (the kit's `order`). */
 const HINT_ORDER: Readonly<Record<string, number>> = {
   navigate: 10, adjust: 20, branch: 20, toggle: 20, numbered: 30, activate: 40, confirm: 45, keyed: 50, reset: 50,
-  expand: 50, other: 55, search: 60, clear: 60, newline: 60, tabs: 70, group: 80, escape: 90, dismiss: 90,
+  expand: 50, other: 55, search: 60, clear: 60, newline: 60, complete: 65, tabs: 70, group: 80, escape: 90, dismiss: 90,
 }
 
 /** Hint fragments admitted at a width: three on narrow terminals, four from 80 columns. */
@@ -1167,8 +1219,8 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
       case 'form':
         for (const field of current.fields) if (field.disabled !== true) {
           const base: ControlBase = { key: scopedControlKey('form-field', current.id, field.id), renderKey: field.id, identity: scopedFocusIdentity(field.id), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical' }
-          if (field.kind === 'toggle') controls.push({ ...base, kind: 'toggle', field })
-          else if (field.kind === 'select' || field.kind === 'multiselect') controls.push({ ...base, kind: 'select', field })
+          if (field.kind === 'toggle') controls.push({ ...base, kind: 'toggle', field, form: current })
+          else if (field.kind === 'select' || field.kind === 'multiselect') controls.push({ ...base, kind: 'select', field, form: current })
           else controls.push({ ...base, kind: 'text', field, form: current })
           const address = { pagePath, formId: current.id, fieldId: field.id }
           for (const action of fieldActions(options.listRuntime.interaction?.form(address), field.id)) controls.push({
@@ -1176,8 +1228,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
             renderKey: `${field.id}/${action.id}`, identity: scopedFocusIdentity(field.id, action.id), address, action,
           })
         }
-        if (current.submitActionId !== undefined) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
-        if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('form-cancel', current.id), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
+        if (current.submitActionId !== undefined && formDrawsSubmit(current)) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
         break
       case 'actions': {
         const scope = current.scope === undefined ? {} : { scope: [current.scope].flat() }
@@ -1468,16 +1519,16 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     }
     case 'form': {
       const stack = new VStack()
+      const labelWidth = formLabelWidth(node.fields)
+      let group: string | undefined
       for (const field of node.fields) {
         const key = scopedControlKey('form-field', node.id, field.id)
+        const heading = field.group !== undefined && field.group !== group ? field.group : undefined
+        if (field.group !== undefined) group = field.group
+        const layout: FormFieldLayout = { labelWidth, ...(heading === undefined ? {} : { heading }) }
         const component = field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret' || field.kind === 'number'
-          ? editorFieldComponent(field, key, state, options)
-          : staticComponent(width => {
-            const address = options.listRuntime.fieldAddress(key)!
-            const picker = options.listRuntime.interaction?.form(address)?.fields[field.id]?.picker
-            const editing = picker === undefined ? {} : { editing: true as const, ...(picker.focusedId === undefined ? {} : { optionId: picker.focusedId }) }
-            return renderFormField(state.field(field, key), width, { ...patternFocus(state, scopedControlGroup('form', node.id)), ...editing }, options.colors, key => coreText(options, key))
-          }, options)
+          ? editorFieldComponent(field, key, state, options, layout)
+          : staticComponent(width => paintField(field, key, width, state, options, layout, patternFocus(state, scopedControlGroup('form', node.id)).marker), options)
         stack.addChild(component)
         if (field.disabled !== true) state.bindControls([key], { component, axis: 'none' })
         const address = { pagePath, formId: node.id, fieldId: field.id }
@@ -1492,15 +1543,11 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
           state.bindControls(actions.map(action => scopedControlKey('field-action', node.id, `${field.id}/${action.id}`)), { component: tools, axis: 'horizontal' })
         }
       }
-      if (node.submitActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Submit'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
+      // One primary submit when the form has several fields; `cancelActionId` is never drawn, Escape runs it.
+      if (formDrawsSubmit(node)) {
+        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Save'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('form-submit', node.id)], { component, axis: 'none' })
-      }
-      if (node.cancelActionId !== undefined) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'cancel', label: node.cancelLabel ?? coreText(options, 'Cancel') }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
-        stack.addChild(component)
-        state.bindControls([scopedControlKey('form-cancel', node.id)], { component, axis: 'none' })
       }
       return stack
     }
@@ -1794,16 +1841,18 @@ export class MayflyUiSurfaceRuntime {
         const draft = address === undefined ? undefined : form?.fields[address.fieldId]
         const picker = draft?.picker
         const value = picker === undefined ? fieldValue(field, key) : field.kind === 'multiselect' ? picker.selectedIds : picker.selectedIds[0] ?? null
-        const origin = draft?.change === 'reset' || (draft?.change ?? 'unchanged') === 'unchanged' && field.origin === 'inherited' ? 'Inherited' : 'Override'
         const text = (key: string, values?: UiTranslateValues) => coreText(this.options, key, values)
         const pickerError = picker === undefined ? undefined : choiceError(picker, text)
-        return { ...field, value: field.kind === 'number' ? field.value : value,
-          ...field.origin === undefined ? {} : { label: `${field.label} (${text(origin)})` },
-          ...(draft?.error === undefined ? {} : { error: draft.error }),
-          ...(draft?.conflict ? { error: text('Resolve the changed value before saving') } : {}),
-          ...(pickerError === undefined ? {} : { error: pickerError }),
+        const error = pickerError ?? (draft?.conflict === true ? text('Resolve the changed value before saving') : fieldDisplayError(draft, text, this.state.editingKey === key))
+        const { error: _declared, ...rest } = field
+        return { ...(draft === undefined ? field : rest), value: field.kind === 'number' ? field.value : value,
+          ...(error === undefined ? {} : { error }),
           ...(form?.pending === undefined ? {} : { disabled: true }),
         } as MayflyFormField
+      },
+      decor: (field, key) => {
+        const address = this.fieldAddresses.get(key)!
+        return fieldDecor(field, this.interaction?.form(address)?.fields[address.fieldId])
       },
       fieldValue,
       setValue: (key, value) => {
@@ -2641,8 +2690,15 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'leave':
       case 'reject':
       case 'surface-back':
-      case 'surface-cancel': this.options.onUnhandledEscape?.(); return
+      case 'surface-cancel': this.closeSurface(); return
     }
+  }
+
+  /** The outermost Escape: the cancel action a form declared closes the surface; otherwise the host decides. */
+  private closeSurface(): void {
+    const cancel = this.surfaceRuntime.interaction?.formCancel()
+    if (cancel === undefined) this.options.onUnhandledEscape?.()
+    else this.surfaceRuntime.interaction!.invoke(cancel.actionId, cancel.pagePath)
   }
 
   private selectCycle(active: Extract<ControlDescriptor, { readonly kind: 'select' }>, delta: -1 | 1): void {
@@ -2701,7 +2757,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         return
       }
       case 'escape': this.escape(intent.step, active); return
-      case 'close': this.options.onUnhandledEscape?.(); return
+      case 'close': this.closeSurface(); return
       case 'keyed': this.state.emit(intent.control < controls.length ? (controls[intent.control] as Extract<ControlDescriptor, { readonly kind: 'event' }>).event : this.state.accelerators()[intent.control - controls.length]!.event); return
       case 'numbered': this.numbered(data, active!); return
       case 'tab-switch': this.switchTab(intent.delta, controls, active); return
@@ -2727,10 +2783,35 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'text-enter': {
         const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
         const editor = this.state.textEditor(text.field, text.key)
-        if (text.field.kind === 'textarea' && text.form.enterSubmits === undefined) { editor.insertText('\n'); return }
         this.state.setValue(text.key, editor.getExpandedText())
-        if (text.form.enterSubmits === undefined) this.moveGroup(1, controls, active)
-        else { this.state.setEditing(undefined); model?.invoke(text.form.enterSubmits, text.identity.pagePath!) }
+        const submits = formEnterAction(text.form)
+        this.state.setEditing(undefined)
+        if (submits === undefined) this.navigate('down', controls, active)
+        else model?.invoke(submits, text.identity.pagePath!)
+        return
+      }
+      case 'complete': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        const editor = this.state.textEditor(text.field, text.key)
+        // The grammar binds `Tab` to this only while a suggestion matches.
+        const hit = matchingSuggestions((text.field as Exclude<TextField, { readonly kind: 'number' }>).suggestions, editor.getExpandedText())[0]!
+        editor.setText(hit)
+        this.state.setValue(text.key, hit)
+        return
+      }
+      case 'number-step': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        const next = stepNumber(text.field as Extract<MayflyFormField, { readonly kind: 'number' }>, String(this.state.fieldValue(text.field, text.key)), intent.delta)
+        if (next === undefined) this.navigate(intent.delta < 0 ? 'left' : 'right', controls, active)
+        else this.state.setValue(text.key, next)
+        return
+      }
+      case 'form-save': {
+        // The grammar binds `ui.save` only where the form has a target to run.
+        const form = (active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' | 'submit' }>).form
+        const pagePath = active.identity.pagePath!
+        if (this.state.editingKey === active.key) this.commitEditing(active)
+        model?.invoke(formSaveTarget(form, pagePath, model)!, pagePath)
         return
       }
       case 'text-type': {
@@ -2752,8 +2833,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
         return
       }
       case 'enter-submits': {
-        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
-        model?.invoke(text.form.enterSubmits!, text.identity.pagePath!)
+        const field = active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' }>
+        model?.invoke(formEnterAction(field.form)!, field.identity.pagePath!)
         return
       }
       case 'select-cycle': this.selectCycle(active as Extract<ControlDescriptor, { readonly kind: 'select' }>, intent.delta); return

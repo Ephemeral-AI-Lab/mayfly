@@ -659,7 +659,7 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('renders number units, default form buttons, and translated core placeholders', async () => {
+  it('renders number units, the default Save button, and translated core placeholders', async () => {
     const { compile } = await setup(ui.stack.column([
       ui.form({ id: 'form', fields: [
         { kind: 'number', id: 'context', label: 'Context', value: 128, unit: 'tokens' },
@@ -671,9 +671,10 @@ describe('shared interaction compiler', () => {
     ]), undefined, 'alternate', undefined, { translate: (key: string, values?: Readonly<Record<string, string | number>>) => `zh:${key}${values === undefined ? '' : JSON.stringify(values)}` })
     const renderer = compile()
     const rows = renderer.compiled.component.render(100).join('\n')
-    expect(rows).toContain('128 tokens')
-    expect(rows).toContain('zh:Submit')
-    expect(rows).toContain('zh:Cancel')
+    expect(rows).toContain('‹ 128 › tokens')
+    expect(rows).toContain('zh:Save')
+    // Escape cancels a form; it draws no Cancel button.
+    expect(rows).not.toContain('zh:Cancel')
     expect(rows).toContain('zh:Choose…')
     expect(rows).toContain('zh:None selected')
     expect(rows).toContain('Esc stop now')
@@ -683,7 +684,7 @@ describe('shared interaction compiler', () => {
   it('falls back to English core strings when the host translator throws', async () => {
     const { compile } = await setup(ui.form({ id: 'form', fields: [], submitActionId: 'save' }), undefined, 'alternate', undefined, { translate: () => { throw new Error('catalog unavailable') } })
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Submit')
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Save')
     renderer.runtime.dispose()
   })
 
@@ -777,7 +778,7 @@ describe('shared interaction compiler', () => {
     const renderer = compile()
     renderer.input('line')
     renderer.input('\x1b\r')
-    renderer.input('\r')
+    renderer.input('\x1b\r')
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.notes!.value).toBe('line\n\n')
     model.updateForm({ pagePath: [], formId: 'form' }, { kind: 'submit', operationId: 'manual' })
     renderer.input('ignored')
@@ -820,14 +821,14 @@ describe('shared interaction compiler', () => {
     // The surface renderer recompiles on each model revision, which re-seeds the field editor.
     renderer.runtime.dispose()
     renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Name (Inherited): base')
+    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Name: base  (inherited)')
     expect(hints()).not.toContain('Delete')
     // An inherited value has nothing to reset until an edit overrides it.
     renderer.input('\x1b[B')
     expect(hints()).not.toContain('Delete')
     renderer.input('\x1b[C')
     expect(fields().mode).toMatchObject({ value: 'b', change: 'set' })
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Mode (Override): ‹ B ›')
+    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Mode: ‹ B ›  (override)')
     renderer.input('\x1b[3~')
     expect(fields().mode).toMatchObject({ value: 'a', change: 'unchanged' })
     // Without an origin, Delete restores the declared default.

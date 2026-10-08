@@ -298,6 +298,43 @@ describe('core width-scan', () => {
       }
     })
 
+    it(`form rows with headings, help, errors, marks, boxes, completions, and pickers survive ${name}`, () => {
+      const long = text.slice(0, 120)
+      const options = [{ id: 'a', label: long, disabled: true, disabledReason: long }, { id: 'b', label: long }, { id: 'c', label: 'tail' }]
+      const node = ui.surface({ chrome: 'overlay', title: long, badges: [{ text: long.slice(0, 20), tone: 'muted' }], child: ui.stack.column([
+        ui.form({ id: 'form', fields: [
+          { kind: 'input', id: 'name', label: long.slice(0, 30), value: long, placeholder: long, group: long, help: long, required: true, pattern: '^x', patternMessage: long, suggestions: [long, 'xx'] },
+          { kind: 'secret', id: 'key', label: 'Key', value: long, help: long },
+          { kind: 'select', id: 'mode', label: 'Mode', value: 'b', origin: 'inherited', resetValue: 'c', group: 'Second', options },
+          { kind: 'number', id: 'count', label: long.slice(0, 20), value: 12, min: 1, max: 99, unit: long.slice(0, 30), error: long },
+          { kind: 'number', id: 'only-min', label: 'Min', value: 3, min: 1 },
+          { kind: 'toggle', id: 'on', label: 'On', value: true, help: long },
+          { kind: 'multiselect', id: 'many', label: 'Many', value: ['b', 'c'], options },
+          { kind: 'textarea', id: 'notes', label: 'Notes', value: `${long}\n${long}`, help: long },
+        ], submitActionId: 'save', submitLabel: long.slice(0, 40) }),
+      ]) })
+      const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn, createEditor: () => scanEditor(long) } as never
+      const model = new UiSurfaceModel('scan', { id: 'scan', revision: 0, node, source: [], scope: { kind: 'app', targetId: 'scan' }, update: { reason: 'replace' }, definition: {}, events: { prepare: async () => ({ reply: undefined, publish: () => false }) } })
+      const surface = compileMayflyUiSurfaceNode(model.node!, { components: scanComponents, colors: statusColors as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 60 }), screenMode: 'alternate', emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+      if (!surface.ok) throw new Error(surface.message)
+      const focus = surface.value.focusTarget!
+      focus.focused = true
+      const scan = (): void => { for (const width of SCAN_WIDTHS) expectLinesFit(`form/${name}`, surface.value.component.render(width), width) }
+      scan()
+      // Every field in turn: focused, then opened (edited, picked, or toggled), then closed again; an edit leaves the surface dirty.
+      for (let field = 0; field < 8; field += 1) {
+        scan()
+        focus.handleInput?.('\r')
+        scan()
+        focus.handleInput?.('x')
+        scan()
+        focus.handleInput?.('\x1b')
+        scan()
+        focus.handleInput?.('\x1b[B')
+      }
+      scan()
+    })
+
     it(`list rows with spans, bodies, wrapping, tree guides, rules, and a segment strip survive ${name}`, () => {
       const long = text.slice(0, 120)
       const node = ui.stack.column([

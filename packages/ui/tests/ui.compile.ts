@@ -145,3 +145,20 @@ ui.list({ id: 'bad', role: 'browse', acceptVerb: 'delete', selectedIds: [], item
 export const armedRequest: MayflyOverlayDefinition = { id: 'request', presentation: 'editor', capturing: true, armMs: 300 }
 // @ts-expect-error the arm delay is a number of milliseconds
 export const badArm: MayflyOverlayDefinition = { id: 'request', armMs: '300' }
+
+// Forms (slice 1.6): help and group on every field, and the text-entry rules on the three text kinds.
+export const groupedForm = ui.form({ id: 'provider', enterSubmits: 'save', fields: [
+  { kind: 'input', id: 'url', label: 'Endpoint', value: '', group: 'Connection', help: 'Base URL', pattern: '^https?://\\S+$', patternMessage: 'Must be an http(s) URL', suggestions: ['https://api.example.com'] },
+  { kind: 'textarea', id: 'notes', label: 'Notes', value: '', pattern: '^[^\\n]*$', suggestions: [] },
+  { kind: 'secret', id: 'key', label: 'Key', value: '', pattern: '^sk-' },
+  { kind: 'number', id: 'timeout', label: 'Timeout', value: 30, help: 'Seconds', group: 'Behaviour' },
+  { kind: 'select', id: 'mode', label: 'Mode', value: null, options: [], help: 'Pick one' },
+  { kind: 'multiselect', id: 'tags', label: 'Tags', value: [], options: [], group: 'Behaviour' },
+  { kind: 'toggle', id: 'on', label: 'On', value: true, help: 'Streaming' },
+] })
+// @ts-expect-error a pattern belongs to the text fields
+ui.form({ id: 'bad', fields: [{ kind: 'number', id: 'n', label: 'N', value: 1, pattern: '^1$' }] })
+// @ts-expect-error suggestions belong to the text fields
+ui.form({ id: 'bad', fields: [{ kind: 'toggle', id: 't', label: 'T', value: true, suggestions: ['on'] }] })
+// @ts-expect-error help is a line of text
+ui.form({ id: 'bad', fields: [{ kind: 'input', id: 'i', label: 'I', value: '', help: 3 }] })

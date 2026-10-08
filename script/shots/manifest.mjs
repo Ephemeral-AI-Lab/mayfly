@@ -358,9 +358,31 @@ export const SCENARIOS = [
       ],
       submitActionId: 'create-profile',
       submitLabel: 'Create profile',
-      cancelActionId: 'cancel',
-      cancelLabel: 'Cancel',
     }),
+  },
+  {
+    id: 'form-groups',
+    // Doc example, verbatim: group headings, the focused field's help line, `(saved)`, `(inherited)`, and the `•` mark of
+    // a field that differs from its `resetValue`. The drive moves focus to the Endpoint field.
+    title: 'form — groups, help, and marks',
+    width: 64,
+    build: ui => ui.form({
+      id: 'provider-form',
+      fields: [
+        { kind: 'input', id: 'name', label: 'Name', value: 'production', group: 'Connection' },
+        { kind: 'input', id: 'endpoint', label: 'Endpoint', value: 'https://api.example.com/v1', help: 'Base URL, including the version path',
+          pattern: '^https?://\\S+$', patternMessage: 'Must be an http(s) URL' },
+        { kind: 'secret', id: 'key', label: 'API key', value: 'sk-live-0123456789' },
+        { kind: 'select', id: 'model', label: 'Model', value: 'deepseek-chat', origin: 'inherited', group: 'Behaviour', options: [
+          { id: 'deepseek-chat', label: 'deepseek-chat' },
+          { id: 'deepseek-reasoner', label: 'deepseek-reasoner' },
+        ] },
+        { kind: 'number', id: 'timeout', label: 'Timeout', value: 45, resetValue: 30, min: 5, max: 120, step: 5, unit: 's' },
+        { kind: 'toggle', id: 'stream', label: 'Streaming', value: true },
+      ],
+      submitActionId: 'save',
+    }),
+    drive: focus => { focus.handleInput?.('\x1b[B') },
   },
   {
     id: 'form-editing',

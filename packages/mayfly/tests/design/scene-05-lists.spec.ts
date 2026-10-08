@@ -77,8 +77,8 @@ describe('scene 5, Lists', () => {
   })
 })
 
-describe('scene 1 Marks and tokens, page 1: the lists', () => {
-  it('draws the cursor, the selection rails, the disclosure and checks, and the muted right-aligned count', async () => {
+describe('scene 1 Marks and tokens, page 1: the lists and the form', () => {
+  it('draws the cursor, the selection rails, the disclosure and checks, the muted right-aligned count, and the form marks', async () => {
     const block = (node: MayflyUiNode, focused: boolean) => {
       const surface = createRealSurface(node, 100, { components: parityComponents(), focused })
       surfaces.push(surface)
@@ -99,8 +99,15 @@ describe('scene 1 Marks and tokens, page 1: the lists', () => {
       '',
       ...paint(caption('▸ ▾ disclosure and ● ○ ◐ checks (single: ●/○, multiple: ●/○, a partly selected parent ◐)'), 100),
       ...block(ui.list({ id: 'm3', role: 'choose', mode: 'multiple', tree: true, selectedIds: ['p1'], items: [{ id: 'p', label: 'filesystem', expanded: true }, { id: 'p1', label: 'read_file', parentId: 'p' }, { id: 'p2', label: 'write_file', parentId: 'p' }, { id: 'q', label: 'github' }] }), false),
+      '',
+      ...paint(caption('‹ v › a value ←/→ changes · • an edited field · (inherited) · ! an error'), 100),
+      // The form's first field holds focus (slice 1.6): the marks, units, and origin notes of the field kinds.
+      ...block(ui.form({ id: 'm4', fields: [
+        { id: 'm', kind: 'select', label: 'Model', value: 'deepseek-chat', origin: 'inherited', options: [{ id: 'deepseek-chat', label: 'deepseek-chat' }, { id: 'deepseek-reasoner', label: 'deepseek-reasoner' }] },
+        { id: 't', kind: 'number', label: 'Timeout', value: 45, resetValue: 30, unit: 's', min: 5, max: 120 },
+        { id: 'n', kind: 'input', label: 'Name', value: '', required: true, error: 'Required' },
+      ] }), true),
     ]
-    // The form block below is slice 1.6's: the pending entry covers its rows.
     const golden = goldenRows('01-marks-and-tokens', 'pages', 0).slice(0, rows.length)
     const diffs = await frameDiffs(golden, rows, 100, [{ delta: 'Δ20', rows: [1, 1] }], pendingFor('01-marks-and-tokens', 'pages', 0))
     expect(diffReport(diffs)).toBe('')

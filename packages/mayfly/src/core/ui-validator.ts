@@ -38,6 +38,7 @@ import { printableKey } from './key-actions.ts'
 import { COMMON_MEANINGS, actionNamingProblem, defaultItemKey } from './ui-actions.ts'
 import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
+import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
 import { admitChildAdmission, admitCodeFields, admitDiffFields, admitHeatmapFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
 
 /** Maximum aggregate UTF-16 source units accepted in one tree. */
@@ -1096,6 +1097,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
       ...optional(requiredValue === undefined ? undefined : boolean(requiredValue, `${path}.required`), 'required'),
       ...optional(originValue === undefined ? undefined : enumeration(originValue, ['inherited', 'explicit'], `${path}.origin`), 'origin'),
       ...optional(reset === undefined ? undefined : parseValue(reset, `${path}.resetValue`), 'resetValue'),
+      ...admitFieldPresentation(ADMISSION_HELPERS, object, path, state),
     }
     if (kind === 'toggle') return { kind, ...common, value: boolean(required(object, 'value', path), `${path}.value`) }
     if (kind === 'number') {
@@ -1127,6 +1129,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
       value: text(required(object, 'value', path), `${path}.value`, state),
       ...optional(optionalText(object, 'placeholder', path, state), 'placeholder'),
       ...optional(minLength, 'minLength'), ...optional(maxLength, 'maxLength'),
+      ...admitTextRules(ADMISSION_HELPERS, object, path, state),
     }
   })
 }
