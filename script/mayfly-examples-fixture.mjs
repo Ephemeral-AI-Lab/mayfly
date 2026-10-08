@@ -279,7 +279,7 @@ try {
       const ctx = new cordis.Context()
       const apiFiber = await ctx.plugin(provider)
       const pluginFiber = await ctx.plugin(module)
-      const entry = ctx.mayflyPanes.list()[0]
+      const entry = ctx.mayflyPanes.list().find(pane => pane.id === expectedId)
       ensure(entry?.id === expectedId && entry.definition.placement === placement, 'EXAMPLES_PANE_DIRECT', `${name} did not register directly`)
       ensure(typeof entry.node?.kind === 'string', 'EXAMPLES_PANE_NODE', `${name} returned no canonical node`)
       await pluginFiber.dispose()
