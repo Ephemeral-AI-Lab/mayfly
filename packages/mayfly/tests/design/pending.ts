@@ -44,11 +44,6 @@ export const PENDING_PARITY: readonly PendingParity[] = [
   { directory: '05-lists', walk: 'move', frames: [3, 4], rows: [10, 10], slice: '1.5', reason: 'the hint row names `Esc back` while focus is on a control other than the surface\'s first (rows are those of the surface): Esc returns to the home control first (focus levels)' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [0], rows: [21, 26], slice: '1.6', reason: 'page 1 form block: the form marks, units, and (inherited) (1.6)' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [5], slice: '1.8b', reason: 'page 6 is patterns.splitView over lists with right-aligned spans (1.4)' },
-  { directory: '10-layout', walk: 'initial', frames: [0], slice: '1.4', reason: 'the windowed list section (maxRows 4, the ↑ n more · ↓ n more row) is the list slice\'s' },
-  { directory: '10-layout', walk: 'wider', frames: [0, 1, 2, 3, 4], slice: '1.4', reason: 'the windowed list section (maxRows 4, the ↑ n more · ↓ n more row) is the list slice\'s' },
-  { directory: '10-layout', walk: 'narrower', frames: [0, 1, 2, 3, 4, 5, 6], slice: '1.4', reason: 'the windowed list section (maxRows 4, the ↑ n more · ↓ n more row) is the list slice\'s' },
-  { directory: '10-layout', walk: 'height', frames: [0, 1], slice: '1.4', reason: 'the windowed list section (maxRows 4, the ↑ n more · ↓ n more row) is the list slice\'s' },
-  { directory: '10-layout', walk: 'overflow', frames: [0, 1], slice: '1.4', reason: 'the windowed list section (maxRows 4, the ↑ n more · ↓ n more row) is the list slice\'s' },
 ]
 
 /** The entries that cover a frame of a walk. */
