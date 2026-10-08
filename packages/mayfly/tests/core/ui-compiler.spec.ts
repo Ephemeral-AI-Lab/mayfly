@@ -1757,7 +1757,8 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     focus.handleInput?.('\r')
     expect(f.events).toEqual([])
 
-    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space toggle · Enter choose · Alt+←/→ tabs')
+    // Off the strip, `Esc` returns to it first, and that outranks the tab switch in a four-fragment row.
+    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space toggle · Enter choose · Esc back')
     focus.handleInput?.('\r')
     expect(f.events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'list', selectedIds: [] }])
     focus.handleInput?.(' ')

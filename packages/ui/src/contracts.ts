@@ -120,8 +120,31 @@ export interface MayflyScrollNode {
   /** `↓ N new · End` over the last row while the view is scrolled away from a followed tail. */
   readonly pill?: boolean
 }
-export interface MayflyTabItem { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly count?: number, readonly backId?: string }
-export interface MayflyTabsNode { readonly kind: 'tabs', readonly id: string, readonly activeId: string, readonly items: readonly MayflyTabItem[], readonly mode?: 'tabs' | 'wizard' }
+export interface MayflyTabItem {
+  readonly id: string
+  readonly label: string
+  readonly disabled?: boolean
+  /** A muted count after the label (a rail draws it right-aligned); a string reads as given, e.g. `2/6`. */
+  readonly count?: number | string
+  readonly backId?: string
+  /** Draws a warning `!` in place of the count. */
+  readonly attention?: boolean
+  /** A vertical rail's heading: consecutive items with the same group sit under one muted, upper-cased heading. */
+  readonly group?: string
+  /** Which end of a long rail label survives: `end` (default) keeps the start, `start` keeps the distinguishing end. */
+  readonly clip?: 'end' | 'start'
+}
+export interface MayflyTabsNode {
+  readonly kind: 'tabs'
+  readonly id: string
+  readonly activeId: string
+  readonly items: readonly MayflyTabItem[]
+  readonly mode?: 'tabs' | 'wizard'
+  /** `vertical` draws a rail (below 60 columns it becomes the horizontal strip); `horizontal` is the default. */
+  readonly orientation?: 'horizontal' | 'vertical'
+  /** The word the hint row uses for `Alt+←/→`, and for the arrows while the strip has focus (default `tabs`). */
+  readonly hintLabel?: string
+}
 export interface MayflyListSegmentOption { readonly id: string, readonly label: string, readonly disabled?: boolean, readonly disabledReason?: string }
 /** A horizontal option strip bound to one list row; left/right steps it while the row is focused and `selection-accept` reports it as `segmentId`. */
 export interface MayflyListSegment {

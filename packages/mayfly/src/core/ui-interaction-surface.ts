@@ -666,9 +666,19 @@ export class UiSurfaceModel {
     else this.invoke(decision.event.actionId, decision.event.pagePath, true, decision.event)
   }
 
+  /**
+   * Focus moved to a control or one of its items. Observers hear it as `focus-change`, a fact that cannot publish,
+   * navigate, or dismiss; the newest report supersedes an earlier one still in flight.
+   */
+  observeFocus(address: UiControlAddress): void {
+    if (!this.live) return
+    this.observe({ kind: 'focus-change', pagePath: address.pagePath, controlId: address.controlId, ...(address.itemId === undefined ? {} : { itemId: address.itemId }) })
+  }
+
   private observe(event: MayflyUiEvent): void {
     if (this.input.definition.onEvent === undefined) return
-    const key = `observe:${uiControlKey({ pagePath: event.pagePath, controlId: (event as { readonly controlId: string }).controlId })}`
+    // Focus reports keep their own slot, so one never cancels a control's `tab-change` or `value-change` in flight.
+    const key = `observe:${event.kind === 'focus-change' ? 'focus:' : ''}${uiControlKey({ pagePath: event.pagePath, controlId: (event as { readonly controlId: string }).controlId })}`
     const previous = this.activeKeys.get(key)
     if (previous !== undefined) this.tasks.get(previous)?.controller.abort()
     this.start(key, event)
@@ -761,7 +771,7 @@ export class UiSurfaceModel {
       }
     } finally {
       if (this.live) {
-        if (task.controller.signal.aborted) this.setPhase(task, task.event.kind === 'value-change' || task.event.kind === 'selection-toggle' || task.event.kind === 'tab-change' || (task.event.kind === 'activate' && task.event.inputs !== undefined) ? 'cancelled' : 'unknown')
+        if (task.controller.signal.aborted) this.setPhase(task, task.event.kind === 'value-change' || task.event.kind === 'selection-toggle' || task.event.kind === 'tab-change' || task.event.kind === 'focus-change' || (task.event.kind === 'activate' && task.event.inputs !== undefined) ? 'cancelled' : 'unknown')
         if (this.notifications.get(task.id)?.purpose === 'progress') this.notifications.clear(task.id, false)
         for (const form of task.submission?.forms ?? []) this.updateForm(form, { kind: 'release', operationId: task.id })
         if (this.activeKeys.get(task.key) === task.id) this.activeKeys.delete(task.key)

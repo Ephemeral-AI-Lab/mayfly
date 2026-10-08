@@ -40,6 +40,7 @@ import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
 import { admitChildAdmission, admitCodeFields, admitDiffFields, admitHeatmapFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
+import { admitTabItemFields, admitTabsFields } from './ui-validator-tabs.ts'
 
 /** Maximum aggregate UTF-16 source units accepted in one tree. */
 export const MAYFLY_UI_MAX_TEXT = 20_000
@@ -1276,8 +1277,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const modeValue = own(object, 'mode', path)
         const items = collection(required(object, 'items', path), `${path}.items`).map((item, index): MayflyTabItem => enter(item, `${path}.items[${String(index)}]`, state, entry => {
           const disabledValue = own(entry, 'disabled', `${path}.items[${String(index)}]`)
-          const countValue = own(entry, 'count', `${path}.items[${String(index)}]`)
-          return { id: text(required(entry, 'id', path), `${path}.items[${String(index)}].id`, state), label: text(required(entry, 'label', path), `${path}.items[${String(index)}].label`, state), ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.items[${String(index)}].disabled`), 'disabled'), ...optional(countValue === undefined ? undefined : finiteInteger(countValue, `${path}.items[${String(index)}].count`), 'count'), ...optional(optionalText(entry, 'backId', `${path}.items[${String(index)}]`, state), 'backId') }
+          return { id: text(required(entry, 'id', path), `${path}.items[${String(index)}].id`, state), label: text(required(entry, 'label', path), `${path}.items[${String(index)}].label`, state), ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.items[${String(index)}].disabled`), 'disabled'), ...optional(optionalText(entry, 'backId', `${path}.items[${String(index)}]`, state), 'backId'), ...admitTabItemFields(ADMISSION_HELPERS, entry, `${path}.items[${String(index)}]`, state) }
         }))
         uniqueIds(items, `${path}.items`)
         const activeId = identifier(required(object, 'activeId', path), `${path}.activeId`, state)
@@ -1294,7 +1294,8 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         }
         const id = identifier(required(object, 'id', path), `${path}.id`, state, true)
         state.budget.tabs.set(pageControl(state.pagePath, id), new Set(items.map(item => item.id)))
-        return { kind, id, activeId, items, ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['tabs', 'wizard'], `${path}.mode`), 'mode') }
+        const tabsMode = modeValue === undefined ? undefined : enumeration(modeValue, ['tabs', 'wizard'], `${path}.mode`)
+        return { kind, id, activeId, items, ...optional(tabsMode, 'mode'), ...admitTabsFields(ADMISSION_HELPERS, object, path, state, tabsMode === 'wizard') }
       }
       case 'list': {
         const role = enumeration(required(object, 'role', path), ['browse', 'choose'], `${path}.role`)

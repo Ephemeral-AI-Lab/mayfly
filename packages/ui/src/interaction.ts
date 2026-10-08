@@ -69,6 +69,8 @@ export type MayflyUiObservationEvent = (
   | { readonly kind: 'value-change', readonly controlId: string, readonly formId: string, readonly value: MayflyFieldValue, readonly draftRevision: number }
   | { readonly kind: 'selection-toggle', readonly controlId: string, readonly selectedIds: readonly string[], readonly actionId?: string }
   | { readonly kind: 'tab-change', readonly controlId: string, readonly tabId: string }
+  /** Focus moved to a control (or one of its items); reported at most once per render frame, with the newest position. */
+  | { readonly kind: 'focus-change', readonly controlId: string, readonly itemId?: string }
 ) & { readonly pagePath: MayflyPagePath }
 export type MayflyUiActionEvent = (
   | { readonly kind: 'activate', readonly controlId: string, readonly actionId: string, readonly itemId?: string, readonly inputs?: MayflySubmission }

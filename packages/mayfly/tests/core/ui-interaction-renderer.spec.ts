@@ -242,7 +242,7 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('closes from any tab depth instead of stopping on tab strips', async () => {
+  it('returns home from any tab depth in one Escape instead of stopping on tab strips, then closes', async () => {
     const { compile, handle } = await setup(ui.stack.column([
       ui.tabs({ id: 'outer', activeId: 'one', items: [{ id: 'one', label: 'One' }] }),
       ui.child(ui.stack.column([
@@ -255,7 +255,12 @@ describe('shared interaction compiler', () => {
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'inner' })
     renderer.input('\t')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'run' })
+    // Escape returns to the home control in one hop, whatever the depth, and the next Escape closes.
+    expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc back')
+    renderer.input('\x1b')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'outer' })
     expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc close')
+    expect(handle.closed).toBe(false)
     renderer.input('\x1b')
     await vi.waitFor(() => expect(handle.closed).toBe(true))
     renderer.runtime.dispose()
