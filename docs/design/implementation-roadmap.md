@@ -526,7 +526,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.4 | merged (#107) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
 | 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
 | 1.6 | not started | `feat/ui-foundation-1-6` | Needs: 1.2, 1.7 |
-| 1.10b | built | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
+| 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | not started | `feat/ui-foundation-1-9b` | Prompt. Needs: 1.3, 1.7, 1.9a |
 | 1.8b | not started | `feat/ui-foundation-1-8b` | Patterns. Needs: 1.3 to 1.6, 1.8a |
 | 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
