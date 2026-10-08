@@ -17,10 +17,10 @@
 <text x="255.6" y="337" textLength="117.6" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">conversations:</text>
 <text x="675.6" y="337" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#dcd7f2">│</text>
 <text x="12" y="356" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#dcd7f2">│</text>
-<text x="45.6" y="356" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">▸</text>
-<text x="62.4" y="356" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Mayfly</text>
-<text x="121.2" y="356" textLength="67.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">branding</text>
-<text x="196.8" y="356" textLength="92.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">exploration</text>
+<text x="45.6" y="356" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">▸</text>
+<text x="62.4" y="356" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2" font-weight="bold">Mayfly</text>
+<text x="121.2" y="356" textLength="67.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2" font-weight="bold">branding</text>
+<text x="196.8" y="356" textLength="92.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2" font-weight="bold">exploration</text>
 <text x="297.6" y="356" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">—</text>
 <text x="314.4" y="356" textLength="16.8" lengthAdjust="spacingAndGlyphs" fill="#ededf2">2h</text>
 <text x="339.6" y="356" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">·</text>
@@ -31,7 +31,7 @@
 <text x="482.4" y="356" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">ago</text>
 <text x="675.6" y="356" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#dcd7f2">│</text>
 <text x="12" y="375" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#dcd7f2">│</text>
-<text x="45.6" y="375" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">▸</text>
+<text x="45.6" y="375" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">▸</text>
 <text x="62.4" y="375" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Hotfix</text>
 <text x="121.2" y="375" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#ededf2">release</text>
 <text x="188.4" y="375" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#ededf2">notes</text>

@@ -255,6 +255,8 @@ export interface RealSurfaceOptions {
   readonly components: MayflyComponents
   readonly events?: (event: MayflyUiEvent) => void
   readonly overrides?: Partial<MayflyUiCompilerOptions>
+  /** Whether the surface holds focus; a block the prototype draws unfocused sets this to false. Default true. */
+  readonly focused?: boolean
 }
 
 /** Compiles a node the way `script/shots/render.mjs` does, with interaction state so keys work. */
@@ -279,7 +281,7 @@ export function createRealSurface(node: unknown, width: number, options: RealSur
   })
   if (!result.ok) throw new Error(result.message)
   const surface = result.value
-  if (surface.focusTarget !== null) surface.focusTarget.focused = true
+  if (surface.focusTarget !== null) surface.focusTarget.focused = options.focused ?? true
   return {
     render: () => surface.component.render(width),
     press: key => { surface.focusTarget?.handleInput?.(key); return surface.component.render(width) },

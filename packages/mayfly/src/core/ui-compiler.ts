@@ -13,6 +13,7 @@ import type {
   MayflyImageNode,
   MayflyFormField,
   MayflyInlineSpan,
+  MayflyListItem,
   MayflyListNode,
   MayflySectionContentNode,
   MayflyStatusNode,
@@ -39,7 +40,6 @@ import {
   renderEmpty,
   renderFormField,
   renderList,
-  renderListSegment,
   renderLoader,
   renderProgress,
   renderHintRow,
@@ -79,7 +79,7 @@ import { UiRowCache } from './ui-row-cache.ts'
 import { UiImagePainter } from './ui-image.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
-import { choiceError, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, decorateChoiceItem } from './ui-interaction-choice.ts'
+import { choiceError, choicePinned, choiceRow, focusableListItem, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
 import { AdmissionRow } from './ui-admission.ts'
@@ -819,6 +819,16 @@ function coreText(options: Pick<MayflyUiCompilerOptions, 'contextHints'> | undef
   try { return options?.contextHints?.translate?.(key, values) ?? untranslated(key, values) } catch { return untranslated(key, values) }
 }
 
+/** The filter row of a list: `/ query`, with the number of matches right-aligned; a long query wraps under it. */
+function listQueryRow(node: MayflyListNode, query: string, searching: boolean, count: number, width: number, focused: boolean, options: RuntimeCompilerOptions): string {
+  const slash = options.colors.muted('/')
+  const input = searching ? options.listRuntime.search(node).render(Math.max(1, width - 2), focused) : [query]
+  const right = options.colors.muted(coreText(options, count === 1 ? '{count} match' : '{count} matches', { count }))
+  const left = `${slash} ${input[0]!}`
+  const room = width - visibleWidth(left) - visibleWidth(right)
+  return room >= 2 ? `${left}${' '.repeat(room)}${right}` : sliceByColumn(left, 0, width, true)
+}
+
 /** An action a targeted selection row declares unavailable renders disabled with that row's reason. */
 function effectiveActionItem(item: MayflyActionItem, options: RuntimeCompilerOptions): MayflyActionItem {
   const reason = options.listRuntime.interaction?.unavailableReason(item)
@@ -864,9 +874,22 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
         if (active.role === 'action') return { kind: 'action', decision: active.event.kind === 'activate' && active.event.actionId.startsWith('mayfly.decision.') }
         if (active.role === 'cancel') return { kind: 'cancel', work: active.work === true }
         const list = active.listEntry!.node
-        const segment = admittedListItem(list.items, active.listEntry!.index)?.segment
+        const item = admittedListItem(list.items, active.listEntry!.index)!
+        const segment = item.segment
         const adjustable = segment !== undefined && segment.options.filter(option => option.disabled !== true).length > 1
-        return { kind: 'row', role: list.role, multiple: active.role === 'list-multiple', tree: list.tree === true, ...(adjustable ? { segment: (segment.label ?? 'segment').toLowerCase() } : {}) }
+        const expandable = choice === undefined ? item.body !== undefined && item.bodyAlways !== true : choiceRow(choice, active.listEntry!.index).expandable
+        // Enter opens a body, and a branch of a multiple tree (where Space already toggles the check); a single tree keeps Enter for accepting.
+        const enterToggles = expandable && (item.body !== undefined || (list.mode === 'multiple' && list.tree === true))
+        const unpin = adjustable && segment.inheritedId !== undefined && choice !== undefined && choicePinned(choice, item.id) !== null
+        return {
+          kind: 'row', role: list.role, multiple: active.role === 'list-multiple', tree: list.tree === true,
+          ...(adjustable ? { segment: (segment.label ?? 'segment').toLowerCase() } : {}),
+          ...(unpin ? { unpin: true } : {}),
+          ...(expandable ? { expandable: true } : {}),
+          ...(enterToggles ? { enterToggles: true } : {}),
+          ...(list.acceptVerb === undefined ? {} : { verb: list.acceptVerb }),
+          ...(list.hintLabel === undefined ? {} : { label: list.hintLabel }),
+        }
       }
     }
   })()
@@ -888,6 +911,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     ...(node === undefined ? {} : { list: {
       /* Search state lives in the frontend choice; without it the list stays a plain roving list. */
       filterable: node.filterable === true && choice !== undefined,
+      ...(node.filterMode === undefined ? {} : { filterMode: node.filterMode }),
       searching,
       query: (choice?.query ?? '').length > 0,
       pasting: node.filterable === true && choice !== undefined && runtime.search(node).pending,
@@ -1117,7 +1141,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
       case 'list': {
         const window = options.listRuntime.listWindow(current, listRowLimit(options))
         if (window.length === 0) controls.push({ kind: 'list', node: current, key: scopedControlKey('empty-list', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('list', current.id), navigation: 'none' })
-        for (const { item, index } of window) if (item.disabled !== true) {
+        for (const { item, index } of window) if (focusableListItem(item)) {
           const selected = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })?.selectedIds ?? current.selectedIds
           const selectedIds = current.mode === 'multiple'
             ? selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id]
@@ -1384,35 +1408,62 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'list': {
       const empty = node.empty === undefined ? undefined : compileNode(node.empty, state, options, `${path}.empty`, mode)
       const { filter: _filter, ...unfiltered } = node
+      // A node body compiles once, when its row first opens; the rows it paints are kept by the row cache.
+      const bodies = new WeakMap<object, Component>()
+      const paintBody = (item: MayflyListItem, width: number): readonly string[] => {
+        // The painter asks only for the node bodies of open rows; text bodies it draws itself.
+        let body = bodies.get(item)
+        if (body === undefined) {
+          body = compileNode(item.body as MayflyUiNode, state, options, `${path}.body.${item.id}`, mode)
+          bodies.set(item, body)
+        }
+        return body.render(width)
+      }
       let component!: MayflyComponent
       component = staticComponent(width => {
-        const entries = options.listRuntime.listWindow(node, listRowLimit(options))
-        const items = entries.map(entry => entry.item)
+        const limit = node.maxRows === undefined ? listRowLimit(options) : Math.min(node.maxRows, listRowLimit(options))
+        const entries = options.listRuntime.listWindow(node, limit)
         const choice = options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })
-        state.bindControls(items.filter(item => item.disabled !== true).map(item => scopedControlKey('list', node.id, item.id)), { component, axis: 'vertical' })
+        state.bindControls(entries.filter(entry => focusableListItem(entry.item)).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
         const query = choice?.query ?? node.filter ?? ''
-        const queryRows = choice?.searching === true ? options.listRuntime.search(node).render(Math.max(1, width - 2), state.focused && state.activeGroup === scopedControlGroup('list', node.id)).map(row => sliceByColumn(`/ ${row}`, 0, width, true)) : []
         const visibleCount = choice === undefined ? node.items.length : choiceVisibleCount(choice)
+        const listFocused = patternFocus(state, scopedControlGroup('list', node.id))
+        const focus = listFocused
+        const searching = choice?.searching === true
+        const queryRows = searching || query.length > 0 ? [listQueryRow(node, query, searching, visibleCount, width, focus.focused && state.activeGroup === scopedControlGroup('list', node.id), options)] : []
         const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
-        const counter = visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
-        const focus = patternFocus(state, scopedControlGroup('list', node.id))
+        const counter = node.maxRows === undefined && visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
+        const translate = (key: string, values?: UiTranslateValues): string => coreText(options, key, values)
         const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? [] : renderList(
-          { ...unfiltered, items, selectedIds: options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })?.selectedIds ?? node.selectedIds },
+          { ...unfiltered, items: entries.map(entry => entry.item), selectedIds: choice?.selectedIds ?? node.selectedIds },
           width,
-          Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1)),
+          Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1) - queryRows.length),
           focus,
           options.colors,
           entries[0]!.position,
           { cache: options.listRuntime.rows, counters: options.counters },
+          {
+            rows: entries,
+            cursorId: choice?.focusedId,
+            before: entries[0]!.position,
+            after: visibleCount - entries.at(-1)!.position - 1,
+            total: visibleCount,
+            translate,
+            body: paintBody,
+            segmentLabel: coreText(options, 'Options'),
+            segment: item => {
+              if (item.segment === undefined) return undefined
+              return choice === undefined
+                ? { segment: item.segment, pinned: item.segment.selectedId ?? null, active: item.segment.selectedId ?? item.segment.inheritedId ?? item.segment.options.find(option => option.disabled !== true)?.id }
+                : { segment: item.segment, pinned: choicePinned(choice, item.id), active: choiceSegment(choice, item.id) }
+            },
+          },
         )
-        const focusedItem = focus.focused && focus.key !== '' ? entries.find(entry => entry.item.id === focus.key)?.item : undefined
-        const segment = focusedItem?.segment
-        const segmentRows = segment === undefined ? [] : [renderListSegment(segment, choice === undefined ? segment.selectedId : choiceSegment(choice, focusedItem!.id), width, options.colors)]
-        return [...(queryRows.length > 0 ? queryRows : query.length > 0 ? [sliceByColumn(`/ ${query}`, 0, width, true)] : []), ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body, ...segmentRows]
+        return [...queryRows, ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body]
       }, options, false)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
       if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
-      state.bindControls(initial.filter(entry => entry.item.disabled !== true).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
+      state.bindControls(initial.filter(entry => focusableListItem(entry.item)).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
       return component
     }
     case 'form': {
@@ -1565,7 +1616,9 @@ function reconcile(state: FocusState): readonly ControlDescriptor[] {
   }
   const groupIds = groups.map(group => group.id)
   const requestedGroup = desiredHidden ? state.desiredGroup : state.activeGroup
-  const declaredDefault = controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
+  // A list that declares `autofocus` takes focus first; then an action that declares itself the default.
+  const declaredDefault = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' ? control.node : undefined)?.autofocus === true)
+    ?? controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
   const fallbackGroup = requestedGroup !== undefined && groupIds.includes(requestedGroup)
     ? requestedGroup
     : declaredDefault?.group ?? groupIds[0]!
@@ -1851,7 +1904,11 @@ export class MayflyUiSurfaceRuntime {
     const start = Math.max(0, Math.min(count - size, cursor - Math.floor(size / 2)))
     return Array.from({ length: size }, (_, offset) => {
       const index = state === undefined ? start + offset : choiceVisibleIndex(state, start + offset)!
-      return { index, position: start + offset, item: state === undefined ? admittedListItem(node.items, index)! : decorateChoiceItem(state, index) }
+      if (state !== undefined) return { index, position: start + offset, ...choiceRow(state, index) }
+      // Without a frontend model the list is a plain roving list: rows open only as they were declared.
+      const item = admittedListItem(node.items, index)!
+      const always = item.bodyAlways === true && item.body !== undefined
+      return { index, position: start + offset, item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true) }
     })
   }
 
@@ -1862,7 +1919,7 @@ export class MayflyUiSurfaceRuntime {
     const state = this.interaction?.choice(address)
     const index = state?.focusedIndex ?? -1
     const item = index < 0 ? undefined : admittedListItem(node.items, index)
-    return item === undefined ? undefined : { index, position: state!.focusedPosition, item }
+    return item === undefined ? undefined : { index, position: state!.focusedPosition, ...choiceRow(state!, index) }
   }
 
   setFocused(value: boolean): void {
@@ -2738,7 +2795,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
       }
       case 'list-move': {
         const target = this.surfaceRuntime.moveList(listNode!, intent.movement, Math.max(1, Math.min(10, this.viewport.rows - 1)))
-        if (target === undefined || target.index === (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry!.index) return
+        if (target === undefined || target.index === (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry!.index) {
+          // Past the first or last row the arrow leaves the list for the control above or below it.
+          if (intent.movement === 'up' || intent.movement === 'down') this.navigate(intent.movement, controls, active)
+          return
+        }
         this.focusRow(listNode!, target.item.id, listAddress!.pagePath)
         return
       }
@@ -2753,10 +2814,17 @@ class CompiledSurface implements MayflyEditorShellComponent {
         const choice = model?.choice(listAddress!)
         const expanded = choice?.expandedIds.includes(item.id) === true
         // Space toggles; Right opens a closed parent; Left closes an open one.
-        const toggle = intent.expand === undefined ? true : intent.expand ? !expanded && choice?.treeIndex?.parents.has(item.id) === true : expanded
+        const opens = choice?.treeIndex?.parents.has(item.id) === true || (item.body !== undefined && item.bodyAlways !== true)
+        const toggle = intent.expand === undefined ? true : intent.expand ? !expanded && opens : expanded
         if (toggle) model?.updateChoice(listAddress!, { kind: 'expand', id: item.id })
         return
       }
+      case 'unpin': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        model?.updateChoice(listAddress!, { kind: 'unpin', id: admittedListItem(listNode!.items, row.listEntry!.index)!.id })
+        return
+      }
+      case 'branch-all': model?.updateChoice(listAddress!, { kind: intent.expand ? 'expand-all' : 'collapse-all' }); return
       case 'accept':
         if (active.kind === 'list') this.state.emit({ kind: 'selection-accept', pagePath: active.identity.pagePath!, controlId: active.node.id, selectedIds: model?.choice(listAddress!)?.selectedIds ?? [] })
         else this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)

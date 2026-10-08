@@ -787,12 +787,21 @@ ui.list({
   items: readonly MayflyListItem[]
   filter?: string
   filterable?: boolean
+  filterMode?: 'type' | 'slash'
   tree?: boolean
   numbered?: boolean | 'focus'
   minSelected?: number
   maxSelected?: number
   acceptActionId?: string
   empty?: MayflyUiNode
+  marker?: 'cursor' | 'selection'
+  marks?: boolean
+  maxRows?: number
+  expandFocused?: boolean
+  acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore'
+  autofocus?: boolean
+  focusItem?: { id: string, rev: number }
+  hintLabel?: string
 })
 
 type MayflyListItem = {
@@ -806,9 +815,21 @@ type MayflyListItem = {
   disabledReason?: string
   parentId?: string
   searchText?: string
-  segment?: MayflyListSegment
+  segment?: MayflyListSegment      // { label?, options, selectedId?, inheritedId? }
   unavailableActions?: Readonly<Record<string, string>>
   confirm?: string | MayflyConfirmation
+  labelSpans?: readonly MayflyInlineSpan[]
+  right?: readonly MayflyInlineSpan[]
+  rightFocus?: readonly MayflyInlineSpan[]
+  body?: string | MayflyListBodyNode   // 内容用 ui.listBody(...) 构建
+  bodyAlways?: boolean
+  expanded?: boolean
+  wrap?: boolean
+  wrapMax?: number
+  meter?: { value: number, max: number, width?: number, tone?: MayflyTone }
+  indent?: number
+  rule?: string
+  gap?: boolean
 }
 ```
 
@@ -830,7 +851,7 @@ ui.list({
 })
 ```
 
-`filterable: true` 启用共享搜索；`filter` 只提供初始 query。输入字符或 `/` 开始搜索，
+`filterable: true` 启用共享搜索；`filter` 只提供初始 query。输入字符或 `/` 开始搜索（`filterMode: 'slash'` 时只有 `/`），
 Escape 结束搜索并保留 query，Ctrl+U 清空。Mayfly 在已给出的 items 上维护匹配和焦点，
 不触发网络读取。`tree: true` 配合 `parentId` 提供共享展开状态（Space 或 Right/Left
 展开、折叠分支）。大型 items 只校验和绘制当前窗口。items 为空时渲染 `empty`。
@@ -839,6 +860,72 @@ disabled 行永远不会获得光标，移动时直接跳过；没有 `detail` �
 显示 `disabledReason`。`numbered: true` 为前九个可见行加上 `1.`–`9.` 前缀，数字键直接
 选择该行；编号按可见顺序计算，列表滚动时保持不变。`numbered: 'focus'` 显示同样的编号，
 但数字只移动光标，适合需要显式 Enter 才接受的关卡。
+
+**斜杠筛选。** `filterMode: 'slash'` 让可打印键不再开始搜索，只有 `/` 才会（它也会恢复保留的
+query），所以单个字母可以留给 `i install`、通用的 `x delete`、`r refresh` 等 accelerator。搜索
+打开后数字是文本。没有 `filterMode` 的 `filterable` 列表把每个可打印键当作文本，validator 会拒绝
+与之并存的可打印 accelerator；每个可筛选列表都设为 `filterMode: 'slash'` 时才放开。搜索打开时筛选
+行显示 `N matches`，提示行只列出结束或清除搜索的键。
+
+**行。** `marker: 'selection'` 让光标行在焦点离开后保留一个 muted 的 `→`（详情跟随它的 rail）。
+`marks: true` 在 single choose 列表上画 `●`/`○`。`maxRows` 围绕光标开窗口，并以
+`↑ n more · ↓ n more` 结尾。`acceptVerb` 在提示行命名 Enter，`hintLabel` 命名 `↑/↓`，`autofocus`
+让该列表最先获得焦点。`focusItem` 在 `rev` 变化时移动光标（并展开该行的父级）；重新发布相同 `rev`
+不会动读者已经移动过的光标。`expandFocused` 展开光标行的 body 或分支。`labelSpans` 绘制标签（`label`
+仍是筛选读取的纯文本），`right` 把 span 对齐到行右缘，`rightFocus` 在光标下替换它，`meter` 画
+`▰▱`，`indent` 缩进，`wrap` 在行自己的前缀下折行（最多 `wrapMax` 行，之后是
+`▸ N more lines · Enter`），`rule` 与 `gap` 是方向键跳过的不可选 muted 分隔线与空行。树中 `*`
+展开所有分支、`-` 折叠；multiple 树的父级在部分子项被选中时显示 `◐`。
+
+**Body。** 字符串 `body` 在行下方以 `│ ╰` 引导线展开；节点 `body`（用 `ui.listBody` 构建，仅限内容：
+text、rich text、fields、code、diff、sections、progress、image、divider）作为内容展开。带 body 的行
+显示 `▸`/`▾`，用 Enter、Space 或 Right 展开（Left 折叠）；`bodyAlways` 不带展开箭头直接显示，
+`expanded` 让行初始展开。每个 body 随其 item 在各自 32 个节点的预算下校验，长列表只校验光标附近的行，
+所以数千条富行不会占用比普通行更多的树配额。body 永远不是 control：其中的 list、form、actions、
+tabs 会被拒绝。
+
+**Segment 条。** `segment` 只在焦点行上画一条横向选项（`min ‹ high (default) › max`）。
+`←`/`→` 步进并在两端夹紧，跳过 disabled 选项；有 `inheritedId` 时，未固定的行把该选项标为
+`(default)`，步进到它即取消固定，`Delete` 也取消固定（提示行 `Delete use default`）。仅当继承了某项
+的行被固定时，`selection-accept` 才携带 `segmentId`。窄宽度下先去掉 `(default)`；该行放不下时，
+列表预先保留一行 footer（`  Thinking: min ‹ high (default) › max`，其次去掉标题，再折叠为 `+N`，
+最后只显示当前选项），因此焦点不会让任何一行移动。
+
+![带斜杠筛选、body 与 meter 的 `list`](/shots/list-rows.svg)
+
+*斜杠列表、选中 rail、右对齐 span、meter 与展开的 body（宽度 64）。*
+
+```ts
+ui.list({
+  id: 'plugins',
+  role: 'browse',
+  filterable: true,
+  filterMode: 'slash',
+  marker: 'selection',
+  selectedIds: [],
+  items: [
+    { id: 'loop', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }], meter: { value: 3, max: 4 } },
+    { id: 'git', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }], body: 'Commits, branches, and pull requests\nfrom the prompt.' },
+  ],
+})
+```
+
+![带 segment 条的 `list`](/shots/list-segment.svg)
+
+*焦点行带有自己的条；向右键固定了下一个选项（宽度 64）。*
+
+```ts
+ui.list({
+  id: 'models',
+  role: 'browse',
+  acceptVerb: 'choose',
+  selectedIds: [],
+  items: [
+    { id: 'pro', label: 'DeepSeek V4 Pro', detail: '977k context', segment: { label: 'Thinking', inheritedId: 'high', options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }] } },
+    { id: 'flash', label: 'DeepSeek V4 Flash', detail: '256k context' },
+  ],
+})
+```
 
 `unavailableActions` 把 action id 映射到“当本行是该 action（通过其 `selections`）所指向
 的选择时，该 action 为何不能执行”的原因。此时 action 以 disabled 呈现并显示原因，

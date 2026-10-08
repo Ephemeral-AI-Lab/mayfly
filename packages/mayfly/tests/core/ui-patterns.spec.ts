@@ -191,7 +191,7 @@ describe('private UI pattern painters', () => {
     const wide = renderListSegment(segment, 'high', 80, tracked)
     expect(wide).toContain('‹ High ›')
     expect(wide).toContain('Default')
-    expect(wide).toContain('\x1b[1mThinking:\x1b[22m')
+    expect(wide).toContain('Thinking:')
     expect(primary).toHaveBeenCalledWith('‹ High ›')
     for (const width of [60, 40, 30, 24, 16, 8]) {
       const row = renderListSegment(segment, 'high', width, tracked)
@@ -211,7 +211,8 @@ describe('private UI pattern painters', () => {
       { id: 'b', label: 'B' },
       { id: 'c', label: 'C' },
     ] }, 'c', 20, colors)
-    expect(labelOnly).toBe('   A  B  ‹ C ›')
+    // The label is the first thing the footer drops, then the strip keeps its single-space gaps.
+    expect(labelOnly).toBe('  A B \x1b[1m‹ C ›\x1b[22m')
     const disabledActive = renderListSegment(segment, 'max', 80, tracked)
     expect(disabledActive).toContain('‹ Max ›')
     expect(primary).not.toHaveBeenCalledWith('‹ Max ›')

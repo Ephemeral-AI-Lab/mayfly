@@ -6,15 +6,16 @@
  * @module @ephemeral-ai/mayfly/core/ui-patterns
  */
 
-import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyFormField, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
 import type { MayflyGlyphMode } from './glyphs.ts'
 import { loaderCell, loaderVariant } from './ui-loader-animation.ts'
 import { hintNotation } from './ui-key-grammar.ts'
 import { sanitizePluginText } from './plugin-view.ts'
-import type { UiRowCache } from './ui-row-cache.ts'
-import type { MayflyWorkCounters } from './ui-work-counters.ts'
+import { paintSpan, paintTone } from './ui-paint.ts'
+import { segmentFooter } from './ui-list-segment.ts'
+import { paintList, type ListPaintOptions, type ListRowMemo, type ListRowSpec } from './ui-list-paint.ts'
 import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 type SurfaceNode = Extract<MayflyUiNode, { readonly kind: 'surface' }>
@@ -164,42 +165,6 @@ function interactivePrefix(focus: PatternFocus): string {
   return focus.focused ? `${focus.marker}→ ` : '   '
 }
 
-function paintTone(tone: MayflyTone | undefined, value: string, colors: MayflySemanticColors): string {
-  switch (tone) {
-    case 'muted': return colors.muted(value)
-    case 'primary': return colors.primary(value)
-    case 'accent': return colors.accent(value)
-    case 'user': return colors.roleUser(value)
-    case 'success': return colors.success(value)
-    case 'warning': return colors.warning(value)
-    case 'danger': return colors.error(value)
-    default: return colors.text(value)
-  }
-}
-
-export function paintSpan(span: MayflyInlineSpan, colors: MayflySemanticColors): string {
-  const painted = paintTone(span.tone, sanitizePluginText(span.text), colors)
-  return (span.styles ?? []).reduce((value, style) => {
-    if (style === 'strong') return `\x1b[1m${value}\x1b[22m`
-    if (style === 'italic') return `\x1b[3m${value}\x1b[23m`
-    return `\x1b[9m${value}\x1b[29m`
-  }, painted)
-}
-
-/** A row's detail after its label: `— detail` in muted, or the detail spans after a muted dash. */
-function paintListDetail(item: ListNode['items'][number], colors: MayflySemanticColors): string {
-  if (item.detailSpans !== undefined) return item.detailSpans.length === 0 ? '' : ` ${colors.muted('—')} ${item.detailSpans.map(span => paintSpan(span, colors)).join('')}`
-  return item.detail === undefined ? '' : ` ${colors.muted(`— ${item.detail}`)}`
-}
-
-/** The choose mark of a multiple list row: `●` chosen, `○` not, `◐` for a parent with some of its children chosen. */
-function choiceMark(node: ListNode, item: ListNode['items'][number], selected: boolean): string {
-  const children = node.items.filter(child => child.parentId === item.id)
-  if (children.length === 0) return selected ? '●' : '○'
-  const chosen = children.filter(child => node.selectedIds.includes(child.id)).length
-  return chosen === 0 ? (selected ? '●' : '○') : chosen === children.length ? '●' : '◐'
-}
-
 /**
  * The border paint of a framed chrome: the focus color for an overlay, the quiet color for an inline surface (spec
  * §2.1), or the surface's own `border` tone.
@@ -309,96 +274,41 @@ export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, c
   return [tokens.map(token => token.text).join(separator), fit(underline, available)]
 }
 
-/** Where `renderList` keeps the item rows it has painted, and the sink that counts the ones it had to paint. */
-export interface ListRowMemo {
-  readonly cache: UiRowCache
-  readonly counters?: MayflyWorkCounters | undefined
+/** What the compiler knows about a list beyond its node: the model's rows, the cursor, bodies, strips, and the window. */
+export type ListRenderExtras = Omit<ListPaintOptions, 'rows' | 'focused' | 'marker' | 'selectedIds' | 'cursorId' | 'memo'> & {
+  readonly rows?: readonly ListRowSpec[]
+  readonly cursorId?: string | undefined
 }
 
-/** Render list rows; `numberFrom` is the visible position of the first row so numbers stay stable while the window scrolls. */
-export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0, memo?: ListRowMemo): string[] {
-  const available = safeWidth(width)
-  const rows: { readonly value: string, readonly itemId?: string }[] = []
-  if (node.filter !== undefined) rows.push({ value: fit(colors.textMuted(`/ ${node.filter}`), available) })
-  let group: string | undefined
-  const numbered = node.numbered !== undefined && node.numbered !== false
-  for (const [ordinal, item] of node.items.entries()) {
-    if (item.group !== undefined && item.group !== group) {
-      group = item.group
-      rows.push({ value: fit(colors.muted(item.group), available) })
-    }
-    const selected = node.selectedIds.includes(item.id)
-    const cursor = focus.key === item.id && item.disabled !== true
-    // The cursor `→` shows only while its list has focus; the space after it carries the focus marker.
-    const enabledFocus = cursor && focus.focused
-    const marker = enabledFocus ? focus.marker : ' '
-    const position = numberFrom + ordinal
-    const number = numbered && position < 9 ? String(position + 1) : ''
-    const check = node.mode === 'multiple' ? choiceMark(node, item, selected) : ''
-    const paintRow = (): string => {
-      const detail = available > 40 ? paintListDetail(item.disabled === true && item.detail === undefined && item.detailSpans === undefined && item.disabledReason !== undefined ? { ...item, detail: item.disabledReason } : item, colors) : ''
-      const badge = item.badge === undefined ? '' : ` ${colors.muted(`[${item.badge}]`)}`
-      const numberCell = number === '' ? '' : `${colors.muted(number)}  `
-      const checkCell = check === '' ? '' : `${check === '○' ? colors.muted(check) : colors.primary(check)} `
-      if (item.disabled === true) return fit(`  ${numberCell}${check === '' ? '' : `${colors.muted(check)} `}${colors.muted(item.label)}${badge}${detail}`, available)
-      const pointer = enabledFocus ? `\x1b[1m${colors.primary('→')}\x1b[22m` : ' '
-      const label = cursor ? `\x1b[1m${colors.text(item.label)}\x1b[22m` : colors.text(item.label)
-      return fit(`${pointer}${marker}${numberCell}${checkCell}${label}${badge}${detail}`, available)
-    }
-    const value = memo === undefined
-      ? paintRow()
-      : memo.cache.read(colors, item, `${String(available)}\0${marker}\0${check}\0${number}\0${selected ? 1 : 0}${cursor ? 1 : 0}${enabledFocus ? 1 : 0}`, paintRow, memo.counters)
-    rows.push({ value, itemId: item.id })
-  }
-  const limit = Math.max(1, Number.isFinite(height) ? Math.floor(height) : 1)
-  if (rows.length <= limit) return rows.map(row => row.value)
-  const focusRow = rows.findIndex(row => row.itemId === focus.key)
-  const start = focusRow < 0 ? 0 : Math.min(Math.max(0, focusRow - Math.floor(limit / 2)), rows.length - limit)
-  return rows.slice(start, start + limit).map(row => row.value)
-}
+export type { ListRowMemo } from './ui-list-paint.ts'
 
-/** The focused row's horizontal option strip; the selected option stays visible when the rest truncate. */
-export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string {
+/**
+ * Render list rows (spec 4.4); `numberFrom` is the visible position of the first row so numbers stay stable while the
+ * window scrolls. Without `extras` the rows are the node's items as a flat list and the cursor is the focused row.
+ */
+export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0, memo?: ListRowMemo, extras?: ListRenderExtras): string[] {
   const available = safeWidth(width)
-  const tokens = segment.options.map(option => {
-    const active = option.id === selectedId
-    const text = active ? `‹ ${option.label} ›` : option.label
-    return { id: option.id, value: option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.textMuted(text) }
+  const rows = extras?.rows ?? node.items.map((item, ordinal) => ({
+    item, depth: 0, last: false, expandable: item.body !== undefined && item.bodyAlways !== true, open: item.bodyAlways === true && item.body !== undefined, position: numberFrom + ordinal,
+  }))
+  return paintList(node, available, height, colors, {
+    ...extras,
+    rows,
+    cursorId: extras?.cursorId ?? (focus.key === '' ? undefined : focus.key),
+    focused: focus.focused && focus.key !== '',
+    marker: focus.marker,
+    selectedIds: node.selectedIds,
+    memo,
+    ...(node.filter === undefined ? {} : { lead: fit(colors.textMuted(`/ ${node.filter}`), available) }),
   })
-  /** Options ahead of the active one keep their slots while they fit; the rest collapse into +N. */
-  const narrow = (prefix: string): { readonly body: string, readonly hidden: number } => {
-    const activeIndex = tokens.findIndex(token => token.id === selectedId)
-    const active = activeIndex < 0 ? undefined : tokens[activeIndex]!.value
-    const activeWidth = active === undefined ? 0 : visibleWidth(active)
-    const kept: string[] = []
-    let used = visibleWidth(prefix)
-    for (const token of tokens.slice(0, activeIndex < 0 ? tokens.length : activeIndex)) {
-      const next = used + (kept.length === 0 ? 0 : 2) + visibleWidth(token.value)
-      if (next + (activeWidth === 0 ? 0 : 2 + activeWidth) > available) break
-      kept.push(token.value)
-      used = next
-    }
-    return {
-      body: `${prefix}${[...kept, ...(active === undefined ? [] : [active])].join('  ')}`,
-      hidden: tokens.length - kept.length - (active === undefined ? 0 : 1),
-    }
-  }
-  const prefixes = [
-    `   ${segment.label === undefined ? '' : `${colors.textStrong(`${segment.label}:`)} `}`,
-    '   ',
-    '',
-  ]
-  const complete = `${prefixes[0]!}${tokens.map(token => token.value).join('  ')}`
-  if (visibleWidth(complete) <= available) return complete
-  const narrowed = prefixes.map(narrow)
-  // Keep the omitted-option count when a shorter prefix makes room for it.
-  for (const { body, hidden } of narrowed) {
-    const withHidden = `${body}${hidden > 0 ? `  +${String(hidden)}` : ''}`
-    if (visibleWidth(withHidden) <= available) return withHidden
-  }
-  // Then keep the active option itself, dropping the count when it cannot fit.
-  for (const { body } of narrowed) if (visibleWidth(body) <= available) return body
-  return fit(narrowed.at(-1)!.body, available)
+}
+
+/**
+ * The segment strip as one footer line: the label and the whole strip when they fit, then the strip alone, without
+ * `(default)`, folded into `+N`, and last the active option alone. `selectedId` is the option that applies.
+ */
+export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors, pinned: string | null = selectedId ?? null): string {
+  return segmentFooter({ segment, pinned, active: selectedId }, safeWidth(width), colors, segment.label ?? 'Options')
 }
 
 export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key): string[] {

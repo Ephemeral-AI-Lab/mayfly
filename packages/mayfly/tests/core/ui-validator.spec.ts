@@ -7,6 +7,8 @@ import {
   MAYFLY_UI_MAX_DEPTH,
   MAYFLY_UI_MAX_NODES,
   MAYFLY_UI_MAX_TEXT,
+  MAYFLY_UI_MAX_ITEM_BODY_NODES,
+  admittedListExpanded,
   admittedListIndex,
   admittedListItem,
   deferredUiNodeMayHaveControls,
@@ -671,5 +673,95 @@ describe('narrow validators', () => {
         children: [{ node: ui.text('row') }, { node: { kind: 'editor-control' }, when: { maxHeight: 3 } }],
       },
     })).toMatchObject({ ok: false, message: expect.stringContaining('.when') })
+  })
+})
+
+describe('list rows and bodies', () => {
+  const rows = (items: readonly unknown[], extra: object = {}) => ({ kind: 'list', id: 'rows', role: 'browse', selectedIds: [], items, ...extra })
+  const itemOf = (value: unknown): Record<string, unknown> => ((accepted(rows([value])) as { items: Record<string, unknown>[] }).items[0]!)
+
+  it('lifts the printable-accelerator rejection only when every filterable list is slash', () => {
+    const list = (filterMode?: 'type' | 'slash') => ui.list({ id: 'rows', role: 'browse', selectedIds: [], filterable: true, ...(filterMode === undefined ? {} : { filterMode }), items: [{ id: 'a', label: 'A' }] })
+    const other = ui.list({ id: 'other', role: 'browse', selectedIds: [], filterable: true, items: [{ id: 'b', label: 'B' }] })
+    const install = ui.actions({ id: 'actions', items: [{ id: 'install', label: 'Install', key: 'i' }] })
+    expect(accepted(ui.stack.column([list('slash'), install]))).toMatchObject({ kind: 'stack' })
+    for (const mode of [undefined, 'type'] as const) expect(validateMayflyUiNode(ui.stack.column([list(mode), install]))).toMatchObject({ ok: false, message: expect.stringContaining("filterMode: 'slash'") })
+    expect(validateMayflyUiNode(ui.stack.column([list('slash'), other, install]))).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode(rows([], { filterable: true, filterMode: 'fuzzy' }))).toMatchObject({ ok: false })
+  })
+
+  it('canonicalizes the presentation fields of a list', () => {
+    expect(accepted(rows([{ id: 'a', label: 'A' }], { marker: 'selection', marks: true, maxRows: 4, expandFocused: true, acceptVerb: 'edit', autofocus: true, hintLabel: 'stream', focusItem: { id: 'a', rev: 2 } })))
+      .toMatchObject({ marker: 'selection', marks: true, maxRows: 4, expandFocused: true, acceptVerb: 'edit', autofocus: true, hintLabel: 'stream', focusItem: { id: 'a', rev: 2 } })
+    for (const bad of [{ marker: 'rail' }, { marks: 1 }, { maxRows: 0 }, { expandFocused: 'yes' }, { acceptVerb: 'delete' }, { autofocus: 1 }, { focusItem: { id: 'a' } }, { focusItem: { id: '', rev: 1 } }, { focusItem: { id: 'a', rev: -1 } }]) {
+      expect(validateMayflyUiNode(rows([], bad)), JSON.stringify(bad)).toMatchObject({ ok: false })
+    }
+  })
+
+  it('canonicalizes the row fields of an item', () => {
+    expect(itemOf({
+      id: 'a', label: 'A', labelSpans: [{ text: 'A', styles: ['strong'] }], right: [{ text: '1.0', tone: 'muted' }], rightFocus: [{ text: 'Enter' }],
+      expanded: true, wrap: true, wrapMax: 500, meter: { value: 9, max: 4, width: 99, tone: 'success' }, indent: 99, rule: '', gap: false,
+    })).toMatchObject({
+      labelSpans: [{ text: 'A', styles: ['strong'] }], right: [{ text: '1.0', tone: 'muted' }], rightFocus: [{ text: 'Enter' }],
+      expanded: true, wrap: true, wrapMax: 100, meter: { value: 4, max: 4, width: 40, tone: 'success' }, indent: 8, rule: '', gap: false,
+    })
+    expect(itemOf({ id: 'a', label: 'A', meter: { value: 1, max: 2 } })).toMatchObject({ meter: { value: 1, max: 2 } })
+    for (const bad of [{ labelSpans: 'x' }, { right: [1] }, { expanded: 'y' }, { wrap: 1 }, { wrapMax: 0 }, { meter: { value: 1 } }, { meter: { value: 1, max: 0 } }, { meter: { value: 1, max: 2, tone: 'loud' } }, { indent: -1 }, { rule: 1 }, { gap: 1 }, { gap: true, rule: 'x' }, { bodyAlways: true }, { bodyAlways: 1, body: 'x' }]) {
+      expect(validateMayflyUiNode(rows([{ id: 'a', label: 'A', ...bad }])), JSON.stringify(bad)).toMatchObject({ ok: false })
+    }
+  })
+
+  it('admits a string body and a content body, and refuses anything that holds focus', () => {
+    expect(itemOf({ id: 'a', label: 'A', body: 'text', bodyAlways: true })).toMatchObject({ body: 'text', bodyAlways: true })
+    const content = ui.stack.column([ui.text('one'), ui.divider(), ui.progress({ value: 1, max: 2 }), ui.child(ui.fields([{ label: 'k', value: [{ text: 'v' }] }]))])
+    expect(itemOf({ id: 'a', label: 'A', body: content })).toMatchObject({ body: { kind: 'stack' } })
+    expect(itemOf({ id: 'a', label: 'A', body: ui.markdown('# x') })).toMatchObject({ body: { kind: 'markdown' } })
+    expect(itemOf({ id: 'a', label: 'A', body: ui.image({ attachmentId: 'img-1', alt: '[Image #1]' }) })).toMatchObject({ body: { kind: 'image' } })
+    for (const body of [
+      ui.list({ id: 'inner', role: 'browse', selectedIds: [], items: [] }),
+      ui.actions({ id: 'inner', items: [{ id: 'go', label: 'Go' }] }),
+      ui.form({ id: 'inner', fields: [] }),
+      ui.stack.column([ui.tabs({ id: 'inner', activeId: 'a', items: [{ id: 'a', label: 'A' }] })]),
+      ui.surface({ child: ui.text('x') }),
+      ui.stack.column([ui.child(ui.text('x'), { tab: { controlId: 'inner', itemId: 'a' } })]),
+    ]) expect(validateMayflyUiNode(rows([{ id: 'a', label: 'A', body }])), body.kind).toMatchObject({ ok: false })
+  })
+
+  it('gives each body its own node budget, so a long list of rich rows is legal', () => {
+    const body = (nodes: number) => ui.stack.column(Array.from({ length: nodes }, (_, index) => ui.text(`line ${String(index)}`)))
+    expect(validateMayflyUiNode(rows([{ id: 'a', label: 'A', body: body(MAYFLY_UI_MAX_ITEM_BODY_NODES - 1) }]))).toMatchObject({ ok: true })
+    expect(validateMayflyUiNode(rows([{ id: 'a', label: 'A', body: body(MAYFLY_UI_MAX_ITEM_BODY_NODES + 1) }]))).toMatchObject({ ok: false, message: expect.stringContaining('list body exceeds') })
+    const stream = rows(Array.from({ length: 60 }, (_, index) => ({ id: `r${String(index)}`, label: `row ${String(index)}`, body: body(MAYFLY_UI_MAX_ITEM_BODY_NODES - 1) })))
+    expect(validateMayflyUiNode(stream)).toMatchObject({ ok: true })
+  })
+
+  it('admits a long list of bodies lazily, one item at a time, and reads the open rows without admitting them', () => {
+    const body = ui.stack.column([ui.text('rich')])
+    const items = Array.from({ length: 40 }, (_, index) => ({ id: `r${String(index)}`, label: `row ${String(index)}`, body, ...(index === 30 ? { expanded: true } : {}) }))
+    const admitted = accepted(rows(items)) as { items: readonly Record<string, unknown>[] }
+    expect(admittedListItem(admitted.items as never, 3)).toMatchObject({ id: 'r3', body: { kind: 'stack' } })
+    expect(admittedListIndex(admitted.items as never, 'r12')).toBe(12)
+    expect(admittedListExpanded(admitted.items as never)).toEqual(['r30'])
+    // An eager list reads the same field from its admitted items.
+    expect(admittedListExpanded((accepted(rows([{ id: 'a', label: 'A', expanded: true }, { id: 'b', label: 'B' }])) as { items: never }).items)).toEqual(['a'])
+    // The raw scan skips holes that are not data and rows that are not objects.
+    const odd = Array.from({ length: 40 }, (_, index) => index === 1 ? 'not an item' : index === 2 ? null : index === 3 ? { id: 7, label: 'x', expanded: true } : { id: `r${String(index)}`, label: 'x', ...(index === 39 ? { body } : {}) })
+    expect(validateMayflyUiNode(rows(odd))).toMatchObject({ ok: true })
+    const lazyOdd = (validateMayflyUiNode(rows(odd)) as { value: { items: never } }).value.items
+    expect(admittedListExpanded(lazyOdd)).toEqual([])
+    expect(admittedListItem(lazyOdd, 1)).toMatchObject({ disabled: true })
+  })
+
+  it('validates segment inheritedId against the options', () => {
+    const segment = (inheritedId?: string) => ({ id: 'a', label: 'A', segment: { options: [{ id: 'x', label: 'x' }, { id: 'y', label: 'y' }], ...(inheritedId === undefined ? {} : { inheritedId }) } })
+    expect(itemOf(segment('y'))).toMatchObject({ segment: { inheritedId: 'y' } })
+    expect(validateMayflyUiNode(rows([segment('nope')]))).toMatchObject({ ok: false, message: expect.stringContaining('inheritedId is not an option') })
+  })
+
+  it('counts the nodes of a body toward validation work', () => {
+    const counters = { nodesValidated: 0, unitsCompiled: 0, rowsPainted: 0, stringsMeasured: 0 }
+    validateMayflyUiNode(rows([{ id: 'a', label: 'A', body: ui.stack.column([ui.text('x'), ui.text('y')]) }]), counters)
+    expect(counters.nodesValidated).toBe(1 + 1 + 3)
   })
 })

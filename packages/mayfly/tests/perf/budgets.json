@@ -3,6 +3,7 @@
   "W2": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 1, "stringsMeasured": 40 },
   "W3": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 2, "stringsMeasured": 40 },
   "W4": { "nodesValidated": 2, "unitsCompiled": 1, "rowsPainted": 1, "stringsMeasured": 40 },
+  "W4b": { "nodesValidated": 5, "unitsCompiled": 4, "rowsPainted": 5, "stringsMeasured": 40 },
   "W5": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 1, "stringsMeasured": 21 },
   "W6": { "nodesValidated": 44, "unitsCompiled": 12, "rowsPainted": 32, "stringsMeasured": 52 },
   "W7": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 9, "stringsMeasured": 20 },

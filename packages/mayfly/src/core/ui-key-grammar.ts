@@ -31,7 +31,24 @@ export type GrammarControl =
   | { readonly kind: 'submit' }
   | { readonly kind: 'field-action' }
   | { readonly kind: 'tab' }
-  | { readonly kind: 'row', readonly role: 'browse' | 'choose', readonly multiple: boolean, readonly tree: boolean, readonly segment?: string }
+  | {
+    readonly kind: 'row'
+    readonly role: 'browse' | 'choose'
+    readonly multiple: boolean
+    readonly tree: boolean
+    /** The focused row carries a segment strip: its label, lower-cased. */
+    readonly segment?: string
+    /** The segment is pinned and inherits an option, so Delete can unpin it. */
+    readonly unpin?: boolean
+    /** The row opens a branch or a body. */
+    readonly expandable?: boolean
+    /** Enter opens and closes the row instead of accepting it (a body, or a branch of a multiple tree). */
+    readonly enterToggles?: boolean
+    /** The word for Enter: the list's `acceptVerb`. */
+    readonly verb?: string
+    /** The word for the list's up and down hint. */
+    readonly label?: string
+  }
   | { readonly kind: 'empty-list' }
   | { readonly kind: 'action', readonly decision: boolean }
   /** `work` is a loader's cancel, which Escape fires; its Enter binding stays but is not hinted. */
@@ -45,6 +62,8 @@ export interface GrammarState {
   /** Present while a list row or empty list holds focus. */
   readonly list?: {
     readonly filterable: boolean
+    /** `slash`: only `/` starts a search, so printable keys stay free for accelerators until it does. */
+    readonly filterMode?: 'type' | 'slash'
     readonly searching: boolean
     readonly query: boolean
     readonly pasting: boolean
@@ -95,6 +114,8 @@ export type GrammarIntent =
   | { readonly kind: 'accept' }
   | { readonly kind: 'commit' }
   | { readonly kind: 'toggle-row' }
+  | { readonly kind: 'unpin' }
+  | { readonly kind: 'branch-all', readonly expand: boolean }
   | { readonly kind: 'navigate', readonly direction: Direction }
   | { readonly kind: 'activate' }
   | { readonly kind: 'field-reset' }
@@ -169,10 +190,10 @@ function navigation(bindings: GrammarBinding[], state: GrammarState, directions:
   }
 }
 
-function listMovement(bindings: GrammarBinding[]): void {
+function listMovement(bindings: GrammarBinding[], label: string, hinted: boolean): void {
   for (const [index, [id, movement]] of MOVEMENTS.entries()) {
     push(bindings, action(id), { kind: 'list-move', movement },
-      index === 0 ? { id: 'navigate', label: 'options', priority: PRIORITY.navigate, actions: [ACTION_MOVE_UP, ACTION_MOVE_DOWN] } : undefined)
+      index === 0 && hinted ? { id: 'navigate', label, priority: PRIORITY.navigate, actions: [ACTION_MOVE_UP, ACTION_MOVE_DOWN] } : undefined)
   }
 }
 
@@ -209,36 +230,55 @@ function picker(bindings: GrammarBinding[], state: GrammarState, control: Extrac
   push(bindings, { kind: 'any' }, { kind: 'swallow' })
 }
 
+/** The word on Enter: the row's own verb, `branch` where Enter opens it, else the list's `acceptVerb` or its role's default. */
+function enterVerb(control: Extract<GrammarControl, { readonly kind: 'row' }>): string {
+  if (control.enterToggles === true) return 'branch'
+  return control.verb ?? (control.role === 'browse' && control.segment === undefined ? 'open' : 'choose')
+}
+
 function rowBindings(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
   const searching = state.list?.searching === true
+  const activate = { id: 'activate', label: enterVerb(control), priority: PRIORITY.primary, actions: [ACTION_SUBMIT] }
   if (control.multiple) {
     push(bindings, action(ACTION_TOGGLE), { kind: 'toggle-row' }, { id: 'toggle', label: 'toggle', priority: PRIORITY.adjust, actions: [ACTION_TOGGLE] })
-    push(bindings, action(ACTION_SUBMIT), { kind: 'commit' }, { id: 'activate', label: control.role === 'browse' ? 'open' : 'choose', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+    push(bindings, action(ACTION_SUBMIT), control.enterToggles === true ? { kind: 'branch' } : { kind: 'commit' }, activate)
   } else {
-    push(bindings, action(ACTION_SUBMIT), { kind: 'accept' }, { id: 'activate', label: control.role === 'browse' ? 'open' : 'choose', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
-    if (control.tree && !searching) push(bindings, action(ACTION_TOGGLE), { kind: 'branch' }, { id: 'branch', label: 'branch', priority: PRIORITY.adjust, actions: [ACTION_TOGGLE] })
+    push(bindings, action(ACTION_SUBMIT), control.enterToggles === true ? { kind: 'branch' } : { kind: 'accept' }, activate)
+    // A tree's Space keeps its old meaning; a body opens with Space too, but ←/→ carries its hint.
+    if ((control.tree || control.expandable === true) && !searching) {
+      push(bindings, action(ACTION_TOGGLE), { kind: 'branch' }, control.tree && control.expandable !== true ? { id: 'branch', label: 'branch', priority: PRIORITY.adjust, actions: [ACTION_TOGGLE] } : undefined)
+    }
   }
 }
 
 function listText(bindings: GrammarBinding[], state: GrammarState): void {
   const list = state.list
   if (list?.filterable !== true) return
+  // A slash list takes typed text only once `/` has started the search; a type list starts one with any printable key.
+  if (list.filterMode === 'slash' && !list.searching) return
   push(bindings, { kind: 'text', space: list.searching }, { kind: 'search-type' },
     list.searching ? undefined : { id: 'search', keys: 'Type', label: 'filter', priority: PRIORITY.primary })
 }
 
-function rowMovement(bindings: GrammarBinding[], control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
-  listMovement(bindings)
+function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
+  // While a search is typing, arrows still move the cursor, but the hint names only what ends or clears the search.
+  listMovement(bindings, control.label ?? 'options', state.list?.searching !== true && control.segment === undefined)
   if (control.segment !== undefined) {
     push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'segment', delta: -1 }, { id: 'adjust', label: control.segment, priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
     push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'segment', delta: 1 })
-  } else if (control.tree) {
-    push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'branch', expand: false }, control.multiple ? { id: 'branch', label: 'branch', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] } : undefined)
+    if (control.unpin === true) push(bindings, action(ACTION_RESET_FIELD), { kind: 'unpin' }, { id: 'reset', label: 'use default', priority: PRIORITY.accelerator, actions: [ACTION_RESET_FIELD] })
+  } else if (control.tree || control.expandable === true) {
+    const hinted = control.multiple || control.expandable === true
+    push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'branch', expand: false }, hinted ? { id: 'branch', label: 'branch', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] } : undefined)
     push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'branch', expand: true })
   } else {
     // Rows move vertically; left/right leave the list for the nearest control beside it.
     push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'navigate', direction: 'left' })
     push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'navigate', direction: 'right' })
+  }
+  if (control.tree && control.segment === undefined && state.list?.searching !== true) {
+    push(bindings, { kind: 'key', key: '*' }, { kind: 'branch-all', expand: true })
+    push(bindings, { kind: 'key', key: '-' }, { kind: 'branch-all', expand: false })
   }
 }
 
@@ -274,16 +314,19 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   if (list?.pasting === true) push(bindings, { kind: 'any' }, { kind: 'search-type' })
   if (list?.filterable === true) {
     if (list.query || list.searching) push(bindings, action(ACTION_CLEAR_SEARCH), { kind: 'search-clear' }, { id: 'clear', label: 'clear', priority: PRIORITY.secondary, actions: [ACTION_CLEAR_SEARCH] })
-    if (!list.searching) push(bindings, action(ACTION_FILTER), { kind: 'search-start' })
+    // A slash list names its key: bare letters are free, so `/` is how a search starts.
+    if (!list.searching) push(bindings, action(ACTION_FILTER), { kind: 'search-start' }, list.filterMode === 'slash' ? { id: 'search', label: 'filter', priority: PRIORITY.primary, actions: [ACTION_FILTER] } : undefined)
   }
   if (control.kind === 'scroll') push(bindings, action(ACTION_EXPAND), { kind: 'expand' }, { id: 'expand', label: 'expand', priority: PRIORITY.adjust, actions: [ACTION_EXPAND] })
   // Printable accelerators never pre-empt a control that consumes typed text.
-  accelerators(bindings, state, control.kind !== 'text' && list?.filterable !== true)
+  // A type-to-filter list reads every printable key as text; a slash list does only once its search is open.
+  accelerators(bindings, state, control.kind !== 'text' && !(list?.filterable === true && (list.filterMode !== 'slash' || list.searching)))
   if (list?.numbered !== undefined && !list.searching && list.numbered.count > 0) {
     push(bindings, { kind: 'digit' }, { kind: 'numbered' }, { id: 'numbered', keys: list.numbered.count === 1 ? '1' : `1-${String(list.numbered.count)}`, label: list.numbered.accept ? 'choose' : 'focus', priority: PRIORITY.numbered })
   }
-  tabSwitches(bindings, state, control.kind !== 'tab')
-  groupMoves(bindings, state, control.kind !== 'tab')
+  // A search in progress hints only what ends or clears it.
+  tabSwitches(bindings, state, control.kind !== 'tab' && list?.searching !== true)
+  groupMoves(bindings, state, control.kind !== 'tab' && list?.searching !== true)
   if (list?.searching === true) push(bindings, { kind: 'backspace' }, { kind: 'search-type' })
   // A declared Delete accelerator keeps its key; otherwise Delete resets a changed field.
   if (state.reset !== undefined && (control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle') && !state.keyed.some(keyed => keyed.key.toLowerCase() === 'delete')) {
@@ -299,8 +342,9 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       scrollKeys(bindings)
       break
     case 'row':
+      // Movement first, so the hint row reads `←/→ branch` before `Space toggle`, as the kit orders them.
+      rowMovement(bindings, state, control)
       rowBindings(bindings, state, control)
-      rowMovement(bindings, control)
       listText(bindings, state)
       break
     case 'empty-list':

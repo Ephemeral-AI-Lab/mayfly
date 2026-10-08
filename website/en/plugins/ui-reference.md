@@ -843,12 +843,21 @@ ui.list({
   items: readonly MayflyListItem[]
   filter?: string
   filterable?: boolean
+  filterMode?: 'type' | 'slash'
   tree?: boolean
   numbered?: boolean | 'focus'
   minSelected?: number
   maxSelected?: number
   acceptActionId?: string
   empty?: MayflyUiNode
+  marker?: 'cursor' | 'selection'
+  marks?: boolean
+  maxRows?: number
+  expandFocused?: boolean
+  acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore'
+  autofocus?: boolean
+  focusItem?: { id: string, rev: number }
+  hintLabel?: string
 })
 
 type MayflyListItem = {
@@ -862,9 +871,21 @@ type MayflyListItem = {
   disabledReason?: string
   parentId?: string
   searchText?: string
-  segment?: MayflyListSegment
+  segment?: MayflyListSegment      // { label?, options, selectedId?, inheritedId? }
   unavailableActions?: Readonly<Record<string, string>>
   confirm?: string | MayflyConfirmation
+  labelSpans?: readonly MayflyInlineSpan[]
+  right?: readonly MayflyInlineSpan[]
+  rightFocus?: readonly MayflyInlineSpan[]
+  body?: string | MayflyListBodyNode   // built with ui.listBody(...) for content
+  bodyAlways?: boolean
+  expanded?: boolean
+  wrap?: boolean
+  wrapMax?: number
+  meter?: { value: number, max: number, width?: number, tone?: MayflyTone }
+  indent?: number
+  rule?: string
+  gap?: boolean
 }
 ```
 
@@ -888,8 +909,8 @@ ui.list({
 ```
 
 `filterable: true` enables shared search, while `filter` supplies its initial
-query. Typing a character or `/` starts a search; Escape ends it and keeps the
-query, and Ctrl+U clears it. Mayfly matches and focuses the supplied items
+query. Typing a character or `/` starts a search (with `filterMode: 'slash'` only `/`
+does); Escape ends it and keeps the query, and Ctrl+U clears it. Mayfly matches and focuses the supplied items
 without starting network work. `tree: true` combines with `parentId` for shared
 expansion state (Space, or Right/Left, opens and closes a branch). Large item
 arrays validate and render only around the current window. Empty items render
@@ -902,6 +923,90 @@ the digit choose that row; numbers follow the visible order and stay put while
 the list scrolls. `numbered: 'focus'` shows the same numbers but a digit only
 moves the cursor, which suits gates where accepting should take an explicit
 Enter.
+
+**Slash filter.** `filterMode: 'slash'` stops printable keys from starting a
+search: only `/` does (it resumes a kept query), so bare letters stay free for
+accelerators such as `i install` or the common `x delete` and `r refresh`.
+Digits are text once a search is open. A tree or list that is `filterable`
+without `filterMode` reads every printable key as text, and the validator
+refuses a printable accelerator beside it; with `filterMode: 'slash'` on every
+filterable list the refusal lifts. While a search is open the filter row shows
+`N matches`, and the hint row names only what ends or clears it.
+
+**Rows.** `marker: 'selection'` keeps a muted `→` on the cursor row after
+focus leaves the list (a rail whose detail follows it). `marks: true` draws
+`●`/`○` on a single choose list. `maxRows` windows the list around the cursor
+and ends it with `↑ n more · ↓ n more`. `acceptVerb` names Enter in the hint
+row, `hintLabel` names `↑/↓`, and `autofocus` makes the list the first control
+focused. `focusItem` moves the cursor when its `rev` changes (and opens the
+row's parents); republishing the same `rev` leaves a cursor the reader moved
+alone. `expandFocused` opens the cursor row's body or branch. `labelSpans`
+paint the label (`label` stays the plain text a filter reads), `right` aligns
+spans to the row's right edge and `rightFocus` replaces them under the cursor,
+`meter` draws `▰▱` cells, `indent` indents the row, `wrap` wraps the row under
+its own prefix (up to `wrapMax` lines, then `▸ N more lines · Enter`), and a
+`rule` or `gap` item is a non-selectable muted rule or blank row that the arrows
+skip. In a tree, `*` opens every branch and `-` closes them; a parent of a
+multiple tree shows `◐` when only some of its children are chosen.
+
+**Bodies.** A string `body` opens under its row behind a `│ ╰` guide; a node
+`body` (build it with `ui.listBody`, content only: text, rich text, fields,
+code, diff, sections, progress, an image, a divider) opens as content. A row
+with a body shows `▸`/`▾` and opens with Enter, Space, or Right (closes with
+Left); `bodyAlways` shows the body without a disclosure and `expanded` starts
+the row open. Each body admits with its item under its own budget of 32 nodes,
+and a long list admits only the rows around the cursor, so a stream of thousands
+of rich rows needs no more of the tree's quotas than plain ones. A body is never
+a control: a list, form, actions, or tabs node inside it is refused.
+
+**Segment strip.** `segment` draws a horizontal option strip on the focused row
+only (`min ‹ high (default) › max`). `←`/`→` step it and clamp at the ends,
+skipping disabled options; with `inheritedId`, an unpinned row marks that
+option `(default)`, stepping onto it unpins the row, and `Delete` unpins it
+(`Delete use default` in the hint row). `selection-accept` reports `segmentId`
+only while a row that inherits something is pinned. The strip degrades by
+dropping `(default)`; when the row cannot share its line, the list reserves one
+footer line in advance (`  Thinking: min ‹ high (default) › max`, then without
+the caption, then folded to `+N`, then the active option alone), so focus never
+moves a row.
+
+![`list` with a slash filter, a body, and a meter](/shots/list-rows.svg)
+
+*A slash list, a selection rail, right-aligned spans, a meter, and an opened
+body (width 64).*
+
+```ts
+ui.list({
+  id: 'plugins',
+  role: 'browse',
+  filterable: true,
+  filterMode: 'slash',
+  marker: 'selection',
+  selectedIds: [],
+  items: [
+    { id: 'loop', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }], meter: { value: 3, max: 4 } },
+    { id: 'git', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }], body: 'Commits, branches, and pull requests\nfrom the prompt.' },
+  ],
+})
+```
+
+![`list` with a segment strip](/shots/list-segment.svg)
+
+*The focused row carries its strip; the right arrow pinned the next option
+(width 64).*
+
+```ts
+ui.list({
+  id: 'models',
+  role: 'browse',
+  acceptVerb: 'choose',
+  selectedIds: [],
+  items: [
+    { id: 'pro', label: 'DeepSeek V4 Pro', detail: '977k context', segment: { label: 'Thinking', inheritedId: 'high', options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }] } },
+    { id: 'flash', label: 'DeepSeek V4 Flash', detail: '256k context' },
+  ],
+})
+```
 
 `unavailableActions` maps an action id to the reason that action cannot run
 while this row is the selection it targets (through the action's

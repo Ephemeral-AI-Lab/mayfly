@@ -11,6 +11,7 @@ import { namedActionsGroup } from './groups/1-7.ts'
 import { contentLayoutGroup } from './groups/content-layout.ts'
 import { visualLanguageGroup } from './groups/1-2.ts'
 import { imageGroup } from './groups/image.ts'
+import { listsGroup } from './groups/lists.ts'
 
 export const name = '@mayfly-example/ui-gallery'
 export const inject = ['mayflyPanes']
@@ -180,6 +181,7 @@ function renderGallery() {
         ...visualLanguageGroup(),
         ...contentLayoutGroup(),
         ...imageGroup(),
+        ...listsGroup(),
       ], { gap: 1 }), { scrollbar: true }),
     ], { gap: 1 }),
   })

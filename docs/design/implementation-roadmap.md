@@ -522,8 +522,8 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.10a | merged (#103) | `feat/ui-foundation-1-10a` | Node slot. Full gate green with 100% coverage; no visible change; `W1-slot` and `W4-slot` budgets |
 | 1.9a | merged (#104) | `feat/ui-foundation-1-9a` | `ui.image`. Full gate green with 100% coverage; one new shot (`image`), no other visible change |
 | 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
-| 1.3 | built | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 stays in the ledger for 1.4 |
-| 1.4 | not started | `feat/ui-foundation-1-4` | Needs: 1.2, 1.7 |
+| 1.3 | merged (#106) | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 was left in the ledger for 1.4, which closed it |
+| 1.4 | merged (#107) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
 | 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
 | 1.6 | not started | `feat/ui-foundation-1-6` | Needs: 1.2, 1.7 |
 | 1.10b | not started | `feat/ui-foundation-1-10b` | Views lane. Needs: 1.10a, 1.7 |
@@ -825,28 +825,62 @@ prototype; the Website reference's new shots on a LAN preview.
 
 **Backlog:** E1, E5, G2, G3, G25, B2, R9 (lists).
 
-- **Slash filter.** `filterMode: 'slash'`: printable keys never start a search; `/` starts it or resumes the kept
-  query; `Esc` ends it and keeps the query; `Ctrl+U` clears; the hint reads `/ filter`. The validator lifts its
-  printable-accelerator rejection (`core/ui-validator.ts`) only when every filterable list on the page is `slash`.
-  Digits stay text while typing into a filter.
-- **Rows.** `marker: 'selection'` keeps a muted arrow after focus leaves; `marks` draws `● ○`; `maxRows` windows the
-  list with an `↑ n more · ↓ n more` row; the filter row shows `N matches`; `acceptVerb` names `Enter`; `autofocus`;
-  `focusItem` moves the cursor when its `rev` changes and opens the parents; `expandFocused`; bodies (`▸ ▾`, a `│ ╰`
-  guide for string bodies, node bodies compiled as content only); `wrap`/`wrapMax`; `meter`; `indent`; `rule` and `gap`
-  rows that navigation skips; `labelSpans`, `right`, `rightFocus`; tree `*` and `-`.
-- **Cost.** A node body is admitted with its item, lazily and under a per-item budget (§4.1), and every row is a
-  row-cache entry keyed by its state bits (focused, selected, expanded, segment). Rows of varying height (bodies,
-  `wrap`) window through the prefix-sum index. W3 and W4 of §7.1 gate this slice with bodies.
-- **Segment strip on the row** (E1, G3). Drawn on the focused row only; `(default)` while unpinned; `←/→` clamp and
-  skip disabled tokens; stepping onto the inherited token unpins; `Delete` unpins (`use default`). It degrades by
-  dropping `(default)`, then the label, folding far tokens into `+N`, moving to one footer line the list reserves in
-  advance, and last showing the active token alone, so focus never moves a row.
+It landed in six parts, each green on its own: the contract, validator, choice model, painter, and grammar with scene 5
+pinned (1); the painter, strip, key, hint, and validator specs with the `W4b` budget (2); the public `ui.listBody`
+builder, the Website reference in both languages with two shots, and the gallery group (3); the roadmap and the gate (4); the last coverage gaps and scene 10's list (5, 6).
 
-Files: `core/ui-validator.ts`, `core/ui-compiler.ts` (`segmentRows`), `core/ui-patterns.ts` (`renderList`,
-`renderListSegment`), `core/ui-interaction-choice.ts`, `core/ui-interaction-tree.ts`, `core/ui-key-grammar.ts`
-(`rowBindings`, `listText`). Scenes 5 (all seven pages) and 1 p1. Tests: the hint row in every list state (idle,
-searching, segment pinned and unpinned, tree, numbered), choice reducers, and the segment ladder at 120, 84, 62, and 40
-columns.
+- **Slash filter.** `filterMode: 'slash'`: printable keys never start a search; `/` starts it or resumes the kept
+  query; `Esc` ends it and keeps the query; `Ctrl+U` clears; the hint reads `/ filter` (a type list reads
+  `Type filter`). The validator keeps one rule for the whole tree: a printable accelerator is refused beside any
+  filterable list that is not `slash`, and the message names `filterMode: 'slash'`. The grammar frees printable
+  accelerators on a slash list until its search opens, and digits are text while one is open. While a search is
+  open the hint names only Enter, `Ctrl+U clear`, and `Esc end search`; the filter row ends with the muted `N matches`
+  (`1 match`).
+- **Rows** (`core/ui-list-paint.ts`, new; `renderList` in `core/ui-patterns.ts` is a wrapper over it).
+  `marker: 'selection'` keeps a muted bold `→` on the cursor row after focus leaves; the cursor row's label is bold
+  whether or not the list has focus (the kit's rule), so a list that does not hold focus still shows its cursor.
+  `marks` draws `● ○`; `maxRows` windows over entries (a group heading and an open body each count as one, items
+  outside the materialized window as one) with the `↑ n more · ↓ n more` row; `acceptVerb` and `hintLabel` name
+  `Enter` and `↑/↓`; `autofocus` is the first focus of a surface (before an action's `defaultFocus`); `focusItem` moves
+  the cursor once per `rev` and opens the parents; `expandFocused`; `expanded` starts a row open (read from the raw
+  items, so a long list admits nothing to answer); bodies (`▸ ▾`, a `│ ╰` guide for strings, node bodies compiled as
+  content once the row opens, `bodyAlways` without a disclosure); `wrap`/`wrapMax` wrap under the row's own prefix;
+  `meter` (`▰▱`); `indent`; `rule` and `gap` rows (not focusable, so every arrow skips them); `labelSpans`, `right`,
+  `rightFocus`; tree guides `│ ╰`, `*` and `-`. A disabled row shows its detail and then `— reason`. A multiple
+  tree's Enter opens a branch (Space toggles the check); a single tree keeps Enter for accepting; a row with a body
+  opens with Enter, Space, or Right. The first row of a single choose list opens focused on its current value, a
+  multiple list on its first row. Past the first or last row `↑`/`↓` hand focus to the control above or below.
+- **Cost.** A node body admits with its item, under that item's own quota of `MAYFLY_UI_MAX_ITEM_BODY_NODES` (32)
+  nodes and its own text budget; a list over 16 items that carries node bodies admits lazily like a list over 200
+  (`lazyListItems`), so a stream of thousands of rich rows needs no more of the tree's quotas than plain ones. Every
+  item is a row-cache entry (`UiRowCache.readLines`) keyed by width, gutter, cursor, focus, check, number, depth,
+  disclosure, and strip state; an open body is its own entry. Rows of varying height window through the prefix sums of
+  the entries' line counts (the cursor entry is kept whole, centered when the rows allow). `W3` holds at 2 rows per
+  `↓`; the new `W4b` (2,000 items with node bodies, the last always open and changing) validates 5 nodes, compiles 4
+  units, and paints 5 rows.
+- **Segment strip on the row** (E1, G3; `core/ui-list-segment.ts`, new). Drawn on the focused row only; `(default)`
+  marks the `inheritedId` option while the row is unpinned; `←/→` clamp and skip disabled tokens, and an unset
+  strip starts from the edge the arrow points into; stepping onto the inherited option unpins; `Delete` unpins
+  (`Delete use default` in the hint, only while a row that inherits is pinned). `selection-accept` carries
+  `segmentId` only while such a row is pinned. The ladder: inline with `(default)`, inline without it, then one
+  footer line the list reserves in advance (a blank row and the line, decided over the materialized window, so focus
+  never moves a row): `Label: strip`, the strip alone, without `(default)`, folded around the active token with a
+  `+N`, and last the active token alone, cut to the width. A segment that inherits nothing keeps the old fallback
+  (the first enabled option). The model picker's caption now appears only in the footer.
+- **API.** `MayflyListBodyNode` (content, an image, progress, spacer, divider, a stack of those) and the additive
+  builder `ui.listBody(children)`, because a body stack typed as `MayflyStackNode` would admit controls.
+
+Parity. `tests/design/scene-05-lists.spec.ts` replays every golden walk of scene 5 (`initial`, `pages`,
+`page-6-narrow`, `move`, `open`, `filter`) cell by cell, and scene 1 page 1's lists (the form block is pending for
+1.6). The `move` walk's `Esc back` hint (Esc returns focus to the surface's first control, then closes) waits for
+slice 1.5's focus levels. Scene 10's windowed list (`maxRows: 4`) draws as the prototype does at every width and height step of scene 10's walks (`scene-10-layout.spec.ts` compares it), so the ledger entries slice 1.3 left for it are closed.
+
+Files: `core/ui-validator.ts` (`listItemRowFields`, `listNodeFields`, `listBody`, `admittedListExpanded`),
+`core/ui-compiler.ts` (the `list` arm, `listQueryRow`, `grammarStateFor`), `core/ui-list-paint.ts`,
+`core/ui-list-segment.ts`, `core/ui-paint.ts` (the span painters, moved), `core/ui-interaction-choice.ts`
+(`choiceRow`, `choicePinned`, `expand-all`, `unpin`), `core/ui-key-grammar.ts`. Tests: `ui-list-paint.spec.ts`,
+`ui-list-segment.spec.ts` (120, 84, 62, 40 columns), `ui-list-keys.spec.ts` (the hint row in every list state), the
+choice reducers, the width scan, and the work-budget gate.
 
 #### 1.5 Tabs, rails, and focus levels
 

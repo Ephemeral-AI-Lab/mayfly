@@ -27,6 +27,13 @@ const zh = Object.freeze({
   expand: '展开',
   collapse: '收起',
   'use inherited': '改用继承值',
+  'use default': '改用默认值',
+  restore: '恢复',
+  Options: '选项',
+  '{count} match': '{count} 项匹配',
+  '{count} matches': '{count} 项匹配',
+  '↑ {above} more · ↓ {below} more': '↑ 还有 {above} 项 · ↓ 还有 {below} 项',
+  '▸ {count} more lines · Enter': '▸ 还有 {count} 行 · Enter',
   reset: '重置',
   // Field provenance and conflict resolution.
   Inherited: '继承',

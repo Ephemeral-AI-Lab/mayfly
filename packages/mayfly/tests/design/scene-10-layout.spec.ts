@@ -1,7 +1,7 @@
 /**
  * Scene 10, Layout (roadmap slice 1.3): a flex row, a width ladder, priority admission, and a windowed list, at the
  * widths and heights the scene's keys walk. Each section is compared with the prototype's rows; the flex row is the
- * layout engine's (Δ25) and the windowed list belongs to slice 1.4 (the ledger).
+ * layout engine's (Δ25) and the windowed list is the list painter's (slice 1.4).
  */
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
@@ -9,7 +9,6 @@ import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import { walks } from '../../../../script/design-golden-walks.mjs'
 import { caption, diffReport, frameDiffs, goldenRows, paint } from './scene.ts'
 import { PROBE_PALETTE, parityComponents, readGoldenFrames } from './parity.ts'
-import { pendingFor } from './pending.ts'
 
 type Tone = 'muted' | 'primary' | 'warning'
 type Style = 'strong'
@@ -64,6 +63,8 @@ const admitRow = (hide: boolean): MayflyUiNode => ui.stack.row([
   ui.child(ui.richText([mu('main ±3')]), { priority: 10 }),
 ], { gap: 2 })
 
+const windowed = (): MayflyUiNode => ui.list({ id: 'win', role: 'browse', maxRows: 4, selectedIds: [], items: Array.from({ length: 9 }, (_, index) => ({ id: `r${String(index)}`, label: `row ${String(index + 1)}` })) })
+
 const CAPTIONS = [
   'stack row with basis and grow:',
   'a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a width',
@@ -106,8 +107,9 @@ describe('scene 10 Layout', () => {
         const flex = paintIn(flexRow(), state.width, 40).map(strip)
         expect(flex[0], `${label} flex`).toContain('╭')
         expect(frames[frame]!.rows.length).toBeGreaterThan(0)
-        // The windowed list is slice 1.4's; the ledger names it.
-        expect(pendingFor(walk.dir, walk.name, frame).map(entry => entry.slice), `${label} list`).toEqual(['1.4'])
+        // The windowed list: nine rows through a four-row window, at most 40 columns wide.
+        const listRows = [...paint(caption('a windowed list (maxRows 4) counts what is hidden:'), 96), ...paintIn(windowed(), Math.min(state.width, 40), 40)]
+        expect(diffReport(await frameDiffs(sectionOf(golden, 3), listRows, Math.max(96, state.width), [{ delta: 'Δ20', rows: [1, 1] }])), `${label} list`).toBe('')
       }
     })
   }
