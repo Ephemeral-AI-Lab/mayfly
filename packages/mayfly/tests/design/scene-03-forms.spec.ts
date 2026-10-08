@@ -13,7 +13,7 @@ import type { MayflyUiEvent } from '../../../ui/src/index.ts'
 import { walks } from '../../../../script/design-golden-walks.mjs'
 import { createRealSurface, parityComponents, readGoldenFrames, type ParityWaiver, type RealSurface } from './parity.ts'
 import { PENDING_PARITY, PENDING_WALKS, pendingFor, pendingWalk } from './pending.ts'
-import { diffReport, frameDiffs } from './scene.ts'
+import { badgeWaivers, diffReport, frameDiffs } from './scene.ts'
 import { scene12, scene3, scene4 } from './scene-03.ts'
 
 const plain = (row: string): string => row.replace(/\x1b\[[0-9;]*m/gu, '').replace(/\x1b_[^\x07]*\x07/gu, '')
@@ -38,13 +38,6 @@ const feedbackOf = (rows: readonly string[]): string | undefined => {
 /** Δ27: the cells of the prototype's `▌`. */
 function cursorWaivers(golden: readonly string[]): ParityWaiver[] {
   return golden.flatMap((row, index) => Array.from(plain(row)).flatMap((ch, col) => ch === '▌' ? [{ delta: 'Δ27', rows: [index, index] as const, cols: [col, col] as const }] : []))
-}
-
-/** Δ28: the badge the renderer adds to a dirty surface the prototype did not badge. */
-function badgeWaivers(golden: readonly string[], actual: readonly string[]): ParityWaiver[] {
-  const text = plain(actual[0] ?? '')
-  const at = text.indexOf('unsaved changes')
-  return at < 0 || plain(golden[0] ?? '').includes('unsaved changes') ? [] : [{ delta: 'Δ28', rows: [0, 0], cols: [at - 1, at + 'unsaved changes'.length] }]
 }
 
 const SCENES = [

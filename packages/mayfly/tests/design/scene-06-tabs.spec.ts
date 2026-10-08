@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { walks } from '../../../../script/design-golden-walks.mjs'
 import { createRealSurface, parityComponents, readGoldenFrames, type RealSurface } from './parity.ts'
 import { PENDING_PARITY, pendingFor } from './pending.ts'
-import { diffReport, frameDiffs } from './scene.ts'
+import { badgeWaivers, diffReport, frameDiffs } from './scene.ts'
 import { pageNode } from './scene-06.ts'
 
 const NEXT = '\x0e'
@@ -54,9 +54,10 @@ describe('scene 6, Tabs, wizards, rails', () => {
         else surface.press(step)
       }
       const owed = pendingFor(walk.dir, walk.name, index)
+      const waivers = badgeWaivers(surfaceRows(frames[index]!.rows), surface.render())
       // A pending entry cannot go stale: the frame it covers must still differ.
       if (owed.length > 0) expect((await frameDiffs(surfaceRows(frames[index]!.rows), surface.render(), 96)).length, `${walk.name} frame ${String(index)} is still pending`).toBeGreaterThan(0)
-      const diffs = await frameDiffs(surfaceRows(frames[index]!.rows), surface.render(), 96, [], owed)
+      const diffs = await frameDiffs(surfaceRows(frames[index]!.rows), surface.render(), 96, waivers, owed)
       if (diffs.length > 0) report.push(`frame ${String(index)}:\n${diffReport(diffs)}`)
     }
     expect(report.join('\n')).toBe('')
