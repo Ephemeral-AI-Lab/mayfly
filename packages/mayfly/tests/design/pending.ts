@@ -51,7 +51,8 @@ const SCENE_13_VIEWS = [
 export const PENDING_PARITY: readonly PendingParity[] = [
   { directory: '05-lists', walk: 'move', frames: [3, 4], rows: [10, 10], slice: '1.5', reason: 'the hint row names `Esc back` while focus is on a control other than the surface\'s first (rows are those of the surface): Esc returns to the home control first (focus levels)' },
   { directory: '12-a-downstream-plugin', walk: 'move', frames: [3], rows: [5, 5], slice: '1.5', reason: 'the hint row names `Esc back` while focus is on a control other than the surface\'s first (rows are those of the surface): Esc returns to the home control first (focus levels)' },
-  ...(['pages', 'page-4-narrow'] as const).map(walk => ({ directory: '06-tabs-wizards-rails', walk, frames: [2], rows: [3, 4], cols: [28, 99], slice: '1.6', reason: 'page 3 content: the settings form\'s select rows read `Model:  deepseek-chat  (inherited)` (1.6)' }) as const),
+  ...([['pages', [2]], ['page-4-narrow', [2]], ['rail-move', [2, 3, 4, 5]], ['rail-enter', [2, 3, 4, 5, 6, 7]]] as const).map(([walk, frames]) => ({ directory: '06-tabs-wizards-rails', walk, frames, rows: [3, 4], cols: [26, 99], slice: '1.6', reason: 'page 3 content: the settings form\'s select rows read `Model:  deepseek-chat  (inherited)` and `(override)` (1.6)' }) as const),
+  { directory: '06-tabs-wizards-rails', walk: 'rail-enter', frames: [4], rows: [8, 8], slice: '1.6', reason: 'a changed select hints `Delete use inherited` (the field\'s origin is 1.6)' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [0], rows: [21, 26], slice: '1.6', reason: 'page 1 form block: the form marks, units, and (inherited) (1.6)' },
   // Scene 11 (patterns): page 2's railPanel is pinned by `scene-11-patterns.spec.ts`; the pattern calls are slice 1.8b's.
   { directory: '11-patterns', walk: 'initial', frames: [0], slice: '1.8b', reason: 'page 1 is patterns.decisionPanel (1.8b)' },
