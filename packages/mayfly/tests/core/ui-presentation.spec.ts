@@ -55,15 +55,15 @@ describe('loader motion', () => {
     vi.useFakeTimers()
     try {
       const frozen = loaderSurface({ reducedMotion: true })
-      expect(frozen.render()[0]).toBe('⠋ Loading')
+      expect(frozen.render()[0]).toBe('⣾ Loading')
       vi.advanceTimersByTime(400)
-      expect(frozen.render()[0]).toBe('⠋ Loading')
+      expect(frozen.render()[0]).toBe('⣾ Loading')
       expect(vi.getTimerCount()).toBe(0)
       frozen.dispose()
       const moving = loaderSurface({ glyphs: 'ascii' })
       expect(moving.render()[0]).toBe('- Loading')
       expect(vi.getTimerCount()).toBe(1)
-      vi.advanceTimersByTime(80)
+      vi.advanceTimersByTime(100)
       expect(moving.render()[0]).toBe('\\ Loading')
       moving.dispose()
     } finally {

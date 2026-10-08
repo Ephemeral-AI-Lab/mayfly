@@ -458,17 +458,6 @@ export const SCENARIOS = [
     }),
   },
   {
-    id: 'loader-tide',
-    // Same section: the documented `tide` variant.
-    title: 'loader — tide variant',
-    width: 64,
-    build: ui => ui.loader({
-      message: 'Syncing dependencies',
-      variant: 'tide',
-      elapsedMs: 4200,
-    }),
-  },
-  {
     id: 'empty',
     // Doc example, verbatim: no-data state with the documented actions slot.
     title: 'empty — no-data state with actions',
@@ -514,6 +503,136 @@ export const SCENARIOS = [
     title: 'image — the alt until the bytes arrive',
     width: 48,
     build: ui => ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 }),
+  },
+  {
+    id: 'text-ellipsis',
+    // Doc example, verbatim: the middle and the start of a path elided to one row.
+    title: 'text — middle and start ellipsis',
+    width: 32,
+    build: ui => ui.stack.column([
+      ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'middle' }),
+      ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
+    ]),
+  },
+  {
+    id: 'richText-motion',
+    // Doc example, verbatim, at its first frame: the shimmer and the loader cell sit still in a screenshot.
+    title: 'richText — a shimmering label and a loader cell',
+    width: 48,
+    build: ui => ui.stack.column([
+      ui.richText([{ text: 'Running commands', motion: 'shimmer' }, { text: ' · 12s', tone: 'muted' }]),
+      ui.richText([{ text: '', motion: 'loader', variant: 'breath' }, { text: ' Waiting for authorization', tone: 'muted' }]),
+    ]),
+  },
+  {
+    id: 'code-numbered',
+    // Doc example, verbatim.
+    title: 'code — numbered lines',
+    width: 48,
+    build: ui => ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbered: true }),
+  },
+  {
+    id: 'diff-options',
+    // Doc example, verbatim.
+    title: 'diff — start line, hunk header, context',
+    width: 48,
+    build: ui => ui.diff(
+      ['const a = 1', 'const b = 2', 'const c = 3'].join('\n'),
+      ['const a = 1', 'const b = 4', 'const c = 3'].join('\n'),
+      { start: 41, hunkHeader: true, context: 1 },
+    ),
+  },
+  {
+    id: 'chart-heatmap',
+    // Doc example, verbatim: one cell per value with month labels and the legend row.
+    title: 'chart — one-cell heatmap with column labels',
+    width: 40,
+    build: ui => ui.chart({
+      chart: 'heatmap',
+      cell: 1,
+      title: 'Commits',
+      columns: ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'],
+      columnLabels: ['Jan', '', '', 'Feb', '', ''],
+      rows: ['Mon', 'Fri'],
+      values: [[0, 1, 2, 3, 2, 1], [1, 0, 0, 2, 3, 3]],
+      levels: [
+        { value: 0, label: 'none', tone: 'muted' },
+        { value: 1, label: 'some', tone: 'success' },
+        { value: 2, label: 'more', tone: 'success' },
+        { value: 3, label: 'most', tone: 'success' },
+      ],
+    }),
+  },
+  {
+    id: 'stack-admission',
+    // Doc example, verbatim, at the width where the right band is kept and the path takes the room that is left.
+    title: 'stack — priority admission in a row',
+    width: 64,
+    build: ui => ui.stack.row([
+      ui.child(ui.richText([{ text: 'deepseek-chat High' }]), { priority: 0 }),
+      ui.child(ui.richText([{ text: 'PLAN', tone: 'primary', styles: ['strong'] }]), { priority: 1 }),
+      ui.child(ui.richText([{ text: 'cache 34%', tone: 'muted' }]), { priority: 4, band: 'right', overflow: 'hide' }),
+      ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly', tone: 'muted' }]), { priority: 5, overflow: 'truncate' }),
+    ], { gap: 2 }),
+  },
+  {
+    id: 'stack-admission-narrow',
+    // Same node at a narrow width: `cache 34%` hides and the path has no room left.
+    title: 'stack — the same row at width 30',
+    width: 30,
+    build: ui => ui.stack.row([
+      ui.child(ui.richText([{ text: 'deepseek-chat High' }]), { priority: 0 }),
+      ui.child(ui.richText([{ text: 'PLAN', tone: 'primary', styles: ['strong'] }]), { priority: 1 }),
+      ui.child(ui.richText([{ text: 'cache 34%', tone: 'muted' }]), { priority: 4, band: 'right', overflow: 'hide' }),
+      ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly', tone: 'muted' }]), { priority: 5, overflow: 'truncate' }),
+    ], { gap: 2 }),
+  },
+  {
+    id: 'surface-title-right',
+    // Doc example, verbatim.
+    title: 'surface — right-aligned title and a border tone',
+    width: 40,
+    build: ui => ui.surface({
+      title: '~/work/mayfly/packages/mayfly',
+      titleAlign: 'right',
+      chrome: 'surface',
+      border: 'warning',
+      badges: [{ text: 'dirty', tone: 'warning' }],
+      child: ui.text('The end of the path stays visible.'),
+    }),
+  },
+  {
+    id: 'scroll-region',
+    // Doc example, verbatim: a four-row viewport that follows the tail of twelve lines.
+    title: 'scroll — a declared viewport that follows its tail',
+    width: 40,
+    build: ui => ui.scroll(
+      ui.stack.column(Array.from({ length: 12 }, (_, index) => ui.text(`log line ${index + 1}`))),
+      { height: 4, follow: 'end', pill: true },
+    ),
+  },
+  {
+    id: 'loader-variants',
+    // Doc example, verbatim, at the first frame of each variant.
+    title: 'loader — the four variants',
+    width: 64,
+    build: ui => ui.stack.column([
+      ui.loader({ variant: 'bloom', message: 'Thinking' }),
+      ui.loader({ variant: 'fill', message: 'Working' }),
+      ui.loader({ variant: 'gap', message: 'Discovering models', elapsedMs: 12_000, cancelActionId: 'stop' }),
+      ui.loader({ variant: 'breath', message: 'Waiting for authorization', elapsedMs: 45_000 }),
+    ]),
+  },
+  {
+    id: 'progress-styles',
+    // Doc example, verbatim: cells with a count, cells with a percentage, and the heading rule.
+    title: 'progress — cells and the heading rule',
+    width: 64,
+    build: ui => ui.stack.column([
+      ui.progress({ label: 'Building', value: 6, max: 10, style: 'cells', width: 10 }),
+      ui.progress({ value: 9, max: 10, width: 10, showCount: false, showPercent: true }),
+      ui.progress({ style: 'rule', value: 2, max: 8, width: 24 }),
+    ]),
   },
   {
     id: 'uikit-builder',

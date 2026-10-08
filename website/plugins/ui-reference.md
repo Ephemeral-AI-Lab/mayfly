@@ -65,7 +65,11 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
 *危险 tone 的单行提示（宽度 48）。*
 
 ```ts
-ui.text(content: string, options?: { tone?: MayflyTone, overflow?: 'wrap' | 'truncate' })
+ui.text(content: string, options?: {
+  tone?: MayflyTone
+  overflow?: 'wrap' | 'truncate' | 'middle' | 'start'
+  styles?: readonly ('strong' | 'italic' | 'strike')[]
+})
 ```
 
 一段可换行的语义文本，用于状态提示、结果摘要等说明性内容；`tone` 省略时使用
@@ -109,6 +113,21 @@ ui.text('A long status message wraps at the allocated width instead of clipping,
 ui.text(`${label} · ${activity}`, { tone: 'muted', overflow: 'truncate' })
 ```
 
+`overflow: 'middle'` 与 `'start'` 同样恰好占一行，但省略的是中间或开头而不是末尾，
+让路径或标题里用来区分的那一端始终可见。`styles` 与 span 一样接受 `'strong'`、
+`'italic'`、`'strike'`：
+
+![`text` 的省略行为](/shots/text-ellipsis.svg)
+
+*路径省略中间，同一路径省略开头并加粗（宽度 32）。*
+
+```ts
+ui.stack.column([
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'middle' }),
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
+])
+```
+
 ### `richText`
 
 ![`richText` 节点渲染效果](/shots/richText.svg)
@@ -122,6 +141,8 @@ type MayflyInlineSpan = {
   text: string
   tone?: MayflyTone
   emphasis?: 'normal' | 'strong'
+  motion?: 'shimmer' | 'loader'                        // 一行只有一个动效通道
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath'        // 配合 motion: 'loader'；默认 'gap'
 }
 ```
 
@@ -149,6 +170,23 @@ ui.richText([
   { text: ' failed after ', tone: 'muted' },
   { text: '42s', emphasis: 'strong' },
   { text: ' with 2 errors', tone: 'danger' },
+])
+```
+
+span 可以动。`motion: 'shimmer'` 让一个三字宽的窗口扫过 `text` 的各个字母
+（窗口内 `primary` 加粗，其余弱化）；`motion: 'loader'` 是一个会动的 loader 单元
+（`text` 必须为 `''`），样式取 `variant`。一行 rich text 至多一个动效通道，status
+节点不允许动效。时钟归 renderer 所有（100 ms 一步，breath 每四步一档），一次 tick
+只重绘含该 span 的那一行；减少动效时通道停在首帧，截图展示的也是首帧：
+
+![`richText` 的动效](/shots/richText-motion.svg)
+
+*闪动的标签与呼吸的单元，均为首帧（宽度 48）。*
+
+```ts
+ui.stack.column([
+  ui.richText([{ text: 'Running commands', motion: 'shimmer' }, { text: ' · 12s', tone: 'muted' }]),
+  ui.richText([{ text: '', motion: 'loader', variant: 'breath' }, { text: ' Waiting for authorization', tone: 'muted' }]),
 ])
 ```
 
@@ -197,7 +235,7 @@ ui.fields([
 *带 `ts` 语言提示的多行代码块（宽度 64）。*
 
 ```ts
-ui.code(value: string, options?: { language?: string })
+ui.code(value: string, options?: { language?: string, numbered?: boolean })
 ```
 
 表达代码或预格式化文本，例如补丁片段、命令输出或配置内容。带可识别的
@@ -213,6 +251,16 @@ ui.code([
 ].join('\n'), { language: 'ts' })
 ```
 
+`numbered: true` 画出弱化的 `n │ ` 行号栏；折行后的续行缩进在代码之下：
+
+![`code` 的行号](/shots/code-numbered.svg)
+
+*两行带行号的代码（宽度 48）。*
+
+```ts
+ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbered: true })
+```
+
 ### `diff`
 
 ![`diff` 节点渲染效果](/shots/diff.svg)
@@ -220,7 +268,13 @@ ui.code([
 *多行 before/after：新旧两列行号，改动行以 `−`/`+` 标出，红/绿色带只铺在代码上（宽度 64）。*
 
 ```ts
-ui.diff(before: string, after: string)
+ui.diff(before: string, after: string, options?: {
+  start?: number      // 首行行号（默认 1）
+  numbered?: boolean  // 新旧两列行号（默认 true）
+  hunkHeader?: boolean // 即使只有一个 hunk 也画 `@@` 头（默认：多于一个才画）
+  context?: number    // 每处改动周围的未改动行，0 到 3（默认 1）
+  maxRows?: number    // 超出后显示 `… +N rows · Ctrl+O`
+})
 ```
 
 表达同一内容修改前后的语义对比，例如待确认的编辑。插件提供原始文本，不手工
@@ -233,6 +287,20 @@ ui.diff(before: string, after: string)
 ui.diff(
   ['export function connect() {', '  const retries = 3', '  return open(retries)', '}'].join('\n'),
   ['export function connect() {', '  const retries = 5', '  return open(retries)', '}'].join('\n'),
+)
+```
+
+选项决定从哪一行起编号、是否用 `@@` 头标出 hunk、上下文放宽或去掉，以及行数上限：
+
+![`diff` 的选项](/shots/diff-options.svg)
+
+*从第 41 行起编号，带 hunk 头（宽度 48）。*
+
+```ts
+ui.diff(
+  ['const a = 1', 'const b = 2', 'const c = 3'].join('\n'),
+  ['const a = 1', 'const b = 4', 'const c = 3'].join('\n'),
+  { start: 41, hunkHeader: true, context: 1 },
 )
 ```
 
@@ -340,6 +408,35 @@ ui.chart({
 })
 ```
 
+heatmap 由 Mayfly 自己绘制：标题、列名表头、每个行标签一行格子，以及图例行。
+`cell: 2`（默认）把每个值画成两格（`░░ ▒▒ ▓▓ ██`，三个等级时为 `░░ ▒▒ ██`），
+列名补到四列宽；`cell: 1` 每个值一格、格间无空隙（`· ░ ▒ ▓ █`），一整年的天数
+也放得进一行，`columnLabels`（每列一个）写在各自那一列的起点，用来标月份。没有
+等级的值为空白，超出可用宽度的行被裁剪。sparkline 只有一行：弱化的标签，接着是
+按最大值缩放的八级格子，用节点的 tone 绘制（默认 `accent`）。
+
+![`chart` 的 heatmap](/shots/chart-heatmap.svg)
+
+*单格模式与月份标签（宽度 40）。*
+
+```ts
+ui.chart({
+  chart: 'heatmap',
+  cell: 1,
+  title: 'Commits',
+  columns: ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'],
+  columnLabels: ['Jan', '', '', 'Feb', '', ''],
+  rows: ['Mon', 'Fri'],
+  values: [[0, 1, 2, 3, 2, 1], [1, 0, 0, 2, 3, 3]],
+  levels: [
+    { value: 0, label: 'none', tone: 'muted' },
+    { value: 1, label: 'some', tone: 'success' },
+    { value: 2, label: 'more', tone: 'success' },
+    { value: 3, label: 'most', tone: 'success' },
+  ],
+})
+```
+
 数值必须 finite，`null` 表示缺失数据。series id 与 heatmap level value 必须唯一；
 bar values 数量匹配 category，heatmap 矩阵维度匹配 row/column label。每个 chart
 最多 20 个 series，单棵树最多 4,000 个 chart cell。与 `document` 一样，`chart`
@@ -368,6 +465,9 @@ ui.child(node: MayflyUiNode, options?: {
     minHeight?: number
     maxHeight?: number
   }
+  priority?: number                      // row 中的录用顺序；越小越先保留
+  band?: 'left' | 'center' | 'right'     // 被录用的子节点所在区段（默认 left）
+  overflow?: 'truncate' | 'hide'         // 放不下时怎么办
 })
 ```
 
@@ -432,6 +532,32 @@ ui.stack.row([
 ], { gap: 1 })
 ```
 
+带 `priority` 的子节点让 `row` 改为录用而不是按尺寸排布：子节点按优先级（相同时按
+原顺序）依次录用，只要放得下，之间隔 `gap`（默认 2）。放不下的子节点——`overflow: 'truncate'`
+取走剩余宽度（至少 8 列，之后这一行满了）；`overflow: 'hide'` 直接退出，后面的子节点仍可能放得下；
+都不写则录用到此为止，它和它后面的子节点全部丢弃。被录用的子节点按 `band` 放置：
+右区段贴边，中区段在左右邻居之间居中。每个子节点只画第一行。Mayfly 的状态行用同一条规则，
+插件条目与 Mayfly 条目被一视同仁地录用：
+
+![`stack` 的录用](/shots/stack-admission.svg)
+
+*宽度 64：右侧的 `cache 34%` 保留，路径截断进剩余的宽度。*
+
+```ts
+ui.stack.row([
+  ui.child(ui.richText([{ text: 'deepseek-chat High' }]), { priority: 0 }),
+  ui.child(ui.richText([{ text: 'PLAN', tone: 'primary', styles: ['strong'] }]), { priority: 1 }),
+  ui.child(ui.richText([{ text: 'cache 34%', tone: 'muted' }]), { priority: 4, band: 'right', overflow: 'hide' }),
+  ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly', tone: 'muted' }]), { priority: 5, overflow: 'truncate' }),
+], { gap: 2 })
+```
+
+同一节点在宽度 30 下：`cache 34%` 放不下而隐去，路径剩下不足 8 列，于是这一行止于 `PLAN`。
+
+![`stack` 的录用（窄）](/shots/stack-admission-narrow.svg)
+
+*宽度 30。*
+
 ### `surface`
 
 ![`surface` 节点渲染效果](/shots/surface.svg)
@@ -447,6 +573,10 @@ ui.surface({
   padding?: 0 | 1 | 2
   child: MayflyUiNode
   footer?: MayflyUiNode
+  titleAlign?: 'left' | 'right'
+  border?: MayflyTone
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
+  hint?: 'auto' | 'none' | 'completions'
 })
 ```
 
@@ -461,6 +591,10 @@ ui.surface({
 | `padding` | 内容侧留白级别；默认 `0`。带框的 chrome 在边框内至少保留一列 |
 | `child` | 必填正文 |
 | `footer` | 可选尾部节点，位于正文与底边之间 |
+| `titleAlign` | `right` 把标题放到右上角、徽标放到左边；规则线放不下的长标题丢掉开头，路径的末端得以保留 |
+| `border` | 边框 tone；省略时用 chrome 自己的颜色 |
+| `escapeLabel` | `Esc` 提示里的字，以及内部没人接管 `Esc` 之后它做什么：请 host 关闭 surface（`reject` 以拒绝的方式关闭） |
+| `hint` | `none` 不画按键提示行；`completions` 只在编辑器的补全列表打开时才画 |
 
 `chrome: 'overlay'` 只是视觉意图，不会创建 overlay；真正的浮层仍通过
 `api.overlays.open()` 打开。若 registration 的根节点就是这种 surface，core 会把
@@ -498,6 +632,21 @@ ui.surface({
 })
 ```
 
+![`surface` 右对齐标题](/shots/surface-title-right.svg)
+
+*右对齐标题与边框 tone（宽度 40）。*
+
+```ts
+ui.surface({
+  title: '~/work/mayfly/packages/mayfly',
+  titleAlign: 'right',
+  chrome: 'surface',
+  border: 'warning',
+  badges: [{ text: 'dirty', tone: 'warning' }],
+  child: ui.text('The end of the path stays visible.'),
+})
+```
+
 ### `scroll`
 
 ![`scroll` 节点渲染效果](/shots/scroll.svg)
@@ -509,6 +658,10 @@ ui.scroll(node: MayflyUiNode, options?: {
   id?: string
   follow?: 'none' | 'start' | 'end'
   scrollbar?: boolean
+  height?: number
+  expandedHeight?: number
+  fit?: boolean
+  pill?: boolean
 })
 ```
 
@@ -523,6 +676,24 @@ mode 都使用父布局给出的实际高度；被动 transcript 的 main-mode s
 ui.scroll(
   ui.stack.column(Array.from({ length: 16 }, (_, index) => ui.text(`log line ${index + 1}`))),
   { scrollbar: true },
+)
+```
+
+写了 `height`、`expandedHeight`、`fit` 或 `pill` 之一，scroll 就有了自己的 viewport：恰好 `height`
+行（默认 6）；被 `Ctrl+E` 展开时为 `expandedHeight` 行（默认 14）；内容旁边多一列滚动条
+（`░` 轨道上的 `█` 滑块，`scrollbar: false` 除外）。外面的 surface 保持自然高度，不再
+撑满终端。`fit` 让 viewport 收缩到短内容，内容溢出前不画滚动条。`pill` 在视图离开被跟随的
+末尾、且其后又来了 N 行时，在最后一行上画 `↓ N new · End`，按 `End` 跳回。用户滚到的位置
+在重新发布后保持；带 `id` 时由上文的锚点保持。
+
+![`scroll` 区域](/shots/scroll-region.svg)
+
+*12 行内容放进跟随末尾的 4 行 viewport（宽度 40）。*
+
+```ts
+ui.scroll(
+  ui.stack.column(Array.from({ length: 12 }, (_, index) => ui.text(`log line ${index + 1}`))),
+  { height: 4, follow: 'end', pill: true },
 )
 ```
 
@@ -1007,22 +1178,26 @@ TUI 通过同一套键位语法从 canonical control 角色推导操作，并用
 
 ![`loader` 节点渲染效果](/shots/loader.svg)
 
-*默认 braille variant，带 elapsed 提示与 cancel control（宽度 64）。*
+*默认 gap variant，带 elapsed 提示与 `Esc cancel` 提示（宽度 64）。*
 
 ```ts
 ui.loader({
-  message: string
-  variant?: 'braille' | 'tide'
+  message?: string
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath'
   elapsedMs?: number
   cancelActionId?: string
   cancelLabel?: string
 })
 ```
 
-`variant` 默认 `braille`。`elapsedMs` 是非负毫秒提示；动画计时仍由 owner 的
-生命周期管理，不应由 `render()` 启动 timer。提供 `cancelActionId` 时增加一个
-control，按钮文字为 `cancelLabel`（省略时为本地化的“取消”），并发出 `activate` 事件。
-上面的截图渲染的就是这个节点：
+`variant` 默认 `gap`；早先的 `braille` 与 `tide` 仍被接受，画成 `gap`。省略 `message`
+时节点只是一个字形。`elapsedMs` 是非负毫秒提示，显示为 `45s`、`2m 10s` 或 `1h 5m`。
+动画归 renderer 所有，所有 surface 共用一个时钟，100 ms 一步：`bloom`（`· ✢ ✳ ✶ ✻ ✽`）、
+`fill`（盲文条逐格填满再退回）、`gap`（盲文转轮）每个 tick 前进一步；`breath` 是一个 `●`，
+在 `primary` tone 的六档明暗里一暗一亮地走，每 400 ms 一档。不要在 `render()` 里启动 timer。
+减少动效时所有 variant 停在首帧，ASCII 字形模式下画 `- \ | /`。`cancelActionId` 是提示而不是按钮：
+loader 下面一行写着 `Esc cancel`（或 `Esc` 加小写的 `cancelLabel`），`Esc` 在离开 surface 之前先为该 action
+发出 `activate`，焦点在这一行时按 `Enter` 同样如此。上面的截图渲染的就是这个节点：
 
 ```ts
 ui.loader({
@@ -1033,18 +1208,19 @@ ui.loader({
 })
 ```
 
-`tide` variant 用波浪字符代替 braille 点阵：
+四种 variant，各取首帧：
 
-![`loader` 的 tide variant](/shots/loader-tide.svg)
+![`loader` 的 variant](/shots/loader-variants.svg)
 
-*tide variant（宽度 64）。*
+*`bloom`、`fill`、`gap`、`breath`（宽度 64）。*
 
 ```ts
-ui.loader({
-  message: 'Syncing dependencies',
-  variant: 'tide',
-  elapsedMs: 4200,
-})
+ui.stack.column([
+  ui.loader({ variant: 'bloom', message: 'Thinking' }),
+  ui.loader({ variant: 'fill', message: 'Working' }),
+  ui.loader({ variant: 'gap', message: 'Discovering models', elapsedMs: 12_000, cancelActionId: 'stop' }),
+  ui.loader({ variant: 'breath', message: 'Waiting for authorization', elapsedMs: 45_000 }),
+])
 ```
 
 ### `empty`
@@ -1082,7 +1258,17 @@ ui.empty({
 *带 label 与计数的 determinate 进度条（宽度 64）。*
 
 ```ts
-ui.progress({ label?: string, value: number, max: number })
+ui.progress({
+  label?: string
+  value: number
+  max: number
+  style?: 'cells' | 'rule'
+  width?: number
+  tone?: MayflyTone
+  showCount?: boolean
+  showPercent?: boolean
+  transition?: { from: number, ms: number, rev: number }
+})
 ```
 
 `value` 必须是非负整数，`max` 必须是至少 1 的整数；超过 max 的 value 在 admission
@@ -1091,6 +1277,26 @@ ui.progress({ label?: string, value: number, max: number })
 
 ```ts
 ui.progress({ label: 'Tokens', value: 12_000, max: 28_000 })
+```
+
+既不写 `style` 也不写 `width` 的进度条，像上面一样用局部方块铺满整行。写了其中之一就
+采用 kit 外观：`style: 'cells'`（此时的默认）用 `▰` 表示已完成、`▱` 表示剩余，共 `width` 格（10），
+带 label、`n/N`（`showCount: false` 关闭）与 `showPercent`。`style: 'rule'` 画标题规则线，
+`━` 表示已完成、`─` 表示剩余，共 `width` 格（24），后面不带文字。`tone` 给已完成部分上色（默认
+`primary`）。`transition` 是 renderer 持有的一次性动画：其 `rev` 第一次到达时，进度条在动画时钟上
+用 `ms` 毫秒从 `from` 线性退到 `value`，然后静止；减少动效或没有时钟时直接显示 `value`。
+status 节点不接受 transition：
+
+![`progress` 的样式](/shots/progress-styles.svg)
+
+*带计数的 cells、带百分比的 cells，以及标题规则线（宽度 64）。*
+
+```ts
+ui.stack.column([
+  ui.progress({ label: 'Building', value: 6, max: 10, style: 'cells', width: 10 }),
+  ui.progress({ value: 9, max: 10, width: 10, showCount: false, showPercent: true }),
+  ui.progress({ style: 'rule', value: 2, max: 8, width: 24 }),
+])
 ```
 
 ### `spacer`

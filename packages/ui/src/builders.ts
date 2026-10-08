@@ -33,6 +33,7 @@ import type {
 type TextOptions = Omit<MayflyTextNode, 'kind' | 'content'>
 type RichTextOptions = Omit<MayflyRichTextNode, 'kind' | 'spans'>
 type CodeOptions = Omit<MayflyCodeNode, 'kind' | 'code'>
+type DiffOptions = Omit<MayflyDiffNode, 'kind' | 'before' | 'after'>
 type ChildOptions = Omit<MayflyUiChild, 'node'>
 type StackOptions = Omit<MayflyStackNode, 'kind' | 'direction' | 'children'>
 type ScrollOptions = Omit<MayflyScrollNode, 'kind' | 'child'>
@@ -111,8 +112,8 @@ function code(value: string, options: CodeOptions = {}): MayflyCodeNode {
   return frozen({ ...frozen(options), kind: 'code', code: value })
 }
 
-function diff(before: string, after: string): MayflyDiffNode {
-  return frozen({ kind: 'diff', before, after })
+function diff(before: string, after: string, options: DiffOptions = {}): MayflyDiffNode {
+  return frozen({ ...frozen(options), kind: 'diff', before, after })
 }
 
 function sections(value: readonly MayflySection[]): MayflySectionsNode {
@@ -135,6 +136,8 @@ type MayflyStackBareNode = MayflyUiNode & {
   readonly maxSize?: never
   readonly when?: never
   readonly tab?: never
+  readonly priority?: never
+  readonly band?: never
 }
 export type MayflyStackItem = MayflyStackBareNode | (MayflyUiChild & { readonly kind?: never })
 

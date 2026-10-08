@@ -100,6 +100,17 @@ const PROBE_TOKENS = new Map<number, string>()
 })
 const probeHex = (token: string): string => `#${PROBE_COLORS.get(token)!.toString(16).padStart(6, '0')}`
 
+/**
+ * The breath's shades (roadmap slice 1.3): the prototype blends its violet toward gray 60 by 0.25, 0.5, and 0.8, the
+ * renderer blends the palette's `primary` toward its `textMuted`. A shade is the class `breath:<level>`, so the two
+ * compare equal when they sit at the same brightness (the full level is `primary` itself).
+ */
+const BREATH_SHADES = [0.25, 0.5, 0.8] as const
+const channels = (color: number): readonly [number, number, number] => [color >> 16, (color >> 8) & 255, color & 255]
+const blend = (tone: readonly number[], floor: readonly number[], level: number): number => rgbKey(...tone.map((channel, index) => Math.round(floor[index]! + (channel - floor[index]!) * level)) as [number, number, number])
+const PROTOTYPE_SHADES = new Map<number, string>(BREATH_SHADES.map(level => [blend([154, 134, 230], [60, 60, 60], level), `breath:${String(level)}`]))
+const REAL_SHADES = new Map<number, string>(BREATH_SHADES.map(level => [blend(channels(PROBE_COLORS.get('primary')!), channels(PROBE_COLORS.get('textMuted')!), level), `breath:${String(level)}`]))
+
 /** A palette in which every semantic color is a distinct truecolor, so the cell's color names its token. */
 export const PROBE_PALETTE: MayflySemanticColors = colorsFromForegrounds(
   Object.fromEntries(FOREGROUND_TOKENS.map(token => [token, probeHex(token)])) as typeof DARK_FOREGROUNDS,
@@ -114,9 +125,9 @@ type Side = 'prototype' | 'real'
 
 function toneOf(side: Side, foreground: number | undefined, dim: boolean): string {
   if (foreground === undefined) return dim ? 'muted' : 'default'
-  if (side === 'prototype') return PROTOTYPE_TONES.get(foreground) ?? `rgb:${[foreground >> 16, (foreground >> 8) & 255, foreground & 255].join(',')}`
+  if (side === 'prototype') return PROTOTYPE_TONES.get(foreground) ?? PROTOTYPE_SHADES.get(foreground) ?? `rgb:${[foreground >> 16, (foreground >> 8) & 255, foreground & 255].join(',')}`
   const token = PROBE_TOKENS.get(foreground)
-  if (token === undefined) return `rgb:${[foreground >> 16, (foreground >> 8) & 255, foreground & 255].join(',')}`
+  if (token === undefined) return REAL_SHADES.get(foreground) ?? `rgb:${[foreground >> 16, (foreground >> 8) & 255, foreground & 255].join(',')}`
   return REAL_TONE_TOKENS[token] ?? `token:${token}`
 }
 

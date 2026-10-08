@@ -14,6 +14,8 @@ import {
 
 /** The layer one Escape press leaves, innermost first. */
 export type EscapeStep = 'collapse' | 'cancel' | 'done' | 'end-search' | 'back' | 'close' | 'leave'
+  /** Escape cancels the work a loader shows; the surface's own `escapeLabel` words the rest, and the host closes it. */
+  | 'cancel-work' | 'reject' | 'surface-back' | 'surface-cancel'
 
 export type ListMovement = 'up' | 'down' | 'page-up' | 'page-down' | 'home' | 'end'
 export type Direction = 'up' | 'down' | 'left' | 'right'
@@ -32,7 +34,8 @@ export type GrammarControl =
   | { readonly kind: 'row', readonly role: 'browse' | 'choose', readonly multiple: boolean, readonly tree: boolean, readonly segment?: string }
   | { readonly kind: 'empty-list' }
   | { readonly kind: 'action', readonly decision: boolean }
-  | { readonly kind: 'cancel' }
+  /** `work` is a loader's cancel, which Escape fires; its Enter binding stays but is not hinted. */
+  | { readonly kind: 'cancel', readonly work?: boolean }
 
 /** Everything the grammar needs to know about one focused surface. */
 export interface GrammarState {
@@ -122,6 +125,7 @@ export interface GrammarBinding {
 
 const ESCAPE_LABEL: Readonly<Record<EscapeStep, string>> = {
   collapse: 'collapse', cancel: 'cancel', done: 'done', 'end-search': 'end search', back: 'back', close: 'close', leave: 'leave',
+  'cancel-work': 'cancel', reject: 'reject', 'surface-back': 'back', 'surface-cancel': 'cancel',
 }
 
 /** Hint priorities: Escape is reserved, then the primary operation, then navigation; digits repeat Enter, so they yield to arrows. */
@@ -253,8 +257,8 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     return bindings
   }
   if (state.expanded) {
-    push(bindings, action(ACTION_EXPAND), { kind: 'collapse' }, { id: 'escape', label: ESCAPE_LABEL.collapse, priority: PRIORITY.escape, actions: [ACTION_EXPAND, ACTION_CANCEL] })
-    push(bindings, action(ACTION_CANCEL), { kind: 'collapse' })
+    push(bindings, action(ACTION_EXPAND), { kind: 'collapse' }, { id: 'expand', label: ESCAPE_LABEL.collapse, priority: PRIORITY.escape - 1, actions: [ACTION_EXPAND] })
+    push(bindings, action(ACTION_CANCEL), { kind: 'collapse' }, { id: 'escape', label: ESCAPE_LABEL.collapse, priority: PRIORITY.escape, actions: [ACTION_CANCEL] })
     scrollKeys(bindings)
     push(bindings, { kind: 'any' }, { kind: 'swallow' })
     return bindings
@@ -332,7 +336,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     case 'cancel': {
       const label = control.kind === 'toggle' ? 'toggle' : control.kind === 'submit' ? 'submit' : control.kind === 'field-action' ? 'apply'
         : control.kind === 'cancel' ? 'cancel' : control.decision ? 'confirm' : 'run'
-      push(bindings, action(ACTION_SUBMIT), { kind: 'activate' }, { id: 'activate', label, priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+      push(bindings, action(ACTION_SUBMIT), { kind: 'activate' }, control.kind === 'cancel' && control.work === true ? undefined : { id: 'activate', label, priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       push(bindings, action(ACTION_TOGGLE), { kind: 'activate' })
       // The kit names the pair that moves along the row: `←/→ actions` (`No/Yes` on a decision), `↑/↓ fields`.
       if (control.kind === 'action' || control.kind === 'cancel') navigation(bindings, state, ['up', 'down', 'left', 'right'], control.kind === 'action' && control.decision ? 'No/Yes' : 'actions', ['left', 'right'])

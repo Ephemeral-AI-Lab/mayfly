@@ -5,6 +5,6 @@
 <text x="12" y="52" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">Status:</text>
 <text x="79.2" y="52" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#4ec87e">Ready</text>
 <text x="12" y="71" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">Model:</text>
-<text x="70.8" y="71" textLength="109.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">deepseek-chat</text>
+<text x="79.2" y="71" textLength="109.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">deepseek-chat</text>
 </g>
 </svg>

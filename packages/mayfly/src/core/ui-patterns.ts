@@ -9,15 +9,16 @@
 import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
-import { ASCII_SPINNER_FRAMES, type MayflyGlyphMode } from './glyphs.ts'
+import type { MayflyGlyphMode } from './glyphs.ts'
+import { loaderCell, loaderVariant } from './ui-loader-animation.ts'
 import { hintNotation } from './ui-key-grammar.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
 import type { MayflyWorkCounters } from './ui-work-counters.ts'
-import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
+import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 type SurfaceNode = Extract<MayflyUiNode, { readonly kind: 'surface' }>
-type SurfaceChromeNode = Pick<SurfaceNode, 'badges' | 'chrome' | 'subtitle' | 'title'>
+type SurfaceChromeNode = Pick<SurfaceNode, 'badges' | 'border' | 'chrome' | 'subtitle' | 'title' | 'titleAlign'>
 type TabsNode = Extract<MayflyUiNode, { readonly kind: 'tabs' }>
 type ListNode = Extract<MayflyUiNode, { readonly kind: 'list' }>
 type ActionsNode = Extract<MayflyUiNode, { readonly kind: 'actions' }>
@@ -34,6 +35,9 @@ export interface PatternFocus {
   readonly editing?: boolean
 }
 
+/** The kit's default widths: a rule is 24 cells, a cells bar 10. */
+const RULE_CELLS = 24
+const CELLS = 10
 const PARTIAL_BLOCKS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32
 const PRIMARY_COLUMN_GAP = 2
@@ -173,7 +177,7 @@ function paintTone(tone: MayflyTone | undefined, value: string, colors: MayflySe
   }
 }
 
-function paintSpan(span: MayflyInlineSpan, colors: MayflySemanticColors): string {
+export function paintSpan(span: MayflyInlineSpan, colors: MayflySemanticColors): string {
   const painted = paintTone(span.tone, sanitizePluginText(span.text), colors)
   return (span.styles ?? []).reduce((value, style) => {
     if (style === 'strong') return `\x1b[1m${value}\x1b[22m`
@@ -196,8 +200,12 @@ function choiceMark(node: ListNode, item: ListNode['items'][number], selected: b
   return chosen === 0 ? (selected ? '●' : '○') : chosen === children.length ? '●' : '◐'
 }
 
-/** The border paint of a framed chrome: the focus color for an overlay, the quiet color for an inline surface (spec §2.1). */
-export function surfaceBorderPaint(chrome: 'surface' | 'overlay', colors: MayflySemanticColors): (text: string) => string {
+/**
+ * The border paint of a framed chrome: the focus color for an overlay, the quiet color for an inline surface (spec
+ * §2.1), or the surface's own `border` tone.
+ */
+export function surfaceBorderPaint(chrome: 'surface' | 'overlay', colors: MayflySemanticColors, border?: MayflyTone): (text: string) => string {
+  if (border !== undefined) return text => paintTone(border, text, colors)
   return chrome === 'overlay' ? colors.borderFocus : colors.border
 }
 
@@ -210,18 +218,20 @@ function strongTitle(title: string, colors: MayflySemanticColors): string {
  * right of the rule, everything else in the border paint. A narrow width drops the badges first, then ellipsises the
  * title, then drops it; the corners and at least one dash always stay.
  */
-function framedTopRule(title: string, badges: string, width: number, paint: (text: string) => string, colors: MayflySemanticColors): string {
+function framedTopRule(title: string, badges: string, width: number, paint: (text: string) => string, colors: MayflySemanticColors, align: 'left' | 'right' = 'left'): string {
   if (width < 2) return paint('╭')
   const inner = width - 2
   const titleWidth = title.length === 0 ? 0 : visibleWidth(title) + 2
   const badgeWidth = badges.length === 0 ? 0 : visibleWidth(badges) + 2
   const showBadges = badgeWidth > 0 && inner - titleWidth - badgeWidth >= 1
   const titleRoom = inner - (showBadges ? badgeWidth : 0) - 3
-  const fitted = title.length === 0 || titleRoom < 2 ? '' : visibleWidth(title) <= titleRoom ? title : `${sliceByColumn(title, 0, titleRoom - ELLIPSIS_WIDTH, true)}${ELLIPSIS}`
+  // A right-aligned title keeps its distinguishing end (a path), so a long one loses its start.
+  const elided = (): string => align === 'right' ? truncateMiddle(title, titleRoom, 'start') : `${sliceByColumn(title, 0, titleRoom - ELLIPSIS_WIDTH, true)}${ELLIPSIS}`
+  const fitted = title.length === 0 || titleRoom < 2 ? '' : visibleWidth(title) <= titleRoom ? title : elided()
   const titleSegment = fitted.length === 0 ? '' : `${paint(' ')}${strongTitle(fitted, colors)}${paint(' ')}`
   const badgeSegment = showBadges ? `${paint(' ')}${badges}${paint(' ')}` : ''
-  const fill = inner - (fitted.length === 0 ? 0 : visibleWidth(fitted) + 2) - (showBadges ? badgeWidth : 0)
-  return `${paint('╭')}${titleSegment}${paint('─'.repeat(Math.max(0, fill)))}${badgeSegment}${paint('╮')}`
+  const fill = paint('─'.repeat(Math.max(0, inner - (fitted.length === 0 ? 0 : visibleWidth(fitted) + 2) - (showBadges ? badgeWidth : 0))))
+  return align === 'right' ? `${paint('╭')}${badgeSegment}${fill}${titleSegment}${paint('╮')}` : `${paint('╭')}${titleSegment}${fill}${badgeSegment}${paint('╮')}`
 }
 
 /**
@@ -244,7 +254,7 @@ export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors
     const fill = available - visibleWidth(head) - visibleWidth(tail)
     rows.push(fill >= 2 ? `${colors.muted(`${head}${'─'.repeat(fill)}`)}${tail}` : fit(colors.muted(`${head}${'─'.repeat(available)}`), available))
   } else {
-    rows.push(framedTopRule(title, badges, available, surfaceBorderPaint(chrome, colors), colors))
+    rows.push(framedTopRule(title, badges, available, surfaceBorderPaint(chrome, colors, node.border), colors, node.titleAlign))
   }
   if (node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
   return rows
@@ -255,7 +265,7 @@ export function renderSurfaceTail(node: SurfaceChromeNode, width: number, colors
   const chrome = node.chrome ?? 'none'
   if (chrome === 'none' || chrome === 'lane') return []
   const available = safeWidth(width)
-  return [surfaceBorderPaint(chrome, colors)(available < 2 ? '╰' : `╰${'─'.repeat(available - 2)}╯`)]
+  return [surfaceBorderPaint(chrome, colors, node.border)(available < 2 ? '╰' : `╰${'─'.repeat(available - 2)}╯`)]
 }
 
 /** Gap between two tabs of a strip. */
@@ -498,49 +508,73 @@ export function renderOverflowRow(hidden: number, translate: MayflyTranslate): s
   return translate('  … +{count} more rows', { count: hidden })
 }
 
-/** Compact non-negative duration from milliseconds: `45s`, or `2m 10s` past a minute. */
+/** Compact non-negative duration from milliseconds: `45s`, `2m 10s` past a minute, `1h 5m` past an hour. */
 function formatElapsedMs(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000))
   if (seconds < 60) return `${String(seconds)}s`
-  return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
+  if (seconds < 3600) return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
+  return `${String(Math.floor(seconds / 3600))}h ${String(Math.floor((seconds % 3600) / 60))}m`
 }
 
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
-const TIDE_FRAMES = ['≈', '≋', '∿', '≋'] as const
-
-export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0, glyphs: MayflyGlyphMode = 'unicode'): string[] {
-  const frames = glyphs === 'ascii' ? ASCII_SPINNER_FRAMES : node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
-  const indicator = frames[frame % frames.length]!
-  const elapsed = node.elapsedMs === undefined ? '' : ` ${formatElapsedMs(node.elapsedMs)}`
-  return [fit(`${colors.primary(indicator)} ${colors.text(node.message)}${colors.textMuted(elapsed)}`, width)]
+/**
+ * One loader row: the variant's glyph cell, the message in text color, and the elapsed time muted. The cell moves with
+ * the clock `frame` (frozen under reduced motion); without a message the row is the bare glyph.
+ */
+export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0, glyphs: MayflyGlyphMode = 'unicode', reducedMotion = false): string[] {
+  const cell = loaderCell(loaderVariant(node.variant), frame, { colors, glyphs, reducedMotion })
+  const message = node.message === undefined || node.message === '' ? '' : ` ${colors.text(node.message)}`
+  const elapsed = node.elapsedMs === undefined ? '' : ` ${colors.textMuted(formatElapsedMs(node.elapsedMs))}`
+  return [fit(`${cell}${message}${elapsed}`, width)]
 }
 
 export function renderEmpty(node: EmptyNode, width: number, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
-  const rows = wrapTextWithAnsi(colors.textStrong(node.title), available)
+  const rows = wrapTextWithAnsi(colors.muted(node.title), available)
   if (node.description !== undefined) rows.push(...wrapTextWithAnsi(colors.muted(node.description), available))
   return rows
 }
 
-export function renderProgress(node: ProgressNode, width: number, colors: MayflySemanticColors): string[] {
+/**
+ * A determinate bar. `style: 'rule'` is the heading rule (`━` done, `─` left), `cells` the `▰▱` cells with an optional
+ * label, `n/N`, and percentage; a bar that names neither a style nor a width keeps the full-row block bar. `shown` is
+ * the value to draw, which a transition moves between publishes.
+ */
+export function renderProgress(node: ProgressNode, width: number, colors: MayflySemanticColors, shown: number = node.value): string[] {
   const available = safeWidth(width)
-  const counter = `${String(node.value)}/${String(node.max)}`
+  const ratio = Math.max(0, Math.min(1, shown / node.max))
+  const tone = (text: string): string => paintTone(node.tone ?? 'primary', text, colors)
+  if (node.style === 'rule') {
+    const cells = Math.min(node.width ?? RULE_CELLS, available)
+    const done = Math.round(ratio * cells)
+    return [`${tone('━'.repeat(done))}${colors.muted('─'.repeat(cells - done))}`]
+  }
+  const percent = node.showPercent === true ? ` ${String(Math.round(ratio * 100))}%` : ''
+  if (node.style === 'cells' || node.width !== undefined) {
+    const label = node.label === undefined ? '' : `${node.label} `
+    const count = node.showCount === false ? '' : ` ${String(Math.round(shown))}/${String(node.max)}`
+    const furniture = visibleWidth(label) + visibleWidth(count) + visibleWidth(percent)
+    const cells = Math.max(1, Math.min(node.width ?? CELLS, available - furniture))
+    const done = Math.round(ratio * cells)
+    return [fit(`${label.length === 0 ? '' : colors.text(label)}${tone('▰'.repeat(done))}${colors.muted('▱'.repeat(cells - done))}${count === '' ? '' : colors.text(count)}${percent === '' ? '' : colors.text(percent)}`, available)]
+  }
+  const counter = `${String(Math.round(shown))}/${String(node.max)}`
   const counterWidth = visibleWidth(counter)
-  const showCounter = available >= counterWidth + 2
+  const showCounter = node.showCount !== false && available >= counterWidth + 2
   const label = node.label === undefined ? '' : `${node.label} `
   const showLabel = label.length > 0 && available >= visibleWidth(label) + counterWidth + 4
-  const furniture = (showLabel ? visibleWidth(label) : 0) + (showCounter ? counterWidth + 1 : 0)
+  const furniture = (showLabel ? visibleWidth(label) : 0) + (showCounter ? counterWidth + 1 : 0) + visibleWidth(percent)
   const cells = Math.max(1, available - furniture)
-  const eighths = Math.round((node.value / node.max) * cells * 8)
+  const eighths = Math.round(ratio * cells * 8)
   const bar = Array.from({ length: cells }, (_, index) => {
     const remaining = eighths - index * 8
     return remaining >= 8 ? '█' : remaining <= 0 ? '░' : PARTIAL_BLOCKS[remaining]!
   }).join('')
-  return [fit(`${showLabel ? colors.text(label) : ''}${colors.primary(bar)}${showCounter ? ` ${colors.textMuted(counter)}` : ''}`, available)]
+  return [fit(`${showLabel ? colors.text(label) : ''}${tone(bar)}${showCounter ? ` ${colors.textMuted(counter)}` : ''}${percent === '' ? '' : colors.textMuted(percent)}`, available)]
 }
 
+/** A rule across the row, or `── Label ───` with at least two dashes after the label; always the quiet border color. */
 export function renderDivider(label: string | undefined, width: number, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
-  const heading = label === undefined ? '' : ` ${label} `
-  return [fit(colors.border(`${heading}${'─'.repeat(Math.max(0, available - visibleWidth(heading)))}`), available)]
+  const rule = label === undefined ? '─'.repeat(available) : `── ${label} ${'─'.repeat(Math.max(2, available - visibleWidth(label) - 4))}`
+  return [fit(colors.border(rule), available)]
 }

@@ -7,14 +7,15 @@ import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import { compareCells, parseCells, PROBE_PALETTE, parityComponents, readGoldenFrames, type ParityDiff, type ParityWaiver } from './parity.ts'
 import type { PendingParity } from './pending.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
 
 /** The muted caption every prototype scene prints above its body. */
 export const caption = (text: string): MayflyUiNode => ui.text(text, { tone: 'muted' })
 
 /** Paints a static node at a width with the real compiler, the probe palette, and no focus. */
-export function paint(node: MayflyUiNode, width: number): string[] {
+export function paint(node: MayflyUiNode, width: number, components: MayflyComponents = parityComponents()): string[] {
   const result = compileMayflyUiNode(node, {
-    components: parityComponents(),
+    components,
     colors: PROBE_PALETTE,
     getViewport: () => ({ columns: width, rows: 200 }),
     screenMode: 'alternate',

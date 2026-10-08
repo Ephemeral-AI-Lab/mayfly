@@ -1524,7 +1524,7 @@ describe('compileMayflyUiNode', () => {
     const interval = vi.spyOn(globalThis, 'setInterval')
     try {
       const loader = compiled(ui.loader({ message: 'Loading', variant: 'braille', elapsedMs: 10 }), fixture().options)
-      expect(loader.component.render(20)).toEqual(['⠋ Loading 0s'])
+      expect(loader.component.render(20)).toEqual(['⣾ Loading 0s'])
       loader.component.invalidate()
       expect(timeout).not.toHaveBeenCalled()
       expect(interval).not.toHaveBeenCalled()
@@ -1684,7 +1684,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(focusedHint(ui.list({ id: 'pick', role: 'choose', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })))
       .toBe('  ↑/↓ options · Enter choose')
     expect(focusedHint(ui.loader({ message: 'Working', cancelActionId: 'cancel' })))
-      .toBe('  Enter cancel')
+      .toBe('  Esc cancel')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })))
       .toBe('  Enter edit')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'select', id: 'theme', label: 'Theme', value: 'dark', options: [{ id: 'dark', label: 'Dark' }] }] })))
@@ -1716,7 +1716,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(focusedHint(scrollGroups, []))
       .toBe('  ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups')
     expect(focusedHint(scrollGroups, ['\x05'], { onUnhandledEscape: () => {} }))
-      .toBe('  ↑/↓ scroll · Ctrl+E/Esc collapse')
+      .toBe('  ↑/↓ scroll · Ctrl+E collapse · Esc collapse')
   })
 
   it('derives empty-list, passive, field, and explicit dismissal hints', () => {
@@ -2442,17 +2442,17 @@ it('animates shared loader frames through the compiler memo without rebuilding t
   try {
     const node = ui.stack.column([ui.loader({ message: 'Loading' }), ui.loader({ message: 'Tide', variant: 'tide' })])
     let component = render(node)
-    expect(component.render(30)).toEqual(['⠋ Loading', '≈ Tide'])
-    expect(component.render(30)).toEqual(['⠋ Loading', '≈ Tide'])
+    expect(component.render(30)).toEqual(['⣾ Loading', '⣾ Tide'])
+    expect(component.render(30)).toEqual(['⣾ Loading', '⣾ Tide'])
     expect(vi.getTimerCount()).toBe(1)
-    vi.advanceTimersByTime(80)
+    vi.advanceTimersByTime(100)
     expect(request).toHaveBeenCalledOnce()
-    expect(component.render(30)).toEqual(['⠙ Loading', '≋ Tide'])
+    expect(component.render(30)).toEqual(['⣽ Loading', '⣽ Tide'])
     // A progress snapshot rebuild does not reset the spinner to its first frame.
     component = render(ui.loader({ message: 'Loading 1/10' }))
-    expect(component.render(30)).toEqual(['⠙ Loading 1/10'])
-    vi.advanceTimersByTime(80)
-    expect(component.render(30)).toEqual(['⠹ Loading 1/10'])
+    expect(component.render(30)).toEqual(['⣽ Loading 1/10'])
+    vi.advanceTimersByTime(100)
+    expect(component.render(30)).toEqual(['⣻ Loading 1/10'])
     component = render(ui.text('Done'))
     expect(component.render(30)).toEqual(['Done'])
     const completed = request.mock.calls.length
@@ -2478,12 +2478,12 @@ it('animates only visible loader branches through layout-driven paints', () => {
   ]), { ...f.options, surfaceRuntime: runtime })
   if (!result.ok) throw new Error(result.message)
   try {
-    expect(layout(result.value.component as Component, 80, 10).lines.join('\n')).toContain('⠋ Wide')
-    vi.advanceTimersByTime(80)
-    expect(layout(result.value.component as Component, 80, 10).lines.join('\n')).toContain('⠙ Wide')
+    expect(layout(result.value.component as Component, 80, 10).lines.join('\n')).toContain('⣾ Wide')
+    vi.advanceTimersByTime(100)
+    expect(layout(result.value.component as Component, 80, 10).lines.join('\n')).toContain('⣽ Wide')
     f.viewport.columns = 40
     expect(layout(result.value.component as Component, 40, 10).lines.join('\n')).toContain('Narrow')
-    vi.advanceTimersByTime(80)
+    vi.advanceTimersByTime(100)
     expect(vi.getTimerCount()).toBe(0)
   } finally { runtime.dispose(); vi.useRealTimers() }
 })

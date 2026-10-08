@@ -335,6 +335,53 @@ export const WORKLOADS: readonly Workload[] = [
       }
     },
   },
+  {
+    id: 'W9', title: 'motion tick: a shimmering label, a breath cell, and a draining bar among 120 static rows, one clock tick',
+    setup(counters, environment) {
+      const rows = Array.from({ length: 120 }, (_, index) => ui.child(ui.text(`static row ${String(index)}`)))
+      const surface = new Surface('w9', ui.stack.column([
+        ui.child(ui.richText([{ text: 'Running commands', motion: 'shimmer' }, { text: ' · 12s', tone: 'muted' }])),
+        ui.child(ui.richText([{ text: '', motion: 'loader', variant: 'breath' }, { text: ' Waiting for authorization' }])),
+        ui.child(ui.progress({ value: 9, max: 100, style: 'cells', showPercent: true, transition: { from: 91, ms: 800, rev: 1 } })),
+        ...rows,
+      ]), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { environment.advance(100); surface.render() }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W10', title: 'scroll region: a 100-line log in a 6-row region that follows its tail, one line arrives',
+    setup(counters) {
+      // Settled lines are frozen snapshots, so a republish shares them by identity and only the new line is admitted.
+      const lines = Array.from({ length: 100 }, (_, index) => freezeWire(ui.text(`log line ${String(index + 1)}`)))
+      const log = (count: number): MayflyUiNode => ui.scroll(ui.stack.column([...lines, ...Array.from({ length: count }, (_, index) => ui.text(`log line ${String(101 + index)}`))]), { id: 'log', follow: 'end', height: 6 })
+      const surface = new Surface('w10', log(0), counters)
+      surface.render()
+      let arrived = 0
+      reset(counters)
+      return { step: () => { arrived += 1; surface.publish(log(arrived)) }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W11', title: 'admission row: a status row of 12 prioritized entries, one entry changes',
+    setup(counters) {
+      const entries = Array.from({ length: 12 }, (_, index) => ui.richText([{ text: `entry ${String(index)} ` }, { text: '0', tone: 'muted' }]))
+      let revision = 0
+      const admission = createAdmissionCache()
+      const reuse = new MayflyCompileCache()
+      const publish = (): void => {
+        revision += 1
+        const children = entries.map((entry, index) => ui.child(index === 11 ? ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]) : entry, { priority: index }))
+        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters, admission, reuse })
+        if (!result.ok) throw new Error(result.message)
+        result.value.component.render(WIDTH)
+      }
+      publish()
+      reset(counters)
+      return { step: publish, dispose: () => {} }
+    },
+  },
 ]
 
 /** Runs one workload and returns the counters of its measured step. */
