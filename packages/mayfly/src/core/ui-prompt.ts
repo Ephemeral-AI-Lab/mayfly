@@ -17,6 +17,12 @@ import { PROMPT_COMPLETION_ROWS, promptCompletionStart, promptCompletionsOpen, t
 /** The text room a token strip leaves the buffer on the first row before it folds. */
 const MIN_TEXT_ROOM = 8
 
+/**
+ * The narrowest the editor is laid out. It keeps one cell for its cursor and cannot wrap a wide character into fewer than
+ * two (pi-tui 0.84.2 recurses without end on a grapheme wider than its line), so two cells of text need three.
+ */
+const MIN_EDITOR_WIDTH = 3
+
 /** The cells `+N ` takes in a folded token strip, for up to two digits. */
 const FOLD_MARKER_ROOM = 5
 
@@ -34,8 +40,8 @@ export interface PromptPaint {
   readonly glyphs: MayflyGlyphMode | undefined
   /** Core-owned words (`history`, `queued`), through the host catalog. */
   readonly translate: (key: string) => string
-  /** The buffer's rows at a width, with the editor's cursor; called only when the buffer or a token is on show. */
-  readonly buffer: (width: number) => string[]
+  /** The buffer's rows at a width, with the editor's cursor; called only when the buffer or a token is on show. Absent: read-only text. */
+  readonly buffer: ((width: number) => string[]) | undefined
 }
 
 const inverse = (text: string): string => `\x1b[7m${text}\x1b[0m`
@@ -151,17 +157,20 @@ export function paintPrompt(paint: PromptPaint): string[] {
     const ladder = placeholderLadder(node.placeholder)
     // One cell for the caret and one to spare, as the design's ladder counts.
     const ghost = pickPlaceholder(ladder, width - symbolWidth - 2, components)
-    rows.push(`${head}${caret(paint.focused)}${ghost === '' ? '' : colors.textMuted(ghost)}`)
+    rows.push(components.truncateToWidth(`${head}${caret(paint.focused)}${ghost === '' ? '' : colors.textMuted(ghost)}`, width, ''))
   } else {
-    const corner = recallCorner(paint)
+    // The corner needs a readable buffer beside it; below that it gives way.
+    const marker = recallCorner(paint)
+    const corner = marker !== undefined && width >= symbolWidth + marker.width + 1 + MIN_TEXT_ROOM ? marker : undefined
     const reserve = corner === undefined ? 0 : corner.width + 1
     const strip = paintTokenStrip(node, model?.selectedToken, width - symbolWidth - reserve - MIN_TEXT_ROOM, colors, components)
-    const room = Math.max(1, width - symbolWidth - strip.width - reserve)
-    const buffer = model === undefined ? text.split('\n').map(line => components.truncateToWidth(line, room, '')) : paint.buffer(room)
+    const room = Math.max(MIN_EDITOR_WIDTH, width - symbolWidth - strip.width - reserve)
+    const buffer = model === undefined || paint.buffer === undefined ? text.split('\n').map(line => components.truncateToWidth(line, room, '')) : paint.buffer(room)
     const first = components.truncateToWidth(buffer[0]!, room, '')
     const gap = ' '.repeat(Math.max(0, room - components.visibleWidth(first)))
-    rows.push(`${head}${strip.text}${first}${corner === undefined ? '' : `${gap} ${corner.text}`}`)
-    for (const row of buffer.slice(1)) rows.push(`${' '.repeat(symbolWidth)}${components.truncateToWidth(row, Math.max(1, width - symbolWidth), '')}`)
+    // The row is cut at the width last: a symbol and a token wider than a very narrow terminal still never overflow it.
+    rows.push(components.truncateToWidth(`${head}${strip.text}${first}${corner === undefined ? '' : `${gap} ${corner.text}`}`, width, ''))
+    for (const row of buffer.slice(1)) rows.push(components.truncateToWidth(`${' '.repeat(symbolWidth)}${row}`, width, ''))
   }
   rows.push(...paintCompletions(paint))
   return rows
