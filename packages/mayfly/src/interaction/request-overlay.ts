@@ -14,6 +14,8 @@ export interface RequestOverlayOptions<Result> {
   readonly dismissal?: 'confirm-dirty' | 'discard'
   /** Yield scroll keys the surface does not need to the content region behind it. */
   readonly contentScroll?: boolean
+  /** A request that opens unprompted sets this (0-2000 ms) so stray keys typed into the editor grant nothing. */
+  readonly armMs?: number
   readonly view: () => MayflyUiNode
   readonly answer: (event: MayflyUiActionEvent) => Result | undefined
   /** Auxiliary settlement for events `answer` leaves open, e.g. navigation or side-effecting actions. */
@@ -50,6 +52,7 @@ export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOpti
       id: options.id, presentation: 'editor', capturing: true,
       ...options.dismissal === undefined ? {} : { dismissal: options.dismissal },
       ...options.contentScroll === undefined ? {} : { contentScroll: options.contentScroll },
+      ...options.armMs === undefined ? {} : { armMs: options.armMs },
       scope: options.agent === undefined ? { kind: 'app', targetId: options.id } : { kind: 'session', sessionId: options.agent.id },
       source,
       onEvent: { action: async (event, context) => {

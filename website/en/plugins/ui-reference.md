@@ -1377,6 +1377,23 @@ and four from 80. Narrow layouts first use complete compact key tokens, then
 remove whole fragments rather than clipping half an instruction. Local counts,
 progress, risk, and business status still belong in the footer.
 
+### Arm delay for overlays that open unprompted
+
+An overlay a plugin opens without the user asking for it (an approval, a plan
+review, a permission request) can land under keys the user was already typing.
+Set `armMs` on the definition (an integer from 0 to 2000, default 0) and, for
+that many milliseconds after the overlay first takes focus, every key except
+Escape is swallowed: a stray `1` or `Enter` chooses, grants, and submits nothing.
+The hint row shows `… ready in a moment` until the window closes, then the
+surface behaves as usual. The delay is a fixed wall-clock window; reduced motion
+does not shorten it. Escape still dismisses, because a dismissal never grants.
+Use about 300 ms for a decision card; leave `armMs` unset for a surface the user
+opened on purpose.
+
+```ts
+api.overlays.open({ id: 'acme.approve', presentation: 'editor', capturing: true, armMs: 300 }, card)
+```
+
 ## Feedback and utility nodes
 
 ### `loader`

@@ -2,6 +2,7 @@ import {
   defineMayflyComponent,
   ui,
   type MayflyEditorExtensionNode,
+  type MayflyOverlayDefinition,
   type MayflyUiActionHandler,
   type MayflyUiEventHandlers,
   type MayflyStatusNode,
@@ -140,3 +141,7 @@ ui.listBody([ui.list({ id: 'inner', role: 'browse', selectedIds: [], items: [] }
 ui.list({ id: 'bad', role: 'browse', filterMode: 'fuzzy', selectedIds: [], items: [] })
 // @ts-expect-error acceptVerb is a closed set
 ui.list({ id: 'bad', role: 'browse', acceptVerb: 'delete', selectedIds: [], items: [] })
+
+export const armedRequest: MayflyOverlayDefinition = { id: 'request', presentation: 'editor', capturing: true, armMs: 300 }
+// @ts-expect-error the arm delay is a number of milliseconds
+export const badArm: MayflyOverlayDefinition = { id: 'request', armMs: '300' }

@@ -1259,6 +1259,19 @@ TUI 通过同一套键位语法从 canonical control 角色推导操作，并用
 80 列以下最多显示三个片段、80 列起最多四个，窄屏先缩成完整按键 token，再整段隐藏，
 不会截断半条指令。局部计数、进度、风险和业务状态仍可放在 footer。
 
+### 主动弹出的 overlay 的预备延迟
+
+插件在用户没有要求时弹出的 overlay（审批、计划评审、权限请求）可能恰好落在用户正在敲的按键上。
+在定义里设置 `armMs`（0 到 2000 的整数，默认 0）：overlay 首次获得焦点后的这段毫秒内，
+除 Escape 以外的所有按键都会被吞掉，误触的 `1` 或 `Enter` 不会选择、授权或提交任何内容。
+提示行在这段时间里显示 `… ready in a moment`（中文为“稍候即可操作”），之后 surface 恢复正常。
+延迟是固定的墙钟窗口，减少动效设置不会缩短它。Escape 仍然可以关闭，因为关闭从不授权。
+决策卡建议约 300 ms；用户主动打开的 surface 不要设置 `armMs`。
+
+```ts
+api.overlays.open({ id: 'acme.approve', presentation: 'editor', capturing: true, armMs: 300 }, card)
+```
+
 ## 反馈与辅助节点
 
 ### `loader`

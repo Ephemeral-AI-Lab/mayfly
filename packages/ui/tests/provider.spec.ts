@@ -363,6 +363,10 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-anchor', anchor: 'diagonal' as never }, { kind: 'text', content: 'bad' })).toThrow('anchor')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-capturing', capturing: 'yes' as never }, { kind: 'text', content: 'bad' })).toThrow('capturing')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-content-scroll', contentScroll: 'yes' as never }, { kind: 'text', content: 'bad' })).toThrow('contentScroll')
+    for (const [index, armMs] of [-1, 2001, 1.5, Number.NaN, '300' as never].entries()) {
+      expect(() => ctx.mayflyOverlays.open({ id: `overlay.bad-arm-${String(index)}`, armMs }, { kind: 'text', content: 'bad' })).toThrow('armMs')
+    }
+    ctx.mayflyOverlays.open({ id: 'overlay.arm-edge', armMs: 2000 }, { kind: 'text', content: 'ok' }).close()
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-presentation', presentation: 'dialog' as never }, { kind: 'text', content: 'bad' })).toThrow('presentation')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.editor-without-capture', presentation: 'editor' }, { kind: 'text', content: 'bad' })).toThrow('capture')
     expect(() => ctx.mayflyOverlays.open({ id: 'overlay.bad-min-width', minWidth: -1 }, { kind: 'text', content: 'bad' })).toThrow('non-negative')

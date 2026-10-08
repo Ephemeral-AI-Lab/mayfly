@@ -19,6 +19,7 @@ import { UiAnimationClock } from './ui-loader-animation.ts'
 import { nodeSlotEpoch } from './node-slot.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
+import { OverlayArm, type OverlayArmHint } from './overlay-arm.ts'
 import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
@@ -60,6 +61,7 @@ function compile(
     readonly onEscape?: () => void
     readonly escapeHint?: 'close' | 'leave'
     readonly translateHint?: (key: string) => string
+    readonly extraHints?: () => readonly OverlayArmHint[]
     readonly interactive: boolean
     readonly runtime: MayflyUiSurfaceRuntime
     readonly title?: string
@@ -96,6 +98,7 @@ function compile(
     contextHints: {
       focusWithoutControls: kind === 'overlay' && options.interactive && options.onEscape !== undefined,
       ...(options.translateHint === undefined ? {} : { translate: options.translateHint }),
+      ...(options.extraHints === undefined ? {} : { extra: options.extraHints }),
     },
     ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
   }
@@ -212,10 +215,12 @@ class OverlayComponent implements MayflyFocusable {
     private readonly viewport: () => MayflyUiViewport,
     private readonly requestRender: () => void,
     private readonly scrollKeys?: (data: string) => boolean,
+    private readonly arm?: OverlayArm,
   ) { this.targetValue = compiled }
   get focused(): boolean { return this.live && this.focusedValue }
   set focused(value: boolean) {
     this.focusedValue = this.live && value
+    if (this.focusedValue) this.arm?.start()
     setCompiledFocus(this.targetValue, this.focusedValue)
   }
   replace(compiled: MayflyCompiledUi): void {
@@ -229,6 +234,7 @@ class OverlayComponent implements MayflyFocusable {
     /* v8 ignore next -- every record is removed before another cleanup path can observe it. */
     if (!this.live) return
     this.live = false
+    this.arm?.dispose()
     setCompiledFocus(this.targetValue, false)
     this.targetValue = null
     this.focusedValue = false
@@ -242,7 +248,7 @@ class OverlayComponent implements MayflyFocusable {
   }
   invalidate(): void { if (this.live) this.targetValue?.component.invalidate() }
   handleInput(data: string): void {
-    if (!this.live) return
+    if (!this.live || this.arm?.swallows(data) === true) return
     if (this.scrollKeys?.(data) === true) return
     this.targetValue?.component.handleInput?.(data)
   }
@@ -263,6 +269,7 @@ interface OverlayRecord {
   readonly interaction: UiSurfaceModel
   readonly runtime: MayflyUiSurfaceRuntime
   readonly component: OverlayComponent
+  readonly arm: OverlayArm | undefined
   readonly handle: MayflyOverlayHandle | undefined
   renderScheduled?: boolean
   renderedRevision: number
@@ -386,6 +393,9 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     let record!: OverlayRecord
     const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)!
     const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images)
+    const arm = entry.definition.armMs === undefined || entry.definition.armMs === 0
+      ? undefined
+      : new OverlayArm(entry.definition.armMs, () => { record.component.invalidate(); runtime.requestRender() })
     const compiled = compile(interaction.decisionNode ?? interaction.node, 'overlay', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
@@ -395,6 +405,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       emit: interaction.emit.bind(interaction),
       ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
       ...(translateHint === undefined ? {} : { translateHint }),
+      ...(arm === undefined ? {} : { extraHints: () => arm.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: surfaceRuntime,
       ...surfaceTitle(entry, interaction),
@@ -411,7 +422,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
           return false
         }
       : undefined
-    const component = new OverlayComponent(compiled, () => overlayViewport(entry), runtime.requestRender, scrollKeys)
+    const component = new OverlayComponent(compiled, () => overlayViewport(entry), runtime.requestRender, scrollKeys, arm)
     const handle = entry.definition.presentation === 'editor' ? undefined : runtime.showOverlay(component, {
       width: entry.definition.width ?? OVERLAY_DEFAULT_WIDTH,
       ...(entry.definition.minWidth === undefined ? {} : { minWidth: entry.definition.minWidth }),
@@ -421,7 +432,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       nonCapturing: !entry.definition.capturing,
     })
     if (entry.hidden) handle?.setHidden(true)
-    record = { entry, interaction, runtime: surfaceRuntime, component, handle, renderedRevision: interaction.revision }
+    record = { entry, interaction, runtime: surfaceRuntime, component, arm, handle, renderedRevision: interaction.revision }
     overlays.set(entry.id, record)
   }
 
@@ -436,6 +447,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       emit: record.interaction.emit.bind(record.interaction),
       ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => record.interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
       ...(translateHint === undefined ? {} : { translateHint }),
+      ...(record.arm === undefined ? {} : { extraHints: () => record.arm!.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: record.runtime,
       ...surfaceTitle(entry, record.interaction),

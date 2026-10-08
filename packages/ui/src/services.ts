@@ -40,6 +40,8 @@ const NARROW_POLICIES = new Set(['bottom', 'overlay', 'hidden'])
 const STATUS_BANDS = new Set(['left', 'center', 'right'])
 const STATUS_OVERFLOW = new Set(['truncate', 'hide'])
 const OVERLAY_ANCHORS = new Set(['center', 'top', 'bottom', 'left', 'right'])
+/** The longest arm delay an overlay may ask for, in milliseconds. */
+const MAX_ARM_MS = 2000
 const PERCENTAGE = /^\d+(?:\.\d+)?%$/u
 
 function assertId(id: string, kind: string): void {
@@ -146,6 +148,7 @@ function validateOverlayDefinition(definition: unknown): void {
   validateOverlaySize(definition.maxHeight, 'overlay maxHeight')
   optionalNonNegativeInteger(definition.minWidth, 'overlay minWidth')
   optionalBoolean(definition.contentScroll, 'overlay contentScroll')
+  if (definition.armMs !== undefined && (typeof definition.armMs !== 'number' || !Number.isSafeInteger(definition.armMs) || definition.armMs < 0 || definition.armMs > MAX_ARM_MS)) throw new TypeError(`overlay armMs must be an integer from 0 to ${MAX_ARM_MS}`)
   optionalEventHandlers(definition.onEvent, 'overlay onEvent')
   optionalCallback(definition.load, 'overlay load')
 }

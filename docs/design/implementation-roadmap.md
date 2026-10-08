@@ -521,7 +521,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.7 | merged (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage |
 | 1.10a | merged (#103) | `feat/ui-foundation-1-10a` | Node slot. Full gate green with 100% coverage; no visible change; `W1-slot` and `W4-slot` budgets |
 | 1.9a | merged (#104) | `feat/ui-foundation-1-9a` | `ui.image`. Full gate green with 100% coverage; one new shot (`image`), no other visible change |
-| 1.8a | not started | `feat/ui-foundation-1-8a` | `armMs`. Needs: none |
+| 1.8a | merged (#105) | `feat/ui-foundation-1-8a` | `armMs`; two parts; full gate green with 100% coverage; no visible change unless a definition sets `armMs` |
 | 1.3 | merged (#106) | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 was left in the ledger for 1.4, which closed it |
 | 1.4 | merged (#107) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
 | 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
@@ -974,11 +974,28 @@ lowercase `c` notation) merged, all five walks match and no scene 2 walk is pend
 
 **Backlog:** E4 (now required by D4).
 
+**Slice 1.8a (built): the arm delay.** `MayflyOverlayDefinition` gained `armMs?: number` (an integer from 0 to 2000,
+default 0; `services.ts` refuses anything else), the one place §3.4 puts it. The window is `core/overlay-arm.ts`
+(`OverlayArm`): the overlay component owns one, starts it the first time the overlay takes focus, and disposes it with
+the component, so closing the overlay, replacing its model, or unloading the renderer cancels the timer and a stale
+callback cannot fire. While armed, `OverlayComponent.handleInput` swallows every key except `Esc` (a dismissal never
+grants), before the content-scroll keys and the surface see it; a stray `1` or `Enter` typed into the editor as the
+request opens chooses nothing, and the same keys choose once the window closes. The delay is a wall-clock timeout:
+reduced motion does not shorten it. The hint row names the state through the compiler's existing `contextHints.extra`
+provider (`… ready in a moment`, zh `稍候即可操作`, one fragment of priority 100); when the window closes the component
+invalidates and repaints. The prototype's scene 21 has no arm state in its hint row, so the wording is this slice's.
+`interaction/request-overlay.ts` gained an optional `armMs` that passes through; no existing request sets it, because
+the decision cards that open unprompted arrive in Phase 2 (slice 2e) and set `armMs: 300`. `ui-interaction-surface.ts`
+needed no change: the swallow sits in front of every key path of the overlay. Tests: `tests/core/overlay-arm.spec.ts`
+(the `1` + `Enter` replay grants nothing and chooses after the delay, `Esc` dismisses while armed, no timer after close
+or unload, validation), `request-overlay.spec.ts`, and `provider.spec.ts`; the type fixture is in `ui.compile.ts`; the
+UI reference (both languages) has a section; `examples/ui-gallery/src/groups/arm-delay.ts` describes the field (the
+gallery is a pane and opens no overlay).
+
+**Slice 1.8b (not built): the patterns.**
 `packages/ui/src/patterns.ts` exports `patterns.decisionPanel`, `railPanel`, `splitView`, and `statusPage`: pure and
-frozen, built only from the builders, with the kit's props adapted to the real ones (§3.1). `armMs` is implemented in
-the overlay focus path (`core/surface-renderer.ts`, `core/ui-interaction-surface.ts`). `examples/mayfly-user-kit` adopts
-one pattern as the plugin-side proof. Scenes 11, 12. Tests: a replay that types `1` and `Enter` into the editor while a
-request opens grants nothing; after the delay the same keys choose.
+frozen, built only from the builders, with the kit's props adapted to the real ones (§3.1). `examples/mayfly-user-kit`
+adopts one pattern as the plugin-side proof. Scenes 11, 12.
 
 #### 1.9 The prompt and image nodes
 
