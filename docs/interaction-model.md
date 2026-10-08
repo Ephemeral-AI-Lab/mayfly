@@ -159,9 +159,11 @@ core `core-context-hints` catalog.
   own `confirm` asks before its selection is accepted.
 - A disabled action shows its `disabledReason` after the label, and a disabled
   row shows it as the row detail.
-- Forms render `submitLabel`/`cancelLabel` (defaulting to the localized
-  "Submit"/"Cancel"), never the action id; a loader's cancel button uses
-  `cancelLabel`. Number fields render their `unit`.
+- A form with several fields renders one primary submit labelled
+  `submitLabel` (the localized "Save" by default), never the action id; a
+  single-field form draws none and submits on `Enter`. `cancelActionId` is
+  never drawn: the outermost `Escape` runs it. A loader's `cancelLabel` words
+  its `Esc` hint. Number fields render their `unit`.
 - Action `key` must be a key id, cannot be a reserved navigation key (`enter`,
   `escape`, `tab`, `shift+tab`, `space`, `backspace`, arrows, `pageup`,
   `pagedown`, `home`, `end`, `alt+left`, `alt+right`, `ctrl+c`, `ctrl+e`,
