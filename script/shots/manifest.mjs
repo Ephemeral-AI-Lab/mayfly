@@ -675,6 +675,13 @@ export const SCENARIOS = [
     ]),
   },
   {
+    id: 'views-summary',
+    // The "Views of status row 2" section: the summary node of its example, as it sits in the row.
+    title: 'views — the summary a view puts in status row 2',
+    width: 48,
+    build: ui => ui.richText([{ text: 'Builds ', tone: 'muted' }, { text: '2 running', tone: 'accent' }]),
+  },
+  {
     id: 'uikit-builder',
     // ui-kit.md "Builder" section example, verbatim.
     title: 'ui-kit — builder surface example',

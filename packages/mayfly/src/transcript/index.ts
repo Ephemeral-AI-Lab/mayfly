@@ -199,6 +199,7 @@ export function apply(ctx: Context): void {
     ctx.mayflyComponents,
     colors,
     () => ({ columns: screen.columns, rows: screen.rows }),
+    screen.views,
   )
   const offStatus = ctx.mayflyStatus.subscribe(() => {
     footer.invalidate()

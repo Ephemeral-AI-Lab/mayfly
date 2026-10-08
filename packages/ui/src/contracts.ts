@@ -352,18 +352,29 @@ export interface MayflyRegistryUpsert<Entry> { readonly kind: 'upsert', readonly
 export interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: string, readonly revision: number }
 export type MayflyRegistryDelta<Entry> = MayflyRegistryUpsert<Entry> | MayflyRegistryRemove
 
-export type MayflyPanePlacement = 'header' | 'left' | 'right' | 'bottom'
+export type MayflyPanePlacement = 'header' | 'left' | 'right' | 'bottom' | 'views'
 export interface MayflyInteractionDefinition { readonly scope?: MayflyUiScope, readonly source?: readonly MayflySourceStamp[] }
 export interface MayflyInteractionSnapshot { readonly scope: MayflyUiScope, readonly source: readonly MayflySourceStamp[] }
+/**
+ * A views pane's entry in status row 2: a motion-free status node, and the count the view's tab carries when it is
+ * entered (`Agents 5`). The summary is a separate publication from the pane's node, so a view updates its row without
+ * republishing its panel.
+ */
+export interface MayflyPaneSummary { readonly node: MayflyStatusNode, readonly count?: number | string }
 /**
  * A pane contribution. `size` is measured in columns for `left`/`right`
  * panes and in rows for `bottom` panes, where the stacked dock grants each
  * pane at least `min` rows (default 1, its head row) and never more than
  * `max` before truncating its tail.
+ *
+ * A `views` pane is a view of status row 2: it declares a `summary` that joins the row, and its node is the panel
+ * shown in place of the row while the view is entered. It takes neither `size` nor `narrow`, and its `title` names
+ * its tab. Lower `priority` values come first in the row.
  */
-export interface MayflyPaneDefinition extends MayflyInteractionDefinition { readonly id: string, readonly title?: string, readonly priority?: number, readonly placement: MayflyPanePlacement, readonly size?: { readonly min?: number, readonly preferred?: number | 'auto', readonly max?: number }, readonly narrow?: 'bottom' | 'overlay' | 'hidden', readonly onEvent?: MayflyUiEventHandlers<MayflyUiNode | null>, readonly load?: MayflySnapshotProvider<MayflyUiNode | null> }
-export interface MayflyPaneEntry extends MayflyInteractionSnapshot { readonly id: string, readonly definition: MayflyPaneDefinition, readonly node: MayflyUiNode | null, readonly revision: number, readonly update: MayflySnapshotChange, readonly events: MayflyUiEventEndpoint<MayflyUiNode | null> }
-export interface MayflyPaneRegistration extends MayflyNodeRegistration<MayflyUiNode> { refresh(): Promise<void>, loadMore(): Promise<boolean> }
+export interface MayflyPaneDefinition extends MayflyInteractionDefinition { readonly id: string, readonly title?: string, readonly priority?: number, readonly placement: MayflyPanePlacement, readonly size?: { readonly min?: number, readonly preferred?: number | 'auto', readonly max?: number }, readonly narrow?: 'bottom' | 'overlay' | 'hidden', readonly summary?: MayflyPaneSummary, readonly onEvent?: MayflyUiEventHandlers<MayflyUiNode | null>, readonly load?: MayflySnapshotProvider<MayflyUiNode | null> }
+export interface MayflyPaneEntry extends MayflyInteractionSnapshot { readonly id: string, readonly definition: MayflyPaneDefinition, readonly node: MayflyUiNode | null, readonly revision: number, readonly update: MayflySnapshotChange, readonly events: MayflyUiEventEndpoint<MayflyUiNode | null>, readonly summary?: MayflyPaneSummary | null }
+/** `setSummary(null)` takes a views pane out of row 2; the pane's panel and revision are untouched. Only a views pane has a summary. */
+export interface MayflyPaneRegistration extends MayflyNodeRegistration<MayflyUiNode> { refresh(): Promise<void>, loadMore(): Promise<boolean>, setSummary(summary: MayflyPaneSummary | null): void }
 export interface MayflyPaneRegistry { register(definition: MayflyPaneDefinition, initialNode?: MayflyUiNode | null): MayflyPaneRegistration, list(): readonly MayflyPaneEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyPaneEntry>) => void): () => void }
 
 export type MayflyOverlayAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right'

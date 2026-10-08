@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/transcript/status-model
  */
 import type { MayflyStatusEntry, MayflyStatusRegistry } from '@ephemeral-ai/mayfly-ui'
-import { compileMayflyStatusNode, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
+import { compileMayflyStatusNode, type MayflyComponent, type MayflyComponents, type MayflySemanticColors, type MayflyViewsSource } from '../core/index.ts'
 
 export type { MayflyStatusEntry } from '@ephemeral-ai/mayfly-ui'
 
@@ -13,31 +13,38 @@ type StatusBand = 'left' | 'center' | 'right'
  * then id — across all three bands: an entry takes its full width when it
  * fits the room earlier entries left, otherwise it truncates to that room or,
  * with `overflow: 'hide'`, drops out. Admitted parts then lay out as a left
- * cluster, a centered cluster, and a right-aligned cluster.
+ * cluster, a centered cluster, and a right-aligned cluster. The summaries of
+ * the views lane join row 2 as ordinary entries, and an entered view's panel
+ * takes the place of row 2.
  */
 export class StatusFooterComponent implements MayflyComponent {
-  private cache: { key: string, lines: string[] } | null = null
+  private cache: { key: string, rows: readonly (string | undefined)[], lines: string[] } | null = null
 
   constructor(
     private readonly models: MayflyStatusRegistry,
     private readonly components: MayflyComponents,
     private readonly colors: MayflySemanticColors,
     private readonly viewport: () => { readonly columns: number, readonly rows: number } = () => ({ columns: 1, rows: 1 }),
+    private readonly views?: MayflyViewsSource,
   ) {}
 
   invalidate(): void { this.cache = null }
 
   render(width: number): string[] {
-    const visible = this.models.list().filter(model => model.node !== null)
+    const { rows, lines } = this.statusRows(width)
+    const panel = this.views?.panel(width)
+    if (panel === undefined) return lines
+    return rows[0] === undefined ? [...panel] : [rows[0], ...panel]
+  }
+
+  /** Rows 1 and 2 as painted (`undefined` when empty) and the painted ones as lines; cached by the entries' revisions. */
+  private statusRows(width: number): { readonly rows: readonly (string | undefined)[], readonly lines: string[] } {
+    const visible = [...this.models.list(), ...(this.views?.statusEntries() ?? [])].filter(model => model.node !== null)
     const sourceKey = `${width}:${visible.map(entry => `${entry.id}:${String(entry.revision)}`).join(',')}`
-    if (this.cache?.key === sourceKey) return this.cache.lines
-    const lines: string[] = []
-    for (const row of [1, 2]) {
-      const line = this.renderRow(visible.filter(model => Math.min(2, Math.max(1, model.definition.row ?? 1)) === row), width)
-      if (line !== undefined) lines.push(line)
-    }
-    this.cache = { key: sourceKey, lines }
-    return lines
+    if (this.cache?.key === sourceKey) return this.cache
+    const rows = [1, 2].map(row => this.renderRow(visible.filter(model => Math.min(2, Math.max(1, model.definition.row ?? 1)) === row), width))
+    this.cache = { key: sourceKey, rows, lines: rows.filter((line): line is string => line !== undefined) }
+    return this.cache
   }
 
   /** Admit one row's entries by priority, then lay out the three bands. */

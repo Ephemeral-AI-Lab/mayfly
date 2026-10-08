@@ -8,6 +8,7 @@ import type { MayflyComponent, MayflyFocusable } from './types.ts'
 import { interpolateLocaleMessage } from '../frontend/locale.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
+import { VIEWS_FOCUS_ID, ViewsLane } from './views-lane.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
 
 export type SurfacePlacement = 'header' | 'left' | 'right' | 'bottom'
@@ -371,6 +372,8 @@ export class SurfaceManager {
   private readonly collapsed: Record<'left' | 'right', boolean> = { left: false, right: false }
   private readonly layouts = new Map<string, SurfaceLayout>()
   private readonly linearLayouts = new Map<string, SurfaceLayout>()
+  /** The views of status row 2: no lane rows of their own, but a focus of their own (`VIEWS_FOCUS_ID`). */
+  readonly views = new ViewsLane()
   private revision = 0
   private userStateValue: SurfaceUserLayoutState
   private focusedIdValue: string | undefined
@@ -418,6 +421,7 @@ export class SurfaceManager {
 
   invalidate(): void {
     for (const registered of this.entries.values()) registered.contribution.component.invalidate()
+    this.views.invalidate()
   }
 
   register(contribution: SurfaceContribution): SurfaceRegistration {
@@ -493,6 +497,7 @@ export class SurfaceManager {
   }
 
   replaceUserState(state: SurfaceUserLayoutInput): void {
+    if (this.focusedIdValue === VIEWS_FOCUS_ID) this.views.leave()
     const focusedContribution = this.focusedIdValue === undefined ? undefined : this.entries.get(this.focusedIdValue)?.contribution
     const focused = focusedContribution === undefined ? null : contributionFocusTarget(focusedContribution)
     this.userStateValue = freezeUserState(state)
@@ -527,14 +532,20 @@ export class SurfaceManager {
   }
 
   setFocused(id: string | undefined): boolean {
-    if (id !== undefined && !this.visibleEntries().some(entry => entry.id === id)) return false
+    if (id !== undefined && !(id === VIEWS_FOCUS_ID ? this.views.isEntered : this.visibleEntries().some(entry => entry.id === id))) return false
     if (this.focusedIdValue === id) return true
+    const leftViews = this.focusedIdValue === VIEWS_FOCUS_ID
     this.focusedIdValue = id
+    if (leftViews) this.views.focusLost()
     this.changed()
     return true
   }
 
   setFocusedComponent(component: MayflyComponent | null): void {
+    if (component !== null && component === this.views.component) {
+      this.setFocused(VIEWS_FOCUS_ID)
+      return
+    }
     const entry = component === null
       ? undefined
       : this.visibleEntries().find(item => contributionFocusTarget(item) === component)

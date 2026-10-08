@@ -526,7 +526,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.4 | merged (#107) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
 | 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
 | 1.6 | not started | `feat/ui-foundation-1-6` | Needs: 1.2, 1.7 |
-| 1.10b | not started | `feat/ui-foundation-1-10b` | Views lane. Needs: 1.10a, 1.7 |
+| 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | not started | `feat/ui-foundation-1-9b` | Prompt. Needs: 1.3, 1.7, 1.9a |
 | 1.8b | not started | `feat/ui-foundation-1-8b` | Patterns. Needs: 1.3 to 1.6, 1.8a |
 | 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
@@ -1089,17 +1089,44 @@ without a publish.
     an animation tick, and the paint epoch. `tests/core/node-slot.spec.ts`: the three shapes with keys and hint rows, a
     core reload that keeps a list cursor and a form draft, stale leases, the host's unload, and a warm slot repainted
     for a new theme, a rebound key, a new locale, and a new width.
-- **Views lane.** `placement: 'views'`, `summary`, and `setSummary` (§3.4); the validator requires a motion-free status
-  node as the summary. `core/surface-manager.ts` and `core/surface-renderer.ts` gain the lane: it has no rows of its
-  own, its summaries join status row 2, its panel is shown in place of row 2 when entered, and events are routed to
-  the active registration. Until Phase 3 replaces the footer, today's `StatusFooterComponent` reads the summaries
-  beside its row-2 entries. `Alt+↓`/`F5` on an empty prompt, or `F6`, enter the first view; `←/→` switch views; `Esc`
-  returns to the prompt.
-- **Proof.** `examples/ui-gallery` registers a view through the public service (D20). Mayfly's agents, jobs, goal, and
-  todo views register in Phase 3, so the product's own row 2 does not change in this phase.
+- **Views lane** (slice 1.10b, built). `MayflyPanePlacement` gained `'views'`; a views pane declares `summary: { node, count? }`
+  and updates it with `registration.setSummary(summary | null)` (`null` takes the view out of row 2). `MayflyPaneEntry`
+  carries `summary` (a views pane's entry is republished at the same revision and node when only the summary moves, so
+  an in-flight `refresh` is not disturbed); the service refuses `size` and `narrow` on a views pane and a summary on
+  any other placement. The lane's logic is `core/views-lane.ts` (`ViewsLane`, owned by `SurfaceManager.views`, so
+  `core/surface-manager.ts` only gained the field, the focus id `@views`, and the focus bookkeeping).
+  - *Row 2.* The lane has no rows of its own. `ViewsLane.statusEntries()` yields each summary as a status entry (`views/<id>`,
+    row 2, left band, the view's priority; lower comes first), and `StatusFooterComponent` takes the lane as an optional
+    last argument and admits those entries beside its registry entries, so a plugin chip and a view are admitted by one
+    rule. The summary is admitted with the status validator (the status subset; slice 1.3 adds the no-motion rule to
+    that validator), so an invalid summary paints the footer's error text instead of failing the pane.
+  - *The panel.* While a view is entered, `render` returns row 1, then the tab strip (titles, with the count after the
+    title; the active tab in `primary`, the others `muted`, joined by three spaces, elided with a `+N` when the row is
+    narrow), the `━` rule under the active tab, and the active panel's rows, at most a third of the terminal's rows
+    in all (a cut panel ends in the shared `… +K more rows`). A view's title names its tab, so its panel carries no frame
+    of its own. A view is *in the row* with a summary and *enterable* with a summary, a panel, and a focus target.
+  - *Keys.* `Alt+↓`/`F5` on an empty prompt (the editor's `onKey` tests `ui.focus-next`, then `mayflyScreen.enterViews()`)
+    and `F6` (`mayfly.surface.next`, which now walks the views first, then the interactive panes) enter the first view;
+    `←`/`→` (`ui.left`/`ui.right`) switch views and hold at the ends, except while the panel is editing a field; `Esc`
+    (`ui.cancel`) leaves through the panel's own unhandled-escape path; every other key is the active panel's. The
+    renderer adds `←/→ tabs` to the panel's hint row with the compiler's `contextHints.extra`. No action id was added.
+    The `F6` order is in `reference/keys.md` (both languages), `SHARED_KEY_REFERENCE`, and `key-grammar-docs.spec.ts`.
+  - *Lifetime.* A view's lane slot lives and dies with its `PaneComponent` (`record.component.view`), so every renderer
+    teardown path removes it; a core reload replays the registry, the panel's interaction state (a list cursor, a draft)
+    lives in `mayflyUiInteraction` and survives, and the lane returns to the prompt like any focused pane. A view whose
+    panel goes away while it is entered hands over to the view now at its place, or leaves. Events need no routing of
+    their own: the compiled panel emits into its own pane model, so an action reaches the `onEvent` of the active view.
+- **Proof (D20).** `examples/ui-gallery/src/groups/views.ts` registers a view through the public service (one import and
+  one call in `index.ts`); its test drives `setSummary` and the Fiber cleanup. Mayfly's agents, jobs, goal, and todo views
+  register in Phase 3, so the product's own row 2 does not change in this phase.
 
-Scene 13 (the lane only, with the gallery view). Tests: the lane in the surface specs; `tests/e2e.spec.ts` with a plugin
-view registered through the public service and cleaned up with its Fiber.
+Scene 13 (the lane only, with the gallery view). Tests: `tests/core/views-lane.spec.ts` (the lane), `views-lane-renderer.spec.ts`
+(the renderer: F6 order, entering, switching, event routing, cleanup), the footer in `status-model.spec.ts`, the focus id in
+`surface-manager.spec.ts`, width scans of the strip and panel, `tests/e2e.spec.ts` (a plugin view registered through the public
+service, entered with `F6`, kept across a core reload, and cleaned up with its Fiber), and `tests/design/scene-13-views.spec.ts`,
+which replays the four views walks on a real lane and compares the tab strip and the rule cell by cell. What the lane does not
+draw (row 1 and the editor frame, the idle row 2 with its right cue, the panel bodies) is listed in `tests/design/pending.ts`
+against Phase 3 (and 1.4 for the list painter). Open question for slice 1.11: its empty-ledger assertion must leave these Phase 3 entries alone.
 
 #### 1.11 Freeze
 

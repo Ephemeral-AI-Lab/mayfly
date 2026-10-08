@@ -658,4 +658,54 @@ describe('SurfaceManager', () => {
     expect(manager.focusedId).toBeUndefined()
     expect(manager.layout(77, 20).right).toBeDefined()
   })
+
+  describe('views lane focus', () => {
+    function lane(manager: SurfaceManager) {
+      const calls: string[] = []
+      manager.views.bind({
+        colors: new Proxy({}, { get: () => (text: string) => text }) as never,
+        focus: target => { manager.setFocusedComponent(target) },
+        release: () => { manager.setFocused(undefined) },
+        requestRender: () => {},
+        viewport: () => ({ columns: 40, rows: 30 }),
+      })
+      const panel = { focused: false, render: () => ['body'], invalidate: () => { calls.push('invalidate') }, handleInput: () => {} }
+      manager.views.register({ id: 'v', summary: { node: { kind: 'text', content: 'V' } } }).setPanel(panel, panel)
+      return calls
+    }
+
+    it('records the lane as the focused surface only while a view is entered', () => {
+      const manager = new SurfaceManager()
+      lane(manager)
+      expect(manager.setFocused('@views')).toBe(false)
+      expect(manager.views.enter()).toBe(true)
+      expect(manager.focusedId).toBe('@views')
+      expect(manager.setFocused('@views')).toBe(true)
+      manager.setFocusedComponent(null)
+      expect(manager.focusedId).toBeUndefined()
+      expect(manager.views.isEntered).toBe(false)
+    })
+
+    it('forgets being entered when another surface takes focus, and leaves when the user layout is replaced', () => {
+      const manager = new SurfaceManager()
+      lane(manager)
+      const pane = { focused: false, render: () => ['pane'], invalidate: () => {}, handleInput: () => {} }
+      manager.register({ id: 'pane', placement: 'bottom', component: pane, focusTarget: pane })
+      manager.views.enter()
+      manager.setFocusedComponent(pane)
+      expect(manager.focusedId).toBe('pane')
+      expect(manager.views.isEntered).toBe(false)
+      manager.views.enter()
+      manager.replaceUserState({})
+      expect(manager.views.isEntered).toBe(false)
+      expect(manager.focusedId).toBeUndefined()
+    })
+
+    it('invalidates the panels with the surfaces', () => {
+      const manager = new SurfaceManager()
+      const calls = lane(manager)
+      manager.invalidate()
+      expect(calls).toEqual(['invalidate'])
+    })
+  })
 })

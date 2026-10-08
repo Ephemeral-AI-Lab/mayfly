@@ -10,7 +10,7 @@ In effect unless a capturing panel (a picker, form, or approval in the editor sl
 | --- | --- | --- |
 | `Ctrl-O` | Toggle tool output expansion | Switch the most recent **3 turns** of tool cards and thinking blocks between one-line summary and full output |
 | `Ctrl-T` | Toggle todo pane folding | Five-row folded view ↔ full list |
-| `F6` / `Shift+F6` | Move surface focus | Traverse the Editor and pane lanes in layout order; crossing an end returns to the Editor |
+| `F6` / `Shift+F6` | Move surface focus | Traverse the Editor, the views of the status bar, and the pane lanes: with a view available `F6` enters the views first, then the interactive panes in layout order; crossing an end returns to the Editor |
 | `F7` | Previous conversation | Switch the complete UI back to the previously displayed conversation (main, BTW, or subagent); show a notice when no other conversation is open |
 | `F8` | Close side conversation | Close the displayed side conversation (from main, the `F7` counterpart): detach a subagent or dispose the temporary BTW Agent |
 
@@ -24,6 +24,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `↑/↓` | Move between rows and fields; scroll documents |
 | `←/→` | Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip |
 | `Alt+←/→ or F2/F3` | Switch tabs from anywhere on the surface; wizards validate the step being left |
+| `Alt+↓ or F5, F6` | From an empty prompt, enter the views of the status bar (F6 enters them first, then the interactive panes); ←/→ switch views and Esc returns to the prompt |
 | `PgUp/PgDn, Home/End` | Page or jump in lists and documents |
 | `Enter` | Choose, run, open a picker, apply it, or start editing a field |
 | `Space` | Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch |
