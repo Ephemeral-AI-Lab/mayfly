@@ -9,6 +9,7 @@
 import type { MayflyLoaderVariant } from '@ephemeral-ai/mayfly-ui'
 import { ASCII_SPINNER_FRAMES, type MayflyGlyphMode } from './glyphs.ts'
 import type { MayflySemanticColors } from './types.ts'
+import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** One clock step: every channel moves on it. */
 export const LOADER_FRAME_MS = 100
@@ -104,6 +105,9 @@ export class UiAnimationClock {
   private timer: ReturnType<typeof setTimeout> | undefined
   private readonly armed = new Set<UiLoaderAnimation>()
 
+  /** @param counters - a caller's work sink; it counts the ticks that asked for a repaint. */
+  constructor(private readonly counters?: MayflyWorkCounters) {}
+
   /** Joins the next tick, starting the timer when none is pending. */
   arm(member: UiLoaderAnimation): void {
     this.armed.add(member)
@@ -111,7 +115,7 @@ export class UiAnimationClock {
       this.timer = undefined
       const due = [...this.armed]
       this.armed.clear()
-      for (const animation of due) animation.fire()
+      for (const animation of due) if (animation.fire()) countWork(this.counters, 'clockTicks')
     }, LOADER_FRAME_MS)
   }
 
@@ -150,12 +154,16 @@ export class UiLoaderAnimation {
     return this.frameValue
   }
 
-  /** Called by the clock on a tick: a surface that did not paint since its last frame stays out of the next one. */
-  fire(): void {
-    if (!this.painted) return
+  /**
+   * Called by the clock on a tick: a surface that did not paint since its last frame stays out of the next one.
+   * @returns whether the tick asked for a repaint.
+   */
+  fire(): boolean {
+    if (!this.painted) return false
     this.painted = false
     this.frameValue++
     this.requestRender()
+    return true
   }
 
   /** Hiding, deactivation, or renderer disposal cancels the pending repaint. */

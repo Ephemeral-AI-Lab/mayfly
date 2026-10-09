@@ -19,7 +19,8 @@ describe('countWork', () => {
     countWork(counters, 'rowsPainted', 3)
     countWork(counters, 'rowsPainted')
     countWork(undefined, 'rowsPainted', 9)
-    expect(counters).toEqual({ nodesValidated: 0, unitsCompiled: 0, rowsPainted: 4, stringsMeasured: 0 })
+    expect(counters).toEqual({ ...createWorkCounters(), rowsPainted: 4 })
+    expect(Object.values(createWorkCounters()).every(value => value === 0)).toBe(true)
   })
 })
 
@@ -90,10 +91,25 @@ describe('compilation', () => {
     if (!result.ok) throw new Error(result.message)
     result.value.component.render(30)
     const first = counters.rowsPainted
+    expect(counters.componentRenders).toBe(1)
     result.value.component.render(30)
     expect(counters.rowsPainted).toBe(first)
+    expect(counters.componentRenders).toBe(1)
     result.value.component.render(31)
     expect(counters.rowsPainted).toBeGreaterThan(first)
+    expect(counters.componentRenders).toBe(2)
+  })
+
+  it('counts the frame: its passes, its leaf renders, its control walks, and its reconciliations', () => {
+    const counters = createWorkCounters()
+    const result = compileMayflyUiNode(ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }), { ...base, emit: () => {}, counters })
+    if (!result.ok) throw new Error(result.message)
+    expect(counters.reconciles).toBeGreaterThan(0)
+    expect(counters.controlWalks).toBe(1)
+    result.value.component.render(40)
+    expect(counters.layoutPasses).toBe(1)
+    expect(counters.componentRenders).toBeGreaterThan(0)
+    expect(counters).toMatchObject({ clockTicks: 0, keymapSnapshots: 0 })
   })
 
   it('counts status and editor-shell compilation, and accepts no sink', () => {

@@ -388,6 +388,8 @@ interface FocusState {
   finishSelectEditing(field: SelectField, key: string, cancel: boolean): MayflyFieldValue
   setEditing(key: string | undefined): void
   blurInactiveEditors(controls: readonly ControlDescriptor[]): void
+  /** Adds to a work counter of the surface's sink, when a caller measures it. */
+  count(counter: keyof MayflyWorkCounters): void
   setLayoutViewport(viewport: MayflyUiViewport): void
   bindControls(keys: readonly string[], binding: ControlBinding): void
   bindScroll(key: string, scroll: ScrollControl): void
@@ -476,7 +478,10 @@ function staticComponent(render: (width: number) => string[], options: Pick<Pain
     render: width => {
       try {
         const rows = glyphRows(render(width), options.components?.presentation?.glyphs)
-        if (counted) countWork(options.counters, 'rowsPainted', rows.length)
+        if (counted) {
+          countWork(options.counters, 'rowsPainted', rows.length)
+          countWork(options.counters, 'componentRenders')
+        }
         return rows
       } catch (error) {
         const message = renderFailure(error)
@@ -501,6 +506,7 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
     if (known !== undefined) return known
     const rows = render(width)
     countWork(options.counters, 'rowsPainted', rows.length)
+    countWork(options.counters, 'componentRenders')
     if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
     memo.set(width, rows)
     return rows
@@ -612,6 +618,7 @@ function promptComponent(node: MayflyPromptNode, state: FocusState, options: Run
         const focused = state.focused && state.activeKey === key
         const rows = paint(Math.max(1, width), draft, rowWidth => editor.render(rowWidth, focused), focused)
         countWork(options.counters, 'rowsPainted', rows.length)
+        countWork(options.counters, 'componentRenders')
         return rows
       } catch (error) {
         const message = renderFailure(error, 'unknown prompt failure')
@@ -1174,6 +1181,7 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
     if (visibleWidth(row) <= safeWidth) { rows = [row]; break }
   }
   countWork(options.counters, 'rowsPainted', rows.length)
+  countWork(options.counters, 'componentRenders')
   options.listRuntime.hintMemo = { colors: options.colors, key, rows }
   return rows
 }
@@ -1548,6 +1556,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const rows = renderTabs(shaped, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors, completed, { cache: options.listRuntime.rows, counters: options.counters })
         // A rail counts the rows its cache painted; a strip is two rows and keeps no cache.
         if (shaped.orientation !== 'vertical') countWork(options.counters, 'rowsPainted', rows.length)
+        countWork(options.counters, 'componentRenders')
         return rows
       }, options, false)
       state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: node.orientation === 'vertical' ? 'vertical' : 'horizontal' })
@@ -1607,6 +1616,8 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
             },
           },
         )
+        // The row cache counts the rows it paints; the list counts its render.
+        countWork(options.counters, 'componentRenders')
         return [...queryRows, ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body]
       }, options, false)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
@@ -1713,6 +1724,7 @@ function homeGroup(controls: readonly ControlDescriptor[]): string | undefined {
 }
 
 function reconcile(state: FocusState): readonly ControlDescriptor[] {
+  state.count('reconciles')
   const controls = state.controls()
   const groups = controlGroups(controls)
   const tabGroups = groups.filter(group => group.kind === 'tabs')
@@ -1988,6 +2000,7 @@ export class MayflyUiSurfaceRuntime {
           : []))
         for (const [stateKey, lease] of this.textEditors) if (!visible.has(stateKey)) lease.editor.focused = false
       },
+      count: counter => { countWork(this.options?.counters, counter) },
       setLayoutViewport: viewport => { this.layoutViewport?.(viewport) },
       bindControls: (keys, binding) => { this.controls.bind(keys, binding) },
       bindScroll: (key, scroll) => { this.controls.bindScroll(key, scroll) },
@@ -2188,6 +2201,7 @@ export class MayflyUiSurfaceRuntime {
       && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision) {
       return cached.walk
     }
+    countWork(options.counters, 'controlWalks')
     const walk = walkControls(node, options)
     this.controlsWalkMemo = { generation: this.generation, node, options, columns: viewport.columns, rows: viewport.rows, revision, walk }
     return walk
@@ -2458,6 +2472,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     if (!this.surfaceRuntime.current(this.generation)) return { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
     this.viewport = safeViewport(this.options.getViewport)
     this.surfaceRuntime.beginAnimationFrame()
+    countWork(this.runtimeOptions.counters, 'layoutPasses')
     reconcile(this.state)
     beginLayoutPass(this.state)
     return getLayoutNode(this.root) ?? {
@@ -2473,6 +2488,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     if (!this.surfaceRuntime.current(this.generation)) return { rows: [], overflowed: false }
     this.runtimeFailure = undefined
     this.surfaceRuntime.beginAnimationFrame()
+    countWork(this.runtimeOptions.counters, 'layoutPasses')
     try {
       this.state.layoutPass = false
       this.viewport = maxRows === undefined
@@ -2493,6 +2509,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
           /* Semantic scrolls learn the content width from render(); refresh it
              so anchors written while expanded match the expanded width. */
           expandedComponent.render(safeWidth)
+          countWork(this.runtimeOptions.counters, 'layoutPasses')
           const frame = renderLayoutFrame(expandedComponent, safeWidth, Math.max(1, viewport.rows - hint.length), () => {})
           const lines = [...frame.lines, ...hint]
           return { rows: lines.map(row => visibleWidth(row) <= safeWidth ? row : /* v8 ignore next -- layout frames and hint rows are already produced at the safe width */ sliceByColumn(row, 0, safeWidth, true)), overflowed: false }
@@ -2502,6 +2519,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const constrainedLayout = (): string[] => {
         const viewport = this.viewport
         beginLayoutPass(this.state)
+        countWork(this.runtimeOptions.counters, 'layoutPasses')
         try { return renderLayoutFrame(this.root, safeWidth, viewport.rows, () => {}).lines }
         finally { this.state.layoutPass = false; this.viewport = viewport }
       }
@@ -2691,6 +2709,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       : Math.max(1, this.root.render(width).length)
     const previousLayoutPass = this.state.layoutPass
     beginLayoutPass(this.state)
+    countWork(this.runtimeOptions.counters, 'layoutPasses')
     try {
       /* v8 ignore next -- pi-tui does not request repaint during synchronous measurement. */
       const frame = renderLayoutFrame(this.root, width, height, () => {})
