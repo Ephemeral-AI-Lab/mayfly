@@ -1846,6 +1846,165 @@ These are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cance
 hints. See the [`ui-gallery`](https://github.com/Ephemeral-AI-Lab/mayfly/tree/main/examples/ui-gallery) example for a
 working view.
 
+## Patterns
+
+`patterns` (from `@ephemeral-ai/mayfly-ui`) holds four compositions of the builders that Mayfly's own panels use and a
+plugin can call the same way. A pattern is a pure function: it returns an ordinary, deeply frozen node made only of
+`ui.*` calls, has no renderer of its own, and publishes nothing, so the result goes wherever a node goes (a pane, an
+overlay's snapshot, a reply's `node`). Its props are the real builders' shapes: list items, spans, and tab items are
+the ones documented above, and a pattern never reads a width.
+
+### `patterns.decisionPanel`
+
+![`patterns.decisionPanel` rendering](/shots/patterns-decision.svg)
+
+*A decision with a preview, choices, a note, and a hidden key (width 72).*
+
+```ts
+patterns.decisionPanel(props: {
+  id?: string                       // the controls' prefix, default 'decision'
+  title: string
+  badges?: MayflyInlineSpan[]
+  preview?: MayflyUiNode[]          // read-only context above the choices
+  options: MayflyListItem[]
+  input?: { id: string, label: string, placeholder?: string }
+  instant?: boolean                 // a digit chooses even beside the note field
+  accelerators?: Omit<MayflyActionItem, 'hidden'>[]
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'   // default 'reject'
+  chrome?: 'none' | 'lane' | 'surface' | 'overlay'                  // default 'overlay'
+}): MayflySurfaceNode
+```
+
+An overlay-chrome surface whose column holds the preview nodes, a focused `choose` list (`<id>.options`, numbered), an
+optional one-line form (`<id>.input`), and an actions node (`<id>.keys`) whose items are all hidden. The first option
+is the common grant and holds the cursor, so `Enter` takes it; a digit chooses by position (while the list holds focus,
+or anywhere with `instant`); `Esc` rejects. An accelerator runs from anywhere on the panel except while the note field
+holds focus, where its key is the field's text. The choice arrives as a `selection-accept` event carrying the option id.
+
+Open it with the arm delay when it appears unprompted: `patterns.decisionArmMs` is 300, so a stray `1` or `Enter` typed
+into the editor as the card opens chooses nothing (see *Arm delay* above).
+
+```ts
+patterns.decisionPanel({
+  title: 'Delete branch?',
+  badges: [{ text: '1 of 2 waiting', tone: 'muted' }],
+  preview: [ui.text('feature/old-hero · 3 unmerged commits', { tone: 'muted' })],
+  options: [
+    { id: 'keep', label: 'Keep the branch' },
+    { id: 'delete', label: 'Delete it', detail: 'cannot be undone' },
+  ],
+  input: { id: 'why', label: 'Note', placeholder: 'optional' },
+  accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }],
+})
+```
+
+```ts
+api.overlays.open({ id: 'acme.delete', presentation: 'editor', capturing: true, armMs: patterns.decisionArmMs }, card)
+```
+
+### `patterns.railPanel`
+
+![`patterns.railPanel` rendering](/shots/patterns-rail.svg)
+
+*A rail of workspaces and the live list of the active one (width 72).*
+
+```ts
+patterns.railPanel(props: {
+  title: string
+  badges?: MayflyInlineSpan[]
+  rail: { id: string, activeId: string, items: MayflyTabItem[], hintLabel?: string }
+  content: MayflyUiNode | Record<string, MayflyUiNode>
+  railWidth?: number                // default 26
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
+}): MayflySurfaceNode
+```
+
+A vertical `tabs` rail (`railWidth` columns, never shrunk) beside the content, two columns apart. A record keyed by rail
+item id gives every label its own page, linked to the rail with `tab`, so the rail switches pages without a
+republish and each page keeps its own cursor and draft. A single node is the content of the active label; the plugin
+rebuilds it from the `tab-change` event.
+
+```ts
+patterns.railPanel({
+  title: 'Workspaces',
+  rail: { id: 'rail', activeId: 'work', items: [
+    { id: 'work', label: 'work/mayfly', count: 8 },
+    { id: 'site', label: 'website', count: 5 },
+  ] },
+  content: {
+    work: ui.list({ id: 'ws.work', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Fix login redirect', right: [{ text: '2h', tone: 'muted' }] }] }),
+    site: ui.list({ id: 'ws.site', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'b', label: 'Docs sync', right: [{ text: '1d', tone: 'muted' }] }] }),
+  },
+})
+```
+
+### `patterns.splitView`
+
+```ts
+patterns.splitView(props: {
+  list: MayflyUiNode
+  detail: MayflyUiNode
+  listWidth?: number                // default 58
+  breakpoint?: number               // default 100
+}): MayflyStackNode
+```
+
+A row that shows the list (`listWidth` columns) and the detail side by side from `breakpoint` columns, and the list alone
+below it. The list node is placed twice under complementary `when` conditions, so one id serves both layouts and the
+cursor survives a resize. Wrap the result in a `stack.column` or a surface when the page needs a heading. Follow the
+cursor with the `focus-change` observation to keep the detail current. The screenshots of this document cannot draw
+`when` children; the `ui-gallery` example mounts the pattern in a pane.
+
+```ts
+patterns.splitView({
+  list: ui.list({ id: 'sv', role: 'browse', marker: 'selection', selectedIds: [], items: [
+    { id: 'a', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }] },
+    { id: 'b', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }] },
+  ] }),
+  detail: ui.fields([
+    { label: 'Name', value: [{ text: 'Loop' }] },
+    { label: 'Status', value: [{ text: '✓ installed 1.4.0', tone: 'success' }] },
+  ]),
+})
+```
+
+### `patterns.statusPage`
+
+![`patterns.statusPage` rendering](/shots/patterns-status.svg)
+
+*A read-only page under three tabs (width 72).*
+
+```ts
+patterns.statusPage(props: {
+  title: string
+  badges?: MayflyInlineSpan[]
+  tabs: Omit<MayflyTabsNode, 'kind'>
+  rows?: MayflyField[]              // the key/value rows
+  body?: MayflyUiNode               // in place of the rows
+  pages?: Record<string, MayflyUiNode>   // one page per tab id
+  footer?: MayflyUiNode
+}): MayflySurfaceNode
+```
+
+An overlay-chrome surface with a tab strip, a blank row, and the page. Give it `rows`, a `body`, or `pages`; a call with
+none throws a `TypeError`. As with the rail, `pages` links one node to each tab so the strip switches them without a
+republish, while `rows` and `body` are rebuilt by the plugin on `tab-change`.
+
+```ts
+patterns.statusPage({
+  title: 'Status',
+  tabs: { id: 'st', activeId: 'overview', items: [
+    { id: 'overview', label: 'Overview' },
+    { id: 'usage', label: 'Usage' },
+    { id: 'account', label: 'Account', attention: true },
+  ] },
+  rows: [
+    { label: 'Provider', value: [{ text: 'DeepSeek' }] },
+    { label: 'Balance', value: [{ text: '⚠ ¥ 6.20', tone: 'warning' }, { text: ' low balance', tone: 'muted' }] },
+  ],
+})
+```
+
 ## Events and snapshot updates
 
 Panes, overlays, and editor extensions place the handler on the definition,

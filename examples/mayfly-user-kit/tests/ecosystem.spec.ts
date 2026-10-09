@@ -12,7 +12,7 @@ import * as header from '../../header/src/index.ts'
 import * as overlay from '../../overlay/src/index.ts'
 import * as inspector from '../../right-inspector/src/index.ts'
 import * as uiGallery from '../../ui-gallery/src/index.ts'
-import { summaryMetric } from '../src/index.ts'
+import { APPROVAL_ARM_MS, approvalCard, summaryMetric } from '../src/index.ts'
 import { MemorySettings } from '../../overlay/tests/settings.ts'
 
 interface CommandProbeDefinition {
@@ -54,6 +54,17 @@ describe('shared user kit', () => {
     const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as Record<string, unknown>
     expect(manifest.mayfly).toBeUndefined()
     expect(manifest.dsh).toBeUndefined()
+  })
+})
+
+describe('shared user kit approval card', () => {
+  it('is patterns.decisionPanel with the kit\'s options, a frozen standard tree, and the pattern\'s arm delay', () => {
+    const node = approvalCard.render({ title: 'Run command?', command: 'pnpm build', detail: 'in ~/work/mayfly' })
+    expect(node).toMatchObject({ kind: 'surface', chrome: 'overlay', escapeLabel: 'reject', title: 'Run command?' })
+    const list = (node as { child: { children: { node: { kind: string, id?: string, items?: { id: string }[] } }[] } }).child.children.map(child => child.node).find(child => child.kind === 'list')!
+    expect(list).toMatchObject({ id: 'approval.options', items: [{ id: 'once' }, { id: 'session' }, { id: 'reject' }] })
+    expect(Object.isFrozen(node)).toBe(true)
+    expect(APPROVAL_ARM_MS).toBe(300)
   })
 })
 

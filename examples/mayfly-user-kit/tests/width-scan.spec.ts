@@ -14,7 +14,7 @@ import * as header from '../../header/src/index.ts'
 import { overlayRequest } from '../../overlay/src/index.ts'
 import * as inspector from '../../right-inspector/src/index.ts'
 import * as uiGallery from '../../ui-gallery/src/index.ts'
-import { summaryMetric } from '../src/index.ts'
+import { approvalCard, summaryMetric } from '../src/index.ts'
 
 const components = new MayflyComponentsService(new Context(), { theme: { colors: DARK_COLORS }, tui: {} as never })
 
@@ -62,6 +62,12 @@ describe('example width contracts', () => {
         value: fixture.text,
         detail: fixture.text,
       }))
+    }
+  })
+
+  it('scans the approval card built on patterns.decisionPanel at every repository width', () => {
+    for (const fixture of ADVERSARIAL) {
+      uiRows(`approval-card:${fixture.name}`, approvalCard.render({ title: fixture.text.slice(0, 400), command: fixture.text.slice(0, 400), detail: fixture.text.slice(0, 400) }))
     }
   })
 })

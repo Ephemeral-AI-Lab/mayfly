@@ -1679,6 +1679,160 @@ export function apply(ctx: Context): void {
 它们是命名动作 `ui.focus-next`、`ui.left`/`ui.right` 与 `ui.cancel`，重绑定会同时移动这些键及其提示。可运行的视图见
 [`ui-gallery`](https://github.com/Ephemeral-AI-Lab/mayfly/tree/main/examples/ui-gallery) 示例。
 
+## 模式（Patterns）
+
+`patterns`（来自 `@ephemeral-ai/mayfly-ui`）提供四个由 builder 组合而成的模式，Mayfly 自己的面板用它们，插件也可以用同样的方式调用。
+模式是纯函数：返回一棵普通的、深度冻结的节点树，只由 `ui.*` 调用组成，没有自己的 renderer，也不发布任何东西，
+所以结果可以放在任何能放节点的地方（pane、overlay 的 snapshot、回复的 `node`）。它的 props 就是真实 builder 的形状：
+列表项、span 和 tab 项都是上文记录的那些，模式从不读取宽度。
+
+### `patterns.decisionPanel`
+
+![`patterns.decisionPanel` 渲染效果](/shots/patterns-decision.svg)
+
+*带预览、选项、备注和隐藏按键的决策卡（宽度 72）。*
+
+```ts
+patterns.decisionPanel(props: {
+  id?: string                       // 各控件的前缀，默认 'decision'
+  title: string
+  badges?: MayflyInlineSpan[]
+  preview?: MayflyUiNode[]          // 选项上方的只读上下文
+  options: MayflyListItem[]
+  input?: { id: string, label: string, placeholder?: string }
+  instant?: boolean                 // 即使焦点在备注字段旁，数字键也立即选择
+  accelerators?: Omit<MayflyActionItem, 'hidden'>[]
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'   // 默认 'reject'
+  chrome?: 'none' | 'lane' | 'surface' | 'overlay'                  // 默认 'overlay'
+}): MayflySurfaceNode
+```
+
+返回 overlay 边框的 surface，其中依次是预览节点、获得焦点的 `choose` 列表（`<id>.options`，带编号）、
+可选的单行表单（`<id>.input`）和所有项都隐藏的 actions 节点（`<id>.keys`）。第一个选项是最常见的授权并持有光标，
+所以 `Enter` 直接选它；数字键按位置选择（列表持有焦点时，设置 `instant` 则在面板任何位置）；`Esc` 表示拒绝。
+加速键在面板上任何位置都会运行，但备注字段持有焦点时除外，此时该键是字段的文本。选择结果以带选项 id 的
+`selection-accept` 事件到达。
+
+主动弹出时请带上预备延迟：`patterns.decisionArmMs` 为 300，卡片弹出时误敲进编辑器的 `1` 或 `Enter` 不会选择任何内容
+（见上文“预备延迟”）。
+
+```ts
+patterns.decisionPanel({
+  title: 'Delete branch?',
+  badges: [{ text: '1 of 2 waiting', tone: 'muted' }],
+  preview: [ui.text('feature/old-hero · 3 unmerged commits', { tone: 'muted' })],
+  options: [
+    { id: 'keep', label: 'Keep the branch' },
+    { id: 'delete', label: 'Delete it', detail: 'cannot be undone' },
+  ],
+  input: { id: 'why', label: 'Note', placeholder: 'optional' },
+  accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }],
+})
+```
+
+```ts
+api.overlays.open({ id: 'acme.delete', presentation: 'editor', capturing: true, armMs: patterns.decisionArmMs }, card)
+```
+
+### `patterns.railPanel`
+
+![`patterns.railPanel` 渲染效果](/shots/patterns-rail.svg)
+
+*工作区标签栏，右侧是当前标签的实时列表（宽度 72）。*
+
+```ts
+patterns.railPanel(props: {
+  title: string
+  badges?: MayflyInlineSpan[]
+  rail: { id: string, activeId: string, items: MayflyTabItem[], hintLabel?: string }
+  content: MayflyUiNode | Record<string, MayflyUiNode>
+  railWidth?: number                // 默认 26
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
+}): MayflySurfaceNode
+```
+
+左侧是竖直的 `tabs` 标签栏（`railWidth` 列，不会被压缩），右侧是内容，两者间隔两列。以标签栏项 id 为键的 record
+让每个标签有自己的页面，并用 `tab` 与标签栏关联，所以切换标签不需要重新发布，每页保留自己的光标和草稿。
+单个节点则是当前标签的内容，由插件根据 `tab-change` 事件重新构建。
+
+```ts
+patterns.railPanel({
+  title: 'Workspaces',
+  rail: { id: 'rail', activeId: 'work', items: [
+    { id: 'work', label: 'work/mayfly', count: 8 },
+    { id: 'site', label: 'website', count: 5 },
+  ] },
+  content: {
+    work: ui.list({ id: 'ws.work', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Fix login redirect', right: [{ text: '2h', tone: 'muted' }] }] }),
+    site: ui.list({ id: 'ws.site', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'b', label: 'Docs sync', right: [{ text: '1d', tone: 'muted' }] }] }),
+  },
+})
+```
+
+### `patterns.splitView`
+
+```ts
+patterns.splitView(props: {
+  list: MayflyUiNode
+  detail: MayflyUiNode
+  listWidth?: number                // 默认 58
+  breakpoint?: number               // 默认 100
+}): MayflyStackNode
+```
+
+一个 row：宽度达到 `breakpoint` 列时并排显示列表（`listWidth` 列）和详情，更窄时只显示列表。列表节点在互补的 `when`
+条件下出现两次，所以同一个 id 服务两种布局，缩放后光标也保留。页面需要标题时，把结果放进 `stack.column` 或 surface。
+用 `focus-change` 观察让详情跟随光标。本文的截图无法绘制 `when` 子节点，`ui-gallery` 示例在 pane 中挂载了该模式。
+
+```ts
+patterns.splitView({
+  list: ui.list({ id: 'sv', role: 'browse', marker: 'selection', selectedIds: [], items: [
+    { id: 'a', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }] },
+    { id: 'b', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }] },
+  ] }),
+  detail: ui.fields([
+    { label: 'Name', value: [{ text: 'Loop' }] },
+    { label: 'Status', value: [{ text: '✓ installed 1.4.0', tone: 'success' }] },
+  ]),
+})
+```
+
+### `patterns.statusPage`
+
+![`patterns.statusPage` 渲染效果](/shots/patterns-status.svg)
+
+*三个标签下的只读页面（宽度 72）。*
+
+```ts
+patterns.statusPage(props: {
+  title: string
+  badges?: MayflyInlineSpan[]
+  tabs: Omit<MayflyTabsNode, 'kind'>
+  rows?: MayflyField[]              // 键值行
+  body?: MayflyUiNode               // 代替 rows
+  pages?: Record<string, MayflyUiNode>   // 每个 tab id 一页
+  footer?: MayflyUiNode
+}): MayflySurfaceNode
+```
+
+overlay 边框的 surface：标签条、一个空行和页面内容。需要提供 `rows`、`body` 或 `pages` 之一，都不给会抛出 `TypeError`。
+与标签栏一样，`pages` 把一个节点关联到每个标签，切换标签不需要重新发布；`rows` 和 `body` 则由插件在 `tab-change` 时重建。
+
+```ts
+patterns.statusPage({
+  title: 'Status',
+  tabs: { id: 'st', activeId: 'overview', items: [
+    { id: 'overview', label: 'Overview' },
+    { id: 'usage', label: 'Usage' },
+    { id: 'account', label: 'Account', attention: true },
+  ] },
+  rows: [
+    { label: 'Provider', value: [{ text: 'DeepSeek' }] },
+    { label: 'Balance', value: [{ text: '⚠ ¥ 6.20', tone: 'warning' }, { text: ' low balance', tone: 'muted' }] },
+  ],
+})
+```
+
 ## 事件与 snapshot 更新
 
 Pane、overlay 和 editor extension 把 handler 放在 definition 上，而不是放进节点：
