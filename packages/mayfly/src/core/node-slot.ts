@@ -90,7 +90,7 @@ class SlotAttachment {
     private readonly viewport: () => MayflyUiViewport,
     invalidate: () => void,
   ) {
-    this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock, compiler.images)
+    this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock, compiler.images, () => { compiler.requestRender() })
     this.off = model.subscribe(() => { compiler.requestRender() })
   }
 

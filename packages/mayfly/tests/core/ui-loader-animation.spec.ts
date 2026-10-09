@@ -139,3 +139,24 @@ it('forgets a tick whose repaint never painted a moving cell', () => {
   expect(repaint).toHaveBeenCalledTimes(4)
   clock.dispose()
 })
+
+it('charges a tick nothing when the frame it asked for painted no moving cell', () => {
+  vi.useFakeTimers()
+  const clock = new UiAnimationClock()
+  const repaint = vi.fn()
+  const animation = new UiLoaderAnimation(repaint, clock)
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect(repaint).toHaveBeenCalledTimes(1)
+  // The frame the tick asked for begins and paints no moving cell: it scrolled out of view.
+  animation.beginFrame()
+  vi.advanceTimersByTime(5000)
+  // A later frame begins; the cell is back in it. The five seconds in between were not the cost of a frame.
+  animation.beginFrame()
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS - 1)
+  expect(repaint).toHaveBeenCalledTimes(1)
+  vi.advanceTimersByTime(1)
+  expect(repaint).toHaveBeenCalledTimes(2)
+  clock.dispose()
+})
