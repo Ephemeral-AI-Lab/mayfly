@@ -518,7 +518,7 @@ shared painters.
 | B | 1.3-1.8 | The gallery page of each basic scene beside the prototype; a key rebound in settings, with the hint row following it; one pattern in `examples/mayfly-user-kit` |
 | C | 1.9-1.11 | The prompt (paste, IME, and the clipboard through `docs/platform-acceptance.md`); an inline image; a plugin view in row 2; the final budgets; the Website reference on a LAN preview |
 
-After checkpoint C the branch merges to `main` once, followed by `pnpm run check:pack` and the main rebuild.
+The branch merges to `main` once, followed by `pnpm run check:pack` and the main rebuild. That merge was planned for after checkpoint C; it was made after slice 1.12 instead, on the owner's instruction, and the checkpoints stay open on `main`.
 
 **Status** (updated by each slice's PR; the slice text below describes the built behavior once a slice is done):
 
@@ -538,12 +538,12 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | merged (#111) | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12-prompt` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
 | 1.8b | merged (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ31 and Δ32 approved; library file budget 222 to 223 |
-| 1.11 | built (PR pending merge) | `feat/ui-foundation-1-11` | Freeze. Eight parts; full gate green with 100% coverage; Phase 1 is complete and waits only for checkpoints A, B, and C. `selectedIds` optional and a type-only `MayflyTranslate` (the model-picker spike's two fixes); Δ33 approved; the ledger holds only Phase 3 and later entries (one stale 1.6 entry removed); final budgets and the work report in §7.1; the ui type fixtures run in the gate (`types.spec.ts`) |
-| 1.12a | built (PR pending merge) | `feat/ui-foundation-1-12a` | Frame performance, measurement. Full gate green with 100% coverage; no runtime behavior change; the frame workloads W13 to W17 with their baseline, six frame counters, `pnpm run bench:pty` |
-| 1.12b | built (PR pending merge) | `feat/ui-foundation-1-12b` | Frame performance, wasted work. Full gate green with 100% coverage; no visible change (goldens and screenshots identical); a tick on a side pane is one pass and no control walk (W14: 949 renders to 385, 328 walks to 0); the gallery's frame 206 ms to 63 ms and its key 164 ms to 40 ms; without a pane, typing and the panels' cursor keys are back at `main`'s cost except the model picker's edge |
-| 1.12c | built (PR pending merge) | `feat/ui-foundation-1-12c` | Frame performance, retained rows. Full gate green with 100% coverage; goldens and screenshots identical, and every suite also passes with the stale-row check on; a key beside an unchanged pane paints no leaf (W13: 447 renders to 0), a loader below the fold does not tick (W14: no tick), a visible one repaints 2 rows (W15); the gallery idles at 0% CPU (from 113%) and its key takes 6 ms (from 164 ms) |
-| 1.12d | built (PR pending merge) | `feat/ui-foundation-1-12d` | Frame performance, the gate. Full gate green with 100% coverage; `test:retained` (the stale-row check) and `bench:pty:assert` (coarse ceilings on the real terminal) run in the full gate and in CI; the instructions describe the retained-row rules |
-| Checkpoint A / B / C | pending the reviewer | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11; the first run found the frame cost of slice 1.12, so the checkpoints resume on the integration profile once 1.12 is merged |
+| 1.11 | merged (#115) | `feat/ui-foundation-1-11` | Freeze. Eight parts; full gate green with 100% coverage; Phase 1 is complete and waits only for checkpoints A, B, and C. `selectedIds` optional and a type-only `MayflyTranslate` (the model-picker spike's two fixes); Δ33 approved; the ledger holds only Phase 3 and later entries (one stale 1.6 entry removed); final budgets and the work report in §7.1; the ui type fixtures run in the gate (`types.spec.ts`) |
+| 1.12a | merged (#116) | `feat/ui-foundation-1-12a` | Frame performance, measurement. Full gate green with 100% coverage; no runtime behavior change; the frame workloads W13 to W17 with their baseline, six frame counters, `pnpm run bench:pty` |
+| 1.12b | merged (#117) | `feat/ui-foundation-1-12b` | Frame performance, wasted work. Full gate green with 100% coverage; no visible change (goldens and screenshots identical); a tick on a side pane is one pass and no control walk (W14: 949 renders to 385, 328 walks to 0); the gallery's frame 206 ms to 63 ms and its key 164 ms to 40 ms; without a pane, typing and the panels' cursor keys are back at `main`'s cost except the model picker's edge |
+| 1.12c | merged (#118) | `feat/ui-foundation-1-12c` | Frame performance, retained rows. Full gate green with 100% coverage; goldens and screenshots identical, and every suite also passes with the stale-row check on; a key beside an unchanged pane paints no leaf (W13: 447 renders to 0), a loader below the fold does not tick (W14: no tick), a visible one repaints 2 rows (W15); the gallery idles at 0% CPU (from 113%) and its key takes 6 ms (from 164 ms) |
+| 1.12d | merged (#119) | `feat/ui-foundation-1-12d` | Frame performance, the gate. Full gate green with 100% coverage; `test:retained` (the stale-row check) and `bench:pty:assert` (coarse ceilings on the real terminal) run in the full gate and in CI; the instructions describe the retained-row rules |
+| Checkpoint A / B / C | open | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11. The first run found the frame cost that slice 1.12 removes. On the owner's instruction the branch merged to `main` once 1.12 was built and gated, so the checkpoints run on `main` |
 
 **Working in parallel.** Up to three slices are in flight, each in its own worktree and agent.
 
@@ -1394,7 +1394,7 @@ layout never run, W2 is a flat list of pure leaves, and no counter counted a lay
 
 It lands in four parts, each a PR with the bench table:
 
-1. **1.12a, measurement** (built). `tests/perf/frame-workloads.ts` adds W13 to W17 (§7.1): they paint through
+1. **1.12a, measurement** (merged, #116). `tests/perf/frame-workloads.ts` adds W13 to W17 (§7.1): they paint through
    `startMayflyTerminal` in the alternate layout over the fake terminal, the surface lanes, and
    `mountMayflySurfaceRenderer`, stepping pi-tui with the fake clock. `core/ui-work-counters.ts` gains
    `componentRenders`, `controlWalks`, `reconciles`, `layoutPasses`, `clockTicks`, and `keymapSnapshots`; the surface
@@ -1403,7 +1403,7 @@ It lands in four parts, each a PR with the bench table:
    profile, the scenarios `product`, `gallery`, and `focus`, idle CPU and key-to-paint latency in
    `.artifacts/bench/`. `script/test-impact.mjs` selects the budget spec for the lane, the renderer, the keymap, and
    the editor-extension runtime.
-2. **1.12b, wasted work** (built). No visible change; each item removes work whose result nobody read.
+2. **1.12b, wasted work** (merged, #117). No visible change; each item removes work whose result nobody read.
    - *The lane measure.* `SurfaceLaneContainer.render` answers a side lane's measure with no rows, and a side lane's
      pane has basis 0 in the lane's stack: the row that holds the lane gives it its height and the pane fills it, so
      neither measure was ever used. The header lane is still sized by its rows. What the measure did as a side effect
@@ -1428,7 +1428,7 @@ It lands in four parts, each a PR with the bench table:
    - *The edge.* `navigate` skips the geometry layout when the active control is the last of the only group along
      its own axis. A picker that holds other controls still lays out once per edge key (the model picker: 3.9 ms of
      CPU per key against 1.9 on `main`); part 1.12c makes that layout a memo read.
-3. **1.12c, retained rows** (built). pi-tui lays a pane out natively on every frame of the terminal and renders a
+3. **1.12c, retained rows** (merged, #118). pi-tui lays a pane out natively on every frame of the terminal and renders a
    component once per ancestor stack that measures it; nothing below the frame memo was remembered. Now every component
    a surface hands to pi-tui answers a repeat render from memory.
    - *One viewport per pass.* A stack child's `visible` used to adopt whatever viewport pi-tui passed, including the
@@ -1456,7 +1456,7 @@ It lands in four parts, each a PR with the bench table:
    - *Not done.* A frame beside the gallery still costs about 5 ms, all of it pi-tui painting the pane's visible
      boxes. A picker that holds other controls still lays out once per arrow at its edge (the model picker: 4.0 ms of
      CPU per key against 1.9 on `main`). An image is retained and repainted by the surface's repaint request.
-4. **1.12d, the gate** (built). `budgets.json` holds the counts of part 1.12c. `pnpm run test:retained`
+4. **1.12d, the gate** (merged, #119). `budgets.json` holds the counts of part 1.12c. `pnpm run test:retained`
    (`script/test-retained.mjs`) runs every suite but the work budgets with `MAYFLY_UI_VERIFY_MEMO=1`; the full gate
    and CI run it after coverage, and a changed-files gate runs it over the core, design, and e2e suites when a file a
    compiled surface paints from changed. `pnpm run bench:pty:assert` runs the `gallery` and `focus` scenarios against
