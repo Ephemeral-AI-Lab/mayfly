@@ -36,6 +36,10 @@ History and release notes do not define current behavior.
   timers, and async work need unload and stale-generation handling. No mutable
   product singletons, private realms, capability hosts, adapter facades,
   provider owners, Mayfly manifests, or compatibility exports.
+- No compatibility layer. Contracts, builders, seams, and modules may change
+  incompatibly; the change updates every caller (Mayfly, examples, the
+  gallery, shipped skills, the Website reference) and deletes the code it
+  replaces, with no alias, shim, deprecation, or fallback path.
 
 ## Verification
 
@@ -57,7 +61,16 @@ publication additionally requires `pnpm release:preflight <version>`, verified
 tarballs, and the human acceptance described below. Instruction and
 shipped-skill changes run `check:agent-docs`.
 
-- Vitest uses fork workers and per-file 100% executable-source coverage.
+UI component work follows the tiers of the
+[roadmap](docs/design/implementation-roadmap.md) §7. Review rounds with the
+owner run only the incremental build, the typecheck, and the specs related to
+changed logic; finalizing a component runs the selected changed gate with its
+decision tests (accepted frames, keys and writes, lifecycle, width, budgets);
+a phase ends with `verify:full`; CI runs the full gate on `main`. Tests record
+decisions; do not add tests only to reach a line.
+
+- Vitest uses fork workers and per-file 100% executable-source coverage
+  (roadmap Phase 2b replaces the per-file gate with a repository-wide floor).
   Type-only `src/types.ts` files are excluded. Specs import the tested source
   relatively, but package-name imports resolve workspace `lib/`; fresh
   worktrees need a full build baseline.
@@ -106,6 +119,10 @@ worktree and branch. Never link a checkout into production `mayfly`; use
    or removing profiles. Never redirect acceptance to production `mayfly`.
    After acceptance and merge, rebuild main when runtime output changed, stop
    previews, remove worktree profiles, and record exercised routes/scenarios.
+5. Roadmap UI phases develop one component at a time in review rounds with the
+   owner on `dsh --profile mayfly-<phase>`; the live result, not the prototype,
+   decides. The owner's acceptance finalizes the component, which merges to
+   `main` on its own; the profile stays until the phase gate's acceptance.
 
 ## Maintenance
 

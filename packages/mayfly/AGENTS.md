@@ -198,11 +198,14 @@ live theme provider (`reloadTheme`), so every consumer and cached row rebuilds.
 
 Build surfaces from the shared components (actions row, text/choice fields,
 lists, tabs, decision panels, questionnaire, loader/progress/empty). The
-[UI design](../../docs/design/component-library.md) is the target for a planned
-refresh, not shipped behavior, and its
+[UI design](../../docs/design/component-library.md) and its prototype are the
+starting sketch; the owner's acceptance in the running terminal decides, and a
+finalized section describes accepted behavior. Its
 [implementation reference](../../docs/design/component-library-reference.md) holds
 the wire mechanics. Never hand-roll pi-tui panels outside `core/`; the editor
-autocomplete list is a retained legacy exception, not a model.
+autocomplete list (`core/wrapping-select-list.ts`) is not a model, and roadmap
+Phase 4 deletes it. A component that replaces a surface deletes the old code in
+the same change; nothing is kept for a later cleanup.
 
 ## Native writes and sensitive data
 
@@ -259,9 +262,10 @@ control walks, reconciliations, layout passes, clock ticks, keymap snapshots): a
 budget row gates the counters it names, and a change to the frame path
 (`core/terminal.ts`, `core/surface-renderer.ts`, the keymap, the editor-extension
 runtime) runs them. `pnpm run bench:pty:assert` holds the real terminal to coarse
-ceilings in the full gate. `tests/design/deltas.ts` lists every accepted difference from the
-prototype (roadmap section 2.3) and `tests/design/pending.ts` only walks that wait
-for Phase 3 or later; a new difference needs the reviewer's approval.
+ceilings in the full gate. `tests/design/deltas.ts` and `tests/design/pending.ts` are
+the Phase 1 parity record (roadmap section 2.3, closed) that Phase 2b removes with
+the prototype parity specs; add no new difference to them. The owner's live
+acceptance decides a component's look, and its accepted frames become its goldens.
 
 Patch, preset, skill, dependency, or composition edits require bundle/preset
 tests, `pnpm run check:agent-docs`, `pnpm run verify:full`,

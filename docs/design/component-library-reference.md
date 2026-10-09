@@ -9,9 +9,10 @@ is reviewed and merged. The order in which the backlog of §6 ships is in
 [implementation-roadmap.md](./implementation-roadmap.md) §9.
 
 The executable form of the UI API is the prototype's kit, [prototypes/ui-kit.mjs](./prototypes/ui-kit.mjs):
-its builders, renderer, and key engine are the reference for what each prop paints and which events it emits, and the
-additive props the design needs are listed in spec §6.4. This file adds the wire mechanics and the mapping to the
-current code.
+its builders, renderer, and key engine sketch what each prop paints and which events it emits, and the props the
+design needs are listed in spec §6.4. The owner's acceptance of the real renderer decides each Mayfly component
+([implementation-roadmap.md](./implementation-roadmap.md) D22). This file adds the wire mechanics and the mapping to
+the current code.
 
 The design leads. This file records what the code does today and what the design
 would need from it; where the two disagree the design is the target, and nothing
@@ -123,7 +124,7 @@ reviewed before code exists:
 | Degradation | In what order does it shrink at narrow widths? |
 | Tests | Validator, painter, compiler/grammar, width-scan |
 
-Worked specs for the additive fields this catalog proposes. Derived state needs
+Worked specs for the fields this catalog proposes. Derived state needs
 no field: wizard step marks (`✓ ● ○`) come from `activeId` order, the `•` edited
 marker and `(inherited)` / `(override)` from `origin` and `resetValue`, and a
 tree parent's `●` / `◐` / `○` from its children in a `tree` +
@@ -312,9 +313,12 @@ above and core owns layout, focus, and width (root `AGENTS.md`).
 - **Wire data is frozen** at the builder (`freezeWire` clones and rejects
   cycles/accessors) and contains no functions, Promises, ANSI, focus handles,
   or widths. Renderer state (focus, drafts, clocks) never enters the wire.
-- **Contracts evolve additively.** New optional fields with defaults are fine;
-  never repurpose a field, tighten a type, or encode renderer concerns
-  (colors, columns, key codes) into the contract.
+- **Contracts change with their callers.** A field, builder, or event may be
+  renamed, retyped, or removed when a component needs a better design; the
+  change updates every caller and keeps no alias or deprecated path
+  (roadmap D21), and a component's API is fixed once the owner finalizes it
+  (D23). Never encode renderer concerns (colors, columns, key codes) into the
+  contract.
 - **`action.key` constraints** (validator-enforced): a key id, never a
   reserved navigation key (`enter`, `escape`, `tab`, `shift+tab`, `space`,
   `backspace`, arrows, `pageup`/`pagedown`, `home`/`end`, `alt+left`,
@@ -328,11 +332,11 @@ above and core owns layout, focus, and width (root `AGENTS.md`).
   union → a `ui.*` builder → admission in `core/ui-validator.ts` → a painter
   in `core/ui-patterns.ts` → a control arm in `core/ui-compiler.ts` /
   `core/ui-key-grammar.ts` → rows in the owning `width-scan.spec.ts` → this
-  catalog. `packages/ui` changes run the full gate.
+  catalog. `packages/ui` changes follow the gate tiers of roadmap §7.
 - **Do not reimplement.** The editor's autocomplete list (`SelectListAdapter`
   in `core/components.ts`, `core/wrapping-select-list.ts`,
-  `renderAutocompleteList`) is a retained legacy integration with its own key
-  handling — it is not a model. (The old `core/scrollable-panel.ts` no longer
+  `renderAutocompleteList`) has its own key handling and is not a model;
+  roadmap Phase 4 replaces it with the prompt's completion list and deletes it. (The old `core/scrollable-panel.ts` no longer
   exists; the session transcript is an ordinary pane.) New surfaces compose wire nodes and
   inherit focus, hints, validation, and narrow-width behavior for free.
 
@@ -385,18 +389,20 @@ Verification duties for any new or changed surface:
    state extends the spec §3.3 fragment catalog and its exact-row spec.
 9. Diagrams are exact renderings at a stated width: the top rule, every row,
    and the bottom rule of a box share one width.
-10. A change to a component or a spec §5 design updates its prototype scene (spec §9)
-    in the same change and runs `node docs/design/prototypes/ui-preview.mjs
-    --smoke`; a diagram quoted from a scene is copied from its output.
+10. A change to a spec §5 design that is not yet finalized updates its prototype scene
+    (spec §9) in the same change and runs `node docs/design/prototypes/ui-preview.mjs
+    --smoke`; a diagram quoted from a scene is copied from its output. Once the owner
+    finalizes a component, its spec section and accepted goldens are the design, and the
+    prototype scene is no longer updated for it.
 
 ## 6. Implementation backlog
 
 ### 6.1 Design to code
 
-The design in [component-library.md](./component-library.md) is the target. Each row maps
+The design in [component-library.md](./component-library.md) is the starting point. Each row maps
 an earlier refinement item to the design section that now specifies the effect, with the
-files it touches. Items are not ranked or scheduled here; the implementation change
-chooses the order. `A3` (a running-block cue without a rail) was not adopted into the design.
+files it touches. Items are not ranked or scheduled here: the roadmap's §9 places them,
+and its §7 sets the gates; a *Full gate* note below records the Phase 1 rule. `A3` (a running-block cue without a rail) was not adopted into the design.
 
 | ID | Item | Design | Touch points |
 | --- | --- | --- | --- |
@@ -438,7 +444,7 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 
 | ID | Gap | Where | Fix |
 | --- | --- | --- | --- |
-| G2 | `Enter open` on pickers that commit: `browse` role forces the `open` verb (UX-23) | `core/ui-key-grammar.ts` `rowBindings`, `interaction/model-commands.ts` | additive `acceptVerb`, then set it on the model and effort pickers |
+| G2 | `Enter open` on pickers that commit: `browse` role forces the `open` verb (UX-23) | `core/ui-key-grammar.ts` `rowBindings`, `interaction/model-commands.ts` | `acceptVerb`, then set it on the model and effort pickers |
 | G3 | The segment strip is appended after the list body, not on its row, and a row without a strip changes the list height (spec §1.1 principle 6) | `core/ui-compiler.ts` `segmentRows` | E1 |
 | G4 | Two current markers: `CURRENT_MARK = '← current'` (renders `[← current]`) in theme and permission pickers, `[current]` in the model picker; `SELECT_POINTER = '❯'` is exported but unused while the painter draws `→` | `interaction/symbols.ts`, `theme-switch.ts`, `permission-panel.ts`, `model-commands.ts` | one localized `current` badge; delete `CURRENT_MARK` and `SELECT_POINTER`; drop `symbols.ts` from A4's touch points |
 | G5 | Approval `Esc` is labeled `close` but rejects; `Reject with feedback` is a tab plus a `Back` button | `interaction/approval-plugin.ts`, escape labels in `core/ui-key-grammar.ts` | overridable Escape label; B1 |

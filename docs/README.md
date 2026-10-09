@@ -13,8 +13,10 @@ The current runtime is described by three architecture documents:
 
 The UI design is [design/component-library.md](./design/component-library.md): the
 target visual language, key grammar, basic components (the UI API), and the Mayfly
-components built from them, reviewed before the implementation. It is a design, not
-shipped behavior, and ships a runnable terminal prototype
+components built from them, reviewed before the implementation. It is the starting
+sketch, not shipped behavior: each Mayfly component is finalized with the owner in the
+running terminal, and a finalized section describes the accepted behavior. It ships a
+runnable terminal prototype
 (`node docs/design/prototypes/ui-preview.mjs`) whose `--audit` mode proves that every
 Mayfly component uses only the basic components a plugin also has. The implementation material
 for the follow-up change (wire mechanics, builder tables, backlog) is in
@@ -22,7 +24,9 @@ for the follow-up change (wire mechanics, builder tables, backlog) is in
 order of that work, with the decisions taken after review, is
 [design/implementation-roadmap.md](./design/implementation-roadmap.md).
 The prototype's frames are committed as goldens (`pnpm run design:golden`, checked by
-`pnpm run design:golden:check`); they are what the real renderer is compared with.
+`pnpm run design:golden:check`) and were the strict oracle of the foundation phase;
+roadmap Phase 2b replaces them in the gate with the accepted frames of the real
+renderer.
 
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.

@@ -6,60 +6,68 @@ ships no behavior. It was written on 2026-10-02 against `main` at `94de488`, Dee
 was revised on 2026-10-05, against the same tree, to put the whole basic layer and its performance work into one
 foundation phase (D16-D20); §5 maps the earlier phase names onto the current ones. Implementation began on
 2026-10-05; the status table in Phase 1 records what has landed, and the slice texts describe what was built once a
-slice is marked done.
+slice is marked done. It was revised again on 2026-10-09, after Phase 1 merged, for the phases that follow it (D21-D27):
+no compatibility layer and no legacy code, each Mayfly component and its API finalized with the owner in the running
+terminal, cost bounded by what is on screen instead of a text quota, decision tests instead of a coverage gate, and a
+whole-architecture performance phase before the finish. The Phase 1 record keeps the rules it was built under.
 
 | Input | Role in the implementation |
 | --- | --- |
-| [`prototypes/ui-preview.mjs`](./prototypes/ui-preview.mjs) with its kit and components | **The final look and behavior.** Every phase reproduces its scenes with the real renderer (§1). |
-| [component-library.md](./component-library.md) (the spec) | The rules behind the scenes: states, keys, degradation, vocabulary. |
+| [`prototypes/ui-preview.mjs`](./prototypes/ui-preview.mjs) with its kit and components | **The starting sketch** (D22). It shows each scene's intent and runs beside the real renderer during review; it was the strict oracle of Phase 1 only. |
+| The accepted live frames and the finalized sections of the spec | **The final look and behavior.** What the owner accepts in the running terminal is final; its frames become the component's goldens (§1, §7). |
+| [component-library.md](./component-library.md) (the spec) | The rules behind the scenes: states, keys, degradation, vocabulary. A section that is finalized describes the accepted behavior. |
 | [component-library-reference.md](./component-library-reference.md) | Wire mechanics and the backlog IDs (A2 … R25) this roadmap schedules (§9). |
-| §2 of this file | The decisions taken after review, and every place the implementation knowingly differs from the prototype. |
+| §2 of this file | The decisions taken after review, and (for Phase 1) every place the implementation knowingly differs from the prototype. |
 
-Read §1 and §2 first. §3 states the UI API in real terms, §4 the target architecture and the engine, §5 the phases, §6
-where each Mayfly component gets its data and where it writes, §7 verification and the work budgets, §8 risks, §9
-traceability.
+Read §1 and §2 first. §3 states the UI API in real terms, §4 the target architecture, the engine, and content at any
+size, §5 the phases, §6 where each Mayfly component gets its data and where it writes, §7 the development loop,
+verification, and the work budgets, §8 risks, §9 traceability.
 
 ## 1. Rules for every phase
 
-1. **The prototype is the oracle.** A phase is done when the real renderer draws the phase's scenes the way
-   `node docs/design/prototypes/ui-preview.mjs <scene>` draws them at the scene's widths. The comparison is strict
-   (D19): every cell's character and style class (tone by palette token, weight, inverse, background), every key walk
-   the scene supports with the hint row after each key, and every motion table and cadence under a fake clock. The
-   only accepted differences are the rows of §2.3. Slice 1.0 makes this checkable.
-2. **Real signatures stay.** `@ephemeral-ai/mayfly-ui` changes additively: new optional fields, new enum values, and
-   two new node kinds (`prompt`, `image`). The prototype's shorthand calls map onto today's builders (§3.1); no existing
-   parameter changes, and no field is repurposed.
+Phase 1 was built under the rules it states in its own text: the prototype as a strict oracle (D19), an additive API
+that froze at its end (D16), and the full gate for every slice. From Phase 2 on, these rules hold:
+
+1. **The accepted live frame is the oracle** (D22). A component is done when the owner accepts it in the running
+   terminal, at the widths, states, and key walks agreed in review. The prototype scene is where a component starts and
+   what it is compared with during review; a difference from it is a review decision, not a defect, and is not logged.
+   The accepted frames become the component's goldens, captured from the real renderer (§7).
+2. **No compatibility** (D21). `@ephemeral-ai/mayfly-ui`, the core seams, and the Mayfly modules change whenever a
+   better design needs it: fields are renamed, removed, or retyped, and node kinds are replaced. A change updates every
+   caller in the same change (Mayfly, `examples/`, the gallery, the shipped skills, and the Website reference) and
+   leaves no alias, shim, deprecation, or fallback path. A finalized component's API is fixed until the owner reopens
+   that component (D23).
 3. **Mayfly components are pure.** They live in `packages/mayfly/src/components/` (*new*), import only
    `@ephemeral-ai/mayfly-ui` and their siblings, and turn plain facts into `ui.*` nodes. They read no width, paint no
-   ANSI, own no timer, and see no key. A spec enforces it from the slice that creates the area (2a).
+   ANSI, own no timer, and see no key. A spec enforces it from the change that creates the area (Phase 3).
 4. **The architecture rules hold.** Only `packages/mayfly/src/core/` imports pi-tui and owns width, ANSI, focus, layout,
    and clocks. Contributions go through the four services (`mayflyPanes`, `mayflyStatus`, `mayflyOverlays`,
    `mayflyEditorExtensions`); host slots use a core-private lease (§3.4). Effects are Fiber-owned; Agent-scoped writes
    use the exact Agent from `mayflyCurrentAgent`. Data comes from native dsh services and projections; no renderer folds
    session events into a second store.
-5. **Every phase is shippable.** A phase reaches `main` slice by slice, or, when its slices only make sense together,
-   through an integration branch with staged acceptance and one merge (Phase 1, D18). Each slice is its own branch,
-   starts with `pnpm run verify:changed -- --plan`, and runs `pnpm run verify:full` whenever `packages/ui` or a shared
-   contract changes. It adds width-scan rows for every new row renderer, English and Chinese strings
-   (`tests/locale-catalog.spec.ts`), refreshed screenshots (`pnpm run shots:sync`), the Website pages it changes (with
-   a LAN preview), and, for runtime behavior, a `PROFILE=mayfly-<tag> script/install-dev.sh` profile with PTY smoke and
-   human acceptance before the merge to `main` (root `AGENTS.md`).
-6. **Identity is the cache key, and work is budgeted.** A node that reaches core is a frozen snapshot, so an unchanged
-   subtree must cost nothing on publish: its admission, its compiled component, and its painted rows are reused by
-   identity (§4.1). A component keeps an unchanged sub-node identical instead of rebuilding it. Performance is gated
-   by deterministic work budgets (nodes validated, units compiled, rows painted per step, §7.1); wall-clock time is
-   reported with every slice but gates nothing, because it is not stable in CI.
+5. **One component at a time, with the owner** (D23, D24). A component goes through draft, review rounds, and
+   finalization (§7). Review rounds run in a dedicated `mayfly-<phase>` profile and run only the checks the change
+   needs; finalization adds the decision tests, deletes the code the component replaces, and runs the changed gate; the
+   component then merges to `main`, where CI runs the full gate. A phase ends with the full gate and the owner's
+   acceptance of the whole phase. No release is cut from the middle of a phase.
+6. **Identity is the cache key, and performance is continuous.** A node that reaches core is a frozen snapshot, so an
+   unchanged subtree must cost nothing on publish: its admission, its compiled component, and its painted rows are
+   reused by identity (§4.1). A component keeps an unchanged sub-node identical instead of rebuilding it. Cost is
+   bounded by what is on screen, never by a quota on what is published (§4.2). The deterministic work budgets (§7.1)
+   stay in the gate. A performance problem seen in review is fixed in that round when it is local; one that needs the
+   architecture to change is recorded for Phase 7 (D27), which may break anything to remove it.
 
 ## 2. Decisions and differences
 
 ### 2.1 Decisions taken for the implementation
 
 Taken with the reviewer on 2026-10-02, after the design was approved. D16 to D20 were taken on 2026-10-05, when the
-phases were re-cut.
+phases were re-cut. D21 to D27 were taken with the owner on 2026-10-09, after Phase 1 merged; a decision they replace
+keeps its row and names its successor, because the Phase 1 record cites it.
 
 | ID | Decision | Consequence |
 | --- | --- | --- |
-| D1 | **Literal `ui.*` migration, staged.** The status footer, the main editor, and the transcript become pure components whose nodes core compiles, like any plugin surface. | Core gains a node-backed host slot (§3.4, slice 1.10) and the engine that makes it cheap (§4.1, slice 1.1). The footer moves in Phase 3, the editor in Phase 5, and the transcript last, in Phase 6. |
+| D1 | **Literal `ui.*` migration, staged.** The status footer, the main editor, and the transcript become pure components whose nodes core compiles, like any plugin surface. | Core gains a node-backed host slot (§3.4, slice 1.10) and the engine that makes it cheap (§4.1, slice 1.1). The transcript moves first, in Phase 3, the editor in Phase 4, and the footer in Phase 5. |
 | D2 | **Row-2 views are panes** with a new `placement: 'views'` and a summary. | `mayflyPanes` grows (§3.4); a plugin adds a view with the same call Mayfly uses. |
 | D3 | **Native options only** for permissions and plan review. | The permission panel and the onboarding step list the native presets (`read-only`, `workspace-write`, `danger-full-access`). The plan card offers *Approve and start*, *Keep planning…*, *Reject*; there is no *Accept edits* preset and no *Approve and auto-accept edits*. |
 | D4 | **Decision cards use variant B, grant-first.** | The common grant is row 1 and focused, digits choose at once, `Esc` rejects, and every card that opens unprompted gets the 300 ms arm delay (E4, slice 1.8). |
@@ -74,11 +82,18 @@ phases were re-cut.
 | D13 | **Usage money estimates are priced from models.dev**, in USD, marked `≈`, hidden when a model has no price. | `interaction/models-dev.ts` also reads the catalog's cost fields. |
 | D14 | **A new `ui.image` content node** keeps pasted images inline in the stream. | Core paints it with the existing image component; plugins get it too. |
 | D15 | **This roadmap lives in PR #84** beside the spec. | — |
-| D16 | **Foundation first, then an API freeze.** Phase 1 delivers the oracle, the engine, the visual language, every basic component, the key engine, the patterns, `ui.prompt`, `ui.image`, the views lane, and the node host slot. No Mayfly surface migrates in it. | `@ephemeral-ai/mayfly-ui` has no planned change after Phase 1, so Phases 2 to 6 start from the changed gate. A later phase may still add an optional field under §1 rule 2, with the full gate. |
+| D16 | **Foundation first, then an API freeze.** Phase 1 delivers the oracle, the engine, the visual language, every basic component, the key engine, the patterns, `ui.prompt`, `ui.image`, the views lane, and the node host slot. No Mayfly surface migrates in it. | Delivered by Phase 1. The freeze is superseded by D21: the API changes whenever a component needs it, and is fixed per component when that component is finalized (D23). |
 | D17 | **An incremental engine, not point caches.** | Admission, compilation, and painting reuse an unchanged subtree by identity; animation patches cells; one clock serves every surface (§4.1). It is slice 1.1, ahead of every feature slice, so each new painter is written once, in its cacheable form. |
-| D18 | **Phase 1 lands through an integration branch**, `feat/ui-foundation`, with three acceptance checkpoints and one merge to `main`. | `main` and the release-candidate line never carry a half-restyled UI. The branch is rebased on `main` at each checkpoint (§5, §8). |
-| D19 | **Parity is strict.** | Every cell's character and style class, every key walk, and every motion table are compared (§1 rule 1), not only the rows and the marks. |
-| D20 | **No type-only API.** Every public addition is live end to end when it ships and has a plugin-side consumer in `examples/`. | The views lane ships in slice 1.10 with a gallery view, although Mayfly's own views move onto it in Phase 3. |
+| D18 | **Phase 1 lands through an integration branch**, `feat/ui-foundation`, with three acceptance checkpoints and one merge to `main`. | `main` and the release-candidate line never carry a half-restyled UI. The branch is rebased on `main` at each checkpoint (§5, §8). Phase 1 only; later phases land per component (D24). |
+| D19 | **Parity is strict.** | Every cell's character and style class, every key walk, and every motion table are compared, not only the rows and the marks. Phase 1 only; superseded by D22. |
+| D20 | **No type-only API.** Every public addition is live end to end when it ships and has a plugin-side consumer in `examples/`. | The views lane ships in slice 1.10 with a gallery view, although Mayfly's own views move onto it in Phase 5. From Phase 2 on, the Mayfly component that needs an addition is its live consumer; `examples/` changes when a public seam it exercises changes. |
+| D21 | **No compatibility layer and no legacy code.** | Supersedes D16's freeze and the additive rule Phase 1 followed. Contracts, builders, core seams, and Mayfly modules change incompatibly when a better design needs it, with every caller updated in the same change (§1 rule 2). No alias, shim, deprecation, or fallback path is kept. |
+| D22 | **The accepted live frame is the oracle.** | Supersedes D19. The prototype is the starting sketch; the owner decides in the running terminal, and the accepted frames, captured from the real renderer, become the goldens. §2.3 closes as the Phase 1 record; Phase 2 retires the prototype parity machinery (scene ports, Δ waivers, the pending ledger) from the gate. |
+| D23 | **Finalize one component at a time.** | A component and the API it needs are developed in review rounds with the owner and fixed together when the owner accepts it (§7). The change that finalizes it deletes the code it replaces. A finalized component is reopened only at the owner's request. |
+| D24 | **Finalized components land on `main` one at a time.** | Supersedes D18 after Phase 1. `main` may show old and new surfaces side by side during a phase; no release is cut until the phase is accepted as a whole. No long-lived integration branch. |
+| D25 | **Decision tests and a coverage floor.** | Tests record what was decided: accepted frames, keys, writes, lifecycle, width, and work budgets. The per-file 100% coverage gate becomes a coverage report with a repository-wide floor (Phase 2b); a test that only reaches a line is not written. |
+| D26 | **Cost is bounded by what is on screen.** | The whole-tree text quota (`MAYFLY_UI_MAX_TEXT`, 20,000 characters) and the paint-time string cap go. Long text is chunked, admitted, and painted as the window reaches it; one memory ceiling per surface protects the renderer (§4.2, Phase 2c). |
+| D27 | **A whole-architecture performance phase.** | Phase 7 profiles the finished product on real workloads and restructures what the measurements name, breaking anything it must, then resets the budgets and the bench ceilings (§7.1). Earlier phases fix only local problems. |
 
 ### 2.2 Spec §8 questions, resolved
 
@@ -87,13 +102,13 @@ phases were re-cut.
 | 1 Decision variant | B (D4). |
 | 2 Rebinding | Overrides persist in the `mayfly` settings namespace (`keybindings`); plugin action ids are namespaced `<owner>.<action>` and `ui.*` is reserved; a clash is refused with the owner's name (slice 1.7). |
 | 3 Slash-to-filter | Kept (`filterMode: 'slash'`, slice 1.4). |
-| 4 Side conversations | As drawn: identity in row 1's center band, `F7 switch · F8 close` (or `detach`) in row 2's right cluster (Phase 3). |
+| 4 Side conversations | As drawn: identity in row 1's center band, `F7 switch · F8 close` (or `detach`) in row 2's right cluster (Phase 5). |
 | 5 Unchecked keys | D6 plus the key audit (slices 1.0 and 1.7). `/view <level>` and `Alt+V` stay unscheduled until confirmed; the scene's `Ctrl+O` level cycling is a demo key. |
 | 6 Onboarding permissions step | Ships, with the native presets (D3); the deployment's current preset is marked `recommended`. |
 | 7 Delete session | Dropped for now (D5). |
 | 8 Account balance | `deepseekAccount.getBalance()` when signed in with the DeepSeek account; API-key providers hide the row (the design's *unsupported*). No identity is shown. |
 | 9 Lifetimes | 5 s of visible time for `✓` and `ℹ`; the 8 s undo is unused after D5. |
-| 10 Unicode fallback | Specified in slice 1.2 as a proposal to confirm at checkpoint A. |
+| 10 Unicode fallback | Specified in slice 1.2 as a proposal to confirm in the foundation review (Phase 2d). |
 | 11 API additions | Approved as §3. |
 | 12 Unused builders | `sections` and `diagram` stay for plugins. |
 | 13 Trace turn | Derived in Mayfly from the session events (`interaction/trace-aggregate.ts`); no Harness change. |
@@ -102,8 +117,11 @@ phases were re-cut.
 
 ### 2.3 Where the implementation differs from the prototype
 
-Each row is a deliberate difference. Slice 1.0's parity specs list them by number, and anything else is a defect. A new
-row needs the reviewer's approval before the slice that introduces it merges.
+This table is the Phase 1 record and is closed (D22). Each row is a deliberate difference that Phase 1's parity specs
+list by number. From Phase 2 on, a component may differ from the prototype wherever review decides, and no row is
+added: the finalized spec section and the accepted goldens record the outcome. Phase 2b removes the waiver list
+(`tests/design/deltas.ts`) with the parity specs that read it; rows that still describe shipped behavior move into the
+spec section of their component when it is finalized.
 
 | # | Scene | The prototype draws | The implementation does | Why |
 | --- | --- | --- | --- | --- |
@@ -125,9 +143,9 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ16 | 26, 28 | A balance for every provider | Only with the DeepSeek account sign-in; otherwise the row is hidden | §2.2 row 8 |
 | Δ17 | 1 | Captions mention `▌` as the selection mark | The muted bold `→` (spec §2.2) | Stale caption |
 | Δ18 | all | The hint words of the kit's `hintFragments` | The same words, including `pick` on a focused select | The kit is the oracle; spec §3.2's table gains `pick` when it is next edited |
-| Δ19 | 24 | `n new` on every workspace | `n` acts on the current workspace; other rows carry `unavailableActions.new` with a reason, unless the Harness can start a session in another directory (verify in slice 2b) | Process cwd |
+| Δ19 | 24 | `n new` on every workspace | `n` acts on the current workspace; other rows carry `unavailableActions.new` with a reason, unless the Harness can start a session in another directory (verify in group 6b) | Process cwd |
 | Δ20 | all | The kit's word wrap drops a line's leading spaces and does not reopen the style on a wrapped continuation | The renderer keeps both (scene 7's todo row, scene 8's indented code line, wrapped captions) | Prototype wrap artifact; approved by the reviewer |
-| Δ21 | 8 p3 | Markdown drawn by the kit's five rules (bare heading, `•`, `│` quote, a language label over the code) | The shipped markdown component: blank rows between blocks, fences kept, the `md*` tokens | The transcript keeps the streamed markdown component (Phase 6); proposed in slice 1.3 |
+| Δ21 | 8 p3 | Markdown drawn by the kit's five rules (bare heading, `•`, `│` quote, a language label over the code) | The shipped markdown component: blank rows between blocks, fences kept, the `md*` tokens | The transcript keeps the streamed markdown component (Phase 3a); proposed in slice 1.3 |
 | Δ22 | 8 `h` | `h` swaps highlighted code for one flat user tone | The code node always highlights; no switch | Demo key; proposed in slice 1.3 |
 | Δ23 | 8 p5-p7 | Line, point, vertical-bar, and stacked or grouped horizontal-bar charts, and the diagram, from hand-written glyph rows | `simple-ascii-chart` and `beautiful-mermaid` draw them (a horizontal bar is normalized only); the sparkline and the heatmap are the kit's | The kit stands in for libraries it does not specify; proposed in slice 1.3 |
 | Δ24 | 7 scroll | `↑` from a followed tail jumps to the top (a stale offset) | `↑` scrolls one row from the tail | Prototype artifact; proposed in slice 1.3 |
@@ -143,9 +161,14 @@ row needs the reviewer's approval before the slice that introduces it merges.
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and
-the edit card's settle flash. They can follow Phase 7 if wanted.
+the edit card's settle flash. A review round may take any of them up; otherwise they can follow Phase 8.
 
 ## 3. The UI API in real terms
+
+This section is the API Phase 1 built and shipped. It is the starting point of every later phase, not a limit: under
+D21 a phase changes, replaces, or removes any field, builder, or event below when the component it finalizes needs it,
+updates every caller in the same change, and updates this section, the type fixtures, and the Website reference with
+it. §3.5 lists what Phase 1 left out, not what may never be added.
 
 ### 3.1 Prototype calls and today's builders
 
@@ -345,12 +368,12 @@ replies are unchanged.
 
 | Seam | Change |
 | --- | --- |
-| `mayflyPanes` (public) | `MayflyPanePlacement` gains `'views'`. A views pane declares `summary: { node: MayflyStatusNode, count?: number \| string }` and updates it with the new `registration.setSummary(summary \| null)`; `null` takes the view out of row 2. Its `set(node)` publishes the panel. `size` and `narrow` do not apply; `onEvent`, `load`, `refresh`, and `loadMore` work as for other panes. The lane ships in slice 1.10; Mayfly's own views register on it in Phase 3. |
+| `mayflyPanes` (public) | `MayflyPanePlacement` gains `'views'`. A views pane declares `summary: { node: MayflyStatusNode, count?: number \| string }` and updates it with the new `registration.setSummary(summary \| null)`; `null` takes the view out of row 2. Its `set(node)` publishes the panel. `size` and `narrow` do not apply; `onEvent`, `load`, `refresh`, and `loadMore` work as for other panes. The lane ships in slice 1.10; Mayfly's own views register on it in Phase 5. |
 | `mayflyOverlays` (public) | `MayflyOverlayDefinition.armMs?: number` (0-2000, default 0): every key except `Esc` is swallowed for that long after the overlay first takes focus (slice 1.8). |
 | `mayflyStatus` (public) | No new API. Core composes row 1 and row 2 with the `ui.child` admission primitive, so a plugin entry and a Mayfly entry are admitted by one rule. |
 | `mayflyEditorExtensions` (public) | No new API. `complete()` results join the prompt's completion list; `before`/`after` decorations sit around the editor surface. |
 | `mayflyKeymap` (core service) | Scopes (`global`, `editor`, `surface`, `stream`); `bind(id, keys)`, `reset(id)`, `resetAll()`, `list()` (label, scope, defaults, effective keys, owner, overridden), `preferPlain`. Conflicts are refused per scope with the owner's name (the existing `KEY_CONFLICT`). |
-| `mayflyScreen` (core-private) | *New* `mountNodeSlot(id, { region: 'content' \| 'dock' \| 'footer' })` returns `{ set(node), dispose() }`; core compiles the node like a surface, with its interaction state in `mayflyUiInteraction`. It ships in slice 1.10 beside `mountContentSlot` and `mountDockSlot`, exercised by a test host; the footer (Phase 3), the editor (Phase 5), and the conversation (Phase 6) use it. |
+| `mayflyScreen` (core-private) | *New* `mountNodeSlot(id, { region: 'content' \| 'dock' \| 'footer' })` returns `{ set(node), dispose() }`; core compiles the node like a surface, with its interaction state in `mayflyUiInteraction`. It ships in slice 1.10 beside `mountContentSlot` and `mountDockSlot`, exercised by a test host; the conversation (Phase 3), the editor (Phase 4), and the footer (Phase 5) use it. |
 | `mayflyUiInteraction` (frontend) | A *new* `UiPromptModel` beside the form, choice, and tab models (draft, selected token, recall index), and list `focusItem` and expansion state, so a core reload keeps them. |
 
 The key scopes of D6:
@@ -399,7 +422,7 @@ terminal (pi-tui)
 - **`packages/ui`** owns the wire contracts, builders, and patterns. It never imports Cordis outside `./provider`.
 - **`components/`** holds every Mayfly component of spec §6.2 under the names in §6. Each is
   `defineMayflyComponent({ id: 'mayfly.<name>', render })`, takes facts plus a `t` translator, and is covered by
-  fixtures, a width scan, and a parity spec.
+  its decision tests (§7): the accepted frames as goldens, its key and write behavior, and a width scan.
 - **Feature plugins** keep their Cordis rows. They subscribe to native services, keep Agent identity exact, own data
   refresh timers (an elapsed counter is data, refreshed once a second), and publish the component's node.
 - **Core** owns every animation clock (loader variants, shimmer, one-shot transitions), width ladders, admission,
@@ -434,28 +457,77 @@ memo), `clampFrameFrom` in `core/frame-clamp.ts` (frames compared by identity), 
 (bounded list work). The counters that prove the reuse are passed through the compiler options (§7.1), never held in
 a singleton.
 
+### 4.2 Content at any size (D26)
+
+**The problem.** Admission charges every string of one publish to a single budget, `MAYFLY_UI_MAX_TEXT` (20,000
+UTF-16 units, `core/ui-validator.ts`), beside the node, depth, collection, image, and chart quotas. Ids, labels, code,
+Markdown, and both sides of a diff all count; an identity hit replays the stored count, so the cache does not help. A
+publish over the budget is rejected, never cut: a first publish shows *This surface could not be displayed*, a later
+one leaves the old content on screen, and a compiled leaf paints up to three *Mayfly UI rejected* rows. A second wall
+sits at paint time: `PLUGIN_VIEW_MAX_CHARS` (`core/plugin-view.ts`) throws for any single string over 20,000. List
+items and select options each get a fresh budget, which is why `/sessions` works, but any one item is still capped.
+
+What it costs today and what it would cost the plan:
+
+- A tool card for a write over 20 KB, or an edit whose old and new text together pass it, renders the rejection
+  instead of the diff (`transcript/tool-model.ts` through `canonical-node-renderer.ts`).
+- A plan longer than 20 KB renders as rejection rows (`interaction/plan-document.ts`, one `ui.markdown`).
+- Job output and trace payloads are cut into 12,000-character pages by hand (`interaction/document-pages.ts`), with a
+  page form and First/Previous/Go/Next/Last actions in `jobs.ts` and `trace-command.ts`; the scroll position resets on
+  every page.
+- The changelog renders every release in one tree and grows past the budget; fixtures are cut to stay under it
+  (`tests/core/width-scan-patterns.spec.ts`).
+- The transcript of Phase 3 would reject any answer, diff, or plan row over 20,000 characters, and in a short session
+  the whole stream.
+
+**The rule.** Work and memory are bounded by the rows in view, never by the size of what was published. Admission
+checks shape and safety once per identity; it does not police how much text an author may legitimately show. This is
+what `docs/mayfly-seams.md` already promises: core validates, compiles, and paints the viewport's neighborhood.
+
+**The mechanism.**
+
+| Part | Behavior | Builds on |
+| --- | --- | --- |
+| Chunked text | The text of a `text`, `rich-text`, `markdown`, `code`, and `diff` leaf is split at admission into immutable, line-aligned chunks of bounded size, memoized by node identity. A split never breaks a line when it can avoid it and never splits a surrogate pair. | The splitting rule of `documentPages` |
+| Append keeps identity | Append-only content (a streamed answer, job output, a live log) keeps the identity of every chunk before the new one, so an append admits, wraps, and paints only the new chunk. Whether the wire carries a chunk list or a builder extends a previous node is decided in Phase 2c with the owner. | `freezeWire` identity, the admission memo |
+| Admit when visible | Sanitizing, wrapping, highlighting, and diffing run per chunk when the scroll window reaches it, and are remembered per width. An unvisited chunk reports its height from its line count until it is first painted. | Deferred hidden branches (`deferredUiNode` in `ui-validator.ts`), `lazyListItems` |
+| Windowed extent | Scroll extent and the scrollbar come from row-height prefix sums over chunks, so a scroll step paints the rows it reveals. | `core/ui-row-cache.ts`, the list window, `core/ui-scroll-region.ts` |
+| One memory ceiling | The whole-tree text budget and `PLUGIN_VIEW_MAX_CHARS` go. A surface has one ceiling on the bytes it retains, measured in MB and set from measurements in Phase 2c, so that ordinary content (a 1 MB diff, a long plan, a long log) never reaches it. Past the ceiling, the error names the surface. Depth limits and the node quotas of containers that are not lazy stay, because they bound layout work. | — |
+| Plain data | The wire carries strings and frozen arrays only: no source handle, callback, or Promise (root `AGENTS.md`). | — |
+
+**What it deletes.** `interaction/document-pages.ts` and the page forms of job output and trace details (they become
+a scroll view with follow-tail), the paint-time `RangeError`, the fixture cut in `width-scan-patterns.spec.ts`, and
+`admitNotificationMessage`'s reuse of the text budget (a notification gets its own length rule).
+
+**Gate rows** (§7.1, added in Phase 2c): a 1 MB document scrolled by one page admits and paints only the chunks in the
+new window; appending one chunk to a 1 MB log admits one chunk; a 2,000-item stream that holds a 200 KB diff costs per
+step what W4 costs.
+
 ## 5. Phases
 
-Phase 1 is the foundation: the whole basic layer, the engine under it, and the seams the later phases mount on. When
-it ends, the public UI API is complete (D16). Phases 2 to 6 build the Mayfly components on it, and Phase 7 finishes.
+Phase 1 is the foundation: the whole basic layer, the engine under it, and the seams the later phases mount on. It is
+merged. Phase 2 builds the workbench that makes review fast, replaces the text quota (§4.2), and takes the owner's
+review of the foundation. Phases 3 to 6 each finalize a group of Mayfly components with the owner, in the order the
+product is used (D23); Phase 7 optimizes the whole architecture (D27), and Phase 8 finishes.
 
-| Phase | Slices | Delivers | Prototype scenes | Gate |
+| Phase | Groups | Delivers | Prototype scenes (sketch) | Gate |
 | --- | --- | --- | --- | --- |
-| 1 Foundation | 13 (1.0-1.12) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze, the frame cost | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice; a profile at each checkpoint |
-| 2 Command panels | 6 (2a-2f) | The components area and every command panel | 21-32 | full for 2a (new area), then as planned; profile |
-| 3 Status area and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | as planned + profile |
-| 4 Activity and notices | 1 | The activity row, notices, tool rows, compaction | 14, 16, 17, 20 | as planned + profile |
-| 5 Editor | 1-2 | The editor as a prompt composition | 15, 30 p1-p2 | as planned + profile |
-| 6 Transcript | 2-3 | The stream as a list, levels, search, request rows | 17-21 | as planned + profile |
-| 7 Finish | 1 | Website, skills, docs, cleanup, release | — | full + pack |
+| 1 Foundation | 13 slices (1.0-1.12) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze, the frame cost | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice (the Phase 1 rules) |
+| 2 Workbench and content | 4 (2a-2d) | The live review loop and frame capture, the gate tiers and decision tests, content at any size, the owner's review of the foundation | 1-13, 15 | changed per part; full at the end; owner review (2d) |
+| 3 Session flow | 5 (3a-3e) | The components area; the stream and its turns, tool rows, the activity row and notices, request rows and decision cards, levels, selection, search | 14, 16-21 | per component (§7); full and owner at the end |
+| 4 Editor and command palette | 1-2 | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
+| 5 Status and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | per component; full and owner at the end |
+| 6 Panels | 6 (6a-6f) | Every command panel, questions, and the trace, keys, rewind, job output, and changes surfaces | 21 p4, 22-32 (30 p3-p6) | per component; full and owner at the end |
+| 7 Architecture performance | 1 | The finished product profiled on real workloads and restructured where measured; the final budgets and ceilings | — | full + bench report; owner |
+| 8 Finish | 1 | Website, skills, docs, release | — | full + pack + release preflight |
 
-*As planned* is the gate that `pnpm run verify:changed -- --plan` selects. With `packages/ui` frozen that is the
-changed gate, unless a slice touches a core seam, the composition, or a shared contract, which widens it to the full
-gate.
+*Per component* is the loop of §7: review rounds run the checks the change needs, finalization runs the gate that
+`pnpm run verify:changed -- --plan` selects, and CI runs the full gate on `main`. A phase ends with
+`pnpm run verify:full` and the owner's acceptance of the whole phase.
 
 ```mermaid
 flowchart LR
-  subgraph F[Phase 1 Foundation]
+  subgraph F[Phase 1 Foundation, merged]
     direction LR
     s0[1.0] --> s1[1.1]
     s1 --> s2[1.2] & s7[1.7] & s10a[1.10a] & s9a[1.9a] & s8a[1.8a]
@@ -467,19 +539,23 @@ flowchart LR
     s8b & s9b & s10b --> s11[1.11]
     s11 --> s12[1.12]
   end
-  F --> n2[2 Panels] & n3[3 Status] & n4[4 Activity]
-  n3 --> n5[5 Editor]
-  n2 & n4 & n5 --> n6[6 Transcript] --> n7[7 Finish]
+  F --> n2a[2a Workbench] & n2c[2c Content]
+  n2a --> n2b[2b Gate tiers] & n2d[2d Foundation review]
+  n2a & n2b & n2c & n2d --> n3[3 Session flow] --> n4[4 Editor and palette] --> n5[5 Status and views] --> n6[6 Panels]
+  n6 --> n7[7 Architecture performance] --> n8[8 Finish]
 ```
+
+The phases after 2 run in review order, because one owner reviews them: the next group may be drafted while the
+current one is in review, but only one group is in review at a time.
 
 Phase 1's slices run in parallel (the *Working in parallel* section below): 1.8, 1.9, and 1.10 each split into an
 early half that depends on nothing (`armMs`, `ui.image`, the node slot: 1.8a, 1.9a, 1.10a) and a late half (the
 patterns, the prompt, the views lane: 1.8b, 1.9b, 1.10b); 1.7 moves ahead of 1.4-1.6 because it renames the action ids
 they bind; 1.4-1.6 depend on 1.2 and 1.7, not on 1.3, which needs only 1.2.
 
-The first version of this roadmap named its phases P0 to P8. They map onto the current ones as follows:
+The first version of this roadmap named its phases P0 to P8. They map onto the cut of 2026-10-05 as follows:
 
-| Earlier | Now | What moved |
+| Earlier | 2026-10-05 | What moved |
 | --- | --- | --- |
 | P0 | 1.0 | Gains the work counters and the baseline. The layering spec moves to 2a, with the area it guards. |
 | — | 1.1 | New: the engine, brought forward from P7's *Host and performance*. |
@@ -494,7 +570,25 @@ The first version of this roadmap named its phases P0 to P8. They map onto the c
 | P7 | 6 | Runs on the engine of 1.1. |
 | P8 | 7 | — |
 
+The cut of 2026-10-09 reorders the phases after Phase 1 by how the product is used and adds two. Earlier text, PRs,
+and the Phase 1 record use the 2026-10-05 numbers:
+
+| 2026-10-05 | 2026-10-09 | What moved |
+| --- | --- | --- |
+| — | 2 | New: the workbench, the gate tiers, content at any size, and the foundation review that replaces checkpoints A to C |
+| 2a-2d, 2f | 6a-6f | The panels. The components area and its layering spec move to the start of Phase 3. |
+| 2e | 3d, 6e | The decision cards join the request rows in the session flow (3d); questions stay with the panels (6e). |
+| 3 | 5 | — |
+| 4 | 3c | The activity row, notices, and compaction join the session flow; the tool rows become 3b. |
+| 5 | 4 | — |
+| 6 | 3a, 3b, 3d, 3e | The transcript comes first instead of last. |
+| — | 7 | New: the architecture performance phase (D27). |
+| 7 | 8 | Its cleanup list is gone: each component deletes what it replaces (D23). |
+
 ### Phase 1 Foundation
+
+Phase 1 is merged. Its text below is the record of what was built, under the rules and the phase numbers of
+2026-10-05: where it names a later phase, read it through the mapping table above.
 
 **Goal.** The basic components draw and behave as scenes 1 to 12 do, on an engine that makes an unchanged subtree
 free, with every public addition of §3 live. No Mayfly component exists yet: existing panels change only through the
@@ -518,7 +612,7 @@ shared painters.
 | B | 1.3-1.8 | The gallery page of each basic scene beside the prototype; a key rebound in settings, with the hint row following it; one pattern in `examples/mayfly-user-kit` |
 | C | 1.9-1.11 | The prompt (paste, IME, and the clipboard through `docs/platform-acceptance.md`); an inline image; a plugin view in row 2; the final budgets; the Website reference on a LAN preview |
 
-The branch merges to `main` once, followed by `pnpm run check:pack` and the main rebuild. That merge was planned for after checkpoint C; it was made after slice 1.12 instead, on the owner's instruction, and the checkpoints stay open on `main`.
+The branch merges to `main` once, followed by `pnpm run check:pack` and the main rebuild. That merge was planned for after checkpoint C; it was made after slice 1.12 instead, on the owner's instruction (#120). The checkpoints were not run as such: their checks became the foundation review of Phase 2d, held with the workbench under D22.
 
 **Status** (updated by each slice's PR; the slice text below describes the built behavior once a slice is done):
 
@@ -543,7 +637,9 @@ The branch merges to `main` once, followed by `pnpm run check:pack` and the main
 | 1.12b | merged (#117) | `feat/ui-foundation-1-12b` | Frame performance, wasted work. Full gate green with 100% coverage; no visible change (goldens and screenshots identical); a tick on a side pane is one pass and no control walk (W14: 949 renders to 385, 328 walks to 0); the gallery's frame 206 ms to 63 ms and its key 164 ms to 40 ms; without a pane, typing and the panels' cursor keys are back at `main`'s cost except the model picker's edge |
 | 1.12c | merged (#118) | `feat/ui-foundation-1-12c` | Frame performance, retained rows. Full gate green with 100% coverage; goldens and screenshots identical, and every suite also passes with the stale-row check on; a key beside an unchanged pane paints no leaf (W13: 447 renders to 0), a loader below the fold does not tick (W14: no tick), a visible one repaints 2 rows (W15); the gallery idles at 0% CPU (from 113%) and its key takes 6 ms (from 164 ms) |
 | 1.12d | merged (#119) | `feat/ui-foundation-1-12d` | Frame performance, the gate. Full gate green with 100% coverage; `test:retained` (the stale-row check) and `bench:pty:assert` (coarse ceilings on the real terminal) run in the full gate and in CI; the instructions describe the retained-row rules; library byte budget 2,460,000 to 2,490,000 for the slice's 29 KB (#121) |
-| Checkpoint A / B / C | open | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11. The first run found the frame cost that slice 1.12 removes. On the owner's instruction the branch merged to `main` once 1.12 was built and gated, so the checkpoints run on `main` |
+| 1.12e | merged (#121) | `feat/ui-foundation-1-12e` | Frame performance, the pack budget. The pack contract's library byte budget goes from 2,460,000 to 2,490,000 for the 29 KB the slice added (2,452,160 to 2,481,548 bytes: the retained rows, the placing stacks, and the frame counters) |
+| Integration | merged (#120) | `feat/ui-foundation` | Phase 1 merged to `main` after slice 1.12, on the owner's instruction |
+| Checkpoint A / B / C | moved to Phase 2d | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11. The first run found the frame cost that slice 1.12 removes. Their checks are now the foundation review of Phase 2d (D22) |
 
 **Working in parallel.** Up to three slices are in flight, each in its own worktree and agent.
 
@@ -1464,251 +1560,377 @@ It lands in four parts, each a PR with the bench table:
    to paint 10 ms, 5 ms of CPU per typed key, 12 ms per cursor key), scaled by `BENCH_PTY_SLACK` (3 in CI); it runs
    with the smoke. The root and `packages/mayfly` instructions state the retained-row rules and the two checks.
 
-### Phase 2 Components area and panels
+### Phase 2 Workbench and content
 
-Creates `packages/mayfly/src/components/` (`index.ts`, no Cordis entry, not exported) and records it in
-`packages/mayfly/AGENTS.md`. Each slice moves its panels' node building into components, rewires the owning plugin, and
-adds the component's fixtures, parity spec, width scan, strings, and shots. §6 lists every component's facts and writes.
+**Goal.** A review round takes seconds instead of a gate run, tests record decisions instead of lines, the text quota
+is gone, and the owner has reviewed the foundation. No Mayfly surface changes its look in this phase except where 2c
+or the foundation review asks for it. Its parts are reviewed like components (§7), and each merges to `main`.
 
-Slice 2a also adds the guard for the area. `packages/mayfly/tests/components/layering.spec.ts` (*new*): a file under
-`src/components/` imports only `@ephemeral-ai/mayfly-ui` and its siblings; no `node:` module, no Cordis, nothing from
-`../core`, no width helper (`visibleWidth`, `truncateToWidth`, `wrapText`), no escape sequence, no timer, no keymap. A
-second test renders every component's fixtures and records the node kinds it emits, which must match spec §6.2's
-builder column. `script/test-impact.mjs` selects the components specs for `src/components/**`.
+**2a The workbench.** The tools of the review loop, built from what the gate already has:
 
-| Slice | Panels | Scenes | Key changes |
-| --- | --- | --- | --- |
-| 2a | `/model`, `/effort`, `/permission`, `/theme` marks | 23, 21 p4 | Thinking strip on the row with `inheritedId` (the `default` pseudo-option goes); no buttons; `[current · high]`; `/effort` as a numbered list with *Provider default*; native presets with `danger-full-access` behind the shared Yes/No (E1-E3, G2, G7) |
-| 2b | `/settings`, `/sessions` | 25, 24, 6 p3 | `patterns.railPanel`; settings namespaces each a tab page so drafts survive switching, `Ctrl+S` saves through the existing CAS path, *Open settings.yaml* becomes `Ctrl+G`; sessions with long-path rules, `filterMode: 'slash'`, `expandFocused` bodies, `c` copy path, `n` new (Δ19), no delete (R10, R18) |
-| 2c | `/status`, `/account`, onboarding | 26, 28, 29 | `patterns.statusPage` with Overview, Usage (heatmap and statistics), Account, Connections, About; the account panel with no buttons in any state; the four-step wizard with native presets (R16, R17, R25) |
-| 2d | `/plugin` | 27 | `patterns.splitView` at 100 columns, slash filter, `i u x s r` keys, detail following the cursor through `focus-change`, a single-flight loader, the persistent restart banner (R15) |
-| 2e | Questions, decision cards | 22, 21 | The wizard with a Review page and `←/→` between questions; `patterns.decisionPanel` as a lane card in the editor slot, variant B, `armMs: 300`, `Esc reject`, `Feedback:`/`Revise:` on the same line, `Ctrl+G` opens the diff or plan, `c` copies the plan (B1, G5, G7, R8, R23). Until Phase 6 the plan keeps today's content-flow document and approvals show their reason above the card. |
-| 2f | `/trace`, `/keys`, key help, rewind, job output, `/changes` | 31, 32, 30 p3-p6 | The trace tree with duration meters and numbered JSON; the keybinding panel with capture and restore; key help grouped by task; rewind rows without a strip; job output with follow and stop; the new `/changes` (R11, R21, R24) |
+- *Live loop.* `pnpm run dev` (*new*) watches the sources, runs the incremental build (`build:changed`; never the
+  forced full build), and applies the result to the running `dsh --profile mayfly-<phase>`: a core reload in place,
+  keeping the session, drafts, and list cursors (the reload `tests/e2e.spec.ts` proves; `reloadTheme` for a theme), or
+  a restart on the same session when the change touches the composition. 2a measures which edits reload in place and
+  records the answer in the root instructions.
+- *Scenarios.* `pnpm run scenario <name> [--width N] [--height N]` (*new*) opens the product on a named state without a
+  real model: the fixture sessions of `tests/app-shots/scenes.ts`, the groups of `examples/ui-gallery`, and the mock
+  LLM of `script/bench-pty.mjs` for streamed turns. Every component adds its states as scenarios in its draft (for
+  example a 2,000-turn session, a running tool, a pending approval, a 1 MB diff), and any scenario runs at a narrow
+  width, with `NO_COLOR=1`, ASCII glyphs, or reduced motion.
+- *Frames.* `pnpm run frame <scenario> [--width N] [--keys …]` (*new*) paints a scenario through the real renderer
+  (`VtTerminal.frame` with `bootAppShot`, no PTY) and writes text, ANSI, and SVG (`script/shots/svg.mjs`) to
+  `.artifacts/frames/`. A round shares frames; finalization promotes the accepted ones to goldens. A frame read from a
+  running `dsh` (the PTY readers of the smoke scripts) covers what a fixture cannot reach.
+- *The sketch beside it.* `node docs/design/prototypes/ui-preview.mjs <scene>` runs in a split beside the profile.
+- *A performance glance.* `pnpm run bench:pty -- --scenario=<scenario>` reports idle CPU and key-to-paint latency for
+  the surface under review, and `--prof` writes a CPU profile.
 
-Notes per slice:
+**2b The gate tiers and decision tests** (D25).
 
-- **2a.** `commitModelSelection` in `interaction/model-commands.ts` stays the write path; `selection-accept.segmentId`
-  absent means unpinned (provider default). The notice reads `Switched to <model> (<provider>) · thinking high` or
-  `Thinking set to high`.
-  Follow-ups from the model-picker spike (draft PR #114, `docs/design/spike-model-picker.md`; notes, not decisions):
-  `formatContextWindow` moves from `interaction/` to where a pure component can import it (or the fact carries a
-  formatted `contextLabel`); the commands pass `defaultEffort` (`openModelPicker` ignores what `catalogRows` returns,
-  and `switchEffort` never reads `info.reasoning.defaultEffort`), because `inheritedId` and `Provider default (high)`
-  need both; three interpolated locale keys replace concatenation (`{size} context`, `current · {effort}`, `Provider
-  default ({level})`), with zh entries; a golden for the live row's pinned strip (a `live-row` walk with the cursor on
-  the current model), because the kit never pins that state; components hoist `t` per locale revision so `memo: true`
-  hits; the component's `empty` is the real `No models advertised` (the kit's `No models match` is unreachable).
-- **2b.** Rail labels come from `settings.describe({ redactSecrets: true })`; schema sub-objects become `group`
-  headings and schema descriptions become `help`. A revision mismatch still replies `conflict`. Session bodies and
-  titles keep the bounded, revision-keyed reads of `interaction/session-list-reads.ts`.
-- **2c.** The Usage tab builds a cross-session index from `sessionPersistence.list()` (once per refresh) and bounded
-  cold reads, cached by persistence revision in the command Fiber, the `/sessions` precedent; `sessionStats` supplies
-  the current session's figures; models.dev supplies prices. Slow reads show the gap spinner and never block another
-  tab. The Account tab and panel read `deepseekAccount.getState()`, `getBalance()`, and `AccountView.links`.
-- **2e.** Approval answers stay `ApprovalOutcome` (`allowed-once` with the per-Agent allowance for *this session*, or
-  `rejected` with the feedback steered to the Agent, both already in `interaction/approval-plugin.ts`). Plan answers
-  stay `AskUserQuestionAnswer`: the approve label, the decline label, or `custom` text for *Keep planning…*; dismissal
-  becomes a decline instead of `ASK_CANCELLED`. The queue position reads `1 of N waiting` from the approval plugin's
-  FIFO.
-- **2f.** `trace-aggregate.ts` derives each item's turn from `turn/start` boundaries and its duration from the next
-  record's time; the detail follows the cursor through `focus-change`; `/trace copy <seq>` and `copy all` remain.
-  `/changes` (*new* `interaction/changes-command.ts`) lists the session's edit and write calls; `Enter` opens the file
-  at its first changed line in the external editor (detached with `file:line` for GUI editors, `screen.suspend` for
-  terminal editors, only inside the workspace, and pointing to `/settings` when none is configured), `d` shows the diff.
-  Job output reads with `jobs.read`/`readAt` without splitting surrogate pairs, and `x` rechecks `jobs.get` before
-  `jobs.kill`.
+- `pnpm run verify:full` builds once: the happy smoke and the PTY bench reuse that build instead of installing a
+  profile that builds again (`script/smoke-lib.mjs` through `script/install-dev.sh`).
+- `vitest.config.ts` replaces the per-file 100% threshold with a coverage report and a repository-wide floor, set from
+  the value measured when 2b lands; the root instructions change with it.
+- Prototype parity leaves the gate. Before it does, the frames the real renderer paints today for the 174 golden walks
+  are captured as goldens of the real renderer, one spec compares them, and they are the visual record of Phase 1
+  until the foundation review (2d) replaces them. Then `tests/design/parity.ts`, the hand-ported scenes
+  (`tests/design/scene-*.ts`) and their specs, `deltas.ts`, `pending.ts` with `pending.spec.ts`, and
+  `design:golden:check` with its 348 prototype files are deleted. The prototype stays runnable as the sketch.
+- `test:retained`, `shots:check`, `bench:pty:assert`, and the smoke stay in the full gate and in CI. A component syncs
+  screenshots once, when it is finalized.
+- The root, `packages/mayfly`, and `packages/ui` instructions describe the tiers and the workbench as current behavior.
 
-### Phase 3 Status area and views
+**2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
+ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the
+workbench. Job output and trace details become scroll views with follow-tail (their final look is decided in Phase 6),
+and `interaction/document-pages.ts` with the page forms is deleted.
+
+**2d The foundation review.** The owner reviews the basic components in the gallery with the workbench, covering what
+checkpoints A to C were to check: each basic scene beside the prototype at 120 and 60 columns, with `NO_COLOR=1`,
+ASCII glyphs, and reduced motion; a key rebound in settings, with the hint row following it; one pattern in
+`examples/mayfly-user-kit`; the prompt with paste, IME, and the clipboard (`docs/platform-acceptance.md`); an inline
+image; a plugin view in row 2; the work report and the bench. What the owner changes is changed here, in any API
+(D21), and the accepted frames replace the Phase 1 captures of 2b.
+
+### Phase 3 Session flow
+
+**Goal.** The conversation the user lives in, finalized first: the stream, its tool rows, the activity row, the
+requests that wait on the user, and the ways to read a long session. **Backlog:** A4 (transcript), B1, G5, G7, G10,
+G11, G13, G14, G20, G21, H2, H4, H5, H6, R1, R2, R3, R5, R8, R12, R19, R23.
+
+**The components area** (the phase's first change). `packages/mayfly/src/components/` (`index.ts`, no Cordis entry,
+not exported), recorded in `packages/mayfly/AGENTS.md`, with its guard,
+`packages/mayfly/tests/components/layering.spec.ts`: a file under `src/components/` imports only
+`@ephemeral-ai/mayfly-ui` and its siblings; no `node:` module, no Cordis, nothing from `../core`, no width helper
+(`visibleWidth`, `truncateToWidth`, `wrapText`), no escape sequence, no timer, no keymap. `script/test-impact.mjs`
+selects the components specs for `src/components/**`.
+
+The groups below are finalized in this order, each under §7. Their text is the starting point carried over from the
+2026-10-05 plan; the final behavior is what the owner accepts.
+
+- **3a Stream and turns** (`TranscriptView`; scenes 17, 18, 19 style A).
+  - One `ui.list({ id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream' })` and an actions node
+    scoped to the stream (`ui.copy`, `ui.external`), on the conversation node slot (slice 1.10). Rows follow spec §5.6
+    and the kit's `turnItemsRaw`: the turn rule (a gap and a rule with the start time) before every turn after the
+    first; the prompt row with `wrapMax: 4`; reasoning rows; wrapped answers; `⏎ queued` and `■ interrupted`; images as
+    `ui.image` bodies; the welcome banner as rich text.
+  - Items are memoized frozen snapshots keyed by entry id, content revision, level, and disclosure, so `freezeWire`
+    keeps their identity and the engine (§4.1) skips them; only the live turn's items are rebuilt per publish. A
+    streamed answer appends chunks (§4.2). The window of mounted turns and the passive scroll linearization stay; the
+    `pill` shows `↓ N new · End` while scrolled away.
+  - Performance: W4 on the real stream (a 2,000-turn scenario republishing a streamed turn at 10 Hz) and the bench on
+    the same scenario.
+  - Deletes the transcript painters each row replaces in `transcript/components.ts`, and `mountContentSlot` once
+    nothing mounts it.
+- **3b Tool rows** (`ToolLine`, `EditCard`, `WriteCard`, command rows; scenes 17, 18).
+  - `EditCard`: numbered diff (6 rows collapsed, 12 expanded), diffstat, `A`/`M`/`D` per file, the failure reason on
+    `⎿`. `WriteCard`: one line, numbered highlighted code when expanded (highlighting capped at 12 rows and 32 KB,
+    §2.2 row 14). Command rows with their `⎿` tails; the header with its diffstat or the failure line.
+  - Content of any size through §4.2: a large write or edit shows its diff, never a rejection.
+  - Deletes the canonical-node card path (`transcript/canonical-node-renderer.ts`) and the tool painters it replaces.
+- **3c Activity row, motion, notices, and compaction** (`ActivityRow`, `Banner`, `CompactionRow`; scenes 14, 16, 20).
+  - The glyph by phase: thinking blooms, *Deep diving* fills, waiting on an external action breathes, a running tool
+    keeps a still `●` while its label shimmers, waiting on the user is a static `?`, and stopping is a static `■`. The
+    header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) is priority 2 and hides first; the right gap (priority 1) carries
+    `Esc interrupt · Ctrl+O expand` while a detail exists, the rotating tip only in the *Deep diving* row, or a toast.
+    Up to three `⎿` detail items, one truncated row each. The row pads to the turn's highest detail count (a plugin
+    fact) and renders nothing when idle.
+  - `transcript/pane-activity.ts` stops measuring widths and animating: core's clock moves the glyph and the shimmer;
+    the plugin republishes once a second for the elapsed time and throughput (data, not motion).
+  - Tips teach keys and prefixes (`transcript/tips-content.ts`) and appear only in the *Deep diving* gap; a quiet-hints
+    setting (`minimal`, `off`) trims the gap cue and the placeholder.
+  - Notices: `Banner` rows for rate limiting, offline, context nearly full, low balance, and a resumed session, bound
+    to the native facts that carry them (confirm the retry and offline signals against the Harness reference); toasts
+    in the activity gap from the notification lane.
+  - `CompactionRow` over `compaction/start`, `compaction/summary` (`shadowedTokenCount`), and `compaction/end`
+    (`error`): `1/2 summarizing`, `2/2 applying`, the occupancy bar from the token meter, the 800 ms drain as a
+    `progress.transition`, the settled `✓ Compacted 84 items · 91% → 9%`, and the failure row.
+  - Deletes the moon and braille tables of `transcript/spinners.ts`, the `'braille' | 'tide'` aliases of
+    `MayflyLoaderNode.variant` with their mapping in `core/ui-loader-animation.ts`, and the width and animation code of
+    `pane-activity.ts`.
+- **3d Request rows and decision cards** (`patterns.decisionPanel` cards; scenes 21, 18).
+  - A pending approval (`approval/asked` without `approval/decided`, matched to the tool call by `callId`) or plan
+    review (`userQuestions` projection, `intent.callId`) is the newest stream row, open: the command and
+    `⚠ deletes files` (Δ15), the diff, or the plan as Markdown of any length (§4.2).
+  - The decision card is a lane card in the editor slot: variant B, `armMs: 300`, `Esc` rejects, `Feedback:` and
+    `Revise:` on the same line, `Ctrl+G` opens the diff or the plan, `c` copies the plan (D3, D4).
+  - Approval answers are `ApprovalOutcome` (`allowed-once` with the per-Agent allowance for *this session*, or
+    `rejected` with the feedback steered to the Agent, both in `interaction/approval-plugin.ts`). Plan answers are
+    `AskUserQuestionAnswer`: the approve label, the decline label, or `custom` text for *Keep planning…*; dismissal is
+    a decline. The queue position reads `1 of N waiting` from the approval plugin's FIFO.
+  - Deletes `interaction/plan-document.ts` and the content-flow approval layout.
+- **3e Levels, selection, and search** (scenes 17, 18 at every level).
+  - `transcript/presentation-policy.ts` keeps the four modes with the policies of the spec's table (the header open at
+    Detailed, everything open at Verbose, detail in exactly one place); `Ctrl+O` opens the last three turns at Verbose;
+    `Enter` on a header toggles that turn.
+  - `Alt+↑` from the prompt focuses the newest row; `Enter` expands, `c` copies the row's content, `Ctrl+G` opens it in
+    `$EDITOR`, `Esc`/`Alt+↓` return. `Ctrl+F` opens `StreamSearch` under the stream; matches are computed over the
+    frontend transcript models (so details a level hides still match), the turn holding a match opens at Verbose,
+    `focusItem` selects the current match, and matched text is `warning` + `strong`.
+
+At the phase gate the owner runs real sessions, with subagents, a compaction, and approvals, and the PTY smoke covers
+`Alt+↑`, `c`, `Ctrl+F`, and `Esc`.
+
+### Phase 4 Editor and command palette
+
+**Backlog:** B4 (border), G15, G18, G19, H7, H8, R11 (`?`), R20 (editor). Scenes 15 (every context at 96, 60, 40) and
+30 p1-p2 (as completion lists). Starting points:
+
+- The `Editor` component: an optional queue line (`queued (2)  ⏎ "…"  +N  ↑ recall`, three items cut to 22
+  characters), then `ui.surface({ titleAlign: 'right', chrome: 'surface', hint: 'completions', border })` around
+  `ui.prompt`. `interaction/input-plugin.ts` publishes it into the editor dock slot through `mountNodeSlot`.
+- **The command palette** is the editor's completion list (D8): `/` commands with scene 30's row layout (the match bold,
+  the description, the command's key at the right), `@` files through `createFileMentionProvider` (`Enter`/`Tab`
+  insert, `Ctrl+G` opens, D9), and `#` skills; editor-extension `complete()` results join them.
+- **Title** from the official `title` session projection (the source `interaction/terminal-title.ts` mirrors).
+- **Shell mode** is the `!` symbol and the `accent` border only.
+- **Tokens**: pasted images, pasted blocks, and `@` mentions become prompt tokens; on submit the pipeline
+  (`interaction/prompt-submit-pipeline.ts`) expands them to the content it sends today.
+- **Recall**: queued messages first, then history; recalling a queued message withdraws it (`withdrawQueued`), and
+  sending it again queues it.
+- **Placeholders** by state from spec §3.3 (main idle or running, shell, side question, subagent live or resumable,
+  read-only).
+- **Subagent replies** (G18). In a live or resumable subagent conversation the editor sends through the
+  addressed-subagent path in `interaction/subagent-reply.ts`, and the delivery choice is the editor's own pair: `Enter`
+  queues, `Ctrl+S` steers. `mayfly/request-subagent-reply` remains the plugins' entry point.
+- **Keys** in the editor scope: `Alt+↑` focuses the stream, `Alt+↓`/`F6` enter the views, `?` opens key help on an empty
+  prompt, `Ctrl+S` steers, `Ctrl+G` opens the draft externally.
+- Deletes the autocomplete adapter (`SelectListAdapter`, `core/wrapping-select-list.ts`), `setBorderLabel`
+  (`interaction/editor-plus.ts`), `interaction/pane-queue.ts` as a pane, and the reply form's `Send`/`Cancel` buttons
+  and delivery select.
+
+At the phase gate: platform acceptance for paste, IME, and the clipboard on macOS, Linux, and Windows.
+
+### Phase 5 Status area and views
 
 **Goal.** Two composable rows; row 2 views through the public pane API. **Backlog:** B4 (chips), C4, G16, G17, G23, R6,
-R7, R20 (status).
+R7, R20 (status). Scenes 13 (100, 72, 52, and 36 columns, every toggle), 12, 18 (the rows under the stream). Starting
+points:
 
-- **Lane and slot.** Both exist since slice 1.10. This phase registers Mayfly's views on the lane and moves the footer
-  onto the slot; it adds no API.
 - **Footer.** The transcript footer plugin builds `StatusRows` (§6) from `mayflyStatus.list()` and the views panes, and
-  leases the footer slot with `mountNodeSlot`. `StatusFooterComponent` goes; admission is slice 1.3's primitive.
-- **Row 1.** The existing registrations, restyled: model and effort (priority 0), uppercase `PLAN`/`PLAN…` primary
-  strong and `YOLO` warning strong (priority 1, `interaction/mode-status.ts`), context (4, right, hide), directory (5,
-  truncate), the low-balance chip `⚠ ¥6.2` (6, right, account only, *new*), git (10), the side-conversation identity in
-  the center band (`interaction/conversation-view-status.ts`, without its key text), and plugin entries.
-- **Row 2.** Agents (`transcript/pane-agents.ts`), Jobs (`transcript/status-jobs.ts`), Goal (`transcript/status-goal.ts`),
-  and Todo (`transcript/pane-todo.ts`) become views panes; the right cue reads `↓ views`, or `F7 switch · F8 close` (or
-  `detach`) when two or more conversations exist. The goal chip leaves row 1 and the todo pane leaves the space above
-  the editor.
+  leases the footer slot with `mountNodeSlot`; admission is slice 1.3's primitive.
+- **Row 1.** The registrations, restyled: model and effort (priority 0), uppercase `PLAN`/`PLAN…` primary strong and
+  `YOLO` warning strong (priority 1, `interaction/mode-status.ts`), context (4, right, hide), directory (5, truncate),
+  the low-balance chip `⚠ ¥6.2` (6, right, account only, *new*), git (10), the side-conversation identity in the center
+  band (`interaction/conversation-view-status.ts`, without its key text), and plugin entries.
+- **Row 2.** Agents (`transcript/pane-agents.ts`), Jobs (`transcript/status-jobs.ts`), Goal
+  (`transcript/status-goal.ts`), and Todo (`transcript/pane-todo.ts`) become views panes; the right cue reads
+  `↓ views`, or `F7 switch · F8 close` (or `detach`) when two or more conversations exist.
 - **Inside a view.** Entering, switching, and leaving are the lane's (slice 1.10). In Mayfly's views `↑/↓` select;
-  `Enter` opens an agent's conversation (`mayflyConversations`, `F7` returns) or a job's output; `x` stops behind
-  the shared Yes/No (`subagents.interrupt(child, { kind: 'ancestor', agent })`, or `jobs.kill` after rechecking
+  `Enter` opens an agent's conversation (`mayflyConversations`, `F7` returns) or a job's output; `x` stops behind the
+  shared Yes/No (`subagents.interrupt(child, { kind: 'ancestor', agent })`, or `jobs.kill` after rechecking
   `jobs.get`); `Esc` returns to the prompt. `Ctrl+T` opens the views on Todo.
 - **Goal and todo panels.** The rule heading is the progress bar (`progress` with `style: 'rule'`); the goal shows
   `● active`, `❚❚ paused`, or `✕ blocked` with its reason, from the `goal` projection; the todo panel shows at most five
   rows (in progress, the earliest pending, one slot for the latest done) and `… +N more (k done)`, then
   `✓ Todo done 6/6 · 4m 12s` before the view leaves.
+- Deletes `StatusFooterComponent`, the todo pane above the editor, and the goal chip of row 1.
 
-Scenes 13 (100, 72, 52, and 36 columns, every toggle), 12, 18 (the rows under the stream). Tests: each view's
-registration and Fiber cleanup, the footer on the node slot within the W1 budget (§7.1), admission width scans, and a
-PTY smoke that enters the views, stops a job, and returns. Website:
+Decision tests: each view's registration and Fiber cleanup, the footer on the node slot within the W1 budget (§7.1),
+admission width scans, and a PTY smoke that enters the views, stops a job, and returns. Website:
 `features/status-bar.md`, `features/panes.md`, `plugins/status.md`, `plugins/dock.md`, `reference/keys.md` (both
 languages).
 
-### Phase 4 Activity row, motion, notices, and compaction
+### Phase 6 Panels
 
-**Backlog:** G10, G13, G20, G21, H4, H5, R1, R2, R5.
+Every command panel, finalized one group at a time. §6 lists each component's facts and writes. Starting points:
 
-- **Activity row** (`ActivityRow`). The glyph by phase: thinking blooms, *Deep diving* fills, waiting on an external
-  action breathes, a running tool keeps a still `●` while its label shimmers, waiting on the user is a static `?`, and
-  stopping is a static `■`. The header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) is priority 2 and hides first; the right
-  gap (priority 1) carries `Esc interrupt · Ctrl+O expand` while a detail exists, the rotating tip only in the
-  *Deep diving* row, or a toast. Up to three `⎿` detail items, one truncated row each, as the scene draws. The row pads
-  to the turn's highest detail count (a plugin fact) and renders nothing when idle.
-- **Ownership.** `transcript/pane-activity.ts` stops measuring widths and stops animating: core's clock moves the glyph
-  and the shimmer; the plugin republishes once a second for the elapsed time and throughput (data, not motion). The
-  moon and braille tables in `transcript/spinners.ts` and the `tide` loader retire.
-- **Tips and cues.** Tips teach keys and prefixes (`transcript/tips-content.ts`) and appear only in the
-  *Deep diving* gap; a quiet-hints setting (`minimal`, `off`) trims the gap cue and the placeholder.
-- **Notices.** `Banner` rows for rate limiting, offline, context nearly full, low balance, and a resumed session, bound
-  to the native facts that carry them (confirm the retry and offline signals against the Harness reference); toasts in
-  the activity gap from the notification lane.
-- **Tool rows.** `ToolLine`, `EditCard` (numbered diff, diffstat, `A`/`M`/`D` per file, the failure reason on `⎿`), and
-  `WriteCard` (one line, numbered highlighted code when expanded), ready for Phase 6.
-- **Compaction.** `CompactionRow` over `compaction/start`, `compaction/summary` (`shadowedTokenCount`), and
-  `compaction/end` (`error`): `1/2 summarizing`, `2/2 applying`, the occupancy bar from the token meter, the 800 ms drain
-  as a `progress.transition`, the settled `✓ Compacted 84 items · 91% → 9%`, and the failure row.
+| Group | Panels | Scenes | Key changes |
+| --- | --- | --- | --- |
+| 6a | `/model`, `/effort`, `/permission`, `/theme` marks | 23, 21 p4 | Thinking strip on the row with `inheritedId` (the `default` pseudo-option goes); no buttons; `[current · high]`; `/effort` as a numbered list with *Provider default*; native presets with `danger-full-access` behind the shared Yes/No (E1-E3, G2, G7) |
+| 6b | `/settings`, `/sessions` | 25, 24, 6 p3 | `patterns.railPanel`; settings namespaces each a tab page so drafts survive switching, `Ctrl+S` saves through the CAS path, *Open settings.yaml* becomes `Ctrl+G`; sessions with long-path rules, `filterMode: 'slash'`, `expandFocused` bodies, `c` copy path, `n` new (Δ19), no delete (R10, R18) |
+| 6c | `/status`, `/account`, onboarding | 26, 28, 29 | `patterns.statusPage` with Overview, Usage (heatmap and statistics), Account, Connections, About; the account panel with no buttons in any state; the four-step wizard with native presets (R16, R17, R25) |
+| 6d | `/plugin` | 27 | `patterns.splitView` at 100 columns, slash filter, `i u x s r` keys, detail following the cursor through `focus-change`, a single-flight loader, the persistent restart banner (R15) |
+| 6e | Questions | 22 | The wizard with a Review page and `←/→` between questions |
+| 6f | `/trace`, `/keys`, key help, rewind, job output, `/changes` | 31, 32, 30 p3-p6 | The trace tree with duration meters and numbered JSON; the keybinding panel with capture and restore; key help grouped by task; rewind rows without a strip; job output with follow and stop; the new `/changes` (R11, R21, R24) |
 
-Scenes 14 (every phase at 96, 60, 40, 28), 16, 17, 20.
+Each group deletes the node building it replaces in the owning plugin (for example `interaction/model-commands.ts`'s
+panel), and the buttons and pseudo-options its key changes remove. Notes per group:
 
-### Phase 5 Editor
+- **6a.** `commitModelSelection` in `interaction/model-commands.ts` is the write path; `selection-accept.segmentId`
+  absent means unpinned (provider default). The notice reads `Switched to <model> (<provider>) · thinking high` or
+  `Thinking set to high`. From the model-picker spike (draft PR #114, `docs/design/spike-model-picker.md`):
+  `formatContextWindow` moves from `interaction/` to where a pure component can import it (or the fact carries a
+  formatted `contextLabel`); the commands pass `defaultEffort` (`openModelPicker` ignores what `catalogRows` returns,
+  and `switchEffort` never reads `info.reasoning.defaultEffort`), because `inheritedId` and `Provider default (high)`
+  need both; three interpolated locale keys replace concatenation (`{size} context`, `current · {effort}`, `Provider
+  default ({level})`), with zh entries; components hoist `t` per locale revision so `memo: true` hits; the component's
+  `empty` is the real `No models advertised`. The closed `acceptVerb` the spike found may change here (D21).
+- **6b.** Rail labels come from `settings.describe({ redactSecrets: true })`; schema sub-objects become `group`
+  headings and schema descriptions become `help`. A revision mismatch replies `conflict`. Session bodies and titles
+  keep the bounded, revision-keyed reads of `interaction/session-list-reads.ts`.
+- **6c.** The Usage tab builds a cross-session index from `sessionPersistence.list()` (once per refresh) and bounded
+  cold reads, cached by persistence revision in the command Fiber, the `/sessions` precedent; `sessionStats` supplies
+  the current session's figures; models.dev supplies prices. Slow reads show the gap spinner and never block another
+  tab. The Account tab and panel read `deepseekAccount.getState()`, `getBalance()`, and `AccountView.links`.
+- **6f.** `trace-aggregate.ts` derives each item's turn from `turn/start` boundaries and its duration from the next
+  record's time; the detail follows the cursor through `focus-change`; `/trace copy <seq>` and `copy all` remain.
+  `/changes` (*new* `interaction/changes-command.ts`) lists the session's edit and write calls; `Enter` opens the file
+  at its first changed line in the external editor (detached with `file:line` for GUI editors, `screen.suspend` for
+  terminal editors, only inside the workspace, and pointing to `/settings` when none is configured), `d` shows the diff.
+  Job output is the follow-tail scroll view of 2c over `jobs.read`/`readAt`, without splitting surrogate pairs, and
+  `x` rechecks `jobs.get` before `jobs.kill`.
 
-**Backlog:** B4 (border), G15, G18, G19, H7, H8, R11 (`?`), R20 (editor).
+### Phase 7 Architecture performance
 
-- The `Editor` component: an optional queue line (`queued (2)  ⏎ "…"  +N  ↑ recall`, three items cut to 22
-  characters), then `ui.surface({ titleAlign: 'right', chrome: 'surface', hint: 'completions', border })` around
-  `ui.prompt`. `interaction/input-plugin.ts` publishes it into the editor dock slot through `mountNodeSlot`.
-- **Title** from the official `title` session projection (the source `interaction/terminal-title.ts` mirrors).
-- **Shell mode** is the `!` symbol and the `accent` border only; `setBorderLabel` goes (`interaction/editor-plus.ts`).
-- **Tokens**: pasted images, pasted blocks, and `@` mentions become prompt tokens; on submit the existing pipeline
-  (`interaction/prompt-submit-pipeline.ts`) expands them to the same content it sends today.
-- **Recall**: queued messages first, then history; recalling a queued message withdraws it (today's `withdrawQueued`),
-  and sending it again queues it. `interaction/pane-queue.ts` becomes the queue line.
-- **Placeholders** by state from spec §3.3 (main idle or running, shell, side question, subagent live or resumable,
-  read-only).
-- **Subagent replies** (G18). In a live or resumable subagent conversation the editor sends through the existing
-  addressed-subagent path in `interaction/subagent-reply.ts`, and the explicit delivery choice becomes the editor's own
-  pair: `Enter` queues, `Ctrl+S` steers. The reply form's `Send`/`Cancel` buttons and its delivery select go;
-  `mayfly/request-subagent-reply` stays for plugins.
-- **Completions** for `/` (commands, D8), `@` (files through `createFileMentionProvider`; `Enter`/`Tab` insert, `Ctrl+G`
-  opens, D9), and `#` (skills); editor-extension `complete()` results join them. The legacy autocomplete adapter
-  (`SelectListAdapter`, `core/wrapping-select-list.ts`) retires.
-- **Keys** in the editor scope: `Alt+↑` focuses the stream (after Phase 6), `Alt+↓`/`F6` enter the views, `?` opens
-  key help on an empty prompt, `Ctrl+S` steers, `Ctrl+G` opens the draft externally.
+**Goal.** The finished product is fast on real workloads, with an architecture shaped by measurement rather than by
+history (D27). Breaking changes are allowed anywhere, including `@ephemeral-ai/mayfly-ui`, the core seams, and how
+core drives pi-tui.
 
-Scenes 15 (every context at 96, 60, 40), 30 p1-p2 (as completion lists), 13. Platform acceptance for paste, IME, and the
-clipboard on macOS, Linux, and Windows.
+- **Workloads.** Scenarios of the real product, not synthetic components: a 2,000-turn session with a streamed turn, a
+  swarm of subagents with their views, side panes, every panel, a 1 MB document, and narrow and wide terminals. Each is
+  measured with `pnpm run bench:pty` (idle CPU, key-to-paint, CPU per key, `--prof`) and the frame counters (§7.1).
+- **Known candidates** (from Phase 1 and to be confirmed by measurement): pi-tui laying a pane out and painting its
+  boxes on every frame (about 5 ms per frame beside the gallery after slice 1.12c), a picker that lays out once per
+  arrow at its edge, re-measuring a framed list on every key, the stream with item bodies (W4b's 12 ms worst sample),
+  and anything the earlier phases recorded for this phase.
+- **Rules.** A restructure lands with its measurement before and after; the owner reviews the felt result in the
+  profile; the decision tests of the finalized components hold, or the owner accepts the changed frames.
+- **Output.** New budgets and bench ceilings that become the gate (§7.1), §4 rewritten to describe the final
+  architecture, and the frame-path rules of the instructions updated.
 
-### Phase 6 Transcript and request rows
-
-**Backlog:** A4 (transcript), G11, G14, H2, H6, R3, R12, R19, R23.
-
-- **`TranscriptView`** returns one `ui.list({ id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream' })`
-  and an actions node scoped to the stream (`ui.copy`, `ui.external`). Rows per level follow spec §5.6 and the kit's
-  `turnItemsRaw`: the turn rule (a gap and a rule with the start time) before every turn after the first; the prompt
-  row with `wrapMax: 4`; the header with its diffstat or the failure line; edit cards with numbered diffs (6 rows
-  collapsed, 12 expanded); command rows with their `⎿` tails; reasoning rows; wrapped answers; `⏎ queued` and
-  `■ interrupted`; compaction rows; images as `ui.image` bodies; the welcome banner as rich text.
-- **Levels.** `transcript/presentation-policy.ts` keeps the four modes with the policies of the spec's table (the header
-  open at Detailed, everything open at Verbose, detail in exactly one place); `Ctrl+O` opens the last three turns at
-  Verbose; `Enter` on a header toggles that turn.
-- **Request rows.** A pending approval (`approval/asked` without `approval/decided`, matched to the tool call by
-  `callId`) or plan review (`userQuestions` projection, `intent.callId`) is the newest stream row, open, with today's
-  content: the command and `⚠ deletes files` (Δ15), the diff, or the plan as markdown. The decision card stays in the
-  editor slot (slice 2e) and `plan-document.ts` retires.
-- **Selection and search.** `Alt+↑` from the prompt focuses the newest row; `Enter` expands, `c` copies the row's
-  content, `Ctrl+G` opens it in `$EDITOR`, `Esc`/`Alt+↓` return. `Ctrl+F` opens `StreamSearch` under the stream; matches
-  are computed over the frontend transcript models (so details a level hides still match), the turn holding a match
-  opens at Verbose, `focusItem` selects the current match, and matched text is `warning` + `strong`.
-- **Host and performance.** The conversation slot becomes a node slot (slice 1.10). Items are memoized frozen snapshots
-  keyed by entry id, content revision, level, and disclosure, so `freezeWire` keeps their identity and the engine
-  (§4.1) skips their admission, compilation, and painting; only the live turn's items are rebuilt per publish. The
-  engine was measured on a synthetic stream in Phase 1, so this phase supplies stable identities, not a new cache. Live
-  markdown keeps the streamed markdown component with its bounded tail. The window of mounted turns and the passive
-  scroll linearization stay; the `pill` shows `↓ N new · End` while scrolled away.
-
-Scenes 17, 18 (every level, running on and off, every request card), 19 (style A), 20, 21. Tests: the W4 budget of §7.1
-on the real transcript (a 2,000-turn fixture republishing a streaming turn at 10 Hz) with its wall-clock report
-against today's frame time, selection and search specs, the `transcript/` width scans, and a PTY smoke for `Alt+↑`,
-`c`, `Ctrl+F`, and `Esc`.
-
-### Phase 7 Finish
+### Phase 8 Finish
 
 - Website: every feature page of spec §7 in both languages (`features/*.md`, `reference/keys.md`, `plugins/*.md`), the
-  screenshot gallery, and a LAN preview for acceptance (R14).
-- The three shipped skills in `packages/mayfly/presets/mayfly-cordis/skills/` teach `patterns`, views panes, named
-  actions, and the new nodes (`pnpm run check:agent-docs`).
+  screenshot gallery, and a LAN preview for acceptance (R14). Each component already updated the pages of its own API
+  when it was finalized; this makes the site coherent as a whole.
+- The three shipped skills in `packages/mayfly/presets/mayfly-cordis/skills/` teach the final API: `patterns`, views
+  panes, named actions, and the node kinds (`pnpm run check:agent-docs`).
 - `packages/ui/AGENTS.md`, `packages/mayfly/AGENTS.md`, `examples/AGENTS.md`, and `docs/interaction-model.md` describe
-  the new contracts as current behavior (slice 1.11 already covers the foundation); the spec's *Today* lines and the
-  reference backlog rows that shipped are removed.
-- Remove what the design retired: `CURRENT_MARK`, `SELECT_POINTER`, the moon and braille tables, `tide`, the legacy
-  autocomplete adapter, `StatusFooterComponent`, `plan-document.ts`, the todo pane.
-- Release: one release line carries the finished UI (`pnpm run check:pack`, `pnpm release:preflight <version>`). The
-  `@ephemeral-ai/mayfly-ui` additions are complete, and so releasable, from the Phase 1 merge on.
+  the final contracts; the spec's *Today* lines and the reference backlog rows that shipped are removed. The prototype
+  and its scripts retire unless the owner keeps them as a design archive: the finalized spec is the design.
+- No cleanup list: each component deleted what it replaced (D23). A final search for unused exports and modules confirms
+  nothing is left behind.
+- Release: one release line carries the finished UI, with the incompatible `@ephemeral-ai/mayfly-ui` versioned as a
+  breaking release (`pnpm run check:pack`, `pnpm release:preflight <version>`, `docs/package-release.md`).
 
 ## 6. Mayfly components: facts, hosts, and writes
 
 Every module in the second column is *new* in `packages/mayfly/src/components/` (D7). The facts, hosts, and writes are
-the existing APIs named in each row.
+the existing APIs named in each row: they are where a component starts, and review may change any of them (D21). The
+code each component deletes is listed with its group in §5.
 
 | Component (spec §6.2) | `components/` module | Facts from | Published through | Writes | Phase |
 | --- | --- | --- | --- | --- | --- |
-| `StatusBar` (row 1 entries) | `status-entries.ts` | `status-basic-model.ts`, `sessionModeSnapshot` (plan projection, permission knobs), the token meter in `status-context.ts`, `status-cwd.ts`, `status-git.ts`, `deepseekAccount.getBalance()`, `mayflyConversations.snapshot()` | `mayflyStatus` | — | 3 |
-| `ViewRow`, `ViewPanel` | `status-rows.ts`, `views.ts` | `mayflySessionFacts` (`agentCalls`, `todos`), `child-agent-model.ts`, `jobs.list/get`, the `goal` projection (`phase`, `roundsStarted`, `maxGoalRounds`, `blockedReason`) | views panes; the footer slot | `mayflyConversations.open/display`, `subagents.interrupt`, `jobs.kill` | 3 |
-| `ActivityRow` | `activity-row.ts` | `mayflySessionFacts` (phase, activity detail, `turnStartedAt`, `outputProgress`, `flowUp`), `mayfly/request-stop-changed`, tips | the `mayfly.pane.activity` bottom pane | — | 4 |
-| `Banner` | `banner.ts` | the notification lane, the token meter, the account, the session controller | the activity gap; the notice row under the editor (today's hint line) | — | 4 |
-| `ToolLine`, `EditCard`, `WriteCard` | `tool-rows.ts` | `transcript/tool-model.ts`, `present.ts` | inside `TranscriptView` | — | 4, 6 |
-| `CompactionRow` | `compaction-row.ts` | `compaction/start`, `/summary`, `/end`; the token meter | inside `TranscriptView` | — | 4 |
-| `TranscriptView`, `StreamSearch` | `transcript-view.ts` | frontend transcript models, the presentation policy, the live assistant stream, `userQuestions`, the approval audit events | the conversation slot | clipboard, `$EDITOR` | 6 |
-| `Editor` | `editor.ts` | the `title` projection, the editor state, the queue, history, attachments, the commands, files, and skills catalogs, `mayflyConversations` access | the editor dock slot | the prompt-submit pipeline, steer, attachments | 5 |
-| `DecisionCard` | `decision-card.ts` | `approval/request` (`toolName`, `callId`, `reason`, `displayReason`), `user-questions/request` with `intent.kind: 'plan-review'` | `requestOverlay` (editor presentation, `armMs`) | `ApprovalOutcome`, allowances, steer, `AskUserQuestionAnswer` | 2e |
-| `QuestionsPanel` | `questions.ts` | `AskUserQuestionItem[]` (`header`, `options`, `multiSelect`, `detail`) | `requestOverlay` | `AskUserQuestionAnswer` (`selected`, `custom`) | 2e |
-| `ModelPicker`, `EffortPicker` | `model-picker.ts` | `catalogRows`, `currentModelSelection`, `formatContextWindow` | `openAgentOverlay` | `commitModelSelection` | 2a |
-| Permission presets | `permission-presets.ts` | `permissionPresets.names`, `optionOf`, `current` | overlay | `/permission <name>` through `commands` | 2a |
-| `SettingsPanel` | `settings-panel.ts` | `settings.describe()`, `settingsProjection` | overlay | `settings.mutate` (revision-checked) | 2b |
-| `SessionsPanel` | `sessions-panel.ts` | `session-workspaces-model.ts`, `session-list-model.ts`, `session-list-reads.ts` | overlay | resume, new, clipboard | 2b |
-| `StatusPanel` | `status-panel.ts` | `session-info-model.ts`, `usage.ts`, `sessionStats`, the cross-session index, models.dev prices, `mcp-servers.ts`, the account | overlay | refresh, open the top-up link | 2c |
-| `AccountPanel`, `AccountContent` | `account.ts` | `deepseekAccount.getState()`, `getBalance()`, `AccountView.links` | overlay; inside onboarding | `startSignIn`, `cancelSignIn`, sign out (`provider-account.ts`) | 2c |
-| `Onboarding` | `onboarding.ts` | `welcome.ts`, `provider-onboarding.ts`, the account, `permissionPresets` | overlay | settings, credentials (`provider-store.ts`), `/permission` | 2c |
-| `PluginMarketplace` | `marketplace.ts` | `MarketIndex` (`plugin-market/catalog.ts`), the profile manifest | overlay | `plugin-market/installer.ts` | 2d |
-| `CommandPalette`, `FilePicker` | `editor.ts` (completion rows) | `commands.list(agent)`, `slash-filter.ts`, `createFileMentionProvider` | the editor | insert, `$EDITOR` | 5 |
-| `ChangedFiles` | `changed-files.ts` | the session's edit and write tool models | overlay from `/changes` | `$EDITOR` at a line | 2f |
-| `RewindPanel` | `rewind.ts` | `rewindCandidates(session.snapshotEvents())` | editor overlay | `mayfly/request-rewind` | 2f |
-| `KeyHelp` | `key-help.ts` | `mayflyKeymap.list()`, `SHARED_KEY_REFERENCE`, commands | overlay (`/help`, `?`) | — | 2f |
-| `JobOutput` | `job-output.ts` | `jobs.get`, `read`, `readAt` | overlay | `jobs.kill` | 2f |
-| `TracePanel` | `trace.ts` | `buildSessionEventRecords`, `aggregateTraceItems` | overlay | clipboard, `$EDITOR` | 2f |
-| `KeybindingsPanel` | `keys-panel.ts` | `mayflyKeymap.list()` | overlay from `/keys` (*new*) | `bind`, `reset`, settings | 2f |
+| `StatusBar` (row 1 entries) | `status-entries.ts` | `status-basic-model.ts`, `sessionModeSnapshot` (plan projection, permission knobs), the token meter in `status-context.ts`, `status-cwd.ts`, `status-git.ts`, `deepseekAccount.getBalance()`, `mayflyConversations.snapshot()` | `mayflyStatus` | — | 5 |
+| `ViewRow`, `ViewPanel` | `status-rows.ts`, `views.ts` | `mayflySessionFacts` (`agentCalls`, `todos`), `child-agent-model.ts`, `jobs.list/get`, the `goal` projection (`phase`, `roundsStarted`, `maxGoalRounds`, `blockedReason`) | views panes; the footer slot | `mayflyConversations.open/display`, `subagents.interrupt`, `jobs.kill` | 5 |
+| `ActivityRow` | `activity-row.ts` | `mayflySessionFacts` (phase, activity detail, `turnStartedAt`, `outputProgress`, `flowUp`), `mayfly/request-stop-changed`, tips | the `mayfly.pane.activity` bottom pane | — | 3c |
+| `Banner` | `banner.ts` | the notification lane, the token meter, the account, the session controller | the activity gap; the notice row under the editor (today's hint line) | — | 3c |
+| `ToolLine`, `EditCard`, `WriteCard` | `tool-rows.ts` | `transcript/tool-model.ts`, `present.ts` | inside `TranscriptView` | — | 3b |
+| `CompactionRow` | `compaction-row.ts` | `compaction/start`, `/summary`, `/end`; the token meter | inside `TranscriptView` | — | 3c |
+| `TranscriptView`, `StreamSearch` | `transcript-view.ts` | frontend transcript models, the presentation policy, the live assistant stream, `userQuestions`, the approval audit events | the conversation slot | clipboard, `$EDITOR` | 3a, 3e |
+| `Editor` | `editor.ts` | the `title` projection, the editor state, the queue, history, attachments, the commands, files, and skills catalogs, `mayflyConversations` access | the editor dock slot | the prompt-submit pipeline, steer, attachments | 4 |
+| `DecisionCard` | `decision-card.ts` | `approval/request` (`toolName`, `callId`, `reason`, `displayReason`), `user-questions/request` with `intent.kind: 'plan-review'` | `requestOverlay` (editor presentation, `armMs`) | `ApprovalOutcome`, allowances, steer, `AskUserQuestionAnswer` | 3d |
+| `QuestionsPanel` | `questions.ts` | `AskUserQuestionItem[]` (`header`, `options`, `multiSelect`, `detail`) | `requestOverlay` | `AskUserQuestionAnswer` (`selected`, `custom`) | 6e |
+| `ModelPicker`, `EffortPicker` | `model-picker.ts` | `catalogRows`, `currentModelSelection`, `formatContextWindow` | `openAgentOverlay` | `commitModelSelection` | 6a |
+| Permission presets | `permission-presets.ts` | `permissionPresets.names`, `optionOf`, `current` | overlay | `/permission <name>` through `commands` | 6a |
+| `SettingsPanel` | `settings-panel.ts` | `settings.describe()`, `settingsProjection` | overlay | `settings.mutate` (revision-checked) | 6b |
+| `SessionsPanel` | `sessions-panel.ts` | `session-workspaces-model.ts`, `session-list-model.ts`, `session-list-reads.ts` | overlay | resume, new, clipboard | 6b |
+| `StatusPanel` | `status-panel.ts` | `session-info-model.ts`, `usage.ts`, `sessionStats`, the cross-session index, models.dev prices, `mcp-servers.ts`, the account | overlay | refresh, open the top-up link | 6c |
+| `AccountPanel`, `AccountContent` | `account.ts` | `deepseekAccount.getState()`, `getBalance()`, `AccountView.links` | overlay; inside onboarding | `startSignIn`, `cancelSignIn`, sign out (`provider-account.ts`) | 6c |
+| `Onboarding` | `onboarding.ts` | `welcome.ts`, `provider-onboarding.ts`, the account, `permissionPresets` | overlay | settings, credentials (`provider-store.ts`), `/permission` | 6c |
+| `PluginMarketplace` | `marketplace.ts` | `MarketIndex` (`plugin-market/catalog.ts`), the profile manifest | overlay | `plugin-market/installer.ts` | 6d |
+| `CommandPalette`, `FilePicker` | `editor.ts` (completion rows) | `commands.list(agent)`, `slash-filter.ts`, `createFileMentionProvider` | the editor | insert, `$EDITOR` | 4 |
+| `ChangedFiles` | `changed-files.ts` | the session's edit and write tool models | overlay from `/changes` | `$EDITOR` at a line | 6f |
+| `RewindPanel` | `rewind.ts` | `rewindCandidates(session.snapshotEvents())` | editor overlay | `mayfly/request-rewind` | 6f |
+| `KeyHelp` | `key-help.ts` | `mayflyKeymap.list()`, `SHARED_KEY_REFERENCE`, commands | overlay (`/help`, `?`) | — | 6f |
+| `JobOutput` | `job-output.ts` | `jobs.get`, `read`, `readAt` | overlay | `jobs.kill` | 6f |
+| `TracePanel` | `trace.ts` | `buildSessionEventRecords`, `aggregateTraceItems` | overlay | clipboard, `$EDITOR` | 6f |
+| `KeybindingsPanel` | `keys-panel.ts` | `mayflyKeymap.list()` | overlay from `/keys` (*new*) | `bind`, `reset`, settings | 6f |
 
-## 7. Verification and acceptance
+## 7. Development loop, verification, and acceptance
 
-Every slice runs its gate (§1 rule 5) and, for runtime changes, a dedicated profile. The acceptance message names the
-profile, the primary workflow, the expected result, a narrow-width or lifecycle case, and nearby regressions:
+Phase 1 ran the full gate for every slice and compared every scene with the prototype cell by cell. From Phase 2 on,
+the owner's review in the running terminal decides, and tests record what was decided (D22, D25).
+
+**The loop for one component** (D23). A component, or a group whose parts only make sense together, goes through
+four steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<phase> script/install-dev.sh`):
+
+1. **Draft** (the agent). Build the component from its spec section and §5's starting points, with the prototype scene
+   as the sketch, on real data through the native services. Add the workbench scenarios for its states (§5, 2a),
+   including a narrow width and a lifecycle case. Run the incremental build and the typecheck; write no goldens and
+   chase no coverage yet.
+2. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside
+   `node docs/design/prototypes/ui-preview.mjs <scene>`; the agent shares frames at the agreed widths
+   (`pnpm run frame`), applies what the owner asks, and the change reaches the running terminal in seconds
+   (`pnpm run dev`). Any API may change in a round (D21). A performance problem seen in a round, or in the bench glance
+   for the scenario, is fixed in the round when it is local and recorded for Phase 7 when it is not. A round ends with
+   the owner's notes and the frames they refer to.
+3. **Finalize** (the owner says it is accepted). In one change: the component's spec section in
+   [component-library.md](./component-library.md) is rewritten as the accepted behavior and marked *Finalized*; the API
+   it needs is fixed;
+   the decision tests below are added; the code it replaces is deleted; `website/plugins/ui-reference.md` and its
+   English twin, the shot manifest, and any feature page it changes are updated (`pnpm run shots:sync`); the changed
+   gate runs; the change merges to `main`, and CI runs the full gate there.
+4. **Phase gate.** When a phase's last component is finalized: `pnpm run verify:full`, the bench report against the
+   previous phase, and the owner's acceptance of the whole phase on its profile (the table below). Then the profile and
+   any preview are removed. No release is cut until a phase passes its gate.
+
+A finalized component is reopened only at the owner's request, and then follows the same loop; incompatible changes
+are allowed again, with every caller updated in the same change.
+
+**Gate tiers.**
+
+| Tier | When | Runs | Leaves out |
+| --- | --- | --- | --- |
+| Round | Every edit in a review round | The incremental build (`build:changed`) and typecheck; the specs of the files the edit changed when it changed logic (`vitest related`); the workbench | Coverage, goldens, screenshots, the full suite |
+| Finalize | Once per component, before it merges | `pnpm run verify:changed -- --plan` and the gate it selects, with the new decision tests | The full gate, which CI runs on `main` |
+| Phase | The end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | `pnpm run verify:full` (with `check:pack` when selected), the bench report, the owner's acceptance | — |
+
+Until Phase 2b lands, the changed gate still selects the prototype parity specs and per-file coverage as it does today.
+
+**Decision tests** (D25). A finalized component carries tests for what was decided, and nothing written only to reach
+a line:
+
+- the accepted frames as goldens, at the widths and key walks the owner accepted, captured from the real renderer;
+- its keys, actions, and writes (with the exact Agent from `mayflyCurrentAgent`), and its availability and
+  confirmation rules;
+- its lifecycle: Fiber cleanup, stale results after unload, and state that survives a core reload;
+- a width-scan row for every row renderer, and English and Chinese strings (`tests/locale-catalog.spec.ts`);
+- a work-budget row (§7.1) when it sits on a hot path: the stream, a status tick, an editor key, a view tick.
+
+**The acceptance record.** The PR body lists the rounds (what changed and the frames that showed it), the accepted
+scenarios and widths, the API it changed with the callers it updated, the code it deleted, and the bench glance. The
+phase acceptance message names the profile, the primary workflow, the expected result, a narrow-width or lifecycle
+case, and nearby regressions:
 
 | Phase | Primary workflow | Narrow or lifecycle case | Regressions to check |
 | --- | --- | --- | --- |
-| 1, checkpoint A | Open the panels of slice 1.2 and an edit approval; read the work report against the baseline | 60 columns; `NO_COLOR=1`; ASCII glyphs; reduced motion | Website screenshots, theme switch, every existing panel after the engine refactor |
-| 1, checkpoint B | The `examples/ui-gallery` page of each basic scene beside the prototype; rebind a key and watch the hint row | Each slice's width ladders; a core reload with a draft and a list cursor | Existing panels still behave |
-| 1, checkpoint C | The prompt page (tokens, recall, completions), an inline image, a plugin view in row 2 | 40 columns; paste and IME; a hidden surface stops the clock | The main editor and the footer are unchanged; the `F6` order; the Website reference |
-| 2 | Each panel's scene, key by key | Each scene's narrow width; reopening after `/theme` | Commands that open the panels, drafts after a core reload |
-| 3 | A task with subagents, jobs, a goal, and todos; enter the views | 140 to 36 columns; a BTW side conversation | `F7`/`F8`, plugin status entries |
-| 4 | A turn through every phase; a manual `/compact` | 28 columns; interrupt during a tool | Elapsed time, tips, toasts |
-| 5 | Typing, completions, tokens, queue and recall, shell mode | 40 columns; a theme swap with a draft | Paste, IME, steer, external editor |
-| 6 | Levels, selection, copy, search, request rows | 60 columns; a 2,000-turn session | Scroll, streaming, BTW floor, subagent views |
-
-Each PR body lists the scenes it reproduces, the parity specs that pin them, and its work report, so a reviewer can run
-the scene beside the profile.
+| 2 | A component edit through the workbench loop; the foundation review (2d); a 1 MB diff, a long plan, and job output following its tail | 60 columns; `NO_COLOR=1`; ASCII glyphs; reduced motion; paste and IME | Website screenshots, theme switch, every existing panel |
+| 3 | A task through every activity phase with subagents, an edit approval, a plan review, and a manual `/compact`; levels, selection, copy, search | 28 and 60 columns; a 2,000-turn session; interrupt during a tool | Scroll, streaming, the BTW floor, subagent views, elapsed time, tips, toasts |
+| 4 | Typing, `/` `@` `#` completions, tokens, queue and recall, shell mode | 40 columns; a theme swap with a draft | Paste, IME, steer, the external editor |
+| 5 | A task with subagents, jobs, a goal, and todos; enter the views | 140 to 36 columns; a BTW side conversation | `F7`/`F8`, plugin status entries |
+| 6 | Each panel, key by key | Each panel's narrow width; reopening after `/theme` | Commands that open the panels, drafts after a core reload |
+| 7 | The phase's workloads, before and after | Narrow and wide terminals | Every finalized component's decision tests |
 
 ### 7.1 Work budgets
 
 A budget counts work, not time: nodes validated, units compiled, and rows painted for one steady-state step of a
 workload, read from the counters of slice 1.0. The counts are deterministic, so `tests/perf/work-budget.spec.ts` gates
 them in CI. Slice 1.0 records today's counts; from slice 1.1 the budgets below hold, and a slice that adds a painter
-adds its row.
+adds its row. From Phase 2 on, a component on a hot path adds its row when it is finalized, Phase 2c adds the content
+rows of §4.2, and Phase 7 sets the final budgets and bench ceilings for the architecture it leaves (D27).
 
 | Workload | Shape | One step | Budget for the step |
 | --- | --- | --- | --- |
@@ -1727,7 +1949,7 @@ existed and are now fixed from the measurements below: a steady-state publish-to
 percentile (W4 and W4-slot: 1.8 and 1.3 ms) and a key-to-rows time of 4 ms (W3: median 0.8 ms, 95th percentile
 2.4 ms; the rail and the prompt keystroke stay under 2.3 ms). Both hold at the sizes of W3 and W4, so they stand as
 proposed. The stream with item bodies (W4b) is not one of those sizes: its median is 3.1 ms and its worst sample 12 ms,
-which the report keeps in view for Phase 6.
+which the report keeps in view for the stream of Phase 3 and for Phase 7.
 
 **Phase 1 work report.** Counters are one step as the gate counts them (validated / compiled / rows painted / strings
 measured); milliseconds are the median and the 95th percentile of seven samples, taken as the median of three runs of
@@ -1797,23 +2019,26 @@ the slice:
 
 | Risk | Mitigation |
 | --- | --- |
-| The stream as one list is slower than today's cached components | The engine (§4.1) reuses every unchanged item; W4 gates it on a synthetic stream in Phase 1, before any surface depends on it, and on the real transcript in Phase 6; memoized frozen items keep identity through `freezeWire` |
-| The engine refactor changes behavior unnoticed | Slice 1.1 changes nothing visible: every existing spec, golden, and screenshot stays byte-identical, under per-file 100% coverage |
-| A cache serves a stale row | Keys are frozen-node identity plus explicit epochs (theme, keymap, locale, screen mode, width); the staleness spec of slice 1.1 changes each of them under a warm cache; a path that cannot prove a hit repaints |
-| The integration branch drifts from `main` | It is rebased at each checkpoint. Slices 1.0 and 1.1 change no behavior, so they can merge to `main` early, by a separate decision, if drift grows |
-| The API is frozen before its consumers exist | Every addition has a gallery consumer and a parity spec against the scene that uses it (D20); a later phase may still add an optional field, with the full gate |
-| Wrapping the pi-tui editor in a node control loses editing behavior | `prompt` reuses the existing adapter; drafts move to the frontend model; platform acceptance for paste and IME |
+| The look drifts with taste from round to round | A component is finalized once, by the owner, and its accepted frames become goldens; the finalized spec section states the decision; reopening needs the owner's request (D23) |
+| Review without a strict oracle misses a regression in another surface | Decision tests of every finalized component run on every change; the phase gate re-runs the owner's acceptance of the whole phase; CI runs the full gate on `main` |
+| An incompatible change breaks a plugin or an example | The change updates every caller in it (§1 rule 2): `check:examples`, the type fixtures, the shipped skills (`check:agent-docs`), and the Website reference; the breaking release is versioned as one (Phase 8) |
+| `main` shows old and new surfaces side by side | Expected within a phase (D24); no release is cut until the phase passes its gate |
+| Fewer tests let a deep bug through | Tests target decisions, lifecycle, Agent scope, and work budgets, where the deep bugs of Phase 1 were; the owner exercises real sessions in every round; `test:retained` and the bench ceilings stay in the full gate |
+| The stream as one list is slower than today's cached components | The engine (§4.1) reuses every unchanged item; W4 gates it on a synthetic stream since Phase 1 and on the real transcript in Phase 3a; memoized frozen items keep identity through `freezeWire` |
+| Lifting the text quota exposes the renderer to huge content | Cost is bounded by the rows in view (§4.2); one memory ceiling per surface names the surface that passes it; depth and the node quotas of containers that are not lazy stay |
+| Local performance fixes pile up into an incoherent architecture | Rounds fix only local problems and record the rest; Phase 7 restructures on measurement and resets the budgets (D27) |
+| A cache serves a stale row | Keys are frozen-node identity plus explicit epochs (theme, keymap, locale, screen mode, width); `test:retained` repaints on every hit and fails on a difference |
+| Wrapping the pi-tui editor in a node control loses editing behavior | `prompt` reuses the existing adapter; drafts live in the frontend model; platform acceptance for paste and IME at the Phase 4 gate |
 | Variant B grants on a stray key | The arm delay (slice 1.8) with a replay test; every unprompted card sets `armMs` |
 | Key scopes break muscle memory or collide | The key audit spec; the D6 table in the Website key references; `preferPlain` for terminals that eat Alt |
-| Public contract growth breaks plugins | Additive fields only; `check:examples` and the published-package spec in every slice from 1.3 to 1.10; the type fixtures of slice 1.11 |
 | Cross-session Usage reads are expensive | One listing per refresh, bounded cold reads, revision-keyed cache, a loading state that never blocks |
 | A plugin `pattern` regex is slow | Capped at 256 characters and evaluated only on commit |
 | The views lane changes `F6` focus order | Views first, then interactive panes, documented in `reference/keys.md` |
-| Screenshot churn hides regressions | Shots refresh once per checkpoint in Phase 1 and once per later phase; parity specs catch visual drift first |
 
 ## 9. Traceability
 
-Backlog items of the reference (§6) and where they land. Items the decisions removed are marked.
+Backlog items of the reference (§6) and where they land, by the 2026-10-09 phases. Items the decisions removed are
+marked.
 
 | Slice or phase | Backlog IDs |
 | --- | --- |
@@ -1830,24 +2055,25 @@ Backlog items of the reference (§6) and where they land. Items the decisions re
 | 1.10 | R7, R20 (the lane and the slot) |
 | 1.11 | — |
 | 1.12 | D3 (the clock armed only by what moves on screen) |
-| 2 | B1, E2, E3, G5, G7, R8, R10, R11, R15, R16, R17, R18, R21, R23, R24, R25 |
-| 3 | B4, C4, G16, G17, G23, R6, R7, R20 |
-| 4 | G10, G13, G20, G21, H4, H5, R1, R2, R5 |
-| 5 | B4, G15, G18, G19, H7, H8, R11, R20 |
-| 6 | A4, G11, G14, H2, H6, R3, R12, R19, R23 |
-| 7 | R14 |
+| 2 | — (the workbench, the gate tiers, and content at any size come from D22, D25, and D26, not from the backlog) |
+| 3 | A4 (transcript), B1, G5, G7, G10, G11, G13, G14, G20, G21, H2, H4, H5, H6, R1, R2, R3, R5, R8, R12, R19, R23 |
+| 4 | B4 (border), G15, G18, G19, H7, H8, R11 (`?`), R20 (editor) |
+| 5 | B4 (chips), C4, G16, G17, G23, R6, R7, R20 (status) |
+| 6 | E2, E3, G7, R10, R11, R15, R16, R17, R18, R21, R24, R25 |
+| 7 | — (D27) |
+| 8 | R14 |
 | Removed | A3 (not adopted), F1 (not in the design), delete session in R10/R18 (D5) |
 
 The reference's implementation questions, answered:
 
 1. **Balance:** `deepseekAccount.getBalance()`, account sign-in only (§2.2).
-2. **Keys:** D6 and the key audit; `↑/↓` queue-then-history recall is today's `withdrawQueued` (Phase 5).
-3. **Search:** over the frontend transcript models, mapped to stream item ids (Phase 6).
+2. **Keys:** D6 and the key audit; `↑/↓` queue-then-history recall is today's `withdrawQueued` (Phase 4).
+3. **Search:** over the frontend transcript models, mapped to stream item ids (Phase 3e).
 4. **`filterMode: 'slash'`:** `/` starts or resumes the kept query; numbered rows keep digits only while not typing;
    `acceptActionId` is unaffected (slice 1.4).
 5. **Loads more and path completion:** list `maxRows` windowing and pane `load`/`loadMore` paging; a path field gets
    `suggestions` from its owner (slices 1.4 and 1.6).
 6. **Session deletion:** not in the Harness (D5).
-7. **Trace turns and Usage counts:** derived in Mayfly; the counts come from the bounded cross-session index (slices
-   2c and 2f).
+7. **Trace turns and Usage counts:** derived in Mayfly; the counts come from the bounded cross-session index (groups
+   6c and 6f).
 8. **Keymap persistence:** the `mayfly` settings namespace; `/keys` lists seen and overridden actions (slice 1.7).

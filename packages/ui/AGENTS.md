@@ -27,10 +27,9 @@ objects, or mutable product state.
 - Identity is the cache key. A node that reaches core is a frozen snapshot, and
   core reuses admission, compilation, and painted rows by that identity, so a
   builder keeps an unchanged sub-node identical (`freezeWire` of a snapshot
-  returns it) and never rebuilds it to "refresh" it. A field that an old
-  caller never wrote stays optional with a default (`selectedIds` is `[]`).
-- The [UI design](../../docs/design/component-library.md) is the target for a planned
-  refresh, not shipped behavior; its
+  returns it) and never rebuilds it to "refresh" it.
+- The [UI design](../../docs/design/component-library.md) is the starting sketch for the
+  Mayfly components; a section the owner has finalized describes accepted behavior. Its
   [implementation reference](../../docs/design/component-library-reference.md) holds the
   builder and event tables. A genuinely new node kind lands as contract + builder + core
   validator/painter/grammar + width-scan coverage, never as an ad-hoc renderer.
@@ -56,7 +55,7 @@ objects, or mutable product state.
   paths. Unsuccessful replies cannot dismiss feedback; ordinary dirty dismissal
   uses confirmation, while explicit `discard` supports native decision outcomes.
   `presentation: 'editor'` uses the same overlay lifecycle and activation order.
-- Contract fields stay additive and renderer-neutral: action `key` is a key id
+- Contract fields stay renderer-neutral: action `key` is a key id
   that core validates (no shared navigation keys, no repeats per page, no
   printable keys beside filterable lists, modifiers only in editor
   decorations); confirmations, row availability, numbering mode, and button
@@ -64,11 +63,14 @@ objects, or mutable product state.
 
 ## Verification
 
-The surface froze with Phase 1 (roadmap D16): a change to `src/` is an
-exception, additive and optional-field only, and takes the root full gate
-(`pnpm run verify:full`, `check:lib`, `check:examples`, and `check:pack` for
-distribution), a type fixture, and both Website reference pages with
-`script/shots/manifest.mjs`. Type fixtures in `tests/ui.compile.ts` cover every
+The surface has no compatibility layer (roadmap D21): a field, builder, or
+event changes, or goes, when the component being finalized needs it, and the
+change updates every caller (Mayfly, `examples/`, the gallery, the shipped
+skills) with no alias or deprecated path. A component's API is fixed when the
+owner finalizes that component (D23). A change to `src/` takes a type fixture,
+both Website reference pages with `script/shots/manifest.mjs`, `check:lib`,
+`check:examples`, and `check:pack` for distribution, under the gate tiers of the
+root instructions. Type fixtures in `tests/ui.compile.ts` cover every
 contract field, component inference with `memo`, explicit child boundaries, and
 rejection of custom kinds; `tests/types.spec.ts` compiles them against the built
 declarations, so build first.

@@ -10,8 +10,11 @@ This is the target design for Mayfly's terminal UI. It has two layers and one ru
   component may use nothing else, and a plugin can build anything a Mayfly component builds. The prototype
   enforces this (§9).
 
-It is a **design for review**. It does not describe the shipped renderer, and nothing in it is limited by the
-code. Where a section says *Today*, that is a one-line baseline so the change is visible; the full list of
+It is a **design for review** and the **starting sketch** of each Mayfly component: the implementation develops a
+component from its section with the owner in the running terminal, and the owner's acceptance is final
+([implementation-roadmap.md](./implementation-roadmap.md) D22, D23). A section marked *Finalized* describes the
+accepted behavior; any other section describes intent, does not describe the shipped renderer, and is not limited by
+the code. Where a section says *Today*, that is a one-line baseline so the change is visible; the full list of
 changes is in §7, and the decisions that still need an answer are in §8.
 
 Review it by running the prototype, which draws every component and every screen in a terminal:
@@ -2101,9 +2104,9 @@ builder.
 
 ### 6.4 API additions the design needs
 
-Building every screen from the basic components alone found the gaps below. Each is **additive** (a new optional
-prop or value, never a change to an existing one) and is specified in §3.5 or §4. Together they are what the
-implementation change adds to the UI API.
+Building every screen from the basic components alone found the gaps below, specified in §3.5 or §4. Phase 1 of the
+implementation added them to the UI API. Later phases change the API wherever finalizing a component needs it,
+incompatibly when that is the better design ([implementation-roadmap.md](./implementation-roadmap.md) D21).
 
 | Builder | Addition | Needed by |
 | --- | --- | --- |
@@ -2192,8 +2195,9 @@ implementation therefore differs from the prototype, are in
 10. **Unicode fallback.** The design assumes a Unicode terminal (braille, box drawing, `‹ ›`, `● ○ ◐`). A
     plain-ASCII fallback table (for example `●` → `(*)`, `○` → `( )`) is not drawn. Recommendation: specify it in
     the implementation change.
-11. **The API additions (§6.4).** Additive props on every basic component, one new builder (`ui.prompt`), and the
-    keymap. Recommendation: approve them as one change, since every screen in §5 depends on at least one.
+11. **The API additions (§6.4).** New props on every basic component, one new builder (`ui.prompt`), and the
+    keymap. Recommendation: approve them as one change, since every screen in §5 depends on at least one. (Approved;
+    Phase 1 built them.)
 12. **Core and the unused builders (§6.3).** Core uses 20 of the 22 builders. Recommendation: keep `sections` and
     `diagram` in the API for plugins and do not add a core-only path.
 13. **Trace data (§5.14).** The tree needs each event to carry its turn; today's aggregated trace items do not. If
