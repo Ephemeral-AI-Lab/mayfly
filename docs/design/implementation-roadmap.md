@@ -530,7 +530,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.5 | merged (#110) | `feat/ui-foundation-1-5` | Five parts; full gate green with 100% coverage; scene 6 (all four pages and the rail's walks) and scene 11 page 2 pinned; the `Esc back` entry of scene 5 closed; `W12-rail` budget; Δ29 approved |
 | 1.6 | merged (#109) | `feat/ui-foundation-1-6` | Two parts; full gate green; scenes 3, 4, 12 and scene 1 page 1's form block pinned (Δ27, Δ28 approved); one `Esc back` hint left pending for 1.5; no budget change |
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
-| 1.9b | built | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
+| 1.9b | merged (#111) | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12-prompt` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
 | 1.8b | not started | `feat/ui-foundation-1-8b` | Patterns. Needs: 1.3 to 1.6, 1.8a |
 | 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
 | Checkpoint A / B / C | pending | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11 |
@@ -1102,10 +1102,10 @@ adopts one pattern as the plugin-side proof. Scenes 11, 12.
 These are the two new node kinds. The main editor and the transcript do not use them until Phases 5 and 6; here a
 gallery page mounts each (D20).
 
-**Prompt** (slice 1.9b, built). `MayflyPromptNode` is as §3.2, with `ui.prompt({ id, … })`, and joins `MayflyUiNode`; status
+**Prompt** (slice 1.9b, built, merged as #111). `MayflyPromptNode` is as §3.2, with `ui.prompt({ id, … })`, and joins `MayflyUiNode`; status
 nodes and editor decorations admit neither new kind (the editor-mode validator refuses it as a focus-taker). It landed in six
 parts: the contract, validator, model, and painter (1); the surface model, editor, grammar, and keys (2); scene 15 and
-`W12` (3); the gallery pane (4); the reference and shots (5); this text and the gate (6).
+`W12-prompt` (3); the gallery pane (4); the reference and shots (5); this text and the gate (6).
 
 - *Admission* (`core/ui-validator-prompt.ts`, new). A draft, a recalled message, and a `reset` value share a prompt-text budget
   of 100,000 characters per tree (`MAYFLY_UI_MAX_PROMPT_TEXT`), apart from the tree's 20,000; at most 50 tokens (`id`, `label`,
@@ -1150,7 +1150,7 @@ parts: the contract, validator, model, and painter (1); the surface model, edito
 - *Choices.* Composition (an IME preedit) is the terminal's, and pi-tui reports none, so the placeholder hides when text
   commits; the manual checks are in `docs/platform-acceptance.md`. `recallLabel` words the history entries and `submitLabel`
   words `Enter` in the hint row; both are this slice's reading of the two fields. A wide-token row folds the oldest tokens first.
-  The `W12` budget (a prompt among 120 static rows, one key) is 0 / 0 / 6 (validated / compiled / rows): the prompt's own rows.
+  The `W12-prompt` budget (a prompt among 120 static rows, one key) is 0 / 0 / 6 (validated / compiled / rows): the prompt's own rows.
 - *Tests.* `ui-validator-prompt.spec.ts`, `ui-interaction-prompt.spec.ts`, `ui-prompt.spec.ts`, `ui-prompt-keys.spec.ts`
   (hint rows in every state, every key and event, republish, focus), `ui-prompt-editor.spec.ts` (the real editor, the
   adversarial width scan), the width scan, the node-slot test, the gallery's `prompt.spec.ts`, and the type fixtures in
