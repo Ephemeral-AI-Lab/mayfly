@@ -1,6 +1,6 @@
 /** Strict parity for the scenes of slice 1.2 (the visual language): scene 1 pages 1-5, 7 p1, 8 p3-p4, and 9 p3. */
 import { describe, expect, it } from 'vitest'
-import { ui } from '../../../ui/src/index.ts'
+import { patterns, ui } from '../../../ui/src/index.ts'
 import { caption, diffReport, frameDiffs, goldenRows, paint } from './scene.ts'
 import { createRealSurface, parityComponents, PROBE_PALETTE } from './parity.ts'
 import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
@@ -133,6 +133,24 @@ describe('scene 1 Marks and tokens, pages 2 to 5', () => {
       caption('inline in the footer of an open surface; a toast in the activity row gap otherwise'),
     )
     expect(await pageDiffs('01-marks-and-tokens', 4, 'page 5/6 (Ctrl+N): feedback severities: glyph plus word, never color alone', body, 100)).toBe('')
+  })
+})
+
+describe('scene 1 Marks and tokens, page 6: breakpoints', () => {
+  it('draws patterns.splitView at 100 and 70 columns and the degraded list at 40', async () => {
+    const panel = patterns.splitView({
+      list: ui.list({ id: 'bp', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Loop', detail: 'official · T W', right: [mu('1.4.0')] }, { id: 'b', label: 'Git Helper', detail: 'community · T W', right: [mu('update 1.3.0')] }] }),
+      detail: ui.fields([{ label: 'Loop', value: [S('official · Automation')] }, { label: 'Status', value: [S('✓ installed 1.4.0', 'success')] }]),
+      listWidth: 50,
+    })
+    const narrow = ui.list({ id: 'bp2', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Loop', right: [S('✓', 'success')] }, { id: 'b', label: 'Git Helper', right: [S('↑', 'warning')] }] })
+    const rows = [
+      ...paint(caption('page 6/6 (Ctrl+N): breakpoints: one list-and-detail panel at three widths'), 100), '',
+      ...paint(caption('≥ 100 columns: split view'), 100), ...paint(panel, 100), '',
+      ...paint(caption('60–99 columns: one column, Enter opens the detail'), 100), ...paint(panel, 70), '',
+      ...paint(caption('below 60: the name and one glyph (the list degrades; the detail opens on Enter)'), 100), ...paint(narrow, 40),
+    ]
+    expect(diffReport(await frameDiffs(goldenRows('01-marks-and-tokens', 'pages', 5), rows, 100, [], pendingFor('01-marks-and-tokens', 'pages', 5)))).toBe('')
   })
 })
 

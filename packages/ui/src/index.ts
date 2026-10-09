@@ -14,3 +14,10 @@ export {
   type MayflyComponentDefinition,
   type MayflyComponentFactory,
 } from './builders.ts'
+export {
+  patterns,
+  type MayflyDecisionPanelProps,
+  type MayflyRailPanelProps,
+  type MayflySplitViewProps,
+  type MayflyStatusPageProps,
+} from './patterns.ts'
