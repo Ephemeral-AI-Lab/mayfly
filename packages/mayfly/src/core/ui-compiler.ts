@@ -2885,8 +2885,13 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'number-step': {
         const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
         const next = stepNumber(text.field as Extract<MayflyFormField, { readonly kind: 'number' }>, String(this.state.fieldValue(text.field, text.key)), intent.delta)
-        if (next === undefined) this.navigate(intent.delta < 0 ? 'left' : 'right', controls, active)
-        else this.state.setValue(text.key, next)
+        if (next !== undefined) this.state.setValue(text.key, next)
+        else {
+          // At its lower limit a number gives `←` to the rail when the surface has one, else to the control beside it.
+          const rail = intent.delta < 0 ? railGroupFor(controls, this.state.lastIndex) : undefined
+          if (rail !== undefined) this.moveTo(groupTarget(controls, rail, this.state.groupActiveKeys.get(rail)), controls)
+          else this.navigate(intent.delta < 0 ? 'left' : 'right', controls, active)
+        }
         return
       }
       case 'form-save': {

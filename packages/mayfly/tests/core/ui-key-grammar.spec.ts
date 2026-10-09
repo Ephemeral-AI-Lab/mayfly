@@ -137,7 +137,7 @@ describe('tabs, rails, and the ← ladder in the grammar', () => {
 
   it('hands ← to the rail from every control that has no ← of its own', () => {
     const rail = { railBack: true }
-    for (const control of [{ kind: 'scroll' }, { kind: 'empty-list' }, { kind: 'toggle' }, { kind: 'submit' }, { kind: 'text', field: 'number', editing: false, enterSubmits: false }] as const) {
+    for (const control of [{ kind: 'scroll' }, { kind: 'empty-list' }, { kind: 'toggle' }, { kind: 'submit' }] as const) {
       expect(intents({ control, ...rail }, ACTION_SEGMENT_LEFT), control.kind).toEqual(['rail-back'])
       expect(labels({ control, ...rail }), control.kind).toMatchObject({ label: 'labels' })
       expect(labels({ control }), control.kind).toBeUndefined()

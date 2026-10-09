@@ -272,3 +272,18 @@ describe('Escape returns to the home control first', () => {
     expect(view.escapes()).toBe(0)
   })
 })
+
+describe('the ← of a number field beside a rail', () => {
+  const numberPage = (id: string): MayflyUiNode => ui.form({ id: `form.${id}`, fields: [{ id: 'n', kind: 'number', label: 'Count', value: 2, min: 1, max: 3 }] })
+
+  it('steps while it can, then hands the key to the rail at its lower limit', () => {
+    const view = open(settings(numberPage))
+    view.press(KEY.right)
+    expect(view.rows().some(row => row.includes('‹ 2 ›'))).toBe(true)
+    view.press(KEY.left)
+    expect(view.rows().some(row => row.includes('‹ 1 ›'))).toBe(true)
+    expect(view.hint()).not.toContain('labels')
+    view.press(KEY.left)
+    expect(view.hint()).toBe('↑/↓ labels · → open · Esc close')
+  })
+})
