@@ -139,6 +139,7 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ30 | 6 | A form select stepped back to its inherited value unpins: `(inherited)`, no `•`, `Delete use inherited` | The form keeps the override: `(override)`, the `•` mark, `Delete reset` | Settings contract: Mayfly settings preserve equal-value explicit overrides; approved by the reviewer |
 | Δ31 | 11 | A card drawn at 80 columns shows four hint fragments (the kit counts the frame's width) | Three fragments: the renderer counts the width inside the frame (76) | The hint limit is the painter's existing behavior; approved by the reviewer |
 | Δ32 | 11 | A printable accelerator (`c copy name`) runs and is hinted from anywhere, the note field included | It is neither bound nor hinted while a text field holds focus, because the key is the field's text | The key grammar's existing rule; approved by the reviewer |
+| Δ33 | 23 | A list being filtered steps its thinking strip with `←/→` without hinting it (49 cells per frame in the `filter` walk) | The hint row names `←/→ thinking` while the strip steps, in any state of the list | Spec §4.5 ("the cue is true"; as Δ29); found by the model-picker composition spike (draft PR #114); approved by the reviewer |
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and

@@ -111,4 +111,10 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
     summary: 'A printable accelerator (`c copy name`) is neither bound nor hinted while a text field holds focus, because the key is the field\'s text; the kit runs it from anywhere',
     reason: 'the key grammar never lets a printable accelerator pre-empt a control that takes typed text (existing behavior); approved by the reviewer',
   },
+  {
+    id: 'Δ33',
+    scenes: [23],
+    summary: 'While a list with a thinking (segment) strip is being filtered, the hint row names `←/→ thinking` (49 cells per frame in the `filter` walk, frames 1 and 2); the kit steps the strip with `←/→` while searching but does not hint it',
+    reason: 'spec 4.5 ("the cue is true", as Δ29); approved by the reviewer after the model-picker composition spike',
+  },
 ]
