@@ -550,7 +550,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
   each slice's gallery page is a new file `examples/ui-gallery/src/groups/<slice>.ts` wired by one import line; each
   slice edits only its own Status row and its own slice text.
 - *Scenes that span slices* (1: 1.2 and 1.4; 7: 1.2 and 1.3; 11: 1.5 and 1.8b; 12: 1.6 and 1.8b; 2: 1.7) list the
-  walks they cannot match yet in `tests/design/pending.ts`; slice 1.11 asserts the list is empty.
+  walks they cannot match yet in `tests/design/pending.ts`; slice 1.11 asserts that every remaining entry waits for Phase 3 or later and none for a `1.x` slice (`tests/design/pending.spec.ts`).
 - *Gates.* Narrow checks run freely; `pnpm run verify:full` runs under one lock, so at most one runs at a time.
   Before a PR opens, and after each sibling merges, the branch rebases on `feat/ui-foundation` and reruns its checks.
 - *Review.* One PR per slot is in flight; a PR is a series of commits that are each green, as 1.1 was.
