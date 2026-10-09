@@ -1338,7 +1338,7 @@ against Phase 3 (and 1.4 for the list painter). Open question for slice 1.11: it
    the gate runs them (before, nothing did). The audit of `packages/ui` against §3.2 and §3.4 found no missing field,
    event, builder, or service member. `check:lib`, `check:examples`, and `check:pack` pass.
 6. **Reference.** The final pass over `website/plugins/ui-reference.md` and its English twin, and `ui-kit.md`: every
-   §3 field, event, and builder is documented in both languages, the 58 shots are fresh (`shots:check`), and the
+   §3 field, event, and builder is documented in both languages, all 60 component shots are fresh (`shots:check`), and the
    Website builds. The reference now states identity as the cache key and the `memo` rule.
 7. **Instructions.** `packages/ui/AGENTS.md` and `packages/mayfly/AGENTS.md` describe, as current behavior, identity as
    the cache key and the engine, the node slot, the views lane, the keymap scopes and named actions, the work-budget
