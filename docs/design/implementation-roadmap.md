@@ -542,7 +542,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.12a | built (PR pending merge) | `feat/ui-foundation-1-12a` | Frame performance, measurement. Full gate green with 100% coverage; no runtime behavior change; the frame workloads W13 to W17 with their baseline, six frame counters, `pnpm run bench:pty` |
 | 1.12b | built (PR pending merge) | `feat/ui-foundation-1-12b` | Frame performance, wasted work. Full gate green with 100% coverage; no visible change (goldens and screenshots identical); a tick on a side pane is one pass and no control walk (W14: 949 renders to 385, 328 walks to 0); the gallery's frame 206 ms to 63 ms and its key 164 ms to 40 ms; without a pane, typing and the panels' cursor keys are back at `main`'s cost except the model picker's edge |
 | 1.12c | built (PR pending merge) | `feat/ui-foundation-1-12c` | Frame performance, retained rows. Full gate green with 100% coverage; goldens and screenshots identical, and every suite also passes with the stale-row check on; a key beside an unchanged pane paints no leaf (W13: 447 renders to 0), a loader below the fold does not tick (W14: no tick), a visible one repaints 2 rows (W15); the gallery idles at 0% CPU (from 113%) and its key takes 6 ms (from 164 ms) |
-| 1.12d | planned | `feat/ui-foundation-1-12d` | Frame performance, the gate: final frame budgets and the coarse PTY ceilings in `verify:full` |
+| 1.12d | built (PR pending merge) | `feat/ui-foundation-1-12d` | Frame performance, the gate. Full gate green with 100% coverage; `test:retained` (the stale-row check) and `bench:pty:assert` (coarse ceilings on the real terminal) run in the full gate and in CI; the instructions describe the retained-row rules |
 | Checkpoint A / B / C | pending the reviewer | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11; the first run found the frame cost of slice 1.12, so the checkpoints resume on the integration profile once 1.12 is merged |
 
 **Working in parallel.** Up to three slices are in flight, each in its own worktree and agent.
@@ -1456,8 +1456,13 @@ It lands in four parts, each a PR with the bench table:
    - *Not done.* A frame beside the gallery still costs about 5 ms, all of it pi-tui painting the pane's visible
      boxes. A picker that holds other controls still lays out once per arrow at its edge (the model picker: 4.0 ms of
      CPU per key against 1.9 on `main`). An image is retained and repainted by the surface's repaint request.
-4. **1.12d, the gate** (planned). The final frame budgets, and `bench:pty --assert` in `verify:full` with ceilings
-   only a real regression trips.
+4. **1.12d, the gate** (built). `budgets.json` holds the counts of part 1.12c. `pnpm run test:retained`
+   (`script/test-retained.mjs`) runs every suite but the work budgets with `MAYFLY_UI_VERIFY_MEMO=1`; the full gate
+   and CI run it after coverage, and a changed-files gate runs it over the core, design, and e2e suites when a file a
+   compiled surface paints from changed. `pnpm run bench:pty:assert` runs the `gallery` and `focus` scenarios against
+   ceilings a real regression is ten times past (with a side pane: idle CPU 10%, key to paint 20 ms; without one: key
+   to paint 10 ms, 5 ms of CPU per typed key, 12 ms per cursor key), scaled by `BENCH_PTY_SLACK` (3 in CI); it runs
+   with the smoke. The root and `packages/mayfly` instructions state the retained-row rules and the two checks.
 
 ### Phase 2 Components area and panels
 

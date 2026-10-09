@@ -163,6 +163,34 @@ An unchanged subtree costs nothing on republish, so a painter that paints rows i
 written once in its cacheable form and brings its budget row. `list` reads
 `selectedIds` through `listSelectedIds` (the field is optional on the wire).
 
+An unchanged surface also costs nothing per frame. pi-tui lays a pane out on every
+frame of the terminal and renders a component once per stack that measures it, so
+every component `compileNode` returns answers a repeat render from memory
+(`retain` in `core/ui-compiler.ts`), and so do the parts pi-tui lays out one by one
+(a form's fields, a loader's row, a surface's head and tail). The rows hold for one
+epoch of the surface (`MayflyUiSurfaceRuntime.epoch`). The rules a painter lives by:
+
+- Whatever can change a row moves the epoch. A handled key, focus, `invalidate`,
+  and a new compile move it where they happen; a frame moves it for a new host
+  viewport, model revision, keymap revision, or completion state. State a painter
+  reads from anywhere else needs its own `touch()`, or the component is volatile.
+- A component that paints a live engine (the host editor, a prompt) is volatile:
+  it always paints, and no render that contains it is remembered. Keep volatile
+  components out of large trees.
+- A moving cell reads the clock through `loaderFrame()` or `progressValue()`. Its
+  render and the renders around it hold for one animation frame, a tick asks the
+  host for a frame without invalidating (`requestFrame`), and the clock is armed
+  only while the cell can be on screen (`core/ui-stacks.ts` places children; a
+  cell outside the window of its scroll view does not arm it).
+- A layout pass has one viewport, the frame the layout engine was given. A stack
+  child's `visible` must not adopt the unbounded viewport of a measuring render.
+- Stacks are `ColumnStack` and `RowStack`: pi-tui's rows, the row each child
+  starts at, and a horizontal stack that remembers composited rows.
+
+`pnpm run test:retained` runs the suites with `MAYFLY_UI_VERIFY_MEMO=1`: every
+memo hit paints again and throws when the rows differ. A stale row is a test
+failure there, not a report from a screen.
+
 The presentation (`core/presentation.ts`: glyph mode, monochrome, reduced
 motion, from the `mayfly` settings and `NO_COLOR`) is read when a theme provider
 and the components service are built, never per paint. A change restarts the
@@ -225,7 +253,13 @@ the work-budget gate of the foundation: `budgets.json` may not exceed
 `baseline.json` (the work of the slice 1.0 pipeline), W1 and W4 gate again through
 the node slot (`W1-slot`, `W4-slot`), a slice that adds a painter adds its row,
 and wall-clock time from `script/audit-performance.mjs` is reported with a change
-and gates nothing. `tests/design/deltas.ts` lists every accepted difference from the
+and gates nothing. W13 to W17 (`tests/perf/frame-workloads.ts`) count a whole frame
+through the alternate layout, the lanes, and the surface renderer (leaf renders,
+control walks, reconciliations, layout passes, clock ticks, keymap snapshots): a
+budget row gates the counters it names, and a change to the frame path
+(`core/terminal.ts`, `core/surface-renderer.ts`, the keymap, the editor-extension
+runtime) runs them. `pnpm run bench:pty:assert` holds the real terminal to coarse
+ceilings in the full gate. `tests/design/deltas.ts` lists every accepted difference from the
 prototype (roadmap section 2.3) and `tests/design/pending.ts` only walks that wait
 for Phase 3 or later; a new difference needs the reviewer's approval.
 

@@ -14,7 +14,9 @@ export function commandsForPlan(plan, { smoke = false } = {}) {
       ...(plan.checks.pack ? ['check:pack'] : []),
       ...(plan.checks.website ? ['website:build'] : []),
       'test:coverage',
-      ...(smoke ? ['smoke:happy'] : []),
+      // The suites again with every retained-row hit painted and compared, then the real terminal against coarse ceilings.
+      'test:retained',
+      ...(smoke ? ['smoke:happy', 'bench:pty:assert'] : []),
     ]
     return scripts.map(script => pnpm('run', script))
   }
@@ -49,6 +51,7 @@ export function commandsForPlan(plan, { smoke = false } = {}) {
   } else if (plan.tests.direct.length > 0) {
     commands.push(pnpm('exec', 'vitest', 'run', ...plan.tests.direct, '--reporter=dot', '--silent=passed-only'))
   }
+  if (plan.checks.retainedRows) commands.push(pnpm('run', 'test:retained', '--', 'packages/mayfly/tests/core', 'packages/mayfly/tests/design', 'packages/mayfly/tests/e2e.spec.ts'))
   if (smoke) commands.push(pnpm('run', 'smoke:happy'))
   return commands
 }

@@ -49,8 +49,9 @@ The executable selection rules are in `script/test-impact.mjs`,
 Use `pnpm run verify:full` instead of an additional `verify:changed` for broad,
 release, architecture, composition, or workflow changes. CI runs the full
 deterministic gate. Full verification includes screenshot freshness, coverage
-once, happy smoke, and a Website build when Website files changed; do not
-precede it with redundant plain tests. Distribution changes selected by the
+once, the stale-row check (`test:retained`), happy smoke, the PTY bench against
+its ceilings (`bench:pty:assert`), and a Website build when Website files
+changed; do not precede it with redundant plain tests. Distribution changes selected by the
 planner also run `check:pack`; a plain full gate does not pack. Release
 publication additionally requires `pnpm release:preflight <version>`, verified
 tarballs, and the human acceptance described below. Instruction and
@@ -74,6 +75,12 @@ shipped-skill changes run `check:agent-docs`.
   `pnpm run build`; ordinary emission can use `pnpm run build:changed`.
 - Screenshot updates use `pnpm run shots:sync` after build; `pnpm run shots:check`
   checks committed screenshots for staleness.
+- Frame cost is measured where a frame is painted. `tests/perf/frame-workloads.ts`
+  counts one frame through the alternate layout and the surface renderer, and
+  `pnpm run bench:pty` reports idle CPU and key-to-paint latency of the real CLI
+  under a PTY (`--scenario=gallery` loads a side pane, `--prof` writes a CPU
+  profile). Report the bench with a change to the frame path; a compiled
+  component's own render count is not a frame.
 
 ## Worktree and acceptance
 
