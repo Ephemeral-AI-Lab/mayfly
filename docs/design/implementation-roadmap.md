@@ -536,8 +536,8 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | merged (#111) | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12-prompt` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
 | 1.8b | merged (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ31 and Δ32 approved; library file budget 222 to 223 |
-| 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
-| Checkpoint A / B / C | pending | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11 |
+| 1.11 | built (PR pending merge) | `feat/ui-foundation-1-11` | Freeze. Eight parts; full gate green with 100% coverage; Phase 1 is complete and waits only for checkpoints A, B, and C. `selectedIds` optional and a type-only `MayflyTranslate` (the model-picker spike's two fixes); Δ33 approved; the ledger holds only Phase 3 and later entries (one stale 1.6 entry removed); final budgets and the work report in §7.1; the ui type fixtures run in the gate (`types.spec.ts`) |
+| Checkpoint A / B / C | pending the reviewer | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11; every slice is built, so the three checkpoints can run on the integration profile |
 
 **Working in parallel.** Up to three slices are in flight, each in its own worktree and agent.
 
@@ -1315,14 +1315,38 @@ against Phase 3 (and 1.4 for the list painter). Open question for slice 1.11: it
 
 #### 1.11 Freeze
 
-- **Budgets.** The final values of §7.1 in the work-budget spec, with W1 and W4 running through the node slot.
-- **API.** Type fixtures in `packages/ui/tests/` for every addition of §3, including component inference with `memo`
-  and the rejection of custom kinds; `pnpm run check:lib` and `pnpm run check:examples`. From here a change to
-  `packages/ui` is an exception that takes the full gate (D16).
-- **Reference.** The final pass over `website/plugins/ui-reference.md` and its English twin with
-  `script/shots/manifest.mjs`, built and previewed on the LAN for checkpoint C; every shot refreshed.
-- **Instructions.** `packages/ui/AGENTS.md` and `packages/mayfly/AGENTS.md` describe, as current behavior, the rule
-  that identity is the cache key, the node slot, the views lane, the keymap scopes, and the work-budget gate.
+**Goal.** Close Phase 1: fix the budgets, the API, the reference, and the instructions, so that from here a change to
+`packages/ui` is an exception (D16). It landed in eight parts, each green:
+
+1. **Two additive fixes from the composition spike** (the model picker of draft PR #114, built as a pure component with
+   only the public exports). A list's `selectedIds` is optional and defaults to `[]`: the contract field, the validator
+   (which admits `[]`), and every core reader (`core/ui-list-selection.ts`) agree, and existing callers are unchanged.
+   `MayflyTranslate` is a type-only export of `@ephemeral-ai/mayfly-ui`, the one translator type a component takes
+   (`frontend/locale.ts` re-exports it). The reference says that `memo: true` compares props by reference, so it hits
+   only when the owner passes a stable translator (hoisted per locale revision).
+2. **Δ33** (§2.3, approved): while a list with a thinking strip is filtered, the hint row names `←/→ thinking` where the
+   kit does not (49 cells per frame in scene 23's `filter` walk, frames 1 and 2).
+3. **Ledger.** `tests/design/pending.ts` lost its one `1.6` entry, stale since slice 1.6 pinned that block, and holds
+   only `Phase 3` (scene 13's views) and `Phase 5` (scene 15's caption and queue line) entries. `pending.spec.ts`
+   asserts every entry is tagged Phase 3 or later and none with a `1.x` slice.
+4. **Budgets.** The final values are in `tests/perf/budgets.json`: W4 validates one node, the rest were already at the
+   measured counts. `W1-slot` and `W4-slot` gate beside W1 and W4 with the same figures (a spec states it). §7.1 holds
+   the work report against the slice 1.0 baseline and the wall-clock targets, which held (2 ms publish, 4 ms key).
+5. **API.** Every addition of §3.2 has a fixture in `packages/ui/tests/ui.compile.ts`: the contract fields,
+   `ui.image`, `ui.prompt`, `ui.listBody`, `patterns.*`, the views lane, `memo` inference, and the rejection of custom
+   kinds and of every wrong shape. `tests/types.spec.ts` now compiles the fixtures against the built declarations, so
+   the gate runs them (before, nothing did). The audit of `packages/ui` against §3.2 and §3.4 found no missing field,
+   event, builder, or service member. `check:lib`, `check:examples`, and `check:pack` pass.
+6. **Reference.** The final pass over `website/plugins/ui-reference.md` and its English twin, and `ui-kit.md`: every
+   §3 field, event, and builder is documented in both languages, the 58 shots are fresh (`shots:check`), and the
+   Website builds. The reference now states identity as the cache key and the `memo` rule.
+7. **Instructions.** `packages/ui/AGENTS.md` and `packages/mayfly/AGENTS.md` describe, as current behavior, identity as
+   the cache key and the engine, the node slot, the views lane, the keymap scopes and named actions, the work-budget
+   gate, and the freeze.
+8. **This roadmap**: the Status table, §7.1, and the follow-ups below.
+
+Not changed, and why: the spike's remaining gaps (a closed `acceptVerb`, the kit's unreachable `empty` text, a `W3`
+row for a framed list) are not contract problems; they are listed under Phase 2's notes or in §7.1.
 
 ### Phase 2 Components area and panels
 
@@ -1350,6 +1374,14 @@ Notes per slice:
 - **2a.** `commitModelSelection` in `interaction/model-commands.ts` stays the write path; `selection-accept.segmentId`
   absent means unpinned (provider default). The notice reads `Switched to <model> (<provider>) · thinking high` or
   `Thinking set to high`.
+  Follow-ups from the model-picker spike (draft PR #114, `docs/design/spike-model-picker.md`; notes, not decisions):
+  `formatContextWindow` moves from `interaction/` to where a pure component can import it (or the fact carries a
+  formatted `contextLabel`); the commands pass `defaultEffort` (`openModelPicker` ignores what `catalogRows` returns,
+  and `switchEffort` never reads `info.reasoning.defaultEffort`), because `inheritedId` and `Provider default (high)`
+  need both; three interpolated locale keys replace concatenation (`{size} context`, `current · {effort}`, `Provider
+  default ({level})`), with zh entries; a golden for the live row's pinned strip (a `live-row` walk with the cursor on
+  the current model), because the kit never pins that state; components hoist `t` per locale revision so `memo: true`
+  hits; the component's `empty` is the real `No models advertised` (the kit's `No models match` is unreachable).
 - **2b.** Rail labels come from `settings.describe({ redactSecrets: true })`; schema sub-objects become `group`
   headings and schema descriptions become `help`. A revision mismatch still replies `conflict`. Session bodies and
   titles keep the bounded, revision-keyed reads of `interaction/session-list-reads.ts`.
