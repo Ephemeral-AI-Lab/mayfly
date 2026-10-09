@@ -63,3 +63,26 @@ describe('scene 11, Patterns', () => {
     expect(report.join('\n')).toBe('')
   })
 })
+
+describe('scene 11, Patterns, page 1: the differences the ledger of deltas names', () => {
+  const hintRow = (surface: RealSurface): string => strip(surface.render().at(-2)!).replace(/[│╭╮╰╯]/gu, '').trim()
+
+  it('Δ30: a card framed at 80 columns hints three fragments, and Esc rejects', () => {
+    const surface = open(0)
+    expect(hintRow(surface)).toBe('Enter choose · c copy name · Esc reject')
+  })
+
+  it('Δ31: the c accelerator runs from the choices, and is neither bound nor hinted once the note field holds focus', () => {
+    const events: string[] = []
+    const surface = createRealSurface(pageNode(0), 80, { components: parityComponents(), events: event => { events.push(event.kind === 'activate' ? event.actionId : event.kind) } })
+    surfaces.push(surface)
+    surface.press('c')
+    expect(events).toContain('copy')
+    events.length = 0
+    for (let index = 0; index < 3; index += 1) surface.press('\x1b[B')
+    expect(hintRow(surface)).toBe('↑/↓ fields · Enter edit · Esc back')
+    surface.press('c')
+    expect(events).not.toContain('copy')
+  })
+})
+
