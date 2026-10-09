@@ -5,6 +5,9 @@ import {
   type MayflyDecisionPanelProps,
   type MayflyEditorExtensionNode,
   type MayflyOverlayDefinition,
+  type MayflyPaneDefinition,
+  type MayflyPaneRegistration,
+  type MayflyPaneSummary,
   type MayflyRailPanelProps,
   type MayflySplitViewProps,
   type MayflyStatusPageProps,
@@ -277,3 +280,24 @@ hoisted(1)
 hoisted('{size}', { size: true })
 // @ts-expect-error memo components keep their props: the translator is required
 picker.render({ names: ['a'] })
+
+// The views lane (slice 1.10b): a views pane declares a motion-free status summary and updates it separately.
+export const agentsView: MayflyPaneDefinition = { id: 'agents', placement: 'views', title: 'Agents', priority: 2, summary: { node: ui.richText([{ text: 'Agents 5' }]), count: 5 } }
+export const summaryOnly: MayflyPaneSummary = { node: ui.text('idle') }
+export const retire = (registration: MayflyPaneRegistration): void => { registration.setSummary({ node: ui.text('running'), count: '2/6' }); registration.setSummary(null) }
+// @ts-expect-error a pane placement is one of the five
+export const sidePane: MayflyPaneDefinition = { id: 'x', placement: 'floating' }
+// @ts-expect-error a summary is a status node: a list is not one
+export const listSummary: MayflyPaneSummary = { node: bareChoices }
+
+// memo infers the props from render, and keeps them required.
+export const inferred = defineMayflyComponent({
+  id: '@acme/inferred',
+  memo: true,
+  render: (props: { readonly label: string, readonly rows: readonly string[] }) => ui.stack.column(props.rows.map(row => ui.text(`${props.label} ${row}`))),
+})
+export const inferredNode: MayflyUiNode = inferred.render({ label: 'a', rows: ['b'] })
+// @ts-expect-error inferred props are checked
+inferred.render({ label: 1, rows: [] })
+// @ts-expect-error memo is a boolean
+defineMayflyComponent({ id: '@acme/bad', memo: 'yes', render: () => ui.text('x') })
