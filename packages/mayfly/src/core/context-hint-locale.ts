@@ -43,7 +43,6 @@ const zh = Object.freeze({
   history: '历史',
   queued: '排队中',
   send: '发送',
-  complete: '补全',
   insert: '插入',
   // Field provenance and conflict resolution.
   inherited: '继承',
