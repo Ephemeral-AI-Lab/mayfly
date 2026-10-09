@@ -37,8 +37,8 @@ describe('example width contracts', () => {
     await ctx.plugin({ name: 'example-width-api', apply: applyApi })
     try {
       for (const plugin of [header, inspector, bottomLog, uiGallery]) await ctx.plugin(plugin)
-      // Four plugins, five panes: the gallery adds its view of status row 2 beside its showcase.
-      expect(ctx.mayflyPanes.list()).toHaveLength(5)
+      // Four plugins, six panes: the gallery adds its view of status row 2 and its prompt beside its showcase.
+      expect(ctx.mayflyPanes.list()).toHaveLength(6)
       for (const entry of ctx.mayflyPanes.list()) {
         const node = entry.node
         expect(node).not.toBeNull()

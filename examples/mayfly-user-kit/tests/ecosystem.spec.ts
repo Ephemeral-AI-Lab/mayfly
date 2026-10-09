@@ -58,7 +58,7 @@ describe('shared user kit', () => {
 })
 
 describe('direct plugin services and lifecycle', () => {
-  it('registers four pane plugins (five panes) as ordinary Cordis siblings and unloads each Fiber', async () => {
+  it('registers four pane plugins (six panes) as ordinary Cordis siblings and unloads each Fiber', async () => {
     const ctx = await directContext()
     try {
       const plugins = [header, inspector, bottomLog, uiGallery]
@@ -68,6 +68,7 @@ describe('direct plugin services and lifecycle', () => {
         ['example.header.summary', 'header'],
         ['example.inspector.context', 'right'],
         ['example.log.recent', 'bottom'],
+        ['example.ui-gallery.prompt', 'bottom'],
         ['example.ui-gallery.showcase', 'right'],
         ['example.ui-gallery.view', 'views'],
       ])
