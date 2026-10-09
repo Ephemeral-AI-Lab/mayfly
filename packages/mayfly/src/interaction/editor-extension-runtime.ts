@@ -396,7 +396,9 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       else this.report('definition', admitted.ok ? 'editor extension before must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
     }
     children.push({ node: { kind: 'editor-control' } })
-    const claimed = new Set(this.options.ctx.mayflyKeymap.list().flatMap(action => [action.keys].flat()).map(key => key.toLowerCase()))
+    // The keymap is snapshotted only when a decoration declares an action: the shell is recompiled on every keystroke.
+    let claimedKeys: Set<string> | undefined
+    const claimed = (): Set<string> => claimedKeys ??= new Set(this.options.ctx.mayflyKeymap.list().flatMap(action => [action.keys].flat()).map(key => key.toLowerCase()))
     for (const [entryIndex, entry] of this.entries.entries()) {
       const rows: MayflyUiNode[] = []
       if (typeof entry.hint === 'string') {
@@ -422,11 +424,11 @@ export class EditorExtensionRuntime implements MayflyFocusable {
           this.report('definition', 'editor extension actions need a modifier key such as ctrl+r or alt+r')
           return false
         }
-        if (claimed.has(key.toLowerCase())) {
+        if (claimed().has(key.toLowerCase())) {
           this.report('definition', `editor extension action key "${key}" is already bound`)
           return false
         }
-        claimed.add(key.toLowerCase())
+        claimed().add(key.toLowerCase())
         return true
       }) : []
       if (reachable.length > 0) {

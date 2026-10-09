@@ -540,7 +540,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.8b | merged (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ31 and Δ32 approved; library file budget 222 to 223 |
 | 1.11 | built (PR pending merge) | `feat/ui-foundation-1-11` | Freeze. Eight parts; full gate green with 100% coverage; Phase 1 is complete and waits only for checkpoints A, B, and C. `selectedIds` optional and a type-only `MayflyTranslate` (the model-picker spike's two fixes); Δ33 approved; the ledger holds only Phase 3 and later entries (one stale 1.6 entry removed); final budgets and the work report in §7.1; the ui type fixtures run in the gate (`types.spec.ts`) |
 | 1.12a | built (PR pending merge) | `feat/ui-foundation-1-12a` | Frame performance, measurement. Full gate green with 100% coverage; no runtime behavior change; the frame workloads W13 to W17 with their baseline, six frame counters, `pnpm run bench:pty` |
-| 1.12b | planned | `feat/ui-foundation-1-12b` | Frame performance, wasted work: the discarded lane measure, the discarded frame render, the control-walk storm, service proxies on the row path, clock pacing, keymap snapshots, edge navigation |
+| 1.12b | built (PR pending merge) | `feat/ui-foundation-1-12b` | Frame performance, wasted work. Full gate green with 100% coverage; no visible change (goldens and screenshots identical); a tick on a side pane is one pass and no control walk (W14: 949 renders to 385, 328 walks to 0); the gallery's frame 206 ms to 63 ms and its key 164 ms to 40 ms; without a pane, typing and the panels' cursor keys are back at `main`'s cost except the model picker's edge |
 | 1.12c | planned | `feat/ui-foundation-1-12c` | Frame performance, retained rows: one surface epoch, memoized leaves and stacks, the clock armed only by a visible moving cell |
 | 1.12d | planned | `feat/ui-foundation-1-12d` | Frame performance, the gate: final frame budgets and the coarse PTY ceilings in `verify:full` |
 | Checkpoint A / B / C | pending the reviewer | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11; the first run found the frame cost of slice 1.12, so the checkpoints resume on the integration profile once 1.12 is merged |
@@ -1403,11 +1403,31 @@ It lands in four parts, each a PR with the bench table:
    profile, the scenarios `product`, `gallery`, and `focus`, idle CPU and key-to-paint latency in
    `.artifacts/bench/`. `script/test-impact.mjs` selects the budget spec for the lane, the renderer, the keymap, and
    the editor-extension runtime.
-2. **1.12b, wasted work** (planned). The side lanes stop measuring what they never use and the native entry prepares
-   itself; a frame with a scroll view runs the constrained layout alone; the walk memo holds several viewports and a
-   pass reconciles once per set of controls; the row path stops crossing service proxies; the clock spaces its ticks
-   by the cost of the last frame; the editor shell reads claimed keys from a memo by keymap revision; an arrow at the
-   edge of the only group returns at once.
+2. **1.12b, wasted work** (built). No visible change; each item removes work whose result nobody read.
+   - *The lane measure.* `SurfaceLaneContainer.render` answers a side lane's measure with no rows, and a side lane's
+     pane has basis 0 in the lane's stack: the row that holds the lane gives it its height and the pane fills it, so
+     neither measure was ever used. The header lane is still sized by its rows. What the measure did as a side effect
+     moved into the native entry: `CompiledSurface[LAYOUT_NODE]` prepares itself (`prepareNativeLayout`), fitting the
+     lists of a surface that has no scroll view through one memoized frame render, and otherwise only reporting a
+     focus move. `SemanticScrollView` learns its width in `getContentWidth`, which both paths call.
+   - *The discarded render.* `renderFrame` runs the constrained layout instead of, not after, the plain render when
+     the surface has a scroll view of its own.
+   - *The walk storm.* `walkControlsCached` remembers a walk for each of 16 viewports (and the list row budget), and
+     a stack child's `visible` reconciles through `reconcileLayout`, which returns when the viewport shows the controls
+     the last reconciliation walked and focus has not moved since.
+   - *The row path.* A static leaf reads the glyph mode once when it is compiled; the surface frame measures a row
+     that fits once and with the core width helpers; a chart is a pure leaf; `contextHintTranslator` remembers a
+     string for one locale revision of one provider (512 strings at most).
+   - *The clock.* `UiAnimationClock` times a tick's repaint from the tick to the first moving cell painted, and the
+     next step waits twice that long (100 ms at least, 1 s at most), so a frame slower than half a step slows the
+     motion instead of filling the gap between two ticks. Skipping a tick after input was not needed once the steps
+     are paced, and was not built.
+   - *The keymap.* The editor shell snapshots the keymap only when an extension declares an action (it used to on
+     every compile); `matches` resolves an action's keys once per keymap change or newly seen action; `list()` reads
+     its maps once; a key id is parsed as a function key once.
+   - *The edge.* `navigate` skips the geometry layout when the active control is the last of the only group along
+     its own axis. A picker that holds other controls still lays out once per edge key (the model picker: 3.9 ms of
+     CPU per key against 1.9 on `main`); part 1.12c makes that layout a memo read.
 3. **1.12c, retained rows** (planned). One epoch per surface, moved by everything that can change a row except the
    clock; every leaf and every stack answers a repeat render from a memo; a moving cell marks its ancestors, and the
    clock is armed only while one is on screen.
@@ -1718,16 +1738,28 @@ holds the surface, for pi-tui's native layout of it, and for the clock. W13 to W
 does and count one whole step, with counters W1 to W12 do not name: leaf renders that painted, walks of the control
 tree, focus reconciliations, passes over the tree, clock ticks that asked for a repaint, and keymap snapshots.
 
-| Workload | Shape | One step | Counted today (renders / walks / reconciliations / passes / ticks) |
-| --- | --- | --- | --- |
-| W13 keystroke beside a pane | a side pane of eight sections in one scroll view, nothing in it changing | one key in the editor | 447 / 164 / 164 / 1 / 0 |
-| W14 tick below the fold | the same pane, its only loader scrolled out of view | one clock step | 949 / 328 / 328 / 3 / 1 |
-| W15 tick on screen | the same pane, the loader at the top | one clock step | 949 / 328 / 328 / 3 / 1 |
-| W16 list edge | an overlay that holds one list of five rows | `↓` on the last row | 12 / 0 / 5 / 2 / 0 |
-| W17 editor shell | the prompt footer beside one editor extension | one keystroke | 1 keymap snapshot |
+| Workload | Shape | One step | Slice 1.11 (renders / walks / reconciliations / passes / ticks) | After 1.12b |
+| --- | --- | --- | --- | --- |
+| W13 keystroke beside a pane | a side pane of eight sections in one scroll view, nothing in it changing | one key in the editor | 447 / 164 / 164 / 1 / 0 | 375 / 0 / 1 / 1 / 0 |
+| W14 tick below the fold | the same pane, its only loader scrolled out of view | the next clock tick | 949 / 328 / 328 / 3 / 1 | 385 / 0 / 1 / 1 / 1 |
+| W15 tick on screen | the same pane, the loader at the top | the next clock tick | 949 / 328 / 328 / 3 / 1 | 385 / 0 / 1 / 1 / 1 |
+| W16 list edge | an overlay that holds one list of five rows | `↓` on the last row | 12 / 0 / 5 / 2 / 0 | 2 / 0 / 3 / 1 / 0 |
+| W17 editor shell | the prompt footer beside one editor extension | one keystroke | 1 keymap snapshot | none |
 
-These are the counts of slice 1.11, recorded in `baseline.json` by slice 1.12a; each later part of the slice lowers its
-rows in `budgets.json`. The wall clock of the same path is `pnpm run bench:pty`, reported in every PR of the slice.
+The first column of counts is slice 1.11's, recorded in `baseline.json` by slice 1.12a; `budgets.json` holds the newest
+column, and each later part of the slice lowers it. A tick workload waits for the clock's next tick, because the clock
+paces itself by the frames it sees. The wall clock of the same path is `pnpm run bench:pty`, reported in every PR of
+the slice:
+
+| `bench:pty` (120 by 40, one machine) | `main` | Slice 1.11 | After 1.12b |
+| --- | --- | --- | --- |
+| Gallery pane: idle CPU | n/a | 113% | 60% |
+| Gallery pane: key to paint, median | n/a | 164 ms | 40 ms |
+| No pane: typing, CPU per key | 1.4 ms | 2.2 ms | 1.5 ms |
+| No pane: `/settings` cursor key, CPU | 3.8 ms | 6.5 ms | 4.0 ms |
+| No pane: `/model` cursor key, CPU | 1.9 ms | 6.1 ms | 3.9 ms |
+| No pane: `/theme` cursor key, CPU | 2.3 ms | 5.5 ms | 2.5 ms |
+| No pane: `/help` scroll key, CPU | 5.1 ms | 6.1 ms | 4.7 ms |
 
 ## 8. Risks
 

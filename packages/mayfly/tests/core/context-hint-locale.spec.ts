@@ -4,6 +4,7 @@ import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { describe, expect, it, vi } from 'vitest'
 import {
   contextHintTranslator,
+  HINT_MEMO_ENTRIES,
   mountContextHintLocale,
 } from '../../src/core/context-hint-locale.ts'
 import { untranslated } from '../../src/core/ui-interaction-locale.ts'
@@ -55,5 +56,39 @@ describe('context hint locale lifecycle', () => {
     expect(t('Discard unsaved changes?')).toBe('放弃未保存的修改？')
     expect(t('Minimum: {value}', { value: 3 })).toBe('最小值：3')
     await second.dispose()
+  })
+
+  it('resolves a string once per locale revision while a provider is mounted', async () => {
+    const ctx = new Context()
+    mountContextHintLocale(ctx, () => {})
+    const t = contextHintTranslator(ctx)
+    const provider = await ctx.plugin(localePlugin('zh'))
+    await settle()
+    const translate = vi.spyOn(MayflyLocaleService.prototype, 'translate')
+    try {
+      expect(t('run')).toBe('执行')
+      expect(t('run')).toBe('执行')
+      expect(t('Minimum: {value}', { value: 3 })).toBe('最小值：3')
+      expect(t('Minimum: {value}', { value: 3 })).toBe('最小值：3')
+      expect(t('Minimum: {value}', { value: 4 })).toBe('最小值：4')
+      expect(translate).toHaveBeenCalledTimes(3)
+      // A new revision starts a new memo, in the turn that made it.
+      ctx.mayflyLocale.setPreference('en')
+      expect(t('run')).toBe('run')
+      expect(translate).toHaveBeenCalledTimes(4)
+      // A full memo starts over: the next string is resolved again and remembered.
+      for (let count = 0; count < HINT_MEMO_ENTRIES; count += 1) t('run {count}', { count })
+      const filled = translate.mock.calls.length
+      expect(t('run')).toBe('run')
+      expect(translate).toHaveBeenCalledTimes(filled + 1)
+      expect(t('run')).toBe('run')
+      expect(translate).toHaveBeenCalledTimes(filled + 1)
+      // Without a provider nothing is remembered, so the next provider is not answered from the last one.
+      await provider.dispose()
+      expect(t('run')).toBe('run')
+      expect(translate).toHaveBeenCalledTimes(filled + 1)
+    } finally {
+      translate.mockRestore()
+    }
   })
 })

@@ -3,18 +3,21 @@
  * position, after the paint; the surface opening on a control is not a move; a report never cancels a `tab-change` in
  * flight; and a retired surface reports nothing.
  */
+import { getLayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { PROBE_PALETTE, parityComponents } from '../design/parity.ts'
 
 const KEY = { up: '\x1b[A', down: '\x1b[B', right: '\x1b[C' } as const
 const cleanups: (() => void)[] = []
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup() })
 
-function open(node: MayflyUiNode, observer = true) {
+function open(node: MayflyUiNode, observer = true, rows = 40) {
   const events: MayflyUiEvent[] = []
+  const counters = createWorkCounters()
   const model = new UiSurfaceModel('focus', {
     scope: { kind: 'app', targetId: 'focus' }, source: [], revision: 1, update: { reason: 'data' }, node: node as never,
     events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
@@ -22,18 +25,20 @@ function open(node: MayflyUiNode, observer = true) {
   } as never)
   const runtime = new MayflyUiSurfaceRuntime(model)
   const result = compileMayflyUiSurfaceNode(model.node!, {
-    components: parityComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 80, rows: 40 }), screenMode: 'alternate',
-    emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime,
+    components: parityComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 80, rows }), screenMode: 'alternate',
+    emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime, counters,
   })
   if (!result.ok) throw new Error(result.message)
   const surface = result.value
   surface.focusTarget!.focused = true
   cleanups.push(() => { runtime.dispose(); model.dispose() })
   const frame = (): string[] => surface.component.render(80)
+  /** What pi-tui asks a pane for when it lays the surface out itself, without rendering it first. */
+  const layout = (): unknown => getLayoutNode(surface.component)
   const type = (...keys: string[]): void => { for (const key of keys) surface.focusTarget!.handleInput?.(key) }
   const reports = (): MayflyUiEvent[] => events.filter(event => event.kind === 'focus-change')
   const settle = async (): Promise<void> => { await Promise.resolve(); await Promise.resolve() }
-  return { events, frame, type, reports, settle, dispose: () => { runtime.dispose(); model.dispose() }, disposeModel: () => { model.dispose() }, model }
+  return { events, frame, layout, counters, type, reports, settle, dispose: () => { runtime.dispose(); model.dispose() }, disposeModel: () => { model.dispose() }, model }
 }
 
 const list = (): MayflyUiNode => ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: ['a', 'b', 'c', 'd'].map(id => ({ id, label: id.toUpperCase() })) })
@@ -97,6 +102,37 @@ describe('focus-change', () => {
     view.frame()
     await view.settle()
     expect(view.reports()).toEqual([{ kind: 'focus-change', pagePath: [], controlId: 'two' }])
+  })
+
+  it('reports a move from a native layout alone, which a side lane never precedes with a render', async () => {
+    const view = open(ui.scroll(ui.stack.column([ui.child(list())])))
+    view.layout()
+    view.type(KEY.down)
+    const before = view.counters.layoutPasses
+    view.layout()
+    await view.settle()
+    expect(view.reports()).toEqual([{ kind: 'focus-change', pagePath: [], controlId: 'rows', itemId: 'b' }])
+    // The scroll view takes the overflow, so the layout entry is the only pass: nothing is rendered to be thrown away.
+    expect(view.counters.layoutPasses - before).toBe(1)
+    view.frame()
+    await view.settle()
+    expect(view.reports()).toHaveLength(1)
+  })
+
+  it('fits a list to the viewport before a native layout, through the frame the next render reuses', async () => {
+    const view = open(list(), true, 3)
+    view.layout()
+    view.type(KEY.down, KEY.down, KEY.down)
+    const before = view.counters.layoutPasses
+    view.layout()
+    // One frame render fits the list, then the layout entry itself.
+    expect(view.counters.layoutPasses - before).toBe(2)
+    const rows = view.frame()
+    expect(view.counters.layoutPasses - before).toBe(2)
+    expect(rows.length).toBeLessThanOrEqual(3)
+    expect(rows.join('\n')).toContain('D')
+    await view.settle()
+    expect(view.reports()).toEqual([{ kind: 'focus-change', pagePath: [], controlId: 'rows', itemId: 'd' }])
   })
 
   it('reports nothing once the model is gone, even when asked directly', async () => {

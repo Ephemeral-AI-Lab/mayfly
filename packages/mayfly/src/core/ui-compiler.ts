@@ -50,7 +50,7 @@ import {
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
-import { sliceByColumn, visibleWidth } from './width.ts'
+import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import { fieldDecor, fieldDisplayError, stepNumber } from './ui-interaction-form.ts'
 import { editorWidth, formHeading, formLabelWidth, matchingSuggestions, paintFormField, type FieldDecor } from './ui-form-paint.ts'
@@ -359,6 +359,16 @@ type ScrollControl = UiScrollControl
 type VirtualListEntry = UiVirtualListEntry
 type ListMovement = UiListMovement
 
+/** The outcome of one focus reconciliation, kept so that a layout pass does not repeat it for the same controls. */
+interface ReconciledFocus {
+  readonly controls: string
+  readonly activeKey: string | undefined
+  readonly desiredKey: string | undefined
+  readonly editingKey: string | undefined
+  readonly focused: boolean
+  readonly lastIndex: number
+}
+
 interface FocusState {
   activeKey: string | undefined
   activeGroup: string | undefined
@@ -375,6 +385,10 @@ interface FocusState {
   layoutPass: boolean
   /** The viewport this layout pass last reconciled focus for. */
   layoutReconciled: MayflyUiViewport | undefined
+  /** What the last reconciliation saw and left: the controls it walked and the focus it settled on. */
+  reconciled: ReconciledFocus | undefined
+  /** The control walk of the current viewport. */
+  walk(): ControlWalk
   controls(): readonly ControlDescriptor[]
   allControls(): readonly ControlDescriptor[]
   accelerators(): readonly HiddenAccelerator[]
@@ -474,10 +488,13 @@ function renderFailure(error: unknown, fallback = 'unknown render failure'): str
  * being typed is never converted.
  */
 function staticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'counters' | 'reportRuntimeFailure'> & { readonly components?: Pick<MayflyComponents, 'presentation'> }, counted = true): MayflyComponent {
+  // The presentation is fixed for the life of the components service this leaf was compiled with, so it is read once,
+  // not through the service on every paint.
+  const glyphs = options.components?.presentation?.glyphs
   return {
     render: width => {
       try {
-        const rows = glyphRows(render(width), options.components?.presentation?.glyphs)
+        const rows = glyphRows(render(width), glyphs)
         if (counted) {
           countWork(options.counters, 'rowsPainted', rows.length)
           countWork(options.counters, 'componentRenders')
@@ -529,9 +546,10 @@ class SemanticScrollView extends ScrollView {
     private readonly address: UiControlAddress,
   ) { super(component, options) }
 
-  override render(width: number): string[] {
-    this.width = this.getContentWidth(width)
-    return super.render(width)
+  /** Both a render and pi-tui's native layout ask for the content width first, so the anchors learn it here. */
+  override getContentWidth(width: number): number {
+    this.width = super.getContentWidth(width)
+    return this.width
   }
 
   override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
@@ -559,9 +577,10 @@ class SemanticScrollView extends ScrollView {
 
 function markdownLeafComponent(node: Extract<MayflyUiNode, { readonly kind: 'markdown' }>, options: RuntimeCompilerOptions): MayflyComponent {
   const markdown = options.components.createMarkdown({ text: node.source })
+  const glyphs = options.components.presentation?.glyphs
   return {
     render: width => {
-      try { return glyphRows(markdown.render(Math.max(1, width)), options.components.presentation?.glyphs) }
+      try { return glyphRows(markdown.render(Math.max(1, width)), glyphs) }
       catch (error) {
         const message = renderFailure(error)
         options.reportRuntimeFailure(message)
@@ -580,8 +599,9 @@ function diagramSource(node: MayflyDiagramNode): string {
 
 function diagramComponent(node: MayflyDiagramNode, options: RuntimeCompilerOptions): MayflyComponent {
   const markdown = options.components.createMarkdown({ text: diagramSource(node) })
+  const glyphs = options.components.presentation?.glyphs
   return {
-    render: width => glyphRows(markdown.render(Math.max(1, width)), options.components.presentation?.glyphs),
+    render: width => glyphRows(markdown.render(Math.max(1, width)), glyphs),
     invalidate: () => markdown.invalidate(),
   }
 }
@@ -632,8 +652,9 @@ function promptComponent(node: MayflyPromptNode, state: FocusState, options: Run
   return component
 }
 
+/** A chart's rows depend on its node, the width, and the palette alone, so they are painted once per width. */
 function chartComponent(node: MayflyChartNode, options: RuntimeCompilerOptions): MayflyComponent {
-  return staticComponent(width => renderChartRows(node, Math.max(1, width), options.components, options.colors), options)
+  return pureStaticComponent(width => renderChartRows(node, Math.max(1, width), options.components, options.colors), options)
 }
 
 /** A surface whose forms hold an unsaved edit says so in its head, after the badges its author gave it. */
@@ -797,7 +818,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
     [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
     render(width: number): string[] {
       const available = Math.max(1, Math.floor(width))
-      if (available < 3) return body.render(available).map(row => { countWork(options.counters, 'stringsMeasured'); return options.components.truncateToWidth(row, available, '') })
+      if (available < 3) return body.render(available).map(row => { countWork(options.counters, 'stringsMeasured'); return truncateToWidth(row, available, '') })
       const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
       const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
       // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
@@ -805,12 +826,15 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
       const bodyRows = body.render(contentWidth)
       const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
       const border = paint(bar)
+      const inset = ' '.repeat(horizontalPadding)
       const framed = bodyRows.map(row => {
-        countWork(options.counters, 'stringsMeasured', 2)
-        const clipped = options.components.truncateToWidth(row, contentWidth, '')
-        const fill = ' '.repeat(Math.max(0, contentWidth - options.components.visibleWidth(clipped)))
-        const inset = ' '.repeat(horizontalPadding)
-        return `${border}${inset}${clipped}${fill}${inset}${border}`
+        // A row that fits is measured once; only a row that overflows is clipped and measured again.
+        countWork(options.counters, 'stringsMeasured')
+        const rowWidth = visibleWidth(row)
+        if (rowWidth <= contentWidth) return `${border}${inset}${row}${' '.repeat(contentWidth - rowWidth)}${inset}${border}`
+        countWork(options.counters, 'stringsMeasured')
+        const clipped = truncateToWidth(row, contentWidth, '')
+        return `${border}${inset}${clipped}${' '.repeat(Math.max(0, contentWidth - visibleWidth(clipped)))}${inset}${border}`
       })
       return [...head, ...framed, ...tail]
     },
@@ -1234,6 +1258,9 @@ interface ControlWalk {
 
 const EMPTY_CONTROL_WALK: ControlWalk = { visible: [], all: [], accelerators: [] }
 
+/** How many viewports a surface remembers a control walk for. */
+const CONTROL_WALK_VIEWPORTS = 16
+
 function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, path = '$'): ControlWalk {
   const visible: ControlDescriptor[] = []
   const hidden: ControlDescriptor[] = []
@@ -1491,7 +1518,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
                 // reconciliation per pass instead of one per child.
                 if (state.layoutPass && !sameViewport(state.layoutReconciled, current)) {
                   state.setLayoutViewport(current)
-                  reconcile(state)
+                  reconcileLayout(state)
                   state.layoutReconciled = current
                 }
                 return conditionMatches(child.when, current) && tabVisible(child, pagePath, options)
@@ -1723,8 +1750,38 @@ function homeGroup(controls: readonly ControlDescriptor[]): string | undefined {
   return declared?.group ?? controls[0]?.group
 }
 
+const controlWalkKeys = new WeakMap<ControlWalk, string>()
+
+/** The controls of a walk as one string: two viewports that show the same controls have the same one. */
+function walkKeys(walk: ControlWalk): string {
+  let keys = controlWalkKeys.get(walk)
+  if (keys === undefined) {
+    keys = `${walk.visible.map(control => control.key).join('\x01')}\x02${walk.all.map(control => control.key).join('\x01')}`
+    controlWalkKeys.set(walk, keys)
+  }
+  return keys
+}
+
 function reconcile(state: FocusState): readonly ControlDescriptor[] {
   state.count('reconciles')
+  const controls = reconcileFocus(state)
+  state.reconciled = { controls: walkKeys(state.walk()), activeKey: state.activeKey, desiredKey: state.desiredKey, editingKey: state.editingKey, focused: state.focused, lastIndex: state.lastIndex }
+  return controls
+}
+
+/**
+ * Reconciles focus for a new layout viewport, unless that viewport shows the controls the last reconciliation walked
+ * and focus has not moved since: a layout alternates between a handful of viewports, and reconciling the same controls
+ * again changes nothing.
+ */
+function reconcileLayout(state: FocusState): void {
+  const last = state.reconciled
+  if (last !== undefined && last.controls === walkKeys(state.walk()) && last.activeKey === state.activeKey && last.desiredKey === state.desiredKey
+    && last.editingKey === state.editingKey && last.focused === state.focused && last.lastIndex === state.lastIndex) return
+  reconcile(state)
+}
+
+function reconcileFocus(state: FocusState): readonly ControlDescriptor[] {
   const controls = state.controls()
   const groups = controlGroups(controls)
   const tabGroups = groups.filter(group => group.kind === 'tabs')
@@ -1913,10 +1970,9 @@ export class MayflyUiSurfaceRuntime {
     readonly node: CompilableNode
     readonly options: RuntimeCompilerOptions
     readonly generation: number
-    readonly columns: number
-    readonly rows: number
     readonly revision: number
-    readonly walk: ControlWalk
+    /** One walk per layout viewport and list row budget: a layout pass alternates between a handful of them. */
+    readonly walks: Map<string, ControlWalk>
   } | undefined
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
@@ -1943,6 +1999,8 @@ export class MayflyUiSurfaceRuntime {
       focused: false,
       layoutPass: false,
       layoutReconciled: undefined,
+      reconciled: undefined,
+      walk: () => this.walkControlsCached(),
       controls: () => this.walkControlsCached().visible,
       allControls: () => this.walkControlsCached().all,
       accelerators: () => this.walkControlsCached().accelerators,
@@ -2196,14 +2254,18 @@ export class MayflyUiSurfaceRuntime {
     if (node === undefined || options === undefined) return EMPTY_CONTROL_WALK
     const viewport = safeViewport(options.getViewport)
     const revision = this.interaction?.revision ?? 0
-    const cached = this.controlsWalkMemo
-    if (cached !== undefined && cached.generation === this.generation && cached.node === node && cached.options === options
-      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision) {
-      return cached.walk
+    let memo = this.controlsWalkMemo
+    if (memo === undefined || memo.generation !== this.generation || memo.node !== node || memo.options !== options || memo.revision !== revision) {
+      memo = { generation: this.generation, node, options, revision, walks: new Map() }
+      this.controlsWalkMemo = memo
     }
+    const key = `${String(viewport.columns)}x${String(viewport.rows)}/${String(this.listRowBudget ?? '')}`
+    const known = memo.walks.get(key)
+    if (known !== undefined) return known
     countWork(options.counters, 'controlWalks')
     const walk = walkControls(node, options)
-    this.controlsWalkMemo = { generation: this.generation, node, options, columns: viewport.columns, rows: viewport.rows, revision, walk }
+    if (memo.walks.size >= CONTROL_WALK_VIEWPORTS) memo.walks.delete(memo.walks.keys().next().value!)
+    memo.walks.set(key, walk)
     return walk
   }
 
@@ -2468,8 +2530,29 @@ class CompiledSurface implements MayflyEditorShellComponent {
     return true
   }
 
+  /** A scroll view of the surface's own takes the overflow in a layout, so the frame is laid out rather than fitted. */
+  private layoutScrolls(): boolean {
+    if (this.surfaceRuntime.interaction === undefined) return false
+    for (const view of this.state.scrollViews.values()) if (view.inline !== true) return true
+    return false
+  }
+
+  /**
+   * What pi-tui's native layout of this surface needs before it walks the tree, so that no caller has to render the
+   * surface first. A surface whose lists must fit the viewport fits them through one frame render (memoized, so a lane
+   * that measured this frame pays nothing); any other surface only has a focus move to report.
+   */
+  private prepareNativeLayout(): void {
+    const fitsLists = this.surfaceRuntime.interaction !== undefined && !this.layoutScrolls()
+      && this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
+    if (fitsLists) this.renderChecked(this.viewport.columns)
+    else this.reportFocusMove()
+  }
+
   [LAYOUT_NODE](): LayoutNode {
     if (!this.surfaceRuntime.current(this.generation)) return { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
+    this.viewport = safeViewport(this.options.getViewport)
+    this.prepareNativeLayout()
     this.viewport = safeViewport(this.options.getViewport)
     this.surfaceRuntime.beginAnimationFrame()
     countWork(this.runtimeOptions.counters, 'layoutPasses')
@@ -2523,9 +2606,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
         try { return renderLayoutFrame(this.root, safeWidth, viewport.rows, () => {}).lines }
         finally { this.state.layoutPass = false; this.viewport = viewport }
       }
-      rows = this.root.render(safeWidth)
-      if (this.surfaceRuntime.interaction !== undefined && [...this.state.scrollViews.values()].some(view => view.inline !== true)) rows = constrainedLayout()
+      // A frame with a scroll view is laid out once; rendering it first would paint rows the layout replaces.
+      if (this.layoutScrolls()) rows = constrainedLayout()
       else {
+        rows = this.root.render(safeWidth)
         const hasList = this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
         if (this.surfaceRuntime.interaction !== undefined && hasList) {
           let budget = this.viewport.rows
@@ -2925,7 +3009,9 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const current = group.entries.findIndex(entry => entry.index === this.state.lastIndex)
       target = group.entries[current + (direction === 'left' || direction === 'up' ? -1 : 1)]?.index
     }
-    if (target === undefined) target = nearestDirectionalControl(controls, this.controlRectangles(controls), this.state.lastIndex, direction)
+    // Along its own axis the last control of the only group has no neighbor, so no layout is needed to look for one.
+    const alone = matchingAxis && group !== undefined && group.entries.length === controls.length
+    if (target === undefined && !alone) target = nearestDirectionalControl(controls, this.controlRectangles(controls), this.state.lastIndex, direction)
     if (target !== undefined) this.moveTo(target, controls)
   }
 
