@@ -80,6 +80,23 @@ describe('ui gallery prompt', () => {
     expect(promptOf((blank as { node: unknown }).node).recall).toHaveLength(3)
   })
 
+  it('keeps the node while typing changes nothing offered, and ignores observations it does not use', async () => {
+    const { entry, observe } = await boot()
+    const before = entry().revision
+    await observe({ kind: 'value-change', controlId: 'text', formId: 'gallery-prompt', value: 'hello', draftRevision: 1 })
+    await observe({ kind: 'value-change', controlId: 'text', formId: 'gallery-prompt', value: 'hello there', draftRevision: 2 })
+    await observe({ kind: 'tab-change', controlId: 'tabs', tabId: 'one' })
+    expect(entry().revision).toBe(before)
+  })
+
+  it('counts several attachments in the success message', async () => {
+    const { observe, act } = await boot()
+    await observe({ kind: 'value-change', controlId: 'text', formId: 'gallery-prompt', value: '@no', draftRevision: 1 })
+    await act({ kind: 'completion-accept', controlId: 'gallery-prompt', itemId: 'notes' })
+    const sent = await act({ kind: 'submit', controlId: 'gallery-prompt', submission: { actionId: 'gallery-prompt', draftRevision: 1, source: [], forms: [{ pagePath: [], formId: 'gallery-prompt', draftRevision: 1, fields: [{ id: 'text', change: 'set' as const, value: 'look' }] }] } })
+    expect(sent).toMatchObject({ feedback: { message: 'Sent with 2 attachments' } })
+  })
+
   it('settles every other event quietly', async () => {
     const { act } = await boot()
     await expect(act({ kind: 'dismiss' })).resolves.toEqual({ kind: 'completed' })
