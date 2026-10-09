@@ -11,6 +11,7 @@ import type {
   MayflyChartNode,
   MayflyDiagramNode,
   MayflyImageNode,
+  MayflyPromptNode,
   MayflyFormField,
   MayflyInlineSpan,
   MayflyListItem,
@@ -80,6 +81,8 @@ import { UiRowCache } from './ui-row-cache.ts'
 import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
 import { isRail, tabsShape } from './ui-tabs-paint.ts'
 import { UiImagePainter } from './ui-image.ts'
+import { paintPrompt, UiPromptEditor, type PromptPaint } from './ui-prompt.ts'
+import { promptCompletionsOpen, promptRecallActive } from './ui-interaction-prompt.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choicePinned, choiceRow, focusableListItem, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition } from './ui-interaction-choice.ts'
@@ -90,7 +93,7 @@ import { ScrollRegion, SCROLL_DEFAULT_EXPANDED_HEIGHT, SCROLL_DEFAULT_HEIGHT, ty
 import { hasMotion, paintMotionSpans } from './ui-motion-text.ts'
 import { UiProgressTransitions } from './ui-progress-transition.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
-import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState } from './ui-key-grammar.ts'
+import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState, type PromptOperation } from './ui-key-grammar.ts'
 import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
 import {
@@ -340,6 +343,7 @@ type ControlDescriptor =
   | (ControlBase & { readonly kind: 'submit', readonly form: FormNode })
   | (ControlBase & { readonly kind: 'field-action', readonly address: MayflyFieldAddress, readonly action: UiFieldAction })
   | (ControlBase & { readonly kind: 'editor' })
+  | (ControlBase & { readonly kind: 'prompt', readonly node: MayflyPromptNode })
   | (ControlBase & { readonly kind: 'scroll' })
   | (ControlBase & { readonly kind: 'list', readonly node: MayflyListNode })
 
@@ -579,6 +583,45 @@ function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions):
   const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint)
   const component = staticComponent(width => painter.render(width), options)
   return { render: component.render, invalidate: () => { painter.invalidate() } }
+}
+
+/**
+ * A `prompt`: the symbol, tokens, and rows of `ui-prompt.ts` around the one terminal editor this prompt leases from the
+ * runtime. The draft lives in the surface model; the editor mirrors it before every paint and every key, and reports its
+ * own edits back. Outside an interactive surface (no model) the prompt is read-only text.
+ */
+function promptComponent(node: MayflyPromptNode, state: FocusState, options: RuntimeCompilerOptions, key: string): MayflyComponent {
+  const runtime = options.listRuntime
+  const model = runtime.interaction
+  const address = { pagePath: runtime.pagePath(node), controlId: node.id }
+  const paint = (width: number, draft: ReturnType<UiSurfaceModel['prompt']>, buffer: PromptPaint['buffer'], focused: boolean): string[] => paintPrompt({
+    node, model: draft, width, focused, colors: options.colors, components: options.components,
+    glyphs: options.components.presentation?.glyphs, translate: text => coreText(options, text), buffer,
+  })
+  const readOnly = staticComponent(width => paint(width, undefined, undefined, false), options)
+  if (model === undefined) return readOnly
+  const component: MayflyComponent = {
+    render: width => {
+      try {
+        // A prompt the model does not hold (a branch it has not admitted yet) paints as read-only text.
+        const draft = model.prompt(address)
+        if (draft === undefined) return readOnly.render(width)
+        const editor = runtime.promptEditor(key, address)
+        editor.sync(draft.text)
+        const focused = state.focused && state.activeKey === key
+        const rows = paint(Math.max(1, width), draft, rowWidth => editor.render(rowWidth, focused), focused)
+        countWork(options.counters, 'rowsPainted', rows.length)
+        return rows
+      } catch (error) {
+        const message = renderFailure(error, 'unknown prompt failure')
+        options.reportRuntimeFailure(message)
+        return errorRows(message, width, options.colors)
+      }
+    },
+    invalidate: () => { runtime.promptEditor(key, address).invalidate() },
+  }
+  state.bindControls([key], { component, axis: 'none' })
+  return component
 }
 
 function chartComponent(node: MayflyChartNode, options: RuntimeCompilerOptions): MayflyComponent {
@@ -915,6 +958,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       case 'editor': return { kind: 'editor' }
       case 'scroll': return { kind: 'scroll' }
       case 'list': return { kind: 'empty-list' }
+      case 'prompt': return { kind: 'prompt', ...runtime.promptGrammar(active.node), ...(active.node.submitLabel === undefined ? {} : { submitLabel: active.node.submitLabel }), ...(active.node.recallLabel === undefined ? {} : { recallLabel: active.node.recallLabel }) }
       case 'toggle': return { kind: 'toggle', ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
       case 'submit': return { kind: 'submit' }
       case 'field-action': return { kind: 'field-action' }
@@ -1086,7 +1130,7 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
 
 /** Where each hint fragment sits in the row, by hint id (the kit's `order`). */
 const HINT_ORDER: Readonly<Record<string, number>> = {
-  navigate: 10, adjust: 20, branch: 20, toggle: 20, numbered: 30, activate: 40, confirm: 45, keyed: 50, reset: 50,
+  navigate: 10, adjust: 20, branch: 20, toggle: 20, numbered: 30, 'prompt-complete': 35, activate: 40, confirm: 45, keyed: 50, reset: 50,
   expand: 50, other: 55, search: 60, clear: 60, newline: 60, complete: 65, tabs: 70, group: 80, escape: 90, dismiss: 90, labels: 20,
 }
 
@@ -1274,6 +1318,9 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
           })
         }
         if (current.submitActionId !== undefined && formDrawsSubmit(current)) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
+        break
+      case 'prompt':
+        if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'prompt', node: current, key: scopedControlKey('prompt', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('prompt', current.id), navigation: 'none' })
         break
       case 'actions': {
         const scope = current.scope === undefined ? {} : { scope: [current.scope].flat() }
@@ -1650,6 +1697,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'diagram': return diagramComponent(node, options)
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)
+    case 'prompt': return promptComponent(node, state, options, scopedControlKey('prompt', node.id))
   }
 }
 
@@ -1658,7 +1706,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
  * that declares itself the default, else the first control's group.
  */
 function homeGroup(controls: readonly ControlDescriptor[]): string | undefined {
-  const declared = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' ? control.node : undefined)?.autofocus === true)
+  const declared = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' || control.kind === 'prompt' ? control.node : undefined)?.autofocus === true)
     ?? controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
   return declared?.group ?? controls[0]?.group
 }
@@ -1834,6 +1882,9 @@ export class MayflyUiSurfaceRuntime {
   private readonly tabDefinitions = new Map<string, Extract<MayflyUiNode, { readonly kind: 'tabs' }>>()
   private readonly searches = new Map<string, SearchInput>()
   private readonly textEditors = new Map<string, TextEditorLease>()
+  /** The terminal editor each prompt leases, by control key, and the prompts the tree now holds. */
+  private readonly promptEditors = new Map<string, UiPromptEditor>()
+  private readonly activePrompts = new Set<string>()
   private readonly fieldKinds = new Map<string, MayflyFormField['kind']>()
   private readonly fieldOwners = new Map<string, string>()
   private readonly fieldRecency = new Map<string, true>()
@@ -2027,7 +2078,43 @@ export class MayflyUiSurfaceRuntime {
 
   setFocused(value: boolean): void {
     this.state.focused = value
-    if (!value) for (const lease of this.textEditors.values()) lease.editor.focused = false
+    if (!value) {
+      for (const lease of this.textEditors.values()) lease.editor.focused = false
+      for (const editor of this.promptEditors.values()) editor.focused = false
+    }
+  }
+
+  /** The editor of the prompt at `key`, created on first use and wired to report its edits to the surface model. */
+  promptEditor(key: string, address: UiControlAddress): UiPromptEditor {
+    let editor = this.promptEditors.get(key)
+    if (editor === undefined) {
+      editor = new UiPromptEditor(this.options!.components)
+      this.promptEditors.set(key, editor)
+    }
+    editor.onChange(value => { this.interaction?.updatePrompt(address, { kind: 'edit', value }) })
+    return editor
+  }
+
+  /** Whether the focused control is a prompt whose completion list is open. */
+  promptCompletionsOpen(): boolean {
+    const active = this.state.controls()[this.state.lastIndex]
+    if (!this.state.focused || active?.kind !== 'prompt') return false
+    const draft = this.interaction?.prompt({ pagePath: this.pagePath(active.node), controlId: active.node.id })
+    return draft !== undefined && promptCompletionsOpen(draft)
+  }
+
+  /** The grammar's summary of the focused prompt. */
+  promptGrammar(node: MayflyPromptNode): { readonly completions: boolean, readonly recall: boolean, readonly empty: boolean, readonly tokens: boolean, readonly pasting: boolean } {
+    const address = { pagePath: this.pagePath(node), controlId: node.id }
+    const draft = this.interaction?.prompt(address)
+    const pasting = this.promptEditors.get(controlKey('prompt', node.id, undefined, address.pagePath))?.pending === true
+    return {
+      completions: draft !== undefined && promptCompletionsOpen(draft),
+      recall: draft !== undefined && promptRecallActive(draft),
+      empty: draft?.text === '',
+      tokens: (node.tokens?.length ?? 0) > 0,
+      pasting,
+    }
   }
 
   checkpoint(): () => void {
@@ -2065,7 +2152,9 @@ export class MayflyUiSurfaceRuntime {
   /** Retain recent inactive fields while bounding registration-owned renderer state. */
   admit(node: CompilableNode): void {
     const active = new Set<string>()
+    this.activePrompts.clear()
     this.admitFields(node, active)
+    for (const [key, editor] of this.promptEditors) if (!this.activePrompts.has(key)) { editor.release(); this.promptEditors.delete(key) }
     for (const [stateKey, lease] of this.textEditors) if (!active.has(stateKey)) lease.editor.focused = false
     let inactive = this.fieldRecency.size - active.size
     // Every active key was just touched and therefore sits after all inactive keys.
@@ -2113,6 +2202,7 @@ export class MayflyUiSurfaceRuntime {
     this.listRowBudget = undefined
     this.setFocused(false)
     for (const lease of this.textEditors.values()) releaseTextEditor(lease)
+    for (const editor of this.promptEditors.values()) editor.release()
   }
 
   dispose(): void {
@@ -2121,6 +2211,7 @@ export class MayflyUiSurfaceRuntime {
     this.live = false
     for (const lease of this.textEditors.values()) releaseTextEditor(lease)
     this.textEditors.clear()
+    this.promptEditors.clear()
     this.fieldAddresses.clear()
     this.tabDefinitions.clear()
     for (const search of this.searches.values()) search.clear()
@@ -2162,6 +2253,7 @@ export class MayflyUiSurfaceRuntime {
         this.touchField(key, field, active)
       }; break
       case 'tabs': this.tabDefinitions.set(controlGroup('tabs', current.id, pagePath), current); break
+      case 'prompt': this.activePrompts.add(controlKey('prompt', current.id, undefined, pagePath)); break
       case 'empty': if (current.actions !== undefined) this.admitFields(current.actions, active, pagePath); break
       default: break
     }
@@ -2269,7 +2361,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.surfaceRuntime.admit(node)
     runtimeOptions.reuse.beginPass()
     // A surface with `hint: 'completions'` draws its hint row only while the editor's completion list is open.
-    const hintOpen = node.kind === 'surface' && node.hint === 'completions' ? () => runtimeOptions.completionsOpen?.() === true : undefined
+    const hintOpen = node.kind === 'surface' && node.hint === 'completions' ? () => runtimeOptions.completionsOpen?.() === true || this.surfaceRuntime.promptCompletionsOpen() : undefined
     const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, mode, escapeLabel, hintOpen) : undefined
     this.hintRowsFor = contextKeyHints ? width => hintOpen?.() === false ? [] : contextKeyHintRows(this.state, runtimeOptions, width, mode, escapeLabel) : undefined
     const compiledRoot = compileNode(node, this.state, runtimeOptions, '$', mode, node.kind === 'surface' ? contextHint : undefined)
@@ -2817,6 +2909,33 @@ class CompiledSurface implements MayflyEditorShellComponent {
     if (target !== undefined) this.moveTo(target, controls)
   }
 
+  /** One key of the focused prompt: a change of its draft through the model, or the key itself for its editor. */
+  private promptKey(operation: PromptOperation, data: string, prompt: Extract<ControlDescriptor, { readonly kind: 'prompt' }>): void {
+    const model = this.surfaceRuntime.interaction!
+    const address = { pagePath: this.surfaceRuntime.pagePath(prompt.node), controlId: prompt.node.id }
+    // Any key but the second press of Backspace puts a selected token back.
+    if (operation !== 'backspace') model.updatePrompt(address, { kind: 'deselect' })
+    switch (operation) {
+      case 'submit': model.updatePrompt(address, { kind: 'submit' }); return
+      case 'backspace': model.updatePrompt(address, { kind: 'backspace' }); return
+      case 'recall-older': model.updatePrompt(address, { kind: 'recall', direction: 'older' }); return
+      case 'recall-newer': model.updatePrompt(address, { kind: 'recall', direction: 'newer' }); return
+      case 'complete-previous': model.updatePrompt(address, { kind: 'complete-move', delta: -1 }); return
+      case 'complete-next': model.updatePrompt(address, { kind: 'complete-move', delta: 1 }); return
+      case 'complete-accept': model.updatePrompt(address, { kind: 'complete-accept' }); return
+      case 'complete-dismiss': model.updatePrompt(address, { kind: 'complete-dismiss' }); return
+      case 'newline':
+      case 'type': {
+        // The editor shows what the model holds before it takes the key, so a recall and an edit never disagree.
+        const editor = this.surfaceRuntime.promptEditor(prompt.key, address)
+        editor.sync(model.prompt(address)!.text)
+        editor.focused = this.state.focused
+        if (operation === 'newline') editor.newline()
+        else editor.handleInput(data)
+      }
+    }
+  }
+
   private apply(intent: GrammarIntent, data: string, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined): void {
     const model = this.surfaceRuntime.interaction
     const listNode = active?.kind === 'list' ? active.node : active?.kind === 'event' ? active.listEntry?.node : undefined
@@ -2843,6 +2962,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'keyed': this.state.emit(intent.control < controls.length ? (controls[intent.control] as Extract<ControlDescriptor, { readonly kind: 'event' }>).event : this.state.accelerators()[intent.control - controls.length]!.event); return
       case 'numbered': this.numbered(data, active!); return
       case 'tab-switch': this.switchTab(intent.delta, controls, active); return
+      case 'prompt': this.promptKey(intent.op, data, active as Extract<ControlDescriptor, { readonly kind: 'prompt' }>); return
       case 'search-clear': {
         this.surfaceRuntime.search(listNode!).clear()
         model!.updateChoice(listAddress!, { kind: 'clear-search' })

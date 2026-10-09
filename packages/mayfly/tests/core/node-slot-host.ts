@@ -38,6 +38,16 @@ export function statusRow(counter = 0): MayflyUiNode {
 /** An editor-shaped surface: one prompt field. */
 export const EDITOR_SURFACE: MayflyUiNode = ui.form({ id: 'prompt', fields: [{ kind: 'input', id: 'draft', label: 'Prompt', value: '' }] })
 
+/** An editor-shaped prompt (slice 1.9b): the symbol, one token, a recall, and a placeholder ladder inside a right-titled frame. */
+export const PROMPT_SURFACE: MayflyUiNode = ui.surface({
+  title: 'Prompt', titleAlign: 'right', chrome: 'surface', hint: 'completions',
+  child: ui.prompt({
+    id: 'composer', autofocus: true, tokens: [{ id: 'img', label: 'Image #1', size: '84 KB' }],
+    recall: [{ kind: 'queued', text: 'also update the footer' }, { kind: 'history', text: 'run the width scan again' }],
+    placeholder: ['Ask anything · / commands', 'Ask anything'],
+  }),
+})
+
 /** A stream-shaped list of settled, frozen items. */
 export function streamItems(count: number): readonly MayflyListItem[] {
   return Array.from({ length: count }, (_, index) => freezeWire({ id: `item-${String(index)}`, label: `Item number ${String(index)}` }))

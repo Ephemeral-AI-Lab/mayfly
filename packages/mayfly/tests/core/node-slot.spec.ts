@@ -14,6 +14,7 @@ import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import {
   DIM_COLORS,
   EDITOR_SURFACE,
+  PROMPT_SURFACE,
   PLAIN_COLORS,
   nodeSlotCore,
   nodeSlotHost,
@@ -38,7 +39,7 @@ function hosts(terminal: NodeSlotRuntime): { readonly content: MayflyComponent, 
   return { content: terminal.added[1]!, editor: terminal.bottomAdded[0]!, footer: terminal.bottomAdded[1]! }
 }
 
-async function boot(images?: MayflyUiImageSource) {
+async function boot(images?: MayflyUiImageSource, editor: typeof EDITOR_SURFACE = EDITOR_SURFACE) {
   const terminal = nodeSlotRuntime()
   const root = new Context()
   cleanups.push(() => root.fiber.dispose())
@@ -46,7 +47,7 @@ async function boot(images?: MayflyUiImageSource) {
   const theme = await root.plugin(nodeSlotTheme(PLAIN_COLORS))
   const core = await root.plugin(nodeSlotCore(terminal.runtime, images))
   const state: NodeSlotHostState = { mounts: 0 }
-  const host = await root.plugin(nodeSlotHost(state, () => ({ footer: statusRow(), editor: EDITOR_SURFACE, stream: streamList(streamItems(200)) })))
+  const host = await root.plugin(nodeSlotHost(state, () => ({ footer: statusRow(), editor, stream: streamList(streamItems(200)) })))
   await flush()
   const keys = (): (() => void) => root.mayflyKeymap.register([...INTERACTION_KEY_ACTIONS])
   return { terminal, root, theme, core, host, state, keys }
@@ -89,6 +90,38 @@ describe('node slot test host', () => {
     tree.state.footer!.focus()
     footer.handleInput!(DOWN)
     expect(footer.render(100).join('\n')).not.toContain('↑/↓')
+  })
+
+  it('holds an editor-shaped prompt: it types, walks the recall, and keeps its draft through a core reload', async () => {
+    const tree = await boot(undefined, PROMPT_SURFACE)
+    tree.keys()
+    const before = hosts(tree.terminal).editor
+    const draft = (): string | undefined => tree.root.mayflyUiInteraction.get('slot', 'editor.prompt')!.prompt({ pagePath: [], controlId: 'composer' })?.text
+    tree.state.editor!.focus()
+    expect(tree.terminal.focused()).toBe(before)
+    const rows = (component: MayflyComponent): string[] => component.render(60).map(row => row.replaceAll('\x1b_pi:c\x07', ''))
+    expect(rows(before)[1]).toMatch(/^│ > \[Image #1 84 KB ×\] /u)
+    for (const key of ['h', 'i']) before.handleInput!(key)
+    expect(draft()).toBe('hi')
+    expect(rows(before)[1]).toContain('hi')
+    // Slots route no events yet: the keys that emit one settle quietly, and the draft is what the model holds.
+    before.handleInput!('\r')
+    await flush()
+    expect(draft()).toBe('')
+    before.handleInput!('\x1b[A')
+    expect(draft()).toBe('also update the footer')
+    expect(rows(before)[1]).toContain('↑ queued 1/2')
+    await tree.core.dispose()
+    const terminal = nodeSlotRuntime()
+    await tree.root.plugin(nodeSlotCore(terminal.runtime))
+    await flush()
+    tree.keys()
+    const after = hosts(terminal).editor
+    expect(draft()).toBe('also update the footer')
+    expect(rows(after)[1]).toContain('also update the footer')
+    tree.state.editor!.focus()
+    after.handleInput!('\x1b[A')
+    expect(rows(after)[1]).toContain('↑ history 2/2')
   })
 
   it('keeps every slot\'s interaction state through a core reload, and the stale leases write nothing', async () => {

@@ -417,6 +417,22 @@ export const WORKLOADS: readonly Workload[] = [
       return { step: publish, dispose: () => {} }
     },
   },
+  {
+    id: 'W12-prompt', title: 'prompt keystroke: a prompt with five tokens, a four-entry recall, and an open completion list among 120 static rows, one key',
+    setup(counters) {
+      const rows = Array.from({ length: 120 }, (_, index) => ui.child(ui.text(`static row ${String(index)}`)))
+      const prompt = ui.prompt({
+        id: 'w12', autofocus: true,
+        tokens: Array.from({ length: 5 }, (_, index) => ({ id: `t${String(index)}`, label: `file${String(index)}.md`, size: '2 KB' })),
+        recall: Array.from({ length: 4 }, (_, index) => ({ kind: 'history' as const, text: `earlier message ${String(index)}` })),
+        completions: { items: Array.from({ length: 5 }, (_, index) => ({ id: `c${String(index)}`, label: `/command${String(index)}`, detail: 'a command' })) },
+      })
+      const surface = new Surface('w12', ui.stack.column([ui.child(prompt), ...rows]), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('x') }, dispose: () => surface.dispose() }
+    },
+  },
 ]
 
 /** Runs one workload and returns the counters of its measured step. */

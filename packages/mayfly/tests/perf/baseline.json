@@ -88,5 +88,11 @@
     "unitsCompiled": 0,
     "rowsPainted": 8,
     "stringsMeasured": 40
+  },
+  "W12-prompt": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 6,
+    "stringsMeasured": 40
   }
 }

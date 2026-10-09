@@ -48,6 +48,13 @@ const SCENE_13_VIEWS = [
   { walk: 'views-back', idle: [0, 2], entered: [1] },
 ] as const
 
+/** Scene 15's walks: every frame carries the caption and the queue line above the frame, which the Editor component draws. */
+const SCENE_15_WALKS = [
+  { walk: 'initial', frames: 1 }, { walk: 'type', frames: 3 }, { walk: 'slash', frames: 2 }, { walk: 'mention', frames: 2 }, { walk: 'skill', frames: 2 },
+  { walk: 'shell', frames: 2 }, { walk: 'image', frames: 2 }, { walk: 'paste', frames: 2 }, { walk: 'recall', frames: 4 }, { walk: 'running', frames: 2 },
+  { walk: 'conversation', frames: 2 }, { walk: 'narrow', frames: 2 }, { walk: 'narrower', frames: 3 },
+] as const
+
 export const PENDING_PARITY: readonly PendingParity[] = [
   // Slice 1.6 made a stepped inherited select an override that stays one after stepping back (`(override)`, the `•` mark,
   // and `Delete reset`); the prototype's select unpins on the inherited option. Slice 1.11 settles it: a difference or a fix.
@@ -59,6 +66,10 @@ export const PENDING_PARITY: readonly PendingParity[] = [
   { directory: '11-patterns', walk: 'move', frames: [0, 1, 2, 3], slice: '1.8b', reason: 'page 1 is patterns.decisionPanel, whose options list the walk moves through (1.8b)' },
   { directory: '11-patterns', walk: 'pages', frames: [0, 2, 3], slice: '1.8b', reason: 'pages 1, 3, and 4 are patterns.decisionPanel, splitView, and statusPage (1.8b)' },
   { directory: '11-patterns', walk: 'page-2', frames: [0], slice: '1.8b', reason: 'page 1 is patterns.decisionPanel (1.8b)' },
+  ...SCENE_15_WALKS.map(({ walk, frames }) => ({
+    directory: '15-editor', walk, frames: Array.from({ length: frames }, (_, index) => index), rows: [0, 2] as const, slice: 'Phase 5',
+    reason: 'the scene caption and the queue line above the frame are the Editor component (Phase 5); slice 1.9b draws the prompt inside the frame',
+  })),
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [5], slice: '1.8b', reason: 'page 6 is patterns.splitView over lists with right-aligned spans (1.4)' },
   ...SCENE_13_VIEWS.flatMap(({ walk, entered, idle }) => [
     { directory: '13-status-area', walk, frames: [...idle, ...entered], rows: [0, 7] as const, slice: 'Phase 3', reason: 'row 1 of the status area (Phase 3) and the editor frame (Phase 5); the lane starts at row 8' },

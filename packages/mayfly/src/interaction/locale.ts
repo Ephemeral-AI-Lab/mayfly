@@ -58,6 +58,7 @@ const zh: Readonly<Record<string, string>> = {
   'Expand focused scrollable content to full screen': '将聚焦的可滚动内容展开为全屏',
   'Return a changed field to its inherited or default value': '将已修改的字段恢复为继承值或默认值',
   'Insert a newline in a multi-line field': '在多行字段中插入换行',
+  'In a prompt: send, insert a newline, walk the recall of an empty prompt (queued messages first), or select and then remove the last token': '在提示符中：发送、插入换行、在空提示符处翻阅历史（排队消息在前），或先选中再删除最后一个标记',
   'Removal applies after restarting Mayfly and starting a new session.': '重启 Mayfly 并开始新会话后移除生效。',
   'Enable': '启用',
   'Enable {preset}?': '启用 {preset}？',

@@ -39,6 +39,7 @@ import { COMMON_MEANINGS, actionNamingProblem, defaultItemKey } from './ui-actio
 import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
+import { admitPromptFields, MAYFLY_UI_MAX_PROMPT_TEXT, type PromptAdmissionHelpers } from './ui-validator-prompt.ts'
 import { admitChildAdmission, admitCodeFields, admitDiffFields, admitHeatmapFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
 import { admitTabItemFields, admitTabsFields } from './ui-validator-tabs.ts'
 
@@ -86,6 +87,8 @@ interface ValidationBudget {
   text: number
   chartCells: number
   images: number
+  /** Characters of prompt drafts and recalled messages; a prompt is a control, so no memoized subtree carries it. */
+  promptText: number
   readonly controlIds: Set<string>
   readonly tabs: Map<string, ReadonlySet<string>>
   readonly pages: { readonly path: MayflyPagePath, readonly tab: MayflyPageSegment }[]
@@ -211,6 +214,14 @@ function text(value: unknown, path: string, state: ValidationState): string {
   return value.replace(TERMINAL_SEQUENCE, '').replace(UNSAFE_CONTROLS, '')
 }
 
+/** What a user typed or pasted into a prompt: bounded by the prompt budget, not the tree's text budget. */
+function draftText(value: unknown, path: string, state: ValidationState): string {
+  if (typeof value !== 'string') invalid(`${path} must be a string`)
+  state.budget.promptText += value.length
+  if (state.budget.promptText > MAYFLY_UI_MAX_PROMPT_TEXT) limit(`Mayfly UI prompt text exceeds ${String(MAYFLY_UI_MAX_PROMPT_TEXT)} characters`)
+  return value.replace(TERMINAL_SEQUENCE, '').replace(UNSAFE_CONTROLS, '')
+}
+
 function optionalText(object: Record<string, unknown>, key: string, path: string, state: ValidationState): string | undefined {
   const value = own(object, key, path)
   return value === undefined ? undefined : text(value, `${path}.${key}`, state)
@@ -295,6 +306,7 @@ function textOverflow(object: Record<string, unknown>, path: string, elided?: tr
 
 /** The primitives the content admission module (`ui-validator-content.ts`) builds its field rules from. */
 const ADMISSION_HELPERS: AdmissionHelpers<ValidationState> = { own, invalid, enumeration, finiteInteger, boolean, text, collection }
+const PROMPT_HELPERS: PromptAdmissionHelpers<ValidationState> = { ...ADMISSION_HELPERS, draftText, enter }
 
 function collection(value: unknown, path: string): readonly unknown[] {
   if (!Array.isArray(value)) invalid(`${path} must be an array`)
@@ -561,7 +573,7 @@ interface LazyListAdmission {
 const lazyLists = new WeakMap<readonly MayflyListItem[], LazyListAdmission>()
 
 function emptyBudget(): ValidationBudget {
-  return { nodes: 0, text: 0, chartCells: 0, images: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), scopes: [], filterable: false, deferred: 0 }
+  return { nodes: 0, text: 0, chartCells: 0, images: 0, promptText: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), scopes: [], filterable: false, deferred: 0 }
 }
 
 function validationState(budget: ValidationBudget = emptyBudget()): ValidationState {
@@ -641,6 +653,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     text: deferred.budget.text,
     chartCells: deferred.budget.chartCells,
     images: deferred.budget.images,
+    promptText: deferred.budget.promptText,
     controlIds: new Set(deferred.budget.controlIds),
     tabs: new Map(deferred.budget.tabs),
     pages: deferred.budget.pages.length,
@@ -657,6 +670,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     deferred.budget.text = checkpoint.text
     deferred.budget.chartCells = checkpoint.chartCells
     deferred.budget.images = checkpoint.images
+    deferred.budget.promptText = checkpoint.promptText
     deferred.budget.controlIds.clear()
     for (const id of checkpoint.controlIds) deferred.budget.controlIds.add(id)
     deferred.budget.tabs.clear()
@@ -1191,7 +1205,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
     if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
     if (mode === 'editor' && (kind === 'diagram' || kind === 'chart' || kind === 'image')) invalid(`editor node kind "${kind}" is unsupported`)
     /* The host editor owns every key in its shell, so focusable controls other than accelerator actions are unreachable there. */
-    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs')) invalid(`editor node kind "${kind}" would take focus from the editor`)
+    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt')) invalid(`editor node kind "${kind}" would take focus from the editor`)
     if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
     switch (kind) {
       case 'text': {
@@ -1409,6 +1423,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           ...optional(rowsValue === undefined ? undefined : imageRows(rowsValue, `${path}.maxRows`), 'maxRows'),
         }
       }
+      case 'prompt': return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...admitPromptFields(PROMPT_HELPERS, object, path, state) }
       case 'diagram': return { kind, diagram: enumeration(required(object, 'diagram', path), ['mermaid'], `${path}.diagram`), source: text(required(object, 'source', path), `${path}.source`, state) }
       case 'chart': {
         const chart = enumeration(required(object, 'chart', path), ['line', 'point', 'bar', 'sparkline', 'heatmap'], `${path}.chart`)

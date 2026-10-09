@@ -39,6 +39,7 @@
 | `Ctrl+E` | 将聚焦的可滚动内容展开为全屏 |
 | `Delete` | 将已修改的字段恢复为继承值或默认值 |
 | `Alt+Enter 或 Ctrl+J` | 在多行字段中插入换行 |
+| `Enter, Alt+Enter, ↑/↓, Backspace` | 在提示符中：发送、插入换行、在空提示符处翻阅历史（排队消息在前），或先选中再删除最后一个标记 |
 | `Ctrl+S, c, x, r, Ctrl+G, Ctrl+F` | 在面板提供相应含义时保存、复制、删除、刷新、在 $EDITOR 中打开或搜索 |
 <!-- END shared-keys -->
 

@@ -1325,6 +1325,86 @@ ui.stack.column([
 ])
 ```
 
+### `prompt`
+
+![`prompt` 节点渲染效果](/shots/prompt.svg)
+
+*带两个标记和一段草稿的提示符，放在编辑器使用的右上标题 surface 中（宽度 64）。*
+
+```ts
+ui.prompt(options: {
+  id: string
+  symbol?: string                      // 默认 '> '
+  symbolTone?: MayflyTone
+  value?: string                       // 控件初始的草稿
+  tokens?: { id: string, label: string, size?: string }[]
+  recall?: { kind: 'queued' | 'history', text: string }[]
+  recallLabel?: string                 // 默认 'history'
+  placeholder?: string | string[]      // 阶梯，从长到短
+  completions?: { items: { id: string, label: string, detail?: string, right?: string }[] }
+  reset?: { rev: number, value: string }
+  submitLabel?: string                 // 默认 'send'
+  autofocus?: boolean
+})
+```
+
+提示符是唯一不属于字段的文本控件。第一行依次是符号、标记和缓冲区；缓冲区就是终端编辑器，
+所以 kill ring、撤销、粘贴折叠和输入法的行为与主编辑器一致。标记写作 `[label size ×]`，
+被选中时反色。多行缓冲区的后续行位于符号之下。草稿由 core 保存在 surface 模型中，因此重新发布、
+切换主题或 core 重载都不会丢失已输入的内容；节点的 `value` 只是草稿的起点。
+
+![`prompt` 占位阶梯](/shots/prompt-placeholder.svg)
+
+*显示放得下的最长占位变体（宽度 40）。*
+
+缓冲区和标记都为空时，占位文字以弱化的文本色显示在光标之后。数组是从长到短的阶梯，
+显示放得下的最长变体，所以每个变体都应写成完整的触发词。纯字符串会逐段丢弃末尾的 ` · ` 段。
+有任何文本、标记或多行缓冲区时占位文字隐藏；极窄的行只会截断最短的变体。
+
+![`prompt` 补全列表](/shots/prompt-completions.svg)
+
+*打开的补全列表及其按键行（宽度 64）。*
+
+`completions` 在缓冲区下最多显示五行，形如 `→ label — detail`，焦点行加粗，放得下时 `right`（例如命令的按键）
+靠右对齐。`↑`/`↓` 移动光标，`Tab` 或 `Enter` 发送带该行 `itemId` 的 `completion-accept`，`Esc`
+隐藏列表（`completion-dismiss`），直到行或文本变化。宿主通过发布新节点（通常带 `reset`）完成插入。
+把提示符放进设置了 `hint: 'completions'` 的 `surface`，按键行只在列表打开时显示。
+
+![`prompt` 历史回溯](/shots/prompt-recall.svg)
+
+*空提示符上按两次 `↑`（宽度 64）。*
+
+缓冲区为空或已是某条回溯内容时，`↑`/`↓` 遍历 `recall`：排队的消息在前，从新到旧；右上角显示
+`↑ history 2/3`，回溯的文本成为草稿。越过最新一条再按 `↓` 会恢复之前的草稿。每一步发送观察事件
+`recall-change`（`source` 为 `queued`、`history` 或 `draft`，`index` 是 `recall` 中的位置，草稿为 `-1`）。
+宿主撤回已回溯的排队消息时，重新发布去掉它的 `recall`，遍历位置保持不变。
+
+提示符获得焦点时的按键：
+
+| 按键 | 作用 |
+| --- | --- |
+| 输入、`←`/`→`、`Home`/`End`、`Ctrl+K`、`Ctrl+Y` 等 | 终端编辑器自己的编辑 |
+| `Enter` | 发送：`submit` 动作 |
+| `Alt+Enter`、`Ctrl+J` | 插入换行 |
+| 空缓冲区上的 `Backspace` | 第一次选中最后一个标记，第二次删除它（`token-remove`）；其他任何键都会取消选中 |
+| 空缓冲区上的 `↑` / `↓` | 遍历 `recall` |
+| 补全列表打开时的 `Tab` / `Enter` / `Esc` / `↑` / `↓` | 接受、接受、隐藏、移动 |
+| `Esc`、`Ctrl+C` | 与其他控件一样离开 surface |
+
+可打印按键总是进入缓冲区，所以 surface 上其他位置的字母快捷键在提示符有焦点时不会触发；带修饰键的快捷键仍然有效。
+按键行用 `submitLabel` 命名 `Enter`，并显示 `Alt+Enter newline`，以及适用时的历史回溯按键对。
+
+事件：`value-change`（观察事件；`formId` 为提示符 `id`，`controlId` 为 `text`）、`recall-change`（观察事件），
+以及动作 `token-remove`（`tokenId`）、`completion-accept`（`itemId`）、`completion-dismiss` 和 `submit`。
+`submit` 携带一个 submission，其中有一个以提示符 `id` 为地址的表单，字段为 `text` 与 `tokens`（标记 id）；
+草稿随即清空，宿主像对表单一样答复，通常是带新节点（已清空的标记、更新后的 `recall`）的 `accepted`。
+`reset` 对每个新的 `rev` 只替换一次草稿，宿主用它插入补全或恢复草稿。
+
+限制：草稿、回溯消息和 reset 在每棵树中合计 100,000 个字符，不计入整棵树 20,000 字符的文本预算；
+最多 50 个标记（`id`、`label`、`size` 各最多 64 个字符）、8 个占位变体（每个最多 200 个字符）、
+最多 8 个字符的 `symbol`，`recallLabel` 与 `submitLabel` 最多 24 个字符。`prompt` 可用于 pane 和 overlay，
+不是 status 或 editor extension 节点。
+
 ## 焦点与上下文提示
 
 TUI 通过同一套键位语法从 canonical control 角色推导操作，并用同一套语法生成提示行，
@@ -1616,8 +1696,8 @@ onEvent: {
 
 | 通道 | 事件 | 用途 |
 | --- | --- | --- |
-| `observe` | `value-change`、`selection-toggle`、`tab-change`、`focus-change` | 编辑事实、异步校验与焦点移动（`focus-change` 携带 `controlId` 和 `itemId?`，每帧最多一次）；不能发布、导航或关闭 |
-| `action` | `activate`、`selection-accept`、`submit`、`dismiss` | 原生 effect 与明确结算 |
+| `observe` | `value-change`、`selection-toggle`、`tab-change`、`focus-change`、`recall-change` | 编辑事实、异步校验与焦点移动（`focus-change` 携带 `controlId` 和 `itemId?`，每帧最多一次）；不能发布、导航或关闭 |
+| `action` | `activate`、`selection-accept`、`submit`、`token-remove`、`completion-accept`、`completion-dismiss`、`dismiss` | 原生 effect 与明确结算 |
 
 `context` 包含 `surfaceId`、当前 `source`、`revision`、唯一 `operationId`、
 `AbortSignal` 与 `report(feedback)`。同字段观察 latest-wins；同 action boundary
@@ -1641,7 +1721,7 @@ handle 的 `set(node, { reason: 'data', source })` 或 editor-extension registra
 | `panes` | 完整 `MayflyUiNode` | controls 可用，事件交给 pane `onEvent` |
 | `placement: 'views'` 的 `panes` | 面板为完整 `MayflyUiNode`，摘要为 status 节点 | 进入后面板取代状态栏第 2 行；摘要始终非交互 |
 | capturing overlay | 完整 `MayflyUiNode` | 获取焦点并处理 Escape 关闭 |
-| non-capturing overlay | 只使用 passive 内容/layout | tabs/list/form/actions 等 controls 会使整棵渲染树降级为错误提示 |
+| non-capturing overlay | 只使用 passive 内容/layout | tabs/list/form/actions/prompt 等 controls 会使整棵渲染树降级为错误提示 |
 | additive `status` | text、rich-text、fields、progress、递归 stack | 始终非交互，不接受 surface/scroll/control |
 | editor extension | passive content/rich-text/progress/spacer/divider + stack/surface | 交互 action 走 extension decoration 的 `actions` 字段 |
 

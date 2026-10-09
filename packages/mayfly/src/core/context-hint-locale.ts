@@ -39,6 +39,11 @@ const zh = Object.freeze({
   '▸ {count} more lines · Enter': '▸ 还有 {count} 行 · Enter',
   reset: '重置',
   'ready in a moment': '稍候即可操作',
+  // The prompt: the recall position in its corner (`↑ history 2/4`) and the words of its hint row.
+  history: '历史',
+  queued: '排队中',
+  send: '发送',
+  insert: '插入',
   // Field provenance and conflict resolution.
   inherited: '继承',
   override: '显式覆盖',

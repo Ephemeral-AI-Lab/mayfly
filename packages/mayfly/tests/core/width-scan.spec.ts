@@ -19,6 +19,7 @@ import { MayflyUiSurfaceRuntime, compileMayflyEditorShellNode, compileMayflyStat
 import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { ui } from '../../../ui/src/index.ts'
+import { createRealSurface, parityComponents } from '../design/parity.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
 import { WrappingSelectList } from '../../src/core/wrapping-select-list.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -127,6 +128,25 @@ describe('core width-scan', () => {
         const imageRows = drawn.value.component.render(width)
         expect(imageRows).toHaveLength(4)
         expectLinesFit(`image/${name}`, imageRows, width)
+      }
+    })
+
+    it(`prompts stay fitting rows in every state, over ${name}`, () => {
+      const prompts = [
+        ui.prompt({ id: 'p', value: text, tokens: [{ id: 't1', label: text.slice(0, 60), size: text.slice(0, 60) }, { id: 't2', label: 'notes.md', size: '2 KB' }], placeholder: [text.slice(0, 200), 'Ask'], symbol: '! ', symbolTone: 'accent' }),
+        ui.prompt({ id: 'p', placeholder: [text.slice(0, 90), `${text.slice(0, 90)} · ${text.slice(0, 90)}`], completions: { items: [{ id: 'a', label: text.slice(0, 300), detail: text.slice(0, 300), right: text.slice(0, 60) }, { id: 'b', label: 'short' }] } }),
+        ui.prompt({ id: 'p', recall: [{ kind: 'queued', text }, { kind: 'history', text: 'older' }], recallLabel: text.slice(0, 24), tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }] }),
+      ]
+      for (const [index, prompt] of prompts.entries()) for (const width of SCAN_WIDTHS) {
+        const surface = createRealSurface(ui.surface({ title: text, titleAlign: 'right', chrome: 'surface', hint: 'completions', child: prompt }), width, { components: parityComponents() })
+        try {
+          if (index === 1) surface.press('/')
+          if (index === 2) { surface.press('\x1b[A'); surface.press('\x1b[A') }
+          if (index === 0) surface.press('\x7f')
+          const rows = surface.render()
+          expect(rows.join('\n'), 'the prompt was admitted').not.toContain('could not be displayed')
+          expectLinesFit(`prompt-${String(index)}/${name}`, rows, width)
+        } finally { surface.dispose() }
       }
     })
 

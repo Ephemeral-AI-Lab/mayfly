@@ -84,8 +84,9 @@ describe('ui builders', () => {
       ui.spacer({ size: 2 }),
       ui.divider({ label: 'More' }),
       ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 }),
+      ui.prompt({ id: 'prompt', tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }], recall: [{ kind: 'queued', text: 'x' }], placeholder: ['a', 'b'], completions: { items: [{ id: 'c', label: '/model' }] }, reset: { rev: 0, value: '' } }),
     ]
-    expect(nodes.map(node => node.kind)).toEqual(['tabs', 'list', 'form', 'actions', 'loader', 'empty', 'progress', 'spacer', 'divider', 'image'])
+    expect(nodes.map(node => node.kind)).toEqual(['tabs', 'list', 'form', 'actions', 'loader', 'empty', 'progress', 'spacer', 'divider', 'image', 'prompt'])
     for (const node of nodes) expectDeepFrozen(node)
   })
 
@@ -106,6 +107,7 @@ describe('ui builders', () => {
     expect(ui.spacer()).toEqual({ kind: 'spacer' })
     expect(ui.divider()).toEqual({ kind: 'divider' })
     expect(ui.image({ attachmentId: 'a', alt: 'x' })).toEqual({ kind: 'image', attachmentId: 'a', alt: 'x' })
+    expect(ui.prompt({ id: 'p' })).toEqual({ kind: 'prompt', id: 'p' })
     expect(ui.markdown('x')).toEqual({ kind: 'markdown', source: 'x' })
     expect(ui.diagram('graph TD')).toEqual({ kind: 'diagram', diagram: 'mermaid', source: 'graph TD' })
     expect(ui.chart({ chart: 'sparkline', values: [1] })).toEqual({ kind: 'chart', chart: 'sparkline', values: [1] })

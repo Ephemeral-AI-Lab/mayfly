@@ -359,6 +359,49 @@ export interface MayflyImageNode {
   readonly maxRows?: number
 }
 
+/** A `[label size ×]` attachment shown inside the prompt's input row; the host owns the list and removes one on `token-remove`. */
+export interface MayflyPromptToken { readonly id: string, readonly label: string, readonly size?: string }
+/** One earlier message the prompt can recall: a queued message first, then history. */
+export interface MayflyPromptRecall { readonly kind: 'queued' | 'history', readonly text: string }
+/** One row of the prompt's completion list. */
+export interface MayflyPromptCompletion {
+  readonly id: string
+  readonly label: string
+  /** Muted text after the label, behind a dash. */
+  readonly detail?: string
+  /** Muted text aligned to the right edge, such as the command's key. */
+  readonly right?: string
+}
+/**
+ * The prompt: the one text control that is not a field. It draws a symbol, tokens, and the buffer in one input row, a
+ * placeholder while it is empty, and a completion list under the buffer. Core edits the buffer with the terminal editor
+ * (kill ring, undo, paste folding, and input methods are the editor's) and keeps the draft in the surface model, so a
+ * republish never loses what was typed. The host answers `completion-accept`, `token-remove`, and `submit` by
+ * publishing a new node, and `reset` replaces the draft.
+ */
+export interface MayflyPromptNode {
+  readonly kind: 'prompt'
+  readonly id: string
+  /** The leading symbol, with its trailing space (default `'> '`). */
+  readonly symbol?: string
+  readonly symbolTone?: MayflyTone
+  /** The draft the control starts with. */
+  readonly value?: string
+  readonly tokens?: readonly MayflyPromptToken[]
+  /** Messages `↑`/`↓` walk on an empty buffer, in order: queued first, then history, newest first. */
+  readonly recall?: readonly MayflyPromptRecall[]
+  /** The word the right corner uses for a history entry (default `history`). */
+  readonly recallLabel?: string
+  /** Muted ghost text while the buffer is empty; an array is a ladder, longest first, and the longest that fits shows. */
+  readonly placeholder?: string | readonly string[]
+  readonly completions?: { readonly items: readonly MayflyPromptCompletion[] }
+  /** Replaces the draft with `value` once per `rev`. */
+  readonly reset?: { readonly rev: number, readonly value: string }
+  /** The word the hint row gives `Enter` (default `send`). */
+  readonly submitLabel?: string
+  readonly autofocus?: boolean
+}
+
 export interface MayflyChartPoint { readonly x: number, readonly y: number | null }
 export interface MayflyChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly points: readonly MayflyChartPoint[] }
 export interface MayflyBarChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly values: readonly (number | null)[], readonly empty?: boolean }
@@ -382,7 +425,7 @@ export interface MayflyHeatmapChartNode {
 export type MayflyChartNode = MayflyLineChartNode | MayflyBarChartNode | MayflySparklineChartNode | MayflyHeatmapChartNode
 
 export type MayflyContentNode = MayflyTextNode | MayflyMarkdownNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode | MayflyRichTextNode | MayflyDiagramNode | MayflyChartNode
-export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode
+export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode | MayflyPromptNode
 
 export interface MayflyRegistryUpsert<Entry> { readonly kind: 'upsert', readonly entry: Entry }
 export interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: string, readonly revision: number }

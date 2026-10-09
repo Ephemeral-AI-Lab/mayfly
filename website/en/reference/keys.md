@@ -39,6 +39,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `Ctrl+E` | Expand focused scrollable content to full screen |
 | `Delete` | Return a changed field to its inherited or default value |
 | `Alt+Enter or Ctrl+J` | Insert a newline in a multi-line field |
+| `Enter, Alt+Enter, ↑/↓, Backspace` | In a prompt: send, insert a newline, walk the recall of an empty prompt (queued messages first), or select and then remove the last token |
 | `Ctrl+S, c, x, r, Ctrl+G, Ctrl+F` | Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning |
 <!-- END shared-keys -->
 

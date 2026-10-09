@@ -8,6 +8,7 @@ import type {
   MayflyScrollNode, MayflyTabsNode, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventEndpoint, MayflyUiNode, MayflyUiScope,
 } from '@ephemeral-ai/mayfly-ui'
 import { createFormState, formAddressKey, formDirty, inspectForm, reconcileForm, reduceForm, submitForm, validateForm, type UiFormIntent, type UiFormState } from './ui-interaction-form.ts'
+import { createPromptModel, reconcilePrompt, reducePrompt, type UiPromptEffect, type UiPromptIntent, type UiPromptModel } from './ui-interaction-prompt.ts'
 import { acknowledgeChoice, choiceError, choiceReportedSegment, createChoiceState, reconcileChoice, reduceChoice, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
 import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls, type UiControlAddress } from './ui-interaction-tree.ts'
 import { admittedListIndex, admittedListItem, createAdmissionCache, validateMayflyUiNode } from './ui-validator.ts'
@@ -109,6 +110,7 @@ export class UiSurfaceModel {
   private readonly forms = new Map<string, UiFormState>()
   private readonly formDefinitions = new Map<string, MayflyFormNode>()
   private readonly choices = new Map<string, UiChoiceState>()
+  private readonly prompts = new Map<string, UiPromptModel>()
   private readonly tabs = new Map<string, { readonly definition: MayflyTabsNode, readonly activeId: string, readonly completed: ReadonlyMap<string, string> }>()
   private readonly documents = new Map<string, UiDocumentState>()
   private readonly actions = new Map<string, UiAction>()
@@ -165,6 +167,7 @@ export class UiSurfaceModel {
 
   form(address: MayflyFormAddress): UiFormState | undefined { return this.forms.get(formAddressKey(address)) }
   choice(address: UiControlAddress): UiChoiceState | undefined { return this.choices.get(uiControlKey(address)) }
+  prompt(address: UiControlAddress): UiPromptModel | undefined { return this.prompts.get(uiControlKey(address)) }
   activeTab(address: UiControlAddress): string | undefined { return this.tabs.get(uiControlKey(address))?.activeId }
   completedSteps(address: UiControlAddress): readonly string[] {
     const tabs = this.tabs.get(uiControlKey(address))
@@ -239,7 +242,7 @@ export class UiSurfaceModel {
       this.admissionError = undefined
       this.notifications.clear('snapshot', false)
       this.cancelTasks()
-      this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
+      this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
       this.rawNode = null; this.admittedNode = null; this.input = snapshot
       this.changed()
       return
@@ -296,6 +299,7 @@ export class UiSurfaceModel {
       }
     }
     for (const [key] of this.choices) if (declarations.complete && declarations.controls.get(key)?.kind !== 'list') { this.choices.delete(key); changed = true }
+    for (const [key] of this.prompts) if (declarations.complete && declarations.controls.get(key)?.kind !== 'prompt') { this.prompts.delete(key); changed = true }
     for (const [key] of this.tabs) if (declarations.complete && declarations.controls.get(key)?.kind !== 'tabs') { this.tabs.delete(key); changed = true }
     for (const [key] of this.documents) if (declarations.complete && declarations.controls.get(key)?.kind !== 'scroll') { this.documents.delete(key); changed = true }
     this.actions.clear()
@@ -331,6 +335,13 @@ export class UiSurfaceModel {
         const submittedSelection = accepted ? task?.submission?.selections?.find(selection => uiControlKey(selection) === key)?.selectedIds : undefined
         const next = previous === undefined ? createChoiceState(current) : accepted ? acknowledgeChoice(previous, current, submittedSelection) : reconcileChoice(previous, current)
         this.choices.set(key, next)
+        changed ||= next !== previous
+      } else if (current.kind === 'prompt') {
+        const address = { pagePath, controlId: current.id }
+        const key = uiControlKey(address)
+        const previous = this.prompts.get(key)
+        const next = previous === undefined ? createPromptModel(address, current) : reconcilePrompt(previous, current)
+        this.prompts.set(key, next)
         changed ||= next !== previous
       } else if (current.kind === 'tabs') {
         const key = uiControlKey({ pagePath, controlId: current.id })
@@ -396,6 +407,40 @@ export class UiSurfaceModel {
     if (next === state) return
     this.choices.set(uiControlKey(address), next)
     this.changed()
+  }
+
+  /**
+   * Apply one intent to a prompt's draft and tell the host what it caused: the observations at once, the actions as
+   * handled events (an action already in flight for the same token, row, or prompt is not asked twice).
+   */
+  updatePrompt(address: UiControlAddress, intent: UiPromptIntent): void {
+    const key = uiControlKey(address)
+    const state = this.prompts.get(key)
+    if (!this.live || state === undefined || this.decision !== undefined) return
+    const { model, effects } = reducePrompt(state, intent)
+    if (model !== state) {
+      this.prompts.set(key, model)
+      this.changed()
+    }
+    for (const effect of effects) this.promptEffect(address, key, effect)
+  }
+
+  private promptEffect(address: UiControlAddress, key: string, effect: UiPromptEffect): void {
+    const { pagePath, controlId } = address
+    const act = (id: string, event: MayflyUiEvent): void => { if (!this.activeKeys.has(id)) this.start(id, event) }
+    switch (effect.kind) {
+      case 'value-change': this.observe({ kind: 'value-change', pagePath, controlId: 'text', formId: controlId, value: effect.value, draftRevision: effect.draftRevision }); break
+      case 'recall-change': this.observe({ kind: 'recall-change', pagePath, controlId, source: effect.source, index: effect.index }); break
+      case 'token-remove': act(`${key}:token-remove:${effect.tokenId}`, { kind: 'token-remove', pagePath, controlId, tokenId: effect.tokenId }); break
+      case 'completion-accept': act(`${key}:completion-accept`, { kind: 'completion-accept', pagePath, controlId, itemId: effect.itemId }); break
+      case 'completion-dismiss': act(`${key}:completion-dismiss`, { kind: 'completion-dismiss', pagePath, controlId }); break
+      case 'submit': {
+        const fields = [{ id: 'text', change: 'set' as const, value: effect.text }, { id: 'tokens', change: 'set' as const, value: effect.tokens }]
+        // Tokens alone are the same submission until the host answers; a typed message is a new one each time.
+        act(effect.text.trim() === '' ? `${key}:submit` : `${key}:submit:${String(effect.draftRevision)}`, { kind: 'submit', pagePath, controlId, submission: freezeWire({ actionId: controlId, draftRevision: effect.draftRevision, source: this.source, forms: [{ pagePath, formId: controlId, draftRevision: effect.draftRevision, fields }] }) })
+        break
+      }
+    }
   }
 
   activateTab(address: UiControlAddress, tabId: string): void {
@@ -771,7 +816,7 @@ export class UiSurfaceModel {
       }
     } finally {
       if (this.live) {
-        if (task.controller.signal.aborted) this.setPhase(task, task.event.kind === 'value-change' || task.event.kind === 'selection-toggle' || task.event.kind === 'tab-change' || task.event.kind === 'focus-change' || (task.event.kind === 'activate' && task.event.inputs !== undefined) ? 'cancelled' : 'unknown')
+        if (task.controller.signal.aborted) this.setPhase(task, task.event.kind === 'value-change' || task.event.kind === 'selection-toggle' || task.event.kind === 'tab-change' || task.event.kind === 'focus-change' || task.event.kind === 'recall-change' || (task.event.kind === 'activate' && task.event.inputs !== undefined) ? 'cancelled' : 'unknown')
         if (this.notifications.get(task.id)?.purpose === 'progress') this.notifications.clear(task.id, false)
         for (const form of task.submission?.forms ?? []) this.updateForm(form, { kind: 'release', operationId: task.id })
         if (this.activeKeys.get(task.key) === task.id) this.activeKeys.delete(task.key)
@@ -851,7 +896,7 @@ export class UiSurfaceModel {
     if (!this.live) return
     this.live = false
     this.cancelTasks()
-    this.tasks.clear(); this.activeKeys.clear(); this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
+    this.tasks.clear(); this.activeKeys.clear(); this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
     this.operations.clear(); this.notifications.dispose(); this.listeners.clear()
     this.rawNode = null; this.admittedNode = null; this.decision = undefined; this.selectedControl = undefined
     this.publication = undefined

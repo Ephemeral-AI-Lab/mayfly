@@ -159,6 +159,26 @@ describe.each(['pane', 'overlay'] as const)('%s action publication', kind => {
     expect(observation).toHaveBeenCalledOnce()
   })
 
+  it('settles the prompt events: recall is an observation, the rest are actions', async () => {
+    const recall: MayflyUiEvent = { kind: 'recall-change', controlId: 'prompt', source: 'draft', index: -1, pagePath: [] }
+    const observation = vi.fn(() => undefined)
+    const observed = await setup(kind, undefined, observation)
+    expect((await observed.current().events.prepare(recall, context())).reply).toBeUndefined()
+    expect(observation).toHaveBeenCalledWith(recall, expect.anything())
+    const published = await setup(kind, undefined, () => ({ kind: 'accepted', node: changed, source: [] }) as never)
+    await expect(published.current().events.prepare(recall, context())).rejects.toThrow('observations cannot publish')
+    const prompt = await setup(kind)
+    for (const event of [
+      { kind: 'token-remove', controlId: 'prompt', tokenId: 't1', pagePath: [] },
+      { kind: 'completion-accept', controlId: 'prompt', itemId: 'c1', pagePath: [] },
+      { kind: 'completion-dismiss', controlId: 'prompt', pagePath: [] },
+    ] as const satisfies readonly MayflyUiEvent[]) {
+      await expect(prompt.current().events.prepare(event, context())).rejects.toThrow('structured reply')
+    }
+    const handled = await setup(kind, () => ({ kind: 'completed' }))
+    expect((await handled.current().events.prepare({ kind: 'token-remove', controlId: 'prompt', tokenId: 't1', pagePath: [] }, context())).reply).toEqual({ kind: 'completed' })
+  })
+
   it('rejects snapshot publication and dismissal from observation handlers', async () => {
     const accepted = await setup(kind, undefined, () => ({ kind: 'accepted', node: changed, source: [] }) as never)
     await expect(accepted.current().events.prepare(valueChange, context())).rejects.toThrow('observations cannot publish')

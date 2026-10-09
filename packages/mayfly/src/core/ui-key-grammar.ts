@@ -56,6 +56,21 @@ export type GrammarControl =
     readonly stuckLeft?: true
   }
   | { readonly kind: 'empty-list' }
+  /** The prompt: what its keys can do now (`ui-interaction-prompt.ts` holds the draft the booleans summarize). */
+  | {
+    readonly kind: 'prompt'
+    /** The completion list is open: arrows move it, Tab and Enter accept, Esc dismisses. */
+    readonly completions: boolean
+    /** The buffer is empty or a recalled entry, so `↑`/`↓` walk the recall. */
+    readonly recall: boolean
+    readonly empty: boolean
+    readonly tokens: boolean
+    /** A bracketed paste is in progress: its chunks are text whatever they spell. */
+    readonly pasting: boolean
+    /** The word for Enter and for the recall pair, from the node. */
+    readonly submitLabel?: string
+    readonly recallLabel?: string
+  }
   | { readonly kind: 'action', readonly decision: boolean }
   /** `work` is a loader's cancel, which Escape fires; its Enter binding stays but is not hinted. */
   | { readonly kind: 'cancel', readonly work?: boolean }
@@ -138,6 +153,12 @@ export type GrammarIntent =
   | { readonly kind: 'form-save' }
   | { readonly kind: 'complete' }
   | { readonly kind: 'number-step', readonly delta: -1 | 1 }
+  | { readonly kind: 'prompt', readonly op: PromptOperation }
+
+/** What a prompt key does; the compiler applies each to the prompt's draft or its editor. */
+export type PromptOperation =
+  | 'type' | 'submit' | 'newline' | 'backspace' | 'recall-older' | 'recall-newer'
+  | 'complete-previous' | 'complete-next' | 'complete-accept' | 'complete-dismiss'
 
 export type GrammarMatch =
   | { readonly kind: 'action', readonly action: string }
@@ -333,6 +354,47 @@ function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: E
 }
 
 /**
+ * The prompt owns every key but the few it names: Enter sends (or accepts a completion), `ui.newline` inserts a line
+ * break, the first Backspace on an empty buffer selects a token, `↑`/`↓` walk the recall or the completion list, and
+ * Esc dismisses the list before it leaves the surface. Everything else is the terminal editor's, so no printable
+ * accelerator can take a letter the person is typing.
+ */
+function promptBindings(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'prompt' }>): readonly GrammarBinding[] {
+  const type = (): void => push(bindings, { kind: 'any' }, { kind: 'prompt', op: 'type' })
+  const op = (operation: PromptOperation): GrammarIntent => ({ kind: 'prompt', op: operation })
+  // The middle of a paste is text whatever it spells: a lone Enter or Backspace chunk must not act.
+  if (control.pasting) { type(); return bindings }
+  if (control.completions) {
+    push(bindings, action(ACTION_CANCEL), op('complete-dismiss'), { id: 'escape', label: 'close', priority: PRIORITY.escape, actions: [ACTION_CANCEL] })
+    push(bindings, action(ACTION_MOVE_UP), op('complete-previous'), { id: 'navigate', label: 'options', priority: PRIORITY.navigate, actions: [ACTION_MOVE_UP, ACTION_MOVE_DOWN] })
+    push(bindings, action(ACTION_MOVE_DOWN), op('complete-next'))
+    push(bindings, action(ACTION_NEWLINE), op('newline'))
+    push(bindings, action(ACTION_NEXT_CONTROL), op('complete-accept'), { id: 'prompt-complete', label: 'complete', priority: PRIORITY.primary, actions: [ACTION_NEXT_CONTROL], compact: 'Tab' })
+    push(bindings, action(ACTION_SUBMIT), op('complete-accept'), { id: 'activate', label: 'insert', priority: PRIORITY.primary - 2, actions: [ACTION_SUBMIT] })
+    type()
+    return bindings
+  }
+  if (state.escape !== undefined) {
+    push(bindings, action(ACTION_CANCEL), { kind: 'escape', step: state.escape }, { id: 'escape', label: ESCAPE_LABEL[state.escape], priority: PRIORITY.escape, actions: [ACTION_CANCEL] })
+  }
+  if (state.closable) push(bindings, action(ACTION_INTERRUPT), { kind: 'close' })
+  accelerators(bindings, state, false)
+  // Ctrl+J reaches the terminal as a line feed, which also reads as Enter: the newline action must be asked first.
+  push(bindings, action(ACTION_NEWLINE), op('newline'), { id: 'newline', label: 'newline', priority: PRIORITY.navigate - 2, actions: [ACTION_NEWLINE] })
+  push(bindings, action(ACTION_SUBMIT), op('submit'), { id: 'activate', label: control.submitLabel ?? 'send', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+  if (control.empty && control.tokens) push(bindings, { kind: 'backspace' }, op('backspace'))
+  // The arrows walk the recall only while the buffer is empty or already a recalled entry; otherwise they are the editor's.
+  if (control.recall) {
+    push(bindings, action(ACTION_MOVE_UP), op('recall-older'), { id: 'navigate', label: control.recallLabel ?? 'history', priority: PRIORITY.navigate + 2, actions: [ACTION_MOVE_UP, ACTION_MOVE_DOWN] })
+    push(bindings, action(ACTION_MOVE_DOWN), op('recall-newer'))
+  }
+  tabSwitches(bindings, state, false)
+  groupMoves(bindings, state, false)
+  type()
+  return bindings
+}
+
+/**
  * The ordered binding list for one focus state. The first binding whose
  * matcher accepts an input sequence handles it; hints are the first binding
  * carrying each hint id.
@@ -353,6 +415,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     push(bindings, { kind: 'any' }, { kind: 'swallow' })
     return bindings
   }
+  if (control.kind === 'prompt') return promptBindings(bindings, state, control)
   if (state.escape !== undefined) {
     push(bindings, action(ACTION_CANCEL), { kind: 'escape', step: state.escape }, { id: 'escape', label: ESCAPE_LABEL[state.escape], priority: PRIORITY.escape, actions: [ACTION_CANCEL] })
   }
@@ -527,5 +590,6 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: 'Ctrl+E', action: 'Expand focused scrollable content to full screen' },
   { keys: 'Delete', action: 'Return a changed field to its inherited or default value' },
   { keys: 'Alt+Enter or Ctrl+J', action: 'Insert a newline in a multi-line field' },
+  { keys: 'Enter, Alt+Enter, ↑/↓, Backspace', action: 'In a prompt: send, insert a newline, walk the recall of an empty prompt (queued messages first), or select and then remove the last token' },
   { keys: 'Ctrl+S, c, x, r, Ctrl+G, Ctrl+F', action: 'Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning' },
 ])
