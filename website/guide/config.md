@@ -168,6 +168,9 @@ mayfly:
   userFoldChars: 1000      # 长用户消息折叠阈值（字符数）
   editorCommand: ''        # 外部编辑器命令（空 = 按 $VISUAL/$EDITOR 自动探测）
   pasteImageBackend: auto  # Linux 剪贴板后端：auto | wayland | x11
+  glyphs: auto             # auto（按 locale 字符集）| unicode | ascii（单格回退字形）
+  monochrome: false        # 只保留字重、不着色（设置 NO_COLOR 时也会开启）
+  reducedMotion: false     # 所有动画停在第一帧
 ```
 
 `transcriptView` 沿用 Harness Chat 的四种工作详情模式名（见[流式会话](/features/streaming#工作详情)）。实时状态由 activity 行负责，会话记录只显示已经发生的事。回合运行中，Compact 只显示对话；Standard 另外显示文件修改的 diff 卡片与过去时分组标题，其 activity 行还会显示正在运行的命令、路径、查询或思考内容；Detailed 实时显示所有卡片。Compact、Standard 与 Detailed 把已完成回合折叠到 `用时 38s` 标题下，最终回答（从 Standard 起还有文件修改）保持可见；Verbose 逐卡展开。Ctrl+O 展开最近 `expandTurns` 个回合。原有按类型配置的 `transcript` 设置与 `recentStepsRetention` 不再生效。

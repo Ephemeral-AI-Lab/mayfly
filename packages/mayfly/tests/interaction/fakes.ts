@@ -71,6 +71,8 @@ const SEQUENCE_BY_KEY_ID: Record<string, string> = {
   home: '\x1b[H',
   end: '\x1b[F',
   delete: '\x1b[3~',
+  f5: '\x1b[15~',
+  'alt+down': '\x1b[1;3B',
   f7: '\x1b[18~',
   f8: '\x1b[19~',
   tab: '\t',
@@ -94,6 +96,8 @@ export const KEY = {
   left: '\x1b[D',
   right: '\x1b[C',
   altM: '\x1bm',
+  altDown: '\x1b[1;3B',
+  f5: '\x1b[15~',
   tab: '\t',
   shiftTab: '\x1b[Z',
   space: ' ',
@@ -645,6 +649,11 @@ export class FakeMayflyComponents implements MayflyComponents {
   /** Every image created through this factory, in creation order. */
   readonly images: MayflyImageOptions[] = []
 
+  /** Whether this factory pretends the terminal draws images; the default is a text-only terminal. */
+  imageProtocolActive = false
+
+  imageProtocol(): boolean { return this.imageProtocolActive }
+
   createImage(options: MayflyImageOptions): MayflyImage {
     this.images.push(options)
     return {
@@ -744,6 +753,9 @@ export class FakeScreen implements MayflyScreen {
   readonly overlays: FakeOverlay[] = []
   focused: MayflyComponent | null = null
   renderRequests = 0
+  /** What `enterViews` answers, and how often the prompt asked. */
+  enterViewsResult = false
+  enterViewsCalls = 0
   readonly contentScrolls: Array<{ readonly direction: 'up' | 'down'; readonly amount: number | undefined }> = []
   contentScrollResult = false
   contentPaused = false
@@ -754,6 +766,11 @@ export class FakeScreen implements MayflyScreen {
   private readonly bottom = new Set<MayflyComponent>()
   /** Dock members pinned to the very bottom slot (the footer shell). */
   private readonly bottomPinned = new Set<MayflyComponent>()
+
+  enterViews(): boolean {
+    this.enterViewsCalls += 1
+    return this.enterViewsResult
+  }
 
   mountContentSlot(id: string, component: MayflyComponent | null) {
     this.slotTargets.set(id, component)

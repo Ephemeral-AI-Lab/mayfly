@@ -5,6 +5,8 @@ import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyFieldError, MayflyFieldValue, MayflyFormAddress, MayflyFormField, MayflyFormNode, MayflySubmittedField, MayflySubmittedForm } from '@ephemeral-ai/mayfly-ui'
 import { createChoiceState, reconcileChoice, reduceChoice, selectionError, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
 import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
+import type { FieldDecor } from './ui-form-paint.ts'
+import { patternMatcher } from './ui-validator-form.ts'
 
 export interface UiFieldState {
   readonly definition: MayflyFormField
@@ -226,7 +228,12 @@ export function reduceForm(state: UiFormState, intent: UiFormIntent): UiFormStat
     }
     return changeField(state, intent.fieldId, next)
   }
-  if (intent.kind === 'reset' && field.definition.resetValue === undefined) return state
+  if (intent.kind === 'reset' && field.definition.resetValue === undefined) {
+    // A field with no declared default returns to what it held when the form opened.
+    if (field.change !== 'set') return state
+    const { error: _error, ...clean } = field
+    return changeField(state, intent.fieldId, { ...clean, value: draftValue(field.definition, field.baseline), change: 'unchanged', revision: field.revision + 1 })
+  }
   const value = intent.kind === 'reset' ? draftValue(field.definition, field.definition.resetValue!) : intent.value
   if (!validDraft(field.definition, value)) throw new TypeError('draft value does not match the field kind')
   const change = fieldChange(field, value, intent.kind === 'reset')
@@ -235,13 +242,12 @@ export function reduceForm(state: UiFormState, intent: UiFormIntent): UiFormStat
   return changeField(state, intent.fieldId, { ...clean, value, change, revision: field.revision + 1 })
 }
 
-function fieldError(field: UiFieldState, t: UiTranslate): string | undefined {
+/** The rules a field's value breaks, if any: required, number range, option bounds, length, and `pattern`. */
+function ruleError(field: UiFieldState, t: UiTranslate): string | undefined {
   const definition = field.definition
-  if (definition.disabled === true) return undefined
-  if (field.conflict) return t('Resolve the changed value before saving')
   const value = field.value
   if (definition.required === true && (value === '' || value === null || (Array.isArray(value) && value.length === 0))) {
-    return t('A value is required')
+    return t('Required')
   }
   if (definition.kind === 'number') {
     if (value === '') return undefined
@@ -258,11 +264,45 @@ function fieldError(field: UiFieldState, t: UiTranslate): string | undefined {
     const error = selectionError(selected, definition.options, definition.kind === 'multiselect' ? definition : {}, t)
     if (error !== undefined) return error
   } else if (definition.kind !== 'toggle') {
-    const length = Array.from(String(value)).length
+    const text = String(value)
+    const length = Array.from(text).length
     if (definition.minLength !== undefined && length < definition.minLength) return t('Minimum length: {value}', { value: definition.minLength })
     if (definition.maxLength !== undefined && length > definition.maxLength) return t('Maximum length: {value}', { value: definition.maxLength })
+    // An empty value is `required`'s business; a pattern describes what a typed value looks like.
+    if (definition.pattern !== undefined && text.length > 0 && patternMatcher(definition)?.test(text) === false) return definition.patternMessage ?? t('Invalid value')
   }
-  return field.error
+  return undefined
+}
+
+function fieldError(field: UiFieldState, t: UiTranslate): string | undefined {
+  if (field.definition.disabled === true) return undefined
+  if (field.conflict) return t('Resolve the changed value before saving')
+  return ruleError(field, t) ?? field.error
+}
+
+/**
+ * The error a field shows under itself. A stored error (the owner's answer, a refused save) always shows; the rules show
+ * only once the value was edited and the edit is over, so a field never scolds while it is being typed into.
+ */
+export function fieldDisplayError(field: UiFieldState | undefined, t: UiTranslate, editing: boolean): string | undefined {
+  if (field === undefined || field.definition.disabled === true) return undefined
+  if (field.error !== undefined) return field.error
+  if (editing || field.change === 'unchanged' || field.conflict) return undefined
+  return ruleError(field, t)
+}
+
+/** What a field's reading needs from its draft: the `•` mark, the origin note, a saved secret, and a number's raw text. */
+export function fieldDecor(definition: MayflyFormField, draft: UiFieldState | undefined): FieldDecor {
+  const change = draft?.change ?? 'unchanged'
+  const value = draft?.value ?? draftValue(definition, definition.value)
+  const differs = definition.resetValue !== undefined && !equalFieldValue(value, draftValue(definition, definition.resetValue))
+  const inherited = change === 'reset' || (change === 'unchanged' && definition.origin === 'inherited')
+  return {
+    edited: change === 'set' || differs,
+    ...(definition.origin === undefined ? {} : { origin: inherited ? 'inherited' as const : 'override' as const }),
+    ...(definition.kind === 'secret' && change === 'unchanged' && definition.value.length > 0 ? { saved: true } : {}),
+    ...(definition.kind === 'number' && typeof value === 'string' ? { draft: value } : {}),
+  }
 }
 
 export function validateForm(state: UiFormState, t: UiTranslate = untranslated): readonly MayflyFieldError[] {
@@ -297,4 +337,26 @@ export function inspectForm(state: UiFormState) {
       ...(field.definition.kind === 'secret' ? {} : { value: field.value }),
     })),
   })
+}
+
+/** The decimals a number is written with, so repeated steps do not drift (`0.1 + 0.2`). */
+function decimals(value: number): number {
+  const text = String(value)
+  const exponent = /e-(\d+)$/u.exec(text)
+  if (exponent !== null) return Number(exponent[1])
+  return text.split('.')[1]?.length ?? 0
+}
+
+/**
+ * One step of a number field from the text it holds: `step` (1 by default) up or down, kept within `min` and `max`.
+ * Text that is not a number starts from `min` (0 by default). Returns nothing when the number cannot move, so the key
+ * can go to the row beside it.
+ */
+export function stepNumber(field: Extract<MayflyFormField, { readonly kind: 'number' }>, text: string, delta: -1 | 1): string | undefined {
+  const current = text.trim() === '' || !Number.isFinite(Number(text)) ? undefined : Number(text)
+  const step = field.step ?? 1
+  const places = Math.max(decimals(step), decimals(current ?? 0))
+  const raw = current === undefined ? field.min ?? 0 : current + delta * step
+  const next = Math.min(field.max ?? Infinity, Math.max(field.min ?? -Infinity, Number(raw.toFixed(places))))
+  return next === current ? undefined : String(next)
 }

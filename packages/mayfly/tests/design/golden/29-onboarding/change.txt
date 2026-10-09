@@ -1,0 +1,45 @@
+--- after start ---
+● Language  ›  ○ Connect  ›  ○ Permissions  ›  ○ Ready
+━━━━━━━━━━
+
+╭ Welcome to Mayfly ────────────────────────────────────────────────── step 1 of 4 ╮
+│ ✻ Mayfly  a quiet terminal UI for DeepSeek Harness                               │
+│                                                                                  │
+│ Pick a language and a color theme. You can change both later in /settings.       │
+│                                                                                  │
+│ → Language: ‹ English ›                                                          │
+│   Theme:    dark                                                                 │
+│                                                                                  │
+│ preview  Overview   Usage 3   !   ✓ done                                         │
+│   ↑/↓ fields · ←/→ adjust · Enter continue · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[C" ---
+● Language  ›  ○ Connect  ›  ○ Permissions  ›  ○ Ready
+━━━━━━━━━━
+
+╭ Welcome to Mayfly ────────────────────────────────────────────────── step 1 of 4 ╮
+│ ✻ Mayfly  a quiet terminal UI for DeepSeek Harness                               │
+│                                                                                  │
+│ Pick a language and a color theme. You can change both later in /settings.       │
+│                                                                                  │
+│ → Language: ‹ 简体中文 ›                                                         │
+│   Theme:    dark                                                                 │
+│                                                                                  │
+│ preview  Overview   Usage 3   !   ✓ done                                         │
+│   ←/→ adjust · Enter continue · Delete reset · Esc close                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[D" ---
+● Language  ›  ○ Connect  ›  ○ Permissions  ›  ○ Ready
+━━━━━━━━━━
+
+╭ Welcome to Mayfly ────────────────────────────────────────────────── step 1 of 4 ╮
+│ ✻ Mayfly  a quiet terminal UI for DeepSeek Harness                               │
+│                                                                                  │
+│ Pick a language and a color theme. You can change both later in /settings.       │
+│                                                                                  │
+│ → Language: ‹ English ›                                                          │
+│   Theme:    dark                                                                 │
+│                                                                                  │
+│ preview  Overview   Usage 3   !   ✓ done                                         │
+│   ↑/↓ fields · ←/→ adjust · Enter continue · Esc close                           │
+╰──────────────────────────────────────────────────────────────────────────────────╯

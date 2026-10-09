@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
   CURSOR_MARKER,
+  stripTerminalSequences,
   TuiMainScreen,
   setCapabilities,
   truncateToWidth as piTruncateToWidth,
@@ -146,6 +147,20 @@ describe('MayflyComponentsService registration', () => {
     expect(ctx.get('mayflyComponents')).toBeInstanceOf(MayflyComponentsService)
     await fiber.dispose()
     expect(ctx.get('mayflyComponents')).toBeUndefined()
+    stop()
+  })
+
+  it('records the presentation it was built for and frames the editor in its glyphs', () => {
+    const { tui, stop } = bootTui()
+    const ctx = new Context()
+    ctx.provide('mayflyInteractionState', { settingsSource: () => ({ glyphs: 'ascii', reducedMotion: true }) } as never)
+    const components = new MayflyComponentsService(ctx, { theme: sgrTheme(), tui })
+    expect(components.presentation).toMatchObject({ glyphs: 'ascii', reducedMotion: true })
+    const editor = components.createEditor()
+    editor.setText('a → b')
+    const rows = editor.render(20).map(row => stripTerminalSequences(row))
+    expect(rows[0]).toMatch(/^\+-+\+$/u)
+    expect(rows[1]).toContain('a → b')
     stop()
   })
 
@@ -1100,6 +1115,21 @@ describe('createImage', () => {
     const image = components.createImage({ data: GIF_1X1, mediaType: 'image/gif' })
     expect(image.render(40)).toEqual(['«muted:[Image: [image/gif] 1x1]»'])
     image.invalidate()
+    stop()
+  })
+})
+
+describe('imageProtocol', () => {
+  it('follows the detected terminal capabilities', () => {
+    const { tui, stop } = bootTui()
+    const components = createService(tui)
+    expect(components.imageProtocol()).toBe(false)
+    setCapabilities({ images: 'kitty', trueColor: true, hyperlinks: false })
+    expect(components.imageProtocol()).toBe(true)
+    setCapabilities({ images: 'iterm2', trueColor: true, hyperlinks: false })
+    expect(components.imageProtocol()).toBe(true)
+    setCapabilities({ images: null, trueColor: false, hyperlinks: false })
+    expect(components.imageProtocol()).toBe(false)
     stop()
   })
 })

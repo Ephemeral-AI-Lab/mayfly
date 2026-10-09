@@ -12,7 +12,7 @@ import * as header from '../../header/src/index.ts'
 import * as overlay from '../../overlay/src/index.ts'
 import * as inspector from '../../right-inspector/src/index.ts'
 import * as uiGallery from '../../ui-gallery/src/index.ts'
-import { summaryMetric } from '../src/index.ts'
+import { APPROVAL_ARM_MS, approvalCard, summaryMetric } from '../src/index.ts'
 import { MemorySettings } from '../../overlay/tests/settings.ts'
 
 interface CommandProbeDefinition {
@@ -38,6 +38,13 @@ async function directContext(): Promise<Context> {
 }
 
 describe('shared user kit', () => {
+  it('keeps the node of an unchanged metric and renders a changed one anew', () => {
+    const props = { label: 'Context', value: '42%', detail: '12k / 28k' }
+    const node = summaryMetric.render(props)
+    expect(summaryMetric.render({ ...props })).toBe(node)
+    expect(summaryMetric.render({ ...props, value: '43%' })).not.toBe(node)
+  })
+
   it('builds deeply frozen standard nodes without plugin metadata', () => {
     const node = summaryMetric.render({ label: 'Context', value: '42%', detail: '12k / 28k' })
     expect(node).toMatchObject({ kind: 'surface', child: { kind: 'stack', direction: 'row' } })
@@ -50,8 +57,19 @@ describe('shared user kit', () => {
   })
 })
 
+describe('shared user kit approval card', () => {
+  it('is patterns.decisionPanel with the kit\'s options, a frozen standard tree, and the pattern\'s arm delay', () => {
+    const node = approvalCard.render({ title: 'Run command?', command: 'pnpm build', detail: 'in ~/work/mayfly' })
+    expect(node).toMatchObject({ kind: 'surface', chrome: 'overlay', escapeLabel: 'reject', title: 'Run command?' })
+    const list = (node as { child: { children: { node: { kind: string, id?: string, items?: { id: string }[] } }[] } }).child.children.map(child => child.node).find(child => child.kind === 'list')!
+    expect(list).toMatchObject({ id: 'approval.options', items: [{ id: 'once' }, { id: 'session' }, { id: 'reject' }] })
+    expect(Object.isFrozen(node)).toBe(true)
+    expect(APPROVAL_ARM_MS).toBe(300)
+  })
+})
+
 describe('direct plugin services and lifecycle', () => {
-  it('registers four pane plugins as ordinary Cordis siblings and unloads each Fiber', async () => {
+  it('registers four pane plugins (six panes) as ordinary Cordis siblings and unloads each Fiber', async () => {
     const ctx = await directContext()
     try {
       const plugins = [header, inspector, bottomLog, uiGallery]
@@ -61,7 +79,9 @@ describe('direct plugin services and lifecycle', () => {
         ['example.header.summary', 'header'],
         ['example.inspector.context', 'right'],
         ['example.log.recent', 'bottom'],
+        ['example.ui-gallery.prompt', 'bottom'],
         ['example.ui-gallery.showcase', 'right'],
+        ['example.ui-gallery.view', 'views'],
       ])
       for (const pane of ctx.mayflyPanes.list()) expect(pane.node).not.toBeNull()
 

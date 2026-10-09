@@ -120,11 +120,12 @@ const components = {
  *   frame is re-rendered so the driven state is what gets painted.
  * @param {object} ui - the built `@ephemeral-ai/mayfly-ui` builder namespace.
  * @param {Function} defineMayflyComponent - the built component factory.
+ * @param {object} patterns - the built `patterns` namespace.
  * @returns {Promise<{ term: object, cols: number, rows: number }>}
  */
-export async function renderScenario(scenario, ui, defineMayflyComponent) {
+export async function renderScenario(scenario, ui, defineMayflyComponent, patterns) {
   const width = scenario.width
-  const node = scenario.build(ui, defineMayflyComponent)
+  const node = scenario.build(ui, defineMayflyComponent, patterns)
   const surfaceId = `shot.${scenario.id.toLowerCase()}`
   const ctx = new Context()
   const providerFiber = await ctx.plugin(uiProvider)
@@ -188,7 +189,9 @@ export async function renderScenario(scenario, ui, defineMayflyComponent) {
     // cannot parse; paint it as a reverse-video block over the cell it sits on.
     const paintCursor = (row, pattern, replacement) =>
       row.replace(pattern, (...args) => replacement(args[1] || ' '))
-    const painted = rows.map(row => {
+    const painted = rows.map(raw => {
+      // A prompt draws its own inverse cursor cell after the marker; the marker alone is then dropped.
+      const row = raw.replace(/\x1b_pi:c\x07(?=\x1b\[7m)/gu, '')
       if (!row.includes(CURSOR_MARKER)) return row
       const follow = paintCursor(row, /\x1b_pi:c\x07(.?)/su, ch => `\x1b[7m${ch}\x1b[27m`)
       if (visibleWidth(follow) <= width) return follow

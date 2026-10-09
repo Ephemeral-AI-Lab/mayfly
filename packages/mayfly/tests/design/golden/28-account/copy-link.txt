@@ -1,0 +1,26 @@
+--- after start ---
+state 1/7: [signed-out] · waiting · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status: Not signed in                                                            │
+│                                                                                  │
+│ Sign in with your DeepSeek account — models are billed to it and need no API     │
+│ key.                                                                             │
+│                                                                                  │
+│ → Sign in                                                                        │
+│   Use an API key instead                                                         │
+│   ↑/↓ options · Enter choose · Esc close                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u0019" ---
+state 1/7: [signed-out] · waiting · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status: Not signed in                                                            │
+│                                                                                  │
+│ Sign in with your DeepSeek account — models are billed to it and need no API     │
+│ key.                                                                             │
+│                                                                                  │
+│ → Sign in                                                                        │
+│   Use an API key instead                                                         │
+│   ↑/↓ options · Enter choose · Esc close                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯

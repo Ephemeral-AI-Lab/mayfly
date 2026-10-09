@@ -1,0 +1,27 @@
+--- after start ---
+[2mpage 1/6 (Ctrl+N): selection and focus: → the cursor, ▌ the persistent selection, ▸ ▾ disclosure, ●
+○ ◐ checks, [current], — reason[0m
+
+[2m→ a cursor in a choose list (the row Enter acts on)[0m
+[1m[38;2;154;134;230m→[0m [1mDefault[0m [2m[current][0m
+  Accept edits
+  [2mFull access[0m [2m— managed by policy[0m
+
+[2m▌ the persistent selection in a rail; inverse only while the rail has focus[0m
+  General
+[1m[38;2;154;134;230m→[0m [1mModel[0m
+  Permissions                                                                                      [2m2[0m
+  General
+[1m[2m→[0m [1mModel[0m
+
+[2m▸ ▾ disclosure and ● ○ ◐ checks (single: ●/○, multiple: ●/○, a partly selected parent ◐)[0m
+  [38;2;154;134;230m▾[0m [38;2;154;134;230m◐[0m [1mfilesystem[0m
+  [2m│ [0m[38;2;154;134;230m●[0m read_file
+  [2m╰ [0m[2m○[0m write_file
+  [2m○[0m github
+
+[2m‹ v › a value ←/→ changes · • an edited field · (inherited) · ! an error[0m
+[38;2;154;134;230m→[0m [1mModel:   [0m[38;2;154;134;230m‹ deepseek-chat ›[0m[2m  (inherited)[0m
+[38;2;154;134;230m•[0m Timeout: 45 s
+  Name:    
+    [38;2;230;110;110m! Required[0m

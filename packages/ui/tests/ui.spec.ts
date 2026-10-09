@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { deepFreeze, defineMayflyComponent, freezeWire, ui } from '../src/index.ts'
+import { deepFreeze, defineMayflyComponent, freezeWire, isWireSnapshot, ui } from '../src/index.ts'
 
 function expectDeepFrozen(value: unknown, seen = new WeakSet<object>()): void {
   if (value === null || typeof value !== 'object' || seen.has(value)) return
@@ -74,7 +74,8 @@ describe('ui builders', () => {
         { kind: 'textarea', id: 'notes', label: 'Notes', value: '', error: 'required' },
         { kind: 'secret', id: 'token', label: 'Token', value: '', disabled: true },
         { kind: 'select', id: 'mode', label: 'Mode', value: null, options: [{ id: 'one', label: 'One' }] },
-        { kind: 'toggle', id: 'enabled', label: 'Enabled', value: true },
+        { kind: 'toggle', id: 'enabled', label: 'Enabled', value: true, help: 'Turns it on', group: 'State' },
+        { kind: 'input', id: 'url', label: 'URL', value: '', pattern: '^https?://', patternMessage: 'Must be a URL', suggestions: ['https://example.com'] },
       ], submitActionId: 'save', cancelActionId: 'cancel' }),
       action,
       ui.loader({ message: 'Loading', variant: 'tide', elapsedMs: 120, cancelActionId: 'cancel' }),
@@ -82,9 +83,18 @@ describe('ui builders', () => {
       ui.progress({ label: 'Context', value: 42, max: 100 }),
       ui.spacer({ size: 2 }),
       ui.divider({ label: 'More' }),
+      ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 }),
+      ui.prompt({ id: 'prompt', tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }], recall: [{ kind: 'queued', text: 'x' }], placeholder: ['a', 'b'], completions: { items: [{ id: 'c', label: '/model' }] }, reset: { rev: 0, value: '' } }),
     ]
-    expect(nodes.map(node => node.kind)).toEqual(['tabs', 'list', 'form', 'actions', 'loader', 'empty', 'progress', 'spacer', 'divider'])
+    expect(nodes.map(node => node.kind)).toEqual(['tabs', 'list', 'form', 'actions', 'loader', 'empty', 'progress', 'spacer', 'divider', 'image', 'prompt'])
     for (const node of nodes) expectDeepFrozen(node)
+  })
+
+  it('builds a list body as a frozen column of content', () => {
+    const body = ui.listBody([ui.text('one'), ui.divider()], { gap: 1 })
+    expect(body).toEqual({ kind: 'stack', direction: 'column', gap: 1, children: [{ node: { kind: 'text', content: 'one' } }, { node: { kind: 'divider' } }] })
+    expectDeepFrozen(body)
+    expect(ui.listBody([]).children).toEqual([])
   })
 
   it('keeps optional builder defaults equivalent to minimal handwritten nodes', () => {
@@ -96,6 +106,8 @@ describe('ui builders', () => {
     expect(ui.scroll(ui.text('x'))).toEqual({ kind: 'scroll', child: { kind: 'text', content: 'x' } })
     expect(ui.spacer()).toEqual({ kind: 'spacer' })
     expect(ui.divider()).toEqual({ kind: 'divider' })
+    expect(ui.image({ attachmentId: 'a', alt: 'x' })).toEqual({ kind: 'image', attachmentId: 'a', alt: 'x' })
+    expect(ui.prompt({ id: 'p' })).toEqual({ kind: 'prompt', id: 'p' })
     expect(ui.markdown('x')).toEqual({ kind: 'markdown', source: 'x' })
     expect(ui.diagram('graph TD')).toEqual({ kind: 'diagram', diagram: 'mermaid', source: 'graph TD' })
     expect(ui.chart({ chart: 'sparkline', values: [1] })).toEqual({ kind: 'chart', chart: 'sparkline', values: [1] })
@@ -166,6 +178,17 @@ describe('deepFreeze', () => {
 })
 
 describe('freezeWire snapshot trust', () => {
+  it('reports exactly the objects its own snapshots contain', () => {
+    const list = ui.list({ id: 'trust', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }] })
+    expect(isWireSnapshot(list)).toBe(true)
+    expect(isWireSnapshot(list.items)).toBe(true)
+    expect(isWireSnapshot(list.items[0])).toBe(true)
+    expect(isWireSnapshot({ ...list })).toBe(false)
+    expect(isWireSnapshot(deepFreeze({ kind: 'text', content: 'caller' }))).toBe(false)
+    expect(isWireSnapshot(null)).toBe(false)
+    expect(isWireSnapshot('text')).toBe(false)
+  })
+
   it('reuses only its own deeply immutable snapshots and nested branches', () => {
     const list = ui.list({ id: 'large', role: 'browse', mode: 'single', selectedIds: [], items: Array.from({ length: 100_000 }, (_, index) => ({ id: String(index), label: String(index) })) })
     expect(freezeWire(list)).toBe(list)
@@ -229,6 +252,39 @@ describe('defineMayflyComponent', () => {
     const result = component.render({ label: 'Context' })
     expect(result).toEqual({ kind: 'surface', child: { kind: 'text', content: 'Context' } })
     expectDeepFrozen(result)
+  })
+
+  it('returns the same node for shallowly equal props when it is a memo component, and renders again otherwise', () => {
+    const render = vi.fn((props: { readonly label: string, readonly tags: readonly string[] }) => ui.text(`${props.label} ${props.tags.join(',')}`))
+    const component = defineMayflyComponent({ id: '@acme/memo', render, memo: true })
+    const tags = ['a']
+    const first = component.render({ label: 'x', tags })
+    expect(component.render({ label: 'x', tags })).toBe(first)
+    expect(render).toHaveBeenCalledOnce()
+    expect(component.render({ label: 'y', tags })).not.toBe(first)
+    expect(component.render({ label: 'y', tags: ['a'] }), 'a new nested value is a new prop').not.toBe(first)
+    expect(render).toHaveBeenCalledTimes(3)
+    const loose = defineMayflyComponent({ id: '@acme/loose', render: () => ui.text('same') })
+    expect(loose.render(undefined)).not.toBe(loose.render(undefined))
+  })
+
+  it('compares props one level deep and never trusts a mutated props object', () => {
+    const component = defineMayflyComponent<Record<string, unknown> | readonly unknown[] | string | null>({ id: '@acme/shapes', render: props => ui.text(JSON.stringify(props)), memo: true })
+    const node = component.render({ a: 1, b: 2 })
+    expect(component.render({ a: 1, b: 2 })).toBe(node)
+    expect(component.render({ a: 1 }), 'fewer keys').not.toBe(node)
+    expect(component.render({ a: 1, c: 2 }), 'another key').not.toBe(component.render({ a: 1, b: 2 }))
+    const array = component.render(['x'])
+    expect(component.render(['x'])).toBe(array)
+    expect(component.render({ 0: 'x' }), 'an object is not an array').not.toBe(array)
+    const mutable: Record<string, unknown> = { count: 1 }
+    const before = component.render(mutable)
+    mutable.count = 2
+    const after = component.render(mutable)
+    expect(after).not.toBe(before)
+    expect(JSON.parse((after as { content: string }).content)).toEqual({ count: 2 })
+    expect(component.render('text')).toBe(component.render('text'))
+    expect(component.render(null)).not.toBe(component.render('text'))
   })
 
   it('validates only definition metadata and leaves schema admission to core', () => {

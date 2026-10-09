@@ -3,6 +3,7 @@
  */
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
+import { mock } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
 import { ui } from '../packages/ui/lib/index.js'
 import { apply } from '../packages/ui/lib/provider.js'
@@ -13,6 +14,8 @@ import { OfficialConversationModelSource } from '../packages/mayfly/src/transcri
 import { conversationProjectionSchema } from '../packages/mayfly/src/conversation/projection.ts'
 import { moveDocument, reconcileDocument } from '../packages/mayfly/src/core/ui-interaction-document.ts'
 import { FakeTerminal } from '../packages/mayfly/tests/core/fake-terminal.ts'
+import { WORKLOADS } from '../packages/mayfly/tests/perf/workloads.ts'
+import { createWorkCounters } from '../packages/mayfly/src/core/ui-work-counters.ts'
 
 const require = createRequire(new URL('../packages/mayfly/package.json', import.meta.url))
 const { Context } = await import(require.resolve('@deepseek-ai/cordis'))
@@ -110,7 +113,7 @@ try {
 
     const entries = Array.from({ length: size }, (_, index) => ({ kind: 'assistant', id: String(index),
       seq: index, updatedSeq: index, turn: index, step: 0, text: 'hello', streaming: false }))
-    let value = { entries, streaming: true, settledSteps: [] }
+    let value = { entries, streaming: true, settledSteps: [], turns: [] }
     let seq = size
     let changed
     const session = {}
@@ -173,8 +176,30 @@ try {
     })
     for (const pane of swarm) pane.dispose()
   }
+  /* The work-budget workloads W1-W8 (roadmap section 7.1), and W1-slot and W4-slot, the same status
+     row and stream published through the node slot (slice 1.10a): the counters are the gate in
+     tests/perf/work-budget.spec.ts; the timing is reported beside them and gates nothing. */
+  mock.timers.enable({ apis: ['setTimeout'] })
+  const environment = { advance: milliseconds => mock.timers.tick(milliseconds) }
+  const workloads = []
+  for (const workload of WORKLOADS) {
+    const times = []
+    let counters
+    for (let iteration = 0; iteration < samples; iteration += 1) {
+      counters = createWorkCounters()
+      const run = workload.setup(counters, environment)
+      const start = performance.now()
+      run.step()
+      times.push(performance.now() - start)
+      counters = { ...counters }
+      run.dispose()
+    }
+    times.sort((a, b) => a - b)
+    workloads.push({ id: workload.id, title: workload.title, medianMs: Number(times[3].toFixed(3)), p95Ms: Number(times[6].toFixed(3)), counters })
+  }
+  mock.timers.reset()
   console.log(JSON.stringify({ node: process.version, platform: process.platform, arch: process.arch,
-    samples, gc: typeof global.gc === 'function', note: 'Headless synthetic timings, not terminal FPS. Heap growth is not total allocation.', results }, null, 2))
+    samples, gc: typeof global.gc === 'function', note: 'Headless synthetic timings, not terminal FPS. Heap growth is not total allocation. Workload counters are exact; stringsMeasured covers the injected seam and the compiler frame paths only.', results, workloads }, null, 2))
 } finally {
   await frontendOwner.dispose()
   await owner.dispose()

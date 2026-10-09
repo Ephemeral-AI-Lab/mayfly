@@ -266,6 +266,27 @@ export const SCENARIOS = [
     drive: focus => { focus.handleInput?.('\x1b[C') },
   },
   {
+    id: 'tabs-rail',
+    // Doc example, verbatim: a vertical rail with group headings, counts, an attention mark, and the page beside it.
+    title: 'tabs — vertical rail',
+    width: 64,
+    build: ui => ui.stack.row([
+      ui.child(ui.tabs({
+        id: 'settings-rail',
+        orientation: 'vertical',
+        activeId: 'model',
+        items: [
+          { id: 'general', label: 'General', group: 'Session' },
+          { id: 'model', label: 'Model', group: 'Session' },
+          { id: 'permissions', label: 'Permissions', count: 2, group: 'Session' },
+          { id: 'providers', label: 'Providers', attention: true, group: 'Integrations' },
+          { id: 'mcp', label: 'MCP', count: '4/9', group: 'Integrations' },
+        ],
+      }), { basis: 24, shrink: 0 }),
+      ui.child(ui.text('Model page'), { grow: 1, tab: { controlId: 'settings-rail', itemId: 'model' } }),
+    ], { gap: 2 }),
+  },
+  {
     id: 'list',
     // Doc example, verbatim: single mode with the documented `selectedIds`.
     title: 'list — single-mode selection',
@@ -299,6 +320,46 @@ export const SCENARIOS = [
     }),
   },
   {
+    id: 'list-rows',
+    // Doc example, verbatim: a slash filter beside a free accelerator, a selection marker, right-aligned spans, a meter,
+    // and a body that opens under its row.
+    title: 'list — slash filter, selection rail, spans, meter, and a body',
+    width: 64,
+    build: ui => ui.stack.column([
+      ui.list({
+        id: 'plugins',
+        role: 'browse',
+        filterable: true,
+        filterMode: 'slash',
+        marker: 'selection',
+        selectedIds: [],
+        items: [
+          { id: 'loop', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }], meter: { value: 3, max: 4 } },
+          { id: 'git', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }], body: 'Commits, branches, and pull requests\nfrom the prompt.' },
+        ],
+      }),
+      ui.actions({ id: 'plugin-keys', items: [{ id: 'install', label: 'Install', key: 'i', hidden: true }] }),
+    ]),
+    drive: focus => { focus.handleInput?.('\x1b[B'); focus.handleInput?.('\r') },
+  },
+  {
+    id: 'list-segment',
+    // Doc example, verbatim: a segment strip on the focused row with an inherited option.
+    title: 'list — a segment strip on the focused row',
+    width: 64,
+    build: ui => ui.list({
+      id: 'models',
+      role: 'browse',
+      acceptVerb: 'choose',
+      selectedIds: [],
+      items: [
+        { id: 'pro', label: 'DeepSeek V4 Pro', detail: '977k context', segment: { label: 'Thinking', inheritedId: 'high', options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }] } },
+        { id: 'flash', label: 'DeepSeek V4 Flash', detail: '256k context' },
+      ],
+    }),
+    drive: focus => { focus.handleInput?.('\x1b[C') },
+  },
+  {
     id: 'form',
     // Doc example, verbatim: all five documented field kinds plus submit and
     // cancel controls, in the default state. The secret value renders masked.
@@ -318,9 +379,31 @@ export const SCENARIOS = [
       ],
       submitActionId: 'create-profile',
       submitLabel: 'Create profile',
-      cancelActionId: 'cancel',
-      cancelLabel: 'Cancel',
     }),
+  },
+  {
+    id: 'form-groups',
+    // Doc example, verbatim: group headings, the focused field's help line, `(saved)`, `(inherited)`, and the `•` mark of
+    // a field that differs from its `resetValue`. The drive moves focus to the Endpoint field.
+    title: 'form — groups, help, and marks',
+    width: 64,
+    build: ui => ui.form({
+      id: 'provider-form',
+      fields: [
+        { kind: 'input', id: 'name', label: 'Name', value: 'production', group: 'Connection' },
+        { kind: 'input', id: 'endpoint', label: 'Endpoint', value: 'https://api.example.com/v1', help: 'Base URL, including the version path',
+          pattern: '^https?://\\S+$', patternMessage: 'Must be an http(s) URL' },
+        { kind: 'secret', id: 'key', label: 'API key', value: 'sk-live-0123456789' },
+        { kind: 'select', id: 'model', label: 'Model', value: 'deepseek-chat', origin: 'inherited', group: 'Behaviour', options: [
+          { id: 'deepseek-chat', label: 'deepseek-chat' },
+          { id: 'deepseek-reasoner', label: 'deepseek-reasoner' },
+        ] },
+        { kind: 'number', id: 'timeout', label: 'Timeout', value: 45, resetValue: 30, min: 5, max: 120, step: 5, unit: 's' },
+        { kind: 'toggle', id: 'stream', label: 'Streaming', value: true },
+      ],
+      submitActionId: 'save',
+    }),
+    drive: focus => { focus.handleInput?.('\x1b[B') },
   },
   {
     id: 'form-editing',
@@ -428,6 +511,23 @@ export const SCENARIOS = [
     }),
   },
   {
+    id: 'actions-named',
+    // Doc example, verbatim: a hidden common meaning and a component action,
+    // scoped to the list they act on; the hint row reads their effective keys.
+    title: 'actions — named row keys scoped to a list',
+    width: 64,
+    build: ui => ui.stack.column([
+      ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: [
+        { id: 'production', label: 'production', detail: 'api.example.com' },
+        { id: 'staging', label: 'staging', detail: 'staging.example.com' },
+      ] }),
+      ui.actions({ id: 'provider-keys', scope: 'providers', items: [
+        { id: 'remove', label: 'Remove', semantic: 'delete', hidden: true, hintLabel: 'remove', confirm: 'Remove the provider?' },
+        { id: 'test', label: 'Test connection', action: 'acme-providers.test', key: 't', hidden: true, hintLabel: 'test' },
+      ] }),
+    ]),
+  },
+  {
     id: 'loader',
     // Doc example, verbatim: the default braille variant with the documented
     // elapsed hint and cancel control.
@@ -438,17 +538,6 @@ export const SCENARIOS = [
       elapsedMs: 1200,
       cancelActionId: 'stop',
       cancelLabel: 'Stop',
-    }),
-  },
-  {
-    id: 'loader-tide',
-    // Same section: the documented `tide` variant.
-    title: 'loader — tide variant',
-    width: 64,
-    build: ui => ui.loader({
-      message: 'Syncing dependencies',
-      variant: 'tide',
-      elapsedMs: 4200,
     }),
   },
   {
@@ -490,6 +579,284 @@ export const SCENARIOS = [
     title: 'divider — semantic separator',
     width: 48,
     build: ui => ui.divider(),
+  },
+  {
+    id: 'image',
+    // Doc example, verbatim. The screenshot host supplies no loader, so the node shows its alt.
+    title: 'image — the alt until the bytes arrive',
+    width: 48,
+    build: ui => ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 }),
+  },
+  {
+    id: 'text-ellipsis',
+    // Doc example, verbatim: the middle and the start of a path elided to one row.
+    title: 'text — middle and start ellipsis',
+    width: 32,
+    build: ui => ui.stack.column([
+      ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'middle' }),
+      ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
+    ]),
+  },
+  {
+    id: 'richText-motion',
+    // Doc example, verbatim, at its first frame: the shimmer and the loader cell sit still in a screenshot.
+    title: 'richText — a shimmering label and a loader cell',
+    width: 48,
+    build: ui => ui.stack.column([
+      ui.richText([{ text: 'Running commands', motion: 'shimmer' }, { text: ' · 12s', tone: 'muted' }]),
+      ui.richText([{ text: '', motion: 'loader', variant: 'breath' }, { text: ' Waiting for authorization', tone: 'muted' }]),
+    ]),
+  },
+  {
+    id: 'code-numbered',
+    // Doc example, verbatim.
+    title: 'code — numbered lines',
+    width: 48,
+    build: ui => ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbered: true }),
+  },
+  {
+    id: 'diff-options',
+    // Doc example, verbatim.
+    title: 'diff — start line, hunk header, context',
+    width: 48,
+    build: ui => ui.diff(
+      ['const a = 1', 'const b = 2', 'const c = 3'].join('\n'),
+      ['const a = 1', 'const b = 4', 'const c = 3'].join('\n'),
+      { start: 41, hunkHeader: true, context: 1 },
+    ),
+  },
+  {
+    id: 'chart-heatmap',
+    // Doc example, verbatim: one cell per value with month labels and the legend row.
+    title: 'chart — one-cell heatmap with column labels',
+    width: 40,
+    build: ui => ui.chart({
+      chart: 'heatmap',
+      cell: 1,
+      title: 'Commits',
+      columns: ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'],
+      columnLabels: ['Jan', '', '', 'Feb', '', ''],
+      rows: ['Mon', 'Fri'],
+      values: [[0, 1, 2, 3, 2, 1], [1, 0, 0, 2, 3, 3]],
+      levels: [
+        { value: 0, label: 'none', tone: 'muted' },
+        { value: 1, label: 'some', tone: 'success' },
+        { value: 2, label: 'more', tone: 'success' },
+        { value: 3, label: 'most', tone: 'success' },
+      ],
+    }),
+  },
+  {
+    id: 'stack-admission',
+    // Doc example, verbatim, at the width where the right band is kept and the path takes the room that is left.
+    title: 'stack — priority admission in a row',
+    width: 64,
+    build: ui => ui.stack.row([
+      ui.child(ui.richText([{ text: 'deepseek-chat High' }]), { priority: 0 }),
+      ui.child(ui.richText([{ text: 'PLAN', tone: 'primary', styles: ['strong'] }]), { priority: 1 }),
+      ui.child(ui.richText([{ text: 'cache 34%', tone: 'muted' }]), { priority: 4, band: 'right', overflow: 'hide' }),
+      ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly', tone: 'muted' }]), { priority: 5, overflow: 'truncate' }),
+    ], { gap: 2 }),
+  },
+  {
+    id: 'stack-admission-narrow',
+    // Same node at a narrow width: `cache 34%` hides and the path has no room left.
+    title: 'stack — the same row at width 30',
+    width: 30,
+    build: ui => ui.stack.row([
+      ui.child(ui.richText([{ text: 'deepseek-chat High' }]), { priority: 0 }),
+      ui.child(ui.richText([{ text: 'PLAN', tone: 'primary', styles: ['strong'] }]), { priority: 1 }),
+      ui.child(ui.richText([{ text: 'cache 34%', tone: 'muted' }]), { priority: 4, band: 'right', overflow: 'hide' }),
+      ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly', tone: 'muted' }]), { priority: 5, overflow: 'truncate' }),
+    ], { gap: 2 }),
+  },
+  {
+    id: 'surface-title-right',
+    // Doc example, verbatim.
+    title: 'surface — right-aligned title and a border tone',
+    width: 40,
+    build: ui => ui.surface({
+      title: '~/work/mayfly/packages/mayfly',
+      titleAlign: 'right',
+      chrome: 'surface',
+      border: 'warning',
+      badges: [{ text: 'dirty', tone: 'warning' }],
+      child: ui.text('The end of the path stays visible.'),
+    }),
+  },
+  {
+    id: 'scroll-region',
+    // Doc example, verbatim: a four-row viewport that follows the tail of twelve lines.
+    title: 'scroll — a declared viewport that follows its tail',
+    width: 40,
+    build: ui => ui.scroll(
+      ui.stack.column(Array.from({ length: 12 }, (_, index) => ui.text(`log line ${index + 1}`))),
+      { height: 4, follow: 'end', pill: true },
+    ),
+  },
+  {
+    id: 'loader-variants',
+    // Doc example, verbatim, at the first frame of each variant.
+    title: 'loader — the four variants',
+    width: 64,
+    build: ui => ui.stack.column([
+      ui.loader({ variant: 'bloom', message: 'Thinking' }),
+      ui.loader({ variant: 'fill', message: 'Working' }),
+      ui.loader({ variant: 'gap', message: 'Discovering models', elapsedMs: 12_000, cancelActionId: 'stop' }),
+      ui.loader({ variant: 'breath', message: 'Waiting for authorization', elapsedMs: 45_000 }),
+    ]),
+  },
+  {
+    id: 'progress-styles',
+    // Doc example, verbatim: cells with a count, cells with a percentage, and the heading rule.
+    title: 'progress — cells and the heading rule',
+    width: 64,
+    build: ui => ui.stack.column([
+      ui.progress({ label: 'Building', value: 6, max: 10, style: 'cells', width: 10 }),
+      ui.progress({ value: 9, max: 10, width: 10, showCount: false, showPercent: true }),
+      ui.progress({ style: 'rule', value: 2, max: 8, width: 24 }),
+    ]),
+  },
+  {
+    id: 'views-summary',
+    // The "Views of status row 2" section: the summary node of its example, as it sits in the row.
+    title: 'views — the summary a view puts in status row 2',
+    width: 48,
+    build: ui => ui.richText([{ text: 'Builds ', tone: 'muted' }, { text: '2 running', tone: 'accent' }]),
+  },
+  {
+    id: 'prompt',
+    // Doc example, verbatim: the editor's composition, a right-titled surface around a prompt with two tokens and a
+    // typed draft. The key line stays hidden until a completion list is open.
+    title: 'prompt — symbol, tokens, and the buffer',
+    width: 64,
+    build: ui => ui.surface({
+      title: 'Update the landing page hero',
+      titleAlign: 'right',
+      chrome: 'surface',
+      hint: 'completions',
+      child: ui.prompt({
+        id: 'composer',
+        autofocus: true,
+        tokens: [{ id: 'image', label: 'Image #1', size: '84 KB' }, { id: 'notes', label: 'notes.md', size: '2 KB' }],
+        placeholder: ['Ask anything · / commands · @ files', 'Ask anything'],
+      }),
+    }),
+    drive: focus => { focus.handleInput?.('explain ') },
+  },
+  {
+    id: 'prompt-placeholder',
+    // The placeholder ladder: the longest whole-trigger variant that fits shows, never cut inside a trigger.
+    title: 'prompt — placeholder ladder at 40 columns',
+    width: 40,
+    build: ui => ui.surface({
+      title: 'Prompt',
+      titleAlign: 'right',
+      chrome: 'surface',
+      hint: 'completions',
+      child: ui.prompt({
+        id: 'composer',
+        autofocus: true,
+        placeholder: ['Ask anything · / commands · @ files · # skills · ! shell', 'Ask anything · / commands · @ files', 'Ask anything'],
+      }),
+    }),
+  },
+  {
+    id: 'prompt-completions',
+    // Doc example, verbatim: an open completion list and its key line.
+    title: 'prompt — completion list',
+    width: 64,
+    build: ui => ui.surface({
+      title: 'Prompt',
+      titleAlign: 'right',
+      chrome: 'surface',
+      hint: 'completions',
+      child: ui.prompt({
+        id: 'composer',
+        autofocus: true,
+        value: '/',
+        completions: { items: [
+          { id: 'model', label: '/model', detail: 'switch model and thinking' },
+          { id: 'sessions', label: '/sessions', detail: 'browse and resume sessions' },
+          { id: 'trace', label: '/trace', detail: 'inspect the execution trace' },
+        ] },
+      }),
+    }),
+  },
+  {
+    id: 'prompt-recall',
+    // Up on an empty prompt recalls queued messages first; the corner reads the position.
+    title: 'prompt — recall',
+    width: 64,
+    build: ui => ui.surface({
+      title: 'Prompt',
+      titleAlign: 'right',
+      chrome: 'surface',
+      hint: 'completions',
+      child: ui.prompt({
+        id: 'composer',
+        autofocus: true,
+        recallLabel: 'history',
+        recall: [
+          { kind: 'queued', text: 'also update the footer' },
+          { kind: 'history', text: 'run the width scan again' },
+          { kind: 'history', text: 'bump the changelog too' },
+        ],
+      }),
+    }),
+    drive: focus => { focus.handleInput?.('\x1b[A'); focus.handleInput?.('\x1b[A') },
+  },
+  {
+    id: 'patterns-decision',
+    // The "Patterns" section, decisionPanel example, verbatim.
+    title: 'patterns.decisionPanel — a decision with choices, a note, and a hidden key',
+    width: 72,
+    build: (ui, _define, patterns) => patterns.decisionPanel({
+      title: 'Delete branch?',
+      badges: [{ text: '1 of 2 waiting', tone: 'muted' }],
+      preview: [ui.text('feature/old-hero · 3 unmerged commits', { tone: 'muted' })],
+      options: [
+        { id: 'keep', label: 'Keep the branch' },
+        { id: 'delete', label: 'Delete it', detail: 'cannot be undone' },
+      ],
+      input: { id: 'why', label: 'Note', placeholder: 'optional' },
+      accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }],
+    }),
+  },
+  {
+    id: 'patterns-rail',
+    // The "Patterns" section, railPanel example, verbatim.
+    title: 'patterns.railPanel — labels on the left, live content on the right',
+    width: 72,
+    build: (ui, _define, patterns) => patterns.railPanel({
+      title: 'Workspaces',
+      rail: { id: 'rail', activeId: 'work', items: [
+        { id: 'work', label: 'work/mayfly', count: 8 },
+        { id: 'site', label: 'website', count: 5 },
+      ] },
+      content: {
+        work: ui.list({ id: 'ws.work', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Fix login redirect', right: [{ text: '2h', tone: 'muted' }] }] }),
+        site: ui.list({ id: 'ws.site', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'b', label: 'Docs sync', right: [{ text: '1d', tone: 'muted' }] }] }),
+      },
+    }),
+  },
+  {
+    id: 'patterns-status',
+    // The "Patterns" section, statusPage example, verbatim.
+    title: 'patterns.statusPage — a read-only page under tabs',
+    width: 72,
+    build: (ui, _define, patterns) => patterns.statusPage({
+      title: 'Status',
+      tabs: { id: 'st', activeId: 'overview', items: [
+        { id: 'overview', label: 'Overview' },
+        { id: 'usage', label: 'Usage' },
+        { id: 'account', label: 'Account', attention: true },
+      ] },
+      rows: [
+        { label: 'Provider', value: [{ text: 'DeepSeek' }] },
+        { label: 'Balance', value: [{ text: '⚠ ¥ 6.20', tone: 'warning' }, { text: ' low balance', tone: 'muted' }] },
+      ],
+    }),
   },
   {
     id: 'uikit-builder',

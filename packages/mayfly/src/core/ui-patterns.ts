@@ -6,15 +6,23 @@
  * @module @ephemeral-ai/mayfly/core/ui-patterns
  */
 
-import type { MayflyFormField, MayflyInlineSpan, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyFormField, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
-import { displayKey } from './key-actions.ts'
+import type { MayflyGlyphMode } from './glyphs.ts'
+import { loaderCell, loaderVariant } from './ui-loader-animation.ts'
+import { hintNotation } from './ui-key-grammar.ts'
 import { sanitizePluginText } from './plugin-view.ts'
-import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
+import { paintSpan, paintTone } from './ui-paint.ts'
+import { paintFormField, type FieldDecor } from './ui-form-paint.ts'
+import { segmentFooter } from './ui-list-segment.ts'
+import { paintList, type ListPaintOptions, type ListRowMemo, type ListRowSpec } from './ui-list-paint.ts'
+import { paintTabs, type TabsPaintOptions } from './ui-tabs-paint.ts'
+import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
+import { listSelectedIds } from './ui-list-selection.ts'
 
 type SurfaceNode = Extract<MayflyUiNode, { readonly kind: 'surface' }>
-type SurfaceChromeNode = Pick<SurfaceNode, 'badges' | 'chrome' | 'subtitle' | 'title'>
+type SurfaceChromeNode = Pick<SurfaceNode, 'badges' | 'border' | 'chrome' | 'subtitle' | 'title' | 'titleAlign'>
 type TabsNode = Extract<MayflyUiNode, { readonly kind: 'tabs' }>
 type ListNode = Extract<MayflyUiNode, { readonly kind: 'list' }>
 type ActionsNode = Extract<MayflyUiNode, { readonly kind: 'actions' }>
@@ -31,6 +39,9 @@ export interface PatternFocus {
   readonly editing?: boolean
 }
 
+/** The kit's default widths: a rule is 24 cells, a cells bar 10. */
+const RULE_CELLS = 24
+const CELLS = 10
 const PARTIAL_BLOCKS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32
 const PRIMARY_COLUMN_GAP = 2
@@ -70,12 +81,6 @@ function fit(value: string, width: number): string {
   return visibleWidth(value) <= available ? value : sliceByColumn(value, 0, available, true)
 }
 
-function pad(value: string, width: number): string {
-  const available = safeWidth(width)
-  const fitted = fit(value, available)
-  return `${fitted}${' '.repeat(Math.max(0, available - visibleWidth(fitted)))}`
-}
-
 function truncatePlainToWidth(text: string, maxWidth: number): string {
   return truncateToWidth(text, maxWidth, '').replace(TRAILING_ANSI_RESET, '')
 }
@@ -99,7 +104,7 @@ export function renderAutocompleteList(
   const available = safeWidth(width)
   if (node.items.length === 0) return [options.noMatch(fit('  No matching commands', available))]
 
-  const selectedId = node.selectedIds[0]
+  const selectedId = listSelectedIds(node)[0]
   const selectedIndex = Math.max(0, node.items.findIndex(item => item.id === selectedId))
   const visibleCount = Math.max(1, Math.floor(maxVisible))
   const startIndex = Math.max(0, Math.min(selectedIndex - Math.floor(visibleCount / 2), node.items.length - visibleCount))
@@ -159,241 +164,182 @@ export function renderAutocompleteList(
   return available < 3 ? rows.map(row => sliceByColumn(row, 0, available, true)) : rows
 }
 
-function interactivePrefix(focus: PatternFocus): string {
-  return focus.focused ? `${focus.marker}→ ` : '   '
+/**
+ * The border paint of a framed chrome: the focus color for an overlay, the quiet color for an inline surface (spec
+ * §2.1), or the surface's own `border` tone.
+ */
+export function surfaceBorderPaint(chrome: 'surface' | 'overlay', colors: MayflySemanticColors, border?: MayflyTone): (text: string) => string {
+  if (border !== undefined) return text => paintTone(border, text, colors)
+  return chrome === 'overlay' ? colors.borderFocus : colors.border
 }
 
-function paintTone(tone: MayflyTone | undefined, value: string, colors: MayflySemanticColors): string {
-  switch (tone) {
-    case 'muted': return colors.muted(value)
-    case 'primary': return colors.primary(value)
-    case 'accent': return colors.accent(value)
-    case 'user': return colors.roleUser(value)
-    case 'success': return colors.success(value)
-    case 'warning': return colors.warning(value)
-    case 'danger': return colors.error(value)
-    default: return colors.text(value)
-  }
+function strongTitle(title: string, colors: MayflySemanticColors): string {
+  return `\x1b[1m${colors.textStrong(title)}\x1b[22m`
 }
 
-function paintSpan(span: MayflyInlineSpan, colors: MayflySemanticColors): string {
-  const painted = paintTone(span.tone, sanitizePluginText(span.text), colors)
-  return (span.styles ?? []).reduce((value, style) => {
-    if (style === 'strong') return `\x1b[1m${value}\x1b[22m`
-    if (style === 'italic') return `\x1b[3m${value}\x1b[23m`
-    return `\x1b[9m${value}\x1b[29m`
-  }, painted)
+/**
+ * The inset title rule of a framed surface, `╭ Title ─── badge ╮`: the title bold in text color, the badges at the
+ * right of the rule, everything else in the border paint. A narrow width drops the badges first, then ellipsises the
+ * title, then drops it; the corners and at least one dash always stay.
+ */
+function framedTopRule(title: string, badges: string, width: number, paint: (text: string) => string, colors: MayflySemanticColors, align: 'left' | 'right' = 'left'): string {
+  if (width < 2) return paint('╭')
+  const inner = width - 2
+  const titleWidth = title.length === 0 ? 0 : visibleWidth(title) + 2
+  const badgeWidth = badges.length === 0 ? 0 : visibleWidth(badges) + 2
+  const showBadges = badgeWidth > 0 && inner - titleWidth - badgeWidth >= 1
+  const titleRoom = inner - (showBadges ? badgeWidth : 0) - 3
+  // A right-aligned title keeps its distinguishing end (a path), so a long one loses its start.
+  const elided = (): string => align === 'right' ? truncateMiddle(title, titleRoom, 'start') : `${sliceByColumn(title, 0, titleRoom - ELLIPSIS_WIDTH, true)}${ELLIPSIS}`
+  const fitted = title.length === 0 || titleRoom < 2 ? '' : visibleWidth(title) <= titleRoom ? title : elided()
+  const titleSegment = fitted.length === 0 ? '' : `${paint(' ')}${strongTitle(fitted, colors)}${paint(' ')}`
+  const badgeSegment = showBadges ? `${paint(' ')}${badges}${paint(' ')}` : ''
+  const fill = paint('─'.repeat(Math.max(0, inner - (fitted.length === 0 ? 0 : visibleWidth(fitted) + 2) - (showBadges ? badgeWidth : 0))))
+  return align === 'right' ? `${paint('╭')}${badgeSegment}${fill}${titleSegment}${paint('╮')}` : `${paint('╭')}${titleSegment}${fill}${badgeSegment}${paint('╮')}`
 }
 
-function paintListDetail(item: ListNode['items'][number], colors: MayflySemanticColors): string {
-  if (item.detailSpans !== undefined) return item.detailSpans.length === 0 ? '' : ` ${colors.text('—')} ${item.detailSpans.map(span => paintSpan(span, colors)).join('')}`
-  return item.detail === undefined ? '' : colors.text(` — ${item.detail}`)
-}
-
-function compactTokens(tokens: readonly { readonly value: string, readonly focused: boolean, readonly active: boolean }[], width: number): string {
-  const available = safeWidth(width)
-  const complete = tokens.map(token => token.value).join(' ')
-  if (visibleWidth(complete) <= available) return complete
-  const priority = tokens.filter(token => token.focused)
-  for (const token of tokens) if (!token.focused && token.active) priority.push(token)
-  for (const token of tokens) if (!token.focused && !token.active) priority.push(token)
-  const kept: string[] = []
-  for (const token of priority) {
-    const hiddenAfter = tokens.length - kept.length - 1
-    const overflow = hiddenAfter > 0 ? ` +${String(hiddenAfter)}` : ''
-    const candidate = `${kept.join(' ')}${kept.length === 0 ? '' : ' '}${token.value}${overflow}`
-    if (visibleWidth(candidate) <= available || kept.length === 0) kept.push(token.value)
-  }
-  const hidden = Math.max(0, tokens.length - kept.length)
-  return fit(`${kept.join(' ')}${hidden === 0 ? '' : ` +${String(hidden)}`}`, available)
-}
-
+/**
+ * The rows a surface paints above its child. A framed chrome (`overlay`, `surface`) returns its top rule first and then
+ * the rows that sit inside the frame (the muted subtitle); `lane` is a muted rule carrying the title (`── Title ───`);
+ * `none` is the bold title alone.
+ */
 export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
   const chrome = node.chrome ?? 'none'
   const title = node.title === undefined ? '' : sanitizePluginText(node.title).replace(/[\r\n]+/gu, ' ')
+  const badges = node.badges === undefined ? '' : node.badges.map(span => paintSpan(span, colors)).join(' ')
   const rows: string[] = []
   if (chrome === 'none') {
-    if (title.length > 0) rows.push(fit(colors.textStrong(title), available))
+    const heading = [title.length === 0 ? '' : strongTitle(title, colors), badges].filter(part => part.length > 0).join('  ')
+    if (heading.length > 0) rows.push(fit(heading, available))
+  } else if (chrome === 'lane') {
+    const head = title.length === 0 ? '' : `── ${title} `
+    const tail = badges.length === 0 ? '' : ` ${badges}`
+    const fill = available - visibleWidth(head) - visibleWidth(tail)
+    rows.push(fill >= 2 ? `${colors.muted(`${head}${'─'.repeat(fill)}`)}${tail}` : fit(colors.muted(`${head}${'─'.repeat(available)}`), available))
   } else {
-    const pair = chrome === 'lane' ? ['─', '─'] : chrome === 'surface' ? ['┌', '┐'] : ['╭', '╮']
-    const paint = chrome === 'overlay' ? colors.borderFocus : chrome === 'lane' ? colors.muted : colors.border
-    if (available === 1) rows.push(paint(pair[0]!))
-    else if (title.length === 0 || available < 6) rows.push(paint(`${pair[0]}${'─'.repeat(available - 2)}${pair[1]}`))
-    else {
-      const titleBudget = available - 5
-      const fittedTitle = sliceByColumn(title, 0, titleBudget, true)
-      const heading = `${pair[0]} ${fittedTitle} `
-      const fill = '─'.repeat(Math.max(1, available - visibleWidth(heading) - 1))
-      rows.push(paint(`${heading}${fill}${pair[1]}`))
-    }
+    rows.push(framedTopRule(title, badges, available, surfaceBorderPaint(chrome, colors, node.border), colors, node.titleAlign))
   }
   if (node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
-  if (node.badges !== undefined && node.badges.length > 0) {
-    rows.push(fit(node.badges.map(span => paintSpan(span, colors)).join(' '), available))
-  }
   return rows
 }
 
+/** The bottom rule of a framed surface; `lane` and `none` have none. */
 export function renderSurfaceTail(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
   const chrome = node.chrome ?? 'none'
   if (chrome === 'none' || chrome === 'lane') return []
   const available = safeWidth(width)
-  const pair = chrome === 'surface' ? ['└', '┘'] : ['╰', '╯']
-  const paint = chrome === 'surface' ? colors.border : colors.borderFocus
-  return [fit(paint(`${pair[0]}${'─'.repeat(Math.max(0, available - 2))}${available > 1 ? pair[1] : ''}`), available)]
+  return [surfaceBorderPaint(chrome, colors, node.border)(available < 2 ? '╰' : `╰${'─'.repeat(available - 2)}╯`)]
 }
 
-export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] {
-  const showCounts = safeWidth(width) > 40
-  const tokens = node.items.map(item => {
-    const active = item.id === node.activeId
-    const focused = focus.focused && focus.key === item.id && item.disabled !== true
-    const label = `${active ? `‹ ${item.label} ›` : item.label}${showCounts && item.count !== undefined ? ` ${String(item.count)}` : ''}`
-    const content = item.disabled === true ? colors.muted(label) : active ? colors.primary(label) : colors.text(label)
-    return { value: `${focused ? focus.marker : ' '}${content}`, focused, active }
+/**
+ * A tab strip, a wizard, or a vertical rail (`core/ui-tabs-paint.ts`): the active tab in `primary` (bold while the strip
+ * has focus) with a heavy `━` underline on the row below it, the other tabs muted, counts after their labels; a wizard
+ * marks its steps `✓` `●` `○` joined by a muted `›`; a strip wider than the width folds to `‹ active next +N ›`; a rail
+ * lists group headings, a cursor arrow, and right-aligned counts. The focus marker rides at the end of the underline
+ * row, or in the gap before a rail item's count.
+ */
+export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors, completed: readonly string[] = [], options?: TabsPaintOptions): string[] {
+  return paintTabs(node, width, focus, colors, completed, options)
+}
+
+/** What the compiler knows about a list beyond its node: the model's rows, the cursor, bodies, strips, and the window. */
+export type ListRenderExtras = Omit<ListPaintOptions, 'rows' | 'focused' | 'marker' | 'selectedIds' | 'cursorId' | 'memo'> & {
+  readonly rows?: readonly ListRowSpec[]
+  readonly cursorId?: string | undefined
+}
+
+export type { ListRowMemo } from './ui-list-paint.ts'
+
+/**
+ * Render list rows (spec 4.4); `numberFrom` is the visible position of the first row so numbers stay stable while the
+ * window scrolls. Without `extras` the rows are the node's items as a flat list and the cursor is the focused row.
+ */
+export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0, memo?: ListRowMemo, extras?: ListRenderExtras): string[] {
+  const available = safeWidth(width)
+  const rows = extras?.rows ?? node.items.map((item, ordinal) => ({
+    item, depth: 0, last: false, expandable: item.body !== undefined && item.bodyAlways !== true, open: item.bodyAlways === true && item.body !== undefined, position: numberFrom + ordinal,
+  }))
+  return paintList(node, available, height, colors, {
+    ...extras,
+    rows,
+    cursorId: extras?.cursorId ?? (focus.key === '' ? undefined : focus.key),
+    focused: focus.focused && focus.key !== '',
+    marker: focus.marker,
+    selectedIds: listSelectedIds(node),
+    memo,
+    ...(node.filter === undefined ? {} : { lead: fit(colors.textMuted(`/ ${node.filter}`), available) }),
   })
-  return [compactTokens(tokens, width)]
 }
 
-/** Render list rows; `numberFrom` is the visible position of the first row so numbers stay stable while the window scrolls. */
-export function renderList(node: ListNode, width: number, height: number, focus: PatternFocus, colors: MayflySemanticColors, numberFrom = 0): string[] {
-  const available = safeWidth(width)
-  const rows: { readonly value: string, readonly itemId?: string }[] = []
-  if (node.filter !== undefined) rows.push({ value: fit(colors.textMuted(`/ ${node.filter}`), available) })
-  let group: string | undefined
-  const numbered = node.numbered !== undefined && node.numbered !== false
-  for (const [ordinal, item] of node.items.entries()) {
-    if (item.group !== undefined && item.group !== group) {
-      group = item.group
-      rows.push({ value: fit(colors.muted(item.group), available) })
-    }
-    const selected = node.selectedIds.includes(item.id)
-    const focused = focus.focused && focus.key === item.id
-    const enabledFocus = focused && item.disabled !== true
-    const marker = enabledFocus ? focus.marker : ' '
-    const pointerGlyph = enabledFocus ? '→' : selected ? '●' : node.mode === 'multiple' ? '○' : ' '
-    const position = numberFrom + ordinal
-    const number = numbered && position < 9 ? `${String(position + 1)}. ` : ''
-    const detail = available > 40 ? paintListDetail(item.disabled === true && item.detail === undefined && item.detailSpans === undefined && item.disabledReason !== undefined ? { ...item, detail: item.disabledReason } : item, colors) : ''
-    const badge = item.badge === undefined ? '' : ` [${item.badge}]`
-    if (item.disabled === true) {
-      rows.push({ value: fit(colors.muted(`${marker}${pointerGlyph} ${number}${item.label}${badge}${detail}`), available), itemId: item.id })
-      continue
-    }
-    if (enabledFocus) {
-      const focusedRow = item.detailSpans === undefined
-        ? colors.primary(`${marker}${pointerGlyph} ${number}${item.label}${badge}${item.detail === undefined || available <= 40 ? '' : ` — ${item.detail}`}`)
-        : `${colors.primary(`${marker}${pointerGlyph} ${number}${item.label}`)}${colors.text(badge)}${detail}`
-      rows.push({ value: colors.selectedBg(pad(focusedRow, available)), itemId: item.id })
-      continue
-    }
-    const pointer = selected ? colors.primary(pointerGlyph) : colors.textMuted(pointerGlyph)
-    rows.push({ value: fit(`${marker}${pointer} ${colors.text(number)}${colors.text(item.label)}${colors.text(badge)}${detail}`, available), itemId: item.id })
-  }
-  const limit = Math.max(1, Number.isFinite(height) ? Math.floor(height) : 1)
-  if (rows.length <= limit) return rows.map(row => row.value)
-  const focusRow = rows.findIndex(row => row.itemId === focus.key)
-  const start = focusRow < 0 ? 0 : Math.min(Math.max(0, focusRow - Math.floor(limit / 2)), rows.length - limit)
-  return rows.slice(start, start + limit).map(row => row.value)
+/**
+ * The segment strip as one footer line: the label and the whole strip when they fit, then the strip alone, without
+ * `(default)`, folded into `+N`, and last the active option alone. `selectedId` is the option that applies.
+ */
+export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors, pinned: string | null = selectedId ?? null): string {
+  return segmentFooter({ segment, pinned, active: selectedId }, safeWidth(width), colors, segment.label ?? 'Options')
 }
 
-/** The focused row's horizontal option strip; the selected option stays visible when the rest truncate. */
-export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string {
-  const available = safeWidth(width)
-  const tokens = segment.options.map(option => {
-    const active = option.id === selectedId
-    const text = active ? `‹ ${option.label} ›` : option.label
-    return { id: option.id, value: option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.textMuted(text) }
-  })
-  /** Options ahead of the active one keep their slots while they fit; the rest collapse into +N. */
-  const narrow = (prefix: string): { readonly body: string, readonly hidden: number } => {
-    const activeIndex = tokens.findIndex(token => token.id === selectedId)
-    const active = activeIndex < 0 ? undefined : tokens[activeIndex]!.value
-    const activeWidth = active === undefined ? 0 : visibleWidth(active)
-    const kept: string[] = []
-    let used = visibleWidth(prefix)
-    for (const token of tokens.slice(0, activeIndex < 0 ? tokens.length : activeIndex)) {
-      const next = used + (kept.length === 0 ? 0 : 2) + visibleWidth(token.value)
-      if (next + (activeWidth === 0 ? 0 : 2 + activeWidth) > available) break
-      kept.push(token.value)
-      used = next
-    }
-    return {
-      body: `${prefix}${[...kept, ...(active === undefined ? [] : [active])].join('  ')}`,
-      hidden: tokens.length - kept.length - (active === undefined ? 0 : 1),
-    }
-  }
-  const prefixes = [
-    `   ${segment.label === undefined ? '' : `${colors.textStrong(`${segment.label}:`)} `}`,
-    '   ',
-    '',
-  ]
-  const complete = `${prefixes[0]!}${tokens.map(token => token.value).join('  ')}`
-  if (visibleWidth(complete) <= available) return complete
-  const narrowed = prefixes.map(narrow)
-  // Keep the omitted-option count when a shorter prefix makes room for it.
-  for (const { body, hidden } of narrowed) {
-    const withHidden = `${body}${hidden > 0 ? `  +${String(hidden)}` : ''}`
-    if (visibleWidth(withHidden) <= available) return withHidden
-  }
-  // Then keep the active option itself, dropping the count when it cannot fit.
-  for (const { body } of narrowed) if (visibleWidth(body) <= available) return body
-  return fit(narrowed.at(-1)!.body, available)
+export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key, decor: FieldDecor = {}, labelWidth = visibleWidth(field.label)): string[] {
+  return paintFormField({ field, decor, width, focus, colors, text, labelWidth })
 }
 
-export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key): string[] {
-  const available = safeWidth(width)
-  const focused = focus.focused && focus.key === field.id && field.disabled !== true
-  const expandable = field.kind === 'select' || field.kind === 'multiselect'
-  const expanded = expandable && field.disabled !== true && field.options.length > 0 && focus.editing === true
-  let value: string
-  let placeholder = false
-  if (field.kind === 'toggle') value = field.value ? '[on]' : '[off]'
-  else if (field.kind === 'select') value = field.value === null ? text('Choose…') : field.options.find(option => option.id === field.value)?.label ?? field.value
-  else if (field.kind === 'multiselect') value = field.options.filter(option => field.value.includes(option.id)).map(option => option.label).join(', ') || text('None selected')
-  else if (field.kind === 'number') value = `${field.value ?? ''}${field.unit === undefined ? '' : ` ${field.unit}`}`
-  else if (field.kind === 'secret') value = field.value.length === 0 ? field.placeholder ?? '' : '•'.repeat(field.value.length)
-  else value = field.value.length === 0 ? field.placeholder ?? '' : field.value
-  if (field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret') placeholder = field.value.length === 0 && field.placeholder !== undefined
-  const prefix = interactivePrefix({ key: field.id, focused, marker: focus.marker })
-  // Expanded selects show the label as a group header; the option rows carry the value.
-  // A focused single select wraps its value in ‹ › while ←→ can cycle it.
-  const cycles = focused && field.kind === 'select' && field.options.filter(option => option.disabled !== true).length > (field.value === null ? 0 : 1)
-  const body = expanded ? field.label : `${field.label}: ${cycles ? `‹ ${value} ›` : value}`
-  const row = field.disabled === true
-    ? colors.muted(`${prefix}${body}`)
-    : focused ? colors.primary(`${prefix}${body}`)
-      : expanded ? `${prefix}${colors.textStrong(field.label)}`
-        : `${prefix}${colors.textStrong(`${field.label}:`)} ${placeholder ? colors.textMuted(value) : colors.text(value)}`
-  const rows = [fit(row, available)]
-  if (expanded) {
-    for (const option of field.options) {
-      const selected = field.kind === 'select' ? field.value === option.id : field.value.includes(option.id)
-      const active = focused && (focus.optionId ?? (field.kind === 'select' ? field.value : field.value[0]) ?? field.options[0]?.id) === option.id
-      const text = `${active ? ' >' : '  '} ${selected ? '[x]' : '[ ]'} ${option.label}${option.disabledReason === undefined ? '' : `: ${option.disabledReason}`}`
-      rows.push(fit(option.disabled === true ? colors.muted(text) : active ? colors.primary(text) : colors.text(text), available))
-    }
-  }
-  if (field.error !== undefined) rows.push(fit(colors.error(`   ! ${field.error}`), available))
-  return rows
-}
-
-function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly value: string, readonly focused: boolean, readonly active: boolean } {
+/** One action as the kit's `actionTokens` writes it: `[ Label ]` primary, `! Label` danger, a declared key as `(c)`. */
+function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly plain: string, readonly value: string, readonly focused: boolean } {
   const busy = item.busy === true
-  const focused = focus.focused && focus.key === item.id && item.disabled !== true
-  const reason = item.disabled === true && item.disabledReason !== undefined ? ` — ${item.disabledReason}` : ''
-  const label = `${busy ? '… ' : ''}${item.label}${item.key === undefined ? '' : ` (${displayKey(item.key)})`}${reason}`
-  const framed = item.intent === 'primary' ? `[ ${label} ]` : item.intent === 'danger' ? `! ${label}` : label
-  const content = item.disabled === true || busy ? colors.muted(framed) : item.intent === 'danger' ? colors.error(framed) : focused || item.intent === 'primary' ? colors.primary(framed) : colors.text(framed)
-  const selection = focused ? colors.selectedBg(content) : content
-  return { value: `${focused ? focus.marker : ' '}${selection}`, focused, active: item.intent === 'primary' }
+  const disabled = item.disabled === true
+  const focused = focus.focused && focus.key === item.id && !disabled
+  const reason = disabled && item.disabledReason !== undefined ? ` — ${item.disabledReason}` : ''
+  const label = `${item.label}${item.key === undefined || busy || disabled ? '' : ` (${hintNotation([item.key])})`}`
+  const plain = busy ? `… ${label}` : disabled ? `${label}${reason}` : item.intent === 'primary' ? `[ ${label} ]` : item.intent === 'danger' ? `! ${label}` : label
+  // The focused token is inverted with a space either side; the cursor marker takes the column before it.
+  if (focused) return { plain, value: `\x1b[7m ${plain} \x1b[27m`, focused }
+  const paint = disabled || busy ? colors.muted : item.intent === 'danger' ? colors.error : item.intent === 'primary' ? colors.primary : colors.text
+  return { plain, value: paint(plain), focused }
 }
 
+/** The columns before a token: the row's indent or the gap, whose last column the cursor marker takes on the focused one. */
+function tokenLead(lead: string, focused: boolean, focus: PatternFocus): string {
+  return focused ? `${lead.slice(0, -1)}${focus.marker}` : lead
+}
+
+/**
+ * The actions row (spec 4.2): tokens joined by three spaces after a one-column indent. A row that does not fit keeps
+ * the tokens that do, at least one, and ends with a muted `+N` for the rest.
+ */
 export function renderActions(node: ActionsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors, vertical: boolean): string[] {
   const tokens = node.items.map(item => actionToken(item, focus, colors))
   if (tokens.length === 0) return []
-  return vertical ? tokens.map(token => fit(token.value, width)) : [compactTokens(tokens, width)]
+  if (vertical) return tokens.map(token => fit(`${tokenLead(' ', token.focused, focus)}${token.value}`, width))
+  const widths = tokens.map(token => visibleWidth(token.plain))
+  let shown = tokens.length
+  if (widths.reduce((sum, each) => sum + each, 0) + 3 * (tokens.length - 1) > width - 4) {
+    let used = 0
+    shown = 0
+    for (const each of widths) {
+      if (used + each + 3 > width - 6) break
+      used += each + 3
+      shown++
+    }
+    shown = Math.max(1, shown)
+  }
+  const folded = shown < tokens.length ? `   ${colors.muted(`+${String(tokens.length - shown)}`)}` : ''
+  return [fit(`${tokens.slice(0, shown).map((token, index) => `${tokenLead(index === 0 ? ' ' : '   ', token.focused, focus)}${token.value}`).join('')}${folded}`, width)]
+}
+
+/** One fragment of the hint row: the keys, and the word for what they do. */
+export interface HintPart {
+  readonly keys: string
+  readonly label?: string
+}
+
+/**
+ * The hint row (spec §3.2): indented two columns, each fragment `Keys label` with the key in text color and its label
+ * muted, joined by a muted ` · `, so the eye lands on the key.
+ */
+export function renderHintRow(parts: readonly HintPart[], colors: MayflySemanticColors): string {
+  const fragments = parts.map(part => `${colors.text(part.keys)}${part.label === undefined ? '' : ` ${colors.textMuted(part.label)}`}`)
+  return `${colors.textMuted('  ')}${fragments.join(colors.textMuted(' · '))}`
 }
 
 /**
@@ -408,49 +354,73 @@ export function renderOverflowRow(hidden: number, translate: MayflyTranslate): s
   return translate('  … +{count} more rows', { count: hidden })
 }
 
-/** Compact non-negative duration from milliseconds: `45s`, or `2m 10s` past a minute. */
+/** Compact non-negative duration from milliseconds: `45s`, `2m 10s` past a minute, `1h 5m` past an hour. */
 function formatElapsedMs(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000))
   if (seconds < 60) return `${String(seconds)}s`
-  return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
+  if (seconds < 3600) return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
+  return `${String(Math.floor(seconds / 3600))}h ${String(Math.floor((seconds % 3600) / 60))}m`
 }
 
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
-const TIDE_FRAMES = ['≈', '≋', '∿', '≋'] as const
-
-export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0): string[] {
-  const frames = node.variant === 'tide' ? TIDE_FRAMES : BRAILLE_FRAMES
-  const indicator = frames[frame % frames.length]!
-  const elapsed = node.elapsedMs === undefined ? '' : ` ${formatElapsedMs(node.elapsedMs)}`
-  return [fit(`${colors.primary(indicator)} ${colors.text(node.message)}${colors.textMuted(elapsed)}`, width)]
+/**
+ * One loader row: the variant's glyph cell, the message in text color, and the elapsed time muted. The cell moves with
+ * the clock `frame` (frozen under reduced motion); without a message the row is the bare glyph.
+ */
+export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0, glyphs: MayflyGlyphMode = 'unicode', reducedMotion = false): string[] {
+  const cell = loaderCell(loaderVariant(node.variant), frame, { colors, glyphs, reducedMotion })
+  const message = node.message === undefined || node.message === '' ? '' : ` ${colors.text(node.message)}`
+  const elapsed = node.elapsedMs === undefined ? '' : ` ${colors.textMuted(formatElapsedMs(node.elapsedMs))}`
+  return [fit(`${cell}${message}${elapsed}`, width)]
 }
 
 export function renderEmpty(node: EmptyNode, width: number, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
-  const rows = wrapTextWithAnsi(colors.textStrong(node.title), available)
+  const rows = wrapTextWithAnsi(colors.muted(node.title), available)
   if (node.description !== undefined) rows.push(...wrapTextWithAnsi(colors.muted(node.description), available))
   return rows
 }
 
-export function renderProgress(node: ProgressNode, width: number, colors: MayflySemanticColors): string[] {
+/**
+ * A determinate bar. `style: 'rule'` is the heading rule (`━` done, `─` left), `cells` the `▰▱` cells with an optional
+ * label, `n/N`, and percentage; a bar that names neither a style nor a width keeps the full-row block bar. `shown` is
+ * the value to draw, which a transition moves between publishes.
+ */
+export function renderProgress(node: ProgressNode, width: number, colors: MayflySemanticColors, shown: number = node.value): string[] {
   const available = safeWidth(width)
-  const counter = `${String(node.value)}/${String(node.max)}`
+  const ratio = Math.max(0, Math.min(1, shown / node.max))
+  const tone = (text: string): string => paintTone(node.tone ?? 'primary', text, colors)
+  if (node.style === 'rule') {
+    const cells = Math.min(node.width ?? RULE_CELLS, available)
+    const done = Math.round(ratio * cells)
+    return [`${tone('━'.repeat(done))}${colors.muted('─'.repeat(cells - done))}`]
+  }
+  const percent = node.showPercent === true ? ` ${String(Math.round(ratio * 100))}%` : ''
+  if (node.style === 'cells' || node.width !== undefined) {
+    const label = node.label === undefined ? '' : `${node.label} `
+    const count = node.showCount === false ? '' : ` ${String(Math.round(shown))}/${String(node.max)}`
+    const furniture = visibleWidth(label) + visibleWidth(count) + visibleWidth(percent)
+    const cells = Math.max(1, Math.min(node.width ?? CELLS, available - furniture))
+    const done = Math.round(ratio * cells)
+    return [fit(`${label.length === 0 ? '' : colors.text(label)}${tone('▰'.repeat(done))}${colors.muted('▱'.repeat(cells - done))}${count === '' ? '' : colors.text(count)}${percent === '' ? '' : colors.text(percent)}`, available)]
+  }
+  const counter = `${String(Math.round(shown))}/${String(node.max)}`
   const counterWidth = visibleWidth(counter)
-  const showCounter = available >= counterWidth + 2
+  const showCounter = node.showCount !== false && available >= counterWidth + 2
   const label = node.label === undefined ? '' : `${node.label} `
   const showLabel = label.length > 0 && available >= visibleWidth(label) + counterWidth + 4
-  const furniture = (showLabel ? visibleWidth(label) : 0) + (showCounter ? counterWidth + 1 : 0)
+  const furniture = (showLabel ? visibleWidth(label) : 0) + (showCounter ? counterWidth + 1 : 0) + visibleWidth(percent)
   const cells = Math.max(1, available - furniture)
-  const eighths = Math.round((node.value / node.max) * cells * 8)
+  const eighths = Math.round(ratio * cells * 8)
   const bar = Array.from({ length: cells }, (_, index) => {
     const remaining = eighths - index * 8
     return remaining >= 8 ? '█' : remaining <= 0 ? '░' : PARTIAL_BLOCKS[remaining]!
   }).join('')
-  return [fit(`${showLabel ? colors.text(label) : ''}${colors.primary(bar)}${showCounter ? ` ${colors.textMuted(counter)}` : ''}`, available)]
+  return [fit(`${showLabel ? colors.text(label) : ''}${tone(bar)}${showCounter ? ` ${colors.textMuted(counter)}` : ''}${percent === '' ? '' : colors.textMuted(percent)}`, available)]
 }
 
+/** A rule across the row, or `── Label ───` with at least two dashes after the label; always the quiet border color. */
 export function renderDivider(label: string | undefined, width: number, colors: MayflySemanticColors): string[] {
   const available = safeWidth(width)
-  const heading = label === undefined ? '' : ` ${label} `
-  return [fit(colors.border(`${heading}${'─'.repeat(Math.max(0, available - visibleWidth(heading)))}`), available)]
+  const rule = label === undefined ? '─'.repeat(available) : `── ${label} ${'─'.repeat(Math.max(2, available - visibleWidth(label) - 4))}`
+  return [fit(colors.border(rule), available)]
 }

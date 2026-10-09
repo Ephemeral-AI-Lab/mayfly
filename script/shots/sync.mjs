@@ -20,8 +20,10 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+// The C locale keeps formatting deterministic; its UTF-8 charset keeps the
+// design's glyphs (an ASCII charset selects the one-cell fallback glyphs).
 process.env.LANG = 'C'
-process.env.LC_ALL = 'C'
+process.env.LC_ALL = 'C.UTF-8'
 process.env.TZ = 'UTC'
 
 const [{ SCENARIOS }, { renderScenario }, { paintTerminalSvg }] = await Promise.all([
@@ -34,7 +36,7 @@ const uiLibUrl = new URL('../../packages/ui/lib/index.js', import.meta.url)
 if (!existsSync(fileURLToPath(uiLibUrl))) {
   throw new Error('packages/ui/lib is missing — run `pnpm build` before the shots pipeline')
 }
-const { ui, defineMayflyComponent } = await import(uiLibUrl.href)
+const { ui, defineMayflyComponent, patterns } = await import(uiLibUrl.href)
 
 const check = process.argv.includes('--check')
 const outDir = new URL('../../website/public/shots/', import.meta.url)
@@ -42,7 +44,7 @@ mkdirSync(outDir, { recursive: true })
 
 let failures = 0
 for (const scenario of SCENARIOS) {
-  const { term, cols, rows } = await renderScenario(scenario, ui, defineMayflyComponent)
+  const { term, cols, rows } = await renderScenario(scenario, ui, defineMayflyComponent, patterns)
   const svg = await paintTerminalSvg(term, { cols, rows })
   const file = new URL(`${scenario.id}.svg`, outDir)
   const label = `website/public/shots/${scenario.id}.svg`
@@ -79,7 +81,7 @@ const appResult = spawnSync(process.execPath, [fileURLToPath(vitestEntry), 'run'
     ...process.env,
     MAYFLY_SHOTS: check ? 'check' : 'sync',
     LANG: 'C',
-    LC_ALL: 'C',
+    LC_ALL: 'C.UTF-8',
     TZ: 'UTC',
   },
   stdio: 'inherit',

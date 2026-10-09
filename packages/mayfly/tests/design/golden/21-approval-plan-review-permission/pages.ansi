@@ -1,0 +1,67 @@
+--- after start ---
+[2mvariant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 1/4[0m
+
+  [2m▾ [0m[1m[38;2;230;190;90m? [0m[1mApprove command[0m[2m  bash · 1 of 3 waiting[0m
+  [2m$ [0mrm -rf build && pnpm build
+  [2min ~/work/mayfly   [0m[38;2;230;190;90m⚠ deletes files[0m
+[2m── Decide ────────────────────────────────────────────────────────────────────[0m
+[1m[38;2;154;134;230m→[0m [2m1[0m  [1mReject[0m
+  [2m2[0m  Allow once
+  [2m3[0m  Allow bash for this session
+  Feedback: [2mtype to explain…[0m
+[2m  [0m↑/↓ [2moptions[0m[2m · [0mEnter [2mchoose[0m[2m · [0mEsc [2mreject[0m
+
+[2mpress Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened[0m
+--- after "\u000e" ---
+[2mvariant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 2/4[0m
+
+  [2m▾ [0m[1m[38;2;230;190;90m? [0m[1mApprove edit[0m[38;2;120;190;230m  pane-activity.ts[0m[38;2;110;200;140m  +2[0m[38;2;230;110;110m −1[0m
+    [2m 41  41 │[0m     const moon = state.mode === 'waiting'
+    [2m 42     │[0m [48;2;66;30;36m[38;2;230;110;110m−[0m[48;2;66;30;36m [38;2;230;110;110m  const frame = moon[0m[48;2;66;30;36m                                          [0m
+    [2m     42 │[0m [48;2;28;58;40m[38;2;110;200;140m+[0m[48;2;28;58;40m [38;2;110;200;140m  const frame = glyphFor(state)  // moon retired[0m[48;2;28;58;40m              [0m
+    [2m 43  43 │[0m     const now = activityNow()
+    [2m⋯[0m
+[2m── Decide ────────────────────────────────────────────────────────────────────[0m
+[1m[38;2;154;134;230m→[0m [2m1[0m  [1mReject[0m
+  [2m2[0m  Allow once
+  [2m3[0m  Allow edits this session
+  Feedback: [2mtype to explain…[0m
+[2m  [0mEnter [2mchoose[0m[2m · [0mCtrl+G [2mopen diff[0m[2m · [0mEsc [2mreject[0m
+
+[2mpress Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened[0m
+--- after "\u000e" ---
+[2mvariant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 3/4[0m
+
+  [2m▾ [0m[1m[38;2;230;190;90m? [0m[1mPlan ready for review[0m[2m  6 steps[0m
+  [1m[38;2;154;134;230mPlan[0m
+  1. Add activeCalls to the facts projection
+  2. Wrap the detail into ⎿ lines in the activity row
+  3. Replace the moon frames with the glyph table
+  4. Move subagents into the tabbed views row
+  5. Restyle approvals and questions
+  6. Screenshots, width scans, docs
+[2m── Decide ────────────────────────────────────────────────────────────────────[0m
+[1m[38;2;154;134;230m→[0m [2m1[0m  [1mReject[0m
+  [2m2[0m  Approve and start
+  [2m3[0m  Approve and auto-accept edits
+  [2m4[0m  Keep planning…
+  Revise: [2mtype the revision in place[0m
+[2m  [0mEnter [2mchoose[0m[2m · [0mc [2mcopy plan[0m[2m · [0mEsc [2mreject[0m
+
+[2mpress Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened[0m
+--- after "\u000e" ---
+[2mvariant A: safe-first — Reject is row 1, a digit only moves the cursor, a grant costs two keys 
+·  card 4/4[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mPermission preset[0m[38;2;154;134;230m [0m[38;2;154;134;230m───────────────────────────────────────[0m[38;2;154;134;230m [0m[2mcurrent: Default[0m[38;2;154;134;230m [0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mChoose how much the agent may do without asking.[0m                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [2m1[0m  [1mDefault[0m [2m[current][0m [2m— ask before writes[0m                                 [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m2[0m  Accept edits [2m— apply file edits freely[0m                                [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m3[0m  Full access — no prompts   [38;2;230;190;90m⚠ asks first[0m                               [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0mEnter [2mchoose[0m[2m · [0mEsc [2mclose[0m                                   [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰────────────────────────────────────────────────────────────────────────────╯[0m
+
+[2mpress Ctrl+X: a "1" and an Enter typed into the editor a moment before this card opened[0m

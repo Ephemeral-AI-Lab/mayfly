@@ -168,6 +168,9 @@ mayfly:
   userFoldChars: 1000      # long user message fold threshold (chars)
   editorCommand: ''        # external editor command (empty = auto-detect via $VISUAL/$EDITOR)
   pasteImageBackend: auto  # Linux clipboard backend: auto | wayland | x11
+  glyphs: auto             # auto (from the locale's charset) | unicode | ascii (one-cell fallback glyphs)
+  monochrome: false        # weight only, no color (NO_COLOR also turns it on)
+  reducedMotion: false     # freeze every animation on its first frame
 ```
 
 `transcriptView` keeps the Harness Chat work-details mode names (see [Streaming transcript](/en/features/streaming#work-details)). Live status belongs to the activity row; the transcript shows only what has happened. Compact shows the conversation alone while a turn runs. Standard adds file-change diff cards and past-tense group titles, and its activity row names the running command, path, query, or reasoning. Detailed shows every card while the turn runs. Compact, Standard, and Detailed fold a completed turn behind its `Took 38s` header, keeping the final answer (and, from Standard up, the file changes) visible; Verbose keeps every card open. Ctrl+O expands the most recent `expandTurns` turns. The old per-family `transcript` settings and `recentStepsRetention` are no longer interpreted.

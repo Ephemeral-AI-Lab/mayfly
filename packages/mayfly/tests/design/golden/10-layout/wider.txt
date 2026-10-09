@@ -1,0 +1,115 @@
+--- after start ---
+width 70 (←/→) · height ≥ 20 (h)
+
+stack row with basis and grow:
+╭ basis 24 ────────────╮ ╭ grow 1 ─────────────╮ ╭ grow 2 ───────────╮
+│ fixed                │ │ takes the rest      │ │ twice             │
+╰──────────────────────╯ ╰─────────────────────╯ ╰───────────────────╯
+
+a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+width
+Loop  official   ✓ installed 1.4.0
+↻ 1 change applies after restart
+
+priority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+o)
+deepseek-chat High  PLAN  ⏵ 2 jobs  ~/work/mayfly/packages/mayfly
+
+a windowed list (maxRows 4) counts what is hidden:
+  row 1
+  row 2
+  row 3
+  row 4
+   ↑ 0 more · ↓ 5 more
+--- after "\u001b[C" ---
+width 80 (←/→) · height ≥ 20 (h)
+
+stack row with basis and grow:
+╭ basis 24 ────────────╮ ╭ grow 1 ────────────────╮ ╭ grow 2 ──────────────────╮
+│ fixed                │ │ takes the rest         │ │ twice                    │
+╰──────────────────────╯ ╰────────────────────────╯ ╰──────────────────────────╯
+
+a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+width
+Loop  official   ✓ installed 1.4.0
+↻ 1 change applies after restart
+
+priority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+o)
+deepseek-chat High  PLAN  ⏵ 2 jobs          cache 34%  context: 18% (22.9k/128k)
+
+a windowed list (maxRows 4) counts what is hidden:
+  row 1
+  row 2
+  row 3
+  row 4
+   ↑ 0 more · ↓ 5 more
+--- after "\u001b[C" ---
+width 90 (←/→) · height ≥ 20 (h)
+
+stack row with basis and grow:
+╭ basis 24 ────────────╮ ╭ grow 1 ────────────────────╮ ╭ grow 2 ────────────────────────╮
+│ fixed                │ │ takes the rest             │ │ twice                          │
+╰──────────────────────╯ ╰────────────────────────────╯ ╰────────────────────────────────╯
+
+a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+width
+Loop  official   ✓ installed 1.4.0
+↻ 1 change applies after restart
+
+priority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+o)
+deepseek-chat High  PLAN  ⏵ 2 jobs  ~/work/mayfly/pa  cache 34%  context: 18% (22.9k/128k)
+
+a windowed list (maxRows 4) counts what is hidden:
+  row 1
+  row 2
+  row 3
+  row 4
+   ↑ 0 more · ↓ 5 more
+--- after "\u001b[C" ---
+width 100 (←/→) · height ≥ 20 (h)
+
+stack row with basis and grow:
+╭ basis 24 ────────────╮ ╭ grow 1 ───────────────────────╮ ╭ grow 2 ───────────────────────────────╮
+│ fixed                │ │ takes the rest                │ │ twice                                 │
+╰──────────────────────╯ ╰───────────────────────────────╯ ╰───────────────────────────────────────╯
+
+a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+width
+Loop  official · Automation   ✓ installed 1.4.0   TUI ✓ Web ✓
+↻ 1 change applies after restart
+
+priority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+o)
+deepseek-chat High  PLAN  ⏵ 2 jobs  ~/work/mayfly/packages/may  cache 34%  context: 18% (22.9k/128k)
+
+a windowed list (maxRows 4) counts what is hidden:
+  row 1
+  row 2
+  row 3
+  row 4
+   ↑ 0 more · ↓ 5 more
+--- after "\u001b[C" ---
+width 110 (←/→) · height ≥ 20 (h)
+
+stack row with basis and grow:
+╭ basis 24 ────────────╮ ╭ grow 1 ──────────────────────────╮ ╭ grow 2 ──────────────────────────────────────╮
+│ fixed                │ │ takes the rest                   │ │ twice                                        │
+╰──────────────────────╯ ╰──────────────────────────────────╯ ╰──────────────────────────────────────────────╯
+
+a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+width
+Loop  official · Automation   ✓ installed 1.4.0   TUI ✓ Web ✓
+↻ 1 change applies after restart
+
+priority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+o)
+deepseek-chat High  PLAN  ⏵ 2 jobs  ~/work/mayfly/packages/mayfly         cache 34%  context: 18% (22.9k/128k)
+
+a windowed list (maxRows 4) counts what is hidden:
+  row 1
+  row 2
+  row 3
+  row 4
+   ↑ 0 more · ↓ 5 more

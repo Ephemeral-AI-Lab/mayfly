@@ -1,0 +1,19 @@
+--- after start ---
+[2mpage 1/2 (Ctrl+N): banners: one row, a glyph and a word, severity by tone[0m
+
+[38;2;230;190;90m⚠ [0m[1mRate limited[0m[2m · retrying in 12s · attempt 2 of 5[0m[2m · Esc cancel[0m
+[38;2;230;110;110m✗ [0m[1mOffline[0m[2m · cannot reach api.deepseek.com[0m[2m · r retry[0m
+[38;2;230;190;90m⚠ [0m[1mContext 92% full[0m[2m · /compact now, or it will compact automatically at 95%[0m
+[38;2;154;134;230mℹ [0m[1mResumed session[0m[2m · 24 turns · last active 2h ago[0m
+--- after "\u000e" ---
+[2mpage 2/2 (Ctrl+N): toasts live in the activity gap; an undo toast carries its key and its deadline[0m
+
+[2m⊘ [0mDeleted session "Docs sync"                                                            [2mu undo · 8s[0m
+
+[38;2;154;134;230m⡀[0m Deep diving [2m· 4s[0m                                               [2m✓ build finished · 22s  Ctrl+J view[0m
+--- after "u" ---
+[2mpage 2/2 (Ctrl+N): toasts live in the activity gap; an undo toast carries its key and its deadline[0m
+
+[2m⊘ [0mDeleted session "Docs sync"                                                            [2mu undo · 8s[0m
+
+[38;2;154;134;230m⡀[0m Deep diving [2m· 4s[0m                                               [2m✓ build finished · 22s  Ctrl+J view[0m

@@ -21,6 +21,13 @@ slots, never arbitrary root components.
 - `frontend/index.ts` owns `mayflyUiInteraction` and independent consumer Fibers.
   Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
   reload. Renderer teardown releases editors/handles, not drafts or choice state.
+  It also owns `mayflyUiImages`, the byte source of `image` nodes: the host tree
+  provides a loader (Fiber-owned, newest first) and core never imports the
+  Harness; the wire carries only the attachment id and the alt fallback.
+  A `prompt` node's draft, selected token, recall walk, and completion cursor live in
+  the surface model (`core/ui-interaction-prompt.ts`) and survive a renderer reload;
+  the runtime only leases the terminal editor that mirrors the draft
+  (`core/ui-prompt.ts`), and the prompt's keys are one `keyGrammar` arm.
   Registry observers dispose only models from registrations they own.
   Locale namespaces are refcounted shared catalogs: any surface plugin may
   register the same namespace when its catalog is equivalent, and the catalog
@@ -74,6 +81,43 @@ slots, never arbitrary root components.
 - `conversation/` owns phase-local output measurements from session timestamps.
   Renderer timers animate or expire labels; they do not measure domain progress.
 
+## Node slots
+
+`screen.mountNodeSlot(id, { region: 'content' | 'dock' | 'footer' })` is a
+core-private lease (`core/node-slot.ts`) whose wire node compiles through the
+surface path, with the same compiler entry, runtime, and caches as a pane, into
+one of the screen's fixed hosts. Its interaction state is a `slot` model in
+`mayflyUiInteraction`, so a screen teardown revokes the lease and keeps the
+model for the next lease of the same id; only `dispose()` drops it. Mayfly
+features reach the footer, the editor, and the conversation through slots, never
+through a new root component. Plugins still use only the four public services.
+
+## Views lane
+
+A `mayflyPanes` pane with `placement: 'views'` is a view of status row 2, kept
+by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
+rows of its own, its summary joins row 2 through the footer, and an entered
+panel replaces row 2. A view's slot lives with its `PaneComponent`. Entry keys
+are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cancel`;
+`F6` walks the views before the interactive panes. Mayfly's own views register
+through the public pane service, never through core.
+
+## Keymap
+
+`mayflyKeymap` owns every dispatched key as a named action (`ui.save`,
+`ui.search`, `ui.copy`, `ui.delete`, `ui.refresh`, `ui.external`, `ui.cancel`,
+`ui.focus-next`, and the rest of `core/key-actions.ts`) with a scope: `global`,
+`editor`, `surface`, or `stream`. A `global` action claims its key in every
+scope; within overlapping scopes a key belongs to one action, and a conflict is
+refused with the owner's name (`KEY_CONFLICT`). `bind`/`reset`/`resetAll` change
+a key for the session (a rebound-away key is dead, not an alias; `Esc` and `Enter`
+stay fixed), `list` offers registered and seen component actions for rebinding,
+and `preferPlain` puts the plain second default first where Alt is not delivered (or the `preferPlainKeys` setting says so).
+Component actions (`<owner>.<action>`) appear in nodes and in the hint row under
+the same rule. Printable accelerators never pre-empt a control that takes text,
+and `core/ui-key-grammar.ts` derives the hint row from the same state. A new
+default key passes `tests/core/key-audit.spec.ts`.
+
 ## Interaction contracts
 
 Use shared Form/Choice/Tree/Tab/ScrollView state for drafts, validation, locks,
@@ -104,6 +148,53 @@ change a select. Editor shells leave every key except modifier accelerators to
 the editor. Choice reducers never focus disabled rows. Consumers express
 per-row availability with `unavailableActions` and questions with `confirm`,
 not custom confirm pages or post-confirmation rejections.
+
+Core reuses work by identity, never by value. A surface keeps one admission memo
+(`ui-validator.ts`), one compile memo and one list-row memo (on its
+`MayflyUiSurfaceRuntime`), and the renderer keeps one `UiAnimationClock`; none is
+a module singleton. Only a frozen `isWireSnapshot` value is a cache key, a memo
+hit must replay every quota and duplicate check, and a subtree that carries a
+control, tab, page, action key, filter, editor slot, or responsive branch is
+admitted whole each time. Reused leaves are static painters that read only their
+node, width, colors, and components; a new palette recompiles them. The work
+budgets in `tests/perf/budgets.json` only ratchet down.
+
+An unchanged subtree costs nothing on republish, so a painter that paints rows is
+written once in its cacheable form and brings its budget row. `list` reads
+`selectedIds` through `listSelectedIds` (the field is optional on the wire).
+
+An unchanged surface also costs nothing per frame. pi-tui lays a pane out on every
+frame of the terminal and renders a component once per stack that measures it, so
+every component `compileNode` returns answers a repeat render from memory
+(`retain` in `core/ui-compiler.ts`), and so do the parts pi-tui lays out one by one
+(a form's fields, a loader's row, a surface's head and tail). The rows hold for one
+epoch of the surface (`MayflyUiSurfaceRuntime.epoch`). The rules a painter lives by:
+
+- Whatever can change a row moves the epoch. A handled key, focus, `invalidate`,
+  and a new compile move it where they happen; a frame moves it for a new host
+  viewport, model revision, keymap revision, or completion state. State a painter
+  reads from anywhere else needs its own `touch()`, or the component is volatile.
+- A component that paints a live engine (the host editor, a prompt) is volatile:
+  it always paints, and no render that contains it is remembered. Keep volatile
+  components out of large trees.
+- A moving cell reads the clock through `loaderFrame()` or `progressValue()`. Its
+  render and the renders around it hold for one animation frame, a tick asks the
+  host for a frame without invalidating (`requestFrame`), and the clock is armed
+  only while the cell can be on screen (`core/ui-stacks.ts` places children; a
+  cell outside the window of its scroll view does not arm it).
+- A layout pass has one viewport, the frame the layout engine was given. A stack
+  child's `visible` must not adopt the unbounded viewport of a measuring render.
+- Stacks are `ColumnStack` and `RowStack`: pi-tui's rows, the row each child
+  starts at, and a horizontal stack that remembers composited rows.
+
+`pnpm run test:retained` runs the suites with `MAYFLY_UI_VERIFY_MEMO=1`: every
+memo hit paints again and throws when the rows differ. A stale row is a test
+failure there, not a report from a screen.
+
+The presentation (`core/presentation.ts`: glyph mode, monochrome, reduced
+motion, from the `mayfly` settings and `NO_COLOR`) is read when a theme provider
+and the components service are built, never per paint. A change restarts the
+live theme provider (`reloadTheme`), so every consumer and cached row rebuilds.
 
 Build surfaces from the shared components (actions row, text/choice fields,
 lists, tabs, decision panels, questionnaire, loader/progress/empty). The
@@ -149,6 +240,28 @@ renderers need width scans. Core fixtures mount the UI provider and frontend
 owner, and test that frontend state survives core reload. New public seams need
 real consumers, replay/abort/late-result tests, width and whole-tree composition
 coverage, and dedicated-profile acceptance.
+
+The canonical UI pipeline takes an optional core-private work-counter sink
+(`core/ui-work-counters.ts`) through the validator and compiler options; production
+passes none and no module holds one. `tests/perf/work-budget.spec.ts` gates the
+counts of the workloads in `tests/perf/workloads.ts`, so a change under
+`src/core/ui-*.ts` keeps them within `tests/perf/baseline.json` or updates it on
+purpose. `docs/design/prototypes/**` feeds the committed goldens under
+`tests/design/golden/`; `pnpm run design:golden:check` fails when the prototype
+changes, and `pnpm run design:golden` rewrites them after review. The budgets are
+the work-budget gate of the foundation: `budgets.json` may not exceed
+`baseline.json` (the work of the slice 1.0 pipeline), W1 and W4 gate again through
+the node slot (`W1-slot`, `W4-slot`), a slice that adds a painter adds its row,
+and wall-clock time from `script/audit-performance.mjs` is reported with a change
+and gates nothing. W13 to W17 (`tests/perf/frame-workloads.ts`) count a whole frame
+through the alternate layout, the lanes, and the surface renderer (leaf renders,
+control walks, reconciliations, layout passes, clock ticks, keymap snapshots): a
+budget row gates the counters it names, and a change to the frame path
+(`core/terminal.ts`, `core/surface-renderer.ts`, the keymap, the editor-extension
+runtime) runs them. `pnpm run bench:pty:assert` holds the real terminal to coarse
+ceilings in the full gate. `tests/design/deltas.ts` lists every accepted difference from the
+prototype (roadmap section 2.3) and `tests/design/pending.ts` only walks that wait
+for Phase 3 or later; a new difference needs the reviewer's approval.
 
 Patch, preset, skill, dependency, or composition edits require bundle/preset
 tests, `pnpm run check:agent-docs`, `pnpm run verify:full`,

@@ -43,6 +43,11 @@ describe('withSideBorders', () => {
     expect(boxed[1]).toBe('[│]  [│]')
   })
 
+  it('draws the frame in the ASCII fallback without touching the title', () => {
+    const boxed = withSideBorders(['─'.repeat(16), ' '.repeat(16), '─'.repeat(16)], plain, { glyphs: 'ascii', title: '→ title' })
+    expect(boxed).toEqual(['+---- → title -+', `:${' '.repeat(14)}:`, `+${'-'.repeat(14)}+`])
+  })
+
   it('draws connected corners on top when a panel sits above', () => {
     const boxed = withSideBorders(['──', '  '], plain, { connectedAbove: true })
     expect(boxed).toEqual(['├┤', '││'])

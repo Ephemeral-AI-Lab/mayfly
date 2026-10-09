@@ -12,6 +12,7 @@
  */
 
 import { sliceByColumn, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
+import { asciiText, type MayflyGlyphMode } from './glyphs.ts'
 import { OVERFLOW_ELLIPSIS } from './width.ts'
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
@@ -176,6 +177,8 @@ export interface SideBordersOptions {
   readonly title?: string | undefined
   /** Styling for the title text; defaults to the border paint. */
   readonly titlePaint?: ((text: string) => string) | undefined
+  /** The glyph mode: `ascii` draws the corners, rules, and bars with the one-cell fallback. */
+  readonly glyphs?: MayflyGlyphMode | undefined
 }
 
 /** Narrowest title, in visible columns, worth laying into a top border. */
@@ -212,9 +215,10 @@ function fitBorderTitle(title: string | undefined, maxWidth: number): string | u
  */
 export function withSideBorders(
   lines: string[],
-  paint: (text: string) => string,
+  borderPaint: (text: string) => string,
   options: SideBordersOptions = {},
 ): string[] {
+  const paint = options.glyphs === 'ascii' ? (text: string): string => borderPaint(asciiText(text)) : borderPaint
   let seenTop = false
   return lines.map(line => {
     const plain = stripSgr(line)
@@ -236,7 +240,7 @@ export function withSideBorders(
             paint(leftCorner)
             + (label ?? '')
             + paint('─'.repeat(middle.length - labelWidth - titleWidth))
-            + (title === undefined ? '' : (options.titlePaint ?? paint)(` ${title} `) + paint('─'))
+            + (title === undefined ? '' : (options.titlePaint ?? borderPaint)(` ${title} `) + paint('─'))
             + paint(rightCorner)
           )
         }

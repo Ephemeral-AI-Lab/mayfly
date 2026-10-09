@@ -242,6 +242,24 @@ describe('mayfly-core plugin through the real Loader', () => {
     expect(handler).toHaveBeenCalledTimes(2)
   })
 
+  it('repaints when a key is rebound and learns from the first F2-F5 press that Alt may not arrive', async () => {
+    const { ctx, output } = await bootMayflyCore()
+    const keymap = ctx.mayflyKeymap
+    keymap.register([{ id: 'ui.copy', keys: 'c', scope: 'surface' }])
+    const probe = { focused: false, render: () => [`copy is ${keymap.getKeys('ui.copy').join('/')}`], invalidate: () => {} }
+    const slot = ctx.mayflyScreen.mountContentSlot('test.keys', probe)
+    slot.focus()
+    keymap.bind('ui.copy', 'y')
+    await new Promise<void>(resolve => setTimeout(resolve, 50))
+    expect(output()).toContain('copy is y')
+
+    expect(ctx.mayflyKeymap.preferPlain).toBe(false)
+    process.stdin.emit('data', Buffer.from('\x1bOQ', 'utf8'))
+    await new Promise<void>(resolve => setTimeout(resolve, 50))
+    expect(ctx.mayflyKeymap.preferPlain).toBe(true)
+    slot.dispose()
+  })
+
   it('stops the terminal and removes the services when the tree unloads', async () => {
     const { ctx, output } = await bootMayflyCore()
     await ctx.fiber.dispose()

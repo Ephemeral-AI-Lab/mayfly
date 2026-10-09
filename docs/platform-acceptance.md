@@ -50,6 +50,14 @@ the following real environments and record versions and results:
 | Windows Terminal / ConPTY | No Git Bash, Chinese input method, UTF-8 paste, drive-letter and UNC completion, npmrc mirrors, in-app plugin actions |
 | macOS Terminal or iTerm2 | Chinese input method, pbcopy, Finder image/file paste, window resize, and terminal restoration after exit |
 
+The `prompt` node (roadmap slice 1.9b) keeps the terminal editor's own paste and input-method
+behavior, so each platform also checks it on the UI gallery's prompt pane
+(`example.ui-gallery.prompt`) or a profile that mounts one: a Chinese input method composes in the
+prompt and the placeholder is gone once text commits; a large bracketed paste folds into a
+`[paste #N +M lines]` marker and sends in full; a multi-line paste keeps its line breaks and does
+not send; a paste while a completion list is open does not accept it; `Alt+Enter` or `Ctrl+J` insert
+a line break; and at 40 columns the tokens fold behind `+N` without pushing the cursor off the row.
+
 Every platform also checks Delete inside form editing, long label values on
 narrow screens, original-input restoration after cancel, and no leftover child
 processes after hot reload or exit. SSH/tmux, image display protocols, and

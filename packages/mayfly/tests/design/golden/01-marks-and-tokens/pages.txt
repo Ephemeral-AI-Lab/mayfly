@@ -1,0 +1,97 @@
+--- after start ---
+page 1/6 (Ctrl+N): selection and focus: → the cursor, ▌ the persistent selection, ▸ ▾ disclosure, ●
+○ ◐ checks, [current], — reason
+
+→ a cursor in a choose list (the row Enter acts on)
+→ Default [current]
+  Accept edits
+  Full access — managed by policy
+
+▌ the persistent selection in a rail; inverse only while the rail has focus
+  General
+→ Model
+  Permissions                                                                                      2
+  General
+→ Model
+
+▸ ▾ disclosure and ● ○ ◐ checks (single: ●/○, multiple: ●/○, a partly selected parent ◐)
+  ▾ ◐ filesystem
+  │ ● read_file
+  ╰ ○ write_file
+  ○ github
+
+‹ v › a value ←/→ changes · • an edited field · (inherited) · ! an error
+→ Model:   ‹ deepseek-chat ›  (inherited)
+• Timeout: 45 s
+  Name:    
+    ! Required
+--- after "\u000e" ---
+page 2/6 (Ctrl+N): state and progress glyphs (one glyph, one meaning)
+
+●  assistant block; a tool or step running
+»  user block
+✻  thinking
+✓  done
+✗  failed
+⊘  cancelled
+◐  declined (plan)
+■  stopping or interrupted
+?  waiting on the user
+⚠  warning
+ℹ  information
+✕  goal blocked
+❚❚ goal paused
+⎿  detail connector
+⏵  background jobs
+↻  applies after a restart
+↗  opens in the external editor
+
+▰▰▰▰▱▱ determinate progress cells   ━━━━───  heavy and light rule
+--- after "\u000e" ---
+page 3/6 (Ctrl+N): tones and styles (the whole palette; a monochrome terminal keeps weight and
+glyphs)
+
+default  Sample text in this tone
+muted    Sample text in this tone
+primary  Sample text in this tone
+accent   Sample text in this tone
+user     Sample text in this tone
+success  ✓ Saved to clipboard
+warning  ⚠ permission picker is unavailable
+danger   ✗ Plan copy failed
+
+strong  italic  struck
+--- after "\u000e" ---
+page 4/6 (Ctrl+N): one answer for five states: every panel and every secondary read looks the same
+
+⣾ Loading sessions…
+empty      No plugins installed — press → to browse
+✗ Could not reach the market  r retry
+⚠ offline · showing cached data from 2d ago
+— not supported by this provider
+
+a slow or failed secondary read (a balance, a catalog refresh) never blocks or alters the primary
+content
+--- after "\u000e" ---
+page 5/6 (Ctrl+N): feedback severities: glyph plus word, never color alone
+
+✓ Installed Git Helper · restart Mayfly to apply   5 s visible, then it goes
+ℹ Resumed session · 24 turns   5 s visible
+⚠ Balance low · ¥ 6.20 left   stays until acted on
+✗ Sign-in failed — try again   stays, offers its retry key
+
+inline in the footer of an open surface; a toast in the activity row gap otherwise
+--- after "\u000e" ---
+page 6/6 (Ctrl+N): breakpoints: one list-and-detail panel at three widths
+
+≥ 100 columns: split view
+→ Loop — official · T W                      1.4.0  Loop:   official · Automation
+  Git Helper — community · T W        update 1.3.0  Status: ✓ installed 1.4.0
+
+60–99 columns: one column, Enter opens the detail
+→ Loop — official · T W                                          1.4.0
+  Git Helper — community · T W                            update 1.3.0
+
+below 60: the name and one glyph (the list degrades; the detail opens on Enter)
+→ Loop                                 ✓
+  Git Helper                           ↑

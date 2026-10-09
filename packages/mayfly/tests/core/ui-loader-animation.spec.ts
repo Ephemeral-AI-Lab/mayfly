@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/core/ui-loader-animation
  */
 import { afterEach, expect, it, vi } from 'vitest'
-import { UiLoaderAnimation, LOADER_FRAME_MS } from '../../src/core/ui-loader-animation.ts'
+import { UiAnimationClock, UiLoaderAnimation, LOADER_FRAME_MS, LOADER_MAX_FRAME_MS } from '../../src/core/ui-loader-animation.ts'
 
 afterEach(() => vi.useRealTimers())
 
@@ -46,4 +46,117 @@ it('stops when a new frame contains no loader, or the surface is hidden/disposed
   vi.advanceTimersByTime(LOADER_FRAME_MS * 10)
   expect(repaint).toHaveBeenCalledOnce()
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it('serves every surface of a clock with one timer, drops a hidden surface, and stops when nothing moves', () => {
+  vi.useFakeTimers()
+  const clock = new UiAnimationClock()
+  const first = vi.fn()
+  const second = vi.fn()
+  const one = new UiLoaderAnimation(first, clock)
+  const two = new UiLoaderAnimation(second, clock)
+  one.render()
+  two.render()
+  expect(vi.getTimerCount(), 'two surfaces, one timer').toBe(1)
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect([first.mock.calls.length, second.mock.calls.length]).toEqual([1, 1])
+  expect([one.frame, two.frame]).toEqual([1, 1])
+  one.render()
+  two.render()
+  two.stop()
+  expect(vi.getTimerCount(), 'one surface is still armed').toBe(1)
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect([first.mock.calls.length, second.mock.calls.length]).toEqual([2, 1])
+  one.stop()
+  expect(vi.getTimerCount(), 'nothing is armed').toBe(0)
+  one.render()
+  clock.dispose()
+  expect(vi.getTimerCount()).toBe(0)
+  vi.advanceTimersByTime(LOADER_FRAME_MS * 4)
+  expect(first.mock.calls.length).toBe(2)
+})
+
+it('waits twice as long as a tick took to paint, so a slow frame cannot fill the gap between two ticks', () => {
+  vi.useFakeTimers()
+  const clock = new UiAnimationClock()
+  const repaint = vi.fn()
+  const animation = new UiLoaderAnimation(repaint, clock)
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect(repaint).toHaveBeenCalledTimes(1)
+  // The repaint reaches the moving cell 80 ms after the tick asked for it: the next step is 160 ms away.
+  vi.advanceTimersByTime(80)
+  animation.render()
+  vi.advanceTimersByTime(159)
+  expect(repaint).toHaveBeenCalledTimes(1)
+  vi.advanceTimersByTime(1)
+  expect(repaint).toHaveBeenCalledTimes(2)
+  // A fast frame returns to the ordinary step.
+  vi.advanceTimersByTime(10)
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS - 1)
+  expect(repaint).toHaveBeenCalledTimes(2)
+  vi.advanceTimersByTime(1)
+  expect(repaint).toHaveBeenCalledTimes(3)
+  // However slow the frame, the motion keeps one step a second.
+  vi.advanceTimersByTime(5000)
+  animation.render()
+  vi.advanceTimersByTime(LOADER_MAX_FRAME_MS - 1)
+  expect(repaint).toHaveBeenCalledTimes(3)
+  vi.advanceTimersByTime(1)
+  expect(repaint).toHaveBeenCalledTimes(4)
+  clock.dispose()
+})
+
+it('forgets a tick whose repaint never painted a moving cell', () => {
+  vi.useFakeTimers()
+  const clock = new UiAnimationClock()
+  const repaint = vi.fn()
+  const animation = new UiLoaderAnimation(repaint, clock)
+  // The surface hides after a tick: the time until a loader shows again is not the cost of a frame.
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  animation.stop()
+  vi.advanceTimersByTime(5000)
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect(repaint).toHaveBeenCalledTimes(2)
+  // So does a disposed clock.
+  clock.dispose()
+  vi.advanceTimersByTime(5000)
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect(repaint).toHaveBeenCalledTimes(3)
+  // A tick that no surface answered asks for nothing and leaves no cost behind.
+  clock.dispose()
+  animation.render()
+  animation.beginFrame()
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect(repaint).toHaveBeenCalledTimes(3)
+  vi.advanceTimersByTime(5000)
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect(repaint).toHaveBeenCalledTimes(4)
+  clock.dispose()
+})
+
+it('charges a tick nothing when the frame it asked for painted no moving cell', () => {
+  vi.useFakeTimers()
+  const clock = new UiAnimationClock()
+  const repaint = vi.fn()
+  const animation = new UiLoaderAnimation(repaint, clock)
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS)
+  expect(repaint).toHaveBeenCalledTimes(1)
+  // The frame the tick asked for begins and paints no moving cell: it scrolled out of view.
+  animation.beginFrame()
+  vi.advanceTimersByTime(5000)
+  // A later frame begins; the cell is back in it. The five seconds in between were not the cost of a frame.
+  animation.beginFrame()
+  animation.render()
+  vi.advanceTimersByTime(LOADER_FRAME_MS - 1)
+  expect(repaint).toHaveBeenCalledTimes(1)
+  vi.advanceTimersByTime(1)
+  expect(repaint).toHaveBeenCalledTimes(2)
+  clock.dispose()
 })

@@ -1,0 +1,76 @@
+--- after start ---
+╭ Status ─────────────────────────────────────────────────────────────── read-only ╮
+│ Overview   Usage   Account   Connections !   About                               │
+│ ━━━━━━━━                                                                         │
+│                                                                                  │
+│ Model:     deepseek-chat · High effort                                           │
+│ Provider:  DeepSeek (api.deepseek.com)                                           │
+│ Directory: ~/work/mayfly  main ±3                                                │
+│ Mode:      Default permissions · plan off                                        │
+│ Session:   Update landing page hero · 12 turns · 18m                             │
+│ Balance:   ✓ ¥ 128.40 available                                                  │
+│   Enter open · r refresh · o top up in browser · Esc close                       │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+balance state: available — one optional read-only query; a failed check never affects the
+conversation
+--- after "\u001b[C" ---
+╭ Status ─────────────────────────────────────────────────────────────── read-only ╮
+│ Overview   Usage   Account   Connections !   About                               │
+│            ━━━━━                                                                 │
+│                                                                                  │
+│ Session: 148.2k in · 50.4k cached · 18.9k out · 31 requests · ≈ ¥ 3.02           │
+│ Today:   ≈ ¥ 13.40 · 4 sessions                                                  │
+│                                                                                  │
+│ Activity  turns per day, last 26 weeks                                           │
+│      Apr May  Jun Jul Aug  Sep                                                   │
+│ Mon  ··░▒░░▒▒·▓··▓·░··▒█▓▓·▓▒·█                                                  │
+│ Wed  ·░··░░▒▒▒▒·░·▒░░▓░▓▒·▒▒▒░█                                                  │
+│ Fri  ··░░·░··░░░·░·▒··▓▒▒█░▒░▓▓                                                  │
+│ Sun  ·····░░·····▒·░·▒░░·▒··░▒░                                                  │
+│ legend: · none  ░ light  ▒ some  ▓ busy  █ peak                                  │
+│                                                                                  │
+│ Conversation statistics                                                          │
+│ Sessions:   25 · 312 turns · 1,204 messages                                      │
+│ Tool calls: 1,873 · 94% succeeded                                                │
+│ Avg turn:   38s · longest session 2h 14m                                         │
+│ Streak:     6 days · best 19                                                     │
+│ top tools                                                                        │
+│ bash ████████████████████████ 612                                                │
+│ read ███████████████████░░░░░ 481                                                │
+│ edit ████████░░░░░░░░░░░░░░░░ 203                                                │
+│ grep ███████░░░░░░░░░░░░░░░░░ 177                                                │
+│ turns/day (last 14) ▃▄▂▁▅▆▃▆▇▃▄█▆▅                                               │
+│   Enter open · r refresh · o top up in browser · Esc close                       │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+balance state: available — one optional read-only query; a failed check never affects the
+conversation
+--- after "\u001b[C" ---
+╭ Status ─────────────────────────────────────────────────────────────── read-only ╮
+│ Overview   Usage   Account   Connections !   About                               │
+│                    ━━━━━━━                                                       │
+│                                                                                  │
+│ Provider: DeepSeek                                                               │
+│ Balance:  ✓ ¥ 128.40 available                                                   │
+│           topped-up ¥ 100.00 · granted ¥ 28.40                                   │
+│ Checked:  2 min ago · r refresh                                                  │
+│ Top up:   platform.deepseek.com  ·  o open in browser                            │
+│   Enter open · r refresh · o top up in browser · Esc close                       │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+balance state: available — one optional read-only query; a failed check never affects the
+conversation
+--- after "\u001b[C" ---
+╭ Status ─────────────────────────────────────────────────────────────── read-only ╮
+│ Overview   Usage   Account   Connections !   About                               │
+│                              ━━━━━━━━━━━━━                                       │
+│                                                                                  │
+│ ✓ filesystem: 4 tools · 120 ms                                                   │
+│ ✓ github:     12 tools · 340 ms                                                  │
+│ ✗ postgres:   auth failed — run /mcp to fix                                      │
+│   Enter open · r refresh · o top up in browser · Esc close                       │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+balance state: available — one optional read-only query; a failed check never affects the
+conversation

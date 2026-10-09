@@ -1,6 +1,6 @@
 /**
- * `highlightCodeLines`: the markdown `highlightCode` hook's backend —
- * language gating, red-scope resetting, and the never-change-line-count
+ * `highlightCodeLines`: the backend of code nodes and markdown fences —
+ * language gating, the palette-only theme, and the never-change-line-count
  * contract including the throw fallback.
  */
 
@@ -13,58 +13,69 @@ vi.mock('cli-highlight', async (importOriginal) => {
 
 import { highlight } from 'cli-highlight'
 
-import { highlightCodeLines } from '../../src/core/highlight.ts'
+import { highlightable, highlightCodeLines, type CodePaints } from '../../src/core/highlight.ts'
 import type { MayflyColorFn } from '../../src/core/types.ts'
 
-const base: MayflyColorFn = (text) => `«base:${text}»`
+const tag = (name: string): MayflyColorFn => text => `«${name}:${text}»`
+const paints: CodePaints = { base: tag('base'), keyword: tag('keyword'), string: tag('string'), comment: tag('comment') }
 
 describe('highlightCodeLines', () => {
   it('returns the raw split for unknown, empty, or missing languages', () => {
-    expect(highlightCodeLines('a\nb', 'notalang', base)).toEqual(['a', 'b'])
-    expect(highlightCodeLines('a\nb', undefined, base)).toEqual(['a', 'b'])
-    expect(highlightCodeLines('a\nb', '', base)).toEqual(['a', 'b'])
-    expect(highlightCodeLines('a\nb', '   ', base)).toEqual(['a', 'b'])
+    expect(highlightCodeLines('a\nb', 'notalang', paints)).toEqual(['a', 'b'])
+    expect(highlightCodeLines('a\nb', undefined, paints)).toEqual(['a', 'b'])
+    expect(highlightCodeLines('a\nb', '', paints)).toEqual(['a', 'b'])
+    expect(highlightCodeLines('a\nb', '   ', paints)).toEqual(['a', 'b'])
+    expect(highlightable('  TypeScript ')).toBe(true)
+    expect(highlightable('notalang')).toBe(false)
+    expect(highlightable(undefined)).toBe(false)
   })
 
-  it('highlights a known language, normalizing case and whitespace, without changing the line count', () => {
-    const code = 'const x = 1\n// note'
-    const lines = highlightCodeLines(code, '  JS ', base)
+  it('paints keywords, strings, and comments in their tones and everything else in the base, line for line', () => {
+    const code = "const x = 'one'\n// note\nfoo(1)"
+    const lines = highlightCodeLines(code, '  TS ', paints)
     expect(lines).toHaveLength(code.split('\n').length)
-    expect(lines.join('\n')).toContain('const')
+    expect(lines[0]).toContain('«keyword:const»')
+    expect(lines[0]).toContain("«string:'one'»")
+    expect(lines[1]).toContain('«comment:// note»')
+    expect(lines[2]).not.toContain('\x1b')
   })
 
-  it('resets the red scopes to the palette base and keeps illegals on', () => {
+  it('gives every token class a palette paint and keeps illegals on', () => {
     vi.mocked(highlight).mockClear()
-    highlightCodeLines('a', 'js', base)
-    expect(highlight).toHaveBeenCalledWith('a', {
-      language: 'js',
-      ignoreIllegals: true,
-      theme: { default: base, string: base, regexp: base, deletion: base },
-    })
+    highlightCodeLines('a', 'js', paints)
+    const options = vi.mocked(highlight).mock.calls[0]![1]!
+    expect(options).toMatchObject({ language: 'js', ignoreIllegals: true })
+    const theme = options.theme as Record<string, MayflyColorFn>
+    expect(theme.keyword!('k')).toBe('«keyword:k»')
+    expect(theme.string!('s')).toBe('«string:s»')
+    expect(theme.comment!('c')).toBe('«comment:c»')
+    expect(theme.built_in!('b')).toBe('«base:b»')
+    // Every run closes on its own line.
+    expect(theme.default!('a\n\nb')).toBe('«base:a»\n\n«base:b»')
   })
 
   it('falls back to the raw split when the highlighter throws', () => {
     vi.mocked(highlight).mockImplementationOnce(() => {
       throw new Error('boom')
     })
-    expect(highlightCodeLines('a\nb', 'js', base)).toEqual(['a', 'b'])
+    expect(highlightCodeLines('a\nb', 'js', paints)).toEqual(['a', 'b'])
   })
 
-  it('memoizes highlighted blocks by resolved base color, language, and code', () => {
+  it('memoizes highlighted blocks by resolved paints, language, and code', () => {
     vi.mocked(highlight).mockClear()
-    const first = highlightCodeLines('let memo = 1', 'js', base)
+    const first = highlightCodeLines('let memo = 1', 'js', paints)
     first.push('mutated')
-    expect(highlightCodeLines('let memo = 1', ' JS', base)).toEqual(first.slice(0, -1))
+    expect(highlightCodeLines('let memo = 1', ' JS', paints)).toEqual(first.slice(0, -1))
     expect(highlight).toHaveBeenCalledTimes(1)
-    // A theme switch resolves the base differently and misses.
-    highlightCodeLines('let memo = 1', 'js', text => `«other:${text}»`)
+    // A theme switch resolves the paints differently and misses.
+    highlightCodeLines('let memo = 1', 'js', { ...paints, keyword: tag('other') })
     expect(highlight).toHaveBeenCalledTimes(2)
     // The oldest entries leave once the memo is full.
-    for (let index = 0; index < 64; index += 1) highlightCodeLines(`let n${String(index)} = 1`, 'js', base)
+    for (let index = 0; index < 64; index += 1) highlightCodeLines(`let n${String(index)} = 1`, 'js', paints)
     vi.mocked(highlight).mockClear()
-    highlightCodeLines('let n63 = 1', 'js', base)
+    highlightCodeLines('let n63 = 1', 'js', paints)
     expect(highlight).not.toHaveBeenCalled()
-    highlightCodeLines('let memo = 1', 'js', base)
+    highlightCodeLines('let memo = 1', 'js', paints)
     expect(highlight).toHaveBeenCalledTimes(1)
   })
 })

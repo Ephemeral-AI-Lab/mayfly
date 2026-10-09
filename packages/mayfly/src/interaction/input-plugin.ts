@@ -58,6 +58,7 @@ import type {
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { normalizeWheelInput } from '../core/terminal.ts'
+import { feedbackSpans } from '../core/ui-interaction-notifications.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -83,6 +84,7 @@ import { resolveExternalEditorCommand, runExternalEditor } from './external-edit
 import { currentMayflySettings } from './settings.ts'
 import {
   ACTION_CANCEL,
+  ACTION_CYCLE_MODE,
   ACTION_CYCLE_MODEL,
   ACTION_EXTERNAL_EDITOR,
   ACTION_END,
@@ -91,7 +93,7 @@ import {
   ACTION_MOVE_UP,
   ACTION_PAGE_DOWN,
   ACTION_PAGE_UP,
-  ACTION_SHIFT_TAB,
+  ACTION_FOCUS_NEXT,
   ACTION_STEER,
   interactionKeyHint,
 } from './keys.ts'
@@ -247,7 +249,7 @@ export function apply(ctx: Context): void {
   }
   const feedbackNode = (): MayflyUiNode | undefined => {
     const record = visibleNotification()
-    if (record !== undefined) return ui.text(record.message, { tone: record.severity === 'error' ? 'danger' : record.severity === 'info' ? 'muted' : record.severity })
+    if (record !== undefined) return ui.richText(feedbackSpans(record.severity, record.message))
     const hint = slashHint()
     return hint === undefined ? undefined : ui.text(hint, { tone: 'muted' })
   }
@@ -740,7 +742,7 @@ export function apply(ctx: Context): void {
         return true
       }
       lastInterruptAt = now
-      showFeedback('exit', t('press ctrl+c again to exit'), 'warning')
+      showFeedback('exit', t('press Ctrl+C again to exit'), 'warning')
       return true
     }
     // Ctrl-S: steer the current turn with the draft — an idle agent starts
@@ -789,7 +791,7 @@ export function apply(ctx: Context): void {
     }
     // Shift+Tab toggles native plan state, including in bash input mode.
     // Permission presets are independent and require an explicit command.
-    if (keymap.matches(data, ACTION_SHIFT_TAB)) {
+    if (keymap.matches(data, ACTION_CYCLE_MODE)) {
       void cycleMode(ctx, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }
@@ -811,6 +813,11 @@ export function apply(ctx: Context): void {
       void cycleSessionModel(ctx, modelListCache, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }
+    // Alt+Down (F5) on an empty prompt enters the views of status row 2; without a view the key stays the editor's.
+    if (keymap.matches(data, ACTION_FOCUS_NEXT)
+      && editor.getText().length === 0
+      && !editor.isShowingAutocomplete()
+      && ctx.mayflyScreen.enterViews()) return true
     // Up on an empty prompt withdraws the newest still-pending queued
     // message back into the draft — the folded queue pane's recall gesture.
     // A non-empty buffer, an open autocomplete dropdown, and bash mode all

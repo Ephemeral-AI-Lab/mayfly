@@ -15,12 +15,18 @@ import { matchesKey, type KeyId } from '@earendil-works/pi-tui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
+import { UiAnimationClock } from './ui-loader-animation.ts'
+import { nodeSlotEpoch } from './node-slot.ts'
+import { VIEWS_FOCUS_ID, type ViewHint, type ViewRegistration } from './views-lane.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
+import { OverlayArm, type OverlayArmHint } from './overlay-arm.ts'
 import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
-import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
+import type { MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
+import type { MayflyUiImageSource } from './ui-images.ts'
+import type { MayflyWorkCounters } from './ui-work-counters.ts'
 const OVERLAY_DEFAULT_WIDTH = '70%'
 const OVERLAY_DEFAULT_MAX_HEIGHT = '33.333333333333336%'
 /** Editor-slot pickers default to half the terminal, never fewer than ten rows when the slot allows it. */
@@ -57,9 +63,13 @@ function compile(
     readonly onEscape?: () => void
     readonly escapeHint?: 'close' | 'leave'
     readonly translateHint?: (key: string) => string
+    readonly extraHints?: () => readonly OverlayArmHint[]
     readonly interactive: boolean
     readonly runtime: MayflyUiSurfaceRuntime
     readonly title?: string
+    /** A view's panel: it always takes focus (it owns Esc and the lane keys) and adds the lane's hints to its key row. */
+    readonly viewHints?: () => readonly ViewHint[]
+    readonly counters?: MayflyWorkCounters
   },
 ): MayflyCompiledUi | null {
   /* Failure nodes are plain text; the surface compiler owns the
@@ -91,10 +101,12 @@ function compile(
     screenMode: options.mode,
     emit: options.emit,
     contextHints: {
-      focusWithoutControls: kind === 'overlay' && options.interactive && options.onEscape !== undefined,
+      focusWithoutControls: options.viewHints !== undefined || (kind === 'overlay' && options.interactive && options.onEscape !== undefined),
       ...(options.translateHint === undefined ? {} : { translate: options.translateHint }),
+      ...(options.extraHints === undefined && options.viewHints === undefined ? {} : { extra: () => [...options.extraHints?.() ?? [], ...options.viewHints?.() ?? []] }),
     },
     ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
+    ...(options.counters === undefined ? {} : { counters: options.counters }),
   }
   const result = compileMayflyUiSurfaceNode(node, {
     ...compilerOptions,
@@ -161,6 +173,8 @@ class PaneComponent implements MayflyFocusable {
   leadingRule = false
   /** The final rendered row is a fold affordance the lane must keep visible. */
   overflowKeepsTail = false
+  /** A views pane's slot in the views lane; disposing the component removes the view. */
+  view: ViewRegistration | undefined
 
   constructor(private readonly colors: MayflySemanticColors, private readonly translate: MayflyTranslate) {}
 
@@ -187,10 +201,13 @@ class PaneComponent implements MayflyFocusable {
     /* v8 ignore next -- every record is removed before another cleanup path can observe it. */
     if (!this.live) return
     this.live = false
+    this.view?.dispose()
     setCompiledFocus(this.targetValue, false)
     this.targetValue = null
     this.focusedValue = false
   }
+  /** The semantic control holding focus, so the views lane can tell an editing field from a browsing one. */
+  captureFocusIdentity(): MayflyFocusIdentity | undefined { return this.targetValue?.focusTarget?.captureFocusIdentity?.() }
   /** The muted row the bottom lane paints in place of `hidden` cut rows. */
   renderOverflow(hidden: number): string {
     return this.colors.textMuted(renderOverflowRow(hidden, this.translate))
@@ -209,10 +226,12 @@ class OverlayComponent implements MayflyFocusable {
     private readonly viewport: () => MayflyUiViewport,
     private readonly requestRender: () => void,
     private readonly scrollKeys?: (data: string) => boolean,
+    private readonly arm?: OverlayArm,
   ) { this.targetValue = compiled }
   get focused(): boolean { return this.live && this.focusedValue }
   set focused(value: boolean) {
     this.focusedValue = this.live && value
+    if (this.focusedValue) this.arm?.start()
     setCompiledFocus(this.targetValue, this.focusedValue)
   }
   replace(compiled: MayflyCompiledUi): void {
@@ -226,6 +245,7 @@ class OverlayComponent implements MayflyFocusable {
     /* v8 ignore next -- every record is removed before another cleanup path can observe it. */
     if (!this.live) return
     this.live = false
+    this.arm?.dispose()
     setCompiledFocus(this.targetValue, false)
     this.targetValue = null
     this.focusedValue = false
@@ -239,7 +259,7 @@ class OverlayComponent implements MayflyFocusable {
   }
   invalidate(): void { if (this.live) this.targetValue?.component.invalidate() }
   handleInput(data: string): void {
-    if (!this.live) return
+    if (!this.live || this.arm?.swallows(data) === true) return
     if (this.scrollKeys?.(data) === true) return
     this.targetValue?.component.handleInput?.(data)
   }
@@ -260,6 +280,7 @@ interface OverlayRecord {
   readonly interaction: UiSurfaceModel
   readonly runtime: MayflyUiSurfaceRuntime
   readonly component: OverlayComponent
+  readonly arm: OverlayArm | undefined
   readonly handle: MayflyOverlayHandle | undefined
   renderScheduled?: boolean
   renderedRevision: number
@@ -281,9 +302,13 @@ function focusTarget(entry: SurfaceLaneEntry): MayflyFocusable | null {
 }
 
 /** Mount the direct registry renderer after theme/components become available. */
-export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, translateHint?: (key: string) => string): void {
+export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, translateHint?: (key: string) => string, images?: MayflyUiImageSource, counters?: MayflyWorkCounters): void {
   const panes = new Map<string, PaneRecord>()
   const overlays = new Map<string, OverlayRecord>()
+  /** One timer for every animated pane and overlay of this renderer. */
+  const clock = new UiAnimationClock(counters)
+  /** A measuring caller's sink reaches every surface this renderer compiles; production passes none. */
+  const counted = counters === undefined ? {} : { counters }
   let disposed = false
   let pending: SurfaceSnapshot | undefined
   let scheduled = false
@@ -315,21 +340,33 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const renderPane = (record: PaneRecord): void => {
     const entry = record.entry
     const node = record.interaction.decisionNode ?? record.interaction.node
+    // A views pane is a view of status row 2: the lane sizes its panel and owns Esc, and its events stay its own.
+    const placement = entry.definition.placement
+    const lane = placement === 'views' ? runtime.surfaces.views : undefined
     const compiled = compile(node, 'pane', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
-      viewport: () => paneViewport(entry.id),
+      viewport: () => lane === undefined ? paneViewport(entry.id) : lane.viewport(),
       mode: runtime.mode,
       emit: record.interaction.emit.bind(record.interaction),
-      onEscape: () => runtime.releaseSurfaceFocus(entry.id),
-      escapeHint: 'leave',
+      onEscape: () => lane === undefined ? runtime.releaseSurfaceFocus(entry.id) : lane.leave(),
+      escapeHint: lane === undefined ? 'leave' : 'close',
       ...(translateHint === undefined ? {} : { translateHint }),
       interactive: true,
       runtime: record.runtime,
-      ...surfaceTitle(entry, record.interaction),
+      ...counted,
+      // A view's title names its tab, so its panel carries no frame of its own.
+      ...(lane === undefined ? surfaceTitle(entry, record.interaction) : { viewHints: () => lane.hints() }),
     })
     record.renderedRevision = record.interaction.revision
+    if (placement === 'views') {
+      if (compiled === null) record.runtime.deactivate()
+      record.component.replace(compiled)
+      record.component.view!.setPanel(compiled === null ? null : record.component, compiled?.focusTarget == null ? null : record.component)
+      runtime.requestRender()
+      return
+    }
     if (compiled === null) {
       record.runtime.deactivate()
       record.component.replace(null)
@@ -343,7 +380,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       record.registration = runtime.surfaces.register({
         id: entry.id,
         ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
-        placement: entry.definition.placement,
+        placement,
         ...(entry.definition.priority === undefined ? {} : { priority: entry.definition.priority }),
         ...(entry.definition.size === undefined ? {} : { size: entry.definition.size }),
         ...(entry.definition.narrow === undefined ? {} : { narrow: entry.definition.narrow }),
@@ -367,8 +404,16 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() }), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
+    if (entry.definition.placement === 'views') {
+      record.component.view = runtime.surfaces.views.register({
+        id: entry.id,
+        ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
+        ...(entry.definition.priority === undefined ? {} : { priority: entry.definition.priority }),
+        summary: entry.summary!, // the service publishes null for a view without one
+      })
+    }
     schedulePane(record)
   }
 
@@ -380,7 +425,10 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addOverlay = (entry: MayflyOverlayEntry): void => {
     let record!: OverlayRecord
     const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)!
-    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() })
+    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() })
+    const arm = entry.definition.armMs === undefined || entry.definition.armMs === 0
+      ? undefined
+      : new OverlayArm(entry.definition.armMs, () => { record.component.invalidate(); runtime.requestRender() })
     const compiled = compile(interaction.decisionNode ?? interaction.node, 'overlay', {
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
@@ -390,8 +438,10 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       emit: interaction.emit.bind(interaction),
       ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
       ...(translateHint === undefined ? {} : { translateHint }),
+      ...(arm === undefined ? {} : { extraHints: () => arm.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: surfaceRuntime,
+      ...counted,
       ...surfaceTitle(entry, interaction),
     })!
     /* Document-in-flow surfaces keep the page flowing: scroll keys the surface
@@ -406,7 +456,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
           return false
         }
       : undefined
-    const component = new OverlayComponent(compiled, () => overlayViewport(entry), runtime.requestRender, scrollKeys)
+    const component = new OverlayComponent(compiled, () => overlayViewport(entry), runtime.requestRender, scrollKeys, arm)
     const handle = entry.definition.presentation === 'editor' ? undefined : runtime.showOverlay(component, {
       width: entry.definition.width ?? OVERLAY_DEFAULT_WIDTH,
       ...(entry.definition.minWidth === undefined ? {} : { minWidth: entry.definition.minWidth }),
@@ -416,7 +466,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       nonCapturing: !entry.definition.capturing,
     })
     if (entry.hidden) handle?.setHidden(true)
-    record = { entry, interaction, runtime: surfaceRuntime, component, handle, renderedRevision: interaction.revision }
+    record = { entry, interaction, runtime: surfaceRuntime, component, arm, handle, renderedRevision: interaction.revision }
     overlays.set(entry.id, record)
   }
 
@@ -431,8 +481,10 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       emit: record.interaction.emit.bind(record.interaction),
       ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => record.interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
       ...(translateHint === undefined ? {} : { translateHint }),
+      ...(record.arm === undefined ? {} : { extraHints: () => record.arm!.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: record.runtime,
+      ...counted,
       ...surfaceTitle(entry, record.interaction),
     })!
     record.renderedRevision = record.interaction.revision
@@ -494,6 +546,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       }
       const renderChanged = record.entry.revision !== entry.revision || record.renderedRevision !== record.interaction.revision
       record.entry = entry
+      record.component.view?.setSummary(entry.summary ?? null)
       if (renderChanged) schedulePane(record)
     }
 
@@ -574,21 +627,24 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
         return focusTarget(entry) === null ? [] : [{ lane, entry }]
       }),
     )
-    if (entries.length === 0) return
+    // The views come first: F6 enters them, then walks the interactive panes.
+    const stops = [
+      ...(runtime.surfaces.views.enterable ? [{ id: VIEWS_FOCUS_ID, go: () => { runtime.surfaces.views.enter() } }] : []),
+      ...entries.map(({ lane, entry }) => ({ id: entry.id, go: () => { runtime.surfaces.activate(lane.placement, entry.id); runtime.setFocus(focusTarget(entry)!) } })),
+    ]
+    if (stops.length === 0) return
     const currentId = runtime.surfaces.focusedId ?? navigationId
-    const current = entries.findIndex(item => item.entry.id === currentId)
-    const next = current < 0 ? (direction > 0 ? 0 : entries.length - 1) : current + direction
-    if (next < 0 || next >= entries.length) {
+    const current = stops.findIndex(item => item.id === currentId)
+    const next = current < 0 ? (direction > 0 ? 0 : stops.length - 1) : current + direction
+    if (next < 0 || next >= stops.length) {
       /* v8 ignore else -- reaching the boundary after a focused surface always has an id. */
       if (runtime.surfaces.focusedId !== undefined) runtime.releaseSurfaceFocus(runtime.surfaces.focusedId)
       navigationId = undefined
       return
     }
-    const selected = entries[next]!
-    const target = focusTarget(selected.entry)!
-    runtime.surfaces.activate(selected.lane.placement, selected.entry.id)
-    navigationId = selected.entry.id
-    runtime.setFocus(target)
+    const selected = stops[next]!
+    navigationId = selected.id
+    selected.go()
   }
   ctx.effect(() => ctx.mayflyKeymap.register([
     { id: 'mayfly.surface.next', keys: 'f6', description: 'Focus the next Mayfly surface', handler: () => navigate(1) },
@@ -603,8 +659,27 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   })
   const offInteraction = ctx.mayflyUiInteraction.subscribe(publish)
   publish()
+  // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
+  ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
+    interaction: ctx.mayflyUiInteraction, components: ctx.mayflyComponents, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
+    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, ...(translateHint === undefined ? {} : { translateHint }), ...(images === undefined ? {} : { images }),
+    epoch: () => nodeSlotEpoch(ctx.mayflyKeymap, ctx.get('mayflyLocale')),
+    ...counted,
+  }))
+  // The views lane paints and focuses through this renderer's colors, keymap, and terminal.
+  ctx.effect(() => runtime.surfaces.views.bind({
+    colors: ctx.mayflyTheme.colors,
+    keymap: ctx.mayflyKeymap,
+    translate: translateHint ?? interpolateLocaleMessage,
+    glyphs: ctx.mayflyComponents.presentation?.glyphs,
+    focus: component => { runtime.setFocus(component) },
+    release: () => { runtime.releaseSurfaceFocus(VIEWS_FOCUS_ID) },
+    requestRender: () => { runtime.requestRender() },
+    viewport: () => ({ columns: runtime.columns, rows: runtime.rows }),
+  }))
   ctx.effect(() => () => {
     disposed = true
+    clock.dispose()
     offInteraction()
     for (const record of [...overlays.values()].reverse()) {
       record.runtime.dispose()

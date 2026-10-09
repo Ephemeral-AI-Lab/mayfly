@@ -2,7 +2,7 @@
 
 ## Pane
 
-`mayflyPanes` supports `header`, `left`, `right`, and `bottom` placement.
+`mayflyPanes` supports `header`, `left`, `right`, and `bottom` placement, and `views` for a view of status row 2 (see [Views of status row 2](/en/plugins/ui-reference#views-of-status-row-2)).
 
 ```ts
 export const inject = ['mayflyPanes']
@@ -33,6 +33,12 @@ ends in a muted `… +K more rows`, so put the most important row first. When
 several passive bottom panes begin with a plain `divider`, the dock paints a
 single rule for all of them. Use `overflow: 'truncate'` on dense rows so one
 entry never costs two dock rows.
+
+### Views
+
+A `views` pane has no lane of its own: it declares a `summary` that joins status row 2 and updates it with
+`setSummary()` (`null` takes the view out of the row). `set(node)` publishes the panel that replaces row 2 while the
+view is entered with `Alt+↓`, `F5`, or `F6`. `size` and `narrow` do not apply.
 
 ## Overlay
 

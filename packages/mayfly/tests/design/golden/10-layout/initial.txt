@@ -1,0 +1,23 @@
+--- after start ---
+width 70 (←/→) · height ≥ 20 (h)
+
+stack row with basis and grow:
+╭ basis 24 ────────────╮ ╭ grow 1 ─────────────╮ ╭ grow 2 ───────────╮
+│ fixed                │ │ takes the rest      │ │ twice             │
+╰──────────────────────╯ ╰─────────────────────╯ ╰───────────────────╯
+
+a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+width
+Loop  official   ✓ installed 1.4.0
+↻ 1 change applies after restart
+
+priority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+o)
+deepseek-chat High  PLAN  ⏵ 2 jobs  ~/work/mayfly/packages/mayfly
+
+a windowed list (maxRows 4) counts what is hidden:
+  row 1
+  row 2
+  row 3
+  row 4
+   ↑ 0 more · ↓ 5 more

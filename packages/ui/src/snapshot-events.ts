@@ -73,7 +73,7 @@ export function validateFeedback(feedback: MayflyFeedback): void {
 }
 
 function isObservation(event: MayflyUiEvent): event is MayflyUiObservationEvent {
-  return event.kind === 'value-change' || event.kind === 'selection-toggle' || event.kind === 'tab-change'
+  return event.kind === 'value-change' || event.kind === 'selection-toggle' || event.kind === 'tab-change' || event.kind === 'focus-change' || event.kind === 'recall-change'
 }
 
 function admitReply<Node>(

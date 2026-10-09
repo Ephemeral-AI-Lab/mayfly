@@ -2,8 +2,9 @@
  * @module @ephemeral-ai/mayfly/core/ui-interaction-choice
  */
 import type { MayflyListNode } from '@ephemeral-ai/mayfly-ui'
-import { admittedListIndex, admittedListItem } from './ui-validator.ts'
+import { admittedListExpanded, admittedListIndex, admittedListItem } from './ui-validator.ts'
 import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
+import { listSelectedIds } from './ui-list-selection.ts'
 
 export interface UiChoiceState {
   readonly definition: MayflyListNode
@@ -17,8 +18,10 @@ export interface UiChoiceState {
   readonly searchAnchor: string | undefined
   readonly matches: readonly number[] | undefined
   readonly expandedIds: readonly string[]
-  /** Per-row segment drafts keyed by item id; ephemeral and excluded from `dirty`. */
-  readonly segments?: Readonly<Record<string, string>>
+  /** Per-row segment drafts keyed by item id; `null` is an explicit unpin. Ephemeral and excluded from `dirty`. */
+  readonly segments?: Readonly<Record<string, string | null>>
+  /** The `focusItem.rev` the cursor last followed, so a republish with the same rev leaves the cursor alone. */
+  readonly focusRev?: number
   readonly treeIndex?: UiChoiceTreeIndex
   readonly visibleTreeIndices?: readonly number[]
 }
@@ -29,6 +32,18 @@ interface UiChoiceTreeIndex {
   readonly parentByIndex: ReadonlyMap<number, number>
   readonly depthByIndex: ReadonlyMap<number, number>
   readonly parents: ReadonlySet<string>
+  /** Indexes that are the last visible child of their parent; recomputed with the visibility. */
+  readonly lastByIndex: ReadonlySet<number>
+}
+
+/** What the painter needs to know about one visible row beyond the item itself. */
+export interface UiChoiceRow {
+  readonly item: MayflyListNode['items'][number]
+  readonly depth: number
+  /** The last visible child of its parent: drawn `╰`, the others `│`. */
+  readonly last: boolean
+  readonly expandable: boolean
+  readonly open: boolean
 }
 
 export type UiChoiceIntent =
@@ -42,6 +57,9 @@ export type UiChoiceIntent =
   | { readonly kind: 'stop-search' }
   | { readonly kind: 'clear-search' }
   | { readonly kind: 'expand', readonly id: string }
+  | { readonly kind: 'expand-all' }
+  | { readonly kind: 'collapse-all' }
+  | { readonly kind: 'unpin', readonly id: string }
 
 const ownedIndexes = new WeakSet<readonly unknown[]>()
 
@@ -75,9 +93,14 @@ function filtered(definition: MayflyListNode, query: string): readonly number[] 
   return result
 }
 
+/** A row the cursor can rest on: not disabled, and not a rule or a blank row. */
+export function focusableListItem(item: MayflyListNode['items'][number]): boolean {
+  return item.disabled !== true && item.rule === undefined && item.gap !== true
+}
+
 function enabled(definition: MayflyListNode, index: number): boolean {
   const item = admittedListItem(definition.items, index)
-  return item !== undefined && item.disabled !== true
+  return item !== undefined && focusableListItem(item)
 }
 
 function positionOf(state: UiChoiceState, index: number): number {
@@ -128,35 +151,55 @@ function treeIndex(definition: MayflyListNode): UiChoiceTreeIndex | undefined {
     }
     depthByIndex.set(index, depth)
   }
-  return { all: Object.freeze(all), byId, parentByIndex, depthByIndex, parents }
+  return { all: Object.freeze(all), byId, parentByIndex, depthByIndex, parents, lastByIndex: new Set() }
 }
 
 export function createChoiceState(definition: MayflyListNode): UiChoiceState {
-  const selected = definition.selectedIds[0]
+  const selected = listSelectedIds(definition)[0]
   const query = definition.filter ?? ''
   const matches = filtered(definition, query)
   const index = treeIndex(definition)
   const selectedIndex = selected === undefined ? -1 : admittedListIndex(definition.items, selected)
-  const initial = selectedIndex < 0 ? 0 : selectedIndex
+  // A single choice opens on its current value; a multiple list opens on its first row, whatever is already chosen.
+  const initial = selectedIndex < 0 || definition.mode === 'multiple' ? 0 : selectedIndex
   const focusedIndex = matches === undefined || matches.includes(initial) ? initial : matches[0] ?? -1
-  const expandedIds: string[] = []
+  const expandedIds: string[] = [...admittedListExpanded(definition.items)]
   if (definition.tree === true && selected !== undefined) {
     let parent = admittedListItem(definition.items, initial)?.parentId
     const seen = new Set<string>()
     while (parent !== undefined && !seen.has(parent)) {
       seen.add(parent)
-      expandedIds.push(parent)
+      if (!expandedIds.includes(parent)) expandedIds.push(parent)
       const index = admittedListIndex(definition.items, parent)
       parent = index < 0 ? undefined : admittedListItem(definition.items, index)?.parentId
     }
   }
   const state = refreshTreeVisibility({
     definition, focusedIndex, focusedPosition: 0, focusedId: undefined,
-    selectedIds: definition.selectedIds, dirty: false, query, searching: false, searchAnchor: undefined, matches, expandedIds,
+    selectedIds: listSelectedIds(definition), dirty: false, query, searching: false, searchAnchor: undefined, matches, expandedIds,
     segments: {},
     ...(index === undefined ? {} : { treeIndex: index }),
   })
-  return freezeChoice(settleFocus(state, focusedIndex))
+  return freezeChoice(followFocusItem(settleFocus(state, focusedIndex), definition))
+}
+
+/** Move the cursor to `focusItem.id`, opening its parents, once per `rev`; a republish with the same rev changes nothing. */
+function followFocusItem(state: UiChoiceState, definition: MayflyListNode): UiChoiceState {
+  const target = definition.focusItem
+  if (target === undefined || target.rev === state.focusRev) return state
+  const index = admittedListIndex(definition.items, target.id)
+  const followed = { ...state, focusRev: target.rev }
+  if (index < 0 || !enabled(definition, index)) return followed
+  const expandedIds = [...state.expandedIds]
+  const seen = new Set<string>()
+  for (let parent = admittedListItem(definition.items, index)?.parentId; parent !== undefined && !seen.has(parent);) {
+    seen.add(parent)
+    if (!expandedIds.includes(parent)) expandedIds.push(parent)
+    const at = admittedListIndex(definition.items, parent)
+    parent = at < 0 ? undefined : admittedListItem(definition.items, at)?.parentId
+  }
+  const open = refreshTreeVisibility({ ...followed, expandedIds })
+  return settleFocus(open, index)
 }
 
 function calculateTreeVisibility(state: UiChoiceState): readonly number[] {
@@ -201,7 +244,10 @@ function refreshTreeVisibility(state: UiChoiceState): UiChoiceState {
   const { visibleTreeIndices: _visibleTreeIndices, ...withoutVisibility } = state
   if (state.definition.tree !== true) return withoutVisibility
   const visibleTreeIndices = calculateTreeVisibility(withoutVisibility)
-  return { ...withoutVisibility, focusedPosition: Math.max(0, visibleTreeIndices.indexOf(state.focusedIndex)), visibleTreeIndices }
+  const lastByParent = new Map<number | undefined, number>()
+  for (const index of visibleTreeIndices) lastByParent.set(state.treeIndex!.parentByIndex.get(index), index)
+  const treeIndex = { ...state.treeIndex!, lastByIndex: new Set(lastByParent.values()) }
+  return { ...withoutVisibility, treeIndex, focusedPosition: Math.max(0, visibleTreeIndices.indexOf(state.focusedIndex)), visibleTreeIndices }
 }
 
 function indexedVisibility(state: UiChoiceState): readonly number[] | undefined {
@@ -228,21 +274,31 @@ export function visibleChoiceIndices(state: UiChoiceState): readonly number[] {
   return indexedVisibility(state) ?? Array.from({ length: state.definition.items.length }, (_, index) => index)
 }
 
-/** Render-only tree decoration; semantic IDs remain the original item IDs. */
+/** The item at a raw index; the label is never decorated, because the painter draws guides and disclosure itself. */
 export function decorateChoiceItem(state: UiChoiceState, index: number): MayflyListNode['items'][number] {
+  return admittedListItem(state.definition.items, index)!
+}
+
+/**
+ * The painter's view of one visible row: its depth, whether it ends its parent's children, and whether it opens (a branch
+ * or a body). A row is open when it is always open, expanded, the cursor row of an `expandFocused` list, or a search is
+ * active (so a match inside a branch or body shows).
+ */
+export function choiceRow(state: UiChoiceState, index: number): UiChoiceRow {
   const item = admittedListItem(state.definition.items, index)!
-  if (state.definition.tree !== true) return item
-  const depth = state.treeIndex?.depthByIndex.get(index) ?? 0
-  const hasChildren = state.treeIndex?.parents.has(item.id) === true
-  const expanded = state.expandedIds.includes(item.id)
-  const marker = hasChildren ? expanded ? '▾ ' : '▸ ' : '  '
-  return { ...item, label: `${'  '.repeat(Math.max(0, depth))}${marker}${item.label}` }
+  const tree = state.treeIndex
+  const hasChildren = tree?.parents.has(item.id) === true
+  const always = item.bodyAlways === true && item.body !== undefined
+  const expandable = !always && (hasChildren || item.body !== undefined)
+  const open = always || (expandable && (state.expandedIds.includes(item.id) || state.query.length > 0
+    || (state.definition.expandFocused === true && state.focusedId === item.id)))
+  return { item, depth: tree?.depthByIndex.get(index) ?? 0, last: tree?.lastByIndex.has(index) === true, expandable, open }
 }
 
 export function acknowledgeChoice(state: UiChoiceState, definition: MayflyListNode, submittedIds?: readonly string[]): UiChoiceState {
   const changedAfterSubmit = submittedIds !== undefined && state.dirty
     && (state.selectedIds.length !== submittedIds.length || state.selectedIds.some((id, index) => id !== submittedIds[index]))
-  return freezeChoice(reconcileChoice({ ...state, dirty: changedAfterSubmit, selectedIds: changedAfterSubmit ? state.selectedIds : definition.selectedIds }, definition))
+  return freezeChoice(reconcileChoice({ ...state, dirty: changedAfterSubmit, selectedIds: changedAfterSubmit ? state.selectedIds : listSelectedIds(definition) }, definition))
 }
 
 export function reconcileChoice(state: UiChoiceState, definition: MayflyListNode): UiChoiceState {
@@ -258,11 +314,11 @@ export function reconcileChoice(state: UiChoiceState, definition: MayflyListNode
     return itemIndex >= 0 && admittedListItem(definition.items, itemIndex)?.segment !== undefined
   }))
   const { treeIndex: _treeIndex, ...previous } = state
-  return freezeChoice(settleFocus(refreshTreeVisibility({
+  return freezeChoice(followFocusItem(settleFocus(refreshTreeVisibility({
     ...previous, definition, focusedIndex, segments, matches,
     ...(index === undefined ? {} : { treeIndex: index }),
-    selectedIds: state.dirty ? state.selectedIds : definition.selectedIds,
-  }), focusedIndex))
+    selectedIds: state.dirty ? state.selectedIds : listSelectedIds(definition),
+  }), focusedIndex), definition))
 }
 
 function focus(state: UiChoiceState, index: number, position?: number): UiChoiceState {
@@ -311,17 +367,35 @@ export function reduceChoice(state: UiChoiceState, intent: UiChoiceIntent): UiCh
     }), preferred))
   }
   if (intent.kind === 'stop-search') return state.searching ? freezeChoice({ ...state, searching: false }) : state
-  if (intent.kind === 'segment') {
+  if (intent.kind === 'segment' || intent.kind === 'unpin') {
     const index = admittedListIndex(definition.items, intent.id)
     const segment = index < 0 ? undefined : admittedListItem(definition.items, index)?.segment
     if (segment === undefined) return state
+    if (intent.kind === 'unpin') {
+      // Unpinning needs something to fall back to, and something pinned to drop.
+      if (segment.inheritedId === undefined || choicePinned(state, intent.id) === null) return state
+      return freezeChoice({ ...state, segments: { ...state.segments, [intent.id]: null } })
+    }
     const options = segment.options.filter(option => option.disabled !== true)
     if (options.length < 2) return state
-    const current = choiceSegment(state, intent.id)!
+    const current = choiceSegment(state, intent.id)
     const position = options.findIndex(option => option.id === current)
-    const next = options[Math.max(0, Math.min(options.length - 1, (position < 0 ? 0 : position) + intent.direction))]!
+    // An unset segment starts from the edge the arrow points into; the ends clamp.
+    const next = position < 0 ? (intent.direction > 0 ? options[0]! : options.at(-1)!) : options[Math.max(0, Math.min(options.length - 1, position + intent.direction))]!
     if (next.id === current) return state
-    return freezeChoice({ ...state, segments: { ...state.segments, [intent.id]: next.id } })
+    // Stepping onto the inherited option is unpinning.
+    return freezeChoice({ ...state, segments: { ...state.segments, [intent.id]: next.id === segment.inheritedId ? null : next.id } })
+  }
+  if (intent.kind === 'expand-all') {
+    const ids = Array.from({ length: definition.items.length }, (_, at) => admittedListItem(definition.items, at)!).filter(item => item.body !== undefined || state.treeIndex?.parents.has(item.id) === true).map(item => item.id)
+    return freezeChoice(refreshTreeVisibility({ ...state, expandedIds: ids }))
+  }
+  if (intent.kind === 'collapse-all') {
+    const hidden = refreshTreeVisibility({ ...state, expandedIds: [] })
+    // The cursor must stay on a row that is still drawn: walk up to its top-level ancestor.
+    let current = state.focusedIndex
+    for (let next = hidden.treeIndex?.parentByIndex.get(current); next !== undefined; next = hidden.treeIndex?.parentByIndex.get(current)) current = next
+    return freezeChoice(settleFocus(hidden, current))
   }
   if (intent.kind === 'expand') {
     const collapsing = state.expandedIds.includes(intent.id)
@@ -343,20 +417,38 @@ export function reduceChoice(state: UiChoiceState, intent: UiChoiceIntent): UiCh
     const item = admittedListItem(definition.items, admittedListIndex(definition.items, id))
     if (item === undefined || item.disabled === true) return state
   }
-  const dirty = ids.length !== definition.selectedIds.length || ids.some(id => !definition.selectedIds.includes(id))
+  const declared = listSelectedIds(definition)
+  const dirty = ids.length !== declared.length || ids.some(id => !declared.includes(id))
   return freezeChoice({ ...state, selectedIds: ids, dirty })
 }
 
-/** Resolve a row's effective segment option: draft, then the seeded `selectedId`, then the first enabled option. */
+/** The option a row's segment pins: a draft (`null` once unpinned), else the seeded `selectedId`; `null` while unpinned. */
+export function choicePinned(state: UiChoiceState, itemId: string): string | null {
+  const index = admittedListIndex(state.definition.items, itemId)
+  const segment = index < 0 ? undefined : admittedListItem(state.definition.items, index)?.segment
+  if (segment === undefined) return null
+  const draft = state.segments?.[itemId]
+  const pinned = draft === undefined ? segment.selectedId : draft
+  return pinned !== undefined && pinned !== null && segment.options.some(option => option.id === pinned) ? pinned : null
+}
+
+/**
+ * Resolve a row's effective segment option: the pinned one, else the option it inherits, else (a segment that inherits
+ * nothing) the first enabled option.
+ */
 export function choiceSegment(state: UiChoiceState, itemId: string): string | undefined {
   const index = admittedListIndex(state.definition.items, itemId)
   const segment = index < 0 ? undefined : admittedListItem(state.definition.items, index)?.segment
   if (segment === undefined) return undefined
-  const draft = state.segments?.[itemId]
-  if (draft !== undefined && segment.options.some(option => option.id === draft)) return draft
-  return segment.selectedId !== undefined && segment.options.some(option => option.id === segment.selectedId)
-    ? segment.selectedId
-    : segment.options.find(option => option.disabled !== true)?.id
+  return choicePinned(state, itemId) ?? segment.inheritedId ?? segment.options.find(option => option.disabled !== true)?.id
+}
+
+/** The segment id a selection event reports: the pinned option, or for a row that inherits one, nothing while unpinned. */
+export function choiceReportedSegment(state: UiChoiceState, itemId: string): string | undefined {
+  const index = admittedListIndex(state.definition.items, itemId)
+  const segment = index < 0 ? undefined : admittedListItem(state.definition.items, index)?.segment
+  if (segment?.inheritedId === undefined) return choiceSegment(state, itemId)
+  return choicePinned(state, itemId) ?? undefined
 }
 
 /**

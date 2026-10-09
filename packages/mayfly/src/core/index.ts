@@ -24,7 +24,7 @@ import { ThemeModelService } from '../frontend/index.ts'
 
 export { MayflyComponentsService, type MayflyComponentsDeps } from './components.ts'
 export { GutterComponent } from './gutter.ts'
-export { MayflyKeymapError, MayflyKeymapService } from './keymap.ts'
+export { MayflyKeymapError, MayflyKeymapService, type MayflyKeymapErrorCode } from './keymap.ts'
 export { MayflyScreenService } from './screen.ts'
 export {
   PLUGIN_VIEW_MAX_CHARS,
@@ -40,10 +40,19 @@ export {
   probeTerminalBackground,
   type MayflyProbeProcess,
 } from './terminal-info.ts'
+export {
+  MAYFLY_UI_IMAGE_CACHE,
+  MayflyUiImagesService,
+  type MayflyUiImageBytes,
+  type MayflyUiImageLoader,
+  type MayflyUiImageSource,
+  type MayflyUiImageState,
+} from './ui-images.ts'
 export { createTerminalRelease } from './terminal.ts'
-export { alignDiffLines, diffChangeCounts, paintDiffRows, DIFF_ALIGN_MAX_ROWS, CTX_EDGE_ROWS, type DiffOp, type DiffPaintColors, type DiffWidthHelpers } from './diff-align.ts'
+export { alignDiffLines, diffChangeCounts, paintDiffRows, DIFF_ALIGN_MAX_ROWS, DIFF_CONTEXT_ROWS, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffWidthHelpers } from './diff-align.ts'
 export { WindowController, type MayflyWindow } from './window-controller.ts'
 export { visibleWidth } from './width.ts'
+export type { MayflyViewsSource } from './views-lane.ts'
 export {
   compileMayflyEditorShellNode,
   compileMayflyStatusNode,
@@ -67,7 +76,10 @@ export {
   type MayflyUiViewport,
 } from './ui-compiler.ts'
 export {
+  MAYFLY_UI_MAX_ATTACHMENT_ID,
   MAYFLY_UI_MAX_COLLECTION,
+  MAYFLY_UI_MAX_IMAGES,
+  MAYFLY_UI_MAX_IMAGE_ROWS,
   MAYFLY_UI_MAX_DEPTH,
   MAYFLY_UI_MAX_NODES,
   MAYFLY_UI_MAX_TEXT,
@@ -103,7 +115,10 @@ export type {
   MayflyImage,
   MayflyImageOptions,
   MayflyKeyAction,
+  MayflyKeyBinding,
   MayflyKeymap,
+  MayflyKeyScope,
+  MayflySeenAction,
   MayflyMarkdown,
   MayflyMarkdownOptions,
   MayflyOverlayAnchor,
@@ -149,15 +164,19 @@ export async function apply(ctx: Context): Promise<void> {
   // declaration — which a self-provided service cannot carry. Registration
   // is still effect-bound, so unloading reverts it.
   const keymap = new MayflyKeymapService(ctx)
+  // A rebind or the plain-key preference changes hints on screen: repaint them at once.
+  ctx.effect(() => keymap.subscribe(() => runtime.requestRender()))
   ctx.plugin(MayflyTerminalInfoService, { background: runtime.background, kittyKeyboard: runtime.kittyKeyboard })
   ctx.plugin(MayflyScreenService, runtime)
   ctx.plugin({
     name: 'mayfly-global-key-dispatcher',
     inject: ['mayflyScreen'],
     apply(owner: Context) {
-      owner.effect(() => runtime.tui.addInputListener(data =>
-        owner.mayflyScreen.capturesInput === true || !keymap.dispatch(data) ? undefined : { consume: true }),
-      )
+      owner.effect(() => runtime.tui.addInputListener((data) => {
+        // The first F2-F5 press, wherever focus is, tells the keymap the host may not deliver Alt.
+        keymap.notePlainKey(data)
+        return owner.mayflyScreen.capturesInput === true || !keymap.dispatch(data) ? undefined : { consume: true }
+      }))
     },
   })
   ctx.plugin({
@@ -171,7 +190,7 @@ export async function apply(ctx: Context): Promise<void> {
     name: 'mayfly-surface-renderer',
     inject: ['mayflyUiInteraction', 'mayflyScreen', 'mayflyComponents', 'mayflyTheme', 'mayflyKeymap'],
     apply(subCtx: Context) {
-      mountMayflySurfaceRenderer(subCtx as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime, contextHintTranslator(ctx))
+      mountMayflySurfaceRenderer(subCtx as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime, contextHintTranslator(ctx), subCtx.get('mayflyUiImages'))
     },
   })
   ctx.effect(() => () => runtime.stop())

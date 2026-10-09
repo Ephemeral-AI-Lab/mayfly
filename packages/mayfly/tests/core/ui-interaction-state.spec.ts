@@ -1151,7 +1151,7 @@ describe('structured decisions, availability, and validation boundaries', () => 
     ]), completed, { translate: key => `zh:${key}` })
     model.emit({ kind: 'tab-change', ...steps, tabId: 'two' })
     expect(model.activeTab(steps)).toBe('one')
-    expect(model.form({ pagePath: [{ controlId: 'steps', itemId: 'one' }], formId: 'answer' })!.fields.name!.error).toBe('zh:A value is required')
+    expect(model.form({ pagePath: [{ controlId: 'steps', itemId: 'one' }], formId: 'answer' })!.fields.name!.error).toBe('zh:Required')
     model.edit({ pagePath: [{ controlId: 'steps', itemId: 'one' }], formId: 'answer', fieldId: 'name' }, 'Ada')
     model.emit({ kind: 'tab-change', ...steps, tabId: 'two' })
     expect(model.activeTab(steps)).toBe('two')

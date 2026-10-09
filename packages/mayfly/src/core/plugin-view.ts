@@ -7,13 +7,21 @@
  * @module @ephemeral-ai/mayfly/core/plugin-view
  */
 
-import type { MayflyContentNode, MayflyInlineSpan, MayflyTone } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyContentNode, MayflyInlineSpan, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import { alignDiffLines, paintDiffRows } from './diff-align.ts'
 import { clampRowsToWidth } from './chrome.ts'
+import { highlightable, highlightCodeLines } from './highlight.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
+import { truncateMiddle } from './width.ts'
 
 /** Maximum source characters accepted from one dynamic view render. */
 export const PLUGIN_VIEW_MAX_CHARS = 20_000
+
+/** A code block highlights at most this many rows; the rest are plain text. */
+export const CODE_HIGHLIGHT_MAX_ROWS = 12
+
+/** A code block larger than this many UTF-8 bytes is plain text. */
+export const CODE_HIGHLIGHT_MAX_BYTES = 32 * 1024
 
 /** Maximum recursive `sections` nesting accepted from a dynamic view. */
 export const PLUGIN_VIEW_MAX_DEPTH = 8
@@ -50,10 +58,14 @@ function strong(text: string): string { return `\x1b[1m${text}\x1b[22m` }
 function italic(text: string): string { return `\x1b[3m${text}\x1b[23m` }
 function strike(text: string): string { return `\x1b[9m${text}\x1b[29m` }
 
+/** Wrap painted text in the weight, slant, and strike a node asks for. */
+export function styledText(value: string, styles: readonly MayflyTextStyle[] | undefined): string {
+  return (styles ?? []).reduce((text, style) => style === 'strong' ? strong(text) : style === 'italic' ? italic(text) : strike(text), value)
+}
+
 function spanText(span: MayflyInlineSpan, colors: MayflySemanticColors): string {
   if (typeof span !== 'object' || span === null) throw new TypeError('field span must be an object')
-  const painted = paintPluginTone(colors, span.tone)(checkedText(span.text, 'field span text'))
-  return (span.styles ?? []).reduce((value, style) => style === 'strong' ? strong(value) : style === 'italic' ? italic(value) : strike(value), painted)
+  return styledText(paintPluginTone(colors, span.tone)(checkedText(span.text, 'field span text')), span.styles)
 }
 
 type BasicContentNode = Extract<MayflyContentNode, { readonly kind: 'text' | 'fields' | 'code' | 'diff' | 'sections' }>
@@ -86,39 +98,65 @@ function renderView(
   switch (view.kind) {
     case 'text': {
       const content = checkedText(view.content, 'text content')
-      const rows = view.overflow === 'truncate' ? [truncatedRow(content, width, components)] : wrapped(content, width, components)
-      return rows.map(paintPluginTone(colors, view.tone))
+      const rows = view.overflow === 'truncate' ? [truncatedRow(content, width, components)]
+        : view.overflow === 'middle' || view.overflow === 'start' ? [truncateMiddle(content.replace(/[\r\n\t]+/gu, ' '), width, view.overflow)]
+          : wrapped(content, width, components)
+      const tone = paintPluginTone(colors, view.tone)
+      return rows.map(row => styledText(tone(row), view.styles))
     }
     case 'fields': {
       if (!Array.isArray(view.rows)) throw new TypeError('fields rows must be an array')
-      return view.rows.flatMap((row) => {
+      // The labels share one column: each is padded to the longest label and its colon, then one space, as the kit draws.
+      const names = view.rows.map(row => {
         if (typeof row !== 'object' || row === null || !Array.isArray(row.value)) throw new TypeError('field row is invalid')
-        const label = colors.muted(`${checkedText(row.label, 'field label')}: `)
+        return checkedText(row.label, 'field label')
+      })
+      const labels = names.map(name => name === '' ? '' : `${name}:`)
+      const column = Math.max(0, ...names.map(name => components.visibleWidth(name))) + 1
+      return view.rows.flatMap((row, index) => {
+        const label = colors.muted(labels[index]! + ' '.repeat(Math.max(0, column - components.visibleWidth(labels[index]!))))
         const value = (row.value as readonly MayflyInlineSpan[]).map(span => spanText(span, colors)).join('')
-        return wrapped(label + value, width, components)
+        return wrapped(`${label} ${value}`, width, components)
       })
     }
     case 'code': {
       const language = view.language === undefined ? '' : checkedText(view.language, 'code language')
       const heading = language.length === 0 ? [] : [colors.muted(language)]
-      const body = checkedText(view.code, 'code content').split('\n')
-        .flatMap(line => wrapped(colors.mdCodeBlock(line), width, components))
+      const source = checkedText(view.code, 'code content')
+      const lines = source.split('\n')
+      // Highlighting is on by default and capped (roadmap §2.2 row 14): the first rows of a block up to 32 KB.
+      const highlighted = Buffer.byteLength(source, 'utf8') > CODE_HIGHLIGHT_MAX_BYTES || !highlightable(language) ? [] : highlightCodeLines(lines.slice(0, CODE_HIGHLIGHT_MAX_ROWS).join('\n'), language, { base: colors.text, keyword: colors.primary, string: colors.success, comment: colors.muted })
+      // A numbered block draws a muted `n │ ` gutter; a wrapped line's continuation rows are indented under its code.
+      const digits = view.numbered === true ? String(lines.length).length : 0
+      const gutterWidth = digits === 0 ? 0 : digits + 3
+      const body = lines.flatMap((line, index) => {
+        const rows = wrapped(highlighted[index] ?? colors.text(line), width - gutterWidth, components)
+        return gutterWidth === 0 ? rows : rows.map((row, offset) => `${colors.muted(offset === 0 ? `${String(index + 1).padStart(digits)} │ ` : ' '.repeat(gutterWidth))}${row}`)
+      })
       return [...heading, ...body]
     }
     case 'diff': {
-      // The painter wraps under its sign gutter and pads each change band to
-      // the full width, so it takes the components service's width truth.
+      // The painter clips each line and pads each change band to the full
+      // width, so it takes the components service's width truth.
       const before = checkedText(view.before, 'diff before')
       const after = checkedText(view.after, 'diff after')
-      return paintDiffRows(alignDiffLines(before, after), width, components, colors)
+      return paintDiffRows(alignDiffLines(before, after), width, components, colors, {
+        ...view.start === undefined ? {} : { start: view.start },
+        ...view.numbered === undefined ? {} : { numbered: view.numbered },
+        ...view.hunkHeader === undefined ? {} : { hunkHeader: view.hunkHeader },
+        ...view.context === undefined ? {} : { context: view.context },
+        ...view.maxRows === undefined ? {} : { maxRows: view.maxRows },
+      })
     }
     case 'sections': {
       if (!Array.isArray(view.sections)) throw new TypeError('sections must be an array')
       return view.sections.flatMap((section) => {
         if (typeof section !== 'object' || section === null) throw new TypeError('section is invalid')
         const title = section.title === undefined ? [] : [strong(colors.primary(checkedText(section.title, 'section title')))]
-        if (section.collapsed === true) return title.length === 0 ? [colors.muted('...')] : title
-        return [...title, ...renderView(section.body, width, components, colors, depth + 1)]
+        if (section.collapsed === true) return title.length === 0 ? [colors.muted('...')] : [...title, colors.muted('  …')]
+        // A titled body sits two columns in under its heading.
+        return title.length === 0 ? renderView(section.body, width, components, colors, depth + 1)
+          : [...title, ...renderView(section.body, Math.max(1, width - 2), components, colors, depth + 1).map(row => `  ${row}`)]
       })
     }
     default: throw new TypeError(`unknown basic content kind "${String((view as { kind?: unknown }).kind)}"`)

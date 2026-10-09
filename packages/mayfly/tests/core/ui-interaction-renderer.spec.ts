@@ -242,7 +242,7 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('closes from any tab depth instead of stopping on tab strips', async () => {
+  it('returns home from any tab depth in one Escape instead of stopping on tab strips, then closes', async () => {
     const { compile, handle } = await setup(ui.stack.column([
       ui.tabs({ id: 'outer', activeId: 'one', items: [{ id: 'one', label: 'One' }] }),
       ui.child(ui.stack.column([
@@ -255,7 +255,12 @@ describe('shared interaction compiler', () => {
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'inner' })
     renderer.input('\t')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'run' })
+    // Escape returns to the home control in one hop, whatever the depth, and the next Escape closes.
+    expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc back')
+    renderer.input('\x1b')
+    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'outer' })
     expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc close')
+    expect(handle.closed).toBe(false)
     renderer.input('\x1b')
     await vi.waitFor(() => expect(handle.closed).toBe(true))
     renderer.runtime.dispose()
@@ -289,7 +294,7 @@ describe('shared interaction compiler', () => {
     const acted = vi.fn()
     const { compile } = await setup(ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }), { action: () => { acted(); return { kind: 'completed' } } }, 'alternate', keymap)
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).at(-1)).toContain('R run')
+    expect(renderer.compiled.component.render(80).at(-1)).toContain('r run')
     renderer.input('\r')
     await flush()
     expect(acted).not.toHaveBeenCalled()
@@ -297,7 +302,7 @@ describe('shared interaction compiler', () => {
     await flush()
     expect(acted).toHaveBeenCalledOnce()
     bindings.set(ACTION_SUBMIT, ['z'])
-    expect(renderer.compiled.component.render(80).at(-1)).toContain('Z run')
+    expect(renderer.compiled.component.render(80).at(-1)).toContain('z run')
     renderer.input('r')
     await flush()
     expect(acted).toHaveBeenCalledOnce()
@@ -566,7 +571,7 @@ describe('shared interaction compiler', () => {
       { id: 'approve', label: 'Approve' }, { id: 'reject', label: 'Reject' },
     ] }), { action: event => { if (event.kind === 'selection-accept') accepted.push(event.selectedIds[0]!); return { kind: 'completed' } } })
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('1. Approve')
+    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('1  Approve')
     expect(renderer.compiled.component.render(80).at(-1)).toContain('1-2 focus')
     renderer.input('1')
     await flush()
@@ -659,7 +664,7 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('renders number units, default form buttons, and translated core placeholders', async () => {
+  it('renders number units, the default Save button, and translated core placeholders', async () => {
     const { compile } = await setup(ui.stack.column([
       ui.form({ id: 'form', fields: [
         { kind: 'number', id: 'context', label: 'Context', value: 128, unit: 'tokens' },
@@ -671,19 +676,20 @@ describe('shared interaction compiler', () => {
     ]), undefined, 'alternate', undefined, { translate: (key: string, values?: Readonly<Record<string, string | number>>) => `zh:${key}${values === undefined ? '' : JSON.stringify(values)}` })
     const renderer = compile()
     const rows = renderer.compiled.component.render(100).join('\n')
-    expect(rows).toContain('128 tokens')
-    expect(rows).toContain('zh:Submit')
-    expect(rows).toContain('zh:Cancel')
+    expect(rows).toContain('‹ 128 › tokens')
+    expect(rows).toContain('zh:Save')
+    // Escape cancels a form; it draws no Cancel button.
+    expect(rows).not.toContain('zh:Cancel')
     expect(rows).toContain('zh:Choose…')
     expect(rows).toContain('zh:None selected')
-    expect(rows).toContain('Stop now')
+    expect(rows).toContain('Esc stop now')
     renderer.runtime.dispose()
   })
 
   it('falls back to English core strings when the host translator throws', async () => {
     const { compile } = await setup(ui.form({ id: 'form', fields: [], submitActionId: 'save' }), undefined, 'alternate', undefined, { translate: () => { throw new Error('catalog unavailable') } })
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Submit')
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Save')
     renderer.runtime.dispose()
   })
 
@@ -713,9 +719,9 @@ describe('shared interaction compiler', () => {
     viewport.rows = 4
     const renderer = compile()
     renderer.input('\x1b[F')
-    const rows = renderer.compiled.component.render(40).join('\n')
-    expect(rows).toContain('9. Level 9')
-    expect(rows).not.toContain('1. Level 9')
+    const rows = renderer.compiled.component.render(40).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')
+    expect(rows).toContain('9  Level 9')
+    expect(rows).not.toContain('1  Level 9')
     expect(renderer.compiled.component.render(80).at(-1)).toContain('1-9 choose')
     renderer.runtime.dispose()
   })
@@ -777,7 +783,7 @@ describe('shared interaction compiler', () => {
     const renderer = compile()
     renderer.input('line')
     renderer.input('\x1b\r')
-    renderer.input('\r')
+    renderer.input('\x1b\r')
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.notes!.value).toBe('line\n\n')
     model.updateForm({ pagePath: [], formId: 'form' }, { kind: 'submit', operationId: 'manual' })
     renderer.input('ignored')
@@ -820,14 +826,14 @@ describe('shared interaction compiler', () => {
     // The surface renderer recompiles on each model revision, which re-seeds the field editor.
     renderer.runtime.dispose()
     renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Name (Inherited): base')
+    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Name: base  (inherited)')
     expect(hints()).not.toContain('Delete')
     // An inherited value has nothing to reset until an edit overrides it.
     renderer.input('\x1b[B')
     expect(hints()).not.toContain('Delete')
     renderer.input('\x1b[C')
     expect(fields().mode).toMatchObject({ value: 'b', change: 'set' })
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Mode (Override): ‹ B ›')
+    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Mode: ‹ B ›  (override)')
     renderer.input('\x1b[3~')
     expect(fields().mode).toMatchObject({ value: 'a', change: 'unchanged' })
     // Without an origin, Delete restores the declared default.
@@ -844,7 +850,8 @@ describe('shared interaction compiler', () => {
     model.edit({ pagePath: [], formId: 'form', fieldId: 'name' }, 'B')
     handle.set(form('C'), { reason: 'data' })
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Use current value  Keep my changes')
+    // Tokens are three spaces apart.
+    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Use current value   Keep my changes')
     expect(renderer.compiled.focusTarget!.restoreFocusIdentity?.({ pagePath: [], controlId: 'name', itemId: 'draft' })).toBe(true)
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Keep my changes')
     renderer.input('\r')
@@ -912,7 +919,7 @@ describe('shared interaction compiler', () => {
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Field 7')
     for (let index = 0; index < 7; index += 1) renderer.input('\x1b[A')
     const rows = renderer.compiled.component.render(80)
-    expect(rows[0]).toMatch(/^╭ Long form/u)
+    expect(rows[0]!.replace(/\x1b\[[0-9;]*m/gu, '')).toMatch(/^╭ Long form/u)
     expect(rows.join('\n')).toContain('Field 0')
     expect(rows.at(-1)).toMatch(/^╰/u)
     renderer.runtime.dispose()

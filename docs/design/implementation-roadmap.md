@@ -4,7 +4,9 @@ This roadmap turns the reviewed UI design into an ordered series of changes to `
 ships no behavior. It was written on 2026-10-02 against `main` at `94de488`, DeepSeek Harness `0.2.0-rc.2`, and pi-tui
 `0.84.2`; where it names a file, a type, or a service, that name exists in that tree unless the text says *new*. It
 was revised on 2026-10-05, against the same tree, to put the whole basic layer and its performance work into one
-foundation phase (D16-D20); §5 maps the earlier phase names onto the current ones.
+foundation phase (D16-D20); §5 maps the earlier phase names onto the current ones. Implementation began on
+2026-10-05; the status table in Phase 1 records what has landed, and the slice texts describe what was built once a
+slice is marked done.
 
 | Input | Role in the implementation |
 | --- | --- |
@@ -124,6 +126,20 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ17 | 1 | Captions mention `▌` as the selection mark | The muted bold `→` (spec §2.2) | Stale caption |
 | Δ18 | all | The hint words of the kit's `hintFragments` | The same words, including `pick` on a focused select | The kit is the oracle; spec §3.2's table gains `pick` when it is next edited |
 | Δ19 | 24 | `n new` on every workspace | `n` acts on the current workspace; other rows carry `unavailableActions.new` with a reason, unless the Harness can start a session in another directory (verify in slice 2b) | Process cwd |
+| Δ20 | all | The kit's word wrap drops a line's leading spaces and does not reopen the style on a wrapped continuation | The renderer keeps both (scene 7's todo row, scene 8's indented code line, wrapped captions) | Prototype wrap artifact; approved by the reviewer |
+| Δ21 | 8 p3 | Markdown drawn by the kit's five rules (bare heading, `•`, `│` quote, a language label over the code) | The shipped markdown component: blank rows between blocks, fences kept, the `md*` tokens | The transcript keeps the streamed markdown component (Phase 6); proposed in slice 1.3 |
+| Δ22 | 8 `h` | `h` swaps highlighted code for one flat user tone | The code node always highlights; no switch | Demo key; proposed in slice 1.3 |
+| Δ23 | 8 p5-p7 | Line, point, vertical-bar, and stacked or grouped horizontal-bar charts, and the diagram, from hand-written glyph rows | `simple-ascii-chart` and `beautiful-mermaid` draw them (a horizontal bar is normalized only); the sparkline and the heatmap are the kit's | The kit stands in for libraries it does not specify; proposed in slice 1.3 |
+| Δ24 | 7 scroll | `↑` from a followed tail jumps to the top (a stale offset) | `↑` scrolls one row from the tail | Prototype artifact; proposed in slice 1.3 |
+| Δ25 | 10 | A flex row of framed surfaces: surfaces measured structurally, the grow remainder to the last child, `…` columns below 60 | The layout engine measures a surface by painting it and shares the remainder by its own rule | The row layout is pi-tui's stack layout; proposed in slice 1.3 |
+| Δ26 | 10 `h` | `h` changes only the caption: the `minHeight: 20` child stays | The renderer hides it below 20 rows | Prototype artifact (its viewport height is not read); proposed in slice 1.3 |
+| Δ27 | 3, 4, 12 | `▌` marks the cursor in an edited field | The terminal cursor sits there; no glyph is drawn | Spec §4.3 calls it the terminal cursor; approved by the reviewer |
+| Δ28 | 4, 6, 12 | The `unsaved changes` badge in scene 3 only | Core adds it to every surface whose form is dirty | Roadmap slice 1.6; approved by the reviewer |
+| Δ29 | 6, 11 | `← labels` is never hinted on a focused select, although `←` leaves it for the rail at its first option | The hint row names `← labels` whenever `←` would reach the rail, selects included | Spec §4.5 ("the cue is true"); approved by the reviewer |
+| Δ30 | 6 | A form select stepped back to its inherited value unpins: `(inherited)`, no `•`, `Delete use inherited` | The form keeps the override: `(override)`, the `•` mark, `Delete reset` | Settings contract: Mayfly settings preserve equal-value explicit overrides; approved by the reviewer |
+| Δ31 | 11 | A card drawn at 80 columns shows four hint fragments (the kit counts the frame's width) | Three fragments: the renderer counts the width inside the frame (76) | The hint limit is the painter's existing behavior; approved by the reviewer |
+| Δ32 | 11 | A printable accelerator (`c copy name`) runs and is hinted from anywhere, the note field included | It is neither bound nor hinted while a text field holds focus, because the key is the field's text | The key grammar's existing rule; approved by the reviewer |
+| Δ33 | 23 | A list being filtered steps its thinking strip with `←/→` without hinting it (49 cells per frame in the `filter` walk) | The hint row names `←/→ thinking` while the strip steps, in any state of the list | Spec §4.5 ("the cue is true"; as Δ29); found by the model-picker composition spike (draft PR #114); approved by the reviewer |
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and
@@ -141,7 +157,7 @@ The kit (`ui-kit.mjs`) shortens a few calls. The implementation keeps today's si
 | `ui.empty(title, { description })` | `ui.empty({ title, description })` |
 | `ui.spacer(n)`, `ui.divider(label)` | `ui.spacer({ size: n })`, `ui.divider({ label })` |
 | `ui.diff(before, after, options)` | the same, with the new optional third parameter (§3.2) |
-| `ui.list({ … })` without `selectedIds` | `selectedIds: []` (required today) |
+| `ui.list({ … })` without `selectedIds` | The same: the field is optional and defaults to `[]` (made optional in slice 1.11) |
 | list item `label: span[]`, `detail: span[]` | `label: string` (plain, used for filtering) plus `labelSpans` (*new*); the existing `detailSpans` |
 | list item `strong: true` | `labelSpans` with `styles: ['strong']` |
 | `fields` row `value: 'text'` | `value: [{ text }]` |
@@ -425,7 +441,7 @@ it ends, the public UI API is complete (D16). Phases 2 to 6 build the Mayfly com
 
 | Phase | Slices | Delivers | Prototype scenes | Gate |
 | --- | --- | --- | --- | --- |
-| 1 Foundation | 12 (1.0-1.11) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice; a profile at each checkpoint |
+| 1 Foundation | 13 (1.0-1.12) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze, the frame cost | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice; a profile at each checkpoint |
 | 2 Command panels | 6 (2a-2f) | The components area and every command panel | 21-32 | full for 2a (new area), then as planned; profile |
 | 3 Status area and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | as planned + profile |
 | 4 Activity and notices | 1 | The activity row, notices, tool rows, compaction | 14, 16, 17, 20 | as planned + profile |
@@ -441,17 +457,25 @@ gate.
 flowchart LR
   subgraph F[Phase 1 Foundation]
     direction LR
-    s0[1.0] --> s1[1.1] --> s2[1.2] --> s3[1.3]
-    s3 --> s4[1.4] & s5[1.5] & s6[1.6] & s7[1.7]
-    s4 & s5 & s6 & s7 --> s8[1.8]
-    s3 --> s9[1.9]
-    s4 & s5 & s7 --> s10[1.10]
-    s8 & s9 & s10 --> s11[1.11]
+    s0[1.0] --> s1[1.1]
+    s1 --> s2[1.2] & s7[1.7] & s10a[1.10a] & s9a[1.9a] & s8a[1.8a]
+    s2 --> s3[1.3]
+    s2 & s7 --> s4[1.4] & s5[1.5] & s6[1.6]
+    s10a & s7 --> s10b[1.10b]
+    s3 & s7 & s9a --> s9b[1.9b]
+    s3 & s4 & s5 & s6 & s8a --> s8b[1.8b]
+    s8b & s9b & s10b --> s11[1.11]
+    s11 --> s12[1.12]
   end
   F --> n2[2 Panels] & n3[3 Status] & n4[4 Activity]
   n3 --> n5[5 Editor]
   n2 & n4 & n5 --> n6[6 Transcript] --> n7[7 Finish]
 ```
+
+Phase 1's slices run in parallel (the *Working in parallel* section below): 1.8, 1.9, and 1.10 each split into an
+early half that depends on nothing (`armMs`, `ui.image`, the node slot: 1.8a, 1.9a, 1.10a) and a late half (the
+patterns, the prompt, the views lane: 1.8b, 1.9b, 1.10b); 1.7 moves ahead of 1.4-1.6 because it renames the action ids
+they bind; 1.4-1.6 depend on 1.2 and 1.7, not on 1.3, which needs only 1.2.
 
 The first version of this roadmap named its phases P0 to P8. They map onto the current ones as follows:
 
@@ -463,6 +487,7 @@ The first version of this roadmap named its phases P0 to P8. They map onto the c
 | P2a-P2g | 1.3-1.9 | `ui.image` moves from P2a to 1.9. |
 | P4 (the API), `mountNodeSlot` | 1.10 | The views lane and the node slot, without their Mayfly consumers. |
 | — | 1.11 | New: the freeze. |
+| — | 1.12 | New: the frame cost, found at checkpoint acceptance. |
 | P3a-P3f | 2a-2f | — |
 | P4 | 3 | The consumers of the lane and the slot. |
 | P5, P6 | 4, 5 | — |
@@ -493,7 +518,49 @@ shared painters.
 | B | 1.3-1.8 | The gallery page of each basic scene beside the prototype; a key rebound in settings, with the hint row following it; one pattern in `examples/mayfly-user-kit` |
 | C | 1.9-1.11 | The prompt (paste, IME, and the clipboard through `docs/platform-acceptance.md`); an inline image; a plugin view in row 2; the final budgets; the Website reference on a LAN preview |
 
-After checkpoint C the branch merges to `main` once, followed by `pnpm run check:pack` and the main rebuild.
+The branch merges to `main` once, followed by `pnpm run check:pack` and the main rebuild. That merge was planned for after checkpoint C; it was made after slice 1.12 instead, on the owner's instruction, and the checkpoints stay open on `main`.
+
+**Status** (updated by each slice's PR; the slice text below describes the built behavior once a slice is done):
+
+| Slice | State | Branch | Notes |
+| --- | --- | --- | --- |
+| 1.0 | merged (#99) | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
+| 1.1 | merged (#100) | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
+| 1.2 | merged (#102) | `feat/ui-foundation-1-2` | Six parts; full gate green; scenes 1 p1-p5, 7 p1, 8 p3-p4, 9 p3 pinned and scene 2 matched; Δ20 approved |
+| 1.7 | merged (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage |
+| 1.10a | merged (#103) | `feat/ui-foundation-1-10a` | Node slot. Full gate green with 100% coverage; no visible change; `W1-slot` and `W4-slot` budgets |
+| 1.9a | merged (#104) | `feat/ui-foundation-1-9a` | `ui.image`. Full gate green with 100% coverage; one new shot (`image`), no other visible change |
+| 1.8a | merged (#105) | `feat/ui-foundation-1-8a` | `armMs`; two parts; full gate green with 100% coverage; no visible change unless a definition sets `armMs` |
+| 1.3 | merged (#106) | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 was left in the ledger for 1.4, which closed it |
+| 1.4 | merged (#107) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
+| 1.5 | merged (#110) | `feat/ui-foundation-1-5` | Five parts; full gate green with 100% coverage; scene 6 (all four pages and the rail's walks) and scene 11 page 2 pinned; the `Esc back` entry of scene 5 closed; `W12-rail` budget; Δ29 approved |
+| 1.6 | merged (#109) | `feat/ui-foundation-1-6` | Two parts; full gate green; scenes 3, 4, 12 and scene 1 page 1's form block pinned (Δ27, Δ28 approved); one `Esc back` hint left pending for 1.5; no budget change |
+| 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
+| 1.9b | merged (#111) | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12-prompt` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
+| 1.8b | merged (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ31 and Δ32 approved; library file budget 222 to 223 |
+| 1.11 | merged (#115) | `feat/ui-foundation-1-11` | Freeze. Eight parts; full gate green with 100% coverage; Phase 1 is complete and waits only for checkpoints A, B, and C. `selectedIds` optional and a type-only `MayflyTranslate` (the model-picker spike's two fixes); Δ33 approved; the ledger holds only Phase 3 and later entries (one stale 1.6 entry removed); final budgets and the work report in §7.1; the ui type fixtures run in the gate (`types.spec.ts`) |
+| 1.12a | merged (#116) | `feat/ui-foundation-1-12a` | Frame performance, measurement. Full gate green with 100% coverage; no runtime behavior change; the frame workloads W13 to W17 with their baseline, six frame counters, `pnpm run bench:pty` |
+| 1.12b | merged (#117) | `feat/ui-foundation-1-12b` | Frame performance, wasted work. Full gate green with 100% coverage; no visible change (goldens and screenshots identical); a tick on a side pane is one pass and no control walk (W14: 949 renders to 385, 328 walks to 0); the gallery's frame 206 ms to 63 ms and its key 164 ms to 40 ms; without a pane, typing and the panels' cursor keys are back at `main`'s cost except the model picker's edge |
+| 1.12c | merged (#118) | `feat/ui-foundation-1-12c` | Frame performance, retained rows. Full gate green with 100% coverage; goldens and screenshots identical, and every suite also passes with the stale-row check on; a key beside an unchanged pane paints no leaf (W13: 447 renders to 0), a loader below the fold does not tick (W14: no tick), a visible one repaints 2 rows (W15); the gallery idles at 0% CPU (from 113%) and its key takes 6 ms (from 164 ms) |
+| 1.12d | merged (#119) | `feat/ui-foundation-1-12d` | Frame performance, the gate. Full gate green with 100% coverage; `test:retained` (the stale-row check) and `bench:pty:assert` (coarse ceilings on the real terminal) run in the full gate and in CI; the instructions describe the retained-row rules; library byte budget 2,460,000 to 2,490,000 for the slice's 29 KB (#121) |
+| Checkpoint A / B / C | open | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11. The first run found the frame cost that slice 1.12 removes. On the owner's instruction the branch merged to `main` once 1.12 was built and gated, so the checkpoints run on `main` |
+
+**Working in parallel.** Up to three slices are in flight, each in its own worktree and agent.
+
+- *Ownership.* A slice edits the functions its text names (`renderList` is 1.4's, `renderTabs` 1.5's,
+  `renderFormField` 1.6's, `keyGrammar` and the keymap 1.7's, `renderSurfaceHead/Tail` 1.2's then 1.3's). New logic goes
+  in a new module with an arm or call site in `ui-compiler.ts` or `ui-validator.ts`; no drive-by refactors, moves, or
+  reformatting. A slice that needs a contract field another slice owns stops and says so.
+- *Shared files.* Generated files (`pnpm run shots:sync`, `design:golden`) are regenerated, never hand-merged;
+  `tests/perf/budgets.json` and `script/design-golden-walks.mjs` take append-only rows for a slice's own scenes;
+  each slice's gallery page is a new file `examples/ui-gallery/src/groups/<slice>.ts` wired by one import line; each
+  slice edits only its own Status row and its own slice text.
+- *Scenes that span slices* (1: 1.2 and 1.4; 7: 1.2 and 1.3; 11: 1.5 and 1.8b; 12: 1.6 and 1.8b; 2: 1.7) list the
+  walks they cannot match yet in `tests/design/pending.ts`; slice 1.11 asserts that every remaining entry waits for Phase 3 or later and none for a `1.x` slice (`tests/design/pending.spec.ts`).
+- *Gates.* Narrow checks run freely; `pnpm run verify:full` runs under one lock, so at most one runs at a time.
+  Before a PR opens, and after each sibling merges, the branch rebases on `feat/ui-foundation` and reruns its checks.
+- *Review.* One PR per slot is in flight; a PR is a series of commits that are each green, as 1.1 was.
+
 
 Slices 1.3 to 1.10 change `packages/ui`. Each updates `website/plugins/ui-reference.md` and its English twin together
 with `script/shots/manifest.mjs` (their fidelity contract), adds `examples/ui-gallery` coverage for its new props, and
@@ -504,14 +571,17 @@ keeps `pnpm run check:examples` green.
 **Goal.** Make "draws like the preview" and "does no more work than it must" checkable, before anything visible
 changes. The prototype is not modified.
 
-- **Golden frames.** `script/design-golden.mjs` (*new*) runs
-  `node --import script/design-golden-clock.mjs docs/design/prototypes/ui-preview.mjs <scene>` (the preload is *new*
-  too) with piped stdio, so the runner takes its non-TTY path. The preload pins `Date.now` and turns `setInterval`
-  into a no-op, so every frame is frame 0 at a fixed time. The script sends each scene's key walks (one walk per page
-  and state named in the scene's footer), writes a NUL byte to force a repaint where no key does, strips the runner's
-  cursor-control prefix, and keeps the scene body. It writes `packages/mayfly/tests/design/golden/<nn>-<scene>/<walk>.txt` (visible text) and `.ansi`
-  (raw). `--check` fails when the prototype's output changes. (This capture was tried on scene 13 while writing this
-  roadmap and is deterministic.)
+- **Golden frames.** `script/design-golden.mjs` runs
+  `node --import script/design-golden-clock.mjs docs/design/prototypes/ui-preview.mjs <scene>` with piped stdio, so
+  the runner takes its non-TTY path. The preload pins `Date.now`, turns `setInterval` into a no-op, and replays the
+  walk itself from `GOLDEN_SCRIPT` (a key is one stdin chunk, a number advances the fake clock by that many
+  milliseconds and runs one repaint tick), so no output depends on write timing; a marker after each step lets the
+  runner cut one frame per step. A walk starts with a NUL key to paint frame 0, and the runner strips the cursor-control
+  prefix and keeps the scene body. The walk table is `script/design-golden-walks.mjs` (one walk per page and per state
+  named in the scene's footer, a first version that later slices extend). It writes
+  `packages/mayfly/tests/design/golden/<nn>-<scene>/<walk>.txt` (visible text) and `.ansi` (raw); `--check` fails when
+  the prototype's output changes, and `pnpm run design:golden` and `design:golden:check` run it. The capture is
+  deterministic: two runs of all 172 walks are byte-identical.
 - **Parity helper.** `packages/mayfly/tests/design/parity.ts` (*new*) compiles a node with `compileMayflyUiNode` at the
   golden's width, the way `script/shots/render.mjs` does, drives keys through the compiler's focus target, parses both
   outputs into cells, and compares each cell's character and style class, with trailing blank cells trimmed (D19). A
@@ -520,16 +590,26 @@ changes. The prototype is not modified.
   color is a distinct sequence, so two tones never compare equal by accident. Motion is compared frame by frame under
   a fake clock. `tests/design/deltas.ts` (*new*) lists the accepted differences, each citing its §2.3 row.
 - **Key audit.** `packages/mayfly/tests/core/key-audit.spec.ts` (*new*): within one scope no two actions share a key;
-  every default that uses Alt has a plain alternative; no printable key binds in the editor scope.
+  every default that uses Alt has a plain alternative; no printable key binds in the editor scope. Scopes do not exist
+  before slice 1.7, so the grammar's focus states stand in for them. The Alt defaults that have no plain alternative
+  today (`prev-tab`, `next-tab`, `newline`, `cycle-model`) are a recorded list that slice 1.7 must shrink: the spec
+  fails when an entry already has a plain key. The inline registrations of the surface renderer, paste, transcript, and
+  todo plugins are checked against their owners' source text. The only grammar overlap is `←`/`→` on an adjustable
+  select, which is recorded.
 - **Work counters.** An optional, core-private `counters` sink in the compiler options, which the validator, the
   compiler, and the painters increment: nodes validated, units compiled, rows painted, strings measured. Production
-  passes none.
+  passes none. Strings measured is partial until slice 1.1's `ui-measure.ts`: it counts the injected components seam
+  and the compiler's frame and hint paths, not the painters in `ui-patterns.ts`; per-item list rows wait for the row
+  cache of slice 1.1.
 - **Workloads and baseline.** `script/audit-performance.mjs` gains the workloads W1 to W8 of §7.1 and prints the
   counters beside its wall-clock timings. `packages/mayfly/tests/perf/work-budget.spec.ts` (*new*) runs the same
-  workloads headless and records today's counts, the baseline that slice 1.1 turns into a gate. The wall-clock targets
-  of §7.1 are fixed from this baseline.
-- **Impact rules.** `script/test-impact.mjs` selects the parity specs and the work-budget spec for `src/core/ui-*.ts`
-  and `packages/ui/src/**`, and the golden `--check` for `docs/design/prototypes/**`.
+  workloads headless and compares today's counts with `tests/perf/baseline.json` (`UPDATE_WORK_BASELINE=1` rewrites it),
+  the baseline that slice 1.1 turns into a gate. The workloads live in `tests/perf/workloads.ts`, shared by the spec and
+  the script; a fixture of the script that predated the projection schema was repaired. The wall-clock targets of §7.1
+  are fixed from this baseline.
+- **Impact rules.** `script/test-impact.mjs` selects the parity specs and the work-budget spec for `src/core/ui-*.ts`,
+  the key audit for the key tables, and the golden `--check` for `docs/design/prototypes/**` and the goldens;
+  `packages/ui/src/**` keeps the full gate, which already includes them. The golden check is also a CI step.
 
 No runtime behavior changes. The goldens and the baseline report are reviewed at checkpoint A.
 
@@ -538,168 +618,532 @@ No runtime behavior changes. The goldens and the baseline report are reviewed at
 **Goal.** An unchanged subtree costs nothing on publish, and a tick or a cursor move repaints only what changed (§4.1,
 D17). **Backlog:** D3 (the shared clock), R1 (clocks).
 
-This slice is a refactor with no visible change: every existing spec, golden, and screenshot stays byte-identical. Its
-parts land in the order of §4.1's table, each with the budget rows it satisfies: the admission memo and compile reuse
-(W1, W4, W6, W8), the row cache (W3, W5), animation patches and the one clock (W2), then measured cells, the hint memo,
-and `memo` on `defineMayflyComponent`. Lazy item bodies wait for the `body` field in slice 1.4. `core/ui-compiler.ts`
-hands its caches to the new modules and stays the only compiler entry.
+This slice is a refactor with no visible change: every existing spec, golden, and screenshot stays byte-identical. It
+landed in eight parts, each green on its own:
 
-Tests: the work-budget spec becomes a gate. A staleness spec republishes a changed copy of every node kind and asserts
-the repaint, then changes the theme, the keymap, the locale, and the width under a warm cache. `ui-compiler.spec.ts`,
-`ui-validator.spec.ts`, and the surface-bridge specs run unchanged. `ui-loader-animation.spec.ts` covers the one
-clock: two surfaces on one timer, a hidden surface leaving it, and the timer stopping when nothing moves.
+1. **Gate.** `tests/perf/budgets.json` holds a ceiling per workload and counter. It starts at the slice 1.0 baseline,
+   may never exceed it, and each part below lowered its rows; `work-budget.spec.ts` also checks that W6 grows with the
+   panes that changed (`swarmWorkload(k)`), not with all 32.
+2. **Epochs.** `isWireSnapshot` (beside `freezeWire` in `@ephemeral-ai/mayfly-ui`, additive) and
+   `MayflyKeymapService.revision`.
+3. **Admission memo** (`core/ui-validator.ts`, `createAdmissionCache()`). A surface model keeps one; a status or editor
+   compile takes it from the compiler options. A frozen snapshot subtree that added only counts to the tree budget, and
+   every list item (which admits under its own quota), is returned as admitted, with the node, text, and chart quotas
+   replayed (a replay that would exceed one takes the full path, so the error is the original). A subtree that carries a
+   control, tab, page, action key, filter, editor slot, or responsive branch is admitted whole each time.
+4. **Compile reuse** (`core/ui-compile-cache.ts`). A surface runtime keeps a memo from an admitted node to its
+   component for the static leaves (text, fields, code, diff, sections, rich text, divider), re-pointed at the newest
+   surface for failure reporting and counters, lent at most once per compile pass. Control-bearing units are not reused:
+   no budget needs it, and a stale binding is the costlier failure. Pure static leaves remember four widths.
+5. **Row cache** (`core/ui-row-cache.ts`). List item rows are kept per admitted item and the state bits the painter
+   folds in, and per palette; `rowsPainted` counts the rows a painter actually painted. Tabs, actions, and form fields
+   keep their painters: they are single rows and no budget needs them.
+6. **One clock** (`UiAnimationClock` in `core/ui-loader-animation.ts`), owned by the surface renderer; the step stays
+   80 ms. A pure static leaf's rows survive `invalidate()`, so a tick repaints the loader row and not the surface.
+7. **Hint memo.** The hint parts are read fresh on every paint, because the grammar reads focus, editing, search, and
+   form state. The painted and fitted row is memoized, keyed by the translated candidates, the width, and the palette.
+8. **`memo: true`** on `defineMayflyComponent`, with `examples/mayfly-user-kit`'s `summaryMetric` as its consumer.
+
+The budgets now are (validated / compiled / rows, one step): W1 2 / 2 / 2 (the changed entry and the row that holds it;
+the row's entry is painted at the two widths a layout measures); W2 0 / 0 / 1; W3 0 / 0 / 2; W4 2 / 1 / 1 (the list node
+and at most one item); W5 0 / 0 / 1; W6 proportional to the changed panes; W7 and W8 as at the baseline. The first
+part's reading of W3's baseline is that its 81 rows were two real list paints, because the frame renders again whenever
+the rows exceed the viewport, plus the hint row twice.
+
+Not done in this slice, and why: *measured cells* (`ui-measure.ts`) and the strings-measured budget, because they change
+every painter's contract and no §7.1 row gates them; they belong with the painters slices 1.2 and 1.3 rewrite anyway.
+*Animation slots* as a registry: the same effect holds without one, because static leaves are memoized and the loader
+is the only row that repaints on a tick. *Lazy item bodies* wait for the `body` field of slice 1.4, as planned.
+
+Tests: the work-budget spec is a gate; `ui-admission-cache.spec.ts` (every replayed quota, the contexts, the
+non-memoizable subtrees), `ui-compile-cache.spec.ts` (take and keep, the passes, the palettes, the hint memo),
+`ui-row-cache.spec.ts` (equality with the unmemoized painter, the repaint of two rows, the palette epoch), and
+`ui-loader-animation.spec.ts` (two surfaces on one timer, a hidden surface leaving, the timer stopping) are new;
+`ui-compiler.spec.ts`, `ui-validator.spec.ts`, and the surface-bridge specs ran unchanged.
 
 #### 1.2 Visual language in the painters
 
 **Goal.** Everything already on screen adopts the vocabulary of spec §2, with no contract change.
 **Backlog:** A2, A4 (core), B5, C1, C2 (defaults), D1, D2, G4, G8, G9, G12, G22, H3, R13 (contrast).
 
-| Area | Change | Files |
-| --- | --- | --- |
-| Chrome | `chrome: 'surface'` draws rounded corners; overlay borders use the focus color, surfaces the quiet border; `lane` is rules only; `none` is a bold title | `core/ui-patterns.ts` (`renderSurfaceHead`, `renderSurfaceTail`), `core/chrome.ts` |
-| Marks | Choose lists and pickers draw `●`/`○` (`◐` for a partial parent), never `[x] [ ]`; toggles keep `[on]`/`[off]`; one muted `[current]`; the cursor `→` shows only while its list has focus; a selection list keeps a muted bold `→` | `core/ui-patterns.ts`; delete `CURRENT_MARK` and `SELECT_POINTER` in `interaction/symbols.ts`; `theme-switch.ts`, `permission-panel.ts`, `model-commands.ts` |
-| Tabs | The active tab is text color with a heavy `━` underline (dim without focus), never wrapped in `‹ ›` | `core/ui-patterns.ts` |
-| Feedback | A glyph and a word (`✓ ℹ ⚠ ✗`); `✓`/`ℹ` leave after 5 s of visible time, `⚠`/`✗` stay | `core/ui-compiler.ts` (feedback row), `core/ui-interaction-notifications.ts` |
-| Hints | The kit's words and order, `Ctrl+O` notation, ranges `1-3` | `core/ui-key-grammar.ts`, `core/context-hint-locale.ts`, `transcript/hints.ts`, `transcript/locale.ts` |
-| Diff | Old and new numbered gutters; `−`/`+`; `diffRemovedBg`/`diffAddedBg` behind the code only, never the gutter; `⋯` between hunks; long lines end in `…` | `core/diff-align.ts`, `core/plugin-view.ts` |
-| Code | Highlighting on by default, capped at 12 rows and 32 KB | `core/highlight.ts`, `core/plugin-view.ts` |
-| Monochrome | `NO_COLOR` (or a setting) keeps weight only: `primary`, `warning`, `danger` bold, `muted` dim | `core/theme-palette.ts`, the theme modules |
-| Motion | A reduced-motion setting freezes each channel on its first frame | `core/ui-loader-animation.ts` (the one clock of slice 1.1), `interaction/settings.ts` |
-| Glyphs | A `glyphs: 'unicode' \| 'ascii'` setting, defaulting from the locale's charset, applies the table below | `core/chrome.ts`, `core/ui-patterns.ts` |
-| Contrast | A guard spec: every tone token at least 4.5:1 against the background in all five themes | `tests/core/theme-*.spec.ts` |
+It landed in five parts, each green on its own, and a sixth after slice 1.7 merged:
 
-Unicode fallback (a proposal; every replacement is one cell; confirm it at checkpoint A):
+1. **Presentation.** The `mayfly` settings namespace gained a self-contained block: `glyphs` (`auto` \| `unicode` \|
+   `ascii`; `auto` follows the locale's charset, so `LANG=C` is ASCII and an unset locale is Unicode), `monochrome`, and
+   `reducedMotion`; `NO_COLOR` forces monochrome. `core/presentation.ts` resolves them. A theme provider paints with a
+   weight-only palette under monochrome (`primary`, `warning`, `danger`, and strong text bold; `muted`, `textMuted`, and
+   borders dim; no color and no background), and the components service records the presentation it was built for. A
+   settings commit that changes it restarts the live theme provider (`reloadTheme` in `interaction/theme-switch.ts`), so
+   every consumer and every cached row is rebuilt, the way `/theme` works; nothing reads the presentation per paint.
+   `core/glyphs.ts` holds the fallback table. Every static component of a compiled surface converts its painted rows
+   (every replacement is one cell, so the conversion runs after layout), markdown and diagram leaves too; the editor
+   converts its frame but never the text being typed. The loader swaps its spinner for `- \ | /`, and under reduced
+   motion it stays on its first frame without joining the clock.
+2. **Chrome, marks, tabs.** `overlay` and `surface` are one rounded frame with the inset title rule
+   (`╭ Title ─── badge ╮`): the title bold in text color, badges at the right of the rule (dropped first when narrow,
+   then the title ellipsises), the subtitle inside the frame, the overlay in `borderFocus` and the inline surface in
+   `border`, with at least one column of gutter whatever `padding` says. `lane` is a muted `── Title ───` rule and
+   `none` the bold title. A list row is `→ label`: the cursor arrow, bold primary, only while its list has focus, the
+   cursor row's label bold, no selection band. Multiple lists draw `●`/`○` in their own column (`◐` for a partly chosen
+   parent), pickers `●`/`○` for `[x]`/`[ ]`, numbers read `1  label`, badges and details are muted. `CURRENT_MARK`,
+   `SELECT_POINTER`, and `interaction/symbols.ts` are gone: `/theme` and `/permission` show the one muted `[current]` the
+   model picker used. The active tab is `primary` with a heavy `━` underline (bold primary while the strip has focus,
+   muted otherwise), the rest muted; wizard steps read `✓ ● ○` joined by a muted `›`; a strip that does not fit folds to
+   `‹ active next +N ›` (slice 1.5 refines it).
+3. **Feedback and hints.** Feedback is a glyph and words (`feedbackSpans` in `core/ui-interaction-notifications.ts`):
+   `✓`/`ℹ` before a message in text color, `⚠`/`✗` in their own tone, in a surface footer and in the prompt's
+   feedback lane; the 5 s lifetime of `✓` and `ℹ` was already in place. The hint row paints keys in text and labels
+   muted, in the kit's order (navigation, adjustment, digits, the primary operation, accelerators, filter and clear,
+   tabs, groups, `Esc`) and words (`Space toggle · Enter choose`, `←/→ adjust · Enter pick`, `Enter toggle`,
+   `←/→ actions`, `No/Yes` on a decision, `↑/↓ fields`, `↑/↓ scroll · Ctrl+E expand`). `hintNotation` in
+   `core/ui-key-grammar.ts` writes a printable accelerator as itself (`c copy`, labels lowercased) and names a shared
+   modifier once (`Alt+←/→`); the transcript's fold hints and the exit notice write `Ctrl+O` and `Ctrl+C`.
+4. **Diff and code.** `paintDiffRows` draws old and new line-number gutters (muted, ending in `│`), `−`/`+`, and the
+   removed or added band behind the code only; one context line around each change, `⋯` for a skipped run, `…` at the
+   end of a long line, an `@@` header when there is more than one hunk. It takes `start`, `numbered`, `hunkHeader`,
+   `context`, and `maxRows` as painter options for slice 1.3 to put on the node; `CTX_EDGE_ROWS` became
+   `DIFF_CONTEXT_ROWS`. A code node with a known language is highlighted by default (keywords `primary`, strings
+   `success`, as the kit does; comments muted; every other token class in text color, so no color outside the palette
+   reaches the terminal), for the first 12 rows of a block of at most 32 KB; markdown fences use the same theme.
+5. **Guards and parity.** `tests/core/theme-contrast.spec.ts` checks every tone at 4.5:1 or more against each theme's
+   canvas (dark against the shots canvas `#0A0A0C`, light against white, ocean against `#0E1A2B`, paper against
+   `#F6F0E4`; `auto` is dark or light); light's `accent` and paper's `primary` and `warning` were darkened to pass.
+
+6. **The actions row** (after slice 1.7 landed, scene 2). `renderActions` writes the kit's `actionTokens`: `[ Label ]`
+   primary, `! Label` danger, a declared key as `(c)` (`(Ctrl+Y)` with a modifier), a busy token as `… Label` and a
+   disabled one as `Label — reason`, both muted and without their key. Tokens sit three spaces apart after a one-column
+   indent; the focused token is inverted with a space either side and the cursor marker takes the column before it.
+   A row that does not fit keeps the tokens that do (at least one) and ends with a muted `+N`. Scene 2's five walks
+   match the prototype cell by cell (the copy walks through the host's reply as feedback under the actions), with the
+   narrow walk's wrapped caption under Δ20.
+
+Unicode fallback, as built (every replacement is one cell; the right half extends the roadmap's proposal with the
+arrows and marks the painters also draw; confirm it at checkpoint A):
 
 | Unicode | ASCII | Unicode | ASCII |
 | --- | --- | --- | --- |
-| `→` | `>` | `■` `?` `⚠` `ℹ` | `#` `?` `!` `i` |
+| `→` `←` `↑` `↓` | `>` `<` `^` `v` | `■` `?` `⚠` `ℹ` | `#` `?` `!` `i` |
 | `▸` `▾` | `+` `-` | `⎿` `│` | `L` `:` |
 | `●` `○` `◐` | `*` `o` `~` | `━` `─` | `=` `-` |
 | `‹` `›` | `<` `>` | `▰` `▱` | `#` `.` |
-| `✓` `✗` `⊘` | `v` `x` `/` | `╭` `╮` `╰` `╯` | `+` `+` `+` `+` |
+| `✓` `✗` `✕` `⊘` | `v` `x` `x` `/` | `╭╮╰╯┌┐└┘├┤` | `+` |
 | `░` `▒` `▓` `█` | `.` `:` `*` `#` | spinner frames | `-` `\` `\|` `/` |
+| `−` `⋯` `•` | `-` `:` `*` | `✻` `»` `⏵` `⇥` | `*` `>` `>` `>` |
 
-Scenes: 1 (pages 1-5), 7 p1, 8 p3-p4, 9 p3. At checkpoint A: open `/model`, `/settings`, `/permission`, `/theme`,
-`/status`, and an edit approval at 120 and 60 columns; `NO_COLOR=1 dsh --profile mayfly-ui-foundation`; every shot
-refreshed.
+Parity. `tests/design/visual-language.spec.ts` pins scene 1 pages 1 (its first list) to 5, scene 7 page 1, scene 8
+pages 3 (the code) and 4 (numbered on and off, through the painter options), and scene 9 page 3, with the helpers of
+`tests/design/scene.ts`. The parity mapping reads a frame's `border`/`borderFocus`, `textMuted`, `textStrong`, and the
+diff tokens as the prototype tones they draw, and strips pi-tui's cursor marker as the terminal does.
+`tests/design/pending.ts` is the pending-parity ledger: scene 1 page 1 below its first list (1.4, 1.6; both closed), the default
+loader glyph (1.3), scene 1 page 6 (1.8b), scene 8's markdown and its demo `h` toggle (1.3). **Δ20 is approved** (§2.3):
+the kit's word wrap drops a line's leading spaces and does not reopen a style on a wrapped continuation,
+while the renderer keeps both (scene 7's todo row, scene 8's indented code line, wrapped captions).
+
+Choices this slice made where the text left room: `glyphs` has an `auto` value, because a schema default cannot follow
+the locale; ASCII mode converts the content of compiled surfaces too (a terminal that cannot draw a glyph cannot draw
+it in content), but never typed text; the shot runner keeps the C locale with a UTF-8 charset so the shots show the
+design's glyphs. Not done here: the Website's prose and key reference still write `Ctrl-O` (the key reference moves with
+slice 1.7); a `detailSpans` detail keeps its muted dash; select and number fields keep their field painter (1.6).
+
+Work report against the slice 1.0 baseline (one step; validated / compiled / rows; median wall clock): W1 2 / 2 / 2,
+1.0 ms; W2 0 / 0 / 1, 0.16 ms; W3 0 / 0 / 2, 0.69 ms (baseline 0.6 ms); W4 1 / 1 / 0, 1.3 ms (baseline 3.6 ms); W5 0 /
+0 / 0; W6 44 / 12 / 32; W7 0 / 0 / 9; W8 11 / 3 / 9; every count within its budget.
+
+At checkpoint A: open `/model`, `/settings`, `/permission`, `/theme`, `/status`, and an edit approval at 120 and 60
+columns; `NO_COLOR=1 dsh --profile mayfly-ui-foundation`; `glyphs: ascii` and `reducedMotion: true` in `/settings`.
 
 #### 1.3 Content, layout, and motion
 
 **Backlog:** C1, C2, C3, C4, D3, R4, R25 (chart).
 
-- **Admission.** A `stack.row` whose children carry `priority` admits them in order while they fit; `hide` drops a child
-  instead of truncating; a `truncate` child takes the remaining room (at least 8 cells); once the row is full later
-  children drop; admitted children lay out by band. This is the kit's `renderAdmit`, moved into `core/ui-compiler.ts`
-  from `StatusFooterComponent.renderRow` in `transcript/status-model.ts`, which Phase 3 deletes.
-- **Surfaces.** A right-aligned title (start-ellipsised when long), a `border` tone, `escapeLabel` driving the `Esc`
-  hint and close semantics (`reject` dismisses as a rejection), and `hint: 'none' | 'completions'`.
-- **Scroll.** `height`, `expandedHeight`, `fit`, and `pill`.
-- **Content.** Text `middle`/`start` ellipsis (`core/width.ts`) and `styles`; diff `start`, `context`, `maxRows`, and
-  hunk headers; code `numbered`; heatmap one-cell mode with `· ░ ▒ ▓ █`, month labels, and the legend row
-  (`core/chart-renderer.ts`); progress `rule` (`━`/`─`), cells (`▰▱`), `n/N`, percent, and `transition`.
-- **Motion.** `core/ui-loader-animation.ts` gets per-variant tables and cadence: bloom, fill, and gap at 100 ms; breath
-  through six tone shades at 400 ms a step; shimmer as a three-letter `accent`+`strong` window over `muted` (weight
-  only in monochrome). The one clock of slice 1.1 moves from 80 ms to a 100 ms step, and breath advances on every
-  fourth; a surface leaves the clock while hidden, and reduced motion freezes every channel. Each animated span is an
-  animation slot (§4.1), so a tick repaints its row only. The validator rejects two motion channels in one rich-text
-  row and any motion in a status node.
+It landed in seven parts, each green on its own: the contract, validator, and painters; the parity specs of scenes 7, 9,
+and 10; the work-budget rows; the unit specs; then the Website, the shots, the gallery, and this text.
 
-Scenes 7, 8, 9, 10. Tests: validator and compiler specs for every field, `ui-loader-animation.spec.ts` (variants,
-cadence, freeze), `chart-renderer.spec.ts`, `diff-align.spec.ts`, and width scans of admission ladders from 24 to 140
-columns.
+- **Admission** (`core/ui-admission.ts`, new; `StatusFooterComponent` is untouched, Phase 3 deletes it). A `stack.row`
+  whose children carry `priority` compiles to an `AdmissionRow`: children are admitted in priority order (ties keep their
+  position) while they fit, a `gap` (2 by default) between them; a `truncate` child takes the room that is left (at least
+  8 cells) and fills the row; a `hide` child drops while later ones may still fit; a child with neither ends admission, as in
+  the kit. Admitted children sit in `left`, `center` (centered between its neighbours, as the footer does), and `right`
+  bands, one row each. Each child is painted once at the probe width (120, or the row's if wider) to learn its natural
+  width, and again only when it is truncated; the row counts its one row in `rowsPainted`. Status stacks admit the same way.
+- **Surfaces.** `titleAlign: 'right'` puts the title at the top-right corner with the badges at the left, a long title
+  losing its start (`truncateMiddle(.., 'start')` in `core/width.ts`); `border` is a tone for the head, tail, and bars;
+  `escapeLabel` replaces the host's label (`close`, `leave`, and the new `reject`, `back`, `cancel`, which are grammar
+  steps `reject`, `surface-back`, `surface-cancel`) and hands `Esc` to the host's `onUnhandledEscape`, so a rejecting host
+  reads the `dismiss` as its rejection; `hint: 'none'` draws no hint row and `'completions'` draws it only while the new
+  compile option `completionsOpen` says the editor's list is open (the frame memo keys on it).
+- **Scroll** (`core/ui-scroll-region.ts`, new). Naming `height`, `expandedHeight`, `fit`, or `pill` compiles a `ScrollRegion`
+  instead of the layout-driven scroll: it paints exactly `height` rows (6 by default; `expandedHeight`, 14, while `Ctrl+E`
+  has expanded it), a scrollbar column (`█` thumb on a `░` track, default on), pads a short view, and keeps the surface at
+  its natural height because it is `inline` to the compiler (no layout frame, no full-frame expansion). `fit` shrinks to
+  short content and drops the bar until it overflows; `pill` draws the inverse `↓ N new · End` over the last row when the
+  view has left a followed tail and N rows have arrived since. The position lives in a per-runtime `ScrollMemory`, so a
+  republish keeps it, and document anchors (an `id` with content blocks) keep working through the same hooks as the
+  layout-driven scroll. The expanded hint reads `Ctrl+E collapse · Esc collapse`, as the kit's.
+- **Content.** Text `middle`/`start` ellipsis and `styles`; fields align their labels in one column; a titled section
+  indents its body two columns and a collapsed one shows `  …`; code `numbered` (a muted `n │ ` gutter, wrapped rows under
+  their code); diff `start`, `numbered`, `hunkHeader`, `context`, `maxRows` straight onto the 1.2 painter; the divider is
+  `── Label ───`; an empty state is muted. The heatmap is the kit's, written in `chart-renderer.ts` without the library:
+  title, header (names padded to four columns, or `columnLabels` written at their columns in `cell: 1` mode), a row of
+  `░░ ▒▒ ▓▓ ██` (or `· ░ ▒ ▓ █`) per label, and the `legend:` row; the sparkline is one row, the muted label then eight-step
+  cells in `accent`. Line, point, vertical-bar, and horizontal-normalized charts and the diagram stay the libraries' (Δ23).
+- **Feedback.** `renderProgress` draws `style: 'cells'` (`▰▱`, label, `n/N`, `%`), `'rule'` (`━`/`─`), or, with neither
+  `style` nor `width`, the old full-row block bar (now honoring `tone`, `showCount`, `showPercent`); `transition` drains
+  linearly on the one clock (`core/ui-progress-transition.ts`, new; a runtime with no clock or reduced motion shows the
+  settled value, and a new `rev` starts it again). `renderLoader` draws the variant's cell, an optional message, and the
+  elapsed time up to hours; the cancel is the muted row `Esc cancel`: the loader's control is now fired by `Esc` (grammar
+  step `cancel-work`, ahead of the surface's own `Esc`), `Enter` still works, and the hint row names only `Esc`.
+- **Motion** (`core/ui-loader-animation.ts`, `core/ui-motion-text.ts`, new). The tables of bloom, fill, and gap, the
+  breath (six levels, 0.25 to 1, one every fourth step, blended from the palette's `primary` toward its `textMuted`, so
+  the brightest shade is `primary` and a palette without truecolor paints the tone), and the shimmer (a three-letter
+  window; the prototype's `primary` bold over muted, not the spec's `accent`) live there. The one clock moved from 80 to
+  100 ms. A rich-text row with a `motion` span is an uncached row: it joins the clock while painted and a tick repaints
+  that row only; reduced motion paints frame 0 and never joins; ASCII glyphs draw the `- \ | /` spinner. The validator
+  rejects two motion channels in one row, a `loader` span with text, a `shimmer` span without, a `variant` without a
+  loader, motion outside rich text, and anything animated in a status node (`motion` and `transition`).
+- **Contract.** Everything is optional: text `overflow` gains `middle`/`start` (rich text keeps `wrap`/`truncate`) and
+  `styles`; span `motion` and `variant`; code `numbered`; the diff fields and the builder's third parameter; heatmap
+  `cell` and `columnLabels`; loader `message` (optional) and the four variants beside `braille`/`tide`; the progress
+  fields; child `priority`, `band`, `overflow`; surface `titleAlign`, `border`, `escapeLabel`, `hint`; scroll `height`,
+  `expandedHeight`, `fit`, `pill`. A scroll's `scrollbar` defaults to on once it names a viewport.
+
+Choices this slice made where the text left room: a child with no `overflow` ends admission rather than truncating (the
+kit's rule, not the footer's); `pill` shows only once a row has arrived since the view left the tail; the shimmer uses
+`primary`; the loader's `Esc` is a new escape step, which changes the old `Enter cancel` hint to `Esc cancel`.
+
+Parity. `tests/design/scene-07-surfaces.spec.ts` (every frame of the pages, end, and expand walks, and the scroll walk's
+arriving-line frames, through a republishing overlay), `scene-08-content.spec.ts` (pages 1 to 4 and the diff, highlight
+walks; the sparkline and the heatmap of page 5; the other charts and the diagram assert their titles), `scene-09-feedback.spec.ts`
+(pages 1, 2, 4, and the 13-frame motion walk under a fake clock) and `scene-10-layout.spec.ts` (the ladder and the
+admission row at every width, height, and overflow step). The parity helper maps the breath's shades to one class
+(`breath:<level>`) on both sides. `pending.ts` lost its three entries tagged 1.3 (the loader's default glyph, scene 8's
+markdown, and its `h` frame, the last two as Δ21 and Δ22) and gained scene 10's list window (slice 1.4). **Δ21 to Δ26 are
+proposals for the reviewer.**
+
+Work report against the slice 1.0 baseline (one step; validated / compiled / rows): W1 2 / 2 / 2, W2 0 / 0 / 1, W3 0 / 0 / 2,
+W4 2 / 1 / 1, W5 0 / 0 / 1, W6 44 / 12 / 32, W7 0 / 0 / 9, W8 11 / 3 / 9 as before; new rows W9 (a shimmering label, a
+breath cell, and a draining bar among 120 rows, one tick) 0 / 0 / 3, W10 (a 100-line log in a 6-row region, one line
+arrives) 3 / 3 / 7, W11 (a status row of 12 prioritized entries, one changes) 2 / 2 / 2.
+
+Tests: `ui-validator-content.spec.ts` (every field), `ui-compiler-content.spec.ts` (surface fields, the loader's `Esc`,
+the scroll region's keys, pill, fit, expand, and memory, motion rows, the draining bar), `ui-admission.spec.ts` (the
+ladder, the bands, and a 24 to 140 column scan over every adversarial fixture), `ui-content-painters.spec.ts` (ellipsis,
+the motion tables and the breath, progress, loader, divider, chrome, content views, sparkline, heatmap),
+`width-scan-content.spec.ts`, and the work-budget rows.
+
+At checkpoint B: the gallery's last block (`examples/ui-gallery` group `content-layout`) beside scenes 7 to 10 of the
+prototype; the Website reference's new shots on a LAN preview.
 
 #### 1.4 Lists
 
 **Backlog:** E1, E5, G2, G3, G25, B2, R9 (lists).
 
-- **Slash filter.** `filterMode: 'slash'`: printable keys never start a search; `/` starts it or resumes the kept
-  query; `Esc` ends it and keeps the query; `Ctrl+U` clears; the hint reads `/ filter`. The validator lifts its
-  printable-accelerator rejection (`core/ui-validator.ts`) only when every filterable list on the page is `slash`.
-  Digits stay text while typing into a filter.
-- **Rows.** `marker: 'selection'` keeps a muted arrow after focus leaves; `marks` draws `● ○`; `maxRows` windows the
-  list with an `↑ n more · ↓ n more` row; the filter row shows `N matches`; `acceptVerb` names `Enter`; `autofocus`;
-  `focusItem` moves the cursor when its `rev` changes and opens the parents; `expandFocused`; bodies (`▸ ▾`, a `│ ╰`
-  guide for string bodies, node bodies compiled as content only); `wrap`/`wrapMax`; `meter`; `indent`; `rule` and `gap`
-  rows that navigation skips; `labelSpans`, `right`, `rightFocus`; tree `*` and `-`.
-- **Cost.** A node body is admitted with its item, lazily and under a per-item budget (§4.1), and every row is a
-  row-cache entry keyed by its state bits (focused, selected, expanded, segment). Rows of varying height (bodies,
-  `wrap`) window through the prefix-sum index. W3 and W4 of §7.1 gate this slice with bodies.
-- **Segment strip on the row** (E1, G3). Drawn on the focused row only; `(default)` while unpinned; `←/→` clamp and
-  skip disabled tokens; stepping onto the inherited token unpins; `Delete` unpins (`use default`). It degrades by
-  dropping `(default)`, then the label, folding far tokens into `+N`, moving to one footer line the list reserves in
-  advance, and last showing the active token alone, so focus never moves a row.
+It landed in six parts, each green on its own: the contract, validator, choice model, painter, and grammar with scene 5
+pinned (1); the painter, strip, key, hint, and validator specs with the `W4b` budget (2); the public `ui.listBody`
+builder, the Website reference in both languages with two shots, and the gallery group (3); the roadmap and the gate (4); the last coverage gaps and scene 10's list (5, 6).
 
-Files: `core/ui-validator.ts`, `core/ui-compiler.ts` (`segmentRows`), `core/ui-patterns.ts` (`renderList`,
-`renderListSegment`), `core/ui-interaction-choice.ts`, `core/ui-interaction-tree.ts`, `core/ui-key-grammar.ts`
-(`rowBindings`, `listText`). Scenes 5 (all seven pages) and 1 p1. Tests: the hint row in every list state (idle,
-searching, segment pinned and unpinned, tree, numbered), choice reducers, and the segment ladder at 120, 84, 62, and 40
-columns.
+- **Slash filter.** `filterMode: 'slash'`: printable keys never start a search; `/` starts it or resumes the kept
+  query; `Esc` ends it and keeps the query; `Ctrl+U` clears; the hint reads `/ filter` (a type list reads
+  `Type filter`). The validator keeps one rule for the whole tree: a printable accelerator is refused beside any
+  filterable list that is not `slash`, and the message names `filterMode: 'slash'`. The grammar frees printable
+  accelerators on a slash list until its search opens, and digits are text while one is open. While a search is
+  open the hint names only Enter, `Ctrl+U clear`, and `Esc end search`; the filter row ends with the muted `N matches`
+  (`1 match`).
+- **Rows** (`core/ui-list-paint.ts`, new; `renderList` in `core/ui-patterns.ts` is a wrapper over it).
+  `marker: 'selection'` keeps a muted bold `→` on the cursor row after focus leaves; the cursor row's label is bold
+  whether or not the list has focus (the kit's rule), so a list that does not hold focus still shows its cursor.
+  `marks` draws `● ○`; `maxRows` windows over entries (a group heading and an open body each count as one, items
+  outside the materialized window as one) with the `↑ n more · ↓ n more` row; `acceptVerb` and `hintLabel` name
+  `Enter` and `↑/↓`; `autofocus` is the first focus of a surface (before an action's `defaultFocus`); `focusItem` moves
+  the cursor once per `rev` and opens the parents; `expandFocused`; `expanded` starts a row open (read from the raw
+  items, so a long list admits nothing to answer); bodies (`▸ ▾`, a `│ ╰` guide for strings, node bodies compiled as
+  content once the row opens, `bodyAlways` without a disclosure); `wrap`/`wrapMax` wrap under the row's own prefix;
+  `meter` (`▰▱`); `indent`; `rule` and `gap` rows (not focusable, so every arrow skips them); `labelSpans`, `right`,
+  `rightFocus`; tree guides `│ ╰`, `*` and `-`. A disabled row shows its detail and then `— reason`. A multiple
+  tree's Enter opens a branch (Space toggles the check); a single tree keeps Enter for accepting; a row with a body
+  opens with Enter, Space, or Right. The first row of a single choose list opens focused on its current value, a
+  multiple list on its first row. Past the first or last row `↑`/`↓` hand focus to the control above or below.
+- **Cost.** A node body admits with its item, under that item's own quota of `MAYFLY_UI_MAX_ITEM_BODY_NODES` (32)
+  nodes and its own text budget; a list over 16 items that carries node bodies admits lazily like a list over 200
+  (`lazyListItems`), so a stream of thousands of rich rows needs no more of the tree's quotas than plain ones. Every
+  item is a row-cache entry (`UiRowCache.readLines`) keyed by width, gutter, cursor, focus, check, number, depth,
+  disclosure, and strip state; an open body is its own entry. Rows of varying height window through the prefix sums of
+  the entries' line counts (the cursor entry is kept whole, centered when the rows allow). `W3` holds at 2 rows per
+  `↓`; the new `W4b` (2,000 items with node bodies, the last always open and changing) validates 5 nodes, compiles 4
+  units, and paints 5 rows.
+- **Segment strip on the row** (E1, G3; `core/ui-list-segment.ts`, new). Drawn on the focused row only; `(default)`
+  marks the `inheritedId` option while the row is unpinned; `←/→` clamp and skip disabled tokens, and an unset
+  strip starts from the edge the arrow points into; stepping onto the inherited option unpins; `Delete` unpins
+  (`Delete use default` in the hint, only while a row that inherits is pinned). `selection-accept` carries
+  `segmentId` only while such a row is pinned. The ladder: inline with `(default)`, inline without it, then one
+  footer line the list reserves in advance (a blank row and the line, decided over the materialized window, so focus
+  never moves a row): `Label: strip`, the strip alone, without `(default)`, folded around the active token with a
+  `+N`, and last the active token alone, cut to the width. A segment that inherits nothing keeps the old fallback
+  (the first enabled option). The model picker's caption now appears only in the footer.
+- **API.** `MayflyListBodyNode` (content, an image, progress, spacer, divider, a stack of those) and the additive
+  builder `ui.listBody(children)`, because a body stack typed as `MayflyStackNode` would admit controls.
+
+Parity. `tests/design/scene-05-lists.spec.ts` replays every golden walk of scene 5 (`initial`, `pages`,
+`page-6-narrow`, `move`, `open`, `filter`) cell by cell, and scene 1 page 1's lists (the form block is pending for
+1.6). The `move` walk's `Esc back` hint (Esc returns focus to the surface's first control, then closes) was closed by
+slice 1.5's focus levels. Scene 10's windowed list (`maxRows: 4`) draws as the prototype does at every width and height step of scene 10's walks (`scene-10-layout.spec.ts` compares it), so the ledger entries slice 1.3 left for it are closed.
+
+Files: `core/ui-validator.ts` (`listItemRowFields`, `listNodeFields`, `listBody`, `admittedListExpanded`),
+`core/ui-compiler.ts` (the `list` arm, `listQueryRow`, `grammarStateFor`), `core/ui-list-paint.ts`,
+`core/ui-list-segment.ts`, `core/ui-paint.ts` (the span painters, moved), `core/ui-interaction-choice.ts`
+(`choiceRow`, `choicePinned`, `expand-all`, `unpin`), `core/ui-key-grammar.ts`. Tests: `ui-list-paint.spec.ts`,
+`ui-list-segment.spec.ts` (120, 84, 62, 40 columns), `ui-list-keys.spec.ts` (the hint row in every list state), the
+choice reducers, the width scan, and the work-budget gate.
 
 #### 1.5 Tabs, rails, and focus levels
 
 **Backlog:** F2, G24, R9 (tabs), R22.
 
-- The horizontal strip folds narrow as `‹ active next +N ›`; counts are muted, `!` is `warning` strong.
-- The vertical rail draws group headings, a `primary` bold `→` while focused (muted when focus is in the content), and
-  right-aligned counts or `!`; `clip: 'start'` keeps the distinguishing end of a label. `↑/↓` emit `tab-change` at once
-  so the content follows live; `→` or `Enter` enter the content; below 60 columns the rail becomes the strip.
-- **The `←` ladder.** A control consumes `←` only when it changed something: a select at its first option, a number at
-  its minimum, or a segment at its end does not. An unconsumed `←` moves focus to the surface's rail wherever it sits;
-  `← labels` is hinted only when true; on the rail `←` does nothing.
-- **Focus levels.** `ui.focus-prev`/`ui.focus-next` (`Alt+↑/↓`, also `F4`/`F5`) move between controls outside text
-  editing; `ui.tab-prev`/`ui.tab-next` (`Alt+←/→`, also `F2`/`F3`).
-- `focus-change` reaches observers at most once per frame and cannot publish, navigate, or dismiss.
+It landed in five parts, each green on its own: the contract, validator, painters, grammar, and compiler with scene 6
+pinned (1); the specs, scene 11's rail, and the `W12-rail` budget (2); the rail's golden walks and their ledger (3); the
+Website reference, key reference, gallery group, and shot (4); this text and the gate (5).
 
-Files: `core/ui-compiler.ts`, `core/ui-patterns.ts`, `core/ui-key-grammar.ts`, `core/ui-interaction-surface.ts`,
-`core/key-actions.ts`, `interaction/keys.ts`. Scenes 6 (four pages) and 11 p2.
+- **Contract** (all optional). `MayflyTabItem` gained `count` as a number or text (`2/6`), `attention`, `group`, and `clip`;
+  `MayflyTabsNode` gained `orientation` and `hintLabel`; `focus-change` joined the observations (`controlId`, `itemId?`).
+  The validator (`core/ui-validator-tabs.ts`) refuses a vertical wizard. `hintLabel` words the `Alt+←/→` hint (the kit's
+  rule); the strip's own `←/→ tabs` hint keeps that word.
+- **Strip and wizard** (`core/ui-tabs-paint.ts`, new; `renderTabs` in `ui-patterns.ts` delegates). Counts are muted (the
+  active tab's `primary`), `!` is a strong `warning` that replaces the count. A strip that does not fit folds around the
+  active tab as `‹ active next +N ›`; two further rungs keep it inside any width: `‹ active +N ›`, then the row cut to the
+  width. The cursor mark rides at the end of the fold when a column is left. A wizard's focused rule is not bold, and its
+  strip words `Esc` as `back`.
+- **Rail.** Group headings (`' ' + GROUP`, muted), a bold `→` on the active label (`primary` while the rail has focus,
+  muted once focus is in the content), counts or `!` right-aligned with the cursor mark in the gap before them,
+  `clip: 'start'` through `truncateMiddle`, the end ellipsised by default. Each item's rows (heading included) are kept
+  in the surface's row cache keyed by width, active, focus, and heading, so a cursor move repaints two items (`W12-rail`: 8
+  rows for a 60-label rail, the layout's two probe widths included). Below 60 viewport columns the node is drawn, and its
+  controls navigate, as the horizontal strip (`tabsShape`).
+- **Keys.** `↑/↓` on the rail send `tab-change` at once (`tab-move`); `→` and `Enter` descend to the next control group;
+  `←` is swallowed. The hint reads `↑/↓ labels · → open · Esc close`.
+- **The `←` ladder** (`core/ui-focus-levels.ts`, new; the grammar's `railLeft`). A control keeps `←` only while it changes
+  something: a select that has an enabled option before its value, a segment strip likewise, a tree row or body that is
+  open, a later action in an actions row. The grammar state carries `stuckLeft` for those controls, `groupStart` for the
+  actions row, and `railBack` (the surface has a rail the focus is not on); an unused `←` is the `rail-back` intent, which
+  moves focus to the nearest rail before the focused control, else the first, with its hint `← labels` bound only then.
+  A field's own button keeps its spatial `←`. A number gains its rung with the stepping of slice 1.6: until then it never
+  uses `←`.
+- **Focus levels.** `ui.focus-prev/next` (`Alt+↑/↓`, `F4`/`F5`) are bound outside text editing and open pickers and move to
+  the previous or next control group without wrapping; they carry no hint, as in the kit. `ui.tab-prev/next` were already
+  bound; after a switch the strip remembers the tab it shows, so `←`, `Tab`, and `Esc` return to it.
+- **`Esc` returns home.** Away from the surface's home control (an `autofocus` list, else a default action, else the first
+  control) the grammar's `home` step words `Esc` as `back` and moves focus there; it ranks after a search, a page `backId`,
+  and a loader's cancel, and before the surface's own close. That closes scene 5's `move` walk.
+- **`focus-change`** is reported by the compiled surface after each painted frame in which the focused control differs
+  from the previous frame's (the first frame is not a move), at most once per frame, through a microtask so the paint is
+  never disturbed, and only while the surface is current. It has its own observation slot, so it never cancels a
+  `tab-change` or `value-change` in flight; as an observation it cannot publish, navigate, or dismiss.
+
+Parity. `tests/design/scene-06-tabs.spec.ts` replays the golden walks `initial`, `pages`, `page-4-narrow`, `alt-tabs`,
+`arrows`, and the new `rail-move` and `rail-enter` (the select's `←` adjusts and then falls out to the rail), cell by cell;
+slice 1.6 closed the settings form's rows. What remains in the ledger for slice 1.11 is a select stepped away from its inherited value and back: the form keeps the override (`(override)`, the `•` mark, `Delete reset`) where the prototype unpins it; the `unsaved changes` badge is Δ28.
+`scene-11-patterns.spec.ts` pins page 2 (`railPanel`, composed from the same nodes; the rail child needs `shrink: 0`,
+which the kit's default does not, so slice 1.8b's pattern sets it), and the ledger lists pages 1, 3, and 4 of scene 11 and
+its `move` walk under 1.8b. **Δ29 is approved:** the kit never hints `← labels` on a select, although `←` leaves it for the
+rail at its first option; the renderer hints it whenever it is true (at 78 columns the three-fragment row drops it, so the
+scene's frames still match). Also unlike the kit, `Alt+→` from the content keeps focus in the content of the new page.
+
+Tests: `ui-tabs-keys.spec.ts` (the hint row in each tab state, the rail's keys, the ladder across a select, a segment strip,
+a branch, an actions row, a scroll, an empty list, a text field, and a trailing rail, focus levels, the tab switch, `Esc`
+home), `ui-tabs-paint.spec.ts`, `ui-focus-levels.spec.ts`, `ui-validator-tabs.spec.ts`, `ui-focus-change.spec.ts`,
+`width-scan-tabs.spec.ts` (every adversarial fixture, in a viewport that follows the width and in a wide one), the grammar
+and key-audit enumerations, and the `W12-rail` work budget. The gallery group is `examples/ui-gallery/src/groups/tabs.ts`.
+
+Files: `core/ui-validator-tabs.ts`, `core/ui-tabs-paint.ts`, `core/ui-focus-levels.ts` (new); `core/ui-compiler.ts` (the tabs
+arm, the control walk, `grammarStateFor`, `selectedTabGroup`, `homeGroup`, `focusLevel`, `reportFocusMove`),
+`core/ui-key-grammar.ts`, `core/ui-interaction-surface.ts` (`observeFocus`), `packages/ui` (`contracts.ts`, `interaction.ts`,
+`snapshot-events.ts`).
 
 #### 1.6 Forms
 
 **Backlog:** B3, G7, R9 (forms).
 
-Group headings `── Group ──`; the focused field's help line (dropped first when narrow); `! message` under a field once
-edited; `•` for an edited field; `(inherited)`/`(override)`; a secret reads `•••• (saved)`; a number reads
-`‹ 45 › s  5–120`; a focused textarea opens its box; `pattern` validates on commit (sources capped at 256 characters);
-`suggestions` show `⇥` and `Tab` completes. `enterSubmits` on a form whose focused field is a select or toggle submits on
-`Enter` (`Space` opens the picker). Buttons: a single-field form draws none; a multi-field form draws one primary
-submit (`submitLabel` or *Save*); `cancelActionId` is never drawn and runs as the close step. Core adds the
-`unsaved changes` header badge while a form is dirty. `ui.save` submits the surface's form from any field.
+A form reads as the kit draws it, and its keys follow the kit's hint words. The slice landed in two parts, each green on
+its own; every field kind is drawn by one painter and one grammar arm.
 
-Files: `core/ui-interaction-form.ts`, `core/ui-compiler.ts`, `core/ui-patterns.ts` (`renderFormField`),
-`core/ui-key-grammar.ts`; re-check every consumer of `cancelActionId`. Scenes 3, 4, 12.
+- **Fields** (`core/ui-form-paint.ts`, new; `renderFormField` in `core/ui-patterns.ts` is a wrapper over it). Every
+  field gained `help` and `group`; the text fields (`input`, `textarea`, `secret`) gained `pattern`, `patternMessage`,
+  and `suggestions` (`core/ui-validator-form.ts`, new: `pattern` at most 256 characters, compiled with the `u` flag at
+  admission, `suggestions` at most 64 single lines). A row is a mark column (`→` focused, `•` edited or different from
+  its `resetValue`), the label aligned to the form's widest label, the value in its kind's reading, and a muted
+  `(inherited)` or `(override)` on an origin field. A group heading is `── Group ───` at most 44 cells wide; the
+  focused field's help sits under it and is the first thing a form under 40 columns drops; `! message` sits under a field
+  with an error; a label wider than the row stacks its value under it. A secret reads `•••• (saved)` while its stored
+  value is untouched and as bullets only once edited; a number reads `45 s`, and `‹ 45 › s  5–120` (or `≥ 5`, `≤ 120`)
+  while focused; a focused or edited textarea opens a box (42 cells, at least three rows, the editor's rows while it is
+  edited); an open picker shows the label alone and the option rows with the arrow under the help's indent. A disabled
+  field is muted whole. Only a field being typed into asks its editor for rows; every other reading is drawn from the
+  value, so an untouched text field builds no editor until it holds focus.
+- **Rules.** `pattern` checks a non-empty value (an empty one is `required`'s business); a broken rule shows under its
+  field once the value was edited and the edit is over, and never while it is typed into (`fieldDisplayError`); a save
+  runs every rule. The messages are `Required` and `Invalid value` (or `patternMessage`). A refused save marks every
+  invalid field, says `Fix the highlighted fields`, and keeps the focus where it was; an error on another page of the
+  surface brings that page forward.
+- **Keys** (`core/ui-key-grammar.ts`, `core/ui-compiler.ts`, `core/ui-interaction-form.ts`). `Tab` takes the first
+  suggestion the typed text starts (`⇥` marks it; the hint reads `Tab complete` only while one matches, else the group
+  move). `←`/`→` step a number by `step` within `min`/`max` and give the key to the control beside it at a limit (hint
+  `←/→ step`). With `enterSubmits` (or a single field and a `submitActionId`) `Enter` submits from a select, a
+  multiselect, and a toggle too, worded `continue`, and `Space` opens the picker or flips the switch. `Enter` in a text
+  field commits it and moves to the next field, in a textarea as in the rest; `Alt+Enter` and `Ctrl+J` insert a newline
+  (the hint reads `Enter next · Alt+Enter newline`). `Delete` returns an edited field with no `resetValue` to the value it
+  opened with. `ui.save` (`Ctrl+S`) submits the surface's form from any field, picker, or button: through the form's
+  `submitActionId`, the action `enterSubmits` names, or the primary action that submits the form
+  (`UiSurfaceModel.saveActionFor`).
+- **Buttons.** A form with several fields (or none) draws one primary submit, `submitLabel` or *Save*; a single-field
+  form draws none. `cancelActionId` is never drawn: the outermost `Escape` runs it (and closes the surface through the
+  usual discard confirmation), and a surface whose host gave `Escape` no handler words it `Esc cancel`. The one other
+  consumer, the loader's `cancelActionId`, was already a hint and is unchanged.
+- **Head.** Core adds the muted-warning `unsaved changes` badge to the surface head while any form holds an edit
+  (`UiSurfaceModel.formsDirty`), after the badges the author gave; the head drops badges before the title when narrow.
+
+Parity. `tests/design/scene-03-forms.spec.ts` replays every golden walk of scenes 3 (`initial`, `move`, `edit`, `reset`,
+`discard`), 4 (`initial`, `fill`, `focus`), and 12 (`initial`, `move`, `enter`) cell by cell, from the surface's top rule
+to its bottom rule (the caption above, scene 12's status row below, and the host's reply, which the renderer draws under
+the surface and the spec compares as text, are not part of it), and scene 1 page 1's form block joins
+`scene-05-lists.spec.ts`. Two differences are approved by the reviewer: **Δ27** (the prototype's `▌` is the terminal cursor; the
+renderer parks the hardware cursor there and draws no glyph) and **Δ28** (the dirty badge is core's on every surface;
+the prototype adds it in scene 3 only). Scene 12 `move` frame 3's `Esc back` hint waits for slice 1.5's focus levels
+(a ledger entry). Choices this slice made where the prototype left room: the wording of an open picker follows the
+prototype's rows and the spec's label-alone head; a refused save keeps the focus on the same page (the prototype never
+moves it); `A value is required` stays in the catalog for the onboarding panel while forms say `Required`.
+
+Cost. W5 (a keystroke in a 20-field form) is unchanged at 0 validated, 0 compiled, 0 rows counted: a text field is not
+a counted painter, so the budget row stays at its slice 1.1 figure. The text fields no longer render through their editor
+when they are not being typed into.
+
+Files: `core/ui-form-paint.ts`, `core/ui-validator-form.ts`, `core/ui-interaction-form.ts`
+(`fieldDisplayError`, `fieldDecor`, `stepNumber`, the `reset` arm), `core/ui-interaction-field-actions.ts`
+(`fieldReset`), `core/ui-interaction-surface.ts` (`formsDirty`, `formCancel`, `saveActionFor`, `showValidationErrors`),
+`core/ui-key-grammar.ts` (`textEditing`, `picker`, the text, select, and toggle arms), `core/ui-compiler.ts` (the `form`
+arm, `paintField`, `editorFieldComponent`, `withDirtyBadge`, `closeSurface`), `packages/ui/src/contracts.ts`
+(`MayflyTextFieldRules`). The UI reference (both languages) has the new field properties and a `form-groups` shot; the
+gallery's `forms` group shows each of them.
 
 #### 1.7 Actions, named actions, and the keymap
 
 **Backlog:** R21 (API), the D6 scopes.
 
-- **Actions.** `semantic`, `action`, `hintLabel`, and `scope`. The validator requires `<owner>.<action>` ids, reserves
-  `ui.*`, rejects `semantic` together with `key`, and checks that `scope` names a control on the page.
-- **Named actions.** The navigation and common-meaning ids of the kit's `DEFAULT_KEYMAP` (`ui.up` … `ui.search`)
-  replace the `mayfly.interaction.*` navigation ids in `core/key-actions.ts` and `interaction/keys.ts`; product actions
-  (interrupt, steer, cycle model, `F7`, `F8`) keep their ids and gain a scope.
-- **Keymap service** (`core/keymap.ts`): scopes, `bind`, `reset`, `resetAll`, `list`, `preferPlain`. A rebound-away key
-  is dead, not an alias. `Esc` and `Enter` cannot be unbound. The first `F2`-`F5` press sets `preferPlain` for the
-  session; a setting sets it for good.
-- **Persistence.** `keybindings` in the `mayfly` settings namespace (`interaction/settings.ts`), applied live through the
-  volatile schema and written through `settings.mutate`. `/keys` lists the actions the runtime has seen in admitted
-  nodes plus every action with a saved override (its label is saved beside it); there is no declaration API, so the
-  four contribution services stay the only plugin surface.
-- **Decoder.** Check pi-tui's parser against the encodings of spec §3.5 (xterm `CSI 1;3A` with or without a kitty event
-  type, an `ESC` prefix, SS3, kitty `CSI u`, modifyOtherKeys) and normalize any gap beside the existing input
-  normalization in `core/terminal.ts`.
+Every key the runtime dispatches now belongs to a named action, and the key is that action's current binding. The
+slice landed in six parts, each green on its own:
 
-Hint rows read effective keys (`keyActionKeys`); `SHARED_KEY_REFERENCE`, both Website `reference/keys.md` pages, and
-`tests/core/key-grammar-docs.spec.ts` move together. Scenes 2 and 32 (with slice 2f).
+1. **Named actions and scopes.** The navigation and common-meaning ids of the kit's `DEFAULT_KEYMAP` (`ui.up` …
+   `ui.search`) replaced the `mayfly.interaction.*` navigation ids in `core/key-actions.ts` and `interaction/keys.ts`,
+   with their defaults in `DEFAULT_ACTION_KEYS`; `ui.filter`, `ui.focus-prev/next`, and the common meanings joined the
+   batch. The constant names (`ACTION_MOVE_UP` …) stayed, so the grammar did not change; their values are the named
+   actions. Every Alt default gained a plain second key (`F2`/`F3` tabs, `F4`/`F5` focus, `Ctrl+J` newline). A key action
+   carries a `scope` (`global`, `editor`, `surface`, `stream`) and a conflict is refused only within overlapping
+   scopes, naming the owner, so `Ctrl+S` steers in the editor and saves in a surface (D6). Product actions kept their
+   ids and gained a scope; plan-mode toggling became its own editor action, `mayfly.interaction.cycle-mode`, instead of
+   riding the surface's `Shift+Tab`. The slash filter dispatches through `ui.filter`.
+2. **The actions contract.** `MayflyActionItem` gained `semantic` (a `MayflyCommonMeaning`), `action`, and `hintLabel`;
+   `MayflyActionsNode` gained `scope`. The validator (rules in `core/ui-actions.ts`) requires `<owner>.<action>` ids,
+   reserves `ui.*`, refuses `semantic` beside `key` or `action`, checks that `scope` names a control on the page or an
+   enclosing one (a responsive branch may hold it), and claims a meaning's default key for the page rules, so a
+   printable meaning is refused beside a type-to-filter list; two groups share a key only when their scopes are
+   disjoint. A scope matches the focused control, the list, form, tabs, or actions group that holds it, or a scroll's
+   own id. The compiler resolves each keyed item's effective keys through the keymap on every key and paint; an action
+   with several keys is hinted once. `examples/ui-gallery` has a named-actions group, and the UI reference an
+   `actions-named` shot.
+3. **The keymap service** (`core/keymap.ts`): `bind`, `reset`, `resetAll`, `applyOverrides`, `list`, `see`, `resolve`,
+   `subscribe`, and `preferPlain`. A rebound-away key is dead, not an alias; a binding that collides in an overlapping
+   scope is refused with the owner's name; `Esc` and `Enter` cannot be unbound or taken; a printable key cannot be bound
+   in the editor or global scope. `list()` returns the registered actions, the component actions the compiler has seen
+   in admitted nodes, and the actions that only have an override, each with its label, scope, owner, defaults,
+   effective keys, and `overridden`. The frame memo is keyed on the keymap revision and core repaints on every change.
+   The first `F2`-`F5` press sets `preferPlain` for the session; `setPreferPlain` sets it for good.
+4. **Persistence.** `keybindings` (action id to keys and label) and `preferPlainKeys` in the `mayfly` settings namespace
+   (`interaction/settings.ts`), applied live by the keys plugin on load and on every commit; a refused line is skipped
+   with a warning. `saveKeybinding`, `resetKeybinding`, and `resetAllKeybindings` in `interaction/keys.ts` bind now and
+   write through `settings.mutate`; they are the write half of `/keys` (slice 2f). There is no declaration API: the four
+   contribution services stay the only plugin surface.
+5. **Decoder.** The check against spec §3.5 found three gaps, closed beside the input normalization in
+   `core/terminal.ts`: pi-tui's input buffer cuts a bare `ESC` prefix before an arrow and an SS3 modifier (`ESC O 3 A`)
+   in two, so the renderer reads its terminal through `joinSplitModifiers`; kitty's unmodified `CSI P/Q/S` and the
+   repeat forms of F1-F12 were not decoded, so `normalizeFunctionKeyInput` maps them to legacy sequences; pi-tui matched
+   no modified function key (`Shift+F6` never worked), so `matchesKeyId` decodes them. xterm `CSI 1;3A` with or without
+   a kitty event type, kitty `CSI u`, and modifyOtherKeys were already decoded; `tests/core/key-decoder.spec.ts` feeds
+   every encoding through the real input path.
+6. **Hints and docs.** Hint rows read each action's first effective key (plain first under `preferPlain`).
+   `SHARED_KEY_REFERENCE`, both Website `reference/keys.md` pages (with a *Named actions and custom bindings* section),
+   and `key-grammar-docs.spec.ts` moved together. The key audit checks collisions per scope, checks the shipped `ui.*`
+   actions against the kit's `DEFAULT_KEYMAP`, and its Alt-gap list shrank to `cycle-model`, which has no agreed plain
+   key yet; the audit fails when a listed entry already has one.
+
+Scene 2: `tests/design/scene-02-actions.spec.ts` replays every golden walk cell by cell and checks the walks' key
+behavior (the accelerator and the hidden key run from anywhere, arrows run nothing, the hint row names the effective
+keys). With the visual language of slice 1.2 (chrome, action tokens, the feedback row, the kit's hint words and the
+lowercase `c` notation) merged, all five walks match and no scene 2 walk is pending. Scene 32 follows with slice 2f.
 
 #### 1.8 Patterns and the arm delay
 
 **Backlog:** E4 (now required by D4).
 
-`packages/ui/src/patterns.ts` exports `patterns.decisionPanel`, `railPanel`, `splitView`, and `statusPage`: pure and
-frozen, built only from the builders, with the kit's props adapted to the real ones (§3.1). `armMs` is implemented in
-the overlay focus path (`core/surface-renderer.ts`, `core/ui-interaction-surface.ts`). `examples/mayfly-user-kit` adopts
-one pattern as the plugin-side proof. Scenes 11, 12. Tests: a replay that types `1` and `Enter` into the editor while a
-request opens grants nothing; after the delay the same keys choose.
+**Slice 1.8a (built): the arm delay.** `MayflyOverlayDefinition` gained `armMs?: number` (an integer from 0 to 2000,
+default 0; `services.ts` refuses anything else), the one place §3.4 puts it. The window is `core/overlay-arm.ts`
+(`OverlayArm`): the overlay component owns one, starts it the first time the overlay takes focus, and disposes it with
+the component, so closing the overlay, replacing its model, or unloading the renderer cancels the timer and a stale
+callback cannot fire. While armed, `OverlayComponent.handleInput` swallows every key except `Esc` (a dismissal never
+grants), before the content-scroll keys and the surface see it; a stray `1` or `Enter` typed into the editor as the
+request opens chooses nothing, and the same keys choose once the window closes. The delay is a wall-clock timeout:
+reduced motion does not shorten it. The hint row names the state through the compiler's existing `contextHints.extra`
+provider (`… ready in a moment`, zh `稍候即可操作`, one fragment of priority 100); when the window closes the component
+invalidates and repaints. The prototype's scene 21 has no arm state in its hint row, so the wording is this slice's.
+`interaction/request-overlay.ts` gained an optional `armMs` that passes through; no existing request sets it, because
+the decision cards that open unprompted arrive in Phase 2 (slice 2e) and set `armMs: 300`. `ui-interaction-surface.ts`
+needed no change: the swallow sits in front of every key path of the overlay. Tests: `tests/core/overlay-arm.spec.ts`
+(the `1` + `Enter` replay grants nothing and chooses after the delay, `Esc` dismisses while armed, no timer after close
+or unload, validation), `request-overlay.spec.ts`, and `provider.spec.ts`; the type fixture is in `ui.compile.ts`; the
+UI reference (both languages) has a section; `examples/ui-gallery/src/groups/arm-delay.ts` describes the field (the
+gallery is a pane and opens no overlay).
+
+**Slice 1.8b (built): the patterns.**
+`packages/ui/src/patterns.ts` exports `patterns` from the package root beside `ui`: `decisionPanel`, `railPanel`,
+`splitView`, `statusPage`, and `decisionArmMs` (300). Each call is pure: it imports only `./builders.ts` (and types),
+returns a frozen node built by `ui.*`, keeps the identity of every node it is handed (so core's caches still hit), and
+reads no width. The kit's props are adapted to the real builders (§3.1): `ui.list` takes `selectedIds: []`, spans replace
+plain right-hand text, `fields` values are span arrays, and `dismissal` has no counterpart on a surface, so it is gone.
+
+- `decisionPanel({ id?, title, badges?, preview?, options, input?, instant?, accelerators?, escapeLabel?, chrome? })`
+  is variant B (D4): an overlay-chrome surface with `escapeLabel: 'reject'` whose column holds the preview, an
+  autofocused `choose` list (`<id>.options`, `numbered: 'focus'`, or `true` with `instant`), an optional one-line form
+  (`<id>.input`), and an actions node (`<id>.keys`) with every item forced `hidden`. The first option is the grant and
+  holds the cursor. A node cannot carry `armMs` (it belongs to the overlay definition), so the pattern exports
+  `patterns.decisionArmMs` and the docs show `armMs: patterns.decisionArmMs`.
+- `railPanel({ title, badges?, rail, content, railWidth?, escapeLabel? })` puts a vertical `tabs` rail
+  (`basis: railWidth` or 26, `shrink: 0`, slice 1.5's note) beside the content with `gap: 2`. `content` is either a
+  record keyed by rail item id (each node becomes a `tab`-linked page, so the rail switches pages without a republish and
+  every page keeps its cursor and draft) or one node for the active label (the kit's form; the plugin rebuilds it on
+  `tab-change`).
+- `splitView({ list, detail, listWidth?, breakpoint? })` is the kit's three children under complementary `when`
+  conditions (list `basis` and detail from `breakpoint`, the list alone below it). The list node appears twice with one
+  id; the validator defers `when` children and admits only the matching branch, so the id is not a duplicate and the
+  cursor survives a resize.
+- `statusPage({ title, badges?, tabs, rows?, body?, pages?, footer? })` is a tab strip, a spacer, and the rows
+  (`ui.fields`), a body, or (new beside the kit) one `tab`-linked page per tab id; a call with none of the three throws a
+  `TypeError`.
+
+Parity. `scene-11-patterns.spec.ts` replays the four walks (`initial`, `pages`, `page-2`, `move`) cell by cell against
+the prototype with the pages built by `patterns.*` (`scene-11.ts`), and `visual-language.spec.ts` pins scene 1 page 6
+(`splitView` at 100 and 70 columns). The 1.8b entries are gone from `pending.ts`. Two differences are approved:
+**Δ31**, the decision card's hint row at 80 columns holds three fragments where the kit shows four (the compiler admits
+fragments by the width inside the frame, 76, the kit by the frame's own width), and **Δ32**, the `c` accelerator is
+neither bound nor hinted while the note field holds focus (the key grammar never lets a printable accelerator pre-empt
+a text control; the kit runs it everywhere). Scene 12 uses no pattern: its panel is a plugin-defined component made of
+the same builders, pinned by slice 1.6's `scene-03-forms.spec.ts`, and `examples/mayfly-user-kit` is the plugin-side
+proof (D20): `approvalCard` is `patterns.decisionPanel` with the kit's options, exported with `APPROVAL_ARM_MS`.
+
+Tests: `packages/ui/tests/patterns.spec.ts` (output, defaults, frozen and wire-snapshot results, builder-only source),
+type fixtures in `ui.compile.ts`, `tests/core/overlay-arm.spec.ts` (a `1` and `Enter` typed into the editor while the
+decision panel opens grant nothing, and the same keys choose after the delay; `Esc` rejects while armed),
+`tests/core/width-scan-patterns.spec.ts` (every adversarial fixture at every scan width, focused or not), the
+user-kit width scan and ecosystem spec, and the gallery group `examples/ui-gallery/src/groups/patterns.ts`. The UI
+reference (both languages) has a *Patterns* section and three shots (`patterns-decision`, `patterns-rail`,
+`patterns-status`); the shot host cannot draw `when` children (the `child` shot has the same limit), so `splitView` has
+none. `shots:sync` passes the built `patterns` namespace to a scenario's `build` as a third argument.
 
 #### 1.9 The prompt and image nodes
 
@@ -708,53 +1152,317 @@ request opens grants nothing; after the delay the same keys choose.
 These are the two new node kinds. The main editor and the transcript do not use them until Phases 5 and 6; here a
 gallery page mounts each (D20).
 
-**Prompt.** Core compiles `prompt` on top of the existing editor adapter (`createEditor` in `core/components.ts`), so
-kill-ring, undo, paste folding, and IME stay pi-tui's. The first row paints the symbol, the tokens (`[label size ×]`,
-inverse when selected), and the buffer; the right corner reads `↑ history 2/4` while recalling; the placeholder is the
-longest
-variant that fits, never cut inside a trigger, and hidden for a multi-line buffer or an IME composition; the completion
-list shows up to five rows and, with `hint: 'completions'`, its key line. Keys: the first `Backspace` on an empty buffer
-selects the last token and the second removes it (`token-remove`); `↑/↓` on an empty buffer walk `recall`, queued
-messages first (`recall-change`), and `↓` past the newest returns the draft; `Enter` submits; `Alt+Enter` and `Ctrl+J`
-insert a newline. The draft lives in `UiPromptModel`. Scene 15 in an overlay harness at 96, 60, and 40 columns; paste and
-IME go through `docs/platform-acceptance.md`.
+**Prompt** (slice 1.9b, built, merged as #111). `MayflyPromptNode` is as §3.2, with `ui.prompt({ id, … })`, and joins `MayflyUiNode`; status
+nodes and editor decorations admit neither new kind (the editor-mode validator refuses it as a focus-taker). It landed in six
+parts: the contract, validator, model, and painter (1); the surface model, editor, grammar, and keys (2); scene 15 and
+`W12-prompt` (3); the gallery pane (4); the reference and shots (5); this text and the gate (6).
 
-**Image.** `ui.image` paints through the existing `createImage` adapter. The bytes come from a loader the host tree
-supplies from the native attachment store (the transcript's `UserImageLoader` today), so core stays independent of
-the Harness; `alt` shows until the bytes arrive and on a terminal without an image protocol.
+- *Admission* (`core/ui-validator-prompt.ts`, new). A draft, a recalled message, and a `reset` value share a prompt-text budget
+  of 100,000 characters per tree (`MAYFLY_UI_MAX_PROMPT_TEXT`), apart from the tree's 20,000; at most 50 tokens (`id`, `label`,
+  `size` up to 64 characters, ids unique), 8 placeholder variants of up to 200, a `symbol` of up to 8, 24 for `recallLabel` and
+  `submitLabel`, completion ids unique. The prompt is a control (its id is reserved), so no memoized subtree ever carries it.
+- *The draft* (`core/ui-interaction-prompt.ts`, `UiPromptModel`). An immutable value held by the surface model beside the
+  form, choice, and tab models: the text (paste markers expanded), the selected token, the recall walk, the completion cursor, a
+  revision. `reducePrompt` returns the next model and the effects to tell the host; a republish keeps the draft, a new
+  `reset.rev` replaces it once, and the recall walk follows its entry through a republished list (a withdrawn queued message
+  leaves the walk standing before the next entry). Events: `value-change` (`controlId` `text`, `formId` the prompt id) and
+  `recall-change` are observations; `submit` (a `MayflySubmission` with one form addressed by the prompt id and the fields
+  `text` and `tokens`), `token-remove`, `completion-accept`, and `completion-dismiss` are actions. A `submit` clears the draft
+  at once and, like a form's, expects an `accepted` reply with the host's new node; tokens-only submits are single-flight.
+- *The painter* (`core/ui-prompt.ts`). Row 1 is the symbol (strong in `symbolTone`), the token strip (`[label size ×]`, inverse
+  when selected, folded behind `+N` newest-first when the row is short), and the buffer; the recall position (`↑ history 2/4`,
+  `queued` for a queued entry, `recallLabel` for history) sits at the right edge while the row has room for it. The placeholder
+  is the longest ladder variant with `width - symbol - 2` cells to spare (a plain string degrades by dropping its last ` · `
+  segment), after the cursor cell, and shows only for an empty buffer without tokens. The completion list is up to five rows
+  that follow the cursor, with an optional right-aligned key. Every row is cut to the width last, and the editor is never
+  laid out narrower than three cells: pi-tui 0.84.2 recurses without end on a grapheme wider than its line.
+- *The editor* (`UiPromptEditor`, one per prompt, leased from the surface runtime by control key and released with the
+  prompt or the runtime). It wraps `createEditor`, so kill ring, undo, paste folding, and input methods stay pi-tui's: the
+  model's draft is mirrored in before every paint and key, edits report back through `onChange`, `disableSubmit` is on, and a
+  bracketed paste is tracked from its first marker to its last so a lone `Enter` chunk inside it is text.
+- *Keys* (`promptBindings` in `core/ui-key-grammar.ts`, one `prompt` intent with an operation). `Alt+Enter` and `Ctrl+J`
+  (`ui.newline`, asked before `Enter`, because Ctrl+J is a line feed) insert a newline; `Enter` submits; on an empty buffer
+  with tokens the first `Backspace` selects the last token and the second sends `token-remove`, and any other key deselects;
+  `↑`/`↓` walk the recall only while the buffer is empty or already a recalled entry; with a list open, `↑`/`↓` move it, `Tab`
+  and `Enter` accept, and `Esc` hides it until the rows or the text change. Printable accelerators never fire while a prompt
+  has focus. The hint row reads `↑/↓ history · Enter send · Alt+Enter newline · Esc close`, and with a list open
+  `↑/↓ options · Tab complete · Enter insert · Esc close`; a surface with `hint: 'completions'` draws it only then
+  (`promptCompletionsOpen` joins the host's `completionsOpen`). The recall pair is hinted only while it applies, which the
+  prototype does not do.
+- *Proof (D20).* `examples/ui-gallery/src/groups/prompt.ts` registers a bottom pane whose host keeps the tokens, the queue,
+  and the history and answers every event; the node-slot test host leases a prompt in the dock and keeps its draft through a
+  core reload. The main editor and the transcript do not use the prompt until Phases 5 and 6.
+- *Parity.* `tests/design/scene-15-editor.spec.ts` replays every golden walk of scene 15 through the real compiler against a
+  demo host (`scene-15.ts`, which answers the prompt's events as the prototype's scene does) and compares the frame cell by
+  cell at 96, 60, and 40 columns, with the editor's cursor cell drawn as the prototype's `▌`. The caption and the queue line
+  above the frame are the Editor component of Phase 5 and are listed in `pending.ts` against that phase (slice 1.11 leaves
+  those entries alone). Δ11 covers the demo tokens.
+- *Choices.* Composition (an IME preedit) is the terminal's, and pi-tui reports none, so the placeholder hides when text
+  commits; the manual checks are in `docs/platform-acceptance.md`. `recallLabel` words the history entries and `submitLabel`
+  words `Enter` in the hint row; both are this slice's reading of the two fields. A wide-token row folds the oldest tokens first.
+  The `W12-prompt` budget (a prompt among 120 static rows, one key) is 0 / 0 / 6 (validated / compiled / rows): the prompt's own rows.
+- *Tests.* `ui-validator-prompt.spec.ts`, `ui-interaction-prompt.spec.ts`, `ui-prompt.spec.ts`, `ui-prompt-keys.spec.ts`
+  (hint rows in every state, every key and event, republish, focus), `ui-prompt-editor.spec.ts` (the real editor, the
+  adversarial width scan), the width scan, the node-slot test, the gallery's `prompt.spec.ts`, and the type fixtures in
+  `packages/ui/tests/`.
+
+**Image** (slice 1.9a, built). `MayflyImageNode { kind: 'image', attachmentId, alt, maxRows? }` joins `MayflyUiNode`
+(§3.2; status nodes and editor decorations admit neither new kind) with the builder `ui.image({ attachmentId, alt,
+maxRows? })`. The validator admits it with quotas: an `attachmentId` of 1 to 128 characters, a `maxRows` of 1 to 40,
+and 8 images per tree (`MAYFLY_UI_MAX_IMAGES`, replayed from the admission memo like chart cells); it is passive, so a
+non-capturing overlay takes it. The painter is `core/ui-image.ts` (`UiImagePainter`, one `image` arm in
+`core/ui-compiler.ts`): one muted `alt` row (line breaks collapsed, truncated to the width) until the bytes arrive,
+when no loader knows the id, and on a terminal without an image protocol, then the existing `createImage` adapter,
+made once per bytes with `maxRows` as `maxHeightCells`. The leaf is not a reusable static kind, because its rows move
+without a publish.
+
+- *The loader.* Core stays independent of the Harness: bytes come from `ctx.mayflyUiImages`
+  (`core/ui-images.ts`, owned by `frontend/index.ts` beside `mayflyUiInteraction`). The host tree calls
+  `provide(loader)` from a Fiber (`ctx.effect`) with a `(attachmentId, signal) => Promise<{ data, mediaType, name? } |
+  undefined>`; the newest loader is asked first and the next when it answers `undefined` or fails. The loader
+  receives the node's id alone, so it resolves the media type itself; the transcript's `UserImageLoader` keys by an
+  `ImageAttachmentRef`, which Phase 6's transcript wraps (it owns the id-to-ref map). No product consumer provides
+  one in this phase.
+- *Loads.* One load per id, shared by every surface, answered from a 16-image LRU; a settled image tells the surface
+  that asked (`MayflyUiSurfaceRuntime.repaint`, the pane's own invalidate-and-render), once. A loader that comes or
+  goes restarts the loads that have no bytes, and a load that finishes for an older loader set is dropped; unloading
+  the owner aborts every load.
+- *Terminal capability.* `MayflyComponents.imageProtocol()` (pi-tui's `getCapabilities().images`) is the only new
+  method on the component factory; the painter shows its own `alt` instead of pi-tui's `[Image: ...]` fallback.
+- *Node slots.* A node slot (slice 1.10a) receives the same byte source: the surface renderer lends it as
+  `MayflyNodeSlotCompiler.images`, and the slot's `MayflyUiSurfaceRuntime` takes it as a pane's does. List bodies
+  (`MayflyListBodyNode`) are slice 1.4.
+- *Proof (D20).* `examples/ui-gallery/src/groups/image.ts` (the gallery supplies no loader, so it shows the alt rows);
+  `website/plugins/ui-reference.md` and its English twin; the `image` shot. Tests: `tests/core/ui-image.spec.ts`
+  (admission and quotas, the service, the painter, the compiled node), a pane repainting when the bytes arrive in
+  `tests/core/plugin-surface-bridge-pane.spec.ts`, a slot reading the same source in `tests/core/node-slot.spec.ts`, the width scan, type fixtures in `packages/ui/tests/`.
 
 #### 1.10 Host seams: the node slot and the views lane
 
 **Backlog:** R7 and R20 (the lane and the slot only; their consumers are Phase 3).
 
-- **Node slot.** `mayflyScreen.mountNodeSlot(id, { region })` (§3.4) joins `mountContentSlot` and `mountDockSlot` in
-  `core/screen.ts`. It compiles its node through the same surface path as a pane, with its interaction state in
-  `mayflyUiInteraction`, so the engine's caches, the key grammar, and the hint row apply unchanged. It is core-private
-  and has no product consumer in this phase: a test host mounts a status-shaped row, an editor-shaped surface, and a
-  stream-shaped list, which puts W1 and W4 on the real mounting path.
-- **Views lane.** `placement: 'views'`, `summary`, and `setSummary` (§3.4); the validator requires a motion-free status
-  node as the summary. `core/surface-manager.ts` and `core/surface-renderer.ts` gain the lane: it has no rows of its
-  own, its summaries join status row 2, its panel is shown in place of row 2 when entered, and events are routed to
-  the active registration. Until Phase 3 replaces the footer, today's `StatusFooterComponent` reads the summaries
-  beside its row-2 entries. `Alt+↓`/`F5` on an empty prompt, or `F6`, enter the first view; `←/→` switch views; `Esc`
-  returns to the prompt.
-- **Proof.** `examples/ui-gallery` registers a view through the public service (D20). Mayfly's agents, jobs, goal, and
-  todo views register in Phase 3, so the product's own row 2 does not change in this phase.
+- **Node slot** (slice 1.10a, built). `mayflyScreen.mountNodeSlot(id, { region })` leases a core-private slot beside
+  `mountContentSlot` and `mountDockSlot`. The logic is `core/node-slot.ts`; `core/screen.ts` gained the method,
+  `bindNodeSlots`, and a teardown effect. A region claims one of the screen's existing hosts: `content` any content id
+  (a fixed host such as `transcript.conversation`, or a local one), `dock` the prompt host `editor.prompt`, and
+  `footer` the footer host `status.footer`; an unknown or taken host throws and leaves nothing behind. The lease is
+  `{ id, disposed, set(node), focus(), dispose() }`: `focus()` was added to the pair of §3.4, because an editor-shaped
+  slot has to take keys. `set` freezes the node as a pane's `set` does, and `set(null)` clears the slot and its state.
+  - *The surface path.* The surface renderer lends the slots its compiler dependencies and its one animation clock
+    (`bindNodeSlots`, one effect in `core/surface-renderer.ts`). Each slot publishes into a `slot` model in
+    `mayflyUiInteraction` (`UiSurfaceKind` gained `'slot'`) and compiles with `compileMayflyUiSurfaceNode` over its own
+    `MayflyUiSurfaceRuntime`, so the admission memo, compile reuse, the row cache, the hint memo, the key grammar, and
+    the hint row are a pane's. A slot recompiles on the first paint after its model moved (a pane recompiles on the
+    same signal, a microtask later), so a burst of publishes compiles once. The content and footer regions compile
+    against the terminal's size, the dock against `editorViewport`.
+  - *Lifetime.* A renderer gap (a theme switch) drops the compile state and keeps the model. The screen's teardown (a
+    core reload) revokes every lease and keeps every model, and the next lease of the same id adopts it, so a list
+    cursor and a form draft survive the reload; a lease from before the reload is fenced (`set`, `focus`, and
+    `dispose` do nothing). An explicit `dispose()` drops the model, or, when no renderer has held it yet, has the next
+    bind drop it.
+  - *Staleness.* A slot repaints when the keymap or the locale changes without a publish: the renderer passes a paint
+    epoch (`nodeSlotEpoch`, the keymap revision plus the locale revision), and a slot whose model did not move drops
+    its frame when the epoch moves. Panes have no such epoch and keep their frame until their model moves; that is
+    left as it is.
+  - *Events.* Slots route no events yet: an action settles as succeeded without a handler, as on a disposed endpoint.
+    The first consumer that needs a reply (Phase 5's prompt submit) adds the event option.
+  - *Consumer (D20).* The slot is core-private, so it changes no public package, Website page, or gallery page. Its
+    consumer in this phase is the test host `tests/core/node-slot-host.ts`, which leases a status-shaped row in the
+    footer, an editor-shaped form in the dock, and a stream-shaped list in the content region from an ordinary Fiber,
+    beside a core that binds them through the real surface renderer.
+  - *Budgets.* `W1-slot` and `W4-slot` run W1's status row and W4's focused stream through the slot
+    (`tests/perf/workloads.ts`, reported by `script/audit-performance.mjs`); their rows were appended to `budgets.json`
+    and to `baseline.json`, where the baseline is their first measurement: 2 / 2 / 2 and 1 / 1 / 0 (validated /
+    compiled / rows), the work of the direct path, with one more string measured for the footer row. Slice 1.11 moves
+    W1 and W4 themselves onto the slot.
+  - *Tests.* `tests/core/screen.spec.ts`: each region, the refused hosts, publish, replacement, clearing, disposal, the
+    renderer gap, the teardown and adoption, a disposal without a renderer, the regions' viewports, a pending decision,
+    an animation tick, and the paint epoch. `tests/core/node-slot.spec.ts`: the three shapes with keys and hint rows, a
+    core reload that keeps a list cursor and a form draft, stale leases, the host's unload, and a warm slot repainted
+    for a new theme, a rebound key, a new locale, and a new width.
+- **Views lane** (slice 1.10b, built). `MayflyPanePlacement` gained `'views'`; a views pane declares `summary: { node, count? }`
+  and updates it with `registration.setSummary(summary | null)` (`null` takes the view out of row 2). `MayflyPaneEntry`
+  carries `summary` (a views pane's entry is republished at the same revision and node when only the summary moves, so
+  an in-flight `refresh` is not disturbed); the service refuses `size` and `narrow` on a views pane and a summary on
+  any other placement. The lane's logic is `core/views-lane.ts` (`ViewsLane`, owned by `SurfaceManager.views`, so
+  `core/surface-manager.ts` only gained the field, the focus id `@views`, and the focus bookkeeping).
+  - *Row 2.* The lane has no rows of its own. `ViewsLane.statusEntries()` yields each summary as a status entry (`views/<id>`,
+    row 2, left band, the view's priority; lower comes first), and `StatusFooterComponent` takes the lane as an optional
+    last argument and admits those entries beside its registry entries, so a plugin chip and a view are admitted by one
+    rule. The summary is admitted with the status validator (the status subset; slice 1.3 adds the no-motion rule to
+    that validator), so an invalid summary paints the footer's error text instead of failing the pane.
+  - *The panel.* While a view is entered, `render` returns row 1, then the tab strip (titles, with the count after the
+    title; the active tab in `primary`, the others `muted`, joined by three spaces, elided with a `+N` when the row is
+    narrow), the `━` rule under the active tab, and the active panel's rows, at most a third of the terminal's rows
+    in all (a cut panel ends in the shared `… +K more rows`). A view's title names its tab, so its panel carries no frame
+    of its own. A view is *in the row* with a summary and *enterable* with a summary, a panel, and a focus target.
+  - *Keys.* `Alt+↓`/`F5` on an empty prompt (the editor's `onKey` tests `ui.focus-next`, then `mayflyScreen.enterViews()`)
+    and `F6` (`mayfly.surface.next`, which now walks the views first, then the interactive panes) enter the first view;
+    `←`/`→` (`ui.left`/`ui.right`) switch views and hold at the ends, except while the panel is editing a field; `Esc`
+    (`ui.cancel`) leaves through the panel's own unhandled-escape path; every other key is the active panel's. The
+    renderer adds `←/→ tabs` to the panel's hint row with the compiler's `contextHints.extra`. No action id was added.
+    The `F6` order is in `reference/keys.md` (both languages), `SHARED_KEY_REFERENCE`, and `key-grammar-docs.spec.ts`.
+  - *Lifetime.* A view's lane slot lives and dies with its `PaneComponent` (`record.component.view`), so every renderer
+    teardown path removes it; a core reload replays the registry, the panel's interaction state (a list cursor, a draft)
+    lives in `mayflyUiInteraction` and survives, and the lane returns to the prompt like any focused pane. A view whose
+    panel goes away while it is entered hands over to the view now at its place, or leaves. Events need no routing of
+    their own: the compiled panel emits into its own pane model, so an action reaches the `onEvent` of the active view.
+- **Proof (D20).** `examples/ui-gallery/src/groups/views.ts` registers a view through the public service (one import and
+  one call in `index.ts`); its test drives `setSummary` and the Fiber cleanup. Mayfly's agents, jobs, goal, and todo views
+  register in Phase 3, so the product's own row 2 does not change in this phase.
 
-Scene 13 (the lane only, with the gallery view). Tests: the lane in the surface specs; `tests/e2e.spec.ts` with a plugin
-view registered through the public service and cleaned up with its Fiber; the slot's lease, replacement, and disposal
-in `tests/core/screen.spec.ts`; a core reload that keeps the slot's interaction state.
+Scene 13 (the lane only, with the gallery view). Tests: `tests/core/views-lane.spec.ts` (the lane), `views-lane-renderer.spec.ts`
+(the renderer: F6 order, entering, switching, event routing, cleanup), the footer in `status-model.spec.ts`, the focus id in
+`surface-manager.spec.ts`, width scans of the strip and panel, `tests/e2e.spec.ts` (a plugin view registered through the public
+service, entered with `F6`, kept across a core reload, and cleaned up with its Fiber), and `tests/design/scene-13-views.spec.ts`,
+which replays the four views walks on a real lane and compares the tab strip and the rule cell by cell. What the lane does not
+draw (row 1 and the editor frame, the idle row 2 with its right cue, the panel bodies) is listed in `tests/design/pending.ts`
+against Phase 3 (and 1.4 for the list painter). Open question for slice 1.11: its empty-ledger assertion must leave these Phase 3 entries alone.
 
 #### 1.11 Freeze
 
-- **Budgets.** The final values of §7.1 in the work-budget spec, with W1 and W4 running through the node slot.
-- **API.** Type fixtures in `packages/ui/tests/` for every addition of §3, including component inference with `memo`
-  and the rejection of custom kinds; `pnpm run check:lib` and `pnpm run check:examples`. From here a change to
-  `packages/ui` is an exception that takes the full gate (D16).
-- **Reference.** The final pass over `website/plugins/ui-reference.md` and its English twin with
-  `script/shots/manifest.mjs`, built and previewed on the LAN for checkpoint C; every shot refreshed.
-- **Instructions.** `packages/ui/AGENTS.md` and `packages/mayfly/AGENTS.md` describe, as current behavior, the rule
-  that identity is the cache key, the node slot, the views lane, the keymap scopes, and the work-budget gate.
+**Goal.** Close Phase 1: fix the budgets, the API, the reference, and the instructions, so that from here a change to
+`packages/ui` is an exception (D16). It landed in eight parts, each green:
+
+1. **Two additive fixes from the composition spike** (the model picker of draft PR #114, built as a pure component with
+   only the public exports). A list's `selectedIds` is optional and defaults to `[]`: the contract field, the validator
+   (which admits `[]`), and every core reader (`core/ui-list-selection.ts`) agree, and existing callers are unchanged.
+   `MayflyTranslate` is a type-only export of `@ephemeral-ai/mayfly-ui`, the one translator type a component takes
+   (`frontend/locale.ts` re-exports it). The reference says that `memo: true` compares props by reference, so it hits
+   only when the owner passes a stable translator (hoisted per locale revision).
+2. **Δ33** (§2.3, approved): while a list with a thinking strip is filtered, the hint row names `←/→ thinking` where the
+   kit does not (49 cells per frame in scene 23's `filter` walk, frames 1 and 2).
+3. **Ledger.** `tests/design/pending.ts` lost its one `1.6` entry, stale since slice 1.6 pinned that block, and holds
+   only `Phase 3` (scene 13's views) and `Phase 5` (scene 15's caption and queue line) entries. `pending.spec.ts`
+   asserts every entry is tagged Phase 3 or later and none with a `1.x` slice.
+4. **Budgets.** The final values are in `tests/perf/budgets.json`: W4 validates one node, the rest were already at the
+   measured counts. `W1-slot` and `W4-slot` gate beside W1 and W4 with the same figures (a spec states it). §7.1 holds
+   the work report against the slice 1.0 baseline and the wall-clock targets, which held (2 ms publish, 4 ms key).
+5. **API.** Every addition of §3.2 has a fixture in `packages/ui/tests/ui.compile.ts`: the contract fields,
+   `ui.image`, `ui.prompt`, `ui.listBody`, `patterns.*`, the views lane, `memo` inference, and the rejection of custom
+   kinds and of every wrong shape. `tests/types.spec.ts` now compiles the fixtures against the built declarations, so
+   the gate runs them (before, nothing did). The audit of `packages/ui` against §3.2 and §3.4 found no missing field,
+   event, builder, or service member. `check:lib`, `check:examples`, and `check:pack` pass.
+6. **Reference.** The final pass over `website/plugins/ui-reference.md` and its English twin, and `ui-kit.md`: every
+   §3 field, event, and builder is documented in both languages, all 60 component shots are fresh (`shots:check`), and the
+   Website builds. The reference now states identity as the cache key and the `memo` rule.
+7. **Instructions.** `packages/ui/AGENTS.md` and `packages/mayfly/AGENTS.md` describe, as current behavior, identity as
+   the cache key and the engine, the node slot, the views lane, the keymap scopes and named actions, the work-budget
+   gate, and the freeze.
+8. **This roadmap**: the Status table, §7.1, and the follow-ups below.
+
+Not changed, and why: the spike's remaining gaps (a closed `acceptVerb`, the kit's unreachable `empty` text, a `W3`
+row for a framed list) are not contract problems; they are listed under Phase 2's notes or in §7.1.
+
+#### 1.12 Frame performance
+
+**Goal.** A pane that did not change costs almost nothing per frame, a clock tick costs the cells that move, and the
+gate measures the path a frame takes on screen. Checkpoint acceptance found the opposite: with the gallery pane loaded
+the process held one core while idle and a key took 150 to 200 ms. **Backlog:** none; it completes D17 (§4.1).
+
+*What was measured* (`pnpm run bench:pty`, a scripted session against a mock LLM at 120 by 40, on one machine):
+
+| Build and pane | Idle CPU | One frame | Key to paint, median |
+| --- | --- | --- | --- |
+| `main`, no pane | 0% | n/a | 1.8 ms |
+| slice 1.11, no pane | 0% | n/a | 2.4 ms |
+| `main` with its gallery of 4 groups | 76% | 64 ms | 30 to 45 ms |
+| slice 1.11 with `main`'s gallery | 62% | 63 ms | 27 to 33 ms |
+| slice 1.11 with its gallery of 13 groups | 108% | 206 ms | 147 to 210 ms |
+
+For the same content the engine of slice 1.1 costs what `main` costs, and a frame costs in proportion to the whole tree.
+The causes, each pinned in a CPU profile:
+
+- A side lane is rendered only to be measured, and the measure is discarded: pi-tui measures every child of a row
+  although the row's height is fixed (41% of the gallery's time).
+- pi-tui lays a pane out natively on every frame of the terminal, whatever asked for the frame, and nothing below the
+  frame memo is cached except the pure text leaves (35%). A stack's `render`, which a layout uses to measure, renders
+  its children again at every level of nesting.
+- A frame with a scroll view renders the tree and throws the rows away for the constrained layout (13%).
+- A loader arms the clock when it is rendered, and scroll content is rendered whole, so a loader below the fold
+  repaints the surface ten times a second: the gallery's idle frame writes about 29 bytes.
+- Every stack child's `visible` reconciles focus when the layout viewport changes, and a layout alternates between
+  viewports, so the control tree is walked once per stack (164 walks in one frame of W13).
+- pi-tui remembers 512 measured strings; a frame of the 13-group gallery measures more, so every string is measured
+  again on every pass (1.2 s grows to 9.1 s in the profile).
+- Painters reach the width helpers, the presentation, and the hint catalog through service proxies on every row (10%).
+- Without a pane: `mayflyKeymap.list()` became a full snapshot and the editor shell takes one on every keystroke, and
+  an arrow at the edge of a list lays the surface out to look for a neighbor even when the list is the only group.
+
+The work budgets saw none of it. W1 to W12 call a compiled component's `render`, so the lane measure and the native
+layout never run, W2 is a flat list of pure leaves, and no counter counted a layout, a measure, or a walk.
+
+It lands in four parts, each a PR with the bench table:
+
+1. **1.12a, measurement** (merged, #116). `tests/perf/frame-workloads.ts` adds W13 to W17 (§7.1): they paint through
+   `startMayflyTerminal` in the alternate layout over the fake terminal, the surface lanes, and
+   `mountMayflySurfaceRenderer`, stepping pi-tui with the fake clock. `core/ui-work-counters.ts` gains
+   `componentRenders`, `controlWalks`, `reconciles`, `layoutPasses`, `clockTicks`, and `keymapSnapshots`; the surface
+   renderer takes an optional sink for them (production passes none). A budget row gates the counters it names, and
+   the rows of W13 to W17 start at today's counts. `script/bench-pty.mjs` is the wall-clock report: a cached throwaway
+   profile, the scenarios `product`, `gallery`, and `focus`, idle CPU and key-to-paint latency in
+   `.artifacts/bench/`. `script/test-impact.mjs` selects the budget spec for the lane, the renderer, the keymap, and
+   the editor-extension runtime.
+2. **1.12b, wasted work** (merged, #117). No visible change; each item removes work whose result nobody read.
+   - *The lane measure.* `SurfaceLaneContainer.render` answers a side lane's measure with no rows, and a side lane's
+     pane has basis 0 in the lane's stack: the row that holds the lane gives it its height and the pane fills it, so
+     neither measure was ever used. The header lane is still sized by its rows. What the measure did as a side effect
+     moved into the native entry: `CompiledSurface[LAYOUT_NODE]` prepares itself (`prepareNativeLayout`), fitting the
+     lists of a surface that has no scroll view through one memoized frame render, and otherwise only reporting a
+     focus move. `SemanticScrollView` learns its width in `getContentWidth`, which both paths call.
+   - *The discarded render.* `renderFrame` runs the constrained layout instead of, not after, the plain render when
+     the surface has a scroll view of its own.
+   - *The walk storm.* `walkControlsCached` remembers a walk for each of 16 viewports (and the list row budget), and
+     a stack child's `visible` reconciles through `reconcileLayout`, which returns when the viewport shows the controls
+     the last reconciliation walked and focus has not moved since.
+   - *The row path.* A static leaf reads the glyph mode once when it is compiled; the surface frame measures a row
+     that fits once and with the core width helpers; a chart is a pure leaf; `contextHintTranslator` remembers a
+     string for one locale revision of one provider (512 strings at most).
+   - *The clock.* `UiAnimationClock` times a tick's repaint from the tick to the first moving cell painted, and the
+     next step waits twice that long (100 ms at least, 1 s at most), so a frame slower than half a step slows the
+     motion instead of filling the gap between two ticks. Skipping a tick after input was not needed once the steps
+     are paced, and was not built.
+   - *The keymap.* The editor shell snapshots the keymap only when an extension declares an action (it used to on
+     every compile); `matches` resolves an action's keys once per keymap change or newly seen action; `list()` reads
+     its maps once; a key id is parsed as a function key once.
+   - *The edge.* `navigate` skips the geometry layout when the active control is the last of the only group along
+     its own axis. A picker that holds other controls still lays out once per edge key (the model picker: 3.9 ms of
+     CPU per key against 1.9 on `main`); part 1.12c makes that layout a memo read.
+3. **1.12c, retained rows** (merged, #118). pi-tui lays a pane out natively on every frame of the terminal and renders a
+   component once per ancestor stack that measures it; nothing below the frame memo was remembered. Now every component
+   a surface hands to pi-tui answers a repeat render from memory.
+   - *One viewport per pass.* A stack child's `visible` used to adopt whatever viewport pi-tui passed, including the
+     unbounded one of a measuring render, so the viewport a leaf saw depended on the sibling before it. A layout pass
+     now has one viewport, the frame the layout engine was given; a measure is not a new frame. The test that pins the
+     allocated height (`ui-compiler.spec.ts`) holds; rows that depended on a leftover viewport no longer can.
+   - *The epoch.* `MayflyUiSurfaceRuntime.epoch` moves whenever something other than the clock can change a row: at
+     the end of a handled key, on focus and restored focus, on `invalidate`, on a new compile, and when a frame finds
+     a new host viewport, model revision, keymap revision, or completion state (`syncEpoch`). A key that found nothing
+     to do (an arrow with no control in its direction) leaves it where it was.
+   - *Retained renders* (`retain` in `core/ui-compiler.ts`). A component's `render` is replaced in place by a memo of
+     six entries keyed by width, pass, list row budget, and viewport, valid for one epoch. Every compiled node is
+     retained except the pure leaves, which keep their own rows, and Markdown and diagrams, which cache inside their
+     component; the parts pi-tui lays out one by one (a form's fields, a loader's row, a surface's head and tail) are
+     retained too. A prompt and the host editor paint a live engine and are never remembered, nor is a render that
+     contains them, nor one whose paint failed. `verifyRetained` (or `MAYFLY_UI_VERIFY_MEMO=1`) paints again on every
+     hit and throws when the rows differ; the gate runs the suites that way.
+   - *Moving cells.* A render that reads the clock frame holds for that frame only, and so does every render around
+     it; a tick asks the host for a frame without invalidating (`requestFrame`), so one tick repaints the moving cell
+     and recomposes its ancestors. The clock is armed by a moving cell that can be seen: `core/ui-stacks.ts` records
+     the row each child starts at, and a cell outside the window of a scroll view around it does not arm it.
+   - *Stacks* (`core/ui-stacks.ts`). `ColumnStack` and `RowStack` paint the rows of pi-tui's stacks (a spec compares
+     them). A row stack does not render a child of fixed basis to measure it, and remembers each composited row by
+     what went into it, so the stack that pads a pane no longer splices every row of a long scroll per frame.
+   - *Not done.* A frame beside the gallery still costs about 5 ms, all of it pi-tui painting the pane's visible
+     boxes. A picker that holds other controls still lays out once per arrow at its edge (the model picker: 4.0 ms of
+     CPU per key against 1.9 on `main`). An image is retained and repainted by the surface's repaint request.
+4. **1.12d, the gate** (merged, #119). `budgets.json` holds the counts of part 1.12c. `pnpm run test:retained`
+   (`script/test-retained.mjs`) runs every suite but the work budgets with `MAYFLY_UI_VERIFY_MEMO=1`; the full gate
+   and CI run it after coverage, and a changed-files gate runs it over the core, design, and e2e suites when a file a
+   compiled surface paints from changed. `pnpm run bench:pty:assert` runs the `gallery` and `focus` scenarios against
+   ceilings a real regression is ten times past (with a side pane: idle CPU 10%, key to paint 20 ms; without one: key
+   to paint 10 ms, 5 ms of CPU per typed key, 12 ms per cursor key), scaled by `BENCH_PTY_SLACK` (3 in CI); it runs
+   with the smoke. The root and `packages/mayfly` instructions state the retained-row rules and the two checks.
 
 ### Phase 2 Components area and panels
 
@@ -782,6 +1490,14 @@ Notes per slice:
 - **2a.** `commitModelSelection` in `interaction/model-commands.ts` stays the write path; `selection-accept.segmentId`
   absent means unpinned (provider default). The notice reads `Switched to <model> (<provider>) · thinking high` or
   `Thinking set to high`.
+  Follow-ups from the model-picker spike (draft PR #114, `docs/design/spike-model-picker.md`; notes, not decisions):
+  `formatContextWindow` moves from `interaction/` to where a pure component can import it (or the fact carries a
+  formatted `contextLabel`); the commands pass `defaultEffort` (`openModelPicker` ignores what `catalogRows` returns,
+  and `switchEffort` never reads `info.reasoning.defaultEffort`), because `inheritedId` and `Provider default (high)`
+  need both; three interpolated locale keys replace concatenation (`{size} context`, `current · {effort}`, `Provider
+  default ({level})`), with zh entries; a golden for the live row's pinned strip (a `live-row` walk with the cursor on
+  the current model), because the kit never pins that state; components hoist `t` per locale revision so `memo: true`
+  hits; the component's `empty` is the real `No models advertised` (the kit's `No models match` is unreachable).
 - **2b.** Rail labels come from `settings.describe({ redactSecrets: true })`; schema sub-objects become `group`
   headings and schema descriptions become `help`. A revision mismatch still replies `conflict`. Session bodies and
   titles keep the bounded, revision-keyed reads of `interaction/session-list-reads.ts`.
@@ -997,7 +1713,7 @@ adds its row.
 | Workload | Shape | One step | Budget for the step |
 | --- | --- | --- | --- |
 | W1 status tick | a row of 12 admitted entries | one entry changes | at most 1 subtree validated and compiled; 1 entry painted |
-| W2 spinner tick | 200 static rows and one loader | one clock tick | nothing validated or compiled; 1 row painted |
+| W2 spinner tick | 120 static rows (a tree is capped at 256 nodes) and one loader | one clock tick | nothing validated or compiled; 1 row painted |
 | W3 list cursor | a list of 10,000 items | `↓` | nothing validated; at most 2 item rows painted, and the hint row if it changes |
 | W4 stream | a list of 2,000 items (with bodies from slice 1.4) | the last item changes, at 10 Hz | at most 1 item admitted and compiled; no more rows painted than that item has |
 | W5 form key | a form of 20 fields | one keystroke | at most 1 field painted |
@@ -1006,9 +1722,76 @@ adds its row.
 | W8 cold open | a settings-sized panel | the first publish | no more than slice 1.0's baseline |
 
 Wall-clock time and heap growth come from `script/audit-performance.mjs` on the same workloads. They are reported in
-every Phase 1 PR against the baseline of slice 1.0 and gate nothing. The targets, proposed here and fixed when the
-baseline exists, are a steady-state publish-to-rows time of 2 ms at the 95th percentile and a key-to-rows time of
-4 ms, at the sizes of W3 and W4.
+every Phase 1 PR against the baseline of slice 1.0 and gate nothing. The targets were proposed before the baseline
+existed and are now fixed from the measurements below: a steady-state publish-to-rows time of 2 ms at the 95th
+percentile (W4 and W4-slot: 1.8 and 1.3 ms) and a key-to-rows time of 4 ms (W3: median 0.8 ms, 95th percentile
+2.4 ms; the rail and the prompt keystroke stay under 2.3 ms). Both hold at the sizes of W3 and W4, so they stand as
+proposed. The stream with item bodies (W4b) is not one of those sizes: its median is 3.1 ms and its worst sample 12 ms,
+which the report keeps in view for Phase 6.
+
+**Phase 1 work report.** Counters are one step as the gate counts them (validated / compiled / rows painted / strings
+measured); milliseconds are the median and the 95th percentile of seven samples, taken as the median of three runs of
+`node --experimental-transform-types --expose-gc script/audit-performance.mjs` on one machine, the baseline re-measured
+on the slice 1.0 merge (`59d7181`) in the same session. A row with no baseline is a workload added after slice 1.0.
+
+| Workload | Baseline counters | Final counters | Baseline ms | Final ms |
+| --- | --- | --- | --- | --- |
+| W1 status tick | 13 / 13 / 34 / 25 | 2 / 2 / 2 / 3 | 1.03 / 1.40 | 1.00 / 1.17 |
+| W2 spinner tick | 0 / 0 / 121 / 40 | 0 / 0 / 1 / 40 | 0.28 / 0.67 | 0.16 / 0.35 |
+| W3 list cursor | 0 / 0 / 81 / 42 | 0 / 0 / 2 / 40 | 0.74 / 1.99 | 0.84 / 2.45 |
+| W4 stream | 45 / 1 / 81 / 42 | 1 / 1 / 0 / 40 | 4.29 / 18.98 | 1.17 / 1.79 |
+| W5 form key | 0 / 0 / 1 / 22 | 0 / 0 / 0 / 21 | 0.50 / 1.20 | 0.38 / 0.83 |
+| W6 swarm | 44 / 12 / 36 / 56 | 44 / 12 / 32 / 52 | 1.91 / 17.65 | 1.68 / 2.48 |
+| W7 resize, theme | 0 / 0 / 9 / 20 | 0 / 0 / 9 / 20 | 0.13 / 0.21 | 0.11 / 0.21 |
+| W8 cold open | 11 / 3 / 9 / 20 | 11 / 3 / 9 / 20 | 0.50 / 0.64 | 0.44 / 0.53 |
+| W1-slot (node slot) | none | 2 / 2 / 2 / 4 | none | 0.84 / 0.99 |
+| W4-slot (node slot) | none | 1 / 1 / 0 / 40 | none | 1.30 / 1.35 |
+| W4b stream with bodies | none | 5 / 4 / 5 / 40 | none | 3.13 / 12.01 |
+| W9 motion tick | none | 0 / 0 / 3 / 42 | none | 0.13 / 0.18 |
+| W10 scroll region | none | 3 / 3 / 7 / 7 | none | 0.74 / 7.10 |
+| W11 admission row | none | 2 / 2 / 2 / 2 | none | 0.21 / 0.36 |
+| W12-rail | none | 0 / 0 / 8 / 40 | none | 0.93 / 2.28 |
+| W12-prompt | none | 0 / 0 / 6 / 40 | none | 0.33 / 0.95 |
+
+Reading the report. The gate holds the final counters, except that W4 and W5 keep the section 7.1 ceiling of one item or
+field painted (the workloads change an item or a field that is not on screen, so they measure none); the stream that
+follows its tail is W4b. W1-slot and W4-slot gate beside W1 and W4 with the same figures, since the footer and the
+conversation reach the screen through the node slot. The wall clock is flat within the noise of one machine on every workload
+(W3 reads 0.1 ms higher) and the stream is 3.7 times faster. The one place it is slower is the cost of a frame that repaints nothing (the steady-state
+frames and the filtered or tree `repeat-render` scenarios of the audit): 0.03 to 0.11 ms against 0.01 to 0.03 ms, from
+the hint memo and the cache lookups each frame performs. It is below any threshold the targets name, and it gates
+nothing. A framed list (an overlay around a list, as the model-picker composition spike measured it) re-measures its rows on every key, so its
+strings measured grow with the list (198 at 400 rows) while its rows painted stay at two; no budget covers it yet.
+
+**Frame workloads (slice 1.12).** W1 to W12 measure a compiled component; a frame on screen also pays for the lane that
+holds the surface, for pi-tui's native layout of it, and for the clock. W13 to W17 mount the surface the way the product
+does and count one whole step, with counters W1 to W12 do not name: leaf renders that painted, walks of the control
+tree, focus reconciliations, passes over the tree, clock ticks that asked for a repaint, and keymap snapshots.
+
+| Workload | Shape | One step | Slice 1.11 (renders / walks / reconciliations / passes / ticks) | After 1.12b | After 1.12c |
+| --- | --- | --- | --- | --- | --- |
+| W13 keystroke beside a pane | a side pane of eight sections in one scroll view, nothing in it changing | one key in the editor | 447 / 164 / 164 / 1 / 0 | 375 / 0 / 1 / 1 / 0 | 0 / 0 / 1 / 1 / 0 |
+| W14 tick below the fold | the same pane, its only loader scrolled out of view | the next clock tick, if any | 949 / 328 / 328 / 3 / 1 | 385 / 0 / 1 / 1 / 1 | 0 / 0 / 0 / 0 / 0 |
+| W15 tick on screen | the same pane, the loader at the top | the next clock tick | 949 / 328 / 328 / 3 / 1 | 385 / 0 / 1 / 1 / 1 | 2 / 0 / 1 / 1 / 1 |
+| W16 list edge | an overlay that holds one list of five rows | `↓` on the last row | 12 / 0 / 5 / 2 / 0 | 2 / 0 / 3 / 1 / 0 | 0 / 0 / 2 / 1 / 0 |
+| W17 editor shell | the prompt footer beside one editor extension | one keystroke | 1 keymap snapshot | none | none |
+
+The first column of counts is slice 1.11's, recorded in `baseline.json` by slice 1.12a; `budgets.json` holds the newest
+column, and each later part of the slice lowers it. A tick workload waits for the clock's next tick, because the clock
+paces itself by the frames it sees. The wall clock of the same path is `pnpm run bench:pty`, reported in every PR of
+the slice:
+
+| `bench:pty` (120 by 40, one machine) | `main` | Slice 1.11 | After 1.12b | After 1.12c |
+| --- | --- | --- | --- | --- |
+| Gallery pane: idle CPU | n/a | 113% | 60% | 0.2% |
+| Gallery pane: key to paint, median | n/a | 164 ms | 40 ms | 6 ms |
+| Gallery pane: CPU per key | n/a | 227 ms | 85 ms | 11 ms |
+| Gallery pane: CPU for a 5 s stream | n/a | 38.9 s | 20.8 s | 5.6 s |
+| No pane: typing, CPU per key | 1.4 ms | 2.2 ms | 1.5 ms | 1.5 ms |
+| No pane: `/settings` cursor key, CPU | 3.8 ms | 6.5 ms | 4.0 ms | 4.4 ms |
+| No pane: `/model` cursor key, CPU | 1.9 ms | 6.1 ms | 3.9 ms | 4.0 ms |
+| No pane: `/theme` cursor key, CPU | 2.3 ms | 5.5 ms | 2.5 ms | 2.3 ms |
+| No pane: `/help` scroll key, CPU | 5.1 ms | 6.1 ms | 4.7 ms | 4.7 ms |
 
 ## 8. Risks
 
@@ -1046,6 +1829,7 @@ Backlog items of the reference (§6) and where they land. Items the decisions re
 | 1.9 | R20 (contract) |
 | 1.10 | R7, R20 (the lane and the slot) |
 | 1.11 | — |
+| 1.12 | D3 (the clock armed only by what moves on screen) |
 | 2 | B1, E2, E3, G5, G7, R8, R10, R11, R15, R16, R17, R18, R21, R23, R24, R25 |
 | 3 | B4, C4, G16, G17, G23, R6, R7, R20 |
 | 4 | G10, G13, G20, G21, H4, H5, R1, R2, R5 |

@@ -3,20 +3,23 @@
 <rect width="561.6" height="145" rx="6" fill="#0A0A0C"/>
 <g font-family="'JetBrains Mono',monospace" font-size="14">
 <text x="12" y="52" textLength="16.8" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">ts</text>
-<text x="12" y="71" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">export</text>
-<text x="70.8" y="71" textLength="67.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">function</text>
-<text x="146.4" y="71" textLength="168" lengthAdjust="spacingAndGlyphs" fill="#ededf2">estimateTokens(text:</text>
-<text x="322.8" y="71" textLength="67.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">string):</text>
+<text x="12" y="71" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">export</text>
+<text x="70.8" y="71" textLength="67.2" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">function</text>
+<text x="146.4" y="71" textLength="117.6" lengthAdjust="spacingAndGlyphs" fill="#ededf2">estimateTokens</text>
+<text x="264" y="71" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#EDEDF2">(</text>
+<text x="272.4" y="71" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#ededf2">text:</text>
+<text x="322.8" y="71" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">string</text>
+<text x="373.2" y="71" textLength="16.8" lengthAdjust="spacingAndGlyphs" fill="#EDEDF2">):</text>
 <text x="398.4" y="71" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">number</text>
 <text x="457.2" y="71" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">{</text>
-<text x="28.8" y="90" textLength="16.8" lengthAdjust="spacingAndGlyphs" fill="#ededf2">//</text>
-<text x="54" y="90" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Rough</text>
-<text x="104.4" y="90" textLength="84" lengthAdjust="spacingAndGlyphs" fill="#ededf2">heuristic:</text>
-<text x="196.8" y="90" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#ededf2">four</text>
-<text x="238.8" y="90" textLength="84" lengthAdjust="spacingAndGlyphs" fill="#ededf2">characters</text>
-<text x="331.2" y="90" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">per</text>
-<text x="364.8" y="90" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">token.</text>
-<text x="28.8" y="109" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">return</text>
+<text x="28.8" y="90" textLength="16.8" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">//</text>
+<text x="54" y="90" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">Rough</text>
+<text x="104.4" y="90" textLength="84" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">heuristic:</text>
+<text x="196.8" y="90" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">four</text>
+<text x="238.8" y="90" textLength="84" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">characters</text>
+<text x="331.2" y="90" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">per</text>
+<text x="364.8" y="90" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">token.</text>
+<text x="28.8" y="109" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#9a86e6">return</text>
 <text x="87.6" y="109" textLength="176.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Math.ceil(text.length</text>
 <text x="272.4" y="109" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#ededf2">/</text>
 <text x="289.2" y="109" textLength="16.8" lengthAdjust="spacingAndGlyphs" fill="#ededf2">4)</text>

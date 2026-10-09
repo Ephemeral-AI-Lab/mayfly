@@ -1,0 +1,80 @@
+--- after start ---
+level standard · 25 rows (Ctrl+O cycles 12 · 25 · 33 · 44)
+    » Update the landing page hero copy and run the tests.
+    ▸ Took 38s · 6 tool calls · +10 −3 · Ctrl+O expand
+  ▾ ✓ Edited Hero.tsx  +4 −2  ▮▮▮▮▮▮▮▮
+     12  12 │     return (
+     13     │ −     <h1>Build agents faster</h1>                                                
+         13 │ +     <h1>Ship agent UI in a keystroke</h1>                                       
+     14  14 │       <p>{sub}</p>
+  ▾ ✓ Edited tool-line.ts  +6 −1  ▮▮▮▮▮▮▮▮
+     87  87 │     const full = toolDetail(call)
+     88     │ −   const detail = full                                                           
+         88 │ +   const detail = truncate(full, width - 4)                                      
+    ● Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.
+      The one failure was a truncation bug in the tool-line row, fixed in the same change.
+
+  ──────────────────────────────────────────────────────────────────────────────────────── 10:04
+    » Now bump the changelog and run the full gate.
+    ✗ Failed · verify:full timed out after 4m · 4m 12s · 3 tool calls
+  ▾ ✓ Edited CHANGELOG.md  +3 −0  ▮▮▮▮▮▮▮▮
+          6 │ + ## Unreleased                                                                   
+          7 │ + - Hero copy now reads "Ship agent UI in a keystroke".                           
+          8 │ + - Width scan covers the new panels.                                             
+
+  ──────────────────────────────────────────────────────────────────────────────────────── 10:09
+    » Regenerate the screenshots and check that they are fresh.
+      ⎿ Ran commands
+● Running commands · 8s · ↑30.2k ↓4.1k
+  ⎿ pnpm run shots:check
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Type a follow-up to queue it · @ files · # skills                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+deepseek-chat High  ~/work/mayfly  main ±3                  cache 34%  context: 18% (22.9k/128k)
+Agents 5 ● 1 waiting   Jobs 3 ⏵ 2 running   Goal ● 2/8   Todo 4/6 ● Bump changelog       ↓ views
+
+Alt+↑ from the prompt selects a stream row; recall, search, and the views row work from here
+--- after "\u000f" ---
+level detailed · 33 rows (Ctrl+O cycles 12 · 25 · 33 · 44)
+    » Update the landing page hero copy and run the tests.
+    ▾ Took 38s · 6 tool calls · +10 −3
+    ✻ I will read the hero component, unify the heading, then run the tests.
+      ⎿ Read files and searched code
+  ▾ ✓ Edited Hero.tsx  +4 −2  ▮▮▮▮▮▮▮▮
+     12  12 │     return (
+     13     │ −     <h1>Build agents faster</h1>                                                
+         13 │ +     <h1>Ship agent UI in a keystroke</h1>                                       
+     14  14 │       <p>{sub}</p>
+      ⎿ Ran commands · 1 failed
+  ▾ ✓ Edited tool-line.ts  +6 −1  ▮▮▮▮▮▮▮▮
+     87  87 │     const full = toolDetail(call)
+     88     │ −   const detail = full                                                           
+         88 │ +   const detail = truncate(full, width - 4)                                      
+      ⎿ Ran commands
+    ● Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.
+      The one failure was a truncation bug in the tool-line row, fixed in the same change.
+
+  ──────────────────────────────────────────────────────────────────────────────────────── 10:04
+    » Now bump the changelog and run the full gate.
+    ✗ Failed · verify:full timed out after 4m · 4m 12s · 3 tool calls
+      ⎿ Read files
+  ▾ ✓ Edited CHANGELOG.md  +3 −0  ▮▮▮▮▮▮▮▮
+          6 │ + ## Unreleased                                                                   
+          7 │ + - Hero copy now reads "Ship agent UI in a keystroke".                           
+          8 │ + - Width scan covers the new panels.                                             
+      ⎿ Ran commands · 1 failed
+
+  ──────────────────────────────────────────────────────────────────────────────────────── 10:09
+    » Regenerate the screenshots and check that they are fresh.
+    ✻ Run shots:sync first, then shots:check to confirm.
+  ▸ ✓ Ran pnpm run shots:sync · 8.0s
+  ▸ ● Running pnpm run shots:check · 8s
+● Running commands · 8s · ↑30.2k ↓4.1k
+  ⎿ pnpm run shots:check
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Type a follow-up to queue it · @ files · # skills                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+deepseek-chat High  ~/work/mayfly  main ±3                  cache 34%  context: 18% (22.9k/128k)
+Agents 5 ● 1 waiting   Jobs 3 ⏵ 2 running   Goal ● 2/8   Todo 4/6 ● Bump changelog       ↓ views
+
+Alt+↑ from the prompt selects a stream row; recall, search, and the views row work from here

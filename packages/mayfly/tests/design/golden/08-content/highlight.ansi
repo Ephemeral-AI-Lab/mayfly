@@ -1,0 +1,70 @@
+--- after start ---
+[2mpage 1/7 (Ctrl+N): text, rich text, spacer, divider: eight tones, wrap or truncate, strong italic
+strike[0m
+
+default   sample in this tone
+[2mmuted     sample in this tone[0m
+[38;2;154;134;230mprimary   sample in this tone[0m
+[38;2;120;190;230maccent    sample in this tone[0m
+[38;2;130;160;240muser      sample in this tone[0m
+[38;2;110;200;140msuccess   sample in this tone[0m
+[38;2;230;190;90mwarning   sample in this tone[0m
+[38;2;230;110;110mdanger    sample in this tone[0m
+
+Prefer small diffs and always     Prefer small diffs and always…[0m
+run the width scan before
+pushing.
+[2mwrap (default)                    truncate[0m
+
+deepseek-chat High  [1m[38;2;154;134;230mPLAN[0m  [1m[38;2;230;190;90mYOLO[0m  [3mitalic[0m  [9m[2mstruck[0m  [2m⏵ 2 jobs[0m
+
+[2m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[2m── Connection ──────────────────────────────────────────────────────────────────────────────────────[0m
+--- after "\u000e" ---
+[2mpage 2/7 (Ctrl+N): fields (key/value) and sections (bold title, body; collapsed shows the title
+only)[0m
+
+[2mProvider:[0m DeepSeek
+[2mBalance: [0m [1m¥ 128.40[0m[2m available[0m
+[2mStatus:  [0m [38;2;110;200;140m✓ [0msigned in
+
+[1m[38;2;154;134;230mConnection[0m
+  [2mName:    [0m production
+  [2mEndpoint:[0m https://api.example.com/v1
+[1m[38;2;154;134;230mBehaviour[0m
+[2m  …[0m
+[2m...[0m
+--- after "\u000e" ---
+[2mpage 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)[0m
+
+[2mui.code — highlighted by language (h toggles)[0m
+[2mtypescript[0m
+[38;2;154;134;230mconst[0m frame = glyphFor(state)
+[38;2;154;134;230mif[0m (state.mode === [38;2;110;200;140m'waiting'[0m) {
+[38;2;154;134;230mreturn[0m { kind: [38;2;110;200;140m'loader'[0m, variant: [38;2;110;200;140m'gap'[0m }
+}
+
+[2mui.markdown[0m
+[1m[38;2;154;134;230mRelease notes[0m
+[2m•[0m Hero copy now reads [3mShip agent UI in a keystroke[0m
+[2m•[0m Width scan covers the [1mnew panels[0m
+[2m│[0m [3m[2ma quote reads muted[0m
+[2mts[0m
+[38;2;154;134;230mconst[0m a = 1
+--- after "h" ---
+[2mpage 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)[0m
+
+[2mui.code — one flat tone (h toggles)[0m
+[2mtypescript[0m
+[38;2;130;160;240mconst frame = glyphFor(state)[0m
+[38;2;130;160;240mif (state.mode === 'waiting') {[0m
+[38;2;130;160;240m  return { kind: 'loader', variant: 'gap' }[0m
+[38;2;130;160;240m}[0m
+
+[2mui.markdown[0m
+[1m[38;2;154;134;230mRelease notes[0m
+[2m•[0m Hero copy now reads [3mShip agent UI in a keystroke[0m
+[2m•[0m Width scan covers the [1mnew panels[0m
+[2m│[0m [3m[2ma quote reads muted[0m
+[2mts[0m
+[38;2;130;160;240mconst a = 1[0m

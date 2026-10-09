@@ -9,6 +9,7 @@ import { apply as applyApi } from '../../../ui/src/provider.ts'
 import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiEventContext, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import { ui } from '../../../ui/src/index.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -83,7 +84,7 @@ type TestOverlayRequest = Omit<MayflyOverlayDefinition, 'onEvent'> & {
 }
 type TestOverlayHandle = MayflyOverlayHandle & { refresh(): void }
 
-async function fixture(columns = 80, rows = 24, compilerComponents: MayflyComponents = components, translateHint?: (key: string) => string): Promise<Fixture> {
+async function fixture(columns = 80, rows = 24, compilerComponents: MayflyComponents = components, translateHint?: (key: string) => string, images?: MayflyUiImageSource): Promise<Fixture> {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
@@ -107,7 +108,7 @@ async function fixture(columns = 80, rows = 24, compilerComponents: MayflyCompon
         dispatch: () => false,
       },
     })
-    mountMayflySurfaceRenderer(owner as never, runtime, translateHint)
+    mountMayflySurfaceRenderer(owner as never, runtime, translateHint, images)
     owners.push(owner)
     return owner
   }
@@ -159,6 +160,29 @@ function deferred<T>(): { readonly promise: Promise<T>, resolve(value?: T): void
 function actionNode(id = 'go', confirm?: string): MayflyUiNode {
   return ui.actions({ id: 'actions', items: [{ id, label: id, ...(confirm === undefined ? {} : { confirm }) }] })
 }
+
+it('invalidates and repaints an overlay when the bytes of its image arrive', async () => {
+  const read = vi.fn<MayflyUiImageSource['read']>(() => ({ state: 'missing' }))
+  const bench = await fixture(80, 24, components, undefined, { read })
+  try {
+    const prompt = { focused: false, render: () => ['prompt'], invalidate() {}, handleInput() {} }
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', prompt)
+    slot.focus()
+    bench.open({ id: 'photo', title: 'Photo', presentation: 'editor', capturing: true, render: () => ui.image({ attachmentId: 'att-1', alt: '[Image #1]' }) })
+    await flush()
+    expect(slot.component.render(80).join('\n')).toContain('[Image #1]')
+    expect(read).toHaveBeenCalledWith('att-1', expect.any(Function))
+    const repaint = vi.spyOn(bench.runtime, 'requestRender')
+    read.mock.calls.at(-1)![1]()
+    expect(repaint).toHaveBeenCalledOnce()
+    // The invalidation moved the surface on: the next frame asks the source again instead of showing remembered rows.
+    const asked = read.mock.calls.length
+    slot.component.render(80)
+    expect(read.mock.calls.length).toBeGreaterThan(asked)
+  } finally {
+    await bench.dispose()
+  }
+})
 
 it('presents registered editor overlays in the fixed dock and restores drafts after renderer reload', async () => {
   const bench = await fixture()
@@ -559,7 +583,7 @@ describe('direct overlay surface renderer', () => {
       translated.refresh()
       await flush()
       const translatedRows = f.stack()[0]!.component.render(60)
-      expect(translatedRows[0]).toMatch(/^╭ Actions/u)
+      expect(translatedRows[0]!.replace(/\x1b\[[0-9;]*m/gu, '')).toMatch(/^╭ Actions/u)
       expect(translatedRows.at(-2)).toContain('translated:run')
       translated.close()
       await flush()
@@ -567,7 +591,7 @@ describe('direct overlay surface renderer', () => {
       f.open({ id: 'failed', title: 'Failed result', render: () => ({ kind: 'unknown' }) as never })
       await flush()
       const failedRows = f.stack()[0]!.component.render(30)
-      expect(failedRows[0]).toMatch(/^╭ Failed result/u)
+      expect(failedRows[0]!.replace(/\x1b\[[0-9;]*m/gu, '')).toMatch(/^╭ Failed result/u)
       expect(failedRows.join(' ')).toContain('Mayfly UI')
       expect(failedRows.every(row => visibleWidth(row) <= 30)).toBe(true)
       f.root.mayflyOverlays.close('failed')
@@ -582,7 +606,7 @@ describe('direct overlay surface renderer', () => {
       await flush()
       const rows = f.stack()[0]!.component.render(20)
       expect(rows).toHaveLength(5)
-      expect(rows[0]).toMatch(/^╭ Bounded/u)
+      expect(stripTerminalSequences(rows[0]!)).toMatch(/^╭ Bounded/u)
       expect(rows.at(-1)).toBe('╰──────────────────╯')
       expect(rows.slice(1, -1).map(stripTerminalSequences).every(row => /^│.*│$/u.test(row))).toBe(true)
     } finally {
@@ -602,20 +626,20 @@ describe('direct overlay surface renderer', () => {
       component.invalidate()
       expect((f.runtime.tui as unknown as TuiInternals).getFocusedComponent()).toBe(component)
       await settleInput(component, 'B')
-      expect(component.render(80).join('\n')).toContain('name: AB')
+      expect(stripTerminalSequences(component.render(80).join('\n'))).toContain('name: AB')
       handle.refresh()
       await flush()
       expect(f.stack()[0]!.component).toBe(component)
       expect((component as MayflyFocusable).focused).toBe(true)
-      expect(component.render(80).join('\n')).toContain('name: AB')
+      expect(stripTerminalSequences(component.render(80).join('\n'))).toContain('name: AB')
       await settleInput(component, 'C')
-      expect(component.render(80).join('\n')).toContain('name: ABC')
+      expect(stripTerminalSequences(component.render(80).join('\n'))).toContain('name: ABC')
       handle.set(inputNode('name', 'A'), { reason: 'replace' })
       await flush()
       const replacement = f.stack()[0]!.component
       expect(replacement).not.toBe(component)
-      expect(replacement.render(80).join('\n')).toContain('name: A')
-      expect(replacement.render(80).join('\n')).not.toContain('name: ABC')
+      expect(stripTerminalSequences(replacement.render(80).join('\n'))).toContain('name: A')
+      expect(stripTerminalSequences(replacement.render(80).join('\n'))).not.toContain('name: ABC')
       handle.close()
       await flush()
       expect(base.focused).toBe(true)
@@ -741,7 +765,7 @@ describe('direct overlay surface renderer', () => {
       expect(renders).toBe(1)
       await settleInput(component, 'C')
       expect(value).toBe('ABC')
-      expect(component.render(80).join('\n')).toContain('Name: ABC')
+      expect(stripTerminalSequences(component.render(80).join('\n'))).toContain('Name: ABC')
     } finally {
       await f.dispose()
     }
@@ -1061,24 +1085,24 @@ it('animates editor loaders independently and pauses hidden, covered, completed,
     const read = () => slot.component.render(80).map(stripTerminalSequences).join('\n')
     const model = bench.root.mayflyUiInteraction.get('overlay', 'loading')!
     const revision = model.revision
-    expect(read()).toContain('⠋ Loading workspaces…')
-    await vi.advanceTimersByTimeAsync(80)
-    expect(read()).toContain('⠙ Loading workspaces…')
+    expect(read()).toContain('⣾ Loading workspaces…')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(read()).toContain('⣽ Loading workspaces…')
     expect(model.revision).toBe(revision)
     handle.set(ui.loader({ message: 'Loading session names… 1/10' }))
     await flush()
-    expect(read()).toContain('⠙ Loading session names… 1/10')
-    await vi.advanceTimersByTimeAsync(80)
-    expect(read()).toContain('⠹ Loading session names… 1/10')
+    expect(read()).toContain('⣽ Loading session names… 1/10')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(read()).toContain('⣻ Loading session names… 1/10')
     handle.hide(); await flush()
     expect(read()).toBe('prompt')
     const requests = vi.spyOn(bench.runtime, 'requestRender')
     await vi.advanceTimersByTimeAsync(500)
     expect(requests).not.toHaveBeenCalled()
     handle.show(); await flush()
-    expect(read()).toContain('⠹ Loading session names…')
-    await vi.advanceTimersByTimeAsync(80)
-    expect(read()).toContain('⠸ Loading session names…')
+    expect(read()).toContain('⣻ Loading session names…')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(read()).toContain('⢿ Loading session names…')
     const covering = bench.open({ id: 'detail', presentation: 'editor', capturing: true, render: () => ui.text('Detail') })
     await flush()
     read()
@@ -1086,9 +1110,9 @@ it('animates editor loaders independently and pauses hidden, covered, completed,
     await vi.advanceTimersByTimeAsync(500)
     expect(requests).not.toHaveBeenCalled()
     covering.close(); await flush()
-    expect(read()).toContain('⠸ Loading session names…')
-    await vi.advanceTimersByTimeAsync(80)
-    expect(read()).toContain('⠼ Loading session names…')
+    expect(read()).toContain('⢿ Loading session names…')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(read()).toContain('⡿ Loading session names…')
     handle.set(ui.text('Ready')); await flush(); read()
     requests.mockClear()
     await vi.advanceTimersByTimeAsync(500)
@@ -1099,9 +1123,9 @@ it('animates editor loaders independently and pauses hidden, covered, completed,
     await vi.advanceTimersByTimeAsync(500)
     expect(requests).not.toHaveBeenCalled()
     const replacement = bench.mount(); await flush()
-    expect(read()).toContain('⠋ Reloading')
-    await vi.advanceTimersByTimeAsync(80)
-    expect(read()).toContain('⠙ Reloading')
+    expect(read()).toContain('⣾ Reloading')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(read()).toContain('⣽ Reloading')
     handle.close(); await flush()
     requests.mockClear()
     await vi.advanceTimersByTimeAsync(500)

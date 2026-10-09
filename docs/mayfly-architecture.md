@@ -105,6 +105,15 @@ plugin bridge, and no app session facade.
   observes the pane and overlay registries separately, survives renderer
   absence, and cleans up an instance on registration replace/remove or provider
   unload.
+- The frontend also holds `mayflyUiImages`, the byte source behind `image`
+  nodes. The host tree provides loaders that resolve an attachment id to bytes
+  (Fiber-owned, newest first); loads are shared per id across surfaces, and a
+  node paints its `alt` until the bytes arrive and on a terminal without an
+  image protocol.
+- A `prompt` node keeps its draft, selected token, recall walk, and completion cursor in the
+  surface model, so they survive a renderer or core reload; core only leases the terminal
+  editor that mirrors the draft. The host answers its `submit`, `token-remove`,
+  `completion-accept`, and `completion-dismiss` actions and observes `recall-change`.
 - The frontend also holds `mayflyLiveAssistantStream`. Live text is received
   per exact Agent, attempt, revision, and chunk index; when recovery is needed
   it reads the native session controller's assistant-stream opening baseline

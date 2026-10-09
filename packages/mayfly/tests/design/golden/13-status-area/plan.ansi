@@ -1,0 +1,20 @@
+--- after start ---
+[2mtwo composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.[0m
+
+[2m╭[0m[2m────────────────────────────────────────────────────────────────────[0m[2m [0m[1mUpdate the landing page hero[0m[2m [0m[2m╮[0m
+[2m│[0m > ▌[2mAsk anything · / commands · @ files · # skills · ! shell[0m                                      [2m│[0m
+[2m╰──────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+deepseek-chat High  [2m~/work/mayfly[0m  [2mmain ±3[0m                      [2mcache 34%  context: 18% (22.9k/128k)[0m
+Agents 5[38;2;230;190;90m ● [0m1 waiting   Jobs 3[38;2;154;134;230m ⏵ [0m2 running   Goal [38;2;154;134;230m●[0m 2/8   Todo 4/6[38;2;154;134;230m ● [0mBump changelog           [2m↓ views[0m
+--- after "\u0010" ---
+[2mtwo composable rows: row 1 is facts (model, mode chips, context, directory, git, balance); row 2
+is views (agents, jobs, goal, todo). The conversation title is in the edit box corner; shell
+mode colors the box border.[0m
+
+[2m╭[0m[2m────────────────────────────────────────────────────────────────────[0m[2m [0m[1mUpdate the landing page hero[0m[2m [0m[2m╮[0m
+[2m│[0m > ▌[2mAsk anything · / commands · @ files · # skills · ! shell[0m                                      [2m│[0m
+[2m╰──────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+deepseek-chat High  [1m[38;2;154;134;230mPLAN[0m  [2m~/work/mayfly[0m  [2mmain ±3[0m                [2mcache 34%  context: 18% (22.9k/128k)[0m
+Agents 5[38;2;230;190;90m ● [0m1 waiting   Jobs 3[38;2;154;134;230m ⏵ [0m2 running   Goal [38;2;154;134;230m●[0m 2/8   Todo 4/6[38;2;154;134;230m ● [0mBump changelog           [2m↓ views[0m

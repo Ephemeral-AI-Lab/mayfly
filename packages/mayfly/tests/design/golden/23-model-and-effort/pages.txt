@@ -1,0 +1,21 @@
+--- after start ---
+╭ Select a model ──────────────────────────────────────────────────────────────────╮
+│ opencode-go                                                                      │
+│ → opencode-go/DeepSeek V4 Pro (New) — 977k context    min ‹ high (default) › max │
+│   opencode-go/deepseek-v4.1-flash — 977k context                                 │
+│   opencode-go/space-bunny-alpha — 256k context                                   │
+│ DeepSeek                                                                         │
+│   DeepSeek/DeepSeek-V41-Flash [current · high] — 977k context                    │
+│   DeepSeek/DeepSeek-V4-Pro — 977k context                                        │
+│ custom                                                                           │
+│   custom/some-model — 128k context                                               │
+│   ←/→ thinking · Enter choose · Type filter · Esc close                          │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+╭ DeepSeek/DeepSeek-V41-Flash ─────────────────────────────────────────────────────╮
+│ → 1  Provider default (high) [current]                                           │
+│   2  min                                                                         │
+│   3  high                                                                        │
+│   4  max                                                                         │
+│   ↑/↓ options · 1-4 choose · Enter choose · Esc close                            │
+╰──────────────────────────────────────────────────────────────────────────────────╯

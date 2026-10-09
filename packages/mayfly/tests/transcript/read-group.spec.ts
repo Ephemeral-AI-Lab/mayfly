@@ -173,7 +173,7 @@ describe('ReadGroupComponent', () => {
     const component = new ReadGroupComponent(group(reads), IDENTITY, COMPONENTS)
     const collapsed = component.render(80)
     expect(collapsed).toHaveLength(1 + 1 + READ_GROUP_ROW_LIMIT)
-    expect(collapsed.at(-1)).toContain('more, ctrl+o to expand')
+    expect(collapsed.at(-1)).toContain('more, Ctrl+O to expand')
     expect(collapsed.some(line => line.includes('first'))).toBe(false)
 
     component.setExpanded(true)
@@ -223,7 +223,7 @@ describe('ReadGroupComponent', () => {
       '     └─ read [M]⊘[/M]',
     ])
     const many = new ReadGroupComponent(group(Array.from({ length: 12 }, (_, index) => read({ callId: `m${String(index)}`, path: `f${String(index)}.ts` }))), IDENTITY, COMPONENTS)
-    expect(many.render(80).at(-1)).toBe('  ... (5 more, ctrl+o to expand)')
+    expect(many.render(80).at(-1)).toBe('  ... (5 more, Ctrl+O to expand)')
     many.setScope({ hint: false, turnClosed: false })
     expect(many.render(80).at(-1)).toBe('  ... (5 more)')
   })

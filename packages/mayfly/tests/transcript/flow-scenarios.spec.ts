@@ -165,7 +165,7 @@ describe('conversation flow scenarios', () => {
 
   it('folds a settled turn to its header and final answer, keeping file changes from Standard up', () => {
     const model = conversationTranscriptModel(scenario(false), tools)
-    const header = ' ▸ Took 38s · 14 tool calls · 1 subagent · ctrl+o to expand'
+    const header = ' ▸ Took 38s · 14 tool calls · 1 subagent · Ctrl+O to expand'
     const answer = ' ● Done. `login` is now idempotent under `retry`.'
     const compact = render(model, 'compact')
     // Blank separator rows carry the one-column gutter.
@@ -193,7 +193,7 @@ describe('conversation flow scenarios', () => {
 
   it('keeps the fold when a stale live overlay pins an ended turn open', () => {
     const settled = conversationTranscriptModel(scenario(false), tools)
-    const header = ' ▸ Took 38s · 14 tool calls · 1 subagent · ctrl+o to expand'
+    const header = ' ▸ Took 38s · 14 tool calls · 1 subagent · Ctrl+O to expand'
     let current: TranscriptModel = settled
     const policy = new TranscriptPresentationPolicy()
     policy.apply({ transcriptView: 'standard' })

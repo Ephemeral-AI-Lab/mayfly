@@ -1,0 +1,23 @@
+{
+  "W1": { "nodesValidated": 2, "unitsCompiled": 2, "rowsPainted": 2, "stringsMeasured": 3 },
+  "W2": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 1, "stringsMeasured": 40 },
+  "W3": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 2, "stringsMeasured": 40 },
+  "W4": { "nodesValidated": 1, "unitsCompiled": 1, "rowsPainted": 1, "stringsMeasured": 40 },
+  "W4b": { "nodesValidated": 5, "unitsCompiled": 4, "rowsPainted": 5, "stringsMeasured": 40 },
+  "W5": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 1, "stringsMeasured": 21 },
+  "W6": { "nodesValidated": 44, "unitsCompiled": 12, "rowsPainted": 32, "stringsMeasured": 52 },
+  "W7": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 9, "stringsMeasured": 20 },
+  "W8": { "nodesValidated": 11, "unitsCompiled": 3, "rowsPainted": 9, "stringsMeasured": 20 },
+  "W1-slot": { "nodesValidated": 2, "unitsCompiled": 2, "rowsPainted": 2, "stringsMeasured": 4 },
+  "W4-slot": { "nodesValidated": 1, "unitsCompiled": 1, "rowsPainted": 0, "stringsMeasured": 40 },
+  "W9": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 3, "stringsMeasured": 42 },
+  "W10": { "nodesValidated": 3, "unitsCompiled": 3, "rowsPainted": 7, "stringsMeasured": 7 },
+  "W11": { "nodesValidated": 2, "unitsCompiled": 2, "rowsPainted": 2, "stringsMeasured": 2 },
+  "W12-rail": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 8, "stringsMeasured": 40 },
+  "W12-prompt": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 6, "stringsMeasured": 40 },
+  "W13": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 0, "componentRenders": 0, "controlWalks": 0, "reconciles": 1, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
+  "W14": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 0, "componentRenders": 0, "controlWalks": 0, "reconciles": 0, "layoutPasses": 0, "clockTicks": 0, "keymapSnapshots": 0 },
+  "W15": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 2, "stringsMeasured": 0, "componentRenders": 2, "controlWalks": 0, "reconciles": 1, "layoutPasses": 1, "clockTicks": 1, "keymapSnapshots": 0 },
+  "W16": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 8, "componentRenders": 0, "controlWalks": 0, "reconciles": 2, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
+  "W17": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 0, "componentRenders": 0, "controlWalks": 0, "reconciles": 0, "layoutPasses": 0, "clockTicks": 0, "keymapSnapshots": 0 }
+}

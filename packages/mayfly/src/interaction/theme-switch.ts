@@ -23,7 +23,6 @@ import * as themeLight from '../core/theme-light.ts'
 import * as themeOcean from '../core/theme-ocean.ts'
 import * as themePaper from '../core/theme-paper.ts'
 import { interactionTranslator } from './locale.ts'
-import { CURRENT_MARK } from './symbols.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
 /** Usage text returned for malformed `/theme` invocations. */
@@ -55,8 +54,8 @@ const KNOWN_KEYS = ['dark', 'light', 'ocean', 'paper', 'auto', 'custom'] as cons
 
 /**
  * The bare `/theme` picker: a choose-list overlay over the known keys with
- * the live row carrying the shared `← current` badge (the same vocabulary
- * as the session picker). Selecting a row swaps the provider; the `custom`
+ * the live row carrying the one muted `[current]` badge (spec §2.2), the
+ * same vocabulary as every picker. Selecting a row swaps the provider; the `custom`
  * row only flashes the usage hint since it needs a path argument. The
  * registration lives on the commands fiber, which does not inject
  * `mayflyTheme`, so the picker survives the swap it triggers.
@@ -85,7 +84,7 @@ function openThemePicker(ctx: Context): CommandResult {
     id: 'themes', role: 'choose', selectedIds: [current],
     items: KNOWN_KEYS.map(key => ({
       id: key, label: key,
-      ...(key === current ? { badge: CURRENT_MARK } : {}),
+      ...(key === current ? { badge: t('current') } : {}),
       ...(key === 'custom' ? { detail: t(USAGE) } : {}),
     })),
   }) }), { reopen: 'replace' })
@@ -127,6 +126,20 @@ async function switchTheme(ctx: Context, next: ThemeTarget, config?: themeCustom
   }
   ctx.mayflyInteractionState.currentThemeKey = next.key
   return { kind: 'success', text: t('switched to theme "{key}"', { key: next.key }) }
+}
+
+/**
+ * Restart the live theme provider with its current config. Every consumer rebuilds through Cordis reload semantics,
+ * exactly as for a `/theme` switch, which is how a presentation change (glyphs, monochrome, reduced motion) reaches
+ * every painter and retires every cached row.
+ * @param ctx - plugin context.
+ */
+export async function reloadTheme(ctx: Context): Promise<void> {
+  const key = ctx.mayflyInteractionState.currentThemeKey
+  const target = key === CUSTOM.key ? CUSTOM : BUILTIN.get(key) ?? DARK
+  const runtime = ctx.registry.get(target.module)
+  if (runtime === undefined) return
+  await Promise.all([...runtime.fibers].map(fiber => fiber.restart()))
 }
 
 /** Apply a built-in theme by key for the persisted settings default. */

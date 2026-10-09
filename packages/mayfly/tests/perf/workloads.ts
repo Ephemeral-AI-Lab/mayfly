@@ -1,0 +1,448 @@
+/**
+ * The work-budget workloads W1 to W8 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
+ * node slot (slice 1.10a), the path the footer and the conversation take from Phases 3 and 6. Each one builds a surface of
+ * a stated shape, then runs one steady-state step that publishes, presses a key, or ticks the clock, and reports the
+ * counters of that step alone. The counts are deterministic, so a spec gates them; `script/audit-performance.mjs`
+ * runs the same workloads beside its wall-clock timings.
+ */
+
+import { Context } from '@deepseek-ai/cordis'
+import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { freezeWire, ui } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
+import { MayflyScreenService } from '../../src/core/screen.ts'
+import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import {
+  MayflyUiSurfaceRuntime,
+  compileMayflyStatusNode,
+  compileMayflyUiSurfaceNode,
+  type MayflyCompiledUi,
+  type MayflyUiCompilerOptions,
+} from '../../src/core/ui-compiler.ts'
+import { MayflyCompileCache } from '../../src/core/ui-compile-cache.ts'
+import { createAdmissionCache } from '../../src/core/ui-validator.ts'
+import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
+import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
+import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { createFakeEditor } from '../core/fake-editor.ts'
+
+/** What a workload needs from its host: a clock it can advance (fake timers under vitest, mock timers in a script). */
+export interface WorkloadEnvironment {
+  readonly advance: (milliseconds: number) => void
+}
+
+export interface WorkloadRun {
+  /** Runs the measured step once. */
+  step(): void
+  dispose(): void
+}
+
+export interface Workload {
+  readonly id: string
+  readonly title: string
+  /** Builds the surface and warms it with one paint; the counters start at zero when `step` runs. */
+  setup(counters: MayflyWorkCounters, environment: WorkloadEnvironment): WorkloadRun
+}
+
+const identity = (value: string): string => value
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const components = {
+  visibleWidth,
+  wrapText: wrapTextWithAnsi,
+  truncateToWidth,
+  sliceByColumn,
+  createEditor: createFakeEditor,
+  createMarkdown: (options?: { text?: string }) => {
+    let value = options?.text ?? ''
+    return { setText: (text: string) => { value = text }, render: (width: number) => wrapTextWithAnsi(value, width), invalidate: () => {} }
+  },
+} as unknown as MayflyComponents
+
+const WIDTH = 100
+const ROWS = 40
+
+/** One published surface the way the host holds it: a model, a runtime, and the component compiled from them. */
+class Surface {
+  readonly model: UiSurfaceModel
+  readonly runtime: MayflyUiSurfaceRuntime
+  private readonly events = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }
+  private revision = 1
+  private compiled: MayflyCompiledUi | undefined
+
+  constructor(id: string, node: MayflyUiNode, private readonly counters: MayflyWorkCounters, private readonly width = WIDTH) {
+    this.model = new UiSurfaceModel(id, this.snapshot(id, node), { counters })
+    if (this.model.node === null || (this.model.node.kind === 'text' && this.model.node.tone === 'danger')) throw new Error(`workload surface ${id} was rejected by admission`)
+    this.runtime = new MayflyUiSurfaceRuntime(this.model, () => { this.compiled?.component.invalidate?.() })
+  }
+
+  private snapshot(id: string, node: MayflyUiNode): UiSurfaceSnapshot {
+    return {
+      id, node, revision: this.revision, source: [], scope: { kind: 'app', targetId: id }, update: { reason: 'data' },
+      events: this.events, definition: { onEvent: {} },
+    } as unknown as UiSurfaceSnapshot
+  }
+
+  private options(): MayflyUiCompilerOptions & { surfaceRuntime: MayflyUiSurfaceRuntime } {
+    return {
+      components, colors, getViewport: () => ({ columns: this.width, rows: ROWS }), screenMode: 'alternate',
+      emit: (_event: MayflyUiEvent) => {}, contextHints: { enabled: true }, counters: this.counters, surfaceRuntime: this.runtime,
+    }
+  }
+
+  /** Compiles the model's node, as the surface renderer does after a publish. */
+  compile(): MayflyCompiledUi {
+    const result = compileMayflyUiSurfaceNode(this.model.node!, this.options())
+    if (!result.ok) throw new Error(result.message)
+    this.compiled = result.value
+    if (this.compiled.focusTarget !== null) this.compiled.focusTarget.focused = true
+    return this.compiled
+  }
+
+  render(width = this.width): string[] {
+    return (this.compiled ?? this.compile()).component.render(width)
+  }
+
+  /** A new snapshot of the same surface: admission, recompile, and paint. */
+  publish(node: MayflyUiNode): string[] {
+    this.revision += 1
+    this.model.receive(this.snapshot(this.model.instanceId, node))
+    this.compile()
+    return this.render()
+  }
+
+  press(key: string): string[] {
+    ;(this.compiled ?? this.compile()).focusTarget?.handleInput?.(key)
+    return this.render()
+  }
+
+  dispose(): void {
+    this.runtime.dispose()
+    this.model.dispose()
+  }
+}
+
+/**
+ * A screen whose node slots are bound the way the surface renderer binds them, over a runtime that only holds the hosts
+ * and moves focus: the mounting path of the footer, the editor, and the conversation (roadmap slice 1.10a).
+ */
+class SlotScreen {
+  private readonly added: MayflyComponent[] = []
+  private readonly bottom: MayflyComponent[] = []
+  private readonly unbind: () => void
+  private readonly slots: MayflyNodeSlot[] = []
+  private readonly screen: MayflyScreenService
+
+  constructor(counters: MayflyWorkCounters) {
+    const root = new Context()
+    const runtime = {
+      mode: 'alternate', columns: WIDTH, rows: ROWS, surfaceLaneRows: () => 0, hasCapturingOverlay: () => false,
+      addChild: (component: MayflyComponent) => { this.added.push(component) },
+      addBottomChild: (component: MayflyComponent) => { this.bottom.push(component) },
+      setFocus: (component: MayflyComponent | null) => { if (component !== null) (component as MayflyFocusable).focused = true },
+      requestRender: () => {},
+    } as unknown as MayflyTerminalRuntime
+    this.screen = new MayflyScreenService(root, runtime)
+    this.unbind = this.screen.bindNodeSlots({
+      interaction: new UiInteractionService(root), components, colors, keymap: {} as MayflyKeymap, mode: 'alternate', requestRender: () => {}, counters,
+    })
+  }
+
+  /** Leases the footer or the conversation and returns the lease with the host that paints it. */
+  mount(region: 'footer' | 'content'): { readonly slot: MayflyNodeSlot, readonly host: MayflyComponent } {
+    const slot = region === 'footer' ? this.screen.mountNodeSlot('status.footer', { region }) : this.screen.mountNodeSlot('transcript.conversation', { region })
+    this.slots.push(slot)
+    return { slot, host: region === 'footer' ? this.bottom[1]! : this.added[1]! }
+  }
+
+  dispose(): void {
+    for (const slot of this.slots) slot.dispose()
+    this.unbind()
+  }
+}
+
+const reset = (counters: MayflyWorkCounters): void => { Object.assign(counters, createWorkCounters()) }
+
+const item = (index: number, extra = {}): { id: string, label: string, detail: string } => ({ id: `item-${String(index)}`, label: `Item number ${String(index)}`, detail: `detail ${String(index)}`, ...extra })
+
+function listNode(id: string, items: readonly ReturnType<typeof item>[]): MayflyUiNode {
+  return ui.list({ id, role: 'browse', selectedIds: [], items })
+}
+
+function fieldBlock(prefix: string, count: number, revision = 0): MayflyUiNode {
+  return ui.form({
+    id: `${prefix}-form`,
+    fields: Array.from({ length: count }, (_, index) => ({ kind: 'input' as const, id: `${prefix}-${String(index)}`, label: `Field ${String(index)}`, value: `value ${String(index)} ${String(revision)}` })),
+  })
+}
+
+/** A settings-sized panel: a form of ten fields over a short list. */
+function settingsPanel(): MayflyUiNode {
+  return ui.stack.column([ui.child(fieldBlock('settings', 10)), ui.child(listNode('namespaces', Array.from({ length: 8 }, (_, index) => item(index))))])
+}
+
+/** W6 with `changed` of the 32 panes republished in one burst; the spec checks that the work grows with `changed`, not with 32. */
+export function swarmWorkload(changed: number): Workload {
+  return {
+    id: 'W6', title: `swarm: 32 panes of a field block and an 8-item list, a burst changes ${String(changed)} of them`,
+    setup(counters) {
+      const paneNode = (index: number, revision = 0): MayflyUiNode => ui.stack.column([ui.child(fieldBlock(`pane-${String(index)}`, 4, revision)), ui.child(listNode(`list-${String(index)}`, Array.from({ length: 8 }, (__, row) => item(row))))])
+      const panes = Array.from({ length: 32 }, (_, index) => new Surface(`w6-${String(index)}`, paneNode(index), counters))
+      for (const pane of panes) pane.render()
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          for (let step = 0; step < changed; step += 1) {
+            const index = 3 + step * 8
+            panes[index]!.publish(paneNode(index, revision))
+          }
+        },
+        dispose: () => { for (const pane of panes) pane.dispose() },
+      }
+    },
+  }
+}
+
+export const WORKLOADS: readonly Workload[] = [
+  {
+    id: 'W1', title: 'status tick: a row of 12 entries, one entry changes',
+    setup(counters) {
+      const entries = Array.from({ length: 12 }, (_, index) => ui.richText([{ text: `entry ${String(index)} ` }, { text: '0', tone: 'muted' }]))
+      let revision = 0
+      const admission = createAdmissionCache()
+      const reuse = new MayflyCompileCache()
+      const publish = (): void => {
+        revision += 1
+        const children = entries.map((entry, index) => ui.child(index === 11 ? ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]) : entry))
+        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters, admission, reuse })
+        if (!result.ok) throw new Error(result.message)
+        result.value.component.render(WIDTH)
+      }
+      publish()
+      reset(counters)
+      return { step: publish, dispose: () => {} }
+    },
+  },
+  {
+    id: 'W2', title: 'spinner tick: 120 static rows (the tree quota is 256 nodes) and one loader, one clock tick',
+    setup(counters, environment) {
+      const rows = Array.from({ length: 120 }, (_, index) => ui.child(ui.text(`static row ${String(index)}`)))
+      const surface = new Surface('w2', ui.stack.column([ui.child(ui.loader({ message: 'Working', variant: 'braille' })), ...rows]), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { environment.advance(100); surface.render() }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W3', title: 'list cursor: a list of 10,000 items, Down',
+    setup(counters) {
+      const surface = new Surface('w3', listNode('big', Array.from({ length: 10_000 }, (_, index) => item(index))), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[B') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W4', title: 'stream: a list of 2,000 items, the last item changes',
+    setup(counters) {
+      // A stream keeps its settled items as frozen snapshots, so a republish shares them by identity.
+      const items = Array.from({ length: 2000 }, (_, index) => freezeWire(item(index)))
+      const surface = new Surface('w4', listNode('stream', items), counters)
+      surface.render()
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          surface.publish(listNode('stream', [...items.slice(0, -1), item(1999, { detail: `streaming ${String(revision)}` })]))
+        },
+        dispose: () => surface.dispose(),
+      }
+    },
+  },
+  {
+    id: 'W4b', title: 'stream with bodies: a list of 2,000 items that each carry a node body, the last item (always open) changes',
+    setup(counters) {
+      const body = freezeWire(ui.stack.column([ui.text('first line of the body'), ui.text('second line of the body')]))
+      const items = Array.from({ length: 2000 }, (_, index) => freezeWire(item(index, { body })))
+      const last = (revision: number) => item(1999, { detail: `streaming ${String(revision)}`, body: ui.stack.column([ui.text(`streamed ${String(revision)}`), ui.text('a second line')]), bodyAlways: true })
+      const surface = new Surface('w4b', listNode('stream', [...items.slice(0, -1), last(0)]), counters)
+      surface.render()
+      // The reader follows the tail, where the changing row is.
+      surface.press('\x1b[F')
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          surface.publish(listNode('stream', [...items.slice(0, -1), last(revision)]))
+        },
+        dispose: () => surface.dispose(),
+      }
+    },
+  },
+  {
+    id: 'W12-rail', title: 'rail cursor: a rail of 60 labels in six groups beside its content, Down (the content follows live)',
+    setup(counters) {
+      const items = Array.from({ length: 60 }, (_, index) => ({ id: `label-${String(index)}`, label: `Label number ${String(index)}`, group: `Group ${String(Math.floor(index / 10))}`, ...(index % 7 === 0 ? { count: index } : {}) }))
+      const panel = ui.stack.row([
+        ui.child(ui.tabs({ id: 'rail', orientation: 'vertical', items, activeId: 'label-0' }), { basis: 28, shrink: 0 }),
+        ...items.slice(0, 2).map(entry => ui.child(ui.text(`the page of ${entry.label}`), { grow: 1, tab: { controlId: 'rail', itemId: entry.id } })),
+      ], { gap: 2 })
+      const surface = new Surface('w12-rail', panel, counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[B') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W5', title: 'form key: a form of 20 fields, one keystroke into the focused field',
+    setup(counters) {
+      const surface = new Surface('w5', fieldBlock('typing', 20), counters)
+      surface.render()
+      surface.press('\r')
+      reset(counters)
+      return { step: () => { surface.press('a') }, dispose: () => surface.dispose() }
+    },
+  },
+  swarmWorkload(4),
+  {
+    id: 'W7', title: 'resize: a settings-sized panel painted at a new width',
+    setup(counters) {
+      const surface = new Surface('w7', settingsPanel(), counters)
+      surface.render(WIDTH)
+      let wide = false
+      reset(counters)
+      return { step: () => { wide = !wide; surface.render(wide ? 60 : WIDTH) }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W8', title: 'cold open: a settings-sized panel, the first publish',
+    setup(counters) {
+      let surface: Surface | undefined
+      return {
+        step: () => {
+          surface = new Surface('w8', settingsPanel(), counters)
+          surface.render()
+        },
+        dispose: () => surface?.dispose(),
+      }
+    },
+  },
+  {
+    id: 'W1-slot', title: 'status tick through the node slot: a footer row of 12 entries, one entry changes',
+    setup(counters) {
+      const entries = Array.from({ length: 11 }, (_, index) => ui.child(ui.richText([{ text: `entry ${String(index)} ` }, { text: '0', tone: 'muted' }])))
+      const screen = new SlotScreen(counters)
+      const { slot, host } = screen.mount('footer')
+      let revision = 0
+      const publish = (): void => {
+        revision += 1
+        slot.set(ui.stack.row([...entries, ui.child(ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]))]))
+        host.render(WIDTH)
+      }
+      publish()
+      reset(counters)
+      return { step: publish, dispose: () => { screen.dispose() } }
+    },
+  },
+  {
+    id: 'W4-slot', title: 'stream through the node slot: a focused conversation list of 2,000 items, the last item changes',
+    setup(counters) {
+      const items = Array.from({ length: 2000 }, (_, index) => freezeWire(item(index)))
+      const screen = new SlotScreen(counters)
+      const { slot, host } = screen.mount('content')
+      slot.set(listNode('stream', items))
+      slot.focus()
+      host.render(WIDTH)
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          slot.set(listNode('stream', [...items.slice(0, -1), item(1999, { detail: `streaming ${String(revision)}` })]))
+          host.render(WIDTH)
+        },
+        dispose: () => { screen.dispose() },
+      }
+    },
+  },
+  {
+    id: 'W9', title: 'motion tick: a shimmering label, a breath cell, and a draining bar among 120 static rows, one clock tick',
+    setup(counters, environment) {
+      const rows = Array.from({ length: 120 }, (_, index) => ui.child(ui.text(`static row ${String(index)}`)))
+      const surface = new Surface('w9', ui.stack.column([
+        ui.child(ui.richText([{ text: 'Running commands', motion: 'shimmer' }, { text: ' · 12s', tone: 'muted' }])),
+        ui.child(ui.richText([{ text: '', motion: 'loader', variant: 'breath' }, { text: ' Waiting for authorization' }])),
+        ui.child(ui.progress({ value: 9, max: 100, style: 'cells', showPercent: true, transition: { from: 91, ms: 800, rev: 1 } })),
+        ...rows,
+      ]), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { environment.advance(100); surface.render() }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W10', title: 'scroll region: a 100-line log in a 6-row region that follows its tail, one line arrives',
+    setup(counters) {
+      // Settled lines are frozen snapshots, so a republish shares them by identity and only the new line is admitted.
+      const lines = Array.from({ length: 100 }, (_, index) => freezeWire(ui.text(`log line ${String(index + 1)}`)))
+      const log = (count: number): MayflyUiNode => ui.scroll(ui.stack.column([...lines, ...Array.from({ length: count }, (_, index) => ui.text(`log line ${String(101 + index)}`))]), { id: 'log', follow: 'end', height: 6 })
+      const surface = new Surface('w10', log(0), counters)
+      surface.render()
+      let arrived = 0
+      reset(counters)
+      return { step: () => { arrived += 1; surface.publish(log(arrived)) }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W11', title: 'admission row: a status row of 12 prioritized entries, one entry changes',
+    setup(counters) {
+      const entries = Array.from({ length: 12 }, (_, index) => ui.richText([{ text: `entry ${String(index)} ` }, { text: '0', tone: 'muted' }]))
+      let revision = 0
+      const admission = createAdmissionCache()
+      const reuse = new MayflyCompileCache()
+      const publish = (): void => {
+        revision += 1
+        const children = entries.map((entry, index) => ui.child(index === 11 ? ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]) : entry, { priority: index }))
+        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters, admission, reuse })
+        if (!result.ok) throw new Error(result.message)
+        result.value.component.render(WIDTH)
+      }
+      publish()
+      reset(counters)
+      return { step: publish, dispose: () => {} }
+    },
+  },
+  {
+    id: 'W12-prompt', title: 'prompt keystroke: a prompt with five tokens, a four-entry recall, and an open completion list among 120 static rows, one key',
+    setup(counters) {
+      const rows = Array.from({ length: 120 }, (_, index) => ui.child(ui.text(`static row ${String(index)}`)))
+      const prompt = ui.prompt({
+        id: 'w12', autofocus: true,
+        tokens: Array.from({ length: 5 }, (_, index) => ({ id: `t${String(index)}`, label: `file${String(index)}.md`, size: '2 KB' })),
+        recall: Array.from({ length: 4 }, (_, index) => ({ kind: 'history' as const, text: `earlier message ${String(index)}` })),
+        completions: { items: Array.from({ length: 5 }, (_, index) => ({ id: `c${String(index)}`, label: `/command${String(index)}`, detail: 'a command' })) },
+      })
+      const surface = new Surface('w12', ui.stack.column([ui.child(prompt), ...rows]), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('x') }, dispose: () => surface.dispose() }
+    },
+  },
+]
+
+/** Runs one workload and returns the counters of its measured step. */
+export function measureWorkload(workload: Workload, environment: WorkloadEnvironment): MayflyWorkCounters {
+  const counters = createWorkCounters()
+  const run = workload.setup(counters, environment)
+  try {
+    run.step()
+    return { ...counters }
+  } finally {
+    run.dispose()
+  }
+}

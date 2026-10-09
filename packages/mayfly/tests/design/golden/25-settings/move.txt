@@ -1,0 +1,36 @@
+--- after start ---
+╭ Settings ────────────────────────────────────────────────────────────────────────╮
+│ → General             General                                                    │
+│   Model                                                                          │
+│   Permissions           Language:      English                                   │
+│   Providers             Notifications: [on]                                      │
+│   Appearance            Telemetry:     [off]                                     │
+│   ↑/↓ labels · → open · Esc close                                                │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+╭ Settings ────────────────────────────────────────────────────────────────────────╮
+│   General             Model                                                      │
+│ → Model                                                                          │
+│   Permissions           Model:   deepseek-chat  (inherited)                      │
+│   Providers             Effort:  medium  (inherited)                             │
+│   Appearance            Context: 128 k  (inherited)                              │
+│   ↑/↓ labels · → open · Esc close                                                │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+╭ Settings ────────────────────────────────────────────────────────────────────────╮
+│   General             Permissions                                                │
+│   Model                                                                          │
+│ → Permissions           Preset:     Default                                      │
+│   Providers             Auto-allow: read, grep                                   │
+│   Appearance                                                                     │
+│   ↑/↓ labels · → open · Esc close                                                │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+╭ Settings ────────────────────────────────────────────────────────────────────────╮
+│   General             Providers                                                  │
+│   Model                                                                          │
+│   Permissions           Provider: DeepSeek                                       │
+│ → Providers             API key:  •••••••••• (saved)                             │
+│   Appearance                                                                     │
+│   ↑/↓ labels · → open · Esc close                                                │
+╰──────────────────────────────────────────────────────────────────────────────────╯

@@ -1,0 +1,54 @@
+--- after start ---
+[2msurface 1/6 (Ctrl+N): command palette: / then type · Enter run[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mCommands[0m[38;2;154;134;230m [0m[38;2;154;134;230m────────────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [1m/model[0m [2m— Switch model[0m                                                    [2mAlt+M[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /effort [2m— Set thinking effort[0m                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /compact [2m— Compact the context[0m                                                 [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /clear [2m— Start a fresh conversation[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /rewind [2m— Restore a checkpoint[0m                                         [2mEsc Esc[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /sessions [2m— Browse and resume sessions[0m                                         [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /settings [2m— Edit settings[0m                                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /jobs [2m— Browse background jobs[0m                                                 [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /agents [2m— Browse subagents[0m                                                  [2mF7[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /status [2m— Show session status[0m                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /schedule [2m— Show scheduled reminders[0m                                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /btw [2m— Ask a side question[0m                                                     [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0mEnter [2mchoose[0m[2m · [0mType [2mfilter[0m[2m · [0mEsc [2mclose[0m                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u001b[B" ---
+[2msurface 1/6 (Ctrl+N): command palette: / then type · Enter run[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mCommands[0m[38;2;154;134;230m [0m[38;2;154;134;230m────────────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m   /model [2m— Switch model[0m                                                    [2mAlt+M[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [1m/effort[0m [2m— Set thinking effort[0m                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /compact [2m— Compact the context[0m                                                 [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /clear [2m— Start a fresh conversation[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /rewind [2m— Restore a checkpoint[0m                                         [2mEsc Esc[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /sessions [2m— Browse and resume sessions[0m                                         [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /settings [2m— Edit settings[0m                                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /jobs [2m— Browse background jobs[0m                                                 [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /agents [2m— Browse subagents[0m                                                  [2mF7[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /status [2m— Show session status[0m                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /schedule [2m— Show scheduled reminders[0m                                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /btw [2m— Ask a side question[0m                                                     [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0mEnter [2mchoose[0m[2m · [0mType [2mfilter[0m[2m · [0mEsc [2mclose[0m                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "\u001b[B" ---
+[2msurface 1/6 (Ctrl+N): command palette: / then type · Enter run[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mCommands[0m[38;2;154;134;230m [0m[38;2;154;134;230m────────────────────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m   /model [2m— Switch model[0m                                                    [2mAlt+M[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /effort [2m— Set thinking effort[0m                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [1m/compact[0m [2m— Compact the context[0m                                                 [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /clear [2m— Start a fresh conversation[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /rewind [2m— Restore a checkpoint[0m                                         [2mEsc Esc[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /sessions [2m— Browse and resume sessions[0m                                         [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /settings [2m— Edit settings[0m                                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /jobs [2m— Browse background jobs[0m                                                 [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /agents [2m— Browse subagents[0m                                                  [2mF7[0m [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /status [2m— Show session status[0m                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /schedule [2m— Show scheduled reminders[0m                                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   /btw [2m— Ask a side question[0m                                                     [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0mEnter [2mchoose[0m[2m · [0mType [2mfilter[0m[2m · [0mEsc [2mclose[0m                           [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m

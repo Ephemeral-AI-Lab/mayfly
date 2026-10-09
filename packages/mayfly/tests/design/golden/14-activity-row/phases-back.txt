@@ -1,0 +1,103 @@
+--- after start ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+· Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+· Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+· Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+· Thinking
+  ⎿ Checking whether the ac…
+--- after "V" ---
+phase 6/6 (v): Stopping: nothing moves
+
+■ interrupting…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+■ interrupting…
+
+■ interrupting…
+
+■ interrupting…
+--- after "V" ---
+phase 5/6 (v): Waiting on you: nothing moves
+
+? Waiting for your action · 8s
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+? Waiting for your action · 8s
+
+? Waiting for your action · 8s
+
+? Waiting for your action
+--- after "V" ---
+phase 4/6 (v): Waiting on an external action: ● breathes, the label is still
+
+● Waiting for authorization · 45s                                                     Esc cancel
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+● Waiting for authorization · 45s                 Esc cancel
+
+● Waiting for authorization   Esc cancel
+
+● Waiting for authorization
+--- after "V" ---
+phase 3/6 (v): Deep diving on the model: the glyph fills; the tip lives in the gap
+
+⡀ Deep diving · 2s                                                                  Tip: @ files
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+⡀ Deep diving · 2s                              Tip: @ files
+
+⡀ Deep diving · 2s          Tip: @ files
+
+⡀ Deep diving   Tip: @ files
+--- after "V" ---
+phase 2/6 (v): Tool running: the label shimmers, ● is still
+
+● Running commands · 12s · ↑30.2k ↓4.1k · 38 tok/s                 Esc interrupt · Ctrl+O expand
+  ⎿ pnpm run verify:changed -- --plan
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+● Running commands             Esc interrupt · Ctrl+O expand
+  ⎿ pnpm run verify:changed -- --plan
+
+● Running commands
+  ⎿ pnpm run verify:changed -- --plan
+
+● Running commands
+  ⎿ pnpm run verify:changed…
+--- after "V" ---
+phase 1/6 (v): Thinking: the glyph moves, the label is still
+
+· Thinking · 8s · ↑30.2k ↓1.1k                                     Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than the latest tool name, since every tool…
+
+idle: nothing is rendered. Narrow widths shed the detail lines, then the connector, then the
+counters, then the gap:
+
+· Thinking · 8s · ↑30.2k ↓1.1k Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row can show more than th…
+
+· Thinking Esc interrupt · Ctrl+O expand
+  ⎿ Checking whether the activity row c…
+
+· Thinking
+  ⎿ Checking whether the ac…

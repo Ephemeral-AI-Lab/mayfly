@@ -16,6 +16,7 @@ const submit: MayflyUiEvent = {
 }
 const activate: MayflyUiEvent = { kind: 'activate', controlId: 'refresh', actionId: 'refresh', pagePath: [] }
 const valueChange: MayflyUiEvent = { kind: 'value-change', controlId: 'name', formId: 'form', value: 'changed', draftRevision: 4, pagePath: [] }
+const focusChange: MayflyUiEvent = { kind: 'focus-change', controlId: 'rail', itemId: 'model', pagePath: [] }
 const context = (signal = new AbortController().signal): MayflyUiEventContext => ({
   surfaceId: 'config', source, signal, revision: 8, operationId: 'save-1', report: vi.fn(),
 })
@@ -158,6 +159,26 @@ describe.each(['pane', 'overlay'] as const)('%s action publication', kind => {
     expect(observation).toHaveBeenCalledOnce()
   })
 
+  it('settles the prompt events: recall is an observation, the rest are actions', async () => {
+    const recall: MayflyUiEvent = { kind: 'recall-change', controlId: 'prompt', source: 'draft', index: -1, pagePath: [] }
+    const observation = vi.fn(() => undefined)
+    const observed = await setup(kind, undefined, observation)
+    expect((await observed.current().events.prepare(recall, context())).reply).toBeUndefined()
+    expect(observation).toHaveBeenCalledWith(recall, expect.anything())
+    const published = await setup(kind, undefined, () => ({ kind: 'accepted', node: changed, source: [] }) as never)
+    await expect(published.current().events.prepare(recall, context())).rejects.toThrow('observations cannot publish')
+    const prompt = await setup(kind)
+    for (const event of [
+      { kind: 'token-remove', controlId: 'prompt', tokenId: 't1', pagePath: [] },
+      { kind: 'completion-accept', controlId: 'prompt', itemId: 'c1', pagePath: [] },
+      { kind: 'completion-dismiss', controlId: 'prompt', pagePath: [] },
+    ] as const satisfies readonly MayflyUiEvent[]) {
+      await expect(prompt.current().events.prepare(event, context())).rejects.toThrow('structured reply')
+    }
+    const handled = await setup(kind, () => ({ kind: 'completed' }))
+    expect((await handled.current().events.prepare({ kind: 'token-remove', controlId: 'prompt', tokenId: 't1', pagePath: [] }, context())).reply).toEqual({ kind: 'completed' })
+  })
+
   it('rejects snapshot publication and dismissal from observation handlers', async () => {
     const accepted = await setup(kind, undefined, () => ({ kind: 'accepted', node: changed, source: [] }) as never)
     await expect(accepted.current().events.prepare(valueChange, context())).rejects.toThrow('observations cannot publish')
@@ -165,6 +186,22 @@ describe.each(['pane', 'overlay'] as const)('%s action publication', kind => {
     await expect(dismissed.current().events.prepare(valueChange, context())).rejects.toThrow('observations cannot publish')
     const navigated = await setup(kind, undefined, () => ({ kind: 'completed', navigate: [{ controlId: 'pages', itemId: 'next' }] }) as never)
     await expect(navigated.current().events.prepare(valueChange, context())).rejects.toThrow('observations cannot publish')
+  })
+
+  it('reports focus moves to the observer alone, and the report cannot publish, navigate, or dismiss', async () => {
+    const observation = vi.fn(() => undefined)
+    const observed = await setup(kind, undefined, observation)
+    expect((await observed.current().events.prepare(focusChange, context())).publish()).toBe(false)
+    expect(observation).toHaveBeenCalledWith(focusChange, expect.objectContaining({ surfaceId: 'config' }))
+    // An action-only registration hears nothing and owes nothing.
+    const action = vi.fn(() => ({ kind: 'completed' }) as never)
+    const actionOnly = await setup(kind, action)
+    expect((await actionOnly.current().events.prepare(focusChange, context())).reply).toBeUndefined()
+    expect(action).not.toHaveBeenCalled()
+    for (const reply of [{ kind: 'accepted', node: changed, source: [] }, { kind: 'completed', dismiss: true }, { kind: 'completed', navigate: [{ controlId: 'pages', itemId: 'next' }] }]) {
+      const rejected = await setup(kind, undefined, () => reply as never)
+      await expect(rejected.current().events.prepare(focusChange, context())).rejects.toThrow('observations cannot publish')
+    }
   })
 
   it.each([

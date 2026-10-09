@@ -32,3 +32,6 @@ Status nodes are non-interactive and sort by priority then id. `set(null)`
 releases the slot; `set(node)` clones and freezes the snapshot, increments its
 revision, and invalidates only the footer host. `dispose()` removes the entry,
 and Fiber unload disposes it automatically.
+
+A status entry on `row: 2` is a passive chip. To give a chip its own panel, register a view instead: a
+[`views` pane](/en/plugins/ui-reference#views-of-status-row-2) puts its `summary` in row 2 and opens its panel on `Alt+↓`.

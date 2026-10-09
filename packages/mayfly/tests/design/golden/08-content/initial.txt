@@ -1,0 +1,22 @@
+--- after start ---
+page 1/7 (Ctrl+N): text, rich text, spacer, divider: eight tones, wrap or truncate, strong italic
+strike
+
+default   sample in this tone
+muted     sample in this tone
+primary   sample in this tone
+accent    sample in this tone
+user      sample in this tone
+success   sample in this tone
+warning   sample in this tone
+danger    sample in this tone
+
+Prefer small diffs and always     Prefer small diffs and always…
+run the width scan before
+pushing.
+wrap (default)                    truncate
+
+deepseek-chat High  PLAN  YOLO  italic  struck  ⏵ 2 jobs
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+── Connection ──────────────────────────────────────────────────────────────────────────────────────

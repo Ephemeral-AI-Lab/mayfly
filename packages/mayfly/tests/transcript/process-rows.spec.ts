@@ -41,7 +41,7 @@ describe('TurnHeaderComponent', () => {
     const component = new TurnHeaderComponent(colors, fakeMayflyComponents(), () => {})
     expect(component.render(80)).toEqual([])
     component.update(header({ startedAt: 0, endedAt: 65_000, outcome: 'completed', toolCalls: 1, subagents: 1, folded: true, hint: true }))
-    expect(component.render(80)).toEqual(['', '▸ Took 1m 5s · 1 tool call · 1 subagent · ctrl+o to expand'])
+    expect(component.render(80)).toEqual(['', '▸ Took 1m 5s · 1 tool call · 1 subagent · Ctrl+O to expand'])
     component.update(header({ toolCalls: 3, subagents: 2 }))
     expect(component.render(80)[1]).toBe('▾ Worked · 3 tool calls · 2 subagents')
     component.update(header({ outcome: 'aborted' }))

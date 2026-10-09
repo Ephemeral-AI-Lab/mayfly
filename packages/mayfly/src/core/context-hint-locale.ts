@@ -15,9 +15,12 @@ const zh = Object.freeze({
   Type: '输入',
   focus: '定位',
   open: '打开',
-  'toggle / confirm': '切换 / 确认',
+  'No/Yes': '否/是',
   branch: '展开/折叠',
   pick: '选择',
+  step: '步进',
+  continue: '继续',
+  complete: '补全',
   next: '下一项',
   cancel: '取消',
   done: '完成编辑',
@@ -27,10 +30,27 @@ const zh = Object.freeze({
   expand: '展开',
   collapse: '收起',
   'use inherited': '改用继承值',
+  'use default': '改用默认值',
+  restore: '恢复',
+  Options: '选项',
+  '{count} match': '{count} 项匹配',
+  '{count} matches': '{count} 项匹配',
+  '↑ {above} more · ↓ {below} more': '↑ 还有 {above} 项 · ↓ 还有 {below} 项',
+  '▸ {count} more lines · Enter': '▸ 还有 {count} 行 · Enter',
   reset: '重置',
+  'ready in a moment': '稍候即可操作',
+  // The prompt: the recall position in its corner (`↑ history 2/4`) and the words of its hint row.
+  history: '历史',
+  queued: '排队中',
+  send: '发送',
+  insert: '插入',
   // Field provenance and conflict resolution.
-  Inherited: '继承',
-  Override: '显式覆盖',
+  inherited: '继承',
+  override: '显式覆盖',
+  saved: '已保存',
+  'not set': '未设置',
+  empty: '空',
+  'unsaved changes': '有未保存的修改',
   'Use current value': '使用当前值',
   'Keep my changes': '保留我的修改',
   // Shared decisions, placeholders, and default controls.
@@ -40,9 +60,13 @@ const zh = Object.freeze({
   'None selected': '未选择',
   Submit: '提交',
   Cancel: '取消',
+  Save: '保存',
   // Validation and operation feedback.
   'Resolve the changed value before saving': '保存前请先处理已变更的值',
   'A value is required': '此项为必填',
+  Required: '必填',
+  'Invalid value': '值无效',
+  'Fix the highlighted fields': '请修正标出的字段',
   'Enter a finite number': '请输入有限数值',
   'Minimum: {value}': '最小值：{value}',
   'Maximum: {value}': '最大值：{value}',
@@ -66,14 +90,40 @@ const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key
 /** Core-owned catalog for interaction strings: hint labels, shared decisions, placeholders, and validation. */
 export const CORE_CONTEXT_HINT_LOCALE: MayflyLocaleCatalog = Object.freeze({ en, zh })
 
+/** How many translated strings a translator remembers for one locale revision. */
+export const HINT_MEMO_ENTRIES = 512
+
 /**
  * Resolve contextual operation labels against the current locale provider.
  * @param ctx - frontend-tree context.
  * @returns dynamic translator with an English-key fallback.
  */
 export function contextHintTranslator(ctx: Context): MayflyTranslate {
-  return (key, values) => ctx.get('mayflyLocale')?.translate('core-context-hints', key, values)
+  const lookup: MayflyTranslate = (key, values) => ctx.get('mayflyLocale')?.translate('core-context-hints', key, values)
     ?? interpolateLocaleMessage(key, values)
+  // Painters translate the same few strings on every row, and a catalog changes only with the locale provider or its
+  // revision. While a provider is mounted each string is resolved once; every revision and every provider lifetime
+  // starts a fresh memo, and without a provider nothing is remembered.
+  let messages: Map<string, string> | undefined
+  ctx.inject(['mayflyLocale'], (localeCtx) => {
+    const unsubscribe = localeCtx.mayflyLocale.subscribe(() => { messages = new Map() })
+    localeCtx.effect(() => () => {
+      unsubscribe()
+      messages = undefined
+    })
+  })
+  return (key, values) => {
+    if (messages === undefined) return lookup(key, values)
+    const id = values === undefined ? key : `${key}\0${JSON.stringify(values)}`
+    let message = messages.get(id)
+    if (message === undefined) {
+      message = lookup(key, values)
+      // Interpolated counts are unbounded; a full memo starts over rather than grow.
+      if (messages.size >= HINT_MEMO_ENTRIES) messages.clear()
+      messages.set(id, message)
+    }
+    return message
+  }
 }
 
 /**

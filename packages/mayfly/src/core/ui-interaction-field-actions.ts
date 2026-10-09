@@ -23,7 +23,9 @@ export function fieldActions(form: UiFormState | undefined, fieldId: string): re
 export function fieldReset(form: UiFormState | undefined, fieldId: string): 'inherit' | 'reset' | undefined {
   const field = form?.fields[fieldId]
   if (field === undefined || field.definition.disabled || form?.pending !== undefined || field.conflict) return undefined
-  if (field.definition.resetValue === undefined || field.change === 'reset') return undefined
+  // With no declared default, Delete restores the opening value, and only while the field was edited.
+  if (field.definition.resetValue === undefined) return field.change === 'set' ? 'reset' : undefined
+  if (field.change === 'reset') return undefined
   if (field.change === 'unchanged' && field.baselineOrigin === 'inherited') return undefined
   return field.definition.origin === undefined ? 'reset' : 'inherit'
 }

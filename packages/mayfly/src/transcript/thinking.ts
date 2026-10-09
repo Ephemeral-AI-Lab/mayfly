@@ -155,7 +155,7 @@ export class ThinkingComponent implements MayflyComponent {
         const first = contentLines.find(line => line.trim() !== '')!
         const summary = preview ? `${this.colors.muted(`${title} · `)}${this.styled(first.trim())}` : this.colors.muted(title)
         // The hint names the key only when it reaches the block and fits whole.
-        const hint = ` · ${this.t('ctrl+o to expand')}`
+        const hint = ` · ${this.t('Ctrl+O to expand')}`
         const fits = this.components.visibleWidth(`${marker}${summary}${hint}`) <= width
         lines = ['', `${marker}${summary}${this.keyed && fits ? this.colors.textMuted(hint) : ''}`]
       }

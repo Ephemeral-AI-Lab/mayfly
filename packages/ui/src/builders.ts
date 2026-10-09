@@ -2,9 +2,12 @@
  * @module @ephemeral-ai/mayfly-ui/builders
  */
 import type {
+  MayflyListBodyNode,
+  MayflyListBodyStackNode,
   MayflyActionsNode,
   MayflyChartNode,
   MayflyDividerNode,
+  MayflyImageNode,
   MayflyDiagramNode,
   MayflyEmptyNode,
   MayflyFormNode,
@@ -12,6 +15,7 @@ import type {
   MayflyListNode,
   MayflyLoaderNode,
   MayflyProgressNode,
+  MayflyPromptNode,
   MayflyRichTextNode,
   MayflyScrollNode,
   MayflySection,
@@ -32,6 +36,7 @@ import type {
 type TextOptions = Omit<MayflyTextNode, 'kind' | 'content'>
 type RichTextOptions = Omit<MayflyRichTextNode, 'kind' | 'spans'>
 type CodeOptions = Omit<MayflyCodeNode, 'kind' | 'code'>
+type DiffOptions = Omit<MayflyDiffNode, 'kind' | 'before' | 'after'>
 type ChildOptions = Omit<MayflyUiChild, 'node'>
 type StackOptions = Omit<MayflyStackNode, 'kind' | 'direction' | 'children'>
 type ScrollOptions = Omit<MayflyScrollNode, 'kind' | 'child'>
@@ -84,6 +89,14 @@ export function freezeWire<Value>(value: Value): Value {
   return clone(value) as Value
 }
 
+/**
+ * Whether `value` is a snapshot made by {@link freezeWire} in this module copy. Every object a snapshot contains is one
+ * too, so a true answer means the whole subtree is deeply immutable and its identity can key a cache.
+ */
+export function isWireSnapshot(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && wireSnapshots.has(value)
+}
+
 const frozen = freezeWire
 
 function text(content: string, options: TextOptions = {}): MayflyTextNode {
@@ -102,8 +115,8 @@ function code(value: string, options: CodeOptions = {}): MayflyCodeNode {
   return frozen({ ...frozen(options), kind: 'code', code: value })
 }
 
-function diff(before: string, after: string): MayflyDiffNode {
-  return frozen({ kind: 'diff', before, after })
+function diff(before: string, after: string, options: DiffOptions = {}): MayflyDiffNode {
+  return frozen({ ...frozen(options), kind: 'diff', before, after })
 }
 
 function sections(value: readonly MayflySection[]): MayflySectionsNode {
@@ -126,12 +139,19 @@ type MayflyStackBareNode = MayflyUiNode & {
   readonly maxSize?: never
   readonly when?: never
   readonly tab?: never
+  readonly priority?: never
+  readonly band?: never
 }
 export type MayflyStackItem = MayflyStackBareNode | (MayflyUiChild & { readonly kind?: never })
 
 function stack(direction: MayflyStackNode['direction'], children: readonly MayflyStackItem[], options: StackOptions = {}): MayflyStackNode {
   const normalized: MayflyUiChild[] = frozen(children).map(item => 'kind' in item ? { node: item as MayflyUiNode } : item)
   return frozen({ ...frozen(options), kind: 'stack', direction, children: normalized })
+}
+
+/** A list row's body: a column of content nodes, which a row can open under itself and which never takes focus. */
+function listBody(children: readonly MayflyListBodyNode[], options: StackOptions = {}): MayflyListBodyStackNode {
+  return frozen({ ...frozen(options), kind: 'stack', direction: 'column', children: frozen(children).map(node => ({ node })) })
 }
 
 function surface(options: Omit<MayflySurfaceNode, 'kind'>): MayflySurfaceNode {
@@ -178,6 +198,14 @@ function divider(options: Omit<MayflyDividerNode, 'kind'> = {}): MayflyDividerNo
   return frozen({ ...frozen(options), kind: 'divider' })
 }
 
+function image(options: Omit<MayflyImageNode, 'kind'>): MayflyImageNode {
+  return frozen({ ...frozen(options), kind: 'image' })
+}
+
+function prompt(options: Omit<MayflyPromptNode, 'kind'>): MayflyPromptNode {
+  return frozen({ ...frozen(options), kind: 'prompt' })
+}
+
 function diagram(source: string): MayflyDiagramNode {
   return frozen({ kind: 'diagram', diagram: 'mermaid', source })
 }
@@ -196,6 +224,7 @@ export const ui = Object.freeze({
   sections,
   richText,
   child,
+  listBody,
   stack: Object.freeze({
     row: (children: readonly MayflyStackItem[], options?: StackOptions) => stack('row', children, options),
     column: (children: readonly MayflyStackItem[], options?: StackOptions) => stack('column', children, options),
@@ -211,6 +240,8 @@ export const ui = Object.freeze({
   progress,
   spacer,
   divider,
+  image,
+  prompt,
   diagram,
   chart,
 })
@@ -219,6 +250,11 @@ export const ui = Object.freeze({
 export interface MayflyComponentDefinition<Props> {
   readonly id: string
   readonly render: (props: Props) => MayflyUiNode
+  /**
+   * With `true`, a call whose props are shallowly equal to the previous call's returns the node that call returned, so
+   * an unchanged component keeps its identity and core's identity caches hit. `render` must be pure for this to hold.
+   */
+  readonly memo?: boolean
 }
 
 /** Pure component factory returned to official packages and third-party kits. */
@@ -227,13 +263,39 @@ export interface MayflyComponentFactory<Props> {
   readonly render: (props: Props) => MayflyUiNode
 }
 
+function shallowEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null || Array.isArray(left) !== Array.isArray(right)) return false
+  const keys = Object.keys(left)
+  return keys.length === Object.keys(right).length
+    && keys.every(key => Object.hasOwn(right, key) && Object.is((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]))
+}
+
+/** A copy of the props one level deep, so a caller that mutates the object it passed cannot make a stale call look equal. */
+function propsSnapshot(props: unknown): unknown {
+  if (typeof props !== 'object' || props === null) return props
+  return Array.isArray(props) ? [...props] : { ...props }
+}
+
 /** Define a pure component factory; core remains responsible for node validation. */
 export function defineMayflyComponent<Props>(definition: MayflyComponentDefinition<Props>): MayflyComponentFactory<Props> {
   if (definition === null || typeof definition !== 'object') throw new TypeError('Mayfly component definition must be an object')
   if (typeof definition.id !== 'string' || !COMPONENT_ID_PATTERN.test(definition.id)) throw new TypeError('Mayfly component id must be a namespaced lowercase identifier')
   if (typeof definition.render !== 'function') throw new TypeError('Mayfly component render must be a function')
+  if (definition.memo !== true) {
+    return Object.freeze({
+      id: definition.id,
+      render: (props: Props): MayflyUiNode => frozen(definition.render(props)),
+    })
+  }
+  let previous: { readonly props: unknown, readonly node: MayflyUiNode } | undefined
   return Object.freeze({
     id: definition.id,
-    render: (props: Props): MayflyUiNode => frozen(definition.render(props)),
+    render: (props: Props): MayflyUiNode => {
+      if (previous !== undefined && shallowEqual(previous.props, props)) return previous.node
+      const node = frozen(definition.render(props))
+      previous = { props: propsSnapshot(props), node }
+      return node
+    },
   })
 }

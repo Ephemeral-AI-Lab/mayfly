@@ -20,6 +20,7 @@ import type {
   MayflyPaneEntry,
   MayflyPaneRegistration,
   MayflyPaneRegistry,
+  MayflyPaneSummary,
   MayflyRegistryDelta,
   MayflyStatusDefinition,
   MayflyStatusEntry,
@@ -35,11 +36,15 @@ import type {
 } from './contracts.ts'
 
 const ID = /^[a-z0-9][a-z0-9._/-]*$/u
-const PANE_PLACEMENTS = new Set(['header', 'left', 'right', 'bottom'])
+const PANE_PLACEMENTS = new Set(['header', 'left', 'right', 'bottom', 'views'])
+const SUMMARY_NODE_KINDS = new Set(['text', 'rich-text', 'fields', 'progress', 'stack'])
+const SUMMARY_COUNT_LENGTH = 32
 const NARROW_POLICIES = new Set(['bottom', 'overlay', 'hidden'])
 const STATUS_BANDS = new Set(['left', 'center', 'right'])
 const STATUS_OVERFLOW = new Set(['truncate', 'hide'])
 const OVERLAY_ANCHORS = new Set(['center', 'top', 'bottom', 'left', 'right'])
+/** The longest arm delay an overlay may ask for, in milliseconds. */
+const MAX_ARM_MS = 2000
 const PERCENTAGE = /^\d+(?:\.\d+)?%$/u
 
 function assertId(id: string, kind: string): void {
@@ -105,6 +110,24 @@ function validateSurfaceDefinition(definition: unknown, kind: string): asserts d
   if (definition.source !== undefined) validateSource(definition.source)
 }
 
+/**
+ * The shape of a views pane's summary. The admission of the status node itself (the status subset, no motion, the
+ * quotas) belongs to the renderer, which validates it with every other status tree.
+ */
+function validateSummary(value: unknown, path: string): void {
+  assertRecord(value, path)
+  if (Object.keys(value).some(key => key !== 'node' && key !== 'count')) throw new TypeError(`${path} contains an unknown field`)
+  const node = value.node as { readonly kind?: unknown } | null | undefined
+  if (node === null || typeof node !== 'object' || Array.isArray(node) || !SUMMARY_NODE_KINDS.has(node.kind as string)) {
+    throw new TypeError(`${path}.node must be a status node (text, rich-text, fields, progress, or stack)`)
+  }
+  const count = value.count
+  if (count === undefined) return
+  if (typeof count === 'number' ? !Number.isFinite(count) : typeof count !== 'string' || count.length > SUMMARY_COUNT_LENGTH) {
+    throw new TypeError(`${path}.count must be a finite number or a string of at most ${String(SUMMARY_COUNT_LENGTH)} characters`)
+  }
+}
+
 function validatePaneDefinition(definition: unknown): void {
   validateSurfaceDefinition(definition, 'pane')
   if (!PANE_PLACEMENTS.has(definition.placement as string)) throw new TypeError('pane placement is invalid')
@@ -112,6 +135,10 @@ function validatePaneDefinition(definition: unknown): void {
   optionalInteger(definition.priority, 'pane priority')
   validateSize(definition.size, 'pane size')
   if (definition.narrow !== undefined && !NARROW_POLICIES.has(definition.narrow as string)) throw new TypeError('pane narrow policy is invalid')
+  if (definition.placement === 'views') {
+    if (definition.size !== undefined || definition.narrow !== undefined) throw new TypeError('a views pane takes neither size nor narrow')
+    if (definition.summary !== undefined) validateSummary(definition.summary, 'pane summary')
+  } else if (definition.summary !== undefined) throw new TypeError('only a views pane has a summary')
   optionalEventHandlers(definition.onEvent, 'pane onEvent')
   optionalCallback(definition.load, 'pane load')
 }
@@ -146,6 +173,7 @@ function validateOverlayDefinition(definition: unknown): void {
   validateOverlaySize(definition.maxHeight, 'overlay maxHeight')
   optionalNonNegativeInteger(definition.minWidth, 'overlay minWidth')
   optionalBoolean(definition.contentScroll, 'overlay contentScroll')
+  if (definition.armMs !== undefined && (typeof definition.armMs !== 'number' || !Number.isSafeInteger(definition.armMs) || definition.armMs < 0 || definition.armMs > MAX_ARM_MS)) throw new TypeError(`overlay armMs must be an integer from 0 to ${MAX_ARM_MS}`)
   optionalEventHandlers(definition.onEvent, 'overlay onEvent')
   optionalCallback(definition.load, 'overlay load')
 }
@@ -239,8 +267,11 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
     if (this.entries.has(id)) throw new Error(`pane "${id}" is already registered`)
     const admittedNode = freezeWire(initialNode)
     const metadata = snapshotMetadata(admittedDefinition)
+    const views = admittedDefinition.placement === 'views'
+    // A views pane's summary rides on its entry; `setSummary` republishes the entry at the same revision.
+    let summary: MayflyPaneSummary | null = admittedDefinition.summary ?? null
     const publish = (node: MayflyUiNode | null, revision: number, update: MayflySnapshotChange = {}): void => {
-      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision, ...metadata(update), update: freezeWire(update), events: handle.events.endpoint })
+      const entry = Object.freeze({ id, definition: admittedDefinition, node, revision, ...metadata(update), update: freezeWire(update), events: handle.events.endpoint, ...(views ? { summary } : {}) })
       this.entries.set(id, entry)
       this.upsert(entry)
     }
@@ -250,6 +281,16 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       this.remove(id, revision)
     }
     handle = new SnapshotHandle(publish, remove, id, admittedDefinition.onEvent) as SnapshotHandle<MayflyUiNode | null> & MayflyPaneRegistration
+    handle.setSummary = (next: MayflyPaneSummary | null): void => {
+      if (handle.disposed) return
+      if (!views) throw new TypeError('only a views pane has a summary')
+      if (next !== null) validateSummary(next, 'pane summary')
+      summary = freezeWire(next)
+      const current = this.entries.get(id)!
+      const entry = Object.freeze({ ...current, summary })
+      this.entries.set(id, entry)
+      this.upsert(entry)
+    }
     let activeLoad: AbortController | undefined
     let nextCursor: string | undefined
     let cursorRevision = 0

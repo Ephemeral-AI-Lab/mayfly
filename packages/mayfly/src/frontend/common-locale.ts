@@ -13,6 +13,7 @@ import type { MayflyLocaleCatalog } from './locale.ts'
 const zh: Readonly<Record<string, string>> = {
   // Contextual hint vocabulary shared by the compiler and the interaction layer.
   'tabs': '标签',
+  'labels': '侧栏',
   'actions': '操作',
   'options': '选项',
   'fields': '字段',

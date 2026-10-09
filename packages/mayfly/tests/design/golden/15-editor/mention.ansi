@@ -1,0 +1,18 @@
+--- after start ---
+[2mmain conversation · idle[0m
+
+[2mqueued (1)  [0m[2m⏎ [0m"also update the footer"  [2m ↑ recall[0m
+[2m╭[0m[2m────────────────────────────────────────────────────────────────[0m[2m [0m[1mUpdate the landing page hero[0m[2m [0m[2m╮[0m
+[2m│[0m > ▌[2mAsk anything · / commands · @ files · # skills · ! shell[0m                                  [2m│[0m
+[2m╰──────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+--- after "@" ---
+[2mmain conversation · idle[0m
+
+[2mqueued (1)  [0m[2m⏎ [0m"also update the footer"  [2m ↑ recall[0m
+[2m╭[0m[2m────────────────────────────────────────────────────────────────[0m[2m [0m[1mUpdate the landing page hero[0m[2m [0m[2m╮[0m
+[2m│[0m > @▌                                                                                         [2m│[0m
+[2m│[0m [1m[38;2;154;134;230m→[0m [1m@pane-activity.ts[0m[2m — packages/mayfly/src/transcript/[0m                                        [2m│[0m
+[2m│[0m   @pane-agents.ts[2m — packages/mayfly/src/transcript/[0m                                          [2m│[0m
+[2m│[0m   @notes.md[2m — docs/[0m                                                                          [2m│[0m
+[2m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0mTab [2mcomplete[0m[2m · [0mEnter [2minsert[0m[2m · [0mEsc [2mclose[0m                                      [2m│[0m
+[2m╰──────────────────────────────────────────────────────────────────────────────────────────────╯[0m

@@ -15,7 +15,9 @@ import type {
   MayflyField,
   MayflyFormField,
   MayflyInlineSpan,
+  MayflyListBodyNode,
   MayflyListItem,
+  MayflyListNode,
   MayflyListSegment,
   MayflyListSegmentOption,
   MayflySection,
@@ -33,6 +35,13 @@ import type {
 } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult } from './ui-contracts.ts'
 import { printableKey } from './key-actions.ts'
+import { COMMON_MEANINGS, actionNamingProblem, defaultItemKey } from './ui-actions.ts'
+import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
+import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
+import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
+import { admitPromptFields, MAYFLY_UI_MAX_PROMPT_TEXT, type PromptAdmissionHelpers } from './ui-validator-prompt.ts'
+import { admitChildAdmission, admitCodeFields, admitDiffFields, admitHeatmapFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
+import { admitTabItemFields, admitTabsFields } from './ui-validator-tabs.ts'
 
 /** Maximum aggregate UTF-16 source units accepted in one tree. */
 export const MAYFLY_UI_MAX_TEXT = 20_000
@@ -42,6 +51,12 @@ export const MAYFLY_UI_MAX_DEPTH = 8
 export const MAYFLY_UI_MAX_NODES = 256
 /** Maximum entries in any wire collection. */
 export const MAYFLY_UI_MAX_COLLECTION = 200
+/** Maximum `image` nodes in one tree. */
+export const MAYFLY_UI_MAX_IMAGES = 8
+/** Maximum characters in an `image` node's attachment id. */
+export const MAYFLY_UI_MAX_ATTACHMENT_ID = 128
+/** Maximum `maxRows` an `image` node may ask for. */
+export const MAYFLY_UI_MAX_IMAGE_ROWS = 40
 
 const TERMINAL_SEQUENCE = /(?:(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b[PX^_]|[\x90\x98\x9e\x9f])[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b.)/gu
 const UNSAFE_CONTROLS = /[\x00-\x08\x0b-\x1f\x7f-\x9f\uf8ff\ufdd0-\ufdef]/gu
@@ -63,20 +78,60 @@ interface ValidationState {
   scrollDepth: number
   editorControls: number
   readonly budget: ValidationBudget
+  /** The scope of the actions node whose items are being admitted. */
+  actionScope?: readonly string[] | undefined
 }
 
 interface ValidationBudget {
   nodes: number
   text: number
   chartCells: number
+  images: number
+  /** Characters of prompt drafts and recalled messages; a prompt is a control, so no memoized subtree carries it. */
+  promptText: number
   readonly controlIds: Set<string>
   readonly tabs: Map<string, ReadonlySet<string>>
   readonly pages: { readonly path: MayflyPagePath, readonly tab: MayflyPageSegment }[]
-  /** Accelerator keys already bound per page. */
+  /** Accelerator keys already bound per page, each with the scope it was bound in. */
   readonly actionKeys: Set<string>
+  /** Action scopes to resolve once every control of the tree is known. */
+  readonly scopes: { readonly pagePath: MayflyPagePath, readonly ids: readonly string[], readonly path: string }[]
   /** The first printable accelerator, rejected once a filterable list is admitted. */
   printableKey?: string
   filterable: boolean
+  /** Optional measurement sink; admission work is counted here, never retained. */
+  readonly counters?: MayflyWorkCounters
+  /** The caller's admission memo, when it keeps one across publishes. */
+  readonly cache?: MayflyAdmissionCache
+  /** Responsive placeholders created so far; a subtree that made one is never memoized. */
+  deferred: number
+  /** A tighter node ceiling while a list item's body is admitted. */
+  nodeLimit?: number | undefined
+}
+
+/** What admitting one subtree added to the tree-wide budget, replayed when the same subtree is admitted again. */
+interface AdmittedSubtree {
+  readonly admitted: MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode
+  readonly nodes: number
+  readonly text: number
+  readonly chartCells: number
+  readonly images: number
+}
+
+/**
+ * A caller-owned memo of admission results, keyed by the identity of a frozen wire snapshot. Admission is a pure
+ * function of the snapshot and its context, so a subtree or list item that was admitted once is returned as it was
+ * and its budget share is replayed instead of re-validating it. A caller keeps one cache per surface; a value that is
+ * not a snapshot never enters it.
+ */
+export interface MayflyAdmissionCache {
+  readonly subtrees: WeakMap<object, Map<string, AdmittedSubtree>>
+  readonly items: WeakMap<object, MayflyListItem>
+}
+
+/** Create an empty admission memo. */
+export function createAdmissionCache(): MayflyAdmissionCache {
+  return { subtrees: new WeakMap(), items: new WeakMap() }
 }
 
 function invalid(message: string): never {
@@ -159,6 +214,14 @@ function text(value: unknown, path: string, state: ValidationState): string {
   return value.replace(TERMINAL_SEQUENCE, '').replace(UNSAFE_CONTROLS, '')
 }
 
+/** What a user typed or pasted into a prompt: bounded by the prompt budget, not the tree's text budget. */
+function draftText(value: unknown, path: string, state: ValidationState): string {
+  if (typeof value !== 'string') invalid(`${path} must be a string`)
+  state.budget.promptText += value.length
+  if (state.budget.promptText > MAYFLY_UI_MAX_PROMPT_TEXT) limit(`Mayfly UI prompt text exceeds ${String(MAYFLY_UI_MAX_PROMPT_TEXT)} characters`)
+  return value.replace(TERMINAL_SEQUENCE, '').replace(UNSAFE_CONTROLS, '')
+}
+
 function optionalText(object: Record<string, unknown>, key: string, path: string, state: ValidationState): string | undefined {
   const value = own(object, key, path)
   return value === undefined ? undefined : text(value, `${path}.${key}`, state)
@@ -174,6 +237,12 @@ function finiteInteger(value: unknown, path: string, minimum = 0): number {
     invalid(`${path} must be a finite integer within the safe range and >= ${String(minimum)}`)
   }
   return value
+}
+
+function imageRows(value: unknown, path: string): number {
+  const rows = finiteInteger(value, path, 1)
+  if (rows > MAYFLY_UI_MAX_IMAGE_ROWS) limit(`${path} exceeds ${String(MAYFLY_UI_MAX_IMAGE_ROWS)} rows`)
+  return rows
 }
 
 function finiteNumber(value: unknown, path: string): number {
@@ -215,6 +284,11 @@ function validatePages(budget: ValidationBudget): void {
   for (const page of budget.pages) {
     if (!budget.tabs.get(pageControl(page.path, page.tab.controlId))?.has(page.tab.itemId)) invalid('page association references an unknown tab')
   }
+  // A scope names a control on its own page or an enclosing one; a responsive branch may still hold it.
+  for (const scope of budget.scopes) for (const id of scope.ids) {
+    const known = scope.pagePath.some((_, index) => budget.controlIds.has(pageControl(scope.pagePath.slice(0, index), id))) || budget.controlIds.has(pageControl(scope.pagePath, id))
+    if (!known && budget.deferred === 0) invalid(`${scope.path} "${id}" names no control on this page`)
+  }
 }
 
 function enumeration<Value extends string | number>(value: unknown, values: readonly Value[], path: string): Value {
@@ -223,10 +297,16 @@ function enumeration<Value extends string | number>(value: unknown, values: read
 }
 
 /** A text node's optional overflow mode. */
-function textOverflow(object: Record<string, unknown>, path: string): 'wrap' | 'truncate' | undefined {
+function textOverflow(object: Record<string, unknown>, path: string): 'wrap' | 'truncate' | undefined
+function textOverflow(object: Record<string, unknown>, path: string, elided: true): 'wrap' | 'truncate' | 'middle' | 'start' | undefined
+function textOverflow(object: Record<string, unknown>, path: string, elided?: true): 'wrap' | 'truncate' | 'middle' | 'start' | undefined {
   const value = own(object, 'overflow', path)
-  return value === undefined ? undefined : enumeration(value, ['wrap', 'truncate'] as const, `${path}.overflow`)
+  return value === undefined ? undefined : elided === true ? enumeration(value, ['wrap', 'truncate', 'middle', 'start'] as const, `${path}.overflow`) : enumeration(value, ['wrap', 'truncate'] as const, `${path}.overflow`)
 }
+
+/** The primitives the content admission module (`ui-validator-content.ts`) builds its field rules from. */
+const ADMISSION_HELPERS: AdmissionHelpers<ValidationState> = { own, invalid, enumeration, finiteInteger, boolean, text, collection }
+const PROMPT_HELPERS: PromptAdmissionHelpers<ValidationState> = { ...ADMISSION_HELPERS, draftText, enter }
 
 function collection(value: unknown, path: string): readonly unknown[] {
   if (!Array.isArray(value)) invalid(`${path} must be an array`)
@@ -261,7 +341,7 @@ function enter<Value>(value: unknown, path: string, state: ValidationState, visi
   }
 }
 
-function span(value: unknown, path: string, state: ValidationState): MayflyInlineSpan {
+function span(value: unknown, path: string, state: ValidationState, motion = false): MayflyInlineSpan {
   return enter(value, path, state, object => {
     const toneValue = own(object, 'tone', path)
     const stylesValue = own(object, 'styles', path)
@@ -270,12 +350,23 @@ function span(value: unknown, path: string, state: ValidationState): MayflyInlin
       ? undefined
       : collection(stylesValue, `${path}.styles`).map((style, index) => enumeration(style, ['strong', 'italic', 'strike'], `${path}.styles[${String(index)}]`))
     if (styles !== undefined && new Set(styles).size !== styles.length) invalid(`${path}.styles contains duplicates`)
-    return { text: text(required(object, 'text', path), `${path}.text`, state), ...optional(tone, 'tone'), ...optional(styles, 'styles') }
+    const motionValue = own(object, 'motion', path)
+    const variantValue = own(object, 'variant', path)
+    const content = text(required(object, 'text', path), `${path}.text`, state)
+    if (motionValue === undefined && variantValue !== undefined) invalid(`${path}.variant needs a loader motion`)
+    if (motionValue !== undefined) {
+      if (!motion) invalid(`${path}.motion is only supported in rich text outside status nodes`)
+      const channel = enumeration(motionValue, ['shimmer', 'loader'] as const, `${path}.motion`)
+      if (channel === 'loader' && content !== '') invalid(`${path}.text must be empty for a loader span`)
+      if (channel === 'shimmer' && (content === '' || variantValue !== undefined)) invalid(`${path} shimmer needs text and takes no variant`)
+      return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles'), motion: channel, ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath'] as const, `${path}.variant`), 'variant') }
+    }
+    return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles') }
   })
 }
 
-function spans(value: unknown, path: string, state: ValidationState): readonly MayflyInlineSpan[] {
-  return collection(value, path).map((entry, index) => span(entry, `${path}[${String(index)}]`, state))
+function spans(value: unknown, path: string, state: ValidationState, motion = false): readonly MayflyInlineSpan[] {
+  return collection(value, path).map((entry, index) => span(entry, `${path}[${String(index)}]`, state, motion))
 }
 
 function field(value: unknown, path: string, state: ValidationState): MayflyField {
@@ -292,11 +383,22 @@ function unavailableActions(value: unknown, path: string, state: ValidationState
   })))
 }
 
-function listItem(value: unknown, path: string): MayflyListItem {
+function listItem(value: unknown, path: string, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyListItem {
+  // An item admits under its own quota and reads nothing from its tree, so its admitted form is a pure function of the
+  // snapshot: a memoized item is returned as it was.
+  const memoized = cache !== undefined && isWireSnapshot(value) ? cache.items.get(value as object) : undefined
+  if (memoized !== undefined) return memoized
+  const admitted = admitListItem(value, path, counters)
+  if (cache !== undefined && isWireSnapshot(value)) cache.items.set(value as object, freeze(admitted))
+  return admitted
+}
+
+function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounters): MayflyListItem {
   // Item collections are unbounded data rows: each admits under its own
   // quota — the same isolation lazy list admission already applies — so the
   // aggregate row text of a large picker cannot exhaust the tree budget.
-  const state = validationState()
+  countWork(counters, 'nodesValidated')
+  const state = validationState(counters === undefined ? undefined : { ...emptyBudget(), counters })
   return enter(value, path, state, object => {
     const disabledValue = own(object, 'disabled', path)
     const detailSpansValue = own(object, 'detailSpans', path)
@@ -317,8 +419,112 @@ function listItem(value: unknown, path: string): MayflyListItem {
       ...optional(segmentValue === undefined ? undefined : listSegment(segmentValue, `${path}.segment`, state), 'segment'),
       ...optional(unavailableValue === undefined ? undefined : unavailableActions(unavailableValue, `${path}.unavailableActions`, state), 'unavailableActions'),
       ...optional(confirmValue === undefined ? undefined : confirmation(confirmValue, `${path}.confirm`, state), 'confirm'),
+      ...listItemRowFields(object, path, state),
     }
   })
+}
+
+/** The most nodes one list item's body may hold; each item admits under its own quota, so a long list of rich rows stays legal. */
+export const MAYFLY_UI_MAX_ITEM_BODY_NODES = 32
+/** The most lines one wrapped row may be asked to show, and the widest meter and indent a row may ask for. */
+const LIST_ROW_LIMITS = { wrapMax: 100, meterWidth: 40, indent: 8 } as const
+const LIST_BODY_KINDS: ReadonlySet<string> = new Set([
+  'text', 'markdown', 'fields', 'code', 'diff', 'sections', 'rich-text', 'diagram', 'chart', 'image', 'progress', 'spacer', 'divider', 'stack',
+])
+
+/** A body is content only: a stack of content, never a control, a tab page, or a node that holds focus. */
+function assertListBody(admitted: MayflyUiNode, path: string): void {
+  if (!LIST_BODY_KINDS.has(admitted.kind)) invalid(`${path} must be content: a ${admitted.kind} node would take focus inside a row`)
+  if (admitted.kind !== 'stack') return
+  for (const [index, child] of admitted.children.entries()) {
+    if (child.tab !== undefined) invalid(`${path}.children[${String(index)}].tab is not allowed in a list body`)
+    assertListBody(child.node, `${path}.children[${String(index)}].node`)
+  }
+}
+
+/** The row fields of one list item beyond its text: spans, bodies, wrapping, meters, indent, rules, and gaps. */
+function listItemRowFields(object: Record<string, unknown>, path: string, state: ValidationState): Partial<MayflyListItem> {
+  const labelSpans = own(object, 'labelSpans', path)
+  const right = own(object, 'right', path)
+  const rightFocus = own(object, 'rightFocus', path)
+  const bodyValue = own(object, 'body', path)
+  const bodyAlways = own(object, 'bodyAlways', path)
+  const expanded = own(object, 'expanded', path)
+  const wrap = own(object, 'wrap', path)
+  const wrapMax = own(object, 'wrapMax', path)
+  const meterValue = own(object, 'meter', path)
+  const indent = own(object, 'indent', path)
+  const gap = own(object, 'gap', path)
+  const body = bodyValue === undefined ? undefined
+    : typeof bodyValue === 'string' ? text(bodyValue, `${path}.body`, state) : listBody(bodyValue, `${path}.body`, state)
+  if (bodyAlways !== undefined && boolean(bodyAlways, `${path}.bodyAlways`) && body === undefined) invalid(`${path}.bodyAlways needs a body`)
+  const ruleValue = optionalText(object, 'rule', path, state)
+  if (gap === true && ruleValue !== undefined) invalid(`${path} cannot be both a rule and a gap`)
+  return {
+    ...optional(labelSpans === undefined ? undefined : spans(labelSpans, `${path}.labelSpans`, state), 'labelSpans'),
+    ...optional(right === undefined ? undefined : spans(right, `${path}.right`, state), 'right'),
+    ...optional(rightFocus === undefined ? undefined : spans(rightFocus, `${path}.rightFocus`, state), 'rightFocus'),
+    ...optional(body, 'body'),
+    ...optional(bodyAlways === undefined ? undefined : boolean(bodyAlways, `${path}.bodyAlways`), 'bodyAlways'),
+    ...optional(expanded === undefined ? undefined : boolean(expanded, `${path}.expanded`), 'expanded'),
+    ...optional(wrap === undefined ? undefined : boolean(wrap, `${path}.wrap`), 'wrap'),
+    ...optional(wrapMax === undefined ? undefined : Math.min(finiteInteger(wrapMax, `${path}.wrapMax`, 1), LIST_ROW_LIMITS.wrapMax), 'wrapMax'),
+    ...optional(meterValue === undefined ? undefined : listMeter(meterValue, `${path}.meter`, state), 'meter'),
+    ...optional(indent === undefined ? undefined : Math.min(finiteInteger(indent, `${path}.indent`), LIST_ROW_LIMITS.indent), 'indent'),
+    ...optional(ruleValue, 'rule'),
+    ...optional(gap === undefined ? undefined : boolean(gap, `${path}.gap`), 'gap'),
+  }
+}
+
+function listMeter(value: unknown, path: string, state: ValidationState): NonNullable<MayflyListItem['meter']> {
+  return enter(value, path, state, object => {
+    const width = own(object, 'width', path)
+    const tone = own(object, 'tone', path)
+    const max = finiteInteger(required(object, 'max', path), `${path}.max`, 1)
+    return {
+      value: Math.min(finiteInteger(required(object, 'value', path), `${path}.value`), max),
+      max,
+      ...optional(width === undefined ? undefined : Math.min(finiteInteger(width, `${path}.width`, 1), LIST_ROW_LIMITS.meterWidth), 'width'),
+      ...optional(tone === undefined ? undefined : enumeration(tone, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone'),
+    }
+  })
+}
+
+/**
+ * A node body admits with its item, under that item's own quota (`MAYFLY_UI_MAX_ITEM_BODY_NODES` nodes, the item's own
+ * text budget), so a list of thousands of rich rows needs no more of the tree's quotas than a list of plain ones.
+ */
+function listBody(value: unknown, path: string, state: ValidationState): MayflyListBodyNode {
+  state.budget.nodeLimit = state.budget.nodes + MAYFLY_UI_MAX_ITEM_BODY_NODES
+  try {
+    const admitted = node(value, path, state, 0, 'ui')
+    assertListBody(admitted, path)
+    return admitted as MayflyListBodyNode
+  } finally { state.budget.nodeLimit = undefined }
+}
+
+/** The list node's presentation fields: markers, windowing, the Enter verb, and where the cursor starts. */
+function listNodeFields(object: Record<string, unknown>, path: string, state: ValidationState): Partial<MayflyListNode> {
+  const marker = own(object, 'marker', path)
+  const marks = own(object, 'marks', path)
+  const maxRows = own(object, 'maxRows', path)
+  const expandFocused = own(object, 'expandFocused', path)
+  const acceptVerb = own(object, 'acceptVerb', path)
+  const autofocus = own(object, 'autofocus', path)
+  const focusItem = own(object, 'focusItem', path)
+  return {
+    ...optional(marker === undefined ? undefined : enumeration(marker, ['cursor', 'selection'], `${path}.marker`), 'marker'),
+    ...optional(marks === undefined ? undefined : boolean(marks, `${path}.marks`), 'marks'),
+    ...optional(maxRows === undefined ? undefined : finiteInteger(maxRows, `${path}.maxRows`, 1), 'maxRows'),
+    ...optional(expandFocused === undefined ? undefined : boolean(expandFocused, `${path}.expandFocused`), 'expandFocused'),
+    ...optional(acceptVerb === undefined ? undefined : enumeration(acceptVerb, ['open', 'choose', 'expand', 'edit', 'restore'], `${path}.acceptVerb`), 'acceptVerb'),
+    ...optional(autofocus === undefined ? undefined : boolean(autofocus, `${path}.autofocus`), 'autofocus'),
+    ...optional(focusItem === undefined ? undefined : enter(focusItem, `${path}.focusItem`, state, target => ({
+      id: identifier(required(target, 'id', path), `${path}.focusItem.id`, state),
+      rev: finiteInteger(required(target, 'rev', path), `${path}.focusItem.rev`),
+    })), 'focusItem'),
+    ...optional(optionalText(object, 'hintLabel', path, state), 'hintLabel'),
+  }
 }
 
 function segmentOption(value: unknown, path: string, state: ValidationState): MayflyListSegmentOption {
@@ -341,10 +547,13 @@ function listSegment(value: unknown, path: string, state: ValidationState): Mayf
     const selectedIdValue = own(object, 'selectedId', path)
     const selectedId = selectedIdValue === undefined ? undefined : text(selectedIdValue, `${path}.selectedId`, state)
     if (selectedId !== undefined && !options.some(option => option.id === selectedId)) invalid(`${path}.selectedId is not an option`)
+    const inheritedId = optionalText(object, 'inheritedId', path, state)
+    if (inheritedId !== undefined && !options.some(option => option.id === inheritedId)) invalid(`${path}.inheritedId is not an option`)
     return {
       options,
       ...optional(optionalText(object, 'label', path, state), 'label'),
       ...optional(selectedId, 'selectedId'),
+      ...optional(inheritedId, 'inheritedId'),
     }
   })
 }
@@ -357,20 +566,17 @@ interface LazyListAdmission {
   readonly length: number
   item(index: number): MayflyListItem
   indexOf(id: string): number
+  /** Ids of the items that start open, read from the raw items so a long list admits nothing to answer. */
+  expanded(): readonly string[]
 }
 
 const lazyLists = new WeakMap<readonly MayflyListItem[], LazyListAdmission>()
 
-function validationState(budget: ValidationBudget = {
-  nodes: 0,
-  text: 0,
-  chartCells: 0,
-  controlIds: new Set(),
-  tabs: new Map(),
-  pages: [],
-  actionKeys: new Set(),
-  filterable: false,
-}): ValidationState {
+function emptyBudget(): ValidationBudget {
+  return { nodes: 0, text: 0, chartCells: 0, images: 0, promptText: 0, controlIds: new Set(), tabs: new Map(), pages: [], actionKeys: new Set(), scopes: [], filterable: false, deferred: 0 }
+}
+
+function validationState(budget: ValidationBudget = emptyBudget()): ValidationState {
   return {
     active: new WeakSet(),
     pagePath: [],
@@ -394,7 +600,7 @@ interface DeferredUiAdmission {
 const deferredUiNodes = new WeakMap<MayflyUiNode, DeferredUiAdmission>()
 const PASSIVE_UI_KINDS = new Set([
   'text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'progress',
-  'spacer', 'divider', 'document', 'chart',
+  'spacer', 'divider', 'document', 'chart', 'image',
 ])
 
 function deferredMayHaveControls(source: unknown): boolean {
@@ -412,6 +618,7 @@ function deferredMayHaveControls(source: unknown): boolean {
 
 function deferredUiNode(source: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget, pagePath: MayflyPagePath): MayflyUiNode {
   const placeholder = Object.freeze({ kind: 'spacer' as const, size: 1 as const })
+  budget.deferred += 1
   deferredUiNodes.set(placeholder, { source, path, depth, scrollDepth, budget, pagePath, mayHaveControls: deferredMayHaveControls(source) })
   return placeholder
 }
@@ -445,9 +652,12 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     nodes: deferred.budget.nodes,
     text: deferred.budget.text,
     chartCells: deferred.budget.chartCells,
+    images: deferred.budget.images,
+    promptText: deferred.budget.promptText,
     controlIds: new Set(deferred.budget.controlIds),
     tabs: new Map(deferred.budget.tabs),
     pages: deferred.budget.pages.length,
+    scopes: deferred.budget.scopes.length,
   }
   const state = validationState(deferred.budget)
   state.scrollDepth = deferred.scrollDepth
@@ -459,11 +669,14 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     deferred.budget.nodes = checkpoint.nodes
     deferred.budget.text = checkpoint.text
     deferred.budget.chartCells = checkpoint.chartCells
+    deferred.budget.images = checkpoint.images
+    deferred.budget.promptText = checkpoint.promptText
     deferred.budget.controlIds.clear()
     for (const id of checkpoint.controlIds) deferred.budget.controlIds.add(id)
     deferred.budget.tabs.clear()
     for (const [id, items] of checkpoint.tabs) deferred.budget.tabs.set(id, items)
     deferred.budget.pages.splice(checkpoint.pages)
+    deferred.budget.scopes.splice(checkpoint.scopes)
     deferred.result = error instanceof ValidationFault
       ? { ok: false, code: error.code, message: error.message }
       : { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly UI validation failed safely' }
@@ -471,7 +684,7 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
   return deferred.result
 }
 
-function lazyListItems(value: unknown, path: string): readonly MayflyListItem[] {
+function lazyListItems(value: unknown, path: string, counters?: MayflyWorkCounters, memo?: MayflyAdmissionCache): readonly MayflyListItem[] {
   const prototype = Object.getPrototypeOf(value)
   if (prototype === null || !hasRealmConstructor(prototype, 'Array')) invalid(`${path} must be a plain array`)
   const length = Object.getOwnPropertyDescriptor(value, 'length')!.value as number
@@ -510,7 +723,7 @@ function lazyListItems(value: unknown, path: string): readonly MayflyListItem[] 
       }
       let admitted: MayflyListItem
       try {
-        admitted = listItem(raw(index), `${path}[${String(index)}]`)
+        admitted = listItem(raw(index), `${path}[${String(index)}]`, counters, memo)
         const owner = owners.get(admitted.id)
         if (owner !== undefined && owner !== index) invalid(`${path} contains duplicate ids`)
         owners.set(admitted.id, index)
@@ -531,6 +744,19 @@ function lazyListItems(value: unknown, path: string): readonly MayflyListItem[] 
     indexOf(id) {
       for (let index = 0; index < length; index += 1) if (peekId(index) === id) return index
       return -1
+    },
+    expanded() {
+      const open: string[] = []
+      for (let index = 0; index < length; index += 1) {
+        try {
+          const entry = raw(index)
+          if (typeof entry === 'object' && entry !== null && Object.getOwnPropertyDescriptor(entry, 'expanded')?.value === true) {
+            const id = peekId(index)
+            if (id !== undefined) open.push(id)
+          }
+        } catch { /* an invalid row is reported when it is drawn */ }
+      }
+      return open
     },
   }
   const target: MayflyListItem[] = []
@@ -555,10 +781,30 @@ function lazyListItems(value: unknown, path: string): readonly MayflyListItem[] 
   return proxy
 }
 
+/** A list longer than this admits its items lazily when any of them carries a node body. */
+const LAZY_BODY_ITEMS = 16
+
+/** Whether any item of a raw list carries a node body, read without admitting anything. */
+function hasNodeBodies(value: unknown): boolean {
+  const length = Object.getOwnPropertyDescriptor(value, 'length')?.value as number
+  for (let index = 0; index < length; index += 1) {
+    const item = Object.getOwnPropertyDescriptor(value, String(index))?.value as unknown
+    if (typeof item !== 'object' || item === null) continue
+    const body = Object.getOwnPropertyDescriptor(item, 'body')?.value as unknown
+    if (typeof body === 'object' && body !== null) return true
+  }
+  return false
+}
+
 /** Core-private indexed access for an admitted list without forcing the full collection. */
 export function admittedListItem(items: readonly MayflyListItem[], index: number): MayflyListItem | undefined {
   if (!Number.isSafeInteger(index) || index < 0 || index >= items.length) return undefined
   return lazyLists.get(items)?.item(index) ?? items[index]
+}
+
+/** Core-private: the ids of the items that start open (`expanded`), without admitting a lazy list. */
+export function admittedListExpanded(items: readonly MayflyListItem[]): readonly string[] {
+  return lazyLists.get(items)?.expanded() ?? items.filter(item => item.expanded === true).map(item => item.id)
 }
 
 /** Core-private ID lookup that reads only IDs for a lazy admitted list. */
@@ -587,11 +833,29 @@ function actionKey(value: string, path: string, state: ValidationState): string 
   }
   const normalized = [...modifiers, named ? base.toLowerCase() : base].join('+').toLowerCase()
   if (RESERVED_KEYS.has(normalized)) invalid(`${path}.key "${value}" is reserved for shared navigation`)
-  const slot = pageControl(state.pagePath, normalized)
-  if (state.budget.actionKeys.has(slot)) invalid(`${path}.key "${value}" is already bound on this page`)
-  state.budget.actionKeys.add(slot)
-  if (printableKey(value)) state.budget.printableKey ??= `${path}.key "${value}"`
+  claimKey(normalized, `${path}.key "${value}"`, state)
   return value
+}
+
+/** Bind a key on the page. Two groups may share one only when their scopes name disjoint controls. */
+function claimKey(normalized: string, label: string, state: ValidationState): void {
+  const slot = pageControl(state.pagePath, normalized)
+  const scope = state.actionScope ?? null
+  for (const claimed of state.budget.actionKeys) {
+    const [claimedSlot, claimedScope] = JSON.parse(claimed) as [string, readonly string[] | null]
+    if (claimedSlot === slot && (scope === null || claimedScope === null || scope.some(id => claimedScope.includes(id)))) invalid(`${label} is already bound on this page`)
+  }
+  state.budget.actionKeys.add(JSON.stringify([slot, scope]))
+  if (printableKey(normalized)) state.budget.printableKey ??= label
+}
+
+/** An actions node's scope: one control id or a list of distinct ones. */
+function actionScope(value: unknown, path: string, state: ValidationState): string | readonly string[] | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'string') return identifier(value, path, state)
+  const ids = collection(value, path).map((entry, index) => identifier(entry, `${path}[${String(index)}]`, state))
+  if (ids.length === 0 || new Set(ids).size !== ids.length) invalid(`${path} must name one or more distinct controls`)
+  return ids
 }
 
 function confirmation(value: unknown, path: string, state: ValidationState): string | MayflyConfirmation {
@@ -618,6 +882,12 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
     const dismiss = own(object, 'dismiss', path)
     const confirmValue = own(object, 'confirm', path)
     const keyValue = optionalText(object, 'key', path, state)
+    const semanticValue = own(object, 'semantic', path)
+    const semantic = semanticValue === undefined ? undefined : enumeration(semanticValue, COMMON_MEANINGS, `${path}.semantic`)
+    const actionValue = optionalText(object, 'action', path, state)
+    const naming = actionNamingProblem({ key: keyValue, semantic, action: actionValue })
+    if (naming !== undefined) invalid(`${path}${naming}`)
+    if (semantic !== undefined) claimKey(defaultItemKey({ semantic })!, `${path}.semantic "${semantic}"`, state)
     const submitValue = own(object, 'submit', path)
     const submit = submitValue === undefined ? undefined : collection(submitValue, `${path}.submit`).map((entry, index) => enter(entry, `${path}.submit[${index}]`, state, target => ({
       formId: identifier(required(target, 'formId', path), `${path}.submit[${index}].formId`, state),
@@ -647,6 +917,9 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
       ...optional(busyValue === undefined ? undefined : boolean(busyValue, `${path}.busy`), 'busy'),
       ...optional(confirmValue === undefined ? undefined : confirmation(confirmValue, `${path}.confirm`, state), 'confirm'),
       ...optional(keyValue === undefined ? undefined : actionKey(keyValue, path, state), 'key'),
+      ...optional(semantic, 'semantic'),
+      ...optional(actionValue, 'action'),
+      ...optional(optionalText(object, 'hintLabel', path, state), 'hintLabel'),
       ...optional(defaultFocus === undefined ? undefined : boolean(defaultFocus, `${path}.defaultFocus`), 'defaultFocus'),
       ...optional(hidden === undefined ? undefined : boolean(hidden, `${path}.hidden`), 'hidden'),
       ...optional(dismiss === undefined ? undefined : boolean(dismiss, `${path}.dismiss`), 'dismiss'),
@@ -682,9 +955,11 @@ function chartTone(object: Record<string, unknown>, path: string): MayflyInlineS
   return value === undefined ? undefined : enumeration(value, CHART_TONES, `${path}.tone`)
 }
 
+const MAX_CHART_CELLS = 4_000
+
 function addChartCells(state: ValidationState, count: number): void {
   state.budget.chartCells += count
-  if (state.budget.chartCells > 4_000) limit('Mayfly chart data exceeds 4000 cells')
+  if (state.budget.chartCells > MAX_CHART_CELLS) limit('Mayfly chart data exceeds 4000 cells')
 }
 
 function chartPoint(value: unknown, path: string, state: ValidationState): MayflyChartPoint {
@@ -789,6 +1064,7 @@ function uiChild<Node>(
       ...optional(minSize, 'minSize'),
       ...optional(maxSize, 'maxSize'),
       ...optional(when, 'when'),
+      ...admitChildAdmission(ADMISSION_HELPERS, object, path),
     }
   })
 }
@@ -836,6 +1112,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
       ...optional(requiredValue === undefined ? undefined : boolean(requiredValue, `${path}.required`), 'required'),
       ...optional(originValue === undefined ? undefined : enumeration(originValue, ['inherited', 'explicit'], `${path}.origin`), 'origin'),
       ...optional(reset === undefined ? undefined : parseValue(reset, `${path}.resetValue`), 'resetValue'),
+      ...admitFieldPresentation(ADMISSION_HELPERS, object, path, state),
     }
     if (kind === 'toggle') return { kind, ...common, value: boolean(required(object, 'value', path), `${path}.value`) }
     if (kind === 'number') {
@@ -851,7 +1128,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
     }
     if (kind === 'select' || kind === 'multiselect') {
       const raw = required(object, 'value', path)
-      const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`))
+      const options = collection(required(object, 'options', path), `${path}.options`).map((item, index) => listItem(item, `${path}.options[${String(index)}]`, state.budget.counters, state.budget.cache))
       uniqueIds(options, `${path}.options`)
       if (kind === 'multiselect') return { kind, ...common, value: parseValue(raw, `${path}.value`) as readonly string[], options, ...selectionBounds(object, path) }
       if (raw !== null && typeof raw !== 'string') invalid(`${path}.value must be a string or null`)
@@ -867,6 +1144,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
       value: text(required(object, 'value', path), `${path}.value`, state),
       ...optional(optionalText(object, 'placeholder', path, state), 'placeholder'),
       ...optional(minLength, 'minLength'), ...optional(maxLength, 'maxLength'),
+      ...admitTextRules(ADMISSION_HELPERS, object, path, state),
     }
   })
 }
@@ -885,9 +1163,37 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'status', viewOnly?: false): MayflyStatusNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'editor', viewOnly?: false, editorSlotAllowed?: boolean): MayflyEditorShellNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly = false, editorSlotAllowed = false): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
+  const cache = state.budget.cache
+  if (cache === undefined || !isWireSnapshot(value)) return admitNode(value, path, state, depth, mode, viewOnly, editorSlotAllowed)
+  const context = `${mode}:${viewOnly ? 1 : 0}:${editorSlotAllowed ? 1 : 0}:${String(depth)}:${String(state.scrollDepth)}`
+  const known = cache.subtrees.get(value as object)?.get(context)
+  const budget = state.budget
+  if (known !== undefined
+    && budget.nodes + known.nodes <= MAYFLY_UI_MAX_NODES && budget.text + known.text <= MAYFLY_UI_MAX_TEXT && budget.chartCells + known.chartCells <= MAX_CHART_CELLS && budget.images + known.images <= MAYFLY_UI_MAX_IMAGES) {
+    budget.nodes += known.nodes
+    budget.text += known.text
+    budget.chartCells += known.chartCells
+    budget.images += known.images
+    return known.admitted
+  }
+  // Only a subtree that added nothing but counts is memoized: a control, tab, page, action key, filter, editor slot, or
+  // responsive placeholder ties the result to the rest of the tree, so those take the full path every time.
+  const before = [budget.nodes, budget.text, budget.chartCells, budget.images, budget.controlIds.size, budget.tabs.size, budget.pages.length, budget.actionKeys.size, budget.printableKey, budget.filterable, state.editorControls, budget.deferred] as const
+  const admitted = admitNode(value, path, state, depth, mode, viewOnly, editorSlotAllowed)
+  if (before[4] === budget.controlIds.size && before[5] === budget.tabs.size && before[6] === budget.pages.length && before[7] === budget.actionKeys.size
+    && before[8] === budget.printableKey && before[9] === budget.filterable && before[10] === state.editorControls && before[11] === budget.deferred) {
+    const memos = cache.subtrees.get(value as object) ?? new Map<string, AdmittedSubtree>()
+    memos.set(context, { admitted: freeze(admitted), nodes: budget.nodes - before[0], text: budget.text - before[1], chartCells: budget.chartCells - before[2], images: budget.images - before[3] })
+    cache.subtrees.set(value as object, memos)
+  }
+  return admitted
+}
+
+function admitNode(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly: boolean, editorSlotAllowed: boolean): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
   if (depth > MAYFLY_UI_MAX_DEPTH) limit(`Mayfly UI depth exceeds ${String(MAYFLY_UI_MAX_DEPTH)}`)
   state.budget.nodes += 1
-  if (state.budget.nodes > MAYFLY_UI_MAX_NODES) limit(`Mayfly UI tree exceeds ${String(MAYFLY_UI_MAX_NODES)} nodes`)
+  countWork(state.budget.counters, 'nodesValidated')
+  if (state.budget.nodes > (state.budget.nodeLimit ?? MAYFLY_UI_MAX_NODES)) limit(state.budget.nodeLimit === undefined ? `Mayfly UI tree exceeds ${String(MAYFLY_UI_MAX_NODES)} nodes` : `a list body exceeds ${String(MAYFLY_UI_MAX_ITEM_BODY_NODES)} nodes`)
   return enter(value, path, state, object => {
     const kind = own(object, 'kind', path)
     if (typeof kind !== 'string') invalid(`${path}.kind must be a string`)
@@ -897,9 +1203,9 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
       return { kind }
     }
     if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
-    if (mode === 'editor' && (kind === 'diagram' || kind === 'chart')) invalid(`editor node kind "${kind}" is unsupported`)
+    if (mode === 'editor' && (kind === 'diagram' || kind === 'chart' || kind === 'image')) invalid(`editor node kind "${kind}" is unsupported`)
     /* The host editor owns every key in its shell, so focusable controls other than accelerator actions are unreachable there. */
-    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs')) invalid(`editor node kind "${kind}" would take focus from the editor`)
+    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt')) invalid(`editor node kind "${kind}" would take focus from the editor`)
     if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
     switch (kind) {
       case 'text': {
@@ -908,15 +1214,20 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           kind,
           content: text(required(object, 'content', path), `${path}.content`, state),
           ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone'),
-          ...optional(textOverflow(object, path), 'overflow'),
+          ...optional(textOverflow(object, path, true), 'overflow'),
+          ...admitTextStyles(ADMISSION_HELPERS, object, path),
         }
       }
       case 'markdown': return { kind, source: text(required(object, 'source', path), `${path}.source`, state) }
       case 'fields': return { kind, rows: collection(required(object, 'rows', path), `${path}.rows`).map((item, index) => field(item, `${path}.rows[${String(index)}]`, state)) }
-      case 'code': return { kind, code: text(required(object, 'code', path), `${path}.code`, state), ...optional(optionalText(object, 'language', path, state), 'language') }
-      case 'diff': return { kind, before: text(required(object, 'before', path), `${path}.before`, state), after: text(required(object, 'after', path), `${path}.after`, state) }
+      case 'code': return { kind, code: text(required(object, 'code', path), `${path}.code`, state), ...optional(optionalText(object, 'language', path, state), 'language'), ...admitCodeFields(ADMISSION_HELPERS, object, path) }
+      case 'diff': return { kind, before: text(required(object, 'before', path), `${path}.before`, state), after: text(required(object, 'after', path), `${path}.after`, state), ...admitDiffFields(ADMISSION_HELPERS, object, path) }
       case 'sections': return { kind, sections: collection(required(object, 'sections', path), `${path}.sections`).map((item, index) => section(item, `${path}.sections[${String(index)}]`, state, depth + 1)) }
-      case 'rich-text': return { kind, spans: spans(required(object, 'spans', path), `${path}.spans`, state), ...optional(textOverflow(object, path), 'overflow') }
+      case 'rich-text': {
+        const content = spans(required(object, 'spans', path), `${path}.spans`, state, mode !== 'status')
+        countMotion(ADMISSION_HELPERS, content, path)
+        return { kind, spans: content, ...optional(textOverflow(object, path), 'overflow') }
+      }
       case 'stack': {
         const gapValue = own(object, 'gap', path)
         const alignValue = own(object, 'align', path)
@@ -952,7 +1263,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const paddingValue = own(object, 'padding', path)
         const badgesValue = own(object, 'badges', path)
         const footerValue = own(object, 'footer', path)
-        const surface = { kind, ...optional(optionalText(object, 'title', path, state), 'title'), ...optional(optionalText(object, 'subtitle', path, state), 'subtitle'), ...optional(badgesValue === undefined ? undefined : spans(badgesValue, `${path}.badges`, state), 'badges'), ...optional(chromeValue === undefined ? undefined : enumeration(chromeValue, ['none', 'lane', 'surface', 'overlay'], `${path}.chrome`), 'chrome'), ...optional(paddingValue === undefined ? undefined : enumeration(paddingValue, [0, 1, 2] as const, `${path}.padding`), 'padding') } as const
+        const surface = { kind, ...optional(optionalText(object, 'title', path, state), 'title'), ...optional(optionalText(object, 'subtitle', path, state), 'subtitle'), ...optional(badgesValue === undefined ? undefined : spans(badgesValue, `${path}.badges`, state), 'badges'), ...optional(chromeValue === undefined ? undefined : enumeration(chromeValue, ['none', 'lane', 'surface', 'overlay'], `${path}.chrome`), 'chrome'), ...optional(paddingValue === undefined ? undefined : enumeration(paddingValue, [0, 1, 2] as const, `${path}.padding`), 'padding'), ...admitSurfaceFields(ADMISSION_HELPERS, object, path) } as const
         if (mode === 'editor') {
           const child = node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'editor', false, true)
           const footer = footerValue === undefined ? undefined : node(footerValue, `${path}.footer`, state, depth + 1, 'editor', false, true)
@@ -971,7 +1282,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const scrollbarValue = own(object, 'scrollbar', path)
         state.scrollDepth += 1
         try {
-          return { kind, ...optional(id, 'id'), child: node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui'), ...optional(followValue === undefined ? undefined : enumeration(followValue, ['none', 'start', 'end'], `${path}.follow`), 'follow'), ...optional(scrollbarValue === undefined ? undefined : boolean(scrollbarValue, `${path}.scrollbar`), 'scrollbar') }
+          return { kind, ...optional(id, 'id'), child: node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui'), ...optional(followValue === undefined ? undefined : enumeration(followValue, ['none', 'start', 'end'], `${path}.follow`), 'follow'), ...optional(scrollbarValue === undefined ? undefined : boolean(scrollbarValue, `${path}.scrollbar`), 'scrollbar'), ...admitScrollFields(ADMISSION_HELPERS, object, path) }
         } finally {
           state.scrollDepth -= 1
         }
@@ -980,8 +1291,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const modeValue = own(object, 'mode', path)
         const items = collection(required(object, 'items', path), `${path}.items`).map((item, index): MayflyTabItem => enter(item, `${path}.items[${String(index)}]`, state, entry => {
           const disabledValue = own(entry, 'disabled', `${path}.items[${String(index)}]`)
-          const countValue = own(entry, 'count', `${path}.items[${String(index)}]`)
-          return { id: text(required(entry, 'id', path), `${path}.items[${String(index)}].id`, state), label: text(required(entry, 'label', path), `${path}.items[${String(index)}].label`, state), ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.items[${String(index)}].disabled`), 'disabled'), ...optional(countValue === undefined ? undefined : finiteInteger(countValue, `${path}.items[${String(index)}].count`), 'count'), ...optional(optionalText(entry, 'backId', `${path}.items[${String(index)}]`, state), 'backId') }
+          return { id: text(required(entry, 'id', path), `${path}.items[${String(index)}].id`, state), label: text(required(entry, 'label', path), `${path}.items[${String(index)}].label`, state), ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.items[${String(index)}].disabled`), 'disabled'), ...optional(optionalText(entry, 'backId', `${path}.items[${String(index)}]`, state), 'backId'), ...admitTabItemFields(ADMISSION_HELPERS, entry, `${path}.items[${String(index)}]`, state) }
         }))
         uniqueIds(items, `${path}.items`)
         const activeId = identifier(required(object, 'activeId', path), `${path}.activeId`, state)
@@ -998,7 +1308,8 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         }
         const id = identifier(required(object, 'id', path), `${path}.id`, state, true)
         state.budget.tabs.set(pageControl(state.pagePath, id), new Set(items.map(item => item.id)))
-        return { kind, id, activeId, items, ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['tabs', 'wizard'], `${path}.mode`), 'mode') }
+        const tabsMode = modeValue === undefined ? undefined : enumeration(modeValue, ['tabs', 'wizard'], `${path}.mode`)
+        return { kind, id, activeId, items, ...optional(tabsMode, 'mode'), ...admitTabsFields(ADMISSION_HELPERS, object, path, state, tabsMode === 'wizard') }
       }
       case 'list': {
         const role = enumeration(required(object, 'role', path), ['browse', 'choose'], `${path}.role`)
@@ -1008,18 +1319,22 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const itemCount = Array.isArray(itemsValue)
           ? Object.getOwnPropertyDescriptor(itemsValue, 'length')!.value as number
           : 0
-        const items = itemCount > MAYFLY_UI_MAX_COLLECTION
-          ? lazyListItems(itemsValue, `${path}.items`)
-          : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`))
-        if (itemCount <= MAYFLY_UI_MAX_COLLECTION) uniqueIds(items, `${path}.items`)
-        const selectedIds = collection(required(object, 'selectedIds', path), `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
+        const items = itemCount > MAYFLY_UI_MAX_COLLECTION || (itemCount > LAZY_BODY_ITEMS && hasNodeBodies(itemsValue))
+          ? lazyListItems(itemsValue, `${path}.items`, state.budget.counters, state.budget.cache)
+          : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`, state.budget.counters, state.budget.cache))
+        const lazy = itemCount > MAYFLY_UI_MAX_COLLECTION || (itemCount > LAZY_BODY_ITEMS && hasNodeBodies(itemsValue))
+        if (!lazy) uniqueIds(items, `${path}.items`)
+        const selectedIds = collection(own(object, 'selectedIds', path) ?? [], `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
         if ((modeValue ?? 'single') === 'single' && selectedIds.length > 1) invalid(`${path}.selectedIds has more than one id in single mode`)
         const filterable = own(object, 'filterable', path)
-        if (filterable === true) state.budget.filterable = true
+        const filterModeValue = own(object, 'filterMode', path)
+        const filterMode = filterModeValue === undefined ? undefined : enumeration(filterModeValue, ['type', 'slash'], `${path}.filterMode`)
+        // Only a list that takes printable keys as search text conflicts with a printable accelerator.
+        if (filterable === true && filterMode !== 'slash') state.budget.filterable = true
         const numbered = own(object, 'numbered', path)
         const tree = own(object, 'tree', path)
-        if (tree === true && itemCount <= MAYFLY_UI_MAX_COLLECTION) {
+        if (tree === true && !lazy) {
           const byId = new Map(items.map(item => [item.id, item]))
           for (const item of items) {
             if (item.parentId === item.id) invalid(`${path}.items tree cannot parent an item to itself`)
@@ -1032,7 +1347,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
             }
           }
         }
-        return { kind, role, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(numbered === undefined ? undefined : numbered === 'focus' ? 'focus' as const : boolean(numbered, `${path}.numbered`), 'numbered'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
+        return { kind, role, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...selectionBounds(object, path), ...optional(optionalText(object, 'acceptActionId', path, state), 'acceptActionId'), ...optional(filterable === undefined ? undefined : boolean(filterable, `${path}.filterable`), 'filterable'), ...optional(filterMode, 'filterMode'), ...listNodeFields(object, path, state), ...optional(numbered === undefined ? undefined : numbered === 'focus' ? 'focus' as const : boolean(numbered, `${path}.numbered`), 'numbered'), ...optional(tree === undefined ? undefined : boolean(tree, `${path}.tree`), 'tree'), ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
       }
       case 'form': {
         const fields = collection(required(object, 'fields', path), `${path}.fields`).map((item, index) => formField(item, `${path}.fields[${String(index)}]`, state))
@@ -1053,14 +1368,20 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         return { kind, id, fields, ...optional(submitActionId, 'submitActionId'), ...optional(optionalText(object, 'submitLabel', path, state), 'submitLabel'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel'), ...optional(enterSubmits, 'enterSubmits') }
       }
       case 'actions': {
-        const items = collection(required(object, 'items', path), `${path}.items`).map((item, index) => actionItem(item, `${path}.items[${String(index)}]`, state))
+        const scope = actionScope(own(object, 'scope', path), `${path}.scope`, state)
+        state.actionScope = scope === undefined ? undefined : [scope].flat()
+        let items: MayflyActionItem[]
+        try {
+          items = collection(required(object, 'items', path), `${path}.items`).map((item, index) => actionItem(item, `${path}.items[${String(index)}]`, state))
+        } finally { state.actionScope = undefined }
+        if (scope !== undefined) state.budget.scopes.push({ pagePath: state.pagePath, ids: [scope].flat(), path: `${path}.scope` })
         uniqueIds(items, `${path}.items`)
         for (const item of items) {
           if (item.id.trim().length === 0) invalid(`${path}.items id must not be empty`)
           if (mode === 'editor' && (item.key === undefined || printableKey(item.key))) invalid(`${path}.items key is required: the editor owns unmodified keys, so a shell action needs a modifier accelerator`)
           reserveControl(item.id, state)
         }
-        return { kind, id: text(required(object, 'id', path), `${path}.id`, state), items }
+        return { kind, id: text(required(object, 'id', path), `${path}.id`, state), items, ...optional(scope, 'scope') }
       }
       case 'loader': {
         const variantValue = own(object, 'variant', path)
@@ -1071,7 +1392,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           if (cancelActionId.trim().length === 0) invalid(`${path}.cancelActionId must not be empty`)
           reserveControl(cancelActionId, state)
         }
-        return { kind, message: text(required(object, 'message', path), `${path}.message`, state), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['braille', 'tide'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel') }
+        return { kind, ...optional(optionalText(object, 'message', path, state), 'message'), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath', 'braille', 'tide'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalText(object, 'cancelLabel', path, state), 'cancelLabel') }
       }
       case 'empty': {
         const actionsValue = own(object, 'actions', path)
@@ -1082,13 +1403,27 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
       case 'progress': {
         const maximum = finiteInteger(required(object, 'max', path), `${path}.max`, 1)
         const current = finiteInteger(required(object, 'value', path), `${path}.value`)
-        return { kind, ...optional(optionalText(object, 'label', path, state), 'label'), value: Math.min(current, maximum), max: maximum }
+        return { kind, ...optional(optionalText(object, 'label', path, state), 'label'), value: Math.min(current, maximum), max: maximum, ...admitProgressFields(ADMISSION_HELPERS, object, path, maximum, mode === 'status') }
       }
       case 'spacer': {
         const sizeValue = own(object, 'size', path)
         return { kind, ...optional(sizeValue === undefined ? undefined : enumeration(sizeValue, [1, 2] as const, `${path}.size`), 'size') }
       }
       case 'divider': return { kind, ...optional(optionalText(object, 'label', path, state), 'label') }
+      case 'image': {
+        const attachmentId = text(required(object, 'attachmentId', path), `${path}.attachmentId`, state)
+        if (attachmentId.length === 0 || attachmentId.length > MAYFLY_UI_MAX_ATTACHMENT_ID) invalid(`${path}.attachmentId must be 1 to ${String(MAYFLY_UI_MAX_ATTACHMENT_ID)} characters`)
+        const rowsValue = own(object, 'maxRows', path)
+        state.budget.images += 1
+        if (state.budget.images > MAYFLY_UI_MAX_IMAGES) limit(`Mayfly UI tree exceeds ${String(MAYFLY_UI_MAX_IMAGES)} images`)
+        return {
+          kind,
+          attachmentId,
+          alt: text(required(object, 'alt', path), `${path}.alt`, state),
+          ...optional(rowsValue === undefined ? undefined : imageRows(rowsValue, `${path}.maxRows`), 'maxRows'),
+        }
+      }
+      case 'prompt': return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...admitPromptFields(PROMPT_HELPERS, object, path, state) }
       case 'diagram': return { kind, diagram: enumeration(required(object, 'diagram', path), ['mermaid'], `${path}.diagram`), source: text(required(object, 'source', path), `${path}.source`, state) }
       case 'chart': {
         const chart = enumeration(required(object, 'chart', path), ['line', 'point', 'bar', 'sparkline', 'heatmap'], `${path}.chart`)
@@ -1160,7 +1495,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         if (new Set(levelKeys).size !== levelKeys.length) invalid(`${path}.levels contains duplicate values`)
         const known = new Set(levelKeys)
         if (values.some(row => row.some(value => value !== null && !known.has(`${typeof value}:${String(value)}`)))) invalid(`${path}.values contains a value without a level`)
-        return { kind, chart, columns, rows, values, levels, ...optional(optionalText(object, 'title', path, state), 'title') }
+        return { kind, chart, columns, rows, values, levels, ...optional(optionalText(object, 'title', path, state), 'title'), ...admitHeatmapFields(ADMISSION_HELPERS, object, path, columns.length, state) }
       }
       default: invalid(`unknown Mayfly UI kind "${kind}"`)
     }
@@ -1201,8 +1536,8 @@ function assertEditorControlVisible(node: MayflyEditorShellNode, path = '$'): vo
   }
 }
 
-function validate<Value>(value: unknown, mode: ValidationMode): MayflyValidationResult<Value> {
-  const state = validationState()
+function validate<Value>(value: unknown, mode: ValidationMode, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyValidationResult<Value> {
+  const state = validationState(counters === undefined && cache === undefined ? undefined : { ...emptyBudget(), ...(counters === undefined ? {} : { counters }), ...(cache === undefined ? {} : { cache }) })
   try {
     const result = mode === 'ui'
       ? node(value, '$', state, 0, 'ui')
@@ -1214,7 +1549,7 @@ function validate<Value>(value: unknown, mode: ValidationMode): MayflyValidation
       assertEditorControlVisible(result as MayflyEditorShellNode)
     }
     validatePages(state.budget)
-    if (state.budget.filterable && state.budget.printableKey !== undefined) invalid(`${state.budget.printableKey} would swallow typed filter text; use a modifier key`)
+    if (state.budget.filterable && state.budget.printableKey !== undefined) invalid(`${state.budget.printableKey} would swallow typed filter text; use a modifier key, or filterMode: 'slash' on every filterable list`)
     return { ok: true, value: freeze(result) as Value }
   } catch (error) {
     if (error instanceof ValidationFault) return { ok: false, code: error.code, message: error.message }
@@ -1223,16 +1558,16 @@ function validate<Value>(value: unknown, mode: ValidationMode): MayflyValidation
 }
 
 /** Validate, sanitize, canonicalize, and freeze an ordinary public UI tree. */
-export function validateMayflyUiNode(value: unknown): MayflyValidationResult<MayflyUiNode> {
-  return validate(value, 'ui')
+export function validateMayflyUiNode(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyValidationResult<MayflyUiNode> {
+  return validate(value, 'ui', counters, cache)
 }
 
 /** Validate the recursively narrowed, non-interactive status tree. */
-export function validateMayflyStatusNode(value: unknown): MayflyValidationResult<MayflyStatusNode> {
-  return validate(value, 'status')
+export function validateMayflyStatusNode(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyValidationResult<MayflyStatusNode> {
+  return validate(value, 'status', counters, cache)
 }
 
 /** Validate an editor shell and require exactly one host-owned control slot. */
-export function validateMayflyEditorShellNode(value: unknown): MayflyValidationResult<MayflyEditorShellNode> {
-  return validate(value, 'editor')
+export function validateMayflyEditorShellNode(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): MayflyValidationResult<MayflyEditorShellNode> {
+  return validate(value, 'editor', counters, cache)
 }

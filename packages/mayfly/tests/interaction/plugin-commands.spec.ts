@@ -553,7 +553,8 @@ describe('installer unit seams', () => {
     const timedOut = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
     updaterInternals.spawnOnce = realSpawn
     expect(timedOut).toMatchObject({ kind: 'error', text: expect.stringContaining('timed out') })
-  })
+    // The first call spawns the real `dsh` once; under a loaded full gate it outlasts the default 5 s.
+  }, 30_000)
 
   it('refuses a source the entry does not declare', async () => {
     const githubOnly = { ...entry(), install: { rows: [{ name: 'dsh-loop', github: { repo: 'a/b', ref: 'r' } }] } }
@@ -721,7 +722,8 @@ describe('/plugin browse panel', () => {
       { id: 'not-installed', count: 1 },
     ] })
     expect(JSON.stringify(node)).toContain('Install')
-    expect(controller.render(80).join('\n')).toContain('Details  [ Install ]  ! Remove')
+    // A disabled action is a muted token with its reason, not a framed one.
+    expect(controller.render(80).join('\n')).toMatch(/Details.{0,12}\[ Install \]   Remove — Not installed in this profile/u)
     expect(controller.render(36).join('\n')).toContain('Details')
     world.dispose()
   })

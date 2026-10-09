@@ -1,57 +1,93 @@
-/** Stable semantic key action ids shared by core routing and interaction registration.
+/**
+ * Named key actions shared by core routing and interaction registration (spec §3.5). Every key the runtime dispatches
+ * belongs to one: the kit's `ui.*` navigation and common-meaning actions, or a product action that keeps its
+ * `mayfly.*` id. A key is an action's current binding, never its identity. The constant names predate the `ui.*`
+ * rename and are kept so the grammar reads the same; their values are the named actions.
+ *
  * @module @ephemeral-ai/mayfly/core/key-actions
  */
 import { type KeyId, matchesKey } from '@earendil-works/pi-tui'
 import type { MayflyKeymap } from './types.ts'
 
-export const ACTION_SUBMIT = 'mayfly.interaction.submit'
-export const ACTION_CANCEL = 'mayfly.interaction.cancel'
-export const ACTION_MOVE_UP = 'mayfly.interaction.move-up'
-export const ACTION_MOVE_DOWN = 'mayfly.interaction.move-down'
-export const ACTION_PAGE_UP = 'mayfly.interaction.page-up'
-export const ACTION_PAGE_DOWN = 'mayfly.interaction.page-down'
-export const ACTION_HOME = 'mayfly.interaction.home'
-export const ACTION_END = 'mayfly.interaction.end'
-export const ACTION_TOGGLE = 'mayfly.interaction.toggle'
+// Navigation: the kit's DEFAULT_KEYMAP.
+export const ACTION_MOVE_UP = 'ui.up'
+export const ACTION_MOVE_DOWN = 'ui.down'
+export const ACTION_SEGMENT_LEFT = 'ui.left'
+export const ACTION_SEGMENT_RIGHT = 'ui.right'
+export const ACTION_SUBMIT = 'ui.accept'
+export const ACTION_CANCEL = 'ui.cancel'
+export const ACTION_TOGGLE = 'ui.toggle'
+export const ACTION_NEXT_CONTROL = 'ui.next-group'
+export const ACTION_SHIFT_TAB = 'ui.prev-group'
+export const ACTION_PAGE_UP = 'ui.page-up'
+export const ACTION_PAGE_DOWN = 'ui.page-down'
+export const ACTION_HOME = 'ui.home'
+export const ACTION_END = 'ui.end'
+export const ACTION_RESET_FIELD = 'ui.reset'
+export const ACTION_FILTER = 'ui.filter'
+export const ACTION_CLEAR_SEARCH = 'ui.clear'
+export const ACTION_EXPAND = 'ui.expand'
+export const ACTION_NEWLINE = 'ui.newline'
+export const ACTION_PREV_TAB = 'ui.tab-prev'
+export const ACTION_NEXT_TAB = 'ui.tab-next'
+export const ACTION_FOCUS_PREV = 'ui.focus-prev'
+export const ACTION_FOCUS_NEXT = 'ui.focus-next'
+// Common meanings: one action across the product, whichever panel uses it.
+export const ACTION_SAVE = 'ui.save'
+export const ACTION_COPY = 'ui.copy'
+export const ACTION_DELETE = 'ui.delete'
+export const ACTION_REFRESH = 'ui.refresh'
+export const ACTION_EXTERNAL_EDITOR = 'ui.external'
+export const ACTION_SEARCH = 'ui.search'
+// Product actions keep their ids.
 export const ACTION_INTERRUPT = 'mayfly.interaction.interrupt'
 export const ACTION_STEER = 'mayfly.interaction.steer'
 export const ACTION_BACKSPACE = 'mayfly.interaction.backspace'
-export const ACTION_SEGMENT_LEFT = 'mayfly.interaction.segment-left'
-export const ACTION_SEGMENT_RIGHT = 'mayfly.interaction.segment-right'
-export const ACTION_PREV_TAB = 'mayfly.interaction.prev-tab'
-export const ACTION_NEXT_TAB = 'mayfly.interaction.next-tab'
-export const ACTION_NEXT_CONTROL = 'mayfly.interaction.next-control'
-export const ACTION_SHIFT_TAB = 'mayfly.interaction.shift-tab'
-export const ACTION_NEWLINE = 'mayfly.interaction.newline'
-export const ACTION_CLEAR_SEARCH = 'mayfly.interaction.clear-search'
-export const ACTION_EXPAND = 'mayfly.interaction.expand'
-export const ACTION_RESET_FIELD = 'mayfly.interaction.reset-field'
-export const ACTION_EXTERNAL_EDITOR = 'mayfly.interaction.external-editor'
+export const ACTION_CYCLE_MODE = 'mayfly.interaction.cycle-mode'
 export const ACTION_CYCLE_MODEL = 'mayfly.interaction.cycle-model'
 export const ACTION_TOGGLE_AGENT_VIEW = 'mayfly.interaction.toggle-agent-view'
 export const ACTION_CLOSE_AGENT_VIEW = 'mayfly.interaction.close-agent-view'
 
-const FALLBACK_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  [ACTION_SUBMIT]: ['enter'],
-  [ACTION_CANCEL]: ['escape'],
+/**
+ * Default keys of the core actions: the kit's DEFAULT_KEYMAP in pi-tui key ids. Every Alt default has a second default
+ * without Alt, because terminals and multiplexers swallow or rewrite Alt (spec §3.5).
+ */
+export const DEFAULT_ACTION_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   [ACTION_MOVE_UP]: ['up'],
   [ACTION_MOVE_DOWN]: ['down'],
+  [ACTION_SEGMENT_LEFT]: ['left'],
+  [ACTION_SEGMENT_RIGHT]: ['right'],
+  [ACTION_SUBMIT]: ['enter'],
+  [ACTION_CANCEL]: ['escape'],
+  [ACTION_TOGGLE]: ['space'],
+  [ACTION_NEXT_CONTROL]: ['tab'],
+  [ACTION_SHIFT_TAB]: ['shift+tab'],
   [ACTION_PAGE_UP]: ['pageUp'],
   [ACTION_PAGE_DOWN]: ['pageDown'],
   [ACTION_HOME]: ['home'],
   [ACTION_END]: ['end'],
-  [ACTION_TOGGLE]: ['space'],
-  [ACTION_INTERRUPT]: ['ctrl+c'],
-  [ACTION_NEXT_CONTROL]: ['tab'],
-  [ACTION_SHIFT_TAB]: ['shift+tab'],
-  [ACTION_SEGMENT_LEFT]: ['left'],
-  [ACTION_SEGMENT_RIGHT]: ['right'],
-  [ACTION_PREV_TAB]: ['alt+left'],
-  [ACTION_NEXT_TAB]: ['alt+right'],
-  [ACTION_NEWLINE]: ['alt+enter'],
+  [ACTION_RESET_FIELD]: ['delete'],
+  [ACTION_FILTER]: ['/'],
   [ACTION_CLEAR_SEARCH]: ['ctrl+u'],
   [ACTION_EXPAND]: ['ctrl+e'],
-  [ACTION_RESET_FIELD]: ['delete'],
+  [ACTION_NEWLINE]: ['alt+enter', 'ctrl+j'],
+  [ACTION_PREV_TAB]: ['alt+left', 'f2'],
+  [ACTION_NEXT_TAB]: ['alt+right', 'f3'],
+  [ACTION_FOCUS_PREV]: ['alt+up', 'f4'],
+  [ACTION_FOCUS_NEXT]: ['alt+down', 'f5'],
+  [ACTION_SAVE]: ['ctrl+s'],
+  [ACTION_COPY]: ['c'],
+  [ACTION_DELETE]: ['x'],
+  [ACTION_REFRESH]: ['r'],
+  [ACTION_EXTERNAL_EDITOR]: ['ctrl+g'],
+  [ACTION_SEARCH]: ['ctrl+f'],
+  [ACTION_INTERRUPT]: ['ctrl+c'],
+  [ACTION_STEER]: ['ctrl+s'],
+  [ACTION_BACKSPACE]: ['backspace'],
+  [ACTION_CYCLE_MODE]: ['shift+tab'],
+  [ACTION_CYCLE_MODEL]: ['alt+m'],
+  [ACTION_TOGGLE_AGENT_VIEW]: ['f7'],
+  [ACTION_CLOSE_AGENT_VIEW]: ['f8'],
 })
 
 const DISPLAY_KEY_BY_ID: Readonly<Record<string, string>> = {
@@ -73,6 +109,21 @@ export function displayKey(key: string): string {
   }).join('+')
 }
 
+/** The named keys of pi-tui's key-id notation; any other base is one printable character. */
+const NAMED_KEYS = new Set([
+  'enter', 'escape', 'tab', 'space', 'backspace', 'delete', 'insert', 'up', 'down', 'left', 'right',
+  'pageUp', 'pageDown', 'home', 'end', ...Array.from({ length: 12 }, (_, index) => `f${String(index + 1)}`),
+])
+
+/** Whether a string is a pi-tui key id: distinct modifiers, then a named key or one printable character. */
+export function isKeyId(key: string): boolean {
+  const parts = key.split('+')
+  const base = parts.at(-1)!
+  const modifiers = parts.slice(0, -1)
+  if (new Set(modifiers).size !== modifiers.length || modifiers.some(modifier => !['ctrl', 'alt', 'shift', 'meta'].includes(modifier))) return false
+  return NAMED_KEYS.has(base) || (base.length === 1 && !/[\x00-\x20\x7f]/u.test(base))
+}
+
 /** A key id that inserts text rather than chording a modifier or naming a function key. */
 export function printableKey(key: string): boolean {
   const normalized = key.toLowerCase()
@@ -82,13 +133,59 @@ export function printableKey(key: string): boolean {
   return base.length === 1 && parts.slice(0, -1).every(modifier => modifier === 'shift')
 }
 
+/** The xterm function-key numbers of `CSI <n> ~`, by key. */
+const FUNCTION_KEY_CODES: Readonly<Record<string, number>> = { 11: 1, 12: 2, 13: 3, 14: 4, 15: 5, 17: 6, 18: 7, 19: 8, 20: 9, 21: 10, 23: 11, 24: 12 }
+/** The final bytes of `CSI 1;<mods> P` … `S`, F1-F4 with a modifier. */
+const FUNCTION_KEY_FINALS: Readonly<Record<string, number>> = { P: 1, Q: 2, R: 3, S: 4 }
+/** xterm's modifier parameter is one plus these bits; kitty adds lock bits above them. */
+const MODIFIER_BITS: Readonly<Record<string, number>> = { shift: 1, alt: 2, ctrl: 4, meta: 8 }
+
+/** A function key with an xterm or kitty modifier parameter, which pi-tui does not decode: its number and modifier bits. */
+function modifiedFunctionKey(data: string): { readonly key: number, readonly modifiers: number } | undefined {
+  const numbered = /^\x1b\[(\d+);(\d+)(?::[12])?~$/u.exec(data)
+  const key = numbered === null ? undefined : FUNCTION_KEY_CODES[numbered[1]!]
+  if (key !== undefined) return { key, modifiers: (Number(numbered![2]) - 1) & 15 }
+  const lettered = /^\x1b\[1;(\d+)(?::[12])?([PQRS])$/u.exec(data)
+  return lettered === null ? undefined : { key: FUNCTION_KEY_FINALS[lettered[2]!]!, modifiers: (Number(lettered[1]) - 1) & 15 }
+}
+
+/**
+ * Match an input sequence against a key id: pi-tui's matcher, plus the modified function keys it does not decode
+ * (`CSI 17;2~` is Shift+F6, `CSI 1;3Q` Alt+F2; spec §3.5).
+ * @param data - one decoded input sequence.
+ * @param key - a pi-tui key id.
+ * @returns whether the sequence is that key.
+ */
+export function matchesKeyId(data: string, key: string): boolean {
+  if (matchesKey(data, key as KeyId)) return true
+  const wanted = functionKeyId(key)
+  const decoded = wanted === null ? undefined : modifiedFunctionKey(data)
+  return decoded !== undefined && decoded.key === wanted!.key && decoded.modifiers === wanted!.modifiers
+}
+
+/** Key ids parsed as function keys: every key press asks about the same few dozen ids. */
+const functionKeyIds = new Map<string, { readonly key: number, readonly modifiers: number } | null>()
+
+/** The function key a key id names, with its modifier bits, or null for any other key. */
+function functionKeyId(key: string): { readonly key: number, readonly modifiers: number } | null {
+  const known = functionKeyIds.get(key)
+  if (known !== undefined) return known
+  const wanted = /^((?:(?:ctrl|alt|shift|meta)\+)*)f(\d{1,2})$/u.exec(key)
+  const parsed = wanted === null ? null : {
+    key: Number(wanted[2]),
+    modifiers: wanted[1]!.split('+').filter(part => part.length > 0).reduce((bits, part) => bits | MODIFIER_BITS[part]!, 0),
+  }
+  functionKeyIds.set(key, parsed)
+  return parsed
+}
+
 /** Resolve configured keys, falling back only for compiler use without a keymap fixture. */
 export function keyActionKeys(keymap: MayflyKeymap | undefined, actionId: string): readonly string[] {
-  return keymap === undefined || typeof keymap.getKeys !== 'function' ? FALLBACK_KEYS[actionId] ?? [] : keymap.getKeys(actionId)
+  return keymap === undefined || typeof keymap.getKeys !== 'function' ? DEFAULT_ACTION_KEYS[actionId] ?? [] : keymap.getKeys(actionId)
 }
 
 /** Match one semantic action through the live keymap or deterministic fixture defaults. */
 export function matchesKeyAction(keymap: MayflyKeymap | undefined, data: string, actionId: string): boolean {
   if (keymap !== undefined && typeof keymap.matches === 'function' && typeof keymap.getKeys === 'function') return keymap.matches(data, actionId)
-  return keyActionKeys(undefined, actionId).some(key => matchesKey(data, key as KeyId))
+  return keyActionKeys(undefined, actionId).some(key => matchesKeyId(data, key))
 }

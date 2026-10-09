@@ -59,8 +59,10 @@ export function promoteToFull(plan, reason) {
       shots: true,
       agentDocs: true,
       diagrams: true,
+      designGolden: true,
       website: plan.checks.website,
       repoWorkflowTests: true,
+      retainedRows: true,
     },
   }
 }
@@ -84,6 +86,8 @@ export function classifyChanges(inputFiles) {
   let shots = false
   let agentDocs = false
   let diagrams = false
+  let designGolden = false
+  let retainedRows = false
   let website = false
   let repoWorkflowTests = false
 
@@ -99,13 +103,16 @@ export function classifyChanges(inputFiles) {
       repoWorkflowTests = true
       if (['script/check-pack.mjs', 'script/pack-cli-runtime.mjs', 'script/release-packages.mjs',
         'script/release-preflight.mjs', 'script/registry-release.mjs'].includes(file)) pack = true
-      if (!/^script\/(?:test-impact|change-files|verify-changed|build-changed|check-agent-docs)\.mjs$/u.test(file)
+      if (!/^script\/(?:test-impact|change-files|verify-changed|build-changed|check-agent-docs|design-golden(?:-clock|-walks)?|bench-pty|test-retained)\.mjs$/u.test(file)
         && !file.startsWith('script/tests/')) {
         full = true
         reasons.push(`${file}: unclassified repository script`)
       }
     }
     if (file === 'script/check-agent-docs.mjs') agentDocs = true
+    if (file === 'script/test-retained.mjs') retainedRows = true
+    if (file.startsWith('docs/design/prototypes/') || file.startsWith('packages/mayfly/tests/design/golden/')
+      || /^script\/design-golden(?:-clock|-walks)?\.mjs$/u.test(file)) designGolden = true
     if (file === 'AGENTS.md' || file.endsWith('/AGENTS.md') || file.includes('/SKILL.md') || file.startsWith('.agents/')
       || file.startsWith('docs/skills/') || file.endsWith('/mayfly-skills-plan.md')) {
       agentDocs = true
@@ -162,6 +169,19 @@ export function classifyChanges(inputFiles) {
     } else if (owner === 'examples/mayfly-user-kit' && file.includes('/src/')) {
       directTests.add('examples/mayfly-user-kit/tests/width-scan.spec.ts')
     }
+    if (/^packages\/mayfly\/src\/core\/ui-[^/]+\.ts$/u.test(file)) {
+      directTests.add('packages/mayfly/tests/design/parity.spec.ts')
+      directTests.add('packages/mayfly/tests/perf/work-budget.spec.ts')
+    }
+    // The frame workloads paint through the lanes, the surface renderer, the clock, and the editor shell's keymap reads.
+    if (/^packages\/mayfly\/src\/(?:core\/(?:terminal|surface-renderer|surface-manager|keymap|key-actions)|interaction\/editor-extension-runtime)\.ts$/u.test(file)) {
+      directTests.add('packages/mayfly/tests/perf/work-budget.spec.ts')
+    }
+    // Anything a compiled surface paints from can make a retained row stale: the suites run again with the check on.
+    if (/^packages\/mayfly\/src\/core\/(?:ui-[^/]+|surface-renderer|node-slot|terminal)\.ts$/u.test(file)) retainedRows = true
+    if (/^packages\/mayfly\/src\/(?:core\/(?:key-actions|keymap|ui-key-grammar)|interaction\/keys)\.ts$/u.test(file)) {
+      directTests.add('packages/mayfly/tests/core/key-audit.spec.ts')
+    }
     if (/^packages\/mayfly\/src\/.*(?:locale|hints)\.ts$/u.test(file)) {
       directTests.add('packages/mayfly/tests/locale-catalog.spec.ts')
     }
@@ -175,7 +195,7 @@ export function classifyChanges(inputFiles) {
     files,
     mode: full ? 'full' : files.length === 0 ? 'none' : 'changed',
     reasons: [...new Set(reasons)],
-    checks: { lint, typecheck, build, checkLib, pack, examples, shots, agentDocs, diagrams, website, repoWorkflowTests },
+    checks: { lint, typecheck, build, checkLib, pack, examples, shots, agentDocs, diagrams, designGolden, website, repoWorkflowTests, retainedRows },
     tests: {
       related: [...related],
       coverage: [...coverage],

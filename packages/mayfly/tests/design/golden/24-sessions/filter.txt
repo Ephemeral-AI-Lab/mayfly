@@ -1,0 +1,30 @@
+--- after start ---
+╭ Sessions ────────────────────────────────────────────────────────────────────────── 22 total ╮
+│   All                   22  ~/work/mayfly                                                    │
+│ → work/mayfly            8    ▾ Update landing page hero                  main  12 turns  2m │
+│   packages/mayfly        5      │ Update the landing page hero copy and run the tests.       │
+│   …ng-project-name-here  4      ╰ Done — the hero now reads "Ship agent UI in a keystroke".  │
+│   website                5    ▸ Fix width scan for tool rows          fix/width  4 turns  1h │
+│                               ▸ Release 0.1.3-rc.2                      release  9 turns  1d │
+│   → open · c copy path · n new · Esc close                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "/" ---
+╭ Sessions ────────────────────────────────────────────────────────────────────────── 22 total ╮
+│   All                   22  ~/work/mayfly                                                    │
+│ → work/mayfly            8    ▾ Update landing page hero                  main  12 turns  2m │
+│   packages/mayfly        5      │ Update the landing page hero copy and run the tests.       │
+│   …ng-project-name-here  4      ╰ Done — the hero now reads "Ship agent UI in a keystroke".  │
+│   website                5    ▸ Fix width scan for tool rows          fix/width  4 turns  1h │
+│                               ▸ Release 0.1.3-rc.2                      release  9 turns  1d │
+│   → open · c copy path · n new · Esc close                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "u" ---
+╭ Sessions ────────────────────────────────────────────────────────────────────────── 22 total ╮
+│   All                   22  ~/work/mayfly                                                    │
+│ → work/mayfly            8    ▾ Update landing page hero                  main  12 turns  2m │
+│   packages/mayfly        5      │ Update the landing page hero copy and run the tests.       │
+│   …ng-project-name-here  4      ╰ Done — the hero now reads "Ship agent UI in a keystroke".  │
+│   website                5    ▸ Fix width scan for tool rows          fix/width  4 turns  1h │
+│                               ▸ Release 0.1.3-rc.2                      release  9 turns  1d │
+│   → open · c copy path · n new · Esc close                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

@@ -215,7 +215,7 @@ describe('SearchGroupComponent', () => {
     const component = new SearchGroupComponent(group(many), IDENTITY, COMPONENTS)
     const collapsed = component.render(80)
     expect(collapsed).toHaveLength(2 + SEARCH_GROUP_ROW_LIMIT)
-    expect(collapsed.at(-1)).toContain('more, ctrl+o to expand')
+    expect(collapsed.at(-1)).toContain('more, Ctrl+O to expand')
 
     const huge = Array.from({ length: 90 }, (_, index) => search({
       callId: `h${String(index)}`, pattern: `p${String(index)}`, shape: 'matches',
@@ -244,7 +244,7 @@ describe('SearchGroupComponent', () => {
     expect(rows[2]).toContain('"const"')
     expect(rows[3]).toBe('  └─ deep [M]⊘[/M]')
     const many = new SearchGroupComponent(group(Array.from({ length: 12 }, (_, index) => search({ callId: `m${String(index)}`, pattern: `p${String(index)}` }))), IDENTITY, COMPONENTS)
-    expect(many.render(80).at(-1)).toBe('  ... (5 more, ctrl+o to expand)')
+    expect(many.render(80).at(-1)).toBe('  ... (5 more, Ctrl+O to expand)')
     many.setScope({ hint: false, turnClosed: false })
     expect(many.render(80).at(-1)).toBe('  ... (5 more)')
   })

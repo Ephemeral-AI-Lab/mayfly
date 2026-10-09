@@ -30,6 +30,8 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
   全树字符串合计最多 20,000 个 UTF-16 code unit。
 - builder 会递归复制并冻结输入，循环对象会被拒绝。Host admission 只接受普通
   object 和 dense array，并移除 ANSI、C1 与不安全控制字符。
+- 一棵树最多 8 个 `image` 节点。`image` 的 `attachmentId` 为 1 到 128 个字符，
+  `maxRows` 为 1 到 40 的整数。
 - 所有数值布局字段都是非负 safe integer。`minSize` 不能大于 `maxSize`，viewport
   的最小值不能大于对应最大值。
 - tabs/list/form 的 control id、form field id、action item id，以及 form/loader 的
@@ -38,6 +40,10 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
 - `tone` 是语义颜色，不是色号：
   `default | muted | accent | success | warning | danger`。
 - `emphasis` 是 `normal | strong`；省略时按普通文本处理。
+- Identity 就是缓存键。到达 renderer 的 node 是冻结的 snapshot，未变的子树在重新
+  发布时不产生任何开销：让未变的子 node 保持同一个对象，不要重建，或者给组件设置
+  `memo: true`。`memo` 按引用比较 props，只有每个 prop 都稳定才会命中，包括以
+  `MayflyTranslate` 传入的翻译函数；见 [公共 UI kit](/plugins/ui-kit)。
 
 下面的“默认”描述 `0.1.3-rc.2` 当前 Mayfly TUI。wire contract 只承诺字段语义，
 不会承诺具体边框字符、颜色值或按键绑定。
@@ -63,7 +69,11 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
 *危险 tone 的单行提示（宽度 48）。*
 
 ```ts
-ui.text(content: string, options?: { tone?: MayflyTone, overflow?: 'wrap' | 'truncate' })
+ui.text(content: string, options?: {
+  tone?: MayflyTone
+  overflow?: 'wrap' | 'truncate' | 'middle' | 'start'
+  styles?: readonly ('strong' | 'italic' | 'strike')[]
+})
 ```
 
 一段可换行的语义文本，用于状态提示、结果摘要等说明性内容；`tone` 省略时使用
@@ -107,6 +117,21 @@ ui.text('A long status message wraps at the allocated width instead of clipping,
 ui.text(`${label} · ${activity}`, { tone: 'muted', overflow: 'truncate' })
 ```
 
+`overflow: 'middle'` 与 `'start'` 同样恰好占一行，但省略的是中间或开头而不是末尾，
+让路径或标题里用来区分的那一端始终可见。`styles` 与 span 一样接受 `'strong'`、
+`'italic'`、`'strike'`：
+
+![`text` 的省略行为](/shots/text-ellipsis.svg)
+
+*路径省略中间，同一路径省略开头并加粗（宽度 32）。*
+
+```ts
+ui.stack.column([
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'middle' }),
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
+])
+```
+
 ### `richText`
 
 ![`richText` 节点渲染效果](/shots/richText.svg)
@@ -120,6 +145,8 @@ type MayflyInlineSpan = {
   text: string
   tone?: MayflyTone
   emphasis?: 'normal' | 'strong'
+  motion?: 'shimmer' | 'loader'                        // 一行只有一个动效通道
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath'        // 配合 motion: 'loader'；默认 'gap'
 }
 ```
 
@@ -147,6 +174,23 @@ ui.richText([
   { text: ' failed after ', tone: 'muted' },
   { text: '42s', emphasis: 'strong' },
   { text: ' with 2 errors', tone: 'danger' },
+])
+```
+
+span 可以动。`motion: 'shimmer'` 让一个三字宽的窗口扫过 `text` 的各个字母
+（窗口内 `primary` 加粗，其余弱化）；`motion: 'loader'` 是一个会动的 loader 单元
+（`text` 必须为 `''`），样式取 `variant`。一行 rich text 至多一个动效通道，status
+节点不允许动效。时钟归 renderer 所有（100 ms 一步，breath 每四步一档），一次 tick
+只重绘含该 span 的那一行；减少动效时通道停在首帧，截图展示的也是首帧：
+
+![`richText` 的动效](/shots/richText-motion.svg)
+
+*闪动的标签与呼吸的单元，均为首帧（宽度 48）。*
+
+```ts
+ui.stack.column([
+  ui.richText([{ text: 'Running commands', motion: 'shimmer' }, { text: ' · 12s', tone: 'muted' }]),
+  ui.richText([{ text: '', motion: 'loader', variant: 'breath' }, { text: ' Waiting for authorization', tone: 'muted' }]),
 ])
 ```
 
@@ -195,11 +239,12 @@ ui.fields([
 *带 `ts` 语言提示的多行代码块（宽度 64）。*
 
 ```ts
-ui.code(value: string, options?: { language?: string })
+ui.code(value: string, options?: { language?: string, numbered?: boolean })
 ```
 
-表达代码或预格式化文本，例如补丁片段、命令输出或配置内容。`language` 是
-renderer hint，不保证语法高亮。上面的截图渲染的就是这个节点：
+表达代码或预格式化文本，例如补丁片段、命令输出或配置内容。带可识别的
+`language` 时默认语法高亮：关键字用 `primary`，字符串用 `success`，注释弱化，
+其余为正文色；高亮只覆盖前 12 行且代码不超过 32 KB，超出部分为纯文本。上面的截图渲染的就是这个节点：
 
 ```ts
 ui.code([
@@ -210,24 +255,56 @@ ui.code([
 ].join('\n'), { language: 'ts' })
 ```
 
+`numbered: true` 画出弱化的 `n │ ` 行号栏；折行后的续行缩进在代码之下：
+
+![`code` 的行号](/shots/code-numbered.svg)
+
+*两行带行号的代码（宽度 48）。*
+
+```ts
+ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbered: true })
+```
+
 ### `diff`
 
 ![`diff` 节点渲染效果](/shots/diff.svg)
 
-*多行 before/after：上下文行原样保留，改动行以 `-`/`+` 标出并铺红/绿背景色带（宽度 64）。*
+*多行 before/after：新旧两列行号，改动行以 `−`/`+` 标出，红/绿色带只铺在代码上（宽度 64）。*
 
 ```ts
-ui.diff(before: string, after: string)
+ui.diff(before: string, after: string, options?: {
+  start?: number      // 首行行号（默认 1）
+  numbered?: boolean  // 新旧两列行号（默认 true）
+  hunkHeader?: boolean // 即使只有一个 hunk 也画 `@@` 头（默认：多于一个才画）
+  context?: number    // 每处改动周围的未改动行，0 到 3（默认 1）
+  maxRows?: number    // 超出后显示 `… +N rows · Ctrl+O`
+})
 ```
 
 表达同一内容修改前后的语义对比，例如待确认的编辑。插件提供原始文本，不手工
-添加 diff 颜色：Mayfly 用主题的 `diffRemovedBg`/`diffAddedBg` 色带铺满分配宽度，
-标出删除行与新增行。上面的截图渲染的就是这个节点：
+添加 diff 颜色：Mayfly 画出新旧两列弱化行号（以 `│` 结尾），删除行与新增行以
+`−`/`+` 标出，并用主题的 `diffRemovedBg`/`diffAddedBg` 色带铺在代码上（从不铺在行号上）；
+每处改动保留一行上下文，跳过的未改动行显示为一个弱化的 `⋯`，过长的行以 `…` 结尾。
+上面的截图渲染的就是这个节点：
 
 ```ts
 ui.diff(
   ['export function connect() {', '  const retries = 3', '  return open(retries)', '}'].join('\n'),
   ['export function connect() {', '  const retries = 5', '  return open(retries)', '}'].join('\n'),
+)
+```
+
+选项决定从哪一行起编号、是否用 `@@` 头标出 hunk、上下文放宽或去掉，以及行数上限：
+
+![`diff` 的选项](/shots/diff-options.svg)
+
+*从第 41 行起编号，带 hunk 头（宽度 48）。*
+
+```ts
+ui.diff(
+  ['const a = 1', 'const b = 2', 'const c = 3'].join('\n'),
+  ['const a = 1', 'const b = 4', 'const c = 3'].join('\n'),
+  { start: 41, hunkHeader: true, context: 1 },
 )
 ```
 
@@ -335,6 +412,35 @@ ui.chart({
 })
 ```
 
+heatmap 由 Mayfly 自己绘制：标题、列名表头、每个行标签一行格子，以及图例行。
+`cell: 2`（默认）把每个值画成两格（`░░ ▒▒ ▓▓ ██`，三个等级时为 `░░ ▒▒ ██`），
+列名补到四列宽；`cell: 1` 每个值一格、格间无空隙（`· ░ ▒ ▓ █`），一整年的天数
+也放得进一行，`columnLabels`（每列一个）写在各自那一列的起点，用来标月份。没有
+等级的值为空白，超出可用宽度的行被裁剪。sparkline 只有一行：弱化的标签，接着是
+按最大值缩放的八级格子，用节点的 tone 绘制（默认 `accent`）。
+
+![`chart` 的 heatmap](/shots/chart-heatmap.svg)
+
+*单格模式与月份标签（宽度 40）。*
+
+```ts
+ui.chart({
+  chart: 'heatmap',
+  cell: 1,
+  title: 'Commits',
+  columns: ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'],
+  columnLabels: ['Jan', '', '', 'Feb', '', ''],
+  rows: ['Mon', 'Fri'],
+  values: [[0, 1, 2, 3, 2, 1], [1, 0, 0, 2, 3, 3]],
+  levels: [
+    { value: 0, label: 'none', tone: 'muted' },
+    { value: 1, label: 'some', tone: 'success' },
+    { value: 2, label: 'more', tone: 'success' },
+    { value: 3, label: 'most', tone: 'success' },
+  ],
+})
+```
+
 数值必须 finite，`null` 表示缺失数据。series id 与 heatmap level value 必须唯一；
 bar values 数量匹配 category，heatmap 矩阵维度匹配 row/column label。每个 chart
 最多 20 个 series，单棵树最多 4,000 个 chart cell。与 `document` 一样，`chart`
@@ -363,6 +469,9 @@ ui.child(node: MayflyUiNode, options?: {
     minHeight?: number
     maxHeight?: number
   }
+  priority?: number                      // row 中的录用顺序；越小越先保留
+  band?: 'left' | 'center' | 'right'     // 被录用的子节点所在区段（默认 left）
+  overflow?: 'truncate' | 'hide'         // 放不下时怎么办
 })
 ```
 
@@ -427,6 +536,32 @@ ui.stack.row([
 ], { gap: 1 })
 ```
 
+带 `priority` 的子节点让 `row` 改为录用而不是按尺寸排布：子节点按优先级（相同时按
+原顺序）依次录用，只要放得下，之间隔 `gap`（默认 2）。放不下的子节点——`overflow: 'truncate'`
+取走剩余宽度（至少 8 列，之后这一行满了）；`overflow: 'hide'` 直接退出，后面的子节点仍可能放得下；
+都不写则录用到此为止，它和它后面的子节点全部丢弃。被录用的子节点按 `band` 放置：
+右区段贴边，中区段在左右邻居之间居中。每个子节点只画第一行。Mayfly 的状态行用同一条规则，
+插件条目与 Mayfly 条目被一视同仁地录用：
+
+![`stack` 的录用](/shots/stack-admission.svg)
+
+*宽度 64：右侧的 `cache 34%` 保留，路径截断进剩余的宽度。*
+
+```ts
+ui.stack.row([
+  ui.child(ui.richText([{ text: 'deepseek-chat High' }]), { priority: 0 }),
+  ui.child(ui.richText([{ text: 'PLAN', tone: 'primary', styles: ['strong'] }]), { priority: 1 }),
+  ui.child(ui.richText([{ text: 'cache 34%', tone: 'muted' }]), { priority: 4, band: 'right', overflow: 'hide' }),
+  ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly', tone: 'muted' }]), { priority: 5, overflow: 'truncate' }),
+], { gap: 2 })
+```
+
+同一节点在宽度 30 下：`cache 34%` 放不下而隐去，路径剩下不足 8 列，于是这一行止于 `PLAN`。
+
+![`stack` 的录用（窄）](/shots/stack-admission-narrow.svg)
+
+*宽度 30。*
+
 ### `surface`
 
 ![`surface` 节点渲染效果](/shots/surface.svg)
@@ -442,6 +577,10 @@ ui.surface({
   padding?: 0 | 1 | 2
   child: MayflyUiNode
   footer?: MayflyUiNode
+  titleAlign?: 'left' | 'right'
+  border?: MayflyTone
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
+  hint?: 'auto' | 'none' | 'completions'
 })
 ```
 
@@ -451,11 +590,15 @@ ui.surface({
 | --- | --- |
 | `title` | 主标题 |
 | `subtitle` | 标题后的弱化说明行 |
-| `badges` | 使用 span tone/emphasis 的徽标行 |
-| `chrome` | 边框意图；默认 `none` |
-| `padding` | 内容侧留白级别；默认 `0` |
+| `badges` | 使用 span tone/emphasis 的徽标，位于标题规则线右侧（窄时先省略） |
+| `chrome` | 边框意图；默认 `none`。`overlay` 与 `surface` 都是圆角框，标题嵌在顶部规则线里（`╭ 标题 ─── 徽标 ╮`），`overlay` 用焦点边框色，`surface` 用安静边框色；`lane` 只有规则线；`none` 是粗体标题 |
+| `padding` | 内容侧留白级别；默认 `0`。带框的 chrome 在边框内至少保留一列 |
 | `child` | 必填正文 |
 | `footer` | 可选尾部节点，位于正文与底边之间 |
+| `titleAlign` | `right` 把标题放到右上角、徽标放到左边；规则线放不下的长标题丢掉开头，路径的末端得以保留 |
+| `border` | 边框 tone；省略时用 chrome 自己的颜色 |
+| `escapeLabel` | `Esc` 提示里的字，以及内部没人接管 `Esc` 之后它做什么：请 host 关闭 surface（`reject` 以拒绝的方式关闭） |
+| `hint` | `none` 不画按键提示行；`completions` 只在编辑器的补全列表打开时才画 |
 
 `chrome: 'overlay'` 只是视觉意图，不会创建 overlay；真正的浮层仍通过
 `api.overlays.open()` 打开。若 registration 的根节点就是这种 surface，core 会把
@@ -493,6 +636,21 @@ ui.surface({
 })
 ```
 
+![`surface` 右对齐标题](/shots/surface-title-right.svg)
+
+*右对齐标题与边框 tone（宽度 40）。*
+
+```ts
+ui.surface({
+  title: '~/work/mayfly/packages/mayfly',
+  titleAlign: 'right',
+  chrome: 'surface',
+  border: 'warning',
+  badges: [{ text: 'dirty', tone: 'warning' }],
+  child: ui.text('The end of the path stays visible.'),
+})
+```
+
 ### `scroll`
 
 ![`scroll` 节点渲染效果](/shots/scroll.svg)
@@ -504,6 +662,10 @@ ui.scroll(node: MayflyUiNode, options?: {
   id?: string
   follow?: 'none' | 'start' | 'end'
   scrollbar?: boolean
+  height?: number
+  expandedHeight?: number
+  fit?: boolean
+  pill?: boolean
 })
 ```
 
@@ -518,6 +680,24 @@ mode 都使用父布局给出的实际高度；被动 transcript 的 main-mode s
 ui.scroll(
   ui.stack.column(Array.from({ length: 16 }, (_, index) => ui.text(`log line ${index + 1}`))),
   { scrollbar: true },
+)
+```
+
+写了 `height`、`expandedHeight`、`fit` 或 `pill` 之一，scroll 就有了自己的 viewport：恰好 `height`
+行（默认 6）；被 `Ctrl+E` 展开时为 `expandedHeight` 行（默认 14）；内容旁边多一列滚动条
+（`░` 轨道上的 `█` 滑块，`scrollbar: false` 除外）。外面的 surface 保持自然高度，不再
+撑满终端。`fit` 让 viewport 收缩到短内容，内容溢出前不画滚动条。`pill` 在视图离开被跟随的
+末尾、且其后又来了 N 行时，在最后一行上画 `↓ N new · End`，按 `End` 跳回。用户滚到的位置
+在重新发布后保持；带 `id` 时由上文的锚点保持。
+
+![`scroll` 区域](/shots/scroll-region.svg)
+
+*12 行内容放进跟随末尾的 4 行 viewport（宽度 40）。*
+
+```ts
+ui.scroll(
+  ui.stack.column(Array.from({ length: 12 }, (_, index) => ui.text(`log line ${index + 1}`))),
+  { height: 4, follow: 'end', pill: true },
 )
 ```
 
@@ -539,11 +719,16 @@ ui.tabs({
   id: string
   activeId: string
   mode?: 'tabs' | 'wizard'
+  orientation?: 'horizontal' | 'vertical'
+  hintLabel?: string
   items: readonly {
     id: string
     label: string
     disabled?: boolean
-    count?: number
+    count?: number | string
+    attention?: boolean
+    group?: string
+    clip?: 'end' | 'start'
     backId?: string
   }[]
 })
@@ -552,8 +737,13 @@ ui.tabs({
 - `activeId` 必须对应一个 item，是 registration 初始或 data snapshot 的 baseline；
   当前活动页由 Mayfly instance 保留。
 - `disabled` item 会显示但不能激活。
-- `count` 是非负 safe integer 计数提示，renderer 可在窄宽度隐藏它。
+- `count` 是跟在标签后的弱化数字或短文本（`3`、`2/6`）；`attention: true` 用加粗的
+  `warning` 色 `!` 取代它。
+- 放不下的 tab 条围绕当前 tab 折叠为 `‹ 当前 下一个 +N ›`，再退为 `‹ 当前 +N ›`，最后按宽度截断。
+- `orientation: 'vertical'` 绘制侧栏（见下）；`hintLabel` 是提示行中 `Alt+←/→` 切换 tab
+  使用的词（默认 `tabs`）。
 - `mode: 'wizard'` 按已验证 form revision 标记完成步骤；编辑或 conflict 会使标记失效。
+  向导是横向 tab 条，聚焦时提示行把 `Esc` 写作 `back`。
 - `backId` 声明同组返回目标；未知目标和循环会被准入拒绝。
 - Tabs 只绘制 tab strip；用 `ui.child(node, { tab })` 关联页面 body。
 - 激活 item 时向 `onEvent.observe` 发出带 `pagePath` 的 `tab-change` 事实；插件无需
@@ -596,6 +786,46 @@ ui.stack.column([
 ])
 ```
 
+### 竖向侧栏
+
+![`tabs` 竖向侧栏](/shots/tabs-rail.svg)
+
+*`orientation: 'vertical'`：分组、计数与注意标记，右侧是当前标签的页面（宽度 64）。*
+
+侧栏用于标签很多的场景（按工作区分的会话、按分组的设置）。把它放进 row 并设置 `basis` 与
+`shrink: 0`，旁边的页面用 `ui.child(node, { tab })` 关联。
+
+- `group` 让连续的 item 归在同一个弱化、大写的标题下。当前标签带加粗的 `→`：侧栏有焦点时为
+  `primary`，焦点进入内容后变弱。计数和 `!` 右对齐。`clip: 'start'` 对长标签保留区分度高的
+  末尾（`…ackages/mayfly`），默认裁掉末尾。
+- `↑` / `↓` 移动并立即发出 `tab-change`，页面实时跟随。`→` 或 `Enter` 进入内容；侧栏上的 `←`
+  不起作用。
+- 视口宽度不足 60 列时，侧栏按横向 tab 条绘制和操作。
+- `←` 阶梯：聚焦的控件先得到 `←`，只有它确实改变了内容才占用（不在第一个选项的 select、
+  还能后退的行内 segment、已展开的树节点、action 行中靠后的 action）。它没用上的第一个 `←`
+  把焦点移到 surface 的侧栏，无论侧栏在焦点顺序的哪里，提示行此时才写 `← labels`。
+- 在文本编辑和选择器之外的任意位置，`Alt+↑` / `Alt+↓`（`F4` / `F5`）在控件之间移动，
+  `Alt+←` / `Alt+→`（`F2` / `F3`）切换 tab。`Esc` 先把焦点还给第一个控件（`Esc back`），
+  再关闭。
+
+```ts
+ui.stack.row([
+  ui.child(ui.tabs({
+    id: 'settings-rail',
+    orientation: 'vertical',
+    activeId: 'model',
+    items: [
+      { id: 'general', label: 'General', group: 'Session' },
+      { id: 'model', label: 'Model', group: 'Session' },
+      { id: 'permissions', label: 'Permissions', count: 2, group: 'Session' },
+      { id: 'providers', label: 'Providers', attention: true, group: 'Integrations' },
+      { id: 'mcp', label: 'MCP', count: '4/9', group: 'Integrations' },
+    ],
+  }), { basis: 24, shrink: 0 }),
+  ui.child(ui.text('Model page'), { grow: 1, tab: { controlId: 'settings-rail', itemId: 'model' } }),
+], { gap: 2 })
+```
+
 ### `list`
 
 ![`list` 节点渲染效果](/shots/list.svg)
@@ -607,16 +837,25 @@ ui.list({
   id: string
   mode?: 'single' | 'multiple'
   role: 'browse' | 'choose'
-  selectedIds: readonly string[]
+  selectedIds?: readonly string[]      // default []
   items: readonly MayflyListItem[]
   filter?: string
   filterable?: boolean
+  filterMode?: 'type' | 'slash'
   tree?: boolean
   numbered?: boolean | 'focus'
   minSelected?: number
   maxSelected?: number
   acceptActionId?: string
   empty?: MayflyUiNode
+  marker?: 'cursor' | 'selection'
+  marks?: boolean
+  maxRows?: number
+  expandFocused?: boolean
+  acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore'
+  autofocus?: boolean
+  focusItem?: { id: string, rev: number }
+  hintLabel?: string
 })
 
 type MayflyListItem = {
@@ -630,14 +869,26 @@ type MayflyListItem = {
   disabledReason?: string
   parentId?: string
   searchText?: string
-  segment?: MayflyListSegment
+  segment?: MayflyListSegment      // { label?, options, selectedId?, inheritedId? }
   unavailableActions?: Readonly<Record<string, string>>
   confirm?: string | MayflyConfirmation
+  labelSpans?: readonly MayflyInlineSpan[]
+  right?: readonly MayflyInlineSpan[]
+  rightFocus?: readonly MayflyInlineSpan[]
+  body?: string | MayflyListBodyNode   // 内容用 ui.listBody(...) 构建
+  bodyAlways?: boolean
+  expanded?: boolean
+  wrap?: boolean
+  wrapMax?: number
+  meter?: { value: number, max: number, width?: number, tone?: MayflyTone }
+  indent?: number
+  rule?: string
+  gap?: boolean
 }
 ```
 
 `role: 'browse'` 用于打开或检查条目，`role: 'choose'` 用于提交选择。`mode` 默认为
-`single`。single mode 最多有一个 `selectedIds`；所有 selected id
+`single`。`selectedIds` 可省略，默认为 `[]`（无选中项）。single mode 最多有一个 `selectedIds`；所有 selected id
 必须存在于 `items`。`detailSpans` 存在时优先于 `detail`。`group` 只表达分组标题，
 `badge` 是紧凑标签；窄宽度下 renderer 可隐藏 detail。上面的截图渲染的就是这个
 节点：
@@ -654,7 +905,7 @@ ui.list({
 })
 ```
 
-`filterable: true` 启用共享搜索；`filter` 只提供初始 query。输入字符或 `/` 开始搜索，
+`filterable: true` 启用共享搜索；`filter` 只提供初始 query。输入字符或 `/` 开始搜索（`filterMode: 'slash'` 时只有 `/`），
 Escape 结束搜索并保留 query，Ctrl+U 清空。Mayfly 在已给出的 items 上维护匹配和焦点，
 不触发网络读取。`tree: true` 配合 `parentId` 提供共享展开状态（Space 或 Right/Left
 展开、折叠分支）。大型 items 只校验和绘制当前窗口。items 为空时渲染 `empty`。
@@ -663,6 +914,72 @@ disabled 行永远不会获得光标，移动时直接跳过；没有 `detail` �
 显示 `disabledReason`。`numbered: true` 为前九个可见行加上 `1.`–`9.` 前缀，数字键直接
 选择该行；编号按可见顺序计算，列表滚动时保持不变。`numbered: 'focus'` 显示同样的编号，
 但数字只移动光标，适合需要显式 Enter 才接受的关卡。
+
+**斜杠筛选。** `filterMode: 'slash'` 让可打印键不再开始搜索，只有 `/` 才会（它也会恢复保留的
+query），所以单个字母可以留给 `i install`、通用的 `x delete`、`r refresh` 等 accelerator。搜索
+打开后数字是文本。没有 `filterMode` 的 `filterable` 列表把每个可打印键当作文本，validator 会拒绝
+与之并存的可打印 accelerator；每个可筛选列表都设为 `filterMode: 'slash'` 时才放开。搜索打开时筛选
+行显示 `N matches`，提示行只列出结束或清除搜索的键。
+
+**行。** `marker: 'selection'` 让光标行在焦点离开后保留一个 muted 的 `→`（详情跟随它的 rail）。
+`marks: true` 在 single choose 列表上画 `●`/`○`。`maxRows` 围绕光标开窗口，并以
+`↑ n more · ↓ n more` 结尾。`acceptVerb` 在提示行命名 Enter，`hintLabel` 命名 `↑/↓`，`autofocus`
+让该列表最先获得焦点。`focusItem` 在 `rev` 变化时移动光标（并展开该行的父级）；重新发布相同 `rev`
+不会动读者已经移动过的光标。`expandFocused` 展开光标行的 body 或分支。`labelSpans` 绘制标签（`label`
+仍是筛选读取的纯文本），`right` 把 span 对齐到行右缘，`rightFocus` 在光标下替换它，`meter` 画
+`▰▱`，`indent` 缩进，`wrap` 在行自己的前缀下折行（最多 `wrapMax` 行，之后是
+`▸ N more lines · Enter`），`rule` 与 `gap` 是方向键跳过的不可选 muted 分隔线与空行。树中 `*`
+展开所有分支、`-` 折叠；multiple 树的父级在部分子项被选中时显示 `◐`。
+
+**Body。** 字符串 `body` 在行下方以 `│ ╰` 引导线展开；节点 `body`（用 `ui.listBody` 构建，仅限内容：
+text、rich text、fields、code、diff、sections、progress、image、divider）作为内容展开。带 body 的行
+显示 `▸`/`▾`，用 Enter、Space 或 Right 展开（Left 折叠）；`bodyAlways` 不带展开箭头直接显示，
+`expanded` 让行初始展开。每个 body 随其 item 在各自 32 个节点的预算下校验，长列表只校验光标附近的行，
+所以数千条富行不会占用比普通行更多的树配额。body 永远不是 control：其中的 list、form、actions、
+tabs 会被拒绝。
+
+**Segment 条。** `segment` 只在焦点行上画一条横向选项（`min ‹ high (default) › max`）。
+`←`/`→` 步进并在两端夹紧，跳过 disabled 选项；有 `inheritedId` 时，未固定的行把该选项标为
+`(default)`，步进到它即取消固定，`Delete` 也取消固定（提示行 `Delete use default`）。仅当继承了某项
+的行被固定时，`selection-accept` 才携带 `segmentId`。窄宽度下先去掉 `(default)`；该行放不下时，
+列表预先保留一行 footer（`  Thinking: min ‹ high (default) › max`，其次去掉标题，再折叠为 `+N`，
+最后只显示当前选项），因此焦点不会让任何一行移动。
+
+![带斜杠筛选、body 与 meter 的 `list`](/shots/list-rows.svg)
+
+*斜杠列表、选中 rail、右对齐 span、meter 与展开的 body（宽度 64）。*
+
+```ts
+ui.list({
+  id: 'plugins',
+  role: 'browse',
+  filterable: true,
+  filterMode: 'slash',
+  marker: 'selection',
+  selectedIds: [],
+  items: [
+    { id: 'loop', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }], meter: { value: 3, max: 4 } },
+    { id: 'git', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }], body: 'Commits, branches, and pull requests\nfrom the prompt.' },
+  ],
+})
+```
+
+![带 segment 条的 `list`](/shots/list-segment.svg)
+
+*焦点行带有自己的条；向右键固定了下一个选项（宽度 64）。*
+
+```ts
+ui.list({
+  id: 'models',
+  role: 'browse',
+  acceptVerb: 'choose',
+  selectedIds: [],
+  items: [
+    { id: 'pro', label: 'DeepSeek V4 Pro', detail: '977k context', segment: { label: 'Thinking', inheritedId: 'high', options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }] } },
+    { id: 'flash', label: 'DeepSeek V4 Flash', detail: '256k context' },
+  ],
+})
+```
 
 `unavailableActions` 把 action id 映射到“当本行是该 action（通过其 `selections`）所指向
 的选择时，该 action 为何不能执行”的原因。此时 action 以 disabled 呈现并显示原因，
@@ -697,7 +1014,7 @@ ui.list({
 
 ![`form` 节点渲染效果](/shots/form.svg)
 
-*常用 field 的默认状态：secret 值被遮蔽，select 显示当前值，toggle 显示开关（宽度 64）。*
+*常用 field 的默认状态：secret 值被遮蔽，select 显示当前值，toggle 显示开关。多字段表单画一个主要的 Save；单字段表单不画按钮（宽度 64）。*
 
 ```ts
 ui.form({
@@ -715,13 +1032,19 @@ Form field 是以下判别联合：
 
 | `kind` | 必填字段 | 可选字段 | `value-change` value |
 | --- | --- | --- | --- |
-| `input` | `id`、`label`、`value: string` | `placeholder`、`error`、`disabled` | `string` |
+| `input` | `id`、`label`、`value: string` | `placeholder`、`pattern`、`patternMessage`、`suggestions`、`error`、`disabled` | `string` |
 | `textarea` | 同 input | 同 input | `string` |
 | `secret` | 同 input | 同 input；renderer 遮蔽 value | `string` |
 | `number` | `id`、`label`、`value: number \| null` | `min`、`max`、`step`、`unit` | 编辑时为 `string` draft |
 | `select` | `id`、`label`、`value: string \| null`、`options: MayflyListItem[]` | `error`、`disabled` | `string \| null` |
 | `multiselect` | `id`、`label`、`value: string[]`、`options` | `minSelected`、`maxSelected` | `string[]` |
 | `toggle` | `id`、`label`、`value: boolean` | `error`、`disabled` | `boolean` |
+
+所有 `kind` 还接受 `help`（字段聚焦时在其下方显示的一行弱化文字，窄表单最先丢弃它）和 `group`
+（同一 `group` 的字段归在一个 `── Group ──` 标题下；值一变就开始下一个标题）。`pattern` 是不超过 256 个
+字符的正则表达式，以 `u` 标志编译，仅对非空值检查；`patternMessage` 给出错误文字（省略时为本地化的
+“值无效”）。`suggestions`（最多 64 条单行文本）在编辑字段时提供补全：已键入文本是其开头的第一条以 `⇥`
+标记，按 Tab 采用。
 
 上面的截图渲染的就是这个节点：
 
@@ -740,18 +1063,19 @@ ui.form({
   ],
   submitActionId: 'create-profile',
   submitLabel: 'Create profile',
-  cancelActionId: 'cancel',
-  cancelLabel: 'Cancel',
 })
 ```
 
 Mayfly frontend instance 保留文本 draft，并向 `onEvent.observe` 发出带 field
 revision 的 `value-change`，用于可选的异步校验；插件不应把每次输入回声为 snapshot。
 权威 data snapshot 改变时，model 协调未修改值、草稿和冲突。文本字段聚焦后保持
-导航态，直接输入或 Enter 才进入编辑；input 编辑态的 Enter 进入下一组，textarea
-的 Enter 或 Alt+Enter 插入换行。设置 `enterSubmits: actionId` 后，表单任一字段中的
-Enter 都会执行该 action（textarea 仍用 Alt+Enter 换行）。Escape 结束编辑并保留草稿，
-再按一次 Escape 才离开 surface。number 字段会在值后显示 `unit`。
+导航态，直接输入或 Enter 才进入编辑；编辑态的 Enter 提交该字段并移到下一个字段，
+textarea 用 Alt+Enter（或 Ctrl+J）插入换行。设置 `enterSubmits: actionId` 后，表单任一字段中的
+Enter 都会执行该 action，包括 select、multiselect 与 toggle（此时 Space 打开选项列表或切换开关）；
+只有一个字段且设置了 `submitActionId` 的表单同样以 Enter 提交。Escape 结束编辑并保留草稿，
+再按一次 Escape 才离开 surface。聚焦的 textarea 会展开成一个框来显示各行。
+number 字段会在值后显示 `unit`；聚焦时读作 `‹ 45 › s  5–120`，Left/Right 按 `step` 步进并限制在
+`min` 与 `max` 之间（到达上下限时该键交给旁边的 control）。
 
 下面的 form 聚焦 Name 字段并键入 `Ada Lovelace`——截图中
 的草稿文本和光标就是这个交互序列留下的状态：
@@ -783,7 +1107,7 @@ Escape 放弃打开的列表并停在当前字段；Tab 应用高亮选项（或
 
 ![`form` 的 select 选项列表](/shots/form-select.svg)
 
-*打开的选项列表：`>` 标记高亮项，`[x]` 标记当前值；Enter 把高亮项写入 field draft（宽度 64）。*
+*打开的选项列表：`→` 标记高亮项，`●` 标记当前值、`○` 标记其余选项；Enter 把高亮项写入 field draft（宽度 64）。*
 
 ```ts
 ui.form({
@@ -801,8 +1125,10 @@ ui.form({
 ```
 
 `error` 在字段下方显示校验信息；`disabled` 字段不进入焦点导航，但仍保留在
-提交表单中。`required`、长度、数值与选择约束在 action 开始前统一校验；
-下面的 form 同时展示这两种状态：
+提交表单中。`required`、长度、数值、`pattern` 与选择约束在 action 开始前统一校验。值被修改且
+编辑结束（Enter、Tab 或 Escape）之后，违反的约束会以 `! message` 显示在该字段下方；正在键入的字段不会
+被提前指责。被拒绝的保存会标出每个无效字段并提示“请修正标出的字段”，焦点留在原处（其他页面上的错误会把该页面
+带到前台）。下面的 form 同时展示这两种状态：
 
 ![`form` 的 error 与 disabled 状态](/shots/form-validation.svg)
 
@@ -820,14 +1146,44 @@ ui.form({
 })
 ```
 
-`origin: 'inherited' | 'explicit'` 在标签后标注 `(继承)` 或 `(显式覆盖)`；修改继承值即成为
-显式覆盖。`resetValue` 让已修改或显式覆盖的字段可以重置：在该字段上按 Delete 恢复为
-`resetValue`（字段带 `origin` 时即继承值），提交时该字段报告 `change: 'reset'`。只有重置会
-产生变化时提示行才显示 Delete；表单不再渲染单独的覆盖或重置按钮。草稿期间权威值发生变化的
-字段，需先选择 **使用当前值** 或 **保留我的修改** 才能保存。
+`origin: 'inherited' | 'explicit'` 在值后标注 `(继承)` 或 `(覆盖)`（英文界面为 `(inherited)`、`(override)`）；
+修改继承值即成为显式覆盖。与默认值不同或被修改过的字段，在箭头列显示 `•`。`resetValue` 让已修改或显式覆盖
+的字段可以重置：在该字段上按 Delete 恢复为 `resetValue`（字段带 `origin` 时即继承值），提交时该字段
+报告 `change: 'reset'`；没有 `resetValue` 时，Delete 让已修改的字段回到打开时的值。只有重置会
+产生变化时提示行才显示 Delete；表单不再渲染单独的覆盖或重置按钮。尚未改动的已保存 secret 读作
+`•••• (saved)`。草稿期间权威值发生变化的字段，需先选择 **使用当前值** 或 **保留我的修改** 才能保存。
 
-`submitActionId` 增加提交 control，按钮文字为 `submitLabel`（省略时为本地化的
-“提交”），id 不会显示。提交使用声明 action 的 `submit` 地址聚合一个或
+下面的 form 中 Endpoint 字段聚焦，所以显示它的 help：
+
+![`form` 的分组、help 与标记](/shots/form-groups.svg)
+
+*两个 `── Group ──` 标题下的分组。聚焦的字段显示 `help`；secret 读作 `(saved)`，Model 读作 `(inherited)`，Timeout 与 `resetValue` 不同，因此带 `•`（宽度 64）。*
+
+```ts
+ui.form({
+  id: 'provider-form',
+  fields: [
+    { kind: 'input', id: 'name', label: 'Name', value: 'production', group: 'Connection' },
+    { kind: 'input', id: 'endpoint', label: 'Endpoint', value: 'https://api.example.com/v1', help: 'Base URL, including the version path',
+      pattern: '^https?://\\S+$', patternMessage: 'Must be an http(s) URL' },
+    { kind: 'secret', id: 'key', label: 'API key', value: 'sk-live-0123456789' },
+    { kind: 'select', id: 'model', label: 'Model', value: 'deepseek-chat', origin: 'inherited', group: 'Behaviour', options: [
+      { id: 'deepseek-chat', label: 'deepseek-chat' },
+      { id: 'deepseek-reasoner', label: 'deepseek-reasoner' },
+    ] },
+    { kind: 'number', id: 'timeout', label: 'Timeout', value: 45, resetValue: 30, min: 5, max: 120, step: 5, unit: 's' },
+    { kind: 'toggle', id: 'stream', label: 'Streaming', value: true },
+  ],
+  submitActionId: 'save',
+})
+```
+
+surface 上任何 form 存在未保存的修改时，surface 头部会在作者给出的徽章之后显示 `unsaved changes` 徽章。
+Ctrl+S（`ui.save`）可在任一字段上提交该 form：依次使用它的 `submitActionId`、`enterSubmits` 指定的
+action，或提交该 form 的 action（优先 primary）。
+
+`submitActionId` 为多于一个字段的 form 增加一个主要的提交 control，按钮文字为 `submitLabel`（省略时为本地化的
+“保存”），id 不会显示。只有一个字段的 form 不画按钮，用 Enter 提交。提交使用声明 action 的 `submit` 地址聚合一个或
 多个页面中的表单，并锁定这次 boundary：
 
 ```ts
@@ -846,8 +1202,8 @@ ui.form({
 }
 ```
 
-`cancelActionId` 增加共享关闭 control，按钮文字为 `cancelLabel`（省略时为本地化的
-“取消”）；dirty form 会先进入默认 No 的丢弃确认。关闭类 action 从不返回上一页，
+`cancelActionId` 从不画成按钮：最外层的 Escape 会执行它，并关闭 surface；dirty form 会先进入默认 No 的丢弃确认。
+宿主没有提供 `onUnhandledEscape` 时，提示行把 Escape 写作 `cancel`。关闭类 action 从不返回上一页，
 返回由 Escape 负责。
 
 ### `actions`
@@ -859,6 +1215,7 @@ ui.form({
 ```ts
 ui.actions({
   id: string
+  scope?: string | readonly string[]   // controls whose focus puts the group's keys in effect
   items: readonly {
     id: string
     label: string
@@ -874,7 +1231,10 @@ ui.actions({
     hidden?: boolean          // no button, no focus stop; runs from `key` or as a form `enterSubmits` target
     dismiss?: boolean
     navigate?: MayflyPagePath
-    key?: string
+    key?: string              // with `action`, that action's default key
+    semantic?: 'save' | 'copy' | 'delete' | 'refresh' | 'external' | 'search'
+    action?: string           // `<owner>.<action>`; `ui.*` is reserved
+    hintLabel?: string
   }[]
 })
 
@@ -940,6 +1300,115 @@ ui.actions({
 })
 ```
 
+行操作可以声明它的含义，而不是固定某个键。`semantic` 声明一个通用含义，item 随该含义的
+当前绑定触发：`delete` 默认是 `x`，用户重绑 `ui.delete` 后，所有面板的删除键一起改变。
+声明含义的 item 不能再带 `key` 或 `action`，其默认键同样受上面的页面规则约束，因此
+`copy`（`c`）、`delete`（`x`）和 `refresh`（`r`）不能与输入即筛选的列表同页。`action`
+命名一个组件动作 `<owner>.<action>`（`ui.*` 命名空间归 core 所有），`key` 是它的默认键；
+Mayfly 会列出见过的动作供用户重绑，提示行和按钮都跟随生效的键。`hintLabel` 是提示行中
+键后显示的词（缺省时用标签）。
+
+`scope` 指定同一页或外层页上的一个或多个控件：只有当其中之一（或其中的行、字段、标签）
+获得焦点时，这组键才生效并显示提示。同一页上的两组 action 只有在 scope 指向不同控件时
+才能绑定同一个键。下面的列表只在自身获得焦点时响应 `x` 和 `t`：
+
+![带命名行操作键的 `actions`](/shots/actions-named.svg)
+
+*隐藏的通用含义与组件动作，作用域限定在它们操作的列表上（宽度 64）。*
+
+```ts
+ui.stack.column([
+  ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: [
+    { id: 'production', label: 'production', detail: 'api.example.com' },
+    { id: 'staging', label: 'staging', detail: 'staging.example.com' },
+  ] }),
+  ui.actions({ id: 'provider-keys', scope: 'providers', items: [
+    { id: 'remove', label: 'Remove', semantic: 'delete', hidden: true, hintLabel: 'remove', confirm: 'Remove the provider?' },
+    { id: 'test', label: 'Test connection', action: 'acme-providers.test', key: 't', hidden: true, hintLabel: 'test' },
+  ] }),
+])
+```
+
+### `prompt`
+
+![`prompt` 节点渲染效果](/shots/prompt.svg)
+
+*带两个标记和一段草稿的提示符，放在编辑器使用的右上标题 surface 中（宽度 64）。*
+
+```ts
+ui.prompt(options: {
+  id: string
+  symbol?: string                      // 默认 '> '
+  symbolTone?: MayflyTone
+  value?: string                       // 控件初始的草稿
+  tokens?: { id: string, label: string, size?: string }[]
+  recall?: { kind: 'queued' | 'history', text: string }[]
+  recallLabel?: string                 // 默认 'history'
+  placeholder?: string | string[]      // 阶梯，从长到短
+  completions?: { items: { id: string, label: string, detail?: string, right?: string }[] }
+  reset?: { rev: number, value: string }
+  submitLabel?: string                 // 默认 'send'
+  autofocus?: boolean
+})
+```
+
+提示符是唯一不属于字段的文本控件。第一行依次是符号、标记和缓冲区；缓冲区就是终端编辑器，
+所以 kill ring、撤销、粘贴折叠和输入法的行为与主编辑器一致。标记写作 `[label size ×]`，
+被选中时反色。多行缓冲区的后续行位于符号之下。草稿由 core 保存在 surface 模型中，因此重新发布、
+切换主题或 core 重载都不会丢失已输入的内容；节点的 `value` 只是草稿的起点。
+
+![`prompt` 占位阶梯](/shots/prompt-placeholder.svg)
+
+*显示放得下的最长占位变体（宽度 40）。*
+
+缓冲区和标记都为空时，占位文字以弱化的文本色显示在光标之后。数组是从长到短的阶梯，
+显示放得下的最长变体，所以每个变体都应写成完整的触发词。纯字符串会逐段丢弃末尾的 ` · ` 段。
+有任何文本、标记或多行缓冲区时占位文字隐藏；极窄的行只会截断最短的变体。
+
+![`prompt` 补全列表](/shots/prompt-completions.svg)
+
+*打开的补全列表及其按键行（宽度 64）。*
+
+`completions` 在缓冲区下最多显示五行，形如 `→ label — detail`，焦点行加粗，放得下时 `right`（例如命令的按键）
+靠右对齐。`↑`/`↓` 移动光标，`Tab` 或 `Enter` 发送带该行 `itemId` 的 `completion-accept`，`Esc`
+隐藏列表（`completion-dismiss`），直到行或文本变化。宿主通过发布新节点（通常带 `reset`）完成插入。
+把提示符放进设置了 `hint: 'completions'` 的 `surface`，按键行只在列表打开时显示。
+
+![`prompt` 历史回溯](/shots/prompt-recall.svg)
+
+*空提示符上按两次 `↑`（宽度 64）。*
+
+缓冲区为空或已是某条回溯内容时，`↑`/`↓` 遍历 `recall`：排队的消息在前，从新到旧；右上角显示
+`↑ history 2/3`，回溯的文本成为草稿。越过最新一条再按 `↓` 会恢复之前的草稿。每一步发送观察事件
+`recall-change`（`source` 为 `queued`、`history` 或 `draft`，`index` 是 `recall` 中的位置，草稿为 `-1`）。
+宿主撤回已回溯的排队消息时，重新发布去掉它的 `recall`，遍历位置保持不变。
+
+提示符获得焦点时的按键：
+
+| 按键 | 作用 |
+| --- | --- |
+| 输入、`←`/`→`、`Home`/`End`、`Ctrl+K`、`Ctrl+Y` 等 | 终端编辑器自己的编辑 |
+| `Enter` | 发送：`submit` 动作 |
+| `Alt+Enter`、`Ctrl+J` | 插入换行 |
+| 空缓冲区上的 `Backspace` | 第一次选中最后一个标记，第二次删除它（`token-remove`）；其他任何键都会取消选中 |
+| 空缓冲区上的 `↑` / `↓` | 遍历 `recall` |
+| 补全列表打开时的 `Tab` / `Enter` / `Esc` / `↑` / `↓` | 接受、接受、隐藏、移动 |
+| `Esc`、`Ctrl+C` | 与其他控件一样离开 surface |
+
+可打印按键总是进入缓冲区，所以 surface 上其他位置的字母快捷键在提示符有焦点时不会触发；带修饰键的快捷键仍然有效。
+按键行用 `submitLabel` 命名 `Enter`，并显示 `Alt+Enter newline`，以及适用时的历史回溯按键对。
+
+事件：`value-change`（观察事件；`formId` 为提示符 `id`，`controlId` 为 `text`）、`recall-change`（观察事件），
+以及动作 `token-remove`（`tokenId`）、`completion-accept`（`itemId`）、`completion-dismiss` 和 `submit`。
+`submit` 携带一个 submission，其中有一个以提示符 `id` 为地址的表单，字段为 `text` 与 `tokens`（标记 id）；
+草稿随即清空，宿主像对表单一样答复，通常是带新节点（已清空的标记、更新后的 `recall`）的 `accepted`。
+`reset` 对每个新的 `rev` 只替换一次草稿，宿主用它插入补全或恢复草稿。
+
+限制：草稿、回溯消息和 reset 在每棵树中合计 100,000 个字符，不计入整棵树 20,000 字符的文本预算；
+最多 50 个标记（`id`、`label`、`size` 各最多 64 个字符）、8 个占位变体（每个最多 200 个字符）、
+最多 8 个字符的 `symbol`，`recallLabel` 与 `submitLabel` 最多 24 个字符。`prompt` 可用于 pane 和 overlay，
+不是 status 或 editor extension 节点。
+
 ## 焦点与上下文提示
 
 TUI 通过同一套键位语法从 canonical control 角色推导操作，并用同一套语法生成提示行，
@@ -954,7 +1423,7 @@ TUI 通过同一套键位语法从 canonical control 角色推导操作，并用
   用 `Space` 切换、`Enter` 确认，action 用 `Enter` 或 `Space`。
 - Escape 每次只退一层，所有 surface 一致：先取消打开的选择器，再结束文本编辑
   （草稿保留），再结束进行中的搜索（query 保留），有 `backId` 的页面返回上一页，
-  最后关闭 surface。tab 条不是退出途中的一站。Ctrl+C 请求同样的关闭。
+  再把焦点还给 surface 的第一个控件（`Esc back`），最后关闭 surface。tab 条不是退出途中的一站。Ctrl+C 请求同样的关闭。
 - 待确认时提示切换为 `Enter confirm · Esc cancel`；只读 scroll 可聚焦，支持方向键、
   Page、Home 与 End，并可用 Ctrl+E 展开到整个框。
 
@@ -963,28 +1432,45 @@ TUI 通过同一套键位语法从 canonical control 角色推导操作，并用
 80 列以下最多显示三个片段、80 列起最多四个，窄屏先缩成完整按键 token，再整段隐藏，
 不会截断半条指令。局部计数、进度、风险和业务状态仍可放在 footer。
 
+### 主动弹出的 overlay 的预备延迟
+
+插件在用户没有要求时弹出的 overlay（审批、计划评审、权限请求）可能恰好落在用户正在敲的按键上。
+在定义里设置 `armMs`（0 到 2000 的整数，默认 0）：overlay 首次获得焦点后的这段毫秒内，
+除 Escape 以外的所有按键都会被吞掉，误触的 `1` 或 `Enter` 不会选择、授权或提交任何内容。
+提示行在这段时间里显示 `… ready in a moment`（中文为“稍候即可操作”），之后 surface 恢复正常。
+延迟是固定的墙钟窗口，减少动效设置不会缩短它。Escape 仍然可以关闭，因为关闭从不授权。
+决策卡建议约 300 ms；用户主动打开的 surface 不要设置 `armMs`。
+
+```ts
+api.overlays.open({ id: 'acme.approve', presentation: 'editor', capturing: true, armMs: 300 }, card)
+```
+
 ## 反馈与辅助节点
 
 ### `loader`
 
 ![`loader` 节点渲染效果](/shots/loader.svg)
 
-*默认 braille variant，带 elapsed 提示与 cancel control（宽度 64）。*
+*默认 gap variant，带 elapsed 提示与 `Esc cancel` 提示（宽度 64）。*
 
 ```ts
 ui.loader({
-  message: string
-  variant?: 'braille' | 'tide'
+  message?: string
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath'
   elapsedMs?: number
   cancelActionId?: string
   cancelLabel?: string
 })
 ```
 
-`variant` 默认 `braille`。`elapsedMs` 是非负毫秒提示；动画计时仍由 owner 的
-生命周期管理，不应由 `render()` 启动 timer。提供 `cancelActionId` 时增加一个
-control，按钮文字为 `cancelLabel`（省略时为本地化的“取消”），并发出 `activate` 事件。
-上面的截图渲染的就是这个节点：
+`variant` 默认 `gap`；早先的 `braille` 与 `tide` 仍被接受，画成 `gap`。省略 `message`
+时节点只是一个字形。`elapsedMs` 是非负毫秒提示，显示为 `45s`、`2m 10s` 或 `1h 5m`。
+动画归 renderer 所有，所有 surface 共用一个时钟，100 ms 一步：`bloom`（`· ✢ ✳ ✶ ✻ ✽`）、
+`fill`（盲文条逐格填满再退回）、`gap`（盲文转轮）每个 tick 前进一步；`breath` 是一个 `●`，
+在 `primary` tone 的六档明暗里一暗一亮地走，每 400 ms 一档。不要在 `render()` 里启动 timer。
+减少动效时所有 variant 停在首帧，ASCII 字形模式下画 `- \ | /`。`cancelActionId` 是提示而不是按钮：
+loader 下面一行写着 `Esc cancel`（或 `Esc` 加小写的 `cancelLabel`），`Esc` 在离开 surface 之前先为该 action
+发出 `activate`，焦点在这一行时按 `Enter` 同样如此。上面的截图渲染的就是这个节点：
 
 ```ts
 ui.loader({
@@ -995,18 +1481,19 @@ ui.loader({
 })
 ```
 
-`tide` variant 用波浪字符代替 braille 点阵：
+四种 variant，各取首帧：
 
-![`loader` 的 tide variant](/shots/loader-tide.svg)
+![`loader` 的 variant](/shots/loader-variants.svg)
 
-*tide variant（宽度 64）。*
+*`bloom`、`fill`、`gap`、`breath`（宽度 64）。*
 
 ```ts
-ui.loader({
-  message: 'Syncing dependencies',
-  variant: 'tide',
-  elapsedMs: 4200,
-})
+ui.stack.column([
+  ui.loader({ variant: 'bloom', message: 'Thinking' }),
+  ui.loader({ variant: 'fill', message: 'Working' }),
+  ui.loader({ variant: 'gap', message: 'Discovering models', elapsedMs: 12_000, cancelActionId: 'stop' }),
+  ui.loader({ variant: 'breath', message: 'Waiting for authorization', elapsedMs: 45_000 }),
+])
 ```
 
 ### `empty`
@@ -1044,7 +1531,17 @@ ui.empty({
 *带 label 与计数的 determinate 进度条（宽度 64）。*
 
 ```ts
-ui.progress({ label?: string, value: number, max: number })
+ui.progress({
+  label?: string
+  value: number
+  max: number
+  style?: 'cells' | 'rule'
+  width?: number
+  tone?: MayflyTone
+  showCount?: boolean
+  showPercent?: boolean
+  transition?: { from: number, ms: number, rev: number }
+})
 ```
 
 `value` 必须是非负整数，`max` 必须是至少 1 的整数；超过 max 的 value 在 admission
@@ -1053,6 +1550,26 @@ ui.progress({ label?: string, value: number, max: number })
 
 ```ts
 ui.progress({ label: 'Tokens', value: 12_000, max: 28_000 })
+```
+
+既不写 `style` 也不写 `width` 的进度条，像上面一样用局部方块铺满整行。写了其中之一就
+采用 kit 外观：`style: 'cells'`（此时的默认）用 `▰` 表示已完成、`▱` 表示剩余，共 `width` 格（10），
+带 label、`n/N`（`showCount: false` 关闭）与 `showPercent`。`style: 'rule'` 画标题规则线，
+`━` 表示已完成、`─` 表示剩余，共 `width` 格（24），后面不带文字。`tone` 给已完成部分上色（默认
+`primary`）。`transition` 是 renderer 持有的一次性动画：其 `rev` 第一次到达时，进度条在动画时钟上
+用 `ms` 毫秒从 `from` 线性退到 `value`，然后静止；减少动效或没有时钟时直接显示 `value`。
+status 节点不接受 transition：
+
+![`progress` 的样式](/shots/progress-styles.svg)
+
+*带计数的 cells、带百分比的 cells，以及标题规则线（宽度 64）。*
+
+```ts
+ui.stack.column([
+  ui.progress({ label: 'Building', value: 6, max: 10, style: 'cells', width: 10 }),
+  ui.progress({ value: 9, max: 10, width: 10, showCount: false, showPercent: true }),
+  ui.progress({ style: 'rule', value: 2, max: 8, width: 24 }),
+])
 ```
 
 ### `spacer`
@@ -1093,6 +1610,233 @@ ui.divider(options?: { label?: string })
 ui.divider()
 ```
 
+### `image`
+
+![`image` 节点渲染效果](/shots/image.svg)
+
+*字节尚未到达的图片，显示为它的 `alt`（宽度 48）。*
+
+```ts
+ui.image(options: { attachmentId: string, alt: string, maxRows?: number })
+```
+
+在内容中内联一张图片。wire 只携带引用，不携带字节：宿主树提供一个 loader，把
+`attachmentId` 解析为编码后的字节及其媒体类型，renderer 再通过终端的图像协议绘制，
+高度最多 `maxRows` 行。`alt` 是文本回退，例如 `[Image #1 84 KB]`；字节到达之前、
+没有 loader 认识该 id 时，以及终端没有图像协议时都显示它。它是一行弱化文本，
+按分配宽度截断。
+
+`image` 可用于普通 pane 和 overlay，不是 status、editor extension 或
+`sections.body` 节点。上面的截图渲染的就是这个节点，截图宿主没有 loader：
+
+```ts
+ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
+```
+
+## 状态栏第 2 行的视图
+
+`placement: 'views'` 的 pane 是一个**视图**：状态栏第 2 行里的一小段摘要，可以打开自己的面板。视图 lane 没有自己的行：
+每个摘要与状态条目一起进入第 2 行；进入某个视图后，它的面板在所有视图的标签条下取代第 2 行。
+
+```ts
+export const inject = ['mayflyPanes']
+
+export function apply(ctx: Context): void {
+  const view = ctx.mayflyPanes.register({
+    id: 'acme.builds',
+    title: 'Builds',          // 标签
+    placement: 'views',
+    priority: 50,             // 越小在行和标签条中越靠前
+    summary: { node: ui.richText([{ text: 'Builds ', tone: 'muted' }, { text: '2 running', tone: 'accent' }]), count: 2 },
+    onEvent: { action: () => ({ kind: 'completed' }) },
+  }, ui.list({ id: 'builds', role: 'browse', selectedIds: [], items: [{ id: 'main', label: 'main' }] }))
+
+  // 更新第 2 行无需重发面板；null 让该视图离开第 2 行。
+  view.setSummary({ node: ui.richText([{ text: 'Builds 1 running' }]), count: 1 })
+  view.setSummary(null)
+}
+```
+
+![视图在状态栏第 2 行中的 `summary` 节点](/shots/views-summary.svg)
+
+*示例视图的摘要在状态栏第 2 行中的样子（宽度 48）。*
+
+| 字段 | 规则 |
+| --- | --- |
+| `summary.node` | 非交互 status 节点（`text`、`richText`、`fields`、`progress` 或它们的 stack），与其他 status 条目同样准入；一行，无动效 |
+| `summary.count` | 数字或不超过 32 个字符的字符串；标签在标题后显示（`Agents 5`） |
+| `title` | 标签文字；缺省为 id |
+| `size`、`narrow` | 不适用；views pane 设置任一项都会被拒绝 |
+| 其他 placement 上的 `summary` | 被拒绝；只有 views pane 有 summary 和 `setSummary` |
+
+`set(node)` 发布面板；`onEvent`、`load`、`refresh`、`loadMore` 与其他 pane 相同，面板里的动作只会到达它所在视图的
+`onEvent`。没有 summary 的视图不出现在第 2 行；有 summary 但尚无面板的视图显示在行中，但不能进入。进入后的 lane
+最多占终端行数的三分之一；视图多于一个时，面板自己的提示行会写出 `←/→ tabs`。
+
+| 键 | 效果 |
+| --- | --- |
+| 空提示符处 `Alt+↓` 或 `F5` | 进入第一个视图 |
+| `F6` / `Shift+F6` | 先进入视图，再依次进入可交互的 pane；越过两端回到提示符 |
+| `←` / `→` | 切换视图（正在编辑的字段保留方向键） |
+| `Esc` | 面板退出自己的各层后回到提示符 |
+
+它们是命名动作 `ui.focus-next`、`ui.left`/`ui.right` 与 `ui.cancel`，重绑定会同时移动这些键及其提示。可运行的视图见
+[`ui-gallery`](https://github.com/Ephemeral-AI-Lab/mayfly/tree/main/examples/ui-gallery) 示例。
+
+## 模式（Patterns）
+
+`patterns`（来自 `@ephemeral-ai/mayfly-ui`）提供四个由 builder 组合而成的模式，Mayfly 自己的面板用它们，插件也可以用同样的方式调用。
+模式是纯函数：返回一棵普通的、深度冻结的节点树，只由 `ui.*` 调用组成，没有自己的 renderer，也不发布任何东西，
+所以结果可以放在任何能放节点的地方（pane、overlay 的 snapshot、回复的 `node`）。它的 props 就是真实 builder 的形状：
+列表项、span 和 tab 项都是上文记录的那些，模式从不读取宽度。
+
+### `patterns.decisionPanel`
+
+![`patterns.decisionPanel` 渲染效果](/shots/patterns-decision.svg)
+
+*带预览、选项、备注和隐藏按键的决策卡（宽度 72）。*
+
+```ts
+patterns.decisionPanel(props: {
+  id?: string                       // 各控件的前缀，默认 'decision'
+  title: string
+  badges?: MayflyInlineSpan[]
+  preview?: MayflyUiNode[]          // 选项上方的只读上下文
+  options: MayflyListItem[]
+  input?: { id: string, label: string, placeholder?: string }
+  instant?: boolean                 // 即使焦点在备注字段旁，数字键也立即选择
+  accelerators?: Omit<MayflyActionItem, 'hidden'>[]
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'   // 默认 'reject'
+  chrome?: 'none' | 'lane' | 'surface' | 'overlay'                  // 默认 'overlay'
+}): MayflySurfaceNode
+```
+
+返回 overlay 边框的 surface，其中依次是预览节点、获得焦点的 `choose` 列表（`<id>.options`，带编号）、
+可选的单行表单（`<id>.input`）和所有项都隐藏的 actions 节点（`<id>.keys`）。第一个选项是最常见的授权并持有光标，
+所以 `Enter` 直接选它；数字键按位置选择（列表持有焦点时，设置 `instant` 则在面板任何位置）；`Esc` 表示拒绝。
+加速键在面板上任何位置都会运行，但备注字段持有焦点时除外，此时该键是字段的文本。选择结果以带选项 id 的
+`selection-accept` 事件到达。
+
+主动弹出时请带上预备延迟：`patterns.decisionArmMs` 为 300，卡片弹出时误敲进编辑器的 `1` 或 `Enter` 不会选择任何内容
+（见上文“预备延迟”）。
+
+```ts
+patterns.decisionPanel({
+  title: 'Delete branch?',
+  badges: [{ text: '1 of 2 waiting', tone: 'muted' }],
+  preview: [ui.text('feature/old-hero · 3 unmerged commits', { tone: 'muted' })],
+  options: [
+    { id: 'keep', label: 'Keep the branch' },
+    { id: 'delete', label: 'Delete it', detail: 'cannot be undone' },
+  ],
+  input: { id: 'why', label: 'Note', placeholder: 'optional' },
+  accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }],
+})
+```
+
+```ts
+api.overlays.open({ id: 'acme.delete', presentation: 'editor', capturing: true, armMs: patterns.decisionArmMs }, card)
+```
+
+### `patterns.railPanel`
+
+![`patterns.railPanel` 渲染效果](/shots/patterns-rail.svg)
+
+*工作区标签栏，右侧是当前标签的实时列表（宽度 72）。*
+
+```ts
+patterns.railPanel(props: {
+  title: string
+  badges?: MayflyInlineSpan[]
+  rail: { id: string, activeId: string, items: MayflyTabItem[], hintLabel?: string }
+  content: MayflyUiNode | Record<string, MayflyUiNode>
+  railWidth?: number                // 默认 26
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
+}): MayflySurfaceNode
+```
+
+左侧是竖直的 `tabs` 标签栏（`railWidth` 列，不会被压缩），右侧是内容，两者间隔两列。以标签栏项 id 为键的 record
+让每个标签有自己的页面，并用 `tab` 与标签栏关联，所以切换标签不需要重新发布，每页保留自己的光标和草稿。
+单个节点则是当前标签的内容，由插件根据 `tab-change` 事件重新构建。
+
+```ts
+patterns.railPanel({
+  title: 'Workspaces',
+  rail: { id: 'rail', activeId: 'work', items: [
+    { id: 'work', label: 'work/mayfly', count: 8 },
+    { id: 'site', label: 'website', count: 5 },
+  ] },
+  content: {
+    work: ui.list({ id: 'ws.work', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Fix login redirect', right: [{ text: '2h', tone: 'muted' }] }] }),
+    site: ui.list({ id: 'ws.site', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'b', label: 'Docs sync', right: [{ text: '1d', tone: 'muted' }] }] }),
+  },
+})
+```
+
+### `patterns.splitView`
+
+```ts
+patterns.splitView(props: {
+  list: MayflyUiNode
+  detail: MayflyUiNode
+  listWidth?: number                // 默认 58
+  breakpoint?: number               // 默认 100
+}): MayflyStackNode
+```
+
+一个 row：宽度达到 `breakpoint` 列时并排显示列表（`listWidth` 列）和详情，更窄时只显示列表。列表节点在互补的 `when`
+条件下出现两次，所以同一个 id 服务两种布局，缩放后光标也保留。页面需要标题时，把结果放进 `stack.column` 或 surface。
+用 `focus-change` 观察让详情跟随光标。本文的截图无法绘制 `when` 子节点，`ui-gallery` 示例在 pane 中挂载了该模式。
+
+```ts
+patterns.splitView({
+  list: ui.list({ id: 'sv', role: 'browse', marker: 'selection', selectedIds: [], items: [
+    { id: 'a', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }] },
+    { id: 'b', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }] },
+  ] }),
+  detail: ui.fields([
+    { label: 'Name', value: [{ text: 'Loop' }] },
+    { label: 'Status', value: [{ text: '✓ installed 1.4.0', tone: 'success' }] },
+  ]),
+})
+```
+
+### `patterns.statusPage`
+
+![`patterns.statusPage` 渲染效果](/shots/patterns-status.svg)
+
+*三个标签下的只读页面（宽度 72）。*
+
+```ts
+patterns.statusPage(props: {
+  title: string
+  badges?: MayflyInlineSpan[]
+  tabs: Omit<MayflyTabsNode, 'kind'>
+  rows?: MayflyField[]              // 键值行
+  body?: MayflyUiNode               // 代替 rows
+  pages?: Record<string, MayflyUiNode>   // 每个 tab id 一页
+  footer?: MayflyUiNode
+}): MayflySurfaceNode
+```
+
+overlay 边框的 surface：标签条、一个空行和页面内容。需要提供 `rows`、`body` 或 `pages` 之一，都不给会抛出 `TypeError`。
+与标签栏一样，`pages` 把一个节点关联到每个标签，切换标签不需要重新发布；`rows` 和 `body` 则由插件在 `tab-change` 时重建。
+
+```ts
+patterns.statusPage({
+  title: 'Status',
+  tabs: { id: 'st', activeId: 'overview', items: [
+    { id: 'overview', label: 'Overview' },
+    { id: 'usage', label: 'Usage' },
+    { id: 'account', label: 'Account', attention: true },
+  ] },
+  rows: [
+    { label: 'Provider', value: [{ text: 'DeepSeek' }] },
+    { label: 'Balance', value: [{ text: '⚠ ¥ 6.20', tone: 'warning' }, { text: ' low balance', tone: 'muted' }] },
+  ],
+})
+```
+
 ## 事件与 snapshot 更新
 
 Pane、overlay 和 editor extension 把 handler 放在 definition 上，而不是放进节点：
@@ -1110,8 +1854,8 @@ onEvent: {
 
 | 通道 | 事件 | 用途 |
 | --- | --- | --- |
-| `observe` | `value-change`、`selection-toggle`、`tab-change` | 编辑事实与异步校验；不能发布、导航或关闭 |
-| `action` | `activate`、`selection-accept`、`submit`、`dismiss` | 原生 effect 与明确结算 |
+| `observe` | `value-change`、`selection-toggle`、`tab-change`、`focus-change`、`recall-change` | 编辑事实、异步校验与焦点移动（`focus-change` 携带 `controlId` 和 `itemId?`，每帧最多一次）；不能发布、导航或关闭 |
+| `action` | `activate`、`selection-accept`、`submit`、`token-remove`、`completion-accept`、`completion-dismiss`、`dismiss` | 原生 effect 与明确结算 |
 
 `context` 包含 `surfaceId`、当前 `source`、`revision`、唯一 `operationId`、
 `AbortSignal` 与 `report(feedback)`。同字段观察 latest-wins；同 action boundary
@@ -1133,8 +1877,9 @@ handle 的 `set(node, { reason: 'data', source })` 或 editor-extension registra
 | Surface | 可用节点 | 交互规则 |
 | --- | --- | --- |
 | `panes` | 完整 `MayflyUiNode` | controls 可用，事件交给 pane `onEvent` |
+| `placement: 'views'` 的 `panes` | 面板为完整 `MayflyUiNode`，摘要为 status 节点 | 进入后面板取代状态栏第 2 行；摘要始终非交互 |
 | capturing overlay | 完整 `MayflyUiNode` | 获取焦点并处理 Escape 关闭 |
-| non-capturing overlay | 只使用 passive 内容/layout | tabs/list/form/actions 等 controls 会使整棵渲染树降级为错误提示 |
+| non-capturing overlay | 只使用 passive 内容/layout | tabs/list/form/actions/prompt 等 controls 会使整棵渲染树降级为错误提示 |
 | additive `status` | text、rich-text、fields、progress、递归 stack | 始终非交互，不接受 surface/scroll/control |
 | editor extension | passive content/rich-text/progress/spacer/divider + stack/surface | 交互 action 走 extension decoration 的 `actions` 字段 |
 

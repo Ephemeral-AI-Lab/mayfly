@@ -1,0 +1,17 @@
+--- after start ---
+acme.loop is a plugin component (defineComponent, layer "plugin"). Its panel and its status-bar
+entry use ui.* exactly like the Mayfly components do.
+
+╭ Loop · schedule a prompt ───────────────────────────────────────────────────── running ╮
+│ → Prompt:                                                                              │
+│     ┌──────────────────────────────────────────┐                                       │
+│     │ Check CI and summarize failures          │                                       │
+│     │                                          │                                       │
+│     │                                          │                                       │
+│     └──────────────────────────────────────────┘                                       │
+│   Every:   15m                                                                         │
+│   Enabled: [on]                                                                        │
+│  [ Save ]   ! Stop the loop                                                            │
+│   ↑/↓ fields · Enter edit · Tab/Shift+Tab groups · Esc close                           │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+deepseek-chat High  ~/work/mayfly  ↻ loop 15m         cache 34%  context: 18% (22.9k/128k)

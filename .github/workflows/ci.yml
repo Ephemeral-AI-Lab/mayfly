@@ -87,10 +87,16 @@ jobs:
       # website/public/shots/*.svg; the committed files must match byte for
       # byte. Runs after the build because the painter needs lib/index.js.
       - run: pnpm shots:check
+      # Design goldens: the prototype's frames under a pinned clock are the oracle
+      # the real renderer is compared with; they change only with the prototype.
+      - run: pnpm design:golden:check
       # W5-C ecosystem contract: static package boundaries plus a one-project
       # packed install on this release's sole supported Harness line.
       - run: pnpm check:examples
       - run: pnpm test:coverage
+      # The suites again with every retained-row hit painted and compared: a row that reads something the surface
+      # epoch does not track fails here instead of showing stale on a screen.
+      - run: pnpm test:retained
       # The real-process width smoke (D45): boots the built plugin tree
       # through the real dsh CLI at COLUMNS=40 against a mock LLM streaming
       # width-hostile content — any untruncated row must fail the run, not
@@ -111,3 +117,8 @@ jobs:
       # file is rejected by GitHub (GITHUB_TOKEN cannot update workflows).
       - run: npm install -g "@deepseek-ai/dsh@$(node script/harness-line.mjs)"
       - run: pnpm smoke:happy
+      # The real terminal against coarse ceilings: idle CPU and key-to-paint latency with a side pane loaded, and typing
+      # and cursor keys without one. A regression of the frame path is ten times past them; the slack covers a shared runner.
+      - run: pnpm bench:pty:assert
+        env:
+          BENCH_PTY_SLACK: '3'

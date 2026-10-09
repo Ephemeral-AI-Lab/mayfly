@@ -37,7 +37,8 @@ import z from '@deepseek-ai/schemastery'
 // Empty type import carries the app-owned current-Agent Context merge.
 import type {} from '../app/index.ts'
 import type { TranscriptViewMode } from '../transcript/presentation-policy.ts'
-import { applyTheme } from './theme-switch.ts'
+import { resolvePresentation, samePresentation } from '../core/presentation.ts'
+import { applyTheme, reloadTheme } from './theme-switch.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -70,7 +71,28 @@ export interface MayflySettings {
   readonly pasteImageBackend: 'auto' | 'wayland' | 'x11'
   /** Plugin marketplace index URL; empty uses the official dsh-plugins chain. */
   readonly marketIndexUrl: string
+  // Key bindings (slice 1.7): applied live by `./keys.ts`, written by the keybinding panel.
+  /** User key overrides by action id, each with the label the action was listed under. */
+  readonly keybindings: Readonly<Record<string, MayflyKeybindingOverride>>
+  /** Hint rows lead with the key that has no Alt, for hosts that do not deliver Alt. */
+  readonly preferPlainKeys: boolean
+  // Presentation (slice 1.2): read by core through `core/presentation.ts`; a change reloads the live theme provider.
+  /** Glyph vocabulary: `auto` follows the locale's charset; `ascii` is the one-cell fallback table. */
+  readonly glyphs: 'auto' | 'unicode' | 'ascii'
+  /** Weight only, no color; `NO_COLOR` turns it on whatever this says. */
+  readonly monochrome: boolean
+  /** Freeze every animation channel on its first frame. */
+  readonly reducedMotion: boolean
 }
+
+/** One saved key override: the keys that replace an action's defaults, and its label for when it is not loaded. */
+export interface MayflyKeybindingOverride {
+  readonly keys: readonly string[]
+  readonly label?: string
+}
+
+/** Saved key overrides by action id (a dict, typed by hand so the declaration stays portable). */
+const KEYBINDINGS: z<Record<string, { keys: string[], label?: string }>> = z.dict(z.object({ keys: z.array(z.string()).default([]), label: z.string() }))
 
 /** The settings schema; defaults double as the composition base. */
 export const Config = z.object({
@@ -85,6 +107,12 @@ export const Config = z.object({
   editorCommand: z.string().default('').volatile(),
   pasteImageBackend: z.union([z.const('auto'), z.const('wayland'), z.const('x11')]).default('auto').volatile(),
   marketIndexUrl: z.string().default('').volatile(),
+  keybindings: KEYBINDINGS.default({}).volatile(),
+  preferPlainKeys: z.boolean().default(false).volatile(),
+  // Presentation (slice 1.2).
+  glyphs: z.union([z.const('auto'), z.const('unicode'), z.const('ascii')]).default('auto').volatile(),
+  monochrome: z.boolean().default(false).volatile(),
+  reducedMotion: z.boolean().default(false).volatile(),
 })
 
 /** The resolved defaults, used until a settings service layers overrides. */
@@ -100,6 +128,12 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   editorCommand: '',
   pasteImageBackend: 'auto',
   marketIndexUrl: '',
+  keybindings: {},
+  preferPlainKeys: false,
+  // Presentation (slice 1.2).
+  glyphs: 'auto',
+  monochrome: false,
+  reducedMotion: false,
 }
 
 /** Stable Cordis plugin name. */
@@ -163,6 +197,21 @@ async function syncTheme(ctx: Context, isUnloaded: () => boolean): Promise<void>
 }
 
 /**
+ * Rebuild the theme provider when the presentation the renderer was built for (the components service records it)
+ * differs from the one the settings now ask for. Reloading the provider rebuilds every consumer, the way `/theme`
+ * does, so glyphs, monochrome, and reduced motion apply live and no cache keeps rows from the previous presentation.
+ * @param ctx - plugin context.
+ * @param isUnloaded - the fiber's unload flag.
+ */
+async function syncPresentation(ctx: Context, isUnloaded: () => boolean): Promise<void> {
+  /* v8 ignore next 1 -- an unload landing inside a theme swap's awaits is the shutdown race syncTheme also fences */
+  if (isUnloaded()) return
+  const live = ctx.get('mayflyComponents')?.presentation
+  if (live === undefined || samePresentation(live, resolvePresentation(currentMayflySettings(ctx)))) return
+  await reloadTheme(ctx)
+}
+
+/**
  * Follow the Host-shared `locale.preference`: an explicit `zh`/`en` selects
  * the live Mayfly locale, an absent value returns to the process locale.
  * @param ctx - plugin context.
@@ -201,7 +250,7 @@ export function apply(ctx: Context): void {
   let swap: Promise<void> = Promise.resolve()
   const sync = (): void => {
     /* v8 ignore next 1 -- the defensive catch; syncTheme never rejects */
-    swap = swap.then(() => syncTheme(ctx, () => unloaded)).catch(() => {})
+    swap = swap.then(() => syncTheme(ctx, () => unloaded)).then(() => syncPresentation(ctx, () => unloaded)).catch(() => {})
   }
   // `settings/document-updated` commits landing before the first attach need
   // no follow: the attach-time sync reads the current value.

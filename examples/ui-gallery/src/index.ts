@@ -7,6 +7,17 @@ import type { Context } from '@deepseek-ai/cordis'
 // Pull in the direct Mayfly pane service Context merge.
 import type {} from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
+import { namedActionsGroup } from './groups/1-7.ts'
+import { contentLayoutGroup } from './groups/content-layout.ts'
+import { visualLanguageGroup } from './groups/1-2.ts'
+import { imageGroup } from './groups/image.ts'
+import { listsGroup } from './groups/lists.ts'
+import { armDelayGroup } from './groups/arm-delay.ts'
+import { patternsPageGroup } from './groups/patterns.ts'
+import { tabsGroup } from './groups/tabs.ts'
+import { registerGalleryPrompt } from './groups/prompt.ts'
+import { registerGalleryView } from './groups/views.ts'
+import { formsGroup } from './groups/forms.ts'
 
 export const name = '@mayfly-example/ui-gallery'
 export const inject = ['mayflyPanes']
@@ -172,6 +183,15 @@ function renderGallery() {
         ...richContentGroup(),
         ...layoutGroup(),
         ...patternsGroup(),
+        ...namedActionsGroup(),
+        ...visualLanguageGroup(),
+        ...contentLayoutGroup(),
+        ...imageGroup(),
+        ...listsGroup(),
+        ...armDelayGroup(),
+        ...formsGroup(),
+        ...tabsGroup(),
+        ...patternsPageGroup(),
       ], { gap: 1 }), { scrollbar: true }),
     ], { gap: 1 }),
   })
@@ -179,6 +199,8 @@ function renderGallery() {
 
 /** Register the gallery pane; a right lane that degrades to bottom when narrow. */
 export function apply(ctx: Context): void {
+  registerGalleryView(ctx)
+  registerGalleryPrompt(ctx)
   ctx.mayflyPanes.register({
     id: 'example.ui-gallery.showcase',
     title: 'UI Gallery',

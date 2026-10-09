@@ -105,7 +105,7 @@ describe('TranscriptController', () => {
   })
   it('mounts one dynamic source and refreshes canonical rows', () => { const ctx = new Context(); const f = fixture(); const service = new TranscriptController(ctx, f.screen, { renderer: plainRenderer() }); let current = model('one'); service.setSource(() => current); const component = f.children[0]!; expect(component.render(20)).toEqual(['entry']); service.refreshLocale(); service.refreshPresentationPolicy(); current = model('one', [{ kind: 'fields', rows: [{ label: 'a', value: [{ text: 'b' }] }] }]); service.refresh(); expect(component.render(20)).toEqual(['a: b']); service.dispose(); expect(component.render(20)).toEqual([]); service.refresh() })
   it('handles a null source, late attach, source replacement, and unload', () => { const ctx = new Context(); const service = new TranscriptController(ctx, undefined, { renderer: plainRenderer() }); service.setSource(() => null); service.refresh(); const f = fixture(); service.attach(f.screen); expect(f.children).toHaveLength(1); expect(f.children[0]!.render(20)).toEqual([]); service.setSource(model('active')); expect(f.children).toHaveLength(1); expect(f.children[0]!.render(20)).toEqual(['entry']); service.dispose(); expect(f.children).toHaveLength(0) })
-  it('renders null and nested canonical nodes safely', () => { expect(new TranscriptModelComponent(() => null, plainRenderer()).render(10)).toEqual([]); const c = new TranscriptModelComponent(() => model('nested', [{ kind: 'sections', sections: [{ title: 's', body: { kind: 'code', code: 'abcdef' } }] }]), plainRenderer()); expect(c.render(3)).toEqual(['\x1b[1ms\x1b[22m', 'abc', 'def']); c.invalidate() })
+  it('renders null and nested canonical nodes safely', () => { expect(new TranscriptModelComponent(() => null, plainRenderer()).render(10)).toEqual([]); const c = new TranscriptModelComponent(() => model('nested', [{ kind: 'sections', sections: [{ title: 's', body: { kind: 'code', code: 'abcdef' } }] }]), plainRenderer()); expect(c.render(3)).toEqual(['\x1b[1ms\x1b[22m', '  a', '  b', '  c', '  d', '  e', '  f']); c.invalidate() })
   it('retains per-view components across switches and opens a switched view at its tail', () => {
     const disposed = vi.spyOn(TranscriptModelComponent.prototype, 'dispose')
     const f = fixture()
@@ -310,7 +310,7 @@ describe('TranscriptController', () => {
     const component = new TranscriptModelComponent(() => current, renderer(() => {}, policy))
     const folded = component.render(80).join('\n')
     expect(folded).toContain('▸ Took 5s · 1 tool call')
-    expect(folded).toContain('▸ Took 3s · 1 tool call · ctrl+o to expand')
+    expect(folded).toContain('▸ Took 3s · 1 tool call · Ctrl+O to expand')
     expect(folded).toContain('answer 1')
     expect(folded).not.toContain('deep thought')
     // Ctrl-O opens only the in-scope turn; the older one stays folded without a key hint.
@@ -372,7 +372,7 @@ describe('TranscriptController', () => {
       const message = locale === 'zh'
         ? {
             '■ interrupted': '■ 已中断',
-            '... ({remaining} more lines, {total} total, ctrl+o to expand)': '...（还有 {remaining} 行，共 {total} 行，按 Ctrl-O 展开）',
+            '... ({remaining} more lines, {total} total, Ctrl+O to expand)': '...（还有 {remaining} 行，共 {total} 行，按 Ctrl+O 展开）',
           }[key] ?? key
         : key
       return message.replace(/\{(remaining|total)\}/gu, (placeholder, name) => String(values?.[name] ?? placeholder))

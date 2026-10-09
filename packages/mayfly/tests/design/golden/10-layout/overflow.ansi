@@ -1,0 +1,45 @@
+--- after start ---
+[2mwidth 70 (←/→) · height ≥ 20 (h)[0m
+
+[2mstack row with basis and grow:[0m
+[2m╭[0m[2m [0m[1mbasis 24[0m[2m [0m[2m────────────[0m[2m╮[0m [2m╭[0m[2m [0m[1mgrow 1[0m[2m [0m[2m─────────────[0m[2m╮[0m [2m╭[0m[2m [0m[1mgrow 2[0m[2m [0m[2m───────────[0m[2m╮[0m
+[2m│[0m fixed                [2m│[0m [2m│[0m takes the rest      [2m│[0m [2m│[0m twice             [2m│[0m
+[2m╰──────────────────────╯[0m [2m╰─────────────────────╯[0m [2m╰───────────────────╯[0m
+
+[2ma width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+width[0m
+Loop  official   ✓ installed 1.4.0
+[38;2;230;190;90m↻ 1 change applies after restart[0m
+
+[2mpriority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+o)[0m
+deepseek-chat High  [1m[38;2;154;134;230mPLAN[0m  ⏵ 2 jobs  [2m~/work/mayfly/packages/mayfly[0m
+
+[2ma windowed list (maxRows 4) counts what is hidden:[0m
+  [1mrow 1[0m
+  row 2
+  row 3
+  row 4
+   [2m↑ 0 more · ↓ 5 more[0m
+--- after "o" ---
+[2mwidth 70 (←/→) · height ≥ 20 (h)[0m
+
+[2mstack row with basis and grow:[0m
+[2m╭[0m[2m [0m[1mbasis 24[0m[2m [0m[2m────────────[0m[2m╮[0m [2m╭[0m[2m [0m[1mgrow 1[0m[2m [0m[2m─────────────[0m[2m╮[0m [2m╭[0m[2m [0m[1mgrow 2[0m[2m [0m[2m───────────[0m[2m╮[0m
+[2m│[0m fixed                [2m│[0m [2m│[0m takes the rest      [2m│[0m [2m│[0m twice             [2m│[0m
+[2m╰──────────────────────╯[0m [2m╰─────────────────────╯[0m [2m╰───────────────────╯[0m
+
+[2ma width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+width[0m
+Loop  official   ✓ installed 1.4.0
+[38;2;230;190;90m↻ 1 change applies after restart[0m
+
+[2mpriority admission: lower is kept first; "hide" drops out instead of truncating (cwd hide, o)[0m
+deepseek-chat High  [1m[38;2;154;134;230mPLAN[0m  ⏵ 2 jobs  [2m~/work/mayfly/packages/mayfly[0m
+
+[2ma windowed list (maxRows 4) counts what is hidden:[0m
+  [1mrow 1[0m
+  row 2
+  row 3
+  row 4
+   [2m↑ 0 more · ↓ 5 more[0m

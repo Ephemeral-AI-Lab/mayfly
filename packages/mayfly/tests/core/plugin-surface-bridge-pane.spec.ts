@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/core/tests/surface-renderer-pane
  */
 
+import { stripTerminalSequences } from '@earendil-works/pi-tui'
 import { Context } from '@deepseek-ai/cordis'
 import { getLayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -170,7 +171,7 @@ async function fixture(runtime = createRuntime(), compilerComponents: MayflyComp
       mayflyTheme: { colors },
       mayflyKeymap: keymap,
     })
-    mountMayflySurfaceRenderer(owner as never, runtime.runtime, translateHint)
+    mountMayflySurfaceRenderer(owner as never, runtime.runtime, translateHint, root.get('mayflyUiImages'))
     owners.push(owner)
     return owner
   }
@@ -254,13 +255,39 @@ describe('direct pane surface renderer', () => {
     }
   })
 
+  it('paints a pane\'s image node as its alt until the host tree\'s loader has the bytes, and repaints when they arrive', async () => {
+    const drawn = { ...components, imageProtocol: () => true, createImage: () => ({ render: () => ['<image>'], invalidate: () => {} }) } as MayflyComponents
+    const f = await fixture(createRuntime(), drawn)
+    try {
+      const bytes = deferred<{ data: Uint8Array, mediaType: string } | undefined>()
+      const loader = vi.fn(() => bytes.promise)
+      const release = f.root.mayflyUiImages.provide(loader)
+      f.register({ id: 'photo', render: () => ui.stack.column([ui.text('caption'), ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]' })]) })
+      await flush()
+      const pane = entry(f.runtime.surfaces, 'photo').component
+      expect(pane.render(40).join('\n')).toContain('[Image #1 84 KB]')
+      expect(loader).toHaveBeenCalledOnce()
+      bytes.resolve({ data: new Uint8Array([1]), mediaType: 'image/png' })
+      await flush()
+      const rows = pane.render(40).join('\n')
+      expect(rows).toContain('<image>')
+      expect(rows).not.toContain('[Image #1 84 KB]')
+      release()
+    } finally {
+      await f.dispose()
+    }
+  })
+
   it('contains compiler failures from renderer-owned editor construction', async () => {
     const broken = { ...components, createEditor: () => { throw new Error('editor construction failed') } } as MayflyComponents
     const f = await fixture(createRuntime(), broken)
     try {
       f.register({ id: 'broken-editor', render: () => ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }) })
       await flush()
-      expect(entry(f.runtime.surfaces, 'broken-editor').component.render(80).join(' ')).toContain('Mayfly UI rejected')
+      // The editor is built when the field is first focused or typed into.
+      const surface = entry(f.runtime.surfaces, 'broken-editor')
+      f.runtime.runtime.setFocus(surface.focusTarget!)
+      expect(surface.component.render(80).join(' ')).toContain('Mayfly UI rejected')
     } finally {
       await f.dispose()
     }
@@ -402,20 +429,20 @@ describe('direct pane surface renderer', () => {
       await flush()
       expect(renders).toBe(1)
       expect(entry(f.runtime.surfaces, 'profile').component).toBe(surface.component)
-      expect(surface.component.render(80).join('\n')).toContain('Name: AB')
+      expect(stripTerminalSequences(surface.component.render(80).join('\n'))).toContain('Name: AB')
 
       surface.focusTarget!.handleInput?.('C')
       handle.refresh()
       await flush()
-      expect(surface.component.render(80).join('\n')).toContain('Name: ABC')
+      expect(stripTerminalSequences(surface.component.render(80).join('\n'))).toContain('Name: ABC')
       expect(entry(f.runtime.surfaces, 'profile').focusTarget).toBe(surface.focusTarget)
 
       handle.set(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'A' }] }), { reason: 'replace' })
       await flush()
       const replacement = entry(f.runtime.surfaces, 'profile')
       expect(replacement.component).not.toBe(surface.component)
-      expect(replacement.component.render(80).join('\n')).toContain('Name: A')
-      expect(replacement.component.render(80).join('\n')).not.toContain('Name: ABC')
+      expect(stripTerminalSequences(replacement.component.render(80).join('\n'))).toContain('Name: A')
+      expect(stripTerminalSequences(replacement.component.render(80).join('\n'))).not.toContain('Name: ABC')
     } finally {
       await f.dispose()
     }
@@ -764,7 +791,7 @@ describe('direct pane surface renderer', () => {
       calls[1]!.result.resolve()
       await flush()
       const replacementRows = entry(f.runtime.surfaces, 'replace').component.render(30)
-      expect(replacementRows[0]).toContain('╭ Replacement')
+      expect(replacementRows[0]!.replace(/\x1b\[[0-9;]*m/gu, '')).toContain('╭ Replacement')
       expect(replacementRows[1]).toContain('new pane')
       expect(replacementRows.at(-1)).toContain('╰')
       expect((oldComponent as MayflyFocusable).focused).toBe(false)
@@ -1056,11 +1083,11 @@ it('requests independent frames for pane loaders and releases their clock on rem
     const handle = bench.register({ id: 'loading-pane', placement: 'bottom', render: () => ui.loader({ message: 'Loading' }) })
     await flush()
     const component = entry(bench.runtime.surfaces, 'loading-pane').component
-    expect(component.render(40).join('\n')).toContain('⠋ Loading')
+    expect(component.render(40).join('\n')).toContain('⣾ Loading')
     repaint.mockClear()
-    vi.advanceTimersByTime(80)
+    vi.advanceTimersByTime(100)
     expect(repaint).toHaveBeenCalledOnce()
-    expect(component.render(40).join('\n')).toContain('⠙ Loading')
+    expect(component.render(40).join('\n')).toContain('⣽ Loading')
     handle.dispose(); await flush()
     repaint.mockClear()
     vi.advanceTimersByTime(800)

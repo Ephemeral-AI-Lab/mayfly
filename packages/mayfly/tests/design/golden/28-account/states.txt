@@ -1,0 +1,59 @@
+--- after start ---
+state 1/7: [signed-out] · waiting · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status: Not signed in                                                            │
+│                                                                                  │
+│ Sign in with your DeepSeek account — models are billed to it and need no API     │
+│ key.                                                                             │
+│                                                                                  │
+│ → Sign in                                                                        │
+│   Use an API key instead                                                         │
+│   ↑/↓ options · Enter choose · Esc close                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "s" ---
+state 2/7: signed-out · [waiting] · expired · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ● Waiting for you in the browser                                        │
+│ Expires: 4:41                                                                    │
+│                                                                                  │
+│ Approve in the browser — on this machine sign-in finishes by itself.             │
+│ Sign-in link: https://platform.deepseek.com/oauth/authorize?…                    │
+│ → ▸ Browser on another machine?                                                  │
+│   Enter branch · Ctrl+Y copy link · Ctrl+R new link · Esc close                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "s" ---
+state 3/7: signed-out · waiting · [expired] · network · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ⚠ The sign-in link expired — try again                                  │
+│                                                                                  │
+│ → Try again                                                                      │
+│   ↑/↓ options · Enter choose · Esc close                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "s" ---
+state 4/7: signed-out · waiting · expired · [network] · no-server · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status:  Not signed in                                                           │
+│ Sign-in: ✗ Could not reach DeepSeek — try again                                  │
+│                                                                                  │
+│ → Try again                                                                      │
+│   ↑/↓ options · Enter choose · Esc close                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+--- after "s" ---
+state 5/7: signed-out · waiting · expired · network · [no-server] · signed-in · low
+
+╭ DeepSeek Account ───────────────────────────────────────────────── not connected ╮
+│ Status: Not signed in                                                            │
+│                                                                                  │
+│ Browser sign-in needs the local web server, which this setup does not run. Sign  │
+│ in from a DeepSeek Harness Desktop or Web host on this machine — the stored      │
+│ login is shared across hosts.                                                    │
+│                                                                                  │
+│ → Use an API key instead                                                         │
+│   ↑/↓ options · Enter choose · Esc close                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯

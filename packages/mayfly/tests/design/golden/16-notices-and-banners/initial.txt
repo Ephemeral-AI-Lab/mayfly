@@ -1,0 +1,7 @@
+--- after start ---
+page 1/2 (Ctrl+N): banners: one row, a glyph and a word, severity by tone
+
+⚠ Rate limited · retrying in 12s · attempt 2 of 5 · Esc cancel
+✗ Offline · cannot reach api.deepseek.com · r retry
+⚠ Context 92% full · /compact now, or it will compact automatically at 95%
+ℹ Resumed session · 24 turns · last active 2h ago

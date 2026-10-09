@@ -241,10 +241,11 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // The consolidated runtime and UI declarations currently occupy about 2.09 MB
 // (the terminal DeepSeek account sign-in panel and its remote-callback
 // guidance added about 6 KB, and the single control walk with memoized
-// visible/all/accelerator sets added about 13 KB); retain headroom while
-// still catching accidental entry/chunk growth.
-if (libraryFiles > 222) fail(`library lib output has ${libraryFiles} files; budget is 222`)
-if (libraryBytes > 2_110_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2110000`)
+// visible/all/accelerator sets added about 13 KB, and the named actions,
+// runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB, and the image node and its byte source of slice 1.9a about 30 KB, and the content, layout, and motion of slice 1.3 about 60 KB, and the views lane of slice 1.10b about 27 KB, and the prompt of slice 1.9b about 40 KB, and the patterns of slice 1.8b one declaration file and about 4 KB, and the retained rows, the placing stacks, and the frame counters of slice 1.12 about 29 KB); retain headroom
+// while still catching accidental entry/chunk growth.
+if (libraryFiles > 223) fail(`library lib output has ${libraryFiles} files; budget is 223`)
+if (libraryBytes > 2_490_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2490000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

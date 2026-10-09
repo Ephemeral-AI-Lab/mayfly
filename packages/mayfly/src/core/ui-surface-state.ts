@@ -15,6 +15,8 @@ export interface UiScrollControl {
   scrollToStart(): void
   scrollToEnd(): void
   setScrollbarActive(active: boolean): void
+  /** The control paints its own viewport rows, so the surface keeps its natural height around it. */
+  readonly inline?: boolean
 }
 
 /** Compiled control and scroll handles for the current generation. */
@@ -48,6 +50,11 @@ export interface UiVirtualListEntry {
   /** Position among the visible (filtered, disclosed) rows. */
   readonly position: number
   readonly item: NonNullable<ReturnType<typeof admittedListItem>>
+  /** Tree depth, whether the row ends its parent's children, and whether it opens a branch or a body. */
+  readonly depth: number
+  readonly last: boolean
+  readonly expandable: boolean
+  readonly open: boolean
 }
 
 export type UiListMovement = 'up' | 'down' | 'page-up' | 'page-down' | 'home' | 'end'

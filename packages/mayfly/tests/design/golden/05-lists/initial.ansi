@@ -1,0 +1,15 @@
+--- after start ---
+[2mpage 1/7 (Ctrl+N): choose lists: numbered instant vs focus-only digits[0m
+
+[38;2;154;134;230m╭[0m[38;2;154;134;230m [0m[1mNumbered choose lists[0m[38;2;154;134;230m [0m[38;2;154;134;230m───────────────────────────────────────────────────────────[0m[38;2;154;134;230m╮[0m
+[38;2;154;134;230m│[0m [2mnumbered: true — a digit chooses at once (preferences, questions)[0m                [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [1m[38;2;154;134;230m→[0m [2m1[0m  [1mPreset endpoint[0m [2m— known provider[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m2[0m  Custom endpoint [2m— any compatible URL[0m                                        [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m3[0m  OAuth provider [2m— browser sign-in[0m                                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m                                                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2mnumbered: 'focus' — a digit only moves the cursor (anything that grants)[0m         [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m1[0m  [1mReject[0m                                                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m2[0m  Allow once                                                                  [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m   [2m3[0m  Allow for this session                                                      [38;2;154;134;230m│[0m
+[38;2;154;134;230m│[0m [2m  [0m↑/↓ [2moptions[0m[2m · [0m1-3 [2mchoose[0m[2m · [0mEnter [2mchoose[0m[2m · [0mEsc [2mclose[0m                            [38;2;154;134;230m│[0m
+[38;2;154;134;230m╰──────────────────────────────────────────────────────────────────────────────────╯[0m

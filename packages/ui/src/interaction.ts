@@ -69,11 +69,21 @@ export type MayflyUiObservationEvent = (
   | { readonly kind: 'value-change', readonly controlId: string, readonly formId: string, readonly value: MayflyFieldValue, readonly draftRevision: number }
   | { readonly kind: 'selection-toggle', readonly controlId: string, readonly selectedIds: readonly string[], readonly actionId?: string }
   | { readonly kind: 'tab-change', readonly controlId: string, readonly tabId: string }
+  /** Focus moved to a control (or one of its items); reported at most once per render frame, with the newest position. */
+  | { readonly kind: 'focus-change', readonly controlId: string, readonly itemId?: string }
+  /** The prompt walked its recall: `index` is the entry in `recall`, or `-1` when the draft returned. */
+  | { readonly kind: 'recall-change', readonly controlId: string, readonly source: 'queued' | 'history' | 'draft', readonly index: number }
 ) & { readonly pagePath: MayflyPagePath }
 export type MayflyUiActionEvent = (
   | { readonly kind: 'activate', readonly controlId: string, readonly actionId: string, readonly itemId?: string, readonly inputs?: MayflySubmission }
   | { readonly kind: 'selection-accept', readonly controlId: string, readonly selectedIds: readonly string[], readonly actionId?: string, readonly segmentId?: string }
   | { readonly kind: 'submit', readonly controlId: string, readonly submission: MayflySubmission }
+  /** The second `Backspace` on an empty prompt removes the token the first one selected. */
+  | { readonly kind: 'token-remove', readonly controlId: string, readonly tokenId: string }
+  /** `Tab` or `Enter` on a prompt's completion row. */
+  | { readonly kind: 'completion-accept', readonly controlId: string, readonly itemId: string }
+  /** `Esc` on a prompt's open completion list. */
+  | { readonly kind: 'completion-dismiss', readonly controlId: string }
   | { readonly kind: 'dismiss' }
 ) & { readonly pagePath: MayflyPagePath }
 export type MayflyUiEvent = MayflyUiObservationEvent | MayflyUiActionEvent

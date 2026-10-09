@@ -1,0 +1,18 @@
+--- after start ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+--- after "@" ---
+main conversation · idle
+
+queued (1)  ⏎ "also update the footer"   ↑ recall
+╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+│ > @▌                                                                                         │
+│ → @pane-activity.ts — packages/mayfly/src/transcript/                                        │
+│   @pane-agents.ts — packages/mayfly/src/transcript/                                          │
+│   @notes.md — docs/                                                                          │
+│   ↑/↓ options · Tab complete · Enter insert · Esc close                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯

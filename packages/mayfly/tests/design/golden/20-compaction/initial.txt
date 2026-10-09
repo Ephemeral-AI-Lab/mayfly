@@ -1,0 +1,7 @@
+--- after start ---
+stage: summarizing: the model call runs, the edge cell breathes
+
+⣾ Compacting context ▰▰▰▰▰▰▰▰▰▱ 91%  1/2 summarizing · auto
+
+narrow terminals drop the bar first, then the token pair; a failure keeps its reason
+✗ Compaction failed: context still over budget after summary

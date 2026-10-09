@@ -80,7 +80,7 @@ describe('CommandGroupComponent', () => {
       command({ callId: `c${String(index)}`, command: `step ${String(index)}` }))
     const lines = new CommandGroupComponent(group(many), IDENTITY, COMPONENTS).render(80)
     expect(lines).toHaveLength(2 + COMMAND_GROUP_ROW_LIMIT)
-    expect(lines.at(-1)).toContain('more, ctrl+o to expand')
+    expect(lines.at(-1)).toContain('more, Ctrl+O to expand')
     const expanded = new CommandGroupComponent(group(many), IDENTITY, COMPONENTS)
     expanded.setExpanded(true)
     expect(expanded.render(80).at(-1)).toContain(`step ${String(many.length - 1)}`)
@@ -121,7 +121,7 @@ describe('CommandGroupComponent', () => {
       '  └─ pnpm build ⊘',
     ])
     const many = new CommandGroupComponent(group(Array.from({ length: 12 }, (_, index) => command({ callId: `m${String(index)}`, command: `c${String(index)}` }))), IDENTITY, COMPONENTS)
-    expect(many.render(80).at(-1)).toBe('  ... (5 more, ctrl+o to expand)')
+    expect(many.render(80).at(-1)).toBe('  ... (5 more, Ctrl+O to expand)')
     many.setScope({ hint: false, turnClosed: false })
     expect(many.render(80).at(-1)).toBe('  ... (5 more)')
   })

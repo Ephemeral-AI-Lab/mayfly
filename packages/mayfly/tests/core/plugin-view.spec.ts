@@ -8,6 +8,8 @@
 import { describe, expect, it } from 'vitest'
 import type { MayflySectionContentNode } from '../../../ui/src/contracts.ts'
 import {
+  CODE_HIGHLIGHT_MAX_BYTES,
+  CODE_HIGHLIGHT_MAX_ROWS,
   PLUGIN_VIEW_MAX_CHARS,
   PLUGIN_VIEW_MAX_DEPTH,
   paintPluginTone,
@@ -61,25 +63,28 @@ describe('canonical basic-content leaf renderer', () => {
         { text: ' retired', styles: ['strike'] },
         { text: ' now' },
       ] }],
-    }, 80)[0]).toContain('<muted>state: </muted>')
-    expect(renderView({ kind: 'code', language: 'ts', code: 'const x = 1\nnext' }, 80)).toEqual([
+    }, 80)[0]).toContain('<muted>state:</muted> ')
+    // Code is highlighted by language: keywords primary, strings success, everything else the text color.
+    expect(renderView({ kind: 'code', language: 'ts', code: "const x = 'y'\nnext" }, 80)).toEqual([
       '<muted>ts</muted>',
-      '<mdCodeBlock>const x = 1</mdCodeBlock>',
-      '<mdCodeBlock>next</mdCodeBlock>',
+      "<primary>const</primary><text> x = </text><success>'y'</success>",
+      '<text>next</text>',
     ])
-    expect(renderView({ kind: 'code', code: 'plain' }, 80)).toEqual(['<mdCodeBlock>plain</mdCodeBlock>'])
-    // Changes sit on full-width bands: the sign keeps its diff color, the
-    // text the body color. Real SGR keeps the padded band measurable.
-    const { diffAdded, diffAddedBg, diffRemoved, diffRemovedBg, text } = DARK_COLORS
-    const removed = (lead: string, body: string, fill: number): string => diffRemovedBg(`${lead}${text(body)}${' '.repeat(fill)}`)
-    const added = (lead: string, body: string, fill: number): string => diffAddedBg(`${lead}${text(body)}${' '.repeat(fill)}`)
+    expect(renderView({ kind: 'code', code: 'plain' }, 80)).toEqual(['<text>plain</text>'])
+    // Highlighting stops after twelve rows and for blocks over 32 KB.
+    const long = Array.from({ length: CODE_HIGHLIGHT_MAX_ROWS + 1 }, () => 'const a = 1').join('\n')
+    expect(renderView({ kind: 'code', language: 'ts', code: long }, 80).at(-1)).toBe('<text>const a = 1</text>')
+    expect(renderView({ kind: 'code', language: 'ts', code: `const a = 1\n${'中'.repeat(Math.ceil(CODE_HIGHLIGHT_MAX_BYTES / 3))}` }, 80)[1]).toBe('<text>const a = 1</text>')
+    // A change is numbered and keeps its band behind the code only; a long line ends in an ellipsis.
+    const { diffAdded, diffAddedBg, diffRemoved, diffRemovedBg, diffGutter, text } = DARK_COLORS
     const renderDiff = (before: string, after: string, width: number): string[] =>
       renderCanonicalView({ kind: 'diff', before, after }, width, components, DARK_COLORS)
-    expect(renderDiff('old', 'new', 12)).toEqual([removed(diffRemoved('- '), 'old', 7), added(diffAdded('+ '), 'new', 7)])
-    // The shared alignment renders context once between removal and addition.
-    expect(renderDiff('a\nb', 'a\nc', 6)).toEqual(['  a', removed(diffRemoved('- '), 'b', 3), added(diffAdded('+ '), 'c', 3)])
-    // Long lines wrap under the gutter instead of re-wrapping painted rows.
-    expect(renderDiff('', 'one two', 5)).toEqual([added(diffAdded('+ '), 'one', 0), added('  ', 'two', 0)])
+    expect(renderDiff('a\nb', 'a\nc', 20)).toEqual([
+      `  ${diffGutter('  1   1 │')}   ${text('a')}`,
+      `  ${diffGutter('  2     │')} ${diffRemovedBg(`${diffRemoved('−')} ${diffRemoved('b')}     `)}`,
+      `  ${diffGutter('      2 │')} ${diffAddedBg(`${diffAdded('+')} ${diffAdded('c')}     `)}`,
+    ])
+    expect(visibleWidth(renderDiff('', 'one two three four', 18)[0]!)).toBe(18)
     expect(renderView({
       kind: 'sections',
       sections: [
@@ -89,8 +94,9 @@ describe('canonical basic-content leaf renderer', () => {
       ],
     }, 80)).toEqual([
       '\x1b[1m<primary>open</primary>\x1b[22m',
-      '<text>body</text>',
+      '  <text>body</text>',
       '\x1b[1m<primary>closed</primary>\x1b[22m',
+      '<muted>  …</muted>',
       '<muted>...</muted>',
     ])
   })
