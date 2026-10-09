@@ -147,6 +147,14 @@ export class UiAnimationClock {
     }
   }
 
+  /**
+   * The frame a tick asked for painted no moving cell (the cell scrolled out of view): the tick has no cost to report,
+   * and the time until a cell shows again is not one.
+   */
+  forget(): void {
+    this.askedAt = undefined
+  }
+
   /** Cancels the pending tick and forgets every member. */
   dispose(): void {
     this.armed.clear()
@@ -159,17 +167,24 @@ export class UiAnimationClock {
 export class UiLoaderAnimation {
   private painted = false
   private frameValue = 0
+  /** Frames that may still begin before the last tick's repaint is known to have painted no moving cell. */
+  private awaited = 0
 
   constructor(private readonly requestRender: () => void, private readonly clock: UiAnimationClock = new UiAnimationClock()) {}
 
   get frame(): number { return this.frameValue }
 
   /** A fresh paint/rebind must encounter a loader to keep its clock running. */
-  beginFrame(): void { this.painted = false }
+  beginFrame(): void {
+    this.painted = false
+    // The frame after the one a tick asked for begins: that one painted no moving cell, or it would have armed the clock.
+    if (this.awaited > 0 && --this.awaited === 0) this.clock.forget()
+  }
 
   /** All loaders within one surface share a clock, independent of data updates. */
   render(): number {
     this.painted = true
+    this.awaited = 0
     this.clock.arm(this)
     return this.frameValue
   }
@@ -182,6 +197,7 @@ export class UiLoaderAnimation {
     if (!this.painted) return false
     this.painted = false
     this.frameValue++
+    this.awaited = 2
     this.requestRender()
     return true
   }

@@ -15,9 +15,9 @@
   "W11": { "nodesValidated": 2, "unitsCompiled": 2, "rowsPainted": 2, "stringsMeasured": 2 },
   "W12-rail": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 8, "stringsMeasured": 40 },
   "W12-prompt": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 6, "stringsMeasured": 40 },
-  "W13": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 922, "stringsMeasured": 144, "componentRenders": 375, "controlWalks": 0, "reconciles": 1, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
-  "W14": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 932, "stringsMeasured": 144, "componentRenders": 385, "controlWalks": 0, "reconciles": 1, "layoutPasses": 1, "clockTicks": 1, "keymapSnapshots": 0 },
-  "W15": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 932, "stringsMeasured": 144, "componentRenders": 385, "controlWalks": 0, "reconciles": 1, "layoutPasses": 1, "clockTicks": 1, "keymapSnapshots": 0 },
-  "W16": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 14, "componentRenders": 2, "controlWalks": 0, "reconciles": 3, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
+  "W13": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 0, "componentRenders": 0, "controlWalks": 0, "reconciles": 1, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
+  "W14": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 0, "componentRenders": 0, "controlWalks": 0, "reconciles": 0, "layoutPasses": 0, "clockTicks": 0, "keymapSnapshots": 0 },
+  "W15": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 2, "stringsMeasured": 0, "componentRenders": 2, "controlWalks": 0, "reconciles": 1, "layoutPasses": 1, "clockTicks": 1, "keymapSnapshots": 0 },
+  "W16": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 8, "componentRenders": 0, "controlWalks": 0, "reconciles": 2, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
   "W17": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 0, "stringsMeasured": 0, "componentRenders": 0, "controlWalks": 0, "reconciles": 0, "layoutPasses": 0, "clockTicks": 0, "keymapSnapshots": 0 }
 }

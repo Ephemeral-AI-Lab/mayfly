@@ -541,7 +541,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.11 | built (PR pending merge) | `feat/ui-foundation-1-11` | Freeze. Eight parts; full gate green with 100% coverage; Phase 1 is complete and waits only for checkpoints A, B, and C. `selectedIds` optional and a type-only `MayflyTranslate` (the model-picker spike's two fixes); Δ33 approved; the ledger holds only Phase 3 and later entries (one stale 1.6 entry removed); final budgets and the work report in §7.1; the ui type fixtures run in the gate (`types.spec.ts`) |
 | 1.12a | built (PR pending merge) | `feat/ui-foundation-1-12a` | Frame performance, measurement. Full gate green with 100% coverage; no runtime behavior change; the frame workloads W13 to W17 with their baseline, six frame counters, `pnpm run bench:pty` |
 | 1.12b | built (PR pending merge) | `feat/ui-foundation-1-12b` | Frame performance, wasted work. Full gate green with 100% coverage; no visible change (goldens and screenshots identical); a tick on a side pane is one pass and no control walk (W14: 949 renders to 385, 328 walks to 0); the gallery's frame 206 ms to 63 ms and its key 164 ms to 40 ms; without a pane, typing and the panels' cursor keys are back at `main`'s cost except the model picker's edge |
-| 1.12c | planned | `feat/ui-foundation-1-12c` | Frame performance, retained rows: one surface epoch, memoized leaves and stacks, the clock armed only by a visible moving cell |
+| 1.12c | built (PR pending merge) | `feat/ui-foundation-1-12c` | Frame performance, retained rows. Full gate green with 100% coverage; goldens and screenshots identical, and every suite also passes with the stale-row check on; a key beside an unchanged pane paints no leaf (W13: 447 renders to 0), a loader below the fold does not tick (W14: no tick), a visible one repaints 2 rows (W15); the gallery idles at 0% CPU (from 113%) and its key takes 6 ms (from 164 ms) |
 | 1.12d | planned | `feat/ui-foundation-1-12d` | Frame performance, the gate: final frame budgets and the coarse PTY ceilings in `verify:full` |
 | Checkpoint A / B / C | pending the reviewer | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11; the first run found the frame cost of slice 1.12, so the checkpoints resume on the integration profile once 1.12 is merged |
 
@@ -1428,9 +1428,34 @@ It lands in four parts, each a PR with the bench table:
    - *The edge.* `navigate` skips the geometry layout when the active control is the last of the only group along
      its own axis. A picker that holds other controls still lays out once per edge key (the model picker: 3.9 ms of
      CPU per key against 1.9 on `main`); part 1.12c makes that layout a memo read.
-3. **1.12c, retained rows** (planned). One epoch per surface, moved by everything that can change a row except the
-   clock; every leaf and every stack answers a repeat render from a memo; a moving cell marks its ancestors, and the
-   clock is armed only while one is on screen.
+3. **1.12c, retained rows** (built). pi-tui lays a pane out natively on every frame of the terminal and renders a
+   component once per ancestor stack that measures it; nothing below the frame memo was remembered. Now every component
+   a surface hands to pi-tui answers a repeat render from memory.
+   - *One viewport per pass.* A stack child's `visible` used to adopt whatever viewport pi-tui passed, including the
+     unbounded one of a measuring render, so the viewport a leaf saw depended on the sibling before it. A layout pass
+     now has one viewport, the frame the layout engine was given; a measure is not a new frame. The test that pins the
+     allocated height (`ui-compiler.spec.ts`) holds; rows that depended on a leftover viewport no longer can.
+   - *The epoch.* `MayflyUiSurfaceRuntime.epoch` moves whenever something other than the clock can change a row: at
+     the end of a handled key, on focus and restored focus, on `invalidate`, on a new compile, and when a frame finds
+     a new host viewport, model revision, keymap revision, or completion state (`syncEpoch`). A key that found nothing
+     to do (an arrow with no control in its direction) leaves it where it was.
+   - *Retained renders* (`retain` in `core/ui-compiler.ts`). A component's `render` is replaced in place by a memo of
+     six entries keyed by width, pass, list row budget, and viewport, valid for one epoch. Every compiled node is
+     retained except the pure leaves, which keep their own rows, and Markdown and diagrams, which cache inside their
+     component; the parts pi-tui lays out one by one (a form's fields, a loader's row, a surface's head and tail) are
+     retained too. A prompt and the host editor paint a live engine and are never remembered, nor is a render that
+     contains them, nor one whose paint failed. `verifyRetained` (or `MAYFLY_UI_VERIFY_MEMO=1`) paints again on every
+     hit and throws when the rows differ; the gate runs the suites that way.
+   - *Moving cells.* A render that reads the clock frame holds for that frame only, and so does every render around
+     it; a tick asks the host for a frame without invalidating (`requestFrame`), so one tick repaints the moving cell
+     and recomposes its ancestors. The clock is armed by a moving cell that can be seen: `core/ui-stacks.ts` records
+     the row each child starts at, and a cell outside the window of a scroll view around it does not arm it.
+   - *Stacks* (`core/ui-stacks.ts`). `ColumnStack` and `RowStack` paint the rows of pi-tui's stacks (a spec compares
+     them). A row stack does not render a child of fixed basis to measure it, and remembers each composited row by
+     what went into it, so the stack that pads a pane no longer splices every row of a long scroll per frame.
+   - *Not done.* A frame beside the gallery still costs about 5 ms, all of it pi-tui painting the pane's visible
+     boxes. A picker that holds other controls still lays out once per arrow at its edge (the model picker: 4.0 ms of
+     CPU per key against 1.9 on `main`). An image is retained and repainted by the surface's repaint request.
 4. **1.12d, the gate** (planned). The final frame budgets, and `bench:pty --assert` in `verify:full` with ceilings
    only a real regression trips.
 
@@ -1738,28 +1763,30 @@ holds the surface, for pi-tui's native layout of it, and for the clock. W13 to W
 does and count one whole step, with counters W1 to W12 do not name: leaf renders that painted, walks of the control
 tree, focus reconciliations, passes over the tree, clock ticks that asked for a repaint, and keymap snapshots.
 
-| Workload | Shape | One step | Slice 1.11 (renders / walks / reconciliations / passes / ticks) | After 1.12b |
-| --- | --- | --- | --- | --- |
-| W13 keystroke beside a pane | a side pane of eight sections in one scroll view, nothing in it changing | one key in the editor | 447 / 164 / 164 / 1 / 0 | 375 / 0 / 1 / 1 / 0 |
-| W14 tick below the fold | the same pane, its only loader scrolled out of view | the next clock tick | 949 / 328 / 328 / 3 / 1 | 385 / 0 / 1 / 1 / 1 |
-| W15 tick on screen | the same pane, the loader at the top | the next clock tick | 949 / 328 / 328 / 3 / 1 | 385 / 0 / 1 / 1 / 1 |
-| W16 list edge | an overlay that holds one list of five rows | `↓` on the last row | 12 / 0 / 5 / 2 / 0 | 2 / 0 / 3 / 1 / 0 |
-| W17 editor shell | the prompt footer beside one editor extension | one keystroke | 1 keymap snapshot | none |
+| Workload | Shape | One step | Slice 1.11 (renders / walks / reconciliations / passes / ticks) | After 1.12b | After 1.12c |
+| --- | --- | --- | --- | --- | --- |
+| W13 keystroke beside a pane | a side pane of eight sections in one scroll view, nothing in it changing | one key in the editor | 447 / 164 / 164 / 1 / 0 | 375 / 0 / 1 / 1 / 0 | 0 / 0 / 1 / 1 / 0 |
+| W14 tick below the fold | the same pane, its only loader scrolled out of view | the next clock tick, if any | 949 / 328 / 328 / 3 / 1 | 385 / 0 / 1 / 1 / 1 | 0 / 0 / 0 / 0 / 0 |
+| W15 tick on screen | the same pane, the loader at the top | the next clock tick | 949 / 328 / 328 / 3 / 1 | 385 / 0 / 1 / 1 / 1 | 2 / 0 / 1 / 1 / 1 |
+| W16 list edge | an overlay that holds one list of five rows | `↓` on the last row | 12 / 0 / 5 / 2 / 0 | 2 / 0 / 3 / 1 / 0 | 0 / 0 / 2 / 1 / 0 |
+| W17 editor shell | the prompt footer beside one editor extension | one keystroke | 1 keymap snapshot | none | none |
 
 The first column of counts is slice 1.11's, recorded in `baseline.json` by slice 1.12a; `budgets.json` holds the newest
 column, and each later part of the slice lowers it. A tick workload waits for the clock's next tick, because the clock
 paces itself by the frames it sees. The wall clock of the same path is `pnpm run bench:pty`, reported in every PR of
 the slice:
 
-| `bench:pty` (120 by 40, one machine) | `main` | Slice 1.11 | After 1.12b |
-| --- | --- | --- | --- |
-| Gallery pane: idle CPU | n/a | 113% | 60% |
-| Gallery pane: key to paint, median | n/a | 164 ms | 40 ms |
-| No pane: typing, CPU per key | 1.4 ms | 2.2 ms | 1.5 ms |
-| No pane: `/settings` cursor key, CPU | 3.8 ms | 6.5 ms | 4.0 ms |
-| No pane: `/model` cursor key, CPU | 1.9 ms | 6.1 ms | 3.9 ms |
-| No pane: `/theme` cursor key, CPU | 2.3 ms | 5.5 ms | 2.5 ms |
-| No pane: `/help` scroll key, CPU | 5.1 ms | 6.1 ms | 4.7 ms |
+| `bench:pty` (120 by 40, one machine) | `main` | Slice 1.11 | After 1.12b | After 1.12c |
+| --- | --- | --- | --- | --- |
+| Gallery pane: idle CPU | n/a | 113% | 60% | 0.2% |
+| Gallery pane: key to paint, median | n/a | 164 ms | 40 ms | 6 ms |
+| Gallery pane: CPU per key | n/a | 227 ms | 85 ms | 11 ms |
+| Gallery pane: CPU for a 5 s stream | n/a | 38.9 s | 20.8 s | 5.6 s |
+| No pane: typing, CPU per key | 1.4 ms | 2.2 ms | 1.5 ms | 1.5 ms |
+| No pane: `/settings` cursor key, CPU | 3.8 ms | 6.5 ms | 4.0 ms | 4.4 ms |
+| No pane: `/model` cursor key, CPU | 1.9 ms | 6.1 ms | 3.9 ms | 4.0 ms |
+| No pane: `/theme` cursor key, CPU | 2.3 ms | 5.5 ms | 2.5 ms | 2.3 ms |
+| No pane: `/help` scroll key, CPU | 5.1 ms | 6.1 ms | 4.7 ms | 4.7 ms |
 
 ## 8. Risks
 

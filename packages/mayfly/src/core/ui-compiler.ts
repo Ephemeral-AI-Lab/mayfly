@@ -27,7 +27,7 @@ import type {
   MayflyFieldValue,
   MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
-import { CURSOR_MARKER, HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
+import { CURSOR_MARKER, HStack, ScrollView, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { glyphRows } from './glyphs.ts'
@@ -50,6 +50,7 @@ import {
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
+import { ColumnStack, RowStack, onScreen, placeChild } from './ui-stacks.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import { fieldDecor, fieldDisplayError, stepNumber } from './ui-interaction-form.ts'
@@ -163,6 +164,11 @@ export interface MayflyUiCompilerOptions {
   readonly admission?: MayflyAdmissionCache
   /** The caller's compile memo; static leaves of an unchanged subtree keep their components. A surface runtime brings its own. */
   readonly reuse?: MayflyCompileCache
+  /**
+   * Paint again on every retained-row hit and throw when the rows differ: the check that nothing a retained component
+   * reads can change without moving the surface's epoch. Defaults to `MAYFLY_UI_VERIFY_MEMO=1`; production leaves it off.
+   */
+  readonly verifyRetained?: boolean
 }
 
 /** Canonical shell dependencies, including the one host-owned editing engine. */
@@ -765,10 +771,13 @@ function joinSpans(node: { readonly spans: readonly MayflyInlineSpan[] }, colors
   }).join('')
 }
 
+/** The one row a gutter or a padding column paints. */
+const BLANK_ROW: string[] = ['']
+
 function pad(component: Component, amount: number, options: RuntimeCompilerOptions): Component {
   if (amount === 0) return component
-  const padded = new HStack()
-  const spacer = (): MayflyComponent => staticComponent(() => [''], options)
+  const padded = new RowStack()
+  const spacer = (): MayflyComponent => staticComponent(() => BLANK_ROW, options, false)
   padded.addChild(spacer(), { basis: amount, grow: 0, shrink: 1 })
   padded.addChild(component, { basis: 0, grow: 1, shrink: 1, minSize: 1 })
   padded.addChild(spacer(), { basis: amount, grow: 0, shrink: 1 })
@@ -780,8 +789,8 @@ function pad(component: Component, amount: number, options: RuntimeCompilerOptio
  * border paint, with at least one column of gutter inside each bar (`padding` 2 adds a second).
  */
 function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, chrome: 'surface' | 'overlay', child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
-  const body = new VStack()
-  body.addChild(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(1), options))
+  const body = retain(new ColumnStack(), 'surface body', options)
+  body.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(1), options), 'surface head', options))
   body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) body.addChild(footer)
   if (contextHint !== undefined) body.addChild(contextHint)
@@ -797,24 +806,29 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
   }
   const frameVisible = (viewport: LayoutViewport): boolean => viewport.width >= 3
   const paddingVisible = (index: number) => (viewport: LayoutViewport): boolean => viewport.width >= 5 + index * 2
-  const borderRows = (): string[] => Array.from({ length: layoutRows }, () => paint(bar))
+  // The bars are as tall as the layout's frame; both sides share the rows painted for one height.
+  let bars: { readonly rows: number, readonly lines: string[] } | undefined
+  const borderRows = (): string[] => {
+    if (bars?.rows !== layoutRows) bars = { rows: layoutRows, lines: Array.from({ length: layoutRows }, () => paint(bar)) }
+    return bars.lines
+  }
   const middle = new HStack()
-  middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
+  middle.addChild(staticComponent(borderRows, options, false), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
   for (let index = 0; index < gutter; index += 1) {
-    middle.addChild(staticComponent(() => [''], options), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
+    middle.addChild(staticComponent(() => BLANK_ROW, options, false), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
   }
   middle.addChild(body, { basis: 1, grow: 1, shrink: 1, minSize: 0 })
   for (let index = 0; index < gutter; index += 1) {
-    middle.addChild(staticComponent(() => [''], options), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
+    middle.addChild(staticComponent(() => BLANK_ROW, options, false), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
   }
-  middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
+  middle.addChild(staticComponent(borderRows, options, false), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
 
-  const layout = new VStack()
-  layout.addChild(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(0, 1), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+  const layout = new ColumnStack()
+  layout.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(0, 1), options), 'surface head', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
   layout.addChild(middle, { basis: 0, grow: 1, shrink: 1, minSize: 0 })
-  layout.addChild(staticComponent(width => renderSurfaceTail(node, width, options.colors), options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+  layout.addChild(retain(staticComponent(width => renderSurfaceTail(node, width, options.colors), options), 'surface tail', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
 
-  return {
+  const framed = {
     [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
     render(width: number): string[] {
       const available = Math.max(1, Math.floor(width))
@@ -827,7 +841,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
       const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
       const border = paint(bar)
       const inset = ' '.repeat(horizontalPadding)
-      const framed = bodyRows.map(row => {
+      const rows = bodyRows.map(row => {
         // A row that fits is measured once; only a row that overflows is clipped and measured again.
         countWork(options.counters, 'stringsMeasured')
         const rowWidth = visibleWidth(row)
@@ -836,16 +850,19 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
         const clipped = truncateToWidth(row, contentWidth, '')
         return `${border}${inset}${clipped}${' '.repeat(Math.max(0, contentWidth - visibleWidth(clipped)))}${inset}${border}`
       })
-      return [...head, ...framed, ...tail]
+      return [...head, ...rows, ...tail]
     },
     invalidate(): void { layout.invalidate() },
   }
+  // The body starts under the frame's title rule, in a render and in a layout alike.
+  placeChild(body, framed, 1)
+  return framed
 }
 
 function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent {
   if (node.chrome === 'overlay' || node.chrome === 'surface') return framedSurfaceComponent(node, node.chrome, child, footer, contextHint, options)
-  const component = new VStack()
-  component.addChild(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors), options))
+  const component = new ColumnStack()
+  component.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors), options), 'surface head', options))
   component.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) component.addChild(footer)
   if (contextHint !== undefined) component.addChild(contextHint)
@@ -1413,6 +1430,101 @@ function deferredComponent(node: MayflyUiNode, state: FocusState, options: Runti
   }
 }
 
+/** What a render in progress has learned about itself from the leaves it painted. */
+interface RenderScope {
+  /** A cell that moves with the clock was painted: the rows hold for one animation frame. */
+  animated: boolean
+  /** The render itself painted the moving cell, rather than a render inside it. */
+  moves: boolean
+  /** Something no epoch tracks was read (a live editor, a failure): the rows are not remembered. */
+  volatile: boolean
+  /** The components inside this render that painted a moving cell, with the rows each painted. */
+  readonly moving: Map<Component, number>
+}
+
+/** One remembered render. */
+interface RetainedRows {
+  readonly rows: string[]
+  readonly epoch: number
+  /** The animation frame the rows were painted at, when they hold a moving cell. */
+  readonly frame: number | undefined
+  /** The moving cells inside the rows; showing the rows again keeps the clock on those that are on screen. */
+  readonly moving: ReadonlyMap<Component, number>
+}
+
+/** How many combinations of width, pass, list row budget, and viewport a retained component remembers. */
+const RETAINED_ENTRIES = 6
+
+/** Components whose `render` already answers from a retained memo. */
+const retainedComponents = new WeakSet<object>()
+
+function sameRows(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((row, index) => row === right[index])
+}
+
+/**
+ * Makes a component answer a repeat render from memory. pi-tui renders a component once per ancestor stack that
+ * measures it and again on every frame of the terminal, whatever asked for the frame; a retained component paints once
+ * per width until the surface's epoch moves (focus, input, a model revision, a rebind, a new viewport) or, when it holds
+ * a moving cell, until the clock does. A render that read something the epoch does not track is not remembered, and
+ * neither is a render that contains it.
+ * @param component - the component; its `render` is replaced in place, so a layout node it exposes is untouched.
+ * @param what - the node kind, for the stale-rows error.
+ * @param volatile - the component itself reads untracked state: it always paints and marks the renders around it.
+ */
+function retain<Target extends Component>(component: Target, what: string, options: RuntimeCompilerOptions, volatile = false): Target {
+  if (retainedComponents.has(component)) return component
+  retainedComponents.add(component)
+  const runtime = options.listRuntime
+  const state = runtime.state
+  const paint = component.render.bind(component)
+  const verify = options.verifyRetained ?? process.env.MAYFLY_UI_VERIFY_MEMO === '1'
+  const memo = new Map<string, RetainedRows>()
+  const painted = (width: number): { readonly rows: string[], readonly scope: RenderScope } => {
+    const scope = runtime.beginRender()
+    try {
+      const rows = paint(width)
+      if (scope.moves) scope.moving.set(component, rows.length)
+      return { rows, scope }
+    } finally { runtime.endRender(scope) }
+  }
+  component.render = (width: number): string[] => {
+    if (volatile) {
+      runtime.markVolatile()
+      return paint(width)
+    }
+    const viewport = options.getViewport()
+    const key = `${String(width)}|${state.layoutPass ? 1 : 0}|${String(runtime.rowBudget ?? '')}|${String(viewport.columns)}x${String(viewport.rows)}`
+    const known = memo.get(key)
+    if (known !== undefined && known.epoch === runtime.epoch && (known.frame === undefined || known.frame === runtime.animationFrame)) {
+      if (verify && !sameRows(painted(width).rows, known.rows)) throw new Error(`retained rows of a ${what} went stale: something it reads changed without moving the surface epoch`)
+      if (known.frame !== undefined) runtime.showMoving(known.moving)
+      return known.rows
+    }
+    const { rows, scope } = painted(width)
+    if (scope.volatile) memo.delete(key)
+    else {
+      if (memo.size >= RETAINED_ENTRIES && !memo.has(key)) memo.delete(memo.keys().next().value!)
+      memo.set(key, { rows, epoch: runtime.epoch, frame: scope.animated ? runtime.animationFrame : undefined, moving: scope.moving })
+    }
+    if (scope.moves) runtime.showMoving(new Map([[component, rows.length]]))
+    return rows
+  }
+  return component
+}
+
+/**
+ * Node kinds that are not retained. A pure leaf remembers its own rows for as long as it lives, Markdown and diagrams
+ * cache inside their component, and a spacer has nothing to remember.
+ */
+const UNRETAINED_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider', 'markdown', 'diagram', 'chart', 'spacer'])
+
+/**
+ * Node kinds that paint a live editing engine: they always paint, and so does whatever contains them. An image is not
+ * one of them: its bytes arrive through the surface's repaint request, which moves the epoch.
+ */
+const VOLATILE_KINDS: ReadonlySet<string> = new Set(['editor-control', 'prompt'])
+
 /** Node kinds that paint only from their admitted node, the width, the colors, and the components. */
 const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider'])
 
@@ -1422,6 +1534,14 @@ function leaf(node: CompilableNode, options: RuntimeCompilerOptions, build: (pai
 }
 
 function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCompilerOptions, path = '$', mode: CompilerMode = 'ui', contextHint?: Component): Component {
+  const component = compileUnit(node, state, options, path, mode, contextHint)
+  // Rich text that moves is retained like a loader row, so the clock follows it only while it is on screen.
+  if (UNRETAINED_KINDS.has(node.kind) && !(node.kind === 'rich-text' && hasMotion(node.spans))) return component
+  // A scroll region paints a window of its child from a position that moves under it; the child is retained, not the window.
+  return retain(component, node.kind, options, VOLATILE_KINDS.has(node.kind) || component instanceof ScrollRegion)
+}
+
+function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCompilerOptions, path: string, mode: CompilerMode, contextHint?: Component): Component {
   const pagePath = options.listRuntime.pagePath(node)
   const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
   const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
@@ -1498,8 +1618,8 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       }
       const spatial = mode === 'status' || options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined
       const stack = !spatial || node.direction === 'column'
-        ? new VStack([], stackOptions)
-        : new HStack([], stackOptions)
+        ? new ColumnStack([], stackOptions)
+        : new RowStack([], stackOptions)
       for (const [index, child] of node.children.entries()) {
         const compiled = compileNode(child.node, state, options, `${path}.${String(index)}`, mode)
         const layout = !spatial
@@ -1511,17 +1631,18 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
               ...(child.minSize === undefined ? {} : { minSize: Math.min(child.minSize, LAYOUT_VALUE_MAX) }),
               ...(child.maxSize === undefined ? {} : { maxSize: Math.min(child.maxSize, LAYOUT_VALUE_MAX) }),
               visible: (viewport: LayoutViewport) => {
-                const current = state.layoutPass
-                  ? { columns: viewport.width, rows: viewport.height }
-                  : safeViewport(options.getViewport)
-                // Siblings laid out at the same viewport share one focus
-                // reconciliation per pass instead of one per child.
-                if (state.layoutPass && !sameViewport(state.layoutReconciled, current)) {
-                  state.setLayoutViewport(current)
-                  reconcileLayout(state)
-                  state.layoutReconciled = current
+                // A layout pass has one viewport: the frame the layout engine was given, which pi-tui passes to every
+                // stack it lays out. An unbounded height is pi-tui measuring a stack by rendering it, not a new frame,
+                // so a measure and the paint that follows it see the same viewport and the same controls.
+                if (state.layoutPass && viewport.height !== Number.MAX_SAFE_INTEGER) {
+                  const frame = { columns: viewport.width, rows: viewport.height }
+                  if (!sameViewport(state.layoutReconciled, frame)) {
+                    state.setLayoutViewport(frame)
+                    reconcileLayout(state)
+                    state.layoutReconciled = frame
+                  }
                 }
-                return conditionMatches(child.when, current) && tabVisible(child, pagePath, options)
+                return conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
               },
             }
         stack.addChild(compiled, layout)
@@ -1571,6 +1692,8 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       const scroll = address === undefined || model === undefined || model.document(address) === undefined
         ? new ScrollView(child, scrollOptions)
         : new SemanticScrollView(child as Component, scrollOptions, model, address)
+      // A scroll view holds one child, from its first row: what is on screen is decided against this view's window.
+      placeChild(child, scroll, 0)
       const key = scopedControlKey('scroll', path)
       state.bindControls([key], { component: scroll, axis: 'none' })
       state.bindScroll(key, scroll)
@@ -1653,7 +1776,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       return component
     }
     case 'form': {
-      const stack = new VStack()
+      const stack = new ColumnStack()
       const labelWidth = formLabelWidth(node.fields)
       let group: string | undefined
       for (const field of node.fields) {
@@ -1661,9 +1784,10 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const heading = field.group !== undefined && field.group !== group ? field.group : undefined
         if (field.group !== undefined) group = field.group
         const layout: FormFieldLayout = { labelWidth, ...(heading === undefined ? {} : { heading }) }
-        const component = field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret' || field.kind === 'number'
+        // pi-tui lays a form out field by field, so each part is retained on its own, not only the form around them.
+        const component = retain(field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret' || field.kind === 'number'
           ? editorFieldComponent(field, key, state, options, layout)
-          : staticComponent(width => paintField(field, key, width, state, options, layout, patternFocus(state, scopedControlGroup('form', node.id)).marker), options)
+          : staticComponent(width => paintField(field, key, width, state, options, layout, patternFocus(state, scopedControlGroup('form', node.id)).marker), options), 'form field', options)
         stack.addChild(component)
         if (field.disabled !== true) state.bindControls([key], { component, axis: 'none' })
         const address = { pagePath, formId: node.id, fieldId: field.id }
@@ -1674,13 +1798,14 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
             state.bindControls(current.map(action => scopedControlKey('field-action', node.id, `${field.id}/${action.id}`)), { component: tools, axis: 'horizontal' })
             return renderActions({ kind: 'actions', id: field.id, items: current.map(action => ({ id: `${field.id}/${action.id}`, label: options.contextHints?.translate?.(action.label) ?? action.label })) }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, false)
           }, options)
+          retain(tools, 'field actions', options)
           stack.addChild(tools)
           state.bindControls(actions.map(action => scopedControlKey('field-action', node.id, `${field.id}/${action.id}`)), { component: tools, axis: 'horizontal' })
         }
       }
       // One primary submit when the form has several fields; `cancelActionId` is never drawn, Escape runs it.
       if (formDrawsSubmit(node)) {
-        const component = staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Save'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options)
+        const component = retain(staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Save'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options), 'form submit', options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('form-submit', node.id)], { component, axis: 'none' })
       }
@@ -1709,22 +1834,22 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
       return component
     }
     case 'loader': {
-      const stack = new VStack()
+      const stack = new ColumnStack()
       // Reduced motion freezes the channel on its first frame and never joins the clock.
       const presentation = options.components.presentation
-      stack.addChild(staticComponent(width => renderLoader(node, width, options.colors, motionFrame(options), presentation?.glyphs, presentation?.reducedMotion === true), options))
+      stack.addChild(retain(staticComponent(width => renderLoader(node, width, options.colors, motionFrame(options), presentation?.glyphs, presentation?.reducedMotion === true), options), 'loader row', options))
       const cancelActionId = node.cancelActionId
       if (cancelActionId !== undefined) {
         // The cancel is a hint, not a button: Escape fires it (`cancel-work`), and the row only says so.
-        const component = staticComponent(width => [sliceByColumn(`  ${options.colors.muted(`Esc ${(node.cancelLabel ?? coreText(options, 'Cancel')).toLowerCase()}`)}`, 0, width, true)], options)
+        const component = retain(staticComponent(width => [sliceByColumn(`  ${options.colors.muted(`Esc ${(node.cancelLabel ?? coreText(options, 'Cancel')).toLowerCase()}`)}`, 0, width, true)], options), 'loader cancel', options)
         stack.addChild(component)
         state.bindControls([scopedControlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
       }
       return stack
     }
     case 'empty': {
-      const stack = new VStack()
-      stack.addChild(staticComponent(width => renderEmpty(node, width, options.colors), options))
+      const stack = new ColumnStack()
+      stack.addChild(retain(staticComponent(width => renderEmpty(node, width, options.colors), options), 'empty state', options))
       if (node.actions !== undefined) stack.addChild(compileNode(node.actions, state, options, `${path}.actions`, mode))
       return stack
     }
@@ -1976,9 +2101,18 @@ export class MayflyUiSurfaceRuntime {
   } | undefined
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
+  private epochValue = 0
+  /** The retained renders in progress, innermost last. */
+  private readonly renders: RenderScope[] = []
 
-  constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource) {
-    this.loaderAnimation = requestRender === undefined ? undefined : new UiLoaderAnimation(requestRender, clock)
+  /**
+   * @param requestRender - asks the host to invalidate and repaint the surface: something of its own changed.
+   * @param requestFrame - asks the host for another frame and nothing else: the clock moved. A tick must not
+   *   invalidate, or every retained row would be painted again for one moving cell; defaults to `requestRender`.
+   */
+  constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void) {
+    const tick = requestFrame ?? requestRender
+    this.loaderAnimation = tick === undefined ? undefined : new UiLoaderAnimation(tick, clock)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
       const address = this.fieldAddresses.get(key)
       const draft = address === undefined ? undefined : this.interaction?.form(address)?.fields[address.fieldId]
@@ -2073,12 +2207,74 @@ export class MayflyUiSurfaceRuntime {
     this.listRowBudget = undefined
     this.controls.resetGeneration()
     this.generation += 1
+    this.touch()
     return this.generation
   }
 
   /** Renderer clocks do not change shared model revisions or form state. */
   get animationFrame(): number { return this.loaderAnimation?.frame ?? 0 }
-  loaderFrame(): number { return this.loaderAnimation?.render() ?? 0 }
+  /**
+   * The clock frame a moving cell paints at. The render that asks holds for that frame only, and the clock is armed
+   * when the cell turns out to be on screen, not by the paint: scroll content is painted whole, so a loader below the
+   * fold would otherwise repaint the surface ten times a second for a cell nobody sees.
+   */
+  loaderFrame(): number {
+    this.markAnimated()
+    return this.loaderAnimation?.frame ?? 0
+  }
+
+  /** Counts what can change a row this surface painted, the clock aside; a retained render holds for one value. */
+  get epoch(): number { return this.epochValue }
+  /** Something that can change a painted row happened: every retained render of this surface is stale. */
+  touch(): void { this.epochValue += 1 }
+  /** The list row budget in force, part of what a retained render was painted under. */
+  get rowBudget(): number | undefined { return this.listRowBudget }
+  /** Opens the scope of one retained render; the leaves it paints leave their marks on it. */
+  beginRender(): RenderScope {
+    const scope: RenderScope = { animated: false, moves: false, volatile: false, moving: new Map() }
+    this.renders.push(scope)
+    return scope
+  }
+  /** Closes a render's scope and passes its marks to the render that contains it. */
+  endRender(scope: RenderScope): void {
+    this.renders.pop()
+    const outer = this.renders.at(-1)
+    if (outer === undefined) return
+    outer.animated ||= scope.animated
+    outer.volatile ||= scope.volatile
+    for (const [component, rows] of scope.moving) outer.moving.set(component, rows)
+  }
+  /** The render in progress painted a cell that moves with the clock; outside any retained render the clock is armed at once. */
+  markAnimated(): void {
+    const scope = this.renders.at(-1)
+    if (scope === undefined) {
+      this.loaderAnimation?.render()
+      return
+    }
+    scope.animated = true
+    scope.moves = true
+  }
+  /** The render in progress read something no epoch tracks. */
+  markVolatile(): void {
+    const scope = this.renders.at(-1)
+    if (scope !== undefined) scope.volatile = true
+  }
+  /**
+   * Rows that hold moving cells are on their way to the screen, freshly painted or from memory: the render around them
+   * holds for this frame too, and the surface joins the clock when one of the cells can be seen.
+   */
+  showMoving(cells: ReadonlyMap<Component, number>): void {
+    const scope = this.renders.at(-1)
+    if (scope !== undefined) {
+      scope.animated = true
+      for (const [component, rows] of cells) scope.moving.set(component, rows)
+    }
+    for (const [component, rows] of cells) {
+      if (!onScreen(component, rows)) continue
+      this.loaderAnimation?.render()
+      return
+    }
+  }
   /** Asks the renderer to paint this surface again: an image's bytes arrived. */
   readonly repaint = (): void => { if (this.live) this.requestRender?.() }
   /** The scroll position a region keeps across publishes. */
@@ -2094,7 +2290,7 @@ export class MayflyUiSurfaceRuntime {
   progressValue(key: string, node: Parameters<UiProgressTransitions['step']>[1], reducedMotion: boolean): number {
     if (this.loaderAnimation === undefined || reducedMotion) return node.value
     const step = this.transitions.step(key, node, this.loaderAnimation.frame)
-    if (step.animating) this.loaderAnimation.render()
+    if (step.animating) this.markAnimated()
     return step.value
   }
   beginAnimationFrame(): void { this.loaderAnimation?.beginFrame() }
@@ -2430,7 +2626,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
       ...(editor === undefined ? {} : { editor }),
       getViewport: () => this.viewport,
       listRuntime: this.surfaceRuntime,
-      reportRuntimeFailure: message => { this.runtimeFailure ??= message },
+      // A failed paint is reported by the frame that painted it, so its rows are never answered from memory.
+      reportRuntimeFailure: message => { this.runtimeFailure ??= message; this.surfaceRuntime.markVolatile() },
     }
     this.runtimeOptions = runtimeOptions
     this.generation = this.surfaceRuntime.bind(node, runtimeOptions, viewport => { this.viewport = viewport })
@@ -2444,7 +2641,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const compiledRoot = compileNode(node, this.state, runtimeOptions, '$', mode, node.kind === 'surface' ? contextHint : undefined)
     if (contextHint === undefined || node.kind === 'surface') this.root = compiledRoot
     else {
-      const root = new VStack()
+      const root = new ColumnStack()
       root.addChild(compiledRoot, this.surfaceRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
       root.addChild(contextHint)
       this.root = root
@@ -2459,6 +2656,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   get focused(): boolean { return this.state.focused }
   set focused(value: boolean) {
     this.frameResult = undefined
+    this.surfaceRuntime.touch()
     if (!this.surfaceRuntime.current(this.generation)) return
     this.surfaceRuntime.setFocused(value)
     if (!value && this.editor !== undefined) this.editor.focused = false
@@ -2507,6 +2705,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
 
   restoreFocusIdentity(identity: MayflyFocusIdentity): boolean {
     this.frameResult = undefined
+    this.surfaceRuntime.touch()
     if (!this.surfaceRuntime.current(this.generation)) return false
     this.viewport = safeViewport(this.options.getViewport)
     const controls = this.state.controls()
@@ -2552,6 +2751,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   [LAYOUT_NODE](): LayoutNode {
     if (!this.surfaceRuntime.current(this.generation)) return { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
     this.viewport = safeViewport(this.options.getViewport)
+    this.syncEpoch(this.viewport, this.surfaceRuntime.interaction?.revision, this.options.keymap?.revision, this.options.completionsOpen?.() === true)
     this.prepareNativeLayout()
     this.viewport = safeViewport(this.options.getViewport)
     this.surfaceRuntime.beginAnimationFrame()
@@ -2693,12 +2893,27 @@ class CompiledSurface implements MayflyEditorShellComponent {
     readonly result: MayflyStatusRenderResult
   } | undefined
 
+  /** What a frame reads from outside the surface, the clock aside: when it differs from the last frame's, the epoch moves. */
+  private frameInputs: string | undefined
+
+  /**
+   * Moves the surface epoch when the host viewport, the model revision, the keymap revision, or the completion list
+   * changed since the last frame. Everything inside the surface that can change a row moves the epoch where it happens.
+   */
+  private syncEpoch(viewport: MayflyUiViewport, revision: number | undefined, keymapRevision: number | undefined, completions: boolean): void {
+    const inputs = `${String(viewport.columns)}x${String(viewport.rows)}|${String(revision)}|${String(keymapRevision)}|${String(completions)}`
+    if (inputs === this.frameInputs) return
+    this.frameInputs = inputs
+    this.surfaceRuntime.touch()
+  }
+
   private renderFrameOnce(width: number, maxRows: number | undefined): MayflyStatusRenderResult {
     const current = this.surfaceRuntime.current(this.generation)
     const viewport = safeViewport(this.options.getViewport)
     const revision = this.surfaceRuntime.interaction?.revision
     const keymapRevision = this.options.keymap?.revision
     const completions = this.options.completionsOpen?.() === true
+    this.syncEpoch(viewport, revision, keymapRevision, completions)
     const animationFrame = this.surfaceRuntime.animationFrame
     const cached = this.frameResult
     if (cached !== undefined
@@ -2766,6 +2981,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
 
   focusEditor(): void {
     this.frameResult = undefined
+    this.surfaceRuntime.touch()
     if (!this.surfaceRuntime.current(this.generation)) return
     this.viewport = safeViewport(this.options.getViewport)
     const controls = this.state.controls()
@@ -2818,19 +3034,32 @@ class CompiledSurface implements MayflyEditorShellComponent {
     return rectangles
   }
 
+  /** The key being handled found nothing to do: an arrow with no control in its direction. */
+  private inputIdle = false
+
+  /**
+   * The epoch moves when the key has been handled, not before: a key that looks for a neighbor reads the rows the last
+   * frame painted, and a key that found nothing to do leaves every one of them valid, so holding an arrow at the end of
+   * a list costs neither a layout of fresh rows nor a frame of them.
+   */
   handleInput(data: string): void {
     this.frameResult = undefined
     if (!this.surfaceRuntime.current(this.generation)) return
-    this.viewport = safeViewport(this.options.getViewport)
-    if (this.state.expandedKey !== undefined && !this.state.scrollViews.has(this.state.expandedKey)) this.state.expandedKey = undefined
-    const controls = reconcile(this.state)
-    const active = controls[this.state.lastIndex]
-    const runtimeOptions = this.runtimeOptions
-    const grammar = keyGrammar(grammarStateFor(this.state, runtimeOptions, controls, active, this.mode, this.escapeLabel))
-    const binding = grammar.find(candidate => matchesBinding(candidate.match, data, this.options.keymap))
-    /* v8 ignore next -- every grammar ends with a catch-all binding. */
-    if (binding === undefined) return
-    this.apply(binding.intent, data, controls, active)
+    this.inputIdle = false
+    try {
+      this.viewport = safeViewport(this.options.getViewport)
+      if (this.state.expandedKey !== undefined && !this.state.scrollViews.has(this.state.expandedKey)) this.state.expandedKey = undefined
+      const controls = reconcile(this.state)
+      const active = controls[this.state.lastIndex]
+      const runtimeOptions = this.runtimeOptions
+      const grammar = keyGrammar(grammarStateFor(this.state, runtimeOptions, controls, active, this.mode, this.escapeLabel))
+      const binding = grammar.find(candidate => matchesBinding(candidate.match, data, this.options.keymap))
+      /* v8 ignore next -- every grammar ends with a catch-all binding. */
+      if (binding === undefined) return
+      this.apply(binding.intent, data, controls, active)
+    } finally {
+      if (!this.inputIdle) this.surfaceRuntime.touch()
+    }
   }
 
   private moveTo(index: number, within: readonly ControlDescriptor[]): void {
@@ -2999,7 +3228,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
       : { kind: 'selection-accept', pagePath, controlId: node.id, selectedIds: [item.id] })
   }
 
-  private navigate(direction: 'up' | 'down' | 'left' | 'right', controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
+  /** @returns whether focus moved; a caller that changed nothing before it may then call the key idle. */
+  private navigate(direction: 'up' | 'down' | 'left' | 'right', controls: readonly ControlDescriptor[], active: ControlDescriptor): boolean {
     const group = controlGroups(controls).find(candidate => candidate.id === active.group)
     const matchingAxis = active.navigation === 'horizontal'
       ? direction === 'left' || direction === 'right'
@@ -3012,7 +3242,9 @@ class CompiledSurface implements MayflyEditorShellComponent {
     // Along its own axis the last control of the only group has no neighbor, so no layout is needed to look for one.
     const alone = matchingAxis && group !== undefined && group.entries.length === controls.length
     if (target === undefined && !alone) target = nearestDirectionalControl(controls, this.controlRectangles(controls), this.state.lastIndex, direction)
-    if (target !== undefined) this.moveTo(target, controls)
+    if (target === undefined) return false
+    this.moveTo(target, controls)
+    return true
   }
 
   /** One key of the focused prompt: a change of its draft through the model, or the key itself for its editor. */
@@ -3095,7 +3327,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
         this.state.setValue(text.key, editor.getExpandedText())
         const submits = formEnterAction(text.form)
         this.state.setEditing(undefined)
-        if (submits === undefined) this.navigate('down', controls, active)
+        if (submits === undefined) {
+          // The field just left editing: the neighbor is looked for among rows painted after that, not before.
+          this.surfaceRuntime.touch()
+          this.navigate('down', controls, active)
+        }
         else model?.invoke(submits, text.identity.pagePath!)
         return
       }
@@ -3192,7 +3428,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         const target = this.surfaceRuntime.moveList(listNode!, intent.movement, Math.max(1, Math.min(10, this.viewport.rows - 1)))
         if (target === undefined || target.index === (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry!.index) {
           // Past the first or last row the arrow leaves the list for the control above or below it.
-          if (intent.movement === 'up' || intent.movement === 'down') this.navigate(intent.movement, controls, active)
+          if (intent.movement === 'up' || intent.movement === 'down') this.inputIdle = !this.navigate(intent.movement, controls, active)
           return
         }
         this.focusRow(listNode!, target.item.id, listAddress!.pagePath)
@@ -3226,7 +3462,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         return
       case 'commit': this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).commitEvent!); return
       case 'toggle-row': this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event); return
-      case 'navigate': this.navigate(intent.direction, controls, active); return
+      case 'navigate': this.inputIdle = !this.navigate(intent.direction, controls, active); return
       case 'activate':
         if (active.kind === 'field-action') {
           model?.updateForm(active.address, active.action.intent)
@@ -3241,6 +3477,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
 
   invalidate(): void {
     this.frameResult = undefined
+    this.surfaceRuntime.touch()
     if (this.surfaceRuntime.current(this.generation)) this.root.invalidate?.()
   }
 }

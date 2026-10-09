@@ -211,5 +211,9 @@ describe('node slot test host', () => {
     const rows = hosts(tree.terminal).content.render(100).join('\n')
     expect(read).toHaveBeenCalledWith('att-1', expect.any(Function))
     expect(rows).toContain('[Image #1 84 KB]')
+    // When the bytes arrive the source calls the painter back: the slot invalidates itself and asks for a frame.
+    const renders = tree.terminal.renders()
+    read.mock.calls.at(-1)![1]()
+    expect(tree.terminal.renders()).toBe(renders + 1)
   })
 })

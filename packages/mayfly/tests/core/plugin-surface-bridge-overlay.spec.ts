@@ -9,6 +9,7 @@ import { apply as applyApi } from '../../../ui/src/provider.ts'
 import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiEventContext, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import { ui } from '../../../ui/src/index.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -83,7 +84,7 @@ type TestOverlayRequest = Omit<MayflyOverlayDefinition, 'onEvent'> & {
 }
 type TestOverlayHandle = MayflyOverlayHandle & { refresh(): void }
 
-async function fixture(columns = 80, rows = 24, compilerComponents: MayflyComponents = components, translateHint?: (key: string) => string): Promise<Fixture> {
+async function fixture(columns = 80, rows = 24, compilerComponents: MayflyComponents = components, translateHint?: (key: string) => string, images?: MayflyUiImageSource): Promise<Fixture> {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
@@ -107,7 +108,7 @@ async function fixture(columns = 80, rows = 24, compilerComponents: MayflyCompon
         dispatch: () => false,
       },
     })
-    mountMayflySurfaceRenderer(owner as never, runtime, translateHint)
+    mountMayflySurfaceRenderer(owner as never, runtime, translateHint, images)
     owners.push(owner)
     return owner
   }
@@ -159,6 +160,29 @@ function deferred<T>(): { readonly promise: Promise<T>, resolve(value?: T): void
 function actionNode(id = 'go', confirm?: string): MayflyUiNode {
   return ui.actions({ id: 'actions', items: [{ id, label: id, ...(confirm === undefined ? {} : { confirm }) }] })
 }
+
+it('invalidates and repaints an overlay when the bytes of its image arrive', async () => {
+  const read = vi.fn<MayflyUiImageSource['read']>(() => ({ state: 'missing' }))
+  const bench = await fixture(80, 24, components, undefined, { read })
+  try {
+    const prompt = { focused: false, render: () => ['prompt'], invalidate() {}, handleInput() {} }
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', prompt)
+    slot.focus()
+    bench.open({ id: 'photo', title: 'Photo', presentation: 'editor', capturing: true, render: () => ui.image({ attachmentId: 'att-1', alt: '[Image #1]' }) })
+    await flush()
+    expect(slot.component.render(80).join('\n')).toContain('[Image #1]')
+    expect(read).toHaveBeenCalledWith('att-1', expect.any(Function))
+    const repaint = vi.spyOn(bench.runtime, 'requestRender')
+    read.mock.calls.at(-1)![1]()
+    expect(repaint).toHaveBeenCalledOnce()
+    // The invalidation moved the surface on: the next frame asks the source again instead of showing remembered rows.
+    const asked = read.mock.calls.length
+    slot.component.render(80)
+    expect(read.mock.calls.length).toBeGreaterThan(asked)
+  } finally {
+    await bench.dispose()
+  }
+})
 
 it('presents registered editor overlays in the fixed dock and restores drafts after renderer reload', async () => {
   const bench = await fixture()
