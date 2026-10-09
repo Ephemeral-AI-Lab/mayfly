@@ -534,7 +534,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.6 | merged (#109) | `feat/ui-foundation-1-6` | Two parts; full gate green; scenes 3, 4, 12 and scene 1 page 1's form block pinned (Δ27, Δ28 approved); one `Esc back` hint left pending for 1.5; no budget change |
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | merged (#111) | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12-prompt` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
-| 1.8b | in review | `feat/ui-foundation-1-8b` | Patterns. Three parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ30 and Δ31 proposed; no budget change |
+| 1.8b | in review (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ30 and Δ31 proposed; library file budget 222 to 223 |
 | 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
 | Checkpoint A / B / C | pending | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11 |
 
