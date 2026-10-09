@@ -46,6 +46,12 @@ in a node.
 - `tone` is semantic, not a color value:
   `default | muted | accent | success | warning | danger`.
 - `emphasis` is `normal | strong`; omission means normal text.
+- Identity is the cache key. A node that reaches the renderer is a frozen
+  snapshot, and an unchanged subtree costs nothing on republish: keep unchanged
+  sub-nodes identical instead of rebuilding them, or give a component
+  `memo: true`. `memo` compares props by reference, so it hits only when every
+  prop is stable, a translator passed as `MayflyTranslate` included; see
+  [Public UI kit](/en/plugins/ui-kit).
 
 The defaults below describe the current Mayfly TUI in `0.1.3-rc.2`. The wire
 contract promises field semantics, not exact border glyphs, color values, or
