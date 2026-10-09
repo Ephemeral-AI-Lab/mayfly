@@ -36,7 +36,7 @@ const uiLibUrl = new URL('../../packages/ui/lib/index.js', import.meta.url)
 if (!existsSync(fileURLToPath(uiLibUrl))) {
   throw new Error('packages/ui/lib is missing — run `pnpm build` before the shots pipeline')
 }
-const { ui, defineMayflyComponent } = await import(uiLibUrl.href)
+const { ui, defineMayflyComponent, patterns } = await import(uiLibUrl.href)
 
 const check = process.argv.includes('--check')
 const outDir = new URL('../../website/public/shots/', import.meta.url)
@@ -44,7 +44,7 @@ mkdirSync(outDir, { recursive: true })
 
 let failures = 0
 for (const scenario of SCENARIOS) {
-  const { term, cols, rows } = await renderScenario(scenario, ui, defineMayflyComponent)
+  const { term, cols, rows } = await renderScenario(scenario, ui, defineMayflyComponent, patterns)
   const svg = await paintTerminalSvg(term, { cols, rows })
   const file = new URL(`${scenario.id}.svg`, outDir)
   const label = `website/public/shots/${scenario.id}.svg`

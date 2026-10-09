@@ -99,4 +99,16 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
     summary: 'A form select stepped back to its inherited value keeps the override (`(override)`, the `•` mark, `Delete reset`); the prototype unpins it',
     reason: 'settings contract: Mayfly settings preserve equal-value explicit overrides',
   },
+  {
+    id: 'Δ31',
+    scenes: [11],
+    summary: 'A card drawn at 80 columns shows three hint fragments where the kit shows four: the renderer admits fragments by the width inside the frame (76), the kit by the frame\'s own width',
+    reason: 'the hint limit is the painter\'s existing behavior (three below 80 columns of hint row); approved by the reviewer',
+  },
+  {
+    id: 'Δ32',
+    scenes: [11],
+    summary: 'A printable accelerator (`c copy name`) is neither bound nor hinted while a text field holds focus, because the key is the field\'s text; the kit runs it from anywhere',
+    reason: 'the key grammar never lets a printable accelerator pre-empt a control that takes typed text (existing behavior); approved by the reviewer',
+  },
 ]

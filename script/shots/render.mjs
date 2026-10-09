@@ -120,11 +120,12 @@ const components = {
  *   frame is re-rendered so the driven state is what gets painted.
  * @param {object} ui - the built `@ephemeral-ai/mayfly-ui` builder namespace.
  * @param {Function} defineMayflyComponent - the built component factory.
+ * @param {object} patterns - the built `patterns` namespace.
  * @returns {Promise<{ term: object, cols: number, rows: number }>}
  */
-export async function renderScenario(scenario, ui, defineMayflyComponent) {
+export async function renderScenario(scenario, ui, defineMayflyComponent, patterns) {
   const width = scenario.width
-  const node = scenario.build(ui, defineMayflyComponent)
+  const node = scenario.build(ui, defineMayflyComponent, patterns)
   const surfaceId = `shot.${scenario.id.toLowerCase()}`
   const ctx = new Context()
   const providerFiber = await ctx.plugin(uiProvider)
