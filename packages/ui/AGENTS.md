@@ -21,7 +21,14 @@ objects, or mutable product state.
 - `defineMayflyComponent` validates the id/render function and freezes output;
   core owns node schema admission, quotas, and compilation. Do not add a registry.
   `memo: true` returns the previous node for shallowly equal props, so render
-  must stay pure.
+  must stay pure; it hits only when every prop is stable by reference (a
+  translator or an inline object rebuilt per call never hits), so owners hoist
+  them. `MayflyTranslate` is the type-only translator a component takes.
+- Identity is the cache key. A node that reaches core is a frozen snapshot, and
+  core reuses admission, compilation, and painted rows by that identity, so a
+  builder keeps an unchanged sub-node identical (`freezeWire` of a snapshot
+  returns it) and never rebuilds it to "refresh" it. A field that an old
+  caller never wrote stays optional with a default (`selectedIds` is `[]`).
 - The [UI design](../../docs/design/component-library.md) is the target for a planned
   refresh, not shipped behavior; its
   [implementation reference](../../docs/design/component-library-reference.md) holds the
@@ -57,8 +64,14 @@ objects, or mutable product state.
 
 ## Verification
 
-Public source changes require the root full gate. Preserve type fixtures for
-component inference, explicit child boundaries, and rejection of custom kinds.
+The surface froze with Phase 1 (roadmap D16): a change to `src/` is an
+exception, additive and optional-field only, and takes the root full gate
+(`pnpm run verify:full`, `check:lib`, `check:examples`, and `check:pack` for
+distribution), a type fixture, and both Website reference pages with
+`script/shots/manifest.mjs`. Type fixtures in `tests/ui.compile.ts` cover every
+contract field, component inference with `memo`, explicit child boundaries, and
+rejection of custom kinds; `tests/types.spec.ts` compiles them against the built
+declarations, so build first.
 Provider tests cover replay, set/replacement, duplicate IDs, cancellation, late
 results, Fiber cleanup, and action admission/publication. Built root/provider
 checks must prove trusted builder snapshots retain identity through publication.

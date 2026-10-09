@@ -19,6 +19,7 @@ import { segmentFooter } from './ui-list-segment.ts'
 import { paintList, type ListPaintOptions, type ListRowMemo, type ListRowSpec } from './ui-list-paint.ts'
 import { paintTabs, type TabsPaintOptions } from './ui-tabs-paint.ts'
 import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
+import { listSelectedIds } from './ui-list-selection.ts'
 
 type SurfaceNode = Extract<MayflyUiNode, { readonly kind: 'surface' }>
 type SurfaceChromeNode = Pick<SurfaceNode, 'badges' | 'border' | 'chrome' | 'subtitle' | 'title' | 'titleAlign'>
@@ -103,7 +104,7 @@ export function renderAutocompleteList(
   const available = safeWidth(width)
   if (node.items.length === 0) return [options.noMatch(fit('  No matching commands', available))]
 
-  const selectedId = node.selectedIds[0]
+  const selectedId = listSelectedIds(node)[0]
   const selectedIndex = Math.max(0, node.items.findIndex(item => item.id === selectedId))
   const visibleCount = Math.max(1, Math.floor(maxVisible))
   const startIndex = Math.max(0, Math.min(selectedIndex - Math.floor(visibleCount / 2), node.items.length - visibleCount))
@@ -265,7 +266,7 @@ export function renderList(node: ListNode, width: number, height: number, focus:
     cursorId: extras?.cursorId ?? (focus.key === '' ? undefined : focus.key),
     focused: focus.focused && focus.key !== '',
     marker: focus.marker,
-    selectedIds: node.selectedIds,
+    selectedIds: listSelectedIds(node),
     memo,
     ...(node.filter === undefined ? {} : { lead: fit(colors.textMuted(`/ ${node.filter}`), available) }),
   })

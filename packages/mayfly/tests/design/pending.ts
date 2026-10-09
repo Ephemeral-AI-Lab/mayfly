@@ -1,7 +1,8 @@
 /**
  * The pending-parity ledgers (docs/design/implementation-roadmap.md, "Working in parallel"): what a strict parity spec
- * cannot match yet because the behavior belongs to a later slice of Phase 1. Every entry names that slice; slice 1.11
- * asserts both ledgers are empty.
+ * cannot match yet because the behavior belongs to a later slice or phase. Every entry names that slice or phase;
+ * `pending.spec.ts` asserts that none belongs to Phase 1 (a `1.x` slice id), so after the freeze only Phase 3 and later
+ * work can be listed.
  *
  * - `PENDING_WALKS` lists whole walks. A parity spec expects a listed walk to still differ, so an entry cannot go stale.
  * - `PENDING_PARITY` lists frames, or rectangles of cells inside them. A parity spec skips only the cells an entry
@@ -13,7 +14,7 @@ export interface PendingWalk {
   readonly scene: number
   /** The walk name in script/design-golden-walks.mjs. */
   readonly walk: string
-  /** The slice whose work the walk waits for. */
+  /** The later phase (`Phase 3` and up) whose work the walk waits for. */
   readonly slice: string
   readonly reason: string
 }
@@ -35,7 +36,7 @@ export interface PendingParity {
   readonly rows?: readonly [number, number]
   /** Inclusive columns; absent means whole rows. */
   readonly cols?: readonly [number, number]
-  /** The slice that closes the entry. */
+  /** The later phase (`Phase 3` and up) that closes the entry. */
   readonly slice: string
   readonly reason: string
 }
@@ -56,7 +57,6 @@ const SCENE_15_WALKS = [
 ] as const
 
 export const PENDING_PARITY: readonly PendingParity[] = [
-  { directory: '01-marks-and-tokens', walk: 'pages', frames: [0], rows: [21, 26], slice: '1.6', reason: 'page 1 form block: the form marks, units, and (inherited) (1.6)' },
   ...SCENE_15_WALKS.map(({ walk, frames }) => ({
     directory: '15-editor', walk, frames: Array.from({ length: frames }, (_, index) => index), rows: [0, 2] as const, slice: 'Phase 5',
     reason: 'the scene caption and the queue line above the frame are the Editor component (Phase 5); slice 1.9b draws the prompt inside the frame',

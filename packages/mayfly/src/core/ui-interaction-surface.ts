@@ -16,6 +16,7 @@ import type { MayflyWorkCounters } from './ui-work-counters.ts'
 import { moveDocument, reconcileDocument, type UiDocumentAnchor, type UiDocumentState } from './ui-interaction-document.ts'
 import { admitNotificationMessage, UiNotificationStore } from './ui-interaction-notifications.ts'
 import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
+import { listSelectedIds } from './ui-list-selection.ts'
 
 export interface UiSurfaceSnapshot {
   readonly id: string
@@ -93,7 +94,7 @@ function baselineData(node: MayflyUiNode | null): string {
   const controls: [string, unknown][] = []
   if (node !== null) visitUiControls(node, (current, pagePath) => {
     if (current.kind === 'form') controls.push([uiControlKey({ pagePath, controlId: current.id }), current.fields.map(field => [field.id, field.kind, Array.isArray(field.value) ? field.value.toSorted() : field.value, field.origin ?? 'explicit']).toSorted((left, right) => String(left[0]).localeCompare(String(right[0])))])
-    else if (current.kind === 'list') controls.push([uiControlKey({ pagePath, controlId: current.id }), current.selectedIds.toSorted()])
+    else if (current.kind === 'list') controls.push([uiControlKey({ pagePath, controlId: current.id }), listSelectedIds(current).toSorted()])
   })
   return JSON.stringify(controls.toSorted((left, right) => left[0].localeCompare(right[0])))
 }

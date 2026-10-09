@@ -40,6 +40,10 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
 - `tone` 是语义颜色，不是色号：
   `default | muted | accent | success | warning | danger`。
 - `emphasis` 是 `normal | strong`；省略时按普通文本处理。
+- Identity 就是缓存键。到达 renderer 的 node 是冻结的 snapshot，未变的子树在重新
+  发布时不产生任何开销：让未变的子 node 保持同一个对象，不要重建，或者给组件设置
+  `memo: true`。`memo` 按引用比较 props，只有每个 prop 都稳定才会命中，包括以
+  `MayflyTranslate` 传入的翻译函数；见 [公共 UI kit](/plugins/ui-kit)。
 
 下面的“默认”描述 `0.1.3-rc.2` 当前 Mayfly TUI。wire contract 只承诺字段语义，
 不会承诺具体边框字符、颜色值或按键绑定。
@@ -833,7 +837,7 @@ ui.list({
   id: string
   mode?: 'single' | 'multiple'
   role: 'browse' | 'choose'
-  selectedIds: readonly string[]
+  selectedIds?: readonly string[]      // default []
   items: readonly MayflyListItem[]
   filter?: string
   filterable?: boolean
@@ -884,7 +888,7 @@ type MayflyListItem = {
 ```
 
 `role: 'browse'` 用于打开或检查条目，`role: 'choose'` 用于提交选择。`mode` 默认为
-`single`。single mode 最多有一个 `selectedIds`；所有 selected id
+`single`。`selectedIds` 可省略，默认为 `[]`（无选中项）。single mode 最多有一个 `selectedIds`；所有 selected id
 必须存在于 `items`。`detailSpans` 存在时优先于 `detail`。`group` 只表达分组标题，
 `badge` 是紧凑标签；窄宽度下 renderer 可隐藏 detail。上面的截图渲染的就是这个
 节点：

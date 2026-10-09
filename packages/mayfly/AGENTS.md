@@ -81,6 +81,17 @@ slots, never arbitrary root components.
 - `conversation/` owns phase-local output measurements from session timestamps.
   Renderer timers animate or expire labels; they do not measure domain progress.
 
+## Node slots
+
+`screen.mountNodeSlot(id, { region: 'content' | 'dock' | 'footer' })` is a
+core-private lease (`core/node-slot.ts`) whose wire node compiles through the
+surface path, with the same compiler entry, runtime, and caches as a pane, into
+one of the screen's fixed hosts. Its interaction state is a `slot` model in
+`mayflyUiInteraction`, so a screen teardown revokes the lease and keeps the
+model for the next lease of the same id; only `dispose()` drops it. Mayfly
+features reach the footer, the editor, and the conversation through slots, never
+through a new root component. Plugins still use only the four public services.
+
 ## Views lane
 
 A `mayflyPanes` pane with `placement: 'views'` is a view of status row 2, kept
@@ -90,6 +101,22 @@ panel replaces row 2. A view's slot lives with its `PaneComponent`. Entry keys
 are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cancel`;
 `F6` walks the views before the interactive panes. Mayfly's own views register
 through the public pane service, never through core.
+
+## Keymap
+
+`mayflyKeymap` owns every dispatched key as a named action (`ui.save`,
+`ui.search`, `ui.copy`, `ui.delete`, `ui.refresh`, `ui.external`, `ui.cancel`,
+`ui.focus-next`, and the rest of `core/key-actions.ts`) with a scope: `global`,
+`editor`, `surface`, or `stream`. A `global` action claims its key in every
+scope; within overlapping scopes a key belongs to one action, and a conflict is
+refused with the owner's name (`KEY_CONFLICT`). `bind`/`reset`/`resetAll` change
+a key for the session (a rebound-away key is dead, not an alias; `Esc` and `Enter`
+stay fixed), `list` offers registered and seen component actions for rebinding,
+and `preferPlain` puts the plain second default first where Alt is not delivered (or the `preferPlainKeys` setting says so).
+Component actions (`<owner>.<action>`) appear in nodes and in the hint row under
+the same rule. Printable accelerators never pre-empt a control that takes text,
+and `core/ui-key-grammar.ts` derives the hint row from the same state. A new
+default key passes `tests/core/key-audit.spec.ts`.
 
 ## Interaction contracts
 
@@ -131,6 +158,10 @@ control, tab, page, action key, filter, editor slot, or responsive branch is
 admitted whole each time. Reused leaves are static painters that read only their
 node, width, colors, and components; a new palette recompiles them. The work
 budgets in `tests/perf/budgets.json` only ratchet down.
+
+An unchanged subtree costs nothing on republish, so a painter that paints rows is
+written once in its cacheable form and brings its budget row. `list` reads
+`selectedIds` through `listSelectedIds` (the field is optional on the wire).
 
 The presentation (`core/presentation.ts`: glyph mode, monochrome, reduced
 motion, from the `mayfly` settings and `NO_COLOR`) is read when a theme provider
@@ -189,7 +220,14 @@ counts of the workloads in `tests/perf/workloads.ts`, so a change under
 `src/core/ui-*.ts` keeps them within `tests/perf/baseline.json` or updates it on
 purpose. `docs/design/prototypes/**` feeds the committed goldens under
 `tests/design/golden/`; `pnpm run design:golden:check` fails when the prototype
-changes, and `pnpm run design:golden` rewrites them after review.
+changes, and `pnpm run design:golden` rewrites them after review. The budgets are
+the work-budget gate of the foundation: `budgets.json` may not exceed
+`baseline.json` (the work of the slice 1.0 pipeline), W1 and W4 gate again through
+the node slot (`W1-slot`, `W4-slot`), a slice that adds a painter adds its row,
+and wall-clock time from `script/audit-performance.mjs` is reported with a change
+and gates nothing. `tests/design/deltas.ts` lists every accepted difference from the
+prototype (roadmap section 2.3) and `tests/design/pending.ts` only walks that wait
+for Phase 3 or later; a new difference needs the reviewer's approval.
 
 Patch, preset, skill, dependency, or composition edits require bundle/preset
 tests, `pnpm run check:agent-docs`, `pnpm run verify:full`,

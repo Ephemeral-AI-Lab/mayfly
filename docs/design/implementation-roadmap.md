@@ -139,6 +139,7 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ30 | 6 | A form select stepped back to its inherited value unpins: `(inherited)`, no `•`, `Delete use inherited` | The form keeps the override: `(override)`, the `•` mark, `Delete reset` | Settings contract: Mayfly settings preserve equal-value explicit overrides; approved by the reviewer |
 | Δ31 | 11 | A card drawn at 80 columns shows four hint fragments (the kit counts the frame's width) | Three fragments: the renderer counts the width inside the frame (76) | The hint limit is the painter's existing behavior; approved by the reviewer |
 | Δ32 | 11 | A printable accelerator (`c copy name`) runs and is hinted from anywhere, the note field included | It is neither bound nor hinted while a text field holds focus, because the key is the field's text | The key grammar's existing rule; approved by the reviewer |
+| Δ33 | 23 | A list being filtered steps its thinking strip with `←/→` without hinting it (49 cells per frame in the `filter` walk) | The hint row names `←/→ thinking` while the strip steps, in any state of the list | Spec §4.5 ("the cue is true"; as Δ29); found by the model-picker composition spike (draft PR #114); approved by the reviewer |
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and
@@ -156,7 +157,7 @@ The kit (`ui-kit.mjs`) shortens a few calls. The implementation keeps today's si
 | `ui.empty(title, { description })` | `ui.empty({ title, description })` |
 | `ui.spacer(n)`, `ui.divider(label)` | `ui.spacer({ size: n })`, `ui.divider({ label })` |
 | `ui.diff(before, after, options)` | the same, with the new optional third parameter (§3.2) |
-| `ui.list({ … })` without `selectedIds` | `selectedIds: []` (required today) |
+| `ui.list({ … })` without `selectedIds` | The same: the field is optional and defaults to `[]` (made optional in slice 1.11) |
 | list item `label: span[]`, `detail: span[]` | `label: string` (plain, used for filtering) plus `labelSpans` (*new*); the existing `detailSpans` |
 | list item `strong: true` | `labelSpans` with `styles: ['strong']` |
 | `fields` row `value: 'text'` | `value: [{ text }]` |
@@ -535,8 +536,8 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | merged (#111) | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12-prompt` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
 | 1.8b | merged (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ31 and Δ32 approved; library file budget 222 to 223 |
-| 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
-| Checkpoint A / B / C | pending | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11 |
+| 1.11 | built (PR pending merge) | `feat/ui-foundation-1-11` | Freeze. Eight parts; full gate green with 100% coverage; Phase 1 is complete and waits only for checkpoints A, B, and C. `selectedIds` optional and a type-only `MayflyTranslate` (the model-picker spike's two fixes); Δ33 approved; the ledger holds only Phase 3 and later entries (one stale 1.6 entry removed); final budgets and the work report in §7.1; the ui type fixtures run in the gate (`types.spec.ts`) |
+| Checkpoint A / B / C | pending the reviewer | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11; every slice is built, so the three checkpoints can run on the integration profile |
 
 **Working in parallel.** Up to three slices are in flight, each in its own worktree and agent.
 
@@ -549,7 +550,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
   each slice's gallery page is a new file `examples/ui-gallery/src/groups/<slice>.ts` wired by one import line; each
   slice edits only its own Status row and its own slice text.
 - *Scenes that span slices* (1: 1.2 and 1.4; 7: 1.2 and 1.3; 11: 1.5 and 1.8b; 12: 1.6 and 1.8b; 2: 1.7) list the
-  walks they cannot match yet in `tests/design/pending.ts`; slice 1.11 asserts the list is empty.
+  walks they cannot match yet in `tests/design/pending.ts`; slice 1.11 asserts that every remaining entry waits for Phase 3 or later and none for a `1.x` slice (`tests/design/pending.spec.ts`).
 - *Gates.* Narrow checks run freely; `pnpm run verify:full` runs under one lock, so at most one runs at a time.
   Before a PR opens, and after each sibling merges, the branch rebases on `feat/ui-foundation` and reruns its checks.
 - *Review.* One PR per slot is in flight; a PR is a series of commits that are each green, as 1.1 was.
@@ -1314,14 +1315,38 @@ against Phase 3 (and 1.4 for the list painter). Open question for slice 1.11: it
 
 #### 1.11 Freeze
 
-- **Budgets.** The final values of §7.1 in the work-budget spec, with W1 and W4 running through the node slot.
-- **API.** Type fixtures in `packages/ui/tests/` for every addition of §3, including component inference with `memo`
-  and the rejection of custom kinds; `pnpm run check:lib` and `pnpm run check:examples`. From here a change to
-  `packages/ui` is an exception that takes the full gate (D16).
-- **Reference.** The final pass over `website/plugins/ui-reference.md` and its English twin with
-  `script/shots/manifest.mjs`, built and previewed on the LAN for checkpoint C; every shot refreshed.
-- **Instructions.** `packages/ui/AGENTS.md` and `packages/mayfly/AGENTS.md` describe, as current behavior, the rule
-  that identity is the cache key, the node slot, the views lane, the keymap scopes, and the work-budget gate.
+**Goal.** Close Phase 1: fix the budgets, the API, the reference, and the instructions, so that from here a change to
+`packages/ui` is an exception (D16). It landed in eight parts, each green:
+
+1. **Two additive fixes from the composition spike** (the model picker of draft PR #114, built as a pure component with
+   only the public exports). A list's `selectedIds` is optional and defaults to `[]`: the contract field, the validator
+   (which admits `[]`), and every core reader (`core/ui-list-selection.ts`) agree, and existing callers are unchanged.
+   `MayflyTranslate` is a type-only export of `@ephemeral-ai/mayfly-ui`, the one translator type a component takes
+   (`frontend/locale.ts` re-exports it). The reference says that `memo: true` compares props by reference, so it hits
+   only when the owner passes a stable translator (hoisted per locale revision).
+2. **Δ33** (§2.3, approved): while a list with a thinking strip is filtered, the hint row names `←/→ thinking` where the
+   kit does not (49 cells per frame in scene 23's `filter` walk, frames 1 and 2).
+3. **Ledger.** `tests/design/pending.ts` lost its one `1.6` entry, stale since slice 1.6 pinned that block, and holds
+   only `Phase 3` (scene 13's views) and `Phase 5` (scene 15's caption and queue line) entries. `pending.spec.ts`
+   asserts every entry is tagged Phase 3 or later and none with a `1.x` slice.
+4. **Budgets.** The final values are in `tests/perf/budgets.json`: W4 validates one node, the rest were already at the
+   measured counts. `W1-slot` and `W4-slot` gate beside W1 and W4 with the same figures (a spec states it). §7.1 holds
+   the work report against the slice 1.0 baseline and the wall-clock targets, which held (2 ms publish, 4 ms key).
+5. **API.** Every addition of §3.2 has a fixture in `packages/ui/tests/ui.compile.ts`: the contract fields,
+   `ui.image`, `ui.prompt`, `ui.listBody`, `patterns.*`, the views lane, `memo` inference, and the rejection of custom
+   kinds and of every wrong shape. `tests/types.spec.ts` now compiles the fixtures against the built declarations, so
+   the gate runs them (before, nothing did). The audit of `packages/ui` against §3.2 and §3.4 found no missing field,
+   event, builder, or service member. `check:lib`, `check:examples`, and `check:pack` pass.
+6. **Reference.** The final pass over `website/plugins/ui-reference.md` and its English twin, and `ui-kit.md`: every
+   §3 field, event, and builder is documented in both languages, all 60 component shots are fresh (`shots:check`), and the
+   Website builds. The reference now states identity as the cache key and the `memo` rule.
+7. **Instructions.** `packages/ui/AGENTS.md` and `packages/mayfly/AGENTS.md` describe, as current behavior, identity as
+   the cache key and the engine, the node slot, the views lane, the keymap scopes and named actions, the work-budget
+   gate, and the freeze.
+8. **This roadmap**: the Status table, §7.1, and the follow-ups below.
+
+Not changed, and why: the spike's remaining gaps (a closed `acceptVerb`, the kit's unreachable `empty` text, a `W3`
+row for a framed list) are not contract problems; they are listed under Phase 2's notes or in §7.1.
 
 ### Phase 2 Components area and panels
 
@@ -1349,6 +1374,14 @@ Notes per slice:
 - **2a.** `commitModelSelection` in `interaction/model-commands.ts` stays the write path; `selection-accept.segmentId`
   absent means unpinned (provider default). The notice reads `Switched to <model> (<provider>) · thinking high` or
   `Thinking set to high`.
+  Follow-ups from the model-picker spike (draft PR #114, `docs/design/spike-model-picker.md`; notes, not decisions):
+  `formatContextWindow` moves from `interaction/` to where a pure component can import it (or the fact carries a
+  formatted `contextLabel`); the commands pass `defaultEffort` (`openModelPicker` ignores what `catalogRows` returns,
+  and `switchEffort` never reads `info.reasoning.defaultEffort`), because `inheritedId` and `Provider default (high)`
+  need both; three interpolated locale keys replace concatenation (`{size} context`, `current · {effort}`, `Provider
+  default ({level})`), with zh entries; a golden for the live row's pinned strip (a `live-row` walk with the cursor on
+  the current model), because the kit never pins that state; components hoist `t` per locale revision so `memo: true`
+  hits; the component's `empty` is the real `No models advertised` (the kit's `No models match` is unreachable).
 - **2b.** Rail labels come from `settings.describe({ redactSecrets: true })`; schema sub-objects become `group`
   headings and schema descriptions become `help`. A revision mismatch still replies `conflict`. Session bodies and
   titles keep the bounded, revision-keyed reads of `interaction/session-list-reads.ts`.
@@ -1573,12 +1606,46 @@ adds its row.
 | W8 cold open | a settings-sized panel | the first publish | no more than slice 1.0's baseline |
 
 Wall-clock time and heap growth come from `script/audit-performance.mjs` on the same workloads. They are reported in
-every Phase 1 PR against the baseline of slice 1.0 and gate nothing. The targets, proposed here and fixed when the
-baseline exists, are a steady-state publish-to-rows time of 2 ms at the 95th percentile and a key-to-rows time of
-4 ms, at the sizes of W3 and W4. Slice 1.0 measured today's pipeline (median of seven samples, one machine): the W4
-stream publish at 3.6 ms and the W3 cursor move at 0.6 ms, and recorded these counts for one step: W2 repaints 121
-rows, W3 81 rows, W4 admits 45 nodes and paints 81 rows. The targets stay proposals until they are confirmed against
-these numbers.
+every Phase 1 PR against the baseline of slice 1.0 and gate nothing. The targets were proposed before the baseline
+existed and are now fixed from the measurements below: a steady-state publish-to-rows time of 2 ms at the 95th
+percentile (W4 and W4-slot: 1.8 and 1.3 ms) and a key-to-rows time of 4 ms (W3: median 0.8 ms, 95th percentile
+2.4 ms; the rail and the prompt keystroke stay under 2.3 ms). Both hold at the sizes of W3 and W4, so they stand as
+proposed. The stream with item bodies (W4b) is not one of those sizes: its median is 3.1 ms and its worst sample 12 ms,
+which the report keeps in view for Phase 6.
+
+**Phase 1 work report.** Counters are one step as the gate counts them (validated / compiled / rows painted / strings
+measured); milliseconds are the median and the 95th percentile of seven samples, taken as the median of three runs of
+`node --experimental-transform-types --expose-gc script/audit-performance.mjs` on one machine, the baseline re-measured
+on the slice 1.0 merge (`59d7181`) in the same session. A row with no baseline is a workload added after slice 1.0.
+
+| Workload | Baseline counters | Final counters | Baseline ms | Final ms |
+| --- | --- | --- | --- | --- |
+| W1 status tick | 13 / 13 / 34 / 25 | 2 / 2 / 2 / 3 | 1.03 / 1.40 | 1.00 / 1.17 |
+| W2 spinner tick | 0 / 0 / 121 / 40 | 0 / 0 / 1 / 40 | 0.28 / 0.67 | 0.16 / 0.35 |
+| W3 list cursor | 0 / 0 / 81 / 42 | 0 / 0 / 2 / 40 | 0.74 / 1.99 | 0.84 / 2.45 |
+| W4 stream | 45 / 1 / 81 / 42 | 1 / 1 / 0 / 40 | 4.29 / 18.98 | 1.17 / 1.79 |
+| W5 form key | 0 / 0 / 1 / 22 | 0 / 0 / 0 / 21 | 0.50 / 1.20 | 0.38 / 0.83 |
+| W6 swarm | 44 / 12 / 36 / 56 | 44 / 12 / 32 / 52 | 1.91 / 17.65 | 1.68 / 2.48 |
+| W7 resize, theme | 0 / 0 / 9 / 20 | 0 / 0 / 9 / 20 | 0.13 / 0.21 | 0.11 / 0.21 |
+| W8 cold open | 11 / 3 / 9 / 20 | 11 / 3 / 9 / 20 | 0.50 / 0.64 | 0.44 / 0.53 |
+| W1-slot (node slot) | none | 2 / 2 / 2 / 4 | none | 0.84 / 0.99 |
+| W4-slot (node slot) | none | 1 / 1 / 0 / 40 | none | 1.30 / 1.35 |
+| W4b stream with bodies | none | 5 / 4 / 5 / 40 | none | 3.13 / 12.01 |
+| W9 motion tick | none | 0 / 0 / 3 / 42 | none | 0.13 / 0.18 |
+| W10 scroll region | none | 3 / 3 / 7 / 7 | none | 0.74 / 7.10 |
+| W11 admission row | none | 2 / 2 / 2 / 2 | none | 0.21 / 0.36 |
+| W12-rail | none | 0 / 0 / 8 / 40 | none | 0.93 / 2.28 |
+| W12-prompt | none | 0 / 0 / 6 / 40 | none | 0.33 / 0.95 |
+
+Reading the report. The gate holds the final counters, except that W4 and W5 keep the section 7.1 ceiling of one item or
+field painted (the workloads change an item or a field that is not on screen, so they measure none); the stream that
+follows its tail is W4b. W1-slot and W4-slot gate beside W1 and W4 with the same figures, since the footer and the
+conversation reach the screen through the node slot. The wall clock is flat within the noise of one machine on every workload
+(W3 reads 0.1 ms higher) and the stream is 3.7 times faster. The one place it is slower is the cost of a frame that repaints nothing (the steady-state
+frames and the filtered or tree `repeat-render` scenarios of the audit): 0.03 to 0.11 ms against 0.01 to 0.03 ms, from
+the hint memo and the cache lookups each frame performs. It is below any threshold the targets name, and it gates
+nothing. A framed list (an overlay around a list, as the model-picker composition spike measured it) re-measures its rows on every key, so its
+strings measured grow with the list (198 at 400 rows) while its rows painted stay at two; no budget covers it yet.
 
 ## 8. Risks
 

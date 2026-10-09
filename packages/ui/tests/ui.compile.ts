@@ -5,9 +5,13 @@ import {
   type MayflyDecisionPanelProps,
   type MayflyEditorExtensionNode,
   type MayflyOverlayDefinition,
+  type MayflyPaneDefinition,
+  type MayflyPaneRegistration,
+  type MayflyPaneSummary,
   type MayflyRailPanelProps,
   type MayflySplitViewProps,
   type MayflyStatusPageProps,
+  type MayflyTranslate,
   type MayflySurfaceNode,
   type MayflyUiActionHandler,
   type MayflyUiEventHandlers,
@@ -255,3 +259,45 @@ patterns.splitView({ list: ui.text('l') })
 patterns.statusPage({ title: 'S', rows: [] })
 // @ts-expect-error the patterns are a frozen namespace
 patterns.decisionArmMs = 0
+
+// Freeze additions from the composition spike: selectedIds is optional, and components take a typed translator.
+export const bareChoices = ui.list({ id: 'models', role: 'choose', items: [{ id: 'a', label: 'A' }] })
+export const noSelection: readonly string[] | undefined = bareChoices.selectedIds
+// @ts-expect-error selectedIds still holds ids, not a single id
+ui.list({ id: 'bad', role: 'choose', selectedIds: 'a', items: [] })
+
+interface PickerProps { readonly t: MayflyTranslate, readonly names: readonly string[] }
+export const picker = defineMayflyComponent<PickerProps>({
+  id: '@acme/picker',
+  memo: true,
+  render: ({ t, names }) => ui.list({ id: 'picker', role: 'choose', items: names.map(name => ({ id: name, label: name, detail: t('{size} context', { size: 128 }) })) }),
+})
+export const hoisted: MayflyTranslate = (key, values) => values === undefined ? key : `${key}${String(values.size)}`
+export const pickerNode: MayflyUiNode = picker.render({ t: hoisted, names: ['a'] })
+// @ts-expect-error a translator takes a key, not a number
+hoisted(1)
+// @ts-expect-error placeholder values are strings or numbers
+hoisted('{size}', { size: true })
+// @ts-expect-error memo components keep their props: the translator is required
+picker.render({ names: ['a'] })
+
+// The views lane (slice 1.10b): a views pane declares a motion-free status summary and updates it separately.
+export const agentsView: MayflyPaneDefinition = { id: 'agents', placement: 'views', title: 'Agents', priority: 2, summary: { node: ui.richText([{ text: 'Agents 5' }]), count: 5 } }
+export const summaryOnly: MayflyPaneSummary = { node: ui.text('idle') }
+export const retire = (registration: MayflyPaneRegistration): void => { registration.setSummary({ node: ui.text('running'), count: '2/6' }); registration.setSummary(null) }
+// @ts-expect-error a pane placement is one of the five
+export const sidePane: MayflyPaneDefinition = { id: 'x', placement: 'floating' }
+// @ts-expect-error a summary is a status node: a list is not one
+export const listSummary: MayflyPaneSummary = { node: bareChoices }
+
+// memo infers the props from render, and keeps them required.
+export const inferred = defineMayflyComponent({
+  id: '@acme/inferred',
+  memo: true,
+  render: (props: { readonly label: string, readonly rows: readonly string[] }) => ui.stack.column(props.rows.map(row => ui.text(`${props.label} ${row}`))),
+})
+export const inferredNode: MayflyUiNode = inferred.render({ label: 'a', rows: ['b'] })
+// @ts-expect-error inferred props are checked
+inferred.render({ label: 1, rows: [] })
+// @ts-expect-error memo is a boolean
+defineMayflyComponent({ id: '@acme/bad', memo: 'yes', render: () => ui.text('x') })
