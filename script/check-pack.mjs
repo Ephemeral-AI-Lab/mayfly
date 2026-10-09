@@ -245,7 +245,7 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB, and the image node and its byte source of slice 1.9a about 30 KB, and the content, layout, and motion of slice 1.3 about 60 KB, and the views lane of slice 1.10b about 27 KB); retain headroom
 // while still catching accidental entry/chunk growth.
 if (libraryFiles > 222) fail(`library lib output has ${libraryFiles} files; budget is 222`)
-if (libraryBytes > 2_380_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2380000`)
+if (libraryBytes > 2_400_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2400000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

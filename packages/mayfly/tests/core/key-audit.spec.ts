@@ -47,14 +47,17 @@ function registry(): MayflyKeymapService {
   return keymap
 }
 
-const ESCAPES: readonly (EscapeStep | undefined)[] = [undefined, 'close']
+const ESCAPES: readonly (EscapeStep | undefined)[] = [undefined, 'close', 'home']
 const CONTROLS: readonly GrammarControl[] = [
-  { kind: 'none' }, { kind: 'scroll' }, { kind: 'toggle' }, { kind: 'submit' }, { kind: 'field-action' }, { kind: 'tab' }, { kind: 'empty-list' }, { kind: 'cancel' },
+  { kind: 'none' }, { kind: 'scroll' }, { kind: 'toggle' }, { kind: 'submit' }, { kind: 'field-action' }, { kind: 'tab' }, { kind: 'tab', vertical: true }, { kind: 'empty-list' }, { kind: 'cancel' },
   { kind: 'action', decision: false }, { kind: 'action', decision: true },
   ...(['input', 'textarea', 'secret', 'number'] as const).flatMap(field => [true, false].flatMap(editing => [true, false].map(enterSubmits => ({ kind: 'text', field, editing, enterSubmits }) as const))),
-  ...[true, false].flatMap(multiple => [true, false].flatMap(picker => [true, false].map(adjustable => ({ kind: 'select', multiple, picker, adjustable }) as const))),
+  ...[true, false].flatMap(multiple => [true, false].flatMap(picker => [true, false].flatMap(adjustable => [false, true].map(stuck => ({ kind: 'select', multiple, picker, adjustable, ...(stuck ? { stuckLeft: true } : {}) }) as const)))),
   ...(['browse', 'choose'] as const).flatMap(role => [true, false].flatMap(multiple => [true, false].map(tree => ({ kind: 'row', role, multiple, tree }) as const))),
   { kind: 'row', role: 'browse', multiple: false, tree: false, segment: 'thinking' },
+  { kind: 'row', role: 'browse', multiple: false, tree: false, segment: 'thinking', stuckLeft: true },
+  { kind: 'row', role: 'browse', multiple: true, tree: true, expandable: true, stuckLeft: true },
+  { kind: 'row', role: 'browse', multiple: false, tree: false, expandable: true },
 ]
 const LISTS: readonly NonNullable<GrammarState['list']>[] = [
   { filterable: false, searching: false, query: false, pasting: false },
@@ -70,8 +73,8 @@ function states(mode: GrammarState['mode'], controls: readonly GrammarControl[])
     const lists = control.kind === 'row' || control.kind === 'empty-list' ? LISTS : [undefined]
     for (const list of lists) for (const expanded of [false, true]) for (const escape of ESCAPES) for (const closable of [false, true]) {
       for (const keyed of [[], [{ control: 0, key: 'c', label: 'copy' }], [{ control: 0, key: 'ctrl+y', label: 'copy link' }]]) for (const tabs of [false, true]) for (const groups of [0, 2]) {
-        for (const reset of [undefined, 'reset', 'inherit'] as const) {
-          result.push({ mode, expanded, control, ...(list === undefined ? {} : { list }), keyed, tabs, groups, siblings: groups, escape, closable, ...(reset === undefined ? {} : { reset }) })
+        for (const reset of [undefined, 'reset', 'inherit'] as const) for (const railBack of [false, true]) for (const groupStart of [false, true]) {
+          result.push({ mode, expanded, control, ...(list === undefined ? {} : { list }), keyed, tabs, groups, siblings: groups, escape, closable, ...(reset === undefined ? {} : { reset }), ...(railBack ? { railBack } : {}), ...(groupStart ? { groupStart } : {}) })
         }
       }
     }

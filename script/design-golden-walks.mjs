@@ -44,7 +44,11 @@ const EXTRA = {
   3: [['move', times(6, DOWN), 96], ['edit', [ENTER], 96], ['reset', [DELETE], 96], ['discard', [ENTER, 'x', ESC], 96]],
   4: [['fill', ['x', ENTER], 96], ['focus', [DOWN, ENTER], 96]],
   5: [['page-6-narrow', [...times(5, NEXT), NARROW], 62], ['move', times(4, DOWN), 84], ['open', [ENTER], 84], ['filter', ['/', 'm'], 84]],
-  6: [['page-4-narrow', [...times(3, NEXT), NARROW], 40], ['alt-tabs', [ALT_RIGHT, ALT_RIGHT], 78], ['arrows', [RIGHT, RIGHT, LEFT], 78]],
+  6: [
+    ['page-4-narrow', [...times(3, NEXT), NARROW], 40], ['alt-tabs', [ALT_RIGHT, ALT_RIGHT], 78], ['arrows', [RIGHT, RIGHT, LEFT], 78],
+    // Slice 1.5: the rail on page 3 moves live, enters its content, and takes the first ← a control does not use back.
+    ['rail-move', [NEXT, NEXT, DOWN, DOWN, UP], 78], ['rail-enter', [NEXT, NEXT, RIGHT, RIGHT, LEFT, LEFT, LEFT], 78],
+  ],
   7: [['scroll', [NEXT, ...TICKS(6, 1500), ...times(3, UP)], 76], ['end', [NEXT, ...TICKS(4, 1500), '\x1b[F'], 76], ['expand', [NEXT, '\x05'], 76]],
   8: [['highlight', [NEXT, NEXT, 'h'], 100], ['diff', times(3, NEXT).concat('d'), 100], ['diagram', [...times(6, NEXT), 'b'], 100]],
   9: [['motion', TICKS(12), 96]],

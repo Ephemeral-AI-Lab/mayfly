@@ -715,11 +715,16 @@ ui.tabs({
   id: string
   activeId: string
   mode?: 'tabs' | 'wizard'
+  orientation?: 'horizontal' | 'vertical'
+  hintLabel?: string
   items: readonly {
     id: string
     label: string
     disabled?: boolean
-    count?: number
+    count?: number | string
+    attention?: boolean
+    group?: string
+    clip?: 'end' | 'start'
     backId?: string
   }[]
 })
@@ -728,8 +733,13 @@ ui.tabs({
 - `activeId` 必须对应一个 item，是 registration 初始或 data snapshot 的 baseline；
   当前活动页由 Mayfly instance 保留。
 - `disabled` item 会显示但不能激活。
-- `count` 是非负 safe integer 计数提示，renderer 可在窄宽度隐藏它。
+- `count` 是跟在标签后的弱化数字或短文本（`3`、`2/6`）；`attention: true` 用加粗的
+  `warning` 色 `!` 取代它。
+- 放不下的 tab 条围绕当前 tab 折叠为 `‹ 当前 下一个 +N ›`，再退为 `‹ 当前 +N ›`，最后按宽度截断。
+- `orientation: 'vertical'` 绘制侧栏（见下）；`hintLabel` 是提示行中 `Alt+←/→` 切换 tab
+  使用的词（默认 `tabs`）。
 - `mode: 'wizard'` 按已验证 form revision 标记完成步骤；编辑或 conflict 会使标记失效。
+  向导是横向 tab 条，聚焦时提示行把 `Esc` 写作 `back`。
 - `backId` 声明同组返回目标；未知目标和循环会被准入拒绝。
 - Tabs 只绘制 tab strip；用 `ui.child(node, { tab })` 关联页面 body。
 - 激活 item 时向 `onEvent.observe` 发出带 `pagePath` 的 `tab-change` 事实；插件无需
@@ -770,6 +780,46 @@ ui.stack.column([
   }),
   ui.text('Advanced content'),
 ])
+```
+
+### 竖向侧栏
+
+![`tabs` 竖向侧栏](/shots/tabs-rail.svg)
+
+*`orientation: 'vertical'`：分组、计数与注意标记，右侧是当前标签的页面（宽度 64）。*
+
+侧栏用于标签很多的场景（按工作区分的会话、按分组的设置）。把它放进 row 并设置 `basis` 与
+`shrink: 0`，旁边的页面用 `ui.child(node, { tab })` 关联。
+
+- `group` 让连续的 item 归在同一个弱化、大写的标题下。当前标签带加粗的 `→`：侧栏有焦点时为
+  `primary`，焦点进入内容后变弱。计数和 `!` 右对齐。`clip: 'start'` 对长标签保留区分度高的
+  末尾（`…ackages/mayfly`），默认裁掉末尾。
+- `↑` / `↓` 移动并立即发出 `tab-change`，页面实时跟随。`→` 或 `Enter` 进入内容；侧栏上的 `←`
+  不起作用。
+- 视口宽度不足 60 列时，侧栏按横向 tab 条绘制和操作。
+- `←` 阶梯：聚焦的控件先得到 `←`，只有它确实改变了内容才占用（不在第一个选项的 select、
+  还能后退的行内 segment、已展开的树节点、action 行中靠后的 action）。它没用上的第一个 `←`
+  把焦点移到 surface 的侧栏，无论侧栏在焦点顺序的哪里，提示行此时才写 `← labels`。
+- 在文本编辑和选择器之外的任意位置，`Alt+↑` / `Alt+↓`（`F4` / `F5`）在控件之间移动，
+  `Alt+←` / `Alt+→`（`F2` / `F3`）切换 tab。`Esc` 先把焦点还给第一个控件（`Esc back`），
+  再关闭。
+
+```ts
+ui.stack.row([
+  ui.child(ui.tabs({
+    id: 'settings-rail',
+    orientation: 'vertical',
+    activeId: 'model',
+    items: [
+      { id: 'general', label: 'General', group: 'Session' },
+      { id: 'model', label: 'Model', group: 'Session' },
+      { id: 'permissions', label: 'Permissions', count: 2, group: 'Session' },
+      { id: 'providers', label: 'Providers', attention: true, group: 'Integrations' },
+      { id: 'mcp', label: 'MCP', count: '4/9', group: 'Integrations' },
+    ],
+  }), { basis: 24, shrink: 0 }),
+  ui.child(ui.text('Model page'), { grow: 1, tab: { controlId: 'settings-rail', itemId: 'model' } }),
+], { gap: 2 })
 ```
 
 ### `list`
@@ -1289,7 +1339,7 @@ TUI 通过同一套键位语法从 canonical control 角色推导操作，并用
   用 `Space` 切换、`Enter` 确认，action 用 `Enter` 或 `Space`。
 - Escape 每次只退一层，所有 surface 一致：先取消打开的选择器，再结束文本编辑
   （草稿保留），再结束进行中的搜索（query 保留），有 `backId` 的页面返回上一页，
-  最后关闭 surface。tab 条不是退出途中的一站。Ctrl+C 请求同样的关闭。
+  再把焦点还给 surface 的第一个控件（`Esc back`），最后关闭 surface。tab 条不是退出途中的一站。Ctrl+C 请求同样的关闭。
 - 待确认时提示切换为 `Enter confirm · Esc cancel`；只读 scroll 可聚焦，支持方向键、
   Page、Home 与 End，并可用 Ctrl+E 展开到整个框。
 
@@ -1566,7 +1616,7 @@ onEvent: {
 
 | 通道 | 事件 | 用途 |
 | --- | --- | --- |
-| `observe` | `value-change`、`selection-toggle`、`tab-change` | 编辑事实与异步校验；不能发布、导航或关闭 |
+| `observe` | `value-change`、`selection-toggle`、`tab-change`、`focus-change` | 编辑事实、异步校验与焦点移动（`focus-change` 携带 `controlId` 和 `itemId?`，每帧最多一次）；不能发布、导航或关闭 |
 | `action` | `activate`、`selection-accept`、`submit`、`dismiss` | 原生 effect 与明确结算 |
 
 `context` 包含 `surfaceId`、当前 `source`、`revision`、唯一 `operationId`、

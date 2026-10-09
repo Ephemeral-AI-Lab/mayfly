@@ -83,8 +83,14 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
   },
   {
     id: 'Δ28',
-    scenes: [4, 12],
+    scenes: [4, 6, 12],
     summary: "Core adds the `unsaved changes` badge to the head of every surface whose form is dirty; the prototype adds it in scene 3 only",
     reason: 'roadmap slice 1.6; approved by the reviewer',
+  },
+  {
+    id: 'Δ29',
+    scenes: [6, 11],
+    summary: 'The kit never hints `← labels` on a focused select, although `←` leaves it for the rail at its first option; the renderer hints it whenever it is true',
+    reason: 'spec 4.5 ("the cue is true"); approved by the reviewer',
   },
 ]

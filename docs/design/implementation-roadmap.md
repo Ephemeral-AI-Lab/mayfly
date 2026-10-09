@@ -134,7 +134,8 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ25 | 10 | A flex row of framed surfaces: surfaces measured structurally, the grow remainder to the last child, `…` columns below 60 | The layout engine measures a surface by painting it and shares the remainder by its own rule | The row layout is pi-tui's stack layout; proposed in slice 1.3 |
 | Δ26 | 10 `h` | `h` changes only the caption: the `minHeight: 20` child stays | The renderer hides it below 20 rows | Prototype artifact (its viewport height is not read); proposed in slice 1.3 |
 | Δ27 | 3, 4, 12 | `▌` marks the cursor in an edited field | The terminal cursor sits there; no glyph is drawn | Spec §4.3 calls it the terminal cursor; approved by the reviewer |
-| Δ28 | 4, 12 | The `unsaved changes` badge in scene 3 only | Core adds it to every surface whose form is dirty | Roadmap slice 1.6; approved by the reviewer |
+| Δ28 | 4, 6, 12 | The `unsaved changes` badge in scene 3 only | Core adds it to every surface whose form is dirty | Roadmap slice 1.6; approved by the reviewer |
+| Δ29 | 6, 11 | `← labels` is never hinted on a focused select, although `←` leaves it for the rail at its first option | The hint row names `← labels` whenever `←` would reach the rail, selects included | Spec §4.5 ("the cue is true"); approved by the reviewer |
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and
@@ -519,14 +520,14 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | --- | --- | --- | --- |
 | 1.0 | merged (#99) | `feat/ui-foundation-1-0` (`781ae7e`) | Full gate green with 100% coverage; no runtime behavior change |
 | 1.1 | merged (#100) | `feat/ui-foundation-1-1` | Full gate green with 100% coverage; no visible change (goldens and screenshots identical); budgets below |
-| 1.2 | built (#102) | `feat/ui-foundation-1-2` | Six parts; full gate green; scenes 1 p1-p5, 7 p1, 8 p3-p4, 9 p3 pinned and scene 2 matched; Δ20 approved |
+| 1.2 | merged (#102) | `feat/ui-foundation-1-2` | Six parts; full gate green; scenes 1 p1-p5, 7 p1, 8 p3-p4, 9 p3 pinned and scene 2 matched; Δ20 approved |
 | 1.7 | merged (#101) | `feat/ui-foundation-1-7` | Six parts; full gate green with 100% coverage |
 | 1.10a | merged (#103) | `feat/ui-foundation-1-10a` | Node slot. Full gate green with 100% coverage; no visible change; `W1-slot` and `W4-slot` budgets |
 | 1.9a | merged (#104) | `feat/ui-foundation-1-9a` | `ui.image`. Full gate green with 100% coverage; one new shot (`image`), no other visible change |
 | 1.8a | merged (#105) | `feat/ui-foundation-1-8a` | `armMs`; two parts; full gate green with 100% coverage; no visible change unless a definition sets `armMs` |
 | 1.3 | merged (#106) | `feat/ui-foundation-1-3` | Seven parts; full gate green with 100% coverage; scenes 7 to 10 pinned (Δ21 to Δ26 proposed); the list window of scene 10 was left in the ledger for 1.4, which closed it |
 | 1.4 | merged (#107) | `feat/ui-foundation-1-4` | Six parts; full gate green with 100% coverage; scene 5 (all seven pages and the `move`, `open`, `filter` walks) and scene 1 page 1's lists pinned; one `Esc back` hint left pending for 1.5; `W4b` budget |
-| 1.5 | not started | `feat/ui-foundation-1-5` | Needs: 1.2, 1.7 |
+| 1.5 | merged (#110) | `feat/ui-foundation-1-5` | Five parts; full gate green with 100% coverage; scene 6 (all four pages and the rail's walks) and scene 11 page 2 pinned; the `Esc back` entry of scene 5 closed; `W12-rail` budget; Δ29 approved |
 | 1.6 | merged (#109) | `feat/ui-foundation-1-6` | Two parts; full gate green; scenes 3, 4, 12 and scene 1 page 1's form block pinned (Δ27, Δ28 approved); one `Esc back` hint left pending for 1.5; no budget change |
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | not started | `feat/ui-foundation-1-9b` | Prompt. Needs: 1.3, 1.7, 1.9a |
@@ -874,7 +875,7 @@ builder, the Website reference in both languages with two shots, and the gallery
 
 Parity. `tests/design/scene-05-lists.spec.ts` replays every golden walk of scene 5 (`initial`, `pages`,
 `page-6-narrow`, `move`, `open`, `filter`) cell by cell, and scene 1 page 1's lists (the form block is pending for
-1.6). The `move` walk's `Esc back` hint (Esc returns focus to the surface's first control, then closes) waits for
+1.6). The `move` walk's `Esc back` hint (Esc returns focus to the surface's first control, then closes) was closed by
 slice 1.5's focus levels. Scene 10's windowed list (`maxRows: 4`) draws as the prototype does at every width and height step of scene 10's walks (`scene-10-layout.spec.ts` compares it), so the ledger entries slice 1.3 left for it are closed.
 
 Files: `core/ui-validator.ts` (`listItemRowFields`, `listNodeFields`, `listBody`, `admittedListExpanded`),
@@ -888,19 +889,64 @@ choice reducers, the width scan, and the work-budget gate.
 
 **Backlog:** F2, G24, R9 (tabs), R22.
 
-- The horizontal strip folds narrow as `‹ active next +N ›`; counts are muted, `!` is `warning` strong.
-- The vertical rail draws group headings, a `primary` bold `→` while focused (muted when focus is in the content), and
-  right-aligned counts or `!`; `clip: 'start'` keeps the distinguishing end of a label. `↑/↓` emit `tab-change` at once
-  so the content follows live; `→` or `Enter` enter the content; below 60 columns the rail becomes the strip.
-- **The `←` ladder.** A control consumes `←` only when it changed something: a select at its first option, a number at
-  its minimum, or a segment at its end does not. An unconsumed `←` moves focus to the surface's rail wherever it sits;
-  `← labels` is hinted only when true; on the rail `←` does nothing.
-- **Focus levels.** `ui.focus-prev`/`ui.focus-next` (`Alt+↑/↓`, also `F4`/`F5`) move between controls outside text
-  editing; `ui.tab-prev`/`ui.tab-next` (`Alt+←/→`, also `F2`/`F3`).
-- `focus-change` reaches observers at most once per frame and cannot publish, navigate, or dismiss.
+It landed in five parts, each green on its own: the contract, validator, painters, grammar, and compiler with scene 6
+pinned (1); the specs, scene 11's rail, and the `W12-rail` budget (2); the rail's golden walks and their ledger (3); the
+Website reference, key reference, gallery group, and shot (4); this text and the gate (5).
 
-Files: `core/ui-compiler.ts`, `core/ui-patterns.ts`, `core/ui-key-grammar.ts`, `core/ui-interaction-surface.ts`,
-`core/key-actions.ts`, `interaction/keys.ts`. Scenes 6 (four pages) and 11 p2.
+- **Contract** (all optional). `MayflyTabItem` gained `count` as a number or text (`2/6`), `attention`, `group`, and `clip`;
+  `MayflyTabsNode` gained `orientation` and `hintLabel`; `focus-change` joined the observations (`controlId`, `itemId?`).
+  The validator (`core/ui-validator-tabs.ts`) refuses a vertical wizard. `hintLabel` words the `Alt+←/→` hint (the kit's
+  rule); the strip's own `←/→ tabs` hint keeps that word.
+- **Strip and wizard** (`core/ui-tabs-paint.ts`, new; `renderTabs` in `ui-patterns.ts` delegates). Counts are muted (the
+  active tab's `primary`), `!` is a strong `warning` that replaces the count. A strip that does not fit folds around the
+  active tab as `‹ active next +N ›`; two further rungs keep it inside any width: `‹ active +N ›`, then the row cut to the
+  width. The cursor mark rides at the end of the fold when a column is left. A wizard's focused rule is not bold, and its
+  strip words `Esc` as `back`.
+- **Rail.** Group headings (`' ' + GROUP`, muted), a bold `→` on the active label (`primary` while the rail has focus,
+  muted once focus is in the content), counts or `!` right-aligned with the cursor mark in the gap before them,
+  `clip: 'start'` through `truncateMiddle`, the end ellipsised by default. Each item's rows (heading included) are kept
+  in the surface's row cache keyed by width, active, focus, and heading, so a cursor move repaints two items (`W12-rail`: 8
+  rows for a 60-label rail, the layout's two probe widths included). Below 60 viewport columns the node is drawn, and its
+  controls navigate, as the horizontal strip (`tabsShape`).
+- **Keys.** `↑/↓` on the rail send `tab-change` at once (`tab-move`); `→` and `Enter` descend to the next control group;
+  `←` is swallowed. The hint reads `↑/↓ labels · → open · Esc close`.
+- **The `←` ladder** (`core/ui-focus-levels.ts`, new; the grammar's `railLeft`). A control keeps `←` only while it changes
+  something: a select that has an enabled option before its value, a segment strip likewise, a tree row or body that is
+  open, a later action in an actions row. The grammar state carries `stuckLeft` for those controls, `groupStart` for the
+  actions row, and `railBack` (the surface has a rail the focus is not on); an unused `←` is the `rail-back` intent, which
+  moves focus to the nearest rail before the focused control, else the first, with its hint `← labels` bound only then.
+  A field's own button keeps its spatial `←`. A number gains its rung with the stepping of slice 1.6: until then it never
+  uses `←`.
+- **Focus levels.** `ui.focus-prev/next` (`Alt+↑/↓`, `F4`/`F5`) are bound outside text editing and open pickers and move to
+  the previous or next control group without wrapping; they carry no hint, as in the kit. `ui.tab-prev/next` were already
+  bound; after a switch the strip remembers the tab it shows, so `←`, `Tab`, and `Esc` return to it.
+- **`Esc` returns home.** Away from the surface's home control (an `autofocus` list, else a default action, else the first
+  control) the grammar's `home` step words `Esc` as `back` and moves focus there; it ranks after a search, a page `backId`,
+  and a loader's cancel, and before the surface's own close. That closes scene 5's `move` walk.
+- **`focus-change`** is reported by the compiled surface after each painted frame in which the focused control differs
+  from the previous frame's (the first frame is not a move), at most once per frame, through a microtask so the paint is
+  never disturbed, and only while the surface is current. It has its own observation slot, so it never cancels a
+  `tab-change` or `value-change` in flight; as an observation it cannot publish, navigate, or dismiss.
+
+Parity. `tests/design/scene-06-tabs.spec.ts` replays the golden walks `initial`, `pages`, `page-4-narrow`, `alt-tabs`,
+`arrows`, and the new `rail-move` and `rail-enter` (the select's `←` adjusts and then falls out to the rail), cell by cell;
+slice 1.6 closed the settings form's rows. What remains in the ledger for slice 1.11 is a select stepped away from its inherited value and back: the form keeps the override (`(override)`, the `•` mark, `Delete reset`) where the prototype unpins it; the `unsaved changes` badge is Δ28.
+`scene-11-patterns.spec.ts` pins page 2 (`railPanel`, composed from the same nodes; the rail child needs `shrink: 0`,
+which the kit's default does not, so slice 1.8b's pattern sets it), and the ledger lists pages 1, 3, and 4 of scene 11 and
+its `move` walk under 1.8b. **Δ29 is approved:** the kit never hints `← labels` on a select, although `←` leaves it for the
+rail at its first option; the renderer hints it whenever it is true (at 78 columns the three-fragment row drops it, so the
+scene's frames still match). Also unlike the kit, `Alt+→` from the content keeps focus in the content of the new page.
+
+Tests: `ui-tabs-keys.spec.ts` (the hint row in each tab state, the rail's keys, the ladder across a select, a segment strip,
+a branch, an actions row, a scroll, an empty list, a text field, and a trailing rail, focus levels, the tab switch, `Esc`
+home), `ui-tabs-paint.spec.ts`, `ui-focus-levels.spec.ts`, `ui-validator-tabs.spec.ts`, `ui-focus-change.spec.ts`,
+`width-scan-tabs.spec.ts` (every adversarial fixture, in a viewport that follows the width and in a wide one), the grammar
+and key-audit enumerations, and the `W12-rail` work budget. The gallery group is `examples/ui-gallery/src/groups/tabs.ts`.
+
+Files: `core/ui-validator-tabs.ts`, `core/ui-tabs-paint.ts`, `core/ui-focus-levels.ts` (new); `core/ui-compiler.ts` (the tabs
+arm, the control walk, `grammarStateFor`, `selectedTabGroup`, `homeGroup`, `focusLevel`, `reportFocusMove`),
+`core/ui-key-grammar.ts`, `core/ui-interaction-surface.ts` (`observeFocus`), `packages/ui` (`contracts.ts`, `interaction.ts`,
+`snapshot-events.ts`).
 
 #### 1.6 Forms
 

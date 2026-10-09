@@ -49,8 +49,16 @@ const SCENE_13_VIEWS = [
 ] as const
 
 export const PENDING_PARITY: readonly PendingParity[] = [
-  { directory: '05-lists', walk: 'move', frames: [3, 4], rows: [10, 10], slice: '1.5', reason: 'the hint row names `Esc back` while focus is on a control other than the surface\'s first (rows are those of the surface): Esc returns to the home control first (focus levels)' },
-  { directory: '12-a-downstream-plugin', walk: 'move', frames: [3], rows: [5, 5], slice: '1.5', reason: 'the hint row names `Esc back` while focus is on a control other than the surface\'s first (rows are those of the surface): Esc returns to the home control first (focus levels)' },
+  // Slice 1.6 made a stepped inherited select an override that stays one after stepping back (`(override)`, the `•` mark,
+  // and `Delete reset`); the prototype's select unpins on the inherited option. Slice 1.11 settles it: a difference or a fix.
+  { directory: '06-tabs-wizards-rails', walk: 'rail-enter', frames: [4, 5], rows: [8, 8], slice: '1.11', reason: 'a select stepped back to its inherited value hints `Delete use inherited` and `←/→ adjust` in the prototype; the form keeps the override' },
+  { directory: '06-tabs-wizards-rails', walk: 'rail-enter', frames: [5, 6, 7], rows: [3, 3], slice: '1.11', reason: 'a select stepped back to its inherited value reads `(inherited)` without the `•` mark in the prototype; the form keeps the override' },
+  { directory: '01-marks-and-tokens', walk: 'pages', frames: [0], rows: [21, 26], slice: '1.6', reason: 'page 1 form block: the form marks, units, and (inherited) (1.6)' },
+  // Scene 11 (patterns): page 2's railPanel is pinned by `scene-11-patterns.spec.ts`; the pattern calls are slice 1.8b's.
+  { directory: '11-patterns', walk: 'initial', frames: [0], slice: '1.8b', reason: 'page 1 is patterns.decisionPanel (1.8b)' },
+  { directory: '11-patterns', walk: 'move', frames: [0, 1, 2, 3], slice: '1.8b', reason: 'page 1 is patterns.decisionPanel, whose options list the walk moves through (1.8b)' },
+  { directory: '11-patterns', walk: 'pages', frames: [0, 2, 3], slice: '1.8b', reason: 'pages 1, 3, and 4 are patterns.decisionPanel, splitView, and statusPage (1.8b)' },
+  { directory: '11-patterns', walk: 'page-2', frames: [0], slice: '1.8b', reason: 'page 1 is patterns.decisionPanel (1.8b)' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [5], slice: '1.8b', reason: 'page 6 is patterns.splitView over lists with right-aligned spans (1.4)' },
   ...SCENE_13_VIEWS.flatMap(({ walk, entered, idle }) => [
     { directory: '13-status-area', walk, frames: [...idle, ...entered], rows: [0, 7] as const, slice: 'Phase 3', reason: 'row 1 of the status area (Phase 3) and the editor frame (Phase 5); the lane starts at row 8' },

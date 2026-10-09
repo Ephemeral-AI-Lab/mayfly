@@ -72,7 +72,7 @@ describe('private UI pattern painters', () => {
     expect(plain(focused)).toEqual(['Alpha 12   Beta 3   Gamma 4', `${' '.repeat(20)}━━━━━━━|`])
     expect(focused[0]).toContain('\x1b[1mGamma\x1b[22m')
     expect(focused[1]).toContain('\x1b[1m━━━━━━━\x1b[22m')
-    expect(plain(renderTabs(node, 16, idle, colors))).toEqual(['‹ Alpha 12  Beta'])
+    expect(plain(renderTabs(node, 16, idle, colors))).toEqual(['‹ Alpha 12  +2 ›'])
     expect(plain(renderTabs({ ...node, activeId: 'c' }, 16, idle, colors))).toEqual(['‹ Gamma 4  +2 ›'])
     expect(plain(renderTabs({ ...node, activeId: 'missing' }, 80, idle, colors))[1]).toBe('━━━━━━━━')
     const primary = vi.fn(identity)

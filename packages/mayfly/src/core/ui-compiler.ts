@@ -77,6 +77,8 @@ import { admittedListItem } from './ui-validator.ts'
 import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
 import { actionHintLabel, actionScopeActive, effectiveItemKeys } from './ui-actions.ts'
 import { UiRowCache } from './ui-row-cache.ts'
+import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
+import { isRail, tabsShape } from './ui-tabs-paint.ts'
 import { UiImagePainter } from './ui-image.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
@@ -329,6 +331,8 @@ type ControlDescriptor =
       readonly keyed?: KeyedAction
       /** A loader's cancel: Escape fires it before it leaves the surface. */
       readonly work?: true
+      /** A tab control's strip: whether it is drawn as a rail, whether it is a wizard, its tab count, and its hint word. */
+      readonly tabs?: TabsTraits
     })
   | (ControlBase & { readonly kind: 'text', readonly field: TextField, readonly form: FormNode })
   | (ControlBase & { readonly kind: 'select', readonly field: SelectField, readonly form: FormNode })
@@ -812,6 +816,25 @@ function controlGroups(controls: readonly ControlDescriptor[]): ControlGroup[] {
   return groups
 }
 
+/**
+ * The tab group `Alt+←/→` switches from the focused control: its own on a strip, the innermost enclosing one for content
+ * nested in a tab page, else the last tab group focused.
+ */
+function selectedTabGroup(groups: readonly ControlGroup[], active: ControlDescriptor | undefined, lastTabGroupIndex: number): ControlGroup | undefined {
+  const tabGroups = groups.filter(group => group.kind === 'tabs')
+  const onStrip = active?.kind === 'event' && active.role === 'tab'
+  const activePath = active?.identity.pagePath
+  const enclosing = onStrip || activePath === undefined || activePath.length === 0
+    ? undefined
+    : controlGroup('tabs', activePath.at(-1)!.controlId, activePath.slice(0, -1))
+  const groupIndex = onStrip
+    ? tabGroups.findIndex(candidate => candidate.id === active.group)
+    : enclosing === undefined
+      ? Math.min(lastTabGroupIndex, tabGroups.length - 1)
+      : tabGroups.findIndex(candidate => candidate.id === enclosing)
+  return tabGroups[Math.max(0, groupIndex)]
+}
+
 function sameFocusIdentity(left: MayflyFocusIdentity, right: MayflyFocusIdentity): boolean {
   return left.controlId === right.controlId && left.itemId === right.itemId && JSON.stringify(left.pagePath) === JSON.stringify(right.pagePath ?? [])
 }
@@ -901,11 +924,13 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       }
       case 'select': {
         const field = state.field(active.field, active.key) as SelectField
-        const enabled = field.options.filter(option => option.disabled !== true).length
-        return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable: enabled > 1 || (enabled === 1 && field.value === null), ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
+        const enabledIds = field.options.filter(option => option.disabled !== true).map(option => option.id)
+        const adjustable = enabledIds.length > 1 || (enabledIds.length === 1 && field.value === null)
+        const stuckLeft = field.kind === 'select' && adjustable && !canStepLeft(enabledIds, state.fieldValue(active.field, active.key) as string | null)
+        return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable, ...(stuckLeft ? { stuckLeft: true as const } : {}), ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
       }
       case 'event': {
-        if (active.role === 'tab') return { kind: 'tab' }
+        if (active.role === 'tab') return { kind: 'tab', ...(active.tabs?.rail === true ? { vertical: true } : {}) }
         if (active.role === 'action') return { kind: 'action', decision: active.event.kind === 'activate' && active.event.actionId.startsWith('mayfly.decision.') }
         if (active.role === 'cancel') return { kind: 'cancel', work: active.work === true }
         const list = active.listEntry!.node
@@ -916,12 +941,17 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
         // Enter opens a body, and a branch of a multiple tree (where Space already toggles the check); a single tree keeps Enter for accepting.
         const enterToggles = expandable && (item.body !== undefined || (list.mode === 'multiple' && list.tree === true))
         const unpin = adjustable && segment.inheritedId !== undefined && choice !== undefined && choicePinned(choice, item.id) !== null
+        // The ladder: a strip uses `←` while an enabled option is before the current one, a branch while it is open.
+        const stuckLeft = adjustable
+          ? choice !== undefined && !canStepLeft(segment.options.filter(option => option.disabled !== true).map(option => option.id), choiceSegment(choice, item.id))
+          : (list.tree === true || expandable) && choice?.expandedIds.includes(item.id) !== true
         return {
           kind: 'row', role: list.role, multiple: active.role === 'list-multiple', tree: list.tree === true,
           ...(adjustable ? { segment: (segment.label ?? 'segment').toLowerCase() } : {}),
           ...(unpin ? { unpin: true } : {}),
           ...(expandable ? { expandable: true } : {}),
           ...(enterToggles ? { enterToggles: true } : {}),
+          ...(stuckLeft ? { stuckLeft: true as const } : {}),
           ...(list.acceptVerb === undefined ? {} : { verb: list.acceptVerb }),
           ...(list.hintLabel === undefined ? {} : { label: list.hintLabel }),
         }
@@ -929,13 +959,21 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     }
   })()
   const searching = choice?.searching === true
+  const home = homeGroup(controls)
   const escape: EscapeStep | undefined = expanded ? 'collapse'
     : control.kind === 'select' && control.picker ? 'cancel'
       : control.kind === 'text' && control.editing ? 'done'
         : searching ? 'end-search'
           : interaction?.backTarget() !== undefined ? 'back'
             : controls.some(candidate => candidate.kind === 'event' && candidate.work === true) ? 'cancel-work'
-              : escapeLabel ?? (interaction?.formCancel() === undefined ? undefined : 'surface-cancel')
+              // Away from the home control, Escape returns to it before it leaves the surface (spec 3.1).
+              : active !== undefined && home !== undefined && active.group !== home ? 'home'
+                // A wizard's strip words its Escape `back`, as the kit does, whatever the surface's own word.
+                : active?.kind === 'event' && active.tabs?.wizard === true && escapeLabel !== undefined ? 'surface-back'
+                  : escapeLabel ?? (interaction?.formCancel() === undefined ? undefined : 'surface-cancel')
+  const railBack = active !== undefined && railGroupFor(controls, controls.indexOf(active)) !== undefined
+  const tabsHint = selectedTabGroup(groups, active, state.lastTabGroupIndex)?.entries[0]?.control
+  const tabsLabel = tabsHint?.kind === 'event' && tabsHint.tabs?.hintLabel !== undefined ? { tabsLabel: tabsHint.tabs.hintLabel } : {}
   const numbered = node?.numbered
   const fieldAddress = active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' ? runtime.fieldAddress(active.key) : undefined
   const reset = fieldAddress === undefined ? undefined : fieldReset(interaction?.form(fieldAddress), fieldAddress.fieldId)
@@ -959,6 +997,9 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       ...state.accelerators().flatMap((accelerator, index) => keyedBindings(controls.length + index, accelerator, active, options)),
     ],
     tabs: groups.some(group => group.kind === 'tabs'),
+    ...tabsLabel,
+    ...(railBack ? { railBack: true } : {}),
+    ...(active !== undefined && controls.findIndex(candidate => candidate.group === active.group) === controls.indexOf(active) ? { groupStart: true } : {}),
     groups: groups.length,
     siblings: active === undefined ? 0 : controls.filter(candidate => candidate.group === active.group).length,
     escape,
@@ -1046,7 +1087,7 @@ function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, 
 /** Where each hint fragment sits in the row, by hint id (the kit's `order`). */
 const HINT_ORDER: Readonly<Record<string, number>> = {
   navigate: 10, adjust: 20, branch: 20, toggle: 20, numbered: 30, activate: 40, confirm: 45, keyed: 50, reset: 50,
-  expand: 50, other: 55, search: 60, clear: 60, newline: 60, complete: 65, tabs: 70, group: 80, escape: 90, dismiss: 90,
+  expand: 50, other: 55, search: 60, clear: 60, newline: 60, complete: 65, tabs: 70, group: 80, escape: 90, dismiss: 90, labels: 20,
 }
 
 /** Hint fragments admitted at a width: three on narrow terminals, four from 80 columns. */
@@ -1188,7 +1229,11 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         break
       }
       case 'tabs':
-        for (const item of current.items) if (item.disabled !== true) controls.push({ kind: 'event', role: 'tab', activation: 'enter', key: scopedControlKey('tabs', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(current.id, item.id), preferred: item.id === (options.listRuntime.activeTab({ pagePath, controlId: current.id }) ?? current.activeId), group: scopedControlGroup('tabs', current.id), navigation: 'horizontal', event: { kind: 'tab-change', pagePath, controlId: current.id, tabId: item.id } })
+        {
+          const rail = isRail(current, safeViewport(options.getViewport).columns)
+          const tabs = { rail, wizard: current.mode === 'wizard', count: current.items.length, ...(current.hintLabel === undefined ? {} : { hintLabel: current.hintLabel }) }
+          for (const item of current.items) if (item.disabled !== true) controls.push({ kind: 'event', role: 'tab', activation: 'enter', key: scopedControlKey('tabs', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(current.id, item.id), preferred: item.id === (options.listRuntime.activeTab({ pagePath, controlId: current.id }) ?? current.activeId), group: scopedControlGroup('tabs', current.id), navigation: rail ? 'vertical' : 'horizontal', tabs, event: { kind: 'tab-change', pagePath, controlId: current.id, tabId: item.id } })
+        }
         break
       case 'list': {
         const window = options.listRuntime.listWindow(current, listRowLimit(options))
@@ -1451,9 +1496,13 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'tabs': {
       const component = staticComponent(width => {
         const completed = options.listRuntime.interaction?.completedSteps({ pagePath, controlId: node.id }) ?? []
-        return renderTabs({ ...node, activeId: options.listRuntime.activeTab({ pagePath, controlId: node.id }) ?? node.activeId }, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors, completed)
-      }, options)
-      state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: 'horizontal' })
+        const shaped = tabsShape({ ...node, activeId: options.listRuntime.activeTab({ pagePath, controlId: node.id }) ?? node.activeId }, safeViewport(options.getViewport).columns)
+        const rows = renderTabs(shaped, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors, completed, { cache: options.listRuntime.rows, counters: options.counters })
+        // A rail counts the rows its cache painted; a strip is two rows and keeps no cache.
+        if (shaped.orientation !== 'vertical') countWork(options.counters, 'rowsPainted', rows.length)
+        return rows
+      }, options, false)
+      state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: node.orientation === 'vertical' ? 'vertical' : 'horizontal' })
       return component
     }
     case 'list': {
@@ -1604,6 +1653,16 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
   }
 }
 
+/**
+ * The group a surface opens on and `Esc` returns to: a list that declares `autofocus` takes focus first, then an action
+ * that declares itself the default, else the first control's group.
+ */
+function homeGroup(controls: readonly ControlDescriptor[]): string | undefined {
+  const declared = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' ? control.node : undefined)?.autofocus === true)
+    ?? controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
+  return declared?.group ?? controls[0]?.group
+}
+
 function reconcile(state: FocusState): readonly ControlDescriptor[] {
   const controls = state.controls()
   const groups = controlGroups(controls)
@@ -1663,12 +1722,7 @@ function reconcile(state: FocusState): readonly ControlDescriptor[] {
   }
   const groupIds = groups.map(group => group.id)
   const requestedGroup = desiredHidden ? state.desiredGroup : state.activeGroup
-  // A list that declares `autofocus` takes focus first; then an action that declares itself the default.
-  const declaredDefault = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' ? control.node : undefined)?.autofocus === true)
-    ?? controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
-  const fallbackGroup = requestedGroup !== undefined && groupIds.includes(requestedGroup)
-    ? requestedGroup
-    : declaredDefault?.group ?? groupIds[0]!
+  const fallbackGroup = requestedGroup !== undefined && groupIds.includes(requestedGroup) ? requestedGroup : homeGroup(controls)!
   state.lastIndex = groupTarget(controls, fallbackGroup, state.groupActiveKeys.get(fallbackGroup))
   state.activeKey = controls[state.lastIndex]!.key
   state.activeGroup = controls[state.lastIndex]!.group
@@ -2248,6 +2302,23 @@ class CompiledSurface implements MayflyEditorShellComponent {
     return controls.length > 0 || deferred
   }
 
+  /**
+   * `focus-change` reaches observers at most once per painted frame, with the control that holds focus when the frame is
+   * painted: a burst of moves between two frames is one report. The surface opening on a control is not a move, and the
+   * report leaves after the paint, so an observer cannot disturb the frame that produced it.
+   */
+  private reportFocusMove(): void {
+    const interaction = this.surfaceRuntime.interaction
+    const active = this.state.controls()[this.state.lastIndex]
+    if (interaction === undefined || active === undefined) return
+    const key = JSON.stringify([active.identity.pagePath, active.identity.controlId, active.identity.itemId])
+    const previous = this.paintedFocus
+    this.paintedFocus = key
+    if (previous === undefined || previous === key) return
+    const generation = this.generation
+    queueMicrotask(() => { if (this.paintedFocus === key && this.surfaceRuntime.current(generation)) interaction.observeFocus(active.identity as UiControlAddress) })
+  }
+
   captureFocusIdentity(): MayflyFocusIdentity | undefined {
     if (!this.surfaceRuntime.current(this.generation)) return undefined
     this.viewport = safeViewport(this.options.getViewport)
@@ -2404,6 +2475,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
     }
   }
 
+  /** The focus the last painted frame showed, as a key; `focus-change` is reported when it moves. */
+  private paintedFocus: string | undefined
   /* pi-tui measures a surface before painting it inside one synchronous
      pass, so identical renderFrame calls reuse the previous result. The
      key covers every input the frame reads from outside itself: runtime
@@ -2449,6 +2522,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   renderChecked(width: number, options: MayflyEditorShellRenderOptions = {}): MayflyEditorShellRenderResult {
     if (options.dryRun !== true) {
       const rendered = this.renderFrameOnce(width, undefined)
+      this.reportFocusMove()
       return rendered.runtimeFailure === undefined
         ? { rows: rendered.rows }
         : { rows: rendered.rows, runtimeFailure: rendered.runtimeFailure }
@@ -2597,6 +2671,13 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)), controls)
   }
 
+  /** Focus levels (`ui.focus-prev`/`ui.focus-next`): the previous or next control group, without wrapping. */
+  private focusLevel(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
+    const groups = controlGroups(controls)
+    const target = groups[groups.findIndex(group => group.id === active.group) + delta]
+    if (target !== undefined) this.moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)), controls)
+  }
+
   /** Select one list row in both the frontend choice and the renderer roving focus. */
   private focusRow(node: MayflyListNode, itemId: string, pagePath: MayflyPagePath): void {
     const key = controlKey('list', node.id, itemId, pagePath)
@@ -2632,20 +2713,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
   }
 
   private switchTab(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined): void {
-    const tabGroups = controlGroups(controls).filter(group => group.kind === 'tabs')
     const onStrip = active?.kind === 'event' && active.role === 'tab'
-    const activePath = active?.identity.pagePath
-    /* Content nested in a tab page addresses its innermost enclosing tab
-       group; page-level controls fall back to the last focused tab group. */
-    const enclosing = onStrip || activePath === undefined || activePath.length === 0
-      ? undefined
-      : controlGroup('tabs', activePath.at(-1)!.controlId, activePath.slice(0, -1))
-    const groupIndex = onStrip
-      ? tabGroups.findIndex(candidate => candidate.id === active.group)
-      : enclosing === undefined
-        ? Math.min(this.state.lastTabGroupIndex, tabGroups.length - 1)
-        : tabGroups.findIndex(candidate => candidate.id === enclosing)
-    const group = tabGroups[Math.max(0, groupIndex)]!
+    const group = selectedTabGroup(controlGroups(controls), active, this.state.lastTabGroupIndex)!
     /* v8 ignore next -- tab groups register only tab-change event controls. */
     const tabEvent = (control: ControlDescriptor): Extract<MayflyUiEvent, { readonly kind: 'tab-change' }> | undefined =>
       control.kind === 'event' && control.event.kind === 'tab-change' ? control.event : undefined
@@ -2661,6 +2730,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const stripIndex = refreshed.findIndex(control => control.kind === 'event' && control.role === 'tab' && tabEvent(control)?.tabId === targetEvent.tabId)
     const refreshedGroups = controlGroups(refreshed)
     const content = onStrip ? undefined : refreshedGroups.slice(refreshedGroups.findIndex(candidate => candidate.id === group.id) + 1).find(candidate => candidate.kind === 'content')
+    // The strip remembers the tab it now shows, so a later return to it (`Tab`, `←`, `Esc`) lands on that tab.
+    this.state.groupActiveKeys.set(group.id, refreshed[stripIndex]!.key)
     this.moveTo(content === undefined ? stripIndex : groupTarget(refreshed, content.id, this.state.groupActiveKeys.get(content.id)), refreshed)
   }
 
@@ -2678,6 +2749,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
         return
       }
       case 'back': this.surfaceRuntime.interaction!.back(); return
+      case 'home': {
+        const controls = this.state.controls()
+        this.moveTo(groupTarget(controls, homeGroup(controls)!, this.state.groupActiveKeys.get(homeGroup(controls)!)), controls)
+        return
+      }
       /* v8 ignore next -- an expanded view resolves Escape through its own collapse binding. */
       case 'collapse': this.state.expandedKey = undefined; return
       case 'cancel-work': {
@@ -2758,6 +2834,12 @@ class CompiledSurface implements MayflyEditorShellComponent {
       }
       case 'escape': this.escape(intent.step, active); return
       case 'close': this.closeSurface(); return
+      case 'rail-back': {
+        const rail = railGroupFor(controls, this.state.lastIndex)
+        /* v8 ignore next -- the grammar binds `←` to the rail only while the surface has one. */
+        if (rail !== undefined) this.moveTo(groupTarget(controls, rail, this.state.groupActiveKeys.get(rail)), controls)
+        return
+      }
       case 'keyed': this.state.emit(intent.control < controls.length ? (controls[intent.control] as Extract<ControlDescriptor, { readonly kind: 'event' }>).event : this.state.accelerators()[intent.control - controls.length]!.event); return
       case 'numbered': this.numbered(data, active!); return
       case 'tab-switch': this.switchTab(intent.delta, controls, active); return
@@ -2779,6 +2861,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     if (active === undefined) return
     switch (intent.kind) {
       case 'group': this.commitEditing(active); this.moveGroup(intent.delta, reconcile(this.state), active); return
+      case 'focus-level': this.focusLevel(intent.delta, controls, active); return
       case 'text-newline': this.state.textEditor((active as Extract<ControlDescriptor, { readonly kind: 'text' }>).field, active.key).insertText('\n'); return
       case 'text-enter': {
         const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
@@ -2802,8 +2885,13 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'number-step': {
         const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
         const next = stepNumber(text.field as Extract<MayflyFormField, { readonly kind: 'number' }>, String(this.state.fieldValue(text.field, text.key)), intent.delta)
-        if (next === undefined) this.navigate(intent.delta < 0 ? 'left' : 'right', controls, active)
-        else this.state.setValue(text.key, next)
+        if (next !== undefined) this.state.setValue(text.key, next)
+        else {
+          // At its lower limit a number gives `←` to the rail when the surface has one, else to the control beside it.
+          const rail = intent.delta < 0 ? railGroupFor(controls, this.state.lastIndex) : undefined
+          if (rail !== undefined) this.moveTo(groupTarget(controls, rail, this.state.groupActiveKeys.get(rail)), controls)
+          else this.navigate(intent.delta < 0 ? 'left' : 'right', controls, active)
+        }
         return
       }
       case 'form-save': {

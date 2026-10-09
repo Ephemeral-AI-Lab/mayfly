@@ -55,3 +55,12 @@ export function diffReport(diffs: readonly (ParityDiff & { readonly rowText: str
     return `row ${String(row)} (${String(cells.length)} cells) col ${String(cells[0]!.col)}: ${cells[0]!.expected} != ${cells[0]!.actual}\n  - ${expected}\n  + ${actual}`
   }).join('\n')
 }
+
+const plainRow = (row: string): string => row.replace(/\x1b\[[0-9;]*m/gu, '').replace(/\x1b_[^\x07]*\x07/gu, '')
+
+/** Δ28: the badge the renderer adds to a dirty surface the prototype did not badge. */
+export function badgeWaivers(golden: readonly string[], actual: readonly string[]): ParityWaiver[] {
+  const text = plainRow(actual[0] ?? '')
+  const at = text.indexOf('unsaved changes')
+  return at < 0 || plainRow(golden[0] ?? '').includes('unsaved changes') ? [] : [{ delta: 'Δ28', rows: [0, 0], cols: [at - 1, at + 'unsaved changes'.length] }]
+}

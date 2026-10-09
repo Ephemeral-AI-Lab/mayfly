@@ -8,6 +8,7 @@ import {
   type MayflyStatusNode,
   type MayflyUiChild,
   type MayflyUiNode,
+  type MayflyUiObservationHandler,
 } from '@ephemeral-ai/mayfly-ui'
 
 interface MetricProps { readonly label: string, readonly value: number }
@@ -40,6 +41,18 @@ export const handlers: MayflyUiEventHandlers = {
 export const missingActionReply: MayflyUiActionHandler = () => {}
 // @ts-expect-error action handlers cannot receive observation events
 export const actionHandlesValueChange: MayflyUiActionHandler = event => event.kind === 'value-change' ? { kind: 'completed' } : { kind: 'cancelled' }
+
+export const rail = ui.tabs({
+  id: 'rail', orientation: 'vertical', hintLabel: 'labels', activeId: 'a',
+  items: [{ id: 'a', label: 'A', count: '2/6', group: 'Session', clip: 'start' }, { id: 'b', label: 'B', count: 3, attention: true, group: 'Session' }],
+})
+// @ts-expect-error a rail is horizontal or vertical
+ui.tabs({ id: 'diagonal', activeId: 'a', orientation: 'diagonal', items: [{ id: 'a', label: 'A' }] })
+// @ts-expect-error a tab label clips at its end or its start
+ui.tabs({ id: 'clip', activeId: 'a', items: [{ id: 'a', label: 'A', clip: 'middle' }] })
+export const focusObserver: MayflyUiObservationHandler = event => event.kind === 'focus-change' ? { kind: 'completed' } : undefined
+// @ts-expect-error action handlers cannot receive focus reports
+export const actionHandlesFocusChange: MayflyUiActionHandler = event => event.kind === 'focus-change' ? { kind: 'completed' } : { kind: 'cancelled' }
 
 // @ts-expect-error rich documents are not status nodes
 export const statusDocument: MayflyStatusNode = document

@@ -17,6 +17,7 @@ import { paintSpan, paintTone } from './ui-paint.ts'
 import { paintFormField, type FieldDecor } from './ui-form-paint.ts'
 import { segmentFooter } from './ui-list-segment.ts'
 import { paintList, type ListPaintOptions, type ListRowMemo, type ListRowSpec } from './ui-list-paint.ts'
+import { paintTabs, type TabsPaintOptions } from './ui-tabs-paint.ts'
 import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 type SurfaceNode = Extract<MayflyUiNode, { readonly kind: 'surface' }>
@@ -230,45 +231,15 @@ export function renderSurfaceTail(node: SurfaceChromeNode, width: number, colors
   return [surfaceBorderPaint(chrome, colors, node.border)(available < 2 ? '╰' : `╰${'─'.repeat(available - 2)}╯`)]
 }
 
-/** Gap between two tabs of a strip. */
-const TAB_GAP = 3
-
 /**
- * A tab strip: the active tab in `primary` (bold while the strip has focus) with a heavy `━` underline on the row below
- * it (`primary` while focused, muted otherwise), the other tabs muted, counts after their labels. A wizard marks its
- * steps `✓` completed, `●` current, `○` the rest, joined by a muted `›`. A strip wider than the width
- * folds to `‹ active next +N ›`. The focus marker rides at the end of the underline row.
+ * A tab strip, a wizard, or a vertical rail (`core/ui-tabs-paint.ts`): the active tab in `primary` (bold while the strip
+ * has focus) with a heavy `━` underline on the row below it, the other tabs muted, counts after their labels; a wizard
+ * marks its steps `✓` `●` `○` joined by a muted `›`; a strip wider than the width folds to `‹ active next +N ›`; a rail
+ * lists group headings, a cursor arrow, and right-aligned counts. The focus marker rides at the end of the underline
+ * row, or in the gap before a rail item's count.
  */
-export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors, completed: readonly string[] = []): string[] {
-  const available = safeWidth(width)
-  const focused = focus.focused && focus.key !== ''
-  const strong = (text: string): string => `\x1b[1m${text}\x1b[22m`
-  const activeIndex = Math.max(0, node.items.findIndex(item => item.id === node.activeId))
-  const tokens = node.items.map((item, index) => {
-    const active = index === activeIndex
-    const count = item.count === undefined ? '' : ` ${String(item.count)}`
-    if (node.mode === 'wizard') {
-      const done = !active && completed.includes(item.id)
-      const plain = `${done ? '✓' : active ? '●' : '○'} ${item.label}`
-      const text = done ? `${colors.success('✓')} ${colors.text(item.label)}`
-        : active ? `${colors.primary('●')} ${strong(colors.primary(item.label))}` : colors.muted(plain)
-      return { plain, text }
-    }
-    const label = active ? colors.primary(item.label) : colors.muted(item.label)
-    return { plain: `${item.label}${count}`, text: `${active && focused ? strong(label) : label}${count === '' ? '' : ` ${(active ? colors.primary : colors.muted)(String(item.count))}`}` }
-  })
-  const separator = node.mode === 'wizard' ? colors.muted('  ›  ') : ' '.repeat(TAB_GAP)
-  const separatorWidth = node.mode === 'wizard' ? 5 : TAB_GAP
-  const total = tokens.reduce((sum, token) => sum + visibleWidth(token.plain), 0) + separatorWidth * Math.max(0, tokens.length - 1)
-  if (total > available) {
-    const shown = [tokens[activeIndex]!, ...(tokens[activeIndex + 1] === undefined ? [] : [tokens[activeIndex + 1]!])]
-    const rest = tokens.length - shown.length
-    return [fit(`${colors.muted('‹ ')}${shown.map(token => token.text).join('  ')}${colors.muted(rest > 0 ? `  +${String(rest)} ›` : ' ›')}`, available)]
-  }
-  const offset = tokens.slice(0, activeIndex).reduce((sum, token) => sum + visibleWidth(token.plain) + separatorWidth, 0)
-  const rule = '━'.repeat(visibleWidth(tokens[activeIndex]?.plain ?? ''))
-  const underline = `${' '.repeat(offset)}${focused ? strong(colors.primary(rule)) : colors.muted(rule)}${focused ? focus.marker : ''}`
-  return [tokens.map(token => token.text).join(separator), fit(underline, available)]
+export function renderTabs(node: TabsNode, width: number, focus: PatternFocus, colors: MayflySemanticColors, completed: readonly string[] = [], options?: TabsPaintOptions): string[] {
+  return paintTabs(node, width, focus, colors, completed, options)
 }
 
 /** What the compiler knows about a list beyond its node: the model's rows, the cursor, bodies, strips, and the window. */

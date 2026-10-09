@@ -1,0 +1,98 @@
+--- after start ---
+page 1/4 (Ctrl+N): a tab strip: text color only; ←/→ move when focused, Alt+←/→ from anywhere;
+counts and ! attention
+
+╭ Status ────────────────────────────────────────────────────────────────────╮
+│ Overview   Usage 3   Connections !   Skills 12   About                     │
+│            ━━━━━━━                                                         │
+│                                                                            │
+│ Usage page content                                                         │
+│   ←/→ tabs · Enter open · Esc close                                        │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 2/4 (Ctrl+N): a wizard: step marks come from position; a forward switch validates (try
+Alt+→ with Name empty)
+
+╭ Add provider ───────────────────────────────────────────────── step 1 of 4 ╮
+│ ● Kind  ›  ○ Connection  ›  ○ Models  ›  ○ Review                          │
+│ ━━━━━━                                                                     │
+│                                                                            │
+│ Kind: nothing to validate on this step                                     │
+│   ←/→ tabs · Enter open · Esc back                                         │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u000e" ---
+page 3/4 (Ctrl+N): a vertical rail: the content follows the cursor live; ↑/↓ move, → or Enter
+enters the content. ← leaves one level at a time, innermost first (see below)
+focus levels, outer to inner: rail → content control → a field inside it (a select, a picker)
+← moves out exactly one level. A control that uses ← itself (a select adjusts, a tree row
+collapses, a text field moves its caret) keeps it;
+the first ← it does not use goes to the rail, wherever the rail sits. Shift+Tab and Esc always
+step out one level too, and the hint row shows ← labels whenever ← goes to the rail.
+
+╭ Settings ──────────────────────────────────────────────────────────────────╮
+│  SESSION                  Model                                            │
+│   General                                                                  │
+│ → Model                     Model:  deepseek-chat  (inherited)             │
+│   Permissions          2    Effort: medium  (inherited)                    │
+│  INTEGRATIONS                                                              │
+│   Providers            !                                                   │
+│   MCP                  4                                                   │
+│   ↑/↓ labels · → open · Esc close                                          │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+page 3/4 (Ctrl+N): a vertical rail: the content follows the cursor live; ↑/↓ move, → or Enter
+enters the content. ← leaves one level at a time, innermost first (see below)
+focus levels, outer to inner: rail → content control → a field inside it (a select, a picker)
+← moves out exactly one level. A control that uses ← itself (a select adjusts, a tree row
+collapses, a text field moves its caret) keeps it;
+the first ← it does not use goes to the rail, wherever the rail sits. Shift+Tab and Esc always
+step out one level too, and the hint row shows ← labels whenever ← goes to the rail.
+
+╭ Settings ──────────────────────────────────────────────────────────────────╮
+│  SESSION                  Permissions                                      │
+│   General                                                                  │
+│   Model                     Preset: Default                                │
+│ → Permissions          2                                                   │
+│  INTEGRATIONS                                                              │
+│   Providers            !                                                   │
+│   MCP                  4                                                   │
+│   ↑/↓ labels · → open · Esc close                                          │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[B" ---
+page 3/4 (Ctrl+N): a vertical rail: the content follows the cursor live; ↑/↓ move, → or Enter
+enters the content. ← leaves one level at a time, innermost first (see below)
+focus levels, outer to inner: rail → content control → a field inside it (a select, a picker)
+← moves out exactly one level. A control that uses ← itself (a select adjusts, a tree row
+collapses, a text field moves its caret) keeps it;
+the first ← it does not use goes to the rail, wherever the rail sits. Shift+Tab and Esc always
+step out one level too, and the hint row shows ← labels whenever ← goes to the rail.
+
+╭ Settings ──────────────────────────────────────────────────────────────────╮
+│  SESSION                  Providers                                        │
+│   General                                                                  │
+│   Model                     Provider: DeepSeek                             │
+│   Permissions          2                                                   │
+│  INTEGRATIONS                                                              │
+│ → Providers            !                                                   │
+│   MCP                  4                                                   │
+│   ↑/↓ labels · → open · Esc close                                          │
+╰────────────────────────────────────────────────────────────────────────────╯
+--- after "\u001b[A" ---
+page 3/4 (Ctrl+N): a vertical rail: the content follows the cursor live; ↑/↓ move, → or Enter
+enters the content. ← leaves one level at a time, innermost first (see below)
+focus levels, outer to inner: rail → content control → a field inside it (a select, a picker)
+← moves out exactly one level. A control that uses ← itself (a select adjusts, a tree row
+collapses, a text field moves its caret) keeps it;
+the first ← it does not use goes to the rail, wherever the rail sits. Shift+Tab and Esc always
+step out one level too, and the hint row shows ← labels whenever ← goes to the rail.
+
+╭ Settings ──────────────────────────────────────────────────────────────────╮
+│  SESSION                  Permissions                                      │
+│   General                                                                  │
+│   Model                     Preset: Default                                │
+│ → Permissions          2                                                   │
+│  INTEGRATIONS                                                              │
+│   Providers            !                                                   │
+│   MCP                  4                                                   │
+│   ↑/↓ labels · → open · Esc close                                          │
+╰────────────────────────────────────────────────────────────────────────────╯

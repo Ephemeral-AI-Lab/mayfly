@@ -7,7 +7,7 @@
  */
 
 import {
-  ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_EXPAND, ACTION_FILTER, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
+  ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_EXPAND, ACTION_FILTER, ACTION_FOCUS_NEXT, ACTION_FOCUS_PREV, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
   ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
   ACTION_PREV_TAB, ACTION_RESET_FIELD, ACTION_SAVE, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey, printableKey,
 } from './key-actions.ts'
@@ -16,6 +16,8 @@ import {
 export type EscapeStep = 'collapse' | 'cancel' | 'done' | 'end-search' | 'back' | 'close' | 'leave'
   /** Escape cancels the work a loader shows; the surface's own `escapeLabel` words the rest, and the host closes it. */
   | 'cancel-work' | 'reject' | 'surface-back' | 'surface-cancel'
+  /** Focus is on a control other than the surface's home control: Escape returns to it before it leaves anything. */
+  | 'home'
 
 export type ListMovement = 'up' | 'down' | 'page-up' | 'page-down' | 'home' | 'end'
 export type Direction = 'up' | 'down' | 'left' | 'right'
@@ -27,11 +29,12 @@ export type GrammarControl =
   | { readonly kind: 'scroll' }
   /** `completes`: the field is being edited and one of its suggestions starts with what is typed, so `Tab` takes it. */
   | { readonly kind: 'text', readonly field: 'input' | 'textarea' | 'secret' | 'number', readonly editing: boolean, readonly enterSubmits: boolean, readonly completes?: boolean }
-  | { readonly kind: 'select', readonly multiple: boolean, readonly picker: boolean, readonly adjustable: boolean, readonly enterSubmits?: boolean }
+  /** `stuckLeft`: `←` would change nothing (the first option is current), so it is not this control's key now. */
+  | { readonly kind: 'select', readonly multiple: boolean, readonly picker: boolean, readonly adjustable: boolean, readonly enterSubmits?: boolean, readonly stuckLeft?: true }
   | { readonly kind: 'toggle', readonly enterSubmits?: boolean }
   | { readonly kind: 'submit' }
   | { readonly kind: 'field-action' }
-  | { readonly kind: 'tab' }
+  | { readonly kind: 'tab', readonly vertical?: boolean }
   | {
     readonly kind: 'row'
     readonly role: 'browse' | 'choose'
@@ -49,6 +52,8 @@ export type GrammarControl =
     readonly verb?: string
     /** The word for the list's up and down hint. */
     readonly label?: string
+    /** The row has a `←` of its own (a segment strip, a branch), but it would change nothing now. */
+    readonly stuckLeft?: true
   }
   | { readonly kind: 'empty-list' }
   | { readonly kind: 'action', readonly decision: boolean }
@@ -73,6 +78,12 @@ export interface GrammarState {
   /** Declared accelerators of focusable actions, in control order. */
   readonly keyed: readonly { readonly control: number, readonly key: string, readonly label: string }[]
   readonly tabs: boolean
+  /** The word the hint row uses for the tab switch (a tabs node's `hintLabel`); `tabs` when absent. */
+  readonly tabsLabel?: string
+  /** The surface has a rail the focused control is not on: a `←` no control used moves focus to it. */
+  readonly railBack?: boolean
+  /** The focused control is the first of its group, so a `←` along the group has nowhere to go. */
+  readonly groupStart?: boolean
   readonly groups: number
   readonly siblings: number
   readonly escape: EscapeStep | undefined
@@ -95,6 +106,8 @@ export type GrammarIntent =
   | { readonly kind: 'keyed', readonly control: number }
   | { readonly kind: 'numbered' }
   | { readonly kind: 'tab-switch', readonly delta: -1 | 1 }
+  | { readonly kind: 'focus-level', readonly delta: -1 | 1 }
+  | { readonly kind: 'rail-back' }
   | { readonly kind: 'group', readonly delta: -1 | 1 }
   | { readonly kind: 'search-clear' }
   | { readonly kind: 'search-start' }
@@ -152,11 +165,11 @@ export interface GrammarBinding {
 
 const ESCAPE_LABEL: Readonly<Record<EscapeStep, string>> = {
   collapse: 'collapse', cancel: 'cancel', done: 'done', 'end-search': 'end search', back: 'back', close: 'close', leave: 'leave',
-  'cancel-work': 'cancel', reject: 'reject', 'surface-back': 'back', 'surface-cancel': 'cancel',
+  'cancel-work': 'cancel', reject: 'reject', 'surface-back': 'back', 'surface-cancel': 'cancel', home: 'back',
 }
 
 /** Hint priorities: Escape is reserved, then the primary operation, then navigation; digits repeat Enter, so they yield to arrows. */
-const PRIORITY = { escape: 120, primary: 100, accelerator: 96, adjust: 95, navigate: 90, numbered: 88, secondary: 85, group: 80 } as const
+const PRIORITY = { escape: 120, primary: 100, accelerator: 96, adjust: 95, rail: 94, navigate: 90, numbered: 88, secondary: 85, group: 80 } as const
 
 const action = (id: string): GrammarMatch => ({ kind: 'action', action: id })
 
@@ -181,16 +194,36 @@ function groupMoves(bindings: GrammarBinding[], state: GrammarState, hinted: boo
 
 function tabSwitches(bindings: GrammarBinding[], state: GrammarState, hinted: boolean): void {
   if (!state.tabs) return
-  const hint = hinted ? { id: 'tabs', label: 'tabs', priority: PRIORITY.secondary, actions: [ACTION_PREV_TAB, ACTION_NEXT_TAB], compact: 'Alt+←→' } : undefined
+  const hint = hinted ? { id: 'tabs', label: state.tabsLabel ?? 'tabs', priority: PRIORITY.secondary, actions: [ACTION_PREV_TAB, ACTION_NEXT_TAB], compact: 'Alt+←→' } : undefined
   push(bindings, action(ACTION_PREV_TAB), { kind: 'tab-switch', delta: -1 }, hint)
   push(bindings, action(ACTION_NEXT_TAB), { kind: 'tab-switch', delta: 1 })
 }
 
-/** Binds the directions; the hint names only `shown` (the kit's pair), since the other arrows move too. */
-function navigation(bindings: GrammarBinding[], state: GrammarState, directions: readonly Direction[], label: string, shown: readonly Direction[] = directions): void {
+/** Focus levels: `ui.focus-prev`/`ui.focus-next` move between controls whenever no text is being edited (spec 3.5). */
+function focusLevels(bindings: GrammarBinding[]): void {
+  push(bindings, action(ACTION_FOCUS_PREV), { kind: 'focus-level', delta: -1 })
+  push(bindings, action(ACTION_FOCUS_NEXT), { kind: 'focus-level', delta: 1 })
+}
+
+/**
+ * The last rung of the `←` ladder: a `←` that the focused control did not use moves focus to the surface's rail, and the
+ * hint row says so. The caller binds it only where the control has nothing left to do with `←`, so the cue is true.
+ */
+function railLeft(bindings: GrammarBinding[], state: GrammarState): boolean {
+  if (state.railBack !== true) return false
+  push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'rail-back' }, { id: 'labels', label: 'labels', priority: PRIORITY.rail, actions: [ACTION_SEGMENT_LEFT] })
+  return true
+}
+
+/**
+ * Binds the directions; the hint names only `shown` (the kit's pair), since the other arrows move too. With `toRail`, a
+ * `←` goes to the surface's rail (when it has one the focused control is not on) instead of the nearest control beside.
+ */
+function navigation(bindings: GrammarBinding[], state: GrammarState, directions: readonly Direction[], label: string, shown: readonly Direction[] = directions, toRail = false): void {
   const ids: Readonly<Record<Direction, string>> = { up: ACTION_MOVE_UP, down: ACTION_MOVE_DOWN, left: ACTION_SEGMENT_LEFT, right: ACTION_SEGMENT_RIGHT }
   const hinted = state.siblings > 1 || state.groups > 1
   for (const [index, direction] of directions.entries()) {
+    if (direction === 'left' && toRail && railLeft(bindings, state)) continue
     push(bindings, action(ids[direction]), { kind: 'navigate', direction },
       index === 0 && hinted ? { id: 'navigate', label, priority: PRIORITY.navigate, actions: shown.map(entry => ids[entry]) } : undefined)
   }
@@ -275,17 +308,22 @@ function listText(bindings: GrammarBinding[], state: GrammarState): void {
 function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
   // While a search is typing, arrows still move the cursor, but the hint names only what ends or clears the search.
   listMovement(bindings, control.label ?? 'options', state.list?.searching !== true && control.segment === undefined)
+  // The ladder (spec 4.5): a row uses `←` only when it changes something; the first `←` it does not use goes to the rail.
+  const stuck = control.stuckLeft === true
   if (control.segment !== undefined) {
-    push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'segment', delta: -1 }, { id: 'adjust', label: control.segment, priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
-    push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'segment', delta: 1 })
+    const adjust = { id: 'adjust', label: control.segment, priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] }
+    if (!stuck) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'segment', delta: -1 }, adjust)
+    push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'segment', delta: 1 }, stuck ? adjust : undefined)
+    if (stuck) railLeft(bindings, state)
     if (control.unpin === true) push(bindings, action(ACTION_RESET_FIELD), { kind: 'unpin' }, { id: 'reset', label: 'use default', priority: PRIORITY.accelerator, actions: [ACTION_RESET_FIELD] })
   } else if (control.tree || control.expandable === true) {
-    const hinted = control.multiple || control.expandable === true
-    push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'branch', expand: false }, hinted ? { id: 'branch', label: 'branch', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] } : undefined)
-    push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'branch', expand: true })
+    const branch = control.multiple || control.expandable === true ? { id: 'branch', label: 'branch', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] } : undefined
+    if (!stuck) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'branch', expand: false }, branch)
+    push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'branch', expand: true }, stuck ? branch : undefined)
+    if (stuck) railLeft(bindings, state)
   } else {
     // Rows move vertically; left/right leave the list for the nearest control beside it.
-    push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'navigate', direction: 'left' })
+    if (!railLeft(bindings, state)) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'navigate', direction: 'left' })
     push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'navigate', direction: 'right' })
   }
   if (control.tree && control.segment === undefined && state.list?.searching !== true) {
@@ -339,6 +377,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   // A search in progress hints only what ends or clears it.
   tabSwitches(bindings, state, control.kind !== 'tab' && list?.searching !== true)
   groupMoves(bindings, state, control.kind !== 'tab' && list?.searching !== true)
+  focusLevels(bindings)
   if (list?.searching === true) push(bindings, { kind: 'backspace' }, { kind: 'search-type' })
   // A declared Delete accelerator keeps its key; otherwise Delete resets a changed field.
   if (state.reset !== undefined && (control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle') && !state.keyed.some(keyed => keyed.key.toLowerCase() === 'delete')) {
@@ -352,6 +391,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       return bindings
     case 'scroll':
       scrollKeys(bindings)
+      railLeft(bindings, state)
       break
     case 'row':
       // Movement first, so the hint row reads `←/→ branch` before `Space toggle`, as the kit orders them.
@@ -361,6 +401,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       break
     case 'empty-list':
       push(bindings, action(ACTION_SUBMIT), { kind: 'accept' })
+      railLeft(bindings, state)
       listText(bindings, state)
       break
     case 'text':
@@ -373,14 +414,16 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
         navigation(bindings, state, ['up', 'down'], 'fields')
         push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'number-step', delta: -1 }, { id: 'adjust', label: 'step', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
         push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'number-step', delta: 1 })
-      } else navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'])
+      } else navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'], true)
       break
     case 'select':
       formSave(bindings, state)
       navigation(bindings, state, ['up', 'down'], 'fields')
       if (!control.multiple && control.adjustable) {
-        push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'select-cycle', delta: -1 }, { id: 'adjust', label: 'adjust', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
-        push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'select-cycle', delta: 1 })
+        // A select at its first option does not use `←`: it falls through to the rail.
+        const adjust = { id: 'adjust', label: 'adjust', priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] }
+        if (control.stuckLeft !== true) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'select-cycle', delta: -1 }, adjust)
+        push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'select-cycle', delta: 1 }, control.stuckLeft === true ? adjust : undefined)
       }
       // A form that Enter submits keeps Enter for that, and Space opens the picker.
       if (control.enterSubmits === true) {
@@ -390,9 +433,19 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
         push(bindings, action(ACTION_SUBMIT), { kind: 'picker-open' }, { id: 'activate', label: 'pick', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
         if (control.multiple) push(bindings, action(ACTION_TOGGLE), { kind: 'picker-open' })
       }
-      navigation(bindings, state, ['left', 'right'], 'fields')
+      // `←` is the rail's unless this select steps with it.
+      navigation(bindings, state, ['left', 'right'], 'fields', ['left', 'right'], control.multiple || !control.adjustable || control.stuckLeft === true)
       break
     case 'tab':
+      // A rail moves with `↑/↓`, enters its content with `→`, and has no level to leave with `←`.
+      if (control.vertical === true) {
+        push(bindings, action(ACTION_MOVE_UP), { kind: 'tab-move', delta: -1 }, { id: 'navigate', label: 'labels', priority: PRIORITY.navigate, actions: [ACTION_MOVE_UP, ACTION_MOVE_DOWN] })
+        push(bindings, action(ACTION_MOVE_DOWN), { kind: 'tab-move', delta: 1 })
+        push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'tab-descend' }, { id: 'activate', label: 'open', priority: PRIORITY.primary, actions: [ACTION_SEGMENT_RIGHT] })
+        push(bindings, action(ACTION_SUBMIT), { kind: 'tab-descend' })
+        push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'swallow' })
+        break
+      }
       push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'tab-move', delta: -1 }, { id: 'navigate', label: 'tabs', priority: PRIORITY.navigate, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
       push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'tab-move', delta: 1 })
       push(bindings, action(ACTION_SUBMIT), { kind: 'tab-descend' }, { id: 'activate', label: 'open', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
@@ -415,8 +468,9 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       push(bindings, action(ACTION_SUBMIT), { kind: 'activate' }, control.kind === 'cancel' && control.work === true ? undefined : { id: 'activate', label, priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       push(bindings, action(ACTION_TOGGLE), { kind: 'activate' })
       // The kit names the pair that moves along the row: `←/→ actions` (`No/Yes` on a decision), `↑/↓ fields`.
-      if (control.kind === 'action' || control.kind === 'cancel') navigation(bindings, state, ['up', 'down', 'left', 'right'], control.kind === 'action' && control.decision ? 'No/Yes' : 'actions', ['left', 'right'])
-      else navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'])
+      // Along an actions row `←` steps back; at its first action, or on a toggle or submit, it is the rail's.
+      if (control.kind === 'action' || control.kind === 'cancel') navigation(bindings, state, ['up', 'down', 'left', 'right'], control.kind === 'action' && control.decision ? 'No/Yes' : 'actions', ['left', 'right'], state.groupStart === true)
+      else navigation(bindings, state, ['up', 'down', 'left', 'right'], 'fields', ['up', 'down'], control.kind !== 'field-action')
       break
     }
   }
@@ -458,12 +512,15 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: '↑/↓', action: 'Move between rows and fields; scroll documents' },
   { keys: '←/→', action: 'Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip' },
   { keys: 'Alt+←/→ or F2/F3', action: 'Switch tabs from anywhere on the surface; wizards validate the step being left' },
+  { keys: 'Alt+↑/↓ or F4/F5', action: 'Move between controls from anywhere outside text editing and open pickers' },
+  { keys: '←', action: 'Used by the focused control when it changes something; otherwise it moves focus to the surface\'s rail of labels, where it does nothing' },
+  { keys: 'Enter or → on a rail', action: 'Enter the page beside the rail; ↑/↓ on the rail change the page at once' },
   { keys: 'Alt+↓ or F5, F6', action: 'From an empty prompt, enter the views of the status bar (F6 enters them first, then the interactive panes); ←/→ switch views and Esc returns to the prompt' },
   { keys: 'PgUp/PgDn, Home/End', action: 'Page or jump in lists and documents' },
   { keys: 'Enter', action: 'Choose, run, open a picker, apply it, or start editing a field' },
   { keys: 'Space', action: 'Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch' },
   { keys: 'Tab/Shift+Tab', action: 'Move to the next or previous control group, committing text and pickers' },
-  { keys: 'Esc', action: 'Leave the innermost layer: picker, editing, search, back, then close' },
+  { keys: 'Esc', action: 'Leave the innermost layer: picker, editing, search, back, return to the first control, then close' },
   { keys: 'Ctrl+C', action: 'Close the surface, asking first when there are unsaved changes' },
   { keys: 'Type or /', action: 'Filter a filterable list; Ctrl+U clears the filter' },
   { keys: '1-9', action: 'Pick a numbered row' },
