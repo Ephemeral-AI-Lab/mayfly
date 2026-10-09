@@ -892,7 +892,7 @@ ui.list({
   id: string
   mode?: 'single' | 'multiple'
   role: 'browse' | 'choose'
-  selectedIds: readonly string[]
+  selectedIds?: readonly string[]      // default []
   items: readonly MayflyListItem[]
   filter?: string
   filterable?: boolean
@@ -943,8 +943,9 @@ type MayflyListItem = {
 ```
 
 `role: 'browse'` opens or inspects entries; `role: 'choose'` submits a choice.
-`mode` defaults to `single`. Single mode permits at most one selected id, and
-every selected id must exist in `items`. `detailSpans` takes precedence over
+`mode` defaults to `single`. `selectedIds` is optional and defaults to `[]`
+(nothing selected). Single mode permits at most one selected id, and every
+selected id must exist in `items`. `detailSpans` takes precedence over
 `detail`. `group` is a grouping heading and `badge` is a compact label. A
 renderer may hide detail at narrow widths. The screenshot above renders
 exactly this node:

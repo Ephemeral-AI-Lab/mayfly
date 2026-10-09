@@ -4,6 +4,7 @@
 import type { MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import { admittedListExpanded, admittedListIndex, admittedListItem } from './ui-validator.ts'
 import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
+import { listSelectedIds } from './ui-list-selection.ts'
 
 export interface UiChoiceState {
   readonly definition: MayflyListNode
@@ -154,7 +155,7 @@ function treeIndex(definition: MayflyListNode): UiChoiceTreeIndex | undefined {
 }
 
 export function createChoiceState(definition: MayflyListNode): UiChoiceState {
-  const selected = definition.selectedIds[0]
+  const selected = listSelectedIds(definition)[0]
   const query = definition.filter ?? ''
   const matches = filtered(definition, query)
   const index = treeIndex(definition)
@@ -175,7 +176,7 @@ export function createChoiceState(definition: MayflyListNode): UiChoiceState {
   }
   const state = refreshTreeVisibility({
     definition, focusedIndex, focusedPosition: 0, focusedId: undefined,
-    selectedIds: definition.selectedIds, dirty: false, query, searching: false, searchAnchor: undefined, matches, expandedIds,
+    selectedIds: listSelectedIds(definition), dirty: false, query, searching: false, searchAnchor: undefined, matches, expandedIds,
     segments: {},
     ...(index === undefined ? {} : { treeIndex: index }),
   })
@@ -297,7 +298,7 @@ export function choiceRow(state: UiChoiceState, index: number): UiChoiceRow {
 export function acknowledgeChoice(state: UiChoiceState, definition: MayflyListNode, submittedIds?: readonly string[]): UiChoiceState {
   const changedAfterSubmit = submittedIds !== undefined && state.dirty
     && (state.selectedIds.length !== submittedIds.length || state.selectedIds.some((id, index) => id !== submittedIds[index]))
-  return freezeChoice(reconcileChoice({ ...state, dirty: changedAfterSubmit, selectedIds: changedAfterSubmit ? state.selectedIds : definition.selectedIds }, definition))
+  return freezeChoice(reconcileChoice({ ...state, dirty: changedAfterSubmit, selectedIds: changedAfterSubmit ? state.selectedIds : listSelectedIds(definition) }, definition))
 }
 
 export function reconcileChoice(state: UiChoiceState, definition: MayflyListNode): UiChoiceState {
@@ -316,7 +317,7 @@ export function reconcileChoice(state: UiChoiceState, definition: MayflyListNode
   return freezeChoice(followFocusItem(settleFocus(refreshTreeVisibility({
     ...previous, definition, focusedIndex, segments, matches,
     ...(index === undefined ? {} : { treeIndex: index }),
-    selectedIds: state.dirty ? state.selectedIds : definition.selectedIds,
+    selectedIds: state.dirty ? state.selectedIds : listSelectedIds(definition),
   }), focusedIndex), definition))
 }
 
@@ -416,7 +417,8 @@ export function reduceChoice(state: UiChoiceState, intent: UiChoiceIntent): UiCh
     const item = admittedListItem(definition.items, admittedListIndex(definition.items, id))
     if (item === undefined || item.disabled === true) return state
   }
-  const dirty = ids.length !== definition.selectedIds.length || ids.some(id => !definition.selectedIds.includes(id))
+  const declared = listSelectedIds(definition)
+  const dirty = ids.length !== declared.length || ids.some(id => !declared.includes(id))
   return freezeChoice({ ...state, selectedIds: ids, dirty })
 }
 

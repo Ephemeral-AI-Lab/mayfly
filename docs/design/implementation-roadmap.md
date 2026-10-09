@@ -156,7 +156,7 @@ The kit (`ui-kit.mjs`) shortens a few calls. The implementation keeps today's si
 | `ui.empty(title, { description })` | `ui.empty({ title, description })` |
 | `ui.spacer(n)`, `ui.divider(label)` | `ui.spacer({ size: n })`, `ui.divider({ label })` |
 | `ui.diff(before, after, options)` | the same, with the new optional third parameter (§3.2) |
-| `ui.list({ … })` without `selectedIds` | `selectedIds: []` (required today) |
+| `ui.list({ … })` without `selectedIds` | The same: the field is optional and defaults to `[]` (made optional in slice 1.11) |
 | list item `label: span[]`, `detail: span[]` | `label: string` (plain, used for filtering) plus `labelSpans` (*new*); the existing `detailSpans` |
 | list item `strong: true` | `labelSpans` with `styles: ['strong']` |
 | `fields` row `value: 'text'` | `value: [{ text }]` |

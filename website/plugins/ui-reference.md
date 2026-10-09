@@ -833,7 +833,7 @@ ui.list({
   id: string
   mode?: 'single' | 'multiple'
   role: 'browse' | 'choose'
-  selectedIds: readonly string[]
+  selectedIds?: readonly string[]      // default []
   items: readonly MayflyListItem[]
   filter?: string
   filterable?: boolean
@@ -884,7 +884,7 @@ type MayflyListItem = {
 ```
 
 `role: 'browse'` 用于打开或检查条目，`role: 'choose'` 用于提交选择。`mode` 默认为
-`single`。single mode 最多有一个 `selectedIds`；所有 selected id
+`single`。`selectedIds` 可省略，默认为 `[]`（无选中项）。single mode 最多有一个 `selectedIds`；所有 selected id
 必须存在于 `items`。`detailSpans` 存在时优先于 `detail`。`group` 只表达分组标题，
 `badge` 是紧凑标签；窄宽度下 renderer 可隐藏 detail。上面的截图渲染的就是这个
 节点：

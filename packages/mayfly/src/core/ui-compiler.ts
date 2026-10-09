@@ -101,6 +101,7 @@ import {
   matchesKeyAction,
   matchesKeyId,
 } from './key-actions.ts'
+import { listSelectedIds } from './ui-list-selection.ts'
 
 const FOCUS_SENTINEL = '\uf8ff'
 const ERROR_MAX_ROWS = 3
@@ -1283,7 +1284,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         const window = options.listRuntime.listWindow(current, listRowLimit(options))
         if (window.length === 0) controls.push({ kind: 'list', node: current, key: scopedControlKey('empty-list', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('list', current.id), navigation: 'none' })
         for (const { item, index } of window) if (focusableListItem(item)) {
-          const selected = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })?.selectedIds ?? current.selectedIds
+          const selected = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })?.selectedIds ?? listSelectedIds(current)
           const selectedIds = current.mode === 'multiple'
             ? selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id]
             : [item.id]
@@ -1582,7 +1583,7 @@ function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCo
         const counter = node.maxRows === undefined && visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
         const translate = (key: string, values?: UiTranslateValues): string => coreText(options, key, values)
         const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? [] : renderList(
-          { ...unfiltered, items: entries.map(entry => entry.item), selectedIds: choice?.selectedIds ?? node.selectedIds },
+          { ...unfiltered, items: entries.map(entry => entry.item), selectedIds: choice?.selectedIds ?? listSelectedIds(node) },
           width,
           Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1) - queryRows.length),
           focus,
@@ -2889,7 +2890,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.surfaceRuntime.interaction?.updateChoice(address, { kind: 'focus', id: item.id })
     this.focusRow(node, item.id, pagePath)
     if (node.numbered !== true) return
-    const selected = choice?.selectedIds ?? node.selectedIds
+    const selected = choice?.selectedIds ?? listSelectedIds(node)
     this.state.emit(node.mode === 'multiple'
       ? { kind: 'selection-toggle', pagePath, controlId: node.id, selectedIds: selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id] }
       : { kind: 'selection-accept', pagePath, controlId: node.id, selectedIds: [item.id] })

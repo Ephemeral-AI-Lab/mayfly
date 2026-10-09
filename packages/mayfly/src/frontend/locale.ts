@@ -8,6 +8,7 @@
  */
 
 import { Service, type Context } from '@deepseek-ai/cordis'
+import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -45,8 +46,8 @@ export interface MayflyLocaleSnapshot {
 /** Values interpolated into `{name}` message placeholders. */
 export type MayflyLocaleValues = Readonly<Record<string, string | number>>
 
-/** Namespace-bound translation function. */
-export type MayflyTranslate = (key: string, values?: MayflyLocaleValues) => string
+/** Namespace-bound translation function (the type `@ephemeral-ai/mayfly-ui` exports for components). */
+export type { MayflyTranslate }
 
 /** Options for {@link MayflyLocaleService}. */
 export interface MayflyLocaleServiceOptions {

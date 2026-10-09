@@ -6,6 +6,13 @@ import type {} from '@deepseek-ai/cordis'
 import type { MayflyFieldValue, MayflyFormAddress, MayflyPagePath, MayflyPageSegment, MayflySelectionAddress, MayflySnapshotChange, MayflySnapshotUpdate, MayflySourceStamp, MayflyUiEventContext, MayflyUiEventEndpoint, MayflyUiEventHandlers, MayflyUiScope } from './interaction.ts'
 export type * from './interaction.ts'
 
+/**
+ * The translator a Mayfly component takes: a message key (the English string) and the values interpolated into its
+ * `{name}` placeholders. Type only; the host binds the real function. `memo: true` hits only when the owner passes
+ * the same function again, so hoist it per locale revision.
+ */
+export type MayflyTranslate = (key: string, values?: Readonly<Record<string, string | number>>) => string
+
 export type MayflyJson = null | boolean | number | string | readonly MayflyJson[] | { readonly [key: string]: MayflyJson }
 
 export interface MayflyRegistration {
@@ -203,7 +210,8 @@ export interface MayflyListNode {
   readonly id: string
   readonly role: 'browse' | 'choose'
   readonly mode?: 'single' | 'multiple'
-  readonly selectedIds: readonly string[]
+  /** The selected item ids; absent means none selected (`[]`). */
+  readonly selectedIds?: readonly string[]
   readonly items: readonly MayflyListItem[]
   readonly filter?: string
   readonly filterable?: boolean

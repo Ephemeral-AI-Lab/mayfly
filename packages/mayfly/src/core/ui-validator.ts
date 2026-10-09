@@ -1324,7 +1324,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           : collection(itemsValue, `${path}.items`).map((item, index) => listItem(item, `${path}.items[${String(index)}]`, state.budget.counters, state.budget.cache))
         const lazy = itemCount > MAYFLY_UI_MAX_COLLECTION || (itemCount > LAZY_BODY_ITEMS && hasNodeBodies(itemsValue))
         if (!lazy) uniqueIds(items, `${path}.items`)
-        const selectedIds = collection(required(object, 'selectedIds', path), `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
+        const selectedIds = collection(own(object, 'selectedIds', path) ?? [], `${path}.selectedIds`).map((item, index) => text(item, `${path}.selectedIds[${String(index)}]`, state))
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
         if ((modeValue ?? 'single') === 'single' && selectedIds.length > 1) invalid(`${path}.selectedIds has more than one id in single mode`)
         const filterable = own(object, 'filterable', path)

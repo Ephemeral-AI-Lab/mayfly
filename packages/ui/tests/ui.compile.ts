@@ -8,6 +8,7 @@ import {
   type MayflyRailPanelProps,
   type MayflySplitViewProps,
   type MayflyStatusPageProps,
+  type MayflyTranslate,
   type MayflySurfaceNode,
   type MayflyUiActionHandler,
   type MayflyUiEventHandlers,
@@ -255,3 +256,24 @@ patterns.splitView({ list: ui.text('l') })
 patterns.statusPage({ title: 'S', rows: [] })
 // @ts-expect-error the patterns are a frozen namespace
 patterns.decisionArmMs = 0
+
+// Freeze additions from the composition spike: selectedIds is optional, and components take a typed translator.
+export const bareChoices = ui.list({ id: 'models', role: 'choose', items: [{ id: 'a', label: 'A' }] })
+export const noSelection: readonly string[] | undefined = bareChoices.selectedIds
+// @ts-expect-error selectedIds still holds ids, not a single id
+ui.list({ id: 'bad', role: 'choose', selectedIds: 'a', items: [] })
+
+interface PickerProps { readonly t: MayflyTranslate, readonly names: readonly string[] }
+export const picker = defineMayflyComponent<PickerProps>({
+  id: '@acme/picker',
+  memo: true,
+  render: ({ t, names }) => ui.list({ id: 'picker', role: 'choose', items: names.map(name => ({ id: name, label: name, detail: t('{size} context', { size: 128 }) })) }),
+})
+export const hoisted: MayflyTranslate = (key, values) => values === undefined ? key : `${key}${String(values.size)}`
+export const pickerNode: MayflyUiNode = picker.render({ t: hoisted, names: ['a'] })
+// @ts-expect-error a translator takes a key, not a number
+hoisted(1)
+// @ts-expect-error placeholder values are strings or numbers
+hoisted('{size}', { size: true })
+// @ts-expect-error memo components keep their props: the translator is required
+picker.render({ names: ['a'] })
