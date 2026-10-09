@@ -1,9 +1,10 @@
 /**
  * The work-budget gate. Each workload of docs/design/implementation-roadmap.md section 7.1 runs headless and its
- * counters must not exceed `budgets.json`. The budgets start at `baseline.json`, the work the pipeline did in slice 1.0,
- * and each engine part of slice 1.1 lowers its workloads' rows to the section 7.1 figure; a budget may never rise above the
- * baseline. W1-slot and W4-slot, the node-slot workloads of slice 1.10a, take their baseline rows from their first
- * measurement. `UPDATE_WORK_BASELINE=1` rewrites the baseline file after a deliberate change to the workloads.
+ * counters must not exceed `budgets.json`. The budgets started at `baseline.json`, the work the pipeline did in slice 1.0,
+ * and slice 1.1 lowered its workloads' rows to the section 7.1 figures; a budget may never rise above the baseline, and
+ * the Phase 1 freeze (slice 1.11) fixed the final values. W1-slot and W4-slot, the node-slot workloads of slice 1.10a,
+ * take their baseline rows from their first measurement; they gate with the same figures as W1 and W4, because the
+ * footer and the conversation reach the screen through the node slot. `UPDATE_WORK_BASELINE=1` rewrites the baseline file after a deliberate change to the workloads.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -34,6 +35,17 @@ describe('work budgets', () => {
     const budgets = read(BUDGETS)
     expect(Object.keys(budgets)).toEqual(Object.keys(baseline))
     for (const id of Object.keys(baseline)) for (const counter of COUNTERS) expect(budgets[id]![counter], `${id} ${counter}`).toBeLessThanOrEqual(baseline[id]![counter])
+  })
+
+  it('gates W1 and W4 through the node slot with the figures of the direct path', () => {
+    const budgets = read(BUDGETS)
+    expect(WORKLOADS.map(workload => workload.id)).toEqual(expect.arrayContaining(['W1', 'W1-slot', 'W4', 'W4-slot']))
+    for (const [direct, slot] of [['W1', 'W1-slot'], ['W4', 'W4-slot']] as const) {
+      for (const counter of ['nodesValidated', 'unitsCompiled'] as const) expect(budgets[slot]![counter], `${slot} ${counter}`).toBeLessThanOrEqual(budgets[direct]![counter])
+    }
+    // Section 7.1: W1 validates and compiles one subtree (the entry and the row that holds it); W4 admits at most one item.
+    expect(budgets.W1).toMatchObject({ nodesValidated: 2, unitsCompiled: 2, rowsPainted: 2 })
+    expect(budgets.W4).toMatchObject({ nodesValidated: 1, unitsCompiled: 1, rowsPainted: 1 })
   })
 
   it('W6 does work in proportion to the panes that changed, not to the 32', () => {

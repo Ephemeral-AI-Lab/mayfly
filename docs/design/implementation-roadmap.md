@@ -1574,12 +1574,46 @@ adds its row.
 | W8 cold open | a settings-sized panel | the first publish | no more than slice 1.0's baseline |
 
 Wall-clock time and heap growth come from `script/audit-performance.mjs` on the same workloads. They are reported in
-every Phase 1 PR against the baseline of slice 1.0 and gate nothing. The targets, proposed here and fixed when the
-baseline exists, are a steady-state publish-to-rows time of 2 ms at the 95th percentile and a key-to-rows time of
-4 ms, at the sizes of W3 and W4. Slice 1.0 measured today's pipeline (median of seven samples, one machine): the W4
-stream publish at 3.6 ms and the W3 cursor move at 0.6 ms, and recorded these counts for one step: W2 repaints 121
-rows, W3 81 rows, W4 admits 45 nodes and paints 81 rows. The targets stay proposals until they are confirmed against
-these numbers.
+every Phase 1 PR against the baseline of slice 1.0 and gate nothing. The targets were proposed before the baseline
+existed and are now fixed from the measurements below: a steady-state publish-to-rows time of 2 ms at the 95th
+percentile (W4 and W4-slot: 1.8 and 1.3 ms) and a key-to-rows time of 4 ms (W3: median 0.8 ms, 95th percentile
+2.4 ms; the rail and the prompt keystroke stay under 2.3 ms). Both hold at the sizes of W3 and W4, so they stand as
+proposed. The stream with item bodies (W4b) is not one of those sizes: its median is 3.1 ms and its worst sample 12 ms,
+which the report keeps in view for Phase 6.
+
+**Phase 1 work report.** Counters are one step as the gate counts them (validated / compiled / rows painted / strings
+measured); milliseconds are the median and the 95th percentile of seven samples, taken as the median of three runs of
+`node --experimental-transform-types --expose-gc script/audit-performance.mjs` on one machine, the baseline re-measured
+on the slice 1.0 merge (`59d7181`) in the same session. A row with no baseline is a workload added after slice 1.0.
+
+| Workload | Baseline counters | Final counters | Baseline ms | Final ms |
+| --- | --- | --- | --- | --- |
+| W1 status tick | 13 / 13 / 34 / 25 | 2 / 2 / 2 / 3 | 1.03 / 1.40 | 1.00 / 1.17 |
+| W2 spinner tick | 0 / 0 / 121 / 40 | 0 / 0 / 1 / 40 | 0.28 / 0.67 | 0.16 / 0.35 |
+| W3 list cursor | 0 / 0 / 81 / 42 | 0 / 0 / 2 / 40 | 0.74 / 1.99 | 0.84 / 2.45 |
+| W4 stream | 45 / 1 / 81 / 42 | 1 / 1 / 0 / 40 | 4.29 / 18.98 | 1.17 / 1.79 |
+| W5 form key | 0 / 0 / 1 / 22 | 0 / 0 / 0 / 21 | 0.50 / 1.20 | 0.38 / 0.83 |
+| W6 swarm | 44 / 12 / 36 / 56 | 44 / 12 / 32 / 52 | 1.91 / 17.65 | 1.68 / 2.48 |
+| W7 resize, theme | 0 / 0 / 9 / 20 | 0 / 0 / 9 / 20 | 0.13 / 0.21 | 0.11 / 0.21 |
+| W8 cold open | 11 / 3 / 9 / 20 | 11 / 3 / 9 / 20 | 0.50 / 0.64 | 0.44 / 0.53 |
+| W1-slot (node slot) | none | 2 / 2 / 2 / 4 | none | 0.84 / 0.99 |
+| W4-slot (node slot) | none | 1 / 1 / 0 / 40 | none | 1.30 / 1.35 |
+| W4b stream with bodies | none | 5 / 4 / 5 / 40 | none | 3.13 / 12.01 |
+| W9 motion tick | none | 0 / 0 / 3 / 42 | none | 0.13 / 0.18 |
+| W10 scroll region | none | 3 / 3 / 7 / 7 | none | 0.74 / 7.10 |
+| W11 admission row | none | 2 / 2 / 2 / 2 | none | 0.21 / 0.36 |
+| W12-rail | none | 0 / 0 / 8 / 40 | none | 0.93 / 2.28 |
+| W12-prompt | none | 0 / 0 / 6 / 40 | none | 0.33 / 0.95 |
+
+Reading the report. The gate holds the final counters, except that W4 and W5 keep the section 7.1 ceiling of one item or
+field painted (the workloads change an item or a field that is not on screen, so they measure none); the stream that
+follows its tail is W4b. W1-slot and W4-slot gate beside W1 and W4 with the same figures, since the footer and the
+conversation reach the screen through the node slot. The wall clock is flat within the noise of one machine on every workload
+(W3 reads 0.1 ms higher) and the stream is 3.7 times faster. The one place it is slower is the cost of a frame that repaints nothing (the steady-state
+frames and the filtered or tree `repeat-render` scenarios of the audit): 0.03 to 0.11 ms against 0.01 to 0.03 ms, from
+the hint memo and the cache lookups each frame performs. It is below any threshold the targets name, and it gates
+nothing. A framed list (an overlay around a list, as the model-picker composition spike measured it) re-measures its rows on every key, so its
+strings measured grow with the list (198 at 400 rows) while its rows painted stay at two; no budget covers it yet.
 
 ## 8. Risks
 
