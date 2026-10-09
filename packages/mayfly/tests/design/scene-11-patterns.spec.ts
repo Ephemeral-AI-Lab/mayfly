@@ -21,8 +21,8 @@ const bodyRows = (rows: readonly string[]): readonly string[] => {
   return blank < 0 ? rows : rows.slice(blank + 1)
 }
 
-/** Δ30 and Δ31: the decision card's hint row, which holds three fragments and no printable accelerator beside the note field. */
-const HINT_ROW: readonly ParityWaiver[] = [{ delta: 'Δ30', rows: [7, 7] }, { delta: 'Δ31', rows: [7, 7] }]
+/** Δ31 and Δ32: the decision card's hint row, which holds three fragments and no printable accelerator beside the note field. */
+const HINT_ROW: readonly ParityWaiver[] = [{ delta: 'Δ31', rows: [7, 7] }, { delta: 'Δ32', rows: [7, 7] }]
 
 const surfaces: RealSurface[] = []
 afterEach(() => { for (const surface of surfaces.splice(0)) surface.dispose() })
@@ -67,12 +67,12 @@ describe('scene 11, Patterns', () => {
 describe('scene 11, Patterns, page 1: the differences the ledger of deltas names', () => {
   const hintRow = (surface: RealSurface): string => strip(surface.render().at(-2)!).replace(/[│╭╮╰╯]/gu, '').trim()
 
-  it('Δ30: a card framed at 80 columns hints three fragments, and Esc rejects', () => {
+  it('Δ31: a card framed at 80 columns hints three fragments, and Esc rejects', () => {
     const surface = open(0)
     expect(hintRow(surface)).toBe('Enter choose · c copy name · Esc reject')
   })
 
-  it('Δ31: the c accelerator runs from the choices, and is neither bound nor hinted once the note field holds focus', () => {
+  it('Δ32: the c accelerator runs from the choices, and is neither bound nor hinted once the note field holds focus', () => {
     const events: string[] = []
     const surface = createRealSurface(pageNode(0), 80, { components: parityComponents(), events: event => { events.push(event.kind === 'activate' ? event.actionId : event.kind) } })
     surfaces.push(surface)

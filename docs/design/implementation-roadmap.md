@@ -534,7 +534,7 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.6 | merged (#109) | `feat/ui-foundation-1-6` | Two parts; full gate green; scenes 3, 4, 12 and scene 1 page 1's form block pinned (Δ27, Δ28 approved); one `Esc back` hint left pending for 1.5; no budget change |
 | 1.10b | merged (#108) | `feat/ui-foundation-1-10b` | Views lane. Full gate green with 100% coverage; one new shot (`views-summary`), no other visible change |
 | 1.9b | merged (#111) | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12-prompt` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
-| 1.8b | in review (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ30 and Δ31 proposed; library file budget 222 to 223 |
+| 1.8b | merged (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ31 and Δ32 approved; library file budget 222 to 223 |
 | 1.11 | not started | `feat/ui-foundation-1-11` | Needs: all |
 | Checkpoint A / B / C | pending | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11 |
 
@@ -1121,9 +1121,9 @@ plain right-hand text, `fields` values are span arrays, and `dismissal` has no c
 
 Parity. `scene-11-patterns.spec.ts` replays the four walks (`initial`, `pages`, `page-2`, `move`) cell by cell against
 the prototype with the pages built by `patterns.*` (`scene-11.ts`), and `visual-language.spec.ts` pins scene 1 page 6
-(`splitView` at 100 and 70 columns). The 1.8b entries are gone from `pending.ts`. Two differences are proposed:
-**Δ30**, the decision card's hint row at 80 columns holds three fragments where the kit shows four (the compiler admits
-fragments by the width inside the frame, 76, the kit by the frame's own width), and **Δ31**, the `c` accelerator is
+(`splitView` at 100 and 70 columns). The 1.8b entries are gone from `pending.ts`. Two differences are approved:
+**Δ31**, the decision card's hint row at 80 columns holds three fragments where the kit shows four (the compiler admits
+fragments by the width inside the frame, 76, the kit by the frame's own width), and **Δ32**, the `c` accelerator is
 neither bound nor hinted while the note field holds focus (the key grammar never lets a printable accelerator pre-empt
 a text control; the kit runs it everywhere). Scene 12 uses no pattern: its panel is a plugin-defined component made of
 the same builders, pinned by slice 1.6's `scene-03-forms.spec.ts`, and `examples/mayfly-user-kit` is the plugin-side
