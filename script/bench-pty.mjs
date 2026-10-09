@@ -4,8 +4,10 @@
 // path the work budgets cannot: the lane measure, pi-tui's native layout, and the animation clock, end to end.
 // Run after `pnpm run build`:
 //   node script/bench-pty.mjs [--scenario=product|gallery|focus] [--repo=<checkout>] [--label=<name>]
-//                             [--gallery-repo=<checkout>] [--cols=120] [--rows=40] [--turns=<n>] [--prof]
+//                             [--gallery-repo=<checkout>] [--cols=120] [--rows=40] [--turns=<n>] [--prof] [--assert]
 // Results land in .artifacts/bench/<label>-<scenario>.json; CPU columns need /proc (Linux).
+// `--assert` fails the run past coarse ceilings (`pnpm run bench:pty:assert`); BENCH_PTY_SLACK=<n> multiplies them for
+// a slow or shared machine.
 
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
@@ -275,5 +277,34 @@ console.log(`  ${file}`)
 if (failure !== undefined || exited !== 0) {
   console.error(`FAIL: ${failure === undefined ? `dsh exited with ${String(exited)}` : 'the scripted session did not finish'}`)
   process.exit(1)
+}
+
+// Coarse ceilings: with the frame path broken, a side pane held one core while idle and a key took 150 ms or more; a
+// healthy build idles near 0% and paints a key in a few milliseconds. The ceilings sit far from both.
+if (args.assert === 'true') {
+  const slack = Number(process.env.BENCH_PTY_SLACK ?? 1)
+  const ceilings = scenario === 'gallery'
+    ? [['idle CPU %', summary.idleCpuPct, 10], ['key to paint, median ms', summary.keyP50Ms, 20]]
+    : [
+        ['idle CPU %', summary.idleCpuPct, 10],
+        ['key to paint, median ms', summary.keyP50Ms, 10],
+        ['typing CPU per key, ms', summary.typeCpuPerKeyMs, 5],
+        ...Object.entries(summary.nav).map(([name, row]) => [`${name} cursor key CPU, ms`, row.cpuPerKeyMs, 12]),
+      ]
+  let failed = false
+  for (const [name, value, ceiling] of ceilings) {
+    if (value === null || value === undefined) {
+      console.log(`  skip  ${name}: not measured on this platform`)
+      continue
+    }
+    const limit = ceiling * slack
+    const ok = value <= limit
+    failed ||= !ok
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${name}: ${String(value)} (ceiling ${String(limit)})`)
+  }
+  if (failed) {
+    console.error(`FAIL: ${scenario} is past its ceilings; profile it with --prof`)
+    process.exit(1)
+  }
 }
 process.exit(0)
