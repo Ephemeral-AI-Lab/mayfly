@@ -32,6 +32,7 @@
     "smoke:pty": "node script/smoke-pty.mjs",
     "smoke:pty:mouse": "node script/smoke-pty-mouse.mjs",
     "smoke:pty:output": "node script/smoke-pty-output-recovery.mjs",
+    "bench:pty": "node script/bench-pty.mjs",
     "check:agent-docs": "node script/check-agent-docs.mjs",
     "verify:changed": "node script/verify-changed.mjs",
     "verify:full": "node script/verify-changed.mjs --full --smoke",

@@ -28,6 +28,13 @@ describe('change impact planning', () => {
     assert.ok(!plan.tests.direct.includes('packages/mayfly/tests/core/key-audit.spec.ts'))
   })
 
+  test('the frame path selects the work-budget spec', () => {
+    for (const file of ['packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/surface-renderer.ts', 'packages/mayfly/src/core/surface-manager.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/interaction/editor-extension-runtime.ts']) {
+      assert.ok(classifyChanges([file]).tests.direct.includes('packages/mayfly/tests/perf/work-budget.spec.ts'), file)
+    }
+    assert.ok(!classifyChanges(['packages/mayfly/src/transcript/thinking.ts']).tests.direct.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))
+  })
+
   test('key tables select the key audit', () => {
     for (const file of ['packages/mayfly/src/interaction/keys.ts', 'packages/mayfly/src/core/key-actions.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/core/ui-key-grammar.ts']) {
       assert.ok(classifyChanges([file]).tests.direct.includes('packages/mayfly/tests/core/key-audit.spec.ts'), file)

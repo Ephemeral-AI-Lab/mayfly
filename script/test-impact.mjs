@@ -170,6 +170,10 @@ export function classifyChanges(inputFiles) {
       directTests.add('packages/mayfly/tests/design/parity.spec.ts')
       directTests.add('packages/mayfly/tests/perf/work-budget.spec.ts')
     }
+    // The frame workloads paint through the lanes, the surface renderer, the clock, and the editor shell's keymap reads.
+    if (/^packages\/mayfly\/src\/(?:core\/(?:terminal|surface-renderer|surface-manager|keymap|key-actions)|interaction\/editor-extension-runtime)\.ts$/u.test(file)) {
+      directTests.add('packages/mayfly/tests/perf/work-budget.spec.ts')
+    }
     if (/^packages\/mayfly\/src\/(?:core\/(?:key-actions|keymap|ui-key-grammar)|interaction\/keys)\.ts$/u.test(file)) {
       directTests.add('packages/mayfly/tests/core/key-audit.spec.ts')
     }

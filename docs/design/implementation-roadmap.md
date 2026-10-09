@@ -441,7 +441,7 @@ it ends, the public UI API is complete (D16). Phases 2 to 6 build the Mayfly com
 
 | Phase | Slices | Delivers | Prototype scenes | Gate |
 | --- | --- | --- | --- | --- |
-| 1 Foundation | 12 (1.0-1.11) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice; a profile at each checkpoint |
+| 1 Foundation | 13 (1.0-1.12) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze, the frame cost | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice; a profile at each checkpoint |
 | 2 Command panels | 6 (2a-2f) | The components area and every command panel | 21-32 | full for 2a (new area), then as planned; profile |
 | 3 Status area and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | as planned + profile |
 | 4 Activity and notices | 1 | The activity row, notices, tool rows, compaction | 14, 16, 17, 20 | as planned + profile |
@@ -465,6 +465,7 @@ flowchart LR
     s3 & s7 & s9a --> s9b[1.9b]
     s3 & s4 & s5 & s6 & s8a --> s8b[1.8b]
     s8b & s9b & s10b --> s11[1.11]
+    s11 --> s12[1.12]
   end
   F --> n2[2 Panels] & n3[3 Status] & n4[4 Activity]
   n3 --> n5[5 Editor]
@@ -486,6 +487,7 @@ The first version of this roadmap named its phases P0 to P8. They map onto the c
 | P2a-P2g | 1.3-1.9 | `ui.image` moves from P2a to 1.9. |
 | P4 (the API), `mountNodeSlot` | 1.10 | The views lane and the node slot, without their Mayfly consumers. |
 | — | 1.11 | New: the freeze. |
+| — | 1.12 | New: the frame cost, found at checkpoint acceptance. |
 | P3a-P3f | 2a-2f | — |
 | P4 | 3 | The consumers of the lane and the slot. |
 | P5, P6 | 4, 5 | — |
@@ -537,7 +539,11 @@ After checkpoint C the branch merges to `main` once, followed by `pnpm run check
 | 1.9b | merged (#111) | `feat/ui-foundation-1-9b` | Prompt. Six parts; full gate green; scene 15's frame pinned at 96, 60, and 40 columns (the caption and queue line wait for Phase 5); `W12-prompt` budget; paste and IME are manual acceptance (`docs/platform-acceptance.md`) |
 | 1.8b | merged (#113) | `feat/ui-foundation-1-8b` | Patterns. Five parts; full gate green with 100% coverage; scene 11 (all four pages and the `initial`, `move`, `page-2`, `pages` walks) and scene 1 page 6 pinned, the ledger holds no 1.8b entry; three shots (`patterns-decision`, `patterns-rail`, `patterns-status`); Δ31 and Δ32 approved; library file budget 222 to 223 |
 | 1.11 | built (PR pending merge) | `feat/ui-foundation-1-11` | Freeze. Eight parts; full gate green with 100% coverage; Phase 1 is complete and waits only for checkpoints A, B, and C. `selectedIds` optional and a type-only `MayflyTranslate` (the model-picker spike's two fixes); Δ33 approved; the ledger holds only Phase 3 and later entries (one stale 1.6 entry removed); final budgets and the work report in §7.1; the ui type fixtures run in the gate (`types.spec.ts`) |
-| Checkpoint A / B / C | pending the reviewer | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11; every slice is built, so the three checkpoints can run on the integration profile |
+| 1.12a | built (PR pending merge) | `feat/ui-foundation-1-12a` | Frame performance, measurement. Full gate green with 100% coverage; no runtime behavior change; the frame workloads W13 to W17 with their baseline, six frame counters, `pnpm run bench:pty` |
+| 1.12b | planned | `feat/ui-foundation-1-12b` | Frame performance, wasted work: the discarded lane measure, the discarded frame render, the control-walk storm, service proxies on the row path, clock pacing, keymap snapshots, edge navigation |
+| 1.12c | planned | `feat/ui-foundation-1-12c` | Frame performance, retained rows: one surface epoch, memoized leaves and stacks, the clock armed only by a visible moving cell |
+| 1.12d | planned | `feat/ui-foundation-1-12d` | Frame performance, the gate: final frame budgets and the coarse PTY ceilings in `verify:full` |
+| Checkpoint A / B / C | pending the reviewer | | A after 1.2; B after 1.3 to 1.8; C after 1.9 to 1.11; the first run found the frame cost of slice 1.12, so the checkpoints resume on the integration profile once 1.12 is merged |
 
 **Working in parallel.** Up to three slices are in flight, each in its own worktree and agent.
 
@@ -1348,6 +1354,66 @@ against Phase 3 (and 1.4 for the list painter). Open question for slice 1.11: it
 Not changed, and why: the spike's remaining gaps (a closed `acceptVerb`, the kit's unreachable `empty` text, a `W3`
 row for a framed list) are not contract problems; they are listed under Phase 2's notes or in §7.1.
 
+#### 1.12 Frame performance
+
+**Goal.** A pane that did not change costs almost nothing per frame, a clock tick costs the cells that move, and the
+gate measures the path a frame takes on screen. Checkpoint acceptance found the opposite: with the gallery pane loaded
+the process held one core while idle and a key took 150 to 200 ms. **Backlog:** none; it completes D17 (§4.1).
+
+*What was measured* (`pnpm run bench:pty`, a scripted session against a mock LLM at 120 by 40, on one machine):
+
+| Build and pane | Idle CPU | One frame | Key to paint, median |
+| --- | --- | --- | --- |
+| `main`, no pane | 0% | n/a | 1.8 ms |
+| slice 1.11, no pane | 0% | n/a | 2.4 ms |
+| `main` with its gallery of 4 groups | 76% | 64 ms | 30 to 45 ms |
+| slice 1.11 with `main`'s gallery | 62% | 63 ms | 27 to 33 ms |
+| slice 1.11 with its gallery of 13 groups | 108% | 206 ms | 147 to 210 ms |
+
+For the same content the engine of slice 1.1 costs what `main` costs, and a frame costs in proportion to the whole tree.
+The causes, each pinned in a CPU profile:
+
+- A side lane is rendered only to be measured, and the measure is discarded: pi-tui measures every child of a row
+  although the row's height is fixed (41% of the gallery's time).
+- pi-tui lays a pane out natively on every frame of the terminal, whatever asked for the frame, and nothing below the
+  frame memo is cached except the pure text leaves (35%). A stack's `render`, which a layout uses to measure, renders
+  its children again at every level of nesting.
+- A frame with a scroll view renders the tree and throws the rows away for the constrained layout (13%).
+- A loader arms the clock when it is rendered, and scroll content is rendered whole, so a loader below the fold
+  repaints the surface ten times a second: the gallery's idle frame writes about 29 bytes.
+- Every stack child's `visible` reconciles focus when the layout viewport changes, and a layout alternates between
+  viewports, so the control tree is walked once per stack (164 walks in one frame of W13).
+- pi-tui remembers 512 measured strings; a frame of the 13-group gallery measures more, so every string is measured
+  again on every pass (1.2 s grows to 9.1 s in the profile).
+- Painters reach the width helpers, the presentation, and the hint catalog through service proxies on every row (10%).
+- Without a pane: `mayflyKeymap.list()` became a full snapshot and the editor shell takes one on every keystroke, and
+  an arrow at the edge of a list lays the surface out to look for a neighbor even when the list is the only group.
+
+The work budgets saw none of it. W1 to W12 call a compiled component's `render`, so the lane measure and the native
+layout never run, W2 is a flat list of pure leaves, and no counter counted a layout, a measure, or a walk.
+
+It lands in four parts, each a PR with the bench table:
+
+1. **1.12a, measurement** (built). `tests/perf/frame-workloads.ts` adds W13 to W17 (§7.1): they paint through
+   `startMayflyTerminal` in the alternate layout over the fake terminal, the surface lanes, and
+   `mountMayflySurfaceRenderer`, stepping pi-tui with the fake clock. `core/ui-work-counters.ts` gains
+   `componentRenders`, `controlWalks`, `reconciles`, `layoutPasses`, `clockTicks`, and `keymapSnapshots`; the surface
+   renderer takes an optional sink for them (production passes none). A budget row gates the counters it names, and
+   the rows of W13 to W17 start at today's counts. `script/bench-pty.mjs` is the wall-clock report: a cached throwaway
+   profile, the scenarios `product`, `gallery`, and `focus`, idle CPU and key-to-paint latency in
+   `.artifacts/bench/`. `script/test-impact.mjs` selects the budget spec for the lane, the renderer, the keymap, and
+   the editor-extension runtime.
+2. **1.12b, wasted work** (planned). The side lanes stop measuring what they never use and the native entry prepares
+   itself; a frame with a scroll view runs the constrained layout alone; the walk memo holds several viewports and a
+   pass reconciles once per set of controls; the row path stops crossing service proxies; the clock spaces its ticks
+   by the cost of the last frame; the editor shell reads claimed keys from a memo by keymap revision; an arrow at the
+   edge of the only group returns at once.
+3. **1.12c, retained rows** (planned). One epoch per surface, moved by everything that can change a row except the
+   clock; every leaf and every stack answers a repeat render from a memo; a moving cell marks its ancestors, and the
+   clock is armed only while one is on screen.
+4. **1.12d, the gate** (planned). The final frame budgets, and `bench:pty --assert` in `verify:full` with ceilings
+   only a real regression trips.
+
 ### Phase 2 Components area and panels
 
 Creates `packages/mayfly/src/components/` (`index.ts`, no Cordis entry, not exported) and records it in
@@ -1647,6 +1713,22 @@ the hint memo and the cache lookups each frame performs. It is below any thresho
 nothing. A framed list (an overlay around a list, as the model-picker composition spike measured it) re-measures its rows on every key, so its
 strings measured grow with the list (198 at 400 rows) while its rows painted stay at two; no budget covers it yet.
 
+**Frame workloads (slice 1.12).** W1 to W12 measure a compiled component; a frame on screen also pays for the lane that
+holds the surface, for pi-tui's native layout of it, and for the clock. W13 to W17 mount the surface the way the product
+does and count one whole step, with counters W1 to W12 do not name: leaf renders that painted, walks of the control
+tree, focus reconciliations, passes over the tree, clock ticks that asked for a repaint, and keymap snapshots.
+
+| Workload | Shape | One step | Counted today (renders / walks / reconciliations / passes / ticks) |
+| --- | --- | --- | --- |
+| W13 keystroke beside a pane | a side pane of eight sections in one scroll view, nothing in it changing | one key in the editor | 447 / 164 / 164 / 1 / 0 |
+| W14 tick below the fold | the same pane, its only loader scrolled out of view | one clock step | 949 / 328 / 328 / 3 / 1 |
+| W15 tick on screen | the same pane, the loader at the top | one clock step | 949 / 328 / 328 / 3 / 1 |
+| W16 list edge | an overlay that holds one list of five rows | `↓` on the last row | 12 / 0 / 5 / 2 / 0 |
+| W17 editor shell | the prompt footer beside one editor extension | one keystroke | 1 keymap snapshot |
+
+These are the counts of slice 1.11, recorded in `baseline.json` by slice 1.12a; each later part of the slice lowers its
+rows in `budgets.json`. The wall clock of the same path is `pnpm run bench:pty`, reported in every PR of the slice.
+
 ## 8. Risks
 
 | Risk | Mitigation |
@@ -1683,6 +1765,7 @@ Backlog items of the reference (§6) and where they land. Items the decisions re
 | 1.9 | R20 (contract) |
 | 1.10 | R7, R20 (the lane and the slot) |
 | 1.11 | — |
+| 1.12 | D3 (the clock armed only by what moves on screen) |
 | 2 | B1, E2, E3, G5, G7, R8, R10, R11, R15, R16, R17, R18, R21, R23, R24, R25 |
 | 3 | B4, C4, G16, G17, G23, R6, R7, R20 |
 | 4 | G10, G13, G20, G21, H4, H5, R1, R2, R5 |

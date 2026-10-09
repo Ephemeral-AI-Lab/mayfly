@@ -94,5 +94,65 @@
     "unitsCompiled": 0,
     "rowsPainted": 6,
     "stringsMeasured": 40
+  },
+  "W13": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 994,
+    "stringsMeasured": 288,
+    "componentRenders": 447,
+    "controlWalks": 164,
+    "reconciles": 164,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
+  },
+  "W14": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 1994,
+    "stringsMeasured": 1041,
+    "componentRenders": 949,
+    "controlWalks": 328,
+    "reconciles": 328,
+    "layoutPasses": 3,
+    "clockTicks": 1,
+    "keymapSnapshots": 0
+  },
+  "W15": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 1994,
+    "stringsMeasured": 1041,
+    "componentRenders": 949,
+    "controlWalks": 328,
+    "reconciles": 328,
+    "layoutPasses": 3,
+    "clockTicks": 1,
+    "keymapSnapshots": 0
+  },
+  "W16": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 35,
+    "stringsMeasured": 20,
+    "componentRenders": 12,
+    "controlWalks": 0,
+    "reconciles": 5,
+    "layoutPasses": 2,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
+  },
+  "W17": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 0,
+    "stringsMeasured": 0,
+    "componentRenders": 0,
+    "controlWalks": 0,
+    "reconciles": 0,
+    "layoutPasses": 0,
+    "clockTicks": 0,
+    "keymapSnapshots": 1
   }
 }

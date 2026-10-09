@@ -26,6 +26,7 @@ import type { MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeym
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
+import type { MayflyWorkCounters } from './ui-work-counters.ts'
 const OVERLAY_DEFAULT_WIDTH = '70%'
 const OVERLAY_DEFAULT_MAX_HEIGHT = '33.333333333333336%'
 /** Editor-slot pickers default to half the terminal, never fewer than ten rows when the slot allows it. */
@@ -68,6 +69,7 @@ function compile(
     readonly title?: string
     /** A view's panel: it always takes focus (it owns Esc and the lane keys) and adds the lane's hints to its key row. */
     readonly viewHints?: () => readonly ViewHint[]
+    readonly counters?: MayflyWorkCounters
   },
 ): MayflyCompiledUi | null {
   /* Failure nodes are plain text; the surface compiler owns the
@@ -104,6 +106,7 @@ function compile(
       ...(options.extraHints === undefined && options.viewHints === undefined ? {} : { extra: () => [...options.extraHints?.() ?? [], ...options.viewHints?.() ?? []] }),
     },
     ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
+    ...(options.counters === undefined ? {} : { counters: options.counters }),
   }
   const result = compileMayflyUiSurfaceNode(node, {
     ...compilerOptions,
@@ -299,11 +302,13 @@ function focusTarget(entry: SurfaceLaneEntry): MayflyFocusable | null {
 }
 
 /** Mount the direct registry renderer after theme/components become available. */
-export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, translateHint?: (key: string) => string, images?: MayflyUiImageSource): void {
+export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, translateHint?: (key: string) => string, images?: MayflyUiImageSource, counters?: MayflyWorkCounters): void {
   const panes = new Map<string, PaneRecord>()
   const overlays = new Map<string, OverlayRecord>()
   /** One timer for every animated pane and overlay of this renderer. */
-  const clock = new UiAnimationClock()
+  const clock = new UiAnimationClock(counters)
+  /** A measuring caller's sink reaches every surface this renderer compiles; production passes none. */
+  const counted = counters === undefined ? {} : { counters }
   let disposed = false
   let pending: SurfaceSnapshot | undefined
   let scheduled = false
@@ -350,6 +355,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(translateHint === undefined ? {} : { translateHint }),
       interactive: true,
       runtime: record.runtime,
+      ...counted,
       // A view's title names its tab, so its panel carries no frame of its own.
       ...(lane === undefined ? surfaceTitle(entry, record.interaction) : { viewHints: () => lane.hints() }),
     })
@@ -435,6 +441,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(arm === undefined ? {} : { extraHints: () => arm.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: surfaceRuntime,
+      ...counted,
       ...surfaceTitle(entry, interaction),
     })!
     /* Document-in-flow surfaces keep the page flowing: scroll keys the surface
@@ -477,6 +484,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(record.arm === undefined ? {} : { extraHints: () => record.arm!.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: record.runtime,
+      ...counted,
       ...surfaceTitle(entry, record.interaction),
     })!
     record.renderedRevision = record.interaction.revision
@@ -656,6 +664,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     interaction: ctx.mayflyUiInteraction, components: ctx.mayflyComponents, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
     mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, ...(translateHint === undefined ? {} : { translateHint }), ...(images === undefined ? {} : { images }),
     epoch: () => nodeSlotEpoch(ctx.mayflyKeymap, ctx.get('mayflyLocale')),
+    ...counted,
   }))
   // The views lane paints and focuses through this renderer's colors, keymap, and terminal.
   ctx.effect(() => runtime.surfaces.views.bind({
