@@ -93,4 +93,10 @@ export const DESIGN_DELTAS: readonly DesignDelta[] = [
     summary: 'The kit never hints `← labels` on a focused select, although `←` leaves it for the rail at its first option; the renderer hints it whenever it is true',
     reason: 'spec 4.5 ("the cue is true"); approved by the reviewer',
   },
+  {
+    id: 'Δ30',
+    scenes: [6],
+    summary: 'A form select stepped back to its inherited value keeps the override (`(override)`, the `•` mark, `Delete reset`); the prototype unpins it',
+    reason: 'settings contract: Mayfly settings preserve equal-value explicit overrides',
+  },
 ]

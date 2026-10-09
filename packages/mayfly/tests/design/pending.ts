@@ -56,10 +56,6 @@ const SCENE_15_WALKS = [
 ] as const
 
 export const PENDING_PARITY: readonly PendingParity[] = [
-  // Slice 1.6 made a stepped inherited select an override that stays one after stepping back (`(override)`, the `•` mark,
-  // and `Delete reset`); the prototype's select unpins on the inherited option. Slice 1.11 settles it: a difference or a fix.
-  { directory: '06-tabs-wizards-rails', walk: 'rail-enter', frames: [4, 5], rows: [8, 8], slice: '1.11', reason: 'a select stepped back to its inherited value hints `Delete use inherited` and `←/→ adjust` in the prototype; the form keeps the override' },
-  { directory: '06-tabs-wizards-rails', walk: 'rail-enter', frames: [5, 6, 7], rows: [3, 3], slice: '1.11', reason: 'a select stepped back to its inherited value reads `(inherited)` without the `•` mark in the prototype; the form keeps the override' },
   { directory: '01-marks-and-tokens', walk: 'pages', frames: [0], rows: [21, 26], slice: '1.6', reason: 'page 1 form block: the form marks, units, and (inherited) (1.6)' },
   // Scene 11 (patterns): page 2's railPanel is pinned by `scene-11-patterns.spec.ts`; the pattern calls are slice 1.8b's.
   { directory: '11-patterns', walk: 'initial', frames: [0], slice: '1.8b', reason: 'page 1 is patterns.decisionPanel (1.8b)' },

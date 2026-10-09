@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { walks } from '../../../../script/design-golden-walks.mjs'
 import { createRealSurface, parityComponents, readGoldenFrames, type RealSurface } from './parity.ts'
 import { PENDING_PARITY, pendingFor } from './pending.ts'
+import type { ParityWaiver } from './parity.ts'
 import { badgeWaivers, diffReport, frameDiffs } from './scene.ts'
 import { pageNode } from './scene-06.ts'
 
@@ -36,6 +37,12 @@ function open(page: number, narrow: boolean): RealSurface {
 
 const SCENE_WALKS = walks().filter(walk => walk.scene === 6)
 
+/** Δ30: a select stepped back to its inherited value keeps its override; the cells of the prototype's unpinned hint and field. */
+const OVERRIDE_ROWS: Readonly<Record<number, readonly (readonly [number, number])[]>> = { 4: [[8, 8]], 5: [[3, 3], [8, 8]], 6: [[3, 3]], 7: [[3, 3]] }
+const overrideWaivers = (walk: string, frame: number): ParityWaiver[] => walk === 'rail-enter'
+  ? (OVERRIDE_ROWS[frame] ?? []).map(rows => ({ delta: 'Δ30', rows }))
+  : []
+
 describe('scene 6, Tabs, wizards, rails', () => {
   it('has a ledger entry only for walks the scene has', () => {
     expect(PENDING_PARITY.filter(entry => entry.directory === '06-tabs-wizards-rails').every(entry => SCENE_WALKS.some(walk => walk.name === entry.walk))).toBe(true)
@@ -54,7 +61,7 @@ describe('scene 6, Tabs, wizards, rails', () => {
         else surface.press(step)
       }
       const owed = pendingFor(walk.dir, walk.name, index)
-      const waivers = badgeWaivers(surfaceRows(frames[index]!.rows), surface.render())
+      const waivers = [...badgeWaivers(surfaceRows(frames[index]!.rows), surface.render()), ...overrideWaivers(walk.name, index)]
       // A pending entry cannot go stale: the frame it covers must still differ.
       if (owed.length > 0) expect((await frameDiffs(surfaceRows(frames[index]!.rows), surface.render(), 96)).length, `${walk.name} frame ${String(index)} is still pending`).toBeGreaterThan(0)
       const diffs = await frameDiffs(surfaceRows(frames[index]!.rows), surface.render(), 96, waivers, owed)
