@@ -28,6 +28,12 @@ The prototype's frames are committed as goldens (`pnpm run design:golden`, check
 roadmap Phase 2b replaces them in the gate with the accepted frames of the real
 renderer.
 
+A review round runs on the workbench: `pnpm run dev` rebuilds and restarts the
+profile on the same session, `pnpm run scenario` opens the product on a scripted
+timeline played into the live session (no model, no tools, no quota), `pnpm run frame` paints a scenario to text, ANSI, and SVG, and the
+prototype runs beside it as `node docs/design/prototypes/ui-preview.mjs <scene>`
+(see the root `AGENTS.md`).
+
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.
 

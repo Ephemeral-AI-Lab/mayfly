@@ -58,6 +58,22 @@ describe('frontend assistant stream recovery', () => {
     await owner.dispose()
   })
 
+  it('follows a subagent Session through its durable parent address', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const child = { id: 'child', session: { id: 'child', seq: 1, header: { origin: 'subagent', parentSession: 'parent' } } } as unknown as Agent
+    ctx.provide('agents', { get: () => child } as never)
+    const live = new LiveAssistantStreamService(ctx)
+    ctx.effect(() => () => live.dispose())
+    const follow = vi.fn(async function* (): AsyncIterable<SessionFollowFrame> {
+      yield { type: 'snapshot', assistantStream: { revision: 0 } } as unknown as SessionFollowFrame
+    })
+    ctx.provide('sessionController', { follow } as never)
+    recovery.watchAssistantStream(ctx, child)()
+    await flush()
+    expect(follow.mock.calls[0]![0]).toMatchObject({ address: { kind: 'subagent', parentSessionId: 'parent', childSessionId: 'child', mode: 'unknown' }, assistantStream: true })
+  })
+
   it('keeps a readonly consumer optional when native recovery services are absent', () => {
     const ctx = new Context()
     contexts.push(ctx)

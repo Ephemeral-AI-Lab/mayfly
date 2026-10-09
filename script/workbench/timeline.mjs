@@ -1,0 +1,276 @@
+/**
+ * Replay timelines: a conversation written as turns, steps, and tools, compiled into the flat, chronological list of
+ * actions the replay driver plays inside a running `dsh`. Nothing here talks to a model or runs a tool; the actions
+ * are the session events and stream frames the agent loop would have produced. Pure and deterministic.
+ * @module script/workbench/timeline
+ */
+
+const DEFAULT_USAGE = { inputTokens: 3200, outputTokens: 120, cacheReadTokens: 2400 }
+
+/**
+ * A user turn: `prompt`, then the steps (and compactions) the agent took, ending with `outcome`: `'completed'` (the
+ * default), `'interrupted'`, `'aborted'`, `{ error: { message, code } }`, or `'open'` for a turn that never ends.
+ */
+export const turn = (prompt, items, options = {}) => ({ kind: 'turn', prompt, items, ...options })
+/**
+ * One model step. `reasoning` and `text` stream by default (`stream: false` commits them at once);
+ * `tools` run after the message is committed. `failedAttempts` are provider attempts that fail before the one that
+ * succeeds: `{ text, reasoning, failure: { message, code, status }, delayMs }`, each leaving its partial output, an
+ * `assistant/attempt`, and the `llm/retry` records of the retry policy.
+ */
+export const step = (options = {}) => ({ kind: 'step', ...options })
+/** A tool call. `runMs` is how long it shows as running; `result` is its output (`error: true` marks a failure). */
+export const tool = (name, args, options = {}) => ({ name, args, ...options })
+/**
+ * A file edit as the `edit` tool reports it: the diff card shows `before` and `after` (the changed lines with whatever
+ * context you include). The call arguments replace the first line of `before` text that differs.
+ */
+export const edit = (path, before, after, options = {}) => tool('edit', { file_path: path, old_string: before, new_string: after }, { result: `Edited ${path}`, runMs: 500, meta: { operation: 'edit', diffs: [{ path, oldText: before, newText: after }] }, ...options })
+/** A todo-list update, as the `todo_write` tool makes it. */
+export const todos = (list, options = {}) => tool('todo_write', { todos: list.map(([status, content]) => ({ status, content })) }, { result: 'Todos updated', runMs: 200, todos: list, ...options })
+/** A subagent spawned by a tool call: the child session plays `child` (`prompt`, `items`, `outcome`, `startMs`). */
+export const subagent = (description, prompt, child, options = {}) => tool('subagent', { description, prompt }, { runMs: 400, child: { prompt, ...child }, ...options })
+/**
+ * A compaction between steps (inside a turn): running for `ms`, then settled with `summary`. `manual: true` makes it the
+ * result of a `/compact` command (the command row opens first and closes after).
+ */
+export const compaction = (options = {}) => ({ kind: 'compaction', ...options })
+/**
+ * Any session event the product reacts to (`plan/mode`, `permission/preset`, `goal/change`, `request/header`, ...),
+ * appended where it stands in the timeline. `surface: true` marks a message-producing event as part of the surface.
+ */
+export const raw = (type, data, options = {}) => ({ kind: 'raw', type, data, ...options })
+/**
+ * A change to the session goal through the real goal service (`create`, `pause`, `resume`, `block`, `complete`,
+ * `clear`), which writes the `goal/change` events itself. The goal is disarmed afterwards, so nothing continues it.
+ */
+export const goal = (action, options = {}) => ({ kind: 'goal', action, ...options })
+/**
+ * A background job in the real job registry, with no process behind it: it prints `lines` (`[afterMs, text]` pairs)
+ * and settles after `endMs` as `completed`, `failed`, or `killed`; omit `endMs` for a job that keeps running.
+ */
+export const job = (label, options = {}) => ({ kind: 'job', label, ...options })
+/**
+ * Messages typed while the agent is busy, shown in the queued-message pane: `rows` are `[text]` for a `Queued:` row
+ * (next turn) or `{ steer: text }` for a `Steer:` row (next step). They enter the inbox without waking the agent and
+ * leave it after `holdMs` (the user withdrawing them), so the session never ends with pending input.
+ */
+export const queue = (rows, { holdMs = 4000 } = {}) => ({ kind: 'queue', rows, holdMs })
+/**
+ * A side question (`/btw`) answered by a live Agent of its own: the replay opens it as the displayed side conversation
+ * and plays `items` into it (dismiss it with F7 or `/btw`). `closeAfterMs` dismisses it by itself.
+ */
+export const btw = (question, items, { label = question, outcome, closeAfterMs } = {}) => ({ kind: 'btw', question, items, label, outcome, closeAfterMs })
+/**
+ * A notice in the footer line above the editor (`info`, `success`, `warning`, or `error`), through the product's own
+ * notification lane. `purpose: 'progress'` marks a running operation; the notice clears itself after `holdMs`.
+ */
+export const notify = (severity, message, { holdMs = 3500, detail, purpose } = {}) => ({ kind: 'notify', severity, message, holdMs, detail, purpose })
+/** An image in a prompt: `turn([text('see'), image('shot.png')], ...)`. */
+export const text = value => ({ type: 'text', text: value })
+export const image = (name, { width = 1280, height = 720, bytes = 84_000 } = {}) => ({ type: 'image', attachment: { attachmentId: `replay-${name}`, mediaType: 'image/png', bytes, width, height, name } })
+/** Wait before the next item. */
+export const pause = ms => ({ kind: 'pause', ms })
+/** A permission question for a tool call (`tool(..., { ask: approval('bash', 'why') })`); the replay waits for the answer. */
+export const approval = (toolName, reason) => ({ kind: 'approval', toolName, reason })
+/** Questions for the user during a tool call (`tool('ask_user_question', ..., { ask: question([...]) })`); the replay waits for the answer. */
+export const question = questions => ({ kind: 'question', questions })
+
+const spread = (text, chunk) => {
+  const points = Array.from(text)
+  const out = []
+  for (let at = 0; at < points.length; at += chunk) out.push(points.slice(at, at + chunk).join(''))
+  return out
+}
+
+/**
+ * Compile timeline items into actions.
+ * @param items - the turns and standalone items of the replay.
+ * @param options - `model` and `contextWindow` for the header; `cwd` for child sessions.
+ * @returns actions `{ at, op, ... }` sorted by `at` (stable), `at` in milliseconds from the start of playback.
+ */
+export function compile(items, { provider = 'deepseek-official', model = 'deepseek-flash', contextWindow = 131072 } = {}) {
+  const actions = []
+  let messageSeq = 0
+  let callSeq = 0
+  let childSeq = 0
+  /** Sessions with a live Agent, whose output also streams. */
+  const live = new Set()
+  const id = prefix => `replay-${prefix}-${String(++messageSeq)}`
+
+  const push = (at, op) => actions.push({ at: Math.round(at), ...op })
+
+  /** Compile one conversation (the main one or a child) into `session`; returns the clock at its end. */
+  function conversation(list, start, session) {
+    let t = start
+    let turnNo = 0
+    const sessionOp = session === null ? {} : { session }
+    const event = (at, type, data, surface = false) => push(at, { op: 'append', ...sessionOp, type, data, ...(surface ? { surface: 'append' } : {}) })
+    // A stored log only loads when the request header sits inside an open turn, so the first step writes it.
+    let header = false
+    const writeHeader = (at) => {
+      if (header) return
+      header = true
+      event(at, 'request/header', { header: { config: { provider, model, reasoningEffort: 'high' } }, reason: 'initial' })
+      event(at + 1, 'request/context', { provider, model, contextWindow })
+    }
+    t += 200
+    for (const item of list) {
+      if (item.kind === 'pause') { t += item.ms; continue }
+      if (item.kind === 'raw') { event(t, item.type, item.data, item.surface === true); t += 100; continue }
+      if (item.kind === 'goal') { push(t, { op: 'goal', ...item }); t += 200; continue }
+      if (item.kind === 'job') { push(t, { op: 'job', ...item }); t += 100; continue }
+      if (item.kind === 'queue') { push(t, { op: 'queue', rows: item.rows, holdMs: item.holdMs }); t += 100; continue }
+      if (item.kind === 'notify') { push(t, { op: 'notify', severity: item.severity, message: item.message, holdMs: item.holdMs, detail: item.detail, purpose: item.purpose }); t += item.holdMs + 300; continue }
+      if (item.kind === 'btw') {
+        // A side question: a live Agent of its own, opened as a side conversation and played like any other.
+        live.add('btw')
+        push(t, { op: 'btw-open', id: 'btw', label: item.label })
+        t = conversation([turn(item.question, item.items, { outcome: item.outcome })], t + 300, 'btw')
+        if (item.closeAfterMs !== undefined) { push(t + item.closeAfterMs, { op: 'btw-close', id: 'btw' }); t += item.closeAfterMs }
+        continue
+      }
+      if (item.kind === 'compaction') { t = compact(item, t, session, null, event); continue }
+      turnNo += 1
+      t = runTurn(item, turnNo, t + (item.gapMs ?? 600), event, session, writeHeader)
+    }
+    return t
+  }
+
+  /**
+   * A compaction replaces the current surface with a checkpoint, so it names real event seqs: the driver writes the
+   * three events (`compact-start`, then `compact-finish` after `ms`) once it can read the session.
+   */
+  function compact(item, t, session, turnNo, event) {
+    const compactionId = `replay-compaction-${String(++messageSeq)}`
+    const sessionOp = session === null ? {} : { session }
+    const commandId = item.manual === true ? `replay-command-${String(messageSeq)}` : undefined
+    if (commandId !== undefined) event(t, 'command/run', { commandId, name: 'compact', source: { kind: 'user' } })
+    push(t + 50, { op: 'compact-start', ...sessionOp, compactionId, commandId, turn: turnNo })
+    const end = t + 50 + (item.ms ?? 1800)
+    push(end, { op: 'compact-finish', ...sessionOp, compactionId, commandId, turn: turnNo, provider, model, summary: item.summary ?? 'Earlier work was summarised.', shadowedTokens: item.shadowedTokens ?? 18_000 })
+    if (commandId !== undefined) event(end + 100, 'command/done', { commandId, kind: 'success', text: item.detail ?? 'Compacted the conversation.' })
+    return end + 300
+  }
+
+  function runTurn(spec, turnNo, start, event, session, writeHeader) {
+    let t = start
+    event(t, 'turn/start', { turn: turnNo })
+    if (spec.prompt !== undefined) event(t + 100, 'user/message', { id: id('user'), role: 'user', content: typeof spec.prompt === 'string' ? [{ type: 'text', text: spec.prompt }] : spec.prompt, source: { kind: 'user' } }, true)
+    t += 300
+    let stepNo = 0
+    for (const item of spec.items) {
+      if (item.kind === 'pause') { t += item.ms; continue }
+      if (item.kind === 'raw') { event(t, item.type, item.data, item.surface === true); t += 100; continue }
+      if (item.kind === 'goal') { push(t, { op: 'goal', ...item }); t += 200; continue }
+      if (item.kind === 'job') { push(t, { op: 'job', ...item }); t += 100; continue }
+      if (item.kind === 'queue') { push(t, { op: 'queue', rows: item.rows, holdMs: item.holdMs }); t += 100; continue }
+      if (item.kind === 'notify') { push(t, { op: 'notify', severity: item.severity, message: item.message, holdMs: item.holdMs, detail: item.detail, purpose: item.purpose }); t += item.holdMs + 300; continue }
+      if (item.kind === 'compaction') { t = compact(item, t, session, turnNo, event); continue }
+      stepNo += 1
+      t = runStep(item, turnNo, stepNo, t, event, session, writeHeader)
+    }
+    const outcome = spec.outcome ?? 'completed'
+    // An open turn never ends: a subagent that is still running, or waiting to start.
+    if (outcome === 'open') return t + 200
+    const reason = typeof outcome === 'string' ? { kind: outcome } : { kind: 'error', error: { message: outcome.error.message, code: outcome.error.code ?? '' } }
+    event(t + 100, 'turn/end', { turn: turnNo, reason })
+    return t + 200
+  }
+
+  function runStep(spec, turnNo, stepNo, start, event, session, writeHeader) {
+    let t = start
+    event(t, 'step/start', { turn: turnNo, step: stepNo })
+    writeHeader(t + 20)
+    t += 150
+    const streamed = spec.stream !== false && (session === null || live.has(session))
+    const via = session === null ? {} : { session }
+    // One retry chain per step: every retry of a policy keeps the chain's id.
+    const retryId = `replay-retry-${String(++messageSeq)}`
+    ;(spec.failedAttempts ?? []).forEach((attempt, index) => {
+      const partial = [...(attempt.reasoning === undefined ? [] : [{ channel: 'reasoning-delta', text: attempt.reasoning }]), ...(attempt.text === undefined ? [] : [{ channel: 'text-delta', text: attempt.text }])]
+      const total = attempt.ms ?? 1200
+      if (streamed) {
+        push(t, { op: 'stream', ...via, frame: 'start', turn: turnNo, step: stepNo })
+        partial.forEach((block, blockIndex) => {
+          const parts = spread(block.text, spec.chunk ?? 14)
+          parts.forEach((part, partIndex) => push(t + (total * partIndex) / parts.length, { op: 'stream', ...via, frame: 'delta', channel: block.channel, block: blockIndex, text: part }))
+        })
+      }
+      t += total
+      push(t, { op: 'attempt', ...via, turn: turnNo, step: stepNo, reasoning: attempt.reasoning, text: attempt.text, ms: total })
+      if (streamed) push(t, { op: 'stream', ...via, frame: 'end', eventType: 'assistant/attempt' })
+      const failure = { message: attempt.failure?.message ?? 'The provider is overloaded', code: attempt.failure?.code ?? 'overloaded', status: attempt.failure?.status ?? 529 }
+      const delayMs = attempt.delayMs ?? 1500
+      event(t + 100, 'llm/retry', { retryId, turn: turnNo, step: stepNo, provider, mode: 'normal', policyKey: 'replay-policy', retry: index + 1, maxRetries: 5, delayMs, failure })
+      t += 100 + delayMs
+      event(t, 'llm/retry-started', { retryId, turn: turnNo, step: stepNo, retry: index + 1 })
+      t += 100
+    })
+    const blocks = []
+    if (spec.reasoning !== undefined) blocks.push({ type: 'reasoning', text: spec.reasoning })
+    if (spec.text !== undefined) blocks.push({ type: 'text', text: spec.text })
+    const calls = (spec.tools ?? []).map(call => ({ ...call, callId: `replay-call-${String(++callSeq)}` }))
+    const preparing = streamed && spec.prepareMs !== undefined && calls.length > 0
+    if (streamed && (blocks.length > 0 || preparing)) {
+      push(t, { op: 'stream', ...via, frame: 'start', turn: turnNo, step: stepNo })
+      // The attempt shows "waiting" until the first token arrives.
+      t += spec.firstTokenMs ?? 0
+      for (const block of blocks) {
+        const channel = block.type === 'reasoning' ? 'reasoning-delta' : 'text-delta'
+        const parts = spread(block.text, spec.chunk ?? 14)
+        const total = block.type === 'reasoning' ? (spec.reasoningMs ?? Math.min(7000, Math.max(900, block.text.length * 12))) : (spec.textMs ?? Math.min(6000, Math.max(500, block.text.length * 8)))
+        parts.forEach((part, index) => push(t + (total * index) / parts.length, { op: 'stream', ...via, frame: 'delta', channel, block: blocks.indexOf(block), text: part }))
+        t += total
+      }
+      if (preparing) {
+        // The model writes each call's arguments before the call is committed: the activity row names the tool.
+        for (const call of calls) {
+          const parts = spread(JSON.stringify(call.args ?? {}), spec.chunk ?? 14)
+          parts.forEach((part, index) => push(t + (spec.prepareMs * index) / parts.length, { op: 'stream', ...via, frame: 'delta', channel: 'tool-call-delta', callId: call.callId, name: index === 0 ? call.name : undefined, text: part }))
+          t += spec.prepareMs
+        }
+      }
+    } else {
+      t += spec.waitMs ?? 400
+    }
+    const content = [...blocks, ...calls.map(call => ({ type: 'tool-call', id: call.callId, name: call.name, arguments: JSON.stringify(call.args ?? {}) }))]
+    event(t, 'assistant/message', {
+      turn: turnNo,
+      step: stepNo,
+      message: { id: id('assistant'), role: 'assistant', content, source: { kind: 'model', provider, model } },
+      stream: [],
+      usage: { ...DEFAULT_USAGE, ...(spec.usage ?? {}) },
+    }, true)
+    if (streamed && (blocks.length > 0 || preparing)) push(t, { op: 'stream', ...via, frame: 'end' })
+    let last = t
+    calls.forEach((call, index) => {
+      const callAt = t + 100 + index * 60
+      event(callAt, 'tool/call', { turn: turnNo, step: stepNo, callId: call.callId, name: call.name, arguments: JSON.stringify(call.args ?? {}) })
+      const resultAt = callAt + (call.runMs ?? 600)
+      if (call.ask !== undefined) push(callAt + 200, { op: 'ask', ...(session === null ? {} : { session }), callId: call.callId, toolName: call.name, ...call.ask })
+      if (call.todos !== undefined) event(resultAt - 20, 'todo/write', { todos: call.todos.map(([status, content]) => ({ status, content })) })
+      if (call.child !== undefined) {
+        const childId = `replay-child-${String(++childSeq)}`
+        const child = call.child
+        if (child.live === true) live.add(childId)
+        push(callAt + 50, { op: 'child', id: childId, parent: session, label: call.args?.description, mode: child.mode ?? 'one-shot', live: child.live === true })
+        conversation([turn(child.prompt, child.items ?? [], { outcome: child.outcome })], callAt + 100 + (child.startMs ?? 300), childId)
+        call.result ??= `started subagent ${childId}`
+      }
+      event(resultAt, 'tool/result', {
+        turn: turnNo,
+        step: stepNo,
+        message: { id: id('tool'), role: 'tool', content: [{ type: 'text', text: call.result ?? '' }], toolCallId: call.callId, isError: call.error === true, source: { kind: 'tool', callId: call.callId } },
+        ...(call.meta === undefined ? {} : { meta: call.meta }),
+      }, true)
+      last = Math.max(last, resultAt)
+    })
+    event(last + 100, 'step/end', { turn: turnNo, step: stepNo })
+    // The gap counts from the step's end, so a small gap can never start the next step before it.
+    return last + 100 + (spec.gapMs ?? 200)
+  }
+
+  conversation(items, 0, null)
+  return actions.map((action, index) => ({ action, index })).sort((left, right) => left.action.at - right.action.at || left.index - right.index).map(entry => entry.action)
+}

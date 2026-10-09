@@ -103,7 +103,8 @@ export function classifyChanges(inputFiles) {
       repoWorkflowTests = true
       if (['script/check-pack.mjs', 'script/pack-cli-runtime.mjs', 'script/release-packages.mjs',
         'script/release-preflight.mjs', 'script/registry-release.mjs'].includes(file)) pack = true
-      if (!/^script\/(?:test-impact|change-files|verify-changed|build-changed|check-agent-docs|design-golden(?:-clock|-walks)?|bench-pty|test-retained)\.mjs$/u.test(file)
+      if (!/^script\/(?:test-impact|change-files|verify-changed|build-changed|check-agent-docs|design-golden(?:-clock|-walks)?|bench-pty|test-retained|dev|frame|scenario)\.mjs$/u.test(file)
+        && !file.startsWith('script/workbench/')
         && !file.startsWith('script/tests/')) {
         full = true
         reasons.push(`${file}: unclassified repository script`)

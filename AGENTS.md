@@ -95,6 +95,46 @@ decisions; do not add tests only to reach a line.
   profile). Report the bench with a change to the frame path; a compiled
   component's own render count is not a frame.
 
+## Review loop
+
+Review rounds use the workbench instead of a gate run. `pnpm run dev --profile
+mayfly-<tag>` watches `packages/*/src` and `examples/*/src`, runs the
+incremental build for the changed files, and restarts the profile's `dsh` on the
+same persisted session; a failed build is not applied (output in
+`.artifacts/dev/build.log`), and the production `mayfly` profile is refused.
+`pnpm run scenario <name>` opens the product on a replay (`--list`; `--width`,
+`--height`, `--no-color`, `--ascii`, `--speed N`): a conversation written as a
+chronological timeline (`script/workbench/replays.mjs`, builders in
+`timeline.mjs`) and played into the live session by a driver plugin loaded with
+`dsh --patch`. The driver appends the session events and streamed frames the
+agent loop would have written, creates child sessions (continuable ones with a
+live Agent) and a `/btw` side conversation with its own Agent, drives the real
+goal and job services, writes compactions, failed provider attempts with their
+retry records, inbox messages (the queued-message pane), and footer notices, and
+puts approval, question, and plan-review prompts to you, so reviewing a state
+needs no model, no quota, and no tools. The replays cover tool cards of every
+kind, streaming phases, subagents, plan mode, goals, jobs, modes and model
+switches, context pressure, compaction (automatic and manual), errors and
+interrupts, retries, queued input, side questions, notices, prompt variants,
+rendering edge cases, and a 150-turn history. A finished job wakes the agent,
+which answers with the stub notice. Replay events must keep a stored session
+loadable (for example `request/header` inside an open turn, one `retryId` per
+retry chain), so check that a new replay resumes with `dsh --resume`. A stub
+model endpoint answers the product's own requests (title generation).
+`pnpm run dev --replay <name>` runs the same replay in the dev loop; a restart
+resumes the session, and the driver skips a session that already has turns. A
+component draft adds the replay that shows its states.
+`.artifacts/replay/driver.log` records each action and any failure; `pnpm run frame <scenario>`
+paints a registered scenario through the real renderer to
+`.artifacts/frames/` as text, ANSI, and SVG (`--keys enter,down,ctrl+c`).
+Reduced motion is a saved setting: change it in `/settings`.
+
+Code edits apply by restart. Cordis `restart()` re-runs `apply` but the loader's
+plain `import()` returns Node's cached module; Node's internal loader cache
+(`ctx.loader.internal.loadCache`) can be invalidated per module URL, which an
+in-place reload needs but the workbench does not yet use. Theme and
+presentation changes reload in place through `reloadTheme` and keep drafts.
+
 ## Worktree and acceptance
 
 Develop user-visible behavior, public seams, and Website changes in a dedicated

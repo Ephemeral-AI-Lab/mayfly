@@ -9,17 +9,16 @@
 // `--assert` fails the run past coarse ceilings (`pnpm run bench:pty:assert`); BENCH_PTY_SLACK=<n> multiplies them for
 // a slow or shared machine.
 
-import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { assertDshVersion, resolveDshBin, root } from './smoke-lib.mjs'
+import { mockEnv, reply, startReplyServer } from './workbench/mock-llm.mjs'
+import { ensureThrowawayProfile } from './workbench/profile.mjs'
 
 const require = createRequire(import.meta.url)
 const pty = require('node-pty')
-const { startMockLlmServer } = require('@deepseek-ai/dsh-llm-mock-server')
 
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
   const [key, ...value] = arg.replace(/^--/, '').split('=')
@@ -50,50 +49,12 @@ if (!existsSync(join(repo, 'packages/mayfly/lib/index.js'))) {
 
 // The profile is cached per linked checkout: a second run boots at once. The links follow the checkout's `lib/`.
 const artifacts = join(root, '.artifacts/bench')
-const profileKey = createHash('sha256').update([repo, gallery ? galleryRepo : ''].join('\n')).digest('hex').slice(0, 12)
-const dshHome = join(artifacts, 'homes', profileKey, '.dsh')
-const profileDir = join(dshHome, 'profiles', 'bench')
-const work = join(artifacts, 'work', profileKey)
-mkdirSync(work, { recursive: true })
-const baseEnv = { ...process.env, DSH_HOME: dshHome, PI_CODING_AGENT_DIR: join(artifacts, 'homes', profileKey, 'pi-agent'), TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8' }
-// A PTY provides its own size, and the bench measures the default presentation.
-for (const name of ['COLUMNS', 'LINES', 'NO_COLOR', 'CI', 'FORCE_COLOR', 'LC_ALL', 'LC_CTYPE', 'NODE_OPTIONS']) delete baseEnv[name]
+const { work, env: baseEnv } = ensureThrowawayProfile({ repo, galleryRepo, gallery, dshBin, artifacts })
 
-function run(command, argv, env = baseEnv) {
-  const result = spawnSync(command, argv, { encoding: 'utf8', env, timeout: 600_000 })
-  if (result.status !== 0) {
-    console.error(`FAIL: ${command} ${argv.join(' ')}\n${(result.stdout ?? '').slice(-2000)}\n${(result.stderr ?? '').slice(-2000)}`)
-    process.exit(1)
-  }
-}
-
-if (!existsSync(join(profileDir, 'node_modules'))) {
-  console.error(`==> Linking ${repo} into a bench profile`)
-  run(dshBin, ['plugin', '--profile', 'bench', 'add', `link:${repo}/packages/mayfly`, `link:${repo}/packages/ui`, ...(gallery ? [`link:${galleryRepo}/examples/ui-gallery`] : [])])
-  run('node', [join(repo, 'script/ensure-loader-entries.mjs'), join(repo, 'packages/mayfly'), profileDir, dshBin])
-  run('pnpm', ['--dir', profileDir, 'install', '--no-frozen-lockfile'], { ...baseEnv, CI: 'true' })
-}
-
-/** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
-function reply() {
-  const parts = []
-  for (let section = 1; section <= 8; section += 1) {
-    parts.push(`## Section ${section}: rendering pipeline notes`)
-    parts.push(`The **renderer** walks the tree once per frame and only repaints rows whose content changed since the last frame. This paragraph is long enough to wrap at ordinary widths, with \`inline code\`, *emphasis*, and a [link](https://example.com/${section}) to exercise the inline painter.`)
-    parts.push(['- first point about caches and identity', '- second point about `width` ladders', '- third point, with a nested list:', '  - nested one', '  - nested two'].join('\n'))
-    parts.push(['```ts', `export function section${section}(input: readonly string[], width: number): string[] {`, '  const rows: string[] = []', '  for (const line of input) {', "    if (line.length === 0) { rows.push(''); continue }", '    for (let at = 0; at < line.length; at += width) rows.push(line.slice(at, at + width))', '  }', "  return rows.map(row => row.padEnd(width, ' '))", '}', '```'].join('\n'))
-    if (section % 2 === 0) {
-      parts.push(['| workload | validated | compiled | rows |', '| --- | ---: | ---: | ---: |', '| W1 | 2 | 2 | 2 |', '| W2 | 0 | 0 | 1 |', '| W3 | 0 | 0 | 2 |'].join('\n'))
-      parts.push(['```python', 'def wrap(lines, width):', '    rows = []', '    for line in lines:', '        if not line:', "            rows.append('')", '            continue', '        rows.extend(line[i:i + width] for i in range(0, len(line), width))', '    return rows', '```'].join('\n'))
-    }
-  }
-  parts.push('BENCH-END-MARKER')
-  return parts.join('\n\n')
-}
 const successText = reply()
-const server = await startMockLlmServer({ port: 0, sequence: ['slow_success'], repeatLast: true, successText, chunkSize, chunkDelayMs })
+const server = await startReplyServer({ chunkSize, chunkDelayMs })
 
-const env = { ...baseEnv, DEEPSEEK_BASE_URL: `${server.baseURL}/v1`, DEEPSEEK_API_KEY: 'bench-key' }
+const env = { ...baseEnv, ...mockEnv(server) }
 if (args.prof === 'true') {
   const profiles = join(artifacts, 'prof', `${label}-${scenario}`)
   mkdirSync(profiles, { recursive: true })

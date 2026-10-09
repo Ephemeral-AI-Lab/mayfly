@@ -6,10 +6,18 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '../app/current-agent.ts'
 import type {} from '../conversation/live-stream.ts'
-import type { SessionController } from '@deepseek-ai/dsh-api-session-controller'
+import type { SessionAddress, SessionController } from '@deepseek-ai/dsh-api-session-controller'
 
 export const name = 'mayfly-assistant-stream-recovery'
 export const inject = ['mayflyLiveAssistantStream', 'mayflyCurrentAgent', 'agents', 'sessionController']
+
+/** A subagent Session is addressable only through its durable parent; every other Session by its own id. */
+function addressOf(agent: Agent): SessionAddress {
+  const header = agent.session.header as { origin?: string, parentSession?: string } | undefined
+  return header?.origin === 'subagent' && header.parentSession !== undefined
+    ? { kind: 'subagent', parentSessionId: header.parentSession as never, childSessionId: agent.session.id, mode: 'unknown' }
+    : { kind: 'session', sessionId: agent.session.id }
+}
 
 /** Share one recovery lease across views displaying the same exact Agent. */
 export function watchAssistantStream(ctx: Context, agent: Agent): () => void {
@@ -20,7 +28,7 @@ export function watchAssistantStream(ctx: Context, agent: Agent): () => void {
   return stream.watch(agent, {
     current: () => agents.get(agent.id) === agent,
     open: signal => controller.follow({
-      address: { kind: 'session', sessionId: agent.session.id },
+      address: addressOf(agent),
       assistantStream: true,
     }, signal),
   })
