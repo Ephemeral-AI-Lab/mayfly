@@ -158,11 +158,25 @@ function modifiedFunctionKey(data: string): { readonly key: number, readonly mod
  */
 export function matchesKeyId(data: string, key: string): boolean {
   if (matchesKey(data, key as KeyId)) return true
-  const wanted = /^((?:(?:ctrl|alt|shift|meta)\+)*)f(\d{1,2})$/u.exec(key)
+  const wanted = functionKeyId(key)
   const decoded = wanted === null ? undefined : modifiedFunctionKey(data)
-  if (decoded === undefined) return false
-  const modifiers = wanted![1]!.split('+').filter(part => part.length > 0).reduce((bits, part) => bits | MODIFIER_BITS[part]!, 0)
-  return decoded.key === Number(wanted![2]) && decoded.modifiers === modifiers
+  return decoded !== undefined && decoded.key === wanted!.key && decoded.modifiers === wanted!.modifiers
+}
+
+/** Key ids parsed as function keys: every key press asks about the same few dozen ids. */
+const functionKeyIds = new Map<string, { readonly key: number, readonly modifiers: number } | null>()
+
+/** The function key a key id names, with its modifier bits, or null for any other key. */
+function functionKeyId(key: string): { readonly key: number, readonly modifiers: number } | null {
+  const known = functionKeyIds.get(key)
+  if (known !== undefined) return known
+  const wanted = /^((?:(?:ctrl|alt|shift|meta)\+)*)f(\d{1,2})$/u.exec(key)
+  const parsed = wanted === null ? null : {
+    key: Number(wanted[2]),
+    modifiers: wanted[1]!.split('+').filter(part => part.length > 0).reduce((bits, part) => bits | MODIFIER_BITS[part]!, 0),
+  }
+  functionKeyIds.set(key, parsed)
+  return parsed
 }
 
 /** Resolve configured keys, falling back only for compiler use without a keymap fixture. */

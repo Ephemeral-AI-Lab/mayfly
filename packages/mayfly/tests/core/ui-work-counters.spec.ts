@@ -112,6 +112,27 @@ describe('compilation', () => {
     expect(counters).toMatchObject({ clockTicks: 0, keymapSnapshots: 0 })
   })
 
+  it('remembers a control walk for each of sixteen viewports and walks again for one it dropped', () => {
+    const counters = createWorkCounters()
+    let columns = 40
+    const result = compileMayflyUiNode(ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }] }), { ...base, getViewport: () => ({ columns, rows: 20 }), emit: () => {}, counters })
+    if (!result.ok) throw new Error(result.message)
+    const walksAt = (width: number): number => {
+      columns = width
+      const before = counters.controlWalks
+      result.value.component.render(width)
+      return counters.controlWalks - before
+    }
+    expect(walksAt(40)).toBe(0)
+    expect(walksAt(41)).toBe(1)
+    expect(walksAt(40)).toBe(0)
+    expect(walksAt(41)).toBe(0)
+    for (let width = 42; width < 42 + 15; width += 1) expect(walksAt(width)).toBe(1)
+    // Seventeen viewports have been walked: the oldest one was dropped, the newest are still known.
+    expect(walksAt(56)).toBe(0)
+    expect(walksAt(40)).toBe(1)
+  })
+
   it('counts status and editor-shell compilation, and accepts no sink', () => {
     const counters = createWorkCounters()
     const status = compileMayflyStatusNode(ui.stack.row([ui.child(ui.text('a')), ui.child(ui.text('b'))]), { ...base, counters })

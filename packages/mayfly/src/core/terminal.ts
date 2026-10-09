@@ -151,6 +151,9 @@ function rowsLeaf(rows: readonly string[]): Component {
  * an over-budget dock truncates each pane's tail instead of letting the
  * layout engine shrink individual rows out of every pane's head.
  */
+/** What a lane answers a measure nobody reads. */
+const NO_ROWS: string[] = []
+
 class SurfaceLaneContainer implements Component {
   private readonly tabs: Component = {
     render: width => {
@@ -181,6 +184,9 @@ class SurfaceLaneContainer implements Component {
       this.measured = { width, layout, rows: plan.rows, plan }
       return bottomLaneRows(plan)
     }
+    // The row that holds a side lane gives it its height, so pi-tui's measure of one is never used: its pane is not
+    // rendered for it, and prepares itself when the native layout reaches it.
+    if (this.placement === 'left' || this.placement === 'right') return NO_ROWS
     const rows = renderSurfaceLane(lane, width, this.maxRows())
     this.measured = { width, layout, rows: rows.length }
     return rows
@@ -225,9 +231,11 @@ class SurfaceLaneContainer implements Component {
     }
     const tabRows = surfaceLaneTabRows(lane)
     if (tabRows > 0) stack.addChild(this.tabs, { basis: 1, grow: 0, shrink: 0, minSize: 1, maxSize: 1 })
+    // A side lane's one pane fills what the tabs leave, whatever its own height; only the header is sized by its rows.
+    const basis = this.placement === 'header' ? 'auto' as const : 0
     for (const entry of renderedSurfaceEntries(lane)) {
       stack.addChild(entry.component as Component, {
-        basis: 'auto',
+        basis,
         grow: 1,
         shrink: 1,
         minSize: 0,

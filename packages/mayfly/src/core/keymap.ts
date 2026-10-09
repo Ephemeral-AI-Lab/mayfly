@@ -105,6 +105,8 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
   private readonly overrides = new Map<string, Override>()
   private readonly seen = new Map<string, MayflySeenAction>()
   private readonly listeners = new Set<() => void>()
+  /** The effective keys `matches` resolved, by action; a change or a newly seen action drops them. */
+  private readonly effective = new Map<string, readonly string[]>()
   private changes = 0
   private plainForSession = false
   private plainForGood = false
@@ -191,7 +193,13 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
    * @returns whether the input triggers the action.
    */
   matches(data: string, action: string): boolean {
-    return this.getKeys(action).some(key => matchesKeyId(data, key))
+    // Every key press asks this of many actions, so the effective keys are resolved once per change of the keymap.
+    let keys = this.effective.get(action)
+    if (keys === undefined) {
+      keys = this.getKeys(action)
+      this.effective.set(action, keys)
+    }
+    return keys.some(key => matchesKeyId(data, key))
   }
 
   /**
@@ -241,6 +249,7 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
     for (const action of actions) {
       if (this.actions.has(action.id)) continue
       this.seen.set(action.id, { id: action.id, label: action.label, keys: [...action.keys] })
+      this.effective.delete(action.id)
     }
   }
 
@@ -334,19 +343,24 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
    * @returns the actions with their labels, scopes, owners, default keys, effective keys, and whether they are rebound.
    */
   list(): readonly MayflyKeyBinding[] {
-    const ids = [...new Set([...this.actions.keys(), ...this.seen.keys(), ...this.overrides.keys()])]
+    // The maps and the preference are read once: a snapshot is a few dozen entries, and the editor shell takes one
+    // whenever an extension declares an action.
+    const { actions, seen: seenActions, overrides, preferPlain } = this
+    const ids = [...new Set([...actions.keys(), ...seenActions.keys(), ...overrides.keys()])]
     return ids.map(id => {
-      const registered = this.actions.get(id)
-      const seen = this.seen.get(id)
+      const registered = actions.get(id)
+      const seen = seenActions.get(id)
+      const override = overrides.get(id)
       const defaults = registered?.keys ?? seen?.keys ?? []
+      const keys = override?.keys ?? defaults
       return {
         id,
-        keys: this.resolve(id, defaults),
-        scope: this.scopeOf(id),
-        label: registered?.description ?? seen?.label ?? this.overrides.get(id)?.label ?? id,
+        keys: preferPlain ? plainFirst(keys) : [...keys],
+        scope: registered?.scope ?? 'surface',
+        label: registered?.description ?? seen?.label ?? override?.label ?? id,
         owner: actionOwner(id),
         defaults: [...defaults],
-        overridden: this.overrides.has(id),
+        overridden: override !== undefined,
         // exactOptionalPropertyTypes forbids assigning undefined to the
         // optional slot, so it is spread in only when present.
         ...(registered?.description === undefined ? {} : { description: registered.description }),
@@ -363,11 +377,12 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
     const fixed = FIXED_KEYS[action]
     if (fixed !== undefined && !next.includes(fixed)) throw new MayflyKeymapError(`"${action}" must keep ${fixed}: Esc and Enter cannot be unbound`, 'INVALID_BINDING')
     const scope = this.scopeOf(action)
+    const bindings = this.list()
     for (const key of next) {
       const holder = Object.entries(FIXED_KEYS).find(([id, kept]) => kept === key && id !== action)
       if (holder !== undefined) throw new MayflyKeymapError(`${key} belongs to "${holder[0]}": Esc and Enter cannot be unbound`, 'INVALID_BINDING')
       if (scope !== 'surface' && scope !== 'stream' && printableKey(key)) throw new MayflyKeymapError(`"${key}" would type text in the ${scope} scope; use a modifier key`, 'INVALID_BINDING')
-      const owner = this.list().find(other => other.id !== action && overlaps(other.scope, scope) && other.keys.includes(key))
+      const owner = bindings.find(other => other.id !== action && overlaps(other.scope, scope) && other.keys.includes(key))
       if (owner !== undefined) {
         throw new MayflyKeymapError(`key "${key}" already means "${owner.label}" (${owner.id}, owned by ${owner.owner}); rebind that action first`, 'KEY_CONFLICT')
       }
@@ -382,6 +397,7 @@ export class MayflyKeymapService extends Service implements MayflyKeymap {
 
   private changed(): void {
     this.changes += 1
+    this.effective.clear()
     for (const listener of [...this.listeners]) listener()
   }
 }

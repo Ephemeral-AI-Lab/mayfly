@@ -18,6 +18,31 @@ describe('MayflyKeymapService', () => {
     expect(ctx.get('mayflyKeymap')).toBeUndefined()
   })
 
+  it('answers matches from the keys it resolved, until a binding or a newly seen action changes them', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MayflyKeymapService)
+    const keymap = ctx.mayflyKeymap
+    const resolve = vi.spyOn(MayflyKeymapService.prototype, 'resolve')
+    try {
+      keymap.register([{ id: 'mayfly.test.save', keys: 'ctrl+s', scope: 'surface' }])
+      expect(keymap.matches('\x13', 'mayfly.test.save')).toBe(true)
+      expect(keymap.matches('\x13', 'mayfly.test.save')).toBe(true)
+      expect(keymap.matches('a', 'mayfly.test.save')).toBe(false)
+      expect(resolve).toHaveBeenCalledTimes(1)
+      // An action nobody declared has no keys; seeing it gives it its defaults at once.
+      expect(keymap.matches('\x0b', 'plugin.kit.open')).toBe(false)
+      keymap.see([{ id: 'plugin.kit.open', label: 'Open', keys: ['ctrl+k'] }])
+      expect(keymap.matches('\x0b', 'plugin.kit.open')).toBe(true)
+      // A rebind retires the old key in the same turn.
+      keymap.bind('mayfly.test.save', ['ctrl+w'])
+      expect(keymap.matches('\x13', 'mayfly.test.save')).toBe(false)
+      expect(keymap.matches('\x17', 'mayfly.test.save')).toBe(true)
+      expect(keymap.dispatch('\x17')).toBe(false)
+    } finally {
+      resolve.mockRestore()
+    }
+  })
+
   it('counts every committed registration and disposal in its revision', async () => {
     const ctx = new Context()
     await ctx.plugin(MayflyKeymapService)

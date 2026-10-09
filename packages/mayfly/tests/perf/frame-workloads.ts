@@ -101,6 +101,7 @@ class FrameHost {
     readonly terminal: FakeTerminal,
     readonly runtime: MayflyTerminalRuntime,
     private readonly environment: WorkloadEnvironment,
+    private readonly counters: MayflyWorkCounters,
   ) {}
 
   static async boot(counters: MayflyWorkCounters, environment: WorkloadEnvironment): Promise<FrameHost> {
@@ -130,7 +131,7 @@ class FrameHost {
       },
     })
     await turns()
-    const host = new FrameHost(root, terminal, runtime, environment)
+    const host = new FrameHost(root, terminal, runtime, environment, counters)
     // The prompt a keystroke lands in: it repaints on every key, as the editor does.
     const editor: MayflyFocusable = {
       focused: false,
@@ -158,9 +159,16 @@ class FrameHost {
     await this.frames()
   }
 
-  /** One step of the animation clock, then the frames it asks for. */
+  /**
+   * Runs the clock to its next tick, then paints the frame that tick asked for. The clock paces itself by the frames it
+   * sees, so a workload waits for the tick instead of assuming when it falls; with nothing armed it waits three steps.
+   */
   async tick(): Promise<void> {
-    this.environment.advance(TICK_MS - FRAME_MS * 3)
+    const before = this.counters.clockTicks
+    for (let waited = 0; waited < TICK_MS * 3 && this.counters.clockTicks === before; waited += FRAME_MS) {
+      await turns()
+      this.environment.advance(FRAME_MS)
+    }
     await this.frames()
   }
 
