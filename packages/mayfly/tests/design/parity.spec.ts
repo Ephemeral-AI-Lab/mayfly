@@ -59,7 +59,7 @@ describe('compareCells', () => {
     expect(compareCells(expected, actual, [{ delta: 'Δ17', rows: [0, 0], cols: [2, 3] }])).toEqual([])
     expect(compareCells(expected, actual, [{ delta: 'Δ17', cols: [0, 1] }])).toHaveLength(1)
     expect(() => compareCells(expected, actual, [{ delta: 'Δ99' }])).toThrow('unknown accepted difference Δ99')
-    expect(new Set(DESIGN_DELTAS.map(delta => delta.id)).size).toBe(29)
+    expect(new Set(DESIGN_DELTAS.map(delta => delta.id)).size).toBe(30)
   })
 })
 

@@ -136,6 +136,7 @@ row needs the reviewer's approval before the slice that introduces it merges.
 | Δ27 | 3, 4, 12 | `▌` marks the cursor in an edited field | The terminal cursor sits there; no glyph is drawn | Spec §4.3 calls it the terminal cursor; approved by the reviewer |
 | Δ28 | 4, 6, 12 | The `unsaved changes` badge in scene 3 only | Core adds it to every surface whose form is dirty | Roadmap slice 1.6; approved by the reviewer |
 | Δ29 | 6, 11 | `← labels` is never hinted on a focused select, although `←` leaves it for the rail at its first option | The hint row names `← labels` whenever `←` would reach the rail, selects included | Spec §4.5 ("the cue is true"); approved by the reviewer |
+| Δ30 | 6 | A form select stepped back to its inherited value unpins: `(inherited)`, no `•`, `Delete use inherited` | The form keeps the override: `(override)`, the `•` mark, `Delete reset` | Settings contract: Mayfly settings preserve equal-value explicit overrides; approved by the reviewer |
 
 Spec items the preview does not draw and this roadmap does not schedule: diff hunk review (`HunkReview` is unreachable
 in scene 30), scroll match ticks (`marks`, `currentMark`) and `reveal`, the views' fan-out stagger and row flash, and
