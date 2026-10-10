@@ -119,8 +119,29 @@ function foldStreamChunks(
 /**
  * Fold one committed session event into the renderer-neutral facts state.
  * Unrelated events return the same state reference to avoid change-feed work.
+ * The state stays plain JSON: the projection cache refuses a checkpoint that
+ * holds `undefined`, so a field the fold clears is deleted, not kept.
  */
 export function foldConversationFacts(
+  state: ConversationFactsState,
+  event: SessionEvent,
+): ConversationFactsState {
+  const next = foldFacts(state, event)
+  return next === state ? state : withoutCleared(next)
+}
+
+/** The state without the fields set to `undefined`; the same reference when there are none. */
+function withoutCleared(state: ConversationFactsState): ConversationFactsState {
+  let plain: Record<string, unknown> | undefined
+  for (const key in state) {
+    if ((state as unknown as Record<string, unknown>)[key] !== undefined) continue
+    plain ??= { ...state }
+    delete plain[key]
+  }
+  return plain === undefined ? state : plain as unknown as ConversationFactsState
+}
+
+function foldFacts(
   state: ConversationFactsState,
   event: SessionEvent,
 ): ConversationFactsState {

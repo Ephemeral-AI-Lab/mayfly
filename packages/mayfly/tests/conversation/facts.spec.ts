@@ -103,7 +103,9 @@ describe('mayflyConversationFacts projection', () => {
     state = foldConversationFacts(state, attempt(1, 0, 'text', 'answer'))
     expect(foldConversationFacts(state, event('assistant/attempt', { turn: 1, step: 0, stream: [{ type: 'chunk', time: 1, chunk: { type: 'finish', reason: 'stop' } }] }))).toMatchObject({ phase: 'waiting' })
     expect(state).toMatchObject({ phase: 'composing', flowDownChars: 11 })
-    expect(foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: undefined }))).toMatchObject({ phase: 'waiting', outputProgress: undefined })
+    const settled = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: undefined }))
+    expect(settled).toMatchObject({ phase: 'waiting' })
+    expect(settled).not.toHaveProperty('outputProgress')
     state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
     expect(state).toMatchObject({ contextTokens: 15, contextCacheReadTokens: 2 })
     state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 4 } }))
@@ -114,7 +116,8 @@ describe('mayflyConversationFacts projection', () => {
     state = foldConversationFacts(state, event('request/header', { header: { config: { model: 'm', provider: 'p', reasoningEffort: 'high' } } }))
     state = foldConversationFacts(state, event('request/header', { header: { config: { model: 'm2', provider: 'p2' } } }))
     state = foldConversationFacts(state, event('todo/write', { todos: [{ content: 'ship', status: 'pending' }] }))
-    expect(state).toMatchObject({ contextWindow: 32, model: 'm2', provider: 'p2', reasoningEffort: undefined, todos: [{ content: 'ship' }] })
+    expect(state).toMatchObject({ contextWindow: 32, model: 'm2', provider: 'p2', todos: [{ content: 'ship' }] })
+    expect(state).not.toHaveProperty('reasoningEffort')
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-1', name: 'subagent', arguments: '{}', }, 88))
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-2', name: 'subagent_fork', arguments: '{}' }, 89))
     // Any configured `subagent_*` provider is spawn-class too.
@@ -143,6 +146,26 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ phase: 'idle', active: false, turn: 1, runOutcome: 'completed' })
     state = foldConversationFacts(state, event('turn/end', { turn: 2, reason: { kind: 'interrupted' } }))
     expect(state).toMatchObject({ phase: 'idle', active: false, turn: 2, runOutcome: 'failed' })
+  })
+
+  it('keeps its state plain JSON, which the projection cache refuses to checkpoint otherwise', () => {
+    seq = 0
+    let state = initialConversationFacts()
+    for (const next of [
+      event('turn/start', { turn: 1 }),
+      event('step/start', { turn: 1, step: 1 }),
+      attempt(1, 1, 'reasoning', 'think'),
+      event('assistant/message', { turn: 1, step: 1, stream: [], usage: { inputTokens: 4, outputTokens: 1 } }),
+      event('request/header', { header: { config: { model: 'm', provider: 'p' } } }),
+      event('tool/call', { turn: 1, step: 1, callId: 'c1', name: 'read', arguments: '{}' }),
+      event('step/end', { turn: 1, step: 1 }),
+      event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
+      event('turn/start', { turn: 2 }),
+    ]) {
+      state = foldConversationFacts(state, next)
+      expect(JSON.parse(JSON.stringify(state)), next.type).toStrictEqual(state)
+    }
+    expect('runOutcome' in state).toBe(false)
   })
 
   it('subtracts compaction shadow prices from the context meter', () => {

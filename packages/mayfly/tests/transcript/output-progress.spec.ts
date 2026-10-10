@@ -184,7 +184,8 @@ describe('phase-local output', () => {
     let state = foldConversationProjection(initialConversationState(), boundary)
     const facts = foldConversationFacts(initialConversationFacts(), boundary)
     expect(state.entries[0]).toMatchObject({ streaming: false })
-    expect(facts).toMatchObject({ phase: 'waiting', outputProgress: undefined })
+    expect(facts).toMatchObject({ phase: 'waiting' })
+    expect(facts).not.toHaveProperty('outputProgress')
     const final = { ...assistantEvent(1, 1, [{ type: 'reasoning', text: 'corrected' }]), surfaceOp: 'append' as const }
     state = foldConversationProjection(state, final)
     expect(state.entries).toHaveLength(1)
@@ -193,17 +194,21 @@ describe('phase-local output', () => {
 
   it('parks independent empty attempts and ends a complete text stream without retaining its speed', () => {
     let facts = initialConversationFacts()
-    expect(foldConversationFacts(facts, reasoning('', 1_000))).toMatchObject({ phase: 'waiting', outputProgress: undefined, flowDownChars: 0 })
-    expect(foldConversationFacts(facts, answer('', 1_000))).toMatchObject({ phase: 'waiting', outputProgress: undefined, flowDownChars: 0 })
+    for (const empty of [reasoning('', 1_000), answer('', 1_000)]) {
+      expect(foldConversationFacts(facts, empty)).toMatchObject({ phase: 'waiting', flowDownChars: 0 })
+      expect(foldConversationFacts(facts, empty)).not.toHaveProperty('outputProgress')
+    }
     facts = foldConversationFacts(facts, reasoning('thought', 1_000))
     for (const empty of [reasoning('', 2_000), chunk({ type: 'block-start', index: 0, blockType: 'reasoning' }, 2_000), chunk({ type: 'block-end', index: 1, block: { type: 'text', text: '' } }, 2_000)]) {
-      expect(foldConversationFacts(facts, empty)).toMatchObject({ phase: 'waiting', outputProgress: undefined })
+      expect(foldConversationFacts(facts, empty)).toMatchObject({ phase: 'waiting' })
+      expect(foldConversationFacts(facts, empty)).not.toHaveProperty('outputProgress')
     }
     facts = foldConversationFacts(facts, attempt([
       ...answer('answer', 3_000).data.stream,
       ...chunk({ type: 'block-end', index: 1, block: { type: 'text', text: 'answer' } }, 4_000).data.stream,
     ], 4_000, 1, 1))
-    expect(facts).toMatchObject({ phase: 'waiting', outputProgress: undefined })
+    expect(facts).toMatchObject({ phase: 'waiting' })
+    expect(facts).not.toHaveProperty('outputProgress')
   })
 
   it('keeps current metrics when an older step message or chunk arrives late', () => {
