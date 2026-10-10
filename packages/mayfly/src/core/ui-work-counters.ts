@@ -14,6 +14,8 @@ export interface MayflyWorkCounters {
   unitsCompiled: number
   /** Rows produced by a painter, memo hits excluded. */
   rowsPainted: number
+  /** Rows a virtual facade (`core/ui-rows.ts`) produced on first read; the source counts what it paints. */
+  rowsMaterialized: number
   /** Strings measured through the injected seam and the compiler's own frame paths; painters are not counted yet. */
   stringsMeasured: number
   /** Leaf renders that painted, memo hits excluded: what one frame costs once the tree is compiled. */
@@ -32,7 +34,7 @@ export interface MayflyWorkCounters {
 
 /** A fresh sink with every counter at zero. */
 export function createWorkCounters(): MayflyWorkCounters {
-  return { nodesValidated: 0, unitsCompiled: 0, rowsPainted: 0, stringsMeasured: 0, componentRenders: 0, controlWalks: 0, reconciles: 0, layoutPasses: 0, clockTicks: 0, keymapSnapshots: 0 }
+  return { nodesValidated: 0, unitsCompiled: 0, rowsPainted: 0, rowsMaterialized: 0, stringsMeasured: 0, componentRenders: 0, controlWalks: 0, reconciles: 0, layoutPasses: 0, clockTicks: 0, keymapSnapshots: 0 }
 }
 
 /** Adds to one counter; a missing sink (production) does nothing. */

@@ -13,6 +13,7 @@
 
 import { sliceByColumn, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
 import { asciiText, type MayflyGlyphMode } from './glyphs.ts'
+import { mapRows } from './ui-rows.ts'
 import { OVERFLOW_ELLIPSIS } from './width.ts'
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
@@ -432,7 +433,7 @@ export function topRule(width: number, options: TopRuleOptions = {}): string {
  * @returns the indented rows, styling untouched.
  */
 export function padColumns(lines: readonly string[], n: number): string[] {
-  return lines.map(line => ' '.repeat(n) + line)
+  return mapRows(lines, line => ' '.repeat(n) + line)
 }
 
 /**
@@ -454,5 +455,5 @@ export function clampRowsToWidth(
   width: number,
   truncate: (text: string, width: number) => string,
 ): string[] {
-  return rows.map(row => truncate(row, width))
+  return mapRows(rows, row => truncate(row, width))
 }

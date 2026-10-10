@@ -8,6 +8,7 @@ import type { MayflyComponent, MayflyFocusable } from './types.ts'
 import { interpolateLocaleMessage } from '../frontend/locale.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
+import { concatRows, mapRows, sliceRows } from './ui-rows.ts'
 import { VIEWS_FOCUS_ID, ViewsLane } from './views-lane.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
 
@@ -302,9 +303,9 @@ export function planBottomLane(lane: SurfaceLaneLayout, width: number, maxRows: 
   if (tabs !== undefined) budget -= 1
   const painted = renderedSurfaceEntries(lane).map(entry => {
     const passive = contributionFocusTarget(entry) === null
-    const rows = entry.component.render(available).map(row => fit(row, available))
+    const rows = mapRows(entry.component.render(available), row => fit(row, available))
     const ruled = passive && laneRows(entry).leadingRule === true && rows.length > 0
-    return { entry, passive, ruled, rule: ruled ? rows[0] : undefined, rows: ruled ? rows.slice(1) : rows }
+    return { entry, passive, ruled, rule: ruled ? rows[0] : undefined, rows: ruled ? sliceRows(rows, 1) : rows }
   })
   const allocate = (rows: number): number[] => allocateBottomRows(painted.map(item => ({
     rows: item.rows.length,
@@ -322,7 +323,7 @@ export function planBottomLane(lane: SurfaceLaneLayout, width: number, maxRows: 
   }
   const slots = painted.map((item, index): BottomLaneSlot => {
     const size = sizes[index]!
-    if (!item.passive) return { entry: item.entry, passive: false, rows: item.rows.slice(0, size), size }
+    if (!item.passive) return { entry: item.entry, passive: false, rows: sliceRows(item.rows, 0, size), size }
     const paint = laneRows(item.entry).renderOverflow
     const overflow = (hidden: number): string => fit(paint === undefined
       ? renderOverflowRow(hidden, interpolateLocaleMessage)
@@ -336,11 +337,11 @@ export function planBottomLane(lane: SurfaceLaneLayout, width: number, maxRows: 
 
 /** Flatten a planned bottom lane to its painted rows. */
 export function bottomLaneRows(plan: BottomLanePlan): string[] {
-  return [
-    ...(plan.rule === undefined ? [] : [plan.rule]),
-    ...(plan.tabs === undefined ? [] : [plan.tabs]),
-    ...plan.slots.flatMap(slot => slot.rows),
-  ]
+  return concatRows(
+    plan.rule === undefined ? [] : [plan.rule],
+    plan.tabs === undefined ? [] : [plan.tabs],
+    ...plan.slots.map(slot => slot.rows),
+  )
 }
 
 /** Render one lane and clamp hostile component output. */
@@ -349,16 +350,17 @@ export function renderSurfaceLane(lane: SurfaceLaneLayout | undefined, width: nu
   if (lane.placement === 'bottom') return bottomLaneRows(planBottomLane(lane, width, maxRows))
   const available = safeDimension(width)
   const tabs = surfaceLaneTabRows(lane) === 1 ? [renderSurfaceTabs(lane, available)] : []
-  const body = renderedSurfaceEntries(lane)
-    .flatMap(entry => entry.component.render(available))
-    .map(row => fit(row, available))
-  const rows = [...tabs, ...body]
+  const body = mapRows(
+    concatRows(...renderedSurfaceEntries(lane).map(entry => entry.component.render(available))),
+    row => fit(row, available),
+  )
+  const rows = concatRows(tabs, body)
   const budget = Math.max(0, finiteInteger(maxRows, 0))
   if (rows.length <= budget) return rows
   // A header/body lane that runs out of rows names the loss instead of
   // silently dropping the tail (the bottom lane already does).
-  if (budget <= 1) return rows.slice(0, budget)
-  return [...rows.slice(0, budget - 1), fit(renderOverflowRow(rows.length - budget + 1, interpolateLocaleMessage), available)]
+  if (budget <= 1) return sliceRows(rows, 0, budget)
+  return concatRows(sliceRows(rows, 0, budget - 1), [fit(renderOverflowRow(rows.length - budget + 1, interpolateLocaleMessage), available)])
 }
 
 /**

@@ -23,7 +23,7 @@ import {
   type TuiInputListener,
 } from '@earendil-works/pi-tui'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
-import { clampFrame, clampFrameFrom, createFileOverflowSink, defaultOverflowDirectory, type OverflowSink } from './frame-clamp.ts'
+import { clampFrame, clampFrameFrom, clampRow, createFileOverflowSink, defaultOverflowDirectory, type OverflowSink } from './frame-clamp.ts'
 import { createOutputRecovery, type AmbientOutput } from './output-recovery.ts'
 import {
   SURFACE_HEADER_MAX_ROWS,
@@ -39,6 +39,7 @@ import {
   type SurfacePlacement,
 } from './surface-manager.ts'
 import { buildTitleOsc0, copySelectionText } from './terminal-escape.ts'
+import { concatRows, isVirtualRows, mapRows } from './ui-rows.ts'
 import { probeTerminalBackground, backgroundFromRgb, type MayflyProbeProcess } from './terminal-info.ts'
 import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyRgbColor } from './types.ts'
 
@@ -112,7 +113,7 @@ class FrameClampedContainer extends Container {
       return part
     })
     if (reusable) return cached!.rows
-    const rows = parts.length === 1 ? parts[0]! : parts.flat()
+    const rows = parts.length === 1 ? parts[0]! : concatRows(...parts)
     this.cached = { width, children, parts, rows }
     return rows
   }
@@ -120,7 +121,9 @@ class FrameClampedContainer extends Container {
   /**
    * Clamp one child's rows, reporting overflow at frame-relative indexes. A
    * new array at the same width is clamped against the previous one, so a
-   * live transcript frame measures only the rows that changed.
+   * live transcript frame measures only the rows that changed. A virtual
+   * source keeps its window: the clamped rows are a facade that clamps the
+   * source row someone reads instead of scanning every row up front.
    */
   private clampChild(child: Component, width: number, offset: number): string[] {
     const source = child.render(width)
@@ -129,7 +132,10 @@ class FrameClampedContainer extends Container {
     const sink: OverflowSink = offset === 0
       ? this.overflow
       : { record: entry => this.overflow.record({ ...entry, index: entry.index + offset }) }
-    const rows = clampFrameFrom(previous?.width === width ? previous : undefined, source, width, sink)
+    const prior = previous?.width === width ? previous : undefined
+    const rows = isVirtualRows(source)
+      ? mapRows(source, (line, index) => clampRow(prior, line, index, width, sink))
+      : clampFrameFrom(prior, source, width, sink)
     this.clampedChildren.set(child, { width, source, rows })
     return rows
   }

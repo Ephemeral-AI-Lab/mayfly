@@ -50,6 +50,7 @@ import {
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
+import { concatRows, findMarkerRow, isVirtualRows, mapRows, sameMaterializedRows, sliceRows } from './ui-rows.ts'
 import { ColumnStack, RowStack, onScreen, placeChild } from './ui-stacks.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
@@ -502,7 +503,8 @@ function staticComponent(render: (width: number) => string[], options: Pick<Pain
       try {
         const rows = glyphRows(render(width), glyphs)
         if (counted) {
-          countWork(options.counters, 'rowsPainted', rows.length)
+          // A virtual array has painted no rows yet; its source counts what reads through the facade materialize.
+          countWork(options.counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
           countWork(options.counters, 'componentRenders')
         }
         return rows
@@ -528,7 +530,7 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
     const known = memo.get(width)
     if (known !== undefined) return known
     const rows = render(width)
-    countWork(options.counters, 'rowsPainted', rows.length)
+    countWork(options.counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
     countWork(options.counters, 'componentRenders')
     if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
     memo.set(width, rows)
@@ -542,7 +544,20 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
 /** How many widths a pure static leaf remembers rows for. */
 const PURE_STATIC_WIDTHS = 4
 
-class SemanticScrollView extends ScrollView {
+/**
+ * A ScrollView whose scrollbar column keeps laziness: the base `render` maps every child row to widen it one column,
+ * which would paint a whole windowed child. The mapped rows stay a facade, so a passive render reads only the rows
+ * someone asks for; the layout-driven frame never calls `render` at all.
+ */
+class WindowScrollView extends ScrollView {
+  override render(width: number): string[] {
+    const contentWidth = this.getContentWidth(width)
+    const lines = this.children[0]!.render(contentWidth)
+    return contentWidth === width ? lines : mapRows(lines, line => `${line} `)
+  }
+}
+
+class SemanticScrollView extends WindowScrollView {
   private width = 1
 
   constructor(
@@ -832,7 +847,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
     [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
     render(width: number): string[] {
       const available = Math.max(1, Math.floor(width))
-      if (available < 3) return body.render(available).map(row => { countWork(options.counters, 'stringsMeasured'); return truncateToWidth(row, available, '') })
+      if (available < 3) return mapRows(body.render(available), row => { countWork(options.counters, 'stringsMeasured'); return truncateToWidth(row, available, '') })
       const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
       const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
       // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
@@ -841,7 +856,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
       const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
       const border = paint(bar)
       const inset = ' '.repeat(horizontalPadding)
-      const rows = bodyRows.map(row => {
+      const rows = mapRows(bodyRows, row => {
         // A row that fits is measured once; only a row that overflows is clipped and measured again.
         countWork(options.counters, 'stringsMeasured')
         const rowWidth = visibleWidth(row)
@@ -849,8 +864,8 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
         countWork(options.counters, 'stringsMeasured')
         const clipped = truncateToWidth(row, contentWidth, '')
         return `${border}${inset}${clipped}${' '.repeat(Math.max(0, contentWidth - visibleWidth(clipped)))}${inset}${border}`
-      })
-      return [...head, ...rows, ...tail]
+      }, { declaredWidth: available })
+      return concatRows(head, rows, tail)
     },
     invalidate(): void { layout.invalidate() },
   }
@@ -1458,10 +1473,6 @@ const RETAINED_ENTRIES = 6
 /** Components whose `render` already answers from a retained memo. */
 const retainedComponents = new WeakSet<object>()
 
-function sameRows(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((row, index) => row === right[index])
-}
-
 /**
  * Makes a component answer a repeat render from memory. pi-tui renders a component once per ancestor stack that
  * measures it and again on every frame of the terminal, whatever asked for the frame; a retained component paints once
@@ -1497,7 +1508,7 @@ function retain<Target extends Component>(component: Target, what: string, optio
     const key = `${String(width)}|${state.layoutPass ? 1 : 0}|${String(runtime.rowBudget ?? '')}|${String(viewport.columns)}x${String(viewport.rows)}`
     const known = memo.get(key)
     if (known !== undefined && known.epoch === runtime.epoch && (known.frame === undefined || known.frame === runtime.animationFrame)) {
-      if (verify && !sameRows(painted(width).rows, known.rows)) throw new Error(`retained rows of a ${what} went stale: something it reads changed without moving the surface epoch`)
+      if (verify && !sameMaterializedRows(painted(width).rows, known.rows)) throw new Error(`retained rows of a ${what} went stale: something it reads changed without moving the surface epoch`)
       if (known.frame !== undefined) runtime.showMoving(known.moving)
       return known.rows
     }
@@ -1690,7 +1701,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       const address = node.id === undefined ? undefined : { pagePath, controlId: node.id }
       const model = options.listRuntime.interaction
       const scroll = address === undefined || model === undefined || model.document(address) === undefined
-        ? new ScrollView(child, scrollOptions)
+        ? new WindowScrollView(child, scrollOptions)
         : new SemanticScrollView(child as Component, scrollOptions, model, address)
       // A scroll view holds one child, from its first row: what is on screen is decided against this view's window.
       placeChild(child, scroll, 0)
@@ -2830,8 +2841,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
         0, safeWidth, true,
       )], this.options.components.presentation?.glyphs)
       const contentLimit = rowLimit === undefined ? rows.length : Math.max(1, rowLimit - feedbackRows.length)
-      const caretRow = rows.findIndex(row => row.includes(CURSOR_MARKER))
-      const focusRow = caretRow < 0 ? rows.findIndex(row => row.includes(FOCUS_SENTINEL)) : caretRow
+      const caretRow = findMarkerRow(rows, CURSOR_MARKER)
+      const focusRow = caretRow < 0 ? findMarkerRow(rows, FOCUS_SENTINEL) : caretRow
       const pinFrame = rowLimit !== undefined && rows.length > contentLimit && this.node.kind === 'surface'
         && (this.node.chrome === 'overlay' || this.node.chrome === 'surface')
       let limited: string[]
@@ -2842,12 +2853,12 @@ class CompiledSurface implements MayflyEditorShellComponent {
         if (innerFocus >= 0 && innerFocus < this.viewportOffset) this.viewportOffset = innerFocus
         else if (innerFocus >= this.viewportOffset + innerLimit) this.viewportOffset = innerFocus - innerLimit + 1
         this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, innerLength - innerLimit))
-        limited = [rows[0]!, ...rows.slice(1 + this.viewportOffset, 1 + this.viewportOffset + innerLimit), rows.at(-1)!, ...feedbackRows]
+        limited = [rows[0]!, ...sliceRows(rows, 1 + this.viewportOffset, 1 + this.viewportOffset + innerLimit), rows.at(-1)!, ...feedbackRows]
       } else {
         if (focusRow >= 0 && focusRow < this.viewportOffset) this.viewportOffset = focusRow
         else if (focusRow >= this.viewportOffset + contentLimit) this.viewportOffset = focusRow - contentLimit + 1
         this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, rows.length - contentLimit))
-        limited = [...rows.slice(this.viewportOffset, this.viewportOffset + contentLimit), ...feedbackRows]
+        limited = [...sliceRows(rows, this.viewportOffset, this.viewportOffset + contentLimit), ...feedbackRows]
       }
       let overflowed = rowLimit !== undefined && rows.length > rowLimit
       countWork(this.runtimeOptions.counters, 'stringsMeasured', limited.length)

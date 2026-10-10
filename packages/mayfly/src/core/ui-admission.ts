@@ -10,6 +10,7 @@
 import type { Component } from '@earendil-works/pi-tui'
 import type { MayflyUiChild } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponents } from './types.ts'
+import { declaredWidthOf } from './ui-rows.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** The narrowest room a truncated child takes; a smaller remainder drops it. */
@@ -113,7 +114,9 @@ export class AdmissionRow implements Component {
     const probe = Math.max(ADMISSION_PROBE_WIDTH, columns)
     const children = this.options.children().map(child => {
       const rows = child.component.render(probe)
-      return { ...child, rows, natural: Math.min(probe, Math.max(0, ...rows.map(row => contentWidth(row, components)))) }
+      const declared = declaredWidthOf(rows)
+      const natural = declared === undefined ? rows.reduce((max, row) => Math.max(max, contentWidth(row, components)), 0) : declared
+      return { ...child, rows, natural: Math.min(probe, natural) }
     })
     const admitted = admitWidths(children, columns, gap)
     const painted = (band: AdmissionChild['band']): string => children

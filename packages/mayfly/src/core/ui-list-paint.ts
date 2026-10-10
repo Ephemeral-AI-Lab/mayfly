@@ -13,6 +13,7 @@ import { paintSpan, paintTone } from './ui-paint.ts'
 import { inlineSegmentStrip, segmentFitsInline, segmentFooter, type SegmentView } from './ui-list-segment.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
 import type { MayflyWorkCounters } from './ui-work-counters.ts'
+import { concatRows, mapRows, sliceRows } from './ui-rows.ts'
 import { sliceByColumn, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 /** One visible row of a list: the item and how the model sees it (tree depth, disclosure) and where it sits. */
@@ -208,8 +209,9 @@ function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColor
     return lines.map((line, index) => clipRow(`${indent}    ${colors.muted(index === lines.length - 1 ? '╰ ' : '│ ')}${colors.muted(line)}`, width))
   }
   if (paintBody === undefined) return []
-  if (always) return paintBody(item, Math.max(1, width - 2 - indent.length)).map(line => `${indent}  ${line}`)
-  return paintBody(item, Math.max(1, width - 6 - indent.length)).map((line, index, all) => `${indent}    ${colors.muted(index === all.length - 1 ? '╰ ' : '│ ')}${line}`)
+  if (always) return mapRows(paintBody(item, Math.max(1, width - 2 - indent.length)), line => `${indent}  ${line}`)
+  const lines = paintBody(item, Math.max(1, width - 6 - indent.length))
+  return mapRows(lines, (line, index) => `${indent}    ${colors.muted(index === lines.length - 1 ? '╰ ' : '│ ')}${line}`)
 }
 
 /** The width of a row's head: what the strip has to share the line with. */
@@ -290,21 +292,23 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   const starts: number[] = []
   let lineCount = 0
   for (const entry of shown) { starts.push(lineCount); lineCount += entry.lines.length }
-  let lines = shown.flatMap(entry => entry.lines)
+  // The entries stay parts: an open body may be a virtual array, and the concat reads only the rows the window asks for.
+  let lines: string[] = concatRows(...shown.map(entry => entry.lines))
   if (lineCount > limit) {
     const focusAt = shown.findIndex(entry => entry.kind === 'item' && entry.id === options.cursorId)
     const first = focusAt < 0 ? 0 : starts[focusAt]!
     const rows = focusAt < 0 ? 1 : shown[focusAt]!.lines.length
     let begin = focusAt < 0 ? 0 : Math.min(Math.max(0, first - Math.floor(limit / 2) + Math.floor(rows / 2)), lineCount - limit)
     if (focusAt >= 0) begin = Math.max(Math.min(begin, first), first + rows - limit)
-    lines = lines.slice(begin, begin + limit)
+    lines = sliceRows(lines, begin, begin + limit)
   }
+  const tail: string[] = []
   if (more > 0) {
     const text = options.translate?.('↑ {above} more · ↓ {below} more', { above: hiddenAbove, below: hiddenBelow }) ?? `↑ ${String(hiddenAbove)} more · ↓ ${String(hiddenBelow)} more`
-    lines.push(`   ${colors.muted(text)}`)
+    tail.push(`   ${colors.muted(text)}`)
   }
   if (needsFooter) {
-    lines.push('', footerFor === undefined ? '' : segmentFooter(footerFor, available, colors, footerFor.segment.label ?? options.segmentLabel ?? 'Options'))
+    tail.push('', footerFor === undefined ? '' : segmentFooter(footerFor, available, colors, footerFor.segment.label ?? options.segmentLabel ?? 'Options'))
   }
-  return lines
+  return tail.length === 0 ? lines : concatRows(lines, tail)
 }
