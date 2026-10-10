@@ -1,0 +1,254 @@
+/**
+ * Run a catalog scenario against the real product: a `dsh` under node-pty with the replay driver, the scenario clock,
+ * reduced motion, and the stub model, its bytes parsed by the scenario screen. The runner drives the driver over a
+ * control socket (play to a mark, stop at a prompt), sends keys and SGR mouse reports, resizes, and captures named
+ * checkpoints as cell grids after the screen settles. Every run also checks what no scenario may do: wrap a row,
+ * write the overflow or crash log, fail a driver action, or refuse a clean exit. @module script/scenarios/runner
+ */
+
+import { randomBytes } from 'node:crypto'
+import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { createServer } from 'node:net'
+import { join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { ensureThrowawayProfile } from '../workbench/profile.mjs'
+import { scenarioNamed } from './catalog.mjs'
+import { click as clickReport, keyBytes, mouseReport } from './input.mjs'
+import { createScreen } from './screen.mjs'
+import { WORKSPACE, prepareSession } from './session.mjs'
+
+const require = createRequire(import.meta.url)
+const CLOCK = fileURLToPath(new URL('./clock.mjs', import.meta.url))
+
+/** The settings every scenario runs with: no motion between frames, and no network check at boot. */
+export const RUNNER_PRESENTATION = Object.freeze({ reducedMotion: true, updateCheck: false })
+/** Rows the scenario overlay disables: a generated session title would land at a different moment on every run. */
+export const RUNNER_DISABLED = Object.freeze(['session-title-llm'])
+
+/**
+ * Mask what differs between machines and runs without changing a row's width: the workspace tag and the version.
+ * @param {string} grid - a serialized grid.
+ */
+export function maskGrid(grid) {
+  return grid
+    .replace(WORKSPACE, match => match.replace(/[0-9a-f]{8}$/u, 'xxxxxxxx'))
+    .replace(/(Version:\s+)(\S+)/gu, (_, label, value) => `${label}${'#'.repeat(value.length)}`)
+}
+
+/** The runner's end of the control socket: JSON lines, one connection (the driver). */
+async function listenControl(path) {
+  rmSync(path, { force: true })
+  const messages = []
+  const waiting = []
+  let socket
+  const server = createServer((connection) => {
+    socket = connection
+    let buffer = ''
+    connection.setEncoding('utf8')
+    connection.on('data', (data) => {
+      buffer += data
+      for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) {
+        const message = JSON.parse(buffer.slice(0, end))
+        buffer = buffer.slice(end + 1)
+        const waiter = waiting.shift()
+        if (waiter === undefined) messages.push(message)
+        else waiter(message)
+      }
+    })
+  })
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(path, resolve) })
+  return {
+    send: message => socket.write(`${JSON.stringify(message)}\n`),
+    next: async (timeoutMs, what) => {
+      if (messages.length > 0) return messages.shift()
+      let timer
+      const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out waiting for ${what}`)), timeoutMs) })
+      try { return await Promise.race([new Promise(done => waiting.push(done)), timeout]) } finally { clearTimeout(timer) }
+    },
+    close: () => new Promise(resolve => { socket?.destroy(); server.close(() => resolve()); rmSync(path, { force: true }) }),
+  }
+}
+
+const sizeOf = path => existsSync(path) ? statSync(path).size : 0
+
+/**
+ * One boot at a time: `dsh` rewrites the profile's composition file as it starts, and a second boot reading it then
+ * fails. A run holds the turn from its spawn until its driver reports ready; playback still overlaps.
+ */
+let bootTurn = Promise.resolve()
+function takeBootTurn() {
+  let release
+  const previous = bootTurn
+  bootTurn = new Promise(resolve => { release = resolve })
+  return previous.then(() => release)
+}
+
+/**
+ * Link and install the throwaway profiles the scenarios need. The install blocks the event loop, so callers that run
+ * scenarios side by side prepare the profiles first.
+ * @param {{ root: string, dshBin: string, names: readonly string[] }} options
+ */
+export function prepareProfiles({ root, dshBin, names }) {
+  for (const gallery of new Set(names.map(name => scenarioNamed(name)?.source.gallery === true))) {
+    ensureThrowawayProfile({ repo: root, gallery, dshBin, artifacts: join(root, '.artifacts/bench') })
+  }
+}
+
+/**
+ * Run a scenario.
+ * @param {string} name - a catalog scenario.
+ * @param {object} options
+ * @param {string} options.root - the checkout whose build the profile links.
+ * @param {string} options.dshBin - the dsh executable.
+ * @param {number} [options.cols] - columns (default: the scenario's first size).
+ * @param {number} [options.rows] - rows.
+ * @param {string[]} [options.keys] - key names sent after the script, captured as the checkpoint `keys`.
+ * @param {(name: string, screen: ReturnType<typeof createScreen>) => Promise<void> | void} [options.onCheckpoint] - awaited
+ *   at each checkpoint with the settled screen (to paint it).
+ * @param {Record<string, string>} [options.env] - more environment for the product (`NO_COLOR`, a locale).
+ * @returns {Promise<{ name: string, cols: number, rows: number, checkpoints: { name: string, grid: string }[], failures: string[],
+ *   frames: number, bootMs: number, durationMs: number, screen: ReturnType<typeof createScreen> }>} the screen is disposed by the caller.
+ */
+export async function runScenario(name, { root, dshBin, cols, rows, keys = [], onCheckpoint, env: extraEnv = {} }) {
+  const scenario = scenarioNamed(name)
+  if (scenario === undefined) throw new Error(`unknown scenario "${name}"`)
+  const [width, height] = [cols ?? scenario.sizes[0][0], rows ?? scenario.sizes[0][1]]
+  const started = performance.now()
+  const profile = ensureThrowawayProfile({ repo: root, gallery: scenario.source.gallery === true, dshBin, artifacts: join(root, '.artifacts/bench') })
+  const socketPath = `/tmp/mayfly-replay-${randomBytes(6).toString('hex')}.sock`
+  const control = await listenControl(socketPath)
+  const session = await prepareSession({ scenario, dir: join(root, '.artifacts/scenarios', `${name}-${String(width)}x${String(height)}`), control: socketPath, presentation: RUNNER_PRESENTATION, disabled: RUNNER_DISABLED })
+  const logs = ['mayfly-overflow.log', 'pi-crash.log'].map(file => join(profile.env.PI_CODING_AGENT_DIR, file))
+  const logSizes = logs.map(sizeOf)
+  const env = { ...profile.env, ...session.env, TZ: 'UTC', NODE_OPTIONS: `--import=${pathToFileURL(CLOCK).href}`, ...extraEnv }
+  const releaseBoot = await takeBootTurn()
+  const pty = require('node-pty').spawn(dshBin, ['--profile', 'bench', '--patch', session.patch], { name: 'xterm-256color', cols: width, rows: height, cwd: session.cwd, env })
+  const screen = createScreen({ cols: width, rows: height, reply: data => pty.write(data) })
+  let exitCode = null
+  const exited = new Promise(resolve => pty.onExit(({ exitCode: code }) => { exitCode = code; resolve(code) }))
+  // The last bytes the product wrote, for a failure report.
+  let tail = ''
+  pty.onData((data) => { screen.feed(data); tail = (tail + data).slice(-6000) })
+
+  const failures = []
+  const checkpoints = []
+  let driver = 'booting'
+  let bootMs = 0
+  let syncs = 0
+  const pending = []
+
+  /**
+   * Wait until nothing changes: the screen's content (text, styles, cursor) stays the same for `quiet` ms with no frame
+   * open and no stub request in flight. Content, not bytes: pi-tui writes an empty frame (a cursor move) on every
+   * render it is asked for, which a running spinner asks for even under reduced motion.
+   */
+  async function settle(quiet = 150, timeoutMs = 20_000) {
+    const begin = performance.now()
+    // The work the product queued before now runs first, then the screen must stand still.
+    const id = ++syncs
+    control.send({ type: 'sync', id })
+    for (;;) {
+      const message = await control.next(timeoutMs, 'the driver to sync')
+      if (message.type === 'synced' && message.id === id) break
+      if (message.type !== 'synced') pending.push(message)
+    }
+    let seen = -1
+    let content
+    let since = performance.now()
+    for (;;) {
+      if (screen.state.bytes !== seen) {
+        seen = screen.state.bytes
+        await screen.flush()
+        const next = screen.serialize()
+        if (next !== content) { content = next; since = performance.now() }
+      }
+      if (performance.now() - since >= quiet && screen.state.openSync === 0 && session.stub.inFlight() === 0) return
+      if (performance.now() - begin > timeoutMs) throw new Error(`the screen did not settle in ${String(timeoutMs)} ms (open frames ${String(screen.state.openSync)}, stub requests ${String(session.stub.inFlight())})`)
+      await sleep(10)
+    }
+  }
+  /** The next driver report, tracking where playback stands; reports set aside while syncing come first. */
+  async function report(timeoutMs, what) {
+    const message = pending.shift() ?? await control.next(timeoutMs, what)
+    if (message.type === 'mark') driver = 'paused'
+    else if (message.type === 'ask') driver = 'asking'
+    else if (message.type === 'finished') driver = 'finished'
+    else if (message.type === 'ready') driver = 'paused'
+    return message
+  }
+  const cellOf = (at) => {
+    if (at === undefined) return { row: Math.floor(screen.terminal.rows / 2), col: Math.floor(screen.terminal.cols / 2) }
+    if (at.text === undefined) return at
+    const found = screen.find(at.text)
+    if (found === undefined) throw new Error(`no visible "${at.text}" to point at`)
+    return found
+  }
+  const mouse = (bytes) => {
+    if (screen.state.mouse === 'none' || !screen.state.sgr) throw new Error('mouse reporting is off: the product would not see this event')
+    pty.write(bytes)
+  }
+  const capture = async (checkpointName) => {
+    await settle()
+    const wrapped = screen.wrappedRows()
+    if (wrapped.length > 0) failures.push(`${checkpointName}: rows ${wrapped.join(', ')} are wider than the terminal`)
+    checkpoints.push({ name: checkpointName, grid: maskGrid(screen.serialize()) })
+    await onCheckpoint?.(checkpointName, screen)
+  }
+
+  try {
+    try { await report(90_000, 'the replay driver') } finally { releaseBoot() }
+    bootMs = Math.round(performance.now() - started)
+    await settle()
+    for (const step of scenario.script) {
+      switch (step.step) {
+        case 'play':
+          if (driver === 'paused') { control.send({ type: 'play', until: step.until ?? null }); driver = 'running' }
+          if (driver !== 'finished') await report(120_000, step.until === undefined ? 'the end of the replay' : `the mark ${step.until}`)
+          await settle()
+          break
+        case 'checkpoint': await capture(step.name); break
+        case 'key':
+          for (let count = 0; count < step.repeat; count += 1) { pty.write(keyBytes(step.name)); await settle(80) }
+          break
+        case 'type':
+          for (const char of step.text) { pty.write(char); await settle(40) }
+          break
+        case 'click': { const cell = cellOf(step.at); mouse(clickReport(cell.row, cell.col)); await settle(); break }
+        case 'wheel': {
+          const cell = cellOf(step.at)
+          for (let count = 0; count < step.count; count += 1) mouse(mouseReport({ type: 'wheel', direction: step.direction, ...cell }))
+          await settle()
+          break
+        }
+        case 'resize': pty.resize(step.cols, step.rows); screen.resize(step.cols, step.rows); await settle(); break
+        default: throw new Error(`unknown step ${String(step.step)}`)
+      }
+    }
+    if (keys.length > 0) {
+      for (const keyName of keys) { pty.write(keyBytes(keyName)); await settle(80) }
+      await capture('keys')
+    }
+  } catch (error) {
+    const text = tail.replace(/\u001b\[[0-9;?]*[A-Za-z]/gu, '').replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/gu, '').replace(/\r/gu, '').split('\n').map(line => line.trimEnd()).filter(Boolean).slice(-12).join('\n')
+    failures.push(`${String(error.message ?? error)}${text === '' ? '' : `\n--- the product's last output ---\n${text}`}`)
+  }
+
+  // The invariants of every run, then a clean exit.
+  const driverLog = existsSync(session.log) ? readFileSync(session.log, 'utf8') : ''
+  for (const line of driverLog.split('\n')) if (/action failed|replay failed/u.test(line)) failures.push(`driver: ${line.slice(25, 400)}`)
+  logs.forEach((file, index) => { if (sizeOf(file) > logSizes[index]) failures.push(`${file.split('/').at(-1)} was written`) })
+  // Esc closes what is open; Ctrl+C interrupts a running turn first, so it is pressed until the product exits.
+  pty.write('\u001b')
+  await sleep(150)
+  let code
+  for (let press = 0; press < 5 && code === undefined; press += 1) {
+    pty.write('\u0003')
+    code = await Promise.race([exited, sleep(press < 4 ? 400 : 6000).then(() => undefined)])
+  }
+  if (code === undefined) { failures.push('the product did not exit on Ctrl+C'); pty.kill() } else if (exitCode !== 0) failures.push(`the product exited with ${String(exitCode)}`)
+  await control.close()
+  await session.close()
+  return { name, cols: width, rows: height, checkpoints, failures, frames: screen.state.frames.length, bootMs, durationMs: Math.round(performance.now() - started), screen }
+}

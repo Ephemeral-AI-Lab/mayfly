@@ -1663,7 +1663,7 @@ stdout keeps one line per step. CI copies the summary into the job summary and u
   declared, global, nor inert. At plan time such a file escalates, and the reason is given.
 - **Deletions.** A deleted file selects the importers it leaves unresolved.
 
-*The scenario catalog and the runner* (D28). One file per scenario under `script/scenarios/catalog/` (*new*) holds:
+*The scenario catalog and the runner* (D28). Each scenario of the catalog (`script/scenarios/catalog.mjs`, *new*) holds:
 
 - its source: a replay timeline, the mock LLM, the gallery, or an idle session;
 - the source globs it `covers`;
@@ -1673,7 +1673,7 @@ stdout keeps one line per step. CI copies the summary into the job summary and u
 - its perf ceilings.
 
 `frame`, `scenario`, `dev --scenario`, `scenarios` (the goldens), `perf`, and the Website app shots all read it. The
-24 replays move into it, and the six fixture scenes become replays through a `seed` operation that writes stored
+24 replays moved into it in 2b.5; the six fixture scenes become replays in 2b.6 through a `seed` operation that writes stored
 sessions; the fixture path over fake services goes.
 
 The runner starts the real `dsh` under node-pty with the replay driver and a presentation row in the overlay, and
@@ -1749,8 +1749,8 @@ The A/B and the outputs:
 | 2b.2 | One suite run (vitest projects: `suite` with `MAYFLY_UI_VERIFY_MEMO=1`, `perf` without it); a repository coverage floor of 99% on each metric, measured as 99.74 / 99.48 / 99.81 / 99.92 (statements / branches / functions / lines) with the ignore comments gone; no coverage in a local changed run; one build for the smoke (`MAYFLY_SKIP_BUILD`) | The per-file thresholds, `packages/ui/vitest.config.ts`, `script/test-retained.mjs` with the `test:retained` script and CI step, the 129 `v8 ignore` directives (their reasons stay as comments), and the seam comments that cited the per-file gate |
 | 2b.3 | Import-graph selection with declared inputs and the claimed-files guard (`script/verify/{graph,inputs,select}.mjs`): exact specs and workflow tests with the chain that selected each (`--why`), checks selected by their inputs or by reaching their entry script, deletions through the imports they leave unresolved. The graph builds in about 1 s cold and 0.4 s warm | `script/test-impact.mjs` with its path and keyword rules, `vitest related`, the whole-package runs, and the rule that any deleted TypeScript file runs the full gate |
 | 2b.4 | `pnpm run check` (`script/check.mjs`, `script/verify/{steps,report,coverage-diff}.mjs`): the three tiers, a step line each with its log under `.artifacts/verify/steps/`, `report.json` and `summary.md` (first failure per spec, the chain that selected it, owed acceptance, rerun commands), a blocking build or typecheck that skips the rest; `dev --check` runs the round tier after each applied build; CI's check job runs the pr tier on pull requests (with advice on changed lines no selected spec ran) and the full tier on `main`, nightly, and by hand, and publishes the summary and the report | `verify-changed.mjs`, `verification-commands.mjs`, and the `verify:changed`, `verify:full`, `test:coverage` scripts; CI's one step per script |
-| 2b.5 | The catalog and the headless runner: the control channel, fast playback, the clock, the responder, input, the invariants; `frame`, `scenario`, and `dev` read the catalog | `script/workbench/{live-scenarios,keys,replays}.mjs`, `tests/workbench/{frame.spec,scenarios}.ts` |
-| 2b.6 | Cell-grid goldens gate; app shots are painted from them | `tests/app-shots.spec.ts` with `tests/app-shots/`, `script/shots/app-manifest.mjs`, `script/smoke-pty-mouse.mjs` (a wheel scenario replaces it) |
+| 2b.5 | The catalog (`script/scenarios/catalog.mjs`: every replay, an empty session, the gallery) and the headless runner (`runner.mjs`, `screen.mjs`, `session.mjs`, `clock.mjs`, `input.mjs`): the driver's control socket (`play` to a mark, `sync`, reports of marks, asks, and the end), fast playback, later effects compiled as actions instead of driver timers, the scenario clock, a screen that times frames on `?2026l`, tracks the mouse and cursor modes, and answers the colour queries, SGR mouse input, settling on screen content, the invariants, boots that take turns; `frame`, `scenario`, and `dev --replay` read the catalog. All 26 scenarios give identical grids on repeated and parallel runs (52 runs in 129 s, four at a time). It found that the activity spinner ignored reduced motion (fixed in its own commit), that two `dsh` boots on one profile race on its composition file, that pi-tui writes an empty frame (a cursor move) on every render asked for, and that a generated session title lands at a different moment each run (the runner disables it) | `script/workbench/{live-scenarios,keys,replay-run}.mjs`; timeline, replays, driver, and stub move to `script/scenarios/` |
+| 2b.6 | Cell-grid goldens gate; the six app-shot fixture scenes become catalog scenarios (`seed`), and app shots are painted from their goldens | `tests/app-shots.spec.ts` with `tests/app-shots/`, `script/shots/app-manifest.mjs`, `tests/workbench/{frame.spec,scenarios}.ts`, `script/smoke-pty-mouse.mjs` (a wheel scenario replaces it) |
 | 2b.7 | `pnpm run perf`: the metrics, the A/B against the merge-base, the profile summary, the ceilings in the catalog | `script/bench-pty.mjs`, `bench:pty*`, `BENCH_PTY_SLACK` |
 | 2b.8 | Real screenshots: the browser backend, `frame --png`, PNGs of the changed checkpoints, the contact sheet | — |
 | 2b.9 | Test files typechecked (`tsconfig.tests.json` maps the workspace packages to their source) and the backlog fixed | — |
@@ -1780,7 +1780,8 @@ The A/B and the outputs:
 | 2b.2 | in review | `feat/2b-2-one-suite-run` |
 | 2b.3 | in review | `feat/2b-3-graph-selection` |
 | 2b.4 | in review | `feat/2b-4-check-tiers` |
-| 2b.5-2b.9 | planned | — |
+| 2b.5 | in review | `feat/2b-5-scenario-runner` |
+| 2b.6-2b.9 | planned | — |
 
 **2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
 ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the

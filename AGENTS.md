@@ -118,11 +118,11 @@ mayfly-<tag>` watches `packages/*/src` and `examples/*/src`, runs the
 incremental build for the changed files, and restarts the profile's `dsh` on the
 same persisted session; a failed build is not applied (output in
 `.artifacts/dev/build.log`), and the production `mayfly` profile is refused.
-`pnpm run scenario <name>` opens the product on a replay (`--list`; `--width`,
-`--height`, `--no-color`, `--ascii`, `--speed N`): a conversation written as a
-chronological timeline (`script/workbench/replays.mjs`, builders in
-`timeline.mjs`) and played into the live session by a driver plugin loaded with
-`dsh --patch`. The driver appends the session events and streamed frames the
+`pnpm run scenario <name>` opens the product on a scenario of the catalog
+(`script/scenarios/catalog.mjs`; `--list`, `--width`, `--height`, `--no-color`,
+`--ascii`, `--speed N`): most are a conversation written as a chronological
+timeline (`script/scenarios/replays.mjs`, builders in `timeline.mjs`) and played
+into the live session by a driver plugin loaded with `dsh --patch`. The driver appends the session events and streamed frames the
 agent loop would have written, creates child sessions (continuable ones with a
 live Agent) and a `/btw` side conversation with its own Agent, drives the real
 goal and job services, writes compactions, failed provider attempts with their
@@ -133,17 +133,30 @@ kind, streaming phases, subagents, plan mode, goals, jobs, modes and model
 switches, context pressure, compaction (automatic and manual), errors and
 interrupts, retries, queued input, side questions, notices, prompt variants,
 rendering edge cases, and a 150-turn history. A finished job wakes the agent,
-which answers with the stub notice. Replay events must keep a stored session
-loadable (for example `request/header` inside an open turn, one `retryId` per
-retry chain), so check that a new replay resumes with `dsh --resume`. A stub
-model endpoint answers the product's own requests (title generation).
-`pnpm run dev --replay <name>` runs the same replay in the dev loop; a restart
-resumes the session, and the driver skips a session that already has turns. A
-component draft adds the replay that shows its states.
-`.artifacts/replay/driver.log` records each action and any failure; `pnpm run frame <scenario>`
-paints a registered scenario through the real renderer to
-`.artifacts/frames/` as text, ANSI, and SVG (`--keys enter,down,ctrl+c`).
-Reduced motion is a saved setting: change it in `/settings`.
+which answers with the stub notice at real time. Replay events must keep a
+stored session loadable (for example `request/header` inside an open turn, one
+`retryId` per retry chain), so check that a new replay resumes with
+`dsh --resume`; a later effect (a job line, a notice cleared) is an action of
+its own, never a timer in the driver. A stub model endpoint answers the
+product's own requests. `pnpm run dev --replay <name>` runs the same replay in
+the dev loop; a restart resumes the session, and the driver skips a session
+that already has turns. A component draft adds the scenario that shows its
+states: a replay with `mark()`s and a catalog script of `play`, keys, mouse,
+resizes, and named checkpoints. `.artifacts/replay/driver.log` records each
+action and any failure.
+
+`pnpm run frame <scenario>` runs the scenario without a person: the runner
+(`script/scenarios/runner.mjs`) boots the real `dsh` under a PTY with the
+driver on a control socket, the scenario clock, reduced motion, and no generated
+title, plays the script, and writes each checkpoint to
+`.artifacts/frames/<scenario>-<cols>x<rows>/` as a cell grid, its text, and an
+SVG (`--width`, `--height`, `--keys enter,down,ctrl+c`). A step settles when
+the screen content stands still with no frame open and no stub request in
+flight; every run fails on a wrapped row, the overflow or crash log, a failed
+driver action, or a refused exit. Runs give identical grids, also side by side
+(boots take turns). The app-shot fixture scenes (`app-*`) still paint through
+`tests/workbench/frame.spec.ts`. Reduced motion is a saved setting: change it in
+`/settings`.
 
 Code edits apply by restart. Cordis `restart()` re-runs `apply` but the loader's
 plain `import()` returns Node's cached module; Node's internal loader cache

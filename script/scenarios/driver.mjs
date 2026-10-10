@@ -1,13 +1,21 @@
 /**
- * The replay driver: a Cordis plugin the workbench loads into a running `dsh` through a `--patch` overlay. It plays a
- * compiled replay (see `timeline.mjs`) into the live session on its timeline: session events, streamed assistant
- * frames, child sessions, and approval or question prompts that wait for you. No model is called and no tool runs.
- * Inert unless `MAYFLY_REPLAY_FILE` names a replay. Environment: `MAYFLY_REPLAY_SPEED` (default 1; 2 plays twice as
- * fast) and `MAYFLY_REPLAY_LOG` (a file receiving one line per action and every failure).
- * @module script/workbench/replay-driver
+ * The replay driver: a Cordis plugin loaded into a running `dsh` through a `--patch` overlay. It plays a compiled
+ * replay (see `timeline.mjs`) into the live session: session events, streamed assistant frames, child sessions, jobs,
+ * notices, and approval or question prompts that wait for an answer. No model is called and no tool runs. Inert unless
+ * `MAYFLY_REPLAY_FILE` names a replay.
+ *
+ * Without a control channel it plays on its timeline for a person watching (`MAYFLY_REPLAY_SPEED`, default 1). With
+ * `MAYFLY_REPLAY_CONTROL` naming a Unix socket, a runner drives it with JSON lines: the driver reports `ready`, each
+ * `mark` it pauses at, a pending `ask`, and `finished`; the runner sends `play` (`until` a mark, or to the end), which
+ * plays as fast as the session takes the actions. When the scenario clock is loaded (`clock.mjs`), every action runs at
+ * its timeline time and the clock stands still while playback is paused. `MAYFLY_REPLAY_LOG` receives one line per
+ * action and every failure.
+ * @module script/scenarios/driver
  */
 
+import { randomBytes } from 'node:crypto'
 import { appendFileSync, readFileSync } from 'node:fs'
+import { createConnection } from 'node:net'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 export const name = 'mayfly-replay-driver'
@@ -31,10 +39,9 @@ function surfaceNodes(session) {
   return nodes
 }
 
-/** Start a job in the real registry whose output and outcome follow the timeline; nothing runs behind it. */
+/** Start a job in the real registry with nothing behind it; its output and outcome arrive as later actions. */
 function startJob(jobs, agent, action) {
-  const timers = new Set()
-  const later = (ms, fn) => { const timer = setTimeout(() => { timers.delete(timer); fn() }, ms); timers.add(timer) }
+  let job
   jobs.start({
     kind: action.jobKind ?? 'bash',
     label: action.label,
@@ -42,18 +49,42 @@ function startJob(jobs, agent, action) {
     run(handle) {
       let settle
       const done = new Promise(resolve => { settle = resolve })
-      for (const [ms, text] of action.lines ?? []) later(ms, () => handle.append(`${text}\n`))
-      for (const [ms, line] of action.progress ?? []) later(ms, () => handle.updateProgress(line))
-      if (action.endMs !== undefined) later(action.endMs, () => settle({ status: action.status ?? 'completed', ...(action.detail === undefined ? {} : { detail: action.detail }) }))
-      return {
-        cancel(reason) {
-          for (const timer of timers) clearTimeout(timer)
-          timers.clear()
-          settle({ status: 'killed', ...(reason === undefined ? {} : { detail: reason }) })
-        },
-        done,
-      }
+      job = { handle, settle }
+      return { cancel(reason) { settle({ status: 'killed', ...(reason === undefined ? {} : { detail: reason }) }) }, done }
     },
+  })
+  return job
+}
+
+/**
+ * The runner's channel: JSON lines over a Unix socket. `next()` resolves with the next message from the runner; a
+ * `sync` goes to `onSync` whenever it arrives, even after playback ended.
+ * @returns {Promise<{ send(message: object): void, next(): Promise<object>, close(): void }>}
+ */
+function connectControl(path, onSync) {
+  return new Promise((resolve, reject) => {
+    const socket = createConnection(path)
+    const queue = []
+    const waiting = []
+    let buffer = ''
+    socket.setEncoding('utf8')
+    socket.on('data', (data) => {
+      buffer += data
+      for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) {
+        const message = JSON.parse(buffer.slice(0, end))
+        buffer = buffer.slice(end + 1)
+        if (message.type === 'sync') { onSync(message.id); continue }
+        const waiter = waiting.shift()
+        if (waiter === undefined) queue.push(message)
+        else waiter(message)
+      }
+    })
+    socket.once('error', reject)
+    socket.once('connect', () => resolve({
+      send: message => { socket.write(`${JSON.stringify(message)}\n`) },
+      next: () => queue.length > 0 ? Promise.resolve(queue.shift()) : new Promise(done => waiting.push(done)),
+      close: () => socket.end(),
+    }))
   })
 }
 
@@ -61,6 +92,9 @@ export function apply(ctx) {
   const file = process.env.MAYFLY_REPLAY_FILE
   if (file === undefined || file === '') return
   const speed = Number(process.env.MAYFLY_REPLAY_SPEED ?? '1') || 1
+  const controlPath = process.env.MAYFLY_REPLAY_CONTROL
+  /** The scenario clock (`clock.mjs`), when the runner loaded it. */
+  const clock = globalThis.__mayflyClock
   const logFile = process.env.MAYFLY_REPLAY_LOG
   const log = (message) => { if (logFile !== undefined && logFile !== '') appendFileSync(logFile, `${new Date().toISOString()} ${message}\n`) }
   const abort = new AbortController()
@@ -80,11 +114,31 @@ export function apply(ctx) {
 
   async function run() {
     const actions = JSON.parse(readFileSync(file, 'utf8'))
+    // A `sync` is answered once the work queued before it has run and a render is requested, so a runner that waits
+    // for the screen to go quiet afterwards sees everything played so far.
+    const control = controlPath === undefined || controlPath === '' ? undefined : await connectControl(controlPath, (id) => {
+      void (async () => {
+        for (let turn = 0; turn < 3; turn += 1) await sleep(0)
+        try { ctx.get('mayflyScreen')?.requestRender() } catch { /* the context was disposed */ }
+        control?.send({ type: 'synced', id })
+      })()
+    })
+    if (control !== undefined) abort.signal.addEventListener('abort', () => control.close(), { once: true })
     const agent = await currentAgent()
     if (agent === undefined) return
     const main = agent.session
     // A restart resumes the session with its history: play only into a session that has not started a turn.
-    if (main.snapshotEvents().some(event => event.type === 'turn/start')) { log('session already has turns; replay skipped'); return }
+    if (main.snapshotEvents().some(event => event.type === 'turn/start')) { log('session already has turns; replay skipped'); control?.send({ type: 'finished', skipped: true }); return }
+    clock?.freeze()
+    // Under a runner, playback waits for `play` and pauses at the mark it names (or plays to the end).
+    let until
+    const awaitPlay = async () => {
+      clock?.freeze()
+      const message = await control.next()
+      if (message.type !== 'play') throw new Error(`unexpected control message ${JSON.stringify(message)}`)
+      until = message.until ?? null
+    }
+    if (control !== undefined) { control.send({ type: 'ready', actions: actions.length }); await awaitPlay() }
     const children = new Map()
     // Sessions that have a live Agent (a side question) stream through it; the others only receive events.
     const liveAgents = new Map()
@@ -94,18 +148,31 @@ export function apply(ctx) {
     const streamAgent = (action) => action.session === undefined || action.session === null ? agent : liveAgents.get(action.session)
     const lastSeqs = new Map()
     const streams = new Map()
+    const jobsById = new Map()
     let notifier
-    const runTag = Date.now().toString(36)
+    // Persisted sessions need new ids on every run, and the scenario clock repeats Date.now(), so the tag is random.
+    const runTag = randomBytes(4).toString('hex')
     let previous = 0
     log(`replay start: ${String(actions.length)} actions at ${String(speed)}x`)
 
     for (const action of actions) {
       if (abort.signal.aborted) return
-      const wait = (action.at - previous) / speed
-      previous = action.at
-      if (wait > 0) await sleep(wait, undefined, { signal: abort.signal }).catch(() => {})
+      if (control === undefined) {
+        const wait = (action.at - previous) / speed
+        previous = action.at
+        if (wait > 0) await sleep(wait, undefined, { signal: abort.signal }).catch(() => {})
+      } else {
+        // As fast as the session takes it: yield so the action before is painted, at the action's timeline time.
+        await sleep(0)
+        clock?.at(action.at)
+      }
       try {
         switch (action.op) {
+          case 'mark': {
+            log(`mark ${action.name}`)
+            if (control !== undefined && action.name === until) { control.send({ type: 'mark', name: action.name }); await awaitPlay() }
+            break
+          }
           case 'append': {
             const session = target(action)
             if (session === undefined) { log(`no session ${action.session} for ${action.type}`); break }
@@ -191,33 +258,47 @@ export function apply(ctx) {
           case 'job': {
             const jobs = ctx.get('jobs')
             if (jobs === undefined) { log('no job service'); break }
-            startJob(jobs, agent, action)
+            jobsById.set(action.jobId, startJob(jobs, agent, action))
             log(`job ${action.label} started`)
             break
           }
+          case 'job-line': {
+            jobsById.get(action.jobId)?.handle.append(`${action.text}\n`)
+            break
+          }
+          case 'job-progress': {
+            jobsById.get(action.jobId)?.handle.updateProgress(action.line)
+            break
+          }
+          case 'job-end': {
+            jobsById.get(action.jobId)?.settle({ status: action.status, ...(action.detail === undefined ? {} : { detail: action.detail }) })
+            log(`job ${action.jobId} ${action.status}`)
+            break
+          }
           case 'queue': {
-            // Pending input enters the inbox without waking the agent (`followup` would start a turn), and leaves after the hold.
-            const ids = action.rows.map((row, index) => {
+            // Pending input enters the inbox without waking the agent (`followup` would start a turn).
+            action.rows.forEach((row, index) => {
               const steer = typeof row === 'object' && row !== null
-              const message = { id: `replay-queued-${String(action.at)}-${String(index)}`, role: 'user', content: [{ type: 'text', text: steer ? row.steer : row }], source: { kind: 'user' } }
-              agent.inbox.append(steer ? 'next-step' : 'next-turn', message)
-              return message.id
+              agent.inbox.append(steer ? 'next-step' : 'next-turn', { id: action.ids[index], role: 'user', content: [{ type: 'text', text: steer ? row.steer : row }], source: { kind: 'user' } })
             })
-            const timer = setTimeout(() => { try { for (const id of ids) agent.inbox.remove(id) } catch { /* the session ended first */ } }, action.holdMs / speed)
-            abort.signal.addEventListener('abort', () => clearTimeout(timer), { once: true })
-            log(`queue ${String(ids.length)} messages for ${String(action.holdMs)}ms`)
+            log(`queue ${String(action.ids.length)} messages`)
+            break
+          }
+          case 'queue-clear': {
+            for (const id of action.ids) agent.inbox.remove(id)
+            log(`queue cleared ${String(action.ids.length)} messages`)
             break
           }
           case 'notify': {
             const interaction = ctx.get('mayflyUiInteraction')
             if (interaction === undefined) { log('no notification lane'); break }
             notifier ??= interaction.createNotificationOwner('replay')
-            const id = `replay-notice-${String(action.at)}`
-            notifier.report(id, { kind: 'session', sessionId: String(agent.id) }, { message: action.message, severity: action.severity, ...(action.purpose === undefined ? {} : { purpose: action.purpose }), ...(action.detail === undefined ? {} : { detail: action.detail }) }, id)
-            const owner = notifier
-            const timer = setTimeout(() => { try { owner.clear(id) } catch { /* the lane was disposed first */ } }, action.holdMs / speed)
-            abort.signal.addEventListener('abort', () => clearTimeout(timer), { once: true })
+            notifier.report(action.noticeId, { kind: 'session', sessionId: String(agent.id) }, { message: action.message, severity: action.severity, ...(action.purpose === undefined ? {} : { purpose: action.purpose }), ...(action.detail === undefined ? {} : { detail: action.detail }) }, action.noticeId)
             log(`notice ${action.severity}: ${action.message}`)
+            break
+          }
+          case 'notify-clear': {
+            notifier?.clear(action.noticeId)
             break
           }
           case 'btw-open': {
@@ -229,7 +310,7 @@ export function apply(ctx) {
             const selected = main.requestHeader()?.config ?? defaultModel.currentSelection()
             const preset = main.header.agentPreset
             const handle = await agents.create({
-              sessionId: `btw-replay-${String(Date.now())}`,
+              sessionId: `btw-replay-${runTag}`,
               meta: { cwd: main.header.cwd ?? process.cwd(), parentSession: agent.id },
               seed: [],
               signal: abort.signal,
@@ -290,6 +371,9 @@ export function apply(ctx) {
             log(`ask ${action.kind} waits for an answer`)
             const owner = action.session === undefined || action.session === null ? agent : undefined
             if (owner === undefined) break
+            // The clock runs while an answer is awaited, as it does for a person; the runner answers with keys.
+            clock?.flow()
+            control?.send({ type: 'ask', kind: action.kind })
             if (action.kind === 'approval') await ctx.get('approval').request({ agent: owner, toolName: action.toolName, callId: action.callId, reason: action.reason, signal: abort.signal })
             else await ctx.get('userQuestions').ask({ agent: owner, questions: action.questions, signal: abort.signal })
             log('ask answered')
@@ -303,5 +387,7 @@ export function apply(ctx) {
       }
     }
     log('replay finished')
+    clock?.freeze()
+    control?.send({ type: 'finished' })
   }
 }

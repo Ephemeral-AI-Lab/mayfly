@@ -1,4 +1,8 @@
-/** Parse the `--keys` list of the workbench into the byte strings a terminal would send. @module script/workbench/keys */
+/**
+ * What a terminal sends: key names as the legacy encoding a terminal without the kitty protocol uses (the encoding the
+ * scenario terminals negotiate), and mouse events as SGR reports (`?1006`), the only mouse encoding the product enables.
+ * @module script/scenarios/input
+ */
 
 const NAMED = new Map([
   ['enter', '\r'],
@@ -42,3 +46,31 @@ export function parseKeys(spec) {
   if (spec === undefined || spec === '') return []
   return spec.split(',').map(token => (token === 'comma' ? ',' : keyBytes(token)))
 }
+
+/** SGR button codes. */
+const BUTTONS = { left: 0, middle: 1, right: 2 }
+const WHEEL = { up: 64, down: 65, left: 66, right: 67 }
+
+/**
+ * One SGR mouse report.
+ * @param {object} event
+ * @param {'press' | 'release' | 'drag' | 'wheel'} event.type
+ * @param {number} event.row - zero-based screen row.
+ * @param {number} event.col - zero-based screen column.
+ * @param {'left' | 'middle' | 'right'} [event.button] - for press, release, and drag (default left).
+ * @param {'up' | 'down' | 'left' | 'right'} [event.direction] - for wheel.
+ * @param {{ shift?: boolean, alt?: boolean, ctrl?: boolean }} [event.modifiers]
+ * @returns {string}
+ */
+export function mouseReport({ type, row, col, button = 'left', direction = 'up', modifiers = {} }) {
+  let code = type === 'wheel' ? WHEEL[direction] : BUTTONS[button]
+  if (code === undefined) throw new Error(`unknown mouse ${type === 'wheel' ? 'direction' : 'button'}`)
+  if (type === 'drag') code += 32
+  if (modifiers.shift === true) code += 4
+  if (modifiers.alt === true) code += 8
+  if (modifiers.ctrl === true) code += 16
+  return `\u001b[<${String(code)};${String(col + 1)};${String(row + 1)}${type === 'release' ? 'm' : 'M'}`
+}
+
+/** A click: a press and a release at one cell. */
+export const click = (row, col, button = 'left') => mouseReport({ type: 'press', row, col, button }) + mouseReport({ type: 'release', row, col, button })

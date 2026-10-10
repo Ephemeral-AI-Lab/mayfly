@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 /**
  * Link `repo` (and, for a gallery run, the gallery of `galleryRepo`) into a throwaway profile named `bench`, cached
@@ -11,7 +11,9 @@ import { join } from 'node:path'
  * @param options - `repo`, `galleryRepo`, `gallery`, `dshBin`, `artifacts` (directory), and `stdio` for the install steps.
  * @returns `{ dshHome, profileDir, work, env }`, the isolated environment a `dsh --profile bench` boot needs.
  */
-export function ensureThrowawayProfile({ repo, galleryRepo = repo, gallery = false, dshBin, artifacts }) {
+export function ensureThrowawayProfile({ repo: given, galleryRepo: givenGallery = given, gallery = false, dshBin, artifacts }) {
+  // One profile per checkout, however its path is spelled (a trailing slash included).
+  const [repo, galleryRepo] = [resolve(given), resolve(givenGallery)]
   const key = createHash('sha256').update([repo, gallery ? galleryRepo : ''].join('\n')).digest('hex').slice(0, 12)
   const dshHome = join(artifacts, 'homes', key, '.dsh')
   const profileDir = join(dshHome, 'profiles', 'bench')

@@ -1,8 +1,10 @@
 /**
  * Replay timelines: a conversation written as turns, steps, and tools, compiled into the flat, chronological list of
  * actions the replay driver plays inside a running `dsh`. Nothing here talks to a model or runs a tool; the actions
- * are the session events and stream frames the agent loop would have produced. Pure and deterministic.
- * @module script/workbench/timeline
+ * are the session events and stream frames the agent loop would have produced. Every effect that happens later (a
+ * job's output, a queued message withdrawn, a notice cleared) is an action of its own, so a run played as fast as
+ * possible reaches the same states in the same order. Pure and deterministic.
+ * @module script/scenarios/timeline
  */
 
 const DEFAULT_USAGE = { inputTokens: 3200, outputTokens: 120, cacheReadTokens: 2400 }
@@ -71,6 +73,8 @@ export const text = value => ({ type: 'text', text: value })
 export const image = (name, { width = 1280, height = 720, bytes = 84_000 } = {}) => ({ type: 'image', attachment: { attachmentId: `replay-${name}`, mediaType: 'image/png', bytes, width, height, name } })
 /** Wait before the next item. */
 export const pause = ms => ({ kind: 'pause', ms })
+/** A named point of the timeline: a scenario plays up to it (`play({ until: name })`) and takes a checkpoint there. */
+export const mark = name => ({ kind: 'mark', name })
 /** A permission question for a tool call (`tool(..., { ask: approval('bash', 'why') })`); the replay waits for the answer. */
 export const approval = (toolName, reason) => ({ kind: 'approval', toolName, reason })
 /** Questions for the user during a tool call (`tool('ask_user_question', ..., { ask: question([...]) })`); the replay waits for the answer. */
@@ -100,6 +104,27 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
 
   const push = (at, op) => actions.push({ at: Math.round(at), ...op })
 
+  /** A job starts, prints its lines and progress, and settles, each at its own time. */
+  function scheduleJob(item, t) {
+    const jobId = `replay-job-${String(++messageSeq)}`
+    push(t, { op: 'job', jobId, label: item.label, jobKind: item.jobKind })
+    for (const [ms, line] of item.lines ?? []) push(t + ms, { op: 'job-line', jobId, text: line })
+    for (const [ms, line] of item.progress ?? []) push(t + ms, { op: 'job-progress', jobId, line })
+    if (item.endMs !== undefined) push(t + item.endMs, { op: 'job-end', jobId, status: item.status ?? 'completed', detail: item.detail })
+  }
+  /** Queued messages enter the inbox, then leave it after their hold. */
+  function scheduleQueue(item, t) {
+    const ids = item.rows.map(() => id('queued'))
+    push(t, { op: 'queue', ids, rows: item.rows })
+    push(t + item.holdMs, { op: 'queue-clear', ids })
+  }
+  /** A notice shows, then clears after its hold. */
+  function scheduleNotice(item, t) {
+    const noticeId = id('notice')
+    push(t, { op: 'notify', noticeId, severity: item.severity, message: item.message, detail: item.detail, purpose: item.purpose })
+    push(t + item.holdMs, { op: 'notify-clear', noticeId })
+  }
+
   /** Compile one conversation (the main one or a child) into `session`; returns the clock at its end. */
   function conversation(list, start, session) {
     let t = start
@@ -119,9 +144,10 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       if (item.kind === 'pause') { t += item.ms; continue }
       if (item.kind === 'raw') { event(t, item.type, item.data, item.surface === true); t += 100; continue }
       if (item.kind === 'goal') { push(t, { op: 'goal', ...item }); t += 200; continue }
-      if (item.kind === 'job') { push(t, { op: 'job', ...item }); t += 100; continue }
-      if (item.kind === 'queue') { push(t, { op: 'queue', rows: item.rows, holdMs: item.holdMs }); t += 100; continue }
-      if (item.kind === 'notify') { push(t, { op: 'notify', severity: item.severity, message: item.message, holdMs: item.holdMs, detail: item.detail, purpose: item.purpose }); t += item.holdMs + 300; continue }
+      if (item.kind === 'mark') { push(t, { op: 'mark', name: item.name }); continue }
+      if (item.kind === 'job') { scheduleJob(item, t); t += 100; continue }
+      if (item.kind === 'queue') { scheduleQueue(item, t); t += 100; continue }
+      if (item.kind === 'notify') { scheduleNotice(item, t); t += item.holdMs + 300; continue }
       if (item.kind === 'btw') {
         // A side question: a live Agent of its own, opened as a side conversation and played like any other.
         live.add('btw')
@@ -163,9 +189,10 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       if (item.kind === 'pause') { t += item.ms; continue }
       if (item.kind === 'raw') { event(t, item.type, item.data, item.surface === true); t += 100; continue }
       if (item.kind === 'goal') { push(t, { op: 'goal', ...item }); t += 200; continue }
-      if (item.kind === 'job') { push(t, { op: 'job', ...item }); t += 100; continue }
-      if (item.kind === 'queue') { push(t, { op: 'queue', rows: item.rows, holdMs: item.holdMs }); t += 100; continue }
-      if (item.kind === 'notify') { push(t, { op: 'notify', severity: item.severity, message: item.message, holdMs: item.holdMs, detail: item.detail, purpose: item.purpose }); t += item.holdMs + 300; continue }
+      if (item.kind === 'mark') { push(t, { op: 'mark', name: item.name }); continue }
+      if (item.kind === 'job') { scheduleJob(item, t); t += 100; continue }
+      if (item.kind === 'queue') { scheduleQueue(item, t); t += 100; continue }
+      if (item.kind === 'notify') { scheduleNotice(item, t); t += item.holdMs + 300; continue }
       if (item.kind === 'compaction') { t = compact(item, t, session, turnNo, event); continue }
       stepNo += 1
       t = runStep(item, turnNo, stepNo, t, event, session, writeHeader)

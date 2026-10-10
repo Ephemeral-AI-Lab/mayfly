@@ -1,7 +1,7 @@
 /**
  * The model endpoint of a replay session: replays play session events directly, so nothing needs a model. This stub
  * answers the requests the product makes anyway (title generation) and any prompt you type, so no real provider is
- * reached and nothing is billed. @module script/workbench/stub-model
+ * reached and nothing is billed. @module script/scenarios/stub-model
  */
 
 import { createServer } from 'node:http'
@@ -20,7 +20,8 @@ const sse = text => [
 
 /**
  * Start the stub. Requests without tools (title generation) get the title; the rest get the notice.
- * @returns `{ baseURL, close() }`.
+ * @returns `{ baseURL, inFlight(), close() }`: `inFlight()` counts the requests not answered yet, so a scenario settles
+ *   only after the title the product asks for has arrived.
  */
 export async function startStubModel() {
   const open = new Set()
@@ -40,6 +41,7 @@ export async function startStubModel() {
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   return {
     baseURL: `http://127.0.0.1:${server.address().port}`,
+    inFlight: () => open.size,
     close: async () => {
       for (const response of open) response.destroy()
       await new Promise(resolve => server.close(resolve))

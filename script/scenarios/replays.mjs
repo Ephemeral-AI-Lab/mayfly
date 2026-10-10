@@ -1,11 +1,11 @@
 /**
  * The replays of the workbench: conversations written as data, played into a live session by the replay driver so a
  * review needs no model, no quota, and no tools. Each replay shows a family of UI states; a component draft adds the
- * replay that shows its states. See `timeline.mjs` for the builders. @module script/workbench/replays
+ * replay that shows its states. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { approval, compaction, edit, goal as goalItem, image, btw, job, notify, pause, question, queue, raw, step, subagent, text, todos, tool, turn } from './timeline.mjs'
-import { reply } from './mock-llm.mjs'
+import { approval, compaction, edit, goal as goalItem, image, btw, job, mark, notify, pause, question, queue, raw, step, subagent, text, todos, tool, turn } from './timeline.mjs'
+import { reply } from '../workbench/mock-llm.mjs'
 
 const SUMMARY = [
   '## Summary',
@@ -430,6 +430,8 @@ const jobs = {
     job('npm run watch', { lines: [[300, 'watching for changes…'], [3000, 'rebuilt src/config.mjs in 42 ms'], [7000, 'rebuilt src/client.mjs in 38 ms']], progress: [[500, 'watching'], [3000, 'rebuilt 1'], [7000, 'rebuilt 2']] }),
     job('npm run build', { lines: [[200, 'compiling…'], [1500, 'done in 1.4 s']], endMs: 1800, status: 'completed', detail: 'exit code: 0' }),
     job('npm test', { lines: [[200, '✔ config'], [900, '✖ client: timeout ignored']], endMs: 1200, status: 'failed', detail: 'exit code: 1' }),
+    // All three run here; a job that settles later wakes the agent for a real turn on the stub, at real time.
+    mark('running'),
     step({ text: 'All three are registered; the watcher keeps running.' }),
     pause(10_000),
   ])],

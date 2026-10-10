@@ -16,8 +16,9 @@ import { mkdirSync, watch, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertDshVersion, resolveDshBin, root } from './smoke-lib.mjs'
-import { prepareReplay } from './workbench/replay-run.mjs'
-import { REPLAYS } from './workbench/replays.mjs'
+import { scenarioNamed } from './scenarios/catalog.mjs'
+import { REPLAYS } from './scenarios/replays.mjs'
+import { prepareSession } from './scenarios/session.mjs'
 import { presentationEnv, superviseDsh } from './workbench/supervisor.mjs'
 
 const SOURCE = /^(?:packages|examples)\/[^/]+\/src\/.+\.ts$/u
@@ -109,7 +110,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const log = join(logDir, 'build.log')
 
   // With --replay the session runs on a scripted model in a throwaway workspace, so no real conversation is needed.
-  const replay = options.replay === undefined ? undefined : await prepareReplay({ name: options.replay, artifacts: join(root, '.artifacts'), speed: options.speed })
+  const replay = options.replay === undefined ? undefined : await prepareSession({ scenario: scenarioNamed(options.replay), dir: join(root, '.artifacts/replay'), speed: options.speed })
   const session = superviseDsh({
     dshBin,
     profile: options.profile,

@@ -244,11 +244,13 @@ owner, and test that frontend state survives core reload. New public seams need
 real consumers, replay/abort/late-result tests, width and whole-tree composition
 coverage, and dedicated-profile acceptance.
 
-`tests/workbench/scenarios.ts` is the scenario registry behind `pnpm run frame`:
-a component draft adds one entry per state (a scripted fixture over
-`tests/app-shots/boot.ts`, with a `settle` hook for time-dependent labels). The
-live states of `pnpm run scenario` are the timelines of `script/workbench/replays.mjs`,
-played into a live session by `script/workbench/replay-driver.mjs`.
+The scenario catalog (`script/scenarios/catalog.mjs`) is the registry of live
+states behind `pnpm run scenario` and `pnpm run frame`: a component draft adds
+one scenario per state, a replay of `script/scenarios/replays.mjs` with the
+marks its script plays to, played into the real product by
+`script/scenarios/driver.mjs`. The app-shot fixture scenes of
+`tests/workbench/scenarios.ts` (scripted over `tests/app-shots/boot.ts`) paint
+frames only until roadmap slice 2b.6 ports them to the catalog.
 
 The canonical UI pipeline takes an optional core-private work-counter sink
 (`core/ui-work-counters.ts`) through the validator and compiler options; production

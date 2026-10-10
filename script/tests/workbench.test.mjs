@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { createServer } from 'node:net'
 import { join } from 'node:path'
 import test from 'node:test'
 import { debounceFiles, parseDevArgs } from '../dev.mjs'
 import { parseFrameArgs } from '../frame.mjs'
-import { keyBytes, parseKeys } from '../workbench/keys.mjs'
-import { resolveScenario } from '../workbench/live-scenarios.mjs'
-import { apply as applyDriver } from '../workbench/replay-driver.mjs'
-import { REPLAYS } from '../workbench/replays.mjs'
-import { startStubModel } from '../workbench/stub-model.mjs'
-import { approval, btw, compile, edit, goal, image, job, notify, pause, question, queue, raw, step, subagent, todos, tool, turn } from '../workbench/timeline.mjs'
+import { scenarioNamed } from '../scenarios/catalog.mjs'
+import { apply as applyDriver } from '../scenarios/driver.mjs'
+import { keyBytes, parseKeys } from '../scenarios/input.mjs'
+import { REPLAYS } from '../scenarios/replays.mjs'
+import { startStubModel } from '../scenarios/stub-model.mjs'
+import { approval, btw, compile, edit, goal, image, job, mark, notify, pause, question, queue, raw, step, subagent, todos, tool, turn } from '../scenarios/timeline.mjs'
 import { newestSessionId, presentationEnv, sessionSlug } from '../workbench/supervisor.mjs'
 import { parseScenarioArgs } from '../scenario.mjs'
 
@@ -21,7 +22,7 @@ test('key lists decode names, control chords, alt chords, and text', () => {
 })
 
 test('frame arguments name one scenario and validate sizes', () => {
-  assert.deepEqual(parseFrameArgs(['app-trace', '--width', '60', '--keys', 'down']).run, { env: {}, scenario: 'app-trace', cols: 60, keys: ['\u001b[B'] })
+  assert.deepEqual(parseFrameArgs(['app-trace', '--width', '60', '--keys', 'down,comma,x']).run, { env: {}, scenario: 'app-trace', cols: 60, keys: ['down', ',', 'x'] })
   assert.equal(parseFrameArgs(['--no-color', 'app-trace']).run.env.NO_COLOR, '1')
   assert.match(parseFrameArgs([]).error, /usage/u)
   assert.match(parseFrameArgs(['a', 'b']).error, /unexpected/u)
@@ -29,10 +30,10 @@ test('frame arguments name one scenario and validate sizes', () => {
   assert.match(parseFrameArgs(['a', '--bogus']).error, /unknown option/u)
 })
 
-test('scenario names resolve to live, fixture, or unknown', () => {
-  assert.equal(resolveScenario('gallery').gallery, true)
-  assert.equal(resolveScenario('app-trace').kind, 'fixture')
-  assert.equal(resolveScenario('toString').kind, 'unknown')
+test('scenario names resolve through the catalog', () => {
+  assert.equal(scenarioNamed('gallery').source.gallery, true)
+  assert.equal(scenarioNamed('tour').source.replay, 'tour')
+  assert.equal(scenarioNamed('toString'), undefined)
   assert.deepEqual(parseScenarioArgs(['stream', '--ascii']).options.ascii, true)
   assert.match(parseScenarioArgs([]).error, /usage/u)
   assert.equal(parseScenarioArgs(['--list']).options.list, true)
@@ -278,7 +279,9 @@ test('raw events, goals, jobs, images, and manual compaction compile to their ac
   assert.equal(actions.find(action => action.type === 'user/message').data.content[1].attachment.attachmentId, 'replay-a.png')
   assert.deepEqual(actions.find(action => action.type === 'plan/mode').data, { active: true })
   assert.equal(actions.find(action => action.op === 'goal').action, 'create')
-  assert.equal(actions.find(action => action.op === 'job').label, 'j')
+  const started = actions.find(action => action.op === 'job')
+  assert.equal(started.label, 'j')
+  assert.deepEqual(actions.filter(action => action.jobId === started.jobId && action.op !== 'job').map(action => [action.op, action.at - started.at]), [['job-line', 10], ['job-end', 20]])
   const start = actions.find(action => action.op === 'compact-start')
   assert.ok(start.commandId !== undefined)
   assert.deepEqual(actions.filter(action => action.type === 'command/run' || action.type === 'command/done').map(action => action.type), ['command/run', 'command/done'])
@@ -328,13 +331,17 @@ test('the driver runs goals, jobs, compaction, and tool preparation against the 
 })
 
 test('queued messages, failed attempts, side questions, and live children compile to their actions', () => {
-  const queued = compile([turn('q', [queue(['next turn', { steer: 'next step' }], { holdMs: 500 }), step({ text: 'x' })])]).find(action => action.op === 'queue')
+  // A later effect is an action of its own, so a run played as fast as possible reaches the same states in order.
+  const queuedActions = compile([turn('q', [queue(['next turn', { steer: 'next step' }], { holdMs: 500 }), step({ text: 'x' })])])
+  const queued = queuedActions.find(action => action.op === 'queue')
+  const withdrawn = queuedActions.find(action => action.op === 'queue-clear')
   assert.deepEqual(queued.rows, ['next turn', { steer: 'next step' }])
-  assert.equal(queued.holdMs, 500)
+  assert.deepEqual([withdrawn.ids, withdrawn.at - queued.at], [queued.ids, 500])
 
   const noticed = compile([turn('q', [notify('warning', 'careful', { holdMs: 200, detail: 'more' }), step({ text: 'x' })])])
   const notice = noticed.find(action => action.op === 'notify')
   assert.deepEqual([notice.severity, notice.message, notice.detail], ['warning', 'careful', 'more'])
+  assert.deepEqual(noticed.filter(action => action.op === 'notify-clear').map(action => [action.noticeId, action.at - notice.at]), [[notice.noticeId, 200]])
   assert.ok(noticed.find(action => action.type === 'step/start').at >= notice.at + 200)
 
   const retried = compile([turn('q', [step({ failedAttempts: [{ text: 'partial', delayMs: 100 }, { reasoning: 'again', delayMs: 100 }], text: 'done' })])])
@@ -402,6 +409,60 @@ test('the driver queues input without waking the agent, fails attempts, and runs
       if (saved[key] === undefined) delete process.env[name]
       else process.env[name] = saved[key]
     }
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('under a runner the driver waits for play, pauses at the named mark, answers a sync, and reports the end', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'driver-control-'))
+  const socketPath = join(dir, 'control.sock')
+  const messages = []
+  let connection
+  const server = createServer((socket) => {
+    connection = socket
+    let buffer = ''
+    socket.setEncoding('utf8')
+    socket.on('data', (data) => {
+      buffer += data
+      for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) { messages.push(JSON.parse(buffer.slice(0, end))); buffer = buffer.slice(end + 1) }
+    })
+  })
+  await new Promise(resolve => server.listen(socketPath, resolve))
+  const until = async (type) => { for (let tries = 0; tries < 300 && !messages.some(message => message.type === type); tries += 1) await new Promise(resolve => setTimeout(resolve, 10)); return messages.find(message => message.type === type) }
+  const clockCalls = []
+  const savedClock = globalThis.__mayflyClock
+  globalThis.__mayflyClock = { at: ms => clockCalls.push(`at ${String(ms)}`), freeze: () => clockCalls.push('freeze'), flow: () => clockCalls.push('flow') }
+  const saved = { file: process.env.MAYFLY_REPLAY_FILE, control: process.env.MAYFLY_REPLAY_CONTROL }
+  try {
+    const actions = compile([turn('q', [step({ stream: false, text: 'first' }), mark('half'), step({ stream: false, text: 'second' })])])
+    writeFileSync(join(dir, 'replay.json'), JSON.stringify(actions))
+    Object.assign(process.env, { MAYFLY_REPLAY_FILE: join(dir, 'replay.json'), MAYFLY_REPLAY_CONTROL: socketPath })
+    const { ctx, log } = fakeContext()
+    applyDriver(ctx)
+    assert.equal((await until('ready')).actions, actions.length)
+    const texts = () => log.appended.filter(entry => entry.type === 'assistant/message').map(entry => entry.data.message.content[0].text)
+    assert.deepEqual(texts(), [])
+    connection.write(`${JSON.stringify({ type: 'play', until: 'half' })}\n`)
+    assert.equal((await until('mark')).name, 'half')
+    assert.deepEqual(texts(), ['first'])
+    connection.write(`${JSON.stringify({ type: 'sync', id: 7 })}\n`)
+    assert.equal((await until('synced')).id, 7)
+    connection.write(`${JSON.stringify({ type: 'play', until: null })}\n`)
+    await until('finished')
+    assert.deepEqual(texts(), ['first', 'second'])
+    // Every action runs at its timeline time; the clock stands still whenever playback waits.
+    const markAt = actions.find(action => action.op === 'mark').at
+    assert.ok(clockCalls.includes(`at ${String(markAt)}`))
+    assert.equal(clockCalls.at(-1), 'freeze')
+    assert.ok(clockCalls.indexOf('freeze') < clockCalls.indexOf(`at ${String(actions[0].at)}`))
+  } finally {
+    globalThis.__mayflyClock = savedClock
+    for (const [key, name] of [['file', 'MAYFLY_REPLAY_FILE'], ['control', 'MAYFLY_REPLAY_CONTROL']]) {
+      if (saved[key] === undefined) delete process.env[name]
+      else process.env[name] = saved[key]
+    }
+    connection?.destroy()
+    await new Promise(resolve => server.close(resolve))
     rmSync(dir, { recursive: true, force: true })
   }
 })
