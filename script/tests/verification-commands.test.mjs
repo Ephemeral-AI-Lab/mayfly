@@ -4,8 +4,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { ROOT } from '../package-contract.mjs'
-import { classifyChanges, promoteToFull } from '../test-impact.mjs'
 import { commandsForPlan } from '../verification-commands.mjs'
+import { classifyChanges, promoteToFull } from '../verify/select.mjs'
 
 const scripts = commands => commands.filter(([command, args]) => command === 'pnpm' && args[0] === 'run').map(([, args]) => args[1])
 
@@ -46,20 +46,21 @@ test('a full gate retains Website selection and follows the CI deterministic che
   }
 })
 
-test('the prototype is a sketch: a change to it runs nothing', () => {
+test('the prototype gates nothing of its own; a change to it runs only the spec that imports its keymap', () => {
   const plan = classifyChanges(['docs/design/prototypes/ui-kit.mjs'])
   assert.equal(plan.mode, 'changed')
-  assert.deepEqual(commandsForPlan(plan), [])
+  assert.deepEqual(plan.tests.specs, ['packages/mayfly/tests/core/key-audit.spec.ts'])
 })
 
-test('a grid golden or the grid serializer reruns every spec that compares a grid', () => {
+test('a grid golden or the grid serializer reruns the specs that compare grids, and the serializer its own test', () => {
   for (const file of ['packages/mayfly/tests/design/frames/02-actions/move.grid', 'script/scenarios/grid.mjs']) {
     const plan = classifyChanges([file])
     assert.equal(plan.mode, 'changed', file)
-    assert.deepEqual(plan.tests.related, ['packages/mayfly/tests/design/probe.ts'], file)
-    assert.ok(commandsForPlan(plan).some(([, args]) => args[0] === 'exec' && args[1] === 'vitest' && args[2] === 'related'), file)
+    assert.ok(plan.tests.specs.includes('packages/mayfly/tests/design/scene-02-actions.spec.ts'), file)
+    assert.ok(commandsForPlan(plan).some(([, args]) => args[0] === 'exec' && args[1] === 'vitest' && args[2] === 'run'), file)
   }
-  assert.ok(classifyChanges(['script/scenarios/grid.mjs']).checks.repoWorkflowTests)
+  const serializer = commandsForPlan(classifyChanges(['script/scenarios/grid.mjs']))
+  assert.ok(serializer.some(([command, args]) => command === 'node' && args.includes('script/tests/grid.test.mjs')))
 })
 
 test('the full gate runs the suites once, and the bench only with the smoke', () => {

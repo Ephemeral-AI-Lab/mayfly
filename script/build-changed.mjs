@@ -4,9 +4,9 @@
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { collectChangedFiles, defaultBase } from './change-files.mjs'
+import { collectChangedFiles, defaultBase, normalizeChangedFiles, owningPackage } from './change-files.mjs'
 import { BUILD_PACKAGE_DIRS, ROOT, readManifest, runtimeEntries } from './package-contract.mjs'
-import { isStructuralBuildPath, normalizeChangedFiles, owningPackage } from './test-impact.mjs'
+import { isStructuralBuildPath } from './verify/inputs.mjs'
 
 function run(command, args, env) {
   process.stdout.write(`> ${command} ${args.join(' ')}\n`)

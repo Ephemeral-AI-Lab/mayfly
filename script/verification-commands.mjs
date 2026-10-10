@@ -1,5 +1,7 @@
 /** Produce the commands actually executed by a verification plan. @module script/verification-commands */
 
+import { existsSync } from 'node:fs'
+
 function pnpm(...args) {
   return ['pnpm', args]
 }
@@ -21,10 +23,11 @@ export function commandsForPlan(plan, { smoke = false } = {}) {
     return scripts.map(script => pnpm('run', script))
   }
   const commands = []
-  if (plan.checks.repoWorkflowTests) commands.push(pnpm('run', 'test:repo-workflow'))
+  // The repository-workflow tests the change reaches, and only those.
+  if (plan.tests.nodeTests.length > 0) commands.push(['node', ['--test', ...plan.tests.nodeTests]])
   if (plan.checks.agentDocs) commands.push(pnpm('run', 'check:agent-docs'))
   if (plan.checks.lint) {
-    const lintFiles = plan.files.filter(file => /^(?:packages|examples)\/.+\.(?:[cm]?ts|tsx)$/u.test(file))
+    const lintFiles = plan.files.filter(file => /^(?:packages|examples)\/.+\.(?:[cm]?ts|tsx)$/u.test(file) && existsSync(file))
     if (lintFiles.length > 0) commands.push(pnpm('exec', 'oxlint', ...lintFiles))
   }
   if (plan.checks.typecheck && !plan.checks.build) commands.push(pnpm('run', 'typecheck'))
@@ -36,16 +39,9 @@ export function commandsForPlan(plan, { smoke = false } = {}) {
   if (plan.checks.pack) commands.push(pnpm('run', 'check:pack'))
   if (plan.checks.website) commands.push(pnpm('run', 'website:build'))
 
-  // A local run never measures coverage (D29); the full tier reports it against the repository floor.
-  if (plan.tests.packageTests.length > 0) {
-    const focused = [...new Set([...plan.tests.packageTests, ...plan.tests.direct])]
-    commands.push(pnpm('exec', 'vitest', 'run', ...focused, '--reporter=dot', '--silent=passed-only'))
-  } else if (plan.tests.related.length > 0) {
-    const related = [...new Set([...plan.tests.related, ...plan.tests.direct])]
-    commands.push(pnpm('exec', 'vitest', 'related', ...related, '--run', '--reporter=dot', '--silent=passed-only'))
-  } else if (plan.tests.direct.length > 0) {
-    commands.push(pnpm('exec', 'vitest', 'run', ...plan.tests.direct, '--reporter=dot', '--silent=passed-only'))
-  }
-  if (smoke) commands.push(pnpm('run', 'smoke:happy'))
+  // The specs the import graph carries the change to (plan.tests.why holds each chain). A local run never measures
+  // coverage (D29); the full tier reports it against the repository floor.
+  if (plan.tests.specs.length > 0) commands.push(pnpm('exec', 'vitest', 'run', ...plan.tests.specs, '--reporter=dot', '--silent=passed-only'))
+  if (smoke || plan.checks.smoke) commands.push(pnpm('run', 'smoke:happy'))
   return commands
 }

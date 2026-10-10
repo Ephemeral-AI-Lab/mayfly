@@ -17,32 +17,40 @@ import {
   RELEASE_PACKAGE_DIRS,
   ROOT,
 } from '../package-contract.mjs'
-import { classifyChanges, isStructuralBuildPath, owningPackage, promoteToFull } from '../test-impact.mjs'
+import { owningPackage } from '../change-files.mjs'
+import { isStructuralBuildPath } from '../verify/inputs.mjs'
+import { classifyChanges, promoteToFull } from '../verify/select.mjs'
 
 describe('change impact planning', () => {
-  test('core UI painters select the work-budget spec beside their related specs', () => {
+  test('a painter reaches the specs that import it, the work budgets among them, each with the chain that reached it', () => {
     const plan = classifyChanges(['packages/mayfly/src/core/ui-patterns.ts'])
     assert.equal(plan.mode, 'changed')
-    assert.ok(plan.tests.related.includes('packages/mayfly/src/core/ui-patterns.ts'))
-    assert.ok(plan.tests.direct.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))
-    assert.ok(!plan.tests.direct.includes('packages/mayfly/tests/core/key-audit.spec.ts'))
+    assert.ok(plan.tests.specs.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))
+    for (const spec of plan.tests.specs) {
+      const chain = plan.tests.why[spec]
+      assert.equal(chain[0], 'packages/mayfly/src/core/ui-patterns.ts', spec)
+      assert.equal(chain.at(-1), spec)
+    }
   })
 
-  test('the frame path selects the work-budget spec', () => {
+  test('the frame path reaches the work-budget spec, and a renderer outside it does not', () => {
     for (const file of ['packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/surface-renderer.ts', 'packages/mayfly/src/core/surface-manager.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/interaction/editor-extension-runtime.ts']) {
-      assert.ok(classifyChanges([file]).tests.direct.includes('packages/mayfly/tests/perf/work-budget.spec.ts'), file)
+      assert.ok(classifyChanges([file]).tests.specs.includes('packages/mayfly/tests/perf/work-budget.spec.ts'), file)
     }
-    assert.ok(!classifyChanges(['packages/mayfly/src/transcript/thinking.ts']).tests.direct.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))
+    assert.ok(!classifyChanges(['packages/mayfly/tests/transcript/thinking.spec.ts']).tests.specs.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))
   })
 
-  test('key tables select the key audit', () => {
+  test('key tables reach the key audit', () => {
     for (const file of ['packages/mayfly/src/interaction/keys.ts', 'packages/mayfly/src/core/key-actions.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/core/ui-key-grammar.ts']) {
-      assert.ok(classifyChanges([file]).tests.direct.includes('packages/mayfly/tests/core/key-audit.spec.ts'), file)
+      assert.ok(classifyChanges([file]).tests.specs.includes('packages/mayfly/tests/core/key-audit.spec.ts'), file)
     }
   })
 
-  test('public UI sources keep the full gate', () => {
-    assert.equal(classifyChanges(['packages/ui/src/builders.ts']).mode, 'full')
+  test('a public UI source runs its dependents, its type fixtures, and the contract checks without the full gate', () => {
+    const plan = classifyChanges(['packages/ui/src/builders.ts'])
+    assert.equal(plan.mode, 'changed')
+    assert.ok(plan.tests.specs.includes('packages/ui/tests/types.spec.ts'))
+    for (const check of ['build', 'checkLib', 'examples', 'pack']) assert.equal(plan.checks[check], true, check)
   })
 
   test('promotes alpha and stable releases to latest while retaining the RC tag', () => {
@@ -95,35 +103,32 @@ describe('change impact planning', () => {
     const plan = classifyChanges(['packages/mayfly/AGENTS.md'])
     assert.equal(plan.mode, 'changed')
     assert.equal(plan.checks.agentDocs, true)
-    assert.deepEqual(plan.tests.related, [])
+    assert.deepEqual(plan.tests.specs, [])
+    assert.deepEqual(classifyChanges(['docs/design/component-library.md']).tests.specs, [])
   })
 
   test('routes retired skill documentation through the agent drift gate', () => {
     const plan = classifyChanges(['docs/skills/plugin-validation.md'])
     assert.equal(plan.checks.agentDocs, true)
-    assert.deepEqual(plan.tests.related, [])
+    assert.deepEqual(plan.tests.specs, [])
   })
 
-  test('selects related specs for an ordinary leaf implementation', () => {
+  test('selects the specs an ordinary leaf implementation reaches', () => {
     const plan = classifyChanges(['packages/mayfly/src/frontend/locale.ts'])
     assert.equal(plan.mode, 'changed')
     assert.equal(plan.checks.build, true)
-    assert.deepEqual(plan.tests.related, ['packages/mayfly/src/frontend/locale.ts'])
-    assert.ok(plan.tests.direct.includes('packages/mayfly/tests/locale-catalog.spec.ts'))
+    assert.ok(plan.tests.specs.includes('packages/mayfly/tests/locale-catalog.spec.ts'))
   })
 
-  test('adds width and lifecycle package gates where required', () => {
-    const renderer = classifyChanges(['packages/mayfly/src/transcript/tool-model.ts'])
-    assert.ok(renderer.tests.direct.includes('packages/mayfly/tests/transcript/width-scan.spec.ts'))
-    const lifecycle = classifyChanges(['packages/mayfly/src/interaction/editor-extension-runtime.ts'])
-    assert.ok(lifecycle.tests.packageTests.includes('packages/mayfly/tests'))
-    const userKit = classifyChanges(['examples/mayfly-user-kit/src/index.ts'])
-    assert.ok(userKit.tests.direct.includes('examples/mayfly-user-kit/tests/width-scan.spec.ts'))
+  test('a renderer reaches its width scan, and a data file the spec that reads it', () => {
+    assert.ok(classifyChanges(['packages/mayfly/src/transcript/tool-model.ts']).tests.specs.includes('packages/mayfly/tests/transcript/width-scan.spec.ts'))
+    assert.ok(classifyChanges(['examples/mayfly-user-kit/src/index.ts']).tests.specs.includes('examples/mayfly-user-kit/tests/width-scan.spec.ts'))
+    assert.deepEqual(classifyChanges(['packages/mayfly/tests/perf/budgets.json']).tests.specs, ['packages/mayfly/tests/perf/work-budget.spec.ts'])
   })
 
-  test('widens public contracts and global configuration to full', () => {
-    assert.equal(classifyChanges(['packages/ui/src/index.ts']).mode, 'full')
+  test('widens global configuration to full, and only that', () => {
     assert.equal(classifyChanges(['vitest.config.ts']).mode, 'full')
+    assert.equal(classifyChanges(['packages/ui/src/index.ts']).mode, 'changed')
   })
 
   test('routes package metadata through build and validation', () => {
@@ -142,7 +147,7 @@ describe('change impact planning', () => {
     assert.equal(preset.checks.agentDocs, true)
     assert.equal(preset.checks.pack, true)
     assert.equal(preset.checks.build, true)
-    assert.ok(preset.tests.direct.includes('packages/mayfly/tests/presets.spec.ts'))
+    assert.ok(preset.tests.specs.includes('packages/mayfly/tests/presets.spec.ts'))
   })
 
   test('classifies Website and runtime acceptance separately from automatic checks', () => {
@@ -190,7 +195,7 @@ describe('change impact planning', () => {
   })
 
   test('preserves checks when later paths do not require lint', () => {
-    const plan = classifyChanges(['packages/mayfly/src/frontend/locale.ts', 'script/test-impact.mjs'])
+    const plan = classifyChanges(['packages/mayfly/src/frontend/locale.ts', 'script/verify/select.mjs'])
     assert.equal(plan.checks.lint, true)
   })
 

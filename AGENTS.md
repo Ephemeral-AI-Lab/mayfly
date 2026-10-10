@@ -46,9 +46,14 @@ History and release notes do not define current behavior.
 Start with `pnpm run verify:changed -- --plan`, then run the selected gate.
 The default comparison is `origin/main...HEAD` plus staged, unstaged, and
 untracked files (not generated `.artifacts/`); use `--base <ref>` when needed.
-The plan lists commands that will run and separate manual acceptance paths.
-The executable selection rules are in `script/test-impact.mjs`,
-`script/verification-commands.mjs`, and `script/verify-changed.mjs`.
+The plan lists commands that will run and separate manual acceptance paths;
+`--why` adds the chain from a changed file to each selected test. Selection
+follows the static import graph (`script/verify/graph.mjs`: imports, literal
+data reads, built entries mapped to their sources, patch rows); what it cannot
+see is declared in `script/verify/inputs.mjs`, and `script/verify/select.mjs`
+plans the checks. A new file must be claimed: parsed by the graph, read through
+a literal path, or named in the inputs (`script/tests/claimed-files.test.mjs`).
+Only a global input escalates to the full gate.
 
 Use `pnpm run verify:full` instead of an additional `verify:changed` for broad,
 release, architecture, composition, or workflow changes. CI runs the full
