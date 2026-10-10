@@ -44,9 +44,10 @@ History and release notes do not define current behavior.
 ## Verification
 
 Verify with `pnpm run check -- --tier round|pr|full` (default `pr`). `round`
-is for every edit (the incremental build, lint, and the specs and workflow
-tests the change reaches), `pr` for finalizing a change (round plus the checks
-it claims: agent docs, diagrams, lib exports, shots, examples, pack, Website),
+is for every edit (the incremental build, lint, the specs and workflow tests
+the change reaches, and its scenarios at their first size), `pr` for finalizing
+a change (round plus the checks it claims: agent docs, diagrams, lib exports,
+shots, examples, pack, Website; scenarios at every size),
 and `full` for broad, release, architecture, composition, or workflow changes
 and the end of a phase. The change set is `origin/main...HEAD` plus staged,
 unstaged, and untracked files (not generated `.artifacts/`); use `--base <ref>`
@@ -68,8 +69,13 @@ selected spec ran) and the full tier on `main` and nightly. The full tier
 includes screenshot freshness, one vitest run (the suites with the stale-row
 check on, the work budgets, and the coverage floor), the happy smoke and the
 PTY bench against its ceilings (`bench:pty:assert`) on the tier's own build,
-and a Website build when Website files changed; do not precede it with
-redundant plain tests. Distribution changes selected by the planner also run
+every scenario against its goldens, and a Website build when Website files
+changed; do not precede it with redundant plain tests. `pnpm run scenarios
+[-- <name>...]` compares the catalog scenarios' checkpoints with
+`script/scenarios/golden/` (selected by their `covers` globs, their goldens,
+the scenario machinery, and a smoke set for other product code); after
+reviewing a difference with `pnpm run frame <name>`, `pnpm run scenarios --
+--update <name>` accepts it, and the summary names both. Distribution changes selected by the planner also run
 `check:pack`; a plain full tier does not pack. Release
 publication additionally requires `pnpm release:preflight <version>`, verified
 tarballs, and the human acceptance described below. Instruction and

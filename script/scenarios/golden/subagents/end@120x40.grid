@@ -1,0 +1,66 @@
+grid 120x40 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: /tmp/mayfly-scenario-xxxxxxxx
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   ##########
+|
+| » Split the rebranding into parallel tracks.
+|
+| ▸ Took 4s · 5 subagents · Ctrl+O to expand
+|
+| ● All three tracks are started. I will wait for the survey to finish.
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+|● Running 5 agents (1 done, 2 failed, 1 running, 1 waiting) · 10m 2s
+|  ├─ running Rewrite README hero · deepseek-flash · high · 1 tool · 10m 2s · 5.6k tokens · Using bash
+|  ├─ waiting Regenerate shot gallery · 0 tools · 10m 2s · Starting…
+|  ├─ done Survey shot embeds · deepseek-flash · high · 1 tool · 4s · 11.2k tokens · Using read
+|  ├─ failed Check the links · deepseek-flash · high · 1 tool · 3s · 5.6k tokens
+|  │      Error: Failed
+|  └─ failed Draft release notes · deepseek-flash · high · 0 tools · 2s · 5.6k tokens
+|         Error: Failed
+|
+|╭───────────────────────────────────────────────────────────────────────────────── Split the rebranding into parallel ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  /tmp/mayfly-scenario-xxxxxxxx                                  cache 42%  context: 5% (5.5k/128k)
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 1-44 fg:#9a86e6 b
+11: 1-9 fg:#9aa3b8; 10-42 fg:#5c6476
+13: 1-2 fg:#ededf2
+26: 0-119 fg:#45406b
+27: 0-1 fg:#c9c0f0; 2-17 fg:#c9c0f0 b; 18-67 fg:#9aa3b8
+28: 0-4 fg:#9aa3b8; 5-12 fg:#c9c0f0 b; 13-31 fg:#c9c0f0; 32-100 fg:#9aa3b8
+29: 0-4 fg:#9aa3b8; 5-12 fg:#e8a838 b; 13-35 fg:#c9c0f0; 36-66 fg:#9aa3b8
+30: 0-4 fg:#9aa3b8; 5-9 fg:#4ec87e b; 10-27 fg:#c9c0f0; 28-93 fg:#9aa3b8
+31: 0-4 fg:#9aa3b8; 5-11 fg:#e85454 b; 12-26 fg:#c9c0f0; 27-78 fg:#9aa3b8
+32: 0-21 fg:#e85454
+33: 0-4 fg:#9aa3b8; 5-11 fg:#e85454 b; 12-30 fg:#c9c0f0; 31-83 fg:#9aa3b8
+34: 0-21 fg:#e85454
+36: 0-81 fg:#45406b; 82-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-50 fg:#9aa3b8; 85-118 fg:#ededf2

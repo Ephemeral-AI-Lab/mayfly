@@ -1,0 +1,58 @@
+grid 120x40 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: /tmp/mayfly-scenario-xxxxxxxx
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   ##########
+|
+| » Start the background work.
+|
+| ● Starting three background jobs.
+|
+| ▸ Ran commands
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|·· Deep diving · 2s · ↑5.5k · Tip: @: mention files
+|╭───────────────────────────────────────────────────────────────────────────────────────── Start the background work. ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  ⏵ 3 jobs  /tmp/mayfly-scenario-xxxxxxxx                        cache 42%  context: 5% (5.5k/128k)
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 1-28 fg:#9a86e6 b
+11: 1-2 fg:#ededf2
+13: 1-14 fg:#9aa3b8
+35: 0-1 fg:#c9c0f0 b; 2-13 fg:#ededf2; 14-50 fg:#9aa3b8
+36: 0-89 fg:#45406b; 90-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-29 fg:#9a86e6; 32-60 fg:#9aa3b8; 85-118 fg:#ededf2

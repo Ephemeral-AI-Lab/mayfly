@@ -14,7 +14,8 @@ import { join } from 'node:path'
  * @property {string} command - the executable.
  * @property {string[]} args - its arguments.
  * @property {boolean} [blocking] - stop the tier when this step fails.
- * @property {'specs' | 'coverage'} [kind] - a vitest run whose JSON results the report reads.
+ * @property {'specs' | 'coverage' | 'scenarios'} [kind] - a run whose results the report reads: vitest's JSON, or the
+ *   scenario results.
  */
 
 export const TIERS = ['round', 'pr', 'full']
@@ -22,6 +23,7 @@ export const TIERS = ['round', 'pr', 'full']
 /** Where a tier writes its report, logs, and the results the report reads. */
 export const OUTPUT = '.artifacts/verify'
 export const VITEST_RESULTS = `${OUTPUT}/vitest.json`
+export const SCENARIO_RESULTS = `${OUTPUT}/scenarios.json`
 
 const pnpm = (name, ...args) => ({ name, command: 'pnpm', args })
 const vitest = (name, kind, args) => ({ name, kind, command: 'pnpm', args: ['exec', 'vitest', 'run', ...args, '--reporter=dot', '--reporter=json', `--outputFile.json=${VITEST_RESULTS}`, '--silent=passed-only'] })
@@ -50,7 +52,8 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
       ...(plan.checks.website ? [pnpm('website', 'run', 'website:build')] : []),
       // One run: the suites with every retained-row hit painted again, the work budgets, and coverage against its floor.
       vitest('suites and coverage', 'coverage', ['--coverage']),
-      // The real terminal on the build above: the happy smoke and the bench against its coarse ceilings.
+      // The real terminal on the build above: every scenario against its goldens, the happy smoke, and the bench.
+      { name: 'scenarios', kind: 'scenarios', command: 'node', args: ['script/scenarios.mjs'] },
       pnpm('happy smoke', 'run', 'smoke:happy'),
       pnpm('PTY bench', 'run', 'bench:pty:assert'),
     ]
@@ -80,6 +83,10 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
       ? ['--coverage', '--coverage.reporter=json', '--coverage.thresholds.statements=0', '--coverage.thresholds.branches=0', '--coverage.thresholds.functions=0', '--coverage.thresholds.lines=0', ...sources.flatMap(file => ['--coverage.include', file])]
       : []
     steps.push(vitest(`specs (${String(plan.tests.specs.length)})`, coverage.length > 0 ? 'coverage' : 'specs', [...plan.tests.specs, ...coverage]))
+  }
+  // The scenarios the change can show, against their goldens: the first size in a round, every size in the pr tier.
+  if (plan.tests.scenarios.length > 0) {
+    steps.push({ name: `scenarios (${String(plan.tests.scenarios.length)})`, kind: 'scenarios', command: 'node', args: ['script/scenarios.mjs', '--sizes', tier === 'round' ? 'first' : 'all', ...plan.tests.scenarios] })
   }
   if (tier === 'pr' && plan.checks.smoke) steps.push(pnpm('happy smoke', 'run', 'smoke:happy'))
   return steps

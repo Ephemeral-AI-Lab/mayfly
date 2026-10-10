@@ -99,3 +99,39 @@ export function serializeGrid(grid) {
     : [`${String(index)}: ${row.map(run => `${run.from === run.to ? String(run.from) : `${String(run.from)}-${String(run.to)}`} ${run.style}`).join('; ')}`])
   return [`grid ${String(grid.cols)}x${String(grid.lines.length)} cursor ${cursor}`, ...grid.lines.map(line => `|${line}`), 'styles', ...runs].join('\n')
 }
+
+/** The parts of a serialized grid: its header, its text rows, and its style rows by row index. */
+function gridParts(text) {
+  const lines = text.replace(/\n$/u, '').split('\n')
+  const stylesAt = lines.indexOf('styles')
+  const rows = lines.slice(1, stylesAt < 0 ? undefined : stylesAt).map(line => line.slice(1))
+  const styles = new Map((stylesAt < 0 ? [] : lines.slice(stylesAt + 1)).map(line => [Number(line.slice(0, line.indexOf(':'))), line.slice(line.indexOf(':') + 2)]))
+  return { header: lines[0] ?? '', rows, styles }
+}
+
+/**
+ * How two serialized grids differ, as reading lines: the header, then each row whose text or styles differ, with the
+ * expected (`-`) and actual (`+`) values. Empty when they are the same.
+ * @param {string} expected
+ * @param {string} actual
+ * @param {{ maxRows?: number }} [options] - rows to report at most (default 20).
+ * @returns {string[]}
+ */
+export function diffGrids(expected, actual, { maxRows = 20 } = {}) {
+  const left = gridParts(expected)
+  const right = gridParts(actual)
+  const out = []
+  if (left.header !== right.header) out.push(`- ${left.header}`, `+ ${right.header}`)
+  let reported = 0
+  const rows = Math.max(left.rows.length, right.rows.length)
+  for (let row = 0; row < rows; row += 1) {
+    const textDiffers = left.rows[row] !== right.rows[row]
+    const styleDiffers = (left.styles.get(row) ?? '') !== (right.styles.get(row) ?? '')
+    if (!textDiffers && !styleDiffers) continue
+    if (reported === maxRows) { out.push('… more rows differ'); break }
+    reported += 1
+    if (textDiffers) out.push(`row ${String(row)}`, `- |${left.rows[row] ?? ''}`, `+ |${right.rows[row] ?? ''}`)
+    else out.push(`row ${String(row)} styles`, `- ${left.styles.get(row) ?? ''}`, `+ ${right.styles.get(row) ?? ''}`)
+  }
+  return out
+}

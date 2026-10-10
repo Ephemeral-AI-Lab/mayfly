@@ -1750,7 +1750,8 @@ The A/B and the outputs:
 | 2b.3 | Import-graph selection with declared inputs and the claimed-files guard (`script/verify/{graph,inputs,select}.mjs`): exact specs and workflow tests with the chain that selected each (`--why`), checks selected by their inputs or by reaching their entry script, deletions through the imports they leave unresolved. The graph builds in about 1 s cold and 0.4 s warm | `script/test-impact.mjs` with its path and keyword rules, `vitest related`, the whole-package runs, and the rule that any deleted TypeScript file runs the full gate |
 | 2b.4 | `pnpm run check` (`script/check.mjs`, `script/verify/{steps,report,coverage-diff}.mjs`): the three tiers, a step line each with its log under `.artifacts/verify/steps/`, `report.json` and `summary.md` (first failure per spec, the chain that selected it, owed acceptance, rerun commands), a blocking build or typecheck that skips the rest; `dev --check` runs the round tier after each applied build; CI's check job runs the pr tier on pull requests (with advice on changed lines no selected spec ran) and the full tier on `main`, nightly, and by hand, and publishes the summary and the report | `verify-changed.mjs`, `verification-commands.mjs`, and the `verify:changed`, `verify:full`, `test:coverage` scripts; CI's one step per script |
 | 2b.5 | The catalog (`script/scenarios/catalog.mjs`: every replay, an empty session, the gallery) and the headless runner (`runner.mjs`, `screen.mjs`, `session.mjs`, `clock.mjs`, `input.mjs`): the driver's control socket (`play` to a mark, `sync`, reports of marks, asks, and the end), fast playback, later effects compiled as actions instead of driver timers, the scenario clock, a screen that times frames on `?2026l`, tracks the mouse and cursor modes, and answers the colour queries, SGR mouse input, settling on screen content, the invariants, boots that take turns; `frame`, `scenario`, and `dev --replay` read the catalog. All 26 scenarios give identical grids on repeated and parallel runs (52 runs in 129 s, four at a time). It found that the activity spinner ignored reduced motion (fixed in its own commit), that two `dsh` boots on one profile race on its composition file, that pi-tui writes an empty frame (a cursor move) on every render asked for, and that a generated session title lands at a different moment each run (the runner disables it) | `script/workbench/{live-scenarios,keys,replay-run}.mjs`; timeline, replays, driver, and stub move to `script/scenarios/` |
-| 2b.6 | Cell-grid goldens gate; the six app-shot fixture scenes become catalog scenarios (`seed`), and app shots are painted from their goldens | `tests/app-shots.spec.ts` with `tests/app-shots/`, `script/shots/app-manifest.mjs`, `tests/workbench/{frame.spec,scenarios}.ts`, `script/smoke-pty-mouse.mjs` (a wheel scenario replaces it) |
+| 2b.6 | Cell-grid goldens gate: `pnpm run scenarios` (`script/scenarios.mjs`, `scenarios/golden.mjs`) compares every checkpoint with `script/scenarios/golden/<scenario>/<checkpoint>@<cols>x<rows>.grid`, four runs at a time, flags missing and orphaned goldens, and `--update` accepts; selection runs a golden's own scenario, the scenarios whose `covers` name a changed source, every scenario for the scenario machinery, and a smoke set (`idle`, `tour`; `gallery` for its sources) for other product code; round runs them at their first size, pr at every size, full all of them; the summary shows each differing row with the chain that selected the scenario and the accept command. 27 goldens; all pass in 66 s | — |
+| 2b.6b | The six app-shot fixture scenes become catalog scenarios (`seed`), and app shots are painted from their goldens | `tests/app-shots.spec.ts` with `tests/app-shots/`, `script/shots/app-manifest.mjs`, `tests/workbench/{frame.spec,scenarios}.ts`, `script/smoke-pty-mouse.mjs` (a wheel scenario replaces it) |
 | 2b.7 | `pnpm run perf`: the metrics, the A/B against the merge-base, the profile summary, the ceilings in the catalog | `script/bench-pty.mjs`, `bench:pty*`, `BENCH_PTY_SLACK` |
 | 2b.8 | Real screenshots: the browser backend, `frame --png`, PNGs of the changed checkpoints, the contact sheet | — |
 | 2b.9 | Test files typechecked (`tsconfig.tests.json` maps the workspace packages to their source) and the backlog fixed | — |
@@ -1766,7 +1767,8 @@ The A/B and the outputs:
     expected.
   - **2b.4:** a round on a leaf change takes under a minute.
   - **2b.5:** every scenario framed twice, and four at once, gives identical grids.
-  - **2b.6:** the first CI run matches the local goldens.
+  - **2b.6:** the first CI run matches the local goldens; a deliberate visible change shows as a grid diff in the
+    summary.
   - **2b.7:** an A/A run of the same build is `same` three times, and an injected regression is `regressed`.
   - **2b.8:** two captures of a checkpoint are pixel-identical.
 - **Phase-level dry run.** A deliberate visual regression and a deliberate perf regression each appear in
@@ -1781,7 +1783,8 @@ The A/B and the outputs:
 | 2b.3 | in review | `feat/2b-3-graph-selection` |
 | 2b.4 | in review | `feat/2b-4-check-tiers` |
 | 2b.5 | in review | `feat/2b-5-scenario-runner` |
-| 2b.6-2b.9 | planned | — |
+| 2b.6 | in review | `feat/2b-6-scenario-goldens` |
+| 2b.6b-2b.9 | planned | — |
 
 **2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
 ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the
@@ -2081,8 +2084,7 @@ are allowed again, with every caller updated in the same change.
 | pr | Once per component, before it merges, and in PR CI | round, the checks the changed inputs claim, every size of the selected scenarios, perf A/B and PNGs where selected |
 | full | CI on `main` and nightly, the end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | Everything, with coverage and its floor, the smoke, the perf ceilings, and the platform matrix (`check:pack` when selected); at a phase end, also the perf report and the owner's acceptance |
 
-Until slices 2b.5-2b.8 land, frames, screenshots, and the bench come from `frame`, `shots:sync`, and `bench:pty`,
-and no tier runs scenarios.
+Until slices 2b.6b-2b.8 land, app shots, screenshots, and the bench come from `shots:sync` and `bench:pty`.
 
 **Decision tests** (D25). A finalized component carries tests for what was decided, and nothing written only to reach
 a line:

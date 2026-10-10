@@ -1,0 +1,70 @@
+grid 120x40 cursor none
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: /tmp/mayfly-scenario-xxxxxxxx
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   ##########
+|
+| » Line 1 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
+|   Line 2 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
+|   Line 3 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
+|   ... (37 more lines, 40 total)
+|
+| ● I read the long prompt.
+|
+| » Please look at this:
+|
+|   ```js
+|   export const answer = 42
+|   console.log(answer)
+|   ```
+|
+|   and tell me what it prints.
+|
+| ● It prints 42.
+|
+| » 请用中文解释这个函数的作用，并给出一个简短的例子。
+|
+| ▸ Took 2s · Ctrl+O to expand
+|
+| ● 这个函数把配置里的基础地址和超时时间格式化成一行文字，例如 http://localhost:8080 (timeout 3000 ms)。
+|
+| » Here is a screenshot of the error:
+|   [image]
+|
+| ● The screenshot shows a timeout error on the client.
+|
+|╭─────────────────────────────────────────────────────────────────────────────────────────────────── Line 1 of a very ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  /tmp/mayfly-scenario-xxxxxxxx                                  cache 42%  context: 5% (5.5k/128k)
+styles
+0: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+1: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+2: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+3: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+4: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+5: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+7: 1-108 fg:#9a86e6 b
+8: 3-108 fg:#9a86e6 b
+9: 3-108 fg:#9a86e6 b
+10: 3-31 fg:#5c6476
+12: 1-2 fg:#ededf2
+14: 1-22 fg:#9a86e6 b
+16: 3-7 fg:#9a86e6 b
+17: 3-26 fg:#9a86e6 b
+18: 3-21 fg:#9a86e6 b
+19: 3-5 fg:#9a86e6 b
+21: 3-29 fg:#9a86e6 b
+23: 1-2 fg:#ededf2; 13-14 fg:#c9c0f0
+25: 1-52 fg:#9a86e6 b
+27: 1-9 fg:#9aa3b8; 10-28 fg:#5c6476
+29: 1-2 fg:#ededf2; 62-100 fg:#c9c0f0
+31: 1-36 fg:#9a86e6 b
+32: 3-9 fg:#9aa3b8
+34: 1-2 fg:#ededf2
+36: 0-99 fg:#45406b; 100-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-50 fg:#9aa3b8; 85-118 fg:#ededf2

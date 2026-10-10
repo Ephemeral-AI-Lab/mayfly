@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import test from 'node:test'
-import { readGrid, serializeGrid } from '../scenarios/grid.mjs'
+import { diffGrids, readGrid, serializeGrid } from '../scenarios/grid.mjs'
 
 const require = createRequire(import.meta.url)
 const { Terminal } = require('@xterm/headless')
@@ -42,4 +42,16 @@ test('the serialized grid names its size and cursor, prefixes rows, and lists th
   assert.equal(serializeGrid(readGrid(terminal, { cursor: [2, 1] })), ['grid 8x3 cursor 2,1', '|hi', '|', '| x', 'styles', '0: 0-1 i u'].join('\n'))
   assert.match(serializeGrid(readGrid(terminal)), /^grid 8x3 cursor none\n/u)
   terminal.dispose()
+})
+
+test('a grid diff names the header and each row whose text or styles differ, and nothing for equal grids', async () => {
+  const before = serializeGrid(readGrid(await screen(['\u001b[1mab\u001b[0m', 'cd'], 4), { cursor: [1, 0] }))
+  const after = serializeGrid(readGrid(await screen(['ab', 'cX'], 4), { cursor: [1, 2] }))
+  assert.deepEqual(diffGrids(before, before), [])
+  assert.deepEqual(diffGrids(before, after), [
+    '- grid 4x2 cursor 1,0', '+ grid 4x2 cursor 1,2',
+    'row 0 styles', '- 0-1 b', '+ ',
+    'row 1', '- |cd', '+ |cX',
+  ])
+  assert.deepEqual(diffGrids(before, after, { maxRows: 1 }).at(-1), '… more rows differ')
 })

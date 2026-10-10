@@ -1,0 +1,67 @@
+grid 120x40 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: /tmp/mayfly-scenario-xxxxxxxx
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   ##########
+|
+| » Run the checks.
+|
+| ▾ Failed · 2 tool calls
+|
+| ● Running the checks.
+|
+| ▸ Ran commands and read files · 2 failed
+| ✗ request failed (INVALID_REQUEST): The provider returned an invalid request: replay error
+|
+| » Try again, but I will stop you.
+|
+| ▾ Stopped · 1 tool call
+|
+| ● Starting a long task…
+|
+| ▸ Ran commands
+| ■ interrupted
+|
+| » And once more.
+|
+| ● Working on it, then the request is cut off.
+| ■ interrupted
+|
+|
+|
+|
+|
+|╭──────────────────────────────────────────────────────────────────────────────────────────────────── Run the checks. ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  /tmp/mayfly-scenario-xxxxxxxx                                  cache 42%  context: 5% (5.5k/128k)
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 1-17 fg:#9a86e6 b
+11: 1-2 fg:#9aa3b8; 3-8 fg:#e85454; 9-23 fg:#5c6476
+13: 1-2 fg:#ededf2
+15: 1-29 fg:#9aa3b8; 30-40 fg:#e85454
+16: 1-90 fg:#e85454
+18: 1-33 fg:#9a86e6 b
+20: 1-2 fg:#9aa3b8; 3-9 fg:#e8a838; 10-23 fg:#5c6476
+22: 1-2 fg:#ededf2
+24: 1-14 fg:#9aa3b8
+25: 1-13 fg:#e85454
+27: 1-16 fg:#9a86e6 b
+29: 1-2 fg:#ededf2
+30: 1-13 fg:#e85454
+36: 0-100 fg:#45406b; 101-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-50 fg:#9aa3b8; 85-118 fg:#ededf2

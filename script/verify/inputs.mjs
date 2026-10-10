@@ -37,6 +37,15 @@ export const DATA_READS = [
   ['packages/ui/tests/types.spec.ts', 'packages/ui/src/'],
 ]
 
+/**
+ * The scenarios a product source no scenario covers runs: the empty session and a full turn for the product, and the
+ * gallery for its own sources.
+ */
+export const SCENARIO_SMOKE = [
+  { pattern: /^examples\/ui-gallery\/src\//u, scenarios: ['gallery'] },
+  { pattern: /^packages\/(?:mayfly|ui)\/src\//u, scenarios: ['idle', 'tour'] },
+]
+
 /** Files nothing in the gate reads: prose, history, the design sketch, and scripts a person runs. */
 export const INERT = [
   /^LICENSE$/u,

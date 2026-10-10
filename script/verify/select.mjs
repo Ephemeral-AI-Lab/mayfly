@@ -6,8 +6,9 @@
 
 import { fileURLToPath } from 'node:url'
 import { normalizeChangedFiles } from '../change-files.mjs'
+import { CATALOG } from '../scenarios/catalog.mjs'
 import { buildGraph, CODE_FILE, covers, dependents, NODE_TEST_FILE, SPEC_FILE } from './graph.mjs'
-import { CHECKS, DATA_READS, GLOBAL, INERT, STRUCTURAL } from './inputs.mjs'
+import { CHECKS, DATA_READS, GLOBAL, INERT, SCENARIO_SMOKE, STRUCTURAL } from './inputs.mjs'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
@@ -21,6 +22,37 @@ export function promoteToFull(plan, reason) {
     reasons: [...new Set([...plan.reasons, reason])],
     checks: { ...plan.checks, lint: true, typecheck: true, build: true, checkLib: true, examples: true, shots: true, agentDocs: true, diagrams: true },
   }
+}
+
+/** Whether a catalog `covers` glob names a path: `*` within one segment, a trailing `/` for everything under it. */
+export function coversPath(glob, file) {
+  const pattern = new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/gu, '\\$&').replaceAll('*', '[^/]*')}${glob.endsWith('/') ? '' : '$'}`, 'u')
+  return pattern.test(file)
+}
+
+/**
+ * The scenarios a change can show, each with why: a golden its own scenario, a covered source the scenarios that cover
+ * it, a change the graph carries to the scenario command every scenario, and any other product source the smoke set.
+ */
+function selectScenarios(graph, files) {
+  const why = {}
+  const add = (name, chain) => { why[`scenario ${name}`] ??= [...chain, `scenario ${name}`] }
+  const goldens = files.filter(file => file.startsWith('script/scenarios/golden/'))
+  for (const file of goldens) {
+    const name = file.split('/')[3]
+    if (Object.hasOwn(CATALOG, name)) add(name, [file])
+  }
+  const others = files.filter(file => !goldens.includes(file))
+  const reached = dependents(graph, others)
+  const machinery = reached.get('script/scenarios.mjs')
+  if (machinery !== undefined) for (const name of Object.keys(CATALOG)) add(name, machinery)
+  for (const file of others) {
+    const covered = Object.entries(CATALOG).filter(([, scenario]) => scenario.covers.some(glob => coversPath(glob, file)))
+    for (const [name] of covered) add(name, [file])
+    const smoke = SCENARIO_SMOKE.find(rule => rule.pattern.test(file))
+    if (covered.length === 0 && smoke !== undefined) for (const name of smoke.scenarios) add(name, [file])
+  }
+  return why
 }
 
 const graphs = new Map()
@@ -93,13 +125,16 @@ export function classifyChanges(inputFiles, { graph = repositoryGraph() } = {}) 
     why[file] = chain
   }
   for (const [name, check] of Object.entries(CHECKS)) if (check.entry !== undefined && reached.has(check.entry)) checks[name] = true
+  const scenarioWhy = selectScenarios(graph, files)
+  Object.assign(why, scenarioWhy)
+  const scenarios = Object.keys(scenarioWhy).map(key => key.slice('scenario '.length))
 
   const plan = {
     files,
     mode: full ? 'full' : files.length === 0 ? 'none' : 'changed',
     reasons: [...new Set(reasons)],
     checks,
-    tests: { specs: specs.sort(), nodeTests: nodeTests.sort(), why },
+    tests: { specs: specs.sort(), nodeTests: nodeTests.sort(), scenarios: scenarios.sort(), why },
     manualAcceptance: [...manualAcceptance],
   }
   return full ? promoteToFull(plan, 'full gate required by change classification') : plan

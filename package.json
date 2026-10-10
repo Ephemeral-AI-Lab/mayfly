@@ -37,6 +37,7 @@
     "dev": "node script/dev.mjs",
     "frame": "node script/frame.mjs",
     "scenario": "node script/scenario.mjs",
+    "scenarios": "node script/scenarios.mjs",
     "website:dev": "pnpm --filter @ephemeral-ai/mayfly-website run dev",
     "website:build": "pnpm --filter @ephemeral-ai/mayfly-website run build",
     "website:preview": "pnpm --filter @ephemeral-ai/mayfly-website run preview"

@@ -4,10 +4,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { parseCheckArgs } from '../check.mjs'
+import { parseCheckArgs, scenarioFailures } from '../check.mjs'
 import { ROOT } from '../package-contract.mjs'
 import { addedLines, uncoveredChangedLines } from '../verify/coverage-diff.mjs'
 import { renderSummary, vitestFailures } from '../verify/report.mjs'
+import { CATALOG } from '../scenarios/catalog.mjs'
 import { classifyChanges } from '../verify/select.mjs'
 import { stepsFor } from '../verify/steps.mjs'
 
@@ -15,9 +16,10 @@ const names = steps => steps.map(step => step.name)
 const commandOf = (steps, prefix) => steps.find(step => step.name.startsWith(prefix))
 const scriptsOf = steps => steps.filter(step => step.command === 'pnpm' && step.args[0] === 'run').map(step => step.args[1])
 
-test('a leaf edit in the round tier lints, builds, and runs the specs it reaches, without coverage or checks', () => {
+test('a leaf edit in the round tier lints, builds, and runs the specs and scenarios it reaches, without coverage or checks', () => {
   const steps = stepsFor(classifyChanges(['packages/mayfly/src/transcript/status-context.ts', 'packages/mayfly/AGENTS.md']), 'round', { root: ROOT })
-  assert.deepEqual(names(steps).map(name => name.replace(/ \(\d+\)$/u, '')), ['lint', 'build', 'specs'])
+  assert.deepEqual(names(steps).map(name => name.replace(/ \(\d+\)$/u, '')), ['lint', 'build', 'specs', 'scenarios'])
+  assert.deepEqual(commandOf(steps, 'scenarios').args.slice(0, 3), ['script/scenarios.mjs', '--sizes', 'first'])
   const specs = commandOf(steps, 'specs')
   assert.ok(specs.args.includes('packages/mayfly/tests/transcript/width-scan.spec.ts'))
   assert.ok(!specs.args.includes('--coverage'))
@@ -43,6 +45,7 @@ test('the full tier runs everything once: one vitest run with coverage, the smok
   assert.ok(!scripts.includes('check:pack'))
   const vitest = steps.filter(step => step.args.includes('vitest'))
   assert.equal(vitest.length, 1)
+  assert.deepEqual(commandOf(steps, 'scenarios').args, ['script/scenarios.mjs'])
   assert.ok(vitest[0].args.includes('--coverage'))
   assert.ok(scripts.indexOf('build') < scripts.indexOf('smoke:happy'))
 })
@@ -128,4 +131,35 @@ test('the coverage advice reports changed lines whose statements never ran', () 
   assert.deepEqual([...changed], [11, 12, 13, 23])
   const coverage = { [`${ROOT}/packages/a/src/x.ts`]: { statementMap: { 0: { start: { line: 11 } }, 1: { start: { line: 12 } }, 2: { start: { line: 40 } } }, s: { 0: 0, 1: 3, 2: 0 } } }
   assert.deepEqual(uncoveredChangedLines(coverage, new Map([['packages/a/src/x.ts', changed]]), ROOT), [{ file: 'packages/a/src/x.ts', lines: [11] }])
+})
+
+test('a golden runs its scenario, a covered source the scenarios that cover it, other product code the smoke set, the machinery all', () => {
+  const scenarios = file => classifyChanges([file]).tests.scenarios
+  assert.deepEqual(scenarios('script/scenarios/golden/tour/end@120x40.grid'), ['tour'])
+  assert.deepEqual(scenarios('packages/mayfly/src/transcript/thinking.ts'), ['thinking', 'tour'])
+  assert.deepEqual(scenarios('packages/mayfly/src/core/ui-compiler.ts'), ['idle', 'tour'])
+  assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), ['gallery'])
+  assert.deepEqual(scenarios('docs/README.md'), [])
+  const machinery = classifyChanges(['script/scenarios/runner.mjs'])
+  assert.equal(machinery.tests.scenarios.length, Object.keys(CATALOG).length)
+  assert.equal(machinery.tests.why['scenario idle'].at(-2), 'script/scenarios.mjs')
+  assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/thinking.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[2], 'all')
+})
+
+test('a scenario report names the checkpoint, size, and rows that differ, a missing golden, a broken run, and an orphan', () => {
+  const failures = scenarioFailures({
+    orphans: ['script/scenarios/golden/old/end@80x24.grid'],
+    results: [{ name: 'tour', cols: 120, rows: 40, failures: ['the screen did not settle'], checkpoints: [
+      { checkpoint: 'end', status: 'differs', diff: ['row 3', '- |a', '+ |b'] },
+      { checkpoint: 'start', status: 'new', diff: [] },
+      { checkpoint: 'mid', status: 'same', diff: [] },
+    ] }],
+  })
+  assert.deepEqual(failures.map(failure => [failure.file, failure.test]), [
+    ['scenario tour', 'end at 120x40 differs from its golden'],
+    ['scenario tour', 'start at 120x40 has no golden'],
+    ['scenario tour', 'the run at 120x40'],
+    ['script/scenarios/golden/old/end@80x24.grid', 'no checkpoint writes this golden'],
+  ])
+  assert.equal(failures[0].message, 'row 3\n- |a\n+ |b')
 })
