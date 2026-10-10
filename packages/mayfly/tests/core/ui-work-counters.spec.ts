@@ -6,12 +6,12 @@ import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { admittedListItem, validateMayflyEditorShellNode, validateMayflyStatusNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { countWork, createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
-import { parityComponents } from '../design/parity.ts'
+import { probeComponents } from '../design/probe.ts'
 import { createFakeEditor } from './fake-editor.ts'
 
 const identity = (value: string): string => value
 const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
-const base = { components: parityComponents(), colors, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate' as const }
+const base = { components: probeComponents(), colors, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate' as const }
 
 describe('countWork', () => {
   it('adds to the named counter and ignores a missing sink', () => {

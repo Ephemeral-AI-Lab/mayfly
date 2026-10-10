@@ -1,0 +1,29 @@
+## start
+grid 100x1 cursor none
+|Agents 5 ● 1 waiting  Jobs 3 ⏵ 2 running  Goal ● 2/8  Todo 4/6 ● Bump changelog
+styles
+0: 0-19 fg:text; 22-39 fg:text; 42-51 fg:text; 54-78 fg:text
+## alt+down
+grid 100x3 cursor none
+|Agents 5   Jobs 3   Goal   Todo 4/6
+|━━━━━━━━
+|  Agents panel
+styles
+0: 0-5 fg:primary; 7 fg:primary; 11-14 fg:muted; 16 fg:muted; 20-23 fg:muted; 27-30 fg:muted; 32-34 fg:muted
+1: 0-7 fg:muted
+## right
+grid 100x3 cursor none
+|Agents 5   Jobs 3   Goal   Todo 4/6
+|           ━━━━━━
+|  Jobs panel
+styles
+0: 0-5 fg:muted; 7 fg:muted; 11-14 fg:primary; 16 fg:primary; 20-23 fg:muted; 27-30 fg:muted; 32-34 fg:muted
+1: 11-16 fg:muted
+## down
+grid 100x3 cursor none
+|Agents 5   Jobs 3   Goal   Todo 4/6
+|           ━━━━━━
+|  Jobs panel
+styles
+0: 0-5 fg:muted; 7 fg:muted; 11-14 fg:primary; 16 fg:primary; 20-23 fg:muted; 27-30 fg:muted; 32-34 fg:muted
+1: 11-16 fg:muted

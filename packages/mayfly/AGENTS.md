@@ -255,9 +255,7 @@ The canonical UI pipeline takes an optional core-private work-counter sink
 passes none and no module holds one. `tests/perf/work-budget.spec.ts` gates the
 counts of the workloads in `tests/perf/workloads.ts`, so a change under
 `src/core/ui-*.ts` keeps them within `tests/perf/baseline.json` or updates it on
-purpose. `docs/design/prototypes/**` feeds the committed goldens under
-`tests/design/golden/`; `pnpm run design:golden:check` fails when the prototype
-changes, and `pnpm run design:golden` rewrites them after review. The budgets are
+purpose. The budgets are
 the work-budget gate of the foundation: `budgets.json` may not exceed
 `baseline.json` (the work of the slice 1.0 pipeline), W1 and W4 gate again through
 the node slot (`W1-slot`, `W4-slot`), a slice that adds a painter adds its row,
@@ -268,9 +266,12 @@ control walks, reconciliations, layout passes, clock ticks, keymap snapshots): a
 budget row gates the counters it names, and a change to the frame path
 (`core/terminal.ts`, `core/surface-renderer.ts`, the keymap, the editor-extension
 runtime) runs them. `pnpm run bench:pty:assert` holds the real terminal to coarse
-ceilings in the full gate. `tests/design/deltas.ts` and `tests/design/pending.ts` are
-the Phase 1 parity record (roadmap section 2.3, closed) that Phase 2b removes with
-the prototype parity specs; add no new difference to them. The owner's live
+ceilings in the full gate. The design scenes (`tests/design/scene-*.spec.ts`) drive
+the real renderer under the probe palette (`tests/design/probe.ts`) through the walks
+of `tests/design/walks.ts` and compare every frame with a cell-grid golden under
+`tests/design/frames/` (`script/scenarios/grid.mjs`); `vitest -u` rewrites a grid
+after review. Those grids are the visual record of Phase 1 until the foundation
+review replaces them. The prototype is a sketch and gates nothing. The owner's live
 acceptance decides a component's look, and its accepted frames become its goldens.
 
 Patch, preset, skill, dependency, or composition edits require bundle/preset

@@ -1,0 +1,16 @@
+## page 1
+grid 96x7 cursor none
+|page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
+|
+|· Thinking
+|⡀ Working
+|⣾ Discovering models from api.example.com 12s
+|  Esc cancel
+|● Waiting for authorization 45s
+styles
+0: 0-91 fg:muted
+2: 0 fg:primary; 2-9 fg:text
+3: 0 fg:primary; 2-8 fg:text
+4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
+5: 2-11 fg:muted
+6: 0 fg:#9a79cb; 2-26 fg:text; 28-30 fg:textMuted

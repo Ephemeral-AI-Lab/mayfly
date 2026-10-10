@@ -1,0 +1,17 @@
+## page-5
+grid 100x8 cursor none
+|page 5/6 (Ctrl+N): feedback severities: glyph plus word, never color alone
+|
+|✓ Installed Git Helper · restart Mayfly to apply   5 s visible, then it goes
+|ℹ Resumed session · 24 turns   5 s visible
+|⚠ Balance low · ¥ 6.20 left   stays until acted on
+|✗ Sign-in failed — try again   stays, offers its retry key
+|
+|inline in the footer of an open surface; a toast in the activity row gap otherwise
+styles
+0: 0-73 fg:muted
+2: 0-1 fg:success; 2-47 fg:text; 48-75 fg:muted
+3: 0-1 fg:primary; 2-27 fg:text; 28-41 fg:muted
+4: 0-1 fg:warning; 2-26 fg:text; 27-49 fg:muted
+5: 0-1 fg:error; 2-27 fg:text; 28-57 fg:muted
+7: 0-81 fg:muted

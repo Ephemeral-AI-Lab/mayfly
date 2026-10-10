@@ -1,0 +1,37 @@
+## page-3
+grid 100x19 cursor none
+|page 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)
+|
+|ui.code — highlighted by language (h toggles)
+|typescript
+|const frame = glyphFor(state)
+|if (state.mode === 'waiting') {
+|  return { kind: 'loader', variant: 'gap' }
+|}
+|
+|ui.markdown
+|Release notes
+|
+|• Hero copy now reads Ship agent UI in a keystroke
+|• Width scan covers the new panels
+|│ a quote reads muted
+|
+|```ts
+|  const a = 1
+|```
+styles
+0: 0-99 fg:muted
+2: 0-44 fg:muted
+3: 0-9 fg:muted
+4: 0-4 fg:primary; 5-28 fg:text
+5: 0-1 fg:primary; 2-18 fg:text; 19-27 fg:success; 28-30 fg:text
+6: 0-1 fg:text; 2-7 fg:primary; 8-16 fg:text; 17-24 fg:success; 25-35 fg:text; 36-40 fg:success; 41-42 fg:text
+7: 0 fg:text
+9: 0-10 fg:muted
+10: 0-12 fg:text b
+12: 0-1 fg:mdListBullet; 22-49 fg:text
+13: 0-1 fg:mdListBullet; 24-33 fg:textStrong
+14: 0-1 fg:mdQuoteBorder; 2-20 fg:text
+16: 0-4 fg:mdCodeBlockBorder
+17: 2-6 fg:primary; 7-12 fg:mdCodeBlock
+18: 0-2 fg:mdCodeBlockBorder

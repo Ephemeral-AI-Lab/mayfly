@@ -1,7 +1,7 @@
 /** The segment strip: its painters, the width ladder (120, 84, 62, and 40 columns), and the keys that pin and unpin a row. */
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListSegment, type MayflyUiEvent } from '../../../ui/src/index.ts'
-import { createRealSurface, parityComponents, type RealSurface } from '../design/parity.ts'
+import { createRealSurface, probeComponents, type RealSurface } from '../design/probe.ts'
 import { inlineSegmentStrip, segmentFitsInline, segmentFooter, segmentStrip, type SegmentView } from '../../src/core/ui-list-segment.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
@@ -69,7 +69,7 @@ describe('the strip on a model picker row', () => {
 
   const open = (width: number, node = models()) => {
     const events: MayflyUiEvent[] = []
-    const surface = createRealSurface(node, width, { components: parityComponents(), events: event => events.push(event), overrides: { onUnhandledEscape: () => {}, escapeHint: 'close' } })
+    const surface = createRealSurface(node, width, { components: probeComponents(), events: event => events.push(event), overrides: { onUnhandledEscape: () => {}, escapeHint: 'close' } })
     surfaces.push(surface)
     return { surface, events }
   }

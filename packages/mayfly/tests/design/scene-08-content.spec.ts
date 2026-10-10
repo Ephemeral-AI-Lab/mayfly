@@ -1,15 +1,13 @@
 /**
  * Scene 8, Content (roadmap slice 1.3): text, rich text, fields and sections, code, markdown, the numbered diff,
- * charts, and the diagram, each page rebuilt with the real builders and compared cell by cell with the prototype.
- * Pages the real renderer draws differently on purpose are listed as accepted differences.
+ * charts, and the diagram, each page built with the real builders and compared with its grid golden; the library
+ * charts and the diagram are checked by their content.
  */
 import { Context } from '@deepseek-ai/cordis'
 import { TuiMainScreen } from '@earendil-works/pi-tui'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { caption, diffReport, frameDiffs, goldenRows, paint } from './scene.ts'
-import { pendingFor } from './pending.ts'
-import { PROBE_PALETTE } from './parity.ts'
+import { PROBE_PALETTE, caption, expectFrames, paint } from './probe.ts'
 import { MayflyComponentsService } from '../../src/core/components.ts'
 import { FakeTerminal } from '../core/fake-terminal.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
@@ -33,11 +31,10 @@ function realComponents(): MayflyComponents {
   return new MayflyComponentsService(ctx, { theme: { colors: PROBE_PALETTE } as never, tui: new TuiMainScreen(new FakeTerminal()) })
 }
 
-/** A page frame: the scene's caption, a blank row, then the body; a wrapped caption's continuation is plain in the kit (Δ20). */
-async function page(frame: number, title: string, body: Parameters<typeof paint>[0], waive: readonly number[] = [], walk = 'pages', components?: MayflyComponents, more: readonly { readonly delta: string, readonly rows: readonly [number, number] }[] = []): Promise<string> {
+/** A page frame (the scene's caption, a blank row, then the body) compared with the grid golden `08-content/<name>`. */
+async function page(name: string, title: string, body: Parameters<typeof paint>[0], components?: MayflyComponents): Promise<void> {
   const rows = [...paint(caption(title), WIDTH), '', ...paint(body, WIDTH, components)]
-  const waivers = [...waive.map(row => ({ delta: 'Δ20', rows: [row, row] as const })), ...more]
-  return diffReport(await frameDiffs(goldenRows('08-content', walk, frame), rows, WIDTH, waivers, pendingFor('08-content', walk, frame)))
+  await expectFrames(`08-content/${name}`, [{ label: name, rows, width: WIDTH }])
 }
 
 describe('scene 8 Content', () => {
@@ -51,7 +48,7 @@ describe('scene 8 Content', () => {
       ui.richText([S('deepseek-chat High  '), S('PLAN', 'primary', ['strong']), S('  '), S('YOLO', 'warning', ['strong']), S('  '), S('italic', 'default', ['italic']), S('  '), S('struck', 'muted', ['strike']), S('  '), mu('⏵ 2 jobs')]),
       ui.spacer(), ui.divider(), ui.divider({ label: 'Connection' }),
     )
-    expect(await page(0, 'page 1/7 (Ctrl+N): text, rich text, spacer, divider: eight tones, wrap or truncate, strong italic strike', body, [1])).toBe('')
+    await page('page-1', 'page 1/7 (Ctrl+N): text, rich text, spacer, divider: eight tones, wrap or truncate, strong italic strike', body)
   })
 
   it('page 2: aligned fields and sections with a collapsed body', async () => {
@@ -59,7 +56,7 @@ describe('scene 8 Content', () => {
       ui.fields([{ label: 'Provider', value: [S('DeepSeek')] }, { label: 'Balance', value: [S('¥ 128.40', 'default', ['strong']), mu(' available')] }, { label: 'Status', value: [S('✓ ', 'success'), S('signed in')] }]), ui.spacer(),
       ui.sections([{ title: 'Connection', body: ui.fields([{ label: 'Name', value: [S('production')] }, { label: 'Endpoint', value: [S('https://api.example.com/v1')] }]) }, { title: 'Behaviour', collapsed: true, body: ui.text('hidden') }, { body: ui.text('x'), collapsed: true }]),
     )
-    expect(await page(1, 'page 2/7 (Ctrl+N): fields (key/value) and sections (bold title, body; collapsed shows the title only)', body, [1])).toBe('')
+    await page('page-2', 'page 2/7 (Ctrl+N): fields (key/value) and sections (bold title, body; collapsed shows the title only)', body)
   })
 
   it('page 3: highlighted code and markdown', async () => {
@@ -69,8 +66,7 @@ describe('scene 8 Content', () => {
       caption('ui.markdown'),
       ui.markdown('# Release notes\n- Hero copy now reads *Ship agent UI in a keystroke*\n- Width scan covers the **new panels**\n> a quote reads muted\n```ts\nconst a = 1\n```'),
     )
-    // The kit's wrap drops the indent of the third code line (Δ20).
-    expect(await page(2, 'page 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)', body, [6], 'pages', realComponents(), [{ delta: 'Δ21', rows: [8, 40] }])).toBe('')
+    await page('page-3', 'page 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)', body, realComponents())
   })
 
   const EDIT_BEFORE = ["  const moon = state.mode === 'waiting'", '  const frame = moon', '  const now = activityNow()', '  const a = 1', '  const b = 2', '  const c = 3', '  const d = 4', "  return { kind: 'stack', direction: 'column',"].join('\n')
@@ -82,8 +78,8 @@ describe('scene 8 Content', () => {
   const DIFF_TITLE = 'page 4/7 (Ctrl+N): diff: two strings in, aligned rows out — numbered gutters, −/+ and color, ⋯ between hunks'
 
   it('page 4: a numbered diff with a hunk header, and the d walk with the gutters off', async () => {
-    expect(await page(3, DIFF_TITLE, diffPage(true), [1])).toBe('')
-    expect(await page(4, DIFF_TITLE, diffPage(false), [1], 'diff')).toBe('')
+    await page('page-4', DIFF_TITLE, diffPage(true))
+    await page('page-4-unnumbered', DIFF_TITLE, diffPage(false))
   })
 
   it('draws a diff node with the defaults, a start line, a row budget, and a context of zero', () => {
@@ -100,10 +96,11 @@ describe('scene 8 Content', () => {
     levels: [{ value: 0, label: 'low', tone: 'muted' }, { value: 1, label: 'mid', tone: 'warning' }, { value: 2, label: 'high', tone: 'success' }],
   } as const
 
-  it('page 5: the sparkline and the heatmap with its legend match; the other bars are the library chart (Δ23)', async () => {
-    const golden = goldenRows('08-content', 'pages', 4)
-    expect(diffReport(await frameDiffs(golden.slice(2, 3), paint(ui.chart(SPARK), WIDTH), WIDTH))).toBe('')
-    expect(diffReport(await frameDiffs(golden.slice(-5), paint(ui.chart(HEAT), WIDTH), WIDTH))).toBe('')
+  it('page 5: the sparkline and the heatmap with its legend; the other bars are the library chart (Δ23)', async () => {
+    await expectFrames('08-content/page-5-charts', [
+      { label: 'sparkline', rows: paint(ui.chart(SPARK), WIDTH), width: WIDTH },
+      { label: 'heatmap', rows: paint(ui.chart(HEAT), WIDTH), width: WIDTH },
+    ])
     const bars = paint(ui.chart({ chart: 'bar', orientation: 'horizontal', layout: 'normalized', title: 'normalized', categories: ['mon', 'tue'], series: [{ id: 'a', values: [12, 8] }, { id: 'b', values: [8, 14] }] }), WIDTH)
     expect(bars.map(row => row.replace(/\x1b\[[0-9;]*m/gu, '')).filter(row => ['normalized', 'mon', 'tue'].includes(row))).toEqual(['normalized', 'mon', 'tue'])
   })
@@ -146,13 +143,12 @@ describe('scene 8 Content', () => {
     expect(over.join('\n')).toContain('n29 --> n30')
   })
 
-  it('the h walk: the code node always highlights, so the kit\'s flat user-tone frame differs only in the code body (Δ22)', async () => {
+  it('the h walk: the code node always highlights, with no flat-tone mode (Δ22)', async () => {
     const body = col(
       caption('ui.code — one flat tone (h toggles)'),
       ui.code(["const frame = glyphFor(state)", "if (state.mode === 'waiting') {", "  return { kind: 'loader', variant: 'gap' }", '}'].join('\n'), { language: 'typescript' }),
     )
     const rows = [...paint(caption('page 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)'), WIDTH), '', ...paint(body, WIDTH)]
-    const diffs = await frameDiffs(goldenRows('08-content', 'highlight', 3).slice(0, rows.length), rows, WIDTH, [{ delta: 'Δ20', rows: [6, 6] }, { delta: 'Δ22', rows: [2, 7] }])
-    expect(diffReport(diffs)).toBe('')
+    await expectFrames('08-content/highlight', [{ label: 'h', rows, width: WIDTH }])
   })
 })

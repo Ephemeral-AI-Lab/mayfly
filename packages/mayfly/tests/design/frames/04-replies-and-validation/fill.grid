@@ -1,0 +1,45 @@
+## start
+grid 76x6 cursor 1,3
+|╭ Add provider ────────────────────────────────────────────────────────────╮
+|│ → Name:   e.g. production                                                │
+|│   Region: us-east                                                        │
+|│  [ Save ]                                                                │
+|│   ↑/↓ fields · Enter submit · Esc close                                  │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-13 fg:textStrong b; 14-75 fg:borderFocus
+1: 0 fg:borderFocus; 2 fg:primary; 4-11 fg:text b; 12-26 fg:muted; 75 fg:borderFocus
+2: 0 fg:borderFocus; 4-18 fg:text; 75 fg:borderFocus
+3: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
+4: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-31 fg:textMuted; 32-34 fg:text; 36-40 fg:textMuted; 75 fg:borderFocus
+5: 0-75 fg:borderFocus
+## x
+grid 76x6 cursor 1,3
+|╭ Add provider ─────────────────────────────────────────── unsaved changes ╮
+|│ → Name:   x                                                              │
+|│   Region: us-east                                                        │
+|│  [ Save ]                                                                │
+|│   Enter submit · Tab/Shift+Tab groups · Esc done                         │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-13 fg:textStrong b; 14-58 fg:borderFocus; 59-73 fg:warning; 74-75 fg:borderFocus
+1: 0 fg:borderFocus; 2 fg:primary; 4-11 fg:text b; 75 fg:borderFocus
+2: 0 fg:borderFocus; 4-18 fg:text; 75 fg:borderFocus
+3: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
+4: 0 fg:borderFocus; 2-3 fg:textMuted; 4-8 fg:text; 10-18 fg:textMuted; 19-31 fg:text; 33-41 fg:textMuted; 42-44 fg:text; 46-49 fg:textMuted; 75 fg:borderFocus
+5: 0-75 fg:borderFocus
+## enter
+grid 76x6 cursor 1,3
+|╭ Add provider ─────────────────────────────────────────── unsaved changes ╮
+|│ → Name:   x                                                              │
+|│   Region: us-east                                                        │
+|│  [ Save ]                                                                │
+|│   Enter submit · Delete reset · Esc close                                │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-13 fg:textStrong b; 14-58 fg:borderFocus; 59-73 fg:warning; 74-75 fg:borderFocus
+1: 0 fg:borderFocus; 2 fg:primary; 4-11 fg:text b; 12 fg:text; 75 fg:borderFocus
+2: 0 fg:borderFocus; 4-18 fg:text; 75 fg:borderFocus
+3: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
+4: 0 fg:borderFocus; 2-3 fg:textMuted; 4-8 fg:text; 10-18 fg:textMuted; 19-24 fg:text; 26-33 fg:textMuted; 34-36 fg:text; 38-42 fg:textMuted; 75 fg:borderFocus
+5: 0-75 fg:borderFocus

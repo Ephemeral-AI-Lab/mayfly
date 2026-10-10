@@ -1,0 +1,260 @@
+## ctrl+n
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 7                                                             ░ │
+|│ log line 8                                                             ░ │
+|│ log line 9                                                             ░ │
+|│ log line 10                                                            █ │
+|│ log line 11                                                            █ │
+|│ log line 12                                                            █ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## tick 1500ms
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 8                                                             ░ │
+|│ log line 9                                                             ░ │
+|│ log line 10                                                            ░ │
+|│ log line 11                                                            █ │
+|│ log line 12                                                            █ │
+|│ log line 13                                                            █ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## tick 1500ms
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 9                                                             ░ │
+|│ log line 10                                                            ░ │
+|│ log line 11                                                            ░ │
+|│ log line 12                                                            █ │
+|│ log line 13                                                            █ │
+|│ log line 14                                                            █ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## tick 1500ms
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 10                                                            ░ │
+|│ log line 11                                                            ░ │
+|│ log line 12                                                            ░ │
+|│ log line 13                                                            ░ │
+|│ log line 14                                                            █ │
+|│ log line 15                                                            █ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## tick 1500ms
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 11                                                            ░ │
+|│ log line 12                                                            ░ │
+|│ log line 13                                                            ░ │
+|│ log line 14                                                            ░ │
+|│ log line 15                                                            █ │
+|│ log line 16                                                            █ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## tick 1500ms
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 12                                                            ░ │
+|│ log line 13                                                            ░ │
+|│ log line 14                                                            ░ │
+|│ log line 15                                                            ░ │
+|│ log line 16                                                            █ │
+|│ log line 17                                                            █ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## tick 1500ms
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 13                                                            ░ │
+|│ log line 14                                                            ░ │
+|│ log line 15                                                            ░ │
+|│ log line 16                                                            ░ │
+|│ log line 17                                                            █ │
+|│ log line 18                                                            █ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## up
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 12                                                            ░ │
+|│ log line 13                                                            ░ │
+|│ log line 14                                                            ░ │
+|│ log line 15                                                            ░ │
+|│ log line 16                                                            █ │
+|│ log line 17                                                            █ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## up
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 11                                                            ░ │
+|│ log line 12                                                            ░ │
+|│ log line 13                                                            ░ │
+|│ log line 14                                                            █ │
+|│ log line 15                                                            █ │
+|│ log line 16                                                            ░ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus
+## up
+grid 96x12 cursor none
+|a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
+|collapses · page 2/3
+|
+|╭ Output ─────────────────────────────────────────────────────── following ╮
+|│ log line 10                                                            ░ │
+|│ log line 11                                                            ░ │
+|│ log line 12                                                            ░ │
+|│ log line 13                                                            █ │
+|│ log line 14                                                            █ │
+|│ log line 15                                                            ░ │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-89 fg:muted
+1: 0-19 fg:muted
+3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
+4: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:muted; 75 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
+11: 0-75 fg:borderFocus

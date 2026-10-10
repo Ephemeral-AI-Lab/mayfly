@@ -1,0 +1,18 @@
+## h
+grid 100x8 cursor none
+|page 3/7 (Ctrl+N): markdown (code fences highlighted) and code (muted language name, then the lines)
+|
+|ui.code — one flat tone (h toggles)
+|typescript
+|const frame = glyphFor(state)
+|if (state.mode === 'waiting') {
+|  return { kind: 'loader', variant: 'gap' }
+|}
+styles
+0: 0-99 fg:muted
+2: 0-34 fg:muted
+3: 0-9 fg:muted
+4: 0-4 fg:primary; 5-28 fg:text
+5: 0-1 fg:primary; 2-18 fg:text; 19-27 fg:success; 28-30 fg:text
+6: 0-1 fg:text; 2-7 fg:primary; 8-16 fg:text; 17-24 fg:success; 25-35 fg:text; 36-40 fg:success; 41-42 fg:text
+7: 0 fg:text

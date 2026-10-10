@@ -1,0 +1,78 @@
+## start
+grid 90x12 cursor 1,3
+|╭ Loop · schedule a prompt ───────────────────────────────────────────────────── running ╮
+|│ → Prompt:                                                                              │
+|│     ┌──────────────────────────────────────────┐                                       │
+|│     │ Check CI and summarize failures          │                                       │
+|│     │                                          │                                       │
+|│     │                                          │                                       │
+|│     └──────────────────────────────────────────┘                                       │
+|│   Every:   15m                                                                         │
+|│   Enabled: [on]                                                                        │
+|│  [ Save ]   ! Stop the loop                                                            │
+|│   ↑/↓ fields · Enter edit · Tab/Shift+Tab groups · Esc close                           │
+|╰────────────────────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-25 fg:textStrong b; 26-80 fg:borderFocus; 81-87 fg:success; 88-89 fg:borderFocus
+1: 0 fg:borderFocus; 2 fg:primary; 4-12 fg:text b; 89 fg:borderFocus
+2: 0 fg:borderFocus; 6-49 fg:muted; 89 fg:borderFocus
+3: 0 fg:borderFocus; 6 fg:muted; 49 fg:muted; 89 fg:borderFocus
+4: 0 fg:borderFocus; 6 fg:muted; 49 fg:muted; 89 fg:borderFocus
+5: 0 fg:borderFocus; 6 fg:muted; 49 fg:muted; 89 fg:borderFocus
+6: 0 fg:borderFocus; 6-49 fg:muted; 89 fg:borderFocus
+7: 0 fg:borderFocus; 4-15 fg:text; 89 fg:borderFocus
+8: 0 fg:borderFocus; 4-12 fg:text; 13-16 fg:primary; 89 fg:borderFocus
+9: 0 fg:borderFocus; 3-10 fg:primary; 14-28 fg:error; 89 fg:borderFocus
+10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-29 fg:textMuted; 30-42 fg:text; 44-52 fg:textMuted; 53-55 fg:text; 57-61 fg:textMuted; 89 fg:borderFocus
+11: 0-89 fg:borderFocus
+## down
+grid 90x7 cursor 2,3
+|╭ Loop · schedule a prompt ───────────────────────────────────────────────────── running ╮
+|│   Prompt:  Check CI and summarize failures                                             │
+|│ → Every:   ‹ 15m ›                                                                     │
+|│   Enabled: [on]                                                                        │
+|│  [ Save ]   ! Stop the loop                                                            │
+|│   ↑/↓ fields · ←/→ adjust · Enter pick · Esc close                                     │
+|╰────────────────────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-25 fg:textStrong b; 26-80 fg:borderFocus; 81-87 fg:success; 88-89 fg:borderFocus
+1: 0 fg:borderFocus; 4-43 fg:text; 89 fg:borderFocus
+2: 0 fg:borderFocus; 2 fg:primary; 4-12 fg:text b; 13-19 fg:primary; 89 fg:borderFocus
+3: 0 fg:borderFocus; 4-12 fg:text; 13-16 fg:primary; 89 fg:borderFocus
+4: 0 fg:borderFocus; 3-10 fg:primary; 14-28 fg:error; 89 fg:borderFocus
+5: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-19 fg:text; 21-29 fg:textMuted; 30-34 fg:text; 36-42 fg:textMuted; 43-45 fg:text; 47-51 fg:textMuted; 89 fg:borderFocus
+6: 0-89 fg:borderFocus
+## down
+grid 90x7 cursor 3,3
+|╭ Loop · schedule a prompt ───────────────────────────────────────────────────── running ╮
+|│   Prompt:  Check CI and summarize failures                                             │
+|│   Every:   15m                                                                         │
+|│ → Enabled: [on]                                                                        │
+|│  [ Save ]   ! Stop the loop                                                            │
+|│   ↑/↓ fields · Enter toggle · Tab/Shift+Tab groups · Esc close                         │
+|╰────────────────────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-25 fg:textStrong b; 26-80 fg:borderFocus; 81-87 fg:success; 88-89 fg:borderFocus
+1: 0 fg:borderFocus; 4-43 fg:text; 89 fg:borderFocus
+2: 0 fg:borderFocus; 4-15 fg:text; 89 fg:borderFocus
+3: 0 fg:borderFocus; 2 fg:primary; 4-12 fg:text b; 13-16 fg:primary; 89 fg:borderFocus
+4: 0 fg:borderFocus; 3-10 fg:primary; 14-28 fg:error; 89 fg:borderFocus
+5: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-31 fg:textMuted; 32-44 fg:text; 46-54 fg:textMuted; 55-57 fg:text; 59-63 fg:textMuted; 89 fg:borderFocus
+6: 0-89 fg:borderFocus
+## down
+grid 90x7 cursor 4,2
+|╭ Loop · schedule a prompt ───────────────────────────────────────────────────── running ╮
+|│   Prompt:  Check CI and summarize failures                                             │
+|│   Every:   15m                                                                         │
+|│   Enabled: [on]                                                                        │
+|│   [ Save ]    ! Stop the loop                                                          │
+|│   ←/→ actions · Enter run · Tab/Shift+Tab groups · Esc back                            │
+|╰────────────────────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-25 fg:textStrong b; 26-80 fg:borderFocus; 81-87 fg:success; 88-89 fg:borderFocus
+1: 0 fg:borderFocus; 4-43 fg:text; 89 fg:borderFocus
+2: 0 fg:borderFocus; 4-15 fg:text; 89 fg:borderFocus
+3: 0 fg:borderFocus; 4-12 fg:text; 13-16 fg:primary; 89 fg:borderFocus
+4: 0 fg:borderFocus; 3-12 r; 16-30 fg:error; 89 fg:borderFocus
+5: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-17 fg:textMuted; 18-22 fg:text; 24-29 fg:textMuted; 30-42 fg:text; 44-52 fg:textMuted; 53-55 fg:text; 57-60 fg:textMuted; 89 fg:borderFocus
+6: 0-89 fg:borderFocus

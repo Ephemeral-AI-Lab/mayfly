@@ -34,27 +34,31 @@ test('a shipped skill runs full validation, agent docs, and packaging', () => {
 test('a full gate retains Website selection and follows the CI deterministic checks', () => {
   const plan = promoteToFull(classifyChanges(['website/index.md']), 'requested')
   const full = scripts(commandsForPlan(plan, { smoke: true }))
-  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'design:golden:check', 'check:agent-docs', 'check:examples', 'website:build', 'test:coverage', 'test:retained', 'smoke:happy', 'bench:pty:assert']) {
+  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'test:coverage', 'test:retained', 'smoke:happy', 'bench:pty:assert']) {
     assert.ok(full.includes(name), name)
   }
   assert.ok(!full.includes('check:pack'))
   const ci = readFileSync(`${ROOT}/.github/workflows/ci.yml`, 'utf8')
-  for (const script of ['typecheck', 'lint', 'test:repo-workflow', 'check:agent-docs', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'design:golden:check', 'check:examples', 'test:coverage', 'test:retained', 'smoke:happy', 'bench:pty:assert']) {
+  for (const script of ['typecheck', 'lint', 'test:repo-workflow', 'check:agent-docs', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:examples', 'test:coverage', 'test:retained', 'smoke:happy', 'bench:pty:assert']) {
     assert.ok(ci.includes(`- run: pnpm ${script}`), `CI must execute ${script}`)
     assert.ok(full.includes(script), `local full gate must execute ${script}`)
   }
 })
 
-test('a prototype change executes the golden check without widening the gate', () => {
+test('the prototype is a sketch: a change to it runs nothing', () => {
   const plan = classifyChanges(['docs/design/prototypes/ui-kit.mjs'])
   assert.equal(plan.mode, 'changed')
-  assert.deepEqual(scripts(commandsForPlan(plan)), ['design:golden:check'])
+  assert.deepEqual(commandsForPlan(plan), [])
 })
 
-test('the golden scripts are classified repository scripts', () => {
-  const plan = classifyChanges(['script/design-golden.mjs', 'script/design-golden-clock.mjs', 'script/design-golden-walks.mjs'])
-  assert.equal(plan.mode, 'changed')
-  assert.ok(plan.checks.designGolden && plan.checks.repoWorkflowTests)
+test('a grid golden or the grid serializer reruns every spec that compares a grid', () => {
+  for (const file of ['packages/mayfly/tests/design/frames/02-actions/move.grid', 'script/scenarios/grid.mjs']) {
+    const plan = classifyChanges([file])
+    assert.equal(plan.mode, 'changed', file)
+    assert.deepEqual(plan.tests.related, ['packages/mayfly/tests/design/probe.ts'], file)
+    assert.ok(commandsForPlan(plan).some(([, args]) => args[0] === 'exec' && args[1] === 'vitest' && args[2] === 'related'), file)
+  }
+  assert.ok(classifyChanges(['script/scenarios/grid.mjs']).checks.repoWorkflowTests)
 })
 
 test('the stale-row check runs for a compiler change and the bench only with the smoke', () => {

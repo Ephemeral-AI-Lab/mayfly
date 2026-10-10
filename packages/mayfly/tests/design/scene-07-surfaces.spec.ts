@@ -1,22 +1,20 @@
 /**
  * Scene 7, Surfaces and scroll (roadmap slice 1.3): the four chromes, a scroll region that follows its tail with a
  * scrollbar, `Ctrl+E` to expand it, and a header badge, driven through the scene's walks with the real compiler and
- * compared cell by cell with the prototype.
+ * compared with their grid goldens.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { walks } from '../../../../script/design-golden-walks.mjs'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import { caption, diffReport, frameDiffs, goldenRows, paint } from './scene.ts'
-import { PROBE_PALETTE, parityComponents, readGoldenFrames } from './parity.ts'
+import { PROBE_PALETTE, caption, expectFrames, paint, probeComponents, type Frame } from './probe.ts'
+import { NEXT, sceneWalks, stepLabel } from './walks.ts'
 
 type Tone = 'muted' | 'warning'
 const S = (text: string, tone?: Tone) => ({ text, ...(tone === undefined ? {} : { tone }) })
 const mu = (text: string) => S(text, 'muted')
 
 const WIDTH = 76
-const NEXT = '\x0e'
 
 const runtimes: MayflyUiSurfaceRuntime[] = []
 const models: UiSurfaceModel[] = []
@@ -45,7 +43,7 @@ function overlay(initial: MayflyUiNode, width = WIDTH) {
   runtimes.push(runtime)
   const compile = () => {
     const result = compileMayflyUiSurfaceNode(model.node!, {
-      components: parityComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), screenMode: 'alternate',
+      components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), screenMode: 'alternate',
       emit: () => {}, contextHints: { enabled: true, focusWithoutControls: true }, onUnhandledEscape: () => {}, surfaceRuntime: runtime,
     })
     if (!result.ok) throw new Error(result.message)
@@ -77,40 +75,35 @@ describe('scene 7 Surfaces and scroll', () => {
       caption('none: a bare bold title (the todo pane)'), ui.surface({ title: 'Todo', chrome: 'none', child: ui.text('  ✓ read the config') }),
     ])
     const rows = frame('chrome kinds: overlay, surface, lane, none · page 1/3', paint(body, WIDTH))
-    // The kit's wrap drops the indent of the todo row's text (Δ20).
-    expect(diffReport(await frameDiffs(goldenRows('07-surfaces-and-scroll', 'initial', 0), rows, 96, [{ delta: 'Δ20', rows: [17, 17] }]))).toBe('')
+    await expectFrames('07-surfaces-and-scroll/page-1', [{ label: 'page 1', rows, width: 96 }])
   })
 
   it('page 2 at rest follows the tail with its scrollbar and the hint row inside the frame', async () => {
     const surface = overlay(output(12))
-    expect(diffReport(await frameDiffs(goldenRows('07-surfaces-and-scroll', 'pages', 1), frame(PAGE2, surface.render()), 96, [{ delta: 'Δ20', rows: [1, 1] }]))).toBe('')
+    await expectFrames('07-surfaces-and-scroll/page-2', [{ label: 'page 2', rows: frame(PAGE2, surface.render()), width: 96 }])
   })
 
   it('page 3: a header badge', async () => {
     const surface = overlay(ui.surface({ title: 'Edit provider', chrome: 'overlay', badges: [S('unsaved changes', 'warning')], child: ui.stack.column([ui.text('A badge on the right of the title rule carries a short state.'), ui.text('Narrow widths drop the subtitle and badges before the title.', { tone: 'muted' })]) }))
     const rows = frame('header badges · page 3/3', surface.render())
-    expect(diffReport(await frameDiffs(goldenRows('07-surfaces-and-scroll', 'pages', 2), rows, 96))).toBe('')
+    await expectFrames('07-surfaces-and-scroll/page-3', [{ label: 'page 3', rows, width: 96 }])
   })
 
   /** Plays a walk of page 2: `NEXT` opens the output at 12 lines, a number is one 1.5 s tick that adds a line, keys go to the surface. */
-  async function play(name: string, differs: (frame: number) => boolean = () => false): Promise<string[][]> {
-    const walk = walks().find(candidate => candidate.scene === 7 && candidate.name === name)!
-    const frames = readGoldenFrames(walk.dir, walk.name)
-    const shown: string[][] = []
+  async function play(name: string): Promise<string[][]> {
+    const walk = sceneWalks(7).find(candidate => candidate.name === name)!
+    const frames: Frame[] = []
     let surface: ReturnType<typeof overlay> | undefined
     let lines = 12
-    for (const [index, step] of walk.steps.entries()) {
+    for (const step of walk.steps) {
       if (step === NEXT) surface = overlay(output(lines))
       else if (typeof step === 'number') { lines += 1; surface!.publish(output(lines)) }
       else if (step !== '\0') surface!.press(step)
       if (surface === undefined) continue
-      const rows = frame(PAGE2, surface.render())
-      shown.push(rows)
-      if (differs(index)) continue
-      // The kit's wrap leaves the caption's second row plain (Δ20).
-      expect(diffReport(await frameDiffs(frames[index]!.rows, rows, 96, [{ delta: 'Δ20', rows: [1, 1] }])), `${name} frame ${String(index)}`).toBe('')
+      frames.push({ label: stepLabel(step), rows: frame(PAGE2, surface.render()), width: 96 })
     }
-    return shown
+    await expectFrames(`${walk.dir}/${walk.name}`, frames)
+    return frames.map(shown => [...shown.rows])
   }
 
   it('the end walk: the view follows each arriving line, and End at the tail changes nothing', async () => {
@@ -122,9 +115,8 @@ describe('scene 7 Surfaces and scroll', () => {
     expect(strip(shown.at(-1)!.at(-2)!)).toContain('Ctrl+E collapse · Esc collapse')
   })
 
-  it('the scroll walk: up from the tail scrolls one row, where the kit jumps to the top (Δ24)', async () => {
-    // Frames 8 to 10 press ↑ three times; the kit's offset is stale, so only the arriving-line frames are compared.
-    const shown = await play('scroll', frame => frame >= 8)
+  it('the scroll walk: up from the tail scrolls one row per press (Δ24)', async () => {
+    const shown = await play('scroll')
     const body = (rows: readonly string[]): string[] => rows.slice(4, 10).map(row => strip(row).slice(2, 14).trimEnd())
     expect(body(shown.at(-3)!)).toEqual(['log line 12', 'log line 13', 'log line 14', 'log line 15', 'log line 16', 'log line 17'])
     expect(body(shown.at(-1)!)).toEqual(['log line 10', 'log line 11', 'log line 12', 'log line 13', 'log line 14', 'log line 15'])

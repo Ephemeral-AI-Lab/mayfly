@@ -1,0 +1,21 @@
+## page 2
+grid 96x10 cursor none
+|page 2/4 (Ctrl+N): progress: determinate cells with n/N, and the heading rule (heavy for done,
+|light for what is left)
+|
+|Building ▱▱▱▱▱▱▱▱▱▱ 0/10
+|▰▰▰▰▰▰▰▰▰▱ 90%
+|
+|━━━━━━━━━━──────────────────────────────  Goal round 2 of 8
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  Goal ✕ blocked
+|a bar never appears for an unknown duration: an eased bar that never completes is a fabricated
+|estimate
+styles
+0: 0-93 fg:muted
+1: 0-22 fg:muted
+3: 0-8 fg:text; 9-18 fg:muted; 19-23 fg:text
+4: 0-8 fg:primary; 9 fg:muted; 10-13 fg:text
+6: 0-9 fg:primary; 10-39 fg:muted; 42-45 fg:primary b; 46-58 fg:muted
+7: 0-39 fg:error; 42-45 fg:primary b; 46-55 fg:error
+8: 0-93 fg:muted
+9: 0-7 fg:muted

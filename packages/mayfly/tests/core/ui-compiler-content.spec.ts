@@ -8,13 +8,13 @@ import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import type { MayflyPresentation } from '../../src/core/presentation.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
-import { parityComponents } from '../design/parity.ts'
+import { probeComponents } from '../design/probe.ts'
 
 const identity = (value: string): string => value
 const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
 
 function components(presentation: Partial<MayflyPresentation> = {}): MayflyComponents {
-  const base = parityComponents()
+  const base = probeComponents()
   return Object.assign(Object.create(base) as MayflyComponents, base, { presentation: { glyphs: 'unicode', monochrome: false, reducedMotion: false, ...presentation } })
 }
 
@@ -330,7 +330,7 @@ describe('smaller seams', () => {
     const invalidate = vi.fn()
     const region = new ScrollRegion({
       child: { render: () => ['x'], invalidate }, memory: { offset: 0, following: undefined, away: 0 }, height: 2, expandedHeight: 4, fit: false, pill: false, follow: false,
-      scrollbar: true, expanded: () => false, colors, components: parityComponents(), pillText: String,
+      scrollbar: true, expanded: () => false, colors, components: probeComponents(), pillText: String,
     })
     region.invalidate()
     region.setScrollbarActive()

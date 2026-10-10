@@ -1,24 +1,19 @@
 /**
  * Scene 13, Status area (roadmap slice 1.10b): the views lane only. The lane owns the tab strip, the rule under the
- * active tab, and the panel's place in status row 2; everything else in the scene (row 1, the editor frame, the idle
- * row 2 with its right cue, and the panel bodies) belongs to a later phase and is listed in `pending.ts`. Each golden
- * walk is replayed on a real lane through the keys the scene sends, and every frame is compared cell by cell wherever
- * no ledger entry covers it.
+ * active tab, and the panel's place in status row 2; the rest of the scene (row 1, the editor frame, the panel bodies)
+ * belongs to later phases. Each walk is replayed on a real lane through the keys the scene sends, and the footer it
+ * draws at every step is compared with its grid golden.
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
-import { walks } from '../../../../script/design-golden-walks.mjs'
 import { ViewsLane } from '../../src/core/views-lane.ts'
 import type { MayflyFocusable } from '../../src/core/types.ts'
 import { StatusFooterComponent } from '../../src/transcript/status-model.ts'
-import { diffReport, frameDiffs, goldenRows } from './scene.ts'
-import { PROBE_PALETTE, parityComponents } from './parity.ts'
-import { PENDING_PARITY, pendingFor } from './pending.ts'
+import { PROBE_PALETTE, expectFrames, probeComponents, type Frame } from './probe.ts'
+import { ALT_DOWN, sceneWalks, stepLabel } from './walks.ts'
 
 const WIDTH = 100
-const ALT_DOWN = '\x1b[1;3B'
-const SCENE_WALKS = walks().filter(walk => walk.scene === 13 && walk.name.startsWith('views'))
 
 /** Row 2's four views as the scene prints them: summaries, tab titles and counts. */
 const VIEWS = [
@@ -52,37 +47,25 @@ function rig(): Rig {
       summary: { node: { kind: 'text', content: view.summary }, ...('count' in view ? { count: view.count } : {}) },
     }).setPanel(panel, panel)
   }
-  const footer = new StatusFooterComponent(new MayflyStatusService(new Context()), parityComponents(), PROBE_PALETTE, () => ({ columns: WIDTH, rows: 30 }), lane)
+  const footer = new StatusFooterComponent(new MayflyStatusService(new Context()), probeComponents(), PROBE_PALETTE, () => ({ columns: WIDTH, rows: 30 }), lane)
   return { lane, footer, escapes }
 }
 
-/** The scene frame the lane can draw: nothing above row 2, then row 2 or the entered panel. */
-function laneFrame(rigged: Rig): string[] {
-  return ['', '', '', '', '', '', '', '', ...rigged.footer.render(WIDTH)]
-}
+/** The steps of each walk at which the lane is entered: Alt+↓ enters, `x` and Esc leave, arrows move inside. */
+const ENTERED: Readonly<Record<string, readonly number[]>> = { 'views': [1], 'views-next': [1, 2, 3], 'views-stop': [1, 2], 'views-back': [1] }
 
 describe('scene 13 Status area, the views lane', () => {
-  it('has a ledger only for frames the walks have', () => {
-    for (const entry of PENDING_PARITY.filter(candidate => candidate.directory === '13-status-area')) {
-      const walk = SCENE_WALKS.find(candidate => candidate.name === entry.walk)
-      expect(walk, entry.walk).toBeDefined()
-      expect(Math.max(...entry.frames), entry.walk).toBeLessThan(walk!.steps.length)
-    }
-  })
-
-  it.each(SCENE_WALKS.map(walk => [walk.name, walk] as const))('walk %s matches the prototype wherever the lane draws', async (_name, walk) => {
+  it.each(sceneWalks(13).map(walk => [walk.name, walk] as const))('walk %s paints its grid golden and enters the lane at the agreed steps', async (_name, walk) => {
     const rigged = rig()
-    const entered: boolean[] = []
+    const entered: number[] = []
+    const frames: Frame[] = []
     for (const [index, step] of walk.steps.entries()) {
       if (step === ALT_DOWN) expect(rigged.lane.enter()).toBe(true)
       else if (typeof step === 'string' && step !== '\0') rigged.lane.component.handleInput(step)
-      entered.push(rigged.lane.isEntered)
-      const diffs = await frameDiffs(goldenRows(walk.dir, walk.name, index), laneFrame(rigged), WIDTH, [], pendingFor(walk.dir, walk.name, index))
-      expect(diffReport(diffs), `${walk.name} frame ${String(index)}`).toBe('')
+      if (rigged.lane.isEntered) entered.push(index)
+      frames.push({ label: stepLabel(step), rows: rigged.footer.render(WIDTH), width: WIDTH })
     }
-    // The ledger names the frames in which the lane is entered; the walk must agree.
-    const ledger = PENDING_PARITY.find(entry => entry.directory === walk.dir && entry.walk === walk.name && entry.rows?.[0] === 10)!
-    expect(entered.flatMap((flag, index) => flag ? [index] : [])).toEqual([...ledger.frames])
+    expect(entered).toEqual(ENTERED[walk.name])
+    await expectFrames(`${walk.dir}/${walk.name}`, frames)
   })
-
 })

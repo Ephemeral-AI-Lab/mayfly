@@ -11,7 +11,7 @@ import {
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
 import { validateMayflyEditorShellNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import type { MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
-import { parityComponents } from '../design/parity.ts'
+import { probeComponents } from '../design/probe.ts'
 import { MayflyKeymapService } from '../../src/core/keymap.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 
@@ -33,7 +33,7 @@ function keymapWith(keys: Readonly<Record<string, readonly string[]>>): MayflyKe
 function surface(node: unknown, overrides: Partial<MayflyUiCompilerOptions> = {}) {
   const events: MayflyUiEvent[] = []
   const result = compileMayflyUiSurfaceNode(node, {
-    components: parityComponents(),
+    components: probeComponents(),
     colors,
     getViewport: () => ({ columns: 100, rows: 30 }),
     screenMode: 'alternate',

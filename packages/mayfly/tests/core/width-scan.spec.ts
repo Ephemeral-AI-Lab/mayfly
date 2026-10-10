@@ -19,7 +19,7 @@ import { MayflyUiSurfaceRuntime, compileMayflyEditorShellNode, compileMayflyStat
 import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { ui } from '../../../ui/src/index.ts'
-import { createRealSurface, parityComponents } from '../design/parity.ts'
+import { createRealSurface, probeComponents } from '../design/probe.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
 import { WrappingSelectList } from '../../src/core/wrapping-select-list.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -138,7 +138,7 @@ describe('core width-scan', () => {
         ui.prompt({ id: 'p', recall: [{ kind: 'queued', text }, { kind: 'history', text: 'older' }], recallLabel: text.slice(0, 24), tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }] }),
       ]
       for (const [index, prompt] of prompts.entries()) for (const width of SCAN_WIDTHS) {
-        const surface = createRealSurface(ui.surface({ title: text, titleAlign: 'right', chrome: 'surface', hint: 'completions', child: prompt }), width, { components: parityComponents() })
+        const surface = createRealSurface(ui.surface({ title: text, titleAlign: 'right', chrome: 'surface', hint: 'completions', child: prompt }), width, { components: probeComponents() })
         try {
           if (index === 1) surface.press('/')
           if (index === 2) { surface.press('\x1b[A'); surface.press('\x1b[A') }

@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListItem, type MayflyTabItem, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { createRealSurface, parityComponents, type RealSurface } from '../design/parity.ts'
+import { createRealSurface, probeComponents, type RealSurface } from '../design/probe.ts'
 
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m|\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)|\x1b_pi:c\x07/gu, '')
 const KEY = {
@@ -21,7 +21,7 @@ function open(content: MayflyUiNode, width = 100, escape = true) {
   const events: MayflyUiEvent[] = []
   let escapes = 0
   const surface = createRealSurface(node, width, {
-    components: parityComponents(), events: event => events.push(event),
+    components: probeComponents(), events: event => events.push(event),
     ...(escape ? { overrides: { onUnhandledEscape: () => { escapes += 1 }, escapeHint: 'close' as const } } : {}),
   })
   surfaces.push(surface)

@@ -10,7 +10,7 @@ import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type { MayflyEditor } from '../../src/core/types.ts'
 import { truncateToWidth } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
-import { PROBE_PALETTE, parityComponents } from './parity.ts'
+import { PROBE_PALETTE, probeComponents } from './probe.ts'
 
 const HISTORY = ['run the width scan again', 'bump the changelog too', 'explain the facts projection']
 const FILES = [{ id: 'f1', label: '@pane-activity.ts', detail: 'packages/mayfly/src/transcript/', size: '2 KB' }, { id: 'f2', label: '@pane-agents.ts', detail: 'packages/mayfly/src/transcript/', size: '3 KB' }, { id: 'f3', label: '@notes.md', detail: 'docs/', size: '2 KB' }]
@@ -97,7 +97,7 @@ export function editorHost(): EditorHost {
   const compile = () => {
     const width = widths[state.w]!
     const result = compileMayflyUiSurfaceNode(model.node!, {
-      components: { ...parityComponents(), createEditor: createCaretEditor }, colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), screenMode: 'alternate',
+      components: { ...probeComponents(), createEditor: createCaretEditor }, colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), screenMode: 'alternate',
       emit: () => {}, contextHints: { enabled: true }, onUnhandledEscape: () => {}, surfaceRuntime: runtime,
     })
     if (!result.ok) throw new Error(result.message)

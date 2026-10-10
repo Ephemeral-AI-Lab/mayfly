@@ -1,0 +1,43 @@
+## page-2
+grid 100x21 cursor none
+|page 2/6 (Ctrl+N): state and progress glyphs (one glyph, one meaning)
+|
+|●  assistant block; a tool or step running
+|»  user block
+|✻  thinking
+|✓  done
+|✗  failed
+|⊘  cancelled
+|◐  declined (plan)
+|■  stopping or interrupted
+|?  waiting on the user
+|⚠  warning
+|ℹ  information
+|✕  goal blocked
+|❚❚ goal paused
+|⎿  detail connector
+|⏵  background jobs
+|↻  applies after a restart
+|↗  opens in the external editor
+|
+|▰▰▰▰▱▱ determinate progress cells   ━━━━───  heavy and light rule
+styles
+0: 0-68 fg:muted
+2: 0-2 fg:primary b; 3-41 fg:text
+3: 0-2 fg:roleUser b; 3-12 fg:text
+4: 0-2 fg:primary b; 3-10 fg:text
+5: 0-2 fg:success b; 3-6 fg:text
+6: 0-2 fg:error b; 3-8 fg:text
+7: 0-2 fg:muted b; 3-11 fg:text
+8: 0-2 fg:muted b; 3-17 fg:text
+9: 0-2 fg:error b; 3-25 fg:text
+10: 0-2 fg:warning b; 3-21 fg:text
+11: 0-2 fg:warning b; 3-9 fg:text
+12: 0-2 fg:primary b; 3-13 fg:text
+13: 0-2 fg:error b; 3-14 fg:text
+14: 0-2 fg:muted b; 3-13 fg:text
+15: 0-2 fg:muted b; 3-18 fg:text
+16: 0-2 fg:primary b; 3-17 fg:text
+17: 0-2 fg:warning b; 3-25 fg:text
+18: 0-2 fg:accent b; 3-30 fg:text
+20: 0-6 fg:primary; 7-35 fg:muted; 36-42 fg:primary; 43-64 fg:muted

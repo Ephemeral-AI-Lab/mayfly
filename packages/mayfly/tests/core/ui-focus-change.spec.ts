@@ -9,7 +9,7 @@ import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
-import { PROBE_PALETTE, parityComponents } from '../design/parity.ts'
+import { PROBE_PALETTE, probeComponents } from '../design/probe.ts'
 
 const KEY = { up: '\x1b[A', down: '\x1b[B', right: '\x1b[C' } as const
 const cleanups: (() => void)[] = []
@@ -25,7 +25,7 @@ function open(node: MayflyUiNode, observer = true, rows = 40) {
   } as never)
   const runtime = new MayflyUiSurfaceRuntime(model)
   const result = compileMayflyUiSurfaceNode(model.node!, {
-    components: parityComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 80, rows }), screenMode: 'alternate',
+    components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 80, rows }), screenMode: 'alternate',
     emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime, counters,
   })
   if (!result.ok) throw new Error(result.message)

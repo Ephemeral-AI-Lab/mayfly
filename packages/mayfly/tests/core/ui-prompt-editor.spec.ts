@@ -8,7 +8,7 @@ import { MayflyComponentsService } from '../../src/core/components.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type { MayflySemanticColors, MayflyTheme } from '../../src/core/types.ts'
-import { PROBE_PALETTE } from '../design/parity.ts'
+import { PROBE_PALETTE } from '../design/probe.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
 

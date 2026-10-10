@@ -1,8 +1,7 @@
 /**
  * Scene 2, Actions (roadmap slices 1.7 and 1.2): the actions row with a declared accelerator (`c`) and a hidden key with
- * no button (`Ctrl+Y copy link`). Every golden walk is compared cell by cell; a walk that cannot match yet is listed in
- * `pending.ts` and must still differ. The key behavior of the walks is checked too: which key runs which action, and
- * that the hint row names the effective keys.
+ * no button (`Ctrl+Y copy link`). Every walk's frames are compared with their grid golden, and the key behavior of the
+ * walks is checked too: which key runs which action, and that the hint row names the effective keys.
  */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -11,9 +10,8 @@ import { MayflyKeymapService } from '../../src/core/keymap.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import type { MayflyKeymap } from '../../src/core/types.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
-import { walks } from '../../../../script/design-golden-walks.mjs'
-import { PROBE_PALETTE, compareCells, parityComponents, parseCells, readGoldenFrames } from './parity.ts'
-import { PENDING_WALKS, pendingWalk } from './pending.ts'
+import { PROBE_PALETTE, expectFrames, probeComponents, type Frame } from './probe.ts'
+import { sceneWalks, stepLabel } from './walks.ts'
 import { feedbackSpans } from '../../src/core/ui-interaction-notifications.ts'
 
 /** The scene's node, as `ui-preview.mjs` builds it, with the real builders. */
@@ -46,7 +44,7 @@ function overlay(keymap?: MayflyKeymap, reply?: string) {
   const surfaceRuntime = new MayflyUiSurfaceRuntime()
   runtimes.push(surfaceRuntime)
   const result = compileMayflyUiSurfaceNode(sceneNode(reply), {
-    components: parityComponents(),
+    components: probeComponents(),
     colors: PROBE_PALETTE,
     getViewport: () => ({ columns: 120, rows: 40 }),
     screenMode: 'alternate',
@@ -71,32 +69,22 @@ function overlay(keymap?: MayflyKeymap, reply?: string) {
 
 /** The actions whose host reply is a copy. */
 const REPLIES = new Set(['copy', 'copy-link'])
-const SCENE_WALKS = walks().filter(walk => walk.scene === 2)
-
 describe('scene 2, Actions', () => {
-  it('has a ledger entry only for walks the scene has', () => {
-    expect(PENDING_WALKS.filter(entry => entry.scene === 2).every(entry => SCENE_WALKS.some(walk => walk.name === entry.walk))).toBe(true)
-  })
-
-  it.each(SCENE_WALKS.map(walk => [walk.name, walk] as const))('walk %s matches the prototype cell by cell, or is pending', async (_name, walk) => {
-    const frames = readGoldenFrames(walk.dir, walk.name)
+  it.each(sceneWalks(2).map(walk => [walk.name, walk] as const))('walk %s paints its grid golden', async (_name, walk) => {
     let surface = overlay()
     let width = 78
-    let differs = false
-    for (const [index, step] of walk.steps.entries()) {
+    const frames: Frame[] = []
+    for (const step of walk.steps) {
       // The scene's own keys change the demo, not the UI: `w` narrows the frame.
       if (step === 'w') width = 46
       else if (typeof step === 'string' && step !== '\0') {
         surface.press(step)
-        // Copying is the host's job; it answers with feedback, which the prototype draws under the actions.
+        // Copying is the host's job; it answers with feedback, drawn under the actions.
         if (surface.activated().some(id => REPLIES.has(id))) surface = overlay(undefined, 'Copied')
       }
-      const expected = await parseCells(frames[index]!.rows.slice(3), 96, 'prototype')
-      const actual = await parseCells(surface.render(width), 96, 'real')
-      // The kit's word wrap leaves the wrapped caption's style open on its first row and closed on the next (Δ20).
-      if (compareCells(expected, actual, walk.name === 'narrow' && index === 1 ? [{ delta: 'Δ20', rows: [1, 2] }] : []).length > 0) differs = true
+      frames.push({ label: stepLabel(step), rows: surface.render(width), width })
     }
-    expect(differs, pendingWalk(2, walk.name)?.reason ?? 'a matched walk').toBe(pendingWalk(2, walk.name) !== undefined)
+    await expectFrames(`${walk.dir}/${walk.name}`, frames)
   })
 
   it('runs the declared accelerator and the hidden key from anywhere on the surface, and arrows run nothing', () => {

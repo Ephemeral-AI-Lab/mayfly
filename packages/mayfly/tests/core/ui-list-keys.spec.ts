@@ -1,7 +1,7 @@
 /** List keys and the hint row in every list state: idle, searching, slash, segment pinned and unpinned, tree, numbered, bodies. */
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListItem, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { createRealSurface, parityComponents, PROBE_PALETTE, type RealSurface } from '../design/parity.ts'
+import { createRealSurface, probeComponents, PROBE_PALETTE, type RealSurface } from '../design/probe.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/gu, '')
@@ -13,7 +13,7 @@ afterEach(() => { for (const surface of surfaces.splice(0)) surface.dispose() })
 function open(node: MayflyUiNode, width = 100) {
   const events: MayflyUiEvent[] = []
   const surface = createRealSurface(ui.surface({ title: 'List', chrome: 'overlay', child: node }), width, {
-    components: parityComponents(), events: event => events.push(event), overrides: { onUnhandledEscape: () => {}, escapeHint: 'close' },
+    components: probeComponents(), events: event => events.push(event), overrides: { onUnhandledEscape: () => {}, escapeHint: 'close' },
   })
   surfaces.push(surface)
   const rows = (): string[] => surface.render().map(plain)
@@ -247,7 +247,7 @@ describe('list keys', () => {
       { id: 'a', label: 'A', segment: segment({ selectedId: 'y' }) },
       { id: 'b', label: 'B', segment: segment({ inheritedId: 'x' }) },
       { id: 'c', label: 'C', segment: segment({}) },
-    ]), { components: parityComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate', emit: () => {} })
+    ]), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate', emit: () => {} })
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
     const rows = result.value.component.render(60).map(plain)

@@ -1,0 +1,27 @@
+## start
+grid 96x3 cursor none
+|╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+|│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-65 fg:border; 66-93 fg:textStrong b; 94-95 fg:border
+1: 0 fg:border; 2-3 fg:text; 5-60 fg:textMuted; 95 fg:border
+2: 0-95 fg:border
+## ctrl+w
+grid 60x3 cursor none
+|╭──────────────────────────── Update the landing page hero ╮
+|│ > ▌Ask anything · / commands · @ files · # skills        │
+|╰──────────────────────────────────────────────────────────╯
+styles
+0: 0-29 fg:border; 30-57 fg:textStrong b; 58-59 fg:border
+1: 0 fg:border; 2-3 fg:text; 5-50 fg:textMuted; 59 fg:border
+2: 0-59 fg:border
+## ctrl+w
+grid 40x3 cursor none
+|╭──────── Update the landing page hero ╮
+|│ > ▌Ask anything                      │
+|╰──────────────────────────────────────╯
+styles
+0: 0-9 fg:border; 10-37 fg:textStrong b; 38-39 fg:border
+1: 0 fg:border; 2-3 fg:text; 5-16 fg:textMuted; 39 fg:border
+2: 0-39 fg:border

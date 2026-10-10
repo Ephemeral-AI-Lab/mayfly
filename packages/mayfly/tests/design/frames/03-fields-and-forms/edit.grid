@@ -1,0 +1,70 @@
+## start
+grid 76x16 cursor 2,3
+|╭ Edit provider ───────────────────────────────────────────────────────────╮
+|│ ── Connection ──────────────────────────────                             │
+|│ → Name:      production                                                  │
+|│   Endpoint:  https://api.example.com/v1                                  │
+|│   API key:   •••••••••• (saved)                                          │
+|│ ── Behaviour ───────────────────────────────                             │
+|│   Model:     deepseek-chat  (inherited)                                  │
+|│   Timeout:   30 s  (inherited)                                           │
+|│   Streaming: [on]                                                        │
+|│   Channels:  mentions, errors                                            │
+|│   Directory: ~/work/may                                                  │
+|│   Notes:     Prefer small diffs. …                                       │
+|│ ── Finish ────────────────────────────────────────────────────────────── │
+|│  [ Save ]                                                                │
+|│   ↑/↓ fields · Enter edit · Esc close                                    │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
+1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
+2: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 15-24 fg:text; 75 fg:borderFocus
+3: 0 fg:borderFocus; 4-40 fg:text; 75 fg:borderFocus
+4: 0 fg:borderFocus; 4-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 4-27 fg:text; 28-40 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 4-18 fg:text; 19-31 fg:muted; 75 fg:borderFocus
+8: 0 fg:borderFocus; 4-14 fg:text; 15-18 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 4-30 fg:text; 75 fg:borderFocus
+10: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
+11: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
+12: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
+13: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
+14: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted; 75 fg:borderFocus
+15: 0-75 fg:borderFocus
+## enter
+grid 76x16 cursor 2,3
+|╭ Edit provider ───────────────────────────────────────────────────────────╮
+|│ ── Connection ──────────────────────────────                             │
+|│ → Name:      production                                                  │
+|│   Endpoint:  https://api.example.com/v1                                  │
+|│   API key:   •••••••••• (saved)                                          │
+|│ ── Behaviour ───────────────────────────────                             │
+|│   Model:     deepseek-chat  (inherited)                                  │
+|│   Timeout:   30 s  (inherited)                                           │
+|│   Streaming: [on]                                                        │
+|│   Channels:  mentions, errors                                            │
+|│   Directory: ~/work/may                                                  │
+|│   Notes:     Prefer small diffs. …                                       │
+|│ ── Finish ────────────────────────────────────────────────────────────── │
+|│  [ Save ]                                                                │
+|│   Enter next · Tab/Shift+Tab groups · Esc done                           │
+|╰──────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
+1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
+2: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 75 fg:borderFocus
+3: 0 fg:borderFocus; 4-40 fg:text; 75 fg:borderFocus
+4: 0 fg:borderFocus; 4-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
+5: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
+6: 0 fg:borderFocus; 4-27 fg:text; 28-40 fg:muted; 75 fg:borderFocus
+7: 0 fg:borderFocus; 4-18 fg:text; 19-31 fg:muted; 75 fg:borderFocus
+8: 0 fg:borderFocus; 4-14 fg:text; 15-18 fg:primary; 75 fg:borderFocus
+9: 0 fg:borderFocus; 4-30 fg:text; 75 fg:borderFocus
+10: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
+11: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
+12: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
+13: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
+14: 0 fg:borderFocus; 2-3 fg:textMuted; 4-8 fg:text; 10-16 fg:textMuted; 17-29 fg:text; 31-39 fg:textMuted; 40-42 fg:text; 44-47 fg:textMuted; 75 fg:borderFocus
+15: 0-75 fg:borderFocus

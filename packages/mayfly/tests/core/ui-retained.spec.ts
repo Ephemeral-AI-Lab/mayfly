@@ -12,7 +12,7 @@ import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { LOADER_FRAME_MS, UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
 import type { MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
-import { PROBE_PALETTE, parityComponents } from '../design/parity.ts'
+import { PROBE_PALETTE, probeComponents } from '../design/probe.ts'
 
 const KEY = { down: '\x1b[B' } as const
 const cleanups: (() => void)[] = []
@@ -53,7 +53,7 @@ function open(node: MayflyUiNode, extra: Partial<MayflyUiCompilerOptions> = {}):
   const runtime = new MayflyUiSurfaceRuntime(model, requestRender, clock, undefined, requestFrame)
   const compile = (): Component => {
     const result = compileMayflyUiSurfaceNode(model.node!, {
-      components: parityComponents(), colors: PROBE_PALETTE, getViewport: () => viewport, screenMode: 'alternate',
+      components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => viewport, screenMode: 'alternate',
       // Paint counts are the subject here, so verification (which paints again on every hit) is on only where a case asks.
       emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime, counters, verifyRetained: false, ...extra,
     })

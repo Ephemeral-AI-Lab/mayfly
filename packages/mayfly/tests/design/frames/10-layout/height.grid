@@ -1,0 +1,92 @@
+## start
+grid 96x24 cursor none
+|width 70 (←/→) · height ≥ 20 (h)
+|
+|stack row with basis and grow:
+|╭────╮ ╭ grow 1 ─────────────╮ ╭ grow 2 ─────────────────────────────╮
+|│ fi │ │ takes the rest      │ │ twice                               │
+|│ xe │ ╰─────────────────────╯ ╰─────────────────────────────────────╯
+|│ d  │
+|╰────╯
+|
+|a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+|width
+|Loop  official   ✓ installed 1.4.0
+|↻ 1 change applies after restart
+|
+|priority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+|o)
+|deepseek-chat High  PLAN  ⏵ 2 jobs  ~/work/mayfly/packages/mayfly
+|
+|a windowed list (maxRows 4) counts what is hidden:
+|  row 1
+|  row 2
+|  row 3
+|  row 4
+|   ↑ 0 more · ↓ 5 more
+styles
+0: 0-31 fg:muted
+2: 0-29 fg:muted
+3: 0-5 fg:border; 7-8 fg:border; 9-14 fg:textStrong b; 15-29 fg:border; 31-32 fg:border; 33-38 fg:textStrong b; 39-69 fg:border
+4: 0 fg:border; 2-3 fg:text; 5 fg:border; 7 fg:border; 9-22 fg:text; 29 fg:border; 31 fg:border; 33-37 fg:text; 69 fg:border
+5: 0 fg:border; 2-3 fg:text; 5 fg:border; 7-29 fg:border; 31-69 fg:border
+6: 0 fg:border; 2 fg:text; 5 fg:border
+7: 0-5 fg:border
+9: 0-92 fg:muted
+10: 0-4 fg:muted
+11: 0-33 fg:text
+12: 0-31 fg:warning
+14: 0-93 fg:muted
+15: 0-1 fg:muted
+16: 0-17 fg:text; 20-23 fg:primary b; 26-33 fg:text; 36-64 fg:muted
+18: 0-49 fg:muted
+19: 2-6 fg:text b
+20: 2-6 fg:text
+21: 2-6 fg:text
+22: 2-6 fg:text
+23: 3-21 fg:muted
+## h
+grid 96x23 cursor none
+|width 70 (←/→) · height < 20 (h)
+|
+|stack row with basis and grow:
+|╭────╮ ╭ grow 1 ─────────────╮ ╭ grow 2 ─────────────────────────────╮
+|│ fi │ │ takes the rest      │ │ twice                               │
+|│ xe │ ╰─────────────────────╯ ╰─────────────────────────────────────╯
+|│ d  │
+|╰────╯
+|
+|a width ladder: children with disjoint ranges; the renderer picks one, a plugin never reads a
+|width
+|Loop  official   ✓ installed 1.4.0
+|
+|priority admission: lower is kept first; "hide" drops out instead of truncating (cwd truncate,
+|o)
+|deepseek-chat High  PLAN  ⏵ 2 jobs  ~/work/mayfly/packages/mayfly
+|
+|a windowed list (maxRows 4) counts what is hidden:
+|  row 1
+|  row 2
+|  row 3
+|  row 4
+|   ↑ 0 more · ↓ 5 more
+styles
+0: 0-31 fg:muted
+2: 0-29 fg:muted
+3: 0-5 fg:border; 7-8 fg:border; 9-14 fg:textStrong b; 15-29 fg:border; 31-32 fg:border; 33-38 fg:textStrong b; 39-69 fg:border
+4: 0 fg:border; 2-3 fg:text; 5 fg:border; 7 fg:border; 9-22 fg:text; 29 fg:border; 31 fg:border; 33-37 fg:text; 69 fg:border
+5: 0 fg:border; 2-3 fg:text; 5 fg:border; 7-29 fg:border; 31-69 fg:border
+6: 0 fg:border; 2 fg:text; 5 fg:border
+7: 0-5 fg:border
+9: 0-92 fg:muted
+10: 0-4 fg:muted
+11: 0-33 fg:text
+13: 0-93 fg:muted
+14: 0-1 fg:muted
+15: 0-17 fg:text; 20-23 fg:primary b; 26-33 fg:text; 36-64 fg:muted
+17: 0-49 fg:muted
+18: 2-6 fg:text b
+19: 2-6 fg:text
+20: 2-6 fg:text
+21: 2-6 fg:text
+22: 3-21 fg:muted

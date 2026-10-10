@@ -1,14 +1,14 @@
 /**
  * Scene 9, Feedback and progress (roadmap slice 1.3): the four loader variants and their cancel hint, determinate
  * progress as cells and as a heading rule, the settled forms, and the empty states; then the motion walk, where every
- * loader steps with the one clock (100 ms, the breath every fourth step), compared frame by frame with the prototype.
+ * loader steps with the one clock (100 ms, the breath every fourth step), compared frame by frame with its grid golden.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { caption, diffReport, frameDiffs, goldenRows, paint } from './scene.ts'
-import { PROBE_PALETTE, parityComponents, readGoldenFrames } from './parity.ts'
+import { PROBE_PALETTE, caption, expectFrames, paint, probeComponents } from './probe.ts'
+import { sceneWalks, stepLabel } from './walks.ts'
 
 type Tone = 'default' | 'muted' | 'primary' | 'danger' | 'success'
 type Style = 'strong'
@@ -38,7 +38,7 @@ afterEach(() => {
 describe('scene 9 Feedback and progress', () => {
   it('page 1: every variant at its first step, the elapsed time muted, the cancel as a hint', async () => {
     const rows = frame(LOADER_TITLE, paint(loaders(), WIDTH))
-    expect(diffReport(await frameDiffs(goldenRows('09-feedback-and-progress', 'pages', 0), rows, WIDTH))).toBe('')
+    await expectFrames('09-feedback-and-progress/page-1', [{ label: 'page 1', rows, width: WIDTH }])
   })
 
   it('page 2: cells with n/N, a percentage without the count, and the heading rule', async () => {
@@ -50,34 +50,31 @@ describe('scene 9 Feedback and progress', () => {
       goal(ui.progress({ style: 'rule', value: 8, max: 8, width: 40, tone: 'danger' }), [S('Goal', 'primary', ['strong']), S(' ✕ blocked', 'danger')]),
       caption('a bar never appears for an unknown duration: an eased bar that never completes is a fabricated estimate'),
     )
-    // A wrapped caption's continuation row is plain in the kit (Δ20).
     const rows = frame('page 2/4 (Ctrl+N): progress: determinate cells with n/N, and the heading rule (heavy for done, light for what is left)', paint(body, WIDTH))
-    expect(diffReport(await frameDiffs(goldenRows('09-feedback-and-progress', 'pages', 1), rows, WIDTH, [{ delta: 'Δ20', rows: [1, 1] }, { delta: 'Δ20', rows: [9, 9] }]))).toBe('')
+    await expectFrames('09-feedback-and-progress/page-2', [{ label: 'page 2', rows, width: WIDTH }])
   })
 
   it('page 4: what is missing and the next action', async () => {
     const body = col(ui.empty({ title: 'No sessions found', description: 'Restore a checkpoint with /rewind' }), ui.spacer(), ui.empty({ title: 'No plugins installed', description: 'press → to browse' }))
     const rows = frame('page 4/4 (Ctrl+N): empty: what is missing and the next action', paint(body, WIDTH))
-    expect(diffReport(await frameDiffs(goldenRows('09-feedback-and-progress', 'pages', 3), rows, WIDTH))).toBe('')
+    await expectFrames('09-feedback-and-progress/page-4', [{ label: 'page 4', rows, width: WIDTH }])
   })
 
-  it('the motion walk: bloom, fill, and gap step every 100 ms and the breath every fourth step, as the prototype does', async () => {
+  it('the motion walk: bloom, fill, and gap step every 100 ms and the breath every fourth step', async () => {
     vi.useFakeTimers()
-    const frames = readGoldenFrames('09-feedback-and-progress', 'motion')
+    const [walk] = sceneWalks(9)
     const clock = new UiAnimationClock()
     const runtime = new MayflyUiSurfaceRuntime(undefined, () => {}, clock)
     runtimes.push(runtime)
-    const result = compileMayflyUiSurfaceNode(loaders(), { components: parityComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: WIDTH, rows: 40 }), screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
+    const result = compileMayflyUiSurfaceNode(loaders(), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: WIDTH, rows: 40 }), screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
     // The fake clock stops while the headless terminal parses (it waits on timers), so every frame is painted first.
-    const painted = frames.map((_, index) => {
-      if (index > 0) vi.advanceTimersByTime(100)
-      return frame(LOADER_TITLE, result.value.component.render(WIDTH))
+    const painted = walk!.steps.map(step => {
+      if (typeof step === 'number') vi.advanceTimersByTime(step)
+      return { label: stepLabel(step), rows: frame(LOADER_TITLE, result.value.component.render(WIDTH)), width: WIDTH }
     })
     vi.useRealTimers()
-    for (const [index, golden] of frames.entries()) {
-      expect(diffReport(await frameDiffs(golden.rows, painted[index]!, WIDTH)), `frame ${String(index)}`).toBe('')
-    }
-    expect(frames).toHaveLength(13)
+    expect(painted).toHaveLength(13)
+    await expectFrames(`${walk!.dir}/${walk!.name}`, painted)
   })
 })

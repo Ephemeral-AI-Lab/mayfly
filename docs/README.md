@@ -23,10 +23,10 @@ for the follow-up change (wire mechanics, builder tables, backlog) is in
 [design/component-library-reference.md](./design/component-library-reference.md), and the
 order of that work, with the decisions taken after review, is
 [design/implementation-roadmap.md](./design/implementation-roadmap.md).
-The prototype's frames are committed as goldens (`pnpm run design:golden`, checked by
-`pnpm run design:golden:check`) and were the strict oracle of the foundation phase;
-roadmap Phase 2b replaces them in the gate with the accepted frames of the real
-renderer.
+The prototype's frames were the strict oracle of the foundation phase. Roadmap Phase 2b
+retired them from the gate: the design scenes now compare the real renderer with its own
+frames, committed as cell grids, until the accepted frames of the foundation review
+replace them.
 
 A review round runs on the workbench: `pnpm run dev` rebuilds and restarts the
 profile on the same session, `pnpm run scenario` opens the product on a scripted

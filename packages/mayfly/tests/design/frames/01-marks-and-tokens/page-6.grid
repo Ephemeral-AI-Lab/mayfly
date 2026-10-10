@@ -1,0 +1,26 @@
+## page 6
+grid 100x13 cursor none
+|page 6/6 (Ctrl+N): breakpoints: one list-and-detail panel at three widths
+|
+|≥ 100 columns: split view
+|→ Loop — official · T W                      1.4.0  Loop:   official · Automation
+|  Git Helper — community · T W        update 1.3.0  Status: ✓ installed 1.4.0
+|
+|60–99 columns: one column, Enter opens the detail
+|→ Loop — official · T W                                          1.4.0
+|  Git Helper — community · T W                            update 1.3.0
+|
+|below 60: the name and one glyph (the list degrades; the detail opens on Enter)
+|→ Loop                                 ✓
+|  Git Helper                           ↑
+styles
+0: 0-72 fg:muted
+2: 0-24 fg:muted
+3: 0 fg:muted b; 2-5 fg:text b; 7-22 fg:muted; 45-49 fg:muted; 52-58 fg:muted; 60-80 fg:text
+4: 2-11 fg:text; 13-29 fg:muted; 38-49 fg:muted; 52-58 fg:muted; 60-76 fg:success
+6: 0-48 fg:muted
+7: 0 fg:muted b; 2-5 fg:text b; 7-22 fg:muted; 65-69 fg:muted
+8: 2-11 fg:text; 13-29 fg:muted; 58-69 fg:muted
+10: 0-78 fg:muted
+11: 0 fg:muted b; 2-5 fg:text b; 39 fg:success
+12: 2-11 fg:text; 39 fg:warning

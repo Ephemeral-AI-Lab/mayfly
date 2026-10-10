@@ -59,7 +59,6 @@ export function promoteToFull(plan, reason) {
       shots: true,
       agentDocs: true,
       diagrams: true,
-      designGolden: true,
       website: plan.checks.website,
       repoWorkflowTests: true,
       retainedRows: true,
@@ -86,7 +85,6 @@ export function classifyChanges(inputFiles) {
   let shots = false
   let agentDocs = false
   let diagrams = false
-  let designGolden = false
   let retainedRows = false
   let website = false
   let repoWorkflowTests = false
@@ -103,8 +101,9 @@ export function classifyChanges(inputFiles) {
       repoWorkflowTests = true
       if (['script/check-pack.mjs', 'script/pack-cli-runtime.mjs', 'script/release-packages.mjs',
         'script/release-preflight.mjs', 'script/registry-release.mjs'].includes(file)) pack = true
-      if (!/^script\/(?:test-impact|change-files|verify-changed|build-changed|check-agent-docs|design-golden(?:-clock|-walks)?|bench-pty|test-retained|dev|frame|scenario)\.mjs$/u.test(file)
+      if (!/^script\/(?:test-impact|change-files|verify-changed|build-changed|check-agent-docs|bench-pty|test-retained|dev|frame|scenario)\.mjs$/u.test(file)
         && !file.startsWith('script/workbench/')
+        && !file.startsWith('script/scenarios/')
         && !file.startsWith('script/tests/')) {
         full = true
         reasons.push(`${file}: unclassified repository script`)
@@ -112,8 +111,8 @@ export function classifyChanges(inputFiles) {
     }
     if (file === 'script/check-agent-docs.mjs') agentDocs = true
     if (file === 'script/test-retained.mjs') retainedRows = true
-    if (file.startsWith('docs/design/prototypes/') || file.startsWith('packages/mayfly/tests/design/golden/')
-      || /^script\/design-golden(?:-clock|-walks)?\.mjs$/u.test(file)) designGolden = true
+    // The design grid goldens and the grid serializer are read through the probe helper: every spec that compares a grid imports it.
+    if (file.startsWith('packages/mayfly/tests/design/frames/') || file.startsWith('script/scenarios/')) related.add('packages/mayfly/tests/design/probe.ts')
     if (file === 'AGENTS.md' || file.endsWith('/AGENTS.md') || file.includes('/SKILL.md') || file.startsWith('.agents/')
       || file.startsWith('docs/skills/') || file.endsWith('/mayfly-skills-plan.md')) {
       agentDocs = true
@@ -171,7 +170,6 @@ export function classifyChanges(inputFiles) {
       directTests.add('examples/mayfly-user-kit/tests/width-scan.spec.ts')
     }
     if (/^packages\/mayfly\/src\/core\/ui-[^/]+\.ts$/u.test(file)) {
-      directTests.add('packages/mayfly/tests/design/parity.spec.ts')
       directTests.add('packages/mayfly/tests/perf/work-budget.spec.ts')
     }
     // The frame workloads paint through the lanes, the surface renderer, the clock, and the editor shell's keymap reads.
@@ -196,7 +194,7 @@ export function classifyChanges(inputFiles) {
     files,
     mode: full ? 'full' : files.length === 0 ? 'none' : 'changed',
     reasons: [...new Set(reasons)],
-    checks: { lint, typecheck, build, checkLib, pack, examples, shots, agentDocs, diagrams, designGolden, website, repoWorkflowTests, retainedRows },
+    checks: { lint, typecheck, build, checkLib, pack, examples, shots, agentDocs, diagrams, website, repoWorkflowTests, retainedRows },
     tests: {
       related: [...related],
       coverage: [...coverage],

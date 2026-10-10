@@ -20,10 +20,10 @@ import {
 import { classifyChanges, isStructuralBuildPath, owningPackage, promoteToFull } from '../test-impact.mjs'
 
 describe('change impact planning', () => {
-  test('core UI painters select the design parity and work-budget specs', () => {
+  test('core UI painters select the work-budget spec beside their related specs', () => {
     const plan = classifyChanges(['packages/mayfly/src/core/ui-patterns.ts'])
     assert.equal(plan.mode, 'changed')
-    assert.ok(plan.tests.direct.includes('packages/mayfly/tests/design/parity.spec.ts'))
+    assert.ok(plan.tests.related.includes('packages/mayfly/src/core/ui-patterns.ts'))
     assert.ok(plan.tests.direct.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))
     assert.ok(!plan.tests.direct.includes('packages/mayfly/tests/core/key-audit.spec.ts'))
   })

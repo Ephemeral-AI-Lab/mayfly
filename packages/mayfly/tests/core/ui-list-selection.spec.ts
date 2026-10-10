@@ -1,7 +1,7 @@
 /** A list's `selectedIds` is optional: absent means nothing selected, in the validator, the choice model, and the painters. */
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListNode, type MayflyUiEvent } from '../../../ui/src/index.ts'
-import { createRealSurface, parityComponents, type RealSurface } from '../design/parity.ts'
+import { createRealSurface, probeComponents, type RealSurface } from '../design/probe.ts'
 import { listSelectedIds } from '../../src/core/ui-list-selection.ts'
 import { createChoiceState, reduceChoice } from '../../src/core/ui-interaction-choice.ts'
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
@@ -14,7 +14,7 @@ afterEach(() => { for (const surface of surfaces.splice(0)) surface.dispose() })
 
 function open(node: MayflyListNode) {
   const events: MayflyUiEvent[] = []
-  const surface = createRealSurface(ui.surface({ title: 'List', chrome: 'overlay', child: node }), 80, { components: parityComponents(), events: event => events.push(event) })
+  const surface = createRealSurface(ui.surface({ title: 'List', chrome: 'overlay', child: node }), 80, { components: probeComponents(), events: event => events.push(event) })
   surfaces.push(surface)
   return { surface, events, rows: () => surface.render().map(plain) }
 }

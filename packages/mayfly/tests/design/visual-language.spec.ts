@@ -1,11 +1,8 @@
-/** Strict parity for the scenes of slice 1.2 (the visual language): scene 1 pages 1-5, 7 p1, 8 p3-p4, and 9 p3. */
-import { describe, expect, it } from 'vitest'
+/** The scenes of slice 1.2 (the visual language) as grid goldens: scene 1 pages 1-6, 7 p1, 8 p3-p4, and 9 p3. */
+import { describe, it } from 'vitest'
 import { patterns, ui } from '../../../ui/src/index.ts'
-import { caption, diffReport, frameDiffs, goldenRows, paint } from './scene.ts'
-import { createRealSurface, parityComponents, PROBE_PALETTE } from './parity.ts'
+import { PROBE_PALETTE, caption, createRealSurface, expectFrames, paint, probeComponents } from './probe.ts'
 import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
-import { PENDING_PARITY, pendingFor } from './pending.ts'
-import { walks } from '../../../../script/design-golden-walks.mjs'
 
 const S = (text: string, tone?: 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger', styles?: readonly ('strong' | 'italic' | 'strike')[]) => ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
 
@@ -25,15 +22,13 @@ describe('scene 7 Surfaces and scroll, page 1: chrome kinds', () => {
         ui.surface({ title: 'Todo', chrome: 'none', child: ui.text('  ✓ read the config') }),
       ]), 76),
     ]
-    // The kit's wrap drops the indent of the todo row's text.
-    const diffs = await frameDiffs(goldenRows('07-surfaces-and-scroll', 'initial', 0), rows, 96, [{ delta: 'Δ20', rows: [17, 17] }])
-    expect(diffReport(diffs)).toBe('')
+    await expectFrames('07-surfaces-and-scroll/page-1-padded', [{ label: 'page 1', rows, width: 96 }])
   })
 })
 
 describe('scene 1 Marks and tokens, page 1: selection and focus', () => {
   it('draws the cursor of a focused choose list, one muted [current], and a disabled row with its reason', async () => {
-    const list = createRealSurface(ui.list({ id: 'm1', role: 'choose', selectedIds: [], items: [{ id: 'a', label: 'Default', badge: 'current' }, { id: 'b', label: 'Accept edits' }, { id: 'c', label: 'Full access', disabled: true, disabledReason: 'managed by policy' }] }), 100, { components: parityComponents() })
+    const list = createRealSurface(ui.list({ id: 'm1', role: 'choose', selectedIds: [], items: [{ id: 'a', label: 'Default', badge: 'current' }, { id: 'b', label: 'Accept edits' }, { id: 'c', label: 'Full access', disabled: true, disabledReason: 'managed by policy' }] }), 100, { components: probeComponents() })
     try {
       const rows = [
         ...paint(caption('page 1/6 (Ctrl+N): selection and focus: → the cursor, ▌ the persistent selection, ▸ ▾ disclosure, ● ○ ◐ checks, [current], — reason'), 100),
@@ -41,10 +36,7 @@ describe('scene 1 Marks and tokens, page 1: selection and focus', () => {
         ...paint(caption('→ a cursor in a choose list (the row Enter acts on)'), 100),
         ...list.render().slice(0, 3),
       ]
-      const golden = goldenRows('01-marks-and-tokens', 'pages', 0).slice(0, rows.length)
-      // The kit's wrap does not reopen the caption's dim on its second row.
-      const diffs = await frameDiffs(golden, rows, 100, [{ delta: 'Δ20', rows: [1, 1] }])
-      expect(diffReport(diffs)).toBe('')
+      await expectFrames('01-marks-and-tokens/page-1-cursor', [{ label: 'page 1', rows, width: 100 }])
     } finally {
       list.dispose()
     }
@@ -62,22 +54,18 @@ describe('scene 8 Content', () => {
       ...paint(caption('ui.code — highlighted by language (h toggles)'), 100),
       ...paint(ui.code(["const frame = glyphFor(state)", "if (state.mode === 'waiting') {", "  return { kind: 'loader', variant: 'gap' }", '}'].join('\n'), { language: 'typescript' }), 100),
     ]
-    // The kit's wrap drops the indent of the third code line.
-    const diffs = await frameDiffs(goldenRows('08-content', 'pages', 2).slice(0, rows.length), rows, 100, [{ delta: 'Δ20', rows: [6, 6] }])
-    expect(diffReport(diffs)).toBe('')
+    await expectFrames('08-content/page-3-code', [{ label: 'page 3', rows, width: 100 }])
   })
 
   it('page 4: a numbered diff with −/+, bands behind the code only, and ⋯ between hunks', async () => {
-    const diff = (numbered: boolean): string[] => paintDiffRows(alignDiffLines(EDIT_BEFORE, EDIT_AFTER), 100, parityComponents(), PROBE_PALETTE, { start: 41, numbered, hunkHeader: true, context: 1 })
+    const diff = (numbered: boolean): string[] => paintDiffRows(alignDiffLines(EDIT_BEFORE, EDIT_AFTER), 100, probeComponents(), PROBE_PALETTE, { start: 41, numbered, hunkHeader: true, context: 1 })
     const page = (numbered: boolean): string[] => [
       ...paint(caption('page 4/7 (Ctrl+N): diff: two strings in, aligned rows out — numbered gutters, −/+ and color, ⋯ between hunks'), 100),
       '',
       ...paint(caption(`numbered ${numbered ? 'on' : 'off'} (d toggles); an @@ header names the hunk`), 100),
       ...diff(numbered),
     ]
-    // The kit's wrap does not reopen the caption's dim on its second row.
-    expect(diffReport(await frameDiffs(goldenRows('08-content', 'pages', 3), page(true), 100, [{ delta: 'Δ20', rows: [1, 1] }]))).toBe('')
-    expect(diffReport(await frameDiffs(goldenRows('08-content', 'diff', 4), page(false), 100, [{ delta: 'Δ20', rows: [1, 1] }]))).toBe('')
+    await expectFrames('08-content/page-4-diff-rows', [{ label: 'numbered', rows: page(true), width: 100 }, { label: 'unnumbered', rows: page(false), width: 100 }])
   })
 })
 
@@ -86,12 +74,9 @@ const mu = (text: string) => S(text, 'muted')
 const T = (text: string, tone: Tone, styles?: readonly ('strong' | 'italic' | 'strike')[]) => ({ text, ...(tone === 'default' ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
 const col = (...children: Parameters<typeof ui.stack.column>[0]) => ui.stack.column(children)
 
-/** A pages-scene frame: the caption, a blank row, then the page body, all at the scene's width. */
-async function pageDiffs(directory: string, frame: number, title: string, body: ReturnType<typeof ui.stack.column>, width: number, wrapped: readonly number[] = []): Promise<string> {
-  const rows = [...paint(caption(title), width), '', ...paint(body, width)]
-  // A wrapped caption's continuation row is plain in the kit (Δ20).
-  const waivers = wrapped.map(row => ({ delta: 'Δ20', rows: [row, row] as const }))
-  return diffReport(await frameDiffs(goldenRows(directory, 'pages', frame), rows, width, waivers, pendingFor(directory, 'pages', frame)))
+/** A pages-scene frame (the caption, a blank row, then the page body, all at the scene's width) and its grid golden. */
+async function expectPage(name: string, title: string, body: ReturnType<typeof ui.stack.column>, width: number): Promise<void> {
+  await expectFrames(name, [{ label: name.split('/')[1]!, rows: [...paint(caption(title), width), '', ...paint(body, width)], width }])
 }
 
 describe('scene 1 Marks and tokens, pages 2 to 5', () => {
@@ -100,14 +85,14 @@ describe('scene 1 Marks and tokens, pages 2 to 5', () => {
       ['●', 'primary', 'assistant block; a tool or step running'], ['»', 'user', 'user block'], ['✻', 'primary', 'thinking'], ['✓', 'success', 'done'], ['✗', 'danger', 'failed'], ['⊘', 'muted', 'cancelled'], ['◐', 'muted', 'declined (plan)'], ['■', 'danger', 'stopping or interrupted'], ['?', 'warning', 'waiting on the user'], ['⚠', 'warning', 'warning'], ['ℹ', 'primary', 'information'], ['✕', 'danger', 'goal blocked'], ['❚❚', 'muted', 'goal paused'], ['⎿', 'muted', 'detail connector'], ['⏵', 'primary', 'background jobs'], ['↻', 'warning', 'applies after a restart'], ['↗', 'accent', 'opens in the external editor'],
     ]
     const body = col(...glyphs.map(([glyph, tone, what]) => ui.richText([T(glyph.padEnd(3), tone, ['strong']), T(what, 'default')])), ui.spacer(), ui.richText([T('▰▰▰▰▱▱ ', 'primary'), mu('determinate progress cells   '), T('━━━━───', 'primary'), mu('  heavy and light rule')]))
-    expect(await pageDiffs('01-marks-and-tokens', 1, 'page 2/6 (Ctrl+N): state and progress glyphs (one glyph, one meaning)', body, 100)).toBe('')
+    await expectPage('01-marks-and-tokens/page-2', 'page 2/6 (Ctrl+N): state and progress glyphs (one glyph, one meaning)', body, 100)
   })
 
   it('page 3: tones and styles', async () => {
     const tones: readonly Tone[] = ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger']
     const sample = (tone: Tone): string => tone === 'danger' ? '✗ Plan copy failed' : tone === 'success' ? '✓ Saved to clipboard' : tone === 'warning' ? '⚠ permission picker is unavailable' : 'Sample text in this tone'
     const body = col(...tones.map(tone => ui.richText([T(tone.padEnd(9), tone), T(sample(tone), tone)])), ui.spacer(), ui.richText([T('strong', 'default', ['strong']), T('  ', 'default'), T('italic', 'default', ['italic']), T('  ', 'default'), T('struck', 'muted', ['strike'])]))
-    expect(await pageDiffs('01-marks-and-tokens', 2, 'page 3/6 (Ctrl+N): tones and styles (the whole palette; a monochrome terminal keeps weight and glyphs)', body, 100, [1])).toBe('')
+    await expectPage('01-marks-and-tokens/page-3', 'page 3/6 (Ctrl+N): tones and styles (the whole palette; a monochrome terminal keeps weight and glyphs)', body, 100)
   })
 
   it('page 4: one answer for five states', async () => {
@@ -120,7 +105,7 @@ describe('scene 1 Marks and tokens, pages 2 to 5', () => {
       ui.spacer(),
       caption('a slow or failed secondary read (a balance, a catalog refresh) never blocks or alters the primary content'),
     )
-    expect(await pageDiffs('01-marks-and-tokens', 3, 'page 4/6 (Ctrl+N): one answer for five states: every panel and every secondary read looks the same', body, 100, [9])).toBe('')
+    await expectPage('01-marks-and-tokens/page-4', 'page 4/6 (Ctrl+N): one answer for five states: every panel and every secondary read looks the same', body, 100)
   })
 
   it('page 5: feedback severities, glyph plus word', async () => {
@@ -132,7 +117,7 @@ describe('scene 1 Marks and tokens, pages 2 to 5', () => {
       ui.spacer(),
       caption('inline in the footer of an open surface; a toast in the activity row gap otherwise'),
     )
-    expect(await pageDiffs('01-marks-and-tokens', 4, 'page 5/6 (Ctrl+N): feedback severities: glyph plus word, never color alone', body, 100)).toBe('')
+    await expectPage('01-marks-and-tokens/page-5', 'page 5/6 (Ctrl+N): feedback severities: glyph plus word, never color alone', body, 100)
   })
 })
 
@@ -150,7 +135,7 @@ describe('scene 1 Marks and tokens, page 6: breakpoints', () => {
       ...paint(caption('60–99 columns: one column, Enter opens the detail'), 100), ...paint(panel, 70), '',
       ...paint(caption('below 60: the name and one glyph (the list degrades; the detail opens on Enter)'), 100), ...paint(narrow, 40),
     ]
-    expect(diffReport(await frameDiffs(goldenRows('01-marks-and-tokens', 'pages', 5), rows, 100, [], pendingFor('01-marks-and-tokens', 'pages', 5)))).toBe('')
+    await expectFrames('01-marks-and-tokens/page-6', [{ label: 'page 6', rows, width: 100 }])
   })
 })
 
@@ -161,18 +146,6 @@ describe('scene 9 Feedback and progress, page 3: settled forms', () => {
       ui.richText([T('✗ ', 'danger'), T('Discovery failed: 401 Unauthorized', 'default'), mu('  r retry')]),
       ui.richText([mu('⊘ Cancelled')]),
     )
-    expect(await pageDiffs('09-feedback-and-progress', 2, 'page 3/4 (Ctrl+N): settled forms are static; the retry is a key', body, 96)).toBe('')
-  })
-})
-
-describe('pending-parity ledger', () => {
-  it('names real golden frames and a later slice for every entry', () => {
-    const known = walks()
-    for (const entry of PENDING_PARITY) {
-      const walk = known.find(candidate => candidate.dir === entry.directory && candidate.name === entry.walk)
-      expect(walk, `${entry.directory}/${entry.walk}`).toBeDefined()
-      for (const frame of entry.frames) expect(frame).toBeLessThan(walk!.steps.length)
-      expect(entry.slice).toMatch(/^(?:1\.(?:[3-9]|1[01])[ab]?|Phase [2-6])$/u)
-    }
+    await expectPage('09-feedback-and-progress/page-3', 'page 3/4 (Ctrl+N): settled forms are static; the retry is a key', body, 96)
   })
 })
