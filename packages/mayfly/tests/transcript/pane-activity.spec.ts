@@ -13,6 +13,7 @@ import * as activity from '../../src/transcript/pane-activity.ts'
 import { buildTipRotation } from '../../src/transcript/status-tips.ts'
 import { MOON_SPINNER_FRAMES, MOON_SPINNER_INTERVAL_MS } from '../../src/transcript/spinners.ts'
 import { STATUS_TIPS } from '../../src/transcript/tips-content.ts'
+import { fakeMayflyComponents } from './helpers.ts'
 import { bootPanePlugin, type PanePluginHarness } from './pane-fakes.ts'
 import { asAgent, fakeAgent, type FakeAgent } from './status-fakes.ts'
 import {
@@ -151,6 +152,19 @@ describe('mayfly-pane-activity', () => {
     // Unloading stops the animation.
     await dispose()
     expect(timers.cleared).toBe(1)
+  })
+
+  it('holds the spinner glyph still under reduced motion while each tick still republishes', async () => {
+    const timers = new FakeTimers()
+    activity.setActivityTimers(timers)
+    activity.setActivityClock(() => NOW)
+    const components = { ...fakeMayflyComponents(), presentation: { glyphs: 'unicode' as const, monochrome: false, reducedMotion: true } }
+    const { screen, dispose } = await bootPanePlugin(activity, runningAgent(fakeAgent([])), { mayflyComponents: components })
+    expect(timers.intervals).toEqual([120])
+    timers.ticks[0]!()
+    timers.ticks[0]!()
+    expect(screen.paneLines()).toEqual([waiting()])
+    await dispose()
   })
 
   it('uses Agent status as the waiting fallback while the projection is still idle', async () => {

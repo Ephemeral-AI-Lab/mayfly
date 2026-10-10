@@ -310,7 +310,8 @@ function activityMode(state: ActivityState, facts: ConversationFacts, statusActi
  * projection-backed phase. The
  * frame timer runs only while a spinner
  * state is live, at the style's interval (moon 120 ms, braille 80 ms); each
- * tick advances the shared frame counter and requests a redraw. `sync`
+ * tick advances the shared frame counter (not under reduced motion) and
+ * requests a redraw. `sync`
  * requests a redraw only when the mode or the tip actually changed.
  * Unloading the fiber unmounts the pane and stops the timer.
  * @param ctx - plugin context.
@@ -367,7 +368,8 @@ export function apply(ctx: Context): void {
     stopTimer()
     timerMs = ms
     timer = activityTimers.setInterval(() => {
-      state.frame += 1
+      // Reduced motion keeps the glyph still; the tick still republishes the counters it carries.
+      if (ctx.mayflyComponents.presentation?.reducedMotion !== true) state.frame += 1
       publish()
     }, ms)
   }
