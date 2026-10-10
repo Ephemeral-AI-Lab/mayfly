@@ -2,9 +2,11 @@
 /**
  * The review loop: watch the sources, rebuild incrementally, and restart the running `dsh --profile <name>` on the
  * same persisted session, so a change reaches the terminal in seconds. A failed build is not applied; its output is
- * in `.artifacts/dev/build.log`. Never boots the production `mayfly` profile.
+ * in `.artifacts/dev/build.log`. With `--check`, each applied build is followed by the round tier of `pnpm run check`
+ * in the background: its output goes to `.artifacts/dev/check.log` and its report to `.artifacts/verify/`, and the
+ * terminal title shows the verdict (a failure also rings the bell). Never boots the production `mayfly` profile.
  *
- *   pnpm run dev --profile mayfly-<tag> [--replay <name>] [--speed N] [--width N] [--height N] [--no-color] [--ascii] [-- <dsh app args>]
+ *   pnpm run dev --profile mayfly-<tag> [--check] [--replay <name>] [--speed N] [--width N] [--height N] [--no-color] [--ascii] [-- <dsh app args>]
  *
  * @module script/dev
  */
@@ -26,7 +28,7 @@ const SOURCE = /^(?:packages|examples)\/[^/]+\/src\/.+\.ts$/u
  * @returns the options, or an error message.
  */
 export function parseDevArgs(argv) {
-  const options = { noColor: false, ascii: false, args: [] }
+  const options = { noColor: false, ascii: false, check: false, args: [] }
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]
     if (value === '--') { options.args = argv.slice(index + 1); break }
@@ -35,6 +37,7 @@ export function parseDevArgs(argv) {
     else if (value === '--height') options.rows = Number(argv[++index])
     else if (value === '--no-color') options.noColor = true
     else if (value === '--ascii') options.ascii = true
+    else if (value === '--check') options.check = true
     else if (value === '--replay') options.replay = argv[++index]
     else if (value === '--speed') options.speed = Number(argv[++index])
     else return { error: `unknown argument ${value}` }
@@ -65,6 +68,20 @@ export function debounceFiles(ms, onBatch) {
       onBatch(batch)
     }, ms)
   }
+}
+
+/** Run the round tier of `pnpm run check` with its output in `log`; resolves true when it passed. */
+function check(log) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [join(root, 'script/check.mjs'), '--tier', 'round'], { cwd: root, env: process.env })
+    let output = ''
+    child.stdout.on('data', data => { output += data })
+    child.stderr.on('data', data => { output += data })
+    child.on('close', (code) => {
+      writeFileSync(log, output)
+      resolve(code === 0)
+    })
+  })
 }
 
 /** Run the incremental build for explicit files; resolves true when it succeeded. */
@@ -104,11 +121,24 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     rows: options.rows,
   })
   let building = Promise.resolve()
+  // One check at a time; edits that land while one runs are covered by the next, which reads the whole change set.
+  let checking
+  let checkAgain = false
+  const runCheck = () => {
+    if (checking !== undefined) { checkAgain = true; return }
+    process.stdout.write('\u001b]0;mayfly dev: checking…\u0007')
+    checking = check(join(logDir, 'check.log')).then((passed) => {
+      checking = undefined
+      if (checkAgain) { checkAgain = false; runCheck(); return }
+      process.stdout.write(passed ? '\u001b]0;mayfly dev: check passed\u0007' : '\u0007\u001b]0;mayfly dev: check failed (.artifacts/verify/summary.md)\u0007')
+    })
+  }
   const onFiles = debounceFiles(200, (files) => {
     building = building.then(async () => {
       const ok = await build(files, log)
       if (ok) {
         await session.restart()
+        if (options.check) runCheck()
       } else {
         process.stdout.write(`\u0007\u001b]0;mayfly dev: build failed (${relative(root, log)})\u0007`)
       }

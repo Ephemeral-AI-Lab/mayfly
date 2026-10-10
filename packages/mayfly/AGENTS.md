@@ -275,7 +275,7 @@ review replaces them. The prototype is a sketch and gates nothing. The owner's l
 acceptance decides a component's look, and its accepted frames become its goldens.
 
 Patch, preset, skill, dependency, or composition edits require bundle/preset
-tests, `pnpm run check:agent-docs`, `pnpm run verify:full`,
+tests, `pnpm run check:agent-docs`, `pnpm run check -- --tier full`,
 `pnpm run check:pack`, dedicated-profile install, PTY smoke, and human acceptance.
 Keep `HARNESS_LINE` in `interaction/session-commands.ts`, where drift/build
 scripts read it. The public side-question entry is `./btw-command`; do not restore

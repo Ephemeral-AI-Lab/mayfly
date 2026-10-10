@@ -45,7 +45,8 @@ test('dev refuses the production profile and requires one', () => {
     assert.match(parseDevArgs([]).error, /usage/u)
     assert.match(parseDevArgs(['--profile', 'mayfly']).error, /production/u)
     const { options } = parseDevArgs(['--profile', 'mayfly-x', '--width', '70', '--', 'task'])
-    assert.deepEqual([options.profile, options.cols, options.args], ['mayfly-x', 70, ['task']])
+    assert.deepEqual([options.profile, options.cols, options.args, options.check], ['mayfly-x', 70, ['task'], false])
+    assert.equal(parseDevArgs(['--profile', 'mayfly-x', '--check']).options.check, true)
     process.env.PROFILE = 'mayfly-env'
     assert.equal(parseDevArgs([]).options.profile, 'mayfly-env')
   } finally {

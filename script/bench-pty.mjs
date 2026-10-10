@@ -1,4 +1,4 @@
-// PTY benchmark (manual, and the coarse ceilings of `verify:full`): boots the real dsh CLI with a Mayfly checkout
+// PTY benchmark (manual, and the coarse ceilings of the full verification tier): boots the real dsh CLI with a Mayfly checkout
 // linked into a cached throwaway profile, drives one scripted session against a local mock LLM under a real
 // pseudo-terminal, and reports per-phase wall time, process CPU, output bytes, and key-to-paint latency. It measures the
 // path the work budgets cannot: the lane measure, pi-tui's native layout, and the animation clock, end to end.

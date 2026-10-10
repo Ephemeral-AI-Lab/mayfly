@@ -499,7 +499,7 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | R25 | Usage tab: activity heatmap and conversation statistics (spec §5.10) | `interaction/usage.ts`, `packages/ui/src/contracts.ts` (heatmap `cell`, `columnLabels`) |
 
 Verification for any of these follows the root gate: width scans for every new
-row renderer, the owning suite for lifecycle changes, `pnpm run verify:full`,
+row renderer, the owning suite for lifecycle changes, `pnpm run check -- --tier full`,
 and a dedicated-profile install with PTY smoke and human acceptance.
 
 **Implementation questions** (the design questions are in spec §8):

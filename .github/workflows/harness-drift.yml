@@ -131,7 +131,7 @@ jobs:
       # the full gate set passes on its tree.
       - run: pnpm install --no-frozen-lockfile --config.minimumReleaseAge=0
       - run: pnpm typecheck && pnpm lint && pnpm diagrams:check && pnpm build && pnpm check:lib
-      - run: pnpm test:coverage
+      - run: pnpm exec vitest run --coverage
       - run: npm install -g "@deepseek-ai/dsh@${{ env.DRIFT_TARGET }}"
       - run: pnpm smoke:happy
       - name: Push automation branch and upsert the PR (all gates green)
@@ -144,7 +144,7 @@ jobs:
           git push --force origin automation/harness-bump
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           title="harness-drift: bump ${DRIFT_CURRENT} → ${DRIFT_TARGET} (auto)"
-          body="Automated harness-line bump. The full gate set (typecheck / lint / diagrams / build / check:lib / test:coverage / smoke:happy against ${DRIFT_TARGET}) ran INSIDE the drift run — a GITHUB_TOKEN-opened PR does not trigger ci.yml on its own, so the PR's checks tab stays empty by design; see ${run_url}. The human merge push re-triggers main's ci.yml as the final check. Review the narrative edits (roadmap R1 row, session-title bridge verdict) alongside the pins."
+          body="Automated harness-line bump. The full gate set (typecheck / lint / diagrams / build / check:lib / vitest coverage / smoke:happy against ${DRIFT_TARGET}) ran INSIDE the drift run — a GITHUB_TOKEN-opened PR does not trigger ci.yml on its own, so the PR's checks tab stays empty by design; see ${run_url}. The human merge push re-triggers main's ci.yml as the final check. Review the narrative edits (roadmap R1 row, session-title bridge verdict) alongside the pins."
           number=$(gh pr list --head automation/harness-bump --state open --json number --jq '.[0].number')
           if [ -n "$number" ]; then
             gh pr edit "$number" --title "$title" --body "$body"

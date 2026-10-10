@@ -71,7 +71,7 @@ describe('change impact planning', () => {
 
   test('CLI entry points accept pnpm argument separators', () => {
     const verify = execFileSync(process.execPath, [
-      'script/verify-changed.mjs', '--plan', '--', '--files-json', '[]',
+      'script/check.mjs', '--plan', '--', '--files-json', '[]',
     ], { encoding: 'utf8' })
     assert.equal(JSON.parse(verify).mode, 'none')
     const build = execFileSync(process.execPath, [
@@ -82,7 +82,7 @@ describe('change impact planning', () => {
 
   test('fails closed when the requested comparison base is invalid', () => {
     assert.throws(() => execFileSync(process.execPath, [
-      'script/verify-changed.mjs', '--plan', '--base', 'refs/heads/does-not-exist',
+      'script/check.mjs', '--plan', '--base', 'refs/heads/does-not-exist',
     ], { encoding: 'utf8', stdio: 'pipe' }))
   })
 
@@ -91,7 +91,7 @@ describe('change impact planning', () => {
     try {
       execFileSync('git', ['init', '--initial-branch', 'main', root], { stdio: 'ignore' })
       const output = execFileSync(process.execPath, [
-        join(ROOT, 'script/verify-changed.mjs'), '--plan', '--full',
+        join(ROOT, 'script/check.mjs'), '--plan', '--tier', 'full',
       ], { cwd: root, encoding: 'utf8' })
       assert.equal(JSON.parse(output).mode, 'full')
     } finally {
@@ -171,16 +171,16 @@ describe('change impact planning', () => {
       mkdirSync(join(root, '.artifacts', 'pack'), { recursive: true })
       writeFileSync(join(root, '.artifacts', 'pack', 'cordis.patch.yml'), 'generated\n')
       const verify = () => JSON.parse(execFileSync(process.execPath, [
-        join(ROOT, 'script/verify-changed.mjs'), '--plan',
+        join(ROOT, 'script/check.mjs'), '--plan',
       ], { cwd: root, encoding: 'utf8' }))
       assert.equal(verify().mode, 'none')
       mkdirSync(join(root, 'website'), { recursive: true })
       writeFileSync(join(root, 'website', 'index.md'), 'website\n')
       const full = JSON.parse(execFileSync(process.execPath, [
-        join(ROOT, 'script/verify-changed.mjs'), '--plan', '--full',
+        join(ROOT, 'script/check.mjs'), '--plan', '--tier', 'full',
       ], { cwd: root, encoding: 'utf8' }))
       assert.equal(full.checks.website, true)
-      assert.ok(full.commands.some(command => command.join(' ') === 'pnpm run website:build'))
+      assert.ok(full.steps.includes('website: pnpm run website:build'))
       writeFileSync(join(root, 'packages', 'mayfly', 'cordis.patch.yml'), 'updated\n')
       assert.equal(verify().mode, 'full')
     } finally {
@@ -221,18 +221,18 @@ describe('agent documentation drift', () => {
   function fixture(agent) {
     const root = mkdtempSync(join(tmpdir(), 'mayfly-agent-docs-'))
     roots.push(root)
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { 'verify:changed': '', 'verify:full': '', 'check:agent-docs': '' } }))
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { check: '', 'check:agent-docs': '' } }))
     writeFileSync(join(root, 'AGENTS.md'), agent)
     return root
   }
 
   test('accepts durable instructions without project skills', () => {
-    const root = fixture('Use `pnpm run verify:changed`, `pnpm run verify:full`, and `pnpm run check:agent-docs`.\n')
+    const root = fixture('Use `pnpm run check` and `pnpm run check:agent-docs`.\n')
     assert.deepEqual(auditAgentDocs(root, { packageDirs: [], checkPreset: false }), [])
   })
 
   test('rejects expiring snapshots, dead links, and project skills', () => {
-    const root = fixture('As of 2026-01-01, 10 passed. [missing](./missing.md)\nverify:changed verify:full check:agent-docs\n')
+    const root = fixture('As of 2026-01-01, 10 passed. [missing](./missing.md)\npnpm run check, check:agent-docs\n')
     mkdirSync(join(root, '.agents', 'skills', 'old'), { recursive: true })
     writeFileSync(join(root, '.agents', 'skills', 'old', 'SKILL.md'), '---\nname: old\n---\n')
     const problems = auditAgentDocs(root, { packageDirs: [], checkPreset: false })
@@ -242,13 +242,13 @@ describe('agent documentation drift', () => {
   })
 
   test('rejects prerelease literals outside the maintained version set', () => {
-    const root = fixture('Use verify:changed verify:full check:agent-docs. Old `0.1.1-rc.9`.\n')
+    const root = fixture('Use pnpm run check, check:agent-docs. Old `0.1.1-rc.9`.\n')
     const problems = auditAgentDocs(root, { packageDirs: [], checkPreset: false, allowedVersions: ['0.1.0-alpha.1'] })
     assert.ok(problems.some(problem => problem.includes('stale prerelease 0.1.1-rc.9')))
   })
 
   test('generated artifacts cannot introduce instruction drift', () => {
-    const root = fixture('Use verify:changed verify:full check:agent-docs.\n')
+    const root = fixture('Use pnpm run check, check:agent-docs.\n')
     mkdirSync(join(root, '.artifacts', 'unpacked'), { recursive: true })
     writeFileSync(join(root, '.artifacts', 'unpacked', 'AGENTS.md'), 'As of 2026-01-01, 10 passed.\n')
     assert.deepEqual(auditAgentDocs(root, { packageDirs: [], checkPreset: false }), [])

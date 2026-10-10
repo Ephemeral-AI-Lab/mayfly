@@ -78,7 +78,7 @@ jobs:
         if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
       - name: full coverage gate (正式 rc/stable)
         if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
-        run: pnpm test:coverage
+        run: pnpm exec vitest run --coverage
       - name: test-package contract smoke
         if: ${{ contains(inputs.version || github.ref_name, '-test.') }}
         run: pnpm vitest run packages/ui/tests/ui.spec.ts packages/ui/tests/provider.spec.ts packages/cli/tests/main.spec.ts packages/mayfly/tests/interaction/commands-plugin.spec.ts

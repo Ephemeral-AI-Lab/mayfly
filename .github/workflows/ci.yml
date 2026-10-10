@@ -3,9 +3,11 @@
 # covered by website-pages.yml's build check). Install is pinned by the
 # root packageManager field (pnpm/action-setup reads it) with a frozen
 # lockfile; node mirrors the website workflow's PRIMARY_NODE_VERSION.
-# `test:coverage` is one vitest run: the suites with retained-row
-# verification on, the work budgets, and coverage against the repository-wide
-# floor in vitest.config.ts (roadmap D25).
+# The check job runs `pnpm run check` (script/check.mjs, roadmap Phase 2b):
+# a pull request runs the pr tier on what its change can reach, a push to main,
+# the nightly run, and a manual run take the full tier (every check, one vitest
+# run with retained-row verification and the coverage floor, the smoke, and the
+# bench). The report lands in the job summary and as an artifact.
 name: ci
 
 on:
@@ -14,6 +16,8 @@ on:
   pull_request:
     paths-ignore:
       - website/**
+  schedule:
+    - cron: '17 2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -54,68 +58,55 @@ jobs:
           packages/mayfly/tests/transcript/status-cwd.spec.ts
 
   check:
-    name: typecheck / lint / test (coverage)
+    name: check (${{ github.event_name == 'pull_request' && 'pr' || 'full' }} tier)
     runs-on: ubuntu-latest
     concurrency:
       group: ci-${{ github.ref }}
       cancel-in-progress: true
     steps:
+      # The whole history: the pr tier diffs against the merge base with the target branch.
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Fast gates first: tsc -b fails in seconds, oxlint in under a second,
-      # so a type error doesn't burn a full test run.
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test:repo-workflow
-      - run: pnpm check:agent-docs
-      # Docs diagrams: docs/diagrams/*.mmd are the single sources; the
-      # embedded copies in README/README.zh/mayfly-architecture must match.
-      - run: pnpm diagrams:check
-      # tsc -b only emits lib/types declarations; specs that import through
-      # package entry points resolve lib/index.js from tsdown, so a fresh
-      # checkout needs the bundle build before vitest can run.
-      - run: pnpm build
-      # The lib/export integrity gate (the S30 lesson): package.json
-      # exports ↔ built lib/ output ↔ the files tarball whitelist. Runs
-      # before the test minute so the cheap check fails first.
-      - run: pnpm check:lib
-      # Component shots: script/shots renders the built core/ui libs into
-      # website/public/shots/*.svg; the committed files must match byte for
-      # byte. Runs after the build because the painter needs lib/index.js.
-      - run: pnpm shots:check
-      # W5-C ecosystem contract: static package boundaries plus a one-project
-      # packed install on this release's sole supported Harness line.
-      - run: pnpm check:examples
-      # One run: every retained-row hit painted again and compared (a row that reads something the surface epoch
-      # does not track fails here instead of showing stale on a screen), the work budgets, and the coverage floor.
-      - run: pnpm test:coverage
-      # The real-process width smoke (D45): boots the built plugin tree
-      # through the real dsh CLI at COLUMNS=40 against a mock LLM streaming
-      # width-hostile content — any untruncated row must fail the run, not
-      # crash a user session. The CLI is NOT a workspace devDependency on
-      # purpose: its subtree reshapes hoisting and breaks the S34 /mcp e2e's
-      # bare-specifier resolution, so CI installs it globally instead and
-      # the smoke pins its version against HARNESS_LINE.
+      # The happy smoke boots the real dsh CLI. The CLI is NOT a workspace
+      # devDependency on purpose: its subtree reshapes hoisting and breaks the
+      # S34 /mcp e2e's bare-specifier resolution, so CI installs it globally
+      # and the smoke pins its version against HARNESS_LINE.
       #
       # npm, not `pnpm add -g`: action-setup installs pnpm itself under
       # /home/runner/setup-pnpm, and with no PNPM_HOME set `pnpm add -g`
       # resolves the global bin dir next to the pnpm binary and refuses
       # ("configured global bin directory ... is not in PATH" — the red
       # run 32548149673). npm's global bin is setup-node's prefix, already
-      # on PATH for this step and for smoke:happy's `command -v dsh`.
+      # on PATH for the smoke's `command -v dsh`.
       # The version is derived from HARNESS_LINE via script/harness-line.mjs
       # (single-sourced) — keep it that way: a literal here would drift off
       # the version.spec gate AND an automation push touching a workflow
       # file is rejected by GitHub (GITHUB_TOKEN cannot update workflows).
       - run: npm install -g "@deepseek-ai/dsh@$(node script/harness-line.mjs)"
-      - run: pnpm smoke:happy
-      # The real terminal against coarse ceilings: idle CPU and key-to-paint latency with a side pane loaded, and typing
-      # and cursor keys without one. A regression of the frame path is ten times past them; the slack covers a shared runner.
-      - run: pnpm bench:pty:assert
+      # A pull request also reports the changed source lines no selected spec
+      # ran (advice, not a gate). The bench slack covers a shared runner.
+      - name: pnpm run check
+        run: >-
+          pnpm run check --
+          --tier ${{ github.event_name == 'pull_request' && 'pr' || 'full' }}
+          --base origin/${{ github.base_ref || 'main' }}
+          --verbose
+          ${{ github.event_name == 'pull_request' && '--coverage-advice' || '' }}
         env:
           BENCH_PTY_SLACK: '3'
+      - name: report
+        if: ${{ !cancelled() }}
+        run: cat .artifacts/verify/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: verify-report
+          path: .artifacts/verify/
+          if-no-files-found: ignore

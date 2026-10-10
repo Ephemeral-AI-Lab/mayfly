@@ -13,10 +13,12 @@ worktree and branch.
 
 ```sh
 pnpm install
-pnpm run verify:changed -- --plan
-pnpm run verify:changed
-pnpm run verify:full
+pnpm run check -- --tier round   # every edit: incremental build, lint, the tests the change reaches
+pnpm run check                   # before a PR: plus the checks the change touches
+pnpm run check -- --tier full    # a release or a broad change: everything
 ```
+
+`--plan` lists the steps without running them; the result is in `.artifacts/verify/summary.md`.
 
 For publish shape:
 

@@ -43,36 +43,44 @@ History and release notes do not define current behavior.
 
 ## Verification
 
-Start with `pnpm run verify:changed -- --plan`, then run the selected gate.
-The default comparison is `origin/main...HEAD` plus staged, unstaged, and
-untracked files (not generated `.artifacts/`); use `--base <ref>` when needed.
-The plan lists commands that will run and separate manual acceptance paths;
-`--why` adds the chain from a changed file to each selected test. Selection
+Verify with `pnpm run check -- --tier round|pr|full` (default `pr`). `round`
+is for every edit (the incremental build, lint, and the specs and workflow
+tests the change reaches), `pr` for finalizing a change (round plus the checks
+it claims: agent docs, diagrams, lib exports, shots, examples, pack, Website),
+and `full` for broad, release, architecture, composition, or workflow changes
+and the end of a phase. The change set is `origin/main...HEAD` plus staged,
+unstaged, and untracked files (not generated `.artifacts/`); use `--base <ref>`
+when needed. `--plan` prints the plan and steps without running them, and
+`--why` adds the chain from a changed file to each selected test. Each step
+prints one line and logs to `.artifacts/verify/steps/`; read
+`.artifacts/verify/summary.md` after a run: the verdict, the first failure of
+each failing spec with why it ran, owed manual acceptance, and how to rerun.
+Fix and run the tier again until it passes. Selection
 follows the static import graph (`script/verify/graph.mjs`: imports, literal
 data reads, built entries mapped to their sources, patch rows); what it cannot
 see is declared in `script/verify/inputs.mjs`, and `script/verify/select.mjs`
 plans the checks. A new file must be claimed: parsed by the graph, read through
 a literal path, or named in the inputs (`script/tests/claimed-files.test.mjs`).
-Only a global input escalates to the full gate.
+A global input runs the full tier whatever tier was asked.
 
-Use `pnpm run verify:full` instead of an additional `verify:changed` for broad,
-release, architecture, composition, or workflow changes. CI runs the full
-deterministic gate. Full verification includes screenshot freshness, one
-vitest run (`test:coverage`: the suites with the stale-row check on, the work
-budgets, and the coverage floor), happy smoke and the PTY bench against its
-ceilings (`bench:pty:assert`) on the gate's own build, and a Website build when
-Website files changed; do not precede it with redundant plain tests. Distribution changes selected by the
-planner also run `check:pack`; a plain full gate does not pack. Release
+CI runs the pr tier on a pull request (with advice on changed source lines no
+selected spec ran) and the full tier on `main` and nightly. The full tier
+includes screenshot freshness, one vitest run (the suites with the stale-row
+check on, the work budgets, and the coverage floor), the happy smoke and the
+PTY bench against its ceilings (`bench:pty:assert`) on the tier's own build,
+and a Website build when Website files changed; do not precede it with
+redundant plain tests. Distribution changes selected by the planner also run
+`check:pack`; a plain full tier does not pack. Release
 publication additionally requires `pnpm release:preflight <version>`, verified
 tarballs, and the human acceptance described below. Instruction and
 shipped-skill changes run `check:agent-docs`.
 
 UI component work follows the tiers of the
 [roadmap](docs/design/implementation-roadmap.md) §7. Review rounds with the
-owner run only the incremental build, the typecheck, and the specs related to
-changed logic; finalizing a component runs the selected changed gate with its
-decision tests (accepted frames, keys and writes, lifecycle, width, budgets);
-a phase ends with `verify:full`; CI runs the full gate on `main`. Tests record
+owner run the round tier (`pnpm run dev --check` runs it after each rebuild);
+finalizing a component runs the pr tier with its decision tests (accepted
+frames, keys and writes, lifecycle, width, budgets); a phase ends with the full
+tier; CI runs the full tier on `main`. Tests record
 decisions; do not add tests only to reach a line.
 
 - Vitest uses fork workers and two projects: `suite` runs every spec with

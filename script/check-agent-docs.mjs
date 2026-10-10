@@ -77,7 +77,7 @@ export function auditAgentDocs(root, options = {}) {
   }
 
   const rootAgent = readFileSync(join(root, 'AGENTS.md'), 'utf8')
-  for (const command of ['verify:changed', 'verify:full', 'check:agent-docs']) {
+  for (const command of ['pnpm run check', 'check:agent-docs']) {
     if (!rootAgent.includes(command)) problems.push(`AGENTS.md does not route maintainers to ${command}`)
   }
 
